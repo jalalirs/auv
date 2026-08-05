@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# Make the Mac checkout, GitHub, and the GPU checkout point to one commit.
+#
+# GitHub is not reachable from the GPU network, so the Mac also pushes to a
+# bare repository over Tailscale. The GPU working tree pulls from that mirror.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+if [ -f "${REPO_ROOT}/.env" ]; then
+    set -a
+    source "${REPO_ROOT}/.env"
+    set +a
+fi
+
+GPU_HOST="${AUV_GPU_HOST:-jalalirs@100.76.65.1}"
+REMOTE_DIR="${AUV_REMOTE_DIR:-auv}"
+REMOTE_GIT_DIR="${AUV_REMOTE_GIT_DIR:-.git-mirrors/auv.git}"
+COMMIT_MESSAGE="$*"
+
+validate_remote_path() {
+    local name="$1"
+    local value="$2"
+
+    if [[ ! "${value}" =~ ^[A-Za-z0-9._/-]+$ ]] \
+        || [[ "${value}" = /* ]] \
+        || [[ "${value}" == *..* ]]; then
+        printf 'Refusing unsafe %s: %s\n' "${name}" "${value}" >&2
+        exit 1
+    fi
+}
+
+validate_remote_path AUV_REMOTE_DIR "${REMOTE_DIR}"
+validate_remote_path AUV_REMOTE_GIT_DIR "${REMOTE_GIT_DIR}"
+
+cd "${REPO_ROOT}"
+
+if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
+    printf 'Not inside a Git repository: %s\n' "${REPO_ROOT}" >&2
+    exit 1
+fi
+
+BRANCH="$(git symbolic-ref --quiet --short HEAD)" || {
+    printf 'Cannot synchronize a detached HEAD. Check out a branch first.\n' >&2
+    exit 1
+}
+git check-ref-format --branch "${BRANCH}" >/dev/null
+
+printf 'Checking origin/%s...\n' "${BRANCH}"
+git fetch --prune origin
+
+if git show-ref --verify --quiet "refs/remotes/origin/${BRANCH}"; then
+    LOCAL_HEAD="$(git rev-parse HEAD)"
+    ORIGIN_HEAD="$(git rev-parse "refs/remotes/origin/${BRANCH}")"
+
+    if [ "${LOCAL_HEAD}" != "${ORIGIN_HEAD}" ]; then
+        if git merge-base --is-ancestor "${LOCAL_HEAD}" "${ORIGIN_HEAD}"; then
+            if [ -n "$(git status --porcelain)" ]; then
+                printf 'origin/%s is ahead, but the local checkout has changes.\n' "${BRANCH}" >&2
+                printf 'Commit/stash them or reconcile manually before syncing.\n' >&2
+                exit 1
+            fi
+            git pull --ff-only origin "${BRANCH}"
+        elif ! git merge-base --is-ancestor "${ORIGIN_HEAD}" "${LOCAL_HEAD}"; then
+            printf 'Local %s and origin/%s have diverged; refusing to rewrite history.\n' \
+                "${BRANCH}" "${BRANCH}" >&2
+            exit 1
+        fi
+    fi
+fi
+
+# Check the GPU destination before creating a local commit. Existing non-Git
+# directories are never replaced automatically, and remote edits are preserved.
+ssh -o BatchMode=yes "${GPU_HOST}" bash -s -- "${REMOTE_DIR}" "${REMOTE_GIT_DIR}" <<'REMOTE_PREFLIGHT'
+set -euo pipefail
+work_dir="${HOME}/$1"
+bare_dir="${HOME}/$2"
+
+if [ -e "${work_dir}" ] && [ ! -d "${work_dir}/.git" ]; then
+    printf 'GPU path exists but is not a Git checkout: %s\n' "${work_dir}" >&2
+    printf 'Move or remove it explicitly before the first Git sync.\n' >&2
+    exit 20
+fi
+
+if [ -d "${work_dir}/.git" ] && [ -n "$(git -C "${work_dir}" status --porcelain)" ]; then
+    printf 'GPU checkout has uncommitted changes; refusing to overwrite them.\n' >&2
+    git -C "${work_dir}" status --short >&2
+    exit 21
+fi
+
+mkdir -p "$(dirname "${bare_dir}")"
+if [ ! -d "${bare_dir}" ]; then
+    git init --bare "${bare_dir}" >/dev/null
+fi
+git -C "${bare_dir}" config receive.denyNonFastForwards true
+REMOTE_PREFLIGHT
+
+if [ -n "$(git status --porcelain)" ]; then
+    if [ -z "${COMMIT_MESSAGE}" ]; then
+        printf 'Local changes need a commit message. Usage:\n' >&2
+        printf '  tools/gpu sync "describe the change"\n' >&2
+        exit 2
+    fi
+
+    git add -A
+    git diff --cached --check
+    git commit -m "${COMMIT_MESSAGE}"
+else
+    printf 'No local changes to commit.\n'
+fi
+
+LOCAL_HEAD="$(git rev-parse HEAD)"
+
+printf 'Pushing %s to GitHub...\n' "${BRANCH}"
+git push origin "HEAD:refs/heads/${BRANCH}"
+
+printf 'Pushing %s to the GPU Git mirror...\n' "${BRANCH}"
+git push "${GPU_HOST}:${REMOTE_GIT_DIR}" "HEAD:refs/heads/${BRANCH}"
+
+printf 'Fast-forwarding the GPU checkout...\n'
+REMOTE_HEAD="$({
+    ssh -o BatchMode=yes "${GPU_HOST}" bash -s -- \
+        "${REMOTE_DIR}" "${REMOTE_GIT_DIR}" "${BRANCH}" <<'REMOTE_UPDATE'
+set -euo pipefail
+work_dir="${HOME}/$1"
+bare_dir="${HOME}/$2"
+branch="$3"
+
+if [ ! -d "${work_dir}/.git" ]; then
+    git clone --branch "${branch}" "${bare_dir}" "${work_dir}" >&2
+else
+    git -C "${work_dir}" remote set-url origin "${bare_dir}"
+    git -C "${work_dir}" fetch --prune origin >&2
+    if git -C "${work_dir}" show-ref --verify --quiet "refs/heads/${branch}"; then
+        git -C "${work_dir}" checkout "${branch}" >&2
+    else
+        git -C "${work_dir}" checkout --track -b "${branch}" "origin/${branch}" >&2
+    fi
+    git -C "${work_dir}" merge --ff-only "origin/${branch}" >&2
+fi
+
+git -C "${work_dir}" rev-parse HEAD
+REMOTE_UPDATE
+} | tail -n 1)"
+
+if [ "${LOCAL_HEAD}" != "${REMOTE_HEAD}" ]; then
+    printf 'Synchronization verification failed.\n' >&2
+    printf '  Mac: %s\n  GPU: %s\n' "${LOCAL_HEAD}" "${REMOTE_HEAD}" >&2
+    exit 1
+fi
+
+printf 'Synchronized Mac, GitHub, and GPU at %s (%s).\n' \
+    "${LOCAL_HEAD:0:12}" "${BRANCH}"

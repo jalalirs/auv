@@ -1,0 +1,11 @@
+mission:
+  id: pool-square
+  frame: map
+  target_depth_m: 2.0
+  target_heading_deg: 0.0
+  waypoints_m:
+    - [0.0, 0.0]
+    - [5.0, 0.0]
+    - [5.0, 5.0]
+    - [0.0, 5.0]
+    - [0.0, 0.0]

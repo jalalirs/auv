@@ -1,0 +1,52 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+.runtime/
+
+# macOS and editors
+.DS_Store
+.idea/
+.vscode/
+*~
+
+# ROS / colcon
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+analysis/notebooks/.ipynb_checkpoints/
+
+# Logs and generated experiment artifacts
+*.log
+experiments/**/runs/
+experiments/**/bags/
+experiments/**/artifacts/
+
+# Robotics recordings
+*.bag
+*.db3
+*.mcap
+
+# Heavy data: preserve only the documentation in each directory
+data/datasets/*
+!data/datasets/README.md
+data/recordings/*
+!data/recordings/README.md
+data/models/*
+!data/models/README.md
+data/runtime/*
+!data/runtime/README.md
+
+# Optional local Compose changes
+compose.override.yaml

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Run commands on the shared GPU machine via Tailscale SSH.
+# Usage:
+#   ./tools/gpu "nvidia-smi"              # non-interactive
+#   ./tools/gpu -s "sudo something"       # interactive (for sudo)
+#   ./tools/gpu sync "commit message"      # commit, push, and update ~/auv
+#   ./tools/gpu                            # interactive shell
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+if [ -f "${REPO_ROOT}/.env" ]; then
+    set -a
+    source "${REPO_ROOT}/.env"
+    set +a
+fi
+
+GPU_HOST="${AUV_GPU_HOST:-jalalirs@100.76.65.1}"
+
+if [ "${1:-}" = "sync" ]; then
+    shift
+    exec "${SCRIPT_DIR}/git-sync" "$@"
+elif [ $# -eq 0 ]; then
+    LC_ALL=C LANG=C exec ssh -t "$GPU_HOST" "export LC_ALL=C LANG=C; exec bash"
+elif [ "$1" = "-s" ]; then
+    shift
+    LC_ALL=C LANG=C exec ssh -t "$GPU_HOST" "export LC_ALL=C LANG=C; $*"
+else
+    LC_ALL=C LANG=C exec ssh "$GPU_HOST" "export LC_ALL=C LANG=C; $*"
+fi

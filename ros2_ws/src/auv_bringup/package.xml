@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>auv_bringup</name>
+  <version>0.1.0</version>
+  <description>System launch files, operational parameters, and missions.</description>
+  <maintainer email="jalalirs@users.noreply.github.com">AUV Lab</maintainer>
+  <license>Proprietary</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>auv_control</exec_depend>
+  <exec_depend>auv_description</exec_depend>
+  <exec_depend>auv_simulation</exec_depend>
+  <exec_depend>foxglove_bridge</exec_depend>
+  <exec_depend>rosbag2</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
