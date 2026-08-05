@@ -63,6 +63,18 @@ RUN source /opt/ros/jazzy/setup.bash \
             -DCUDA_ARCHITECTURE=89 \
             -DCUDAToolkit_ROOT=/usr/local/cuda-12.6
 
+# The upstream integrated BlueROV2 model enables per-frame CSV dumps and CUDA
+# timing prints. At simulation rate those diagnostic defaults generate hundreds
+# of megabytes per minute. The ROS sonar image and point-cloud streams remain on.
+RUN sed -i \
+        -e 's#<writeLog>true</writeLog>#<writeLog>false</writeLog>#' \
+        -e 's#<debugFlag>true</debugFlag>#<debugFlag>false</debugFlag>#' \
+        /opt/dave_ws/src/dave/models/dave_robot_models/description/bluerov2_heavy_multibeam_sonar/model.sdf \
+    && grep -q '<writeLog>false</writeLog>' \
+        /opt/dave_ws/src/dave/models/dave_robot_models/description/bluerov2_heavy_multibeam_sonar/model.sdf \
+    && grep -q '<debugFlag>false</debugFlag>' \
+        /opt/dave_ws/src/dave/models/dave_robot_models/description/bluerov2_heavy_multibeam_sonar/model.sdf
+
 COPY docker/entrypoint.sh /usr/local/bin/auv-entrypoint
 RUN chmod +x /usr/local/bin/auv-entrypoint
 
