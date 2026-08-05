@@ -14,6 +14,9 @@ require_local() {
 require_local ssh
 require_local git
 require_local make
+require_local curl
+require_local tar
+require_local unzip
 
 if command -v open >/dev/null 2>&1; then
     printf 'local %-12s ok\n' open

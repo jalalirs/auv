@@ -18,8 +18,10 @@ make dive-topics
 make view
 ```
 
-The first launch pulls the pinned DAVE image and Gazebo Fuel models, so it takes
-longer than subsequent launches. Follow startup with `make dive-logs`.
+The first launch pulls the pinned DAVE image. The GPU cannot reach Gazebo Fuel's
+object storage, so `make dive` downloads three checksum-pinned models on the Mac
+and transfers them to the external data directory over Tailscale. Both the image
+and assets are cached for later launches. Follow startup with `make dive-logs`.
 
 In Foxglove, connect to `ws://localhost:8765` and add:
 
@@ -30,7 +32,7 @@ In Foxglove, connect to `ws://localhost:8765` and add:
 
 ## Scene
 
-- World: `dave_ocean_waves_sonar`
+- World: `first_dive`, adapted from DAVE's `dave_ocean_waves_sonar`
 - Vehicle: `bluerov2_heavy_multibeam_sonar`
 - Spawn: `(x=5, y=2, z=-14)` metres
 - Target: a distorted sunken ship near `(15, 2, -16)` metres
