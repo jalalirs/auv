@@ -12,7 +12,7 @@ flowchart LR
     Data["External runtime data"]
 
     Mac --> Git
-    Git -->|"tools/sync over Tailscale"| Box
+    Git -->|"verified Git mirror over Tailscale"| Box
     Box --> Stack
     Stack -->|"Foxglove WebSocket through SSH tunnel"| Mac
     Stack --> Data
@@ -36,5 +36,6 @@ one WebSocket endpoint, forwarded to the Mac through SSH on port 8765.
 ## Visualization
 
 Foxglove is the daily interface for transforms, robot geometry, camera feeds,
-sonar, maps, plots, controls, and playback. A separate VirtualGL/TurboVNC path
-may later expose the complete Gazebo GUI for world editing and inspection.
+sonar, maps, plots, controls, and playback. Gazebo uses EGL for GPU rendering
+without an X server. A separate VirtualGL/TurboVNC path may later expose the
+complete Gazebo GUI for world editing and inspection.

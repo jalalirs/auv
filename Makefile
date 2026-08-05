@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: help doctor sync build up down restart status logs shell test view view-stop
+.PHONY: help doctor sync build up down restart status logs shell test dive dive-stop dive-status dive-logs dive-topics view view-stop
 
 help: ## Show available commands
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -36,6 +36,21 @@ shell: ## Open an interactive shell in the remote container
 
 test: ## Build and test the synchronized ROS workspace remotely
 	@./tools/sim test
+
+dive: ## Build and launch Project 001 on the GPU
+	@./tools/sim dive
+
+dive-stop: ## Stop Project 001
+	@./tools/sim dive-stop
+
+dive-status: ## Show Project 001 container status
+	@./tools/sim dive-status
+
+dive-logs: ## Follow Project 001 logs
+	@./tools/sim dive-logs
+
+dive-topics: ## List Project 001 ROS topics
+	@./tools/sim dive-topics
 
 view: ## Start the Foxglove tunnel and open the Mac client
 	@./tools/view start
