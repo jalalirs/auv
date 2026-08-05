@@ -4,6 +4,7 @@ x-auv-common: &auv-common
   build:
     context: .
     dockerfile: docker/Dockerfile
+    network: host
     args:
       USER_UID: ${AUV_USER_UID:-1000}
       USER_GID: ${AUV_USER_GID:-1000}
