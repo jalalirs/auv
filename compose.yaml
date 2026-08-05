@@ -26,6 +26,11 @@ x-auv-common: &auv-common
     - ${AUV_DATA_DIR:-/home/jalalirs/auv-data}:/data
   working_dir: /workspace/auv
   shm_size: 1gb
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
   deploy:
     resources:
       reservations:
