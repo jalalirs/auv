@@ -97,7 +97,7 @@ case "${1:-status}" in
     dive)
         require_synced_checkout
         "${SCRIPT_DIR}/assets" first-dive
-        "${SCRIPT_DIR}/gpu" "mkdir -p ${QUOTED_DATA_DIR}/logs/ros && cd '${REMOTE_DIR}' && ${COMPOSE_ENV} docker compose up --build --detach first-dive"
+        "${SCRIPT_DIR}/gpu" "mkdir -p ${QUOTED_DATA_DIR}/logs/ros && cd '${REMOTE_DIR}' && ${COMPOSE_ENV} docker compose up --build --detach --force-recreate first-dive"
         ;;
     dive-stop)
         remote "docker compose stop first-dive"

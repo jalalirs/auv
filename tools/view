@@ -36,9 +36,15 @@ start_tunnel() {
         printf 'Foxglove tunnel started on localhost:%s.\n' "${LOCAL_PORT}"
     fi
 
-    printf 'Open: %s\n' "${FOXGLOVE_URL}"
+    printf 'Foxglove WebSocket: ws://localhost:%s\n' "${LOCAL_PORT}"
     if command -v open >/dev/null 2>&1; then
-        open "${FOXGLOVE_URL}" || open 'https://app.foxglove.dev/'
+        if open -Ra 'Foxglove' >/dev/null 2>&1; then
+            open "${FOXGLOVE_URL}"
+        else
+            printf 'Foxglove Desktop is not installed; opening the browser client.\n'
+            printf 'Choose Open connection, Foxglove WebSocket, then ws://localhost:%s.\n' "${LOCAL_PORT}"
+            open 'https://app.foxglove.dev/'
+        fi
     fi
 }
 

@@ -24,7 +24,9 @@ object storage, so `make dive` downloads three checksum-pinned models on the Mac
 and transfers them to the external data directory over Tailscale. Both the image
 and assets are cached for later launches. Follow startup with `make dive-logs`.
 
-In Foxglove, connect to `ws://localhost:8765` and add:
+`make view` opens Foxglove Desktop when installed, otherwise the browser client.
+In the browser choose **Open connection**, **Foxglove WebSocket**, and enter
+`ws://localhost:8765`. Then add:
 
 - Image panels for the camera and `sonar_image` topics;
 - a 3D panel for the sonar point cloud;
@@ -40,6 +42,11 @@ In Foxglove, connect to `ws://localhost:8765` and add:
 
 Gazebo runs with its server-only EGL renderer. No remote desktop or X server is
 required.
+
+DAVE's integrated sonar model is configured to publish all live ROS products
+without its upstream per-frame CSV and timing debug output. Docker logs rotate
+at 10 MiB with three files, so leaving the lab open cannot silently consume the
+disk with diagnostic data.
 
 ## Completion check
 
