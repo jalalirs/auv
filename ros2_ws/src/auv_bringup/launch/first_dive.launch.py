@@ -62,14 +62,24 @@ def launch_setup(context):
         }.items(),
     )
 
-    camera_root = f"/model/{vehicle}/camera"
+    # DAVE's camera uses the Gazebo topics .../camera and .../camera_info.
+    # Remap only the ROS side to the conventional .../camera/image layout.
+    model_root = f"/model/{vehicle}"
+    camera_gz = f"{model_root}/camera"
+    camera_info_gz = f"{model_root}/camera_info"
+    camera_ros = f"{model_root}/camera/image"
+    camera_info_ros = f"{model_root}/camera/camera_info"
     camera_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
         name="first_dive_camera_bridge",
         arguments=[
-            f"{camera_root}/image@sensor_msgs/msg/Image[gz.msgs.Image",
-            f"{camera_root}/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
+            f"{camera_gz}@sensor_msgs/msg/Image[gz.msgs.Image",
+            f"{camera_info_gz}@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
+        ],
+        remappings=[
+            (camera_gz, camera_ros),
+            (camera_info_gz, camera_info_ros),
         ],
         output="screen",
     )
