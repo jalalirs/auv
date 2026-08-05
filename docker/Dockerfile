@@ -43,6 +43,13 @@ RUN curl --fail --location --retry 8 --retry-all-errors \
         libcufft-dev-12-6 \
     && rm -rf /var/lib/apt/lists/*
 
+# DAVE includes cuRAND's device headers directly. Keep this in a separate
+# layer so adding the missed header package does not invalidate the cached
+# compiler, cuBLAS, and cuFFT download above.
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends libcurand-dev-12-6 \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN source /opt/ros/jazzy/setup.bash \
     && source /opt/dave_ws/install/setup.bash \
     && cd /opt/dave_ws \
