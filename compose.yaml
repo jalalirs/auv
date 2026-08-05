@@ -53,8 +53,9 @@ services:
       - -lc
       - |
         set -e
-        mkdir -p /data/logs/ros
+        mkdir -p /data/logs/ros /data/runtime/ardusub
         cd /workspace/auv/ros2_ws
         colcon build --symlink-install --packages-up-to auv_bringup
         source install/setup.bash
+        cd /data/runtime/ardusub
         exec ros2 launch auv_bringup first_dive.launch.py

@@ -15,7 +15,7 @@ fi
 GPU_HOST="${AUV_GPU_HOST:-jalalirs@100.76.65.1}"
 DATA_DIR="${AUV_DATA_DIR:-/home/jalalirs/auv-data}"
 ASSET_SET="${1:-first-dive}"
-MANIFEST_ID="first-dive-fuel-2026-08-05-v2"
+MANIFEST_ID="first-dive-fuel-2026-08-05-v3"
 REMOTE_ASSET_DIR="${DATA_DIR}/gazebo/first_dive"
 
 if [ "${ASSET_SET}" != "first-dive" ]; then
@@ -73,14 +73,32 @@ download_model \
     hmoyen Sand%20Heightmap sand_heightmap \
     f5f9ed93bd5baa78cb79f2e909da5b545193c4579655a4b7d74ba16f59ac2064
 
+# The distorted wreck references the textures of Cole's original model by
+# unreachable Fuel URLs. Copy the checksum-pinned textures beside the distorted
+# mesh and rewrite those four paths to local model:// URIs.
+download_model \
+    Cole Sunken%20Ship sunken_ship_source \
+    8e624cdd6a99815927111f1a009ea7fd9a9255769189389891884d71c62b82d9
+cp -R \
+    "${STAGING_DIR}/models/sunken_ship_source/materials" \
+    "${STAGING_DIR}/models/sunken_ship_distorted/materials"
+perl -0pi -e \
+    's|https://fuel\.ignitionrobotics\.org/1\.0/cole/models/sunken ship/2/files/materials/|model://sunken_ship_distorted/materials/|g' \
+    "${STAGING_DIR}/models/sunken_ship_distorted/model.sdf"
+rm -rf -- "${STAGING_DIR}/models/sunken_ship_source"
+
 # The upstream sand model references model://materials instead of its own
 # model directory. Preserve that expected alias without duplicating files.
 ln -s sand_heightmap/materials "${STAGING_DIR}/models/materials"
 
 printf '%s\n' "${MANIFEST_ID}" > "${STAGING_DIR}/manifest"
 
+if command -v xattr >/dev/null 2>&1; then
+    xattr -cr "${STAGING_DIR}"
+fi
+
 printf 'Transferring verified assets to %s:%s...\n' "${GPU_HOST}" "${REMOTE_ASSET_DIR}"
-COPYFILE_DISABLE=1 tar -C "${STAGING_DIR}" -czf - models manifest \
+COPYFILE_DISABLE=1 tar --no-xattrs -C "${STAGING_DIR}" -czf - models manifest \
     | ssh -o BatchMode=yes "${GPU_HOST}" \
         "set -e; mkdir -p '${REMOTE_ASSET_DIR}'; tar -xzf - -C '${REMOTE_ASSET_DIR}'"
 

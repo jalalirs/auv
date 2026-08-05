@@ -13,7 +13,9 @@ ENV ROS_DISTRO=jazzy
 ENV GZ_VERSION=harmonic
 ENV DAVE_WS=/opt/dave_ws
 ENV HOME=/home/ubuntu
-ENV PATH=/opt/ardusub_ws/ardupilot/Tools/autotest:/opt/ardusub_ws/ardupilot/build/sitl/bin:${PATH}
+ENV CUDA_HOME=/usr/local/cuda-12.6
+ENV PATH=/usr/local/cuda-12.6/bin:/opt/ardusub_ws/ardupilot/Tools/autotest:/opt/ardusub_ws/ardupilot/build/sitl/bin:${PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda-12.6/lib64
 ENV GEOGRAPHICLIB_GEOID_PATH=/usr/share/GeographicLib/geoids
 ENV GZ_SIM_SYSTEM_PLUGIN_PATH=/opt/ardusub_ws/ardupilot_gazebo/build
 ENV GZ_SIM_RESOURCE_PATH=/opt/ardusub_ws/ardupilot_gazebo/models:/opt/ardusub_ws/ardupilot_gazebo/worlds
@@ -24,6 +26,35 @@ RUN apt-get update \
         ros-jazzy-foxglove-bridge \
         ros-jazzy-rosbag2-storage-mcap \
     && rm -rf /var/lib/apt/lists/*
+
+# The upstream DAVE image contains the multibeam source, but its build skipped
+# the plugin because CUDA was absent. Install only the compiler and libraries
+# required by that plugin, then rebuild the two sonar packages for GPU 0's Ada
+# architecture (SM 8.9).
+RUN curl --fail --location --retry 8 --retry-all-errors \
+        --output /tmp/cuda-keyring.deb \
+        https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb \
+    && dpkg -i /tmp/cuda-keyring.deb \
+    && rm -f /tmp/cuda-keyring.deb \
+    && apt-get update \
+    && apt-get install --yes --no-install-recommends \
+        cuda-compiler-12-6 \
+        libcublas-dev-12-6 \
+        libcufft-dev-12-6 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN source /opt/ros/jazzy/setup.bash \
+    && source /opt/dave_ws/install/setup.bash \
+    && cd /opt/dave_ws \
+    && colcon build \
+        --symlink-install \
+        --executor sequential \
+        --packages-select multibeam_sonar multibeam_sonar_system \
+        --cmake-clean-cache \
+        --cmake-args \
+            -DCMAKE_CUDA_ARCHITECTURES=89 \
+            -DCUDA_ARCHITECTURE=89 \
+            -DCUDAToolkit_ROOT=/usr/local/cuda-12.6
 
 COPY docker/entrypoint.sh /usr/local/bin/auv-entrypoint
 RUN chmod +x /usr/local/bin/auv-entrypoint
