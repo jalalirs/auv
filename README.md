@@ -10,7 +10,10 @@ and generated build artifacts do not.
 
 ## Current milestone
 
-The first milestone is a simulated vehicle that can:
+Project 001 starts with a sonar-equipped BlueROV2 Heavy beside a sunken ship in
+DAVE. The first runnable checkpoint streams its camera, sonar, navigation, and
+vehicle state from the GPU box into Foxglove on the Mac. It then grows into a
+vehicle that can:
 
 1. hold a commanded depth and heading;
 2. reject a simple current disturbance;
@@ -51,13 +54,21 @@ See [docs/architecture.md](docs/architecture.md) for the system boundary and
 make doctor       # inspect local tools and remote GPU capacity
 tools/gpu sync "describe the change"  # commit and sync Mac, GitHub, and GPU
 # Or: make sync MESSAGE="describe the change"
+make dive         # launch the headless First Dive scene on the GPU
+make dive-status  # inspect its container state
+make dive-topics  # inspect its live ROS graph
+make dive-logs    # follow simulator startup and runtime logs
+make view         # open the SSH tunnel and Foxglove on the Mac
+make dive-stop    # stop the First Dive scene
 make build        # build the versioned ROS/Gazebo container remotely
 make up           # start the remote development container
 make shell        # open a shell in the remote container
 make test         # build and test the ROS workspace remotely
-make view         # open the Foxglove SSH tunnel and Mac client
 make down         # stop the AUV container
 ```
+
+See [labs/03_first_dive/README.md](labs/03_first_dive/README.md) for the scene,
+expected topics, and completion check.
 
 Copy `.env.example` to `.env` only when overriding defaults. Never commit
 credentials or tokens.

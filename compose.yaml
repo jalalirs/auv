@@ -1,34 +1,59 @@
 name: auv
 
+x-auv-common: &auv-common
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+    args:
+      USER_UID: ${AUV_USER_UID:-1000}
+      USER_GID: ${AUV_USER_GID:-1000}
+  image: auv-dev:dave-jazzy-harmonic
+  init: true
+  network_mode: host
+  runtime: nvidia
+  user: "${AUV_USER_UID:-1000}:${AUV_USER_GID:-1000}"
+  environment: &auv-environment
+    HOME: /home/ubuntu
+    NVIDIA_VISIBLE_DEVICES: ${AUV_GPU_DEVICE:-0}
+    NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
+    ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
+    ROS_LOG_DIR: /data/logs/ros
+    RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+    DISPLAY: ""
+  volumes:
+    - .:/workspace/auv
+    - ${AUV_DATA_DIR:-/home/jalalirs/auv-data}:/data
+  working_dir: /workspace/auv
+  shm_size: 1gb
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            device_ids: ["${AUV_GPU_DEVICE:-0}"]
+            capabilities: [gpu]
+
 services:
   auv-dev:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      args:
-        USER_UID: ${AUV_USER_UID:-1000}
-        USER_GID: ${AUV_USER_GID:-1000}
-    image: auv-dev:jazzy-harmonic
+    <<: *auv-common
     container_name: auv-dev
-    init: true
-    network_mode: host
-    runtime: nvidia
     stdin_open: true
     tty: true
-    environment:
-      NVIDIA_VISIBLE_DEVICES: ${AUV_GPU_DEVICE:-0}
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
-      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
-      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
-    volumes:
-      - .:/workspace/auv
-      - ${AUV_DATA_DIR:-/home/jalalirs/auv-data}:/data
-    working_dir: /workspace/auv
     command: sleep infinity
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ["${AUV_GPU_DEVICE:-0}"]
-              capabilities: [gpu]
+
+  first-dive:
+    <<: *auv-common
+    container_name: auv-first-dive
+    environment:
+      <<: *auv-environment
+      RCUTILS_COLORIZED_OUTPUT: "1"
+    command:
+      - bash
+      - -lc
+      - |
+        set -e
+        mkdir -p /data/logs/ros
+        cd /workspace/auv/ros2_ws
+        colcon build --symlink-install --packages-up-to auv_bringup
+        source install/setup.bash
+        exec ros2 launch auv_bringup first_dive.launch.py
