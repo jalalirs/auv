@@ -6,8 +6,9 @@ Run a sonar-equipped BlueROV2 Heavy beside a sunken ship in DAVE, entirely on
 the GPU box, and inspect the live ROS graph from Foxglove on the Mac.
 
 This is the first vertical slice of the laboratory. It proves the simulator,
-vehicle dynamics, GPU rendering, ROS/Gazebo bridges, ArduSub, MAVROS, and local
-visualization before we begin writing autonomy.
+vehicle dynamics, CUDA-accelerated multibeam sonar, GPU rendering, ROS/Gazebo
+bridges, ArduSub, MAVROS, and local visualization before we begin writing
+autonomy.
 
 ## Launch
 
