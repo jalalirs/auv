@@ -21,8 +21,8 @@ def launch_setup(context):
         choices = ", ".join(sorted(SUPPORTED_VEHICLES))
         raise RuntimeError(f"Unsupported vehicle '{vehicle}'. Choose one of: {choices}")
 
-    dave_worlds = Path(get_package_share_directory("dave_worlds"))
-    world_file = dave_worlds / "worlds" / f"{world_name}.world"
+    auv_simulation = Path(get_package_share_directory("auv_simulation"))
+    world_file = auv_simulation / "worlds" / f"{world_name}.sdf"
     if not world_file.is_file():
         raise RuntimeError(f"DAVE world does not exist: {world_file}")
 
@@ -52,7 +52,9 @@ def launch_setup(context):
             "y": LaunchConfiguration("y"),
             "z": LaunchConfiguration("z"),
             "yaw": LaunchConfiguration("yaw"),
-            "use_ned_frame": "true",
+            # DAVE currently uses deprecated underscore-style CLI flags in its
+            # Jazzy static-transform launcher. Publish the transform below.
+            "use_ned_frame": "false",
             "use_teleop": "false",
             "use_web_joystick": "false",
             "open_qgc": "false",
@@ -72,6 +74,24 @@ def launch_setup(context):
         output="screen",
     )
 
+    ned_transform = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="world_to_world_ned",
+        arguments=[
+            "--roll",
+            "1.57079632679",
+            "--yaw",
+            "3.14159265359",
+            "--frame-id",
+            "world",
+            "--child-frame-id",
+            "world_ned",
+        ],
+        parameters=[{"use_sim_time": True}],
+        output="screen",
+    )
+
     foxglove = Node(
         package="foxglove_bridge",
         executable="foxglove_bridge",
@@ -83,7 +103,7 @@ def launch_setup(context):
         output="screen",
     )
 
-    return [gazebo, robot, camera_bridge, foxglove]
+    return [gazebo, robot, camera_bridge, ned_transform, foxglove]
 
 
 def generate_launch_description():
@@ -96,8 +116,8 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "world",
-                default_value="dave_ocean_waves_sonar",
-                description="DAVE world filename without .world",
+                default_value="first_dive",
+                description="AUV simulation world filename without .sdf",
             ),
             DeclareLaunchArgument("x", default_value="5.0"),
             DeclareLaunchArgument("y", default_value="2.0"),

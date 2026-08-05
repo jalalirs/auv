@@ -6,6 +6,7 @@ These scripts are the supported human interface to the local/remote workflow.
 | --- | --- |
 | `gpu` | Run a GPU command, open a shell, or perform a verified Git sync |
 | `doctor` | Check required local tools and remote capacity |
+| `assets` | Verify and transfer external simulation assets over Tailscale |
 | `git-sync` | Implementation used by `gpu sync`; GitHub + GPU mirror + checkout |
 | `sync` | Compatibility alias for `gpu sync` |
 | `sim` | Build and manage the remote Compose service |
