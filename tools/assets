@@ -15,7 +15,7 @@ fi
 GPU_HOST="${AUV_GPU_HOST:-jalalirs@100.76.65.1}"
 DATA_DIR="${AUV_DATA_DIR:-/home/jalalirs/auv-data}"
 ASSET_SET="${1:-first-dive}"
-MANIFEST_ID="first-dive-fuel-2026-08-05-v1"
+MANIFEST_ID="first-dive-fuel-2026-08-05-v2"
 REMOTE_ASSET_DIR="${DATA_DIR}/gazebo/first_dive"
 
 if [ "${ASSET_SET}" != "first-dive" ]; then
@@ -64,14 +64,18 @@ download_model() {
 }
 
 download_model \
-    OpenRobotics Coast%20Water 'Coast Water' \
+    OpenRobotics Coast%20Water coast_water \
     41235ac0fec648ef6e31f392c06400daa39177eb5a5e5fa26bc346b93142059d
 download_model \
-    hmoyen Sunken%20Ship%20Distorted 'Sunken Ship Distorted' \
+    hmoyen Sunken%20Ship%20Distorted sunken_ship_distorted \
     107e99c9feb5e2419d0ae807a79d5856b458328625e605e9ee0c6917a3fa18c9
 download_model \
-    hmoyen Sand%20Heightmap 'Sand Heightmap' \
+    hmoyen Sand%20Heightmap sand_heightmap \
     f5f9ed93bd5baa78cb79f2e909da5b545193c4579655a4b7d74ba16f59ac2064
+
+# The upstream sand model references model://materials instead of its own
+# model directory. Preserve that expected alias without duplicating files.
+ln -s sand_heightmap/materials "${STAGING_DIR}/models/materials"
 
 printf '%s\n' "${MANIFEST_ID}" > "${STAGING_DIR}/manifest"
 
