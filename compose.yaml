@@ -1,0 +1,34 @@
+name: auv
+
+services:
+  auv-dev:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        USER_UID: ${AUV_USER_UID:-1000}
+        USER_GID: ${AUV_USER_GID:-1000}
+    image: auv-dev:jazzy-harmonic
+    container_name: auv-dev
+    init: true
+    network_mode: host
+    runtime: nvidia
+    stdin_open: true
+    tty: true
+    environment:
+      NVIDIA_VISIBLE_DEVICES: ${AUV_GPU_DEVICE:-0}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+    volumes:
+      - .:/workspace/auv
+      - ${AUV_DATA_DIR:-/home/jalalirs/auv-data}:/data
+    working_dir: /workspace/auv
+    command: sleep infinity
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${AUV_GPU_DEVICE:-0}"]
+              capabilities: [gpu]

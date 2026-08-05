@@ -1,0 +1,17 @@
+experiment:
+  id: e001_depth_hold
+  repetitions: 5
+  duration_s: 120.0
+  random_seed: 20260805
+
+setpoint:
+  depth_m: 2.0
+
+disturbance:
+  start_s: 45.0
+  current_mps: [0.3, 0.0, 0.0]
+
+acceptance:
+  maximum_overshoot_percent: 15.0
+  maximum_steady_state_error_m: 0.10
+  maximum_rms_error_after_disturbance_m: 0.20
