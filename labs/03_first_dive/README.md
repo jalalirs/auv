@@ -46,9 +46,7 @@ In the browser choose **Open connection**, **Foxglove WebSocket**, and enter
 Gazebo runs with its server-only EGL renderer. No remote desktop or X server is
 required. A static overview camera inside the world renders the actual Gazebo
 scene at 960 x 540 and 5 Hz, which keeps the third-person view responsive over
-the Foxglove SSH tunnel without streaming a remote desktop. Blue-green visual
-fog provides depth cues for this operator view; it affects rendering only, not
-the vehicle dynamics or geometric sonar returns.
+the Foxglove SSH tunnel without streaming a remote desktop.
 
 DAVE's integrated sonar model is configured to publish all live ROS products
 without its upstream per-frame CSV and timing debug output. Docker logs rotate
