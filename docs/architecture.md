@@ -31,7 +31,9 @@ flowchart LR
 
 The container uses host networking so ROS discovery remains local to the GPU
 box. The Mac does not join the ROS DDS domain directly. Foxglove Bridge exposes
-one WebSocket endpoint, forwarded to the Mac through SSH on port 8765.
+one WebSocket endpoint on remote port 8765, forwarded to the Mac through SSH on
+local port 18765. Keeping the ports distinct avoids a known local conflict with
+Claude Science's default application port.
 
 ## Visualization
 
