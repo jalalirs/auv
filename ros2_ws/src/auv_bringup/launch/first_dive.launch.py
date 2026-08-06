@@ -84,6 +84,23 @@ def launch_setup(context):
         output="screen",
     )
 
+    sonar_cloud = Node(
+        package="auv_perception",
+        executable="sonar_point_cloud_filter",
+        name="sonar_point_cloud_filter",
+        parameters=[
+            {
+                "use_sim_time": True,
+                "input_topic": f"{model_root}/multibeam_sonar/point_cloud",
+                "output_topic": "/auv/sonar/point_cloud",
+                "stride": 8,
+                "max_range_m": 10.0,
+                "max_rate_hz": 2.0,
+            }
+        ],
+        output="screen",
+    )
+
     ned_transform = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
@@ -113,7 +130,7 @@ def launch_setup(context):
         output="screen",
     )
 
-    return [gazebo, robot, camera_bridge, ned_transform, foxglove]
+    return [gazebo, robot, camera_bridge, sonar_cloud, ned_transform, foxglove]
 
 
 def generate_launch_description():
