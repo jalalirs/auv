@@ -29,6 +29,8 @@ In the browser choose **Open connection**, **Foxglove WebSocket**, and enter
 `ws://localhost:18765`. Port 18765 is forwarded to the GPU bridge on remote port
 8765. Then add:
 
+- an Image panel for `/auv/overview/image` as the primary third-person view of
+  the vehicle, shipwreck, seabed, and water;
 - Image panels for the camera and `sonar_image` topics;
 - a 3D panel for the cleaned `/auv/sonar/point_cloud` topic;
 - plots for vehicle position, orientation, and IMU values;
@@ -42,7 +44,9 @@ In the browser choose **Open connection**, **Foxglove WebSocket**, and enter
 - Target: a distorted sunken ship near `(15, 2, -16)` metres
 
 Gazebo runs with its server-only EGL renderer. No remote desktop or X server is
-required.
+required. A static overview camera inside the world renders the actual Gazebo
+scene at 960 x 540 and 5 Hz, which keeps the third-person view responsive over
+the Foxglove SSH tunnel without streaming a remote desktop.
 
 DAVE's integrated sonar model is configured to publish all live ROS products
 without its upstream per-frame CSV and timing debug output. Docker logs rotate

@@ -52,6 +52,36 @@
       <cast_shadows>false</cast_shadows>
     </light>
 
+    <!--
+      A low-bandwidth third-person view for Foxglove. This is a real Gazebo
+      camera rendering, not a reconstruction from ROS markers or sonar data.
+      It frames the spawn point and wreck so the sensor products always have
+      visual context when the server runs without the Gazebo GUI.
+    -->
+    <model name="overview_camera">
+      <static>true</static>
+      <pose>8 -12 -7 0 0.48 1.43</pose>
+      <link name="camera_link">
+        <sensor name="overview" type="camera">
+          <always_on>true</always_on>
+          <update_rate>5</update_rate>
+          <topic>/auv/overview</topic>
+          <camera>
+            <horizontal_fov>1.3962634</horizontal_fov>
+            <image>
+              <width>960</width>
+              <height>540</height>
+              <format>R8G8B8</format>
+            </image>
+            <clip>
+              <near>0.1</near>
+              <far>100</far>
+            </clip>
+          </camera>
+        </sensor>
+      </link>
+    </model>
+
     <include>
       <uri>model://coast_water</uri>
     </include>
