@@ -29,7 +29,7 @@ In the browser choose **Open connection**, **Foxglove WebSocket**, and enter
 `ws://localhost:8765`. Then add:
 
 - Image panels for the camera and `sonar_image` topics;
-- a 3D panel for the sonar point cloud;
+- a 3D panel for the cleaned `/auv/sonar/point_cloud` topic;
 - plots for vehicle position, orientation, and IMU values;
 - a Raw Messages panel for MAVROS state.
 
@@ -47,6 +47,11 @@ DAVE's integrated sonar model is configured to publish all live ROS products
 without its upstream per-frame CSV and timing debug output. Docker logs rotate
 at 10 MiB with three files, so leaving the lab open cannot silently consume the
 disk with diagnostic data.
+
+The raw DAVE point cloud contains non-finite no-return samples and is roughly
+4.9 MiB per frame. `auv_perception/sonar_point_cloud_filter` preserves the raw
+topic while publishing a finite, decimated visualization cloud at 2 Hz. This
+keeps the browser responsive without weakening later autonomy experiments.
 
 ## Completion check
 

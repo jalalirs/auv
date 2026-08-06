@@ -10,6 +10,7 @@
 
   <exec_depend>auv_control</exec_depend>
   <exec_depend>auv_description</exec_depend>
+  <exec_depend>auv_perception</exec_depend>
   <exec_depend>auv_simulation</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>dave_robot_models</exec_depend>
