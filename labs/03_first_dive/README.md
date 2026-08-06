@@ -26,7 +26,8 @@ and assets are cached for later launches. Follow startup with `make dive-logs`.
 
 `make view` opens Foxglove Desktop when installed, otherwise the browser client.
 In the browser choose **Open connection**, **Foxglove WebSocket**, and enter
-`ws://localhost:8765`. Then add:
+`ws://localhost:18765`. Port 18765 is forwarded to the GPU bridge on remote port
+8765. Then add:
 
 - Image panels for the camera and `sonar_image` topics;
 - a 3D panel for the cleaned `/auv/sonar/point_cloud` topic;
