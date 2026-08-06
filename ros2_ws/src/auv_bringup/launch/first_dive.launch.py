@@ -84,6 +84,28 @@ def launch_setup(context):
         output="screen",
     )
 
+    # Stream a wide third-person Gazebo rendering to Foxglove. Keeping this
+    # separate from the vehicle camera makes the physical scene the visual
+    # reference and lets sonar remain an overlay instead of the whole view.
+    overview_gz = "/auv/overview"
+    overview_info_gz = "/auv/overview/camera_info"
+    overview_ros = "/auv/overview/image"
+    overview_info_ros = "/auv/overview/camera_info"
+    overview_bridge = Node(
+        package="ros_gz_bridge",
+        executable="parameter_bridge",
+        name="first_dive_overview_camera_bridge",
+        arguments=[
+            f"{overview_gz}@sensor_msgs/msg/Image[gz.msgs.Image",
+            f"{overview_info_gz}@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
+        ],
+        remappings=[
+            (overview_gz, overview_ros),
+            (overview_info_gz, overview_info_ros),
+        ],
+        output="screen",
+    )
+
     sonar_cloud = Node(
         package="auv_perception",
         executable="sonar_point_cloud_filter",
@@ -130,7 +152,15 @@ def launch_setup(context):
         output="screen",
     )
 
-    return [gazebo, robot, camera_bridge, sonar_cloud, ned_transform, foxglove]
+    return [
+        gazebo,
+        robot,
+        camera_bridge,
+        overview_bridge,
+        sonar_cloud,
+        ned_transform,
+        foxglove,
+    ]
 
 
 def generate_launch_description():
