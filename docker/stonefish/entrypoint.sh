@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 source /opt/ros/jazzy/setup.bash
 source /opt/reef_ws/install/setup.bash
+set -u
 
 mkdir -p /data/logs/reef /data/runtime/reef/xpra "${XDG_RUNTIME_DIR}"
 chmod 700 "${XDG_RUNTIME_DIR}"

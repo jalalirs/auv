@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 source /opt/ros/jazzy/setup.bash
 source /opt/reef_ws/install/setup.bash
+set -u
 
 package_share="$(ros2 pkg prefix --share mola_auv_sim)"
 
