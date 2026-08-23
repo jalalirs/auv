@@ -59,6 +59,7 @@ make dive-status  # inspect its container state
 make dive-topics  # inspect its live ROS graph
 make dive-logs    # follow simulator startup and runtime logs
 make view         # open the SSH tunnel and Foxglove on the Mac
+make keyboard     # drive with WASD/arrows in the Mac terminal
 make drive        # open the browser joystick for manual control
 make drive-stop   # close the browser joystick tunnel
 make dive-stop    # stop the First Dive scene

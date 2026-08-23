@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: help doctor sync build up down restart status logs shell test dive dive-stop dive-status dive-logs dive-topics view view-stop drive drive-stop
+.PHONY: help doctor sync build up down restart status logs shell test dive dive-stop dive-status dive-logs dive-topics keyboard view view-stop drive drive-stop
 
 help: ## Show available commands
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -51,6 +51,9 @@ dive-logs: ## Follow Project 001 logs
 
 dive-topics: ## List Project 001 ROS topics
 	@./tools/sim dive-topics
+
+keyboard: ## Drive Project 001 from this terminal with WASD or arrow keys
+	@./tools/sim keyboard
 
 view: ## Start the Foxglove tunnel and open the Mac client
 	@./tools/view start

@@ -111,8 +111,12 @@ case "${1:-status}" in
     dive-topics)
         remote "docker compose exec -T first-dive bash -lc 'source ros2_ws/install/setup.bash && ros2 topic list | sort'"
         ;;
+    keyboard)
+        require_synced_checkout
+        "${SCRIPT_DIR}/gpu" -s "cd '${REMOTE_DIR}' && ${COMPOSE_ENV} docker compose exec first-dive bash -lc 'source ros2_ws/install/setup.bash && exec ros2 run auv_control keyboard_teleop'"
+        ;;
     *)
-        printf 'Usage: %s {build|up|down|restart|status|logs|shell|test|dive|dive-stop|dive-status|dive-logs|dive-topics}\n' "$0" >&2
+        printf 'Usage: %s {build|up|down|restart|status|logs|shell|test|dive|dive-stop|dive-status|dive-logs|dive-topics|keyboard}\n' "$0" >&2
         exit 2
         ;;
 esac
