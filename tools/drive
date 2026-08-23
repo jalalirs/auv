@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Open DAVE's browser joystick through a dedicated SSH tunnel.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+if [ -f "${REPO_ROOT}/.env" ]; then
+    set -a
+    source "${REPO_ROOT}/.env"
+    set +a
+fi
+
+RUNTIME_DIR="${REPO_ROOT}/.runtime"
+CONTROL_SOCKET="${RUNTIME_DIR}/joystick-ssh.sock"
+GPU_HOST="${AUV_GPU_HOST:-jalalirs@100.76.65.1}"
+LOCAL_PORT="${JOYSTICK_LOCAL_PORT:-18766}"
+REMOTE_PORT="${JOYSTICK_REMOTE_PORT:-8766}"
+JOYSTICK_PAGE="https://ioes-lab.github.io/dave/extras/virtual_joystick.html"
+JOYSTICK_URL="${JOYSTICK_PAGE}?host=127.0.0.1&port=${LOCAL_PORT}"
+
+if [[ ! "${LOCAL_PORT}" =~ ^[0-9]+$ ]] || [[ ! "${REMOTE_PORT}" =~ ^[0-9]+$ ]]; then
+    printf 'Joystick ports must be non-negative integers.\n' >&2
+    exit 1
+fi
+
+tunnel_running() {
+    [ -S "${CONTROL_SOCKET}" ] \
+        && ssh -S "${CONTROL_SOCKET}" -O check "${GPU_HOST}" >/dev/null 2>&1
+}
+
+start_tunnel() {
+    mkdir -p "${RUNTIME_DIR}"
+
+    if tunnel_running; then
+        printf 'Joystick tunnel is already running on localhost:%s.\n' "${LOCAL_PORT}"
+    else
+        rm -f "${CONTROL_SOCKET}"
+        if command -v lsof >/dev/null 2>&1 \
+            && lsof -nP -iTCP:"${LOCAL_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+            printf 'Local port %s is already owned by another process:\n' "${LOCAL_PORT}" >&2
+            lsof -nP -iTCP:"${LOCAL_PORT}" -sTCP:LISTEN >&2
+            printf 'Set JOYSTICK_LOCAL_PORT to a free port and retry.\n' >&2
+            exit 1
+        fi
+        ssh -M -S "${CONTROL_SOCKET}" -fNT \
+            -o ExitOnForwardFailure=yes \
+            -L "${LOCAL_PORT}:127.0.0.1:${REMOTE_PORT}" \
+            "${GPU_HOST}"
+        printf 'Joystick tunnel started on localhost:%s.\n' "${LOCAL_PORT}"
+    fi
+
+    printf 'Joystick WebSocket: ws://localhost:%s\n' "${LOCAL_PORT}"
+    if command -v open >/dev/null 2>&1; then
+        open "${JOYSTICK_URL}"
+    else
+        printf 'Open this page: %s\n' "${JOYSTICK_URL}"
+    fi
+}
+
+stop_tunnel() {
+    if tunnel_running; then
+        ssh -S "${CONTROL_SOCKET}" -O exit "${GPU_HOST}" >/dev/null
+        printf 'Joystick tunnel stopped.\n'
+    else
+        rm -f "${CONTROL_SOCKET}"
+        printf 'Joystick tunnel is not running.\n'
+    fi
+}
+
+case "${1:-start}" in
+    start)
+        start_tunnel
+        ;;
+    stop)
+        stop_tunnel
+        ;;
+    status)
+        if tunnel_running; then
+            printf 'Joystick tunnel is running on localhost:%s.\n' "${LOCAL_PORT}"
+        else
+            printf 'Joystick tunnel is not running.\n'
+            exit 1
+        fi
+        ;;
+    *)
+        printf 'Usage: %s {start|stop|status}\n' "$0" >&2
+        exit 2
+        ;;
+esac

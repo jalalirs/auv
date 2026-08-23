@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: help doctor sync build up down restart status logs shell test dive dive-stop dive-status dive-logs dive-topics view view-stop
+.PHONY: help doctor sync build up down restart status logs shell test dive dive-stop dive-status dive-logs dive-topics view view-stop drive drive-stop
 
 help: ## Show available commands
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -57,3 +57,9 @@ view: ## Start the Foxglove tunnel and open the Mac client
 
 view-stop: ## Stop the Foxglove SSH tunnel
 	@./tools/view stop
+
+drive: ## Open the browser joystick for manual AUV control
+	@./tools/drive start
+
+drive-stop: ## Stop the browser joystick tunnel
+	@./tools/drive stop

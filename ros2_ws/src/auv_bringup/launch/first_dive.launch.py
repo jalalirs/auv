@@ -55,8 +55,11 @@ def launch_setup(context):
             # DAVE currently uses deprecated underscore-style CLI flags in its
             # Jazzy static-transform launcher. Publish the transform below.
             "use_ned_frame": "false",
-            "use_teleop": "false",
-            "use_web_joystick": "false",
+            "use_teleop": "true",
+            "use_web_joystick": "true",
+            # Foxglove owns 8765. Keep manual control on a separate tunnel.
+            "joystick_ws_host": "0.0.0.0",
+            "joystick_ws_port": "8766",
             "open_qgc": "false",
             "open_virtual_joystick": "false",
         }.items(),
