@@ -7,7 +7,10 @@ set -u
 
 package_share="$(ros2 pkg prefix --share mola_auv_sim)"
 
-exec /opt/VirtualGL/bin/vglrun -d egl \
+# Eight-core affinity avoids a Stonefish 1.6 physics-worker memory race seen
+# when all 24 host cores run concurrently, while retaining parallel physics.
+exec taskset -c "${REEF_CPUSET:-0-7}" \
+    /opt/VirtualGL/bin/vglrun -d egl \
     ros2 launch stonefish_ros2 stonefish_simulator.launch.py \
     simulation_data:="${package_share}/data" \
     scenario_desc:="${package_share}/scenarios/living_reef.scn" \

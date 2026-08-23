@@ -72,7 +72,8 @@ RUN mkdir -p /tmp/stonefish-src \
     && rm -rf /tmp/stonefish-src /tmp/stonefish-build
 
 # The basic branch contains the MOLA vehicle, coral assets, and Stonefish ROS 2
-# wrapper without the experimental SLAM workspace from upstream main.
+# wrapper without the experimental SLAM workspace from upstream main. Repair
+# its malformed reef settings and propeller OBJs that reference absent MTLs.
 RUN mkdir -p /tmp/mbari-src "${REEF_WS}/src" \
     && curl --fail --location --retry 8 --retry-all-errors \
         "https://github.com/AlePuglisi/MBARI-vehicles-sim-ros2/archive/${MBARI_COMMIT}.tar.gz" \
@@ -86,9 +87,13 @@ RUN mkdir -p /tmp/mbari-src "${REEF_WS}/src" \
         "${REEF_WS}/src/MOLA_AUV/mola_auv_sim/scenarios/materials_looks.scn" \
     && sed -i 's/scale="2\.5\.0"/scale="2.5"/' \
         "${REEF_WS}/src/MOLA_AUV/mola_auv_sim/scenarios/corals.scn" \
+    && sed -i -e '/^mtllib /d' -e '/^usemtl /d' -e '/^l /d' \
+        "${REEF_WS}/src/MOLA_AUV/mola_auv_sim/data/mola_auv/mesh/ccw.obj" \
+        "${REEF_WS}/src/MOLA_AUV/mola_auv_sim/data/mola_auv/mesh/cw.obj" \
     && rm -rf /tmp/mbari-src
 
 # Add a small public-domain fish pack as visual, deterministic moving actors.
+# Scenario looks replace the source MTL files, which are not copied.
 RUN mkdir -p "${REEF_WS}/src/MOLA_AUV/mola_auv_sim/data/fish/mesh" \
     && curl --fail --location --retry 8 --retry-all-errors \
         --output /tmp/fish.zip \
@@ -107,6 +112,8 @@ RUN mkdir -p "${REEF_WS}/src/MOLA_AUV/mola_auv_sim/data/fish/mesh" \
         > /usr/share/doc/quaternius-fish/LICENSE \
     && mv "${REEF_WS}/src/MOLA_AUV/mola_auv_sim/data/fish/mesh/Manta ray.obj" \
         "${REEF_WS}/src/MOLA_AUV/mola_auv_sim/data/fish/mesh/MantaRay.obj" \
+    && sed -i -e '/^mtllib /d' -e '/^usemtl /d' -e '/^l /d' \
+        "${REEF_WS}/src/MOLA_AUV/mola_auv_sim/data/fish/mesh/"*.obj \
     && rm -f /tmp/fish.zip
 
 COPY docker/stonefish/scenarios/living_reef.scn \
