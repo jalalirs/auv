@@ -17,7 +17,7 @@ make dive
 make dive-status
 make dive-topics
 make view
-make drive
+make keyboard
 ```
 
 The first launch pulls the pinned DAVE image. The GPU cannot reach Gazebo Fuel's
@@ -50,6 +50,22 @@ scene at 960 x 540 and 5 Hz, which keeps the third-person view responsive over
 the Foxglove SSH tunnel without streaming a remote desktop.
 
 ## Manual driving
+
+Run `make keyboard` in a separate Mac terminal. It opens a direct interactive
+SSH session to the controller while Foxglove remains the display:
+
+- **W/S** or **up/down arrows**: forward and reverse
+- **A/D** or **left/right arrows**: yaw
+- **Q/E**: strafe; **R/F**: rise and dive
+- **C/X**: arm and disarm
+- **H/J**: depth hold and stabilize
+- **+/-**: increase or decrease the horizontal and yaw response
+- **Space**: stop; **Ctrl-C**: stop, disarm, and close the controller
+
+Hold movement keys rather than tapping them. Start with `C`, press `+` once or
+twice if the default response feels slow, and keep a camera view visible.
+
+The browser controller remains available as an alternative:
 
 `make drive` opens DAVE's browser joystick through a second SSH tunnel at
 `ws://localhost:18766`. Click **Menu** to arm and **View** to disarm. The left

@@ -17,5 +17,9 @@ setup(
     description="Vehicle controllers and thruster allocation.",
     license="Proprietary",
     tests_require=["pytest"],
-    entry_points={"console_scripts": []},
+    entry_points={
+        "console_scripts": [
+            "keyboard_teleop = auv_control.keyboard_teleop:main",
+        ]
+    },
 )
