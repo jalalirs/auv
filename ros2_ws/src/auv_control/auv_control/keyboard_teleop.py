@@ -19,12 +19,12 @@ AXIS_SURGE = 1
 AXIS_YAW = 4
 AXIS_HEAVE = 5
 
-BUTTON_ARM = 0
+BUTTON_STABILIZE = 0
 BUTTON_FASTER = 1
 BUTTON_SLOWER = 2
-BUTTON_DISARM = 3
-BUTTON_DEPTH_HOLD = 4
-BUTTON_STABILIZE = 5
+BUTTON_DEPTH_HOLD = 3
+BUTTON_DISARM = 8
+BUTTON_ARM = 9
 
 AXIS_COUNT = 6
 BUTTON_COUNT = 17
@@ -56,6 +56,7 @@ class KeyboardTeleop(Node):
         self.publisher = self.create_publisher(Joy, "/keyboard/joy", 10)
         self.axes = [0.0] * AXIS_COUNT
         self.buttons = [0] * BUTTON_COUNT
+        self.button_release_pending = False
         self.command_deadline_ns = 0
         self.neutral_sent = True
         self.create_timer(1.0 / PUBLISH_HZ, self._publish_active_command)
@@ -74,6 +75,7 @@ class KeyboardTeleop(Node):
         self.buttons[button] = 1
         self.publish()
         self.buttons[button] = 0
+        self.button_release_pending = True
 
     def stop(self, disarm: bool = False) -> None:
         self.axes = [0.0] * AXIS_COUNT
@@ -92,6 +94,10 @@ class KeyboardTeleop(Node):
         self.publisher.publish(message)
 
     def _publish_active_command(self) -> None:
+        if self.button_release_pending:
+            self.publish()
+            self.button_release_pending = False
+
         now_ns = self.get_clock().now().nanoseconds
         if self.command_deadline_ns > now_ns:
             self.publish()
