@@ -15,7 +15,10 @@ ros2 run foxglove_bridge foxglove_bridge \
 ros2 run mola_auv_control mola_auv_joy_teleop \
     > /data/logs/reef/teleop.log 2>&1 &
 
-exec xpra start :100 \
+# Stonefish creates a fullscreen SDL/OpenGL surface. Desktop mode captures the
+# complete X display; seamless mode can ignore that unmanaged surface and show
+# an empty browser canvas.
+exec xpra start-desktop :100 \
     --daemon=no \
     --bind-tcp=127.0.0.1:9877 \
     --html=on \
