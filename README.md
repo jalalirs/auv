@@ -59,6 +59,8 @@ make dive-status  # inspect its container state
 make dive-topics  # inspect its live ROS graph
 make dive-logs    # follow simulator startup and runtime logs
 make view         # open the SSH tunnel and Foxglove on the Mac
+make drive        # open the browser joystick for manual control
+make drive-stop   # close the browser joystick tunnel
 make dive-stop    # stop the First Dive scene
 make build        # build the versioned ROS/Gazebo container remotely
 make up           # start the remote development container
