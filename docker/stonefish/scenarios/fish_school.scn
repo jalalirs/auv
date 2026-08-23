@@ -1,0 +1,75 @@
+<?xml version="1.0"?>
+<scenario>
+  <looks>
+    <look name="ReefFishOrange" rgb="0.95 0.34 0.08" roughness="0.65" metalness="0.0"/>
+    <look name="ReefFishBlue" rgb="0.08 0.55 0.92" roughness="0.55" metalness="0.0"/>
+    <look name="ReefFishYellow" rgb="0.95 0.78 0.10" roughness="0.60" metalness="0.0"/>
+    <look name="MantaDark" rgb="0.10 0.16 0.20" roughness="0.75" metalness="0.0"/>
+    <look name="SharkGray" rgb="0.30 0.38 0.43" roughness="0.70" metalness="0.0"/>
+  </looks>
+
+  <animated name="FishOrange1" type="model" collisions="false">
+    <physical><mesh filename="fish/mesh/Fish1.obj" scale="0.10"/><origin xyz="0 0 0" rpy="0 1.5708 0"/></physical>
+    <material name="Neutral"/><look name="ReefFishOrange"/>
+    <trajectory type="spline" playback="repeat">
+      <keypoint time="0" xyz="-3 -2 3.5" rpy="0 0 0.2"/><keypoint time="8" xyz="3 -1 3.2" rpy="0 0 0.1"/>
+      <keypoint time="16" xyz="5 3 4.0" rpy="0 0 1.7"/><keypoint time="24" xyz="-2 3 3.8" rpy="0 0 3.0"/>
+    </trajectory>
+  </animated>
+  <animated name="FishOrange2" type="model" collisions="false">
+    <physical><mesh filename="fish/mesh/Fish1.obj" scale="0.08"/><origin xyz="0 0 0" rpy="0 1.5708 0"/></physical>
+    <material name="Neutral"/><look name="ReefFishOrange"/>
+    <trajectory type="spline" playback="repeat">
+      <keypoint time="0" xyz="-2 -2.6 3.9" rpy="0 0 0.2"/><keypoint time="8" xyz="4 -1.6 3.6" rpy="0 0 0.1"/>
+      <keypoint time="16" xyz="5.5 2.4 4.4" rpy="0 0 1.7"/><keypoint time="24" xyz="-1 2.4 4.2" rpy="0 0 3.0"/>
+    </trajectory>
+  </animated>
+  <animated name="FishBlue1" type="model" collisions="false">
+    <physical><mesh filename="fish/mesh/Fish2.obj" scale="0.09"/><origin xyz="0 0 0" rpy="0 1.5708 0"/></physical>
+    <material name="Neutral"/><look name="ReefFishBlue"/>
+    <trajectory type="catmull-rom" playback="repeat">
+      <keypoint time="0" xyz="6 1 2.8" rpy="0 0 3.1"/><keypoint time="7" xyz="1 0 2.5" rpy="0 0 -3.0"/>
+      <keypoint time="14" xyz="-3 -3 3.0" rpy="0 0 -2.4"/><keypoint time="21" xyz="2 -4 3.4" rpy="0 0 -0.1"/>
+    </trajectory>
+  </animated>
+  <animated name="FishBlue2" type="model" collisions="false">
+    <physical><mesh filename="fish/mesh/Fish2.obj" scale="0.07"/><origin xyz="0 0 0" rpy="0 1.5708 0"/></physical>
+    <material name="Neutral"/><look name="ReefFishBlue"/>
+    <trajectory type="catmull-rom" playback="repeat">
+      <keypoint time="0" xyz="6.5 1.6 3.2" rpy="0 0 3.1"/><keypoint time="7" xyz="1.5 0.6 2.9" rpy="0 0 -3.0"/>
+      <keypoint time="14" xyz="-2.5 -2.4 3.4" rpy="0 0 -2.4"/><keypoint time="21" xyz="2.5 -3.4 3.8" rpy="0 0 -0.1"/>
+    </trajectory>
+  </animated>
+  <animated name="FishYellow1" type="model" collisions="false">
+    <physical><mesh filename="fish/mesh/Fish3.obj" scale="0.075"/><origin xyz="0 0 0" rpy="0 1.5708 0"/></physical>
+    <material name="Neutral"/><look name="ReefFishYellow"/>
+    <trajectory type="spline" playback="boomerang">
+      <keypoint time="0" xyz="-1 5 5.0" rpy="0 0 -1.4"/><keypoint time="6" xyz="0 1 4.3" rpy="0 0 -1.2"/>
+      <keypoint time="12" xyz="4 -2 4.8" rpy="0 0 -0.6"/><keypoint time="18" xyz="7 -3 5.2" rpy="0 0 -0.2"/>
+    </trajectory>
+  </animated>
+  <animated name="FishYellow2" type="model" collisions="false">
+    <physical><mesh filename="fish/mesh/Fish3.obj" scale="0.065"/><origin xyz="0 0 0" rpy="0 1.5708 0"/></physical>
+    <material name="Neutral"/><look name="ReefFishYellow"/>
+    <trajectory type="spline" playback="boomerang">
+      <keypoint time="0" xyz="-1.5 5.5 5.5" rpy="0 0 -1.4"/><keypoint time="6" xyz="-0.5 1.5 4.8" rpy="0 0 -1.2"/>
+      <keypoint time="12" xyz="3.5 -1.5 5.3" rpy="0 0 -0.6"/><keypoint time="18" xyz="6.5 -2.5 5.7" rpy="0 0 -0.2"/>
+    </trajectory>
+  </animated>
+  <animated name="Manta" type="model" collisions="false">
+    <physical><mesh filename="fish/mesh/MantaRay.obj" scale="0.20"/><origin xyz="0 0 0" rpy="0 1.5708 0"/></physical>
+    <material name="Neutral"/><look name="MantaDark"/>
+    <trajectory type="spline" playback="repeat">
+      <keypoint time="0" xyz="-8 6 5.5" rpy="0 0 -0.5"/><keypoint time="15" xyz="0 0 4.5" rpy="0 0 -0.5"/>
+      <keypoint time="30" xyz="9 -5 5.0" rpy="0 0 -0.5"/><keypoint time="45" xyz="2 7 4.0" rpy="0 0 2.1"/>
+    </trajectory>
+  </animated>
+  <animated name="ReefShark" type="model" collisions="false">
+    <physical><mesh filename="fish/mesh/Shark.obj" scale="0.22"/><origin xyz="0 0 0" rpy="0 1.5708 0"/></physical>
+    <material name="Neutral"/><look name="SharkGray"/>
+    <trajectory type="catmull-rom" playback="repeat">
+      <keypoint time="0" xyz="-10 -8 6" rpy="0 0 0.4"/><keypoint time="18" xyz="4 -4 5.5" rpy="0 0 0.2"/>
+      <keypoint time="36" xyz="10 8 6.5" rpy="0 0 1.6"/><keypoint time="54" xyz="-7 7 5.0" rpy="0 0 3.0"/>
+    </trajectory>
+  </animated>
+</scenario>

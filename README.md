@@ -8,7 +8,7 @@ simulation code, controls, navigation, perception, experiments, research notes,
 and reproducible results belong here. Large datasets, recordings, model weights,
 and generated build artifacts do not.
 
-## Current milestone
+## Current milestones
 
 Project 001 starts with a sonar-equipped BlueROV2 Heavy beside a sunken ship in
 DAVE. The first runnable checkpoint streams its camera, sonar, navigation, and
@@ -21,6 +21,13 @@ vehicle that can:
 4. estimate its state from noisy sensors;
 5. record the mission as MCAP; and
 6. compare estimated state with simulator ground truth.
+
+Project 002 is the visual and physical **Living Reef**: Stonefish 1.6, a MOLA
+AUV, geometry-based hydrodynamics, currents, marine snow, realistic underwater
+light transport, a coral field, forward camera and sonar, and moving marine
+life. The actual simulator window is GPU-rendered and streamed to the Mac with
+VirtualGL and Xpra; terminal keyboard input remains a separate low-latency ROS
+control path.
 
 ## Execution model
 
@@ -63,6 +70,9 @@ make keyboard     # drive with WASD/arrows in the Mac terminal
 make drive        # open the browser joystick for manual control
 make drive-stop   # close the browser joystick tunnel
 make dive-stop    # stop the First Dive scene
+make reef         # build and launch the Stonefish Living Reef
+make reef-view    # stream its real simulator window to the Mac
+make reef-keyboard # drive its MOLA AUV with WASD/arrows
 make build        # build the versioned ROS/Gazebo container remotely
 make up           # start the remote development container
 make shell        # open a shell in the remote container
@@ -72,6 +82,8 @@ make down         # stop the AUV container
 
 See [labs/03_first_dive/README.md](labs/03_first_dive/README.md) for the scene,
 expected topics, and completion check.
+See [labs/04_living_reef/README.md](labs/04_living_reef/README.md) for the richer
+Stonefish environment and its explicit fidelity boundaries.
 
 Copy `.env.example` to `.env` only when overriding defaults. Never commit
 credentials or tokens.
