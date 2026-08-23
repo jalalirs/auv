@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source /opt/ros/jazzy/setup.bash
+source /opt/reef_ws/install/setup.bash
+
+package_share="$(ros2 pkg prefix --share mola_auv_sim)"
+
+exec /opt/VirtualGL/bin/vglrun -d egl \
+    ros2 launch stonefish_ros2 stonefish_simulator.launch.py \
+    simulation_data:="${package_share}/data" \
+    scenario_desc:="${package_share}/scenarios/living_reef.scn" \
+    simulation_rate:=100.0 \
+    window_res_x:=1440 \
+    window_res_y:=900 \
+    rendering_quality:=high

@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: help doctor sync build up down restart status logs shell test dive dive-stop dive-status dive-logs dive-topics keyboard view view-stop drive drive-stop
+.PHONY: help doctor sync build up down restart status logs shell test dive dive-stop dive-status dive-logs dive-topics keyboard view view-stop drive drive-stop reef reef-build reef-stop reef-status reef-logs reef-view reef-view-stop reef-keyboard
 
 help: ## Show available commands
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -66,3 +66,27 @@ drive: ## Open the browser joystick for manual AUV control
 
 drive-stop: ## Stop the browser joystick tunnel
 	@./tools/drive stop
+
+reef: ## Build and launch the Stonefish Living Reef on the GPU
+	@./tools/reef up
+
+reef-build: ## Build the pinned Stonefish Living Reef image
+	@./tools/reef build
+
+reef-stop: ## Stop the Living Reef
+	@./tools/reef stop
+
+reef-status: ## Show Living Reef container status
+	@./tools/reef status
+
+reef-logs: ## Follow Living Reef startup and runtime logs
+	@./tools/reef logs
+
+reef-view: ## Stream the real Living Reef simulator window to the Mac
+	@./tools/reef view
+
+reef-view-stop: ## Stop the Living Reef SSH tunnels
+	@./tools/reef view-stop
+
+reef-keyboard: ## Drive the reef AUV with WASD or arrow keys
+	@./tools/reef keyboard

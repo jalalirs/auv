@@ -20,6 +20,7 @@ setup(
     entry_points={
         "console_scripts": [
             "keyboard_teleop = auv_control.keyboard_teleop:main",
+            "reef_keyboard_teleop = auv_control.reef_keyboard_teleop:main",
         ]
     },
 )
