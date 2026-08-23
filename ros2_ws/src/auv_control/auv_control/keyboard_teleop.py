@@ -11,6 +11,7 @@ import tty
 
 import rclpy
 from rclpy.node import Node
+from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import Joy
 
 
@@ -165,7 +166,9 @@ def main(args: list[str] | None = None) -> None:
     if not sys.stdin.isatty():
         raise RuntimeError("keyboard_teleop requires an interactive terminal")
 
-    rclpy.init(args=args)
+    # Own SIGINT so Ctrl-C can publish a final neutral/disarm command before
+    # the ROS context is shut down.
+    rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO)
     node = KeyboardTeleop()
     file_descriptor = sys.stdin.fileno()
     previous_terminal = termios.tcgetattr(file_descriptor)
@@ -181,12 +184,14 @@ def main(args: list[str] | None = None) -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        node.stop(disarm=True)
-        for _ in range(3):
-            rclpy.spin_once(node, timeout_sec=0.02)
+        if rclpy.ok():
+            node.stop(disarm=True)
+            for _ in range(3):
+                rclpy.spin_once(node, timeout_sec=0.02)
         termios.tcsetattr(file_descriptor, termios.TCSADRAIN, previous_terminal)
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
         print("\nStopped and disarmed.", flush=True)
 
 
