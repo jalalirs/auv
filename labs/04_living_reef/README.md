@@ -24,7 +24,7 @@ make reef-keyboard   # run in another Mac terminal
 
 `make reef-view` creates SSH tunnels for two separate products:
 
-- `http://localhost:19877/` is the interactive Stonefish GUI streamed by Xpra;
+- `http://localhost:19877/index.html` is the interactive Stonefish GUI streamed by Xpra;
 - `ws://localhost:18767` is its Foxglove WebSocket for ROS-native panels.
 
 The GUI is rendered on GPU 0 through VirtualGL's EGL backend. Xpra transports

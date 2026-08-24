@@ -79,10 +79,10 @@ start_view() {
             -L "${FOXGLOVE_LOCAL_PORT}:127.0.0.1:${FOXGLOVE_REMOTE_PORT}" \
             "${GPU_HOST}"
     fi
-    printf 'Living Reef: http://localhost:%s/\n' "${XPRA_LOCAL_PORT}"
+    printf 'Living Reef: http://localhost:%s/index.html\n' "${XPRA_LOCAL_PORT}"
     printf 'Reef Foxglove: ws://localhost:%s\n' "${FOXGLOVE_LOCAL_PORT}"
     if command -v open >/dev/null 2>&1; then
-        open "http://localhost:${XPRA_LOCAL_PORT}/"
+        open "http://localhost:${XPRA_LOCAL_PORT}/index.html"
     fi
 }
 
