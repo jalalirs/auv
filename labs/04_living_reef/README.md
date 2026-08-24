@@ -70,6 +70,11 @@ passive righting moment expected from a stable observation-class AUV. `U` is a
 simulation recovery control for collisions or deliberate rolls, not an
 onboard flight-controller behavior.
 
+The upstream MOLA joystick allocator is corrected here for Stonefish's four
+inverted actuator setpoints. Without those signs, surge commands introduce a
+large roll torque; with them, each commanded degree of freedom produces the
+intended vehicle wrench.
+
 ## What is physically simulated
 
 - six-degree-of-freedom rigid-body motion and collision;
