@@ -120,13 +120,14 @@ COPY docker/stonefish/scenarios/living_reef.scn \
     ${REEF_WS}/src/MOLA_AUV/mola_auv_sim/scenarios/living_reef.scn
 COPY docker/stonefish/scenarios/fish_school.scn \
     ${REEF_WS}/src/MOLA_AUV/mola_auv_sim/scenarios/fish_school.scn
+COPY ros2_ws/src/auv_control ${REEF_WS}/src/auv_control
 
 RUN source /opt/ros/jazzy/setup.bash \
     && cd "${REEF_WS}" \
     && colcon build \
         --merge-install \
         --executor sequential \
-        --packages-up-to mola_auv_sim mola_auv_control \
+        --packages-up-to mola_auv_sim mola_auv_control auv_control \
         --cmake-args -DCMAKE_BUILD_TYPE=Release \
     && rm -rf "${REEF_WS}/build" "${REEF_WS}/log"
 
