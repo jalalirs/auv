@@ -12,6 +12,11 @@ package_share="$(ros2 pkg prefix --share mola_auv_sim)"
 # leave it completely off-screen after the resize.
 /usr/local/bin/place-stonefish-window &
 
+# Capture driving keys from the streamed X desktop and publish them to MOLA's
+# joystick allocator. Passive X11 grabs keep those keys away from the camera.
+ros2 run auv_control reef_x11_teleop \
+    > /data/logs/reef/x11-teleop.log 2>&1 &
+
 # Eight-core affinity avoids a Stonefish 1.6 physics-worker memory race seen
 # when all 24 host cores run concurrently, while retaining parallel physics.
 exec taskset -c "${REEF_CPUSET:-0-7}" \

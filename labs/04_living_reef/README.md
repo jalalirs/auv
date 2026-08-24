@@ -19,7 +19,6 @@ make reef
 make reef-status
 make reef-logs       # use this if the first startup is still progressing
 make reef-view       # opens the actual simulator window in the browser
-make reef-keyboard   # run in another Mac terminal
 ```
 
 `make reef-view` creates SSH tunnels for two separate products:
@@ -32,12 +31,17 @@ the finished window, so the Mac does not need Linux OpenGL or a remote desktop.
 
 ## Keyboard
 
+Click the streamed simulator once, then drive directly in the browser. The
+driving keys are captured before Stonefish can interpret them as camera input.
+
 - **W/S** or **up/down arrows**: forward and reverse
 - **A/D** or **left/right arrows**: yaw
 - **Q/E**: strafe; **R/F**: rise and dive
 - **+/-**: command scale from 20% to 100%
 - **L**: toggle vehicle lights
-- **Space**: stop; **Ctrl-C**: stop and close the controller
+- **Space**: stop
+
+`make reef-keyboard` remains available as a terminal-based fallback.
 
 Stonefish does not emulate an ArduSub flight controller in this lab, so the
 thrusters do not require arming. The keyboard commands MOLA's eight-thruster
