@@ -31,6 +31,7 @@ RUN apt-get update \
         mesa-utils \
         python3-numpy \
         python3-opencv \
+        python3-pil \
         python3-pip \
         ros-jazzy-cv-bridge \
         ros-jazzy-foxglove-bridge \
