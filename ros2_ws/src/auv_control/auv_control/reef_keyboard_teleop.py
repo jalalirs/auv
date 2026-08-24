@@ -3,22 +3,26 @@
 
 from __future__ import annotations
 
+import math
 import os
 import select
 import sys
 import termios
 import tty
 
+from nav_msgs.msg import Odometry
 import rclpy
 from rclpy.node import Node
 from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import Joy
+from stonefish_ros2.srv import Respawn
 
 
 AXIS_SWAY = 0
 AXIS_SURGE = 1
 AXIS_YAW = 3
 AXIS_HEAVE = 4
+AXIS_ROLL = 6
 BUTTON_LIGHTS = 8
 AXIS_COUNT = 8
 BUTTON_COUNT = 13
@@ -32,6 +36,8 @@ Living Reef keyboard control
   A / Left     yaw left      D / Right    yaw right
   Q / E        strafe left / right
   R / F        rise / dive
+  Z / C        roll left / right
+  U            self-right in place
   + / -        faster / slower
   L            toggle lights
   Space        stop          Ctrl-C       stop and exit
@@ -46,6 +52,17 @@ class ReefKeyboardTeleop(Node):
     def __init__(self, node_name: str = "reef_keyboard_teleop") -> None:
         super().__init__(node_name)
         self.publisher = self.create_publisher(Joy, "/joy", 10)
+        self.odometry_subscription = self.create_subscription(
+            Odometry,
+            "/mola_auv/navigator/odometry",
+            self._odometry_callback,
+            10,
+        )
+        self.respawn_client = self.create_client(
+            Respawn,
+            "/stonefish_ros2/respawn_robot",
+        )
+        self.current_odometry: Odometry | None = None
         self.axes = [0.0] * AXIS_COUNT
         self.buttons = [0] * BUTTON_COUNT
         self.speed = 0.65
@@ -83,6 +100,57 @@ class ReefKeyboardTeleop(Node):
         self.command_deadline_ns = 0
         self.publish()
         self.neutral_sent = True
+
+    def self_right(self) -> None:
+        """Respawn upright at the current position while preserving heading."""
+        if self.current_odometry is None:
+            self.get_logger().warning("Cannot self-right before odometry arrives")
+            return
+        if not self.respawn_client.service_is_ready():
+            self.get_logger().warning("Stonefish respawn service is not ready")
+            return
+
+        self.stop()
+        pose = self.current_odometry.pose.pose
+        orientation = pose.orientation
+        yaw = math.atan2(
+            2.0
+            * (
+                orientation.w * orientation.z
+                + orientation.x * orientation.y
+            ),
+            1.0
+            - 2.0
+            * (
+                orientation.y * orientation.y
+                + orientation.z * orientation.z
+            ),
+        )
+
+        request = Respawn.Request()
+        request.name = "mola_auv"
+        request.origin.position.x = pose.position.x
+        request.origin.position.y = pose.position.y
+        request.origin.position.z = pose.position.z
+        request.origin.orientation.z = math.sin(yaw / 2.0)
+        request.origin.orientation.w = math.cos(yaw / 2.0)
+        future = self.respawn_client.call_async(request)
+        future.add_done_callback(self._self_right_done)
+        self.get_logger().info("Self-right requested")
+
+    def _odometry_callback(self, message: Odometry) -> None:
+        self.current_odometry = message
+
+    def _self_right_done(self, future: object) -> None:
+        try:
+            response = future.result()
+        except Exception as error:  # pragma: no cover - ROS transport failure
+            self.get_logger().error(f"Self-right failed: {error}")
+            return
+        if response.success:
+            self.get_logger().info("AUV is upright")
+        else:
+            self.get_logger().error(f"Self-right failed: {response.message}")
 
     def publish(self) -> None:
         message = Joy()
@@ -138,6 +206,8 @@ def handle_key(node: ReefKeyboardTeleop, key: str) -> None:
         "e": (AXIS_SWAY, -1.0),
         "r": (AXIS_HEAVE, 1.0),
         "f": (AXIS_HEAVE, -1.0),
+        "z": (AXIS_ROLL, 1.0),
+        "c": (AXIS_ROLL, -1.0),
     }
     normalized = key.lower() if len(key) == 1 else key
     if normalized in movement:
@@ -148,6 +218,8 @@ def handle_key(node: ReefKeyboardTeleop, key: str) -> None:
         node.adjust_speed(-0.15)
     elif normalized == "l":
         node.pulse(BUTTON_LIGHTS)
+    elif normalized == "u":
+        node.self_right()
     elif key == " ":
         node.stop()
 

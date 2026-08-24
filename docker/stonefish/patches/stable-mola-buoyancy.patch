@@ -1,0 +1,9 @@
+diff --git a/mola_auv_sim/scenarios/mola_auv.scn b/mola_auv_sim/scenarios/mola_auv.scn
+--- a/mola_auv_sim/scenarios/mola_auv.scn
++++ b/mola_auv_sim/scenarios/mola_auv.scn
+@@ -55 +55 @@
+-				<compound_transform rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
++				<compound_transform rpy="0.0 0.0 0.0" xyz="0.0 0.0 -0.10"/>
+@@ -92 +92 @@
+-				<compound_transform rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
++				<compound_transform rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.10"/>
