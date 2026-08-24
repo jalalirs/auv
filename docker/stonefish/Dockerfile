@@ -131,11 +131,15 @@ RUN source /opt/ros/jazzy/setup.bash \
     && rm -rf "${REEF_WS}/build" "${REEF_WS}/log"
 
 COPY docker/stonefish/start-reef /usr/local/bin/start-reef
+COPY docker/stonefish/place-window.py /usr/local/bin/place-stonefish-window
 COPY docker/stonefish/entrypoint.sh /usr/local/bin/reef-entrypoint
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends python3-pil \
     && rm -rf /var/lib/apt/lists/* \
-    && chmod +x /usr/local/bin/start-reef /usr/local/bin/reef-entrypoint \
+    && chmod +x \
+        /usr/local/bin/start-reef \
+        /usr/local/bin/place-stonefish-window \
+        /usr/local/bin/reef-entrypoint \
     && mkdir -p /data /home/ubuntu \
     && chown "${USER_UID}:${USER_GID}" /data /home/ubuntu
 
