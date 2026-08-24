@@ -43,8 +43,8 @@ The Stonefish vehicle does not require arming. Hold movement keys down.
 class ReefKeyboardTeleop(Node):
     """Publish an eight-axis Joy command understood by MOLA's allocator."""
 
-    def __init__(self) -> None:
-        super().__init__("reef_keyboard_teleop")
+    def __init__(self, node_name: str = "reef_keyboard_teleop") -> None:
+        super().__init__(node_name)
         self.publisher = self.create_publisher(Joy, "/joy", 10)
         self.axes = [0.0] * AXIS_COUNT
         self.buttons = [0] * BUTTON_COUNT
@@ -55,8 +55,12 @@ class ReefKeyboardTeleop(Node):
         self.create_timer(1.0 / PUBLISH_HZ, self._publish_active_command)
 
     def movement(self, axis: int, direction: float) -> None:
-        self.axes = [0.0] * AXIS_COUNT
-        self.axes[axis] = direction * self.speed
+        axes = [0.0] * AXIS_COUNT
+        axes[axis] = direction * self.speed
+        self.command_axes(axes)
+
+    def command_axes(self, axes: list[float]) -> None:
+        self.axes = list(axes)
         self.command_deadline_ns = (
             self.get_clock().now().nanoseconds
             + int(COMMAND_HOLD_SECONDS * 1_000_000_000)

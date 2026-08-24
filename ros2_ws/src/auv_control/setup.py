@@ -21,6 +21,7 @@ setup(
         "console_scripts": [
             "keyboard_teleop = auv_control.keyboard_teleop:main",
             "reef_keyboard_teleop = auv_control.reef_keyboard_teleop:main",
+            "reef_x11_teleop = auv_control.reef_x11_teleop:main",
         ]
     },
 )

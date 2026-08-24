@@ -134,7 +134,7 @@ COPY docker/stonefish/start-reef /usr/local/bin/start-reef
 COPY docker/stonefish/place-window.py /usr/local/bin/place-stonefish-window
 COPY docker/stonefish/entrypoint.sh /usr/local/bin/reef-entrypoint
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends python3-pil \
+    && apt-get install --yes --no-install-recommends python3-pil python3-xlib \
     && rm -rf /var/lib/apt/lists/* \
     && chmod +x \
         /usr/local/bin/start-reef \
