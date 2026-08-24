@@ -57,6 +57,7 @@ RUN curl --fail --location --retry 8 --retry-all-errors \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/stonefish/patches/camera-presets.patch /tmp/camera-presets.patch
+COPY docker/stonefish/patches/level-camera-presets.patch /tmp/level-camera-presets.patch
 COPY docker/stonefish/patches/animated-model-origin.patch /tmp/animated-model-origin.patch
 
 RUN mkdir -p /tmp/stonefish-src \
@@ -65,6 +66,8 @@ RUN mkdir -p /tmp/stonefish-src \
         | tar --extract --gzip --strip-components=1 --directory=/tmp/stonefish-src \
     && patch --ignore-whitespace --directory=/tmp/stonefish-src --strip=1 \
         < /tmp/camera-presets.patch \
+    && patch --ignore-whitespace --directory=/tmp/stonefish-src --strip=1 \
+        < /tmp/level-camera-presets.patch \
     && patch --ignore-whitespace --directory=/tmp/stonefish-src --strip=1 \
         < /tmp/animated-model-origin.patch \
     && cmake \
