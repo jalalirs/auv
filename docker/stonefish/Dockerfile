@@ -82,7 +82,6 @@ RUN mkdir -p /tmp/stonefish-src \
     && rm -rf /tmp/stonefish-src /tmp/stonefish-build
 
 COPY docker/stonefish/patches/stable-mola-buoyancy.patch /tmp/stable-mola-buoyancy.patch
-COPY docker/stonefish/patches/mola-allocation-signs.patch /tmp/mola-allocation-signs.patch
 
 # The basic branch contains the MOLA vehicle, coral assets, and Stonefish ROS 2
 # wrapper without the experimental SLAM workspace from upstream main. Repair
@@ -96,9 +95,6 @@ RUN mkdir -p /tmp/mbari-src "${REEF_WS}/src" \
     && patch --ignore-whitespace \
         --directory="${REEF_WS}/src/MOLA_AUV" --strip=1 \
         < /tmp/stable-mola-buoyancy.patch \
-    && patch --ignore-whitespace \
-        --directory="${REEF_WS}/src/MOLA_AUV" --strip=1 \
-        < /tmp/mola-allocation-signs.patch \
     && mkdir -p /usr/share/doc/mbari-vehicles-sim \
     && cp /tmp/mbari-src/LICENSE /usr/share/doc/mbari-vehicles-sim/ \
     && sed -i \
