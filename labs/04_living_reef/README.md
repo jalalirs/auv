@@ -54,8 +54,10 @@ views without changing the AUV command:
 - **4**: first-person nose view
 - **5**: free camera; use the mouse to orbit, pan, and zoom
 
-Chase, top, front, and first-person views follow both the vehicle position and
-orientation. The current mode is shown in the **VIEW** panel.
+Chase, top, and front follow the vehicle's position and heading while staying
+level with the world, so a rolling AUV cannot flip the external cameras. The
+first-person view follows the full vehicle pose. The current mode is shown in
+the **VIEW** panel.
 
 Stonefish does not emulate an ArduSub flight controller in this lab, so the
 thrusters do not require arming. The keyboard commands MOLA's eight-thruster
