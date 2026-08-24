@@ -31,7 +31,6 @@ RUN apt-get update \
         mesa-utils \
         python3-numpy \
         python3-opencv \
-        python3-pil \
         python3-pip \
         ros-jazzy-cv-bridge \
         ros-jazzy-foxglove-bridge \
@@ -133,7 +132,10 @@ RUN source /opt/ros/jazzy/setup.bash \
 
 COPY docker/stonefish/start-reef /usr/local/bin/start-reef
 COPY docker/stonefish/entrypoint.sh /usr/local/bin/reef-entrypoint
-RUN chmod +x /usr/local/bin/start-reef /usr/local/bin/reef-entrypoint \
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends python3-pil \
+    && rm -rf /var/lib/apt/lists/* \
+    && chmod +x /usr/local/bin/start-reef /usr/local/bin/reef-entrypoint \
     && mkdir -p /data /home/ubuntu \
     && chown "${USER_UID}:${USER_GID}" /data /home/ubuntu
 
