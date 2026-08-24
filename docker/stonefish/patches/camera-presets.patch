@@ -1,0 +1,322 @@
+diff --git a/Library/include/graphics/OpenGLTrackball.h b/Library/include/graphics/OpenGLTrackball.h
+--- a/Library/include/graphics/OpenGLTrackball.h
++++ b/Library/include/graphics/OpenGLTrackball.h
+@@ -73,5 +73,10 @@ namespace sf
+          */
+         void GlueToMoving(MovingEntity* ent);
++
++        //! A method to follow the full pose of a moving body from a preset view.
++        void FollowMoving(MovingEntity* ent, glm::vec3 localDirection,
++                          glm::vec3 localUp, GLfloat orbitRadius,
++                          glm::vec3 localCenterOffset = glm::vec3(0.f));
+
+         //! A method saving the new centre for update.
+         void UpdateCenterPos();
+@@ -131,6 +136,15 @@ namespace sf
+         GLfloat calculateZ(GLfloat x, GLfloat y);
+
+         MovingEntity* holdingEntity;
++
++        bool followOrientation;
++        glm::vec3 localCenterOffset;
++        glm::vec3 localDirection;
++        glm::vec3 localUp;
++        glm::vec3 followDirection;
++        glm::vec3 followUp;
++        glm::vec3 tempDirection;
++        glm::vec3 tempUp;
+
+         glm::vec3 tempCenter;
+         glm::mat4 trackballTransform;
+diff --git a/Library/src/graphics/OpenGLTrackball.cpp b/Library/src/graphics/OpenGLTrackball.cpp
+--- a/Library/src/graphics/OpenGLTrackball.cpp
++++ b/Library/src/graphics/OpenGLTrackball.cpp
+@@ -51,6 +51,14 @@ OpenGLTrackball::OpenGLTrackball(glm::vec3 centerPosition, GLfloat orbitRadius,
+     transMode = false;
+     continuous = true;
+     holdingEntity = nullptr;
++    followOrientation = false;
++    localCenterOffset = glm::vec3(0.f);
++    localDirection = glm::vec3(0.f, -1.f, 0.f);
++    localUp = glm::vec3(0.f, 0.f, 1.f);
++    followDirection = GetLookingDirection();
++    followUp = GetUpDirection();
++    tempDirection = followDirection;
++    tempUp = followUp;
+
+     outlineShader[0] = new GLSLShader("outline.frag");
+     outlineShader[0]->AddUniform("color", ParameterType::VEC4);
+@@ -89,11 +97,15 @@ glm::vec3 OpenGLTrackball::GetEyePosition() const
+
+ glm::vec3 OpenGLTrackball::GetLookingDirection() const
+ {
++    if(followOrientation)
++        return followDirection;
+     return glm::normalize(glm::vec3(glm::rotate(glm::inverse(rotation), glm::vec4(0,-1.f,0,1.f))));
+ }
+
+ glm::vec3 OpenGLTrackball::GetUpDirection() const
+ {
++    if(followOrientation)
++        return followUp;
+     glm::vec3 localUp = glm::vec3(0,0,1.f);
+     return glm::normalize(glm::vec3(glm::rotate(glm::inverse(rotation), glm::vec4(localUp, 1.f))));
+ }
+@@ -102,14 +114,40 @@ void OpenGLTrackball::UpdateCenterPos()
+ {
+     if(holdingEntity != nullptr)
+     {
+-        Vector3 org = holdingEntity->getOTransform().getOrigin();
++        Transform transform = holdingEntity->getOTransform();
++        Vector3 org = transform * Vector3(localCenterOffset.x,
++                                          localCenterOffset.y,
++                                          localCenterOffset.z);
+         tempCenter = glm::vec3((GLfloat)org.x(), (GLfloat)org.y(), (GLfloat)org.z());
++        if(followOrientation)
++        {
++            Vector3 dir = transform.getBasis() * Vector3(localDirection.x,
++                                                         localDirection.y,
++                                                         localDirection.z);
++            Vector3 up = transform.getBasis() * Vector3(localUp.x,
++                                                        localUp.y,
++                                                        localUp.z);
++            tempDirection = glm::normalize(glm::vec3((GLfloat)dir.x(),
++                                                     (GLfloat)dir.y(),
++                                                     (GLfloat)dir.z()));
++            tempUp = glm::normalize(glm::vec3((GLfloat)up.x(),
++                                              (GLfloat)up.y(),
++                                              (GLfloat)up.z()));
++        }
+     }
+ }
+
+ void OpenGLTrackball::UpdateTransform()
+ {
+-    if(holdingEntity != nullptr) center = tempCenter;
++    if(holdingEntity != nullptr)
++    {
++        center = tempCenter;
++        if(followOrientation)
++        {
++            followDirection = tempDirection;
++            followUp = tempUp;
++        }
++    }
+     trackballTransform = glm::lookAt(GetEyePosition(), center, GetUpDirection());
+
+     viewUBOData.VP = GetProjectionMatrix() * GetViewMatrix();
+@@ -191,6 +229,16 @@ void OpenGLTrackball::MoveCenter(glm::vec3 step)
+
+ void OpenGLTrackball::GlueToMoving(MovingEntity* ent)
+ {
++    if(followOrientation)
++    {
++        glm::vec3 direction = glm::normalize(followDirection);
++        glm::vec3 right = glm::normalize(glm::cross(direction, followUp));
++        glm::vec3 cameraUp = glm::normalize(glm::cross(right, direction));
++        glm::mat3 cameraToWorld(-right, -direction, cameraUp);
++        rotation = glm::inverse(glm::quat_cast(cameraToWorld));
++    }
++    followOrientation = false;
++    localCenterOffset = glm::vec3(0.f);
+     holdingEntity = ent;
+
+     //Clear ocean quadtree to avoid holes in the ocean rendering because of the sudden jump of camera origin
+@@ -199,6 +247,26 @@ void OpenGLTrackball::GlueToMoving(MovingEntity* ent)
+         ((OpenGLRealOcean*)ocean->getOpenGLOcean())->ResetSurface(this);
+ }
+
++void OpenGLTrackball::FollowMoving(MovingEntity* ent,
++                                   glm::vec3 localDirection_,
++                                   glm::vec3 localUp_,
++                                   GLfloat orbitRadius,
++                                   glm::vec3 localCenterOffset_)
++{
++    holdingEntity = ent;
++    followOrientation = ent != nullptr;
++    localDirection = glm::normalize(localDirection_);
++    localUp = glm::normalize(localUp_);
++    localCenterOffset = localCenterOffset_;
++    radius = glm::max(orbitRadius, 0.05f);
++    UpdateCenterPos();
++    UpdateTransform();
++
++    Ocean* ocean = ((GraphicalSimulationApp*)SimulationApp::getApp())->getSimulationManager()->getOcean();
++    if(ocean != nullptr && ocean->hasWaves())
++        ((OpenGLRealOcean*)ocean->getOpenGLOcean())->ResetSurface(this);
++}
++
+ void OpenGLTrackball::DrawSelection(const std::vector<Renderable>& r, GLuint destinationFBO)
+ {
+     if(r.size() == 0) //No selection
+diff --git a/Library/include/core/GraphicalSimulationApp.h b/Library/include/core/GraphicalSimulationApp.h
+--- a/Library/include/core/GraphicalSimulationApp.h
++++ b/Library/include/core/GraphicalSimulationApp.h
+@@ -187,6 +187,7 @@ namespace sf
+         virtual void InitializeGUI();
+
+     private:
++        void SetCameraPreset(unsigned int preset);
+         void InitializeSDL();
+         void RenderLoop();
+
+@@ -205,6 +206,7 @@ namespace sf
+         OpenGLPipeline* glPipeline;
+
+         MovingEntity* trackballCenter;
++        unsigned int cameraPreset;
+         std::pair<Entity*, int> selectedEntity;
+         bool displayHUD;
+         bool displayKeymap;
+diff --git a/Library/src/core/GraphicalSimulationApp.cpp b/Library/src/core/GraphicalSimulationApp.cpp
+--- a/Library/src/core/GraphicalSimulationApp.cpp
++++ b/Library/src/core/GraphicalSimulationApp.cpp
+@@ -57,6 +57,7 @@ GraphicalSimulationApp::GraphicalSimulationApp(std::string title, std::string d
+     glLoadingContext = nullptr;
+     glMainContext = nullptr;
+     trackballCenter = nullptr;
++    cameraPreset = 0;
+     selectedEntity = std::make_pair(nullptr, -1);
+     displayHUD = true;
+     displayKeymap = false;
+@@ -361,6 +362,26 @@ void GraphicalSimulationApp::KeyDown(SDL_Event *event)
+         case SDLK_c:
+             displayConsole = !displayConsole;
+             ((OpenGLConsole*)console_)->ResetScroll();
++            break;
++
++        case SDLK_1:
++            SetCameraPreset(1);
++            break;
++
++        case SDLK_2:
++            SetCameraPreset(2);
++            break;
++
++        case SDLK_3:
++            SetCameraPreset(3);
++            break;
++
++        case SDLK_4:
++            SetCameraPreset(4);
++            break;
++
++        case SDLK_5:
++            SetCameraPreset(5);
+             break;
+
+         case SDLK_w: //Forward
+@@ -424,6 +445,54 @@ void GraphicalSimulationApp::KeyDown(SDL_Event *event)
+
+ void GraphicalSimulationApp::KeyUp(SDL_Event *event)
+ {
++}
++
++void GraphicalSimulationApp::SetCameraPreset(unsigned int preset)
++{
++    OpenGLTrackball* trackball = getSimulationManager()->getTrackball();
++    if(trackball == nullptr)
++        return;
++
++    if(preset == 5)
++    {
++        trackballCenter = nullptr;
++        trackball->GlueToMoving(nullptr);
++        cameraPreset = preset;
++        return;
++    }
++
++    Robot* robot = getSimulationManager()->getRobot(0);
++    if(robot == nullptr)
++        return;
++
++    trackballCenter = robot->getBaseLink();
++    switch(preset)
++    {
++        case 1: // Chase from behind and slightly above.
++            trackball->FollowMoving(trackballCenter,
++                                    glm::vec3(1.f, 0.f, 0.22f),
++                                    glm::vec3(0.f, 0.f, -1.f), 4.5f);
++            break;
++        case 2: // Top-down, with the vehicle nose pointing up-screen.
++            trackball->FollowMoving(trackballCenter,
++                                    glm::vec3(0.f, 0.f, 1.f),
++                                    glm::vec3(1.f, 0.f, 0.f), 7.f);
++            break;
++        case 3: // Look at the vehicle head-on.
++            trackball->FollowMoving(trackballCenter,
++                                    glm::vec3(-1.f, 0.f, 0.f),
++                                    glm::vec3(0.f, 0.f, -1.f), 4.f);
++            break;
++        case 4: // Nose-mounted first-person view.
++            trackball->FollowMoving(trackballCenter,
++                                    glm::vec3(1.f, 0.f, 0.f),
++                                    glm::vec3(0.f, 0.f, -1.f), 0.05f,
++                                    glm::vec3(0.65f, 0.f, 0.f));
++            break;
++        default:
++            return;
++    }
++    cameraPreset = preset;
+ }
+
+ void GraphicalSimulationApp::MouseDown(SDL_Event *event)
+@@ -782,10 +851,13 @@ void GraphicalSimulationApp::DoHUD()
+     }
+
+     //Main view exposure
+-    gui->DoPanel(10.f, offset, 160.f, 126.f);
++    gui->DoPanel(10.f, offset, 160.f, 142.f);
+     offset += 5.f;
+     gui->DoLabel(15.f, offset, "VIEW");
+     offset += 15.f;
++    const char* cameraNames[] = {"Manual", "Chase", "Top", "Front", "First person", "Free"};
++    gui->DoLabel(15.f, offset, std::string("Camera: ") + cameraNames[cameraPreset]);
++    offset += 16.f;
+
+     id.owner = 3;
+     id.item = 0;
+@@ -835,6 +907,7 @@ void GraphicalSimulationApp::DoHUD()
+                 trackballCenter = (MovingEntity*)getSimulationManager()->getEntity(options[newSelected]);
+         }
+         getSimulationManager()->getTrackball()->GlueToMoving(trackballCenter);
++        cameraPreset = newSelected == 0 ? 5 : 0;
+     }
+     offset += 51.f;
+
+@@ -958,7 +1031,7 @@ void GraphicalSimulationApp::DoHUD()
+     {
+         offset = getWindowHeight()-246.f;
+         GLfloat left = getWindowWidth()-130.f;
+-        gui->DoPanel(left - 10.f, offset, 130.f, 206.f); offset += 10.f;
++        gui->DoPanel(left - 10.f, offset, 130.f, 286.f); offset += 10.f;
+         gui->DoLabel(left, offset, "[H] show/hide GUI"); offset += 16.f;
+         gui->DoLabel(left, offset, "[C] show/hide console"); offset += 16.f;
+         gui->DoLabel(left, offset, "[W] move forward"); offset += 16.f;
+@@ -971,6 +1044,11 @@ void GraphicalSimulationApp::DoHUD()
+         gui->DoLabel(left, offset, "[Mouse right] rotate"); offset += 16.f;
+         gui->DoLabel(left, offset, "[Mouse middle] move"); offset += 16.f;
+         gui->DoLabel(left, offset, "[Mouse scroll] zoom"); offset += 16.f;
++        gui->DoLabel(left, offset, "[1] chase camera"); offset += 16.f;
++        gui->DoLabel(left, offset, "[2] top camera"); offset += 16.f;
++        gui->DoLabel(left, offset, "[3] front camera"); offset += 16.f;
++        gui->DoLabel(left, offset, "[4] first person"); offset += 16.f;
++        gui->DoLabel(left, offset, "[5] free camera"); offset += 16.f;
+     }
+
+     //Performance
+@@ -990,5 +1068,6 @@ void GraphicalSimulationApp::StartSimulation()
+ {
+     SimulationApp::StartSimulation();
++    SetCameraPreset(1);
+
+     if (autostep_)
+     {
+@@ -1014,6 +1093,7 @@ void GraphicalSimulationApp::StopSimulation()
+
+     selectedEntity = std::make_pair(nullptr, -1);
+    trackballCenter = nullptr;
++	cameraPreset = 0;
+
+     if (autostep_ && simulationThread != nullptr)
+     {

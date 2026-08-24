@@ -43,6 +43,20 @@ driving keys are captured before Stonefish can interpret them as camera input.
 
 `make reef-keyboard` remains available as a terminal-based fallback.
 
+## Camera views
+
+The main view starts in a vehicle-relative chase camera. Number keys switch
+views without changing the AUV command:
+
+- **1**: chase/follow from behind and above
+- **2**: top-down view
+- **3**: external front view looking back at the AUV
+- **4**: first-person nose view
+- **5**: free camera; use the mouse to orbit, pan, and zoom
+
+Chase, top, front, and first-person views follow both the vehicle position and
+orientation. The current mode is shown in the **VIEW** panel.
+
 Stonefish does not emulate an ArduSub flight controller in this lab, so the
 thrusters do not require arming. The keyboard commands MOLA's eight-thruster
 allocator directly and publishes neutral output after stale input.
