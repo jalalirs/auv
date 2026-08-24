@@ -12,6 +12,7 @@ from Xlib import X, XK, display as xdisplay
 from auv_control.reef_keyboard_teleop import (
     AXIS_COUNT,
     AXIS_HEAVE,
+    AXIS_ROLL,
     AXIS_SURGE,
     AXIS_SWAY,
     AXIS_YAW,
@@ -34,8 +35,10 @@ MOVEMENT_KEYS = {
     "e": (AXIS_SWAY, -1.0),
     "r": (AXIS_HEAVE, 1.0),
     "f": (AXIS_HEAVE, -1.0),
+    "z": (AXIS_ROLL, 1.0),
+    "c": (AXIS_ROLL, -1.0),
 }
-ACTION_KEYS = ("equal", "minus", "l", "space")
+ACTION_KEYS = ("equal", "minus", "l", "u", "space")
 
 
 def keycodes(
@@ -77,7 +80,8 @@ def main(args: list[str] | None = None) -> None:
     root.change_attributes(event_mask=X.KeyPressMask | X.KeyReleaseMask)
     display.sync()
     node.get_logger().info(
-        "Browser keyboard controls active: WASD/QE/RF, arrows, +/-, L, Space"
+        "Browser keyboard controls active: WASD/QE/RF/ZC, U, arrows, "
+        "+/-, L, Space"
     )
 
     event_held: set[int] = set()
@@ -94,6 +98,8 @@ def main(args: list[str] | None = None) -> None:
                         node.adjust_speed(-0.15)
                     elif action == "l":
                         node.pulse(BUTTON_LIGHTS)
+                    elif action == "u":
+                        node.self_right()
                     elif action == "space":
                         node.stop()
                 elif event.type == X.KeyRelease:

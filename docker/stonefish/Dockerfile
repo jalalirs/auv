@@ -59,6 +59,7 @@ RUN curl --fail --location --retry 8 --retry-all-errors \
 COPY docker/stonefish/patches/camera-presets.patch /tmp/camera-presets.patch
 COPY docker/stonefish/patches/level-camera-presets.patch /tmp/level-camera-presets.patch
 COPY docker/stonefish/patches/animated-model-origin.patch /tmp/animated-model-origin.patch
+COPY docker/stonefish/patches/stable-mola-buoyancy.patch /tmp/stable-mola-buoyancy.patch
 
 RUN mkdir -p /tmp/stonefish-src \
     && curl --fail --location --retry 8 --retry-all-errors \
@@ -90,6 +91,9 @@ RUN mkdir -p /tmp/mbari-src "${REEF_WS}/src" \
         | tar --extract --gzip --strip-components=1 --directory=/tmp/mbari-src \
     && cp -a /tmp/mbari-src/stonefish_ws/src/MOLA_AUV "${REEF_WS}/src/" \
     && cp -a /tmp/mbari-src/stonefish_ws/src/thirdparty/stonefish_ros2 "${REEF_WS}/src/" \
+    && patch --ignore-whitespace \
+        --directory="${REEF_WS}/src/MOLA_AUV" --strip=1 \
+        < /tmp/stable-mola-buoyancy.patch \
     && mkdir -p /usr/share/doc/mbari-vehicles-sim \
     && cp /tmp/mbari-src/LICENSE /usr/share/doc/mbari-vehicles-sim/ \
     && sed -i \

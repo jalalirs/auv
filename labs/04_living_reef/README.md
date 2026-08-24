@@ -37,6 +37,8 @@ driving keys are captured before Stonefish can interpret them as camera input.
 - **W/S** or **up/down arrows**: forward and reverse
 - **A/D** or **left/right arrows**: yaw
 - **Q/E**: strafe; **R/F**: rise and dive
+- **Z/C**: roll left and right
+- **U**: self-right instantly, preserving position and heading
 - **+/-**: command scale from 20% to 100%
 - **L**: toggle vehicle lights
 - **Space**: stop
@@ -62,6 +64,11 @@ the **VIEW** panel.
 Stonefish does not emulate an ArduSub flight controller in this lab, so the
 thrusters do not require arming. The keyboard commands MOLA's eight-thruster
 allocator directly and publishes neutral output after stale input.
+
+The vehicle model places its main flotation above its ballast, giving it the
+passive righting moment expected from a stable observation-class AUV. `U` is a
+simulation recovery control for collisions or deliberate rolls, not an
+onboard flight-controller behavior.
 
 ## What is physically simulated
 
