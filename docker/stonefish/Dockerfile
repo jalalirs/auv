@@ -56,10 +56,14 @@ RUN curl --fail --location --retry 8 --retry-all-errors \
     && rm -f /tmp/virtualgl.deb \
     && rm -rf /var/lib/apt/lists/*
 
+COPY docker/stonefish/patches/camera-presets.patch /tmp/camera-presets.patch
+
 RUN mkdir -p /tmp/stonefish-src \
     && curl --fail --location --retry 8 --retry-all-errors \
         "https://github.com/patrykcieslak/stonefish/archive/${STONEFISH_COMMIT}.tar.gz" \
         | tar --extract --gzip --strip-components=1 --directory=/tmp/stonefish-src \
+    && patch --ignore-whitespace --directory=/tmp/stonefish-src --strip=1 \
+        < /tmp/camera-presets.patch \
     && cmake \
         -S /tmp/stonefish-src \
         -B /tmp/stonefish-build \
