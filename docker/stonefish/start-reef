@@ -7,6 +7,11 @@ set -u
 
 package_share="$(ros2 pkg prefix --share mola_auv_sim)"
 
+# Xpra starts with a very large virtual desktop and later resizes it to the
+# browser. Stonefish centers its SDL window on that initial desktop, which can
+# leave it completely off-screen after the resize.
+/usr/local/bin/place-stonefish-window &
+
 # Eight-core affinity avoids a Stonefish 1.6 physics-worker memory race seen
 # when all 24 host cores run concurrently, while retaining parallel physics.
 exec taskset -c "${REEF_CPUSET:-0-7}" \
