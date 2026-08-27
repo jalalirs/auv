@@ -4,7 +4,10 @@ import { useMemo, useState } from "react";
 import {
   architecture,
   budget,
+  environmentPackage,
+  growthAreas,
   missionCatalog,
+  modelRegistry,
   principles,
   program,
   reconstructionSteps,
@@ -19,6 +22,7 @@ const navItems = [
   ["architecture", "System"],
   ["reconstruction", "3D pipeline"],
   ["lab", "Simulation lab"],
+  ["models", "Model engine"],
   ["roadmap", "Roadmap"],
   ["program", "Program"],
 ];
@@ -141,6 +145,39 @@ export default function Home() {
           <div><p className="eyebrow">STANDARD MISSIONS</p><h3>The lab becomes real when algorithms can fail fairly.</h3></div>
           <div className="mission-grid">
             {missionCatalog.map(([title, body], index) => <article key={title}><span>{String(index + 1).padStart(2, "0")}</span><h4>{title}</h4><p>{body}</p></article>)}
+          </div>
+        </div>
+      </section>
+
+      <section className="section models-section" id="models">
+        <div className="section-heading light-heading">
+          <div><p className="eyebrow">CLEAN GROWTH ARCHITECTURE</p><h2>One stable core. Many replaceable engines.</h2></div>
+          <p>Coral City owns the contracts, evidence, and experience. Scientific solvers remain independent tools behind small adapters, so adding a serious model never forces a rewrite of the reef, robot, or interface.</p>
+        </div>
+
+        <div className="growth-grid">
+          {growthAreas.map(([title, body], index) => (
+            <article key={title}><span>{String(index + 1).padStart(2, "0")}</span><h3>{title}</h3><p>{body}</p></article>
+          ))}
+        </div>
+
+        <div className="adapter-story" aria-label="Scientific model adapter flow">
+          <div><small>MODEL-NATIVE WORLD</small><strong>SWAN · SCHISM · WRF · OpenDrift · …</strong><p>Each solver keeps its own grids, configuration, binaries, logs, and native results.</p></div>
+          <i aria-hidden="true">→</i>
+          <div className="adapter-core"><small>SMALL REPLACEABLE ADAPTER</small><strong>prepare · run · collect · normalize · verify</strong><p>The only model-specific code Coral City needs to understand.</p></div>
+          <i aria-hidden="true">→</i>
+          <div><small>STABLE CORAL CITY CONTRACT</small><strong>Environment Package</strong><ul>{environmentPackage.map((item) => <li key={item}>{item}</li>)}</ul></div>
+          <i aria-hidden="true">→</i>
+          <div><small>CONSUMERS</small><strong>Living twin · Isaac · ROS 2 · science UI</strong><p>Every consumer sees the same time, frame, units, uncertainty, and provenance.</p></div>
+        </div>
+
+        <div className="model-catalog">
+          <div className="catalog-heading"><div><p className="eyebrow">CANDIDATE MODEL SHELF</p><h3>Adopt only when a phase needs it.</h3></div><p>These are integration candidates, not ten dependencies we install today. Licence labels are planning notes until independently verified against the selected release and dependencies.</p></div>
+          <div className="model-table" role="table" aria-label="Candidate environmental models">
+            <div className="model-row model-head" role="row"><span>Model</span><span>Family</span><span>What it gives Coral City</span><span>Licence note</span><span>Build</span><span>When</span></div>
+            {modelRegistry.map((model) => (
+              <div className="model-row" role="row" key={model.name}><strong>{model.name}</strong><span>{model.family}</span><span>{model.purpose}</span><span>{model.licence}</span><span>{model.build}</span><b>{model.phase}</b></div>
+            ))}
           </div>
         </div>
       </section>
