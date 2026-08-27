@@ -3,6 +3,10 @@
 The roadmap is milestone-driven. A phase is complete only when its result can be
 launched, observed, recorded, and reproduced.
 
+This document tracks the marine-robotics learning sequence. The Red Sea Digital
+Twin has its own gated roadmap in
+[`projects/002_red_sea_digital_twin/roadmap.md`](../projects/002_red_sea_digital_twin/roadmap.md).
+
 ## Phase 0 — Laboratory foundation
 
 - Reproducible ROS 2 Jazzy and Gazebo Harmonic container
