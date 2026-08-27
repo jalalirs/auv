@@ -1,0 +1,106 @@
+schema_version: 1
+status: candidate_catalog
+notice: >-
+  Licence and build fields below are planning hints supplied during program
+  design. They are not compliance approval. Verify each upstream release and
+  its dependencies before downloading, building, distributing, or deploying.
+
+models:
+  - id: opendrift
+    name: OpenDrift
+    family: particle_tracking
+    purpose: Oil spill, drifting objects, larvae, plume particles, and search-and-rescue.
+    licence_hint: GPLv2
+    build_hint: pip; pure Python
+    target_phase: M4
+    adoption_status: candidate
+    licence_verified: false
+  - id: swan
+    name: SWAN
+    family: nearshore_waves
+    purpose: Transform offshore wave conditions across the coast and reef.
+    licence_hint: GPL
+    build_hint: Makefile
+    target_phase: M4
+    adoption_status: candidate
+    licence_verified: false
+
+  - id: hysplit
+    name: HYSPLIT
+    family: atmospheric_transport
+    purpose: Dust, aerosols, air-pollution trajectories, and deposition scenarios.
+    licence_hint: Free with terms applying
+    build_hint: Prebuilt binaries
+    target_phase: M6
+    adoption_status: candidate
+    licence_verified: false
+
+  - id: wavewatch3
+    name: WAVEWATCH III
+    family: basin_waves
+    purpose: Basin and regional wave forecasts that provide offshore boundary conditions.
+    licence_hint: NOAA open
+    build_hint: CMake plus switch files
+    target_phase: M4
+    adoption_status: candidate
+    licence_verified: false
+
+  - id: schism
+    name: SCHISM
+    family: coastal_circulation
+    purpose: Coastal circulation, water levels, temperature, salinity, and surge.
+    licence_hint: Apache 2.0
+    build_hint: CMake plus ParMETIS
+    target_phase: M4
+    adoption_status: candidate
+    licence_verified: false
+
+  - id: fabm_ersem_gotm
+    name: FABM + ERSEM + GOTM
+    family: marine_biogeochemistry
+    purpose: Water-column mixing, nutrients, oxygen, plankton, and ecosystem state.
+    licence_hint: GPL family; verify every component
+    build_hint: CMake
+    target_phase: M6
+    adoption_status: candidate
+    licence_verified: false
+
+  - id: mitgcm
+    name: MITgcm
+    family: ocean_circulation
+    purpose: Regional circulation and research-grade ocean process experiments.
+    licence_hint: MIT
+    build_hint: genmake2
+    target_phase: M6
+    adoption_status: candidate
+    licence_verified: false
+
+  - id: adcirc
+    name: ADCIRC
+    family: water_levels_and_surge
+    purpose: Tides, water levels, coastal flooding, and storm-surge scenarios.
+    licence_hint: Registration required
+    build_hint: CMake
+    target_phase: M6
+    adoption_status: candidate
+    licence_verified: false
+
+  - id: wrf_wps
+    name: WRF + WPS
+    family: weather
+    purpose: High-resolution wind, heat, humidity, radiation, and atmospheric forcing.
+    licence_hint: Public domain; verify distribution and dependencies
+    build_hint: Complex compiled toolchain
+    target_phase: M6
+    adoption_status: candidate
+    licence_verified: false
+
+  - id: delft3d
+    name: Delft3D
+    family: coastal_flow_and_sediment
+    purpose: Coastal flow, waves, morphology, sediment transport, and turbidity scenarios.
+    licence_hint: LGPL; verify selected modules
+    build_hint: Autotools; complex
+    target_phase: M6
+    adoption_status: candidate
+    licence_verified: false

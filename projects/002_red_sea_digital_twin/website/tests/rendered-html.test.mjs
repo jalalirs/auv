@@ -25,6 +25,9 @@ test("the Coral City blueprint renders its canonical program sections", async ()
   assert.match(html, /A living Red Sea\./);
   assert.match(html, /Before we enter it\./);
   assert.match(html, /One system, not disconnected demos\./);
+  assert.match(html, /One stable core\. Many replaceable engines\./);
+  assert.match(html, /OpenDrift/);
+  assert.match(html, /Environment Package/);
   assert.match(html, /Milestones close with evidence\./);
   assert.match(html, /Coral District 01/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview/);

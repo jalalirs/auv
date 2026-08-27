@@ -15,7 +15,7 @@ export type RoadmapPhase = {
 export const program = {
   name: "Coral City",
   subtitle: "Red Sea robotic digital twin laboratory",
-  version: "Program blueprint 1.0",
+  version: "Program blueprint 1.1",
   updated: "27 August 2026",
   horizon: "24-month field pilot",
   currentGate: "M2 · Coral District 01",
@@ -132,6 +132,38 @@ export const simulationLayers = [
   },
 ];
 
+export const growthAreas = [
+  ["Assets", "Measured and synthetic 3D sources, manifests, scale, licences, and lineage."],
+  ["Pipelines", "Photogrammetry, semantic processing, tiling, change detection, and data preparation."],
+  ["Model adapters", "Independent wrappers for weather, waves, circulation, drift, sediment, and ecology."],
+  ["Services", "Catalog, time-aware twin state, orchestration, storage, and stable APIs."],
+  ["Simulation", "Thin Isaac and reference-simulator integrations that consume canonical packages."],
+  ["Robotics", "ROS 2 vehicles, sensors, autonomy, mission control, recording, and evaluation."],
+  ["Scenarios", "Immutable experiment manifests connecting a site, time, model run, robot, and mission."],
+  ["Experience", "The blueprint, scientific explorer, operational dashboard, and reports."],
+] as const;
+
+export const modelRegistry = [
+  { name: "OpenDrift", family: "Drift", purpose: "Oil, objects, larvae, plumes, SAR", licence: "GPLv2", build: "pip · Python", phase: "M4" },
+  { name: "SWAN", family: "Waves", purpose: "Nearshore wave transformation", licence: "GPL", build: "Makefile", phase: "M4" },
+  { name: "HYSPLIT", family: "Atmosphere", purpose: "Dust and pollution trajectories", licence: "Terms apply", build: "Binaries", phase: "M6" },
+  { name: "WAVEWATCH III", family: "Waves", purpose: "Basin and regional wave boundary", licence: "NOAA open", build: "CMake", phase: "M4" },
+  { name: "SCHISM", family: "Coastal ocean", purpose: "Circulation, water level, surge", licence: "Apache 2.0", build: "CMake · ParMETIS", phase: "M4" },
+  { name: "FABM + ERSEM + GOTM", family: "Ecology", purpose: "Mixing, nutrients, oxygen, plankton", licence: "Verify bundle", build: "CMake", phase: "M6" },
+  { name: "MITgcm", family: "Ocean", purpose: "Regional circulation experiments", licence: "MIT", build: "genmake2", phase: "M6" },
+  { name: "ADCIRC", family: "Coastal ocean", purpose: "Tides, water levels, storm surge", licence: "Registration", build: "CMake", phase: "M6" },
+  { name: "WRF + WPS", family: "Weather", purpose: "High-resolution atmospheric forcing", licence: "Public domain*", build: "Complex", phase: "M6" },
+  { name: "Delft3D", family: "Coastal ocean", purpose: "Flow, sediment, morphology, turbidity", licence: "Verify modules", build: "Autotools", phase: "M6" },
+] as const;
+
+export const environmentPackage = [
+  "Site, grid, and vertical datum",
+  "Issue time, valid time, and ensemble",
+  "Variables, units, and uncertainty",
+  "Truth class and interpolation policy",
+  "Inputs, executable, configuration, and checksums",
+] as const;
+
 export const roadmap: RoadmapPhase[] = [
   {
     id: "foundation",
@@ -192,6 +224,7 @@ export const roadmap: RoadmapPhase[] = [
     deliverables: [
       "Spotter wave, wind, SST, and smart-mooring connector",
       "Public weather, ocean, wave, and satellite adapters",
+      "Shared model-adapter lifecycle and Environment Package contract",
       "NetCDF / Zarr field catalog and local ENU conversion",
       "Forecast ensemble and uncertainty representation",
       "Time playback from historical event to future scenario",
