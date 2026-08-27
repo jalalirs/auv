@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+# Manage the pinned NVIDIA Isaac Sim WebRTC container on the GPU host.
+# Usage: ./tools/isaac {check|up|stop|restart|status|logs}
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+if [ -f "${REPO_ROOT}/.env" ]; then
+    set -a
+    source "${REPO_ROOT}/.env"
+    set +a
+fi
+
+REMOTE_DIR="${AUV_REMOTE_DIR:-code/auv}"
+IMAGE="${ISAAC_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.1}"
+CONTAINER="${ISAAC_CONTAINER:-auv-isaac-sim}"
+GPU_DEVICE="${ISAAC_GPU_DEVICE:-1}"
+RUNTIME_DIR="${ISAAC_RUNTIME_DIR:-/home/jalalirs/code/auv/.runtime/isaac-sim}"
+STREAM_HOST="${ISAACSIM_HOST:-100.76.65.1}"
+SIGNAL_PORT="${ISAACSIM_SIGNAL_PORT:-49100}"
+STREAM_PORT="${ISAACSIM_STREAM_PORT:-47998}"
+STAGE="${ISAAC_STAGE:-projects/002_red_sea_digital_twin/scenarios/000_platform_calibration/stage.usda}"
+EULA_ACCEPTED="${ISAAC_ACCEPT_EULA:-N}"
+
+if [[ ! "${REMOTE_DIR}" =~ ^[A-Za-z0-9._/-]+$ ]] \
+    || [[ "${REMOTE_DIR}" = /* ]] \
+    || [[ "${REMOTE_DIR}" == *..* ]]; then
+    printf 'Refusing unsafe AUV_REMOTE_DIR: %s\n' "${REMOTE_DIR}" >&2
+    exit 1
+fi
+
+if [[ ! "${STAGE}" =~ ^[A-Za-z0-9._/-]+$ ]] \
+    || [[ "${STAGE}" = /* ]] \
+    || [[ "${STAGE}" == *..* ]]; then
+    printf 'Refusing unsafe ISAAC_STAGE: %s\n' "${STAGE}" >&2
+    exit 1
+fi
+
+if [[ ! "${IMAGE}" =~ ^[A-Za-z0-9._/:@-]+$ ]] \
+    || [[ ! "${CONTAINER}" =~ ^[A-Za-z0-9_.-]+$ ]] \
+    || [[ ! "${GPU_DEVICE}" =~ ^[0-9]+$ ]] \
+    || [[ ! "${SIGNAL_PORT}" =~ ^[0-9]+$ ]] \
+    || [[ ! "${STREAM_PORT}" =~ ^[0-9]+$ ]] \
+    || [[ ! "${STREAM_HOST}" =~ ^[A-Za-z0-9.:_-]+$ ]] \
+    || [[ ! "${RUNTIME_DIR}" =~ ^/[A-Za-z0-9._/-]+$ ]] \
+    || [[ "${RUNTIME_DIR}" == *..* ]]; then
+    printf 'Invalid Isaac image, container, GPU, address, port, or runtime directory.\n' >&2
+    exit 1
+fi
+
+remote() {
+    "${SCRIPT_DIR}/gpu" "$1"
+}
+
+require_eula() {
+    case "${EULA_ACCEPTED}" in
+        Y|YES|y|yes) ;;
+        *)
+            printf 'Isaac Sim was not started. Accept the NVIDIA Omniverse EULA, then set ISAAC_ACCEPT_EULA=Y in .env.\n' >&2
+            exit 1
+            ;;
+    esac
+}
+
+require_synced_checkout() {
+    local local_head remote_head
+    if [ -n "$(git -C "${REPO_ROOT}" status --porcelain --untracked-files=all | grep -v '^?? \.env$' || true)" ]; then
+        printf 'Local tracked files are not synchronized. Run tools/gpu sync first.\n' >&2
+        exit 1
+    fi
+    local_head="$(git -C "${REPO_ROOT}" rev-parse HEAD)"
+    remote_head="$(remote "git -C '${REMOTE_DIR}' rev-parse HEAD")"
+    if [ "${local_head}" != "${remote_head}" ]; then
+        printf 'Mac and GPU commits differ. Run tools/gpu sync first.\n' >&2
+        exit 1
+    fi
+}
+
+print_connection() {
+    printf 'Isaac WebRTC server: %s\n' "${STREAM_HOST}"
+    printf 'Signal: TCP %s  Media: UDP %s\n' "${SIGNAL_PORT}" "${STREAM_PORT}"
+    printf 'Scene: %s\n' "${STAGE}"
+}
+
+check_remote() {
+    remote "set -e; \
+        docker image inspect '${IMAGE}' >/dev/null; \
+        test -f '${REMOTE_DIR}/${STAGE}'; \
+        nvidia-smi -i '${GPU_DEVICE}' --query-gpu=name,memory.total,memory.free --format=csv,noheader; \
+        printf 'Image: ${IMAGE}\\nStage: ${REMOTE_DIR}/${STAGE}\\n'; \
+        if docker ps --format '{{.Names}}' | grep -Fxq '${CONTAINER}'; then \
+            printf 'Container: running\\n'; \
+        else \
+            printf 'Container: stopped\\n'; \
+        fi"
+    print_connection
+}
+
+start_remote() {
+    require_eula
+    require_synced_checkout
+
+    remote "set -e; \
+        test -f '${REMOTE_DIR}/${STAGE}'; \
+        mkdir -p \
+            '${RUNTIME_DIR}/cache/main' \
+            '${RUNTIME_DIR}/cache/computecache' \
+            '${RUNTIME_DIR}/config' \
+            '${RUNTIME_DIR}/data' \
+            '${RUNTIME_DIR}/logs' \
+            '${RUNTIME_DIR}/pkg' \
+            '${RUNTIME_DIR}/hub'; \
+        if docker ps -a --format '{{.Names}}' | grep -Fxq '${CONTAINER}'; then \
+            docker rm --force '${CONTAINER}' >/dev/null; \
+        fi; \
+        docker run --detach \
+            --name '${CONTAINER}' \
+            --gpus 'device=${GPU_DEVICE}' \
+            --network host \
+            --shm-size 2g \
+            --user 1234:1234 \
+            --restart no \
+            --env ACCEPT_EULA=Y \
+            --env ISAACSIM_HOST='${STREAM_HOST}' \
+            --env ISAACSIM_SIGNAL_PORT='${SIGNAL_PORT}' \
+            --env ISAACSIM_STREAM_PORT='${STREAM_PORT}' \
+            --volume '${RUNTIME_DIR}/cache/main:/isaac-sim/.cache:rw' \
+            --volume '${RUNTIME_DIR}/cache/computecache:/isaac-sim/.nv/ComputeCache:rw' \
+            --volume '${RUNTIME_DIR}/config:/isaac-sim/.nvidia-omniverse/config:rw' \
+            --volume '${RUNTIME_DIR}/data:/isaac-sim/.local/share/ov/data:rw' \
+            --volume '${RUNTIME_DIR}/logs:/isaac-sim/.nvidia-omniverse/logs:rw' \
+            --volume '${RUNTIME_DIR}/pkg:/isaac-sim/.local/share/ov/pkg:rw' \
+            --volume '${RUNTIME_DIR}/hub:/var/cache/hub:rw' \
+            --volume \"\$HOME/${REMOTE_DIR}:/workspace/auv:ro\" \
+            '${IMAGE}' \
+            --env-url '/workspace/auv/${STAGE}' \
+            --/app/file/ignoreUnsavedOnExit=1 \
+            --/renderer/multiGpu/enabled=false >/dev/null"
+
+    print_connection
+    printf 'First startup can take several minutes while shaders compile. Follow it with: ./tools/isaac logs\n'
+}
+
+case "${1:-status}" in
+    check)
+        check_remote
+        ;;
+    up)
+        start_remote
+        ;;
+    stop)
+        remote "if docker ps -a --format '{{.Names}}' | grep -Fxq '${CONTAINER}'; then docker stop '${CONTAINER}'; else printf 'Isaac container does not exist.\\n'; fi"
+        ;;
+    restart)
+        remote "if docker ps -a --format '{{.Names}}' | grep -Fxq '${CONTAINER}'; then docker stop '${CONTAINER}' >/dev/null; fi"
+        start_remote
+        ;;
+    status)
+        remote "docker ps -a --filter 'name=^/${CONTAINER}$' --format 'table {{.Names}}\\t{{.Status}}\\t{{.Image}}'; nvidia-smi -i '${GPU_DEVICE}' --query-gpu=name,memory.total,memory.used,memory.free,utilization.gpu --format=csv,noheader"
+        print_connection
+        ;;
+    logs)
+        "${SCRIPT_DIR}/gpu" -s "docker logs --follow --tail 200 '${CONTAINER}'"
+        ;;
+    *)
+        printf 'Usage: %s {check|up|stop|restart|status|logs}\n' "$0" >&2
+        exit 2
+        ;;
+esac
