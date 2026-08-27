@@ -4,6 +4,7 @@ RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         libgl1 \
         libglib2.0-0 \
+        libcom-err2 \
         libgomp1 \
         libopengl0 \
         libxext6 \
