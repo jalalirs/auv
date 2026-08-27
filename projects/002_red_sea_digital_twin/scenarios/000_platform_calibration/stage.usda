@@ -1,0 +1,166 @@
+#usda 1.0
+(
+    defaultPrim = "RedSeaTwin"
+    doc = "Dependency-free Red Sea Digital Twin platform calibration stage"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "RedSeaTwin" (
+    kind = "assembly"
+)
+{
+    custom string redsea:frame = "site_enu"
+    custom string redsea:scenarioId = "redsea.platform-calibration.v1"
+    custom string redsea:truthClass = "scenario"
+
+    def Scope "Environment"
+    {
+        def Cube "Seabed"
+        {
+            double size = 1
+            color3f[] primvars:displayColor = [(0.26, 0.19, 0.11)]
+            double3 xformOp:scale = (40, 40, 0.2)
+            double3 xformOp:translate = (0, 0, -5.1)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        }
+
+        def Cube "WaterVolume"
+        {
+            double size = 1
+            color3f[] primvars:displayColor = [(0.015, 0.22, 0.32)]
+            float[] primvars:displayOpacity = [0.12]
+            double3 xformOp:scale = (40, 40, 5)
+            double3 xformOp:translate = (0, 0, -2.5)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        }
+
+        def Cube "WaterSurface"
+        {
+            double size = 1
+            color3f[] primvars:displayColor = [(0.05, 0.48, 0.62)]
+            float[] primvars:displayOpacity = [0.3]
+            double3 xformOp:scale = (40, 40, 0.02)
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        }
+    }
+
+    def Scope "Frames"
+    {
+        def Xform "SiteENU"
+        {
+            custom string redsea:axisX = "east"
+            custom string redsea:axisY = "north"
+            custom string redsea:axisZ = "up"
+
+            def Capsule "East"
+            {
+                uniform token axis = "X"
+                double height = 4
+                double radius = 0.04
+                color3f[] primvars:displayColor = [(0.9, 0.08, 0.06)]
+                double3 xformOp:translate = (2, 0, -4.75)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+            }
+
+            def Capsule "North"
+            {
+                uniform token axis = "Y"
+                double height = 4
+                double radius = 0.04
+                color3f[] primvars:displayColor = [(0.08, 0.75, 0.14)]
+                double3 xformOp:translate = (0, 2, -4.75)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+            }
+
+            def Capsule "Up"
+            {
+                uniform token axis = "Z"
+                double height = 4
+                double radius = 0.04
+                color3f[] primvars:displayColor = [(0.08, 0.24, 0.95)]
+                double3 xformOp:translate = (0, 0, -2.75)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+            }
+        }
+    }
+
+    def Scope "Calibration"
+    {
+        def Xform "OneMeterReference"
+        {
+            custom string redsea:dimension = "1 m cube"
+            double3 xformOp:translate = (5, 0, -4.4)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+
+            def Cube "Cube"
+            {
+                double size = 1
+                color3f[] primvars:displayColor = [(0.95, 0.72, 0.08)]
+            }
+        }
+
+        def Xform "AUVEnvelopeReference"
+        {
+            custom string redsea:dimension = "2.0 m long, 0.5 m diameter"
+            double3 xformOp:translate = (-5, 0, -3.5)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+
+            def Capsule "Envelope"
+            {
+                uniform token axis = "X"
+                double height = 1.5
+                double radius = 0.25
+                color3f[] primvars:displayColor = [(0.95, 0.32, 0.04)]
+            }
+        }
+
+        def Sphere "FeatureTargetNear"
+        {
+            double radius = 0.35
+            color3f[] primvars:displayColor = [(0.78, 0.18, 0.7)]
+            double3 xformOp:translate = (0, 5, -4.5)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Sphere "FeatureTargetFar"
+        {
+            double radius = 0.7
+            color3f[] primvars:displayColor = [(0.16, 0.72, 0.8)]
+            double3 xformOp:translate = (10, 10, -4.15)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Scope "Render"
+    {
+        def DistantLight "Sun"
+        {
+            float angle = 1
+            color3f color = (0.92, 0.97, 1)
+            float intensity = 850
+            double3 xformOp:rotateXYZ = (25, -35, -20)
+            uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+        }
+
+        def SphereLight "Fill"
+        {
+            float intensity = 2500
+            float radius = 2
+            double3 xformOp:translate = (-8, -8, 4)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Camera "Overview"
+        {
+            float2 clippingRange = (0.1, 1000)
+            float focalLength = 24
+            float horizontalAperture = 20.955
+            float verticalAperture = 15.2908
+            double3 xformOp:rotateXYZ = (66, 0, 42)
+            double3 xformOp:translate = (18, -18, 13)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+        }
+    }
+}
