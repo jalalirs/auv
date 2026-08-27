@@ -1,0 +1,45 @@
+schema_version: 1
+decision_date: 2026-08-27
+
+canonical:
+  status: pinned_not_deployed
+  isaac_sim: "6.0.1"
+  host:
+    architecture: x86_64
+    operating_system: Ubuntu 24.04 LTS
+    nvidia_driver_tested_by_vendor: "595.58.03"
+    container_runtime: Docker with NVIDIA Container Toolkit
+  python: "3.12"
+  ros:
+    distribution: jazzy
+    integration: Isaac Sim ROS 2 bridge
+  streaming:
+    protocol: WebRTC
+    client: NVIDIA Isaac Sim WebRTC Streaming Client
+    client_version: "2.0.0"
+    macos_architecture: aarch64
+  scene_contract: OpenUSD
+
+compatibility_lab:
+  status: evaluation_only
+  isaac_sim: "5.1.0"
+  python: "3.11"
+  ros_distributions:
+    - humble
+    - jazzy
+  oceansim:
+    upstream_target: "5.0"
+    upstream_commit_audited: 2809388b5a1dba5f3ebbf7737dc1a6de90a5063a
+    graal_fork_commit_audited: 2030b0b3cddc330a9e01d96f0caf07a685a72d85
+    license: BSD-3-Clause
+  isaacsim_underwater:
+    target: "5.1"
+    commit_audited: 3ac6ae8b081c17cacc4775e3fcd9d62ff53fa8bc
+    license: not_found
+    code_reuse_allowed: false
+
+policy:
+  canonical_assets_must_open_without_third_party_underwater_extensions: true
+  experiments_pin_all_runtime_and_extension_revisions: true
+  unsupported_runtime_is_never_a_production_dependency: true
+  host_mutation_requires_separate_approval: true
