@@ -66,6 +66,7 @@ The first end-to-end result will:
 - [Architecture](architecture.md)
 - [Roadmap and gates](roadmap.md)
 - [Initial data sources](data-sources.md)
+- [Platform and runtime](platform/README.md)
 - [Asset boundary](assets/README.md)
 - [Isaac extensions](extensions/README.md)
 - [Data services](services/README.md)
