@@ -8,12 +8,15 @@ simulation code, controls, navigation, perception, experiments, research notes,
 and reproducible results belong here. Large datasets, recordings, model weights,
 and generated build artifacts do not.
 
-## Current milestones
+## Current programs
 
-Project 001 starts with a sonar-equipped BlueROV2 Heavy beside a sunken ship in
-DAVE. The first runnable checkpoint streams its camera, sonar, navigation, and
-vehicle state from the GPU box into Foxglove on the Mac. It then grows into a
-vehicle that can:
+### Project 001 — Marine robotics foundation
+
+Project 001 is the learning and simulator-validation track. It starts with a
+sonar-equipped BlueROV2 Heavy in DAVE, then adds the visual Stonefish Living
+Reef and MOLA AUV. Together these labs establish ROS 2, vehicle control,
+underwater sensors, hydrodynamics, remote GPU rendering, and reproducible
+experiments. The vehicle work grows toward a system that can:
 
 1. hold a commanded depth and heading;
 2. reject a simple current disturbance;
@@ -22,12 +25,22 @@ vehicle that can:
 5. record the mission as MCAP; and
 6. compare estimated state with simulator ground truth.
 
-Project 002 is the visual and physical **Living Reef**: Stonefish 1.6, a MOLA
-AUV, geometry-based hydrodynamics, currents, marine snow, realistic underwater
-light transport, a coral field, forward camera and sonar, and moving marine
-life. The actual simulator window is GPU-rendered and streamed to the Mac with
-VirtualGL and Xpra; terminal keyboard input remains a separate low-latency ROS
-control path.
+The Living Reef is an explicitly bounded learning environment, not a digital
+twin or a claim of site-level ecological fidelity.
+
+### Project 002 — Red Sea Digital Twin
+
+Project 002 is the long-term research program: an OpenUSD-based, time-varying
+3D twin of Red Sea reef and dive sites, with Isaac Sim as the robotics,
+rendering, sensor, and synthetic-data runtime. Reef geometry, field
+observations, ocean forecasts, ecological annotations, and AUV missions remain
+separate composable layers.
+
+The first vertical slice will load a real public reef reconstruction, preserve
+its provenance and coordinate frame, replay a small environmental time series,
+and expose the site to a ROS 2-controlled simulated vehicle.
+
+Start with the [Project 002 charter](projects/002_red_sea_digital_twin/README.md).
 
 ## Execution model
 
@@ -50,6 +63,7 @@ control path.
 | `analysis` | Non-ROS analysis library and notebooks |
 | `research` | Bibliography, reading list, and original notes |
 | `docs` | Roadmap, architecture, concepts, decisions, and lab log |
+| `projects` | Long-lived research programs with explicit scope and gates |
 | `data` | Ignored local/remote datasets, recordings, and models |
 
 See [docs/architecture.md](docs/architecture.md) for the system boundary and
