@@ -39,6 +39,18 @@ The home directory is about 1.3 TB. Its largest visible areas include roughly
 under `stt-train`, and 35 GB under `models`. These figures identify candidates
 for a separate ownership review; they do **not** authorize deletion.
 
+## Post-audit change log
+
+On 2026-08-27, the retired `zameel-qwen35-35b-a3b` vLLM container was stopped
+after confirming that port 8011 had no active connections. Its automatic
+restart policy was disabled. GPU 1 changed from about 3.6 GiB free to 44.6 GiB
+free. The independent embedding service remains active and uses about 3.9 GiB.
+
+No Qwen data was deleted. Approximately 35 GB of model weights, a 20 GB vLLM
+image, and the stopped container remain on disk pending explicit deletion
+approval. Docker, K3s, SSH, Tailscale, and the other 78 running containers
+remained active after the change.
+
 ## Compatibility gaps
 
 The [Isaac Sim 6.0 requirements](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html)
