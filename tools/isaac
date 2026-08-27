@@ -18,10 +18,11 @@ IMAGE="${ISAAC_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.1}"
 CONTAINER="${ISAAC_CONTAINER:-auv-isaac-sim}"
 GPU_DEVICE="${ISAAC_GPU_DEVICE:-1}"
 RUNTIME_DIR="${ISAAC_RUNTIME_DIR:-/home/jalalirs/code/auv/.runtime/isaac-sim}"
+DATA_DIR="${AUV_DATA_DIR:-/home/jalalirs/code/auv-data}"
 STREAM_HOST="${ISAACSIM_HOST:-100.76.65.1}"
 SIGNAL_PORT="${ISAACSIM_SIGNAL_PORT:-49100}"
 STREAM_PORT="${ISAACSIM_STREAM_PORT:-47998}"
-STAGE="${ISAAC_STAGE:-projects/002_red_sea_digital_twin/scenarios/000_platform_calibration/stage.usda}"
+STAGE="${ISAAC_STAGE:-projects/002_red_sea_digital_twin/scenarios/010_reefs4d_c2_2019/stage.usda}"
 STAGE_LOADER="${STAGE%/*}/open_stage.py"
 EULA_ACCEPTED="${ISAAC_ACCEPT_EULA:-N}"
 
@@ -46,7 +47,9 @@ if [[ ! "${IMAGE}" =~ ^[A-Za-z0-9._/:@-]+$ ]] \
     || [[ ! "${STREAM_PORT}" =~ ^[0-9]+$ ]] \
     || [[ ! "${STREAM_HOST}" =~ ^[A-Za-z0-9.:_-]+$ ]] \
     || [[ ! "${RUNTIME_DIR}" =~ ^/[A-Za-z0-9._/-]+$ ]] \
-    || [[ "${RUNTIME_DIR}" == *..* ]]; then
+    || [[ "${RUNTIME_DIR}" == *..* ]] \
+    || [[ ! "${DATA_DIR}" =~ ^/[A-Za-z0-9._/-]+$ ]] \
+    || [[ "${DATA_DIR}" == *..* ]]; then
     printf 'Invalid Isaac image, container, GPU, address, port, or runtime directory.\n' >&2
     exit 1
 fi
@@ -114,7 +117,8 @@ start_remote() {
             '${RUNTIME_DIR}/data' \
             '${RUNTIME_DIR}/logs' \
             '${RUNTIME_DIR}/pkg' \
-            '${RUNTIME_DIR}/hub'; \
+            '${RUNTIME_DIR}/hub' \
+            '${DATA_DIR}/red-sea-twin'; \
         if docker ps -a --format '{{.Names}}' | grep -Fxq '${CONTAINER}'; then \
             docker rm --force '${CONTAINER}' >/dev/null; \
         fi; \
@@ -138,6 +142,7 @@ start_remote() {
             --volume '${RUNTIME_DIR}/logs:/isaac-sim/.nvidia-omniverse/logs:rw' \
             --volume '${RUNTIME_DIR}/pkg:/isaac-sim/.local/share/ov/pkg:rw' \
             --volume '${RUNTIME_DIR}/hub:/var/cache/hub:rw' \
+            --volume '${DATA_DIR}/red-sea-twin:/data/red-sea-twin:ro' \
             --volume \"\$HOME/${REMOTE_DIR}:/workspace/auv:ro\" \
             '${IMAGE}' \
             --/app/file/ignoreUnsavedOnExit=1 \

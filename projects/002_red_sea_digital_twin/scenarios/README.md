@@ -17,3 +17,5 @@ credentials or large data files.
 
 - [`000_platform_calibration`](000_platform_calibration/README.md):
   dependency-free meters/Z-up/ENU runtime smoke test
+- [`010_reefs4d_c2_2019`](010_reefs4d_c2_2019/README.md): first measured
+  Red Sea reef inspection scene with explicitly synthetic presentation context

@@ -9,6 +9,7 @@ The first pinned input is `reefs4d.c2.2019`. Run it from the Mac with:
 ```bash
 ./tools/reef-data fetch
 ./tools/reef-data prepare
+./tools/reef-data validate
 ./tools/reef-data status
 ```
 

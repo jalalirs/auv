@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fetch and prepare the first traceable reef asset on the GPU host.
-# Usage: ./tools/reef-data {fetch|prepare|status|all}
+# Usage: ./tools/reef-data {fetch|prepare|validate|status|all}
 
 set -euo pipefail
 
@@ -19,6 +19,7 @@ SOURCE_DIR="${DATA_ROOT}/assets/source/reefs4d/zenodo-14616671"
 DERIVED_DIR="${DATA_ROOT}/assets/derived/reefs4d/c2-2019/lod0"
 IMAGE="auv-reef-ingest:pymeshlab-2025.7-usd-25.11"
 PIPELINE="projects/002_red_sea_digital_twin/pipelines/reef_ingest"
+SCENARIO="projects/002_red_sea_digital_twin/scenarios/010_reefs4d_c2_2019"
 
 if [[ ! "${DATA_ROOT}" =~ ^/[A-Za-z0-9._/-]+$ ]] \
     || [[ "${DATA_ROOT}" == *..* ]]; then
@@ -79,6 +80,23 @@ prepare() {
             --target-faces 450000"
 }
 
+validate() {
+    require_synced_checkout
+    remote "set -e; \
+        test -f '${DERIVED_DIR}/derived.json'; \
+        cd '${REMOTE_REPO}/${SCENARIO}'; \
+        sha256sum --check checksums.sha256; \
+        docker run --rm \
+            --user 1000:1000 \
+            --env HOME=/tmp \
+            --entrypoint python \
+            --volume '${REMOTE_REPO}:/workspace:ro' \
+            --volume '${DATA_ROOT}:/data/red-sea-twin:ro' \
+            '${IMAGE}' \
+            '/workspace/${SCENARIO}/validate_stage.py' \
+            '/workspace/${SCENARIO}/stage.usda'"
+}
+
 status() {
     remote "set -e; \
         printf 'Source:\\n'; \
@@ -99,16 +117,20 @@ case "${1:-status}" in
     prepare)
         prepare
         ;;
+    validate)
+        validate
+        ;;
     status)
         status
         ;;
     all)
         fetch
         prepare
+        validate
         status
         ;;
     *)
-        printf 'Usage: %s {fetch|prepare|status|all}\n' "$0" >&2
+        printf 'Usage: %s {fetch|prepare|validate|status|all}\n' "$0" >&2
         exit 2
         ;;
 esac
