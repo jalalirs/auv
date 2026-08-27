@@ -1,0 +1,31 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import worker from "../dist/server/index.js";
+
+const assets = {
+  fetch: async () => new Response("Not found", { status: 404 }),
+};
+
+const context = {
+  waitUntil() {},
+  passThroughOnException() {},
+};
+
+test("the Coral City blueprint renders its canonical program sections", async () => {
+  const response = await worker.fetch(
+    new Request("https://coral-city.test/"),
+    { ASSETS: assets },
+    context,
+  );
+  const html = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(html, /Coral City/);
+  assert.match(html, /A living Red Sea\./);
+  assert.match(html, /Before we enter it\./);
+  assert.match(html, /One system, not disconnected demos\./);
+  assert.match(html, /Milestones close with evidence\./);
+  assert.match(html, /Coral District 01/);
+  assert.doesNotMatch(html, /codex-preview|SkeletonPreview/);
+});

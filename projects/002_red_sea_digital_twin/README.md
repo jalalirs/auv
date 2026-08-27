@@ -63,6 +63,7 @@ The first end-to-end result will:
 
 ## Project documents
 
+- [Coral City system blueprint](website/README.md)
 - [Architecture](architecture.md)
 - [Roadmap and gates](roadmap.md)
 - [Initial data sources](data-sources.md)
