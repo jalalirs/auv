@@ -37,7 +37,7 @@ function StatusMark({ status }: { status: "complete" | "active" | "planned" }) {
 
 export default function Home() {
   const [activeArchitecture, setActiveArchitecture] = useState(0);
-  const [activePhase, setActivePhase] = useState(1);
+  const [activePhase, setActivePhase] = useState(0);
   const selectedArchitecture = architecture[activeArchitecture];
   const selectedPhase = roadmap[activePhase];
   const totalBudget = useMemo(() => budget.reduce((sum, [, value]) => sum + value, 0), []);
@@ -184,8 +184,8 @@ export default function Home() {
 
       <section className="section roadmap-section" id="roadmap">
         <div className="section-heading">
-          <div><p className="eyebrow">THE 24-MONTH WALK</p><h2>Milestones close with evidence.</h2></div>
-          <p>No arbitrary completion percentages. A phase is complete only when its acceptance gate passes and its evidence is preserved.</p>
+          <div><p className="eyebrow">SIX OPERATIONAL RELEASES</p><h2>Every phase ends in a working system.</h2></div>
+          <p>Experiments, imports, and technical proofs are tasks inside a release. They never count as phases. A release closes only when people can use its complete outcome and every acceptance test passes.</p>
         </div>
         <div className="roadmap-layout">
           <div className="roadmap-index" role="tablist" aria-label="Roadmap phases">
@@ -198,9 +198,10 @@ export default function Home() {
           <article className="phase-detail" role="tabpanel">
             <div className="phase-top"><div><p className="eyebrow">{selectedPhase.number} · {selectedPhase.horizon}</p><h3>{selectedPhase.title}</h3></div><StatusMark status={selectedPhase.status} /></div>
             <p className="phase-intent">{selectedPhase.intent}</p>
+            <div className="release-outcome"><small>WORKING SYSTEM AT THE END</small><p>{selectedPhase.outcome}</p></div>
             <div className="phase-columns">
               <div><small>DELIVERABLES</small><ul>{selectedPhase.deliverables.map((item) => <li key={item}>{item}</li>)}</ul></div>
-              <div><small>ACCEPTANCE GATE</small><p>{selectedPhase.gate}</p>{selectedPhase.evidence && <><small>EVIDENCE</small><ul className="evidence-list">{selectedPhase.evidence.map((item) => <li key={item}>{item}</li>)}</ul></>}</div>
+              <div><small>ACCEPTANCE TESTS</small><ul className="acceptance-list">{selectedPhase.acceptanceTests.map((item) => <li key={item}>{item}</li>)}</ul><small>RELEASE GATE</small><p>{selectedPhase.gate}</p></div>
             </div>
           </article>
         </div>
@@ -229,7 +230,7 @@ export default function Home() {
       </section>
 
       <section className="next-gate">
-        <div><p className="eyebrow">CURRENT EXECUTION GATE</p><h2>M2 · Coral District 01</h2><p>Build the first credible 50 × 50 m reef district, establish visual scale and truth classes, and place a controllable robot inside it.</p></div>
+        <div><p className="eyebrow">ACTIVE OPERATIONAL RELEASE</p><h2>R1 · Scientific Reef Atlas</h2><p>A scientist can add an authorized survey, inspect a scientifically honest 3D site, trace every asset to its evidence, and compare published reef versions without editing code.</p></div>
         <a className="button button-primary" href="#roadmap">Read the gate <Arrow /></a>
       </section>
 

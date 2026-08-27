@@ -5,8 +5,10 @@ robotic digital twin project. The roadmap is deliberately stored with the code:
 completed work changes phase only when its acceptance gate passes and evidence
 is preserved.
 
-Program content and milestone status live in `app/plan-data.ts`. The website is
-the human-readable view of that source of truth.
+Program release definitions and status live in `../program/releases.json`.
+The website imports that file directly, so the human-readable roadmap cannot
+drift from the repository's acceptance gates. Supporting display content lives
+in `app/plan-data.ts`.
 
 The candidate scientific engines and their adoption state live in
 `../models/registry.yaml`. They enter the system only through the shared model

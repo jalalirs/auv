@@ -1,3 +1,5 @@
+import releases from "../../program/releases.json";
+
 export type Status = "complete" | "active" | "planned";
 
 export type RoadmapPhase = {
@@ -7,18 +9,19 @@ export type RoadmapPhase = {
   horizon: string;
   status: Status;
   intent: string;
+  outcome: string;
   deliverables: string[];
+  acceptanceTests: string[];
   gate: string;
-  evidence?: string[];
 };
 
 export const program = {
   name: "Coral City",
   subtitle: "Red Sea robotic digital twin laboratory",
-  version: "Program blueprint 1.1",
+  version: "Program blueprint 1.2",
   updated: "27 August 2026",
   horizon: "24-month field pilot",
-  currentGate: "M2 · Coral District 01",
+  currentGate: "R1 · Scientific Reef Atlas",
   northStar:
     "A living, uncertainty-aware reef twin where real observations become explorable 3D state, ocean predictions become environmental forcing, and autonomous vehicles can be trained, challenged, compared, and deployed safely.",
 };
@@ -164,122 +167,7 @@ export const environmentPackage = [
   "Inputs, executable, configuration, and checksums",
 ] as const;
 
-export const roadmap: RoadmapPhase[] = [
-  {
-    id: "foundation",
-    number: "M0–M1",
-    title: "Foundation and first measured reef",
-    horizon: "Complete",
-    status: "complete",
-    intent: "Prove the project can preserve scientific lineage, execute remotely, and render a real reef asset in the chosen robotics platform.",
-    deliverables: [
-      "Clean repository and Mac ↔ GitHub ↔ GPU workflow",
-      "Pinned Isaac Sim 6 runtime with WebRTC",
-      "Scientific source manifest and immutable external data store",
-      "Texture-preserving OpenUSD conversion pipeline",
-      "First measured Reefs4D C2 outcrop in Isaac Sim",
-    ],
-    gate: "Measured reef composes with valid scale, texture, material, cameras, checksums, and provenance.",
-    evidence: ["Isaac Sim 6.0.1 live", "449,999-face visual LOD", "GPU composition validator passing"],
-  },
-  {
-    id: "district",
-    number: "M2",
-    title: "Coral District 01",
-    horizon: "Weeks 1–6",
-    status: "active",
-    intent: "Replace the calibration box with the first convincing, scientifically honest 50 × 50 m robotics district.",
-    deliverables: [
-      "Streamed seabed and reef tiles with explicit truth classes",
-      "Measured anchor reef plus clearly synthetic training habitat",
-      "Underwater lighting, attenuation, particles, surface, and life",
-      "Overview, chase, top, first-person, sonar, and science views",
-      "A controllable robot proxy and district scale reference",
-    ],
-    gate: "A person can enter the district, understand scale and truth, drive a vehicle, and see a credible reef rather than a test tank.",
-  },
-  {
-    id: "robot",
-    number: "M3",
-    title: "Robot and sensor laboratory",
-    horizon: "Months 2–4",
-    status: "planned",
-    intent: "Create a validated marine robot that behaves consistently across manual control, ROS 2 autonomy, and repeatable tests.",
-    deliverables: [
-      "BlueROV-class articulated vehicle with thrusters",
-      "Buoyancy, drag, added mass, currents, and energy model",
-      "IMU, depth, DVL, camera, forward sonar, altimeter, and CTD",
-      "Keyboard/gamepad, ROS 2, SIL, record, and replay",
-      "Cross-check cases against Stonefish or DAVE",
-    ],
-    gate: "Depth, heading, velocity, and sensor-reference tests pass with documented tolerances.",
-  },
-  {
-    id: "ocean",
-    number: "M4",
-    title: "Ocean data engine",
-    horizon: "Months 4–7",
-    status: "planned",
-    intent: "Turn live and historical metocean data into spatially and temporally coherent forcing for the reef lab.",
-    deliverables: [
-      "Spotter wave, wind, SST, and smart-mooring connector",
-      "Public weather, ocean, wave, and satellite adapters",
-      "Shared model-adapter lifecycle and Environment Package contract",
-      "NetCDF / Zarr field catalog and local ENU conversion",
-      "Forecast ensemble and uncertainty representation",
-      "Time playback from historical event to future scenario",
-    ],
-    gate: "A selected date produces a traceable reef forcing package and the same package replays deterministically.",
-  },
-  {
-    id: "autonomy",
-    number: "M5",
-    title: "Autonomy proving ground",
-    horizon: "Months 6–10",
-    status: "planned",
-    intent: "Make autonomy measurable through standard reef missions, environmental ensembles, and controlled faults.",
-    deliverables: [
-      "Coverage, inspection, mapping, and adaptive-sampling missions",
-      "Visual-sonar SLAM and semantic reef mapping baselines",
-      "Collision-aware and reef-contact-aware planning",
-      "Fault injection and domain randomization",
-      "Mission scorecards, regression runs, and policy comparison",
-    ],
-    gate: "Two autonomy approaches can be compared fairly across identical seeded scenarios and uncertainty ensembles.",
-  },
-  {
-    id: "living-twin",
-    number: "M6",
-    title: "Living ecological twin",
-    horizon: "Months 9–15",
-    status: "planned",
-    intent: "Connect repeat 3D surveys and reef observations to change detection, health state, interventions, and forecasts.",
-    deliverables: [
-      "Repeat-survey alignment and structural change products",
-      "Coral, substrate, algae, damage, and nursery semantics",
-      "Temperature exposure and bleaching-risk histories",
-      "Intervention and restoration scenario objects",
-      "Assimilated state with confidence and lineage",
-    ],
-    gate: "The twin answers what changed, why it may have changed, how certain we are, and where a robot should observe next.",
-  },
-  {
-    id: "field",
-    number: "M7",
-    title: "Saudi Red Sea field pilot",
-    horizon: "Months 15–24",
-    status: "planned",
-    intent: "Calibrate simulation against a real site and close the observe–predict–deploy–learn loop.",
-    deliverables: [
-      "Partner-approved site and survey campaign",
-      "Sensor deployment and operating data agreements",
-      "AUV field missions rehearsed in the twin",
-      "Sim-to-real error and forecast-skill assessment",
-      "Operational runbooks, safety case, and pilot demonstration",
-    ],
-    gate: "A field mission planned and rehearsed in Coral City is executed safely, replayed, and used to update the twin.",
-  },
-];
+export const roadmap = releases as RoadmapPhase[];
 
 export const missionCatalog = [
   ["Coverage survey", "Map a bounded district with minimum energy and complete overlap."],
