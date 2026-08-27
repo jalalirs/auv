@@ -12,6 +12,7 @@ These scripts are the supported human interface to the local/remote workflow.
 | `sim` | Build and manage the remote Compose service |
 | `view` | Manage the SSH tunnel used by Foxglove |
 | `reef` | Build, run, view, and keyboard-drive the Stonefish Living Reef |
+| `isaac` | Check, launch, stop, and inspect the pinned Isaac Sim WebRTC runtime |
 
 Configuration comes from environment variables documented in `.env.example`.
 Synchronization never rewrites history or replaces an existing non-Git folder.
