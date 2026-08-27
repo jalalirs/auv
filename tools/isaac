@@ -22,6 +22,7 @@ STREAM_HOST="${ISAACSIM_HOST:-100.76.65.1}"
 SIGNAL_PORT="${ISAACSIM_SIGNAL_PORT:-49100}"
 STREAM_PORT="${ISAACSIM_STREAM_PORT:-47998}"
 STAGE="${ISAAC_STAGE:-projects/002_red_sea_digital_twin/scenarios/000_platform_calibration/stage.usda}"
+STAGE_LOADER="${STAGE%/*}/open_stage.py"
 EULA_ACCEPTED="${ISAAC_ACCEPT_EULA:-N}"
 
 if [[ ! "${REMOTE_DIR}" =~ ^[A-Za-z0-9._/-]+$ ]] \
@@ -88,6 +89,7 @@ check_remote() {
     remote "set -e; \
         docker image inspect '${IMAGE}' >/dev/null; \
         test -f '${REMOTE_DIR}/${STAGE}'; \
+        test -f '${REMOTE_DIR}/${STAGE_LOADER}'; \
         nvidia-smi -i '${GPU_DEVICE}' --query-gpu=name,memory.total,memory.free --format=csv,noheader; \
         printf 'Image: ${IMAGE}\\nStage: ${REMOTE_DIR}/${STAGE}\\n'; \
         if docker ps --format '{{.Names}}' | grep -Fxq '${CONTAINER}'; then \
@@ -104,6 +106,7 @@ start_remote() {
 
     remote "set -e; \
         test -f '${REMOTE_DIR}/${STAGE}'; \
+        test -f '${REMOTE_DIR}/${STAGE_LOADER}'; \
         mkdir -p \
             '${RUNTIME_DIR}/cache/main' \
             '${RUNTIME_DIR}/cache/computecache' \
@@ -135,9 +138,11 @@ start_remote() {
             --volume '${RUNTIME_DIR}/hub:/var/cache/hub:rw' \
             --volume \"\$HOME/${REMOTE_DIR}:/workspace/auv:ro\" \
             '${IMAGE}' \
-            --env-url '/workspace/auv/${STAGE}' \
             --/app/file/ignoreUnsavedOnExit=1 \
-            --/renderer/multiGpu/enabled=false >/dev/null"
+            --/renderer/multiGpu/enabled=false \
+            --exec '/workspace/auv/${STAGE_LOADER}' \
+                '/workspace/auv/${STAGE}' \
+                --camera '/RedSeaTwin/Render/Overview' >/dev/null"
 
     print_connection
     printf 'First startup can take several minutes while shaders compile. Follow it with: ./tools/isaac logs\n'
