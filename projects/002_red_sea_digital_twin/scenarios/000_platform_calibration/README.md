@@ -11,6 +11,7 @@ site model. The first real reef enters through Project 002 milestone M1.
 ## Contents
 
 - `stage.usda`: dependency-free OpenUSD stage
+- `open_stage.py`: Isaac Kit startup loader and overview-camera binding
 - `scenario.yaml`: identity, frame, runtime, and acceptance manifest
 - `checksums.sha256`: stage integrity record
 - `validate.sh`: local structural and compliance checks

@@ -21,6 +21,7 @@ with rapidly changing simulation releases.
 - [Isaac and underwater compatibility](isaac-compatibility.md)
 - [Machine-readable runtime pin](runtime.yaml)
 - [Compatibility audit](audits/2026-08-27-isaac-6.0.1-compatibility.md)
+- [First WebRTC launch audit](audits/2026-08-27-isaac-6.0.1-first-launch.md)
 
 ## Launch the M0 calibration scene
 
