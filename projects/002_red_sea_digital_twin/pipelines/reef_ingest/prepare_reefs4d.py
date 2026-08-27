@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+from importlib.metadata import version
 import json
 from pathlib import Path
 import shutil
@@ -196,7 +197,7 @@ def main() -> None:
         },
         "derivation": {
             "tool": "PyMeshLab",
-            "tool_version": pymeshlab.__version__,
+            "tool_version": version("pymeshlab"),
             "filter": "meshing_decimation_quadric_edge_collapse_with_texture",
             "target_faces": args.target_faces,
             "parameters": {
