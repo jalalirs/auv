@@ -1,20 +1,11 @@
 """Open the calibration stage and bind its overview camera at Kit startup."""
 
-import argparse
+import os
 
 import carb
 import omni.client
 import omni.kit.async_engine
 import omni.usd
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("path", help="Absolute path to the USD stage")
-    parser.add_argument("--camera", help="Camera prim to bind after opening")
-    return parser.parse_args()
-
-
 async def open_stage(path, camera_path):
     result, _ = await omni.client.stat_async(path)
     if result != omni.client.Result.OK:
@@ -39,5 +30,9 @@ async def open_stage(path, camera_path):
             carb.log_info(f"AUV overview camera bound: {camera_path}")
 
 
-options = parse_args()
-omni.kit.async_engine.run_coroutine(open_stage(options.path, options.camera))
+stage_path = os.environ.get("AUV_STAGE_PATH")
+camera_path = os.environ.get("AUV_CAMERA_PATH")
+if not stage_path:
+    carb.log_error("AUV_STAGE_PATH is required")
+else:
+    omni.kit.async_engine.run_coroutine(open_stage(stage_path, camera_path))

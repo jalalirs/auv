@@ -129,6 +129,8 @@ start_remote() {
             --env ISAACSIM_HOST='${STREAM_HOST}' \
             --env ISAACSIM_SIGNAL_PORT='${SIGNAL_PORT}' \
             --env ISAACSIM_STREAM_PORT='${STREAM_PORT}' \
+            --env AUV_STAGE_PATH='/workspace/auv/${STAGE}' \
+            --env AUV_CAMERA_PATH='/RedSeaTwin/Render/Overview' \
             --volume '${RUNTIME_DIR}/cache/main:/isaac-sim/.cache:rw' \
             --volume '${RUNTIME_DIR}/cache/computecache:/isaac-sim/.nv/ComputeCache:rw' \
             --volume '${RUNTIME_DIR}/config:/isaac-sim/.nvidia-omniverse/config:rw' \
@@ -140,9 +142,7 @@ start_remote() {
             '${IMAGE}' \
             --/app/file/ignoreUnsavedOnExit=1 \
             --/renderer/multiGpu/enabled=false \
-            --exec '/workspace/auv/${STAGE_LOADER}' \
-                '/workspace/auv/${STAGE}' \
-                --camera '/RedSeaTwin/Render/Overview' >/dev/null"
+            --exec '/workspace/auv/${STAGE_LOADER}' >/dev/null"
 
     print_connection
     printf 'First startup can take several minutes while shaders compile. Follow it with: ./tools/isaac logs\n'
