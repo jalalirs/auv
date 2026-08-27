@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 .runtime/
+.data/
 
 # macOS and editors
 .DS_Store

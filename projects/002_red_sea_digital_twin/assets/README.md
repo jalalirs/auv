@@ -3,9 +3,12 @@
 This directory contains small manifests, schemas, and composition files—not raw
 photogrammetry, textures, point clouds, bathymetry, or generated USD packages.
 
-Large assets live under `/data/red-sea-twin/assets` on the execution target.
-Every asset is addressed by a versioned manifest containing its provenance,
-license, checksum, coordinate metadata, and deterministic preparation steps.
+Large assets live below `${AUV_DATA_DIR}/red-sea-twin/assets` on the execution
+target. The GPU-host default is
+`/home/jalalirs/code/auv-data/red-sea-twin/assets`; containers mount this as
+`/data/assets`. Every asset is addressed by a versioned manifest containing its
+provenance, license, checksum, coordinate metadata, and deterministic
+preparation steps.
 
 Planned representations for a reef site are:
 
