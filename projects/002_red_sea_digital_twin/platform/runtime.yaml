@@ -2,7 +2,7 @@ schema_version: 1
 decision_date: 2026-08-27
 
 canonical:
-  status: webrtc_stream_ready_pending_visual_confirmation
+  status: m0_platform_calibration_verified
   isaac_sim: "6.0.1"
   host:
     architecture: x86_64
@@ -34,13 +34,14 @@ verified_probe:
 
 verified_launch:
   date: 2026-08-27
-  result: stream_ready
+  result: passed
   image: nvcr.io/nvidia/isaac-sim:6.0.1
   container: auv-isaac-sim
   host_gpu: 1
   scene: projects/002_red_sea_digital_twin/scenarios/000_platform_calibration/stage.usda
   scene_sha256: dc46d17b5a1435f92ef1f7f88531f6d3637963a71d95dd0dfdc303ef26aca696
   cold_start_seconds: 242.254
+  warm_start_seconds: 33.675
   container_health: healthy
   macos_signal_probe: passed
   macos_client:
@@ -48,7 +49,7 @@ verified_launch:
     architecture: aarch64
     checksum_verified: true
     code_signature: notarized_developer_id
-    visual_confirmation: pending
+    visual_confirmation: passed
   privacy_consent: false
 
 compatibility_lab:
