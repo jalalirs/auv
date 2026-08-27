@@ -23,7 +23,7 @@ x-auv-common: &auv-common
     DISPLAY: ""
   volumes:
     - .:/workspace/auv
-    - ${AUV_DATA_DIR:-/home/jalalirs/auv-data}:/data
+    - ${AUV_DATA_DIR:-/home/jalalirs/code/auv-data}:/data
   working_dir: /workspace/auv
   shm_size: 1gb
   logging:
@@ -88,7 +88,7 @@ services:
       XDG_RUNTIME_DIR: /data/runtime/reef/xdg
     volumes:
       - .:/workspace/auv
-      - ${AUV_DATA_DIR:-/home/jalalirs/auv-data}:/data
+      - ${AUV_DATA_DIR:-/home/jalalirs/code/auv-data}:/data
     working_dir: /workspace/auv
     shm_size: 2gb
     logging:

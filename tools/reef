@@ -10,8 +10,8 @@ if [ -f "${REPO_ROOT}/.env" ]; then
     set +a
 fi
 
-REMOTE_DIR="${AUV_REMOTE_DIR:-auv}"
-DATA_DIR="${AUV_DATA_DIR:-/home/jalalirs/auv-data}"
+REMOTE_DIR="${AUV_REMOTE_DIR:-code/auv}"
+DATA_DIR="${AUV_DATA_DIR:-/home/jalalirs/code/auv-data}"
 GPU_DEVICE="${AUV_GPU_DEVICE:-0}"
 DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
 USER_UID_VALUE="${AUV_USER_UID:-1000}"

@@ -16,8 +16,8 @@ if [ -f "${REPO_ROOT}/.env" ]; then
 fi
 
 GPU_HOST="${AUV_GPU_HOST:-jalalirs@100.76.65.1}"
-REMOTE_DIR="${AUV_REMOTE_DIR:-auv}"
-REMOTE_GIT_DIR="${AUV_REMOTE_GIT_DIR:-.git-mirrors/auv.git}"
+REMOTE_DIR="${AUV_REMOTE_DIR:-code/auv}"
+REMOTE_GIT_DIR="${AUV_REMOTE_GIT_DIR:-code/.git-mirrors/auv.git}"
 COMMIT_MESSAGE="$*"
 
 validate_remote_path() {

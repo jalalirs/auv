@@ -104,7 +104,7 @@ credentials or tokens.
 
 The GPU box cannot reach GitHub directly. `tools/gpu sync` therefore pushes the
 commit to GitHub and to a private bare Git mirror over Tailscale, then
-fast-forwards `~/auv` from that mirror. It refuses divergent histories,
+fast-forwards `~/code/auv` from that mirror. It refuses divergent histories,
 uncommitted GPU edits, and non-fast-forward updates. Remote build and run
 commands also refuse to proceed until the Mac and GPU commit IDs match.
 
