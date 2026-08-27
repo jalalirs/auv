@@ -65,6 +65,8 @@ The first end-to-end result will:
 
 - [Coral City system blueprint](website/README.md)
 - [Architecture](architecture.md)
+- [Release program and rules](program/README.md)
+- [Active release checklist](program/current-release.md)
 - [Environmental model federation](models/README.md)
 - [Environmental model registry](models/registry.yaml)
 - [Roadmap and gates](roadmap.md)

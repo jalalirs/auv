@@ -28,7 +28,8 @@ test("the Coral City blueprint renders its canonical program sections", async ()
   assert.match(html, /One stable core\. Many replaceable engines\./);
   assert.match(html, /OpenDrift/);
   assert.match(html, /Environment Package/);
-  assert.match(html, /Milestones close with evidence\./);
-  assert.match(html, /Coral District 01/);
+  assert.match(html, /Every phase ends in a working system\./);
+  assert.match(html, /R1 · Scientific Reef Atlas/);
+  assert.match(html, /ACCEPTANCE TESTS/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview/);
 });
