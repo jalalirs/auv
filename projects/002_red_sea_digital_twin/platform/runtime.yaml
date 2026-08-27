@@ -2,7 +2,7 @@ schema_version: 1
 decision_date: 2026-08-27
 
 canonical:
-  status: pinned_not_deployed
+  status: compatibility_passed_not_launched
   isaac_sim: "6.0.1"
   host:
     architecture: x86_64
@@ -19,6 +19,18 @@ canonical:
     client_version: "2.0.0"
     macos_architecture: aarch64
   scene_contract: OpenUSD
+
+verified_probe:
+  date: 2026-08-27
+  result: passed
+  image: nvcr.io/nvidia/isaac-sim:6.0.1
+  host_gpu: 1
+  host_operating_system: Ubuntu 20.04.6 LTS
+  container_operating_system: Ubuntu 24.04.3 LTS
+  host_kernel: 5.15.0-139-generic
+  host_nvidia_driver: "580.126.09"
+  gpu: NVIDIA RTX 5880 Ada Generation
+  host_upgrade_required_for_m0: false
 
 compatibility_lab:
   status: evaluation_only

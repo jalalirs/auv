@@ -2,20 +2,22 @@
 
 - Audit date: 2026-08-27
 - Scope: read-only inspection through Tailscale
-- Execution status: **hold — do not install or upgrade the canonical runtime**
+- Execution status: **isolated Isaac 6.0.1 container approved on GPU 1; host
+  upgrade remains on hold**
 
 ## Outcome
 
-The workstation has excellent CPU, RAM, and GPU capacity, but it is not a safe
-or supported Isaac Sim 6.0.1 host in its current form. It is a shared,
-production-like machine with one system disk, many active Docker workloads, a
-148-day-old single-node K3s control plane, stateful volumes, Secure Boot, and no
-verified out-of-band recovery path.
+The workstation has excellent CPU, RAM, and GPU capacity. Its host operating
+system is outside the documented Isaac 6.0.1 workstation requirements, and it
+remains a shared, production-like machine with no verified out-of-band recovery
+path. Therefore an in-place operating-system or NVIDIA driver upgrade is
+rejected.
 
-An in-place operating-system or NVIDIA driver upgrade is rejected. The safest
-path is to create a clean Ubuntu 24.04 Isaac environment on separately
-recoverable infrastructure, then move only the intended simulation workload
-onto it.
+After GPU 1 and storage were reclaimed, however, the official Isaac 6.0.1
+container compatibility checker passed with the current 580.126.09 driver. M0
+can proceed in an isolated Ubuntu 24.04 container on GPU 1 without changing the
+host boot path. A clean Ubuntu 24.04 host remains the long-term production
+target rather than an immediate blocker.
 
 ## Observed inventory
 
@@ -46,10 +48,23 @@ after confirming that port 8011 had no active connections. Its automatic
 restart policy was disabled. GPU 1 changed from about 3.6 GiB free to 44.6 GiB
 free. The independent embedding service remains active and uses about 3.9 GiB.
 
-No Qwen data was deleted. Approximately 35 GB of model weights, a 20 GB vLLM
-image, and the stopped container remain on disk pending explicit deletion
-approval. Docker, K3s, SSH, Tailscale, and the other 78 running containers
-remained active after the change.
+After explicit deletion approval, the stopped container, its exclusively used
+20 GB vLLM image, and `/home/jalalirs/models/qwen35` were permanently removed.
+Absence checks passed and 55 GiB was recovered, taking the root filesystem from
+91% to 88% used with about 221 GiB available before the Isaac image pull.
+Docker, K3s, SSH, Tailscale, and the other 78 running containers remained
+active after the change.
+
+The motherboard identifies as an ASUS Pro WS TRX50-SAGE WIFI. No BMC device,
+IPMI interface, or installed remote-console utility was detected. Therefore an
+in-place remote OS upgrade remains disallowed until a physical recovery path
+exists, even if downtime for the hosted services is accepted.
+
+The official Isaac Sim 6.0.1 image was then pulled and its compatibility
+checker was run with only GPU 1 exposed. The checker returned `PASSED`, accepted
+driver 580.126.09, identified the RTX 5880 Ada and its VRAM as excellent, and
+accepted the container's Ubuntu 24.04.3 userspace. See the
+[compatibility audit](audits/2026-08-27-isaac-6.0.1-compatibility.md).
 
 ## Compatibility gaps
 

@@ -9,12 +9,12 @@
 
 | Concern | Canonical foundation | Underwater compatibility lab | Current GPU host |
 | --- | --- | --- | --- |
-| Isaac Sim | 6.0.1, current supported release | 5.1.0, unsupported | Not installed as foundation |
+| Isaac Sim | 6.0.1, current supported release | 5.1.0, unsupported | 6.0.1 image pulled; checker passed |
 | Ubuntu | 24.04 LTS | 22.04/24.04 supported by NVIDIA | 20.04.6; unsupported by NVIDIA |
 | Python | 3.12 | 3.11 | System version is irrelevant inside the pinned runtime |
-| NVIDIA driver | 595.58.03 tested by NVIDIA | 580.65.06 tested by NVIDIA | 580.126.09 |
+| NVIDIA driver | 595.58.03 listed in requirements | 580.65.06 listed for 5.1 | 580.126.09; 6.0.1 checker passed |
 | ROS 2 | Jazzy; Humble also tested | Humble or Jazzy | Existing projects vary |
-| Deployment | Linux container or clean workstation | Disposable Linux container | Docker/NVIDIA runtime available but shared |
+| Deployment | Linux container or clean workstation | Disposable Linux container | Isolated GPU 1 container approved for M0 |
 | macOS display | WebRTC client 2.0.0, Apple Silicon build | WebRTC client available | Tailscale path exists |
 | OpenUSD | Canonical scene contract; validate with target runtime | Import-only compatibility check | Project assets remain runtime-independent |
 | Lifecycle | Security and migration baseline | Throwaway porting reference | No in-place platform mutation |
