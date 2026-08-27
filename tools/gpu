@@ -3,7 +3,7 @@
 # Usage:
 #   ./tools/gpu "nvidia-smi"              # non-interactive
 #   ./tools/gpu -s "sudo something"       # interactive (for sudo)
-#   ./tools/gpu sync "commit message"      # commit, push, and update ~/auv
+#   ./tools/gpu sync "commit message"      # commit, push, and update ~/code/auv
 #   ./tools/gpu                            # interactive shell
 
 set -euo pipefail

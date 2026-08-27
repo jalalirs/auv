@@ -13,7 +13,7 @@ if [ -f "${REPO_ROOT}/.env" ]; then
 fi
 
 GPU_HOST="${AUV_GPU_HOST:-jalalirs@100.76.65.1}"
-DATA_DIR="${AUV_DATA_DIR:-/home/jalalirs/auv-data}"
+DATA_DIR="${AUV_DATA_DIR:-/home/jalalirs/code/auv-data}"
 ASSET_SET="${1:-first-dive}"
 MANIFEST_ID="first-dive-fuel-2026-08-05-v3"
 REMOTE_ASSET_DIR="${DATA_DIR}/gazebo/first_dive"
