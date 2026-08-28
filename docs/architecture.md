@@ -1,8 +1,9 @@
 # System architecture
 
-This document defines component ownership and information flow. It deliberately
-does not choose programming languages, frameworks, databases, cloud vendors, or
-scientific thresholds. Those decisions require separate review records.
+This document defines component ownership and information flow. Programming
+language, monorepo tooling, and product-surface decisions are recorded in
+[`docs/decisions`](decisions/README.md). Frameworks, databases, cloud vendors,
+and scientific thresholds still require separate review records.
 
 ## Complete system
 
@@ -173,8 +174,7 @@ allowed to erase or obscure the origin and truth class of its input.
 
 ## Decisions intentionally deferred
 
-- Web and desktop application frameworks
-- Control-plane implementation language
+- Web application framework
 - API style and schema technology
 - Metadata, object, and time-series storage products
 - Workflow engine and scheduler
