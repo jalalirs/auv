@@ -1,7 +1,13 @@
 # Services
 
-Long-running Coral City product processes live here. We begin with one modular
-control plane rather than premature networked microservices.
+Long-running Coral City processes.
 
-A service owns product behaviour and stable APIs. Finite reconstruction,
-analysis, or scientific-model execution belongs in `workflows/`, not here.
+| Service | What it owns |
+| --- | --- |
+| `control-plane/` | Identity, governance, places, layers, provenance, work, and the record of all of it |
+| `worker/` | Leasing work and running it as a container |
+
+They are separate because the control plane must never run scientific work. A
+worker's failure is recoverable — its lease expires and the work is returned to
+the queue — and that is only true because the thing that admits work is not the
+thing that runs it.

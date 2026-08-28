@@ -1,38 +1,67 @@
 #!/usr/bin/env bash
+# Deploy Coral City to the GPU host and check that it works.
+#
+# The GPU host cannot reliably reach a package registry, so images are built
+# here for its architecture and streamed to it over the existing SSH connection
+# rather than pushed and pulled.
+
 set -euo pipefail
 
 script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="$(cd "${script_directory}/.." && pwd)"
+
 target_platform="${CORAL_CITY_GPU_PLATFORM:-linux/amd64}"
 version="${CORAL_CITY_VERSION:-development}"
 commit="$(git -C "${repository_root}" rev-parse --short=12 HEAD)"
 built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+tag="${CORAL_CITY_IMAGE_TAG:-r1}"
+port="${CORAL_CITY_GPU_WEB_PORT:-18088}"
 
-docker buildx build \
-  --platform "${target_platform}" \
-  --file "${repository_root}/services/control-plane/Dockerfile" \
-  --tag coral-city/control-plane:r0 \
-  --build-arg "VERSION=${version}" \
-  --build-arg "COMMIT=${commit}" \
-  --build-arg "BUILT_AT=${built_at}" \
-  --load \
-  "${repository_root}"
+if [ -n "$(git -C "${repository_root}" status --porcelain)" ]; then
+    echo "The working tree has uncommitted changes." >&2
+    echo "The GPU host serves what is in Git, so commit or stash first." >&2
+    exit 1
+fi
 
-docker buildx build \
-  --platform "${target_platform}" \
-  --file "${repository_root}/apps/web/Dockerfile" \
-  --tag coral-city/web:r0 \
-  --load \
-  "${repository_root}"
+build() {
+    local dockerfile="$1" image="$2"
+    echo "Building ${image} for ${target_platform}…"
+    docker buildx build \
+      --platform "${target_platform}" \
+      --file "${repository_root}/${dockerfile}" \
+      --tag "${image}" \
+      --build-arg "VERSION=${version}" \
+      --build-arg "COMMIT=${commit}" \
+      --build-arg "BUILT_AT=${built_at}" \
+      --load \
+      "${repository_root}"
+}
 
-docker save coral-city/control-plane:r0 coral-city/web:r0 \
+build services/control-plane/Dockerfile "coral-city/control-plane:${tag}"
+build services/worker/Dockerfile "coral-city/worker:${tag}"
+build apps/web/Dockerfile "coral-city/web:${tag}"
+
+echo "Streaming the images to the GPU host…"
+docker save \
+    "coral-city/control-plane:${tag}" \
+    "coral-city/worker:${tag}" \
+    "coral-city/web:${tag}" \
   | "${script_directory}/gpu" "docker load"
 
+echo "Applying the schema…"
+"${script_directory}/gpu" \
+  "cd ~/code/auv && docker compose -f deployments/gpu/compose.yaml up --detach --no-build --wait record storage"
+"${script_directory}/gpu" \
+  "cd ~/code/auv && docker compose -f deployments/gpu/compose.yaml run --rm --no-deps migrate"
+
+echo "Starting the platform…"
 "${script_directory}/gpu" \
   "cd ~/code/auv && docker compose -f deployments/gpu/compose.yaml up --detach --no-build --wait"
 
+echo "Checking that it answers…"
 "${script_directory}/gpu" \
-  "curl --fail --silent --show-error http://127.0.0.1:18088/api/v1/platform"
+  "curl --fail --silent --show-error http://127.0.0.1:${port}/api/v1/platform"
 
 echo
-echo "Coral City ${commit} is healthy on the GPU box at loopback port 18088."
+echo "Coral City ${commit} is running on the GPU host at loopback port ${port}."
+echo "Reach it from here with: coral"

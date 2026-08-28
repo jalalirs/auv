@@ -1,0 +1,2191 @@
+openapi: 3.1.0
+
+info:
+  title: Coral City platform API
+  version: "1.0.0"
+  summary: A hub for oceanic engineering and science.
+  description: |
+    Coral City holds one shared, governed record of the ocean, lets people enter
+    specific places at survey fidelity, merges live observation with simulation,
+    and lets any institution run its own work against that world.
+
+    Three rules run through everything here.
+
+    **Access is decided in one place.** Every read and every write, including
+    every request to run work, resolves through a single decision point. There
+    are two ways of being refused: a hidden refusal reports absence, because the
+    existence of some places is itself sensitive, and a visible refusal reports
+    that the object exists and access may be requested. Both are recorded.
+
+    **Evidence is never rewritten.** A published version is immutable.
+    Corrections create new versions that supersede the old; retraction withdraws
+    a version from default views without deleting it or its lineage. Every
+    version states its coordinate reference, vertical datum, time basis, rights,
+    and uncertainty — of which "unknown" is a legal answer and absence is not.
+
+    **A truth class does not strengthen.** Anything derived from a scenario is a
+    scenario, permanently, and the platform refuses to record otherwise.
+
+servers:
+  - url: /
+    description: The deployment serving this document.
+
+security:
+  - session: []
+  - service: []
+
+tags:
+  - name: health
+    description: Whether the process is running and whether the platform can work.
+  - name: sessions
+    description: Signing in, signing out, and knowing who one is.
+  - name: institutions
+    description: Organisations, people, and the non-human principals they operate.
+  - name: governance
+    description: Bindings and grants. Who may do what, and where.
+  - name: places
+    description: Cities — bounded, curated, navigable regions.
+  - name: layers
+    description: The named series of versions within a scope.
+  - name: evidence
+    description: Versions, their manifests, their lineage, and their publication.
+  - name: bytes
+    description: Placing bytes in storage and checking that they are what was claimed.
+  - name: work
+    description: Submitting work and reading what became of it.
+  - name: capacity
+    description: Quotas and the places work can run.
+  - name: worker
+    description: The worker's half of the lease protocol.
+
+paths:
+  /health/live:
+    get:
+      tags: [health]
+      summary: Report that the process can serve HTTP
+      description: >
+        Depends on nothing else, so that an outage elsewhere does not cause this process to be restarted when restarting it would not help.
+      security: []
+      responses:
+        '200':
+          description: The process is serving.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+  /health/ready:
+    get:
+      tags: [health]
+      summary: Report that the platform can do its work
+      description: >
+        The record is reachable, the schema is the one this build expects, and stored
+        bytes can be reached. A build whose migrations have not been applied is
+        deliberately not ready.
+      security: []
+      responses:
+        '200':
+          description: Ready.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready: { type: boolean }
+                  checks: { type: object, additionalProperties: true }
+        '503':
+          description: Not ready. The body says which check failed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready: { type: boolean }
+                  checks: { type: object, additionalProperties: true }
+  /api/v1/platform:
+    get:
+      tags: [health]
+      summary: Identify the build serving this request
+      security: []
+      responses:
+        '200':
+          description: The build.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name: { type: string }
+                  service: { type: string }
+                  version: { type: string }
+                  commit: { type: string }
+                  builtAt: { type: string }
+  /api/v1/sessions:
+    post:
+      tags: [sessions]
+      summary: Sign in
+      description: >
+        An unknown address and a wrong secret are refused identically, so the
+        response cannot be used to discover who is registered.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, secret]
+              properties:
+                email: { type: string, format: email }
+                secret: { type: string, minLength: 12 }
+      responses:
+        '201':
+          description: A session, in a cookie the browser cannot read from script and in the body for programmatic clients.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  expiresAt: { type: string, format: date-time }
+                  principal:
+                    $ref: '#/components/schemas/Principal'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    delete:
+      tags: [sessions]
+      summary: Sign out
+      responses:
+        '204':
+          description: Done.
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /api/v1/me:
+    get:
+      tags: [sessions]
+      summary: Report who the caller is
+      responses:
+        '200':
+          description: The caller and the institutions whose bindings apply to them.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  principal:
+                    $ref: '#/components/schemas/Principal'
+                  organisations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Organisation'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /api/v1/me/denials:
+    get:
+      tags: [sessions]
+      summary: Report the refusals the caller has received
+      description: >
+        Why access was denied is data, not a log line.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: How many to return.
+          schema: { type: integer, minimum: 1, maximum: 200 }
+      responses:
+        '200':
+          description: Recent refusals.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  denials:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Denial'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /api/v1/organisations:
+    post:
+      tags: [institutions]
+      summary: Found an institution
+      description: >
+        It is created holding contributor at its own scope, so that its members can
+        do its work without a separate grant each.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [slug, name]
+              properties:
+                slug: { type: string }
+                name: { type: string }
+      responses:
+        '201':
+          description: The institution.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organisation'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/people:
+    post:
+      tags: [institutions]
+      summary: Add someone who can sign in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [displayName, email, secret]
+              properties:
+                displayName: { type: string }
+                email: { type: string, format: email }
+                secret: { type: string, minLength: 12 }
+      responses:
+        '201':
+          description: The person.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Principal'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/grants:
+    post:
+      tags: [governance]
+      summary: Bind a role at the platform, an institution, or the work queue
+      description: >
+        Grants on a city are made by that city's stewards instead.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [subjectKind, subjectId, scopeKind, role]
+              properties:
+                subjectKind: { type: string, enum: [principal, org] }
+                subjectId: { type: string }
+                scopeKind: { type: string, enum: [platform, org, city, work] }
+                scopeId: { type: string }
+                role:
+                  $ref: '#/components/schemas/Role'
+      responses:
+        '201':
+          description: The binding.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Binding'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/organisations/{orgId}:
+    get:
+      tags: [institutions]
+      summary: Read an institution and its members
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The institution.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organisation:
+                    $ref: '#/components/schemas/Organisation'
+                  members:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Principal'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/organisations/{orgId}/members:
+    post:
+      tags: [institutions]
+      summary: Add a member
+      description: >
+        Membership makes the institution's bindings apply to that person; it grants nothing itself.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [principalId]
+              properties:
+                principalId: { type: string }
+      responses:
+        '204':
+          description: Done.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/organisations/{orgId}/members/{principalId}:
+    delete:
+      tags: [institutions]
+      summary: Remove a member
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+        - name: principalId
+          in: path
+          required: true
+          description: The person.
+          schema: { type: string }
+      responses:
+        '204':
+          description: Done.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/organisations/{orgId}/service-principals:
+    post:
+      tags: [institutions]
+      summary: Add a worker, edge station, or vehicle
+      description: >
+        The credential is shown once and is not recoverable; it can only be replaced.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [displayName]
+              properties:
+                displayName: { type: string }
+      responses:
+        '201':
+          description: The principal and its credential.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  principal:
+                    $ref: '#/components/schemas/Principal'
+                  credential: { type: string }
+                  notice: { type: string }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/organisations/{orgId}/quota:
+    put:
+      tags: [capacity]
+      summary: State what an institution may consume
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [maxConcurrentJobs, maxCpu, maxMemoryBytes]
+              properties:
+                maxConcurrentJobs: { type: integer, minimum: 0 }
+                maxCpu: { type: number, minimum: 0 }
+                maxMemoryBytes: { type: integer, format: int64, minimum: 0 }
+                maxGpu: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: The quota.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quota'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    get:
+      tags: [capacity]
+      summary: Report what an institution may consume and what it does
+      description: >
+        Reading this before submitting is how a refusal becomes understandable in advance.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The quota and what is in flight.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  quota:
+                    $ref: '#/components/schemas/Quota'
+                  inUse: { type: object, additionalProperties: true }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/targets:
+    post:
+      tags: [capacity]
+      summary: Record a place work can run
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, kind, capacityCpu, capacityMemoryBytes]
+              properties:
+                name: { type: string }
+                kind: { type: string, enum: [local_docker, kubernetes, slurm] }
+                capacityCpu: { type: number }
+                capacityMemoryBytes: { type: integer, format: int64 }
+                capacityGpu: { type: integer }
+      responses:
+        '201':
+          description: The target.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Target'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    get:
+      tags: [capacity]
+      summary: List the places work can run
+      responses:
+        '200':
+          description: The targets.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  targets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Target'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/cities:
+    get:
+      tags: [places]
+      summary: List the places the caller may learn of
+      description: >
+        An unlisted place appears only to those bound to it; it is otherwise
+        indistinguishable from a place that does not exist.
+      responses:
+        '200':
+          description: The catalogue.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/City'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    post:
+      tags: [places]
+      summary: Found a place
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [slug, name, summary, extent, crsEpsg, verticalDatum, discoverability]
+              properties:
+                slug: { type: string }
+                name: { type: string }
+                summary: { type: string }
+                extent:
+                  $ref: '#/components/schemas/Extent'
+                crsEpsg: { type: integer, minimum: 1 }
+                verticalDatum: { type: string, minLength: 1 }
+                discoverability:
+                  $ref: '#/components/schemas/Discoverability'
+      responses:
+        '201':
+          description: The place.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/City'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/cities/{cityId}:
+    get:
+      tags: [places]
+      summary: Enter a place
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          description: The place.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The place and the caller's authority in it.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  city:
+                    $ref: '#/components/schemas/City'
+                  you: { type: object, additionalProperties: true }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [places]
+      summary: Change a place's description or who may learn of it
+      description: >
+        Its extent, coordinate reference, and vertical datum are what the place is,
+        and are not changed here.
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          description: The place.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name: { type: string }
+                summary: { type: string }
+                discoverability:
+                  $ref: '#/components/schemas/Discoverability'
+      responses:
+        '200':
+          description: The place.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/City'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/cities/{cityId}/grants:
+    get:
+      tags: [governance]
+      summary: List who has been granted access to a place
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          description: The place.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The grants.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  grants:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Binding'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [governance]
+      summary: Share a place
+      description: >
+        Nothing is copied: a grant is an edge, and revoking it takes effect on the next request.
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          description: The place.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [subjectKind, subjectId, role]
+              properties:
+                subjectKind: { type: string, enum: [principal, org] }
+                subjectId: { type: string }
+                role:
+                  $ref: '#/components/schemas/Role'
+      responses:
+        '201':
+          description: The grant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Binding'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/cities/{cityId}/grants/{bindingId}:
+    delete:
+      tags: [governance]
+      summary: Withdraw access to a place
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          description: The place.
+          schema: { type: string }
+        - name: bindingId
+          in: path
+          required: true
+          description: The grant.
+          schema: { type: string }
+      responses:
+        '204':
+          description: Done.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/cities/{cityId}/layers:
+    get:
+      tags: [layers]
+      summary: List the layers of a place
+      description: >
+        A layer holding nothing the caller may see does not appear.
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          description: The place.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The layers.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  layers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Layer'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [layers]
+      summary: Contribute a layer to a place
+      description: >
+        It is contained by that scope and attributed to the institution named, which must be one the caller may act for.
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          description: The place.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [slug, kind, title, description, attributedOrgId]
+              properties:
+                slug: { type: string }
+                kind: { type: string }
+                title: { type: string }
+                description: { type: string }
+                attributedOrgId: { type: string }
+      responses:
+        '201':
+          description: The layer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Layer'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/world/layers:
+    get:
+      tags: [layers]
+      summary: List the layers of the shared world
+      description: >
+        A layer holding nothing the caller may see does not appear.
+      responses:
+        '200':
+          description: The layers.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  layers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Layer'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [layers]
+      summary: Contribute a layer to the shared world
+      description: >
+        It is contained by that scope and attributed to the institution named, which must be one the caller may act for.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [slug, kind, title, description, attributedOrgId]
+              properties:
+                slug: { type: string }
+                kind: { type: string }
+                title: { type: string }
+                description: { type: string }
+                attributedOrgId: { type: string }
+      responses:
+        '201':
+          description: The layer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Layer'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/layers/{layerId}:
+    get:
+      tags: [layers]
+      summary: Read a layer and the versions the caller may see
+      parameters:
+        - name: layerId
+          in: path
+          required: true
+          description: The layer.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The layer and its versions.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  layer:
+                    $ref: '#/components/schemas/Layer'
+                  versions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Version'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/layers/{layerId}/versions:
+    post:
+      tags: [evidence]
+      summary: Record evidence
+      description: >
+        Everything a version must state is required: a coordinate reference, a
+        vertical datum, a time basis, rights, attribution, and an uncertainty — of
+        which "unknown" is a legal answer and absence is not. A version derived from a
+        scenario cannot claim a stronger truth class.
+      parameters:
+        - name: layerId
+          in: path
+          required: true
+          description: The layer.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VersionRequest'
+      responses:
+        '201':
+          description: The version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Version'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /api/v1/layers/{layerId}/versions/{versionId}:
+    get:
+      tags: [evidence]
+      summary: Read one version
+      parameters:
+        - name: layerId
+          in: path
+          required: true
+          description: The layer.
+          schema: { type: string }
+        - name: versionId
+          in: path
+          required: true
+          description: The version.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The version.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:
+                    $ref: '#/components/schemas/Version'
+                  uncertainty:
+                    $ref: '#/components/schemas/Uncertainty'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/layers/{layerId}/versions/{versionId}/lineage:
+    get:
+      tags: [evidence]
+      summary: Report what a version was derived from
+      description: >
+        This is what makes a claim traceable to the material behind it.
+      parameters:
+        - name: layerId
+          in: path
+          required: true
+          description: The layer.
+          schema: { type: string }
+        - name: versionId
+          in: path
+          required: true
+          description: The version.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The inputs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  derivedFrom:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Version'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/layers/{layerId}/versions/{versionId}/files/{path}:
+    get:
+      tags: [evidence]
+      summary: Read one file of a version
+      description: >
+        Access to bytes follows access to the evidence that contains them, so a
+        caller who may not see the version cannot reach its bytes by knowing an
+        object identifier.
+      parameters:
+        - name: layerId
+          in: path
+          required: true
+          description: The layer.
+          schema: { type: string }
+        - name: versionId
+          in: path
+          required: true
+          description: The version.
+          schema: { type: string }
+        - name: path
+          in: path
+          required: true
+          description: The file's path within the version.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The file and a short-lived URL to read it.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  file:
+                    $ref: '#/components/schemas/ManifestFile'
+                  readUrl: { type: string }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/layers/{layerId}/versions/{versionId}/submit:
+    post:
+      tags: [evidence]
+      summary: Offer a draft for review
+      description: >
+        Only a draft can be offered.
+      parameters:
+        - name: layerId
+          in: path
+          required: true
+          description: The layer.
+          schema: { type: string }
+        - name: versionId
+          in: path
+          required: true
+          description: The version.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '200':
+          description: The version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Version'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/layers/{layerId}/versions/{versionId}/publish:
+    post:
+      tags: [evidence]
+      summary: Publish a reviewed version
+      description: >
+        Publishing a version that supersedes another marks the earlier one superseded in the same transaction.
+      parameters:
+        - name: layerId
+          in: path
+          required: true
+          description: The layer.
+          schema: { type: string }
+        - name: versionId
+          in: path
+          required: true
+          description: The version.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '200':
+          description: The version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Version'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/layers/{layerId}/versions/{versionId}/promote:
+    post:
+      tags: [evidence]
+      summary: Make a contribution part of the shared record
+      description: >
+        Nothing moves: the object keys, the content digest, and the version number are unchanged. Only who may see it changes.
+      parameters:
+        - name: layerId
+          in: path
+          required: true
+          description: The layer.
+          schema: { type: string }
+        - name: versionId
+          in: path
+          required: true
+          description: The version.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '200':
+          description: The version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Version'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/layers/{layerId}/versions/{versionId}/retract:
+    post:
+      tags: [evidence]
+      summary: Withdraw a published version from default views
+      description: >
+        It is not deleted, and neither is its lineage: retraction is a statement about a version, not its erasure.
+      parameters:
+        - name: layerId
+          in: path
+          required: true
+          description: The layer.
+          schema: { type: string }
+        - name: versionId
+          in: path
+          required: true
+          description: The version.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: The version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Version'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/organisations/{orgId}/uploads:
+    post:
+      tags: [bytes]
+      summary: Obtain a grant to place bytes in storage
+      description: >
+        What the caller claims about those bytes is written down now, so that it can be checked against what actually arrives.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [bucket, sha256, sizeBytes, mediaType]
+              properties:
+                bucket: { type: string, enum: [evidence, derived, ephemeral] }
+                sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+                sizeBytes: { type: integer, format: int64, minimum: 1 }
+                mediaType: { type: string }
+      responses:
+        '201':
+          description: The grant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadGrant'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/organisations/{orgId}/uploads/{grantId}/confirm:
+    post:
+      tags: [bytes]
+      summary: Check what arrived against what was declared
+      description: >
+        Bytes that are not what they said they were are discarded and nothing is recorded.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+        - name: grantId
+          in: path
+          required: true
+          description: The grant.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '200':
+          description: The recorded object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Object'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /api/v1/organisations/{orgId}/jobs:
+    post:
+      tags: [work]
+      summary: Ask the platform to run work
+      description: >
+        The image is pinned by digest. Whether there is room is decided by the
+        broker, which records either answer.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [recipeId, imageDigest, command, requestCpu, requestMemoryBytes, walltimeSeconds]
+              properties:
+                recipeId: { type: string }
+                imageDigest: { type: string }
+                command: { type: array, minItems: 1, items: { type: string } }
+                args: { type: array, items: { type: string } }
+                inputs: { type: array, items: { $ref: '#/components/schemas/JobInput' } }
+                outputs: { type: array, items: { $ref: '#/components/schemas/JobOutput' } }
+                requestCpu: { type: number, exclusiveMinimum: 0 }
+                requestMemoryBytes: { type: integer, format: int64, exclusiveMinimum: 0 }
+                requestGpu: { type: integer, minimum: 0 }
+                walltimeSeconds: { type: integer, exclusiveMinimum: 0 }
+      responses:
+        '202':
+          description: The admitted work.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/Refused'
+    get:
+      tags: [work]
+      summary: List an institution's work
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          description: How many to return.
+          schema: { type: integer, minimum: 1, maximum: 200 }
+      responses:
+        '200':
+          description: The work.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Job'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/jobs/{jobId}:
+    get:
+      tags: [work]
+      summary: Read one job, its attempts, and what it produced
+      description: >
+        The attempts are what show that a retry happened and what came of it.
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          description: The job.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The job.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job:
+                    $ref: '#/components/schemas/Job'
+                  attempts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Attempt'
+                  outputs: { type: object, additionalProperties: { type: string } }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/jobs/{jobId}/events:
+    get:
+      tags: [work]
+      summary: Read a job's durable account of itself
+      description: >
+        Resuming from a sequence number is how a client watches without missing or repeating anything.
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          description: The job.
+          schema: { type: string }
+        - name: after
+          in: query
+          required: false
+          description: The sequence number to resume from.
+          schema: { type: integer, format: int64, minimum: 0 }
+        - name: limit
+          in: query
+          required: false
+          description: How many to return.
+          schema: { type: integer, minimum: 1, maximum: 1000 }
+      responses:
+        '200':
+          description: The events.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/JobEvent'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/jobs/{jobId}/cancel:
+    post:
+      tags: [work]
+      summary: Stop work that has not finished
+      description: >
+        Running work learns of this through its worker's next heartbeat.
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          description: The job.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '200':
+          description: The job.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/work/lease:
+    post:
+      tags: [worker]
+      summary: Take one admitted job
+      description: >
+        A worker holds authority over the work queue and over nothing else.
+        Everything it reaches while running a job, it reaches through this lease.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [targetName]
+              properties:
+                targetName: { type: string }
+      responses:
+        '200':
+          description: The lease.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lease'
+        '204':
+          description: Done.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/work/{attemptId}/heartbeat:
+    post:
+      tags: [worker]
+      summary: Extend a lease and learn whether to stop
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          description: The attempt.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: The lease's new expiry, and whether the work was cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Heartbeat'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/work/{attemptId}/started:
+    post:
+      tags: [worker]
+      summary: Report that the container is running
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          description: The attempt.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token: { type: string }
+                placementRef: { type: string }
+      responses:
+        '204':
+          description: Done.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/work/{attemptId}/progress:
+    post:
+      tags: [worker]
+      summary: Report progress
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          description: The attempt.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token: { type: string }
+                detail: { type: object, additionalProperties: true }
+      responses:
+        '204':
+          description: Done.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/work/{attemptId}/inputs:
+    post:
+      tags: [worker]
+      summary: Read one input of leased work
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          description: The attempt.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, name]
+              properties:
+                token: { type: string }
+                name: { type: string }
+      responses:
+        '200':
+          description: The input and a short-lived URL to read it.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  input:
+                    $ref: '#/components/schemas/JobInput'
+                  readUrl: { type: string }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/work/{attemptId}/uploads:
+    post:
+      tags: [worker]
+      summary: Obtain a grant to place one output in storage
+      description: >
+        The size the job declared bounds what may be uploaded, so oversized output is refused before any bytes move.
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          description: The attempt.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, name, sha256, sizeBytes]
+              properties:
+                token: { type: string }
+                name: { type: string }
+                sha256: { type: string }
+                sizeBytes: { type: integer, format: int64 }
+      responses:
+        '201':
+          description: The grant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadGrant'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /api/v1/work/{attemptId}/uploads/{grantId}/confirm:
+    post:
+      tags: [worker]
+      summary: Check one output against what was declared
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          description: The attempt.
+          schema: { type: string }
+        - name: grantId
+          in: path
+          required: true
+          description: The grant.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '200':
+          description: The recorded object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Object'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /api/v1/work/{attemptId}/outputs:
+    post:
+      tags: [worker]
+      summary: Record one file the work produced
+      description: >
+        An output is recorded once per name however many attempts a job takes.
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          description: The attempt.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, name, objectId]
+              properties:
+                token: { type: string }
+                name: { type: string }
+                objectId: { type: string }
+      responses:
+        '204':
+          description: Done.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /api/v1/work/{attemptId}/finish:
+    post:
+      tags: [worker]
+      summary: Report how an attempt ended
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          description: The attempt.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, outcome]
+              properties:
+                token: { type: string }
+                outcome: { type: string, enum: [succeeded, failed, cancelled, evicted, timed_out] }
+                exitCode: { type: integer }
+                failureClass: { type: string }
+      responses:
+        '200':
+          description: The job.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+components:
+  securitySchemes:
+    session:
+      type: http
+      scheme: bearer
+      description: >
+        A session token from POST /api/v1/sessions. Browsers receive the same
+        token in a cookie they cannot read from script and need not set this
+        header.
+    service:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: >
+        `Service <principal id>:<secret>` — how a worker, edge station, or
+        vehicle authenticates. A service principal holds exactly what it has been
+        bound and no floor beneath that.
+
+  responses:
+    Unauthenticated:
+      description: No credentials, or credentials that identify nobody.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: >
+        The object exists and the caller may not act on it. `detail.accessMayBeRequested`
+        marks refusals where asking is the next step.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: >
+        Nothing the caller is entitled to know about. An unlisted place is
+        reported this way whether or not it exists.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Invalid:
+      description: The request describes something that cannot exist.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: The record refuses this because of what it already holds.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unprocessable:
+      description: >
+        Well-formed, but refused on its meaning: bytes that are not what was
+        declared, or a truth class stronger than its lineage allows.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Refused:
+      description: >
+        Work the platform declined to admit. The code names the reason and the
+        refusal is recorded.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, requestId]
+          properties:
+            code:
+              type: string
+              description: A stable identifier for the kind of failure.
+            message:
+              type: string
+              description: What went wrong, written for the person who will read it.
+            requestId:
+              type: string
+              description: Ties this failure to every record written while serving the request.
+            detail:
+              type: object
+              additionalProperties: true
+
+    Extent:
+      type: object
+      additionalProperties: false
+      required: [west, south, east, north]
+      description: A bounded region of the globe, in WGS 84 degrees.
+      properties:
+        west: { type: number, minimum: -180, maximum: 180 }
+        south: { type: number, minimum: -90, maximum: 90 }
+        east: { type: number, minimum: -180, maximum: 180 }
+        north: { type: number, minimum: -90, maximum: 90 }
+
+    TruthClass:
+      type: string
+      description: >
+        What a value is, epistemically. It travels down lineage and is never
+        strengthened: anything derived from a scenario is a scenario.
+      enum: [observation, analysis, forecast, scenario, simulation]
+
+    Discoverability:
+      type: string
+      description: >
+        What a principal with no binding may learn about a place. Separate from
+        whether that principal may enter it.
+      enum: [listed_open, listed_locked, unlisted]
+
+    Role:
+      type: string
+      enum: [viewer, contributor, steward, admin]
+
+    Uncertainty:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      description: >
+        What a version does not know. "unknown" is an answer; absence is not.
+      properties:
+        kind:
+          type: string
+          enum: [unknown, absolute_metres, relative_fraction, described]
+        value:
+          type: number
+          minimum: 0
+          description: Required for absolute_metres and relative_fraction; absent otherwise.
+        note:
+          type: string
+          description: Required for described.
+
+    Principal:
+      type: object
+      required: [id, kind, displayName, disabled, createdAt]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [person, service] }
+        displayName: { type: string }
+        email: { type: string }
+        orgId: { type: string }
+        disabled: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    Organisation:
+      type: object
+      required: [id, slug, name, createdAt]
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    City:
+      type: object
+      required: [id, slug, name, summary, extent, crsEpsg, verticalDatum, discoverability, createdAt, createdBy]
+      description: >
+        A bounded, curated, navigable place. It exists at the platform and is
+        addressed permanently; an organisation is granted access to it and never
+        contains it.
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        name: { type: string }
+        summary: { type: string }
+        extent: { $ref: '#/components/schemas/Extent' }
+        crsEpsg: { type: integer }
+        verticalDatum: { type: string }
+        discoverability: { $ref: '#/components/schemas/Discoverability' }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string }
+
+    Layer:
+      type: object
+      required: [id, scopeKind, slug, kind, title, description, attributedOrgId, createdBy, createdAt]
+      description: >
+        A named series of versions within one scope. Contained by the platform
+        or by a city; attributed to the organisation that contributed it.
+      properties:
+        id: { type: string }
+        scopeKind: { type: string, enum: [platform, city] }
+        cityId: { type: string }
+        slug: { type: string }
+        kind:
+          type: string
+          enum: [bathymetry, mesh, point_cloud, orthomosaic, structure, field,
+                 observation_series, annotation, telemetry, tileset, imagery]
+        title: { type: string }
+        description: { type: string }
+        attributedOrgId: { type: string }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    ManifestFile:
+      type: object
+      required: [relativePath, objectId, sha256, sizeBytes, mediaType]
+      properties:
+        relativePath: { type: string }
+        objectId: { type: string }
+        sha256: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+        mediaType: { type: string }
+
+    Version:
+      type: object
+      required: [id, layerId, ordinal, contentDigest, truthClass, crsEpsg,
+                 verticalDatum, extent, observedFrom, observedTo, rights,
+                 attribution, state, visibility, createdAt]
+      description: >
+        Immutable evidence: what was measured or computed, where, when, by what,
+        and how well it is known.
+      properties:
+        id: { type: string }
+        layerId: { type: string }
+        ordinal: { type: integer }
+        contentDigest:
+          type: string
+          description: The digest over this version's whole manifest, and its citable identity.
+        truthClass: { $ref: '#/components/schemas/TruthClass' }
+        crsEpsg: { type: integer }
+        verticalDatum: { type: string }
+        extent: { $ref: '#/components/schemas/Extent' }
+        observedFrom: { type: string, format: date-time }
+        observedTo: { type: string, format: date-time }
+        clockOffsetSeconds:
+          type: number
+          description: The instrument clock's offset from UTC, where it was determined.
+        rights: { type: string }
+        attribution: { type: string }
+        state: { type: string, enum: [draft, in_review, published, superseded, retracted] }
+        visibility: { type: string, enum: [restricted, canonical] }
+        supersedesId: { type: string }
+        supersededById: { type: string }
+        producerJobId: { type: string }
+        producerPrincipalId: { type: string }
+        recipeId: { type: string }
+        imageDigest: { type: string }
+        createdAt: { type: string, format: date-time }
+        publishedAt: { type: string, format: date-time }
+        retractedAt: { type: string, format: date-time }
+        retractionReason: { type: string }
+        manifest:
+          type: array
+          items: { $ref: '#/components/schemas/ManifestFile' }
+
+    VersionRequest:
+      type: object
+      additionalProperties: false
+      required: [truthClass, crsEpsg, verticalDatum, extent, observedFrom,
+                 observedTo, uncertainty, rights, attribution, files]
+      properties:
+        truthClass: { $ref: '#/components/schemas/TruthClass' }
+        crsEpsg: { type: integer, minimum: 1 }
+        verticalDatum: { type: string, minLength: 1 }
+        extent: { $ref: '#/components/schemas/Extent' }
+        observedFrom: { type: string, format: date-time }
+        observedTo: { type: string, format: date-time }
+        clockOffsetSeconds: { type: number }
+        uncertainty: { $ref: '#/components/schemas/Uncertainty' }
+        rights: { type: string, minLength: 1 }
+        attribution: { type: string, minLength: 1 }
+        visibility: { type: string, enum: [restricted, canonical] }
+        files:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [relativePath, objectId]
+            properties:
+              relativePath: { type: string }
+              objectId: { type: string }
+        derivedFrom:
+          type: array
+          items: { type: string }
+          description: The versions this one was computed from. Their truth classes bound what it may claim.
+        supersedesId: { type: string }
+
+    Binding:
+      type: object
+      required: [id, subjectKind, subjectId, scopeKind, role, createdAt, createdBy]
+      properties:
+        id: { type: string }
+        subjectKind: { type: string, enum: [principal, org] }
+        subjectId: { type: string }
+        scopeKind: { type: string, enum: [platform, org, city, work] }
+        scopeId: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string }
+        revokedAt: { type: string, format: date-time }
+
+    Object:
+      type: object
+      required: [id, bucket, sha256, sizeBytes, mediaType, uploadedBy, uploadedAt]
+      properties:
+        id: { type: string }
+        bucket: { type: string, enum: [evidence, derived, ephemeral] }
+        sha256: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+        mediaType: { type: string }
+        uploadedBy: { type: string }
+        uploadedAt: { type: string, format: date-time }
+
+    UploadGrant:
+      type: object
+      required: [id, bucket, uploadUrl, expiresAt]
+      properties:
+        id: { type: string }
+        bucket: { type: string, enum: [evidence, derived, ephemeral] }
+        uploadUrl:
+          type: string
+          description: >
+            A short-lived URL accepting exactly one upload. It is signed over its
+            host, so it names the address this caller can reach.
+        expiresAt: { type: string, format: date-time }
+
+    JobInput:
+      type: object
+      required: [name, relativePath, objectId, sha256, mediaType, sizeBytes]
+      properties:
+        name: { type: string }
+        relativePath: { type: string }
+        objectId: { type: string }
+        sha256: { type: string }
+        mediaType: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+
+    JobOutput:
+      type: object
+      required: [name, relativePath, mediaType, maxSizeBytes]
+      properties:
+        name: { type: string }
+        relativePath: { type: string }
+        mediaType: { type: string }
+        maxSizeBytes: { type: integer, format: int64 }
+
+    Job:
+      type: object
+      required: [id, orgId, submittedBy, recipeId, imageDigest, command,
+                 requestCpu, requestMemoryBytes, walltimeSeconds, state,
+                 failureClass, createdAt]
+      properties:
+        id: { type: string }
+        orgId: { type: string }
+        submittedBy: { type: string }
+        recipeId: { type: string }
+        imageDigest:
+          type: string
+          description: Pinned by digest. A tag can be moved and proves nothing.
+        command: { type: array, items: { type: string } }
+        args: { type: array, items: { type: string } }
+        inputs: { type: array, items: { $ref: '#/components/schemas/JobInput' } }
+        outputs: { type: array, items: { $ref: '#/components/schemas/JobOutput' } }
+        requestCpu: { type: number }
+        requestMemoryBytes: { type: integer, format: int64 }
+        requestGpu: { type: integer }
+        walltimeSeconds: { type: integer }
+        targetId: { type: string }
+        state:
+          type: string
+          enum: [pending, admitted, running, succeeded, failed, cancelled, evicted, timed_out]
+        failureClass:
+          type: string
+          enum: [none, image_unavailable, input_unavailable, output_limit_exceeded,
+                 nonzero_exit, walltime_exceeded, worker_lost, cancelled_by_caller,
+                 internal_error]
+        createdAt: { type: string, format: date-time }
+        terminalAt: { type: string, format: date-time }
+
+    Attempt:
+      type: object
+      required: [id, jobId, ordinal, targetId, workerId, state, leaseExpiresAt, failureClass, leasedAt]
+      description: One placement of a job onto a target. Retries create attempts, never new jobs.
+      properties:
+        id: { type: string }
+        jobId: { type: string }
+        ordinal: { type: integer }
+        targetId: { type: string }
+        workerId: { type: string }
+        state:
+          type: string
+          enum: [leased, running, succeeded, failed, cancelled, evicted, timed_out]
+        leaseExpiresAt: { type: string, format: date-time }
+        placementRef: { type: string }
+        exitCode: { type: integer }
+        failureClass: { type: string }
+        leasedAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+
+    JobEvent:
+      type: object
+      required: [id, jobId, sequence, occurredAt, kind, detail]
+      description: One entry in a job's durable, ordered account of itself.
+      properties:
+        id: { type: string }
+        jobId: { type: string }
+        attemptId: { type: string }
+        sequence: { type: integer, format: int64 }
+        occurredAt: { type: string, format: date-time }
+        kind:
+          type: string
+          enum: [admitted, scheduled, started, progress, output_received,
+                 succeeded, failed, cancelled, evicted, timed_out]
+        detail: { type: object, additionalProperties: true }
+
+    Target:
+      type: object
+      required: [id, name, kind, enabled, capacityCpu, capacityMemoryBytes, capacityGpu, createdAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        kind: { type: string, enum: [local_docker, kubernetes, slurm] }
+        enabled: { type: boolean }
+        capacityCpu: { type: number }
+        capacityMemoryBytes: { type: integer, format: int64 }
+        capacityGpu: { type: integer }
+        createdAt: { type: string, format: date-time }
+
+    Quota:
+      type: object
+      required: [orgId, maxConcurrentJobs, maxCpu, maxMemoryBytes, maxGpu, updatedAt]
+      properties:
+        orgId: { type: string }
+        maxConcurrentJobs: { type: integer }
+        maxCpu: { type: number }
+        maxMemoryBytes: { type: integer, format: int64 }
+        maxGpu: { type: integer }
+        updatedAt: { type: string, format: date-time }
+
+    Denial:
+      type: object
+      required: [id, occurredAt, action, resourceKind, effect, reason, requestId]
+      description: A recorded refusal, so that "why can I not see this" is answerable from data.
+      properties:
+        id: { type: string }
+        occurredAt: { type: string, format: date-time }
+        principalId: { type: string }
+        action: { type: string }
+        resourceKind: { type: string }
+        resourceId: { type: string }
+        effect: { type: string, enum: [hidden, visible] }
+        reason: { type: string }
+        requestId: { type: string }
+
+    Lease:
+      type: object
+      required: [attemptId, token, expiresAt, job]
+      properties:
+        attemptId: { type: string }
+        token: { type: string }
+        expiresAt: { type: string, format: date-time }
+        job: { $ref: '#/components/schemas/Job' }
+
+    Heartbeat:
+      type: object
+      required: [expiresAt, cancelled]
+      properties:
+        expiresAt: { type: string, format: date-time }
+        cancelled:
+          type: boolean
+          description: Tells the worker to stop. This is how cancellation reaches running work.

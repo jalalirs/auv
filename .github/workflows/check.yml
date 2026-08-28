@@ -11,7 +11,7 @@ permissions:
 jobs:
   repository:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Check out the repository
@@ -23,14 +23,47 @@ jobs:
           install: true
           cache: true
 
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Formatting, vetting, type-checking, and that the generated client still
+      # matches the contract it was generated from.
       - name: Validate source
         run: just check
 
       - name: Run component tests
         run: just test
 
-      - name: Build web release
+      - name: Build the web release
         run: pnpm --filter @coral-city/web build
 
-      - name: Verify public web-to-control-plane path
+  # The end-to-end check runs against the real stack — the record, the object
+  # store, the control plane, and a worker running actual containers — because
+  # the properties it checks are properties of the whole thing. It is a separate
+  # job so that a failure here is distinguishable from a failure to compile.
+  platform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install pinned toolchains
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
+        with:
+          install: true
+          cache: true
+
+      - name: Start the platform
+        run: |
+          mkdir -p /tmp/coral-city-work
+          docker compose -f deployments/local/compose.yaml build control-plane web worker
+          docker compose -f deployments/local/compose.yaml up --detach --wait
+
+      - name: Check it end to end
         run: ./tools/e2e
+
+      - name: Report what the platform said if anything failed
+        if: failure()
+        run: docker compose -f deployments/local/compose.yaml logs --tail 200

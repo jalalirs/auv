@@ -1,0 +1,136 @@
+package policy
+
+import "fmt"
+
+// Action names something a principal may attempt. Every route declares the
+// action it performs, and the route-table test refuses a route that declares
+// an action this file does not define.
+type Action string
+
+const (
+	// PlatformAdminister covers creating organisations and platform bindings.
+	PlatformAdminister Action = "platform.administer"
+	// PlatformReadCatalogue covers listing the cities a subject may learn of.
+	PlatformReadCatalogue Action = "platform.read_catalogue"
+	// SelfRead covers reading one's own identity and memberships.
+	SelfRead Action = "self.read"
+	// SelfEndSession covers ending one's own sign-in.
+	SelfEndSession Action = "self.end_session"
+
+	// OrgRead covers reading an organisation and its members.
+	OrgRead Action = "org.read"
+	// OrgAdminister covers membership, quota, and service principals.
+	OrgAdminister Action = "org.administer"
+
+	// CityCreate covers founding a place.
+	CityCreate Action = "city.create"
+	// CityRead covers entering a place and reading its description.
+	CityRead Action = "city.read"
+	// CityUpdate covers changing a place's description or discoverability.
+	CityUpdate Action = "city.update"
+	// CityGrant covers granting or revoking access to a place.
+	CityGrant Action = "city.grant"
+
+	// LayerRead covers reading a layer and its versions.
+	LayerRead Action = "layer.read"
+	// LayerCreate covers contributing a layer or a new version of one.
+	LayerCreate Action = "layer.create"
+	// LayerSubmit covers offering a draft version for review.
+	LayerSubmit Action = "layer.submit"
+	// LayerPublish covers publishing a reviewed version.
+	LayerPublish Action = "layer.publish"
+	// LayerPromote covers making a restricted version part of the shared record.
+	LayerPromote Action = "layer.promote"
+	// LayerRetract covers withdrawing a published version from default views.
+	LayerRetract Action = "layer.retract"
+
+	// ObjectUpload covers obtaining a grant to place bytes in storage.
+	ObjectUpload Action = "object.upload"
+	// ObjectRead covers obtaining a grant to read stored bytes.
+	ObjectRead Action = "object.read"
+
+	// JobSubmit covers asking the platform to run work.
+	JobSubmit Action = "job.submit"
+	// JobRead covers reading a job, its attempts, and its events.
+	JobRead Action = "job.read"
+	// JobCancel covers stopping work that is running.
+	JobCancel Action = "job.cancel"
+
+	// WorkLease covers a service principal taking work from the queue.
+	WorkLease Action = "work.lease"
+)
+
+// requirement states the authority an action needs and the kinds of resource
+// it may be attempted upon. The scope at which authority is measured comes
+// from the resource itself, not from this table, so one action can govern both
+// a platform-scoped and a city-scoped layer.
+//
+// Actions absent from this table cannot be authorised at all, which is how a
+// typo becomes a refusal rather than an opening.
+var requirement = map[Action]struct {
+	Role Role
+	On   []ResourceKind
+}{
+	PlatformAdminister:    {RoleAdmin, []ResourceKind{ResourcePlatform}},
+	PlatformReadCatalogue: {RoleAnyone, []ResourceKind{ResourcePlatform}},
+	SelfRead:              {RoleAnyone, []ResourceKind{ResourcePlatform}},
+	SelfEndSession:        {RoleAnyone, []ResourceKind{ResourcePlatform}},
+
+	OrgRead:       {RoleViewer, []ResourceKind{ResourceOrg}},
+	OrgAdminister: {RoleAdmin, []ResourceKind{ResourceOrg}},
+
+	CityCreate: {RoleAdmin, []ResourceKind{ResourcePlatform}},
+	CityRead:   {RoleViewer, []ResourceKind{ResourceCity}},
+	CityUpdate: {RoleSteward, []ResourceKind{ResourceCity}},
+	CityGrant:  {RoleSteward, []ResourceKind{ResourceCity}},
+
+	LayerRead:    {RoleViewer, []ResourceKind{ResourceLayer, ResourceCity, ResourcePlatform}},
+	LayerCreate:  {RoleContributor, []ResourceKind{ResourceLayer, ResourceCity, ResourcePlatform}},
+	LayerSubmit:  {RoleContributor, []ResourceKind{ResourceLayer}},
+	LayerPublish: {RoleSteward, []ResourceKind{ResourceLayer}},
+	LayerPromote: {RoleSteward, []ResourceKind{ResourceLayer}},
+	LayerRetract: {RoleSteward, []ResourceKind{ResourceLayer}},
+
+	ObjectUpload: {RoleContributor, []ResourceKind{ResourceOrg}},
+	ObjectRead:   {RoleViewer, []ResourceKind{ResourceLayer}},
+
+	JobSubmit: {RoleContributor, []ResourceKind{ResourceOrg}},
+	JobRead:   {RoleViewer, []ResourceKind{ResourceJob, ResourceOrg}},
+	JobCancel: {RoleContributor, []ResourceKind{ResourceJob}},
+
+	WorkLease: {RoleAdmin, []ResourceKind{ResourceWork}},
+}
+
+// Requires reports the role an action needs and the resource kinds it applies
+// to.
+func Requires(action Action) (Role, []ResourceKind, error) {
+	need, known := requirement[action]
+	if !known {
+		return "", nil, fmt.Errorf("action %q has no stated requirement and cannot be authorised", action)
+	}
+	return need.Role, need.On, nil
+}
+
+// AppliesTo reports whether an action may be attempted upon a resource kind.
+func AppliesTo(action Action, kind ResourceKind) bool {
+	need, known := requirement[action]
+	if !known {
+		return false
+	}
+	for _, allowed := range need.On {
+		if allowed == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// Actions returns every action the platform defines, so that tests can assert
+// the route table covers them and declares nothing else.
+func Actions() []Action {
+	all := make([]Action, 0, len(requirement))
+	for action := range requirement {
+		all = append(all, action)
+	}
+	return all
+}

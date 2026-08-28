@@ -1,27 +1,153 @@
 name: coral-city-gpu
 
+# The GPU host is a shared workstation, not a cluster. It runs other people's
+# work alongside this, so every container here declares a limit: a
+# reconstruction job must not be able to take the machine down, and neither must
+# the platform that admitted it.
+#
+# Images are built on a developer's machine and streamed here, because this host
+# cannot reliably reach a package registry. Nothing below pulls.
+
+x-platform-env: &platform-env
+  CORAL_CITY_DATABASE_URL: postgres://coral:${CORAL_CITY_DATABASE_PASSWORD:?set a database password}@record:5432/coral?sslmode=disable
+  CORAL_CITY_STORAGE_ENDPOINT: storage:9000
+  # A presigned URL is signed over its host, so it must name the address the
+  # client will use. Reaching this deployment means forwarding both ports;
+  # `tools/gpu web` does that.
+  CORAL_CITY_STORAGE_PUBLIC_ENDPOINT: ${CORAL_CITY_STORAGE_PUBLIC_ENDPOINT:-localhost:19000}
+  CORAL_CITY_STORAGE_ACCESS_KEY: ${CORAL_CITY_STORAGE_ACCESS_KEY:?set a storage access key}
+  CORAL_CITY_STORAGE_SECRET_KEY: ${CORAL_CITY_STORAGE_SECRET_KEY:?set a storage secret key}
+  CORAL_CITY_STORAGE_BUCKET_PREFIX: coral
+
 services:
-  control-plane:
-    image: coral-city/control-plane:r0
-    build:
-      context: ../..
-      dockerfile: services/control-plane/Dockerfile
-      args:
-        VERSION: ${CORAL_CITY_VERSION:-development}
-        COMMIT: ${CORAL_CITY_COMMIT:-unknown}
-        BUILT_AT: ${CORAL_CITY_BUILT_AT:-unknown}
+  record:
+    image: imresamu/postgis:17-3.5@sha256:35fe7dceda62bfe7d2965b0ba78d915ff9f901b5e0466d633ecc58421b5b5210
     environment:
+      POSTGRES_USER: coral
+      POSTGRES_PASSWORD: ${CORAL_CITY_DATABASE_PASSWORD:?set a database password}
+      POSTGRES_DB: coral
+    volumes:
+      - record:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coral -d coral"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: "4", memory: 4G }
+    restart: unless-stopped
+
+  storage:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${CORAL_CITY_STORAGE_ACCESS_KEY:?set a storage access key}
+      MINIO_ROOT_PASSWORD: ${CORAL_CITY_STORAGE_SECRET_KEY:?set a storage secret key}
+    volumes:
+      # A path the operator chooses, because the host's root filesystem is
+      # shared and close to full and growth here must not become somebody
+      # else's outage. Docker cannot bound a named volume, so the bound is
+      # whichever filesystem this path is on: point it at one with room, and at
+      # one whose exhaustion is this platform's problem alone.
+      - ${CORAL_CITY_STORAGE_PATH:?set a path for stored bytes, on a filesystem with room}:/data
+    ports:
+      - "127.0.0.1:${CORAL_CITY_STORAGE_PORT:-19000}:9000"
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: "4", memory: 4G }
+    restart: unless-stopped
+
+  migrate:
+    image: coral-city/control-plane:r1
+    pull_policy: never
+    entrypoint: ["/usr/local/bin/migrate"]
+    command: ["up"]
+    environment: *platform-env
+    depends_on:
+      record:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+    restart: "no"
+
+  bootstrap:
+    image: coral-city/control-plane:r1
+    pull_policy: never
+    entrypoint: ["/usr/local/bin/migrate"]
+    command:
+      - bootstrap
+      - -email=${CORAL_CITY_ADMIN_EMAIL:?set the first administrator's email}
+      - -secret=${CORAL_CITY_ADMIN_SECRET:?set the first administrator's secret}
+      - -name=${CORAL_CITY_ADMIN_NAME:?set the first administrator's name}
+      - -organisation=${CORAL_CITY_ADMIN_ORG:?set the first institution}
+      - -organisation-name=${CORAL_CITY_ADMIN_ORG_NAME:-Coral City}
+      - -target=local-docker
+      - -worker-credential-file=/credentials/worker
+    environment: *platform-env
+    volumes:
+      - credentials:/credentials
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  control-plane:
+    image: coral-city/control-plane:r1
+    pull_policy: never
+    environment:
+      <<: *platform-env
       CORAL_CITY_HTTP_ADDRESS: :8080
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 2G }
+    restart: unless-stopped
+
+  worker:
+    image: coral-city/worker:r1
+    pull_policy: never
+    environment:
+      CORAL_CITY_CONTROL_PLANE_URL: http://control-plane:8080
+      CORAL_CITY_WORKER_CREDENTIAL_FILE: /credentials/worker
+      CORAL_CITY_WORKER_TARGET: ${CORAL_CITY_WORKER_TARGET:-local-docker}
+      CORAL_CITY_WORKER_WORKDIR: /work
+      CORAL_CITY_WORKER_HOST_WORKDIR: ${CORAL_CITY_WORKER_HOST_WORKDIR:-/var/lib/coral-city/work}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${CORAL_CITY_WORKER_HOST_WORKDIR:-/var/lib/coral-city/work}:/work
+      - credentials:/credentials:ro
+    user: "0:0"
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    # The worker itself is small; the containers it starts carry the limits the
+    # platform admitted them for.
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 1G }
     restart: unless-stopped
 
   web:
-    image: coral-city/web:r0
-    build:
-      context: ../..
-      dockerfile: apps/web/Dockerfile
+    image: coral-city/web:r1
+    pull_policy: never
     depends_on:
       control-plane:
         condition: service_healthy
     ports:
       - "${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_WEB_PORT:-18088}:8080"
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 512M }
     restart: unless-stopped
+
+volumes:
+  record:
+  credentials:

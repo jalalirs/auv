@@ -1,188 +1,126 @@
 # System architecture
 
-This document defines component ownership and information flow. Programming
-language, monorepo tooling, and product-surface decisions are recorded in
-[`docs/decisions`](decisions/README.md). Frameworks, databases, cloud vendors,
-and scientific thresholds still require separate review records.
+This describes what exists and what it owns. Technology choices are recorded in
+[`docs/decisions`](decisions/README.md); what is deliberately not built yet is in
+[`docs/plan/r1.md`](plan/r1.md).
 
-## Complete system
+## The object model
+
+```
+platform
+├── layer/{id}@{version}   global scope: bathymetry, ocean forecast, weather
+│
+├── city/{id}              a bounded, curated, navigable place
+│   └── layer/{id}@{v}     city scope: survey-grade content
+│
+└── org/{id}               an institution: members, quota, and its own work
+
+grant:  org | principal ──[role, discoverability]──> city
+```
+
+City and organisation are siblings under the platform. Containment and
+attribution are separate: a contributed layer is *contained by* the place and
+*attributed to* the institution, which is why promoting it moves nothing.
+
+## Components that exist
 
 ```mermaid
 flowchart TB
-    Users["Scientists · operators · researchers"] --> Apps
+    Person["A person, in a browser"] --> Web
 
-    subgraph Apps["User applications"]
-        Web["Coral City web"]
-        Operator["Field operator application"]
-        Stream["Isaac streaming client"]
+    subgraph Interface
+        Web["apps/web"]
     end
 
-    Apps --> Control
+    Web -->|"generated client"| Control
 
-    subgraph Product["Coral City product core"]
-        Control["Control-plane API"]
-        Registry["Site and twin registry"]
-        Missions["Mission and scenario management"]
-        Orchestration["Workflow and job orchestration"]
-        Provenance["Version and provenance ledger"]
-        Control --> Registry
-        Control --> Missions
-        Control --> Orchestration
-        Registry --> Provenance
-        Missions --> Provenance
-        Orchestration --> Provenance
+    subgraph Product["services/control-plane"]
+        Control["HTTP transport"]
+        Policy["policy — the decision point"]
+        Domain["identity · city · layer · storage · exec · audit"]
+        Control --> Policy
+        Control --> Domain
+        Domain --> Policy
     end
 
-    Product --> Stores
-    Product --> Workflows
-    Product --> Simulation
-    Product --> Edge
+    Product --> Record[("PostgreSQL + PostGIS")]
+    Product --> Objects[("S3-compatible object store")]
 
-    subgraph Stores["Scientific data plane"]
-        Metadata["Spatial and relational metadata"]
-        Objects["Immutable object storage"]
-        Series["Observations and telemetry"]
-        Artifacts["Artifact and evidence catalogue"]
-    end
-
-    subgraph Workflows["Finite scientific workflows"]
-        Reconstruction["3D reconstruction and quality control"]
-        Environment["Observation and forecast normalization"]
-        Models["Ocean · wave · weather model jobs"]
-        Change["Change and ecological analysis"]
-    end
-
-    subgraph Simulation["Simulation and autonomy"]
-        Isaac["Isaac Sim world and sensors"]
-        ROS["ROS 2 autonomy"]
-        Evaluation["Mission evaluation"]
-        Isaac <--> ROS
-        ROS --> Evaluation
-    end
-
-    subgraph Edge["Field and edge"]
-        Station["Edge mission station"]
-        Vehicles["AUV · ROV · surface vehicles"]
-        Sensors["Cameras · sonar · DVL · CTD · fixed sensors"]
-        Station <--> Vehicles
-        Vehicles --> Sensors
-    end
-
-    Stores --> Workflows
-    Workflows --> Stores
-    Stores --> Simulation
-    Simulation --> Stores
-    Edge -->|"observations and telemetry"| Stores
-    Product -->|"approved mission package"| Station
+    Worker["services/worker"] -->|"leases work"| Control
+    Worker --> Containers["Untrusted job containers"]
+    Worker --> Objects
 ```
 
-## Deployment view
+Every arrow into the product passes through the decision point. There is no
+second one, and no component holds a handle to the binding tables except that
+one.
 
-```mermaid
-flowchart LR
-    subgraph Mac["Developer Mac"]
-        Dev["Development tools and local interfaces"]
-    end
+## Components that do not exist yet
 
-    subgraph GPU["GPU box"]
-        ProductRuntime["Product runtime"]
-        JobRuntime["Container job runtime"]
-        IsaacRuntime["Isaac Sim runtime"]
-        DataRuntime["Development scientific storage"]
-    end
-
-    subgraph HPC["HPC or cluster"]
-        Scheduler["Slurm or Kubernetes adapter"]
-        Solvers["Large scientific model jobs"]
-    end
-
-    subgraph Field["Field site"]
-        EdgeStation["Offline-tolerant edge station"]
-        Robot["Marine robot and sensors"]
-    end
-
-    Dev --> ProductRuntime
-    ProductRuntime --> JobRuntime
-    ProductRuntime --> IsaacRuntime
-    ProductRuntime --> DataRuntime
-    JobRuntime --> Scheduler
-    Scheduler --> Solvers
-    ProductRuntime <--> EdgeStation
-    EdgeStation <--> Robot
-```
+Reconstruction and model workflows, the Isaac Sim and ROS 2 integrations, the
+field edge station, and the Kubernetes, Slurm, and HPC execution targets. The
+interface each will attach to exists — a job is a container with checksummed
+inputs and declared outputs; an execution target is one Go interface — but the
+adapters do not.
 
 ## Ownership boundaries
 
-### Applications
+**The interface** presents information and requests outcomes. It receives no
+cluster credentials, writes to no store, starts no containers, and reaches bytes
+only through short-lived URLs the platform issues.
 
-Applications present information and request outcomes. They do not receive
-cluster credentials, write directly to scientific storage, start unmanaged
-containers, or bypass mission safety policy.
+**The control plane** owns identity, governance, places, layers, provenance,
+work, and the record of all of it. It runs no scientific work: it admits work,
+and workers run it.
 
-### Control plane
+**The worker** holds authority over the work queue and over nothing else. It
+cannot read a place, contribute a layer, or act for an institution; everything
+it touches while running a job, it reaches through the lease it holds on that
+job.
 
-The control plane owns identity, authorization, sites, missions, scenarios,
-workflow state, job state, simulator sessions, publication state, and
-provenance. It starts as one modular service. Splitting it into networked
-microservices requires measured operational justification.
+**The data plane** keeps metadata and immutable bytes independently of any
+compute provider. Identity is the content digest, so it survives moving between
+stores.
 
-### Scientific data plane
+## Deployment
 
-The data plane preserves metadata and immutable scientific bytes independently
-of any simulator or compute provider. Large data remains outside Git and is
-addressed by versioned manifests and checksums.
+```mermaid
+flowchart LR
+    subgraph Mac["Developer machine"]
+        Dev["just run — the whole platform"]
+    end
 
-### Workflows
+    subgraph GPU["Shared GPU host"]
+        Web2["web"] --> CP["control plane"]
+        CP --> DB[("record")]
+        CP --> S3[("stored bytes")]
+        WK["worker"] --> CP
+        WK --> Jobs["job containers"]
+    end
 
-Reconstruction, environmental normalization, model execution, and analysis are
-finite jobs. They consume declared inputs, emit declared outputs, preserve
-native logs and results, and exit. They do not become permanent product APIs.
+    Dev -->|"build, stream, migrate, start"| GPU
+```
 
-### Integrations
-
-Isaac, ROS 2, and scientific-model adapters translate Coral City contracts into
-runtime-native forms. Integration code remains thin enough that a runtime can
-be upgraded or replaced without rewriting the product core.
-
-### Field edge
-
-The field edge owns vehicle safety, immediate control, mission execution, and
-offline operation. Cloud or GPU connectivity may enhance a mission but must not
-be required for emergency control or safe termination.
+Both deployments run the same components in the same shape. The GPU host is a
+shared workstation, so every container there declares a limit and images are
+streamed rather than pulled.
 
 ## Canonical information flow
 
 ```text
-observe → ingest → validate → version → reconstruct/assimilate
-        → predict → simulate → evaluate → approve → deploy → observe again
+observe → ingest → verify → version → publish → promote
+        → reconstruct → predict → simulate → evaluate → approve → deploy → observe again
 ```
 
-Every transition produces an evidence record. No downstream component is
-allowed to erase or obscure the origin and truth class of its input.
+Everything up to *promote* is built. Every transition produces a record, and no
+downstream component may erase or obscure the origin and truth class of its
+input.
 
-## Repository-to-runtime mapping
+## Decisions still to make
 
-| Repository area | Runtime meaning |
-| --- | --- |
-| `apps/` | Long-running user-facing processes |
-| `services/` | Long-running Coral City product processes |
-| `packages/` | Versioned contracts and reusable client code |
-| `workflows/` | Finite, retryable jobs |
-| `integrations/` | Runtime boundary adapters and plugins |
-| `deployments/` | Desired deployment state and operational configuration |
-| `catalog/` | Small manifests that point to external scientific bytes |
-
-## Decisions intentionally deferred
-
-- Web application framework
-- API style and schema technology
-- Metadata, object, and time-series storage products
-- Workflow engine and scheduler
-- Container build and registry strategy
-- HPC adapter and target institution
-- Authentication provider
-- Geospatial, temporal, and uncertainty thresholds
-- Exact Isaac Sim and ROS 2 versions
-
-Each choice will be proposed, explained, and approved through a decision record
-before implementation.
+- Environmental model adapter boundaries.
+- Brokering across Kubernetes, Slurm, and institutional HPC.
+- Isaac Sim and ROS 2 versions.
+- Field-edge safety authority and offline synchronisation.
+- Data retention: nothing is deletable today, which is correct for evidence and
+  will not remain sufficient for derived output.

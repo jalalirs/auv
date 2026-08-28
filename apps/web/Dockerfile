@@ -9,8 +9,12 @@ RUN npm config set fetch-retries 5 \
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/package.json
+COPY packages/client-ts/package.json ./packages/client-ts/package.json
 RUN pnpm install --frozen-lockfile --filter @coral-city/web...
 
+# The client's types are generated from the contract and checked in, so the
+# build reads them rather than running a generator.
+COPY packages/client-ts ./packages/client-ts
 COPY apps/web ./apps/web
 RUN pnpm --filter @coral-city/web build
 
@@ -22,4 +26,4 @@ COPY --from=build /src/apps/web/dist /usr/share/nginx/html
 EXPOSE 8080
 
 HEALTHCHECK --interval=5s --timeout=2s --start-period=2s --retries=10 \
-  CMD wget -q -O /dev/null http://127.0.0.1:8080/health/live || exit 1
+  CMD wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1
