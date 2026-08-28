@@ -17,6 +17,16 @@ published site versions without editing code.
 - [ ] Version publication, restoration, and comparison workflow
 - [ ] Operator and scientific runbooks
 
+### Current work — survey intake and immutable source catalog
+
+- [x] Canonical reef-survey manifest contract
+- [x] Deterministic catalog builder and lookup command
+- [x] Scientific-readiness blockers for anchor, datum, and uncertainty
+- [x] First real Reefs4D survey indexed with manifest checksum and rights summary
+- [ ] Intake transaction copies and verifies authorized source files in immutable storage
+- [ ] File-level rights evidence and approval record
+- [ ] Catalog API and scientist-facing atlas screen
+
 ## Release acceptance tests
 
 - [ ] Process a new authorized survey from one manifest without manual scene editing

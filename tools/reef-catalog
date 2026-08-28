@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Validate and inspect the Coral City survey catalog.
+# Usage: ./tools/reef-catalog {validate|build|show ASSET_ID|test}
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+CATALOG_DIR="${REPO_ROOT}/projects/002_red_sea_digital_twin/services/catalog"
+CATALOG="${CATALOG_DIR}/coral_catalog.py"
+OUTPUT="${REPO_ROOT}/projects/002_red_sea_digital_twin/assets/catalog.json"
+
+case "${1:-validate}" in
+    validate)
+        PYTHONDONTWRITEBYTECODE=1 python3 "${CATALOG}" validate
+        ;;
+    build)
+        PYTHONDONTWRITEBYTECODE=1 python3 "${CATALOG}" build --output "${OUTPUT}"
+        ;;
+    show)
+        test -n "${2:-}" || { printf 'Asset ID is required.\n' >&2; exit 2; }
+        PYTHONDONTWRITEBYTECODE=1 python3 "${CATALOG}" show "$2"
+        ;;
+    test)
+        cd "${CATALOG_DIR}"
+        PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v test_coral_catalog.py
+        ;;
+    *)
+        printf 'Usage: %s {validate|build|show ASSET_ID|test}\n' "$0" >&2
+        exit 2
+        ;;
+esac
