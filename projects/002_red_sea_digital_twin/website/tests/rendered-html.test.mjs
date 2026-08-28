@@ -26,9 +26,9 @@ test("the Coral City blueprint opens on the standalone architecture", async () =
   assert.match(html, /Standalone Coral City architecture/);
   assert.match(html, /Coral City control plane/);
   assert.match(html, /Applications/);
-  assert.match(html, /Scientific data plane/);
-  assert.match(html, /Compute plane/);
-  assert.match(html, /Field plane/);
+  assert.match(html, /SCIENTIFIC DATA PLANE/);
+  assert.match(html, /REPLACEABLE COMPUTE \+ SIMULATION PLANE/);
+  assert.match(html, /FIELD \+ EDGE PLANE/);
   assert.match(html, />Product</);
   assert.match(html, />Releases</);
   assert.match(html, />Models</);
