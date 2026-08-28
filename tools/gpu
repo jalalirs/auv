@@ -4,6 +4,7 @@
 #   ./tools/gpu "nvidia-smi"              # non-interactive
 #   ./tools/gpu -s "sudo something"       # interactive (for sudo)
 #   ./tools/gpu sync "commit message"      # commit, push, and update ~/code/auv
+#   ./tools/gpu web                        # tunnel Coral City to the Mac
 #   ./tools/gpu                            # interactive shell
 
 set -euo pipefail
@@ -22,6 +23,15 @@ GPU_HOST="${AUV_GPU_HOST:-jalalirs@100.76.65.1}"
 if [ "${1:-}" = "sync" ]; then
     shift
     exec "${SCRIPT_DIR}/git-sync" "$@"
+elif [ "${1:-}" = "web" ]; then
+    echo "Coral City: http://localhost:18088"
+    echo "Keep this terminal open; press Ctrl-C to close the tunnel."
+    exec ssh \
+        -o ExitOnForwardFailure=yes \
+        -o ServerAliveInterval=30 \
+        -N \
+        -L 18088:127.0.0.1:18088 \
+        "$GPU_HOST"
 elif [ $# -eq 0 ]; then
     LC_ALL=C LANG=C exec ssh -t "$GPU_HOST" "export LC_ALL=C LANG=C; exec bash"
 elif [ "$1" = "-s" ]; then

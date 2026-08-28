@@ -4,7 +4,8 @@ Human entry points for repository operations live here.
 
 Currently preserved:
 
-- `gpu`: connect to the GPU box and invoke synchronization;
+- `gpu`: connect to the GPU box, open the Coral City web tunnel, and invoke
+  synchronization;
 - `git-sync`: commit, push to GitHub and the GPU mirror, and fast-forward the
   GPU checkout.
 
