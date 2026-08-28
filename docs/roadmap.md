@@ -23,6 +23,11 @@ approved system structure consistently on Mac and GPU.
 area, run the approved checks, and synchronize a harmless change without hidden
 manual setup.
 
+**Current evidence:** pinned Mac/GPU toolchains; root setup/check/test/run/sync
+commands; Go control-plane contract tests; TypeScript UI state tests; production
+web and Go container builds; public-ingress end-to-end validation; continuous
+checks; and synchronized checkpoint commits.
+
 ## R1 — Scientific Reef Atlas
 
 **Outcome:** A scientist can add an authorized reef survey, inspect a
