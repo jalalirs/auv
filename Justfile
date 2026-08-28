@@ -9,15 +9,17 @@ setup:
 # Run every fast validation required before a commit.
 check:
     git diff --check
+    go -C services/control-plane vet ./...
     pnpm --recursive --if-present check
 
 # Run all component test suites.
 test:
+    go -C services/control-plane test ./...
     pnpm --recursive --if-present test
 
-# Start the local product once a runtime exists.
+# Start the local control plane.
 run:
-    @echo "Coral City has no runtime yet; the control plane arrives in checkpoint 3."
+    go -C services/control-plane run ./cmd/control-plane
 
 # Commit and synchronize a reviewed change across Mac, GitHub, and the GPU box.
 sync message:
