@@ -1,13 +1,11 @@
 # syntax=docker/dockerfile:1.17
-FROM ghcr.io/pnpm/pnpm:11.24.0@sha256:f18a4dfbfd23931624a2396829ca921c7c262bf63fd4fa55af07654a7d41834e AS pnpm
-
-FROM node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS build
+FROM node:24.20.0-alpine3.23@sha256:0388af2af070cd4736a1567cfed02469ba117848845b4165d87a333edb53d2ca AS build
 
 WORKDIR /src
-COPY --from=pnpm /opt/pnpm /opt/pnpm
-COPY --from=pnpm /usr/lib/*/libatomic.so.1.2.0 /usr/local/lib/libatomic.so.1
-ENV PATH=/opt/pnpm:${PATH}
-ENV LD_LIBRARY_PATH=/usr/local/lib
+RUN npm config set fetch-retries 5 \
+    && npm config set fetch-retry-mintimeout 2000 \
+    && npm config set fetch-retry-maxtimeout 20000 \
+    && npm install --global --ignore-scripts pnpm@11.24.0
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/package.json
