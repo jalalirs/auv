@@ -1,10 +1,10 @@
 # Applications
 
-User-facing Coral City products live here. Applications present information and
-request work through approved product contracts. They do not write directly to
-scientific storage, schedule unmanaged jobs, or bypass field safety controls.
+Interfaces used by people.
 
-- `web/` will contain the scientist and programme interface.
-- `operator/` will contain the field operator experience.
+| Application | Who uses it |
+| --- | --- |
+| `web/` | Scientists, contributors, and engineers, in a browser |
 
-No application framework has been selected.
+A field operator application belongs here when there is a field mission system
+for it to operate (R5). It is not present, because it would have nothing to do.

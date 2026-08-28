@@ -1,8 +1,102 @@
 name: coral-city-local
 
+# The development stack is the production shape at development size: the same
+# control plane, the same worker, the same record, and the same object store.
+# Nothing here is a stand-in for a component that would be different in
+# production, because a stand-in would hide exactly the problems worth finding.
+
+x-platform-env: &platform-env
+  CORAL_CITY_DATABASE_URL: postgres://coral:coral@record:5432/coral?sslmode=disable
+  CORAL_CITY_STORAGE_ENDPOINT: storage:9000
+  # A presigned URL is signed over its host, so it must name the address the
+  # client will actually use — which for a browser or a developer's machine is
+  # not the address inside the container network.
+  CORAL_CITY_STORAGE_PUBLIC_ENDPOINT: ${CORAL_CITY_STORAGE_PUBLIC_ENDPOINT:-localhost:19000}
+  CORAL_CITY_STORAGE_ACCESS_KEY: ${CORAL_CITY_STORAGE_ACCESS_KEY:-coral-development}
+  CORAL_CITY_STORAGE_SECRET_KEY: ${CORAL_CITY_STORAGE_SECRET_KEY:-coral-development-secret}
+  CORAL_CITY_STORAGE_BUCKET_PREFIX: coral
+
 services:
+  record:
+    # A multi-architecture PostGIS build, so the same image runs on an
+    # Apple-silicon workstation and on an x86 host.
+    image: imresamu/postgis:17-3.5@sha256:35fe7dceda62bfe7d2965b0ba78d915ff9f901b5e0466d633ecc58421b5b5210
+    environment:
+      POSTGRES_USER: coral
+      POSTGRES_PASSWORD: coral
+      POSTGRES_DB: coral
+    volumes:
+      - record:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coral -d coral"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  storage:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${CORAL_CITY_STORAGE_ACCESS_KEY:-coral-development}
+      MINIO_ROOT_PASSWORD: ${CORAL_CITY_STORAGE_SECRET_KEY:-coral-development-secret}
+    volumes:
+      - storage:/data
+    ports:
+      - "127.0.0.1:${CORAL_CITY_STORAGE_PORT:-19000}:9000"
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # Applying the schema is a deliberate act, never something a serving process
+  # does on startup. The control plane waits for this to finish.
+  migrate:
+    image: coral-city/control-plane:r1
+    pull_policy: never
+    entrypoint: ["/usr/local/bin/migrate"]
+    command: ["up"]
+    environment: *platform-env
+    depends_on:
+      record:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+    restart: "no"
+
+  # Establishing the first administrator is the one act that cannot be done
+  # through the API, because until it happens there is nobody to authorise it.
+  # It is idempotent: an installation that already has an administrator is left
+  # alone. It also provisions the worker, whose credential cannot be recovered
+  # once issued and is therefore written to a file the worker reads.
+  #
+  # The credentials below are development defaults. The GPU and production
+  # deployments require them to be supplied.
+  bootstrap:
+    image: coral-city/control-plane:r1
+    pull_policy: never
+    entrypoint: ["/usr/local/bin/migrate"]
+    command:
+      - bootstrap
+      - -email=${CORAL_CITY_ADMIN_EMAIL:-admin@coral.local}
+      - -secret=${CORAL_CITY_ADMIN_SECRET:-development-secret}
+      - -name=${CORAL_CITY_ADMIN_NAME:-Development Administrator}
+      - -organisation=${CORAL_CITY_ADMIN_ORG:-coral}
+      - -organisation-name=${CORAL_CITY_ADMIN_ORG_NAME:-Coral City}
+      - -target=local-docker
+      - -worker-credential-file=/credentials/worker
+    environment: *platform-env
+    volumes:
+      - credentials:/credentials
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
   control-plane:
-    image: coral-city/control-plane:r0
+    image: coral-city/control-plane:r1
     build:
       context: ../..
       dockerfile: services/control-plane/Dockerfile
@@ -11,11 +105,45 @@ services:
         COMMIT: ${CORAL_CITY_COMMIT:-unknown}
         BUILT_AT: ${CORAL_CITY_BUILT_AT:-unknown}
     environment:
+      <<: *platform-env
       CORAL_CITY_HTTP_ADDRESS: :8080
+    # Published on loopback so that development tooling and the end-to-end
+    # check can reach the API directly. The web container reaches it over the
+    # compose network and does not need this.
+    ports:
+      - "127.0.0.1:${CORAL_CITY_API_PORT:-18089}:8080"
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  worker:
+    image: coral-city/worker:r1
+    build:
+      context: ../..
+      dockerfile: services/worker/Dockerfile
+    environment:
+      CORAL_CITY_CONTROL_PLANE_URL: http://control-plane:8080
+      CORAL_CITY_WORKER_CREDENTIAL_FILE: /credentials/worker
+      CORAL_CITY_WORKER_TARGET: ${CORAL_CITY_WORKER_TARGET:-local-docker}
+      CORAL_CITY_WORKER_WORKDIR: /work
+      # A bind mount is resolved by the container runtime on the host, so the
+      # worker must know the host path of the directory it stages into.
+      CORAL_CITY_WORKER_HOST_WORKDIR: ${CORAL_CITY_WORKER_HOST_WORKDIR:-/tmp/coral-city-work}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${CORAL_CITY_WORKER_HOST_WORKDIR:-/tmp/coral-city-work}:/work
+      - credentials:/credentials:ro
+    # The worker drives the host's container runtime, so it runs as the user
+    # that may use that socket.
+    user: "0:0"
+    depends_on:
+      control-plane:
+        condition: service_healthy
     restart: unless-stopped
 
   web:
-    image: coral-city/web:r0
+    image: coral-city/web:r1
     build:
       context: ../..
       dockerfile: apps/web/Dockerfile
@@ -23,5 +151,10 @@ services:
       control-plane:
         condition: service_healthy
     ports:
-      - "127.0.0.1:${CORAL_CITY_WEB_PORT:-8088}:8080"
+      - "127.0.0.1:${CORAL_CITY_WEB_PORT:-18090}:8080"
     restart: unless-stopped
+
+volumes:
+  record:
+  storage:
+  credentials:

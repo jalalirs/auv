@@ -1,69 +1,99 @@
 # Vision
 
-## The product story
+## What this is
 
-A scientist opens Coral City and selects a Red Sea reef site. The screen shows
-the best available 3D reconstruction of that reef, when it was measured, how it
-was produced, where its uncertainty lies, and how it differs from earlier
-surveys.
+A hub for oceanic engineering and science.
 
-The scientist selects a past date, the present, or a forecast window. Coral
-City combines observations, forecasts, and model results without confusing one
-for another. Wind, waves, currents, temperature, visibility, and ecological
-records become a versioned environmental state around the reef.
+It holds one shared, governed record of the ocean; lets people enter specific
+places at survey fidelity; merges live daily observation with simulation; and
+lets any organisation run its own jobs, scenarios, and autonomy software against
+that world.
 
-An engineer creates an AUV mission against that exact site and environmental
-state. Isaac Sim renders the world and sensors. ROS 2 runs the autonomy stack.
-The team can rehearse perception, SLAM, planning, control, sampling, and swarm
-behaviour under repeatable conditions before risking equipment or habitat.
+It is not a coral product, and it is not specific to any one sea. Corals are
+content in a place. Offshore platforms, ports, wind farms, fishing grounds, and
+coastal structures are the same objects with different content.
 
-When the real mission begins, a field edge station retains safety authority and
-continues operating if connectivity is lost. After the mission, telemetry,
-images, sonar, samples, and operator records return to Coral City. They become
-new evidence rather than silently overwriting the previous twin.
+## Why a place is the unit
 
-## Questions Coral City must answer
+A city is three things at once that happen to want the same boundary:
 
-1. What was measured at this reef, when, where, by whom, and with what quality?
-2. What is happening now, and which values are observations versus estimates?
-3. What may happen under a stated forecast or scientific scenario?
-4. How has reef geometry or ecological state changed between surveys?
-5. Can an autonomous vehicle complete a mission safely under those conditions?
-6. What happened during the simulated or real mission, and can it be reproduced?
+- **a unit of experience** — the map you enter, with detail streaming in as you
+  approach;
+- **a unit of curation** — the scope at which survey-grade assets are worth
+  their cost;
+- **a unit of computation** — a nested local domain, taking boundary conditions
+  from the coarse global fields and solving at high resolution inside its
+  extent.
 
-## Intended users
+Nested grids are how ocean modelling already works. The structure that makes the
+platform navigable is the same structure that makes it solvable, and that
+alignment is what makes the idea real rather than decorative.
 
-- Marine scientists and reef ecologists
-- Oceanographers and environmental modellers
-- Robotics, perception, and autonomy researchers
-- Mission planners and field operators
-- Data stewards and scientific reviewers
-- Partner institutions and, later, public science audiences
+## Three loops
 
-## Scale of ambition
+The hub is defined by three loops running at different speeds.
 
-The target is a production scientific and robotics platform worthy of a
-multi-institution, multi-year programme—not a collection of demos. It begins
-with one deeply complete reef site and grows through stable contracts to more
-sites, models, vehicles, sensors, and partners.
+**The daily loop** is automated. Global and local observations and forecasts
+arrive as new canonical layer versions on a schedule that nobody triggers. It is
+what makes the platform current rather than an archive.
 
-## Scientific honesty
+**The evidence loop** is slow and human-gated. A survey or a mission returns,
+reconstruction runs, a new version of a place is proposed, reviewed, and
+promoted into the shared record.
 
-Photorealism must never imply scientific certainty. Every displayed or computed
-value carries an explicit truth class:
+**The experiment loop** is fast and self-service. An organisation pins a
+scenario, runs its own autonomy against it in our simulator, gets objective
+scores, and iterates.
 
-- observation;
-- analysis or reconstruction;
-- forecast;
-- scenario input; or
-- simulation output.
+The first makes it true. The second makes it deep. The third is why people come.
 
-Unknown coordinates, datums, rights, calibration, and uncertainty remain
-visible. A beautiful asset with incomplete evidence is not silently promoted
-to operational truth.
+## The journeys
+
+**A visitor** opens a globe carrying real bathymetry and today's ocean state,
+browses a catalogue that includes places marked locked, and flies toward one
+until it stops being a view of the Earth and becomes being inside a place.
+
+**A scientist** finds not a picture but a layer stack, each layer carrying its
+truth class, reference system, datum, acquisition time and uncertainty. A time
+slider moves the whole stack; two versions of a place sit side by side and the
+difference between them is a surface. Clicking any part of it walks the lineage
+back to the images, the survey, and the operator, every hop checksummed.
+
+**A contributor** uploads into a place. It lands restricted and attributed,
+usable in her own scenarios immediately. She submits it for review, a steward
+promotes it, and everyone entering that place now sees her work, credited, with
+its lineage intact. Her bytes never moved.
+
+**A modeller** takes boundary conditions from the global fields, solves at high
+resolution inside a place, and pins the result as a citable environmental state.
+Observations, analyses, forecasts and scenarios are drawn differently because
+they *are* different in the record.
+
+**A robotics engineer** brings her own autonomy — her own container, her own
+perception, planning and control. She picks a scenario, a vessel and an
+objective; the broker admits her or refuses with a recorded reason; the
+simulator streams to her browser. Then she runs the same mission across forty
+environmental variations and gets metrics keyed to exact input versions, which
+someone else can reproduce a year later.
+
+**An operator** approves a mission. The platform emits a signed package pinned
+to every version it assumed. At sea, the station holds safety authority with the
+cable cut. Afterwards the evidence returns as new immutable layers, drives a new
+reconstruction, and the scientist's journey begins again with better data.
+
+## What the platform will not do
+
+Photorealism must never imply certainty. Every value carries a truth class, and
+a truth class never strengthens: anything derived from a scenario is a scenario
+forever. Unknown coordinates, datums, rights, calibration and uncertainty stay
+visible rather than being tidied away. A beautiful asset with incomplete
+evidence is not quietly promoted to operational truth.
+
+The record of a place outlives the institutions that funded it. A city belongs
+to the platform; an organisation is granted access to one and never contains it.
 
 ## Success
 
-Coral City succeeds when a team can move from evidence to understanding, from
+The platform succeeds when a team can move from evidence to understanding, from
 understanding to a repeatable simulated mission, and from the field back to new
-evidence—without losing provenance at any boundary.
+evidence — without losing provenance at any boundary.

@@ -28,9 +28,13 @@ The stable repository commands are:
 | Command | Contract |
 | --- | --- |
 | `just setup` | Install pinned tools and locked dependencies |
-| `just check` | Run fast static and repository validation |
-| `just test` | Run component test suites |
-| `just run` | Start the local product development runtime |
+| `just check` | Formatting, vetting, types, and that the generated client still matches the contract |
+| `just test` | Every component's tests |
+| `just run` | Build and start the whole local platform |
+| `just e2e` | Check a running deployment end to end |
+| `just contracts` | Regenerate the client from the contract |
+| `just logs` / `just stop` / `just reset` | Watch, stop, or discard the local platform |
+| `just deploy-gpu` | Build for the GPU host, stream, migrate, start, and check |
 | `just sync "message"` | Commit and synchronize a reviewed checkpoint |
 
 These commands remain thin wrappers. Component-native commands stay visible in
@@ -52,11 +56,12 @@ depend on applications, runtimes, cloud providers, or scientific solvers.
 ```text
 apps ─────────────┐
 services ─────────┼──> packages/contracts
-workflows ────────┤
-integrations ─────┘
+workers ──────────┘
 ```
 
-Cross-area imports that bypass an approved contract are prohibited.
+Cross-area imports that bypass an approved contract are prohibited. The web
+application's client is generated from the contract, and a conformance test
+fails the build if the contract and the routes actually served disagree.
 
 ## Data discipline
 

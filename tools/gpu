@@ -24,6 +24,9 @@ if [ "${1:-}" = "sync" ]; then
     shift
     exec "${SCRIPT_DIR}/git-sync" "$@"
 elif [ "${1:-}" = "web" ]; then
+    # Two ports, not one. The application is reached on the first; stored bytes
+    # are read and written directly on the second, because a presigned URL is
+    # signed over its host and so cannot be proxied through the first.
     echo "Coral City: http://localhost:18088"
     echo "Keep this terminal open; press Ctrl-C to close the tunnel."
     exec ssh \
@@ -31,6 +34,7 @@ elif [ "${1:-}" = "web" ]; then
         -o ServerAliveInterval=30 \
         -N \
         -L 18088:127.0.0.1:18088 \
+        -L 19000:127.0.0.1:19000 \
         "$GPU_HOST"
 elif [ $# -eq 0 ]; then
     LC_ALL=C LANG=C exec ssh -t "$GPU_HOST" "export LC_ALL=C LANG=C; exec bash"
