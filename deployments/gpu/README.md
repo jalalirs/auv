@@ -5,11 +5,15 @@ It intentionally requests no GPU because R0 contains no GPU workload yet. Future
 Isaac sessions and scientific jobs will be separately allocated resources rather
 than attaching a GPU to the always-on control plane or web process.
 
-Run from the repository root on the GPU box:
+The GPU host cannot be assumed to have outbound package-registry access. The
+supported development path cross-builds Linux/amd64 images on the Mac, streams
+them over the existing Tailscale SSH connection, and starts the synchronized
+GPU composition without pulling images:
 
 ```bash
-docker compose -f deployments/gpu/compose.yaml up --build -d --wait
+./tools/deploy-gpu
 ```
 
 The service binds to loopback by default. Set `CORAL_CITY_BIND_ADDRESS` only
-when an approved network ingress is ready.
+when an approved network ingress is ready. Until then, use an SSH tunnel when a
+Mac browser needs access.

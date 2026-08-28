@@ -2,6 +2,7 @@ name: coral-city-gpu
 
 services:
   control-plane:
+    image: coral-city/control-plane:r0
     build:
       context: ../..
       dockerfile: services/control-plane/Dockerfile
@@ -14,6 +15,7 @@ services:
     restart: unless-stopped
 
   web:
+    image: coral-city/web:r0
     build:
       context: ../..
       dockerfile: apps/web/Dockerfile
