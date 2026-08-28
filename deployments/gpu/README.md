@@ -16,4 +16,4 @@ GPU composition without pulling images:
 
 The service binds to loopback by default. Set `CORAL_CITY_BIND_ADDRESS` only
 when an approved network ingress is ready. Until then, use an SSH tunnel when a
-Mac browser needs access.
+Mac browser needs access. The default GPU-host port is `18088`.

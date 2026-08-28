@@ -32,7 +32,7 @@ docker save coral-city/control-plane:r0 coral-city/web:r0 \
   "cd ~/code/auv && docker compose -f deployments/gpu/compose.yaml up --detach --no-build --wait"
 
 "${script_directory}/gpu" \
-  "curl --fail --silent --show-error http://127.0.0.1:8088/api/v1/platform"
+  "curl --fail --silent --show-error http://127.0.0.1:18088/api/v1/platform"
 
 echo
-echo "Coral City ${commit} is healthy on the GPU box at loopback port 8088."
+echo "Coral City ${commit} is healthy on the GPU box at loopback port 18088."
