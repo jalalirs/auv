@@ -17,3 +17,12 @@ GPU composition without pulling images:
 The service binds to loopback by default. Set `CORAL_CITY_BIND_ADDRESS` only
 when an approved network ingress is ready. Until then, use an SSH tunnel when a
 Mac browser needs access. The default GPU-host port is `18088`.
+
+The repository tunnel command is:
+
+```bash
+./tools/gpu web
+```
+
+The recommended Mac shell alias is `coral`, which opens this tunnel and exposes
+the application at `http://localhost:18088`.
