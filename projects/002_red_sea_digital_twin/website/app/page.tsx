@@ -4,8 +4,11 @@ import { useMemo, useState } from "react";
 import {
   architecture,
   budget,
+  deploymentPlanes,
+  deploymentProfiles,
   environmentPackage,
   growthAreas,
+  jobLifecycle,
   missionCatalog,
   modelRegistry,
   principles,
@@ -23,6 +26,7 @@ const navItems = [
   ["reconstruction", "3D pipeline"],
   ["lab", "Simulation lab"],
   ["models", "Model engine"],
+  ["deployment", "Deployment"],
   ["roadmap", "Roadmap"],
   ["program", "Program"],
 ];
@@ -178,6 +182,50 @@ export default function Home() {
             {modelRegistry.map((model) => (
               <div className="model-row" role="row" key={model.name}><strong>{model.name}</strong><span>{model.family}</span><span>{model.purpose}</span><span>{model.licence}</span><span>{model.build}</span><b>{model.phase}</b></div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="section deployment-section" id="deployment">
+        <div className="section-heading">
+          <div><p className="eyebrow">FULL DEPLOYED SYSTEM</p><h2>Five planes. One Coral City.</h2></div>
+          <p>Coral City is a standalone product. Its control plane is ours. Scientific models, clusters, Isaac hosts, and field robots are replaceable execution targets behind stable Coral City contracts.</p>
+        </div>
+
+        <div className="deployment-map" aria-label="Coral City full deployment architecture">
+          {deploymentPlanes.map((plane, index) => (
+            <div className="deployment-node-wrap" key={plane.title}>
+              <article className={`deployment-node plane-${index + 1}`}>
+                <div><span>{plane.number}</span><small>PLANE</small></div>
+                <h3>{plane.title}</h3>
+                <p>{plane.purpose}</p>
+                <ul>{plane.components.map((component) => <li key={component}>{component}</li>)}</ul>
+              </article>
+              {index < deploymentPlanes.length - 1 && <i aria-hidden="true">→</i>}
+            </div>
+          ))}
+        </div>
+
+        <div className="ownership-line">
+          <span>USER INTENT</span><i>→</i><span>CONTROLLED OPERATION</span><i>→</i><span>DATA + COMPUTE</span><i>→</i><span>SIMULATION OR FIELD RESULT</span><i>→</i><span>NEW EVIDENCE</span>
+        </div>
+
+        <div className="job-architecture">
+          <div className="job-intro">
+            <p className="eyebrow">CONTAINER → JOB → SCIENTIFIC RESULT</p>
+            <h3>An image is software. A job is a governed request.</h3>
+            <p>The same immutable OCI image can run locally, in Kubernetes, or through Slurm. Coral City selects the destination and preserves the result; the model image does not become the application.</p>
+            <div className="runtime-example"><small>EXISTING OCI RUNTIME EXAMPLE</small><code>docker.io/rjalali/arc-opendrift@sha256:552323c0b4987c0f6c1f91b860972f06017be61ed6320f2e9f6a2fe16f073595</code><p>Reusable as an external runtime image. No ARC service or project dependency is implied.</p></div>
+          </div>
+          <ol className="job-flow">
+            {jobLifecycle.map(([title, body], index) => <li key={title}><span>{String(index + 1).padStart(2, "0")}</span><div><h4>{title}</h4><p>{body}</p></div></li>)}
+          </ol>
+        </div>
+
+        <div className="profile-block">
+          <div><p className="eyebrow">HOW IT GROWS</p><h3>Same architecture. Larger deployment.</h3></div>
+          <div className="profile-grid">
+            {deploymentProfiles.map((profile) => <article key={profile.title}><small>{profile.place}</small><h4>{profile.title}</h4><ul>{profile.items.map((item) => <li key={item}>{item}</li>)}</ul></article>)}
           </div>
         </div>
       </section>

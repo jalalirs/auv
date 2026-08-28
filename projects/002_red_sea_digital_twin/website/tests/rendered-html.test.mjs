@@ -28,6 +28,9 @@ test("the Coral City blueprint renders its canonical program sections", async ()
   assert.match(html, /One stable core\. Many replaceable engines\./);
   assert.match(html, /OpenDrift/);
   assert.match(html, /Environment Package/);
+  assert.match(html, /Five planes\. One Coral City\./);
+  assert.match(html, /Coral City control plane/);
+  assert.match(html, /No ARC service or project dependency is implied\./);
   assert.match(html, /Every phase ends in a working system\./);
   assert.match(html, /R1 · Scientific Reef Atlas/);
   assert.match(html, /ACCEPTANCE TESTS/);

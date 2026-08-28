@@ -167,6 +167,67 @@ export const environmentPackage = [
   "Inputs, executable, configuration, and checksums",
 ] as const;
 
+export const deploymentPlanes = [
+  {
+    number: "01",
+    title: "Applications",
+    purpose: "The product surfaces people use. They call Coral City APIs and never receive cluster or storage credentials.",
+    components: ["Coral City Web App", "Isaac WebRTC Client", "Field Operator Station"],
+  },
+  {
+    number: "02",
+    title: "Coral City control plane",
+    purpose: "Our own product brain: identity, sites, missions, workflows, job state, simulator sessions, policy, and provenance.",
+    components: ["Identity + API gateway", "Twin + Mission APIs", "Workflow + Job Controller", "Isaac Session Manager"],
+  },
+  {
+    number: "03",
+    title: "Scientific data plane",
+    purpose: "Durable metadata and immutable scientific bytes remain independent from any simulator or compute provider.",
+    components: ["PostgreSQL + PostGIS", "S3 / MinIO", "Site + Artifact Catalog", "USD · Zarr · NetCDF · ROS bags"],
+  },
+  {
+    number: "04",
+    title: "Compute plane",
+    purpose: "Coral City launches finite OCI jobs or governed interactive sessions through local, cluster, and HPC adapters.",
+    components: ["Local Docker", "Kubernetes", "Slurm / HPC", "RTX Isaac hosts"],
+  },
+  {
+    number: "05",
+    title: "Field plane",
+    purpose: "Vehicle safety and low-latency control remain local and offline-tolerant; missions and evidence synchronize when connected.",
+    components: ["Linux edge station", "ROS 2 gateway", "AUV / ROV", "Spotter · ADCP · CTD · cameras"],
+  },
+] as const;
+
+export const jobLifecycle = [
+  ["Request", "A user or workflow requests a named Coral City operation."],
+  ["Validate", "The control plane checks inputs, runtime, resources, policy, and expected outputs."],
+  ["Reserve", "Output artifact IDs and run lineage exist before compute starts."],
+  ["Stage", "Checksum-bound inputs are placed read-only beside the selected compute target."],
+  ["Execute", "A digest-pinned image becomes one finite Docker, Kubernetes, or Slurm job."],
+  ["Verify", "Outputs are checked for type, size, checksum, completeness, and scientific rules."],
+  ["Publish", "Results enter the catalog and become visible in the twin, reports, and simulator."],
+] as const;
+
+export const deploymentProfiles = [
+  {
+    title: "Development",
+    place: "Mac + GPU box",
+    items: ["Web app on the Mac", "Coral City API and development services", "Isaac Sim and WebRTC on the RTX GPU", "Local Docker jobs, PostgreSQL/PostGIS, and MinIO"],
+  },
+  {
+    title: "Field pilot",
+    place: "Cloud + compute + vessel",
+    items: ["Hosted Coral City web and control plane", "Managed PostgreSQL/PostGIS and S3", "Scientific jobs on local, Kubernetes, or HPC adapters", "Linux vessel station with ROS 2 and offline cache"],
+  },
+  {
+    title: "Red Sea scale",
+    place: "Multiple sites and fleets",
+    items: ["Highly available Coral City control plane", "Regional object storage and replicated catalogs", "Multiple CPU, MPI, GPU, and interactive Isaac pools", "Per-site edge stations, policies, users, and observatories"],
+  },
+] as const;
+
 export const roadmap = releases as RoadmapPhase[];
 
 export const missionCatalog = [
