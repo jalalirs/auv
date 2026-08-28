@@ -17,6 +17,25 @@ Every meaningful component begins with a short reviewed proposal covering:
 
 No framework scaffold or service code is added before this review.
 
+## Toolchain and commands
+
+The root `mise.toml` is the authority for developer tool versions. After mise is
+installed, `mise install` prepares the same Go, Node.js, pnpm, and just versions
+on Mac, GPU, and CI.
+
+The stable repository commands are:
+
+| Command | Contract |
+| --- | --- |
+| `just setup` | Install pinned tools and locked dependencies |
+| `just check` | Run fast static and repository validation |
+| `just test` | Run component test suites |
+| `just run` | Start the local product development runtime |
+| `just sync "message"` | Commit and synchronize a reviewed checkpoint |
+
+These commands remain thin wrappers. Component-native commands stay visible in
+their own documentation and continuous-integration logs.
+
 ## Change size
 
 - Prefer one explainable architectural decision per commit.

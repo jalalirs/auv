@@ -4,5 +4,11 @@
 .runtime/
 .data/
 
+# Reproducible dependency and build outputs.
+node_modules/
+dist/
+coverage/
+.turbo/
+
 # Operating-system noise.
 .DS_Store

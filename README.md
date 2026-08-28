@@ -38,17 +38,35 @@ There is no `projects/` layer. Coral City is the project.
 - Scientific solvers run behind adapters and never define Coral City APIs.
 - Vehicle safety and low-latency control remain local to the field edge.
 
+## Developer commands
+
+Install [mise](https://mise.jdx.dev/) once, then enter the repository and run:
+
+```bash
+mise trust
+mise install
+just setup
+just check
+just test
+```
+
+Mise pins the executable toolchains. Just is the small repository command
+surface. pnpm manages TypeScript workspaces only; Go, C++, Rust, and scientific
+software retain their native build systems.
+
 ## Current state
 
-The monorepo structure and architectural contracts are prepared. No product
-technology stack or service implementation has been approved yet.
+The monorepo structure, architectural contracts, language policy, product
+surfaces, and developer toolchain are prepared. Product runtime code begins in
+R0 checkpoint 3.
 
 ## Synchronization
 
-The Mac checkout, GitHub, and GPU checkout are synchronized with:
+The Mac checkout, GitHub, and GPU checkout are synchronized with either:
 
 ```bash
 ./tools/gpu sync "describe the approved change"
+just sync "describe the approved change"
 ```
 
 The previous repository is recoverable from Git tag
