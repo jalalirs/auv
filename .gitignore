@@ -2,6 +2,7 @@
 .env
 .env.*
 .runtime/
+.data/
 
 # Operating-system noise.
 .DS_Store
