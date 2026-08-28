@@ -1,9 +1,13 @@
 import type { City } from "@coral-city/client";
 
+import type { Basemap } from "../basemap";
+
 interface Props {
   cities: City[];
   selected?: string;
   onSelect?: (cityId: string) => void;
+  /** What the shared world offers as a backdrop, if it holds any. */
+  basemap?: Basemap;
 }
 
 const WIDTH = 720;
@@ -18,18 +22,27 @@ const project = (longitude: number, latitude: number) => ({
 /**
  * Where the platform's places are.
  *
- * This draws a graticule and the extent of every place the caller may learn of.
- * It deliberately draws no coastline, terrain, or bathymetry, because none is
- * connected yet: a basemap invented for appearance would be the one thing this
- * platform must never do. When a bathymetry layer exists in the shared world,
- * this is where it is drawn from.
+ * The backdrop is whatever the shared world actually holds: the rendering that
+ * came with a published bathymetry version, credited to whoever published it.
+ * When the world holds none, the map says so instead of inventing a coastline,
+ * because a basemap drawn for appearance would be the one thing this platform
+ * must never do.
  */
-export function WorldMap({ cities, selected, onSelect }: Props) {
+export function WorldMap({ cities, selected, onSelect, basemap }: Props) {
   return (
     <figure className="world">
       <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img"
-           aria-label={`A world map showing ${cities.length} place${cities.length === 1 ? "" : "s"}`}>
-        <rect className="world-sea" x={0} y={0} width={WIDTH} height={HEIGHT} />
+           aria-label={
+             basemap
+               ? `A world map of ${basemap.layerTitle}, showing ${cities.length} place${cities.length === 1 ? "" : "s"}`
+               : `A world map showing ${cities.length} place${cities.length === 1 ? "" : "s"}`
+           }>
+        {basemap ? (
+          <image href={basemap.imageUrl} x={0} y={0} width={WIDTH} height={HEIGHT}
+                 preserveAspectRatio="none" />
+        ) : (
+          <rect className="world-sea" x={0} y={0} width={WIDTH} height={HEIGHT} />
+        )}
 
         {[-60, -30, 0, 30, 60].map((latitude) => {
           const { y } = project(0, latitude);
@@ -77,8 +90,21 @@ export function WorldMap({ cities, selected, onSelect }: Props) {
         })}
       </svg>
       <figcaption>
-        Extents of the places you may see, drawn on a graticule. No bathymetry,
-        terrain, or coastline layer is connected, so none is drawn.
+        {basemap ? (
+          <>
+            Extents of the places you may see, over{" "}
+            <strong>{basemap.layerTitle}</strong>, version {basemap.version.ordinal},
+            measured {basemap.version.observedFrom.slice(0, 4)}. {basemap.attribution}.
+            The image is a rendering; the grid it was rendered from is in the same
+            version and is what anyone measuring anything should read.
+          </>
+        ) : (
+          <>
+            Extents of the places you may see, drawn on a graticule. No
+            bathymetry, terrain, or coastline layer is published in the shared
+            world, so none is drawn.
+          </>
+        )}
       </figcaption>
     </figure>
   );

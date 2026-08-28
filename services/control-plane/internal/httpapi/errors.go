@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
@@ -121,6 +122,15 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 			writeProblem(w, r, http.StatusConflict, "refused_by_record", message, nil)
 			return
 		}
+		// A failure nothing anticipated. The caller is told only that something
+		// went wrong, because the detail may say more than they should learn —
+		// but it is written down here, with the request identifier, or it would
+		// be undiagnosable.
+		slog.ErrorContext(r.Context(), "request failed unexpectedly",
+			"error", err,
+			"method", r.Method,
+			"path", r.URL.Path,
+			"requestId", reqctx.RequestID(r.Context()))
 		writeProblem(w, r, http.StatusInternalServerError, "internal_error",
 			"something went wrong serving this request", nil)
 	}

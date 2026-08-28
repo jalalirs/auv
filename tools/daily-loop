@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# Stand up the platform's daily loop.
+#
+# Builds the ingestion images, makes sure the shared world has a layer for each
+# to publish into, and registers the recurring work. It is idempotent: running
+# it again updates what is already there rather than making a second copy.
+#
+# Everything it does goes through the API as an administrator. Nothing here
+# reaches the record directly.
+
+set -euo pipefail
+
+script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repository_root="$(cd "${script_directory}/.." && pwd)"
+
+API="${CORAL_CITY_API:-http://localhost:18089}"
+ADMIN_EMAIL="${CORAL_CITY_ADMIN_EMAIL:-admin@coral.local}"
+ADMIN_SECRET="${CORAL_CITY_ADMIN_SECRET:-development-secret}"
+
+# How often each runs. Bathymetry is a compilation that changes when its
+# publisher releases a new one; observations arrive hourly.
+BATHYMETRY_INTERVAL="${CORAL_CITY_BATHYMETRY_INTERVAL:-604800}"
+OBSERVATIONS_INTERVAL="${CORAL_CITY_OBSERVATIONS_INTERVAL:-3600}"
+
+json() { python3 -c "
+import json,sys
+try: document = json.load(sys.stdin)
+except Exception: print(''); raise SystemExit
+try: print(document$1)
+except Exception: print('')
+"; }
+
+api() {
+    local method="$1" path="$2" body="${3:-}"
+    if [ -n "${body}" ]; then
+        curl -sS -X "${method}" "${API}${path}" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H 'content-type: application/json' -d "${body}"
+    else
+        curl -sS -X "${method}" "${API}${path}" -H "Authorization: Bearer ${TOKEN}"
+    fi
+}
+
+echo "Building the ingestion images…"
+identities="$("${script_directory}/build-workflows" 2>/dev/null)"
+bathymetry_image="$(echo "${identities}" | awk '$1=="ingest-bathymetry"{print $2}')"
+observations_image="$(echo "${identities}" | awk '$1=="ingest-observations"{print $2}')"
+if [ -z "${bathymetry_image}" ] || [ -z "${observations_image}" ]; then
+    echo "the workflow images did not build" >&2
+    exit 1
+fi
+
+TOKEN="$(curl -sS -X POST "${API}/api/v1/sessions" -H 'content-type: application/json' \
+    -d "{\"email\":\"${ADMIN_EMAIL}\",\"secret\":\"${ADMIN_SECRET}\"}" | json "['token']")"
+[ -n "${TOKEN}" ] || { echo "could not sign in as ${ADMIN_EMAIL}" >&2; exit 1; }
+
+ORG="$(api GET /api/v1/me | json "['organisations'][0]['id']")"
+[ -n "${ORG}" ] || { echo "the administrator belongs to no institution" >&2; exit 1; }
+
+# A layer for each to publish into. Creating one that exists is a conflict, and
+# a conflict here means it is already there.
+layer_for() {
+    local slug="$1" kind="$2" title="$3" description="$4"
+    local existing
+    existing="$(api GET /api/v1/world/layers \
+        | python3 -c "
+import json,sys
+try: layers = json.load(sys.stdin).get('layers') or []
+except Exception: layers = []
+print(next((l['id'] for l in layers if l['slug'] == '${slug}'), ''))
+")"
+    if [ -n "${existing}" ]; then printf '%s' "${existing}"; return; fi
+
+    api POST /api/v1/world/layers "{
+        \"slug\":\"${slug}\",\"kind\":\"${kind}\",
+        \"title\":\"${title}\",\"description\":\"${description}\",
+        \"attributedOrgId\":\"${ORG}\"
+    }" | json "['id']"
+}
+
+bathymetry_layer="$(layer_for world-bathymetry bathymetry \
+    "Global bathymetry and topography" \
+    "A global relief grid, fetched from NOAA NCEI's ETOPO 2022 through NOAA's ERDDAP service, with a rendering of it for the map.")"
+observations_layer="$(layer_for world-observations observation_series \
+    "Buoy observations" \
+    "The most recent report from each of a set of stations in NOAA's National Data Buoy Center real-time feed.")"
+[ -n "${bathymetry_layer}" ] && [ -n "${observations_layer}" ] || {
+    echo "could not prepare the layers to publish into" >&2; exit 1; }
+echo "Publishing into ${bathymetry_layer} and ${observations_layer}."
+
+schedule() {
+    local name="$1" image="$2" interval="$3" layer="$4" cpu="$5" memory="$6" walltime="$7"
+    shift 7
+    local outputs="$1"
+    api POST /api/v1/schedules "{
+        \"name\":\"${name}\",
+        \"intervalSeconds\":${interval},
+        \"firstRunAt\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"orgId\":\"${ORG}\",
+        \"recipeId\":\"${name}@1\",
+        \"imageDigest\":\"${image}\",
+        \"command\":[\"python\",\"/usr/local/bin/ingest.py\"],
+        \"outputs\":${outputs},
+        \"requestCpu\":${cpu},
+        \"requestMemoryBytes\":${memory},
+        \"walltimeSeconds\":${walltime},
+        \"egress\":\"internet\",
+        \"publish\":{
+            \"layerId\":\"${layer}\",
+            \"descriptorOutput\":\"descriptor\",
+            \"publish\":true,
+            \"promote\":true,
+            \"supersedePrevious\":true
+        }
+    }"
+}
+
+echo "Registering the recurring work…"
+schedule ingest-bathymetry "${bathymetry_image}" "${BATHYMETRY_INTERVAL}" \
+    "${bathymetry_layer}" 2 2147483648 1800 '[
+        {"name":"grid","relativePath":"bathymetry.nc","mediaType":"application/x-netcdf","maxSizeBytes":268435456},
+        {"name":"rendering","relativePath":"elevation.png","mediaType":"image/png","maxSizeBytes":67108864},
+        {"name":"descriptor","relativePath":"version.json","mediaType":"application/json","maxSizeBytes":65536}
+    ]' | json "['name']" | sed 's/^/  registered /'
+
+schedule ingest-observations "${observations_image}" "${OBSERVATIONS_INTERVAL}" \
+    "${observations_layer}" 1 536870912 300 '[
+        {"name":"observations","relativePath":"observations.json","mediaType":"application/json","maxSizeBytes":8388608},
+        {"name":"descriptor","relativePath":"version.json","mediaType":"application/json","maxSizeBytes":65536}
+    ]' | json "['name']" | sed 's/^/  registered /'
+
+echo
+echo "The daily loop is running. It will submit its first work within the minute."
+echo "Watch it with:  just logs control-plane worker"

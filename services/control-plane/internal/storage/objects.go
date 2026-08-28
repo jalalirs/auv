@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
@@ -237,6 +238,11 @@ func (o *Objects) ByDigest(ctx context.Context, bucket domain.Bucket, digest dom
 	}
 	object.SHA256 = object.Digest.String()
 	return object, nil
+}
+
+// Open reads a recorded object's bytes.
+func (o *Objects) Open(ctx context.Context, object Object) (io.ReadCloser, error) {
+	return o.blobs.Open(ctx, object.Bucket, object.Digest)
 }
 
 // ReadURL issues a short-lived URL to read an object's bytes, addressed to

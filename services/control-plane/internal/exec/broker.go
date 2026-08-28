@@ -112,6 +112,20 @@ func (b *Broker) Submit(ctx context.Context, spec JobSpec) (Job, error) {
 			return err
 		}
 
+		// What the result becomes is fixed here, at submission, and the record
+		// refuses to let it change afterwards.
+		if spec.Publish != nil {
+			if _, err := conn.Exec(ctx, `
+				INSERT INTO exec.publication
+				    (job_id, layer_id, descriptor_output, publish, promote, supersede_previous)
+				VALUES ($1, $2, $3, $4, $5, $6)`,
+				job.ID, spec.Publish.LayerID, spec.Publish.DescriptorOutput,
+				spec.Publish.Publish, spec.Publish.Promote,
+				spec.Publish.SupersedePrevious); err != nil {
+				return fmt.Errorf("recording what this job will publish: %w", err)
+			}
+		}
+
 		snapshot, err := json.Marshal(map[string]any{
 			"limit":     quota,
 			"committed": committed,
@@ -257,17 +271,23 @@ func insertJob(ctx context.Context, conn db.Conn, spec JobSpec, targetID string)
 		args = []string{}
 	}
 
+	egress, err := ParseEgress(string(spec.Egress))
+	if err != nil {
+		return Job{}, err
+	}
+
 	id := ids.New(ids.KindJob)
 	_, err = conn.Exec(ctx, `
 		INSERT INTO exec.job (
 		    id, org_id, submitted_by, recipe_id, image_digest, command, args,
 		    inputs, outputs, request_cpu, request_memory_bytes, request_gpu,
-		    walltime_seconds, target_id, state)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'admitted')`,
+		    walltime_seconds, target_id, egress, state)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+		        $15::exec.egress, 'admitted')`,
 		id, spec.OrgID, spec.SubmittedBy, spec.RecipeID, spec.ImageDigest,
 		spec.Command, args, inputs, outputs,
 		spec.RequestCPU, spec.RequestMemoryBytes, spec.RequestGPU,
-		spec.WalltimeSeconds, targetID)
+		spec.WalltimeSeconds, targetID, string(egress))
 	if err != nil {
 		return Job{}, fmt.Errorf("admitting work: %w", err)
 	}

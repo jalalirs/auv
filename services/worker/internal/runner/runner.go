@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/jalalirs/auv/services/worker/internal/config"
@@ -84,7 +85,14 @@ func (r *Runner) Run(ctx context.Context, lease *controlplane.Lease) error {
 	}
 	defer cleanup()
 
-	if err := r.runtime.Pull(work, lease.Job.ImageDigest); err != nil {
+	// An image named by a registry digest is fetched; one named by its content
+	// identity is already on the host and is verified to be, because that is
+	// how this platform's own images reach hosts with no registry.
+	if strings.Contains(lease.Job.ImageDigest, "@") {
+		if err := r.runtime.Pull(work, lease.Job.ImageDigest); err != nil {
+			return r.fail(ctx, lease, imageUnavailable, err, log)
+		}
+	} else if err := r.runtime.Present(work, lease.Job.ImageDigest); err != nil {
 		return r.fail(ctx, lease, imageUnavailable, err, log)
 	}
 
@@ -98,6 +106,7 @@ func (r *Runner) Run(ctx context.Context, lease *controlplane.Lease) error {
 		MemoryBytes: lease.Job.RequestMemoryBytes,
 		CPUs:        lease.Job.RequestCPU,
 		Name:        "coral-" + lease.AttemptID,
+		Network:     lease.Job.Egress == "internet",
 	})
 	if err != nil {
 		return r.fail(ctx, lease, internalError, err, log)

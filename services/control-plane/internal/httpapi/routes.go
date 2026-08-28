@@ -121,13 +121,15 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/cities/{cityId}/layers",
 		Summary: "contribute a layer to a place", Action: policy.LayerCreate,
 		Resource: fromPath(policy.ResourceCity, "cityId"),
+		Also:     []policy.Action{policy.OrgRead},
 		Handle:   d.createLayer(domain.CityScope)})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/world/layers",
 		Summary: "the layers of the shared world", Action: policy.LayerRead,
 		Resource: atPlatform(), Handle: d.listLayers(domain.PlatformScope)})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/world/layers",
 		Summary: "add a layer to the shared world", Action: policy.LayerCreate,
-		Resource: atPlatform(), Handle: d.createLayer(domain.PlatformScope)})
+		Resource: atPlatform(), Also: []policy.Action{policy.OrgRead},
+		Handle: d.createLayer(domain.PlatformScope)})
 
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/layers/{layerId}",
 		Summary: "a layer and the versions the caller may see", Action: policy.LayerRead,
@@ -178,10 +180,30 @@ func (rt *Router) registerAll() {
 		Summary: "check what arrived against what was declared", Action: policy.ObjectUpload,
 		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.confirmUpload})
 
+	// The platform's own recurring work.
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/schedules",
+		Summary: "the platform's recurring work and when each next runs",
+		Action:  policy.ScheduleRead, Resource: atPlatform(), Handle: d.listSchedules})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/schedules",
+		Summary: "record recurring work", Action: policy.ScheduleWrite,
+		Resource: atPlatform(),
+		Also: []policy.Action{
+			policy.JobSubmitPrivileged, policy.LayerCreate,
+			policy.LayerPublish, policy.LayerPromote,
+		},
+		Handle: d.createSchedule})
+
 	// Work.
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/jobs",
 		Summary: "ask the platform to run work", Action: policy.JobSubmit,
-		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.submitJob})
+		Resource: fromPath(policy.ResourceOrg, "orgId"),
+		// Work that may reach the network, or that publishes what it produced,
+		// needs the authority a person would need to do the same by hand.
+		Also: []policy.Action{
+			policy.JobSubmitPrivileged, policy.LayerCreate,
+			policy.LayerPublish, policy.LayerPromote,
+		},
+		Handle: d.submitJob})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations/{orgId}/jobs",
 		Summary: "an institution's work", Action: policy.JobRead,
 		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.listJobs})

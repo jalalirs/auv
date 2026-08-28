@@ -6,7 +6,7 @@ Experiments and spikes may happen inside a release but never satisfy its gate.
 | Release | Outcome | The question it answers |
 | --- | --- | --- |
 | R0 *(done)* | Engineering foundation | can we build and ship consistently? |
-| **R1** *(in progress)* | The World and its First City | can I see a real ocean, enter a real place, and know what I am looking at and who may see it? |
+| **R1** *(done)* | The World and its First City | can I see a real ocean, enter a real place, and know what I am looking at and who may see it? |
 | R2 | The Evidence Loop | how does a survey become a place? |
 | R3 | Environmental Depth | what were and will be the conditions here? |
 | R4 | The Simulation Hub | will *my* autonomy work here? |

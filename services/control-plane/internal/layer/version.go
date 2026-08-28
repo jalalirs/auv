@@ -233,7 +233,7 @@ func (s *Store) CreateVersion(ctx context.Context, conn db.Conn, spec VersionSpe
 		    producer_job_id, producer_principal_id, recipe_id, image_digest)
 		VALUES (
 		    $1, $2, $3, $4, $5::layer.truth_class,
-		    $6, $7, ST_MakeEnvelope($8, $9, $10, $11, 4326)::geography,
+		    $6, $7, ST_MakeEnvelope($8, $9, $10, $11, 4326),
 		    $12, $13, $14,
 		    $15::layer.uncertainty_kind, $16, $17,
 		    $18, $19, $20::layer.visibility, $21,

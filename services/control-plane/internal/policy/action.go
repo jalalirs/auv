@@ -51,10 +51,19 @@ const (
 
 	// JobSubmit covers asking the platform to run work.
 	JobSubmit Action = "job.submit"
+	// JobSubmitPrivileged covers submitting work that may reach the network.
+	// The sandbox exists so that an organisation's container cannot; granting
+	// an exception is a platform decision (ADR-0012).
+	JobSubmitPrivileged Action = "job.submit_privileged"
 	// JobRead covers reading a job, its attempts, and its events.
 	JobRead Action = "job.read"
 	// JobCancel covers stopping work that is running.
 	JobCancel Action = "job.cancel"
+
+	// ScheduleRead covers reading the platform's recurring work.
+	ScheduleRead Action = "schedule.read"
+	// ScheduleWrite covers creating or changing it.
+	ScheduleWrite Action = "schedule.write"
 
 	// WorkLease covers a service principal taking work from the queue.
 	WorkLease Action = "work.lease"
@@ -94,9 +103,13 @@ var requirement = map[Action]struct {
 	ObjectUpload: {RoleContributor, []ResourceKind{ResourceOrg}},
 	ObjectRead:   {RoleViewer, []ResourceKind{ResourceLayer}},
 
-	JobSubmit: {RoleContributor, []ResourceKind{ResourceOrg}},
-	JobRead:   {RoleViewer, []ResourceKind{ResourceJob, ResourceOrg}},
-	JobCancel: {RoleContributor, []ResourceKind{ResourceJob}},
+	JobSubmit:           {RoleContributor, []ResourceKind{ResourceOrg}},
+	JobSubmitPrivileged: {RoleAdmin, []ResourceKind{ResourcePlatform}},
+	JobRead:             {RoleViewer, []ResourceKind{ResourceJob, ResourceOrg}},
+	JobCancel:           {RoleContributor, []ResourceKind{ResourceJob}},
+
+	ScheduleRead:  {RoleViewer, []ResourceKind{ResourcePlatform}},
+	ScheduleWrite: {RoleAdmin, []ResourceKind{ResourcePlatform}},
 
 	WorkLease: {RoleAdmin, []ResourceKind{ResourceWork}},
 }

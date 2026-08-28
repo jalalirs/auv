@@ -1246,6 +1246,49 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/Unprocessable'
+  /api/v1/schedules:
+    get:
+      tags: [work]
+      summary: List the platform's recurring work and when each next runs
+      description: >
+        The daily loop. Recurring work belongs to the platform rather than to
+        any institution, because no institution owns it.
+      responses:
+        '200':
+          description: The recurring work.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schedules:
+                    type: array
+                    items: { $ref: '#/components/schemas/Schedule' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [work]
+      summary: Record recurring work
+      description: >
+        Creates recurring work, or updates it if the name is known. Egress and
+        publication need the same authority they would need on a single job,
+        asked once here rather than every time it runs with nobody present.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScheduleRequest' }
+      responses:
+        '201':
+          description: The recurring work.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Schedule' }
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /api/v1/organisations/{orgId}/jobs:
     post:
       tags: [work]
@@ -2075,7 +2118,10 @@ components:
         recipeId: { type: string }
         imageDigest:
           type: string
-          description: Pinned by digest. A tag can be moved and proves nothing.
+          description: >
+            A content address naming exactly one image: either a registry
+            digest, `repository@sha256:…`, or `sha256:…`, the identity of an
+            image already on the host. A tag can be moved and proves nothing.
         command: { type: array, items: { type: string } }
         args: { type: array, items: { type: string } }
         inputs: { type: array, items: { $ref: '#/components/schemas/JobInput' } }
@@ -2085,6 +2131,7 @@ components:
         requestGpu: { type: integer }
         walltimeSeconds: { type: integer }
         targetId: { type: string }
+        egress: { $ref: '#/components/schemas/Egress' }
         state:
           type: string
           enum: [pending, admitted, running, succeeded, failed, cancelled, evicted, timed_out]
@@ -2171,6 +2218,114 @@ components:
         effect: { type: string, enum: [hidden, visible] }
         reason: { type: string }
         requestId: { type: string }
+
+    Egress:
+      type: string
+      description: >
+        Whether a job's container may reach the network. `none` is what every
+        institution's work gets. `internet` is a capability granted only to work
+        an administrator of the platform submits, and it is all or nothing:
+        narrowing it to named hosts would need a proxy that does not exist, and
+        recording an allowlist nothing enforces would read as a control.
+      enum: [none, internet]
+      default: none
+
+    PublicationRequest:
+      type: object
+      additionalProperties: false
+      required: [layerId, descriptorOutput]
+      description: >
+        What a job's result becomes. Declared when the job is submitted and
+        fixed thereafter, so a job cannot decide to publish something it was not
+        asked to publish. The job writes a VersionDescriptor as its
+        `descriptorOutput`; every other declared output becomes the version's
+        payload, at the path the job declared for it.
+      properties:
+        layerId:
+          type: string
+          description: The layer the result belongs to.
+        descriptorOutput:
+          type: string
+          description: The declared output whose content is a VersionDescriptor.
+        publish:
+          type: boolean
+          description: Move the version out of draft when the job succeeds.
+        promote:
+          type: boolean
+          description: >
+            Make it part of the shared record, which needs steward authority in
+            the scope at the moment the job is submitted.
+        supersedePrevious:
+          type: boolean
+          description: >
+            Mark the layer's current published version superseded, which is what
+            makes a recurring ingestion a chain rather than a pile.
+
+    VersionDescriptor:
+      type: object
+      additionalProperties: false
+      required: [truthClass, crsEpsg, verticalDatum, extent, observedFrom,
+                 observedTo, uncertainty, rights, attribution]
+      description: >
+        What a job writes to say what it produced. It states everything a
+        version must state, and is validated exactly as a version a person
+        records is validated: a job gets no easier path. It is written as a
+        file; a job holds no credential and reaches no route.
+      properties:
+        truthClass: { $ref: '#/components/schemas/TruthClass' }
+        crsEpsg: { type: integer, minimum: 1 }
+        verticalDatum: { type: string, minLength: 1 }
+        extent: { $ref: '#/components/schemas/Extent' }
+        observedFrom: { type: string, format: date-time }
+        observedTo: { type: string, format: date-time }
+        clockOffsetSeconds: { type: number }
+        uncertainty: { $ref: '#/components/schemas/Uncertainty' }
+        rights: { type: string, minLength: 1 }
+        attribution: { type: string, minLength: 1 }
+
+    Schedule:
+      type: object
+      required: [id, name, orgId, intervalSeconds, enabled, nextRunAt, createdAt,
+                 recipeId, imageDigest, egress]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        orgId: { type: string }
+        recipeId: { type: string }
+        imageDigest: { type: string }
+        intervalSeconds: { type: integer, minimum: 60 }
+        enabled: { type: boolean }
+        nextRunAt: { type: string, format: date-time }
+        lastJobId: { type: string }
+        createdAt: { type: string, format: date-time }
+        egress: { $ref: '#/components/schemas/Egress' }
+        publish: { $ref: '#/components/schemas/PublicationRequest' }
+
+    ScheduleRequest:
+      type: object
+      additionalProperties: false
+      required: [name, intervalSeconds, orgId, recipeId, imageDigest, command,
+                 requestCpu, requestMemoryBytes, walltimeSeconds]
+      properties:
+        name: { type: string, minLength: 1 }
+        intervalSeconds:
+          type: integer
+          minimum: 60
+          description: Recurring work repeats no more often than once a minute.
+        firstRunAt: { type: string, format: date-time }
+        orgId: { type: string }
+        recipeId: { type: string }
+        imageDigest: { type: string }
+        command: { type: array, minItems: 1, items: { type: string } }
+        args: { type: array, items: { type: string } }
+        inputs: { type: array, items: { $ref: '#/components/schemas/JobInput' } }
+        outputs: { type: array, items: { $ref: '#/components/schemas/JobOutput' } }
+        requestCpu: { type: number, exclusiveMinimum: 0 }
+        requestMemoryBytes: { type: integer, format: int64, exclusiveMinimum: 0 }
+        requestGpu: { type: integer, minimum: 0 }
+        walltimeSeconds: { type: integer, exclusiveMinimum: 0 }
+        egress: { $ref: '#/components/schemas/Egress' }
+        publish: { $ref: '#/components/schemas/PublicationRequest' }
 
     Lease:
       type: object

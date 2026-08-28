@@ -68,6 +68,14 @@ stop:
 reset:
     docker compose -f {{compose}} down -v
 
+# Stand up the platform's daily loop against a running deployment.
+daily-loop:
+    ./tools/daily-loop
+
+# Build the platform's workflow images.
+workflows:
+    ./tools/build-workflows
+
 # Check a running deployment end to end.
 e2e:
     ./tools/e2e

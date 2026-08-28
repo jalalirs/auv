@@ -32,6 +32,10 @@ each depends on the object model in ADR-0004.
 11. [ADR-0011: Globe and in-city 3D client](0011-globe-and-3d-client.md) — draw
     only what the platform holds; adopt a geospatial engine when there is
     geometry to render.
+12. [ADR-0012: Egress is a capability](0012-egress-is-a-capability.md) — the
+    sandbox stays closed; reaching the internet is granted, not assumed.
+13. [ADR-0013: A job may publish what it produced](0013-a-job-may-publish-what-it-produced.md) —
+    how the daily loop becomes a heartbeat without giving a container credentials.
 
 ## Expected later
 

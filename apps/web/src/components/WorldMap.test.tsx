@@ -17,12 +17,51 @@ const place = (id: string, extent: City["extent"]): City => ({
   createdBy: "prin_1",
 });
 
+const version = {
+  id: "ver_1",
+  layerId: "layer_1",
+  ordinal: 3,
+  contentDigest: "abc",
+  truthClass: "analysis",
+  crsEpsg: 4326,
+  verticalDatum: "EGM2008 (EPSG:3855)",
+  extent: { west: -180, south: -90, east: 180, north: 90 },
+  observedFrom: "2022-01-01T00:00:00Z",
+  observedTo: "2022-12-31T23:59:59Z",
+  rights: "public domain",
+  attribution: "NOAA NCEI",
+  state: "published",
+  visibility: "canonical",
+  createdAt: "2026-08-28T00:00:00Z",
+} as const;
+
 describe("showing where places are", () => {
-  it("says plainly that no basemap is connected", () => {
+  it("says plainly when the world holds no basemap", () => {
     render(<WorldMap cities={[]} />);
     expect(
-      screen.getByText(/No bathymetry, terrain, or coastline layer is connected/),
+      screen.getByText(/No\s+bathymetry, terrain, or coastline layer is published/),
     ).toBeInTheDocument();
+  });
+
+  it("draws the basemap the shared world holds, and credits it", () => {
+    const { container } = render(
+      <WorldMap
+        cities={[]}
+        basemap={{
+          imageUrl: "https://storage.example/elevation.png",
+          version: { ...version },
+          layerTitle: "Global bathymetry and topography",
+          attribution: "NOAA NCEI",
+        }}
+      />,
+    );
+    expect(container.querySelector("image")).toHaveAttribute(
+      "href",
+      "https://storage.example/elevation.png",
+    );
+    expect(screen.getByText(/NOAA NCEI/)).toBeInTheDocument();
+    // The distinction between the picture and the data behind it is the point.
+    expect(screen.getByText(/is a rendering/)).toBeInTheDocument();
   });
 
   it("draws every place it is given", () => {

@@ -1823,6 +1823,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the platform's recurring work and when each next runs
+         * @description The daily loop. Recurring work belongs to the platform rather than to any institution, because no institution owns it.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The recurring work. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            schedules?: components["schemas"]["Schedule"][];
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        /**
+         * Record recurring work
+         * @description Creates recurring work, or updates it if the name is known. Egress and publication need the same authority they would need on a single job, asked once here rather than every time it runs with nobody present.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ScheduleRequest"];
+                };
+            };
+            responses: {
+                /** @description The recurring work. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Schedule"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organisations/{orgId}/jobs": {
         parameters: {
             query?: never;
@@ -2752,7 +2825,8 @@ export interface components {
             orgId: string;
             submittedBy: string;
             recipeId: string;
-            /** @description Pinned by digest. A tag can be moved and proves nothing. */
+            /** @description A content address naming exactly one image: either a registry digest, `repository@sha256:…`, or `sha256:…`, the identity of an image already on the host. A tag can be moved and proves nothing.
+             *      */
             imageDigest: string;
             command: string[];
             args?: string[];
@@ -2764,6 +2838,7 @@ export interface components {
             requestGpu?: number;
             walltimeSeconds: number;
             targetId?: string;
+            egress?: components["schemas"]["Egress"];
             /** @enum {string} */
             state: "pending" | "admitted" | "running" | "succeeded" | "failed" | "cancelled" | "evicted" | "timed_out";
             /** @enum {string} */
@@ -2845,6 +2920,82 @@ export interface components {
             effect: "hidden" | "visible";
             reason: string;
             requestId: string;
+        };
+        /**
+         * @description Whether a job's container may reach the network. `none` is what every institution's work gets. `internet` is a capability granted only to work an administrator of the platform submits, and it is all or nothing: narrowing it to named hosts would need a proxy that does not exist, and recording an allowlist nothing enforces would read as a control.
+         *
+         * @default none
+         * @enum {string}
+         */
+        Egress: "none" | "internet";
+        /** @description What a job's result becomes. Declared when the job is submitted and fixed thereafter, so a job cannot decide to publish something it was not asked to publish. The job writes a VersionDescriptor as its `descriptorOutput`; every other declared output becomes the version's payload, at the path the job declared for it.
+         *      */
+        PublicationRequest: {
+            /** @description The layer the result belongs to. */
+            layerId: string;
+            /** @description The declared output whose content is a VersionDescriptor. */
+            descriptorOutput: string;
+            /** @description Move the version out of draft when the job succeeds. */
+            publish?: boolean;
+            /** @description Make it part of the shared record, which needs steward authority in the scope at the moment the job is submitted.
+             *      */
+            promote?: boolean;
+            /** @description Mark the layer's current published version superseded, which is what makes a recurring ingestion a chain rather than a pile.
+             *      */
+            supersedePrevious?: boolean;
+        };
+        /** @description What a job writes to say what it produced. It states everything a version must state, and is validated exactly as a version a person records is validated: a job gets no easier path. It is written as a file; a job holds no credential and reaches no route.
+         *      */
+        VersionDescriptor: {
+            truthClass: components["schemas"]["TruthClass"];
+            crsEpsg: number;
+            verticalDatum: string;
+            extent: components["schemas"]["Extent"];
+            /** Format: date-time */
+            observedFrom: string;
+            /** Format: date-time */
+            observedTo: string;
+            clockOffsetSeconds?: number;
+            uncertainty: components["schemas"]["Uncertainty"];
+            rights: string;
+            attribution: string;
+        };
+        Schedule: {
+            id: string;
+            name: string;
+            orgId: string;
+            recipeId: string;
+            imageDigest: string;
+            intervalSeconds: number;
+            enabled: boolean;
+            /** Format: date-time */
+            nextRunAt: string;
+            lastJobId?: string;
+            /** Format: date-time */
+            createdAt: string;
+            egress: components["schemas"]["Egress"];
+            publish?: components["schemas"]["PublicationRequest"];
+        };
+        ScheduleRequest: {
+            name: string;
+            /** @description Recurring work repeats no more often than once a minute. */
+            intervalSeconds: number;
+            /** Format: date-time */
+            firstRunAt?: string;
+            orgId: string;
+            recipeId: string;
+            imageDigest: string;
+            command: string[];
+            args?: string[];
+            inputs?: components["schemas"]["JobInput"][];
+            outputs?: components["schemas"]["JobOutput"][];
+            requestCpu: number;
+            /** Format: int64 */
+            requestMemoryBytes: number;
+            requestGpu?: number;
+            walltimeSeconds: number;
+            egress?: components["schemas"]["Egress"];
+            publish?: components["schemas"]["PublicationRequest"];
         };
         Lease: {
             attemptId: string;

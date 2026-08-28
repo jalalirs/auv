@@ -2,12 +2,14 @@ import { client } from "@coral-city/client";
 
 import { Empty, Failure, Loading, Refusal } from "../components/Shell";
 import { WorldMap } from "../components/WorldMap";
+import { useBasemap } from "../basemap";
 import { navigate } from "../router";
 import { useAsked } from "../useAsync";
 
 export function City({ cityId }: { cityId: string }) {
   const place = useAsked(() => client.city(cityId), [cityId]);
   const layers = useAsked(() => client.cityLayers(cityId), [cityId]);
+  const basemap = useBasemap();
 
   if (place.loading) return <Loading what="this place" />;
   if (place.refusal) return <Refusal refusal={place.refusal} />;
@@ -32,7 +34,7 @@ export function City({ cityId }: { cityId: string }) {
         </dl>
       </header>
 
-      <WorldMap cities={[city]} selected={city.id} />
+      <WorldMap cities={[city]} selected={city.id} basemap={basemap.value} />
 
       <section>
         <h2>Layers</h2>
