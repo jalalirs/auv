@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repository_root="$(cd "${script_directory}/.." && pwd)"
+target_platform="${CORAL_CITY_GPU_PLATFORM:-linux/amd64}"
+version="${CORAL_CITY_VERSION:-development}"
+commit="$(git -C "${repository_root}" rev-parse --short=12 HEAD)"
+built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+docker buildx build \
+  --platform "${target_platform}" \
+  --file "${repository_root}/services/control-plane/Dockerfile" \
+  --tag coral-city/control-plane:r0 \
+  --build-arg "VERSION=${version}" \
+  --build-arg "COMMIT=${commit}" \
+  --build-arg "BUILT_AT=${built_at}" \
+  --load \
+  "${repository_root}"
+
+docker buildx build \
+  --platform "${target_platform}" \
+  --file "${repository_root}/apps/web/Dockerfile" \
+  --tag coral-city/web:r0 \
+  --load \
+  "${repository_root}"
+
+docker save coral-city/control-plane:r0 coral-city/web:r0 \
+  | "${script_directory}/gpu" "docker load"
+
+"${script_directory}/gpu" \
+  "cd ~/code/auv && docker compose -f deployments/gpu/compose.yaml up --detach --no-build --wait"
+
+"${script_directory}/gpu" \
+  "curl --fail --silent --show-error http://127.0.0.1:8088/api/v1/platform"
+
+echo
+echo "Coral City ${commit} is healthy on the GPU box at loopback port 8088."
