@@ -1,0 +1,25 @@
+name: coral-city-local
+
+services:
+  control-plane:
+    build:
+      context: ../..
+      dockerfile: services/control-plane/Dockerfile
+      args:
+        VERSION: ${CORAL_CITY_VERSION:-development}
+        COMMIT: ${CORAL_CITY_COMMIT:-unknown}
+        BUILT_AT: ${CORAL_CITY_BUILT_AT:-unknown}
+    environment:
+      CORAL_CITY_HTTP_ADDRESS: :8080
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${CORAL_CITY_WEB_PORT:-8088}:8080"
+    restart: unless-stopped

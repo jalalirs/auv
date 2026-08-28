@@ -56,9 +56,10 @@ software retain their native build systems.
 
 ## Current state
 
-The monorepo structure, architectural contracts, language policy, product
-surfaces, and developer toolchain are prepared. Product runtime code begins in
-R0 checkpoint 3.
+The R0 engineering foundation now includes the reviewed architecture, pinned
+toolchain, tested Go control plane, tested web shell, containerized local/GPU
+runtime, and continuous validation. No scientific data source, simulator
+session, identity system, or persistent product state exists yet.
 
 ## Synchronization
 

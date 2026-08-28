@@ -1,0 +1,9 @@
+.git
+.github
+.data
+.runtime
+.env*
+**/node_modules
+**/dist
+**/coverage
+.DS_Store

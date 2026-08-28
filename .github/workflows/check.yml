@@ -1,0 +1,36 @@
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  repository:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install pinned toolchains
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+        with:
+          install: true
+          cache: true
+
+      - name: Validate source
+        run: just check
+
+      - name: Run component tests
+        run: just test
+
+      - name: Build web release
+        run: pnpm --filter @coral-city/web build
+
+      - name: Verify public web-to-control-plane path
+        run: ./tools/e2e

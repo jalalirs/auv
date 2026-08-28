@@ -17,9 +17,9 @@ test:
     go -C services/control-plane test ./...
     pnpm --recursive --if-present test
 
-# Start the local control plane.
+# Build and start the complete local product runtime.
 run:
-    go -C services/control-plane run ./cmd/control-plane
+    docker compose -f deployments/local/compose.yaml up --build
 
 # Commit and synchronize a reviewed change across Mac, GitHub, and the GPU box.
 sync message:
