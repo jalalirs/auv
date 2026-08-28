@@ -1,0 +1,11 @@
+[project]
+name = "coral-city-catalog"
+version = "0.1.0"
+description = "Scientific survey-manifest validation and catalog generation for Coral City"
+requires-python = ">=3.11"
+dependencies = [
+  "PyYAML==6.0.3",
+]
+
+[tool.unittest]
+start-directory = "."
