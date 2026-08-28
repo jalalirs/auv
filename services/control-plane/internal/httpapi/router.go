@@ -33,7 +33,13 @@ type Route struct {
 	Action policy.Action
 	// Resource derives what is being acted upon. Required unless Public.
 	Resource ResourceOf
-	Handle   http.HandlerFunc
+	// Also names the further questions this route's handler asks the decision
+	// point — whether the caller may act for the institution it named, or hold
+	// a capability its request needs. Declaring them keeps the table a complete
+	// account of what is asked, and lets a test confirm that every action the
+	// platform defines is reachable through some route.
+	Also   []policy.Action
+	Handle http.HandlerFunc
 }
 
 // Router registers routes and enforces the access rules they declare.
@@ -72,6 +78,11 @@ func (rt *Router) register(route Route) {
 		}
 		if _, _, err := policy.Requires(route.Action); err != nil {
 			panic(fmt.Sprintf("route %s %s: %v", route.Method, route.Pattern, err))
+		}
+		for _, also := range route.Also {
+			if _, _, err := policy.Requires(also); err != nil {
+				panic(fmt.Sprintf("route %s %s: %v", route.Method, route.Pattern, err))
+			}
 		}
 	}
 	rt.routes = append(rt.routes, route)

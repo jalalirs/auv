@@ -29,6 +29,9 @@ type Schedule struct {
 	CreatedAt       time.Time `json:"createdAt"`
 	RecipeID        string    `json:"recipeId"`
 	ImageDigest     string    `json:"imageDigest"`
+	Egress          Egress    `json:"egress"`
+	// Publish is what every job this schedule submits will produce.
+	Publish *Publication `json:"publish,omitempty"`
 }
 
 // ScheduleSpec describes recurring work to create.
@@ -72,13 +75,19 @@ func (b *Broker) CreateSchedule(ctx context.Context, conn db.Conn, spec Schedule
 		args = []string{}
 	}
 
+	egress, err := ParseEgress(string(spec.Job.Egress))
+	if err != nil {
+		return Schedule{}, err
+	}
+
 	id := ids.New(ids.KindSchedule)
-	_, err = conn.Exec(ctx, `
+	err = conn.QueryRow(ctx, `
 		INSERT INTO exec.schedule (
 		    id, name, org_id, submitted_by, recipe_id, image_digest, command, args,
 		    inputs, outputs, request_cpu, request_memory_bytes, request_gpu,
-		    walltime_seconds, interval_seconds, next_run_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		    walltime_seconds, interval_seconds, next_run_at, egress)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+		        $17::exec.egress)
 		ON CONFLICT (name) DO UPDATE SET
 		    recipe_id = EXCLUDED.recipe_id,
 		    image_digest = EXCLUDED.image_digest,
@@ -90,34 +99,76 @@ func (b *Broker) CreateSchedule(ctx context.Context, conn db.Conn, spec Schedule
 		    request_memory_bytes = EXCLUDED.request_memory_bytes,
 		    request_gpu = EXCLUDED.request_gpu,
 		    walltime_seconds = EXCLUDED.walltime_seconds,
-		    interval_seconds = EXCLUDED.interval_seconds`,
+		    interval_seconds = EXCLUDED.interval_seconds,
+		    egress = EXCLUDED.egress,
+		    -- Recording recurring work again with a start time means that start
+		    -- time, which is the least surprising reading of having given one.
+		    next_run_at = EXCLUDED.next_run_at
+		RETURNING id`,
 		id, spec.Name, spec.Job.OrgID, spec.Job.SubmittedBy, spec.Job.RecipeID,
 		spec.Job.ImageDigest, spec.Job.Command, args, inputs, outputs,
 		spec.Job.RequestCPU, spec.Job.RequestMemoryBytes, spec.Job.RequestGPU,
-		spec.Job.WalltimeSeconds, spec.IntervalSeconds, spec.FirstRunAt)
+		spec.Job.WalltimeSeconds, spec.IntervalSeconds, spec.FirstRunAt,
+		string(egress)).Scan(&id)
 	if err != nil {
 		return Schedule{}, fmt.Errorf("recording recurring work: %w", err)
 	}
-	return b.ScheduleByName(ctx, spec.Name)
+
+	if spec.Job.Publish != nil {
+		if _, err := conn.Exec(ctx, `
+			INSERT INTO exec.schedule_publication
+			    (schedule_id, layer_id, descriptor_output, publish, promote, supersede_previous)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (schedule_id) DO UPDATE SET
+			    layer_id = EXCLUDED.layer_id,
+			    descriptor_output = EXCLUDED.descriptor_output,
+			    publish = EXCLUDED.publish,
+			    promote = EXCLUDED.promote,
+			    supersede_previous = EXCLUDED.supersede_previous`,
+			id, spec.Job.Publish.LayerID, spec.Job.Publish.DescriptorOutput,
+			spec.Job.Publish.Publish, spec.Job.Publish.Promote,
+			spec.Job.Publish.SupersedePrevious); err != nil {
+			return Schedule{}, fmt.Errorf("recording what recurring work will publish: %w", err)
+		}
+	}
+	// Read it back on the same connection: a pooled one cannot see a
+	// transaction that has not committed, and this one has not.
+	return scheduleOn(ctx, conn, spec.Name)
+}
+
+func scheduleOn(ctx context.Context, conn db.Conn, name string) (Schedule, error) {
+	schedule, err := scanSchedule(conn.QueryRow(ctx, selectSchedule+` WHERE s.name = $1`, name))
+	return schedule, db.Translate(err)
 }
 
 const selectSchedule = `
-	SELECT id, name, org_id, submitted_by, recipe_id, image_digest, command, args,
-	       inputs, outputs, request_cpu, request_memory_bytes, request_gpu,
-	       walltime_seconds, interval_seconds, enabled, next_run_at,
-	       coalesce(last_job_id, ''), created_at
-	FROM exec.schedule`
+	SELECT s.id, s.name, s.org_id, s.submitted_by, s.recipe_id, s.image_digest,
+	       s.command, s.args, s.inputs, s.outputs,
+	       s.request_cpu, s.request_memory_bytes, s.request_gpu,
+	       s.walltime_seconds, s.interval_seconds, s.enabled, s.next_run_at,
+	       coalesce(s.last_job_id, ''), s.created_at, s.egress,
+	       coalesce(p.layer_id, ''), coalesce(p.descriptor_output, ''),
+	       coalesce(p.publish, false), coalesce(p.promote, false),
+	       coalesce(p.supersede_previous, false)
+	FROM exec.schedule s
+	LEFT JOIN exec.schedule_publication p ON p.schedule_id = s.id`
 
 func scanSchedule(row interface{ Scan(...any) error }) (Schedule, error) {
 	var schedule Schedule
 	var inputs, outputs []byte
+	var publication Publication
 	err := row.Scan(&schedule.ID, &schedule.Name, &schedule.OrgID, &schedule.Spec.SubmittedBy,
 		&schedule.RecipeID, &schedule.ImageDigest, &schedule.Spec.Command, &schedule.Spec.Args,
 		&inputs, &outputs, &schedule.Spec.RequestCPU, &schedule.Spec.RequestMemoryBytes,
 		&schedule.Spec.RequestGPU, &schedule.Spec.WalltimeSeconds, &schedule.IntervalSeconds,
-		&schedule.Enabled, &schedule.NextRunAt, &schedule.LastJobID, &schedule.CreatedAt)
+		&schedule.Enabled, &schedule.NextRunAt, &schedule.LastJobID, &schedule.CreatedAt,
+		&schedule.Egress, &publication.LayerID, &publication.DescriptorOutput,
+		&publication.Publish, &publication.Promote, &publication.SupersedePrevious)
 	if err != nil {
 		return Schedule{}, err
+	}
+	if publication.LayerID != "" {
+		schedule.Publish = &publication
 	}
 	if err := json.Unmarshal(inputs, &schedule.Spec.Inputs); err != nil {
 		return Schedule{}, fmt.Errorf("reading scheduled inputs: %w", err)
@@ -128,18 +179,20 @@ func scanSchedule(row interface{ Scan(...any) error }) (Schedule, error) {
 	schedule.Spec.OrgID = schedule.OrgID
 	schedule.Spec.RecipeID = schedule.RecipeID
 	schedule.Spec.ImageDigest = schedule.ImageDigest
+	schedule.Spec.Egress = schedule.Egress
+	schedule.Spec.Publish = schedule.Publish
 	return schedule, nil
 }
 
 // ScheduleByName reads recurring work by its stable name.
 func (b *Broker) ScheduleByName(ctx context.Context, name string) (Schedule, error) {
-	schedule, err := scanSchedule(b.pool.QueryRow(ctx, selectSchedule+` WHERE name = $1`, name))
+	schedule, err := scanSchedule(b.pool.QueryRow(ctx, selectSchedule+` WHERE s.name = $1`, name))
 	return schedule, db.Translate(err)
 }
 
 // Schedules lists every piece of recurring work.
 func (b *Broker) Schedules(ctx context.Context) ([]Schedule, error) {
-	rows, err := b.pool.Query(ctx, selectSchedule+` ORDER BY name`)
+	rows, err := b.pool.Query(ctx, selectSchedule+` ORDER BY s.name`)
 	if err != nil {
 		return nil, fmt.Errorf("reading recurring work: %w", err)
 	}
@@ -165,7 +218,7 @@ func (b *Broker) Schedules(ctx context.Context) ([]Schedule, error) {
 //
 // It reports how many jobs were submitted.
 func (b *Broker) RunDueSchedules(ctx context.Context) (int, error) {
-	rows, err := b.pool.Query(ctx, selectSchedule+` WHERE enabled AND next_run_at <= now()`)
+	rows, err := b.pool.Query(ctx, selectSchedule+` WHERE s.enabled AND s.next_run_at <= now()`)
 	if err != nil {
 		return 0, fmt.Errorf("looking for recurring work that is due: %w", err)
 	}

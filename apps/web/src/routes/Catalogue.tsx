@@ -2,6 +2,7 @@ import { client, type City } from "@coral-city/client";
 
 import { Empty, Failure, Loading, Refusal } from "../components/Shell";
 import { WorldMap } from "../components/WorldMap";
+import { useBasemap } from "../basemap";
 import { navigate } from "../router";
 import { useAsked } from "../useAsync";
 
@@ -13,6 +14,7 @@ const discoverability: Record<City["discoverability"], string> = {
 
 export function Catalogue() {
   const asked = useAsked(() => client.catalogue(), []);
+  const basemap = useBasemap();
 
   if (asked.loading) return <Loading what="the catalogue" />;
   if (asked.refusal) return <Refusal refusal={asked.refusal} />;
@@ -30,7 +32,8 @@ export function Catalogue() {
         </p>
       </header>
 
-      <WorldMap cities={cities} onSelect={(cityId) => navigate(`/cities/${cityId}`)} />
+      <WorldMap cities={cities} basemap={basemap.value}
+                onSelect={(cityId) => navigate(`/cities/${cityId}`)} />
 
       {cities.length === 0 ? (
         <Empty>

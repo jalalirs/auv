@@ -120,6 +120,22 @@ type Spec struct {
 	MemoryBytes int64
 	CPUs        float64
 	Name        string
+	// Network is granted only to work the platform admitted with that
+	// capability. Everything else runs with none (ADR-0012).
+	Network bool
+}
+
+// Present reports whether an image is already on the host.
+//
+// This platform's own images are built elsewhere and streamed to hosts that
+// cannot reach a registry, so an image named by its content identity is
+// verified to be here rather than fetched.
+func (r *Runtime) Present(ctx context.Context, image string) error {
+	response, err := r.do(ctx, http.MethodGet, "/images/"+url.PathEscape(image)+"/json", nil)
+	if err != nil {
+		return fmt.Errorf("image %s is not on this host: %w", image, err)
+	}
+	return response.Close()
 }
 
 // Pull fetches an image. The reference is pinned by digest, so what is fetched
@@ -161,18 +177,25 @@ func firstError(stream []byte) string {
 func (r *Runtime) Create(ctx context.Context, spec Spec) (string, error) {
 	command := append(append([]string{}, spec.Command...), spec.Args...)
 
+	// No network unless the platform granted this work that capability. It is
+	// the default for everything an institution submits (ADR-0012).
+	network := "none"
+	if spec.Network {
+		network = "bridge"
+	}
+
 	request := map[string]any{
 		"Image":           spec.Image,
 		"Cmd":             command,
 		"Env":             spec.Env,
 		"WorkingDir":      "/work",
-		"NetworkDisabled": true,
+		"NetworkDisabled": !spec.Network,
 		"HostConfig": map[string]any{
 			"Binds": []string{
 				spec.InputsHost + ":/work/inputs:ro",
 				spec.OutputsHost + ":/work/outputs:rw",
 			},
-			"NetworkMode":    "none",
+			"NetworkMode":    network,
 			"ReadonlyRootfs": true,
 			"CapDrop":        []string{"ALL"},
 			"SecurityOpt":    []string{"no-new-privileges"},

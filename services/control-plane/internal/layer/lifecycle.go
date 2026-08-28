@@ -13,8 +13,8 @@ import (
 const selectVersion = `
 	SELECT v.id, v.layer_id, v.ordinal, encode(v.content_digest, 'hex'), v.truth_class,
 	       v.crs_epsg, v.vertical_datum,
-	       ST_XMin(v.extent::geometry), ST_YMin(v.extent::geometry),
-	       ST_XMax(v.extent::geometry), ST_YMax(v.extent::geometry),
+	       ST_XMin(v.extent), ST_YMin(v.extent),
+	       ST_XMax(v.extent), ST_YMax(v.extent),
 	       v.observed_from, v.observed_to, v.clock_offset_seconds,
 	       v.uncertainty_kind, v.uncertainty_value, v.uncertainty_note,
 	       v.rights, v.attribution, v.state, v.visibility,

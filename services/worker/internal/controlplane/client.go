@@ -65,6 +65,9 @@ type Job struct {
 	RequestMemoryBytes int64    `json:"requestMemoryBytes"`
 	RequestGPU         int      `json:"requestGpu"`
 	WalltimeSeconds    int      `json:"walltimeSeconds"`
+	// Egress is "none" for every job an institution submits, and "internet"
+	// only for work the platform admitted with that capability.
+	Egress string `json:"egress"`
 }
 
 // Lease is work handed to this worker, with the token proving it holds it.

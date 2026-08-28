@@ -351,6 +351,103 @@ check "a worker cannot read the catalogue" \
             exec -T worker cat /credentials/worker 2>/dev/null | tr -d '\r\n')")" "403"
 
 # ---------------------------------------------------------------------------
+step "The sandbox is closed unless the platform opens it"
+
+# Reaching the network is a capability, not a setting. An institution's
+# contributor cannot grant it to itself, whatever it submits.
+check "an ordinary submitter cannot ask for network access" \
+    "$(status "$OUTSIDER_TOKEN" POST "/api/v1/organisations/$OTHER_ORG/jobs" "{
+        \"recipeId\":\"probe@1\",\"imageDigest\":\"$IMAGE\",
+        \"command\":[\"/bin/true\"],\"requestCpu\":1,
+        \"requestMemoryBytes\":268435456,\"walltimeSeconds\":60,
+        \"egress\":\"internet\"}")" "403"
+
+check "work says which egress it was granted" \
+    "$(api "$ADMIN" GET "/api/v1/jobs/$JOB" | json "['job']['egress']")" "none"
+
+# ---------------------------------------------------------------------------
+step "The world brings itself up to date"
+
+SCHEDULES=$(api "$ADMIN" GET /api/v1/schedules)
+if [ "$(printf '%s' "$SCHEDULES" | json "['schedules'].__len__()")" = "0" ]; then
+    printf '  \033[33m–\033[0m skipped: no recurring work is registered. Run ./tools/daily-loop\n'
+else
+    pass "the platform has recurring work registered"
+
+    check "it is granted the network it needs, explicitly" \
+        "$(printf '%s' "$SCHEDULES" | json "[s['egress'] for s in ['schedules']]" 2>/dev/null || \
+           printf '%s' "$SCHEDULES" | python3 -c "
+import json,sys
+s=json.load(sys.stdin)['schedules']
+print('yes' if s and all(x['egress']=='internet' for x in s) else 'no')")" "yes"
+
+    check "each says what it will publish" \
+        "$(printf '%s' "$SCHEDULES" | python3 -c "
+import json,sys
+s=json.load(sys.stdin)['schedules']
+print('yes' if s and all(x.get('publish') for x in s) else 'no')")" "yes"
+
+    # What the loop actually produced. This is the difference between a
+    # capability and a heartbeat.
+    WORLD=$(api "$ADMIN" GET /api/v1/world/layers)
+    for slug in world-bathymetry world-observations; do
+        LAYER_ID=$(printf '%s' "$WORLD" | python3 -c "
+import json,sys
+layers=json.load(sys.stdin).get('layers') or []
+print(next((l['id'] for l in layers if l['slug']=='$slug'), ''))")
+        if [ -z "$LAYER_ID" ]; then
+            fail "the shared world has no $slug layer"
+            continue
+        fi
+
+        CURRENT=$(api "$ADMIN" GET "/api/v1/layers/$LAYER_ID" | python3 -c "
+import json,sys
+versions=json.load(sys.stdin).get('versions') or []
+current=[v for v in versions if v['state']=='published' and v['visibility']=='canonical']
+print(json.dumps(current[0]) if current else '')")
+        if [ -z "$CURRENT" ]; then
+            fail "$slug holds nothing published in the shared record yet"
+            continue
+        fi
+        pass "$slug holds a published version in the shared record"
+
+        for field in verticalDatum rights attribution recipeId imageDigest producerJobId; do
+            VALUE=$(printf '%s' "$CURRENT" | json "['$field']")
+            if [ -n "$VALUE" ]; then
+                pass "  its $field is recorded"
+            else
+                fail "  its $field is missing"
+            fi
+        done
+
+        check "  it was produced by work, not by hand" \
+            "$(printf '%s' "$CURRENT" | json "['producerPrincipalId']")" ""
+    done
+
+    check "the world's bathymetry is a compilation, not a measurement" \
+        "$(api "$ADMIN" GET "/api/v1/layers/$(printf '%s' "$WORLD" | python3 -c "
+import json,sys
+layers=json.load(sys.stdin).get('layers') or []
+print(next((l['id'] for l in layers if l['slug']=='world-bathymetry'), ''))")" \
+          | python3 -c "
+import json,sys
+versions=json.load(sys.stdin).get('versions') or []
+current=[v for v in versions if v['state']=='published']
+print(current[0]['truthClass'] if current else '')")" "analysis"
+
+    check "the world's observations are measurements" \
+        "$(api "$ADMIN" GET "/api/v1/layers/$(printf '%s' "$WORLD" | python3 -c "
+import json,sys
+layers=json.load(sys.stdin).get('layers') or []
+print(next((l['id'] for l in layers if l['slug']=='world-observations'), ''))")" \
+          | python3 -c "
+import json,sys
+versions=json.load(sys.stdin).get('versions') or []
+current=[v for v in versions if v['state']=='published']
+print(current[0]['truthClass'] if current else '')")" "observation"
+fi
+
+# ---------------------------------------------------------------------------
 # Killing a worker mid-attempt is the only way to check that work survives a
 # worker that dies, so it needs the compose stack rather than only the API. It
 # is skipped when running against a deployment this machine does not operate.

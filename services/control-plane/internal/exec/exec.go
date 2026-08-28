@@ -142,6 +142,7 @@ type Job struct {
 	RequestGPU         int     `json:"requestGpu"`
 	WalltimeSeconds    int     `json:"walltimeSeconds"`
 
+	Egress       Egress       `json:"egress"`
 	TargetID     string       `json:"targetId,omitempty"`
 	State        JobState     `json:"state"`
 	FailureClass FailureClass `json:"failureClass"`
@@ -177,9 +178,108 @@ type Event struct {
 	Detail     map[string]any `json:"detail"`
 }
 
-// imageDigestPattern requires an image to be pinned by digest. A tag can be
-// moved; a digest cannot, and provenance that names a tag proves nothing.
-var imageDigestPattern = regexp.MustCompile(`^[a-z0-9.-]+(:[0-9]+)?/?.*@sha256:[0-9a-f]{64}$`)
+// Egress says whether a job's container may reach the network.
+//
+// It is a capability, not a setting: `none` is what every organisation's work
+// gets, and `internet` is granted only to a job whose submitter holds authority
+// at the platform. See ADR-0012, which also records that it is all or nothing.
+type Egress string
+
+const (
+	// NoEgress gives the container no network at all.
+	NoEgress Egress = "none"
+	// InternetEgress gives it ordinary outbound networking.
+	InternetEgress Egress = "internet"
+)
+
+// ParseEgress validates an egress capability.
+func ParseEgress(value string) (Egress, error) {
+	switch Egress(value) {
+	case NoEgress, InternetEgress:
+		return Egress(value), nil
+	case "":
+		return NoEgress, nil
+	}
+	return "", fmt.Errorf("%w: egress is none or internet, not %q", domain.ErrInvalid, value)
+}
+
+// Privileged reports whether this capability may only be granted by an
+// administrator of the platform.
+func (e Egress) Privileged() bool { return e != NoEgress }
+
+// An image must be named by a content address, because a tag can be moved and
+// provenance that names one proves nothing. Two forms are content addresses:
+//
+//   - a registry digest, `repository@sha256:…`, which the worker pulls;
+//   - a bare `sha256:…`, the identity of an image already on the host, which
+//     the worker verifies is present rather than fetching.
+//
+// The second exists because this platform's own images are built elsewhere and
+// streamed to hosts that cannot reach a registry. Neither can be moved.
+var (
+	registryDigestPattern = regexp.MustCompile(`^[a-z0-9.-]+(:[0-9]+)?/?.*@sha256:[0-9a-f]{64}$`)
+	localImagePattern     = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+)
+
+// IsContentAddressed reports whether an image reference names exactly one image.
+func IsContentAddressed(image string) bool {
+	return registryDigestPattern.MatchString(image) || localImagePattern.MatchString(image)
+}
+
+// Publication is what a job's result becomes.
+//
+// It is declared when the job is submitted and cannot change, so a job cannot
+// decide to publish something it was not asked to publish. See ADR-0013.
+type Publication struct {
+	// LayerID is the layer the result belongs to.
+	LayerID string `json:"layerId"`
+	// DescriptorOutput names the declared output whose content states what the
+	// version is. Every other declared output becomes the version's payload.
+	DescriptorOutput string `json:"descriptorOutput"`
+	// Publish moves the version out of draft on success.
+	Publish bool `json:"publish"`
+	// Promote makes it part of the shared record, which still requires the
+	// submitter to hold steward authority in the scope.
+	Promote bool `json:"promote"`
+	// SupersedePrevious marks the layer's current published version superseded,
+	// which is what makes a recurring ingestion a chain rather than a pile.
+	SupersedePrevious bool `json:"supersedePrevious"`
+
+	// VersionID is set once the platform has materialised the version.
+	VersionID string `json:"versionId,omitempty"`
+}
+
+// Validate reports whether the declaration is expressible.
+func (p Publication) Validate(outputs []Output) error {
+	if p.LayerID == "" {
+		return fmt.Errorf("%w: a publication names the layer it belongs to", domain.ErrInvalid)
+	}
+	if p.DescriptorOutput == "" {
+		return fmt.Errorf("%w: a publication names the output that describes it", domain.ErrInvalid)
+	}
+	if p.Promote && !p.Publish {
+		return fmt.Errorf("%w: a version cannot become part of the shared record without being published",
+			domain.ErrInvalid)
+	}
+
+	var described, payload int
+	for _, output := range outputs {
+		if output.Name == p.DescriptorOutput {
+			described++
+			continue
+		}
+		payload++
+	}
+	if described == 0 {
+		return fmt.Errorf("%w: this job declares no output named %q to describe its result",
+			domain.ErrInvalid, p.DescriptorOutput)
+	}
+	if payload == 0 {
+		return fmt.Errorf("%w: a version has at least one file, and every declared output but %q is its payload",
+			domain.ErrInvalid, p.DescriptorOutput)
+	}
+	return nil
+}
 
 // JobSpec describes work to run.
 type JobSpec struct {
@@ -196,6 +296,11 @@ type JobSpec struct {
 	RequestMemoryBytes int64
 	RequestGPU         int
 	WalltimeSeconds    int
+
+	// Egress is refused unless the submitter holds authority at the platform.
+	Egress Egress
+	// Publish, when set, is what this job's result becomes.
+	Publish *Publication
 }
 
 // Validate reports whether the work is fully and safely described.
@@ -207,9 +312,13 @@ func (j JobSpec) Validate() error {
 		return fmt.Errorf("%w: work names the recipe that produced its specification",
 			domain.ErrInvalid)
 	}
-	if !imageDigestPattern.MatchString(j.ImageDigest) {
-		return fmt.Errorf("%w: %q is not an image pinned by digest; a tag can be moved and proves nothing",
+	if !IsContentAddressed(j.ImageDigest) {
+		return fmt.Errorf(
+			"%w: %q does not name exactly one image; use repository@sha256:… or sha256:… , because a tag can be moved and proves nothing",
 			domain.ErrInvalid, j.ImageDigest)
+	}
+	if _, err := ParseEgress(string(j.Egress)); err != nil {
+		return err
 	}
 	if len(j.Command) == 0 {
 		return fmt.Errorf("%w: work runs a command", domain.ErrInvalid)
@@ -257,6 +366,12 @@ func (j JobSpec) Validate() error {
 		}
 		if output.MediaType == "" {
 			return fmt.Errorf("%w: output %q states its media type", domain.ErrInvalid, output.Name)
+		}
+	}
+
+	if j.Publish != nil {
+		if err := j.Publish.Validate(j.Outputs); err != nil {
+			return err
 		}
 	}
 	return nil

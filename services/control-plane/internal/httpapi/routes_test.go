@@ -78,13 +78,17 @@ func TestEveryRouteDeclaresWhatItIsFor(t *testing.T) {
 func TestEveryActionIsReachable(t *testing.T) {
 	used := map[policy.Action]bool{}
 	for _, route := range routeTable(t) {
-		if !route.Public {
-			used[route.Action] = true
+		if route.Public {
+			continue
+		}
+		used[route.Action] = true
+		for _, also := range route.Also {
+			used[also] = true
 		}
 	}
 	for _, action := range policy.Actions() {
 		if !used[action] {
-			t.Errorf("action %q is defined but no route performs it", action)
+			t.Errorf("action %q is defined but no route performs or asks it", action)
 		}
 	}
 }

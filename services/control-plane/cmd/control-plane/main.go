@@ -24,6 +24,7 @@ import (
 	"github.com/jalalirs/auv/services/control-plane/internal/layer"
 	"github.com/jalalirs/auv/services/control-plane/internal/platform"
 	"github.com/jalalirs/auv/services/control-plane/internal/policy"
+	"github.com/jalalirs/auv/services/control-plane/internal/publication"
 	"github.com/jalalirs/auv/services/control-plane/internal/storage"
 )
 
@@ -35,6 +36,9 @@ var (
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	// Components that cannot be handed a logger — the transport's last-resort
+	// error path among them — still have to be able to say what went wrong.
+	slog.SetDefault(logger)
 	if err := run(logger); err != nil {
 		logger.Error("control plane stopped", "error", err)
 		os.Exit(1)
@@ -73,18 +77,23 @@ func run(logger *slog.Logger) error {
 
 	broker := exec.NewBroker(pool)
 	identities := identity.NewStore(pool, settings.SessionLifetime)
+	layers := layer.NewStore(pool)
+	objects := storage.NewObjects(pool, blobs, settings.UploadGrantLifetime, settings.MaxObjectBytes)
+	recorder := audit.NewRecorder()
+	publisher := publication.New(pool, layers, objects, recorder)
 
 	deps := &httpapi.Dependencies{
 		Info:            platform.Build(version, commit, builtAt),
 		Pool:            pool,
 		Identity:        identities,
 		Authorizer:      policy.NewAuthorizer(pool),
-		Audit:           audit.NewRecorder(),
+		Audit:           recorder,
 		Cities:          city.NewStore(pool),
-		Layers:          layer.NewStore(pool),
-		Objects:         storage.NewObjects(pool, blobs, settings.UploadGrantLifetime, settings.MaxObjectBytes),
+		Layers:          layers,
+		Objects:         objects,
 		Blobs:           blobs,
 		Broker:          broker,
+		Publisher:       publisher,
 		Logger:          logger,
 		LeaseDuration:   settings.LeaseDuration,
 		SessionLifetime: settings.SessionLifetime,
@@ -96,7 +105,7 @@ func run(logger *slog.Logger) error {
 
 	background, stopBackground := context.WithCancel(context.Background())
 	defer stopBackground()
-	tending := attend(background, logger, broker, identities, settings)
+	tending := attend(background, logger, broker, identities, publisher, settings)
 
 	serverErrors := make(chan error, 1)
 	go func() {
@@ -138,7 +147,7 @@ func run(logger *slog.Logger) error {
 //
 // None of it belongs on a request, and all of it must keep happening whether or
 // not anyone is looking.
-func attend(ctx context.Context, logger *slog.Logger, broker *exec.Broker, identities *identity.Store, settings config.Config) <-chan struct{} {
+func attend(ctx context.Context, logger *slog.Logger, broker *exec.Broker, identities *identity.Store, publisher *publication.Publisher, settings config.Config) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -170,6 +179,16 @@ func attend(ctx context.Context, logger *slog.Logger, broker *exec.Broker, ident
 				logger.Error("could not submit recurring work", "error", err)
 			} else if submitted > 0 {
 				logger.Info("submitted recurring work", "jobs", submitted)
+			}
+
+			// A result that was produced but never published — because this
+			// process ended between the two, or storage was briefly out of
+			// reach — is finished here rather than waiting for someone to
+			// notice.
+			if published, err := publisher.MaterialisePending(ctx); err != nil {
+				logger.Error("could not publish what finished work produced", "error", err)
+			} else if published > 0 {
+				logger.Info("published what finished work produced", "versions", published)
 			}
 
 			// Expired sessions are cleared rarely: they authenticate nobody in

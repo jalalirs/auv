@@ -12,7 +12,7 @@ import (
 const selectJob = `
 	SELECT id, org_id, submitted_by, recipe_id, image_digest, command, args,
 	       inputs, outputs, request_cpu, request_memory_bytes, request_gpu,
-	       walltime_seconds, coalesce(target_id, ''), state, failure_class,
+	       walltime_seconds, coalesce(target_id, ''), egress, state, failure_class,
 	       created_at, terminal_at
 	FROM exec.job`
 
@@ -22,7 +22,7 @@ func scanJob(row interface{ Scan(...any) error }) (Job, error) {
 	err := row.Scan(&job.ID, &job.OrgID, &job.SubmittedBy, &job.RecipeID, &job.ImageDigest,
 		&job.Command, &job.Args, &inputs, &outputs,
 		&job.RequestCPU, &job.RequestMemoryBytes, &job.RequestGPU,
-		&job.WalltimeSeconds, &job.TargetID, &job.State, &job.FailureClass,
+		&job.WalltimeSeconds, &job.TargetID, &job.Egress, &job.State, &job.FailureClass,
 		&job.CreatedAt, &job.TerminalAt)
 	if err != nil {
 		return Job{}, err

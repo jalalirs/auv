@@ -108,12 +108,23 @@ just reset    # stop it and discard everything it holds
 
 ## Where this is
 
-The platform spine is built and running: identity, institutions, governance,
-places, layers, immutable versions, provenance, content-addressed storage, the
-job model, a real worker, quotas, refusals, and an append-only audit record.
-[`docs/plan/r1.md`](docs/plan/r1.md) says what is deliberately not built yet —
-most of it, including all reconstruction, all environmental modelling, and the
-simulator.
+**R1 is closed.** The platform spine is running — identity, institutions,
+governance, places, layers, immutable versions, provenance, content-addressed
+storage, the job model, a real worker, quotas, refusals, and an append-only
+audit record — and it holds real scientific data that it fetched for itself.
+
+Two ingestions run on a schedule nobody triggers: a global relief grid from
+NOAA NCEI's ETOPO 2022, and the National Data Buoy Center's real-time
+observations. Each publishes a canonical layer version superseding the last,
+with the recipe and image digest that produced it, and nobody touches them.
+
+```bash
+just daily-loop   # stand it up
+```
+
+[`docs/plan/r1.md`](docs/plan/r1.md) says what is deliberately not built —
+still most of it, including all reconstruction, all environmental modelling,
+and the simulator.
 
 Start with [the plan](docs/plan/r1.md), the
 [decisions](docs/decisions/README.md), and the

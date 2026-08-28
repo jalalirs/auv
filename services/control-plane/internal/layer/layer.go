@@ -135,9 +135,20 @@ func (s *Store) InScope(ctx context.Context, scope domain.ScopeKind, cityID stri
 	rows, err := s.pool.Query(ctx, selectLayer+` AS l
 		WHERE l.scope_kind = $1::layer.scope_kind
 		  AND coalesce(l.city_id, '') = $2
-		  AND EXISTS (
-		        SELECT 1 FROM layer.version v
-		        WHERE v.layer_id = l.id AND `+visibilityPredicate("v", "l", 3)+`
+		  AND (
+		        EXISTS (
+		          SELECT 1 FROM layer.version v
+		          WHERE v.layer_id = l.id AND `+visibilityPredicate("v", "l", 3)+`
+		        )
+		     OR (
+		          -- A layer with nothing in it yet is visible to whoever may
+		          -- put something in it: its own organisation, and the stewards
+		          -- who would review that. To everyone else it is as absent as
+		          -- a layer whose every version they may not read, because an
+		          -- empty layer says only that somebody intends something.
+		          NOT EXISTS (SELECT 1 FROM layer.version v2 WHERE v2.layer_id = l.id)
+		          AND (l.attributed_org_id = ANY($4::text[]) OR $5::boolean)
+		        )
 		      )
 		ORDER BY l.title`,
 		string(scope), cityID,

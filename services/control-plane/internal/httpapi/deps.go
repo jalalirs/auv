@@ -14,6 +14,7 @@ import (
 	"github.com/jalalirs/auv/services/control-plane/internal/layer"
 	"github.com/jalalirs/auv/services/control-plane/internal/platform"
 	"github.com/jalalirs/auv/services/control-plane/internal/policy"
+	"github.com/jalalirs/auv/services/control-plane/internal/publication"
 	"github.com/jalalirs/auv/services/control-plane/internal/storage"
 )
 
@@ -30,6 +31,7 @@ type Dependencies struct {
 	Objects    *storage.Objects
 	Blobs      *storage.Blobs
 	Broker     *exec.Broker
+	Publisher  *publication.Publisher
 	Logger     *slog.Logger
 
 	// LeaseDuration is how long a worker holds an attempt before it must
@@ -55,10 +57,11 @@ func (d *Dependencies) authorize(ctx context.Context, action policy.Action, reso
 	return d.Authorizer.Decide(ctx, subject, action, resource)
 }
 
-// requireOrg confirms the caller may act for the organisation it named, and
-// reports the refusal itself if not.
-func (d *Dependencies) requireOrg(w http.ResponseWriter, r *http.Request, orgID string) bool {
-	decision, err := d.authorize(r.Context(), policy.OrgRead, policy.Org(orgID))
+// permits asks the decision point a further question and reports the refusal
+// itself if the answer is no. Every question a handler must ask beyond the one
+// the router already asked goes through here.
+func (d *Dependencies) permits(w http.ResponseWriter, r *http.Request, action policy.Action, resource policy.Resource) bool {
+	decision, err := d.authorize(r.Context(), action, resource)
 	if err != nil {
 		writeError(w, r, err)
 		return false
@@ -68,4 +71,9 @@ func (d *Dependencies) requireOrg(w http.ResponseWriter, r *http.Request, orgID 
 		return false
 	}
 	return true
+}
+
+// requireOrg confirms the caller may act for the organisation it named.
+func (d *Dependencies) requireOrg(w http.ResponseWriter, r *http.Request, orgID string) bool {
+	return d.permits(w, r, policy.OrgRead, policy.Org(orgID))
 }

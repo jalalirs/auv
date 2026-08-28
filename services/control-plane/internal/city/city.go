@@ -82,8 +82,8 @@ func NewStore(pool *db.Pool) *Store { return &Store{pool: pool} }
 
 const selectCity = `
 	SELECT id, slug, name, summary,
-	       ST_XMin(extent::geometry), ST_YMin(extent::geometry),
-	       ST_XMax(extent::geometry), ST_YMax(extent::geometry),
+	       ST_XMin(extent), ST_YMin(extent),
+	       ST_XMax(extent), ST_YMax(extent),
 	       crs_epsg, vertical_datum, discoverability, created_at, created_by
 	FROM city.city`
 
@@ -107,7 +107,7 @@ func (s *Store) Create(ctx context.Context, conn db.Conn, spec CreateSpec) (City
 		INSERT INTO city.city
 		    (id, slug, name, summary, extent, crs_epsg, vertical_datum, discoverability, created_by)
 		VALUES ($1, $2, $3, $4,
-		        ST_MakeEnvelope($5, $6, $7, $8, 4326)::geography,
+		        ST_MakeEnvelope($5, $6, $7, $8, 4326),
 		        $9, $10, $11::city.discoverability, $12)`,
 		id, spec.Slug, spec.Name, spec.Summary,
 		spec.Extent.West, spec.Extent.South, spec.Extent.East, spec.Extent.North,
