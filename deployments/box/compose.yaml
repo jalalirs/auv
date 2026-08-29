@@ -78,7 +78,7 @@ services:
   # published on loopback and reached from elsewhere through the tailnet rather
   # than opened to the network with a certificate it does not have yet.
   registry:
-    image: registry:2.8.3@sha256:319881be2ee9e345d5837d15842a04268de6a139e23be42654fc7664fc6eaf300
+    image: registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
     environment:
       REGISTRY_STORAGE_DELETE_ENABLED: "true"
     volumes:
