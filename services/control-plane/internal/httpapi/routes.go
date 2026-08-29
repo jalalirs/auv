@@ -80,8 +80,11 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/vehicles",
 		Summary: "publish a vehicle", Action: policy.VehicleCreate,
 		Resource: atPlatform(), Handle: d.createVehicle})
+	// Listing is the catalogue question, not a question about any one vehicle:
+	// anyone signed in may ask it, and the scope the decision point returns is
+	// what decides how much of an answer they get.
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/vehicles",
-		Summary: "the vehicles the caller may fly", Action: policy.VehicleRead,
+		Summary: "the vehicles the caller may fly", Action: policy.PlatformReadCatalogue,
 		Resource: atPlatform(), Handle: d.listVehicles})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/vehicles/{vehicleId}",
 		Summary: "a vehicle", Action: policy.VehicleRead,
