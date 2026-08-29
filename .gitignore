@@ -1,6 +1,10 @@
 # Local connection settings and runtime state. Never commit these.
 .env
 .env.*
+# An example file is a template with no secrets in it, and it is the only
+# record of which settings an environment needs. `.env.*` would swallow it.
+!.env.example
+!**/.env.example
 .runtime/
 .data/
 
@@ -12,6 +16,3 @@ coverage/
 
 # Operating-system noise.
 .DS_Store
-
-# Secrets for the box environment live on the box, never here.
-deployments/box/.env
