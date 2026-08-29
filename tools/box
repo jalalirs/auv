@@ -94,9 +94,9 @@ command_init() {
 
     say "Creating the directories it names…"
     on_box "set -a; . ~/${REMOTE_DIR}/deployments/box/.env; set +a; \
-        mkdir -p \"\$CORAL_CITY_STORAGE_PATH\" && \
-        echo \"  storage: \$CORAL_CITY_STORAGE_PATH\""
-    on_box_tty "sudo mkdir -p /var/lib/coral-city/work && sudo chmod 0777 /var/lib/coral-city/work && echo '  workdir: /var/lib/coral-city/work'"
+        mkdir -p \"\$CORAL_CITY_STORAGE_PATH\" \"\$CORAL_CITY_AGENT_HOST_WORKDIR\" && \
+        echo \"  storage: \$CORAL_CITY_STORAGE_PATH\" && \
+        echo \"  workdir: \$CORAL_CITY_AGENT_HOST_WORKDIR\""
 
     printf '\n\033[32mInitialised.\033[0m Your administrator secret is on the box:\n'
     printf '  ./tools/box secret\n\n'
