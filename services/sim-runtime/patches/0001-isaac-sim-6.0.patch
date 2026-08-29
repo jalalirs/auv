@@ -1,0 +1,288 @@
+diff --git a/isaacsim/oceansim/modules/SDGplayground_python/extension.py b/isaacsim/oceansim/modules/SDGplayground_python/extension.py
+index ed1d70b..a0c9814 100644
+--- a/isaacsim/oceansim/modules/SDGplayground_python/extension.py
++++ b/isaacsim/oceansim/modules/SDGplayground_python/extension.py
+@@ -66,7 +66,9 @@ class Extension(omni.ext.IExt):
+ 
+         # Events
+         self._usd_context = omni.usd.get_context()
+-        self._physxIFace = _physx.acquire_physx_interface()
++        # Isaac Sim 6.0 moved acquire_physx_interface into omni.physx.bindings;
++        # get_physx_interface is the supported accessor and caches the handle.
++        self._physxIFace = _physx.get_physx_interface()
+         self._physx_subscription = None
+         self._stage_event_sub = None
+         self._timeline = omni.timeline.get_timeline_interface()
+@@ -136,7 +138,7 @@ class Extension(omni.ext.IExt):
+ 
+         self.ui_builder.on_timeline_event(event)
+ 
+-    def _on_physics_step(self, step):
++    def _on_physics_step(self, step, *args):
+         self.ui_builder.on_physics_step(step)
+ 
+     def _on_stage_event(self, event):
+diff --git a/isaacsim/oceansim/modules/SDGplayground_python/ui_builder.py b/isaacsim/oceansim/modules/SDGplayground_python/ui_builder.py
+index 54421f4..98f7439 100644
+--- a/isaacsim/oceansim/modules/SDGplayground_python/ui_builder.py
++++ b/isaacsim/oceansim/modules/SDGplayground_python/ui_builder.py
+@@ -16,7 +16,10 @@ from isaacsim.gui.components import CollapsableFrame, StateButton, IntField, get
+ from isaacsim.examples.extension.core_connectors import LoadButton, ResetButton
+ from isaacsim.core.utils.extensions import get_extension_path
+ 
+-from isaacsim.gui.property.array_widget import CustomMultiIntField, CustomMultiFloatField
++from isaacsim.gui.property.array_widget import (  # Isaac Sim 6.0 made these private
++    _CustomMultiFloatField as CustomMultiFloatField,
++    _CustomMultiIntField as CustomMultiIntField,
++)
+ # Custom import
+ from .scenario import SDGplayground_Scenario
+ from .global_variables import EXTENSION_DESCRIPTION, EXTENSION_TITLE, EXTENSION_LINK
+@@ -71,7 +74,7 @@ class UIBuilder:
+             self._scenario_state_btn.reset()
+             self._scenario_state_btn.enabled = False
+ 
+-    def on_physics_step(self, step: float):
++    def on_physics_step(self, step: float, *args):
+         """Callback for Physics Step.
+         Physics steps only occur when the timeline is playing
+ 
+@@ -429,7 +432,9 @@ class UIBuilder:
+         self._scenario_state_btn.reset()
+         self._scenario_state_btn.enabled = True
+ 
+-    def _update_scenario(self, step: float):
++    # Isaac Sim 6.0 calls physics-step callbacks with an extra argument;
++    # *args accepts both signatures so this still runs on 5.0.
++    def _update_scenario(self, step: float, *args):
+         """This function is attached to the Run Scenario StateButton.
+         This function was passed in as the physics_callback_fn argument.
+         This means that when the a_text "RUN" is pressed, a subscription is made to call this function on every physics step.
+diff --git a/isaacsim/oceansim/modules/SensorExample_python/extension.py b/isaacsim/oceansim/modules/SensorExample_python/extension.py
+index bb8a51f..29a8192 100644
+--- a/isaacsim/oceansim/modules/SensorExample_python/extension.py
++++ b/isaacsim/oceansim/modules/SensorExample_python/extension.py
+@@ -86,7 +86,9 @@ class Extension(omni.ext.IExt):
+ 
+         # Events
+         self._usd_context = omni.usd.get_context()
+-        self._physxIFace = _physx.acquire_physx_interface()
++        # Isaac Sim 6.0 moved acquire_physx_interface into omni.physx.bindings;
++        # get_physx_interface is the supported accessor and caches the handle.
++        self._physxIFace = _physx.get_physx_interface()
+         self._physx_subscription = None
+         self._stage_event_sub = None
+         self._timeline = omni.timeline.get_timeline_interface()
+@@ -156,7 +158,7 @@ class Extension(omni.ext.IExt):
+ 
+         self.ui_builder.on_timeline_event(event)
+ 
+-    def _on_physics_step(self, step):
++    def _on_physics_step(self, step, *args):
+         self.ui_builder.on_physics_step(step)
+ 
+     def _on_stage_event(self, event):
+diff --git a/isaacsim/oceansim/modules/SensorExample_python/ui_builder.py b/isaacsim/oceansim/modules/SensorExample_python/ui_builder.py
+index 4269a75..0cc8db2 100644
+--- a/isaacsim/oceansim/modules/SensorExample_python/ui_builder.py
++++ b/isaacsim/oceansim/modules/SensorExample_python/ui_builder.py
+@@ -11,7 +11,7 @@ from isaacsim.core.prims import SingleGeometryPrim, SingleRigidPrim
+ from isaacsim.core.utils.extensions import get_extension_path
+ from isaacsim.core.utils.prims import get_prim_at_path
+ from isaacsim.core.utils.rotations import euler_angles_to_quat
+-from isaacsim.core.utils.semantics import add_update_semantics
++from isaacsim.core.utils.semantics import add_labels
+ from isaacsim.core.utils.stage import (
+     add_reference_to_stage,
+     create_new_stage,
+@@ -93,7 +93,7 @@ class UIBuilder:
+             self._scenario_state_btn.reset()
+             self._scenario_state_btn.enabled = False
+ 
+-    def on_physics_step(self, step: float):
++    def on_physics_step(self, step: float, *args):
+         """Callback for Physics Step.
+         Physics steps only occur when the timeline is playing
+ 
+@@ -325,10 +325,10 @@ class UIBuilder:
+             # Toggle MHL mesh's collider
+             SingleGeometryPrim(prim_path=MHL_prim_path, collision=True)
+             # apply a reflectivity of 1.0 to mesh of the scene for sonar simulation
+-            add_update_semantics(
+-                prim=get_prim_at_path(MHL_prim_path + "/Mesh/mesh"),
+-                type_label="reflectivity",
+-                semantic_label="1.0",
++            add_labels(
++                get_prim_at_path(MHL_prim_path + "/Mesh/mesh"),
++                labels=["1.0"],
++                instance_name="reflectivity",
+             )
+             # Load the rock
+             rock_prim_path = "/World/rock"
+@@ -337,10 +337,10 @@ class UIBuilder:
+                 usd_path=rock_usd_path, prim_path=rock_prim_path
+             )
+             # apply a reflectivity of 2.0 for sonar simulation
+-            add_update_semantics(
+-                prim=get_prim_at_path(rock_prim_path + "/Mesh/mesh"),
+-                type_label="reflectivity",
+-                semantic_label="2.0",
++            add_labels(
++                get_prim_at_path(rock_prim_path + "/Mesh/mesh"),
++                labels=["2.0"],
++                instance_name="reflectivity",
+             )
+             # Toggle collider for the rock
+             rock_collider_prim = SingleGeometryPrim(
+@@ -526,7 +526,9 @@ class UIBuilder:
+         self._scenario_state_btn.reset()
+         self._scenario_state_btn.enabled = True
+ 
+-    def _update_scenario(self, step: float):
++    # Isaac Sim 6.0 calls physics-step callbacks with an extra argument;
++    # *args accepts both signatures so this still runs on 5.0.
++    def _update_scenario(self, step: float, *args):
+         """This function is attached to the Run Scenario StateButton.
+         This function was passed in as the physics_callback_fn argument.
+         This means that when the a_text "RUN" is pressed, a subscription is made to call this function on every physics step.
+diff --git a/isaacsim/oceansim/modules/colorpicker_python/extension.py b/isaacsim/oceansim/modules/colorpicker_python/extension.py
+index c21b002..a1c0962 100644
+--- a/isaacsim/oceansim/modules/colorpicker_python/extension.py
++++ b/isaacsim/oceansim/modules/colorpicker_python/extension.py
+@@ -77,7 +77,9 @@ class Extension(omni.ext.IExt):
+ 
+         # Events
+         self._usd_context = omni.usd.get_context()
+-        self._physxIFace = _physx.acquire_physx_interface()
++        # Isaac Sim 6.0 moved acquire_physx_interface into omni.physx.bindings;
++        # get_physx_interface is the supported accessor and caches the handle.
++        self._physxIFace = _physx.get_physx_interface()
+         self._physx_subscription = None
+         self._stage_event_sub = None
+         self._timeline = omni.timeline.get_timeline_interface()
+@@ -147,7 +149,7 @@ class Extension(omni.ext.IExt):
+ 
+         self.ui_builder.on_timeline_event(event)
+ 
+-    def _on_physics_step(self, step):
++    def _on_physics_step(self, step, *args):
+         self.ui_builder.on_physics_step(step)
+ 
+     def _on_stage_event(self, event):
+diff --git a/isaacsim/oceansim/modules/colorpicker_python/ui_builder.py b/isaacsim/oceansim/modules/colorpicker_python/ui_builder.py
+index 3bc31e4..6a9656a 100644
+--- a/isaacsim/oceansim/modules/colorpicker_python/ui_builder.py
++++ b/isaacsim/oceansim/modules/colorpicker_python/ui_builder.py
+@@ -15,7 +15,9 @@ from isaacsim.gui.components import CollapsableFrame, StateButton, IntField, get
+ from isaacsim.examples.extension.core_connectors import LoadButton, ResetButton
+ from isaacsim.core.utils.extensions import get_extension_path
+ 
+-from isaacsim.gui.property.array_widget import CustomMultiIntField
++from isaacsim.gui.property.array_widget import (  # Isaac Sim 6.0 made these private
++    _CustomMultiIntField as CustomMultiIntField,
++)
+ # Custom import
+ from .scenario import Colorpicker_Scenario
+ from isaacsim.oceansim.utils.UWrenderer_utils import UW_render
+@@ -69,7 +71,7 @@ class UIBuilder:
+             self._scenario_state_btn.reset()
+             self._scenario_state_btn.enabled = False
+ 
+-    def on_physics_step(self, step: float):
++    def on_physics_step(self, step: float, *args):
+         """Callback for Physics Step.
+         Physics steps only occur when the timeline is playing
+ 
+@@ -381,7 +383,9 @@ class UIBuilder:
+         self._scenario_state_btn.reset()
+         self._scenario_state_btn.enabled = True
+ 
+-    def _update_scenario(self, step: float):
++    # Isaac Sim 6.0 calls physics-step callbacks with an extra argument;
++    # *args accepts both signatures so this still runs on 5.0.
++    def _update_scenario(self, step: float, *args):
+         """This function is attached to the Run Scenario StateButton.
+         This function was passed in as the physics_callback_fn argument.
+         This means that when the a_text "RUN" is pressed, a subscription is made to call this function on every physics step.
+diff --git a/isaacsim/oceansim/modules/trajRecorder_python/extension.py b/isaacsim/oceansim/modules/trajRecorder_python/extension.py
+index ed1d70b..a0c9814 100644
+--- a/isaacsim/oceansim/modules/trajRecorder_python/extension.py
++++ b/isaacsim/oceansim/modules/trajRecorder_python/extension.py
+@@ -66,7 +66,9 @@ class Extension(omni.ext.IExt):
+ 
+         # Events
+         self._usd_context = omni.usd.get_context()
+-        self._physxIFace = _physx.acquire_physx_interface()
++        # Isaac Sim 6.0 moved acquire_physx_interface into omni.physx.bindings;
++        # get_physx_interface is the supported accessor and caches the handle.
++        self._physxIFace = _physx.get_physx_interface()
+         self._physx_subscription = None
+         self._stage_event_sub = None
+         self._timeline = omni.timeline.get_timeline_interface()
+@@ -136,7 +138,7 @@ class Extension(omni.ext.IExt):
+ 
+         self.ui_builder.on_timeline_event(event)
+ 
+-    def _on_physics_step(self, step):
++    def _on_physics_step(self, step, *args):
+         self.ui_builder.on_physics_step(step)
+ 
+     def _on_stage_event(self, event):
+diff --git a/isaacsim/oceansim/modules/trajRecorder_python/ui_builder.py b/isaacsim/oceansim/modules/trajRecorder_python/ui_builder.py
+index c5c1ca2..11f61fa 100644
+--- a/isaacsim/oceansim/modules/trajRecorder_python/ui_builder.py
++++ b/isaacsim/oceansim/modules/trajRecorder_python/ui_builder.py
+@@ -15,7 +15,9 @@ from isaacsim.gui.components import CollapsableFrame, StateButton, IntField, get
+ from isaacsim.examples.extension.core_connectors import LoadButton, ResetButton
+ from isaacsim.core.utils.extensions import get_extension_path
+ 
+-from isaacsim.gui.property.array_widget import CustomMultiIntField
++from isaacsim.gui.property.array_widget import (  # Isaac Sim 6.0 made these private
++    _CustomMultiIntField as CustomMultiIntField,
++)
+ # Custom import
+ from .scenario import Colorpicker_Scenario
+ from isaacsim.oceansim.utils.UWrenderer_utils import UW_render
+@@ -69,7 +71,7 @@ class UIBuilder:
+             self._scenario_state_btn.reset()
+             self._scenario_state_btn.enabled = False
+ 
+-    def on_physics_step(self, step: float):
++    def on_physics_step(self, step: float, *args):
+         """Callback for Physics Step.
+         Physics steps only occur when the timeline is playing
+ 
+@@ -255,7 +257,9 @@ class UIBuilder:
+         self._scenario_state_btn.reset()
+         self._scenario_state_btn.enabled = True
+ 
+-    def _update_scenario(self, step: float):
++    # Isaac Sim 6.0 calls physics-step callbacks with an extra argument;
++    # *args accepts both signatures so this still runs on 5.0.
++    def _update_scenario(self, step: float, *args):
+         """This function is attached to the Run Scenario StateButton.
+         This function was passed in as the physics_callback_fn argument.
+         This means that when the a_text "RUN" is pressed, a subscription is made to call this function on every physics step.
+diff --git a/isaacsim/oceansim/sensors/ImuSensor_ROS.py b/isaacsim/oceansim/sensors/ImuSensor_ROS.py
+index 8d5a443..fbb3f10 100644
+--- a/isaacsim/oceansim/sensors/ImuSensor_ROS.py
++++ b/isaacsim/oceansim/sensors/ImuSensor_ROS.py
+@@ -1,6 +1,17 @@
+ import omni.graph.core as og
+ import omni.timeline
+-from isaacsim.sensors.physics import IMUSensor
++try:
++    from isaacsim.sensors.physics import IMUSensor
++except ImportError:  # Isaac Sim 6.0
++    # isaacsim.sensors.physics.nodes binds the shared namespace package
++    # before the extension that owns IMUSensor does, and Python caches
++    # __path__ without the latter's directory. The extension is enabled;
++    # only the namespace is stale, so recomputing it is enough.
++    import importlib
++    import isaacsim.sensors.physics as _physics
++
++    importlib.reload(_physics)
++    from isaacsim.sensors.physics import IMUSensor
+ 
+ 
+ class ImuSensor_ROS(IMUSensor):
