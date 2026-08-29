@@ -49,6 +49,13 @@ func (d Digest) String() string { return hex.EncodeToString(d[:]) }
 // Bytes returns the digest as a slice for storage.
 func (d Digest) Bytes() []byte { return d[:] }
 
+// DigestOf is the digest of a run of bytes.
+//
+// Useful for identifying something the platform composed itself — a set of
+// conditions, a canonical encoding — rather than something it was handed and
+// must verify.
+func DigestOf(content []byte) Digest { return Digest(sha256.Sum256(content)) }
+
 // ManifestEntry is one file within a layer version's payload.
 type ManifestEntry struct {
 	RelativePath string

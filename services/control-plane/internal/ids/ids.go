@@ -38,6 +38,16 @@ const (
 	KindAdmission    Kind = "adm"
 	KindRefusal      Kind = "ref"
 	KindSchedule     Kind = "sch"
+
+	// The dive domain. A city and a package version keep the kinds they
+	// already had, because they are the same idea told properly.
+	KindVehicle    Kind = "veh"
+	KindQueue      Kind = "queue"
+	KindDevice     Kind = "dev"
+	KindStack      Kind = "stack"
+	KindConditions Kind = "cond"
+	KindDive       Kind = "dive"
+	KindRun        Kind = "run"
 )
 
 var kinds = map[Kind]struct{}{
@@ -46,6 +56,8 @@ var kinds = map[Kind]struct{}{
 	KindUploadGrant: {}, KindCity: {}, KindLayer: {}, KindVersion: {},
 	KindTarget: {}, KindJob: {}, KindAttempt: {}, KindJobEvent: {},
 	KindAdmission: {}, KindRefusal: {}, KindSchedule: {},
+	KindVehicle: {}, KindQueue: {}, KindDevice: {}, KindStack: {},
+	KindConditions: {}, KindDive: {}, KindRun: {},
 }
 
 // ErrMalformed reports an identifier that is not of the expected shape or kind.
