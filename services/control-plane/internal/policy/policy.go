@@ -79,6 +79,10 @@ const (
 	ScopeOrg ScopeKind = "org"
 	// ScopeCity covers one place.
 	ScopeCity ScopeKind = "city"
+	// ScopeVehicle covers one vehicle. Granted exactly as a city is, so the
+	// platform learns one new scope rather than a second way of deciding who
+	// may do what.
+	ScopeVehicle ScopeKind = "vehicle"
 	// ScopeWork covers the execution queue. It is separate from the platform
 	// so that a worker holds authority over work and over nothing else.
 	ScopeWork ScopeKind = "work"
