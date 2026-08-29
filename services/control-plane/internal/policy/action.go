@@ -10,7 +10,8 @@ type Action string
 const (
 	// PlatformAdminister covers creating organisations and platform bindings.
 	PlatformAdminister Action = "platform.administer"
-	// PlatformReadCatalogue covers listing the cities a subject may learn of.
+	// PlatformReadCatalogue covers listing the cities and vehicles a subject
+	// may learn of.
 	PlatformReadCatalogue Action = "platform.read_catalogue"
 	// SelfRead covers reading one's own identity and memberships.
 	SelfRead Action = "self.read"
