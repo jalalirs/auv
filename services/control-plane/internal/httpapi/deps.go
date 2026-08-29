@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jalalirs/auv/services/control-plane/internal/audit"
+	"github.com/jalalirs/auv/services/control-plane/internal/catalog"
 	"github.com/jalalirs/auv/services/control-plane/internal/city"
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
 	"github.com/jalalirs/auv/services/control-plane/internal/exec"
@@ -27,6 +28,7 @@ type Dependencies struct {
 	Authorizer *policy.Authorizer
 	Audit      *audit.Recorder
 	Cities     *city.Store
+	Catalog    *catalog.Store
 	Layers     *layer.Store
 	Objects    *storage.Objects
 	Blobs      *storage.Blobs

@@ -75,6 +75,27 @@ func (rt *Router) registerAll() {
 		Summary: "add a worker, edge station, or vehicle", Action: policy.OrgAdminister,
 		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.createServicePrincipal})
 
+	// Vehicles. Ours to publish and to grant; what a person brings is
+	// autonomy, not a hull.
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/vehicles",
+		Summary: "publish a vehicle", Action: policy.VehicleCreate,
+		Resource: atPlatform(), Handle: d.createVehicle})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/vehicles",
+		Summary: "the vehicles the caller may fly", Action: policy.VehicleRead,
+		Resource: atPlatform(), Handle: d.listVehicles})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/vehicles/{vehicleId}",
+		Summary: "a vehicle", Action: policy.VehicleRead,
+		Resource: fromPath(policy.ResourceVehicle, "vehicleId"), Handle: d.readVehicle})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/vehicles/{vehicleId}/grants",
+		Summary: "grant the use of a vehicle", Action: policy.VehicleGrant,
+		Resource: fromPath(policy.ResourceVehicle, "vehicleId"), Handle: d.grantVehicle})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/vehicles/{vehicleId}/grants",
+		Summary: "who may fly a vehicle", Action: policy.VehicleGrant,
+		Resource: fromPath(policy.ResourceVehicle, "vehicleId"), Handle: d.readVehicleGrants})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/vehicles/{vehicleId}/versions",
+		Summary: "a vehicle's published packages", Action: policy.VehicleRead,
+		Resource: fromPath(policy.ResourceVehicle, "vehicleId"), Handle: d.listVehicleVersions})
+
 	// Capacity.
 	rt.register(Route{Method: "PUT", Pattern: "/api/v1/organisations/{orgId}/quota",
 		Summary: "state what an institution may consume", Action: policy.PlatformAdminister,

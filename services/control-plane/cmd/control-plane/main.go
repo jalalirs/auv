@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jalalirs/auv/services/control-plane/internal/audit"
+	"github.com/jalalirs/auv/services/control-plane/internal/catalog"
 	"github.com/jalalirs/auv/services/control-plane/internal/city"
 	"github.com/jalalirs/auv/services/control-plane/internal/config"
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
@@ -88,6 +89,7 @@ func run(logger *slog.Logger) error {
 		Identity:        identities,
 		Authorizer:      policy.NewAuthorizer(pool),
 		Audit:           recorder,
+		Catalog:         catalog.NewStore(pool),
 		Cities:          city.NewStore(pool),
 		Layers:          layers,
 		Objects:         objects,
