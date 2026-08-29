@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+# Operate the box environment.
+#
+# Everything runs on the GPU host: the record, stored bytes, the registry, the
+# control plane, and the agent that will run dives. This drives that host over
+# the tailnet rather than reaching into it by hand.
+#
+#   ./tools/box init -email you@example.org -name "Your Name"
+#   ./tools/box up
+#   ./tools/box status
+#   ./tools/box logs control-plane
+#   ./tools/box tunnel
+#   ./tools/box down
+#
+# Secrets are generated on the box and stay there. They are never written to
+# this checkout, so they cannot be committed by accident and do not need to
+# travel over SSH on every deploy.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+if [ -f "${REPO_ROOT}/.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "${REPO_ROOT}/.env"
+    set +a
+fi
+
+GPU_HOST="${AUV_GPU_HOST:-jalalirs@100.76.65.1}"
+REMOTE_DIR="${AUV_REMOTE_DIR:-code/auv}"
+COMPOSE="cd ~/${REMOTE_DIR}/deployments/box && docker compose --env-file .env"
+
+API_PORT="${CORAL_CITY_API_PORT:-18080}"
+REGISTRY_PORT="${CORAL_CITY_REGISTRY_PORT:-18081}"
+CONSOLE_PORT="${CORAL_CITY_CONSOLE_PORT:-18082}"
+STORAGE_PORT="${CORAL_CITY_STORAGE_PORT:-19000}"
+STORAGE_CONSOLE_PORT="${CORAL_CITY_STORAGE_CONSOLE_PORT:-19001}"
+
+on_box() { LC_ALL=C ssh "${GPU_HOST}" "export LC_ALL=C LANG=C; $*"; }
+on_box_tty() { LC_ALL=C ssh -t "${GPU_HOST}" "export LC_ALL=C LANG=C; $*"; }
+
+die() { printf '\033[31m%s\033[0m\n' "$*" >&2; exit 1; }
+say() { printf '\033[1m%s\033[0m\n' "$*"; }
+
+# The box serves what is in its checkout, so a deploy from a checkout that has
+# moved on would be a lie about what is running.
+warn_if_out_of_step() {
+    local here there
+    here="$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
+    there="$(on_box "git -C ~/${REMOTE_DIR} rev-parse HEAD 2>/dev/null" || echo unknown)"
+    if [ "${here}" != "${there}" ]; then
+        printf '\033[33mThe box is at %s; this checkout is at %s.\n' \
+            "${there:0:12}" "${here:0:12}"
+        printf 'Run  ./tools/gpu sync "message"  to bring them together.\033[0m\n\n'
+    fi
+}
+
+command_init() {
+    local email="" name="" org="coral" org_name="Coral City"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -email|--email) email="$2"; shift 2 ;;
+            -name|--name) name="$2"; shift 2 ;;
+            -org|--org) org="$2"; shift 2 ;;
+            -org-name|--org-name) org_name="$2"; shift 2 ;;
+            *) die "unknown option: $1" ;;
+        esac
+    done
+    [ -n "${email}" ] || die "an administrator email is required: ./tools/box init -email you@example.org -name 'Your Name'"
+    [ -n "${name}" ] || die "an administrator name is required"
+
+    if on_box "test -f ~/${REMOTE_DIR}/deployments/box/.env"; then
+        die "the box already has deployments/box/.env — remove it there first if you mean to start over"
+    fi
+
+    say "Generating secrets on the box…"
+    on_box "cd ~/${REMOTE_DIR}/deployments/box && \
+        db=\$(openssl rand -hex 32) && \
+        sk=\$(openssl rand -hex 32) && \
+        ak=coral-\$(openssl rand -hex 8) && \
+        admin=\$(openssl rand -hex 24) && \
+        sed -e \"s|^CORAL_CITY_DATABASE_PASSWORD=.*|CORAL_CITY_DATABASE_PASSWORD=\$db|\" \
+            -e \"s|^CORAL_CITY_STORAGE_ACCESS_KEY=.*|CORAL_CITY_STORAGE_ACCESS_KEY=\$ak|\" \
+            -e \"s|^CORAL_CITY_STORAGE_SECRET_KEY=.*|CORAL_CITY_STORAGE_SECRET_KEY=\$sk|\" \
+            -e \"s|^CORAL_CITY_ADMIN_SECRET=.*|CORAL_CITY_ADMIN_SECRET=\$admin|\" \
+            -e \"s|^CORAL_CITY_ADMIN_EMAIL=.*|CORAL_CITY_ADMIN_EMAIL=${email}|\" \
+            -e \"s|^CORAL_CITY_ADMIN_NAME=.*|CORAL_CITY_ADMIN_NAME=${name}|\" \
+            -e \"s|^CORAL_CITY_ADMIN_ORG=.*|CORAL_CITY_ADMIN_ORG=${org}|\" \
+            -e \"s|^CORAL_CITY_ADMIN_ORG_NAME=.*|CORAL_CITY_ADMIN_ORG_NAME=${org_name}|\" \
+            .env.example > .env && \
+        chmod 600 .env"
+
+    say "Creating the directories it names…"
+    on_box "set -a; . ~/${REMOTE_DIR}/deployments/box/.env; set +a; \
+        mkdir -p \"\$CORAL_CITY_STORAGE_PATH\" && \
+        echo \"  storage: \$CORAL_CITY_STORAGE_PATH\""
+    on_box_tty "sudo mkdir -p /var/lib/coral-city/work && sudo chmod 0777 /var/lib/coral-city/work && echo '  workdir: /var/lib/coral-city/work'"
+
+    printf '\n\033[32mInitialised.\033[0m Your administrator secret is on the box:\n'
+    printf '  ./tools/box secret\n\n'
+    printf 'Then:  ./tools/box up\n'
+}
+
+command_secret() {
+    on_box "grep -E '^CORAL_CITY_ADMIN_(EMAIL|SECRET)=' ~/${REMOTE_DIR}/deployments/box/.env" \
+        || die "no .env on the box — run ./tools/box init first"
+}
+
+command_up() {
+    on_box "test -f ~/${REMOTE_DIR}/deployments/box/.env" \
+        || die "no .env on the box — run ./tools/box init first"
+    warn_if_out_of_step
+
+    local commit built_at
+    commit="$(on_box "git -C ~/${REMOTE_DIR} rev-parse --short=12 HEAD 2>/dev/null" || echo unknown)"
+    built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    say "Building on the box (commit ${commit})…"
+    on_box "${COMPOSE} build --build-arg COMMIT=${commit} --build-arg BUILT_AT=${built_at}"
+
+    say "Applying the schema…"
+    on_box "${COMPOSE} up --detach --wait record storage registry"
+    on_box "${COMPOSE} run --rm migrate"
+
+    say "Starting…"
+    on_box "${COMPOSE} up --detach --wait"
+
+    say "Checking that it answers…"
+    on_box "curl --fail --silent --show-error http://127.0.0.1:${API_PORT}/api/v1/platform" || true
+    printf '\n\n'
+    command_status
+}
+
+command_status() {
+    say "Services"
+    on_box "${COMPOSE} ps --format '  {{.Service}}\t{{.State}}\t{{.Status}}'" 2>/dev/null || true
+    printf '\n'
+    say "Endpoints on the box"
+    printf '  api        127.0.0.1:%s\n' "${API_PORT}"
+    printf '  registry   127.0.0.1:%s\n' "${REGISTRY_PORT}"
+    printf '  console    127.0.0.1:%s\n' "${CONSOLE_PORT}"
+    printf '  storage    127.0.0.1:%s  (console %s)\n' "${STORAGE_PORT}" "${STORAGE_CONSOLE_PORT}"
+    printf '\nReach them from here with:  ./tools/box tunnel\n'
+}
+
+command_logs() {
+    local service="${1:-}"
+    on_box_tty "${COMPOSE} logs --tail 200 --follow ${service}"
+}
+
+command_down() {
+    say "Stopping (volumes are kept)…"
+    on_box "${COMPOSE} down"
+}
+
+# Ports are published on the box's loopback rather than its network interface,
+# so reaching them means forwarding rather than opening a hole.
+command_tunnel() {
+    printf 'api       http://localhost:%s/api/v1/platform\n' "${API_PORT}"
+    printf 'console   http://localhost:%s\n' "${CONSOLE_PORT}"
+    printf 'storage   http://localhost:%s   (console http://localhost:%s)\n' \
+        "${STORAGE_PORT}" "${STORAGE_CONSOLE_PORT}"
+    printf 'registry  localhost:%s\n\n' "${REGISTRY_PORT}"
+    printf 'Keep this terminal open; Ctrl-C closes the tunnel.\n'
+    exec ssh \
+        -o ExitOnForwardFailure=yes \
+        -o ServerAliveInterval=30 \
+        -N \
+        -L "${API_PORT}:127.0.0.1:${API_PORT}" \
+        -L "${CONSOLE_PORT}:127.0.0.1:${CONSOLE_PORT}" \
+        -L "${REGISTRY_PORT}:127.0.0.1:${REGISTRY_PORT}" \
+        -L "${STORAGE_PORT}:127.0.0.1:${STORAGE_PORT}" \
+        -L "${STORAGE_CONSOLE_PORT}:127.0.0.1:${STORAGE_CONSOLE_PORT}" \
+        "${GPU_HOST}"
+}
+
+case "${1:-}" in
+    init)    shift; command_init "$@" ;;
+    secret)  command_secret ;;
+    up)      command_up ;;
+    status)  command_status ;;
+    logs)    shift; command_logs "$@" ;;
+    down)    command_down ;;
+    tunnel)  command_tunnel ;;
+    ""|help|-h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' ;;
+    *) die "unknown command: $1 (try: init, up, status, logs, down, tunnel, secret)" ;;
+esac
