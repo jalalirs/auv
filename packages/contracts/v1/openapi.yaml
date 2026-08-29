@@ -523,6 +523,165 @@ paths:
                       $ref: '#/components/schemas/Target'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/v1/vehicles:
+    get:
+      tags: [vehicles]
+      summary: List the vehicles the caller may fly
+      description: >
+        A vehicle that is neither granted nor discoverable does not appear, and
+        is not reported as withheld either: the platform does not distinguish a
+        vehicle that does not exist from one that is not yours to know about.
+      responses:
+        '200':
+          description: The vehicles.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  vehicles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Vehicle'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    post:
+      tags: [vehicles]
+      summary: Publish a vehicle
+      description: >
+        Vehicles are the platform's to publish and to grant. What a person
+        brings is autonomy, not a hull.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [slug, name]
+              properties:
+                slug: { type: string }
+                name: { type: string }
+                summary: { type: string }
+                manufacturer: { type: string }
+                discoverable: { type: boolean }
+      responses:
+        '201':
+          description: The vehicle.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/vehicles/{vehicleId}:
+    get:
+      tags: [vehicles]
+      summary: Read a vehicle
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          description: The vehicle.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The vehicle.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/vehicles/{vehicleId}/versions:
+    get:
+      tags: [vehicles]
+      summary: A vehicle's packages, newest first
+      description: >
+        A package version is pinned by digest when a dive uses it, so that a
+        result can be reproduced exactly.
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          description: The vehicle.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The packages.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AssetVersion'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/vehicles/{vehicleId}/grants:
+    get:
+      tags: [vehicles]
+      summary: Who may fly a vehicle
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          description: The vehicle.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The grants.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  grants:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Binding'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [vehicles]
+      summary: Grant the use of a vehicle
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          description: The vehicle.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [subjectKind, subjectId, role]
+              properties:
+                subjectKind: { type: string, enum: [principal, org] }
+                subjectId: { type: string }
+                role: { type: string, enum: [viewer, contributor, steward, admin] }
+      responses:
+        '201':
+          description: The grant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Binding'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/cities:
     get:
       tags: [places]
@@ -2047,6 +2206,59 @@ components:
           description: The versions this one was computed from. Their truth classes bound what it may claim.
         supersedesId: { type: string }
 
+    Vehicle:
+      type: object
+      description: >
+        Something a dive is flown in. Published and granted by the platform;
+        what a person brings is autonomy, not a hull.
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        name: { type: string }
+        summary: { type: string }
+        manufacturer: { type: string }
+        discoverable: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string }
+        retiredAt: { type: string, format: date-time, nullable: true }
+      required: [id, slug, name, discoverable, createdAt, createdBy]
+    AssetVersion:
+      type: object
+      description: >
+        One publication of a city or a vehicle. The digest is over the manifest
+        and the manifest is over the bytes, so pinning the digest pins every
+        byte — which is what lets a dive be reproduced and a node treat its
+        cache as append-only.
+      properties:
+        id: { type: string }
+        assetKind: { type: string, enum: [city, vehicle] }
+        assetId: { type: string }
+        ordinal:
+          type: integer
+          minimum: 1
+          description: >
+            The nth publication of this asset. Ordinal, not semantic: nothing
+            about the number promises compatibility.
+        label: { type: string }
+        notes: { type: string }
+        digest: { type: string }
+        totalBytes: { type: integer, format: int64 }
+        runtimeMin:
+          type: string
+          description: >
+            The least runtime that may load this package. A vehicle authored
+            against a newer sensor API must not be flown by an older simulator.
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Absent while the package is a draft. Only a published version may
+            be pinned, because a draft can still be rewritten and a result
+            pinned to something rewritable is not a result.
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string }
+      required: [id, assetKind, assetId, ordinal, digest, totalBytes, createdAt, createdBy]
     Binding:
       type: object
       required: [id, subjectKind, subjectId, scopeKind, role, createdAt, createdBy]

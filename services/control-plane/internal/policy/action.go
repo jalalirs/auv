@@ -31,6 +31,14 @@ const (
 	// CityGrant covers granting or revoking access to a place.
 	CityGrant Action = "city.grant"
 
+	// VehicleCreate covers publishing a vehicle. Vehicles are ours, so this
+	// sits at the platform: what a person brings is autonomy, not a hull.
+	VehicleCreate Action = "vehicle.create"
+	// VehicleRead covers reading a vehicle and how it moves.
+	VehicleRead Action = "vehicle.read"
+	// VehicleGrant covers granting or revoking the use of a vehicle.
+	VehicleGrant Action = "vehicle.grant"
+
 	// LayerRead covers reading a layer and its versions.
 	LayerRead Action = "layer.read"
 	// LayerCreate covers contributing a layer or a new version of one.
@@ -92,6 +100,10 @@ var requirement = map[Action]struct {
 	CityRead:   {RoleViewer, []ResourceKind{ResourceCity}},
 	CityUpdate: {RoleSteward, []ResourceKind{ResourceCity}},
 	CityGrant:  {RoleSteward, []ResourceKind{ResourceCity}},
+
+	VehicleCreate: {RoleAdmin, []ResourceKind{ResourcePlatform}},
+	VehicleRead:   {RoleViewer, []ResourceKind{ResourceVehicle, ResourcePlatform}},
+	VehicleGrant:  {RoleSteward, []ResourceKind{ResourceVehicle}},
 
 	LayerRead:    {RoleViewer, []ResourceKind{ResourceLayer, ResourceCity, ResourcePlatform}},
 	LayerCreate:  {RoleContributor, []ResourceKind{ResourceLayer, ResourceCity, ResourcePlatform}},

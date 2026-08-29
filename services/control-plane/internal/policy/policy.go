@@ -104,6 +104,7 @@ const (
 	ResourcePlatform ResourceKind = "platform"
 	ResourceOrg      ResourceKind = "org"
 	ResourceCity     ResourceKind = "city"
+	ResourceVehicle  ResourceKind = "vehicle"
 	ResourceLayer    ResourceKind = "layer"
 	ResourceJob      ResourceKind = "job"
 	ResourceWork     ResourceKind = "work"

@@ -76,6 +76,8 @@ func (a *Authorizer) evaluate(ctx context.Context, subject Subject, action Actio
 		return a.decideOrg(ctx, subject, need, resource.ID)
 	case ResourceCity:
 		return a.decideCity(ctx, subject, action, need, resource.ID)
+	case ResourceVehicle:
+		return a.decideVehicle(ctx, subject, need, resource.ID)
 	case ResourceLayer:
 		return a.decideLayer(ctx, subject, action, need, resource.ID)
 	case ResourceJob:
@@ -160,6 +162,41 @@ func (a *Authorizer) decideCity(ctx context.Context, subject Subject, action Act
 			"this action needs %s in %s; you hold %s", need, facts.Slug, describe(role))), nil
 	}
 	return denyHidden("no city with that identifier is visible to you"), nil
+}
+
+// decideVehicle answers questions about a vehicle.
+//
+// Simpler than a city, because a vehicle has no equivalent of an open place
+// that anyone signed in may enter: a discoverable vehicle can be seen in a
+// listing, and flying one is granted or it is not.
+func (a *Authorizer) decideVehicle(ctx context.Context, subject Subject, need Role, vehicleID string) (Decision, error) {
+	var slug string
+	var discoverable bool
+	err := a.pool.QueryRow(ctx,
+		`SELECT slug, discoverable FROM catalog.vehicle WHERE id = $1 AND retired_at IS NULL`,
+		vehicleID).Scan(&slug, &discoverable)
+	if errors.Is(db.Translate(err), db.ErrNotFound) {
+		return denyHidden("no vehicle with that identifier is visible to you"), nil
+	}
+	if err != nil {
+		return Decision{}, fmt.Errorf("reading a vehicle: %w", err)
+	}
+
+	role, err := a.effectiveRole(ctx, subject, ScopeVehicle, vehicleID)
+	if err != nil {
+		return Decision{}, err
+	}
+	if role.AtLeast(need) {
+		return allow(role, a.platformFilter(subject, role)), nil
+	}
+
+	// An undiscoverable vehicle a caller holds nothing on is reported as
+	// absent, so that its existence is not itself a disclosure.
+	if role.AtLeast(RoleViewer) || discoverable {
+		return denyVisible(fmt.Sprintf(
+			"this action needs %s on %s; you hold %s", need, slug, describe(role))), nil
+	}
+	return denyHidden("no vehicle with that identifier is visible to you"), nil
 }
 
 // decideLayer answers questions about a layer, first establishing that its
