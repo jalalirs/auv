@@ -93,10 +93,13 @@ command_init() {
         chmod 600 .env"
 
     say "Creating the directories it names…"
-    on_box "set -a; . ~/${REMOTE_DIR}/deployments/box/.env; set +a; \
-        mkdir -p \"\$CORAL_CITY_STORAGE_PATH\" \"\$CORAL_CITY_AGENT_HOST_WORKDIR\" && \
-        echo \"  storage: \$CORAL_CITY_STORAGE_PATH\" && \
-        echo \"  workdir: \$CORAL_CITY_AGENT_HOST_WORKDIR\""
+    # Read rather than sourced: this file is compose's format, not the shell's,
+    # and a value with a space in it is legal there and a command here.
+    on_box "cd ~/${REMOTE_DIR}/deployments/box && \
+        for key in CORAL_CITY_STORAGE_PATH CORAL_CITY_AGENT_HOST_WORKDIR; do \
+            path=\$(sed -n \"s/^\$key=//p\" .env | tr -d '\"'); \
+            mkdir -p \"\$path\" && printf '  %-34s %s\\n' \"\$key\" \"\$path\"; \
+        done"
 
     printf '\n\033[32mInitialised.\033[0m Your administrator secret is on the box:\n'
     printf '  ./tools/box secret\n\n'
