@@ -377,6 +377,73 @@ type CatalogueScope struct {
 	IncludeListed bool
 }
 
+// AssetScope describes which assets of one kind a subject may learn of.
+//
+// The decision point produces it and the repository applies it unchanged, so
+// that a listing and a read agree about what exists without either deciding for
+// itself. It is deliberately the same shape for cities and vehicles: the two
+// are granted identically, and giving them one answer is what stops them
+// drifting into two.
+type AssetScope struct {
+	// All admits every asset, which platform authority carries.
+	All bool
+	// BoundIDs admits assets the subject holds a binding on, whatever their
+	// discoverability.
+	BoundIDs []string
+	// IncludeDiscoverable admits assets listed to anyone signed in. An
+	// undiscoverable asset is never admitted by this, which is what makes it
+	// indistinguishable from one that does not exist.
+	IncludeDiscoverable bool
+}
+
+// Assets reports which cities or vehicles a subject may learn of.
+//
+// A queue is asked for the same way but answered differently: hardware carries
+// no discoverability, because somebody who cannot run on a queue has no reason
+// to learn that it exists.
+func (a *Authorizer) Assets(ctx context.Context, subject Subject, kind ScopeKind) (AssetScope, error) {
+	switch kind {
+	case ScopeCity, ScopeVehicle, ScopeWork:
+	default:
+		return AssetScope{}, fmt.Errorf(
+			"%w: %q is not a scope assets are granted at", domain.ErrInvalid, kind)
+	}
+
+	platformRole, err := a.effectiveRole(ctx, subject, ScopePlatform, "")
+	if err != nil {
+		return AssetScope{}, err
+	}
+	if platformRole.AtLeast(RoleViewer) {
+		return AssetScope{All: true, IncludeDiscoverable: kind != ScopeWork}, nil
+	}
+
+	rows, err := a.pool.Query(ctx, `
+		SELECT DISTINCT scope_id
+		FROM policy.binding
+		WHERE revoked_at IS NULL
+		  AND scope_kind = $1::policy.scope_kind
+		  AND scope_id IS NOT NULL
+		  AND (
+		        (subject_kind = 'principal' AND subject_id = $2)
+		     OR (subject_kind = 'org'       AND subject_id = ANY($3))
+		      )`,
+		string(kind), subject.PrincipalID, subject.OrgIDs)
+	if err != nil {
+		return AssetScope{}, fmt.Errorf("reading %s bindings: %w", kind, err)
+	}
+	defer rows.Close()
+
+	scope := AssetScope{IncludeDiscoverable: kind != ScopeWork, BoundIDs: []string{}}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return AssetScope{}, err
+		}
+		scope.BoundIDs = append(scope.BoundIDs, id)
+	}
+	return scope, rows.Err()
+}
+
 // Catalogue reports which cities a subject may learn of. An unlisted city
 // appears only to those bound to it; it is otherwise indistinguishable from a
 // city that does not exist.

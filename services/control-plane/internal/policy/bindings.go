@@ -51,12 +51,12 @@ func (g GrantSpec) Validate() error {
 		if g.ScopeID != "" {
 			return fmt.Errorf("%w: the %s scope has no identifier", domain.ErrInvalid, g.ScopeKind)
 		}
-	case ScopeOrg, ScopeCity:
+	case ScopeOrg, ScopeCity, ScopeVehicle:
 		if g.ScopeID == "" {
 			return fmt.Errorf("%w: a %s binding names its scope", domain.ErrInvalid, g.ScopeKind)
 		}
 	default:
-		return fmt.Errorf("%w: a binding's scope is the platform, an organisation, a city, or work, not %q",
+		return fmt.Errorf("%w: a binding's scope is the platform, an organisation, a city, a vehicle, or work, not %q",
 			domain.ErrInvalid, g.ScopeKind)
 	}
 	if _, err := ParseRole(string(g.Role)); err != nil {
