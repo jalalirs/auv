@@ -12,3 +12,6 @@ coverage/
 
 # Operating-system noise.
 .DS_Store
+
+# Secrets for the box environment live on the box, never here.
+deployments/box/.env

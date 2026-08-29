@@ -1,0 +1,223 @@
+name: coral-city
+
+# The box is the environment.
+#
+# There is one machine, so there is one deployment, and it is written as though
+# there will be more: nothing here knows it is the only host. The agent reaches
+# the control plane over the network rather than the loopback, images come from
+# a registry rather than a local build cache, and stored bytes are addressed
+# through an S3 endpoint rather than a path. A second GPU host — in a rack, in
+# a cloud, behind a scheduler — joins by running the agent and being granted a
+# queue, and nothing below changes.
+#
+# What deliberately is not here: Kubernetes. This box already runs k3s for
+# another project and dives are not scheduled by it. A dive holds a whole GPU,
+# a lease, and two cooperating containers; that is an agent's job, and an agent
+# runs equally well on bare metal, on a cloud instance, or behind Slurm — which
+# is the portability that matters, and the portability a manifest would not buy.
+
+x-platform-env: &platform-env
+  CORAL_CITY_DATABASE_URL: postgres://coral:${CORAL_CITY_DATABASE_PASSWORD:?set a database password}@record:5432/coral?sslmode=disable
+  CORAL_CITY_STORAGE_ENDPOINT: storage:9000
+  # A presigned URL is signed over the host it names, so it must carry the
+  # address the client will actually use. Inside this network that is
+  # `storage`; to anything outside it is whatever the operator publishes.
+  CORAL_CITY_STORAGE_PUBLIC_ENDPOINT: ${CORAL_CITY_STORAGE_PUBLIC_ENDPOINT:-127.0.0.1:19000}
+  CORAL_CITY_STORAGE_ACCESS_KEY: ${CORAL_CITY_STORAGE_ACCESS_KEY:?set a storage access key}
+  CORAL_CITY_STORAGE_SECRET_KEY: ${CORAL_CITY_STORAGE_SECRET_KEY:?set a storage secret key}
+  CORAL_CITY_STORAGE_BUCKET_PREFIX: coral
+
+services:
+  record:
+    image: imresamu/postgis:17-3.5@sha256:35fe7dceda62bfe7d2965b0ba78d915ff9f901b5e0466d633ecc58421b5b5210
+    environment:
+      POSTGRES_USER: coral
+      POSTGRES_PASSWORD: ${CORAL_CITY_DATABASE_PASSWORD:?set a database password}
+      POSTGRES_DB: coral
+    volumes:
+      - record:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coral -d coral"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: "4", memory: 8G }
+    restart: unless-stopped
+
+  storage:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${CORAL_CITY_STORAGE_ACCESS_KEY:?set a storage access key}
+      MINIO_ROOT_PASSWORD: ${CORAL_CITY_STORAGE_SECRET_KEY:?set a storage secret key}
+    volumes:
+      # An operator-chosen path, because cities, vehicles and recorded dives
+      # grow without bound and this host's root filesystem is shared with other
+      # people's work. Docker cannot bound a named volume, so the bound is
+      # whichever filesystem this path sits on: point it somewhere with room,
+      # and somewhere whose exhaustion is this platform's problem alone.
+      - ${CORAL_CITY_STORAGE_PATH:?set a path for stored bytes, on a filesystem with room}:/data
+    ports:
+      - "${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_STORAGE_PORT:-19000}:9000"
+      - "${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_STORAGE_CONSOLE_PORT:-19001}:9001"
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: "4", memory: 8G }
+    restart: unless-stopped
+
+  # Vehicles are published as images and autonomy arrives as one, so there has
+  # to be somewhere to put them that is not a developer's laptop. Docker treats
+  # a registry on localhost as insecure-by-default, which is why this is
+  # published on loopback and reached from elsewhere through the tailnet rather
+  # than opened to the network with a certificate it does not have yet.
+  registry:
+    image: registry:2.8.3@sha256:319881be2ee9e345d5837d15842a04268de6a139e23be42654fc7664fc6eaf300
+    environment:
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    volumes:
+      - registry:/var/lib/registry
+    ports:
+      - "${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_REGISTRY_PORT:-18081}:5000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:5000/v2/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 2G }
+    restart: unless-stopped
+
+  # Applying the schema is a deliberate act, never something a serving process
+  # does on the way up.
+  migrate:
+    image: coral-city/control-plane:${CORAL_CITY_IMAGE_TAG:-r1}
+    pull_policy: never
+    entrypoint: ["/usr/local/bin/migrate"]
+    command: ["up"]
+    environment: *platform-env
+    depends_on:
+      record:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+    restart: "no"
+
+  # Establishing the first administrator cannot go through the API, because
+  # until it happens there is nobody to authorise it. Idempotent: an
+  # installation that already has one is left alone. It also issues the agent's
+  # credential, which cannot be recovered once created and is therefore written
+  # to a volume the agent reads.
+  bootstrap:
+    image: coral-city/control-plane:${CORAL_CITY_IMAGE_TAG:-r1}
+    pull_policy: never
+    entrypoint: ["/usr/local/bin/migrate"]
+    command:
+      - bootstrap
+      - -email=${CORAL_CITY_ADMIN_EMAIL:?set the first administrator's email}
+      - -secret=${CORAL_CITY_ADMIN_SECRET:?set the first administrator's secret}
+      - -name=${CORAL_CITY_ADMIN_NAME:?set the first administrator's name}
+      - -organisation=${CORAL_CITY_ADMIN_ORG:?set the first institution}
+      - -organisation-name=${CORAL_CITY_ADMIN_ORG_NAME:-Coral City}
+      - -target=${CORAL_CITY_AGENT_TARGET:-box}
+      - -worker-credential-file=/credentials/worker
+    environment: *platform-env
+    volumes:
+      - credentials:/credentials
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  control-plane:
+    image: coral-city/control-plane:${CORAL_CITY_IMAGE_TAG:-r1}
+    pull_policy: never
+    # Built here rather than streamed from a developer's machine: this host has
+    # a checkout, a builder, and the right architecture, and cross-building an
+    # amd64 image on an Apple-silicon laptop to ship it over SSH is slower and
+    # less faithful than building it where it runs.
+    build:
+      context: ../..
+      dockerfile: services/control-plane/Dockerfile
+      args:
+        VERSION: ${CORAL_CITY_VERSION:-development}
+        COMMIT: ${CORAL_CITY_COMMIT:-unknown}
+        BUILT_AT: ${CORAL_CITY_BUILT_AT:-unknown}
+    environment:
+      <<: *platform-env
+      CORAL_CITY_HTTP_ADDRESS: :8080
+      # Sessions travel over the tailnet rather than TLS on this host, so the
+      # secure attribute would make the cookie unusable rather than safer. It
+      # goes back on the moment there is a certificate.
+      CORAL_CITY_SECURE_COOKIES: ${CORAL_CITY_SECURE_COOKIES:-false}
+    ports:
+      - "${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_API_PORT:-18080}:8080"
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 2G }
+    restart: unless-stopped
+
+  # The agent claims work, and to run a dive it will need to start containers
+  # that hold a GPU. It does not hold one itself: it drives the host's runtime,
+  # so what it needs is the socket and a staging directory the runtime can also
+  # see, because a bind mount is resolved by the daemon on the host and not
+  # inside this container.
+  agent:
+    image: coral-city/worker:${CORAL_CITY_IMAGE_TAG:-r1}
+    pull_policy: never
+    build:
+      context: ../..
+      dockerfile: services/worker/Dockerfile
+    environment:
+      CORAL_CITY_CONTROL_PLANE_URL: http://control-plane:8080
+      CORAL_CITY_WORKER_CREDENTIAL_FILE: /credentials/worker
+      CORAL_CITY_WORKER_TARGET: ${CORAL_CITY_AGENT_TARGET:-box}
+      CORAL_CITY_WORKER_WORKDIR: /work
+      CORAL_CITY_WORKER_HOST_WORKDIR: ${CORAL_CITY_AGENT_HOST_WORKDIR:-/var/lib/coral-city/work}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${CORAL_CITY_AGENT_HOST_WORKDIR:-/var/lib/coral-city/work}:/work
+      - credentials:/credentials:ro
+    user: "0:0"
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    # The agent is small; the containers it starts carry the limits the
+    # platform admitted them for.
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 1G }
+    restart: unless-stopped
+
+  # Kept as an operator console, not as the product. The product is a client
+  # that streams a dive; this is for looking at the record.
+  console:
+    image: coral-city/web:${CORAL_CITY_IMAGE_TAG:-r1}
+    pull_policy: never
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    ports:
+      - "${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_CONSOLE_PORT:-18082}:8080"
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 512M }
+    restart: unless-stopped
+
+volumes:
+  record:
+  registry:
+  credentials:
