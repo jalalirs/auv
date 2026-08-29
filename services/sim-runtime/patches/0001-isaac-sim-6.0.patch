@@ -264,21 +264,27 @@ index c5c1ca2..11f61fa 100644
          This function was passed in as the physics_callback_fn argument.
          This means that when the a_text "RUN" is pressed, a subscription is made to call this function on every physics step.
 diff --git a/isaacsim/oceansim/sensors/ImuSensor_ROS.py b/isaacsim/oceansim/sensors/ImuSensor_ROS.py
-index 8d5a443..fbb3f10 100644
+index 8d5a443..aa247a7 100644
 --- a/isaacsim/oceansim/sensors/ImuSensor_ROS.py
 +++ b/isaacsim/oceansim/sensors/ImuSensor_ROS.py
-@@ -1,6 +1,17 @@
+@@ -1,6 +1,23 @@
  import omni.graph.core as og
  import omni.timeline
 -from isaacsim.sensors.physics import IMUSensor
 +try:
 +    from isaacsim.sensors.physics import IMUSensor
 +except ImportError:  # Isaac Sim 6.0
-+    # isaacsim.sensors.physics.nodes binds the shared namespace package
-+    # before the extension that owns IMUSensor does, and Python caches
-+    # __path__ without the latter's directory. The extension is enabled;
-+    # only the namespace is stale, so recomputing it is enough.
++    # The extension that owns IMUSensor moved to extsDeprecated in 6.0 and is
++    # no longer enabled by default, so `isaacsim.sensors.physics` resolves to
++    # the sibling .nodes extension alone and the class is nowhere in it.
++    # Enabling the extension puts its directory back into the namespace
++    # package's search order; the reload is what makes the already-bound
++    # namespace notice that it did.
 +    import importlib
++
++    from isaacsim.core.utils.extensions import enable_extension
++
++    enable_extension("isaacsim.sensors.physics")
 +    import isaacsim.sensors.physics as _physics
 +
 +    importlib.reload(_physics)
