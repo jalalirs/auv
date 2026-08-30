@@ -238,6 +238,9 @@ func (rt *Router) registerAll() {
 		Resource: fromPath(policy.ResourceDive, "diveId"),
 		Also:     []policy.Action{policy.QueueRead},
 		Handle:   d.requestRun})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/runs/{runId}/events",
+		Summary: "what happened during a run, in order", Action: policy.DiveRead,
+		Resource: atPlatform(), Handle: d.listRunEvents})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/dives/{diveId}/runs",
 		Summary: "what a dive's executions did", Action: policy.DiveRead,
 		Resource: fromPath(policy.ResourceDive, "diveId"), Handle: d.listRuns})
