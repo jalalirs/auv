@@ -11,6 +11,7 @@ import (
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
 	"github.com/jalalirs/auv/services/control-plane/internal/dive"
 	"github.com/jalalirs/auv/services/control-plane/internal/policy"
+	"github.com/jalalirs/auv/services/control-plane/internal/storage"
 )
 
 // ── Autonomy ─────────────────────────────────────────────────────────────────
@@ -417,4 +418,58 @@ func (d *Dependencies) finishRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// runPackages lists the files of the packages a run needs.
+//
+// Scoped to the run rather than to the catalogue. An agent holds authority over
+// work and over nothing else — it cannot read a place or a vehicle — so asking
+// it to fetch a package by naming one would have meant widening what an agent
+// may see to everything the platform publishes. Asking through the run it holds
+// widens nothing: it can fetch the two packages that dive needs and no others.
+func (d *Dependencies) runPackages(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("runId")
+
+	var cityVersion, vehicleVersion string
+	if err := d.Pool.QueryRow(r.Context(), `
+		SELECT d.city_version_id, d.vehicle_version_id
+		  FROM dive.run r JOIN dive.dive d ON d.id = r.dive_id
+		 WHERE r.id = $1 AND r.state IN ('preparing', 'running')`,
+		runID).Scan(&cityVersion, &vehicleVersion); err != nil {
+		writeError(w, r, db.Translate(err))
+		return
+	}
+
+	answer := map[string]any{}
+	for name, versionID := range map[string]string{
+		"city": cityVersion, "vehicle": vehicleVersion,
+	} {
+		files, err := d.Catalog.Files(r.Context(), versionID)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		fetchable := make([]map[string]any, 0, len(files))
+		for _, file := range files {
+			object, err := d.Objects.Object(r.Context(), file.ObjectID)
+			if err != nil {
+				writeError(w, r, err)
+				return
+			}
+			// Signed for a node on the network rather than a browser on
+			// somebody's desk: the same URL signed over the wrong host verifies
+			// and cannot be reached.
+			url, err := d.Objects.ReadURL(r.Context(), object, file.Path, storage.Internal)
+			if err != nil {
+				writeError(w, r, err)
+				return
+			}
+			fetchable = append(fetchable, map[string]any{
+				"path": file.Path, "digest": file.Digest.String(),
+				"sizeBytes": file.SizeBytes, "mediaType": file.MediaType, "url": url,
+			})
+		}
+		answer[name] = map[string]any{"versionId": versionID, "files": fetchable}
+	}
+	writeJSON(w, r, http.StatusOK, answer)
 }

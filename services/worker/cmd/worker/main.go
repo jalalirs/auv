@@ -140,19 +140,23 @@ func run(logger *slog.Logger) error {
 // client.
 type platform struct{ client *controlplane.Client }
 
-func (p *platform) PackageFiles(ctx context.Context, versionID string) ([]cache.File, error) {
-	files, err := p.client.PackageFiles(ctx, versionID)
+func (p *platform) RunPackages(ctx context.Context, runID string) (diver.Package, diver.Package, error) {
+	city, vehicle, err := p.client.RunPackages(ctx, runID)
 	if err != nil {
-		return nil, err
+		return diver.Package{}, diver.Package{}, err
 	}
-	converted := make([]cache.File, 0, len(files))
-	for _, file := range files {
-		converted = append(converted, cache.File{
+	return convert(city), convert(vehicle), nil
+}
+
+func convert(contents controlplane.PackageContents) diver.Package {
+	files := make([]cache.File, 0, len(contents.Files))
+	for _, file := range contents.Files {
+		files = append(files, cache.File{
 			Path: file.Path, Digest: file.Digest,
 			SizeBytes: file.SizeBytes, MediaType: file.MediaType, URL: file.URL,
 		})
 	}
-	return converted, nil
+	return diver.Package{VersionID: contents.VersionID, Files: files}
 }
 
 func (p *platform) Started(ctx context.Context, runID string) error {

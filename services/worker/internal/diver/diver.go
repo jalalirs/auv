@@ -53,7 +53,9 @@ type Claimed struct {
 
 // Platform is what the diver needs from the control plane.
 type Platform interface {
-	PackageFiles(ctx context.Context, versionID string) ([]cache.File, error)
+	// RunPackages asks through the run rather than by naming a package,
+	// because an agent may see the two packages its dive needs and no others.
+	RunPackages(ctx context.Context, runID string) (city, vehicle Package, err error)
 	Started(ctx context.Context, runID string) error
 	Renew(ctx context.Context, runID string) error
 	Record(ctx context.Context, runID, kind string, simulated *float64, detail any) error
@@ -146,11 +148,16 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 ) (state string, outcome map[string]any, failure string) {
 	started := time.Now()
 
-	city, err := d.sync(ctx, claimed.Run.ID, "city", claimed.CityVersionID, log)
+	cityPackage, vehiclePackage, err := d.platform.RunPackages(ctx, claimed.Run.ID)
+	if err != nil {
+		return "failed", nil, fmt.Sprintf("could not ask what this dive needs: %v", err)
+	}
+
+	city, err := d.sync(ctx, claimed.Run.ID, "city", cityPackage, log)
 	if err != nil {
 		return "failed", nil, fmt.Sprintf("could not make the place present: %v", err)
 	}
-	vehicle, err := d.sync(ctx, claimed.Run.ID, "vehicle", claimed.VehicleVersionID, log)
+	vehicle, err := d.sync(ctx, claimed.Run.ID, "vehicle", vehiclePackage, log)
 	if err != nil {
 		return "failed", nil, fmt.Sprintf("could not make the vehicle present: %v", err)
 	}
@@ -239,18 +246,21 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	}, ""
 }
 
+// Package is one package the platform says this dive needs.
+type Package struct {
+	VersionID string
+	Files     []cache.File
+}
+
 // sync makes a package present on this host and says where it put it.
-func (d *Diver) sync(ctx context.Context, runID, what, versionID string,
+func (d *Diver) sync(ctx context.Context, runID, what string, packaged Package,
 	log *slog.Logger) (string, error) {
-	files, err := d.platform.PackageFiles(ctx, versionID)
-	if err != nil {
-		return "", fmt.Errorf("asking what %s %s contains: %w", what, versionID, err)
-	}
-	if len(files) == 0 {
+	versionID := packaged.VersionID
+	if len(packaged.Files) == 0 {
 		return "", fmt.Errorf("%s %s has no files, so there is nothing to run", what, versionID)
 	}
 
-	report, err := d.cache.Sync(ctx, versionID, files)
+	report, err := d.cache.Sync(ctx, versionID, packaged.Files)
 	if err != nil {
 		return "", err
 	}

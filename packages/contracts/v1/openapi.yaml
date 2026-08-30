@@ -872,6 +872,35 @@ paths:
           description: Nothing to run.
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/v1/runs/{runId}/packages:
+    get:
+      tags: [work]
+      summary: The files of the packages this run needs
+      description: >
+        Scoped to the run rather than to the catalogue. An agent holds authority
+        over work and nothing else, so fetching a package by naming one would
+        have meant widening what an agent may see to everything the platform
+        publishes; asking through the run it holds widens nothing.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: The run.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The place and the vehicle, each with its files.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  city:
+                    $ref: '#/components/schemas/PackageContents'
+                  vehicle:
+                    $ref: '#/components/schemas/PackageContents'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/runs/{runId}/started:
     post:
       tags: [work]
@@ -2595,6 +2624,26 @@ components:
             What this vehicle publishes and subscribes to, so that a stack
             expecting a sonar on a vehicle carrying none is refused at admission
             rather than discovering it mid-dive.
+    PackageContents:
+      type: object
+      properties:
+        versionId: { type: string }
+        files:
+          type: array
+          items:
+            type: object
+            properties:
+              path: { type: string }
+              digest: { type: string }
+              sizeBytes: { type: integer, format: int64 }
+              mediaType: { type: string }
+              url:
+                type: string
+                description: >
+                  Signed for a node on the network rather than a browser on
+                  somebody's desk. The same URL signed over the wrong host
+                  verifies and cannot be reached.
+      required: [versionId, files]
     ClaimedRun:
       type: object
       description: >

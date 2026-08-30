@@ -249,6 +249,9 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/runs/claim",
 		Summary: "take the next dive this host can run", Action: policy.WorkClaim,
 		Resource: atWork(), Handle: d.claimRun})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/runs/{runId}/packages",
+		Summary: "the files of the packages this run needs", Action: policy.WorkReport,
+		Resource: atWork(), Handle: d.runPackages})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/runs/{runId}/started",
 		Summary: "the simulator is up", Action: policy.WorkReport,
 		Resource: atWork(), Handle: d.runStarted})
