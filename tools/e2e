@@ -50,6 +50,33 @@ print('')
 "
 }
 
+# stores <token> <org> <content> <media> puts a few bytes in object storage and
+# prints "<digest> <size>".
+#
+# A package names bytes by their digest, and the platform refuses to record one
+# whose bytes nobody has uploaded — correctly, since such a package could never
+# be fetched. So these checks upload what they then name, the same way anything
+# publishing a real place does.
+stores() {
+    local token="$1" org="$2" media="$4"
+    local file digest size grant id url
+    file=$(mktemp)
+    printf '%s' "$3" > "$file"
+    digest=$(shasum -a 256 "$file" 2>/dev/null | cut -d' ' -f1 \
+             || sha256sum "$file" | cut -d' ' -f1)
+    size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file")
+    grant=$(api "$token" POST "/api/v1/organisations/$org/uploads" \
+        "{\"bucket\":\"evidence\",\"sha256\":\"$digest\",\"sizeBytes\":$size,\"mediaType\":\"$media\"}")
+    id=$(printf '%s' "$grant" | json "['id']")
+    url=$(printf '%s' "$grant" | json "['uploadUrl']")
+    if [ -n "$url" ]; then
+        curl -sS -X PUT --upload-file "$file" -H "content-type: $media" "$url" >/dev/null
+        api "$token" POST "/api/v1/organisations/$org/uploads/$id/confirm" '{}' >/dev/null
+    fi
+    rm -f "$file"
+    printf '%s %s' "$digest" "$size"
+}
+
 # json <path> reads a value from stdin, e.g. json '["principal"]["id"]'
 json() {
     python3 -c "
@@ -216,14 +243,27 @@ REFUSED=$(api "$GUEST" GET /api/v1/me/denials | json "['denials'][0]['action']")
 # ---------------------------------------------------------------------------
 step "Packages, and what may pin them"
 
-FAKE_DIGEST=0000000000000000000000000000000000000000000000000000000000000001
+read -r SCENE_DIGEST SCENE_SIZE <<EOF
+$(stores "$ADMIN" "$OTHER_ORG" "#usda 1.0
+def Xform \"World\" {}" "model/vnd.usd")
+EOF
+read -r HULL_DIGEST HULL_SIZE <<EOF
+$(stores "$ADMIN" "$OTHER_ORG" "#usda 1.0
+def Xform \"Hull\" {}" "model/vnd.usd")
+EOF
+[ -n "$SCENE_DIGEST" ] && pass "the bytes of a place are stored" || fail "could not store the bytes of a place"
+
 CITY_VERSION=$(api "$ADMIN" POST "/api/v1/cities/$CITY/versions" \
-    "{\"label\":\"v1\",\"files\":[{\"path\":\"scene.usd\",\"digest\":\"$FAKE_DIGEST\",\"sizeBytes\":1024,\"mediaType\":\"model/vnd.usd\"}]}" \
+    "{\"label\":\"v1\",\"files\":[{\"path\":\"scene.usd\",\"digest\":\"$SCENE_DIGEST\",\"sizeBytes\":$SCENE_SIZE,\"mediaType\":\"model/vnd.usd\"}]}" \
     | json "['id']")
 [ -n "$CITY_VERSION" ] && pass "a package is recorded for the place" || fail "could not record a package"
 
+check "a package naming bytes nobody uploaded is refused, because it could never be fetched" \
+    "$(status "$ADMIN" POST "/api/v1/cities/$CITY/versions" \
+        "{\"label\":\"ghost\",\"files\":[{\"path\":\"scene.usd\",\"digest\":\"0000000000000000000000000000000000000000000000000000000000000001\",\"sizeBytes\":1024,\"mediaType\":\"model/vnd.usd\"}]}")" "400"
+
 VEHICLE_VERSION=$(api "$ADMIN" POST "/api/v1/vehicles/$VEHICLE/versions" \
-    "{\"label\":\"v1\",\"files\":[{\"path\":\"hull.usd\",\"digest\":\"$FAKE_DIGEST\",\"sizeBytes\":2048,\"mediaType\":\"model/vnd.usd\"}]}" \
+    "{\"label\":\"v1\",\"files\":[{\"path\":\"hull.usd\",\"digest\":\"$HULL_DIGEST\",\"sizeBytes\":$HULL_SIZE,\"mediaType\":\"model/vnd.usd\"}]}" \
     | json "['id']")
 [ -n "$VEHICLE_VERSION" ] && pass "a package is recorded for the vehicle" || fail "could not record a package"
 
