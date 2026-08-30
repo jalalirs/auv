@@ -67,6 +67,9 @@ class Hud:
                 ui.Spacer(height=14)
                 self.status = ui.Label("", height=20, style={
                     "color": WARN, "font_size": 14})
+                ui.Spacer(height=10)
+                ui.Label("WASD  move    Q E  turn    SPACE C  rise, dive",
+                         height=16, style={"color": FAINT, "font_size": 12})
 
     def opened(self, place: str, vehicle: str) -> None:
         self.place.text = place
@@ -78,6 +81,10 @@ class Hud:
 
     def flying(self, commands: int) -> None:
         self.status.text = f"autonomy flying — {commands} commands"
+        self.status.style = {"color": LIVE, "font_size": 14}
+
+    def by_hand(self) -> None:
+        self.status.text = "you have the controls"
         self.status.style = {"color": LIVE, "font_size": 14}
 
     def untended(self) -> None:
