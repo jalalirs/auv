@@ -594,8 +594,23 @@ func (s *Store) RequestRun(ctx context.Context, conn db.Conn, spec RunSpec) (Run
 		seed = int64(binary.BigEndian.Uint64(raw[:]) >> 1)
 	}
 
+	// The conditions are identified by their content, the way a city is, so
+	// that two runs in the same water are recognisably the same experiment.
+	// Read here rather than taken from the caller: a caller who could choose it
+	// could claim a result came from water it did not run in.
+	conditions, err := scanConditions(conn.QueryRow(ctx, selectConditions+`
+		WHERE id = (SELECT conditions_id FROM dive.dive WHERE id = $1)`, spec.DiveID))
+	if err != nil {
+		return Run{}, fmt.Errorf("%w: the dive does not exist, or names no conditions",
+			domain.ErrInvalid)
+	}
+	conditionsDigest, err := conditions.Digest()
+	if err != nil {
+		return Run{}, err
+	}
+
 	id := ids.New(ids.KindRun)
-	_, err := conn.Exec(ctx, `
+	_, err = conn.Exec(ctx, `
 		INSERT INTO dive.run
 		    (id, dive_id, queue_id, mode, city_digest, vehicle_digest,
 		     conditions_digest, autonomy_digest, seed, runtime_version,
@@ -610,7 +625,7 @@ func (s *Store) RequestRun(ctx context.Context, conn db.Conn, spec RunSpec) (Run
 		 WHERE d.id = $9
 		   AND city.published_at IS NOT NULL
 		   AND vehicle.published_at IS NOT NULL`,
-		id, spec.QueueID, string(spec.Mode), nil, seed, spec.RuntimeVersion,
+		id, spec.QueueID, string(spec.Mode), conditionsDigest[:], seed, spec.RuntimeVersion,
 		share, spec.RequestedBy, spec.DiveID)
 	if err != nil {
 		return Run{}, fmt.Errorf("requesting a run: %w", err)
