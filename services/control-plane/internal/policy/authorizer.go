@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
-	"github.com/jalalirs/auv/services/control-plane/internal/domain"
 	"github.com/jalalirs/auv/services/control-plane/internal/ids"
 	"github.com/jalalirs/auv/services/control-plane/internal/reqctx"
 )
@@ -75,7 +74,7 @@ func (a *Authorizer) evaluate(ctx context.Context, subject Subject, action Actio
 	case ResourceOrg:
 		return a.decideOrg(ctx, subject, need, resource.ID)
 	case ResourceCity:
-		return a.decideCity(ctx, subject, action, need, resource.ID)
+		return a.decideCity(ctx, subject, need, resource.ID)
 	case ResourceVehicle:
 		return a.decideVehicle(ctx, subject, need, resource.ID)
 	case ResourceJob:
@@ -132,13 +131,17 @@ func (a *Authorizer) decideOrg(ctx context.Context, subject Subject, need Role, 
 //
 // Discoverability decides what a principal with no binding may learn, and it is
 // consulted only after bindings prove insufficient, so a binding always wins.
-func (a *Authorizer) decideCity(ctx context.Context, subject Subject, action Action, need Role, cityID string) (Decision, error) {
-	facts, err := a.cityFacts(ctx, cityID)
-	if errors.Is(err, db.ErrNotFound) {
+func (a *Authorizer) decideCity(ctx context.Context, subject Subject, need Role, cityID string) (Decision, error) {
+	var slug string
+	var discoverable bool
+	err := a.pool.QueryRow(ctx,
+		`SELECT slug, discoverable FROM catalog.city WHERE id = $1 AND retired_at IS NULL`,
+		cityID).Scan(&slug, &discoverable)
+	if errors.Is(db.Translate(err), db.ErrNotFound) {
 		return denyHidden("no city with that identifier is visible to you"), nil
 	}
 	if err != nil {
-		return Decision{}, err
+		return Decision{}, fmt.Errorf("reading a city: %w", err)
 	}
 
 	role, err := a.effectiveRole(ctx, subject, ScopeCity, cityID)
@@ -146,27 +149,25 @@ func (a *Authorizer) decideCity(ctx context.Context, subject Subject, action Act
 		return Decision{}, err
 	}
 	if role.AtLeast(need) {
-		return allow(role, a.cityFilter(subject, role)), nil
+		return allow(role, a.platformFilter(subject, role)), nil
 	}
 
-	// An open city may be read by anyone signed in, which is what makes the
-	// shared record shared.
-	if facts.Discoverability == domain.ListedOpen && need == RoleViewer {
-		return allow(RoleViewer, a.cityFilter(subject, RoleViewer)), nil
-	}
-
-	if role.AtLeast(RoleViewer) || facts.Discoverability != domain.Unlisted {
+	// An undiscoverable city a caller holds nothing on is reported as absent,
+	// so that its existence is not itself a disclosure.
+	if role.AtLeast(RoleViewer) || discoverable {
 		return denyVisible(fmt.Sprintf(
-			"this action needs %s in %s; you hold %s", need, facts.Slug, describe(role))), nil
+			"this action needs %s in %s; you hold %s", need, slug, describe(role))), nil
 	}
 	return denyHidden("no city with that identifier is visible to you"), nil
 }
 
+// decideJob answers questions about work, which belongs to the organisation
+// that submitted it.
 // decideVehicle answers questions about a vehicle.
 //
-// Simpler than a city, because a vehicle has no equivalent of an open place
-// that anyone signed in may enter: a discoverable vehicle can be seen in a
-// listing, and flying one is granted or it is not.
+// The same shape as a city, because the two are granted the same way: a grant
+// decides, and where there is none, a discoverable asset says why it refused
+// while an undiscoverable one says only that it is not there.
 func (a *Authorizer) decideVehicle(ctx context.Context, subject Subject, need Role, vehicleID string) (Decision, error) {
 	var slug string
 	var discoverable bool
@@ -187,9 +188,6 @@ func (a *Authorizer) decideVehicle(ctx context.Context, subject Subject, need Ro
 	if role.AtLeast(need) {
 		return allow(role, a.platformFilter(subject, role)), nil
 	}
-
-	// An undiscoverable vehicle a caller holds nothing on is reported as
-	// absent, so that its existence is not itself a disclosure.
 	if role.AtLeast(RoleViewer) || discoverable {
 		return denyVisible(fmt.Sprintf(
 			"this action needs %s on %s; you hold %s", need, slug, describe(role))), nil
@@ -197,8 +195,6 @@ func (a *Authorizer) decideVehicle(ctx context.Context, subject Subject, need Ro
 	return denyHidden("no vehicle with that identifier is visible to you"), nil
 }
 
-// decideJob answers questions about work, which belongs to the organisation
-// that submitted it.
 func (a *Authorizer) decideJob(ctx context.Context, subject Subject, need Role, jobID string) (Decision, error) {
 	orgID, err := a.jobOrg(ctx, jobID)
 	if errors.Is(err, db.ErrNotFound) {
@@ -287,39 +283,6 @@ func (a *Authorizer) effectiveRole(ctx context.Context, subject Subject, scope S
 	return strongest, rows.Err()
 }
 
-type cityFact struct {
-	Slug            string
-	Discoverability domain.Discoverability
-}
-
-func (a *Authorizer) cityFacts(ctx context.Context, cityID string) (cityFact, error) {
-	var fact cityFact
-	err := a.pool.QueryRow(ctx,
-		`SELECT slug, discoverability FROM city.city WHERE id = $1`, cityID).
-		Scan(&fact.Slug, &fact.Discoverability)
-	return fact, db.Translate(err)
-}
-
-type layerFact struct {
-	ScopeKind domain.ScopeKind
-	CityID    string
-}
-
-func (a *Authorizer) layerFacts(ctx context.Context, layerID string) (layerFact, error) {
-	var fact layerFact
-	var cityID *string
-	err := a.pool.QueryRow(ctx,
-		`SELECT scope_kind, city_id FROM layer.layer WHERE id = $1`, layerID).
-		Scan(&fact.ScopeKind, &cityID)
-	if err != nil {
-		return fact, db.Translate(err)
-	}
-	if cityID != nil {
-		fact.CityID = *cityID
-	}
-	return fact, nil
-}
-
 func (a *Authorizer) jobOrg(ctx context.Context, jobID string) (string, error) {
 	var orgID string
 	err := a.pool.QueryRow(ctx, `SELECT org_id FROM exec.job WHERE id = $1`, jobID).Scan(&orgID)
@@ -346,20 +309,6 @@ func (a *Authorizer) recordDenial(ctx context.Context, subject Subject, action A
 		ids.New(ids.KindDenial), principalID, string(action), string(resource.Kind),
 		resourceID, effect, decision.Reason, reqctx.RequestID(ctx))
 	return err
-}
-
-// CatalogueScope describes which cities a subject may learn of. Like
-// VersionFilter, the decision point produces it and the repository applies it,
-// so that listing and reading agree about what is visible.
-type CatalogueScope struct {
-	// AllCities admits every city, which platform authority carries.
-	AllCities bool
-	// BoundCityIDs admits cities the subject holds a binding on, whatever
-	// their discoverability.
-	BoundCityIDs []string
-	// IncludeListed admits cities that appear in the catalogue for anyone
-	// signed in. Unlisted cities are never admitted by this.
-	IncludeListed bool
 }
 
 // AssetScope describes which assets of one kind a subject may learn of.
@@ -390,8 +339,7 @@ func (a *Authorizer) Assets(ctx context.Context, subject Subject, kind ScopeKind
 	switch kind {
 	case ScopeCity, ScopeVehicle, ScopeWork:
 	default:
-		return AssetScope{}, fmt.Errorf(
-			"%w: %q is not a scope assets are granted at", domain.ErrInvalid, kind)
+		return AssetScope{}, fmt.Errorf("%q is not a scope assets are granted at", kind)
 	}
 
 	platformRole, err := a.effectiveRole(ctx, subject, ScopePlatform, "")
@@ -425,45 +373,6 @@ func (a *Authorizer) Assets(ctx context.Context, subject Subject, kind ScopeKind
 			return AssetScope{}, err
 		}
 		scope.BoundIDs = append(scope.BoundIDs, id)
-	}
-	return scope, rows.Err()
-}
-
-// Catalogue reports which cities a subject may learn of. An unlisted city
-// appears only to those bound to it; it is otherwise indistinguishable from a
-// city that does not exist.
-func (a *Authorizer) Catalogue(ctx context.Context, subject Subject) (CatalogueScope, error) {
-	platformRole, err := a.effectiveRole(ctx, subject, ScopePlatform, "")
-	if err != nil {
-		return CatalogueScope{}, err
-	}
-	if platformRole.AtLeast(RoleViewer) {
-		return CatalogueScope{AllCities: true, IncludeListed: true}, nil
-	}
-
-	rows, err := a.pool.Query(ctx, `
-		SELECT DISTINCT scope_id
-		FROM policy.binding
-		WHERE revoked_at IS NULL
-		  AND scope_kind = 'city'
-		  AND scope_id IS NOT NULL
-		  AND (
-		        (subject_kind = 'principal' AND subject_id = $1)
-		     OR (subject_kind = 'org'       AND subject_id = ANY($2))
-		      )`,
-		subject.PrincipalID, subject.OrgIDs)
-	if err != nil {
-		return CatalogueScope{}, fmt.Errorf("reading city bindings: %w", err)
-	}
-	defer rows.Close()
-
-	scope := CatalogueScope{IncludeListed: true, BoundCityIDs: []string{}}
-	for rows.Next() {
-		var cityID string
-		if err := rows.Scan(&cityID); err != nil {
-			return CatalogueScope{}, err
-		}
-		scope.BoundCityIDs = append(scope.BoundCityIDs, cityID)
 	}
 	return scope, rows.Err()
 }
