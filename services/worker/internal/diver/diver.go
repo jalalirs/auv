@@ -465,9 +465,10 @@ func (d *Diver) flyer(ctx context.Context, claimed Claimed, simID string,
 		// other than controlling a vehicle.
 		MemoryBytes: 4 << 30,
 		CPUs:        2,
-		// The vehicle's network namespace and nobody else's: a loopback the two
-		// of them share, no route to the host, and no route in.
-		JoinNetworkOf: simID,
+		// The vehicle's namespaces and nobody else's: a loopback the two of
+		// them share, the shared memory DDS actually delivers through, no route
+		// to the host, and no route in.
+		ShareNamespacesWith: simID,
 	}
 	if claimed.AutonomyGPU {
 		// Inference needs a device, and on a single-GPU host it shares the one
