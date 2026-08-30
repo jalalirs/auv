@@ -156,6 +156,14 @@ type Spec struct {
 	// Same host, same shared memory. They are two processes on one vehicle.
 	ShareNamespacesWith string
 
+	// AllowJoining lets another container share this one's namespaces.
+	//
+	// It has to be asked for on this side too: a namespace nobody may join is
+	// the right default for untrusted work, and Docker enforces it by refusing
+	// the join outright rather than quietly granting it. So the simulator says
+	// it will have company, and everything else says nothing and gets none.
+	AllowJoining bool
+
 	// WritableRoot relaxes the read-only root filesystem. A simulator writes
 	// shader and asset caches all over its own installation and cannot run
 	// without it; ordinary work can and does.
@@ -252,6 +260,9 @@ func (r *Runtime) Create(ctx context.Context, spec Spec) (string, error) {
 	// Its own by default: shared memory is a way into another process, and
 	// only the two halves of one dive have any business in each other's.
 	ipc := "private"
+	if spec.AllowJoining {
+		ipc = "shareable"
+	}
 	if spec.ShareNamespacesWith != "" {
 		network = "container:" + spec.ShareNamespacesWith
 		ipc = "container:" + spec.ShareNamespacesWith

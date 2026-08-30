@@ -186,7 +186,7 @@ services:
       CORAL_CITY_WORKER_HOST_WORKDIR: ${CORAL_CITY_AGENT_HOST_WORKDIR:-/var/lib/coral-city/work}
       # What a dive is simulated in. A property of this host rather than of the
       # platform: what it has, and what its GPUs can run.
-      CORAL_CITY_SIM_IMAGE: ${CORAL_CITY_SIM_IMAGE:-coral-city/sim-runtime:r1}
+      CORAL_CITY_SIM_IMAGE: ${CORAL_CITY_SIM_IMAGE:-127.0.0.1:18081/sim-runtime:r1}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${CORAL_CITY_AGENT_HOST_WORKDIR:-/var/lib/coral-city/work}:/work
