@@ -345,12 +345,14 @@ CONDITIONS=$(api "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/conditions" \
     '{"kind":"constructed","name":"Still water","parameters":{"currentMetresPerSecond":0}}' | json "['id']")
 [ -n "$CONDITIONS" ] && pass "constructed conditions are recorded" || fail "could not record conditions"
 
-DIVE=$(api "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/dives" \
-    "{\"name\":\"Hold two metres\",\"cityVersionId\":\"$CITY_VERSION\",\"vehicleVersionId\":\"$VEHICLE_VERSION\",\"conditionsId\":\"$CONDITIONS\",\"autonomyStackId\":\"$STACK\"}" \
-    | json "['id']")
+# Kept rather than read straight through, so that a refusal can be reported with
+# the reason the platform gave. Asking a second time to find out why would
+# define a dive as a side effect of explaining that one could not be defined.
+DEFINED=$(api "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/dives" \
+    "{\"name\":\"Hold two metres\",\"cityVersionId\":\"$CITY_VERSION\",\"vehicleVersionId\":\"$VEHICLE_VERSION\",\"conditionsId\":\"$CONDITIONS\",\"autonomyStackId\":\"$STACK\"}")
+DIVE=$(printf '%s' "$DEFINED" | json "['id']")
 [ -n "$DIVE" ] && pass "a dive is defined" \
-    || fail "could not define a dive: $(api "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/dives" \
-        "{\"name\":\"Hold two metres\",\"cityVersionId\":\"$CITY_VERSION\",\"vehicleVersionId\":\"$VEHICLE_VERSION\",\"conditionsId\":\"$CONDITIONS\",\"autonomyStackId\":\"$STACK\"}" | head -c 200)"
+    || fail "could not define a dive: $(printf '%s' "$DEFINED" | head -c 200)"
 
 check "a dive missing one of its determinants is refused" \
     "$(status "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/dives" \
