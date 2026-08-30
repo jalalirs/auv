@@ -35,6 +35,7 @@ keywords = ["experience", "app"]
 name = "Coral City"
 version = "0.1.0"
 window.title = "Coral City"
+window.iconPath = "${app}/coral_city.png"
 # No menu bar, no toolbars, no status bar. The shell draws what there is.
 window.hideUi = true
 window.showStartup = false
@@ -72,6 +73,10 @@ excluded = [
     "omni.kit.window.filepicker",
     "omni.kit.widget.filebrowser",
     "omni.kit.window.content_browser",
+    # And what depended on the browser: importing a URDF and exporting a USD are
+    # things you do while building a vehicle, not while diving one.
+    "omni.kit.window.file_importer",
+    "omni.kit.window.file_exporter",
 ]
 
 [settings.exts."omni.kit.viewport.window"]

@@ -12,14 +12,19 @@ from __future__ import annotations
 
 import omni.ui as ui
 
-# Deep water, and one warm colour for the vehicle's own numbers. The palette is
-# small on purpose: three greys and an amber, so that anything coloured is
-# something that changed.
-INK = 0xE6120D08
-FAINT = 0xFF6E6A66
-PLAIN = 0xFFD8D4CE
-LIVE = 0xFF3FC7F4
-WARN = 0xFF4FA8F0
+# Deep water, two greys, and two colours that must never be mistaken for each
+# other: whether anything is at the controls is the one thing on this screen you
+# cannot afford to misread, so waiting is warm and flying is cold, and they are
+# not neighbours.
+#
+# Written the way omni.ui reads them, which is 0xAABBGGRR and not the RGB it
+# looks like. Getting that backwards is how "flying" and "waiting" ended up the
+# same amber.
+INK = 0xE6120D08    # RGB(8, 13, 18)     deep water
+FAINT = 0xFF706A66  # RGB(102, 106, 112) labels
+PLAIN = 0xFFD6D2CC  # RGB(204, 210, 214) numbers
+LIVE = 0xFFF4C740   # RGB(64, 199, 244)  something is flying this
+WARN = 0xFF4FA8F0   # RGB(240, 168, 79)  nobody is
 
 
 class Hud:
