@@ -152,6 +152,65 @@ func (rt *Router) registerAll() {
 		Also:     []policy.Action{policy.JobSubmitPrivileged},
 		Handle:   d.createSchedule})
 
+	// Queues. The governed resource is the queue, not the device: a queue holds
+	// however many devices it holds, so adding hardware is an insert rather
+	// than a migration.
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/queues",
+		Summary: "open a queue", Action: policy.QueueOpen,
+		Resource: atPlatform(), Handle: d.createQueue})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/queues",
+		Summary: "the queues the caller may submit to", Action: policy.PlatformReadCatalogue,
+		Resource: atPlatform(), Handle: d.listQueues})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/queues/{queueId}",
+		Summary: "a queue and how much of it is free", Action: policy.QueueRead,
+		Resource: fromPath(policy.ResourceQueue, "queueId"), Handle: d.readQueue})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/queues/{queueId}/devices",
+		Summary: "place a device in a queue", Action: policy.QueueOpen,
+		Resource: atPlatform(), Handle: d.addDevice})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/queues/{queueId}/devices",
+		Summary: "the devices in a queue", Action: policy.QueueRead,
+		Resource: fromPath(policy.ResourceQueue, "queueId"), Handle: d.listDevices})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/queues/{queueId}/grants",
+		Summary: "grant the use of a queue", Action: policy.QueueGrant,
+		Resource: fromPath(policy.ResourceQueue, "queueId"), Handle: d.grantQueue})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/queues/{queueId}/grants",
+		Summary: "who may submit to a queue", Action: policy.QueueGrant,
+		Resource: fromPath(policy.ResourceQueue, "queueId"), Handle: d.readQueueGrants})
+
+	// What an institution composes for itself: the autonomy it brings, the
+	// water it chooses, and the dives it assembles from those and what the
+	// platform publishes.
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/autonomy",
+		Summary: "register autonomy, pinned by image digest", Action: policy.DiveWrite,
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.registerStack})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations/{orgId}/autonomy",
+		Summary: "an institution's autonomy", Action: policy.DiveRead,
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.listStacks})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/conditions",
+		Summary: "record water, observed or constructed", Action: policy.DiveWrite,
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.createConditions})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/dives",
+		Summary: "define a dive", Action: policy.DiveWrite,
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.createDive})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations/{orgId}/dives",
+		Summary: "an institution's dives", Action: policy.DiveRead,
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.listDives})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/dives/{diveId}",
+		Summary: "a dive", Action: policy.DiveRead,
+		Resource: fromPath(policy.ResourceDive, "diveId"), Handle: d.readDive})
+
+	// Running one is granted apart from defining one: composing an experiment
+	// costs nothing, and executing it holds a GPU. The route asks about the
+	// dive; the handler asks the same decision point about the queue.
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/dives/{diveId}/runs",
+		Summary: "ask for a dive to be executed", Action: policy.RunRequest,
+		Resource: fromPath(policy.ResourceDive, "diveId"),
+		Also:     []policy.Action{policy.QueueRead},
+		Handle:   d.requestRun})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/dives/{diveId}/runs",
+		Summary: "what a dive's executions did", Action: policy.DiveRead,
+		Resource: fromPath(policy.ResourceDive, "diveId"), Handle: d.listRuns})
+
 	// Work.
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/jobs",
 		Summary: "ask the platform to run work", Action: policy.JobSubmit,

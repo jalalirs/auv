@@ -77,6 +77,10 @@ func (a *Authorizer) evaluate(ctx context.Context, subject Subject, action Actio
 		return a.decideCity(ctx, subject, need, resource.ID)
 	case ResourceVehicle:
 		return a.decideVehicle(ctx, subject, need, resource.ID)
+	case ResourceQueue:
+		return a.decideQueue(ctx, subject, need, resource.ID)
+	case ResourceDive:
+		return a.decideDive(ctx, subject, need, resource.ID)
 	case ResourceJob:
 		return a.decideJob(ctx, subject, need, resource.ID)
 	default:
@@ -193,6 +197,71 @@ func (a *Authorizer) decideVehicle(ctx context.Context, subject Subject, need Ro
 			"this action needs %s on %s; you hold %s", need, slug, describe(role))), nil
 	}
 	return denyHidden("no vehicle with that identifier is visible to you"), nil
+}
+
+// decideQueue answers questions about a queue of hardware.
+//
+// Hardware carries no discoverability. Somebody who cannot run on a queue has
+// no reason to learn it exists, so an ungranted queue is absent rather than
+// refused — and a queue that does not exist looks exactly the same, which is
+// the point.
+func (a *Authorizer) decideQueue(ctx context.Context, subject Subject, need Role, queueID string) (Decision, error) {
+	var slug string
+	err := a.pool.QueryRow(ctx,
+		`SELECT slug FROM compute.queue WHERE id = $1`, queueID).Scan(&slug)
+	if errors.Is(db.Translate(err), db.ErrNotFound) {
+		return denyHidden("no queue with that identifier is visible to you"), nil
+	}
+	if err != nil {
+		return Decision{}, fmt.Errorf("reading a queue: %w", err)
+	}
+
+	role, err := a.effectiveRole(ctx, subject, ScopeQueue, queueID)
+	if err != nil {
+		return Decision{}, err
+	}
+	if role.AtLeast(need) {
+		return allow(role, a.platformFilter(subject, role)), nil
+	}
+	if role.AtLeast(RoleViewer) {
+		return denyVisible(fmt.Sprintf(
+			"this action needs %s on %s; you hold %s", need, slug, describe(role))), nil
+	}
+	return denyHidden("no queue with that identifier is visible to you"), nil
+}
+
+// decideDive answers questions about a dive, which belongs to the institution
+// that composed it.
+//
+// A dive is not shared the way a city is: it is somebody's experiment, and the
+// authority to read or change it is the authority they hold in their own
+// institution. Asking the organisation rather than carrying a second set of
+// bindings is what keeps that true without a second thing to maintain.
+func (a *Authorizer) decideDive(ctx context.Context, subject Subject, need Role, diveID string) (Decision, error) {
+	var orgID string
+	err := a.pool.QueryRow(ctx,
+		`SELECT org_id FROM dive.dive WHERE id = $1 AND archived_at IS NULL`,
+		diveID).Scan(&orgID)
+	if errors.Is(db.Translate(err), db.ErrNotFound) {
+		return denyHidden("no dive with that identifier is visible to you"), nil
+	}
+	if err != nil {
+		return Decision{}, fmt.Errorf("reading a dive: %w", err)
+	}
+
+	decision, err := a.decideOrg(ctx, subject, need, orgID)
+	if err != nil {
+		return Decision{}, err
+	}
+	// Somebody outside the institution should not learn that the dive exists,
+	// so the organisation's refusal is reported as absence here.
+	if decision.Effect == EffectDenyVisible {
+		return decision, nil
+	}
+	if !decision.Allowed() {
+		return denyHidden("no dive with that identifier is visible to you"), nil
+	}
+	return decision, nil
 }
 
 func (a *Authorizer) decideJob(ctx context.Context, subject Subject, need Role, jobID string) (Decision, error) {

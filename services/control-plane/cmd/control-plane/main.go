@@ -16,8 +16,10 @@ import (
 
 	"github.com/jalalirs/auv/services/control-plane/internal/audit"
 	"github.com/jalalirs/auv/services/control-plane/internal/catalog"
+	"github.com/jalalirs/auv/services/control-plane/internal/compute"
 	"github.com/jalalirs/auv/services/control-plane/internal/config"
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
+	"github.com/jalalirs/auv/services/control-plane/internal/dive"
 	"github.com/jalalirs/auv/services/control-plane/internal/exec"
 	"github.com/jalalirs/auv/services/control-plane/internal/httpapi"
 	"github.com/jalalirs/auv/services/control-plane/internal/identity"
@@ -85,6 +87,8 @@ func run(logger *slog.Logger) error {
 		Authorizer:      policy.NewAuthorizer(pool),
 		Audit:           recorder,
 		Catalog:         catalog.NewStore(pool),
+		Compute:         compute.NewStore(pool),
+		Dives:           dive.NewStore(pool),
 		Objects:         objects,
 		Blobs:           blobs,
 		Broker:          broker,
