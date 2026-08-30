@@ -235,12 +235,18 @@ check "a lease shorter than a minute is refused" \
     "$(status "$ADMIN" POST /api/v1/queues "{\"slug\":\"brief-$RUN\",\"name\":\"Brief\",\"leaseSeconds\":30}")" "400"
 
 TARGET=$(api "$ADMIN" GET /api/v1/targets | json "['targets'][0]['id']")
+# A device index belongs to a host, and earlier runs of this check have left
+# their own devices behind, so each run claims a slot of its own.
+INDEX=$((RUN % 100000))
+DEVICE="{\"targetId\":\"$TARGET\",\"deviceIndex\":$INDEX,\"uuid\":\"GPU-$RUN\",\"model\":\"RTX 5880 Ada\",\"memoryBytes\":51539607552}"
+
 check "a device is placed in the queue" \
-    "$(status "$ADMIN" POST "/api/v1/queues/$QUEUE/devices" \
-        "{\"targetId\":\"$TARGET\",\"deviceIndex\":0,\"uuid\":\"GPU-$RUN\",\"model\":\"RTX 5880 Ada\",\"memoryBytes\":51539607552}")" "201"
+    "$(status "$ADMIN" POST "/api/v1/queues/$QUEUE/devices" "$DEVICE")" "201"
 check "registering the same device again does not double the capacity" \
+    "$(status "$ADMIN" POST "/api/v1/queues/$QUEUE/devices" "$DEVICE")" "201"
+check "a different device cannot take a slot this host has already filled" \
     "$(status "$ADMIN" POST "/api/v1/queues/$QUEUE/devices" \
-        "{\"targetId\":\"$TARGET\",\"deviceIndex\":0,\"uuid\":\"GPU-$RUN\",\"model\":\"RTX 5880 Ada\",\"memoryBytes\":51539607552}")" "201"
+        "{\"targetId\":\"$TARGET\",\"deviceIndex\":$INDEX,\"uuid\":\"GPU-other-$RUN\",\"model\":\"RTX 5880 Ada\",\"memoryBytes\":51539607552}")" "409"
 check "the queue holds one device, and it is free" \
     "$(api "$ADMIN" GET "/api/v1/queues/$QUEUE" | json "['devices']")/$(api "$ADMIN" GET "/api/v1/queues/$QUEUE" | json "['free']")" "1/1"
 
