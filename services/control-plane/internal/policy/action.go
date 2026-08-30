@@ -27,8 +27,6 @@ const (
 	CityCreate Action = "city.create"
 	// CityRead covers entering a place and reading its description.
 	CityRead Action = "city.read"
-	// CityUpdate covers changing a place's description or discoverability.
-	CityUpdate Action = "city.update"
 	// CityGrant covers granting or revoking access to a place.
 	CityGrant Action = "city.grant"
 
@@ -40,23 +38,8 @@ const (
 	// VehicleGrant covers granting or revoking the use of a vehicle.
 	VehicleGrant Action = "vehicle.grant"
 
-	// LayerRead covers reading a layer and its versions.
-	LayerRead Action = "layer.read"
-	// LayerCreate covers contributing a layer or a new version of one.
-	LayerCreate Action = "layer.create"
-	// LayerSubmit covers offering a draft version for review.
-	LayerSubmit Action = "layer.submit"
-	// LayerPublish covers publishing a reviewed version.
-	LayerPublish Action = "layer.publish"
-	// LayerPromote covers making a restricted version part of the shared record.
-	LayerPromote Action = "layer.promote"
-	// LayerRetract covers withdrawing a published version from default views.
-	LayerRetract Action = "layer.retract"
-
 	// ObjectUpload covers obtaining a grant to place bytes in storage.
 	ObjectUpload Action = "object.upload"
-	// ObjectRead covers obtaining a grant to read stored bytes.
-	ObjectRead Action = "object.read"
 
 	// JobSubmit covers asking the platform to run work.
 	JobSubmit Action = "job.submit"
@@ -99,22 +82,13 @@ var requirement = map[Action]struct {
 
 	CityCreate: {RoleAdmin, []ResourceKind{ResourcePlatform}},
 	CityRead:   {RoleViewer, []ResourceKind{ResourceCity}},
-	CityUpdate: {RoleSteward, []ResourceKind{ResourceCity}},
 	CityGrant:  {RoleSteward, []ResourceKind{ResourceCity}},
 
 	VehicleCreate: {RoleAdmin, []ResourceKind{ResourcePlatform}},
 	VehicleRead:   {RoleViewer, []ResourceKind{ResourceVehicle, ResourcePlatform}},
 	VehicleGrant:  {RoleSteward, []ResourceKind{ResourceVehicle}},
 
-	LayerRead:    {RoleViewer, []ResourceKind{ResourceLayer, ResourceCity, ResourcePlatform}},
-	LayerCreate:  {RoleContributor, []ResourceKind{ResourceLayer, ResourceCity, ResourcePlatform}},
-	LayerSubmit:  {RoleContributor, []ResourceKind{ResourceLayer}},
-	LayerPublish: {RoleSteward, []ResourceKind{ResourceLayer}},
-	LayerPromote: {RoleSteward, []ResourceKind{ResourceLayer}},
-	LayerRetract: {RoleSteward, []ResourceKind{ResourceLayer}},
-
 	ObjectUpload: {RoleContributor, []ResourceKind{ResourceOrg}},
-	ObjectRead:   {RoleViewer, []ResourceKind{ResourceLayer}},
 
 	JobSubmit:           {RoleContributor, []ResourceKind{ResourceOrg}},
 	JobSubmitPrivileged: {RoleAdmin, []ResourceKind{ResourcePlatform}},

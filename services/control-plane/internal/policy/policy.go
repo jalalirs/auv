@@ -105,7 +105,6 @@ const (
 	ResourceOrg      ResourceKind = "org"
 	ResourceCity     ResourceKind = "city"
 	ResourceVehicle  ResourceKind = "vehicle"
-	ResourceLayer    ResourceKind = "layer"
 	ResourceJob      ResourceKind = "job"
 	ResourceWork     ResourceKind = "work"
 )
@@ -123,9 +122,6 @@ func Platform() Resource { return Resource{Kind: ResourcePlatform} }
 
 // City names one place.
 func City(id string) Resource { return Resource{Kind: ResourceCity, ID: id} }
-
-// Layer names one layer.
-func Layer(id string) Resource { return Resource{Kind: ResourceLayer, ID: id} }
 
 // Org names one organisation.
 func Org(id string) Resource { return Resource{Kind: ResourceOrg, ID: id} }

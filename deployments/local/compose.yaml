@@ -142,18 +142,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  web:
-    image: coral-city/web:r1
-    build:
-      context: ../..
-      dockerfile: apps/web/Dockerfile
-    depends_on:
-      control-plane:
-        condition: service_healthy
-    ports:
-      - "127.0.0.1:${CORAL_CITY_WEB_PORT:-18090}:8080"
-    restart: unless-stopped
-
 volumes:
   record:
   storage:

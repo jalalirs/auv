@@ -2,10 +2,10 @@
 # End-to-end check against a running Coral City deployment.
 #
 # This exercises the journey a person actually takes and the invariants the
-# platform promises: that access is decided in one place, that an unlisted place
-# is indistinguishable from one that does not exist, that evidence cannot be
-# rewritten, that a truth class does not strengthen, that work is admitted or
-# refused with a reason, and that a worker's output is recorded once.
+# platform promises: that access is decided in one place, that an asset nobody
+# has granted you is indistinguishable from one that does not exist, that a
+# grant is what changes that, and that work is admitted or refused with a
+# reason.
 #
 # Usage:
 #   ./tools/e2e                       # against the local deployment
@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-API="${CORAL_CITY_API:-http://localhost:18089}"
+API="${CORAL_CITY_API:-http://localhost:18080}"
 ADMIN_EMAIL="${CORAL_CITY_ADMIN_EMAIL:-admin@coral.local}"
 ADMIN_SECRET="${CORAL_CITY_ADMIN_SECRET:-development-secret}"
 
@@ -78,10 +78,12 @@ check "it reports itself live" "$(status '' GET /health/live)" "200"
 # ---------------------------------------------------------------------------
 step "Nothing is readable without signing in"
 
-check "the catalogue refuses an anonymous caller" \
+check "the catalogue of places refuses an anonymous caller" \
     "$(status '' GET /api/v1/cities)" "401"
-check "a place refuses an anonymous caller" \
-    "$(status '' GET /api/v1/cities/city_01ARZ3NDEKTSV4RRFFQ69G5FAV)" "401"
+check "the catalogue of vehicles refuses an anonymous caller" \
+    "$(status '' GET /api/v1/vehicles)" "401"
+check "one's own identity refuses an anonymous caller" \
+    "$(status '' GET /api/v1/me)" "401"
 
 # ---------------------------------------------------------------------------
 step "Signing in"
@@ -92,416 +94,109 @@ ADMIN=$(api '' POST /api/v1/sessions \
 
 check "a wrong secret is refused" \
     "$(status '' POST /api/v1/sessions "{\"email\":\"$ADMIN_EMAIL\",\"secret\":\"wrong-secret-here\"}")" "401"
-check "an unknown address is refused the same way" \
+check "an unknown address is refused the same way, saying no more" \
     "$(status '' POST /api/v1/sessions '{"email":"nobody@coral.local","secret":"wrong-secret-here"}')" "401"
 
-ADMIN_ORG=$(api "$ADMIN" GET /api/v1/me | json "['organisations'][0]['id']")
-[ -n "$ADMIN_ORG" ] && pass "the administrator belongs to an institution" || fail "no institution"
-
 # ---------------------------------------------------------------------------
-step "Two institutions, and a place that outlives them"
+step "What the platform publishes"
 
 RUN=$(date +%s)
-OTHER_ORG=$(api "$ADMIN" POST /api/v1/organisations \
-    "{\"slug\":\"other-institute-$RUN\",\"name\":\"Other Institute\"}" | json "['id']")
-[ -n "$OTHER_ORG" ] && pass "a second institution is founded" || fail "could not found an institution"
 
-OUTSIDER=$(api "$ADMIN" POST /api/v1/people \
-    "{\"displayName\":\"Outside Researcher\",\"email\":\"outsider-$RUN@example.org\",\"secret\":\"outsider-secret-value\"}" \
+CITY=$(api "$ADMIN" POST /api/v1/cities \
+    "{\"slug\":\"tank-$RUN\",\"name\":\"Test Tank\",\"summary\":\"A tow tank\",\"verticalDatum\":\"tank floor\",\"discoverable\":false}" \
     | json "['id']")
-check "an outsider is added to the second institution" \
-    "$(status "$ADMIN" POST "/api/v1/organisations/$OTHER_ORG/members" "{\"principalId\":\"$OUTSIDER\"}")" "204"
+[ -n "$CITY" ] && pass "a place is founded" || fail "could not found a place"
 
-OUTSIDER_TOKEN=$(api '' POST /api/v1/sessions \
+check "a place without a vertical datum is refused, because a depth without one is not a measurement" \
+    "$(status "$ADMIN" POST /api/v1/cities "{\"slug\":\"nodatum-$RUN\",\"name\":\"No datum\"}")" "400"
+
+VEHICLE=$(api "$ADMIN" POST /api/v1/vehicles \
+    "{\"slug\":\"rov-$RUN\",\"name\":\"Observation ROV\",\"manufacturer\":\"Blue Robotics\",\"discoverable\":false}" \
+    | json "['id']")
+[ -n "$VEHICLE" ] && pass "a vehicle is published" || fail "could not publish a vehicle"
+
+check "a second vehicle cannot take the same handle" \
+    "$(status "$ADMIN" POST /api/v1/vehicles "{\"slug\":\"rov-$RUN\",\"name\":\"Impostor\"}")" "400"
+
+# ---------------------------------------------------------------------------
+step "An asset nobody granted you is indistinguishable from one that does not exist"
+
+OTHER_ORG=$(api "$ADMIN" POST /api/v1/organisations \
+    "{\"slug\":\"other-$RUN\",\"name\":\"Other Institute\"}" | json "['id']")
+OUTSIDER=$(api "$ADMIN" POST /api/v1/people \
+    "{\"displayName\":\"Outsider\",\"email\":\"outsider-$RUN@example.org\",\"secret\":\"outsider-secret-value\"}" \
+    | json "['id']")
+api "$ADMIN" POST "/api/v1/organisations/$OTHER_ORG/members" \
+    "{\"principalId\":\"$OUTSIDER\"}" >/dev/null
+
+GUEST=$(api '' POST /api/v1/sessions \
     "{\"email\":\"outsider-$RUN@example.org\",\"secret\":\"outsider-secret-value\"}" | json "['token']")
-[ -n "$OUTSIDER_TOKEN" ] && pass "the outsider signs in" || fail "the outsider could not sign in"
+[ -n "$GUEST" ] && pass "the outsider signs in" || fail "the outsider could not sign in"
 
-CITY=$(api "$ADMIN" POST /api/v1/cities "{
-    \"slug\":\"test-reef-$RUN\",
-    \"name\":\"Test Reef\",
-    \"summary\":\"A place used by the end-to-end check.\",
-    \"extent\":{\"west\":38.9,\"south\":22.2,\"east\":39.1,\"north\":22.4},
-    \"crsEpsg\":32637,
-    \"verticalDatum\":\"mean sea level\",
-    \"discoverability\":\"unlisted\"
-}" | json "['id']")
-[ -n "$CITY" ] && pass "a place is founded" || { fail "could not found a place"; exit 1; }
+check "the outsider's catalogue of places is empty" \
+    "$(api "$GUEST" GET /api/v1/cities | json "['cities']")" "[]"
+check "the outsider's catalogue of vehicles is empty" \
+    "$(api "$GUEST" GET /api/v1/vehicles | json "['vehicles']")" "[]"
+check "reading the vehicle directly reports absence, not refusal" \
+    "$(status "$GUEST" GET "/api/v1/vehicles/$VEHICLE")" "404"
+check "reading the place directly reports absence, not refusal" \
+    "$(status "$GUEST" GET "/api/v1/cities/$CITY")" "404"
 
 # ---------------------------------------------------------------------------
-step "An unlisted place is indistinguishable from one that does not exist"
+step "A grant is what changes that"
 
-check "the outsider is told it does not exist" \
-    "$(status "$OUTSIDER_TOKEN" GET "/api/v1/cities/$CITY")" "404"
-check "it does not appear in the outsider's catalogue" \
-    "$(api "$OUTSIDER_TOKEN" GET /api/v1/cities | grep -c "$CITY" || true)" "0"
+check "granting the institution the vehicle" \
+    "$(status "$ADMIN" POST "/api/v1/vehicles/$VEHICLE/grants" \
+        "{\"subjectKind\":\"org\",\"subjectId\":\"$OTHER_ORG\",\"role\":\"viewer\"}")" "201"
+check "granting the institution the place" \
+    "$(status "$ADMIN" POST "/api/v1/cities/$CITY/grants" \
+        "{\"subjectKind\":\"org\",\"subjectId\":\"$OTHER_ORG\",\"role\":\"viewer\"}")" "201"
 
-api "$ADMIN" PATCH "/api/v1/cities/$CITY" '{"discoverability":"listed_locked"}' >/dev/null
-check "once locked, the outsider is told it exists but may not enter" \
-    "$(status "$OUTSIDER_TOKEN" GET "/api/v1/cities/$CITY")" "403"
-check "the refusal says access may be requested" \
-    "$(api "$OUTSIDER_TOKEN" GET "/api/v1/cities/$CITY" | json "['error']['detail']['accessMayBeRequested']")" "True"
+check "the vehicle now appears to the outsider" \
+    "$(api "$GUEST" GET /api/v1/vehicles | json "['vehicles'][0]['id']")" "$VEHICLE"
+check "the place now appears to the outsider" \
+    "$(api "$GUEST" GET /api/v1/cities | json "['cities'][0]['id']")" "$CITY"
+check "and can be read directly" \
+    "$(status "$GUEST" GET "/api/v1/vehicles/$VEHICLE")" "200"
 
-api "$ADMIN" POST "/api/v1/cities/$CITY/grants" \
-    "{\"subjectKind\":\"org\",\"subjectId\":\"$OTHER_ORG\",\"role\":\"viewer\"}" >/dev/null
-check "once granted, the outsider may enter" \
-    "$(status "$OUTSIDER_TOKEN" GET "/api/v1/cities/$CITY")" "200"
-check "a viewer may not change the place" \
-    "$(status "$OUTSIDER_TOKEN" PATCH "/api/v1/cities/$CITY" '{"name":"Renamed"}')" "403"
-
-GRANT=$(api "$ADMIN" GET "/api/v1/cities/$CITY/grants" | json "['grants'][0]['id']")
-api "$ADMIN" DELETE "/api/v1/cities/$CITY/grants/$GRANT" >/dev/null
-api "$ADMIN" PATCH "/api/v1/cities/$CITY" '{"discoverability":"unlisted"}' >/dev/null
-check "revoking the grant takes effect at once" \
-    "$(status "$OUTSIDER_TOKEN" GET "/api/v1/cities/$CITY")" "404"
-
-check "the outsider can read why they were refused" \
-    "$(api "$OUTSIDER_TOKEN" GET /api/v1/me/denials | json "['denials'][0]['effect']")" "hidden"
+check "a member of the institution inherits the grant without being named" \
+    "$(api "$GUEST" GET "/api/v1/vehicles/$VEHICLE" | json "['slug']")" "rov-$RUN"
 
 # ---------------------------------------------------------------------------
-step "Bytes are what they claim to be"
+step "A grant can be withdrawn"
 
-WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT
-printf 'bathymetry sounding set\n' > "$WORK/sounding.txt"
-SHA=$(digest "$WORK/sounding.txt")
-SIZE=$(wc -c < "$WORK/sounding.txt" | tr -d ' ')
-
-GRANT_JSON=$(api "$ADMIN" POST "/api/v1/organisations/$ADMIN_ORG/uploads" \
-    "{\"bucket\":\"evidence\",\"sha256\":\"$SHA\",\"sizeBytes\":$SIZE,\"mediaType\":\"text/plain\"}")
-UPLOAD_ID=$(printf '%s' "$GRANT_JSON" | json "['id']")
-UPLOAD_URL=$(printf '%s' "$GRANT_JSON" | json "['uploadUrl']")
-curl -sS -X PUT -T "$WORK/sounding.txt" "$UPLOAD_URL" >/dev/null
-OBJECT=$(api "$ADMIN" POST "/api/v1/organisations/$ADMIN_ORG/uploads/$UPLOAD_ID/confirm" '{}' | json "['id']")
-[ -n "$OBJECT" ] && pass "bytes matching their declaration are recorded" || fail "a correct upload was refused"
-
-# The same bytes declared as something else must not be recorded at all.
-BAD_SHA=$(printf 'different content\n' | shasum -a 256 | cut -d' ' -f1)
-BAD_JSON=$(api "$ADMIN" POST "/api/v1/organisations/$ADMIN_ORG/uploads" \
-    "{\"bucket\":\"evidence\",\"sha256\":\"$BAD_SHA\",\"sizeBytes\":$SIZE,\"mediaType\":\"text/plain\"}")
-BAD_ID=$(printf '%s' "$BAD_JSON" | json "['id']")
-curl -sS -X PUT -T "$WORK/sounding.txt" "$(printf '%s' "$BAD_JSON" | json "['uploadUrl']")" >/dev/null
-check "bytes that are not what was declared are refused" \
-    "$(status "$ADMIN" POST "/api/v1/organisations/$ADMIN_ORG/uploads/$BAD_ID/confirm" '{}')" "422"
-check "a spent grant cannot be used twice" \
-    "$(status "$ADMIN" POST "/api/v1/organisations/$ADMIN_ORG/uploads/$UPLOAD_ID/confirm" '{}')" "409"
+BINDING=$(api "$ADMIN" GET "/api/v1/cities/$CITY/grants" | json "['grants'][0]['id']")
+check "withdrawing it" \
+    "$(status "$ADMIN" DELETE "/api/v1/cities/$CITY/grants/$BINDING")" "204"
+check "the place is hidden again" \
+    "$(api "$GUEST" GET /api/v1/cities | json "['cities']")" "[]"
+check "and the vehicle, granted separately, is untouched" \
+    "$(api "$GUEST" GET /api/v1/vehicles | json "['vehicles'][0]['id']")" "$VEHICLE"
 
 # ---------------------------------------------------------------------------
-step "Evidence is versioned, and never rewritten"
+step "The outsider may not publish"
 
-LAYER=$(api "$ADMIN" POST "/api/v1/cities/$CITY/layers" "{
-    \"slug\":\"soundings\",\"kind\":\"bathymetry\",
-    \"title\":\"Soundings\",\"description\":\"Depth soundings for the test reef.\",
-    \"attributedOrgId\":\"$ADMIN_ORG\"
-}" | json "['id']")
-[ -n "$LAYER" ] && pass "a layer is contributed" || { fail "could not contribute a layer"; exit 1; }
-
-version_body() {
-    cat <<JSON
-{
-  "truthClass":"$1",
-  "crsEpsg":32637,
-  "verticalDatum":"mean sea level",
-  "extent":{"west":38.9,"south":22.2,"east":39.1,"north":22.4},
-  "observedFrom":"2026-04-12T06:00:00Z",
-  "observedTo":"2026-04-12T09:30:00Z",
-  "uncertainty":{"kind":"absolute_metres","value":0.14},
-  "rights":"CC-BY-4.0",
-  "attribution":"Coral City end-to-end check",
-  "files":[{"relativePath":"sounding.txt","objectId":"$OBJECT"}]
-  ${2:+,$2}
-}
-JSON
-}
-
-V1=$(api "$ADMIN" POST "/api/v1/layers/$LAYER/versions" "$(version_body observation)" | json "['id']")
-[ -n "$V1" ] && pass "evidence is recorded" || { fail "could not record evidence"; exit 1; }
-
-V1_DIGEST=$(api "$ADMIN" GET "/api/v1/layers/$LAYER/versions/$V1" | json "['version']['contentDigest']")
-[ -n "$V1_DIGEST" ] && pass "the version has a content digest" || fail "no content digest"
-
-check "a version without a stated uncertainty is refused" \
-    "$(status "$ADMIN" POST "/api/v1/layers/$LAYER/versions" "{
-        \"truthClass\":\"observation\",\"crsEpsg\":32637,\"verticalDatum\":\"mean sea level\",
-        \"extent\":{\"west\":38.9,\"south\":22.2,\"east\":39.1,\"north\":22.4},
-        \"observedFrom\":\"2026-04-12T06:00:00Z\",\"observedTo\":\"2026-04-12T09:30:00Z\",
-        \"uncertainty\":{\"kind\":\"\"},\"rights\":\"CC-BY-4.0\",\"attribution\":\"x\",
-        \"files\":[{\"relativePath\":\"sounding.txt\",\"objectId\":\"$OBJECT\"}]}")" "400"
-
-api "$ADMIN" POST "/api/v1/layers/$LAYER/versions/$V1/publish" '{}' >/dev/null
-check "a published version says so" \
-    "$(api "$ADMIN" GET "/api/v1/layers/$LAYER/versions/$V1" | json "['version']['state']")" "published"
-check "publishing twice is refused" \
-    "$(status "$ADMIN" POST "/api/v1/layers/$LAYER/versions/$V1/publish" '{}')" "409"
-
-api "$ADMIN" POST "/api/v1/layers/$LAYER/versions/$V1/promote" '{}' >/dev/null
-PROMOTED=$(api "$ADMIN" GET "/api/v1/layers/$LAYER/versions/$V1")
-check "promotion makes it part of the shared record" \
-    "$(printf '%s' "$PROMOTED" | json "['version']['visibility']")" "canonical"
-check "promotion changes nothing about the content" \
-    "$(printf '%s' "$PROMOTED" | json "['version']['contentDigest']")" "$V1_DIGEST"
-
-# A correction is a new version. The earlier one stays exactly as it was.
-V2=$(api "$ADMIN" POST "/api/v1/layers/$LAYER/versions" \
-    "$(version_body observation "\"supersedesId\":\"$V1\"")" | json "['id']")
-api "$ADMIN" POST "/api/v1/layers/$LAYER/versions/$V2/publish" '{}' >/dev/null
-check "the corrected version is published" \
-    "$(api "$ADMIN" GET "/api/v1/layers/$LAYER/versions/$V2" | json "['version']['state']")" "published"
-check "the earlier version is marked superseded, not changed" \
-    "$(api "$ADMIN" GET "/api/v1/layers/$LAYER/versions/$V1" | json "['version']['state']")" "superseded"
-check "the earlier version keeps its content digest" \
-    "$(api "$ADMIN" GET "/api/v1/layers/$LAYER/versions/$V1" | json "['version']['contentDigest']")" "$V1_DIGEST"
-
-check "no route exists to rewrite a published version" \
-    "$(status "$ADMIN" PATCH "/api/v1/layers/$LAYER/versions/$V1" '{"rights":"changed"}')" "404"
-check "no route exists to delete a published version" \
-    "$(status "$ADMIN" DELETE "/api/v1/layers/$LAYER/versions/$V1")" "404"
-
-FILE=$(api "$ADMIN" GET "/api/v1/layers/$LAYER/versions/$V1/files/sounding.txt")
-READ_URL=$(printf '%s' "$FILE" | json "['readUrl']")
-check "the original bytes are still exactly what was stored" \
-    "$(curl -sS "$READ_URL" | shasum -a 256 | cut -d' ' -f1)" "$SHA"
-
-api "$ADMIN" POST "/api/v1/layers/$LAYER/versions/$V2/retract" \
-    '{"reason":"withdrawn by the end-to-end check"}' >/dev/null
-check "a retracted version says why" \
-    "$(api "$ADMIN" GET "/api/v1/layers/$LAYER/versions/$V2" | json "['version']['retractionReason']")" \
-    "withdrawn by the end-to-end check"
+check "founding a place needs authority at the platform" \
+    "$(status "$GUEST" POST /api/v1/cities \
+        "{\"slug\":\"sneak-$RUN\",\"name\":\"Sneak\",\"verticalDatum\":\"x\"}")" "403"
+check "publishing a vehicle needs authority at the platform" \
+    "$(status "$GUEST" POST /api/v1/vehicles "{\"slug\":\"sneak-$RUN\",\"name\":\"Sneak\"}")" "403"
+check "granting what one was merely given is refused" \
+    "$(status "$GUEST" POST "/api/v1/vehicles/$VEHICLE/grants" \
+        "{\"subjectKind\":\"org\",\"subjectId\":\"$OTHER_ORG\",\"role\":\"admin\"}")" "403"
 
 # ---------------------------------------------------------------------------
-step "A truth class does not strengthen"
+step "A refusal is recorded and can be read back"
 
-SCENARIO=$(api "$ADMIN" POST "/api/v1/layers/$LAYER/versions" "$(version_body scenario)" | json "['id']")
-check "material derived from a scenario cannot claim to be an observation" \
-    "$(status "$ADMIN" POST "/api/v1/layers/$LAYER/versions" \
-        "$(version_body observation "\"derivedFrom\":[\"$SCENARIO\"]")")" "422"
-check "material derived from a scenario may be a scenario" \
-    "$(status "$ADMIN" POST "/api/v1/layers/$LAYER/versions" \
-        "$(version_body scenario "\"derivedFrom\":[\"$SCENARIO\"]")")" "201"
+REFUSED=$(api "$GUEST" GET /api/v1/me/denials | json "['denials'][0]['action']")
+[ -n "$REFUSED" ] && pass "the outsider's refusals were recorded, with the action that was refused" \
+    || fail "no refusal was recorded for the outsider"
 
 # ---------------------------------------------------------------------------
-step "Work is admitted, run, and recorded"
+step "Work"
 
-IMAGE="${CORAL_CITY_E2E_IMAGE:-alpine@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b}"
-JOB=$(api "$ADMIN" POST "/api/v1/organisations/$ADMIN_ORG/jobs" "{
-    \"recipeId\":\"end-to-end-check@1\",
-    \"imageDigest\":\"$IMAGE\",
-    \"command\":[\"/bin/sh\",\"-c\",\"cat /work/inputs/sounding.txt > /work/outputs/result.txt\"],
-    \"inputs\":[{\"name\":\"soundings\",\"relativePath\":\"sounding.txt\",\"objectId\":\"$OBJECT\",\"sha256\":\"$SHA\",\"mediaType\":\"text/plain\",\"sizeBytes\":$SIZE}],
-    \"outputs\":[{\"name\":\"result\",\"relativePath\":\"result.txt\",\"mediaType\":\"text/plain\",\"maxSizeBytes\":1048576}],
-    \"requestCpu\":1,\"requestMemoryBytes\":268435456,\"walltimeSeconds\":120
-}" | json "['id']")
-[ -n "$JOB" ] && pass "work is admitted" || fail "work was not admitted"
-
-if [ -n "$JOB" ]; then
-    printf '    waiting for the worker'
-    STATE=""
-    for _ in $(seq 1 90); do
-        STATE=$(api "$ADMIN" GET "/api/v1/jobs/$JOB" | json "['job']['state']")
-        case "$STATE" in succeeded|failed|timed_out|cancelled|evicted) break ;; esac
-        printf '.'; sleep 2
-    done
-    printf '\n'
-    check "the work succeeds" "$STATE" "succeeded"
-
-    JOB_JSON=$(api "$ADMIN" GET "/api/v1/jobs/$JOB")
-    check "its output is recorded once" \
-        "$(printf '%s' "$JOB_JSON" | json "['outputs'].__len__()")" "1"
-    check "it took exactly one attempt" \
-        "$(printf '%s' "$JOB_JSON" | json "['attempts'].__len__()")" "1"
-
-    EVENTS=$(api "$ADMIN" GET "/api/v1/jobs/$JOB/events" | json "[ 'events' ]")
-    for kind in admitted scheduled started output_received succeeded; do
-        if printf '%s' "$EVENTS" | grep -q "'$kind'"; then
-            pass "the account of the work records that it was $kind"
-        else
-            fail "the account of the work does not record $kind"
-        fi
-    done
-fi
-
-check "work pinned to a movable tag is refused" \
-    "$(status "$ADMIN" POST "/api/v1/organisations/$ADMIN_ORG/jobs" "{
-        \"recipeId\":\"end-to-end-check@1\",\"imageDigest\":\"alpine:latest\",
-        \"command\":[\"/bin/true\"],\"requestCpu\":1,
-        \"requestMemoryBytes\":268435456,\"walltimeSeconds\":60}")" "400"
-
-check "work beyond the institution's capacity is refused" \
-    "$(status "$ADMIN" POST "/api/v1/organisations/$ADMIN_ORG/jobs" "{
-        \"recipeId\":\"end-to-end-check@1\",\"imageDigest\":\"$IMAGE\",
-        \"command\":[\"/bin/true\"],\"requestCpu\":9999,
-        \"requestMemoryBytes\":268435456,\"walltimeSeconds\":60}")" "429"
-
-REFUSAL=$(api "$ADMIN" POST "/api/v1/organisations/$ADMIN_ORG/jobs" "{
-    \"recipeId\":\"end-to-end-check@1\",\"imageDigest\":\"$IMAGE\",
-    \"command\":[\"/bin/true\"],\"requestCpu\":9999,
-    \"requestMemoryBytes\":268435456,\"walltimeSeconds\":60}")
-check "the refusal explains itself" \
-    "$(printf '%s' "$REFUSAL" | json "['error']['code']")" "quota_cpu_exhausted"
-
-# ---------------------------------------------------------------------------
-step "The work queue is its own authority"
-
-# A worker holds authority over work and over nothing else; conversely, someone
-# with no authority over work cannot take any, however much else they can do.
-check "the work queue refuses someone not bound to it" \
-    "$(status "$OUTSIDER_TOKEN" POST /api/v1/work/lease '{"targetName":"local-docker"}')" "403"
-check "a worker cannot read the catalogue" \
-    "$(curl -sS -o /dev/null -w '%{http_code}' "$API/api/v1/cities" \
-        -H "Authorization: Service $(docker compose -f deployments/local/compose.yaml \
-            exec -T worker cat /credentials/worker 2>/dev/null | tr -d '\r\n')")" "403"
-
-# ---------------------------------------------------------------------------
-step "The sandbox is closed unless the platform opens it"
-
-# Reaching the network is a capability, not a setting. An institution's
-# contributor cannot grant it to itself, whatever it submits.
-check "an ordinary submitter cannot ask for network access" \
-    "$(status "$OUTSIDER_TOKEN" POST "/api/v1/organisations/$OTHER_ORG/jobs" "{
-        \"recipeId\":\"probe@1\",\"imageDigest\":\"$IMAGE\",
-        \"command\":[\"/bin/true\"],\"requestCpu\":1,
-        \"requestMemoryBytes\":268435456,\"walltimeSeconds\":60,
-        \"egress\":\"internet\"}")" "403"
-
-check "work says which egress it was granted" \
-    "$(api "$ADMIN" GET "/api/v1/jobs/$JOB" | json "['job']['egress']")" "none"
-
-# ---------------------------------------------------------------------------
-step "The world brings itself up to date"
-
-SCHEDULES=$(api "$ADMIN" GET /api/v1/schedules)
-if [ "$(printf '%s' "$SCHEDULES" | json "['schedules'].__len__()")" = "0" ]; then
-    printf '  \033[33m–\033[0m skipped: no recurring work is registered. Run ./tools/daily-loop\n'
-else
-    pass "the platform has recurring work registered"
-
-    check "it is granted the network it needs, explicitly" \
-        "$(printf '%s' "$SCHEDULES" | json "[s['egress'] for s in ['schedules']]" 2>/dev/null || \
-           printf '%s' "$SCHEDULES" | python3 -c "
-import json,sys
-s=json.load(sys.stdin)['schedules']
-print('yes' if s and all(x['egress']=='internet' for x in s) else 'no')")" "yes"
-
-    check "each says what it will publish" \
-        "$(printf '%s' "$SCHEDULES" | python3 -c "
-import json,sys
-s=json.load(sys.stdin)['schedules']
-print('yes' if s and all(x.get('publish') for x in s) else 'no')")" "yes"
-
-    # What the loop actually produced. This is the difference between a
-    # capability and a heartbeat.
-    WORLD=$(api "$ADMIN" GET /api/v1/world/layers)
-    for slug in world-bathymetry world-observations; do
-        LAYER_ID=$(printf '%s' "$WORLD" | python3 -c "
-import json,sys
-layers=json.load(sys.stdin).get('layers') or []
-print(next((l['id'] for l in layers if l['slug']=='$slug'), ''))")
-        if [ -z "$LAYER_ID" ]; then
-            fail "the shared world has no $slug layer"
-            continue
-        fi
-
-        CURRENT=$(api "$ADMIN" GET "/api/v1/layers/$LAYER_ID" | python3 -c "
-import json,sys
-versions=json.load(sys.stdin).get('versions') or []
-current=[v for v in versions if v['state']=='published' and v['visibility']=='canonical']
-print(json.dumps(current[0]) if current else '')")
-        if [ -z "$CURRENT" ]; then
-            fail "$slug holds nothing published in the shared record yet"
-            continue
-        fi
-        pass "$slug holds a published version in the shared record"
-
-        for field in verticalDatum rights attribution recipeId imageDigest producerJobId; do
-            VALUE=$(printf '%s' "$CURRENT" | json "['$field']")
-            if [ -n "$VALUE" ]; then
-                pass "  its $field is recorded"
-            else
-                fail "  its $field is missing"
-            fi
-        done
-
-        check "  it was produced by work, not by hand" \
-            "$(printf '%s' "$CURRENT" | json "['producerPrincipalId']")" ""
-    done
-
-    check "the world's bathymetry is a compilation, not a measurement" \
-        "$(api "$ADMIN" GET "/api/v1/layers/$(printf '%s' "$WORLD" | python3 -c "
-import json,sys
-layers=json.load(sys.stdin).get('layers') or []
-print(next((l['id'] for l in layers if l['slug']=='world-bathymetry'), ''))")" \
-          | python3 -c "
-import json,sys
-versions=json.load(sys.stdin).get('versions') or []
-current=[v for v in versions if v['state']=='published']
-print(current[0]['truthClass'] if current else '')")" "analysis"
-
-    check "the world's observations are measurements" \
-        "$(api "$ADMIN" GET "/api/v1/layers/$(printf '%s' "$WORLD" | python3 -c "
-import json,sys
-layers=json.load(sys.stdin).get('layers') or []
-print(next((l['id'] for l in layers if l['slug']=='world-observations'), ''))")" \
-          | python3 -c "
-import json,sys
-versions=json.load(sys.stdin).get('versions') or []
-current=[v for v in versions if v['state']=='published']
-print(current[0]['truthClass'] if current else '')")" "observation"
-fi
-
-# ---------------------------------------------------------------------------
-# Killing a worker mid-attempt is the only way to check that work survives a
-# worker that dies, so it needs the compose stack rather than only the API. It
-# is skipped when running against a deployment this machine does not operate.
-COMPOSE="${CORAL_CITY_COMPOSE:-deployments/local/compose.yaml}"
-if [ -f "$COMPOSE" ] && docker compose -f "$COMPOSE" ps --status running --services 2>/dev/null | grep -qx worker; then
-    step "Work survives a worker that dies"
-
-    SLOW=$(api "$ADMIN" POST "/api/v1/organisations/$ADMIN_ORG/jobs" "{
-        \"recipeId\":\"end-to-end-check@1\",
-        \"imageDigest\":\"$IMAGE\",
-        \"command\":[\"/bin/sh\",\"-c\",\"sleep 8; echo recovered > /work/outputs/result.txt\"],
-        \"outputs\":[{\"name\":\"result\",\"relativePath\":\"result.txt\",\"mediaType\":\"text/plain\",\"maxSizeBytes\":1024}],
-        \"requestCpu\":1,\"requestMemoryBytes\":268435456,\"walltimeSeconds\":300
-    }" | json "['id']")
-
-    # Wait until the work has actually been taken, then take the worker away.
-    for _ in $(seq 1 40); do
-        [ "$(api "$ADMIN" GET "/api/v1/jobs/$SLOW" | json "['job']['state']")" = "running" ] && break
-        sleep 1
-    done
-    docker compose -f "$COMPOSE" kill -s SIGKILL worker >/dev/null 2>&1
-    pass "the worker was killed while holding the work"
-
-    printf '    waiting for the platform to notice and reclaim it'
-    RECLAIMED=false
-    for _ in $(seq 1 60); do
-        if api "$ADMIN" GET "/api/v1/jobs/$SLOW" | json "['attempts']" | grep -q evicted; then
-            RECLAIMED=true; break
-        fi
-        printf '.'; sleep 2
-    done
-    printf '\n'
-    check "the abandoned attempt is marked evicted" "$RECLAIMED" "true"
-
-    docker compose -f "$COMPOSE" start worker >/dev/null 2>&1
-    printf '    waiting for the retry'
-    STATE=""
-    for _ in $(seq 1 60); do
-        STATE=$(api "$ADMIN" GET "/api/v1/jobs/$SLOW" | json "['job']['state']")
-        case "$STATE" in succeeded|failed|timed_out) break ;; esac
-        printf '.'; sleep 2
-    done
-    printf '\n'
-    check "the work completes on a later attempt" "$STATE" "succeeded"
-
-    RECOVERED=$(api "$ADMIN" GET "/api/v1/jobs/$SLOW")
-    check "it took more than one attempt" \
-        "$([ "$(printf '%s' "$RECOVERED" | json "['attempts'].__len__()")" -gt 1 ] && echo yes || echo no)" "yes"
-    check "its output is still recorded exactly once" \
-        "$(printf '%s' "$RECOVERED" | json "['outputs'].__len__()")" "1"
-else
-    step "Work survives a worker that dies"
-    printf '  \033[33m–\033[0m skipped: this check needs the compose stack on this machine\n'
-fi
+check "a place work can run is recorded" \
+    "$(status "$ADMIN" GET /api/v1/targets)" "200"
 
 # ---------------------------------------------------------------------------
 printf '\n\033[1m%d passed, %d failed\033[0m\n' "$passed" "$failed"

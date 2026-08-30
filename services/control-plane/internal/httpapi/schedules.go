@@ -32,8 +32,7 @@ type scheduleRequest struct {
 	RequestGPU         int     `json:"requestGpu,omitempty"`
 	WalltimeSeconds    int     `json:"walltimeSeconds"`
 
-	Egress  string              `json:"egress,omitempty"`
-	Publish *publicationRequest `json:"publish,omitempty"`
+	Egress string `json:"egress,omitempty"`
 }
 
 // createSchedule records recurring work, or updates it if the name is known.
@@ -67,26 +66,6 @@ func (d *Dependencies) createSchedule(w http.ResponseWriter, r *http.Request) {
 		firstRunAt = parsed
 	}
 
-	var publish *exec.Publication
-	if request.Publish != nil {
-		publish = &exec.Publication{
-			LayerID:           request.Publish.LayerID,
-			DescriptorOutput:  request.Publish.DescriptorOutput,
-			Publish:           request.Publish.Publish,
-			Promote:           request.Publish.Promote,
-			SupersedePrevious: request.Publish.SupersedePrevious,
-		}
-		if !d.permits(w, r, policy.LayerCreate, policy.Layer(publish.LayerID)) {
-			return
-		}
-		if publish.Publish && !d.permits(w, r, policy.LayerPublish, policy.Layer(publish.LayerID)) {
-			return
-		}
-		if publish.Promote && !d.permits(w, r, policy.LayerPromote, policy.Layer(publish.LayerID)) {
-			return
-		}
-	}
-
 	var schedule exec.Schedule
 	err = d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
 		var err error
@@ -108,7 +87,6 @@ func (d *Dependencies) createSchedule(w http.ResponseWriter, r *http.Request) {
 				RequestGPU:         request.RequestGPU,
 				WalltimeSeconds:    request.WalltimeSeconds,
 				Egress:             egress,
-				Publish:            publish,
 			},
 		})
 		if err != nil {
@@ -120,7 +98,6 @@ func (d *Dependencies) createSchedule(w http.ResponseWriter, r *http.Request) {
 			Detail: map[string]any{
 				"name": schedule.Name, "intervalSeconds": schedule.IntervalSeconds,
 				"recipeId": schedule.RecipeID, "egress": string(schedule.Egress),
-				"publishesTo": publishTarget(publish),
 			},
 		})
 	})

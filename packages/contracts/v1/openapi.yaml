@@ -713,17 +713,18 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [slug, name, summary, extent, crsEpsg, verticalDatum, discoverability]
+              required: [slug, name, verticalDatum]
               properties:
                 slug: { type: string }
                 name: { type: string }
                 summary: { type: string }
                 extent:
                   $ref: '#/components/schemas/Extent'
-                crsEpsg: { type: integer, minimum: 1 }
+                horizontalCrs:
+                  type: string
+                  default: 'EPSG:4326'
                 verticalDatum: { type: string, minLength: 1 }
-                discoverability:
-                  $ref: '#/components/schemas/Discoverability'
+                discoverable: { type: boolean, default: false }
       responses:
         '201':
           description: The place.
@@ -762,41 +763,31 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-    patch:
+  /api/v1/cities/{cityId}/versions:
+    get:
       tags: [places]
-      summary: Change a place's description or who may learn of it
+      summary: A city's packages, newest first
       description: >
-        Its extent, coordinate reference, and vertical datum are what the place is,
-        and are not changed here.
+        A package version is pinned by digest when a dive uses it, so that a
+        result can be reproduced exactly.
       parameters:
         - name: cityId
           in: path
           required: true
           description: The place.
           schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              properties:
-                name: { type: string }
-                summary: { type: string }
-                discoverability:
-                  $ref: '#/components/schemas/Discoverability'
       responses:
         '200':
-          description: The place.
+          description: The packages.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/City'
-        '400':
-          $ref: '#/components/responses/Invalid'
-        '403':
-          $ref: '#/components/responses/Forbidden'
+                type: object
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AssetVersion'
         '404':
           $ref: '#/components/responses/NotFound'
   /api/v1/cities/{cityId}/grants:
@@ -884,452 +875,6 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-  /api/v1/cities/{cityId}/layers:
-    get:
-      tags: [layers]
-      summary: List the layers of a place
-      description: >
-        A layer holding nothing the caller may see does not appear.
-      parameters:
-        - name: cityId
-          in: path
-          required: true
-          description: The place.
-          schema: { type: string }
-      responses:
-        '200':
-          description: The layers.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  layers:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Layer'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-    post:
-      tags: [layers]
-      summary: Contribute a layer to a place
-      description: >
-        It is contained by that scope and attributed to the institution named, which must be one the caller may act for.
-      parameters:
-        - name: cityId
-          in: path
-          required: true
-          description: The place.
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [slug, kind, title, description, attributedOrgId]
-              properties:
-                slug: { type: string }
-                kind: { type: string }
-                title: { type: string }
-                description: { type: string }
-                attributedOrgId: { type: string }
-      responses:
-        '201':
-          description: The layer.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Layer'
-        '400':
-          $ref: '#/components/responses/Invalid'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-  /api/v1/world/layers:
-    get:
-      tags: [layers]
-      summary: List the layers of the shared world
-      description: >
-        A layer holding nothing the caller may see does not appear.
-      responses:
-        '200':
-          description: The layers.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  layers:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Layer'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-    post:
-      tags: [layers]
-      summary: Contribute a layer to the shared world
-      description: >
-        It is contained by that scope and attributed to the institution named, which must be one the caller may act for.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [slug, kind, title, description, attributedOrgId]
-              properties:
-                slug: { type: string }
-                kind: { type: string }
-                title: { type: string }
-                description: { type: string }
-                attributedOrgId: { type: string }
-      responses:
-        '201':
-          description: The layer.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Layer'
-        '400':
-          $ref: '#/components/responses/Invalid'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-  /api/v1/layers/{layerId}:
-    get:
-      tags: [layers]
-      summary: Read a layer and the versions the caller may see
-      parameters:
-        - name: layerId
-          in: path
-          required: true
-          description: The layer.
-          schema: { type: string }
-      responses:
-        '200':
-          description: The layer and its versions.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  layer:
-                    $ref: '#/components/schemas/Layer'
-                  versions:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Version'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-  /api/v1/layers/{layerId}/versions:
-    post:
-      tags: [evidence]
-      summary: Record evidence
-      description: >
-        Everything a version must state is required: a coordinate reference, a
-        vertical datum, a time basis, rights, attribution, and an uncertainty — of
-        which "unknown" is a legal answer and absence is not. A version derived from a
-        scenario cannot claim a stronger truth class.
-      parameters:
-        - name: layerId
-          in: path
-          required: true
-          description: The layer.
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/VersionRequest'
-      responses:
-        '201':
-          description: The version.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Version'
-        '400':
-          $ref: '#/components/responses/Invalid'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '422':
-          $ref: '#/components/responses/Unprocessable'
-  /api/v1/layers/{layerId}/versions/{versionId}:
-    get:
-      tags: [evidence]
-      summary: Read one version
-      parameters:
-        - name: layerId
-          in: path
-          required: true
-          description: The layer.
-          schema: { type: string }
-        - name: versionId
-          in: path
-          required: true
-          description: The version.
-          schema: { type: string }
-      responses:
-        '200':
-          description: The version.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  version:
-                    $ref: '#/components/schemas/Version'
-                  uncertainty:
-                    $ref: '#/components/schemas/Uncertainty'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-  /api/v1/layers/{layerId}/versions/{versionId}/lineage:
-    get:
-      tags: [evidence]
-      summary: Report what a version was derived from
-      description: >
-        This is what makes a claim traceable to the material behind it.
-      parameters:
-        - name: layerId
-          in: path
-          required: true
-          description: The layer.
-          schema: { type: string }
-        - name: versionId
-          in: path
-          required: true
-          description: The version.
-          schema: { type: string }
-      responses:
-        '200':
-          description: The inputs.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  derivedFrom:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Version'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-  /api/v1/layers/{layerId}/versions/{versionId}/files/{path}:
-    get:
-      tags: [evidence]
-      summary: Read one file of a version
-      description: >
-        Access to bytes follows access to the evidence that contains them, so a
-        caller who may not see the version cannot reach its bytes by knowing an
-        object identifier.
-      parameters:
-        - name: layerId
-          in: path
-          required: true
-          description: The layer.
-          schema: { type: string }
-        - name: versionId
-          in: path
-          required: true
-          description: The version.
-          schema: { type: string }
-        - name: path
-          in: path
-          required: true
-          description: The file's path within the version.
-          schema: { type: string }
-      responses:
-        '200':
-          description: The file and a short-lived URL to read it.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  file:
-                    $ref: '#/components/schemas/ManifestFile'
-                  readUrl: { type: string }
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-  /api/v1/layers/{layerId}/versions/{versionId}/submit:
-    post:
-      tags: [evidence]
-      summary: Offer a draft for review
-      description: >
-        Only a draft can be offered.
-      parameters:
-        - name: layerId
-          in: path
-          required: true
-          description: The layer.
-          schema: { type: string }
-        - name: versionId
-          in: path
-          required: true
-          description: The version.
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-      responses:
-        '200':
-          description: The version.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Version'
-        '400':
-          $ref: '#/components/responses/Invalid'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-  /api/v1/layers/{layerId}/versions/{versionId}/publish:
-    post:
-      tags: [evidence]
-      summary: Publish a reviewed version
-      description: >
-        Publishing a version that supersedes another marks the earlier one superseded in the same transaction.
-      parameters:
-        - name: layerId
-          in: path
-          required: true
-          description: The layer.
-          schema: { type: string }
-        - name: versionId
-          in: path
-          required: true
-          description: The version.
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-      responses:
-        '200':
-          description: The version.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Version'
-        '400':
-          $ref: '#/components/responses/Invalid'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-  /api/v1/layers/{layerId}/versions/{versionId}/promote:
-    post:
-      tags: [evidence]
-      summary: Make a contribution part of the shared record
-      description: >
-        Nothing moves: the object keys, the content digest, and the version number are unchanged. Only who may see it changes.
-      parameters:
-        - name: layerId
-          in: path
-          required: true
-          description: The layer.
-          schema: { type: string }
-        - name: versionId
-          in: path
-          required: true
-          description: The version.
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-      responses:
-        '200':
-          description: The version.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Version'
-        '400':
-          $ref: '#/components/responses/Invalid'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-  /api/v1/layers/{layerId}/versions/{versionId}/retract:
-    post:
-      tags: [evidence]
-      summary: Withdraw a published version from default views
-      description: >
-        It is not deleted, and neither is its lineage: retraction is a statement about a version, not its erasure.
-      parameters:
-        - name: layerId
-          in: path
-          required: true
-          description: The layer.
-          schema: { type: string }
-        - name: versionId
-          in: path
-          required: true
-          description: The version.
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [reason]
-              properties:
-                reason: { type: string, minLength: 1 }
-      responses:
-        '200':
-          description: The version.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Version'
-        '400':
-          $ref: '#/components/responses/Invalid'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
   /api/v1/organisations/{orgId}/uploads:
     post:
       tags: [bytes]
@@ -2024,20 +1569,6 @@ components:
         east: { type: number, minimum: -180, maximum: 180 }
         north: { type: number, minimum: -90, maximum: 90 }
 
-    TruthClass:
-      type: string
-      description: >
-        What a value is, epistemically. It travels down lineage and is never
-        strengthened: anything derived from a scenario is a scenario.
-      enum: [observation, analysis, forecast, scenario, simulation]
-
-    Discoverability:
-      type: string
-      description: >
-        What a principal with no binding may learn about a place. Separate from
-        whether that principal may enter it.
-      enum: [listed_open, listed_locked, unlisted]
-
     Role:
       type: string
       enum: [viewer, contributor, steward, admin]
@@ -2081,46 +1612,6 @@ components:
         name: { type: string }
         createdAt: { type: string, format: date-time }
 
-    City:
-      type: object
-      required: [id, slug, name, summary, extent, crsEpsg, verticalDatum, discoverability, createdAt, createdBy]
-      description: >
-        A bounded, curated, navigable place. It exists at the platform and is
-        addressed permanently; an organisation is granted access to it and never
-        contains it.
-      properties:
-        id: { type: string }
-        slug: { type: string }
-        name: { type: string }
-        summary: { type: string }
-        extent: { $ref: '#/components/schemas/Extent' }
-        crsEpsg: { type: integer }
-        verticalDatum: { type: string }
-        discoverability: { $ref: '#/components/schemas/Discoverability' }
-        createdAt: { type: string, format: date-time }
-        createdBy: { type: string }
-
-    Layer:
-      type: object
-      required: [id, scopeKind, slug, kind, title, description, attributedOrgId, createdBy, createdAt]
-      description: >
-        A named series of versions within one scope. Contained by the platform
-        or by a city; attributed to the organisation that contributed it.
-      properties:
-        id: { type: string }
-        scopeKind: { type: string, enum: [platform, city] }
-        cityId: { type: string }
-        slug: { type: string }
-        kind:
-          type: string
-          enum: [bathymetry, mesh, point_cloud, orthomosaic, structure, field,
-                 observation_series, annotation, telemetry, tileset, imagery]
-        title: { type: string }
-        description: { type: string }
-        attributedOrgId: { type: string }
-        createdBy: { type: string }
-        createdAt: { type: string, format: date-time }
-
     ManifestFile:
       type: object
       required: [relativePath, objectId, sha256, sizeBytes, mediaType]
@@ -2131,81 +1622,36 @@ components:
         sizeBytes: { type: integer, format: int64 }
         mediaType: { type: string }
 
-    Version:
+    City:
       type: object
-      required: [id, layerId, ordinal, contentDigest, truthClass, crsEpsg,
-                 verticalDatum, extent, observedFrom, observedTo, rights,
-                 attribution, state, visibility, createdAt]
       description: >
-        Immutable evidence: what was measured or computed, where, when, by what,
-        and how well it is known.
+        A place a dive happens in: a reef, a wreck, a test tank, a harbour. It
+        exists at the platform and outlives the institutions granted access to
+        it; ownership is a question answered in policy, never a property of the
+        place.
       properties:
         id: { type: string }
-        layerId: { type: string }
-        ordinal: { type: integer }
-        contentDigest:
+        slug: { type: string }
+        name: { type: string }
+        summary: { type: string }
+        extent:
+          $ref: '#/components/schemas/Extent'
+        horizontalCrs: { type: string }
+        verticalDatum:
           type: string
-          description: The digest over this version's whole manifest, and its citable identity.
-        truthClass: { $ref: '#/components/schemas/TruthClass' }
-        crsEpsg: { type: integer }
-        verticalDatum: { type: string }
-        extent: { $ref: '#/components/schemas/Extent' }
-        observedFrom: { type: string, format: date-time }
-        observedTo: { type: string, format: date-time }
-        clockOffsetSeconds:
-          type: number
-          description: The instrument clock's offset from UTC, where it was determined.
-        rights: { type: string }
-        attribution: { type: string }
-        state: { type: string, enum: [draft, in_review, published, superseded, retracted] }
-        visibility: { type: string, enum: [restricted, canonical] }
-        supersedesId: { type: string }
-        supersededById: { type: string }
-        producerJobId: { type: string }
-        producerPrincipalId: { type: string }
-        recipeId: { type: string }
-        imageDigest: { type: string }
+          description: >
+            What z = 0 means here. A depth reported without one is a number
+            rather than a measurement.
+        discoverable:
+          type: boolean
+          description: >
+            Discoverable places are listed to anyone signed in. The rest appear
+            only to those granted them, and are otherwise indistinguishable
+            from places that do not exist.
         createdAt: { type: string, format: date-time }
-        publishedAt: { type: string, format: date-time }
-        retractedAt: { type: string, format: date-time }
-        retractionReason: { type: string }
-        manifest:
-          type: array
-          items: { $ref: '#/components/schemas/ManifestFile' }
-
-    VersionRequest:
-      type: object
-      additionalProperties: false
-      required: [truthClass, crsEpsg, verticalDatum, extent, observedFrom,
-                 observedTo, uncertainty, rights, attribution, files]
-      properties:
-        truthClass: { $ref: '#/components/schemas/TruthClass' }
-        crsEpsg: { type: integer, minimum: 1 }
-        verticalDatum: { type: string, minLength: 1 }
-        extent: { $ref: '#/components/schemas/Extent' }
-        observedFrom: { type: string, format: date-time }
-        observedTo: { type: string, format: date-time }
-        clockOffsetSeconds: { type: number }
-        uncertainty: { $ref: '#/components/schemas/Uncertainty' }
-        rights: { type: string, minLength: 1 }
-        attribution: { type: string, minLength: 1 }
-        visibility: { type: string, enum: [restricted, canonical] }
-        files:
-          type: array
-          minItems: 1
-          items:
-            type: object
-            additionalProperties: false
-            required: [relativePath, objectId]
-            properties:
-              relativePath: { type: string }
-              objectId: { type: string }
-        derivedFrom:
-          type: array
-          items: { type: string }
-          description: The versions this one was computed from. Their truth classes bound what it may claim.
-        supersedesId: { type: string }
-
+        createdBy: { type: string }
+        retiredAt: { type: string, format: date-time, nullable: true }
+      required: [id, slug, name, horizontalCrs, verticalDatum, discoverable, createdAt, createdBy]
     Vehicle:
       type: object
       description: >
@@ -2442,59 +1888,6 @@ components:
       enum: [none, internet]
       default: none
 
-    PublicationRequest:
-      type: object
-      additionalProperties: false
-      required: [layerId, descriptorOutput]
-      description: >
-        What a job's result becomes. Declared when the job is submitted and
-        fixed thereafter, so a job cannot decide to publish something it was not
-        asked to publish. The job writes a VersionDescriptor as its
-        `descriptorOutput`; every other declared output becomes the version's
-        payload, at the path the job declared for it.
-      properties:
-        layerId:
-          type: string
-          description: The layer the result belongs to.
-        descriptorOutput:
-          type: string
-          description: The declared output whose content is a VersionDescriptor.
-        publish:
-          type: boolean
-          description: Move the version out of draft when the job succeeds.
-        promote:
-          type: boolean
-          description: >
-            Make it part of the shared record, which needs steward authority in
-            the scope at the moment the job is submitted.
-        supersedePrevious:
-          type: boolean
-          description: >
-            Mark the layer's current published version superseded, which is what
-            makes a recurring ingestion a chain rather than a pile.
-
-    VersionDescriptor:
-      type: object
-      additionalProperties: false
-      required: [truthClass, crsEpsg, verticalDatum, extent, observedFrom,
-                 observedTo, uncertainty, rights, attribution]
-      description: >
-        What a job writes to say what it produced. It states everything a
-        version must state, and is validated exactly as a version a person
-        records is validated: a job gets no easier path. It is written as a
-        file; a job holds no credential and reaches no route.
-      properties:
-        truthClass: { $ref: '#/components/schemas/TruthClass' }
-        crsEpsg: { type: integer, minimum: 1 }
-        verticalDatum: { type: string, minLength: 1 }
-        extent: { $ref: '#/components/schemas/Extent' }
-        observedFrom: { type: string, format: date-time }
-        observedTo: { type: string, format: date-time }
-        clockOffsetSeconds: { type: number }
-        uncertainty: { $ref: '#/components/schemas/Uncertainty' }
-        rights: { type: string, minLength: 1 }
-        attribution: { type: string, minLength: 1 }
-
     Schedule:
       type: object
       required: [id, name, orgId, intervalSeconds, enabled, nextRunAt, createdAt,
@@ -2511,7 +1904,6 @@ components:
         lastJobId: { type: string }
         createdAt: { type: string, format: date-time }
         egress: { $ref: '#/components/schemas/Egress' }
-        publish: { $ref: '#/components/schemas/PublicationRequest' }
 
     ScheduleRequest:
       type: object
@@ -2537,7 +1929,6 @@ components:
         requestGpu: { type: integer, minimum: 0 }
         walltimeSeconds: { type: integer, exclusiveMinimum: 0 }
         egress: { $ref: '#/components/schemas/Egress' }
-        publish: { $ref: '#/components/schemas/PublicationRequest' }
 
     Lease:
       type: object

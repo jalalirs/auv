@@ -226,61 +226,6 @@ func IsContentAddressed(image string) bool {
 	return registryDigestPattern.MatchString(image) || localImagePattern.MatchString(image)
 }
 
-// Publication is what a job's result becomes.
-//
-// It is declared when the job is submitted and cannot change, so a job cannot
-// decide to publish something it was not asked to publish. See ADR-0013.
-type Publication struct {
-	// LayerID is the layer the result belongs to.
-	LayerID string `json:"layerId"`
-	// DescriptorOutput names the declared output whose content states what the
-	// version is. Every other declared output becomes the version's payload.
-	DescriptorOutput string `json:"descriptorOutput"`
-	// Publish moves the version out of draft on success.
-	Publish bool `json:"publish"`
-	// Promote makes it part of the shared record, which still requires the
-	// submitter to hold steward authority in the scope.
-	Promote bool `json:"promote"`
-	// SupersedePrevious marks the layer's current published version superseded,
-	// which is what makes a recurring ingestion a chain rather than a pile.
-	SupersedePrevious bool `json:"supersedePrevious"`
-
-	// VersionID is set once the platform has materialised the version.
-	VersionID string `json:"versionId,omitempty"`
-}
-
-// Validate reports whether the declaration is expressible.
-func (p Publication) Validate(outputs []Output) error {
-	if p.LayerID == "" {
-		return fmt.Errorf("%w: a publication names the layer it belongs to", domain.ErrInvalid)
-	}
-	if p.DescriptorOutput == "" {
-		return fmt.Errorf("%w: a publication names the output that describes it", domain.ErrInvalid)
-	}
-	if p.Promote && !p.Publish {
-		return fmt.Errorf("%w: a version cannot become part of the shared record without being published",
-			domain.ErrInvalid)
-	}
-
-	var described, payload int
-	for _, output := range outputs {
-		if output.Name == p.DescriptorOutput {
-			described++
-			continue
-		}
-		payload++
-	}
-	if described == 0 {
-		return fmt.Errorf("%w: this job declares no output named %q to describe its result",
-			domain.ErrInvalid, p.DescriptorOutput)
-	}
-	if payload == 0 {
-		return fmt.Errorf("%w: a version has at least one file, and every declared output but %q is its payload",
-			domain.ErrInvalid, p.DescriptorOutput)
-	}
-	return nil
-}
-
 // JobSpec describes work to run.
 type JobSpec struct {
 	OrgID       string
@@ -300,7 +245,6 @@ type JobSpec struct {
 	// Egress is refused unless the submitter holds authority at the platform.
 	Egress Egress
 	// Publish, when set, is what this job's result becomes.
-	Publish *Publication
 }
 
 // Validate reports whether the work is fully and safely described.
@@ -369,10 +313,5 @@ func (j JobSpec) Validate() error {
 		}
 	}
 
-	if j.Publish != nil {
-		if err := j.Publish.Validate(j.Outputs); err != nil {
-			return err
-		}
-	}
 	return nil
 }

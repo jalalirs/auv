@@ -78,8 +78,6 @@ func (a *Authorizer) evaluate(ctx context.Context, subject Subject, action Actio
 		return a.decideCity(ctx, subject, action, need, resource.ID)
 	case ResourceVehicle:
 		return a.decideVehicle(ctx, subject, need, resource.ID)
-	case ResourceLayer:
-		return a.decideLayer(ctx, subject, action, need, resource.ID)
 	case ResourceJob:
 		return a.decideJob(ctx, subject, need, resource.ID)
 	default:
@@ -197,56 +195,6 @@ func (a *Authorizer) decideVehicle(ctx context.Context, subject Subject, need Ro
 			"this action needs %s on %s; you hold %s", need, slug, describe(role))), nil
 	}
 	return denyHidden("no vehicle with that identifier is visible to you"), nil
-}
-
-// decideLayer answers questions about a layer, first establishing that its
-// container is reachable. A layer is never more visible than the place that
-// contains it; requiring the container's decision first is what enforces that.
-func (a *Authorizer) decideLayer(ctx context.Context, subject Subject, action Action, need Role, layerID string) (Decision, error) {
-	facts, err := a.layerFacts(ctx, layerID)
-	if errors.Is(err, db.ErrNotFound) {
-		return denyHidden("no layer with that identifier is visible to you"), nil
-	}
-	if err != nil {
-		return Decision{}, err
-	}
-
-	if facts.ScopeKind == domain.PlatformScope {
-		role, err := a.effectiveRole(ctx, subject, ScopePlatform, "")
-		if err != nil {
-			return Decision{}, err
-		}
-		// The shared world is readable by anyone signed in. Everything beyond
-		// reading needs authority at the platform.
-		if need == RoleViewer {
-			return allow(stronger(role, RoleViewer), a.platformFilter(subject, role)), nil
-		}
-		if role.AtLeast(need) {
-			return allow(role, a.platformFilter(subject, role)), nil
-		}
-		return denyVisible(fmt.Sprintf(
-			"this action needs %s at the platform; you hold %s", need, describe(role))), nil
-	}
-
-	// A city layer is reachable only through its city.
-	container, err := a.decideCity(ctx, subject, CityRead, RoleViewer, facts.CityID)
-	if err != nil {
-		return Decision{}, err
-	}
-	if !container.Allowed() {
-		return container, nil
-	}
-
-	role, err := a.effectiveRole(ctx, subject, ScopeCity, facts.CityID)
-	if err != nil {
-		return Decision{}, err
-	}
-	role = stronger(role, container.Role)
-	if role.AtLeast(need) {
-		return allow(role, a.cityFilter(subject, role)), nil
-	}
-	return denyVisible(fmt.Sprintf(
-		"this action needs %s in that city; you hold %s", need, describe(role))), nil
 }
 
 // decideJob answers questions about work, which belongs to the organisation

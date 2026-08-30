@@ -70,10 +70,9 @@ func TestEveryActionStatesWhatItAppliesTo(t *testing.T) {
 // the strongest. If these ever invert, the model is wrong.
 func TestReadingNeedsLessAuthorityThanChanging(t *testing.T) {
 	pairs := []struct{ read, change Action }{
-		{CityRead, CityUpdate},
-		{LayerRead, LayerCreate},
-		{LayerCreate, LayerPublish},
-		{LayerCreate, LayerPromote},
+		{CityRead, CityGrant},
+		{VehicleRead, VehicleGrant},
+		{VehicleRead, VehicleCreate},
 		{JobRead, JobSubmit},
 		{OrgRead, OrgAdminister},
 	}

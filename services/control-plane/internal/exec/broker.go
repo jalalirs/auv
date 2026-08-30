@@ -112,20 +112,6 @@ func (b *Broker) Submit(ctx context.Context, spec JobSpec) (Job, error) {
 			return err
 		}
 
-		// What the result becomes is fixed here, at submission, and the record
-		// refuses to let it change afterwards.
-		if spec.Publish != nil {
-			if _, err := conn.Exec(ctx, `
-				INSERT INTO exec.publication
-				    (job_id, layer_id, descriptor_output, publish, promote, supersede_previous)
-				VALUES ($1, $2, $3, $4, $5, $6)`,
-				job.ID, spec.Publish.LayerID, spec.Publish.DescriptorOutput,
-				spec.Publish.Publish, spec.Publish.Promote,
-				spec.Publish.SupersedePrevious); err != nil {
-				return fmt.Errorf("recording what this job will publish: %w", err)
-			}
-		}
-
 		snapshot, err := json.Marshal(map[string]any{
 			"limit":     quota,
 			"committed": committed,

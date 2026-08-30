@@ -6,6 +6,7 @@ import (
 	"github.com/jalalirs/auv/services/control-plane/internal/audit"
 	"github.com/jalalirs/auv/services/control-plane/internal/catalog"
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
+	"github.com/jalalirs/auv/services/control-plane/internal/domain"
 	"github.com/jalalirs/auv/services/control-plane/internal/policy"
 )
 
@@ -19,6 +20,127 @@ func assetScope(decided policy.AssetScope) catalog.Scope {
 		BoundIDs:            decided.BoundIDs,
 		IncludeDiscoverable: decided.IncludeDiscoverable,
 	}
+}
+
+// listCities lists the places the caller may learn of.
+//
+// A city the caller has not been granted and which is not discoverable does not
+// appear, and is not reported as withheld either: the platform does not
+// distinguish "does not exist" from "not yours to know about", because the
+// difference is itself a disclosure.
+func (d *Dependencies) listCities(w http.ResponseWriter, r *http.Request) {
+	subject, _ := subjectOf(r.Context())
+	decided, err := d.Authorizer.Assets(r.Context(), subject, policy.ScopeCity)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	places, err := d.Catalog.Cities(r.Context(), assetScope(decided))
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{"cities": places})
+}
+
+type createCityRequest struct {
+	Slug          string         `json:"slug"`
+	Name          string         `json:"name"`
+	Summary       string         `json:"summary"`
+	Extent        *domain.Extent `json:"extent"`
+	HorizontalCRS string         `json:"horizontalCrs"`
+	VerticalDatum string         `json:"verticalDatum"`
+	Discoverable  bool           `json:"discoverable"`
+}
+
+// createCity founds a place.
+func (d *Dependencies) createCity(w http.ResponseWriter, r *http.Request) {
+	var request createCityRequest
+	if err := readJSON(r, &request); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	principal, _ := principalOf(r.Context())
+
+	var created catalog.City
+	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		var err error
+		created, err = d.Catalog.CreateCity(r.Context(), conn, catalog.CitySpec{
+			Slug:          request.Slug,
+			Name:          request.Name,
+			Summary:       request.Summary,
+			Extent:        request.Extent,
+			HorizontalCRS: request.HorizontalCRS,
+			VerticalDatum: request.VerticalDatum,
+			Discoverable:  request.Discoverable,
+			CreatedBy:     principal.ID,
+		})
+		if err != nil {
+			return err
+		}
+		return d.Audit.Record(r.Context(), conn, audit.Event{
+			ActorID: principal.ID, Action: string(policy.CityCreate),
+			SubjectKind: "city", SubjectID: created.ID, Outcome: audit.Succeeded,
+			Detail: map[string]any{"slug": created.Slug, "discoverable": created.Discoverable},
+		})
+	})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusCreated, created)
+}
+
+// readCity reads one place.
+func (d *Dependencies) readCity(w http.ResponseWriter, r *http.Request) {
+	place, err := d.Catalog.City(r.Context(), r.PathValue("cityId"))
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, place)
+}
+
+// listCityVersions lists a city's packages, newest first.
+func (d *Dependencies) listCityVersions(w http.ResponseWriter, r *http.Request) {
+	d.listVersionsOf(w, r, catalog.KindCity, r.PathValue("cityId"))
+}
+
+// grantCity grants access to a place.
+func (d *Dependencies) grantCity(w http.ResponseWriter, r *http.Request) {
+	d.grantAsset(w, r, policy.ScopeCity, policy.CityGrant, "city", r.PathValue("cityId"))
+}
+
+// readCityGrants lists who has been granted access to a place.
+func (d *Dependencies) readCityGrants(w http.ResponseWriter, r *http.Request) {
+	bindings, err := d.Authorizer.BindingsAtScope(r.Context(), policy.ScopeCity, r.PathValue("cityId"))
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{"grants": bindings})
+}
+
+// revokeCityGrant withdraws access to a place.
+func (d *Dependencies) revokeCityGrant(w http.ResponseWriter, r *http.Request) {
+	principal, _ := principalOf(r.Context())
+	bindingID := r.PathValue("bindingId")
+
+	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		if err := d.Authorizer.Revoke(r.Context(), conn, bindingID); err != nil {
+			return err
+		}
+		return d.Audit.Record(r.Context(), conn, audit.Event{
+			ActorID: principal.ID, Action: string(policy.CityGrant),
+			SubjectKind: "city", SubjectID: r.PathValue("cityId"), Outcome: audit.Succeeded,
+			Detail: map[string]any{"revoked": bindingID},
+		})
+	})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // listVehicles lists the vehicles the caller may fly.
@@ -110,19 +232,26 @@ func (d *Dependencies) listVersionsOf(w http.ResponseWriter, r *http.Request,
 	writeJSON(w, r, http.StatusOK, map[string]any{"versions": versions})
 }
 
-// grantVehicle grants the use of a vehicle to a person or an institution.
+// grantRequest is who is being granted what.
+type grantRequest struct {
+	SubjectKind string `json:"subjectKind"`
+	SubjectID   string `json:"subjectId"`
+	Role        string `json:"role"`
+}
+
+// grantAsset grants access to a city or a vehicle.
 //
-// The same shape as granting a city, deliberately: two assets granted two ways
-// would be two things to reason about, and the second one would be the one
-// somebody got wrong.
-func (d *Dependencies) grantVehicle(w http.ResponseWriter, r *http.Request) {
+// One path for both, deliberately: two assets granted two ways would be two
+// things to reason about, and the second one would be the one somebody got
+// wrong.
+func (d *Dependencies) grantAsset(w http.ResponseWriter, r *http.Request,
+	scope policy.ScopeKind, action policy.Action, subjectKind, assetID string) {
 	var request grantRequest
 	if err := readJSON(r, &request); err != nil {
 		writeError(w, r, err)
 		return
 	}
 	principal, _ := principalOf(r.Context())
-	vehicleID := r.PathValue("vehicleId")
 
 	role, err := policy.ParseRole(request.Role)
 	if err != nil {
@@ -136,8 +265,8 @@ func (d *Dependencies) grantVehicle(w http.ResponseWriter, r *http.Request) {
 		binding, err = d.Authorizer.Grant(r.Context(), conn, policy.GrantSpec{
 			SubjectKind: policy.SubjectKind(request.SubjectKind),
 			SubjectID:   request.SubjectID,
-			ScopeKind:   policy.ScopeVehicle,
-			ScopeID:     vehicleID,
+			ScopeKind:   scope,
+			ScopeID:     assetID,
 			Role:        role,
 			CreatedBy:   principal.ID,
 		})
@@ -145,8 +274,8 @@ func (d *Dependencies) grantVehicle(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		return d.Audit.Record(r.Context(), conn, audit.Event{
-			ActorID: principal.ID, Action: string(policy.VehicleGrant),
-			SubjectKind: "vehicle", SubjectID: vehicleID, Outcome: audit.Succeeded,
+			ActorID: principal.ID, Action: string(action),
+			SubjectKind: subjectKind, SubjectID: assetID, Outcome: audit.Succeeded,
 			Detail: map[string]any{
 				"subjectKind": request.SubjectKind, "subjectId": request.SubjectID,
 				"role": string(role),
@@ -158,6 +287,12 @@ func (d *Dependencies) grantVehicle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, r, http.StatusCreated, binding)
+}
+
+// grantVehicle grants the use of a vehicle.
+func (d *Dependencies) grantVehicle(w http.ResponseWriter, r *http.Request) {
+	d.grantAsset(w, r, policy.ScopeVehicle, policy.VehicleGrant, "vehicle",
+		r.PathValue("vehicleId"))
 }
 
 // readVehicleGrants lists who may fly a vehicle.

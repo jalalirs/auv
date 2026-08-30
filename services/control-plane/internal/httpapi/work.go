@@ -152,20 +152,9 @@ func (d *Dependencies) finish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Work that succeeded and was submitted to publish something produces it
-	// now, while nobody is present. A failure here leaves the job succeeded and
-	// the result unpublished; the background sweep finishes it.
-	if job.State == exec.Succeeded {
-		version, created, err := d.Publisher.Materialise(r.Context(), job.ID)
-		switch {
-		case err != nil:
-			d.Logger.ErrorContext(r.Context(), "could not publish what this work produced",
-				"jobId", job.ID, "error", err)
-		case created:
-			d.Logger.InfoContext(r.Context(), "published what this work produced",
-				"jobId", job.ID, "versionId", version.ID, "layerId", version.LayerID)
-		}
-	}
+	// Work that succeeds no longer publishes anything of its own accord. The
+	// old path produced a layer version, and layers are gone; the equivalent
+	// for a city or vehicle package will be built when something produces one.
 
 	writeJSON(w, r, http.StatusOK, job)
 }
