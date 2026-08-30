@@ -128,7 +128,7 @@ const selectSchedule = `
 	       s.command, s.args, s.inputs, s.outputs,
 	       s.request_cpu, s.request_memory_bytes, s.request_gpu,
 	       s.walltime_seconds, s.interval_seconds, s.enabled, s.next_run_at,
-	       coalesce(s.last_job_id, ''), s.created_at, s.egress,
+	       coalesce(s.last_job_id, ''), s.created_at, s.egress
 	FROM exec.schedule s`
 
 func scanSchedule(row interface{ Scan(...any) error }) (Schedule, error) {

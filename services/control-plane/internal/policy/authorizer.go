@@ -401,12 +401,12 @@ type AssetScope struct {
 
 // Assets reports which cities or vehicles a subject may learn of.
 //
-// A queue is asked for the same way but answered differently: hardware carries
-// no discoverability, because somebody who cannot run on a queue has no reason
-// to learn that it exists.
+// A queue is asked for the same way and answered without discoverability,
+// because hardware carries none: somebody who cannot run on a queue has no
+// reason to learn that it exists.
 func (a *Authorizer) Assets(ctx context.Context, subject Subject, kind ScopeKind) (AssetScope, error) {
 	switch kind {
-	case ScopeCity, ScopeVehicle, ScopeWork:
+	case ScopeCity, ScopeVehicle, ScopeQueue:
 	default:
 		return AssetScope{}, fmt.Errorf("%q is not a scope assets are granted at", kind)
 	}
@@ -416,7 +416,7 @@ func (a *Authorizer) Assets(ctx context.Context, subject Subject, kind ScopeKind
 		return AssetScope{}, err
 	}
 	if platformRole.AtLeast(RoleViewer) {
-		return AssetScope{All: true, IncludeDiscoverable: kind != ScopeWork}, nil
+		return AssetScope{All: true, IncludeDiscoverable: kind != ScopeQueue}, nil
 	}
 
 	rows, err := a.pool.Query(ctx, `
@@ -435,7 +435,7 @@ func (a *Authorizer) Assets(ctx context.Context, subject Subject, kind ScopeKind
 	}
 	defer rows.Close()
 
-	scope := AssetScope{IncludeDiscoverable: kind != ScopeWork, BoundIDs: []string{}}
+	scope := AssetScope{IncludeDiscoverable: kind != ScopeQueue, BoundIDs: []string{}}
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {

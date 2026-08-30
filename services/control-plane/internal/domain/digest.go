@@ -56,6 +56,26 @@ func (d Digest) Bytes() []byte { return d[:] }
 // must verify.
 func DigestOf(content []byte) Digest { return Digest(sha256.Sum256(content)) }
 
+// MarshalJSON writes a digest as the hex string everyone reads it as. Without
+// this a digest crosses the wire as an array of thirty-two numbers, which is
+// the same information and useless to a person comparing two of them.
+func (d Digest) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + d.String() + `"`), nil
+}
+
+// UnmarshalJSON reads what MarshalJSON wrote, and refuses anything else.
+func (d *Digest) UnmarshalJSON(raw []byte) error {
+	if len(raw) < 2 || raw[0] != '"' || raw[len(raw)-1] != '"' {
+		return fmt.Errorf("%w: a digest is a hex string", ErrInvalid)
+	}
+	parsed, err := ParseDigest(string(raw[1 : len(raw)-1]))
+	if err != nil {
+		return err
+	}
+	*d = parsed
+	return nil
+}
+
 // ManifestEntry is one file within a layer version's payload.
 type ManifestEntry struct {
 	RelativePath string
