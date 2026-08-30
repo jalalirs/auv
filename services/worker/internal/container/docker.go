@@ -123,6 +123,34 @@ type Spec struct {
 	// Network is granted only to work the platform admitted with that
 	// capability. Everything else runs with none (ADR-0012).
 	Network bool
+
+	// Mounts are for work whose inputs are not a single staged directory — a
+	// dive, which needs a place, a vehicle and somewhere to write, each from
+	// somewhere different.
+	Mounts []Mount
+
+	// GPUs names the devices this may use, by index. Empty means none.
+	// Naming them rather than granting all is what stops one dive taking a
+	// device another dive is holding.
+	GPUs []string
+
+	// WritableRoot relaxes the read-only root filesystem. A simulator writes
+	// shader and asset caches all over its own installation and cannot run
+	// without it; ordinary work can and does.
+	WritableRoot bool
+}
+
+// Mount is a host directory made visible inside a container.
+type Mount struct {
+	Source   string
+	Target   string
+	ReadOnly bool
+}
+
+// Result is how a container ended.
+type Result struct {
+	ExitCode int
+	Logs     string
 }
 
 // Present reports whether an image is already on the host.
@@ -184,30 +212,54 @@ func (r *Runtime) Create(ctx context.Context, spec Spec) (string, error) {
 		network = "bridge"
 	}
 
+	binds := []string{}
+	if spec.InputsHost != "" {
+		binds = append(binds, spec.InputsHost+":/work/inputs:ro")
+	}
+	if spec.OutputsHost != "" {
+		binds = append(binds, spec.OutputsHost+":/work/outputs:rw")
+	}
+	for _, mount := range spec.Mounts {
+		mode := "rw"
+		if mount.ReadOnly {
+			mode = "ro"
+		}
+		binds = append(binds, mount.Source+":"+mount.Target+":"+mode)
+	}
+
+	hostConfig := map[string]any{
+		"Binds":          binds,
+		"NetworkMode":    network,
+		"ReadonlyRootfs": !spec.WritableRoot,
+		"CapDrop":        []string{"ALL"},
+		"SecurityOpt":    []string{"no-new-privileges"},
+		"Privileged":     false,
+		"Memory":         spec.MemoryBytes,
+		"NanoCpus":       int64(spec.CPUs * 1e9),
+		"PidsLimit":      512,
+		"AutoRemove":     false,
+		// A read-only root still needs somewhere to write scratch, and a
+		// bounded temporary filesystem is safer than a writable root.
+		"Tmpfs": map[string]string{"/tmp": "rw,noexec,nosuid,size=536870912"},
+	}
+
+	// Named devices rather than all of them: a dive that could see every GPU
+	// on the host could take one another dive is holding.
+	if len(spec.GPUs) > 0 {
+		hostConfig["DeviceRequests"] = []map[string]any{{
+			"Driver":       "",
+			"DeviceIDs":    spec.GPUs,
+			"Capabilities": [][]string{{"gpu"}},
+		}}
+	}
+
 	request := map[string]any{
 		"Image":           spec.Image,
 		"Cmd":             command,
 		"Env":             spec.Env,
 		"WorkingDir":      "/work",
 		"NetworkDisabled": !spec.Network,
-		"HostConfig": map[string]any{
-			"Binds": []string{
-				spec.InputsHost + ":/work/inputs:ro",
-				spec.OutputsHost + ":/work/outputs:rw",
-			},
-			"NetworkMode":    network,
-			"ReadonlyRootfs": true,
-			"CapDrop":        []string{"ALL"},
-			"SecurityOpt":    []string{"no-new-privileges"},
-			"Privileged":     false,
-			"Memory":         spec.MemoryBytes,
-			"NanoCpus":       int64(spec.CPUs * 1e9),
-			"PidsLimit":      512,
-			"AutoRemove":     false,
-			// A read-only root still needs somewhere to write scratch, and a
-			// bounded temporary filesystem is safer than a writable root.
-			"Tmpfs": map[string]string{"/tmp": "rw,noexec,nosuid,size=536870912"},
-		},
+		"HostConfig":      hostConfig,
 	}
 
 	query := ""
@@ -374,4 +426,48 @@ func (r *Runtime) do(ctx context.Context, method, path string, body any) (io.Rea
 			method, path, reported.Message)
 	}
 	return response.Body, nil
+}
+
+// Run creates a container, waits for it, collects its output, and removes it.
+//
+// The removal happens whatever else does, because a host that accumulates
+// stopped containers runs out of disk eventually, and it does so slowly enough
+// that nobody connects the two.
+func (r *Runtime) Run(ctx context.Context, spec Spec) (Result, error) {
+	id, err := r.Create(ctx, spec)
+	if err != nil {
+		return Result{}, err
+	}
+	defer func() {
+		// On a context that outlives the caller's: a cancelled dive still has
+		// to have its container removed, and the cancellation is exactly when
+		// that is most likely to be forgotten.
+		removing, stop := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer stop()
+		// Nothing to report it to from here — a runtime does not know which
+		// dive this was. The caller logs; this just makes sure it happens.
+		_ = r.Remove(removing, id)
+	}()
+
+	if err := r.Start(ctx, id); err != nil {
+		return Result{}, err
+	}
+
+	code, err := r.Wait(ctx, id)
+	if err != nil {
+		// The wait was interrupted rather than the container finishing, so it
+		// is still running and must be stopped before it is removed.
+		stopping, stop := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer stop()
+		_ = r.Stop(stopping, id, 10*time.Second)
+		return Result{}, err
+	}
+
+	// Read after waiting, so what is returned is the whole of it. Bounded,
+	// because a simulator that failed at startup produces a great deal of it
+	// and the useful part is the end.
+	// An unreadable log is not a failed run: the exit code is what says
+	// whether it worked, and the output is what says why.
+	logs, _ := r.Logs(ctx, id, 200)
+	return Result{ExitCode: code, Logs: logs}, nil
 }

@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -296,4 +298,123 @@ func (d *Dependencies) listRuns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]any{"runs": runs})
+}
+
+// ── What an agent does ───────────────────────────────────────────────────────
+
+// claimRun hands an agent the next dive its host can run, and a device to run
+// it on.
+//
+// Answers 204 when there is nothing to do, which is the ordinary case: an agent
+// asks constantly and mostly there is no work, and treating that as an error
+// would fill the log with the platform working correctly.
+func (d *Dependencies) claimRun(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		TargetID string `json:"targetId"`
+	}
+	if err := readJSON(r, &request); err != nil {
+		writeError(w, r, err)
+		return
+	}
+
+	var claimed dive.Claimed
+	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		var err error
+		claimed, err = d.Dives.ClaimNext(r.Context(), conn, request.TargetID, d.LeaseDuration)
+		if err != nil {
+			return err
+		}
+		return d.Dives.Record(r.Context(), conn, claimed.Run.ID, "claimed", nil,
+			json.RawMessage(fmt.Sprintf(
+				`{"target":%q,"device":%q,"rosDomainId":%d}`,
+				request.TargetID, claimed.DeviceUUID, claimed.ROSDomainID)))
+	})
+	if errors.Is(err, db.ErrNotFound) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, claimed)
+}
+
+// runStarted records that the simulator is up.
+func (d *Dependencies) runStarted(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("runId")
+	if err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		if err := d.Dives.Started(r.Context(), conn, runID); err != nil {
+			return err
+		}
+		return d.Dives.Record(r.Context(), conn, runID, "started", nil, nil)
+	}); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// renewRun extends the lease on a run still under way.
+//
+// An agent that stops saying this loses the device, which is the only way to
+// tell an agent that is slow from one that is gone.
+func (d *Dependencies) renewRun(w http.ResponseWriter, r *http.Request) {
+	if err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		return d.Dives.Renew(r.Context(), conn, r.PathValue("runId"), d.LeaseDuration)
+	}); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{
+		"leaseSeconds": int(d.LeaseDuration.Seconds()),
+	})
+}
+
+// recordRunEvent appends to what happened during a run.
+func (d *Dependencies) recordRunEvent(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Kind             string          `json:"kind"`
+		SimulatedSeconds *float64        `json:"simulatedSeconds,omitempty"`
+		Detail           json.RawMessage `json:"detail,omitempty"`
+	}
+	if err := readJSON(r, &request); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	if err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		return d.Dives.Record(r.Context(), conn, r.PathValue("runId"),
+			request.Kind, request.SimulatedSeconds, request.Detail)
+	}); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// finishRun ends a run, and the record refuses to rewrite it afterwards.
+func (d *Dependencies) finishRun(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		State         string          `json:"state"`
+		Outcome       json.RawMessage `json:"outcome,omitempty"`
+		FailureReason string          `json:"failureReason,omitempty"`
+	}
+	if err := readJSON(r, &request); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	runID := r.PathValue("runId")
+
+	if err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		if err := d.Dives.Finish(r.Context(), conn, runID,
+			dive.State(request.State), request.Outcome, request.FailureReason); err != nil {
+			return err
+		}
+		return d.Dives.Record(r.Context(), conn, runID, "finished", nil,
+			json.RawMessage(fmt.Sprintf(`{"state":%q}`, request.State)))
+	}); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

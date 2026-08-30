@@ -242,6 +242,26 @@ func (rt *Router) registerAll() {
 		Summary: "what a dive's executions did", Action: policy.DiveRead,
 		Resource: fromPath(policy.ResourceDive, "diveId"), Handle: d.listRuns})
 
+	// What an agent does. These sit at the work scope rather than the dive's,
+	// because an agent holds authority over running work and over nothing else:
+	// it may take the next dive and say what happened to it, and it may not
+	// read the institution that asked for it.
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/runs/claim",
+		Summary: "take the next dive this host can run", Action: policy.WorkClaim,
+		Resource: atWork(), Handle: d.claimRun})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/runs/{runId}/started",
+		Summary: "the simulator is up", Action: policy.WorkReport,
+		Resource: atWork(), Handle: d.runStarted})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/runs/{runId}/renew",
+		Summary: "still working; hold the device a while longer",
+		Action:  policy.WorkReport, Resource: atWork(), Handle: d.renewRun})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/runs/{runId}/events",
+		Summary: "what happened during a run", Action: policy.WorkReport,
+		Resource: atWork(), Handle: d.recordRunEvent})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/runs/{runId}/finished",
+		Summary: "how a run ended", Action: policy.WorkReport,
+		Resource: atWork(), Handle: d.finishRun})
+
 	// Work.
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/jobs",
 		Summary: "ask the platform to run work", Action: policy.JobSubmit,

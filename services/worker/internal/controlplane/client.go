@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -234,4 +235,87 @@ func (c *Client) call(ctx context.Context, method, path string, body any, into a
 		return response.StatusCode, fmt.Errorf("reading a response: %w", err)
 	}
 	return response.StatusCode, nil
+}
+
+// ── Dives ────────────────────────────────────────────────────────────────────
+
+// ErrNothingToRun is what ClaimDive reports when the platform has no work.
+// The ordinary case, and not a failure: an agent asks constantly and mostly
+// there is nothing, and treating that as an error would fill a log with the
+// platform working correctly.
+var ErrNothingToRun = errors.New("nothing to run")
+
+// ClaimDive takes the next dive this host can run.
+func (c *Client) ClaimDive(ctx context.Context, targetName string, into any) error {
+	status, err := c.call(ctx, http.MethodPost, "/api/v1/runs/claim",
+		map[string]any{"targetId": targetName}, into)
+	if err != nil {
+		return err
+	}
+	if status == http.StatusNoContent {
+		return ErrNothingToRun
+	}
+	return nil
+}
+
+// PackageFiles asks what a package contains and where to fetch each file.
+func (c *Client) PackageFiles(ctx context.Context, versionID string) ([]PackageFile, error) {
+	var answer struct {
+		Files []PackageFile `json:"files"`
+	}
+	if _, err := c.call(ctx, http.MethodGet,
+		"/api/v1/versions/"+versionID+"/files", nil, &answer); err != nil {
+		return nil, err
+	}
+	return answer.Files, nil
+}
+
+// PackageFile is one file in a package, and where its bytes are.
+type PackageFile struct {
+	Path      string `json:"path"`
+	Digest    string `json:"digest"`
+	SizeBytes int64  `json:"sizeBytes"`
+	MediaType string `json:"mediaType"`
+	URL       string `json:"url"`
+}
+
+// DiveStarted records that the simulator is up.
+func (c *Client) DiveStarted(ctx context.Context, runID string) error {
+	_, err := c.call(ctx, http.MethodPost, "/api/v1/runs/"+runID+"/started", nil, nil)
+	return err
+}
+
+// RenewDive extends the lease on a dive still under way.
+func (c *Client) RenewDive(ctx context.Context, runID string) error {
+	_, err := c.call(ctx, http.MethodPost, "/api/v1/runs/"+runID+"/renew", nil, nil)
+	return err
+}
+
+// RecordDiveEvent appends to what happened during a dive.
+func (c *Client) RecordDiveEvent(ctx context.Context, runID, kind string,
+	simulated *float64, detail any) error {
+	body := map[string]any{"kind": kind}
+	if simulated != nil {
+		body["simulatedSeconds"] = *simulated
+	}
+	if detail != nil {
+		body["detail"] = detail
+	}
+	_, err := c.call(ctx, http.MethodPost, "/api/v1/runs/"+runID+"/events", body, nil)
+	return err
+}
+
+// FinishDive says how a dive ended, and is the last thing anything says about
+// it: the record refuses to rewrite a finished run.
+func (c *Client) FinishDive(ctx context.Context, runID, state string,
+	outcome any, failure string) error {
+	body := map[string]any{"state": state}
+	if outcome != nil {
+		body["outcome"] = outcome
+	}
+	if failure != "" {
+		body["failureReason"] = failure
+	}
+	_, err := c.call(ctx, http.MethodPost, "/api/v1/runs/"+runID+"/finished", body, nil)
+	return err
 }

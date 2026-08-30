@@ -103,7 +103,7 @@ func run(logger *slog.Logger) error {
 
 	background, stopBackground := context.WithCancel(context.Background())
 	defer stopBackground()
-	tending := attend(background, logger, broker, identities, settings)
+	tending := attend(background, logger, broker, identities, dive.NewStore(pool), pool, settings)
 
 	serverErrors := make(chan error, 1)
 	go func() {
@@ -145,7 +145,7 @@ func run(logger *slog.Logger) error {
 //
 // None of it belongs on a request, and all of it must keep happening whether or
 // not anyone is looking.
-func attend(ctx context.Context, logger *slog.Logger, broker *exec.Broker, identities *identity.Store, settings config.Config) <-chan struct{} {
+func attend(ctx context.Context, logger *slog.Logger, broker *exec.Broker, identities *identity.Store, dives *dive.Store, pool *db.Pool, settings config.Config) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -177,6 +177,21 @@ func attend(ctx context.Context, logger *slog.Logger, broker *exec.Broker, ident
 				logger.Error("could not submit recurring work", "error", err)
 			} else if submitted > 0 {
 				logger.Info("submitted recurring work", "jobs", submitted)
+			}
+
+			// A dive whose agent stopped saying anything holds a GPU until
+			// this notices. Nothing else can release it: nothing else can tell
+			// an agent that is slow from one that is gone, and a lease is
+			// exactly the statement "I will say something again by this time".
+			if err := pool.InTransaction(ctx, func(conn db.Conn) error {
+				released, err := dives.Expire(ctx, conn)
+				if err == nil && released > 0 {
+					logger.Warn("released devices whose dives stopped reporting",
+						"runs", released)
+				}
+				return err
+			}); err != nil {
+				logger.Error("could not expire dive leases", "error", err)
 			}
 
 			// Expired sessions are cleared rarely: they authenticate nobody in
