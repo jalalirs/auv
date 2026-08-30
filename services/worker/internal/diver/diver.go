@@ -104,27 +104,29 @@ type Diver struct {
 	// which machine it is running on, and the control plane does not.
 	streamHost string
 
+	// signalPort and mediaPort are where an interactive dive on this host is
+	// watched. Offset by the device a dive claimed, so that two dives on one
+	// host are watched on different ports rather than the second failing to
+	// start on a port the first is using.
+	signalPort int
+	mediaPort  int
+
 	// RenewEvery is how often the lease is extended. Comfortably shorter than
 	// the lease itself, so that one missed renewal does not lose the device.
 	renewEvery time.Duration
 }
 
-// The ports Coral City streams on. Named here and set in the application to the
-// same numbers; a viewer is told them rather than left to guess, and they are
-// published unchanged so that what the run recorded is what the host listens on.
-const (
-	signalPort = 49100
-	streamPort = 47998
-)
 
 // New builds a diver.
 func New(platform Platform, runtime Runtime, packages *cache.Cache,
-	simImage, workDir, hostWorkDir, streamHost string, renewEvery time.Duration,
+	simImage, workDir, hostWorkDir, streamHost string,
+	signalPort, mediaPort int, renewEvery time.Duration,
 	logger *slog.Logger) *Diver {
 	return &Diver{
 		platform: platform, runtime: runtime, cache: packages,
 		simImage: simImage, workDir: workDir, hostWorkDir: hostWorkDir,
-		streamHost: streamHost, renewEvery: renewEvery, logger: logger,
+		streamHost: streamHost, signalPort: signalPort, mediaPort: mediaPort,
+		renewEvery: renewEvery, logger: logger,
 	}
 }
 
@@ -331,13 +333,22 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	// simulator only: it is ours, and the thing being kept from the outside is
 	// the autonomy, which stays on the internal network and nothing else.
 	watching := claimed.Run.Mode == "interactive"
+	signal := d.signalPort + claimed.DeviceIndex*2
+	media := d.mediaPort + claimed.DeviceIndex*2
 	if watching {
 		simulator.Command = []string{"/isaac-sim/kit/kit"}
-		simulator.Args = []string{"/isaac-sim/apps/coral_city.kit", "--no-window"}
+		simulator.Args = []string{
+			"/isaac-sim/apps/coral_city.kit", "--no-window",
+			// The application is told the ports rather than carrying them, so
+			// that what the host publishes and what the run recorded and what
+			// the stream listens on are one number decided in one place.
+			fmt.Sprintf("--/exts/omni.kit.livestream.app/primaryStream/signalPort=%d", signal),
+			fmt.Sprintf("--/exts/omni.kit.livestream.app/primaryStream/streamPort=%d", media),
+		}
 		simulator.Attach = "bridge"
 		simulator.Publish = []container.Port{
-			{Number: signalPort, Protocol: "tcp"},
-			{Number: streamPort, Protocol: "udp"},
+			{Number: signal, Protocol: "tcp"},
+			{Number: media, Protocol: "udp"},
 		}
 	}
 
@@ -374,11 +385,11 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		// not be at a terminal at all.
 		_ = d.platform.Record(ctx, claimed.Run.ID, "stream_open", nil, map[string]any{
 			"host":       d.streamHost,
-			"signalPort": signalPort,
-			"streamPort": streamPort,
+			"signalPort": signal,
+			"streamPort": media,
 			"transport":  "webrtc",
 		})
-		log.Info("the dive can be watched", "host", d.streamHost, "signalPort", signalPort)
+		log.Info("the dive can be watched", "host", d.streamHost, "signalPort", signal)
 	}
 
 	// Somebody's own program, on the dive's network and no other — and started

@@ -46,6 +46,19 @@ type Config struct {
 	// a platform that guessed would send people to a name that does not resolve
 	// from where they are.
 	StreamHost string
+
+	// StreamSignalPort and StreamMediaPort are where an interactive dive is
+	// watched. Deliberately below 32768.
+	//
+	// Isaac Sim's defaults are 49100 and 47998, and both sit inside Linux's
+	// ephemeral port range — 32768 to 60999 on this host — which the kernel
+	// hands out to any outgoing connection that asks. So the port is sometimes
+	// free and sometimes not, for reasons that have nothing to do with this
+	// platform, and the failure lands at container start with the dive already
+	// scheduled. A port you intend to listen on should not be one the kernel
+	// thinks it may give away.
+	StreamSignalPort int
+	StreamMediaPort  int
 }
 
 // Load reads the environment, refusing anything that has no safe default.
@@ -88,6 +101,8 @@ func Load() (Config, error) {
 
 	config.SimImage = os.Getenv("CORAL_CITY_SIM_IMAGE")
 	config.StreamHost = os.Getenv("CORAL_CITY_STREAM_HOST")
+	config.StreamSignalPort = port("CORAL_CITY_STREAM_SIGNAL_PORT", 18100)
+	config.StreamMediaPort = port("CORAL_CITY_STREAM_MEDIA_PORT", 18101)
 	if config.SimImage == "" {
 		config.SimImage = "coral-city/sim-runtime:r1"
 	}
@@ -137,4 +152,19 @@ func valueOrDefault(name, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// port reads a port from the environment, falling back to what this platform
+// chose. A value that is not a number is a mistake worth ignoring loudly rather
+// than turning into zero, which would ask the kernel for any port at all.
+func port(name string, fallback int) int {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 || value > 65535 {
+		return fallback
+	}
+	return value
 }
