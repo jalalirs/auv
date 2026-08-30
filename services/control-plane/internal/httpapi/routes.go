@@ -52,6 +52,12 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations",
 		Summary: "found an institution", Action: policy.PlatformAdminister,
 		Resource: atPlatform(), Handle: d.createOrganisation})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations",
+		Summary: "every institution on this installation", Action: policy.PlatformAdminister,
+		Resource: atPlatform(), Handle: d.listOrganisations})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/people",
+		Summary: "everyone who can act", Action: policy.PlatformAdminister,
+		Resource: atPlatform(), Handle: d.listPeople})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/people",
 		Summary: "add someone who can sign in", Action: policy.PlatformAdminister,
 		Resource: atPlatform(), Handle: d.createPerson})
@@ -88,6 +94,9 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/vehicles/{vehicleId}/grants",
 		Summary: "grant the use of a vehicle", Action: policy.VehicleGrant,
 		Resource: fromPath(policy.ResourceVehicle, "vehicleId"), Handle: d.grantVehicle})
+	rt.register(Route{Method: "DELETE", Pattern: "/api/v1/vehicles/{vehicleId}/grants/{bindingId}",
+		Summary: "withdraw the use of a vehicle", Action: policy.VehicleGrant,
+		Resource: fromPath(policy.ResourceVehicle, "vehicleId"), Handle: d.revokeVehicleGrant})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/vehicles/{vehicleId}/grants",
 		Summary: "who may fly a vehicle", Action: policy.VehicleGrant,
 		Resource: fromPath(policy.ResourceVehicle, "vehicleId"), Handle: d.readVehicleGrants})
@@ -188,6 +197,9 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/queues/{queueId}/grants",
 		Summary: "grant the use of a queue", Action: policy.QueueGrant,
 		Resource: fromPath(policy.ResourceQueue, "queueId"), Handle: d.grantQueue})
+	rt.register(Route{Method: "DELETE", Pattern: "/api/v1/queues/{queueId}/grants/{bindingId}",
+		Summary: "withdraw the use of a queue", Action: policy.QueueGrant,
+		Resource: fromPath(policy.ResourceQueue, "queueId"), Handle: d.revokeQueueGrant})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/queues/{queueId}/grants",
 		Summary: "who may submit to a queue", Action: policy.QueueGrant,
 		Resource: fromPath(policy.ResourceQueue, "queueId"), Handle: d.readQueueGrants})

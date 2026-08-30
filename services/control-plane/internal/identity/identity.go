@@ -346,3 +346,55 @@ func (s *Store) Members(ctx context.Context, orgID string) ([]Principal, error) 
 	}
 	return members, rows.Err()
 }
+
+// Organisations lists every institution on this installation.
+//
+// There is no scoping here: only platform authority reaches this, and an
+// administrator who may found an institution may see the ones that exist.
+func (s *Store) Organisations(ctx context.Context) ([]Organisation, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, slug, name, created_at FROM identity.organisation ORDER BY name`)
+	if err != nil {
+		return nil, fmt.Errorf("listing institutions: %w", err)
+	}
+	defer rows.Close()
+
+	organisations := []Organisation{}
+	for rows.Next() {
+		var org Organisation
+		if err := rows.Scan(&org.ID, &org.Slug, &org.Name, &org.CreatedAt); err != nil {
+			return nil, err
+		}
+		organisations = append(organisations, org)
+	}
+	return organisations, rows.Err()
+}
+
+// People lists everyone who can act on this installation.
+//
+// Disabled principals are listed too, and say so. They are kept because the
+// audit record names who did each thing, so a name that once acted must remain
+// a name; hiding them here would make the record harder to read rather than
+// tidier.
+func (s *Store) People(ctx context.Context) ([]Principal, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, kind, display_name, coalesce(email, ''), coalesce(org_id, ''),
+		       disabled_at IS NOT NULL, created_at
+		FROM identity.principal
+		ORDER BY disabled_at IS NOT NULL, display_name`)
+	if err != nil {
+		return nil, fmt.Errorf("listing people: %w", err)
+	}
+	defer rows.Close()
+
+	people := []Principal{}
+	for rows.Next() {
+		var person Principal
+		if err := rows.Scan(&person.ID, &person.Kind, &person.DisplayName, &person.Email,
+			&person.OrgID, &person.Disabled, &person.CreatedAt); err != nil {
+			return nil, err
+		}
+		people = append(people, person)
+	}
+	return people, rows.Err()
+}

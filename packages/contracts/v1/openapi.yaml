@@ -209,6 +209,23 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
   /api/v1/organisations:
+    get:
+      tags: [identity]
+      summary: Every institution on this installation
+      responses:
+        '200':
+          description: The institutions.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organisations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Organisation'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [institutions]
       summary: Found an institution
@@ -240,6 +257,26 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
   /api/v1/people:
+    get:
+      tags: [identity]
+      summary: Everyone who can act
+      description: >
+        Disabled principals are listed and say so. The audit record names who
+        did each thing, so a name that once acted remains a name.
+      responses:
+        '200':
+          description: The people.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  people:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Principal'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [institutions]
       summary: Add someone who can sign in
@@ -1048,6 +1085,50 @@ paths:
           $ref: '#/components/responses/Invalid'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/v1/vehicles/{vehicleId}/grants/{bindingId}:
+    delete:
+      tags: [vehicles]
+      summary: Withdraw the use of a vehicle
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          description: The vehicle.
+          schema: { type: string }
+        - name: bindingId
+          in: path
+          required: true
+          description: The grant.
+          schema: { type: string }
+      responses:
+        '204':
+          description: Withdrawn.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/queues/{queueId}/grants/{bindingId}:
+    delete:
+      tags: [compute]
+      summary: Withdraw the use of a queue
+      parameters:
+        - name: queueId
+          in: path
+          required: true
+          description: The queue.
+          schema: { type: string }
+        - name: bindingId
+          in: path
+          required: true
+          description: The grant.
+          schema: { type: string }
+      responses:
+        '204':
+          description: Withdrawn.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/vehicles:
     get:
       tags: [vehicles]
