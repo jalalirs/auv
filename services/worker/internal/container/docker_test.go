@@ -69,3 +69,26 @@ func TestNoCallIsMadeBeforeAVersionIsAgreed(t *testing.T) {
 		t.Fatal("a call was attempted before any version was agreed")
 	}
 }
+
+// What a dive is attached to is the whole of what it can reach, so it is worth
+// checking rather than assuming. The two halves of a dive go on a network made
+// for that dive; everything else goes on none.
+func TestWorkGoesOnTheNetworkItWasGiven(t *testing.T) {
+	networkOf := func(spec Spec) string {
+		host := createRequest(spec)["HostConfig"].(map[string]any)
+		return host["NetworkMode"].(string)
+	}
+
+	if got := networkOf(Spec{Image: "x"}); got != "none" {
+		t.Errorf("work granted no network went on %q, and should have gone nowhere", got)
+	}
+	if got := networkOf(Spec{Image: "x", Attach: "coral-dive-run_1"}); got != "coral-dive-run_1" {
+		t.Errorf("a dive went on %q rather than its own network", got)
+	}
+	// Attaching wins over the general grant: a dive that also carried the
+	// network capability must still be confined to its own network, not put on
+	// the host's bridge beside everything else on the machine.
+	if got := networkOf(Spec{Image: "x", Network: true, Attach: "coral-dive-run_1"}); got != "coral-dive-run_1" {
+		t.Errorf("a dive with the network capability went on %q, escaping its own network", got)
+	}
+}
