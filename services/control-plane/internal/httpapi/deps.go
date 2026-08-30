@@ -8,14 +8,11 @@ import (
 
 	"github.com/jalalirs/auv/services/control-plane/internal/audit"
 	"github.com/jalalirs/auv/services/control-plane/internal/catalog"
-	"github.com/jalalirs/auv/services/control-plane/internal/city"
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
 	"github.com/jalalirs/auv/services/control-plane/internal/exec"
 	"github.com/jalalirs/auv/services/control-plane/internal/identity"
-	"github.com/jalalirs/auv/services/control-plane/internal/layer"
 	"github.com/jalalirs/auv/services/control-plane/internal/platform"
 	"github.com/jalalirs/auv/services/control-plane/internal/policy"
-	"github.com/jalalirs/auv/services/control-plane/internal/publication"
 	"github.com/jalalirs/auv/services/control-plane/internal/storage"
 )
 
@@ -27,13 +24,10 @@ type Dependencies struct {
 	Identity   *identity.Store
 	Authorizer *policy.Authorizer
 	Audit      *audit.Recorder
-	Cities     *city.Store
 	Catalog    *catalog.Store
-	Layers     *layer.Store
 	Objects    *storage.Objects
 	Blobs      *storage.Blobs
 	Broker     *exec.Broker
-	Publisher  *publication.Publisher
 	Logger     *slog.Logger
 
 	// LeaseDuration is how long a worker holds an attempt before it must

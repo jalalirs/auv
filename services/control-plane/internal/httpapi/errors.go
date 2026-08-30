@@ -10,7 +10,6 @@ import (
 	"github.com/jalalirs/auv/services/control-plane/internal/domain"
 	"github.com/jalalirs/auv/services/control-plane/internal/exec"
 	"github.com/jalalirs/auv/services/control-plane/internal/identity"
-	"github.com/jalalirs/auv/services/control-plane/internal/layer"
 	"github.com/jalalirs/auv/services/control-plane/internal/policy"
 	"github.com/jalalirs/auv/services/control-plane/internal/reqctx"
 	"github.com/jalalirs/auv/services/control-plane/internal/storage"
@@ -91,12 +90,6 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 
 	case errors.Is(err, storage.ErrGrantSpent):
 		writeProblem(w, r, http.StatusConflict, "grant_spent", err.Error(), nil)
-
-	case errors.Is(err, layer.ErrTruthClassStrengthened):
-		writeProblem(w, r, http.StatusUnprocessableEntity, "truth_class_strengthened", err.Error(), nil)
-
-	case errors.Is(err, layer.ErrTransition):
-		writeProblem(w, r, http.StatusConflict, "transition_unavailable", err.Error(), nil)
 
 	case errors.Is(err, exec.ErrLeaseInvalid):
 		writeProblem(w, r, http.StatusConflict, "lease_invalid", err.Error(), nil)

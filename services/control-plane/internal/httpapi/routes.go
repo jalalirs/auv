@@ -1,12 +1,8 @@
 package httpapi
 
 import (
-	"context"
 	"net/http"
 
-	"github.com/jalalirs/auv/services/control-plane/internal/db"
-	"github.com/jalalirs/auv/services/control-plane/internal/domain"
-	"github.com/jalalirs/auv/services/control-plane/internal/layer"
 	"github.com/jalalirs/auv/services/control-plane/internal/policy"
 )
 
@@ -116,17 +112,16 @@ func (rt *Router) registerAll() {
 	// Places.
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/cities",
 		Summary: "the places the caller may learn of", Action: policy.PlatformReadCatalogue,
-		Resource: atPlatform(), Handle: d.catalogue})
+		Resource: atPlatform(), Handle: d.listCities})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/cities",
 		Summary: "found a place", Action: policy.CityCreate,
 		Resource: atPlatform(), Handle: d.createCity})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/cities/{cityId}",
 		Summary: "enter a place", Action: policy.CityRead,
 		Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.readCity})
-	rt.register(Route{Method: "PATCH", Pattern: "/api/v1/cities/{cityId}",
-		Summary: "change a place's description or who may learn of it",
-		Action:  policy.CityUpdate, Resource: fromPath(policy.ResourceCity, "cityId"),
-		Handle: d.updateCity})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/cities/{cityId}/versions",
+		Summary: "a city's published packages", Action: policy.CityRead,
+		Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.listCityVersions})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/cities/{cityId}/grants",
 		Summary: "who has been granted access to a place", Action: policy.CityGrant,
 		Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.readCityGrants})
@@ -138,63 +133,6 @@ func (rt *Router) registerAll() {
 		Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.revokeCityGrant})
 
 	// Layers, in a place and in the shared world.
-	rt.register(Route{Method: "GET", Pattern: "/api/v1/cities/{cityId}/layers",
-		Summary: "the layers of a place", Action: policy.LayerRead,
-		Resource: fromPath(policy.ResourceCity, "cityId"),
-		Handle:   d.listLayers(domain.CityScope)})
-	rt.register(Route{Method: "POST", Pattern: "/api/v1/cities/{cityId}/layers",
-		Summary: "contribute a layer to a place", Action: policy.LayerCreate,
-		Resource: fromPath(policy.ResourceCity, "cityId"),
-		Also:     []policy.Action{policy.OrgRead},
-		Handle:   d.createLayer(domain.CityScope)})
-	rt.register(Route{Method: "GET", Pattern: "/api/v1/world/layers",
-		Summary: "the layers of the shared world", Action: policy.LayerRead,
-		Resource: atPlatform(), Handle: d.listLayers(domain.PlatformScope)})
-	rt.register(Route{Method: "POST", Pattern: "/api/v1/world/layers",
-		Summary: "add a layer to the shared world", Action: policy.LayerCreate,
-		Resource: atPlatform(), Also: []policy.Action{policy.OrgRead},
-		Handle: d.createLayer(domain.PlatformScope)})
-
-	rt.register(Route{Method: "GET", Pattern: "/api/v1/layers/{layerId}",
-		Summary: "a layer and the versions the caller may see", Action: policy.LayerRead,
-		Resource: fromPath(policy.ResourceLayer, "layerId"), Handle: d.readLayer})
-	rt.register(Route{Method: "POST", Pattern: "/api/v1/layers/{layerId}/versions",
-		Summary: "record evidence", Action: policy.LayerCreate,
-		Resource: fromPath(policy.ResourceLayer, "layerId"), Handle: d.createVersion})
-	rt.register(Route{Method: "GET", Pattern: "/api/v1/layers/{layerId}/versions/{versionId}",
-		Summary: "one version", Action: policy.LayerRead,
-		Resource: fromPath(policy.ResourceLayer, "layerId"), Handle: d.readVersion})
-	rt.register(Route{Method: "GET", Pattern: "/api/v1/layers/{layerId}/versions/{versionId}/lineage",
-		Summary: "what a version was derived from", Action: policy.LayerRead,
-		Resource: fromPath(policy.ResourceLayer, "layerId"), Handle: d.readLineage})
-	rt.register(Route{Method: "GET", Pattern: "/api/v1/layers/{layerId}/versions/{versionId}/files/{path...}",
-		Summary: "read one file of a version", Action: policy.ObjectRead,
-		Resource: fromPath(policy.ResourceLayer, "layerId"), Handle: d.readVersionFile})
-
-	rt.register(Route{Method: "POST", Pattern: "/api/v1/layers/{layerId}/versions/{versionId}/submit",
-		Summary: "offer a draft for review", Action: policy.LayerSubmit,
-		Resource: fromPath(policy.ResourceLayer, "layerId"),
-		Handle: d.versionStep(policy.LayerSubmit, func(ctx context.Context, conn db.Conn, versionID, _ string) (layer.Version, error) {
-			return d.Layers.Submit(ctx, conn, versionID)
-		}, false)})
-	rt.register(Route{Method: "POST", Pattern: "/api/v1/layers/{layerId}/versions/{versionId}/publish",
-		Summary: "publish a reviewed version", Action: policy.LayerPublish,
-		Resource: fromPath(policy.ResourceLayer, "layerId"),
-		Handle: d.versionStep(policy.LayerPublish, func(ctx context.Context, conn db.Conn, versionID, _ string) (layer.Version, error) {
-			return d.Layers.Publish(ctx, conn, versionID)
-		}, false)})
-	rt.register(Route{Method: "POST", Pattern: "/api/v1/layers/{layerId}/versions/{versionId}/promote",
-		Summary: "make a contribution part of the shared record", Action: policy.LayerPromote,
-		Resource: fromPath(policy.ResourceLayer, "layerId"),
-		Handle: d.versionStep(policy.LayerPromote, func(ctx context.Context, conn db.Conn, versionID, _ string) (layer.Version, error) {
-			return d.Layers.Promote(ctx, conn, versionID)
-		}, false)})
-	rt.register(Route{Method: "POST", Pattern: "/api/v1/layers/{layerId}/versions/{versionId}/retract",
-		Summary: "withdraw a published version from default views", Action: policy.LayerRetract,
-		Resource: fromPath(policy.ResourceLayer, "layerId"),
-		Handle: d.versionStep(policy.LayerRetract, func(ctx context.Context, conn db.Conn, versionID, reason string) (layer.Version, error) {
-			return d.Layers.Retract(ctx, conn, versionID, reason)
-		}, true)})
 
 	// Bytes.
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/uploads",
@@ -211,11 +149,8 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/schedules",
 		Summary: "record recurring work", Action: policy.ScheduleWrite,
 		Resource: atPlatform(),
-		Also: []policy.Action{
-			policy.JobSubmitPrivileged, policy.LayerCreate,
-			policy.LayerPublish, policy.LayerPromote,
-		},
-		Handle: d.createSchedule})
+		Also:     []policy.Action{policy.JobSubmitPrivileged},
+		Handle:   d.createSchedule})
 
 	// Work.
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/jobs",
@@ -223,10 +158,7 @@ func (rt *Router) registerAll() {
 		Resource: fromPath(policy.ResourceOrg, "orgId"),
 		// Work that may reach the network, or that publishes what it produced,
 		// needs the authority a person would need to do the same by hand.
-		Also: []policy.Action{
-			policy.JobSubmitPrivileged, policy.LayerCreate,
-			policy.LayerPublish, policy.LayerPromote,
-		},
+		Also:   []policy.Action{policy.JobSubmitPrivileged},
 		Handle: d.submitJob})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations/{orgId}/jobs",
 		Summary: "an institution's work", Action: policy.JobRead,

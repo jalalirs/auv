@@ -10,14 +10,6 @@ import (
 	"github.com/jalalirs/auv/services/control-plane/internal/policy"
 )
 
-type publicationRequest struct {
-	LayerID           string `json:"layerId"`
-	DescriptorOutput  string `json:"descriptorOutput"`
-	Publish           bool   `json:"publish"`
-	Promote           bool   `json:"promote"`
-	SupersedePrevious bool   `json:"supersedePrevious"`
-}
-
 type submitJobRequest struct {
 	RecipeID    string        `json:"recipeId"`
 	ImageDigest string        `json:"imageDigest"`
@@ -31,8 +23,7 @@ type submitJobRequest struct {
 	RequestGPU         int     `json:"requestGpu,omitempty"`
 	WalltimeSeconds    int     `json:"walltimeSeconds"`
 
-	Egress  string              `json:"egress,omitempty"`
-	Publish *publicationRequest `json:"publish,omitempty"`
+	Egress string `json:"egress,omitempty"`
 }
 
 // submitJob asks the platform to run work.
@@ -60,29 +51,6 @@ func (d *Dependencies) submitJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var publish *exec.Publication
-	if request.Publish != nil {
-		publish = &exec.Publication{
-			LayerID:           request.Publish.LayerID,
-			DescriptorOutput:  request.Publish.DescriptorOutput,
-			Publish:           request.Publish.Publish,
-			Promote:           request.Publish.Promote,
-			SupersedePrevious: request.Publish.SupersedePrevious,
-		}
-		// What the result becomes needs the authority it would need if a person
-		// did it by hand, checked now rather than when the job finishes and
-		// nobody is present to be told.
-		if !d.permits(w, r, policy.LayerCreate, policy.Layer(publish.LayerID)) {
-			return
-		}
-		if publish.Publish && !d.permits(w, r, policy.LayerPublish, policy.Layer(publish.LayerID)) {
-			return
-		}
-		if publish.Promote && !d.permits(w, r, policy.LayerPromote, policy.Layer(publish.LayerID)) {
-			return
-		}
-	}
-
 	// The institution the work belongs to is the one in the path, which the
 	// decision point has already confirmed the caller may act for. Taking it
 	// from the body instead would let a caller name a different one.
@@ -100,7 +68,6 @@ func (d *Dependencies) submitJob(w http.ResponseWriter, r *http.Request) {
 		RequestGPU:         request.RequestGPU,
 		WalltimeSeconds:    request.WalltimeSeconds,
 		Egress:             egress,
-		Publish:            publish,
 	})
 	if err != nil {
 		writeError(w, r, err)
@@ -114,7 +81,6 @@ func (d *Dependencies) submitJob(w http.ResponseWriter, r *http.Request) {
 			Detail: map[string]any{
 				"recipeId": job.RecipeID, "imageDigest": job.ImageDigest,
 				"targetId": job.TargetID, "egress": string(job.Egress),
-				"publishesTo": publishTarget(publish),
 			},
 		})
 	}); err != nil {
@@ -211,13 +177,6 @@ func (d *Dependencies) readQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]any{"quota": quota, "inUse": inUse})
-}
-
-func publishTarget(publication *exec.Publication) any {
-	if publication == nil {
-		return nil
-	}
-	return publication.LayerID
 }
 
 func queryLimit(r *http.Request, fallback, max int) int {

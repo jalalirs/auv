@@ -31,7 +31,6 @@ type Schedule struct {
 	ImageDigest     string    `json:"imageDigest"`
 	Egress          Egress    `json:"egress"`
 	// Publish is what every job this schedule submits will produce.
-	Publish *Publication `json:"publish,omitempty"`
 }
 
 // ScheduleSpec describes recurring work to create.
@@ -114,23 +113,6 @@ func (b *Broker) CreateSchedule(ctx context.Context, conn db.Conn, spec Schedule
 		return Schedule{}, fmt.Errorf("recording recurring work: %w", err)
 	}
 
-	if spec.Job.Publish != nil {
-		if _, err := conn.Exec(ctx, `
-			INSERT INTO exec.schedule_publication
-			    (schedule_id, layer_id, descriptor_output, publish, promote, supersede_previous)
-			VALUES ($1, $2, $3, $4, $5, $6)
-			ON CONFLICT (schedule_id) DO UPDATE SET
-			    layer_id = EXCLUDED.layer_id,
-			    descriptor_output = EXCLUDED.descriptor_output,
-			    publish = EXCLUDED.publish,
-			    promote = EXCLUDED.promote,
-			    supersede_previous = EXCLUDED.supersede_previous`,
-			id, spec.Job.Publish.LayerID, spec.Job.Publish.DescriptorOutput,
-			spec.Job.Publish.Publish, spec.Job.Publish.Promote,
-			spec.Job.Publish.SupersedePrevious); err != nil {
-			return Schedule{}, fmt.Errorf("recording what recurring work will publish: %w", err)
-		}
-	}
 	// Read it back on the same connection: a pooled one cannot see a
 	// transaction that has not committed, and this one has not.
 	return scheduleOn(ctx, conn, spec.Name)
@@ -147,28 +129,19 @@ const selectSchedule = `
 	       s.request_cpu, s.request_memory_bytes, s.request_gpu,
 	       s.walltime_seconds, s.interval_seconds, s.enabled, s.next_run_at,
 	       coalesce(s.last_job_id, ''), s.created_at, s.egress,
-	       coalesce(p.layer_id, ''), coalesce(p.descriptor_output, ''),
-	       coalesce(p.publish, false), coalesce(p.promote, false),
-	       coalesce(p.supersede_previous, false)
-	FROM exec.schedule s
-	LEFT JOIN exec.schedule_publication p ON p.schedule_id = s.id`
+	FROM exec.schedule s`
 
 func scanSchedule(row interface{ Scan(...any) error }) (Schedule, error) {
 	var schedule Schedule
 	var inputs, outputs []byte
-	var publication Publication
 	err := row.Scan(&schedule.ID, &schedule.Name, &schedule.OrgID, &schedule.Spec.SubmittedBy,
 		&schedule.RecipeID, &schedule.ImageDigest, &schedule.Spec.Command, &schedule.Spec.Args,
 		&inputs, &outputs, &schedule.Spec.RequestCPU, &schedule.Spec.RequestMemoryBytes,
 		&schedule.Spec.RequestGPU, &schedule.Spec.WalltimeSeconds, &schedule.IntervalSeconds,
 		&schedule.Enabled, &schedule.NextRunAt, &schedule.LastJobID, &schedule.CreatedAt,
-		&schedule.Egress, &publication.LayerID, &publication.DescriptorOutput,
-		&publication.Publish, &publication.Promote, &publication.SupersedePrevious)
+		&schedule.Egress)
 	if err != nil {
 		return Schedule{}, err
-	}
-	if publication.LayerID != "" {
-		schedule.Publish = &publication
 	}
 	if err := json.Unmarshal(inputs, &schedule.Spec.Inputs); err != nil {
 		return Schedule{}, fmt.Errorf("reading scheduled inputs: %w", err)
@@ -180,7 +153,6 @@ func scanSchedule(row interface{ Scan(...any) error }) (Schedule, error) {
 	schedule.Spec.RecipeID = schedule.RecipeID
 	schedule.Spec.ImageDigest = schedule.ImageDigest
 	schedule.Spec.Egress = schedule.Egress
-	schedule.Spec.Publish = schedule.Publish
 	return schedule, nil
 }
 
