@@ -523,6 +523,479 @@ paths:
                       $ref: '#/components/schemas/Target'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/v1/organisations/{orgId}/autonomy:
+    get:
+      tags: [dives]
+      summary: An institution's autonomy
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The autonomy stacks.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  autonomy:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AutonomyStack'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [dives]
+      summary: Register autonomy
+      description: >
+        The one thing here that is not the platform's. Pinned by image digest
+        and never by tag, because a dive re-run against a tag that has moved is
+        measuring a different program and reporting it as the same one.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [slug, name, imageRepository, imageDigest]
+              properties:
+                slug: { type: string }
+                name: { type: string }
+                imageRepository: { type: string }
+                imageDigest:
+                  type: string
+                  pattern: '^sha256:[0-9a-f]{64}$'
+                subscribes:
+                  type: array
+                  items: { type: string }
+                  description: The topics it expects to receive.
+                publishes:
+                  type: array
+                  items: { type: string }
+                  description: The topics it will send.
+                wantsGpu:
+                  type: boolean
+                  description: >
+                    Inference needs a device too, and on a single-GPU host it
+                    shares one with the simulator.
+      responses:
+        '201':
+          description: The autonomy stack.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutonomyStack'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/organisations/{orgId}/conditions:
+    post:
+      tags: [dives]
+      summary: Record the water a dive happens in
+      description: >
+        Observed conditions name the instant the ocean state is drawn from;
+        constructed conditions must not, because that would claim a provenance
+        they do not have. The difference between water that was measured and
+        water that was invented is the platform's most important claim about a
+        result.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kind, name]
+              properties:
+                kind: { type: string, enum: [observed, constructed] }
+                name: { type: string }
+                observedAt: { type: string, format: date-time }
+                sources:
+                  type: array
+                  items: { type: object }
+                  description: >
+                    Where the ocean state came from, with the digest of each, so
+                    that the same water can be assembled again.
+                parameters: { type: object }
+      responses:
+        '201':
+          description: The conditions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conditions'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/organisations/{orgId}/dives:
+    get:
+      tags: [dives]
+      summary: An institution's dives
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The dives.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dives:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Dive'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [dives]
+      summary: Define a dive
+      description: >
+        A vehicle in a place, under conditions, flown by autonomy. It names
+        versions rather than assets, so that publishing a newer vehicle does not
+        silently turn somebody's experiment into a different one.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, cityVersionId, vehicleVersionId, conditionsId]
+              properties:
+                name: { type: string }
+                summary: { type: string }
+                cityVersionId: { type: string }
+                vehicleVersionId: { type: string }
+                conditionsId: { type: string }
+                autonomyStackId: { type: string }
+                initialState: { type: object }
+                objective: { type: object }
+      responses:
+        '201':
+          description: The dive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dive'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/dives/{diveId}:
+    get:
+      tags: [dives]
+      summary: A dive
+      parameters:
+        - name: diveId
+          in: path
+          required: true
+          description: The dive.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The dive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dive'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/dives/{diveId}/runs:
+    get:
+      tags: [dives]
+      summary: What a dive's executions did
+      parameters:
+        - name: diveId
+          in: path
+          required: true
+          description: The dive.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The runs, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Run'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [dives]
+      summary: Ask for a dive to be executed
+      description: >
+        Every determinant is copied from the dive as the run is admitted, so
+        that editing the dive afterwards cannot change what a recorded result
+        means. Supplying a seed asks for an earlier run again, exactly; leaving
+        it out draws one.
+      parameters:
+        - name: diveId
+          in: path
+          required: true
+          description: The dive.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [queueId, mode, runtimeVersion]
+              properties:
+                queueId: { type: string }
+                mode:
+                  type: string
+                  enum: [interactive, batch]
+                  description: >
+                    Interactive holds a device, a stream and somebody's
+                    attention; batch holds only a device.
+                seed: { type: integer, format: int64 }
+                runtimeVersion:
+                  type: string
+                  description: >
+                    Recorded because a physics fix changes results, so comparing
+                    across one has to be refused rather than done quietly.
+                gpuShare:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+                  default: 1
+      responses:
+        '202':
+          description: The run, admitted and waiting for a device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/queues:
+    get:
+      tags: [compute]
+      summary: The queues the caller may submit to
+      description: >
+        Hardware carries no discoverability: a queue nobody granted you is absent, and so is one that does not exist.
+      responses:
+        '200':
+          description: The queues.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  queues:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Queue'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    post:
+      tags: [compute]
+      summary: Open a queue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [slug, name]
+              properties:
+                slug: { type: string }
+                name: { type: string }
+                summary: { type: string }
+                leaseSeconds:
+                  type: integer
+                  minimum: 60
+                  default: 3600
+                  description: >
+                    How long a dive may hold a device before asking again. An
+                    interactive session that loses its human should not hold a
+                    GPU until somebody notices.
+      responses:
+        '201':
+          description: The queue.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Queue'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/queues/{queueId}:
+    get:
+      tags: [compute]
+      summary: A queue, and how much of it is free
+      parameters:
+        - name: queueId
+          in: path
+          required: true
+          description: The queue.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The queue.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Queue'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/queues/{queueId}/devices:
+    get:
+      tags: [compute]
+      summary: The devices in a queue
+      parameters:
+        - name: queueId
+          in: path
+          required: true
+          description: The queue.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The devices.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  devices:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Device'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [compute]
+      summary: Place a device in a queue
+      description: >
+        Idempotent on the device's UUID, because an agent re-registers what it
+        found every time it starts and a restarted host must not appear to have
+        doubled its own capacity.
+      parameters:
+        - name: queueId
+          in: path
+          required: true
+          description: The queue.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [targetId, uuid, memoryBytes]
+              properties:
+                targetId: { type: string }
+                deviceIndex: { type: integer, minimum: 0 }
+                uuid: { type: string }
+                model: { type: string }
+                memoryBytes: { type: integer, format: int64 }
+      responses:
+        '201':
+          description: The device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/queues/{queueId}/grants:
+    get:
+      tags: [compute]
+      summary: Who may submit to a queue
+      parameters:
+        - name: queueId
+          in: path
+          required: true
+          description: The queue.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The grants.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  grants:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Binding'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [compute]
+      summary: Grant the use of a queue
+      parameters:
+        - name: queueId
+          in: path
+          required: true
+          description: The queue.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [subjectKind, subjectId, role]
+              properties:
+                subjectKind: { type: string, enum: [principal, org] }
+                subjectId: { type: string }
+                role: { type: string, enum: [viewer, contributor, steward, admin] }
+      responses:
+        '201':
+          description: The grant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Binding'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/v1/vehicles:
     get:
       tags: [vehicles]
@@ -1652,6 +2125,136 @@ components:
         createdBy: { type: string }
         retiredAt: { type: string, format: date-time, nullable: true }
       required: [id, slug, name, horizontalCrs, verticalDatum, discoverable, createdAt, createdBy]
+    Queue:
+      type: object
+      description: >
+        A pool of devices that access is granted to. The governed resource is
+        the queue, not the device, which is what lets one workstation and a rack
+        be described the same way and makes adding hardware an insert.
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        name: { type: string }
+        summary: { type: string }
+        leaseSeconds: { type: integer }
+        draining:
+          type: boolean
+          description: >
+            A draining queue accepts nothing new and lets what it holds finish,
+            which is how a host is taken out of service without killing a dive.
+        devices: { type: integer, description: How many devices it holds. }
+        free: { type: integer, description: How many no run is holding. }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string }
+      required: [id, slug, name, leaseSeconds, draining, devices, free, createdAt, createdBy]
+    Device:
+      type: object
+      description: >
+        One GPU, in one queue, on a host that runs an agent. Claimed whole:
+        hardware that cannot partition would not keep a fractional promise.
+      properties:
+        id: { type: string }
+        queueId: { type: string }
+        targetId: { type: string }
+        deviceIndex: { type: integer }
+        uuid:
+          type: string
+          description: Survives a reboot reordering the indices, which is why it identifies the device.
+        model: { type: string }
+        memoryBytes: { type: integer, format: int64 }
+        enabled: { type: boolean }
+        createdAt: { type: string, format: date-time }
+      required: [id, queueId, targetId, deviceIndex, uuid, memoryBytes, enabled, createdAt]
+    AutonomyStack:
+      type: object
+      description: >
+        Somebody's own code, as a container image. The platform supplies the
+        vehicle and the water; this is what a person brings.
+      properties:
+        id: { type: string }
+        orgId: { type: string }
+        slug: { type: string }
+        name: { type: string }
+        imageRepository: { type: string }
+        imageDigest: { type: string }
+        subscribes: { type: array, items: { type: string } }
+        publishes: { type: array, items: { type: string } }
+        wantsGpu: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string }
+      required: [id, orgId, slug, name, imageRepository, imageDigest, createdAt, createdBy]
+    Conditions:
+      type: object
+      description: >
+        The water a dive happens in — either the ocean as it was at an instant,
+        or a situation somebody constructed.
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [observed, constructed] }
+        name: { type: string }
+        observedAt: { type: string, format: date-time, nullable: true }
+        sources: { type: array, items: { type: object } }
+        parameters: { type: object }
+        orgId: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string }
+      required: [id, kind, name, createdAt, createdBy]
+    Dive:
+      type: object
+      description: >
+        A definition, not an execution: a vehicle in a place, under conditions,
+        flown by autonomy.
+      properties:
+        id: { type: string }
+        orgId: { type: string }
+        name: { type: string }
+        summary: { type: string }
+        cityVersionId: { type: string }
+        vehicleVersionId: { type: string }
+        conditionsId: { type: string }
+        autonomyStackId: { type: string, nullable: true }
+        initialState: { type: object }
+        objective: { type: object }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string }
+      required: [id, orgId, name, cityVersionId, vehicleVersionId, conditionsId, createdAt, createdBy]
+    Run:
+      type: object
+      description: >
+        One execution of a dive, and everything needed to have it again. The
+        digests, the seed and the runtime version are copied at admission, so
+        that editing the dive afterwards cannot change what this result means.
+      properties:
+        id: { type: string }
+        diveId: { type: string }
+        queueId: { type: string }
+        mode: { type: string, enum: [interactive, batch] }
+        state:
+          type: string
+          enum: [queued, preparing, running, succeeded, failed, cancelled, expired]
+        cityDigest: { type: string }
+        vehicleDigest: { type: string }
+        conditionsDigest: { type: string }
+        autonomyDigest: { type: string, nullable: true }
+        seed:
+          type: integer
+          format: int64
+          description: >
+            The same seed and the same digests means the same run. Replay costs
+            nothing, a regression is real rather than noise, and a failure can
+            be reopened and watched.
+        runtimeVersion: { type: string }
+        deviceId: { type: string, nullable: true }
+        gpuShare: { type: number }
+        requestedAt: { type: string, format: date-time }
+        requestedBy: { type: string }
+        startedAt: { type: string, format: date-time, nullable: true }
+        endedAt: { type: string, format: date-time, nullable: true }
+        leaseExpiresAt: { type: string, format: date-time, nullable: true }
+        outcome: { type: object }
+        failureReason: { type: string, nullable: true }
+      required: [id, diveId, queueId, mode, state, cityDigest, vehicleDigest,
+                 conditionsDigest, seed, runtimeVersion, gpuShare, requestedAt, requestedBy]
     Vehicle:
       type: object
       description: >

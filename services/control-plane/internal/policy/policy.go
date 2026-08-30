@@ -83,6 +83,10 @@ const (
 	// platform learns one new scope rather than a second way of deciding who
 	// may do what.
 	ScopeVehicle ScopeKind = "vehicle"
+	// ScopeQueue covers one queue of hardware. Distinct from ScopeWork, which
+	// is the execution machinery as a whole and names nothing because there is
+	// only one of it.
+	ScopeQueue ScopeKind = "queue"
 	// ScopeWork covers the execution queue. It is separate from the platform
 	// so that a worker holds authority over work and over nothing else.
 	ScopeWork ScopeKind = "work"
@@ -105,6 +109,8 @@ const (
 	ResourceOrg      ResourceKind = "org"
 	ResourceCity     ResourceKind = "city"
 	ResourceVehicle  ResourceKind = "vehicle"
+	ResourceQueue    ResourceKind = "queue"
+	ResourceDive     ResourceKind = "dive"
 	ResourceJob      ResourceKind = "job"
 	ResourceWork     ResourceKind = "work"
 )

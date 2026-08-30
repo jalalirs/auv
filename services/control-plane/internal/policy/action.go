@@ -38,6 +38,22 @@ const (
 	// VehicleGrant covers granting or revoking the use of a vehicle.
 	VehicleGrant Action = "vehicle.grant"
 
+	// QueueOpen covers opening a queue and placing hardware in it.
+	QueueOpen Action = "queue.open"
+	// QueueRead covers seeing a queue and what it holds.
+	QueueRead Action = "queue.read"
+	// QueueGrant covers granting or revoking the use of a queue.
+	QueueGrant Action = "queue.grant"
+
+	// DiveWrite covers defining a dive, registering autonomy, and recording
+	// conditions — everything an institution composes for itself.
+	DiveWrite Action = "dive.write"
+	// DiveRead covers reading a dive and what its runs did.
+	DiveRead Action = "dive.read"
+	// RunRequest covers asking for a dive to be executed, which is what takes
+	// hardware, and so is the one an institution's quota answers for.
+	RunRequest Action = "run.request"
+
 	// ObjectUpload covers obtaining a grant to place bytes in storage.
 	ObjectUpload Action = "object.upload"
 
@@ -87,6 +103,14 @@ var requirement = map[Action]struct {
 	VehicleCreate: {RoleAdmin, []ResourceKind{ResourcePlatform}},
 	VehicleRead:   {RoleViewer, []ResourceKind{ResourceVehicle, ResourcePlatform}},
 	VehicleGrant:  {RoleSteward, []ResourceKind{ResourceVehicle}},
+
+	QueueOpen:  {RoleAdmin, []ResourceKind{ResourcePlatform}},
+	QueueRead:  {RoleViewer, []ResourceKind{ResourceQueue, ResourcePlatform}},
+	QueueGrant: {RoleAdmin, []ResourceKind{ResourceQueue}},
+
+	DiveWrite:  {RoleContributor, []ResourceKind{ResourceOrg, ResourceDive}},
+	DiveRead:   {RoleViewer, []ResourceKind{ResourceOrg, ResourceDive}},
+	RunRequest: {RoleContributor, []ResourceKind{ResourceDive}},
 
 	ObjectUpload: {RoleContributor, []ResourceKind{ResourceOrg}},
 

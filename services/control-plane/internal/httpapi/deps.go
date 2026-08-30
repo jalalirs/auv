@@ -8,7 +8,9 @@ import (
 
 	"github.com/jalalirs/auv/services/control-plane/internal/audit"
 	"github.com/jalalirs/auv/services/control-plane/internal/catalog"
+	"github.com/jalalirs/auv/services/control-plane/internal/compute"
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
+	"github.com/jalalirs/auv/services/control-plane/internal/dive"
 	"github.com/jalalirs/auv/services/control-plane/internal/exec"
 	"github.com/jalalirs/auv/services/control-plane/internal/identity"
 	"github.com/jalalirs/auv/services/control-plane/internal/platform"
@@ -25,6 +27,8 @@ type Dependencies struct {
 	Authorizer *policy.Authorizer
 	Audit      *audit.Recorder
 	Catalog    *catalog.Store
+	Compute    *compute.Store
+	Dives      *dive.Store
 	Objects    *storage.Objects
 	Blobs      *storage.Blobs
 	Broker     *exec.Broker
