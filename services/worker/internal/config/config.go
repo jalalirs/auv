@@ -47,8 +47,8 @@ type Config struct {
 	// from where they are.
 	StreamHost string
 
-	// StreamSignalPort and StreamMediaPort are where an interactive dive is
-	// watched. Deliberately below 32768.
+	// StreamSignalPort is where an interactive dive is watched. Deliberately
+	// below 32768.
 	//
 	// Isaac Sim's defaults are 49100 and 47998, and both sit inside Linux's
 	// ephemeral port range — 32768 to 60999 on this host — which the kernel
@@ -58,7 +58,6 @@ type Config struct {
 	// scheduled. A port you intend to listen on should not be one the kernel
 	// thinks it may give away.
 	StreamSignalPort int
-	StreamMediaPort  int
 }
 
 // Load reads the environment, refusing anything that has no safe default.
@@ -102,7 +101,6 @@ func Load() (Config, error) {
 	config.SimImage = os.Getenv("CORAL_CITY_SIM_IMAGE")
 	config.StreamHost = os.Getenv("CORAL_CITY_STREAM_HOST")
 	config.StreamSignalPort = port("CORAL_CITY_STREAM_SIGNAL_PORT", 18100)
-	config.StreamMediaPort = port("CORAL_CITY_STREAM_MEDIA_PORT", 18101)
 	if config.SimImage == "" {
 		config.SimImage = "coral-city/sim-runtime:r1"
 	}

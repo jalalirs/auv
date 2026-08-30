@@ -1,0 +1,372 @@
+/*
+  Coral City.
+
+  Deep water, one cold accent for what is alive and one warm for the vehicle —
+  the same two the heads-up display uses inside a dive, so that the application
+  and the water it opens onto are recognisably one thing.
+
+  Everything is dark because everything is underwater. There is no light theme
+  and there should not be: the subject has one.
+*/
+
+:root {
+  --abyss: #04080f;
+  --water: #0b1524;
+  --shelf: #101c2c;
+  --edge: #1b2c40;
+
+  --coral: #40c7f4;
+  --vehicle: #f0a84f;
+
+  --plain: #d6d2cc;
+  --faint: #7d8794;
+  --dim: #4d5866;
+
+  --tall: 1.15;
+  --wide: 0.02em;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--abyss);
+  color: var(--plain);
+  font: 15px/1.55 ui-sans-serif, -apple-system, "SF Pro Text", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* The strip the traffic lights sit in, which is draggable and nothing else. */
+.chrome {
+  height: 28px;
+  -webkit-app-region: drag;
+  flex: none;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+/* ── the shape of every screen ─────────────────────────────────────────────── */
+
+.sea {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(120% 90% at 50% -20%, #16283d 0%, transparent 60%),
+    linear-gradient(180deg, var(--water) 0%, var(--abyss) 70%);
+}
+
+.middle {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  padding: 0 48px 48px;
+  min-height: 0;
+}
+
+/* ── the mark and the name ─────────────────────────────────────────────────── */
+
+.badge {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.badge img {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+}
+
+.badge h1 {
+  margin: 0;
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: var(--wide);
+  line-height: var(--tall);
+}
+
+.badge p {
+  margin: 2px 0 0;
+  color: var(--faint);
+  font-size: 13px;
+}
+
+/* ── signing in ────────────────────────────────────────────────────────────── */
+
+.panel {
+  width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--faint);
+  font-size: 12px;
+  letter-spacing: var(--wide);
+  text-transform: lowercase;
+}
+
+input {
+  background: #08111d;
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  padding: 11px 13px;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+
+input:focus {
+  border-color: var(--coral);
+}
+
+button {
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 11px 18px;
+  background: var(--coral);
+  color: #04121a;
+  font-weight: 600;
+  letter-spacing: var(--wide);
+  cursor: pointer;
+  transition: filter 120ms ease, opacity 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+button.quiet {
+  background: transparent;
+  border-color: var(--edge);
+  color: var(--plain);
+  font-weight: 500;
+}
+
+.refusal {
+  color: var(--vehicle);
+  font-size: 13px;
+  min-height: 20px;
+}
+
+/* ── choosing ──────────────────────────────────────────────────────────────── */
+
+.rail {
+  width: 100%;
+  max-width: 1000px;
+}
+
+.rail > h2 {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  padding: 0;
+  background: var(--shelf);
+  border: 1px solid var(--edge);
+  border-radius: 13px;
+  overflow: hidden;
+  color: var(--plain);
+  font-weight: 400;
+  letter-spacing: normal;
+  transition: border-color 130ms ease, transform 130ms ease;
+}
+
+.card:hover:not(:disabled) {
+  border-color: #2f4a66;
+  transform: translateY(-2px);
+  filter: none;
+}
+
+.card[aria-pressed="true"] {
+  border-color: var(--coral);
+}
+
+.card .picture {
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(160deg, #12263a, #08111d);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+  font-size: 11px;
+  letter-spacing: var(--wide);
+}
+
+.card .picture img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.card .said {
+  padding: 12px 14px 14px;
+}
+
+.card .said strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: var(--tall);
+}
+
+.card .said span {
+  display: block;
+  margin-top: 3px;
+  color: var(--faint);
+  font-size: 12.5px;
+}
+
+/* ── going in ──────────────────────────────────────────────────────────────── */
+
+.go {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.go button {
+  padding: 13px 34px;
+  font-size: 15px;
+}
+
+.note {
+  color: var(--faint);
+  font-size: 13px;
+}
+
+.waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+  max-width: 420px;
+}
+
+.waiting h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.waiting p {
+  margin: 0;
+  color: var(--faint);
+}
+
+/* ── the water ─────────────────────────────────────────────────────────────── */
+
+.viewport {
+  flex: 1;
+  position: relative;
+  background: #000;
+  min-height: 0;
+}
+
+.viewport canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.hud {
+  position: absolute;
+  left: 24px;
+  bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 20px;
+  background: rgba(4, 8, 15, 0.72);
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  backdrop-filter: blur(6px);
+}
+
+.reading {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.reading span {
+  width: 52px;
+  color: var(--faint);
+  font-size: 12px;
+  letter-spacing: var(--wide);
+}
+
+.reading strong {
+  font-size: 19px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.keys {
+  margin-top: 4px;
+  color: var(--dim);
+  font-size: 11.5px;
+  letter-spacing: var(--wide);
+}
+
+.lost {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(4, 8, 15, 0.82);
+}
+
+.lost h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+}

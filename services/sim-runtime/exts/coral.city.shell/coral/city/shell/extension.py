@@ -75,6 +75,12 @@ class CoralCityShell(omni.ext.IExt):
         self.finished = False
         self.photographs = list(PHOTOGRAPH_AT)
         self.controls = None
+        self.watch = None
+        self._frames = None
+        self._product = None
+        self._every = 3
+        self._since = 0
+        self._watch_port = int(os.environ.get("CORAL_CITY_WATCH_PORT", "18102"))
 
         if str(CORAL) not in sys.path:
             sys.path.insert(0, str(CORAL))
@@ -176,6 +182,7 @@ class CoralCityShell(omni.ext.IExt):
             transform.ClearXformOpOrder()
             transform.AddTransformOp().Set(look)
             viewport.camera_path = camera_path
+            self._open_the_window(camera_path)
             # Read back rather than assumed. Setting it is one line and failing
             # to set it looks exactly the same from here — you get a picture
             # either way, just not of what you aimed at.
@@ -239,6 +246,7 @@ class CoralCityShell(omni.ext.IExt):
         self.hud.show(dive.state())
         if self.photographs and dive.simulated >= self.photographs[0]:
             self._photograph(round(self.photographs.pop(0), 1))
+        self._send_a_frame(dive.state())
         if dive.flown_by_hand:
             self.hud.by_hand()
         elif dive.bridge is not None and dive.bridge.commanded:
@@ -249,6 +257,52 @@ class CoralCityShell(omni.ext.IExt):
             dive.close()
             self._say("succeeded", simulatedSeconds=round(dive.simulated, 3))
             self.hud.finished()
+
+    def _open_the_window(self, camera_path: str) -> None:
+        """Start rendering frames for whoever is watching from elsewhere.
+
+        Through Replicator rather than the viewport's own capture, because this
+        has to work with no window, no viewer attached and nobody logged in —
+        which is the normal case for a machine in a rack.
+        """
+        try:
+            import omni.replicator.core as rep
+
+            from .watch import FRAMES_PER_SECOND, TALL, WIDE, Watch
+
+            self._product = rep.create.render_product(camera_path, (WIDE, TALL))
+            self._frames = rep.AnnotatorRegistry.get_annotator("LdrColor")
+            self._frames.attach(self._product)
+            self.watch = Watch(self._watch_port, self.controls, self._say)
+            self._every = max(1, int(round(60.0 / FRAMES_PER_SECOND)))
+        except Exception as exc:
+            carb.log_warn(f"Coral City cannot be watched from elsewhere: {exc}")
+            self._say("watch_unavailable", why=str(exc)[:200])
+
+    def _send_a_frame(self, state: dict) -> None:
+        """One frame to the watchers, if anybody is there and it is time."""
+        if self.watch is None or not self.watch.watched:
+            return
+        self._since += 1
+        if self._since < self._every:
+            return
+        self._since = 0
+        try:
+            import cv2
+
+            picture = self._frames.get_data()
+            if picture is None or getattr(picture, "size", 0) == 0:
+                return
+            # Replicator hands back RGBA; the encoder wants BGR, and getting
+            # that backwards produces a picture that is right in every respect
+            # except that the water is orange.
+            ok, jpeg = cv2.imencode(
+                ".jpg", cv2.cvtColor(picture, cv2.COLOR_RGBA2BGR),
+                [int(cv2.IMWRITE_JPEG_QUALITY), 72])
+            if ok:
+                self.watch.send(jpeg.tobytes(), state)
+        except Exception as exc:
+            carb.log_warn(f"Coral City could not send a frame: {exc}")
 
     def _photograph(self, at: float) -> None:
         """Write out what the dive looks like.
@@ -289,6 +343,9 @@ class CoralCityShell(omni.ext.IExt):
         if self.dive is not None and not self.finished:
             self.dive.close()
             self.dive = None
+        if self.watch is not None:
+            self.watch.close()
+            self.watch = None
         if self.controls is not None:
             self.controls.close()
             self.controls = None

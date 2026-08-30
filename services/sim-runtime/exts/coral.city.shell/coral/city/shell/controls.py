@@ -34,22 +34,49 @@ LAYOUT = {
 
 
 class Controls:
-    """Which keys are down, and what the vehicle is being asked to do."""
+    """Which keys are down, and what the vehicle is being asked to do.
+
+    They may be down on this machine or on somebody's laptop a thousand miles
+    away, and this does not distinguish between the two. A pilot at the box and
+    a pilot in the application are flying the same vehicle the same way, which
+    is the only arrangement in which testing the client tests the product.
+    """
 
     def __init__(self) -> None:
         self.held: set[str] = set()
-        self._input = carb.input.acquire_input_interface()
-        window = omni.appwindow.get_default_app_window()
-        self._keyboard = window.get_keyboard()
-        self._subscription = self._input.subscribe_to_keyboard_events(
-            self._keyboard, self._on_key)
+        self._afar: set[str] = set()
+        self._here: set[str] = set()
+        self._input = None
+        self._keyboard = None
+        self._subscription = None
+        try:
+            self._input = carb.input.acquire_input_interface()
+            window = omni.appwindow.get_default_app_window()
+            self._keyboard = window.get_keyboard()
+            self._subscription = self._input.subscribe_to_keyboard_events(
+                self._keyboard, self._on_key)
+        except Exception:
+            # Headless, with nobody at this machine. Everything still works
+            # from the application; there is simply no local keyboard to read.
+            pass
+
+    def held_from_afar(self, keys: set[str]) -> None:
+        """What somebody watching over the network is holding down."""
+        self._afar = keys
+        self.held = self._here | self._afar
+
+    def let_go(self) -> None:
+        """Nobody is watching any more, so nobody is flying."""
+        self._afar = set()
+        self.held = set(self._here)
 
     def _on_key(self, event, *_) -> bool:
         name = event.input.name
         if event.type == carb.input.KeyboardEventType.KEY_PRESS:
-            self.held.add(name)
+            self._here.add(name)
         elif event.type == carb.input.KeyboardEventType.KEY_RELEASE:
-            self.held.discard(name)
+            self._here.discard(name)
+        self.held = self._here | self._afar
         # False, so that everything else in the application still sees the key.
         # A shell that swallowed input would be one nobody could take a
         # screenshot in.

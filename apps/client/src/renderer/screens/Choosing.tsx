@@ -1,0 +1,138 @@
+// Where, and what in.
+//
+// Only what you have been granted appears. That is not a filter applied here —
+// the platform simply does not list the rest, and an asset nobody granted you
+// is indistinguishable from one that does not exist. So this screen shows
+// everything it is given and never has to explain an absence.
+
+import { useEffect, useState } from "react";
+
+import type { AssetVersion, City, Platform, Queue, Vehicle } from "@coral-city/api";
+
+import { Badge, Card } from "./parts.js";
+
+interface Loaded {
+  places: City[];
+  vehicles: Vehicle[];
+  queues: Queue[];
+}
+
+export function Choosing({ platform, onAsked }: {
+  platform: Platform;
+  onAsked: (dive: string, run: string) => void;
+}): React.JSX.Element {
+  const [loaded, setLoaded] = useState<Loaded | undefined>();
+  const [place, setPlace] = useState<string | undefined>();
+  const [vehicle, setVehicle] = useState<string | undefined>();
+  const [asking, setAsking] = useState(false);
+  const [refusal, setRefusal] = useState("");
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [places, vehicles, queues] = await Promise.all([
+          platform.places(), platform.vehicles(), platform.queues(),
+        ]);
+        setLoaded({ places, vehicles, queues });
+      } catch (problem) {
+        setRefusal(problem instanceof Error ? problem.message : "could not read the catalogue");
+      }
+    })();
+  }, [platform]);
+
+  async function dive(): Promise<void> {
+    if (place === undefined || vehicle === undefined || loaded === undefined) return;
+    setAsking(true);
+    setRefusal("");
+    try {
+      // A dive is defined against the published version of each, because a run
+      // pins bytes and not names: the reef you dived is the reef anybody can
+      // dive again, even after somebody publishes a new one.
+      const [placeVersions, vehicleVersions] = await Promise.all([
+        platform.versionsOfPlace(place), platform.versionsOfVehicle(vehicle),
+      ]);
+      const newest = (versions: AssetVersion[]): AssetVersion | undefined =>
+        versions.filter((v) => v.publishedAt !== undefined && v.publishedAt !== null)
+          .sort((a, b) => (a.publishedAt! < b.publishedAt! ? 1 : -1))[0]
+        ?? versions[0];
+
+      const onePlace = newest(placeVersions);
+      const oneVehicle = newest(vehicleVersions);
+      if (onePlace === undefined || oneVehicle === undefined) {
+        setRefusal("That place or vehicle has no published package yet.");
+        return;
+      }
+
+      const me = await platform.me();
+      const organisation = me.principal.orgId;
+      if (organisation === undefined) {
+        setRefusal("You are not a member of an institution, so there is nowhere to keep a dive.");
+        return;
+      }
+      const defined = await platform.defineDive(organisation, {
+        name: `${loaded.places.find((p) => p.id === place)?.name ?? "Dive"}`,
+        cityVersionId: onePlace.id,
+        vehicleVersionId: oneVehicle.id,
+      });
+      const queue = loaded.queues[0];
+      if (queue === undefined) {
+        setRefusal("You have not been granted a queue to run this on.");
+        return;
+      }
+      const run = await platform.ask(defined.id, {
+        queueId: queue.id,
+        mode: "interactive",
+      });
+      onAsked(defined.id, run.id);
+    } catch (problem) {
+      setRefusal(problem instanceof Error ? problem.message : "that did not work");
+    } finally {
+      setAsking(false);
+    }
+  }
+
+  if (loaded === undefined) {
+    return (
+      <div className="middle">
+        <Badge />
+        <p className="note">{refusal || "Reading what you have been granted…"}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="middle">
+      <Badge />
+
+      <section className="rail">
+        <h2>Where</h2>
+        <div className="cards">
+          {loaded.places.map((one) => (
+            <Card key={one.id} picture={undefined} name={one.name}
+                  detail={one.summary || one.verticalDatum}
+                  chosen={one.id === place} onChoose={() => setPlace(one.id)} />
+          ))}
+        </div>
+      </section>
+
+      <section className="rail">
+        <h2>What in</h2>
+        <div className="cards">
+          {loaded.vehicles.map((one) => (
+            <Card key={one.id} picture={undefined} name={one.name}
+                  detail={one.summary || "a vehicle"}
+                  chosen={one.id === vehicle} onChoose={() => setVehicle(one.id)} />
+          ))}
+        </div>
+      </section>
+
+      <div className="go">
+        <button disabled={asking || place === undefined || vehicle === undefined}
+                onClick={() => void dive()}>
+          {asking ? "Asking for water…" : "Dive"}
+        </button>
+        <span className="refusal">{refusal}</span>
+      </div>
+    </div>
+  );
+}
