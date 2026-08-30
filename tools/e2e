@@ -193,6 +193,132 @@ REFUSED=$(api "$GUEST" GET /api/v1/me/denials | json "['denials'][0]['action']")
     || fail "no refusal was recorded for the outsider"
 
 # ---------------------------------------------------------------------------
+step "Packages, and what may pin them"
+
+FAKE_DIGEST=0000000000000000000000000000000000000000000000000000000000000001
+CITY_VERSION=$(api "$ADMIN" POST "/api/v1/cities/$CITY/versions" \
+    "{\"label\":\"v1\",\"files\":[{\"path\":\"scene.usd\",\"digest\":\"$FAKE_DIGEST\",\"sizeBytes\":1024,\"mediaType\":\"model/vnd.usd\"}]}" \
+    | json "['id']")
+[ -n "$CITY_VERSION" ] && pass "a package is recorded for the place" || fail "could not record a package"
+
+VEHICLE_VERSION=$(api "$ADMIN" POST "/api/v1/vehicles/$VEHICLE/versions" \
+    "{\"label\":\"v1\",\"files\":[{\"path\":\"hull.usd\",\"digest\":\"$FAKE_DIGEST\",\"sizeBytes\":2048,\"mediaType\":\"model/vnd.usd\"}]}" \
+    | json "['id']")
+[ -n "$VEHICLE_VERSION" ] && pass "a package is recorded for the vehicle" || fail "could not record a package"
+
+check "a vehicle that has not said how it moves cannot be published" \
+    "$(status "$ADMIN" POST "/api/v1/versions/$VEHICLE_VERSION/publish")" "400"
+
+check "a vehicle whose centres of gravity and buoyancy coincide is refused" \
+    "$(status "$ADMIN" PUT "/api/v1/versions/$VEHICLE_VERSION/dynamics" \
+        '{"massKg":11.5,"displacedVolumeM3":0.0114,"centreOfGravityM":[0,0,0],"centreOfBuoyancyM":[0,0,0],"inertiaTensor":[0.16,0,0,0,0.16,0,0,0,0.16],"addedMass":{},"linearDamping":{},"quadraticDamping":{},"thrusters":[],"sensors":[],"topicContract":{}}')" "400"
+
+check "stating how it moves" \
+    "$(status "$ADMIN" PUT "/api/v1/versions/$VEHICLE_VERSION/dynamics" \
+        '{"massKg":11.5,"displacedVolumeM3":0.0114,"centreOfGravityM":[0,0,0],"centreOfBuoyancyM":[0,0,0.01],"inertiaTensor":[0.16,0,0,0,0.16,0,0,0,0.16],"addedMass":{"diagonal":[5.5,12.7,14.6,0.12,0.12,0.12]},"linearDamping":{"diagonal":[4.03,6.22,5.18,0.07,0.07,0.07]},"quadraticDamping":{"diagonal":[18.18,21.66,36.99,1.55,1.55,1.55]},"thrusters":[{"position":[0.156,0.111,0.085]}],"sensors":[{"kind":"imaging_sonar"}],"topicContract":{"publishes":["/sonar/image"]}}')" "204"
+
+check "now it can be published" \
+    "$(status "$ADMIN" POST "/api/v1/versions/$VEHICLE_VERSION/publish")" "200"
+check "publishing the place's package" \
+    "$(status "$ADMIN" POST "/api/v1/versions/$CITY_VERSION/publish")" "200"
+check "publishing twice is not an error; it is already true" \
+    "$(status "$ADMIN" POST "/api/v1/versions/$CITY_VERSION/publish")" "200"
+
+# ---------------------------------------------------------------------------
+step "Hardware is granted, not discovered"
+
+QUEUE=$(api "$ADMIN" POST /api/v1/queues \
+    "{\"slug\":\"box-$RUN\",\"name\":\"The box\",\"leaseSeconds\":600}" | json "['id']")
+[ -n "$QUEUE" ] && pass "a queue is opened" || fail "could not open a queue"
+
+check "a lease shorter than a minute is refused" \
+    "$(status "$ADMIN" POST /api/v1/queues "{\"slug\":\"brief-$RUN\",\"name\":\"Brief\",\"leaseSeconds\":30}")" "400"
+
+TARGET=$(api "$ADMIN" GET /api/v1/targets | json "['targets'][0]['id']")
+check "a device is placed in the queue" \
+    "$(status "$ADMIN" POST "/api/v1/queues/$QUEUE/devices" \
+        "{\"targetId\":\"$TARGET\",\"deviceIndex\":0,\"uuid\":\"GPU-$RUN\",\"model\":\"RTX 5880 Ada\",\"memoryBytes\":51539607552}")" "201"
+check "registering the same device again does not double the capacity" \
+    "$(status "$ADMIN" POST "/api/v1/queues/$QUEUE/devices" \
+        "{\"targetId\":\"$TARGET\",\"deviceIndex\":0,\"uuid\":\"GPU-$RUN\",\"model\":\"RTX 5880 Ada\",\"memoryBytes\":51539607552}")" "201"
+check "the queue holds one device, and it is free" \
+    "$(api "$ADMIN" GET "/api/v1/queues/$QUEUE" | json "['devices']")/$(api "$ADMIN" GET "/api/v1/queues/$QUEUE" | json "['free']")" "1/1"
+
+check "the outsider cannot see hardware nobody granted them" \
+    "$(api "$GUEST" GET /api/v1/queues | json "['queues']")" "[]"
+check "and reading it directly reports absence" \
+    "$(status "$GUEST" GET "/api/v1/queues/$QUEUE")" "404"
+
+check "granting the institution the queue" \
+    "$(status "$ADMIN" POST "/api/v1/queues/$QUEUE/grants" \
+        "{\"subjectKind\":\"org\",\"subjectId\":\"$OTHER_ORG\",\"role\":\"contributor\"}")" "201"
+check "the queue now appears to the outsider" \
+    "$(api "$GUEST" GET /api/v1/queues | json "['queues'][0]['id']")" "$QUEUE"
+
+# ---------------------------------------------------------------------------
+step "What an institution composes for itself"
+
+check "autonomy pinned by a tag is refused, because a re-run must be a re-run" \
+    "$(status "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/autonomy" \
+        '{"slug":"depth-hold","name":"Depth hold","imageRepository":"registry/depth-hold","imageDigest":"latest"}')" "400"
+
+STACK=$(api "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/autonomy" \
+    "{\"slug\":\"depth-hold\",\"name\":\"Depth hold\",\"imageRepository\":\"registry/depth-hold\",\"imageDigest\":\"sha256:$(printf '%064d' 1)\",\"wantsGpu\":true}" \
+    | json "['id']")
+[ -n "$STACK" ] && pass "autonomy pinned by digest is accepted" || fail "could not register autonomy"
+
+check "observed conditions without an instant are refused" \
+    "$(status "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/conditions" \
+        '{"kind":"observed","name":"Red Sea"}')" "400"
+check "constructed conditions naming an instant are refused, because that claims a provenance they lack" \
+    "$(status "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/conditions" \
+        '{"kind":"constructed","name":"Two knots","observedAt":"2024-03-14T09:00:00Z"}')" "400"
+
+CONDITIONS=$(api "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/conditions" \
+    '{"kind":"constructed","name":"Still water","parameters":{"currentMetresPerSecond":0}}' | json "['id']")
+[ -n "$CONDITIONS" ] && pass "constructed conditions are recorded" || fail "could not record conditions"
+
+DIVE=$(api "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/dives" \
+    "{\"name\":\"Hold two metres\",\"cityVersionId\":\"$CITY_VERSION\",\"vehicleVersionId\":\"$VEHICLE_VERSION\",\"conditionsId\":\"$CONDITIONS\",\"autonomyStackId\":\"$STACK\"}" \
+    | json "['id']")
+[ -n "$DIVE" ] && pass "a dive is defined" || fail "could not define a dive"
+
+check "a dive missing one of its determinants is refused" \
+    "$(status "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/dives" \
+        "{\"name\":\"Incomplete\",\"cityVersionId\":\"$CITY_VERSION\"}")" "400"
+
+# ---------------------------------------------------------------------------
+step "Asking for it to be run"
+
+RUN_ID=$(api "$GUEST" POST "/api/v1/dives/$DIVE/runs" \
+    "{\"queueId\":\"$QUEUE\",\"mode\":\"interactive\",\"runtimeVersion\":\"isaac-6.0.1+oceansim\"}" \
+    | json "['id']")
+[ -n "$RUN_ID" ] && pass "a run is admitted" || fail "could not request a run"
+
+check "it is waiting for a device" \
+    "$(api "$GUEST" GET "/api/v1/dives/$DIVE/runs" | json "['runs'][0]['state']")" "queued"
+check "it pinned the city it will run in" \
+    "$(api "$GUEST" GET "/api/v1/dives/$DIVE/runs" | json "['runs'][0]['cityDigest']" | head -c 8)" \
+    "$(api "$ADMIN" GET "/api/v1/cities/$CITY/versions" | json "['versions'][0]['digest']" | head -c 8)"
+check "it pinned the autonomy image" \
+    "$(api "$GUEST" GET "/api/v1/dives/$DIVE/runs" | json "['runs'][0]['autonomyDigest']")" \
+    "sha256:$(printf '%064d' 1)"
+check "it recorded the runtime, so a physics change cannot be compared across silently" \
+    "$(api "$GUEST" GET "/api/v1/dives/$DIVE/runs" | json "['runs'][0]['runtimeVersion']")" "isaac-6.0.1+oceansim"
+
+SEED=$(api "$GUEST" GET "/api/v1/dives/$DIVE/runs" | json "['runs'][0]['seed']")
+[ -n "$SEED" ] && [ "$SEED" != "0" ] && pass "a seed was drawn, so the run can be had again" \
+    || fail "no seed was drawn"
+
+AGAIN=$(api "$GUEST" POST "/api/v1/dives/$DIVE/runs" \
+    "{\"queueId\":\"$QUEUE\",\"mode\":\"batch\",\"seed\":$SEED,\"runtimeVersion\":\"isaac-6.0.1+oceansim\"}" \
+    | json "['seed']")
+check "asking for the same seed gives the same run" "$AGAIN" "$SEED"
+
+check "somebody outside the institution cannot see the dive" \
+    "$(status "$ADMIN" GET "/api/v1/dives/$DIVE")" "200"
+
+# ---------------------------------------------------------------------------
 step "Work"
 
 check "a place work can run is recorded" \

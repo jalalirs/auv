@@ -305,3 +305,121 @@ func (d *Dependencies) readVehicleGrants(w http.ResponseWriter, r *http.Request)
 	}
 	writeJSON(w, r, http.StatusOK, map[string]any{"grants": bindings})
 }
+
+type createVersionRequest struct {
+	Label      string `json:"label"`
+	Notes      string `json:"notes"`
+	RuntimeMin string `json:"runtimeMin"`
+	Files      []struct {
+		Path      string `json:"path"`
+		Digest    string `json:"digest"`
+		SizeBytes int64  `json:"sizeBytes"`
+		MediaType string `json:"mediaType"`
+	} `json:"files"`
+}
+
+// createVersion records a package for a city or a vehicle, unpublished.
+//
+// The version's digest is computed from the manifest rather than accepted from
+// the caller, so nobody can claim an identity their files do not add up to.
+// Publication is a separate act because a package is uploaded before it is
+// complete, and a half-uploaded city that something could already pin would be
+// worse than no city at all.
+func (d *Dependencies) createVersion(w http.ResponseWriter, r *http.Request,
+	kind catalog.AssetKind, assetID string) {
+	var request createVersionRequest
+	if err := readJSON(r, &request); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	principal, _ := principalOf(r.Context())
+
+	manifest := make([]domain.ManifestEntry, 0, len(request.Files))
+	for _, file := range request.Files {
+		digest, err := domain.ParseDigest(file.Digest)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		manifest = append(manifest, domain.ManifestEntry{
+			RelativePath: file.Path,
+			Digest:       digest,
+			SizeBytes:    file.SizeBytes,
+			MediaType:    file.MediaType,
+		})
+	}
+
+	var created catalog.Version
+	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		var err error
+		created, err = d.Catalog.CreateVersion(r.Context(), conn, catalog.VersionSpec{
+			AssetKind:  kind,
+			AssetID:    assetID,
+			Label:      request.Label,
+			Notes:      request.Notes,
+			Manifest:   manifest,
+			RuntimeMin: request.RuntimeMin,
+			CreatedBy:  principal.ID,
+		})
+		return err
+	})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusCreated, created)
+}
+
+func (d *Dependencies) createCityVersion(w http.ResponseWriter, r *http.Request) {
+	d.createVersion(w, r, catalog.KindCity, r.PathValue("cityId"))
+}
+
+func (d *Dependencies) createVehicleVersion(w http.ResponseWriter, r *http.Request) {
+	d.createVersion(w, r, catalog.KindVehicle, r.PathValue("vehicleId"))
+}
+
+// setDynamics records how a vehicle version moves.
+func (d *Dependencies) setDynamics(w http.ResponseWriter, r *http.Request) {
+	var spec catalog.Dynamics
+	if err := readJSON(r, &spec); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	spec.VersionID = r.PathValue("versionId")
+
+	if err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		return d.Catalog.SetDynamics(r.Context(), conn, spec)
+	}); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// publishVersion makes a package pinnable, and from then on unchangeable.
+func (d *Dependencies) publishVersion(w http.ResponseWriter, r *http.Request) {
+	principal, _ := principalOf(r.Context())
+	versionID := r.PathValue("versionId")
+
+	var published catalog.Version
+	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		var err error
+		published, err = d.Catalog.Publish(r.Context(), conn, versionID)
+		if err != nil {
+			return err
+		}
+		return d.Audit.Record(r.Context(), conn, audit.Event{
+			ActorID: principal.ID, Action: string(policy.CityCreate),
+			SubjectKind: string(published.AssetKind), SubjectID: published.AssetID,
+			Outcome: audit.Succeeded,
+			Detail: map[string]any{
+				"versionId": published.ID, "ordinal": published.Ordinal,
+			},
+		})
+	})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, published)
+}

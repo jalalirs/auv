@@ -92,8 +92,20 @@ func (rt *Router) registerAll() {
 		Summary: "who may fly a vehicle", Action: policy.VehicleGrant,
 		Resource: fromPath(policy.ResourceVehicle, "vehicleId"), Handle: d.readVehicleGrants})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/vehicles/{vehicleId}/versions",
-		Summary: "a vehicle's published packages", Action: policy.VehicleRead,
+		Summary: "a vehicle's packages", Action: policy.VehicleRead,
 		Resource: fromPath(policy.ResourceVehicle, "vehicleId"), Handle: d.listVehicleVersions})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/vehicles/{vehicleId}/versions",
+		Summary: "record a package for a vehicle", Action: policy.VehicleCreate,
+		Resource: atPlatform(), Handle: d.createVehicleVersion})
+	// A vehicle must state how it moves before anything may fly it, so this is
+	// refused once the version is published rather than discovered by a dive
+	// that has already claimed a GPU.
+	rt.register(Route{Method: "PUT", Pattern: "/api/v1/versions/{versionId}/dynamics",
+		Summary: "state how a vehicle version moves", Action: policy.VehicleCreate,
+		Resource: atPlatform(), Handle: d.setDynamics})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/versions/{versionId}/publish",
+		Summary: "make a package pinnable, and from then on unchangeable",
+		Action:  policy.CityCreate, Resource: atPlatform(), Handle: d.publishVersion})
 
 	// Capacity.
 	rt.register(Route{Method: "PUT", Pattern: "/api/v1/organisations/{orgId}/quota",
@@ -120,8 +132,11 @@ func (rt *Router) registerAll() {
 		Summary: "enter a place", Action: policy.CityRead,
 		Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.readCity})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/cities/{cityId}/versions",
-		Summary: "a city's published packages", Action: policy.CityRead,
+		Summary: "a city's packages", Action: policy.CityRead,
 		Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.listCityVersions})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/cities/{cityId}/versions",
+		Summary: "record a package for a city", Action: policy.CityCreate,
+		Resource: atPlatform(), Handle: d.createCityVersion})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/cities/{cityId}/grants",
 		Summary: "who has been granted access to a place", Action: policy.CityGrant,
 		Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.readCityGrants})
