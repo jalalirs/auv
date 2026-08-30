@@ -156,10 +156,24 @@ type Spec struct {
 	// which is where this is going anyway.
 	Attach string
 
+	// Publish maps ports out to the host.
+	//
+	// Only the simulator ever asks for this, and only for an interactive dive:
+	// somebody has to be able to watch, and the machine they watch from is not
+	// this one. The autonomy never asks and never gets it — it is somebody
+	// else's program, and the thing it must not have is a way off this host.
+	Publish []Port
+
 	// WritableRoot relaxes the read-only root filesystem. A simulator writes
 	// shader and asset caches all over its own installation and cannot run
 	// without it; ordinary work can and does.
 	WritableRoot bool
+}
+
+// Port is one port made reachable from outside.
+type Port struct {
+	Number   int
+	Protocol string // "tcp" or "udp"
 }
 
 // Mount is a host directory made visible inside a container.
@@ -295,6 +309,20 @@ func createRequest(spec Spec) map[string]any {
 		"Tmpfs": map[string]string{"/tmp": "rw,noexec,nosuid,size=536870912"},
 	}
 
+	exposed := map[string]any{}
+	bindings := map[string]any{}
+	for _, port := range spec.Publish {
+		key := fmt.Sprintf("%d/%s", port.Number, port.Protocol)
+		exposed[key] = map[string]any{}
+		// Bound to the same number on the host, because the number is part of
+		// how a viewer is told where to look, and translating it here would
+		// mean the run recorded one port and the host listened on another.
+		bindings[key] = []map[string]any{{"HostPort": fmt.Sprint(port.Number)}}
+	}
+	if len(bindings) > 0 {
+		hostConfig["PortBindings"] = bindings
+	}
+
 	// Named devices rather than all of them: a dive that could see every GPU
 	// on the host could take one another dive is holding.
 	if len(spec.GPUs) > 0 {
@@ -319,6 +347,9 @@ func createRequest(spec Spec) map[string]any {
 		// differs, and a dive's two halves talk over it.
 		"NetworkDisabled": false,
 		"HostConfig":      hostConfig,
+	}
+	if len(exposed) > 0 {
+		request["ExposedPorts"] = exposed
 	}
 	return request
 }
@@ -452,6 +483,21 @@ func (r *Runtime) CreateNetwork(ctx context.Context, name string) (string, error
 		return "", fmt.Errorf("reading the created network: %w", err)
 	}
 	return created.ID, nil
+}
+
+// JoinNetwork attaches a container to a network it was not created on.
+//
+// A container is created on one network and can be put on others afterwards,
+// which is the only way to be on two: an interactive simulator needs the dive's
+// own network to hear its autonomy, and a network with a route to the host so
+// that somebody can watch. The autonomy is on the first and never the second.
+func (r *Runtime) JoinNetwork(ctx context.Context, network, id string) error {
+	response, err := r.do(ctx, http.MethodPost, "/networks/"+network+"/connect",
+		map[string]any{"Container": id})
+	if err != nil {
+		return err
+	}
+	return response.Close()
 }
 
 // RemoveNetwork deletes one. A dive's network outlives neither the dive nor a

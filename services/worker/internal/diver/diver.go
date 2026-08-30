@@ -75,6 +75,7 @@ type Runtime interface {
 	Remove(ctx context.Context, id string) error
 	CreateNetwork(ctx context.Context, name string) (string, error)
 	RemoveNetwork(ctx context.Context, id string) error
+	JoinNetwork(ctx context.Context, network, id string) error
 }
 
 // Diver runs dives on one host.
@@ -98,19 +99,32 @@ type Diver struct {
 	// nothing, silently, and a simulator that starts to an empty scene.
 	hostWorkDir string
 
+	// streamHost is the address a person watching an interactive dive connects
+	// to. A property of the host rather than of the platform: this agent knows
+	// which machine it is running on, and the control plane does not.
+	streamHost string
+
 	// RenewEvery is how often the lease is extended. Comfortably shorter than
 	// the lease itself, so that one missed renewal does not lose the device.
 	renewEvery time.Duration
 }
 
+// The ports Coral City streams on. Named here and set in the application to the
+// same numbers; a viewer is told them rather than left to guess, and they are
+// published unchanged so that what the run recorded is what the host listens on.
+const (
+	signalPort = 49100
+	streamPort = 47998
+)
+
 // New builds a diver.
 func New(platform Platform, runtime Runtime, packages *cache.Cache,
-	simImage, workDir, hostWorkDir string, renewEvery time.Duration,
+	simImage, workDir, hostWorkDir, streamHost string, renewEvery time.Duration,
 	logger *slog.Logger) *Diver {
 	return &Diver{
 		platform: platform, runtime: runtime, cache: packages,
 		simImage: simImage, workDir: workDir, hostWorkDir: hostWorkDir,
-		renewEvery: renewEvery, logger: logger,
+		streamHost: streamHost, renewEvery: renewEvery, logger: logger,
 	}
 }
 
@@ -308,6 +322,25 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		Attach: network,
 	}
 
+	// An interactive dive is watched, and the machine it is watched from is not
+	// this one. So the simulator runs Coral City rather than the headless
+	// runner, and the stream is published to the host.
+	//
+	// It is put on an ordinary network as well as the dive's own, because a
+	// port cannot be published from a network with no route off it. That is the
+	// simulator only: it is ours, and the thing being kept from the outside is
+	// the autonomy, which stays on the internal network and nothing else.
+	watching := claimed.Run.Mode == "interactive"
+	if watching {
+		simulator.Command = []string{"/isaac-sim/kit/kit"}
+		simulator.Args = []string{"/isaac-sim/apps/coral_city.kit", "--no-window"}
+		simulator.Attach = "bridge"
+		simulator.Publish = []container.Port{
+			{Number: signalPort, Protocol: "tcp"},
+			{Number: streamPort, Protocol: "udp"},
+		}
+	}
+
 	// Created and started explicitly rather than run in one call, because the
 	// agent waits on this container's output before starting the autonomy and
 	// so needs a handle on it.
@@ -321,8 +354,31 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		_ = d.runtime.Remove(removing, simID)
 	}()
 
+	if watching {
+		// Joined before it is started, so that the vehicle is on the dive's
+		// network by the time it announces itself. Attaching afterwards would
+		// mean a window in which it is publishing where its autonomy cannot
+		// hear it.
+		if err := d.runtime.JoinNetwork(ctx, network, simID); err != nil {
+			return "failed", nil, fmt.Sprintf("the simulator could not join the dive's network: %v", err)
+		}
+	}
+
 	if err := d.runtime.Start(ctx, simID); err != nil {
 		return "failed", nil, fmt.Sprintf("the simulator could not be started: %v", err)
+	}
+
+	if watching {
+		// Where to watch it. Recorded on the run rather than printed, because
+		// whoever asked for the dive is not the process that started it and may
+		// not be at a terminal at all.
+		_ = d.platform.Record(ctx, claimed.Run.ID, "stream_open", nil, map[string]any{
+			"host":       d.streamHost,
+			"signalPort": signalPort,
+			"streamPort": streamPort,
+			"transport":  "webrtc",
+		})
+		log.Info("the dive can be watched", "host", d.streamHost, "signalPort", signalPort)
 	}
 
 	// Somebody's own program, on the dive's network and no other — and started

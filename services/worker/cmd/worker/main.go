@@ -60,7 +60,7 @@ func run(logger *slog.Logger) error {
 		logger.Info("package cache", "files", held, "bytes", bytes)
 	}
 	dive := diver.New(&platform{client}, runtime, packages,
-		settings.SimImage, settings.WorkDir, settings.HostWorkDir,
+		settings.SimImage, settings.WorkDir, settings.HostWorkDir, settings.StreamHost,
 		// Comfortably shorter than the lease, so one missed renewal does not
 		// cost the device.
 		settings.HeartbeatInterval, logger)
