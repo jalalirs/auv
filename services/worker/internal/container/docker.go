@@ -225,6 +225,30 @@ func firstError(stream []byte) string {
 
 // Create prepares a container and reports its identifier.
 func (r *Runtime) Create(ctx context.Context, spec Spec) (string, error) {
+	request := createRequest(spec)
+
+	query := ""
+	if spec.Name != "" {
+		query = "?name=" + url.QueryEscape(spec.Name)
+	}
+	response, err := r.do(ctx, http.MethodPost, "/containers/create"+query, request)
+	if err != nil {
+		return "", err
+	}
+	defer response.Close()
+
+	var created struct {
+		ID string `json:"Id"`
+	}
+	if err := json.NewDecoder(response).Decode(&created); err != nil {
+		return "", fmt.Errorf("reading the created container: %w", err)
+	}
+	return created.ID, nil
+}
+
+// createRequest is what the runtime is asked for, separated from the asking so
+// that what a spec grants a container can be checked without one running.
+func createRequest(spec Spec) map[string]any {
 	command := append(append([]string{}, spec.Command...), spec.Args...)
 
 	// No network unless the platform granted this work that capability. It is
@@ -296,24 +320,7 @@ func (r *Runtime) Create(ctx context.Context, spec Spec) (string, error) {
 		"NetworkDisabled": false,
 		"HostConfig":      hostConfig,
 	}
-
-	query := ""
-	if spec.Name != "" {
-		query = "?name=" + url.QueryEscape(spec.Name)
-	}
-	response, err := r.do(ctx, http.MethodPost, "/containers/create"+query, request)
-	if err != nil {
-		return "", err
-	}
-	defer response.Close()
-
-	var created struct {
-		ID string `json:"Id"`
-	}
-	if err := json.NewDecoder(response).Decode(&created); err != nil {
-		return "", fmt.Errorf("reading the created container: %w", err)
-	}
-	return created.ID, nil
+	return request
 }
 
 // Start runs a prepared container.
