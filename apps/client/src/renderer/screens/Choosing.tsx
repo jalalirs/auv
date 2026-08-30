@@ -63,13 +63,12 @@ export function Choosing({ platform, onAsked }: {
         return;
       }
 
-      const me = await platform.me();
-      const organisation = me.principal.orgId;
-      if (organisation === undefined) {
+      const institution = await platform.institution();
+      if (institution === undefined) {
         setRefusal("You are not a member of an institution, so there is nowhere to keep a dive.");
         return;
       }
-      const defined = await platform.defineDive(organisation, {
+      const defined = await platform.defineDive(institution.id, {
         name: `${loaded.places.find((p) => p.id === place)?.name ?? "Dive"}`,
         cityVersionId: onePlace.id,
         vehicleVersionId: oneVehicle.id,
@@ -100,39 +99,54 @@ export function Choosing({ platform, onAsked }: {
     );
   }
 
+  const chosenPlace = loaded.places.find((p) => p.id === place);
+  const chosenVehicle = loaded.vehicles.find((v) => v.id === vehicle);
+
   return (
-    <div className="middle">
-      <Badge />
+    <div className="browse">
+      <header>
+        <Badge under="Choose where, and what to go in" />
+      </header>
 
-      <section className="rail">
-        <h2>Where</h2>
-        <div className="cards">
-          {loaded.places.map((one) => (
-            <Card key={one.id} picture={undefined} name={one.name}
-                  detail={one.summary || one.verticalDatum}
-                  chosen={one.id === place} onChoose={() => setPlace(one.id)} />
-          ))}
-        </div>
-      </section>
+      <div className="rails">
+        <section className="rail">
+          <h2>Where</h2>
+          <div className="cards">
+            {loaded.places.map((one) => (
+              <Card key={one.id} picture={undefined} name={one.name}
+                    detail={one.summary || one.verticalDatum}
+                    chosen={one.id === place} onChoose={() => setPlace(one.id)} />
+            ))}
+          </div>
+        </section>
 
-      <section className="rail">
-        <h2>What in</h2>
-        <div className="cards">
-          {loaded.vehicles.map((one) => (
-            <Card key={one.id} picture={undefined} name={one.name}
-                  detail={one.summary || "a vehicle"}
-                  chosen={one.id === vehicle} onChoose={() => setVehicle(one.id)} />
-          ))}
-        </div>
-      </section>
+        <section className="rail">
+          <h2>What in</h2>
+          <div className="cards">
+            {loaded.vehicles.map((one) => (
+              <Card key={one.id} picture={undefined} name={one.name}
+                    detail={one.summary || "a vehicle"}
+                    chosen={one.id === vehicle} onChoose={() => setVehicle(one.id)} />
+            ))}
+          </div>
+        </section>
+      </div>
 
-      <div className="go">
+      <footer>
+        <span className="note">
+          {chosenPlace === undefined
+            ? "Choose a place."
+            : chosenVehicle === undefined
+              ? `${chosenPlace.name} — now choose a vehicle.`
+              : `${chosenVehicle.name} in ${chosenPlace.name}.`}
+        </span>
+        <span className="refusal">{refusal}</span>
+        <span className="spacer" />
         <button disabled={asking || place === undefined || vehicle === undefined}
                 onClick={() => void dive()}>
           {asking ? "Asking for water…" : "Dive"}
         </button>
-        <span className="refusal">{refusal}</span>
-      </div>
+      </footer>
     </div>
   );
 }

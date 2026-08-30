@@ -14,6 +14,7 @@ type Schemas = components["schemas"];
 
 export type Problem = Schemas["Problem"]["error"];
 export type Principal = Schemas["Principal"];
+export type Organisation = Schemas["Organisation"];
 export type City = Schemas["City"];
 export type Vehicle = Schemas["Vehicle"];
 export type AssetVersion = Schemas["AssetVersion"];
@@ -129,8 +130,21 @@ export class Platform {
     return new Platform(base, session.token);
   }
 
-  me(): Promise<{ principal: Principal }> {
+  me(): Promise<{ principal: Principal; organisations: Organisation[] }> {
     return this.#request("GET", "/api/v1/me");
+  }
+
+  /**
+   * The institution a dive is kept under.
+   *
+   * A principal does not carry one — membership is a relation, and somebody may
+   * belong to several — so it is the first of the ones they belong to. When
+   * that stops being good enough the answer is to let people choose, not to
+   * invent a field on the principal.
+   */
+  async institution(): Promise<Organisation | undefined> {
+    const { organisations } = await this.me();
+    return organisations[0];
   }
 
   // ── what you have been granted ─────────────────────────────────────────────
