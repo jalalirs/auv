@@ -25,6 +25,24 @@ DROP TABLE IF EXISTS layer.layer;
 
 DROP TABLE IF EXISTS city.city;
 
+-- The triggers that protected the tables, and the types the columns were
+-- declared with. Named one at a time rather than dropped with a blanket
+-- CASCADE, so that anything unexpected still fails here instead of being
+-- quietly swept away with them.
+DROP FUNCTION IF EXISTS layer.protect_published_version();
+DROP FUNCTION IF EXISTS layer.protect_manifest();
+DROP FUNCTION IF EXISTS layer.enforce_truth_class_propagation();
+DROP FUNCTION IF EXISTS layer.protect_lineage();
+
+DROP TYPE IF EXISTS layer.uncertainty_kind;
+DROP TYPE IF EXISTS layer.visibility;
+DROP TYPE IF EXISTS layer.state;
+DROP TYPE IF EXISTS layer.truth_class;
+DROP TYPE IF EXISTS layer.kind;
+DROP TYPE IF EXISTS layer.scope_kind;
+
+DROP TYPE IF EXISTS city.discoverability;
+
 DROP SCHEMA IF EXISTS layer;
 DROP SCHEMA IF EXISTS city;
 
