@@ -477,6 +477,30 @@ func (s *Store) CreateVersion(ctx context.Context, conn db.Conn, spec VersionSpe
 	if err != nil {
 		return Version{}, fmt.Errorf("recording a version: %w", err)
 	}
+
+	// Each file is bound to the bytes already in storage under that digest.
+	// A manifest naming bytes nobody has uploaded is a package that cannot be
+	// fetched, and discovering that when a node tries to sync it — after a
+	// dive has claimed a GPU — is far too late. The insert is written so that
+	// a digest with no object matches nothing and the count comes up short.
+	for _, entry := range spec.Manifest {
+		tag, err := conn.Exec(ctx, `
+			INSERT INTO catalog.version_object (version_id, path, object_id)
+			SELECT $1, $2, o.id
+			  FROM store.object o
+			 WHERE o.sha256 = $3 AND o.bucket = 'evidence'
+			 LIMIT 1`,
+			id, entry.RelativePath, entry.Digest.Bytes())
+		if err != nil {
+			return Version{}, fmt.Errorf("binding %s to its bytes: %w", entry.RelativePath, err)
+		}
+		if tag.RowsAffected() == 0 {
+			return Version{}, fmt.Errorf(
+				"%w: no bytes have been uploaded for %s (%s), so this package could not be fetched",
+				domain.ErrInvalid, entry.RelativePath, entry.Digest)
+		}
+	}
+
 	return scanVersion(conn.QueryRow(ctx, selectVersion+` WHERE id = $1`, id))
 }
 
@@ -590,4 +614,47 @@ func (s *Store) Dynamics(ctx context.Context, versionID string) (Dynamics, error
 	copy(spec.CentreOfBuoyancy[:], buoyancy)
 	copy(spec.InertiaTensor[:], inertia)
 	return spec, nil
+}
+
+// File is one file in a package, and the object holding its bytes.
+type File struct {
+	Path      string        `json:"path"`
+	Digest    domain.Digest `json:"digest"`
+	SizeBytes int64         `json:"sizeBytes"`
+	MediaType string        `json:"mediaType"`
+	ObjectID  string        `json:"objectId"`
+}
+
+// Files lists a package's files with the objects that hold them, so that a node
+// can work out what it is missing and fetch only that.
+//
+// A cache keyed by digest is append-only: a digest never changes meaning, so
+// nothing a node already holds can go stale, and syncing a new version means
+// fetching the files whose digests are new rather than the package again.
+func (s *Store) Files(ctx context.Context, versionID string) ([]File, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT vo.path, o.sha256, o.size_bytes, o.media_type, o.id
+		  FROM catalog.version_object vo
+		  JOIN store.object o ON o.id = vo.object_id
+		 WHERE vo.version_id = $1
+		 ORDER BY vo.path`, versionID)
+	if err != nil {
+		return nil, fmt.Errorf("listing a package's files: %w", err)
+	}
+	defer rows.Close()
+
+	files := []File{}
+	for rows.Next() {
+		var file File
+		var digest []byte
+		if err := rows.Scan(&file.Path, &digest, &file.SizeBytes,
+			&file.MediaType, &file.ObjectID); err != nil {
+			return nil, err
+		}
+		if file.Digest, err = domain.DigestFromBytes(digest); err != nil {
+			return nil, err
+		}
+		files = append(files, file)
+	}
+	return files, rows.Err()
 }

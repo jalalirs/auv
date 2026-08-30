@@ -112,6 +112,10 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "PUT", Pattern: "/api/v1/versions/{versionId}/dynamics",
 		Summary: "state how a vehicle version moves", Action: policy.VehicleCreate,
 		Resource: atPlatform(), Handle: d.setDynamics})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/versions/{versionId}/files",
+		Summary: "a package's files, each with a short-lived URL to fetch it",
+		Action:  policy.PlatformReadCatalogue, Resource: atPlatform(),
+		Handle: d.listVersionFiles})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/versions/{versionId}/publish",
 		Summary: "make a package pinnable, and from then on unchangeable",
 		Action:  policy.CityCreate, Resource: atPlatform(), Handle: d.publishVersion})
