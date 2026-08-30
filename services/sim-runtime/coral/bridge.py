@@ -43,14 +43,27 @@ class Bridge:
         self._commanded = False
         self._commands_seen = 0
 
+        import os
+
         import rclpy
         from geometry_msgs.msg import Twist, TwistWithCovarianceStamped
         from sensor_msgs.msg import FluidPressure, Imu
         from std_msgs.msg import Float64MultiArray
 
         self._rclpy = rclpy
+
+        # The domain comes from the environment rather than being passed here.
+        #
+        # Both halves of a dive are given ROS_DOMAIN_ID by the agent, and
+        # passing it again as an argument is a second source of truth for the
+        # same fact — one that wins over the environment, and so can put the
+        # vehicle on a domain its controller is not listening to while both
+        # look correctly configured. The one that the controller reads is the
+        # one the vehicle should use.
+        if str(domain_id) != os.environ.get("ROS_DOMAIN_ID", ""):
+            os.environ["ROS_DOMAIN_ID"] = str(domain_id)
         if not rclpy.ok():
-            rclpy.init(args=None, domain_id=domain_id)
+            rclpy.init(args=None)
         self.node = rclpy.create_node("coral_city_vehicle")
 
         # What the vehicle publishes. The names and types are the vehicle's
