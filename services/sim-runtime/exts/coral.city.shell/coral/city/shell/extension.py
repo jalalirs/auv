@@ -36,6 +36,23 @@ CORAL = pathlib.Path("/isaac-sim/coral")
 MOST_CATCHUP_SECONDS = 0.25
 
 
+def _inherit_pythonpath() -> None:
+    """Put PYTHONPATH on the path, which Kit's interpreter does not do itself.
+
+    Isaac Sim ships a complete ROS 2 Jazzy Python stack and leaves it off the
+    interpreter's path; the image says where it is, and python.sh honours that.
+    Kit embeds its own interpreter and builds sys.path itself, so inside the
+    application the same import fails and the vehicle comes up with no way for
+    anything to fly it — reported, quietly, as one line about rclpy.
+
+    The image remains the one place that says where ROS is. This only makes the
+    embedded interpreter believe it.
+    """
+    for entry in os.environ.get("PYTHONPATH", "").split(os.pathsep):
+        if entry and entry not in sys.path:
+            sys.path.append(entry)
+
+
 class CoralCityShell(omni.ext.IExt):
     """The dive, and everything a person sees of it."""
 
@@ -49,6 +66,7 @@ class CoralCityShell(omni.ext.IExt):
 
         if str(CORAL) not in sys.path:
             sys.path.insert(0, str(CORAL))
+        _inherit_pythonpath()
 
         self.hud = Hud()
         self.hud.opened("opening the place…", "")
