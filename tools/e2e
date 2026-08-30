@@ -276,7 +276,7 @@ check "a vehicle whose centres of gravity and buoyancy coincide is refused" \
 
 check "stating how it moves" \
     "$(status "$ADMIN" PUT "/api/v1/versions/$VEHICLE_VERSION/dynamics" \
-        '{"massKg":11.5,"displacedVolumeM3":0.0114,"centreOfGravityM":[0,0,0],"centreOfBuoyancyM":[0,0,0.01],"inertiaTensor":[0.16,0,0,0,0.16,0,0,0,0.16],"addedMass":{"diagonal":[5.5,12.7,14.6,0.12,0.12,0.12]},"linearDamping":{"diagonal":[4.03,6.22,5.18,0.07,0.07,0.07]},"quadraticDamping":{"diagonal":[18.18,21.66,36.99,1.55,1.55,1.55]},"thrusters":[{"position":[0.156,0.111,0.085]}],"sensors":[{"kind":"imaging_sonar"}],"topicContract":{"publishes":["/sonar/image"]}}')" "204"
+        '{"massKg":11.5,"displacedVolumeM3":0.0114,"centreOfGravityM":[0,0,0],"centreOfBuoyancyM":[0,0,0.01],"inertiaTensor":[0.16,0,0,0,0.16,0,0,0,0.16],"addedMass":{"diagonal":[5.5,12.7,14.6,0.12,0.12,0.12]},"linearDamping":{"diagonal":[4.03,6.22,5.18,0.07,0.07,0.07]},"quadraticDamping":{"diagonal":[18.18,21.66,36.99,1.55,1.55,1.55]},"thrusters":[{"position":[0.156,0.111,0.085]}],"sensors":[{"kind":"imaging_sonar"}],"topicContract":{"publishes":[{"topic":"/sonar/image","type":"sensor_msgs/msg/Image"}],"subscribes":[{"topic":"/thruster_cmd","type":"std_msgs/msg/Float64MultiArray"}]}}')" "204"
 
 check "now it can be published" \
     "$(status "$ADMIN" POST "/api/v1/versions/$VEHICLE_VERSION/publish")" "200"
