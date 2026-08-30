@@ -705,7 +705,7 @@ type Claimed struct {
 //
 // Returns db.ErrNotFound when there is nothing to do, which is the ordinary
 // case and not an error.
-func (s *Store) ClaimNext(ctx context.Context, conn db.Conn, targetID string,
+func (s *Store) ClaimNext(ctx context.Context, conn db.Conn, targetName string,
 	lease time.Duration) (Claimed, error) {
 	var claimed Claimed
 	var runID, deviceID string
@@ -716,8 +716,12 @@ func (s *Store) ClaimNext(ctx context.Context, conn db.Conn, targetID string,
 		      FROM dive.run r
 		      JOIN compute.queue q ON q.id = r.queue_id
 		      JOIN compute.device d ON d.queue_id = q.id
+		      JOIN exec.target t ON t.id = d.target_id
 		     WHERE r.state = 'queued'
-		       AND d.target_id = $1
+		       -- An agent knows the name of the host it runs on, not the
+		       -- identifier the platform gave it, so the name is what it says.
+		       AND t.name = $1
+		       AND t.enabled
 		       AND d.enabled
 		       AND NOT q.draining
 		       AND NOT EXISTS (
@@ -735,7 +739,7 @@ func (s *Store) ClaimNext(ctx context.Context, conn db.Conn, targetID string,
 		  FROM candidate
 		 WHERE dive.run.id = candidate.run_id
 		RETURNING dive.run.id, candidate.device_id`,
-		targetID, lease.String()).Scan(&runID, &deviceID)
+		targetName, lease.String()).Scan(&runID, &deviceID)
 	if err != nil {
 		return Claimed{}, db.Translate(err)
 	}
