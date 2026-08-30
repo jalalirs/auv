@@ -35,7 +35,11 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-case "$KIND" in city|vehicle) ;; *) echo "kind is 'city' or 'vehicle'" >&2; exit 1 ;; esac
+case "$KIND" in
+    city)    COLLECTION=cities ;;
+    vehicle) COLLECTION=vehicles ;;
+    *) echo "kind is 'city' or 'vehicle'" >&2; exit 1 ;;
+esac
 [ -d "$SOURCE" ] || { echo "not a directory: $SOURCE" >&2; exit 1; }
 
 say()  { printf '\033[1m%s\033[0m\n' "$*"; }
@@ -153,7 +157,7 @@ step "$UPLOADED distinct objects, $ALREADY duplicate files sharing bytes already
 
 say "Recording the package"
 BODY="{\"label\":\"${LABEL}\",\"files\":[${MANIFEST_ENTRIES%,}]}"
-VERSION=$(api POST "/api/v1/${KIND}s/$ASSET/versions" "$BODY")
+VERSION=$(api POST "/api/v1/$COLLECTION/$ASSET/versions" "$BODY")
 VERSION_ID=$(printf '%s' "$VERSION" | json "['id']")
 [ -n "$VERSION_ID" ] \
     || die "the platform refused the package: $(printf '%s' "$VERSION" | head -c 300)"
