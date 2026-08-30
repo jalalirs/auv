@@ -56,9 +56,13 @@ COPY --from=oceansim --chown=1234:1234 /src/oceansim /isaac-sim/extsUser/isaacsi
 # it, so ACCEPT_EULA and PRIVACY_CONSENT are deliberately not set here. The
 # platform sets them when it starts a dive on an operator's behalf.
 
+# What runs a dive: it reads the brief the agent wrote, loads the place, puts
+# the vehicle in it, integrates the hydrodynamics and reports what happened.
+COPY --chown=1234:1234 services/sim-runtime/coral /isaac-sim/coral
+
 USER 1234:1234
 WORKDIR /isaac-sim
 
-# Nothing sensible to run by default: a dive names its own entrypoint, whether
-# that is a scene script, a headless batch run, or the streaming application.
-ENTRYPOINT ["/isaac-sim/python.sh"]
+# A dive by default, because that is what this image is for. Anything else —
+# a probe, the streaming application — names its own entrypoint.
+ENTRYPOINT ["/isaac-sim/python.sh", "/isaac-sim/coral/dive.py"]
