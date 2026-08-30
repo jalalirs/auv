@@ -229,6 +229,16 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		"city": city, "vehicle": vehicle,
 	})
 
+	// Fetched if this host has not got it. The runtime lives in the registry
+	// rather than as a local tag, because a local tag is a name anything with a
+	// docker socket can remove and on a shared host things do.
+	if err := d.runtime.Present(ctx, d.simImage); err != nil {
+		log.Info("fetching the simulation runtime", "image", d.simImage)
+		if err := d.runtime.Pull(ctx, d.simImage); err != nil {
+			return "failed", nil, fmt.Sprintf("the simulation runtime could not be fetched: %v", err)
+		}
+	}
+
 	log.Info("starting the simulator", "image", d.simImage, "city", city, "vehicle", vehicle,
 		"autonomy", claimed.AutonomyImage)
 
@@ -263,6 +273,9 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		// every GPU on the host could take one another dive is holding.
 		GPUs: []string{fmt.Sprint(claimed.DeviceIndex)},
 		Name: "coral-sim-" + claimed.Run.ID,
+		// The autonomy joins this container's namespaces, and Docker will not
+		// let it unless this one says so first.
+		AllowJoining: true,
 	}
 
 	// Created and started explicitly rather than run in one call, because the
