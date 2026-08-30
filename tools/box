@@ -40,10 +40,14 @@ REGISTRY_PORT="${CORAL_CITY_REGISTRY_PORT:-18081}"
 # say — to let the application on somebody's own machine reach it, and it stays
 # unreachable from everywhere else.
 BIND="${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}"
+# Storage and the registry are the host talking to itself — the agent pulls
+# through the daemon on this machine, and presigned URLs are followed down a
+# tunnel — so they stay on loopback whatever the platform is reachable at.
+INTERNAL="127.0.0.1"
 # Where the simulation runtime lives. Through the registry, so that it survives
 # anything that tidies up local tags, and so that a second host needs only to
 # pull rather than to build twenty-one gigabytes of it.
-SIM_IMAGE="127.0.0.1:${REGISTRY_PORT}/sim-runtime:${CORAL_CITY_IMAGE_TAG:-r1}"
+SIM_IMAGE="${INTERNAL}:${REGISTRY_PORT}/sim-runtime:${CORAL_CITY_IMAGE_TAG:-r1}"
 CONSOLE_PORT="${CORAL_CITY_CONSOLE_PORT:-18082}"
 STORAGE_PORT="${CORAL_CITY_STORAGE_PORT:-19000}"
 STORAGE_CONSOLE_PORT="${CORAL_CITY_STORAGE_CONSOLE_PORT:-19001}"
@@ -169,9 +173,9 @@ command_status() {
     printf '\n'
     say "Endpoints on the box"
     printf '  api        %s:%s\n' "${BIND}" "${API_PORT}"
-    printf '  registry   %s:%s\n' "${BIND}" "${REGISTRY_PORT}"
+    printf '  registry   %s:%s\n' "${INTERNAL}" "${REGISTRY_PORT}"
     printf '  console    127.0.0.1:%s\n' "${CONSOLE_PORT}"
-    printf '  storage    %s:%s  (console %s)\n' "${BIND}" "${STORAGE_PORT}" "${STORAGE_CONSOLE_PORT}"
+    printf '  storage    %s:%s  (console %s)\n' "${INTERNAL}" "${STORAGE_PORT}" "${STORAGE_CONSOLE_PORT}"
     printf '\n'
     say "Simulation runtime"
     on_box "docker manifest inspect --insecure ${SIM_IMAGE} >/dev/null 2>&1 \
@@ -205,9 +209,9 @@ command_tunnel() {
         -N \
         -L "${API_PORT}:${BIND}:${API_PORT}" \
         -L "${CONSOLE_PORT}:${BIND}:${CONSOLE_PORT}" \
-        -L "${REGISTRY_PORT}:${BIND}:${REGISTRY_PORT}" \
-        -L "${STORAGE_PORT}:${BIND}:${STORAGE_PORT}" \
-        -L "${STORAGE_CONSOLE_PORT}:${BIND}:${STORAGE_CONSOLE_PORT}" \
+        -L "${REGISTRY_PORT}:${INTERNAL}:${REGISTRY_PORT}" \
+        -L "${STORAGE_PORT}:${INTERNAL}:${STORAGE_PORT}" \
+        -L "${STORAGE_CONSOLE_PORT}:${INTERNAL}:${STORAGE_CONSOLE_PORT}" \
         "${GPU_HOST}"
 }
 
