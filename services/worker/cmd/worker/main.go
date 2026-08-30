@@ -61,6 +61,7 @@ func run(logger *slog.Logger) error {
 	}
 	dive := diver.New(&platform{client}, runtime, packages,
 		settings.SimImage, settings.WorkDir, settings.HostWorkDir, settings.StreamHost,
+		settings.StreamSignalPort, settings.StreamMediaPort,
 		// Comfortably shorter than the lease, so one missed renewal does not
 		// cost the device.
 		settings.HeartbeatInterval, logger)

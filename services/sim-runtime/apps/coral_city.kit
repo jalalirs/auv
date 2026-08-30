@@ -77,8 +77,13 @@ allowResize = true
 outDirectory = "${data}"
 
 [settings.exts."omni.kit.livestream.app"]
-primaryStream.signalPort = 49100
-primaryStream.streamPort = 47998
+# Below 32768, which is where Linux's ephemeral range starts. Isaac Sim's own
+# defaults — 49100 and 47998 — sit inside it, so the kernel may already have
+# handed either to an outgoing connection, and binding them fails at container
+# start with the dive already scheduled. The agent overrides these per dive; a
+# host running two is watched on two pairs.
+primaryStream.signalPort = 18100
+primaryStream.streamPort = 18101
 primaryStream.allowDynamicResize = true
 primaryStream.streamType = "webrtc"
 
