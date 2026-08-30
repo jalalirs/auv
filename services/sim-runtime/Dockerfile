@@ -60,6 +60,16 @@ COPY --from=oceansim --chown=1234:1234 /src/oceansim /isaac-sim/extsUser/isaacsi
 # the vehicle in it, integrates the hydrodynamics and reports what happened.
 COPY --chown=1234:1234 services/sim-runtime/coral /isaac-sim/coral
 
+# Coral City: the application somebody watches a dive in. It is not the editor,
+# and it steps the same dive the headless runner steps — the schedule differs,
+# the physics does not.
+#
+# Both go where Kit already looks: applications in apps, extensions in extsUser
+# under a directory named for the extension. Owned by the image's user, because
+# Kit writes bytecode into an extension directory it has loaded.
+COPY --chown=1234:1234 services/sim-runtime/apps/coral_city.kit /isaac-sim/apps/coral_city.kit
+COPY --chown=1234:1234 services/sim-runtime/exts/coral.city.shell /isaac-sim/extsUser/coral.city.shell
+
 USER 1234:1234
 WORKDIR /isaac-sim
 

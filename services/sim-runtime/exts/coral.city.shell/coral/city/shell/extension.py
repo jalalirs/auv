@@ -1,0 +1,201 @@
+"""Coral City, running.
+
+The application starts, this reads the brief the agent wrote, opens the place,
+puts the vehicle in it and steps the same dive the headless runner steps. The
+difference is only in the schedule: here it advances by wall-clock time, because
+a person is watching and a controller is flying, and a dive that ran two
+thousand steps in half a second would be over before either noticed.
+
+Nothing about the physics is decided here. If it were, an interactive dive and a
+batch dive of the same brief could disagree, and the whole claim that a replay
+is a replay would be worth nothing.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import pathlib
+import sys
+import time
+
+import carb
+import omni.ext
+import omni.kit.app
+import omni.usd
+
+from .hud import Hud
+
+# Where the runtime keeps the dive: the physics, the boundary, and the loader
+# the headless runner uses too.
+CORAL = pathlib.Path("/isaac-sim/coral")
+
+# How far behind wall-clock time the physics is allowed to fall before it stops
+# trying to catch up. Without a bound, one slow frame makes the next frame ask
+# for more steps, which makes it slower still.
+MOST_CATCHUP_SECONDS = 0.25
+
+
+class CoralCityShell(omni.ext.IExt):
+    """The dive, and everything a person sees of it."""
+
+    def on_startup(self, extension_id: str) -> None:
+        self.dive = None
+        self.hud = None
+        self.update = None
+        self.began = None
+        self.waiting_until = None
+        self.finished = False
+
+        if str(CORAL) not in sys.path:
+            sys.path.insert(0, str(CORAL))
+
+        self.hud = Hud()
+        self.hud.opened("opening the place…", "")
+
+        # Subscribed before anything is loaded, so that a failure to open has
+        # somewhere to be reported rather than a black window.
+        self.update = (omni.kit.app.get_app().get_update_event_stream()
+                       .create_subscription_to_pop(self._frame, name="coral.city.dive"))
+
+        try:
+            self._open()
+        except Exception as exc:  # a shell that dies silently is worse than one that says so
+            carb.log_error(f"Coral City could not open the dive: {exc}")
+            self.hud.opened("this dive would not open", str(exc)[:120])
+
+    # ── opening ──────────────────────────────────────────────────────────────
+
+    def _open(self) -> None:
+        from dive import prepare, seed_everything
+        from runner import Dive
+
+        brief_path = os.environ.get("CORAL_CITY_BRIEF", "/dive/dive.json")
+        brief = json.loads(pathlib.Path(brief_path).read_text())
+        seed_everything(int(brief.get("seed", 0)))
+        self.brief = brief
+
+        prepared = prepare(brief, self._say)
+        if prepared is None:
+            self.hud.opened("this dive is not runnable", "")
+            return
+        scene, body, allocator = prepared
+
+        dive = Dive(brief, body, allocator, scene, self._say)
+        if not dive.open():
+            self.hud.opened("the place would not open", str(scene))
+            return
+        dive.connect()
+        self.dive = dive
+
+        self.hud.opened(
+            brief.get("cityName") or scene.stem,
+            brief.get("vehicleName") or f"{body.model.mass_kg:g} kg, "
+                                        f"{len(body.model.thrusters)} thrusters")
+        self._watch_from(dive)
+
+        if dive.bridge is not None:
+            self.waiting_until = time.monotonic() + float(
+                brief.get("autonomyWaitSeconds", 60.0))
+        else:
+            self.began = time.monotonic()
+
+    def _watch_from(self, dive) -> None:
+        """Put the camera where the vehicle can be seen from.
+
+        Behind, above, and looking down slightly — the view you would want from
+        a chase boat. It does not follow: a camera that chases the vehicle makes
+        the vehicle look still and the water look moving, which is exactly
+        backwards for judging whether a controller is holding depth.
+        """
+        try:
+            from omni.kit.viewport.utility import get_active_viewport
+            from pxr import Gf, UsdGeom
+
+            viewport = get_active_viewport()
+            if viewport is None:
+                return
+            stage = omni.usd.get_context().get_stage()
+            camera_path = "/World/CoralCityCamera"
+            camera = UsdGeom.Camera.Define(stage, camera_path)
+            x, y, z = (float(v) for v in dive.position)
+            transform = UsdGeom.Xformable(camera.GetPrim())
+            transform.ClearXformOpOrder()
+            transform.AddTranslateOp().Set(Gf.Vec3d(x - 6.0, y - 6.0, z + 2.5))
+            transform.AddRotateXYZOp().Set(Gf.Vec3f(74.0, 0.0, -45.0))
+            viewport.camera_path = camera_path
+        except Exception as exc:
+            carb.log_warn(f"Coral City could not place the camera: {exc}")
+
+    # ── running ──────────────────────────────────────────────────────────────
+
+    def _frame(self, event) -> None:
+        dive = self.dive
+        if dive is None or self.finished:
+            return
+
+        # Waiting for somebody to take the controls. The vehicle publishes while
+        # it waits, because a vehicle sitting in the water still has a depth,
+        # and saying nothing until commanded deadlocks against a controller
+        # waiting for a reading to respond to.
+        if self.waiting_until is not None:
+            if dive.bridge is not None and dive.bridge.commanded:
+                self._say("autonomy_ready", waitedSeconds=0.0)
+                self.waiting_until = None
+                self.began = time.monotonic()
+            elif time.monotonic() >= self.waiting_until:
+                self._say("autonomy_absent",
+                          waitedSeconds=float(self.brief.get("autonomyWaitSeconds", 60.0)))
+                self.hud.untended()
+                self.waiting_until = None
+                self.began = time.monotonic()
+            else:
+                dive.publish()
+                self.hud.waiting(self.waiting_until - time.monotonic())
+                self.hud.show(dive.state())
+                return
+
+        # Advance to where wall-clock time says the vehicle should be. The
+        # physics step is fixed; what varies is how many of them a frame is
+        # worth, which is the only way a fixed-step integrator and a variable
+        # frame rate can both be true.
+        behind = min((time.monotonic() - self.began) - dive.simulated,
+                     MOST_CATCHUP_SECONDS)
+        steps = int(behind / dive.dt)
+        for _ in range(steps):
+            if dive.done:
+                break
+            dive.step()
+
+        dive.show()
+        self.hud.show(dive.state())
+        if dive.bridge is not None and dive.bridge.commanded:
+            self.hud.flying(dive.bridge.commands_seen)
+
+        if dive.done:
+            self.finished = True
+            dive.close()
+            self._say("succeeded", simulatedSeconds=round(dive.simulated, 3))
+            self.hud.finished()
+
+    # ── reporting ────────────────────────────────────────────────────────────
+
+    def _say(self, kind: str, **detail) -> None:
+        """The same line the headless runner writes.
+
+        One format, whoever is watching: the agent reads this output to know
+        what happened, and a dive that reported differently depending on whether
+        somebody was looking at it would be two dives.
+        """
+        print(json.dumps({"event": kind, **detail}, separators=(", ", ": ")),
+              flush=True)
+
+    def on_shutdown(self) -> None:
+        if self.update is not None:
+            self.update = None
+        if self.dive is not None and not self.finished:
+            self.dive.close()
+            self.dive = None
+        if self.hud is not None:
+            self.hud.close()
+            self.hud = None

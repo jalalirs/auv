@@ -1,14 +1,19 @@
-"""Run one dive.
+"""Run one dive, headless.
 
 The agent hands over a brief — which place, which vehicle, what water, what
 seed — and this loads the place, puts the vehicle in it, integrates the
 hydrodynamics, and reports what happened.
 
+The dive itself is in runner.py, because the client runs the same one and two
+implementations of the same physics would eventually disagree. What is here is
+only the part that is particular to nobody watching: run as fast as the machine
+allows, report to stdout, exit with a status.
+
 Determinism is the property everything else rests on, so it is arranged here
 rather than hoped for: a fixed timestep, every generator seeded from the seed
 the run pinned, and no dependence on wall-clock time anywhere in the loop. Two
-runs of the same brief produce the same trajectory, which is what makes a
-replay a replay and a regression real rather than noise.
+runs of the same brief produce the same trajectory, which is what makes a replay
+a replay and a regression real rather than noise.
 """
 
 from __future__ import annotations
@@ -19,10 +24,6 @@ import pathlib
 import random
 import sys
 
-# Fixed, and not negotiable: a variable timestep makes two runs of the same seed
-# diverge, and everything the platform claims about a result rests on them not
-# diverging. 200 Hz is comfortably above the vehicle's dynamics and cheap.
-PHYSICS_HZ = 200.0
 RENDER_HZ = 60.0
 
 
@@ -46,22 +47,16 @@ def say(kind: str, **detail) -> None:
     print(json.dumps({"event": kind, **detail}, separators=(", ", ": ")), flush=True)
 
 
-def main() -> int:
-    brief = read_brief()
-    seed = int(brief.get("seed", 0))
+def prepare(brief: dict, say):
+    """Everything that can be got wrong before a simulator is started.
 
-    # Every generator that could affect the trajectory, seeded from the one the
-    # run pinned. Missing one of these is how a "deterministic" simulator
-    # produces two different answers to the same question.
-    random.seed(seed)
-    try:
-        import numpy as np
-        np.random.seed(seed % (2**32))
-    except ImportError:
-        pass
-
-    say("brief", runId=brief.get("runId"), seed=seed,
-        mode=brief.get("mode"), rosDomain=brief.get("rosDomainId"))
+    Loaded first so that a vehicle whose parameters are wrong fails in a second
+    rather than after a minute of simulator startup. Returns the scene, the
+    body and the allocator, or None with the reason already reported.
+    """
+    sys.path.insert(0, str(pathlib.Path(__file__).parent))
+    from hydrodynamics import Allocator, Body, Hydrodynamics
+    from runner import find_scene
 
     city = pathlib.Path(brief.get("cityPath", "/dive/city"))
     vehicle = pathlib.Path(brief.get("vehiclePath", "/dive/vehicle"))
@@ -69,27 +64,20 @@ def main() -> int:
     scene = find_scene(city)
     if scene is None:
         say("failed", why=f"no USD scene in the place at {city}")
-        return 2
+        return None
 
     dynamics_file = vehicle / "dynamics.json"
     say("packages", scene=str(scene.relative_to(city)),
         hasVehicleDynamics=dynamics_file.exists())
 
-    # The hydrodynamics are loaded before Isaac Sim, so that a vehicle whose
-    # parameters are wrong fails in a second rather than after a minute of
-    # simulator startup.
-    sys.path.insert(0, str(pathlib.Path(__file__).parent))
-    from hydrodynamics import Allocator, Body, Hydrodynamics
-
-    if dynamics_file.exists():
-        model = Hydrodynamics.from_package(dynamics_file)
-    else:
+    if not dynamics_file.exists():
         # The vehicle package carries its USD but not its parameters. That is a
         # vehicle that can be drawn and not flown, and saying so is better than
         # inventing numbers that would make the dive look like it worked.
         say("failed", why="the vehicle package states no dynamics, so it cannot be flown")
-        return 2
+        return None
 
+    model = Hydrodynamics.from_package(dynamics_file)
     body = Body(model)
     allocator = Allocator(model)
     say("vehicle",
@@ -99,11 +87,38 @@ def main() -> int:
         netBuoyancyN=round(model.net_buoyancy_n, 3),
         thrusters=len(model.thrusters),
         effectiveMassKg=[round(m, 2) for m in body.effective_mass()[:3]])
+    return scene, body, allocator
+
+
+def seed_everything(seed: int) -> None:
+    """Every generator that could affect the trajectory.
+
+    Missing one of these is how a "deterministic" simulator produces two
+    different answers to the same question.
+    """
+    random.seed(seed)
+    try:
+        import numpy as np
+        np.random.seed(seed % (2**32))
+    except ImportError:
+        pass
+
+
+def main() -> int:
+    brief = read_brief()
+    seed = int(brief.get("seed", 0))
+    seed_everything(seed)
+
+    say("brief", runId=brief.get("runId"), seed=seed,
+        mode=brief.get("mode"), rosDomain=brief.get("rosDomainId"))
+
+    prepared = prepare(brief, say)
+    if prepared is None:
+        return 2
+    scene, body, allocator = prepared
 
     from isaacsim import SimulationApp
-
-    headless = brief.get("mode") != "interactive"
-    app = SimulationApp({"headless": headless})
+    app = SimulationApp({"headless": brief.get("mode") != "interactive"})
 
     try:
         return fly(app, brief, scene, body, allocator)
@@ -111,86 +126,16 @@ def main() -> int:
         app.close()
 
 
-def find_scene(root: pathlib.Path) -> pathlib.Path | None:
-    """The USD a place is loaded from.
+def fly(app, brief: dict, scene, body, allocator) -> int:
+    """Step the dive as fast as the machine allows, or as fast as a controller."""
+    import time as wallclock
 
-    A place may carry several — a scene and a water surface, say — so the one
-    that is not obviously a component is chosen, and the choice is reported so
-    that nobody has to guess which was used.
-    """
-    candidates = sorted(root.rglob("*.usd")) + sorted(root.rglob("*.usda"))
-    if not candidates:
-        return None
-    for candidate in candidates:
-        name = candidate.stem.lower()
-        if "water" not in name and "surface" not in name:
-            return candidate
-    return candidates[0]
+    from runner import Dive
 
-
-def fly(app, brief: dict, scene: pathlib.Path, body, allocator) -> int:
-    """Load the place, put the vehicle in it, and integrate."""
-    import numpy as np
-    import omni.usd
-    from pxr import Gf, UsdGeom, UsdLux, UsdPhysics
-
-    context = omni.usd.get_context()
-    context.open_stage(str(scene))
-    stage = context.get_stage()
-    if stage is None:
-        say("failed", why=f"the place at {scene} would not open")
+    dive = Dive(brief, body, allocator, scene, say)
+    if not dive.open():
         return 2
-
-    prims = sum(1 for _ in stage.Traverse())
-    say("place_open", scene=str(scene), prims=prims)
-
-    # Gravity on, which is the whole point: OceanSim disables it and applies
-    # damping instead, and a vehicle with no weight has nothing for buoyancy to
-    # act against.
-    physics = UsdPhysics.Scene.Define(stage, "/World/physicsScene")
-    physics.CreateGravityDirectionAttr().Set(Gf.Vec3f(0.0, 0.0, -1.0))
-    physics.CreateGravityMagnitudeAttr().Set(9.80665)
-
-    if not stage.GetPrimAtPath("/World/Sun"):
-        UsdLux.DistantLight.Define(stage, "/World/Sun").CreateIntensityAttr(3000.0)
-
-    initial = brief.get("initialState") or {}
-    position = np.array(initial.get("positionM", [0.0, 0.0, -2.0]), dtype=float)
-
-    # A body of the vehicle's actual mass, at the vehicle's actual place. The
-    # visual hull is not loaded here: what is being integrated is the dynamics,
-    # and a dive that reported a trajectory it had not computed would be worse
-    # than one that reported no picture.
-    vehicle_path = "/World/Vehicle"
-    xform = UsdGeom.Xform.Define(stage, vehicle_path)
-    xform.AddTranslateOp().Set(Gf.Vec3d(*position))
-
-    say("vehicle_placed", position=[round(float(x), 3) for x in position])
-
-    steps = int(brief.get("durationSeconds", 10.0) * PHYSICS_HZ)
-    dt = 1.0 / PHYSICS_HZ
-    # The boundary. If nothing is flying this vehicle the commands stay zero
-    # and it drifts, which is what an untended ROV does.
-    bridge = None
-    if brief.get("autonomy", True):
-        try:
-            from bridge import Bridge
-            bridge = Bridge(allocator.model, allocator,
-                            int(brief.get("rosDomainId", 0)),
-                            logger=lambda kind, **d: say(kind, **d))
-            say("bridge_open", domain=brief.get("rosDomainId"),
-                publishes=["/depth", "/imu/data", "/dvl/twist"],
-                subscribes=["/thruster_cmd", "/cmd_vel"])
-        except Exception as exc:
-            say("bridge_unavailable", why=str(exc)[:200])
-
-    commands = np.zeros(len(allocator.model.thrusters))
-
-    velocity = np.zeros(6)
-    effective = body.effective_mass()
-    rotation = np.eye(3)
-    simulated = 0.0
-    reported = 0.0
+    dive.connect()
 
     # A controller needs wall-clock time to exist in.
     #
@@ -200,96 +145,45 @@ def fly(app, brief: dict, scene: pathlib.Path, body, allocator) -> int:
     # So a dive with autonomy attached waits for it to appear and then runs at
     # real time; one without runs as fast as the machine allows, which is the
     # whole point of batch.
-    import time as wallclock
-
-    if bridge is not None:
+    waited = float(brief.get("autonomyWaitSeconds", 60.0))
+    if dive.bridge is not None:
         # Publishing while it waits, because otherwise neither side can go
         # first: this was waiting for a command, the controller was waiting for
         # a depth reading to respond to, and each was the other's precondition.
-        #
-        # A vehicle sitting in the water still has a depth and still reports it.
-        # Saying nothing until commanded would be the simulator behaving in a
-        # way no vehicle does, and it deadlocked exactly as that deserves.
-        deadline = wallclock.monotonic() + float(brief.get("autonomyWaitSeconds", 60.0))
-        while not bridge.commanded and wallclock.monotonic() < deadline:
-            bridge.publish(0.0, position, velocity, body.model.density)
+        deadline = wallclock.monotonic() + waited
+        while not dive.bridge.commanded and wallclock.monotonic() < deadline:
+            dive.publish()
             app.update()
             wallclock.sleep(0.05)
-        if bridge.commanded:
+        if dive.bridge.commanded:
             say("autonomy_ready",
-                waitedSeconds=round(60.0 - (deadline - wallclock.monotonic()), 2))
+                waitedSeconds=round(waited - (deadline - wallclock.monotonic()), 2))
         else:
             # Not a failure. A vehicle nobody commands drifts, and a dive that
             # recorded that is a real result — it is simply a different one, and
             # the record says which.
-            say("autonomy_absent", waitedSeconds=60.0)
+            say("autonomy_absent", waitedSeconds=waited)
 
-    paced = bridge is not None and bridge.commanded
-    say("running", steps=steps, physicsHz=PHYSICS_HZ, seconds=steps * dt,
-        realTime=paced)
+    paced = dive.bridge is not None and dive.bridge.commanded
+    say("running", steps=dive.steps, physicsHz=1.0 / dive.dt,
+        seconds=dive.steps * dive.dt, realTime=paced)
     began = wallclock.monotonic()
 
-    for step in range(steps):
-        if bridge is not None:
-            commands = bridge.commands()
-
-        wrench = body.step(rotation, velocity, commands, dt)
-
-        # Semi-implicit Euler at a fixed step. Not because it is the best
-        # integrator but because it is the same integrator every time, which
-        # matters more than accuracy for a result two runs must agree on.
-        velocity[:3] += (wrench[:3] / effective[:3]) * dt
-        velocity[3:] += (wrench[3:] / effective[3:]) * dt
-        position += rotation @ velocity[:3] * dt
-        simulated += dt
-
-        # Once a second of simulated time, not of wall-clock: the report is part
-        # of the run, and a report that depended on how fast the machine was
-        # would make two runs of the same seed produce different records.
-        # Sensors at their own rate rather than every physics step: a real DVL
-        # reports at tens of hertz, not two hundred, and a stack tuned against
-        # a sensor that never lies about its rate will be surprised by one that
-        # does.
-        if bridge is not None and step % 10 == 0:
-            bridge.publish(simulated, position, velocity, body.model.density)
-
-        if simulated - reported >= 1.0:
-            reported = simulated
-            say("state",
-                t=round(simulated, 3),
-                depthM=round(float(-position[2]), 4),
-                speedMs=round(float(np.linalg.norm(velocity[:3])), 4),
-                commanded=bool(bridge.commanded) if bridge else False,
-                thrust=[round(float(c), 3) for c in commands],
-                position=[round(float(x), 4) for x in position])
-
-        if step % 4 == 0:
+    while not dive.done:
+        dive.step()
+        if dive.taken % 4 == 0:
             app.update()
-
         # Paced only when something is flying it. Running ahead of the
         # controller would mean the vehicle experienced a command issued for
         # where it used to be, which is a lag no real vehicle has and no
         # controller should be tuned against.
         if paced:
-            ahead = began + simulated - wallclock.monotonic()
+            ahead = began + dive.simulated - wallclock.monotonic()
             if ahead > 0:
                 wallclock.sleep(min(ahead, 0.05))
 
-    say("settled",
-        t=round(simulated, 3),
-        depthM=round(float(-position[2]), 4),
-        speedMs=round(float(np.linalg.norm(velocity[:3])), 4))
-
-    if bridge is not None:
-        # Whether anything actually flew it. A dive that ran with nobody at the
-        # controls is a valid result and a different one, and the difference
-        # should not have to be inferred from the trajectory.
-        say("autonomy",
-            commanded=bool(bridge.commanded),
-            commandsReceived=bridge.commands_seen)
-        bridge.close()
-
-    say("succeeded", simulatedSeconds=round(simulated, 3))
+    dive.close()
+    say("succeeded", simulatedSeconds=round(dive.simulated, 3))
     return 0
 
 
