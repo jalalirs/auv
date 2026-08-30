@@ -3,6 +3,7 @@ package dive
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -143,6 +144,61 @@ func TestADiveNamesEverythingADiveNeeds(t *testing.T) {
 	} {
 		if err := missing(full).Validate(); !errors.Is(err, domain.ErrInvalid) {
 			t.Error("a dive missing one of its four determinants was accepted")
+		}
+	}
+}
+
+func TestAStackIsRefusedAVehicleItCannotTalkTo(t *testing.T) {
+	// The most expensive kind of wrong answer this platform could give. A stack
+	// subscribed to a sonar on a vehicle that carries none does not fail: it
+	// waits for a message that never arrives and flies badly, and the dive
+	// produces a result that looks like a poor controller rather than one that
+	// was never told anything. Finding that out costs a GPU and a wait.
+	vehicle := json.RawMessage(`{
+		"publishes":  [{"topic":"/depth"}, {"topic":"/imu/data"}],
+		"subscribes": [{"topic":"/thruster_cmd"}]
+	}`)
+
+	if err := CheckContract(vehicle,
+		json.RawMessage(`["/depth"]`),
+		json.RawMessage(`["/thruster_cmd"]`)); err != nil {
+		t.Fatalf("a stack asking for what the vehicle offers was refused: %v", err)
+	}
+
+	err := CheckContract(vehicle,
+		json.RawMessage(`["/depth","/sonar/image"]`),
+		json.RawMessage(`["/thruster_cmd"]`))
+	if !errors.Is(err, domain.ErrInvalid) {
+		t.Fatal("a stack asking for a sonar this vehicle does not carry was accepted")
+	}
+	if !strings.Contains(err.Error(), "/sonar/image") {
+		t.Errorf("the refusal did not name what was missing: %v", err)
+	}
+
+	err = CheckContract(vehicle,
+		json.RawMessage(`["/depth"]`),
+		json.RawMessage(`["/thruster_cmd","/gripper"]`))
+	if !errors.Is(err, domain.ErrInvalid) {
+		t.Error("a stack commanding a gripper this vehicle has not got was accepted")
+	}
+}
+
+func TestAVehicleThatStatesNothingRefusesNobody(t *testing.T) {
+	// Checking against an unstated contract would refuse every stack rather
+	// than none, which is the wrong way round: an unstated contract is a gap in
+	// the vehicle's description, not evidence against the stack.
+	if err := CheckContract(nil, json.RawMessage(`["/anything"]`), nil); err != nil {
+		t.Errorf("a vehicle that states no contract refused a stack: %v", err)
+	}
+}
+
+func TestATopicListIsNamesOrObjects(t *testing.T) {
+	// A stack's author should not have to guess which shape this platform
+	// wanted, so both are read.
+	vehicle := json.RawMessage(`{"publishes":[{"topic":"/depth"}],"subscribes":[]}`)
+	for _, shape := range []string{`["/depth"]`, `[{"topic":"/depth"}]`} {
+		if err := CheckContract(vehicle, json.RawMessage(shape), nil); err != nil {
+			t.Errorf("%s was refused: %v", shape, err)
 		}
 	}
 }

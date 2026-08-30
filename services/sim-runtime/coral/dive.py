@@ -166,6 +166,21 @@ def fly(app, brief: dict, scene: pathlib.Path, body, allocator) -> int:
 
     steps = int(brief.get("durationSeconds", 10.0) * PHYSICS_HZ)
     dt = 1.0 / PHYSICS_HZ
+    # The boundary. If nothing is flying this vehicle the commands stay zero
+    # and it drifts, which is what an untended ROV does.
+    bridge = None
+    if brief.get("autonomy", True):
+        try:
+            from bridge import Bridge
+            bridge = Bridge(allocator.model, allocator,
+                            int(brief.get("rosDomainId", 0)),
+                            logger=lambda kind, **d: say(kind, **d))
+            say("bridge_open", domain=brief.get("rosDomainId"),
+                publishes=["/depth", "/imu/data", "/dvl/twist"],
+                subscribes=["/thruster_cmd", "/cmd_vel"])
+        except Exception as exc:
+            say("bridge_unavailable", why=str(exc)[:200])
+
     commands = np.zeros(len(allocator.model.thrusters))
 
     velocity = np.zeros(6)
@@ -177,6 +192,9 @@ def fly(app, brief: dict, scene: pathlib.Path, body, allocator) -> int:
     say("running", steps=steps, physicsHz=PHYSICS_HZ, seconds=steps * dt)
 
     for step in range(steps):
+        if bridge is not None:
+            commands = bridge.commands()
+
         wrench = body.step(rotation, velocity, commands, dt)
 
         # Semi-implicit Euler at a fixed step. Not because it is the best
@@ -190,12 +208,21 @@ def fly(app, brief: dict, scene: pathlib.Path, body, allocator) -> int:
         # Once a second of simulated time, not of wall-clock: the report is part
         # of the run, and a report that depended on how fast the machine was
         # would make two runs of the same seed produce different records.
+        # Sensors at their own rate rather than every physics step: a real DVL
+        # reports at tens of hertz, not two hundred, and a stack tuned against
+        # a sensor that never lies about its rate will be surprised by one that
+        # does.
+        if bridge is not None and step % 10 == 0:
+            bridge.publish(simulated, position, velocity, body.model.density)
+
         if simulated - reported >= 1.0:
             reported = simulated
             say("state",
                 t=round(simulated, 3),
                 depthM=round(float(-position[2]), 4),
                 speedMs=round(float(np.linalg.norm(velocity[:3])), 4),
+                commanded=bool(bridge.commanded) if bridge else False,
+                thrust=[round(float(c), 3) for c in commands],
                 position=[round(float(x), 4) for x in position])
 
         if step % 4 == 0:
@@ -205,6 +232,16 @@ def fly(app, brief: dict, scene: pathlib.Path, body, allocator) -> int:
         t=round(simulated, 3),
         depthM=round(float(-position[2]), 4),
         speedMs=round(float(np.linalg.norm(velocity[:3])), 4))
+
+    if bridge is not None:
+        # Whether anything actually flew it. A dive that ran with nobody at the
+        # controls is a valid result and a different one, and the difference
+        # should not have to be inferred from the trajectory.
+        say("autonomy",
+            commanded=bool(bridge.commanded),
+            commandsReceived=bridge.commands_seen)
+        bridge.close()
+
     say("succeeded", simulatedSeconds=round(simulated, 3))
     return 0
 

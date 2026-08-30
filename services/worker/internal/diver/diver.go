@@ -65,7 +65,12 @@ type Platform interface {
 
 // Runtime is what it needs from the container runtime.
 type Runtime interface {
-	Run(ctx context.Context, spec container.Spec) (container.Result, error)
+	Create(ctx context.Context, spec container.Spec) (string, error)
+	Start(ctx context.Context, id string) error
+	Wait(ctx context.Context, id string) (int, error)
+	Stop(ctx context.Context, id string, grace time.Duration) error
+	Logs(ctx context.Context, id string, lines int) (string, error)
+	Remove(ctx context.Context, id string) error
 }
 
 // Diver runs dives on one host.
@@ -218,11 +223,11 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		"city": city, "vehicle": vehicle,
 	})
 
-	image := d.simImage
-	log.Info("starting the simulator", "image", image, "city", city, "vehicle", vehicle)
+	log.Info("starting the simulator", "image", d.simImage, "city", city, "vehicle", vehicle,
+		"autonomy", claimed.AutonomyImage)
 
-	result, err := d.runtime.Run(ctx, container.Spec{
-		Image: image,
+	simulator := container.Spec{
+		Image: d.simImage,
 		Env: []string{
 			// The licence is accepted by whoever runs this, and the platform
 			// runs it on an operator's behalf.
@@ -247,12 +252,53 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		// The device it was given, and only that one. A dive that could see
 		// every GPU on the host could take one another dive is holding.
 		GPUs: []string{fmt.Sprint(claimed.DeviceIndex)},
-	})
+		Name: "coral-sim-" + claimed.Run.ID,
+	}
 
-	elapsed := time.Since(started)
+	// Created and started explicitly rather than run in one call, because the
+	// autonomy joins this container's network namespace and so needs it to
+	// exist first.
+	simID, err := d.runtime.Create(ctx, simulator)
 	if err != nil {
+		return "failed", nil, fmt.Sprintf("the simulator could not be created: %v", err)
+	}
+	defer func() {
+		removing, stop := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer stop()
+		_ = d.runtime.Remove(removing, simID)
+	}()
+
+	if err := d.runtime.Start(ctx, simID); err != nil {
 		return "failed", nil, fmt.Sprintf("the simulator could not be started: %v", err)
 	}
+
+	// Somebody's own program, in the vehicle's network namespace and nobody
+	// else's. Not waited for: a stack that never comes up leaves the vehicle
+	// drifting, which is what would happen in the water, and a simulator that
+	// blocked until the controller was ready could never discover that one was
+	// too slow.
+	if claimed.AutonomyImage != "" {
+		autonomy, err := d.flyer(ctx, claimed, simID, log)
+		if err != nil {
+			log.Warn("the autonomy would not start; the dive continues untended",
+				"error", err)
+			_ = d.platform.Record(ctx, claimed.Run.ID, "autonomy_failed", nil,
+				map[string]any{"why": err.Error()})
+		} else {
+			defer d.landFlyer(ctx, claimed.Run.ID, autonomy, log)
+		}
+	}
+
+	code, err := d.runtime.Wait(ctx, simID)
+	elapsed := time.Since(started)
+	if err != nil {
+		stopping, stop := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer stop()
+		_ = d.runtime.Stop(stopping, simID, 10*time.Second)
+		return "failed", nil, fmt.Sprintf("the simulator did not finish: %v", err)
+	}
+	output, _ := d.runtime.Logs(ctx, simID, 400)
+	result := container.Result{ExitCode: code, Logs: output}
 
 	// What the simulator said, kept as run events. Without this the trajectory
 	// exists only in a container's output and the container is gone: a dive
@@ -359,4 +405,84 @@ func (d *Diver) keep(ctx context.Context, runID, output string, log *slog.Logger
 	log.Info("recorded what the simulator said", "events", kept)
 	summary["events"] = kept
 	return summary
+}
+
+// flyer starts the autonomy container beside the simulator.
+//
+// It is untrusted code — somebody else's program, on this host, holding a GPU —
+// so it gets nothing it does not need. No docker socket, no host network, no
+// egress: it talks to the vehicle over DDS on the loopback of the network
+// namespace it shares with the simulator, and to nothing else. A stack that
+// wanted to reach the internet would be a stack doing something other than
+// flying a vehicle.
+func (d *Diver) flyer(ctx context.Context, claimed Claimed, simID string,
+	log *slog.Logger) (string, error) {
+	image := claimed.AutonomyImage + "@" + claimed.AutonomyDigest
+
+	spec := container.Spec{
+		Image: image,
+		Name:  "coral-autonomy-" + claimed.Run.ID,
+		Env: []string{
+			// The same domain as the vehicle, so they hear each other; a domain
+			// of their own, so no other dive on this host does.
+			"ROS_DOMAIN_ID=" + fmt.Sprint(claimed.ROSDomainID),
+			// Discovery over the loopback they share. Multicast off the host
+			// would let two dives on one network find each other.
+			"ROS_LOCALHOST_ONLY=1",
+		},
+		// Bounded, because a stack in a loop should not take the host down with
+		// it. A vehicle controller that needs more than this is doing something
+		// other than controlling a vehicle.
+		MemoryBytes: 4 << 30,
+		CPUs:        2,
+		// The vehicle's network namespace and nobody else's: a loopback the two
+		// of them share, no route to the host, and no route in.
+		JoinNetworkOf: simID,
+	}
+	if claimed.AutonomyGPU {
+		// Inference needs a device, and on a single-GPU host it shares the one
+		// the simulator is using rather than taking a second.
+		spec.GPUs = []string{fmt.Sprint(claimed.DeviceIndex)}
+	}
+
+	id, err := d.runtime.Create(ctx, spec)
+	if err != nil {
+		return "", err
+	}
+	if err := d.runtime.Start(ctx, id); err != nil {
+		_ = d.runtime.Remove(ctx, id)
+		return "", err
+	}
+
+	log.Info("autonomy flying", "image", image, "container", id[:12])
+	_ = d.platform.Record(ctx, claimed.Run.ID, "autonomy_started", nil, map[string]any{
+		"image": claimed.AutonomyImage, "digest": claimed.AutonomyDigest,
+		"rosDomainId": claimed.ROSDomainID, "gpu": claimed.AutonomyGPU,
+	})
+	return id, nil
+}
+
+// landFlyer stops the autonomy container and keeps what it said.
+//
+// What it said is often the only account of why a dive went the way it did —
+// the vehicle's trajectory says what happened and the controller's log says
+// what it thought was happening — so it is recorded rather than discarded with
+// the container.
+func (d *Diver) landFlyer(ctx context.Context, runID, id string, log *slog.Logger) {
+	stopping, stop := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
+	defer stop()
+
+	if output, err := d.runtime.Logs(stopping, id, 100); err == nil && output != "" {
+		lines := strings.Split(strings.TrimSpace(output), "\n")
+		if len(lines) > 40 {
+			lines = lines[len(lines)-40:]
+		}
+		_ = d.platform.Record(stopping, runID, "autonomy_said", nil, map[string]any{
+			"lines": lines,
+		})
+	}
+	if err := d.runtime.Stop(stopping, id, 5*time.Second); err != nil {
+		log.Warn("could not stop the autonomy", "container", id[:12], "error", err)
+	}
+	_ = d.runtime.Remove(stopping, id)
 }
