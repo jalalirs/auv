@@ -147,15 +147,20 @@ class CoralCityShell(omni.ext.IExt):
             camera_path = "/World/CoralCityCamera"
             camera = UsdGeom.Camera.Define(stage, camera_path)
             camera.CreateFocalLengthAttr(24.0)
-            camera.CreateClippingRangeAttr(Gf.Vec2f(0.05, 5000.0))
+            near = 0.02 * dive.units_per_metre
+            camera.CreateClippingRangeAttr(Gf.Vec2f(near, near * 500000.0))
 
-            x, y, z = (float(v) for v in dive.position)
-            eye = Gf.Vec3d(x - 4.5, y - 4.5, z + 1.8)
+            # In the stage's units and the stage's idea of up, not ours. Four
+            # and a half metres behind the vehicle is four and a half metres
+            # whatever the author of the place measured in.
+            x, y, z = dive.position
+            at = dive.drawn_at((x, y, z))
+            from_ = dive.drawn_at((x - 4.5, y - 4.5, z + 1.8))
+            up = Gf.Vec3d(0.0, 1.0, 0.0) if dive.up_axis == "Y" else Gf.Vec3d(0.0, 0.0, 1.0)
             # Aimed rather than angled. The first attempt set pitch and yaw by
             # hand, which is a guess that happens to be right for one starting
             # depth and wrong for every other; this is right for all of them.
-            look = Gf.Matrix4d().SetLookAt(eye, Gf.Vec3d(x, y, z),
-                                           Gf.Vec3d(0.0, 0.0, 1.0)).GetInverse()
+            look = Gf.Matrix4d().SetLookAt(from_, at, up).GetInverse()
             transform = UsdGeom.Xformable(camera.GetPrim())
             transform.ClearXformOpOrder()
             transform.AddTransformOp().Set(look)

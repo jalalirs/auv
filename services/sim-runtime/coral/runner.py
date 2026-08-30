@@ -109,7 +109,7 @@ class Dive:
         changes is whether there is anything to see.
         """
         import omni.usd
-        from pxr import Gf, UsdGeom, UsdLux, UsdPhysics
+        from pxr import Gf, Usd, UsdGeom, UsdLux, UsdPhysics
 
         context = omni.usd.get_context()
         context.open_stage(str(self.scene))
@@ -120,7 +120,29 @@ class Dive:
         self.stage = stage
 
         prims = sum(1 for _ in stage.Traverse())
-        self.say("place_open", scene=str(self.scene), prims=prims)
+
+        # What the place is measured in, and how big it is.
+        #
+        # The physics here is in metres and always will be. A USD stage is in
+        # whatever its author chose — centimetres are common — and a scene in
+        # centimetres drawn as though it were metres puts the camera four
+        # centimetres from the vehicle, inside the tank wall. That is what the
+        # first photograph of a lit dive turned out to be. Nothing about the
+        # trajectory changes; only where things are drawn.
+        self.units_per_metre = 1.0 / (UsdGeom.GetStageMetersPerUnit(stage) or 1.0)
+        self.up_axis = UsdGeom.GetStageUpAxis(stage)
+
+        bounds = UsdGeom.BBoxCache(
+            Usd.TimeCode.Default(), [UsdGeom.Tokens.default_]
+        ).ComputeWorldBound(stage.GetPseudoRoot()).ComputeAlignedRange()
+        extent = None
+        if not bounds.IsEmpty():
+            size = bounds.GetSize()
+            extent = [round(float(v) / self.units_per_metre, 2) for v in size]
+
+        self.say("place_open", scene=str(self.scene), prims=prims,
+                 metresAcross=extent, upAxis=str(self.up_axis),
+                 unitsPerMetre=round(self.units_per_metre, 4))
 
         # Gravity on, which is the whole point: OceanSim disables it and applies
         # damping instead, and a vehicle with no weight has nothing for buoyancy
@@ -149,8 +171,8 @@ class Dive:
         self.vehicle_path = "/World/Vehicle"
         xform = UsdGeom.Xform.Define(stage, self.vehicle_path)
         self.placement = xform.AddTranslateOp()
-        self.placement.Set(Gf.Vec3d(*self.position))
         self._Gf = Gf
+        self.placement.Set(self.drawn_at(self.position))
 
         if drawn:
             # The hull hangs under our own transform rather than being it, so
@@ -237,13 +259,26 @@ class Dive:
             self.reported = self.simulated
             self.say("state", **self.state())
 
+    def drawn_at(self, position):
+        """Where a point in metres falls on this stage.
+
+        Two conversions, both the stage's business and neither the physics's:
+        the unit it is measured in, and which way is up. A vehicle two metres
+        down is drawn two metres down whether the author wrote centimetres and
+        called Y the sky or not.
+        """
+        x, y, z = (float(v) * self.units_per_metre for v in position)
+        if self.up_axis == "Y":
+            return self._Gf.Vec3d(x, z, -y)
+        return self._Gf.Vec3d(x, y, z)
+
     def show(self) -> None:
         """Move what is drawn to where the vehicle is.
 
         Separate from step() because it is not part of the dive: a headless run
         computes the same trajectory without ever doing this, and it must.
         """
-        self.placement.Set(self._Gf.Vec3d(*self.position))
+        self.placement.Set(self.drawn_at(self.position))
 
     def state(self) -> dict:
         return {
