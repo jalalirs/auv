@@ -134,35 +134,27 @@ type Spec struct {
 	// device another dive is holding.
 	GPUs []string
 
-	// ShareNamespacesWith puts this container in another's network and IPC
-	// namespaces.
+	// Attach puts this container on a named network and only that one.
 	//
 	// A dive is two processes that must hear each other over DDS and must not
-	// hear anybody else's. Sharing the network namespace gives them a loopback
-	// nobody else is on, which is stronger than a shared bridge and simpler
-	// than arranging discovery: neither can reach the host's network, and
-	// neither can be reached from it.
+	// hear anybody else's, and the obvious way to arrange that — put the
+	// autonomy in the simulator's network namespace, so they share a loopback
+	// nobody else is on — does not work. Discovery succeeds over it completely:
+	// every topic is listed with the right type, every endpoint matches, the
+	// publisher count is right. Not one message is delivered. Every question of
+	// the form "can they see each other" answers yes while the answer that
+	// matters is no, which is why this took so long to find.
 	//
-	// The IPC namespace has to come with it, and finding out why cost days.
-	// DDS discovers over UDP and then, on noticing that its peer is on the same
-	// host, delivers the actual data through shared memory. Two containers can
-	// share a network namespace and still have separate /dev/shm, and when they
-	// do, everything that reports on discovery says the two halves found each
-	// other — every topic listed, every endpoint matched — while not one
-	// message is delivered. It is a failure that looks exactly like success
-	// from the outside, and every diagnostic that asks "can they see each
-	// other" answers yes.
+	// On an ordinary network between two containers, the identical pair of
+	// processes exchange three hundred messages in fifteen seconds.
 	//
-	// Same host, same shared memory. They are two processes on one vehicle.
-	ShareNamespacesWith string
-
-	// AllowJoining lets another container share this one's namespaces.
-	//
-	// It has to be asked for on this side too: a namespace nobody may join is
-	// the right default for untrusted work, and Docker enforces it by refusing
-	// the join outright rather than quietly granting it. So the simulator says
-	// it will have company, and everything else says nothing and gets none.
-	AllowJoining bool
+	// So each dive gets a network of its own instead, created for it and
+	// removed with it. It is not a weaker boundary than the shared namespace
+	// was: the network is internal, so there is no route off it, and nothing
+	// but the two halves of one dive is ever attached. It is also the
+	// arrangement they would be in if the autonomy ran on another machine,
+	// which is where this is going anyway.
+	Attach string
 
 	// WritableRoot relaxes the read-only root filesystem. A simulator writes
 	// shader and asset caches all over its own installation and cannot run
@@ -259,19 +251,13 @@ func (r *Runtime) Create(ctx context.Context, spec Spec) (string, error) {
 
 	// Its own by default: shared memory is a way into another process, and
 	// only the two halves of one dive have any business in each other's.
-	ipc := "private"
-	if spec.AllowJoining {
-		ipc = "shareable"
-	}
-	if spec.ShareNamespacesWith != "" {
-		network = "container:" + spec.ShareNamespacesWith
-		ipc = "container:" + spec.ShareNamespacesWith
+	if spec.Attach != "" {
+		network = spec.Attach
 	}
 
 	hostConfig := map[string]any{
 		"Binds":          binds,
 		"NetworkMode":    network,
-		"IpcMode":        ipc,
 		"ReadonlyRootfs": !spec.WritableRoot,
 		"CapDrop":        []string{"ALL"},
 		"SecurityOpt":    []string{"no-new-privileges"},
@@ -430,6 +416,41 @@ func demultiplex(raw []byte) string {
 // Remove deletes a container and the writable layer it used.
 func (r *Runtime) Remove(ctx context.Context, id string) error {
 	response, err := r.do(ctx, http.MethodDelete, "/containers/"+id+"?v=1&force=1", nil)
+	if err != nil {
+		return err
+	}
+	return response.Close()
+}
+
+// CreateNetwork makes a network for one dive to be run on.
+//
+// Internal, so that nothing attached to it can reach anything else: the two
+// halves of a dive can hear each other and nothing can hear them. That is the
+// boundary the autonomy runs behind, and it is the only thing it gets.
+func (r *Runtime) CreateNetwork(ctx context.Context, name string) (string, error) {
+	response, err := r.do(ctx, http.MethodPost, "/networks/create", map[string]any{
+		"Name":     name,
+		"Driver":   "bridge",
+		"Internal": true,
+		"Attachable": true,
+	})
+	if err != nil {
+		return "", err
+	}
+	defer response.Close()
+	var created struct {
+		ID string `json:"Id"`
+	}
+	if err := json.NewDecoder(response).Decode(&created); err != nil {
+		return "", fmt.Errorf("reading the created network: %w", err)
+	}
+	return created.ID, nil
+}
+
+// RemoveNetwork deletes one. A dive's network outlives neither the dive nor a
+// failure to start it.
+func (r *Runtime) RemoveNetwork(ctx context.Context, id string) error {
+	response, err := r.do(ctx, http.MethodDelete, "/networks/"+id, nil)
 	if err != nil {
 		return err
 	}

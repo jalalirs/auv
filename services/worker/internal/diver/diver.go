@@ -73,6 +73,8 @@ type Runtime interface {
 	Stop(ctx context.Context, id string, grace time.Duration) error
 	Logs(ctx context.Context, id string, lines int) (string, error)
 	Remove(ctx context.Context, id string) error
+	CreateNetwork(ctx context.Context, name string) (string, error)
+	RemoveNetwork(ctx context.Context, id string) error
 }
 
 // Diver runs dives on one host.
@@ -239,6 +241,20 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		}
 	}
 
+	// A network for this dive and nothing else, created before either half of
+	// it. Internal, so there is no route off it in either direction.
+	network, err := d.runtime.CreateNetwork(ctx, "coral-dive-"+claimed.Run.ID)
+	if err != nil {
+		return "failed", nil, fmt.Sprintf("the dive's network could not be created: %v", err)
+	}
+	defer func() {
+		removing, stop := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer stop()
+		if err := d.runtime.RemoveNetwork(removing, network); err != nil {
+			log.Warn("the dive's network could not be removed", "error", err)
+		}
+	}()
+
 	log.Info("starting the simulator", "image", d.simImage, "city", city, "vehicle", vehicle,
 		"autonomy", claimed.AutonomyImage)
 
@@ -253,7 +269,11 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 			// vehicle must scope discovery the same way its autonomy does or
 			// they will not find one another.
 			"ROS_DOMAIN_ID=" + fmt.Sprint(claimed.ROSDomainID),
-			"ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST",
+			// Across the dive's own network, which is the only one either half
+			// is on. LOCALHOST would be the tighter-sounding setting and is the
+			// wrong one: it scopes discovery to a loopback that the two halves,
+			// being separate containers, do not share.
+			"ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET",
 			"ROS_LOG_DIR=/tmp/ros",
 			// Same seed and same packages is the same run. Everything the
 			// platform claims about a result rests on the simulator honouring
@@ -271,16 +291,14 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		},
 		// The device it was given, and only that one. A dive that could see
 		// every GPU on the host could take one another dive is holding.
-		GPUs: []string{fmt.Sprint(claimed.DeviceIndex)},
-		Name: "coral-sim-" + claimed.Run.ID,
-		// The autonomy joins this container's namespaces, and Docker will not
-		// let it unless this one says so first.
-		AllowJoining: true,
+		GPUs:   []string{fmt.Sprint(claimed.DeviceIndex)},
+		Name:   "coral-sim-" + claimed.Run.ID,
+		Attach: network,
 	}
 
 	// Created and started explicitly rather than run in one call, because the
-	// autonomy joins this container's network namespace and so needs it to
-	// exist first.
+	// agent waits on this container's output before starting the autonomy and
+	// so needs a handle on it.
 	simID, err := d.runtime.Create(ctx, simulator)
 	if err != nil {
 		return "failed", nil, fmt.Sprintf("the simulator could not be created: %v", err)
@@ -295,8 +313,8 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		return "failed", nil, fmt.Sprintf("the simulator could not be started: %v", err)
 	}
 
-	// Somebody's own program, in the vehicle's network namespace and nobody
-	// else's — and started only once the vehicle is actually publishing.
+	// Somebody's own program, on the dive's network and no other — and started
+	// only once the vehicle is actually publishing.
 	//
 	// Order matters here in a way that is not obvious and cost a long time to
 	// find. A controller started first finds nobody and does not discover the
@@ -313,7 +331,7 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		}
 	}
 	if claimed.AutonomyImage != "" {
-		autonomy, err := d.flyer(ctx, claimed, simID, log)
+		autonomy, err := d.flyer(ctx, claimed, network, log)
 		if err != nil {
 			log.Warn("the autonomy would not start; the dive continues untended",
 				"error", err)
@@ -450,7 +468,7 @@ func (d *Diver) keep(ctx context.Context, runID, output string, log *slog.Logger
 // namespace it shares with the simulator, and to nothing else. A stack that
 // wanted to reach the internet would be a stack doing something other than
 // flying a vehicle.
-func (d *Diver) flyer(ctx context.Context, claimed Claimed, simID string,
+func (d *Diver) flyer(ctx context.Context, claimed Claimed, network string,
 	log *slog.Logger) (string, error) {
 	image := claimed.AutonomyImage + "@" + claimed.AutonomyDigest
 
@@ -461,11 +479,11 @@ func (d *Diver) flyer(ctx context.Context, claimed Claimed, simID string,
 			// The same domain as the vehicle, so they hear each other; a domain
 			// of their own, so no other dive on this host does.
 			"ROS_DOMAIN_ID=" + fmt.Sprint(claimed.ROSDomainID),
-			// Discovery over the loopback the two of them share, and nowhere
-			// else. ROS_LOCALHOST_ONLY did this and is deprecated in Jazzy;
-			// the range is what replaced it, and setting both would make the
-			// old one win and the new one be ignored.
-			"ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST",
+			// Across the dive's network, which has the vehicle on it and
+			// nothing else. ROS_LOCALHOST_ONLY did this sort of thing and is
+			// deprecated in Jazzy; the range is what replaced it, and setting
+			// both would make the old one win and the new one be ignored.
+			"ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET",
 			// The root filesystem is read-only, because this is somebody
 			// else's program running on our host. ROS insists on a log
 			// directory and gets the bounded temporary one, which is writable
@@ -478,10 +496,9 @@ func (d *Diver) flyer(ctx context.Context, claimed Claimed, simID string,
 		// other than controlling a vehicle.
 		MemoryBytes: 4 << 30,
 		CPUs:        2,
-		// The vehicle's namespaces and nobody else's: a loopback the two of
-		// them share, the shared memory DDS actually delivers through, no route
-		// to the host, and no route in.
-		ShareNamespacesWith: simID,
+		// The dive's own network: the vehicle is on it, nothing else is, and
+		// being internal it has no route to the host and none back in.
+		Attach: network,
 	}
 	if claimed.AutonomyGPU {
 		// Inference needs a device, and on a single-GPU host it shares the one
