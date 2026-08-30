@@ -348,7 +348,9 @@ CONDITIONS=$(api "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/conditions" \
 DIVE=$(api "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/dives" \
     "{\"name\":\"Hold two metres\",\"cityVersionId\":\"$CITY_VERSION\",\"vehicleVersionId\":\"$VEHICLE_VERSION\",\"conditionsId\":\"$CONDITIONS\",\"autonomyStackId\":\"$STACK\"}" \
     | json "['id']")
-[ -n "$DIVE" ] && pass "a dive is defined" || fail "could not define a dive"
+[ -n "$DIVE" ] && pass "a dive is defined" \
+    || fail "could not define a dive: $(api "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/dives" \
+        "{\"name\":\"Hold two metres\",\"cityVersionId\":\"$CITY_VERSION\",\"vehicleVersionId\":\"$VEHICLE_VERSION\",\"conditionsId\":\"$CONDITIONS\",\"autonomyStackId\":\"$STACK\"}" | head -c 200)"
 
 check "a dive missing one of its determinants is refused" \
     "$(status "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/dives" \
