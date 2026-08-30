@@ -996,6 +996,58 @@ paths:
           $ref: '#/components/responses/Invalid'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/v1/versions/{versionId}/dynamics:
+    put:
+      tags: [vehicles]
+      summary: State how a vehicle version moves
+      description: >
+        The difference between a vehicle that behaves like a submarine and one
+        that is a box with gravity switched off. Refused once the version is
+        published, by the record as well as by this.
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          description: The package version.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleDynamics'
+      responses:
+        '204':
+          description: Recorded.
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/versions/{versionId}/publish:
+    post:
+      tags: [places]
+      summary: Make a package pinnable, and from then on unchangeable
+      description: >
+        Only a published version may be pinned by a dive, because a draft can
+        still be rewritten and a result pinned to something rewritable is not a
+        result. A vehicle version that has not said how it moves is refused.
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          description: The package version.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The published package.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetVersion'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/v1/vehicles:
     get:
       tags: [vehicles]
@@ -1097,6 +1149,60 @@ paths:
                       $ref: '#/components/schemas/AssetVersion'
         '404':
           $ref: '#/components/responses/NotFound'
+    post:
+      tags: [vehicles]
+      summary: Record a package for a vehicle
+      description: >
+        The digest is computed from the manifest rather than accepted, so nobody
+        can claim an identity their files do not add up to. Publication is a
+        separate act: a half-uploaded package that something could already pin
+        would be worse than none at all.
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          description: The vehicle.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [files]
+              properties:
+                label: { type: string }
+                notes: { type: string }
+                runtimeMin:
+                  type: string
+                  description: >
+                    The least runtime that may load this package. A vehicle
+                    authored against a newer sensor API must not be flown by an
+                    older simulator.
+                files:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [path, digest, sizeBytes, mediaType]
+                    properties:
+                      path: { type: string }
+                      digest: { type: string }
+                      sizeBytes: { type: integer, format: int64 }
+                      mediaType: { type: string }
+      responses:
+        '201':
+          description: The package, unpublished.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetVersion'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/v1/vehicles/{vehicleId}/grants:
     get:
       tags: [vehicles]
@@ -1263,6 +1369,60 @@ paths:
                       $ref: '#/components/schemas/AssetVersion'
         '404':
           $ref: '#/components/responses/NotFound'
+    post:
+      tags: [places]
+      summary: Record a package for a city
+      description: >
+        The digest is computed from the manifest rather than accepted, so nobody
+        can claim an identity their files do not add up to. Publication is a
+        separate act: a half-uploaded package that something could already pin
+        would be worse than none at all.
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          description: The city.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [files]
+              properties:
+                label: { type: string }
+                notes: { type: string }
+                runtimeMin:
+                  type: string
+                  description: >
+                    The least runtime that may load this package. A vehicle
+                    authored against a newer sensor API must not be flown by an
+                    older simulator.
+                files:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [path, digest, sizeBytes, mediaType]
+                    properties:
+                      path: { type: string }
+                      digest: { type: string }
+                      sizeBytes: { type: integer, format: int64 }
+                      mediaType: { type: string }
+      responses:
+        '201':
+          description: The package, unpublished.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetVersion'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/v1/cities/{cityId}/grants:
     get:
       tags: [governance]
@@ -2125,6 +2285,58 @@ components:
         createdBy: { type: string }
         retiredAt: { type: string, format: date-time, nullable: true }
       required: [id, slug, name, horizontalCrs, verticalDatum, discoverable, createdAt, createdBy]
+    VehicleDynamics:
+      type: object
+      description: >
+        What a simulator integrates. The matrices are carried as objects rather
+        than named columns because their shape belongs to the runtime that reads
+        them, and pinning it here would mean changing the contract every time
+        the model gained a term.
+      additionalProperties: false
+      required: [massKg, displacedVolumeM3, centreOfGravityM, centreOfBuoyancyM,
+                 inertiaTensor, addedMass, linearDamping, quadraticDamping,
+                 thrusters, sensors, topicContract]
+      properties:
+        massKg: { type: number, exclusiveMinimum: 0 }
+        displacedVolumeM3:
+          type: number
+          exclusiveMinimum: 0
+          description: Buoyancy is computed from this, so a vehicle without it cannot float.
+        centreOfGravityM:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: { type: number }
+        centreOfBuoyancyM:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: { type: number }
+          description: >
+            Distinct from the centre of gravity. The distance between them is
+            the lever arm that rights the vehicle when it rolls; let them
+            coincide and there is no restoring moment at all.
+        inertiaTensor:
+          type: array
+          minItems: 9
+          maxItems: 9
+          items: { type: number }
+        addedMass: { type: object }
+        linearDamping: { type: object }
+        quadraticDamping: { type: object }
+        thrusters:
+          type: array
+          items: { type: object }
+          description: Position, orientation, thrust curve and saturation per thruster.
+        sensors:
+          type: array
+          items: { type: object }
+        topicContract:
+          type: object
+          description: >
+            What this vehicle publishes and subscribes to, so that a stack
+            expecting a sonar on a vehicle carrying none is refused at admission
+            rather than discovering it mid-dive.
     Queue:
       type: object
       description: >
