@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The Coral City mark.
+
+  One source for every surface that needs it: the application's window, the
+  console, and whatever a packaged client eventually puts on a dock. Drawn
+  rather than photographed so it survives being sixteen pixels wide, which is
+  also why it is a silhouette and not a scene.
+
+  A coral, growing from the floor. Not a submarine and not a globe — the vehicle
+  is the thing you bring, and the place is the thing we keep. The one warm mark
+  is the vehicle, small, somewhere above it in the water.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#101C2C"/>
+      <stop offset="1" stop-color="#04080F"/>
+    </linearGradient>
+    <!--
+      In user space, not the object's own box. A gradient in bounding-box units
+      cannot paint a shape whose box has no width, and a perfectly vertical
+      line has none — so the trunk simply did not appear, while every branch
+      that happened to curve did. It also means one gradient across the whole
+      coral rather than each twig restarting it, so height reads as light.
+    -->
+    <linearGradient id="coral" gradientUnits="userSpaceOnUse"
+                    x1="128" y1="214" x2="128" y2="70">
+      <stop offset="0"    stop-color="#1B6E93"/>
+      <stop offset="0.5"  stop-color="#40C7F4"/>
+      <stop offset="1"    stop-color="#A6EAFF"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="256" height="256" rx="58" fill="url(#water)"/>
+
+  <!-- The floor it grows from. -->
+  <path d="M50 212 H206" stroke="#1B3049" stroke-width="8" stroke-linecap="round"/>
+
+  <g fill="none" stroke="url(#coral)" stroke-linecap="round" stroke-linejoin="round">
+    <!-- The trunk, carried all the way to the crown. -->
+    <path d="M128 208 V 82" stroke-width="21"/>
+    <!-- Two arms, out and up. -->
+    <path d="M128 176 C 106 166, 84 148, 80 120 V 98" stroke-width="16"/>
+    <path d="M128 164 C 150 154, 172 136, 176 110 V 88" stroke-width="16"/>
+    <!-- Two sprigs, shorter, for the density a coral has close in. -->
+    <path d="M112 150 C 104 138, 104 126, 110 114" stroke-width="11"/>
+    <path d="M146 142 C 152 132, 152 122, 148 112" stroke-width="11"/>
+  </g>
+
+  <g fill="url(#coral)">
+    <circle cx="128" cy="80"  r="14"/>
+    <circle cx="80"  cy="97"  r="11.5"/>
+    <circle cx="176" cy="87"  r="11.5"/>
+    <circle cx="110" cy="113" r="8"/>
+    <circle cx="148" cy="111" r="8"/>
+  </g>
+
+  <!-- The vehicle. -->
+  <circle cx="200" cy="52" r="8" fill="#F0A84F"/>
+</svg>

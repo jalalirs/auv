@@ -1,0 +1,29 @@
+{
+  "name": "@coral-city/client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dive a vehicle you brought, in water we keep",
+  "main": "dist/main/main.js",
+  "type": "module",
+  "scripts": {
+    "build:renderer": "vite build --config vite.renderer.config.mts",
+    "build:main": "vite build --config vite.main.config.mts",
+    "build": "pnpm build:renderer && pnpm build:main",
+    "start": "pnpm build && electron .",
+    "dmg": "pnpm build && pnpm dlx electron-builder@26.0.12 --mac dmg",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "@coral-city/api": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.1",
+    "@vitejs/plugin-react": "6.1.1",
+    "electron": "44.0.0",
+    "typescript": "5.9.3",
+    "vite": "8.2.2"
+  }
+}

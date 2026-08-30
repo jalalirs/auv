@@ -1,0 +1,36 @@
+# Packaging Coral City for macOS.
+#
+# Signed and notarised with the team's own Developer ID. Nothing about that
+# identity is written here: the certificate lives in a keychain and the
+# credentials in the environment, because a certificate in a repository is a
+# certificate that has to be revoked. Without them this still produces a working
+# unsigned application, which is what you want while building it.
+appId: com.coralcity.client
+productName: Coral City
+copyright: Coral City
+
+directories:
+  output: release
+  buildResources: assets
+
+files:
+  - dist/**
+  - package.json
+
+mac:
+  category: public.app-category.developer-tools
+  icon: assets/icon.icns
+  target:
+    - target: dmg
+      arch: [arm64]
+  # Hardened, because notarisation requires it.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlementsInherit: assets/entitlements.plist
+
+dmg:
+  title: Coral City
+  # Nothing but the application and the place to put it.
+  contents:
+    - { x: 150, y: 190, type: file }
+    - { x: 420, y: 190, type: link, path: /Applications }

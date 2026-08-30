@@ -26,10 +26,12 @@ keywords = ["experience", "app"]
 # The dive, and everything a person sees of it.
 "coral.city.shell" = {}
 
-# The screen, sent somewhere else. A dive runs on a machine with the GPU and is
-# watched on a machine without one, which is the whole reason the client is
-# thin: no CUDA on a laptop, no world data on a laptop, just pixels and input.
-"omni.kit.livestream.app" = {}
+# Frames are rendered and sent by the shell itself, over a socket we own, to an
+# application we wrote. Omniverse's livestream is better video and its client is
+# NVIDIA's program with NVIDIA's name on it, which would make the thing a person
+# opens to dive somebody else's application and ours a launcher for it. That is
+# the wrong shape for a product and no amount of compression fixes it.
+"omni.replicator.core" = {}
 
 [settings.app]
 name = "Coral City"
@@ -84,25 +86,3 @@ excluded = [
 startup.windowName = "Viewport"
 windowMenu.entryCount = 1
 
-[settings.app.livestream]
-allowResize = true
-outDirectory = "${data}"
-
-[settings.exts."omni.kit.livestream.app"]
-# Below 32768, which is where Linux's ephemeral range starts. Isaac Sim's own
-# defaults — 49100 and 47998 — sit inside it, so the kernel may already have
-# handed either to an outgoing connection, and binding them fails at container
-# start with the dive already scheduled. The agent overrides these per dive; a
-# host running two is watched on two pairs.
-primaryStream.signalPort = 18100
-primaryStream.streamPort = 18101
-primaryStream.allowDynamicResize = true
-primaryStream.streamType = "webrtc"
-
-[settings.exts."omni.services.livestream.session"]
-# The dive does not outlive the person watching it. An interactive dive holds a
-# GPU that somebody else is queued for, and one abandoned with the window closed
-# would hold it until the lease expired.
-quitOnSessionEnded = true
-resumeTimeoutSeconds = 30
-waitForSessionReadyEvent = false
