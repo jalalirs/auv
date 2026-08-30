@@ -8,6 +8,7 @@ import (
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
 	"github.com/jalalirs/auv/services/control-plane/internal/domain"
 	"github.com/jalalirs/auv/services/control-plane/internal/policy"
+	"github.com/jalalirs/auv/services/control-plane/internal/storage"
 )
 
 // assetScope converts the decision point's answer into the predicate the
@@ -422,4 +423,40 @@ func (d *Dependencies) publishVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, r, http.StatusOK, published)
+}
+
+// listVersionFiles lists a package's files, each with a short-lived URL to
+// fetch its bytes.
+//
+// The URLs are signed for whoever asked: a node syncing over the network needs
+// a different host from a browser on somebody's desk, and signing over the
+// wrong one produces a URL that verifies and cannot be reached.
+func (d *Dependencies) listVersionFiles(w http.ResponseWriter, r *http.Request) {
+	versionID := r.PathValue("versionId")
+	files, err := d.Catalog.Files(r.Context(), versionID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+
+	type fetchable struct {
+		catalog.File
+		URL string `json:"url"`
+	}
+
+	answer := make([]fetchable, 0, len(files))
+	for _, file := range files {
+		object, err := d.Objects.Object(r.Context(), file.ObjectID)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		url, err := d.Objects.ReadURL(r.Context(), object, file.Path, storage.External)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		answer = append(answer, fetchable{File: file, URL: url})
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{"files": answer})
 }
