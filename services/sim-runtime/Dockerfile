@@ -68,6 +68,7 @@ COPY --chown=1234:1234 services/sim-runtime/coral /isaac-sim/coral
 # under a directory named for the extension. Owned by the image's user, because
 # Kit writes bytecode into an extension directory it has loaded.
 COPY --chown=1234:1234 services/sim-runtime/apps/coral_city.kit /isaac-sim/apps/coral_city.kit
+COPY --chown=1234:1234 services/sim-runtime/apps/coral_city.png /isaac-sim/apps/coral_city.png
 COPY --chown=1234:1234 services/sim-runtime/exts/coral.city.shell /isaac-sim/extsUser/coral.city.shell
 
 USER 1234:1234
