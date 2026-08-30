@@ -29,6 +29,27 @@ check() {
     if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', expected '$3')"; fi
 }
 
+# holds <collection> <id> reads back that record's id from a listing, or the
+# empty string if it is not there.
+#
+# Asking by identity rather than by position, because these checks run against
+# the deployment we actually use and it has real places and real vehicles in it.
+# A check that reads element zero passes only on an empty platform, and a check
+# suite that cannot be run on a platform in use is one nobody runs.
+holds() {
+    python3 -c "
+import json,sys
+try:
+    document = json.load(sys.stdin)
+except Exception:
+    print(''); raise SystemExit
+for item in document.get('$1', []):
+    if item.get('id') == '$2':
+        print(item['id']); raise SystemExit
+print('')
+"
+}
+
 # json <path> reads a value from stdin, e.g. json '["principal"]["id"]'
 json() {
     python3 -c "
@@ -133,10 +154,10 @@ GUEST=$(api '' POST /api/v1/sessions \
     "{\"email\":\"outsider-$RUN@example.org\",\"secret\":\"outsider-secret-value\"}" | json "['token']")
 [ -n "$GUEST" ] && pass "the outsider signs in" || fail "the outsider could not sign in"
 
-check "the outsider's catalogue of places is empty" \
-    "$(api "$GUEST" GET /api/v1/cities | json "['cities']")" "[]"
-check "the outsider's catalogue of vehicles is empty" \
-    "$(api "$GUEST" GET /api/v1/vehicles | json "['vehicles']")" "[]"
+check "the place is not in the outsider's catalogue" \
+    "$(api "$GUEST" GET /api/v1/cities | holds cities "$CITY")" ""
+check "the vehicle is not in the outsider's catalogue" \
+    "$(api "$GUEST" GET /api/v1/vehicles | holds vehicles "$VEHICLE")" ""
 check "reading the vehicle directly reports absence, not refusal" \
     "$(status "$GUEST" GET "/api/v1/vehicles/$VEHICLE")" "404"
 check "reading the place directly reports absence, not refusal" \
@@ -153,9 +174,9 @@ check "granting the institution the place" \
         "{\"subjectKind\":\"org\",\"subjectId\":\"$OTHER_ORG\",\"role\":\"viewer\"}")" "201"
 
 check "the vehicle now appears to the outsider" \
-    "$(api "$GUEST" GET /api/v1/vehicles | json "['vehicles'][0]['id']")" "$VEHICLE"
+    "$(api "$GUEST" GET /api/v1/vehicles | holds vehicles "$VEHICLE")" "$VEHICLE"
 check "the place now appears to the outsider" \
-    "$(api "$GUEST" GET /api/v1/cities | json "['cities'][0]['id']")" "$CITY"
+    "$(api "$GUEST" GET /api/v1/cities | holds cities "$CITY")" "$CITY"
 check "and can be read directly" \
     "$(status "$GUEST" GET "/api/v1/vehicles/$VEHICLE")" "200"
 
@@ -169,9 +190,9 @@ BINDING=$(api "$ADMIN" GET "/api/v1/cities/$CITY/grants" | json "['grants'][0]['
 check "withdrawing it" \
     "$(status "$ADMIN" DELETE "/api/v1/cities/$CITY/grants/$BINDING")" "204"
 check "the place is hidden again" \
-    "$(api "$GUEST" GET /api/v1/cities | json "['cities']")" "[]"
+    "$(api "$GUEST" GET /api/v1/cities | holds cities "$CITY")" ""
 check "and the vehicle, granted separately, is untouched" \
-    "$(api "$GUEST" GET /api/v1/vehicles | json "['vehicles'][0]['id']")" "$VEHICLE"
+    "$(api "$GUEST" GET /api/v1/vehicles | holds vehicles "$VEHICLE")" "$VEHICLE"
 
 # ---------------------------------------------------------------------------
 step "The outsider may not publish"
@@ -259,7 +280,7 @@ check "granting the institution the queue" \
     "$(status "$ADMIN" POST "/api/v1/queues/$QUEUE/grants" \
         "{\"subjectKind\":\"org\",\"subjectId\":\"$OTHER_ORG\",\"role\":\"contributor\"}")" "201"
 check "the queue now appears to the outsider" \
-    "$(api "$GUEST" GET /api/v1/queues | json "['queues'][0]['id']")" "$QUEUE"
+    "$(api "$GUEST" GET /api/v1/queues | holds queues "$QUEUE")" "$QUEUE"
 
 # ---------------------------------------------------------------------------
 step "What an institution composes for itself"
