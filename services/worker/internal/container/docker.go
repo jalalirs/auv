@@ -271,13 +271,14 @@ func (r *Runtime) Create(ctx context.Context, spec Spec) (string, error) {
 		"Cmd":        command,
 		"Env":        spec.Env,
 		"WorkingDir": "/work",
-		// Disabled means no networking at all, which contradicts joining
-		// another container's namespace: the two together produce a container
-		// that appears to have joined and can reach nothing, silently. Sharing
-		// a namespace is how a dive's two halves talk, so the sharing wins and
-		// the isolation comes from the namespace itself — it is the simulator's
-		// network, and the simulator has none of its own.
-		"NetworkDisabled": !spec.Network && spec.JoinNetworkOf == "",
+		// Not disabled — moded. "none" is what `docker run --network none`
+		// does: no route off the host and no route in, but a loopback, which a
+		// container joining this namespace needs in order to be joining
+		// anything. NetworkDisabled removes the loopback too, and the result is
+		// a container that appears to have joined and can reach nothing,
+		// silently. The isolation is the same either way; only the loopback
+		// differs, and a dive's two halves talk over it.
+		"NetworkDisabled": false,
 		"HostConfig":      hostConfig,
 	}
 
