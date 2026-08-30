@@ -1,0 +1,15 @@
+[package]
+version = "0.1.0"
+title = "Coral City shell"
+description = "The dive, and everything a person sees of it"
+category = "simulation"
+authors = ["Coral City"]
+
+[dependencies]
+"omni.ui" = {}
+"omni.usd" = {}
+"omni.kit.viewport.utility" = {}
+"omni.kit.uiapp" = {}
+
+[[python.module]]
+name = "coral.city.shell"

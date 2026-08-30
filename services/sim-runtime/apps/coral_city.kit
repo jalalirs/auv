@@ -1,0 +1,91 @@
+# Coral City.
+#
+# Not the editor. Isaac Sim ships an application for building things — a stage
+# tree, a property panel, a content browser, a timeline — and it is the right
+# application for authoring a scene and the wrong one for diving. Somebody who
+# opens this is not building a reef; they are in one.
+#
+# So this is built on isaacsim.exp.base, which is the engine without the
+# authoring tools, and the few that base still pulls in are excluded by name
+# below. What is added is a viewport, a stream, and our own shell.
+
+[package]
+title = "Coral City"
+description = "A vehicle, a place, and the water between them"
+version = "0.1.0"
+keywords = ["experience", "app"]
+
+[dependencies]
+# The engine: physics, rendering, USD, the Isaac Sim core. No authoring tools.
+"isaacsim.exp.base" = {}
+
+# Something to look through.
+"omni.kit.viewport.window" = {}
+"omni.kit.viewport.utility" = {}
+
+# The dive, and everything a person sees of it.
+"coral.city.shell" = {}
+
+# The screen, sent somewhere else. A dive runs on a machine with the GPU and is
+# watched on a machine without one, which is the whole reason the client is
+# thin: no CUDA on a laptop, no world data on a laptop, just pixels and input.
+"omni.kit.livestream.app" = {}
+
+[settings.app]
+name = "Coral City"
+version = "0.1.0"
+window.title = "Coral City"
+# No menu bar, no toolbars, no status bar. The shell draws what there is.
+window.hideUi = true
+window.showStartup = false
+content.emptyStageOnStart = true
+fastShutdown = true
+file.ignoreUnsavedStage = true
+# Settings are not persistent: every dive opens the same way, because a dive
+# that behaved differently on the second run because of something a window
+# remembered would not be a dive anybody could compare.
+settings.persistent = false
+
+[settings.app.exts.folders]
+'++' = [
+    "${app}",
+    "${app}/../exts",
+    "${app}/../extscache",
+    "${app}/../extsUser",
+    "${app}/../extsDeprecated",
+]
+
+[settings.app.extensions]
+# The authoring tools base brings with it. Excluded by name rather than left to
+# be hidden, because an extension that is not loaded cannot appear.
+excluded = [
+    "isaacsim.gui.content_browser",
+    "isaacsim.gui.menu",
+    "isaacsim.gui.property",
+    "semantics.schema.editor",
+    "semantics.schema.property",
+    "omni.kit.widget.cache_indicator",
+]
+
+[settings.exts."omni.kit.viewport.window"]
+# One viewport, and no menu across the top of it. You are looking at water.
+startup.windowName = "Viewport"
+windowMenu.entryCount = 1
+
+[settings.app.livestream]
+allowResize = true
+outDirectory = "${data}"
+
+[settings.exts."omni.kit.livestream.app"]
+primaryStream.signalPort = 49100
+primaryStream.streamPort = 47998
+primaryStream.allowDynamicResize = true
+primaryStream.streamType = "webrtc"
+
+[settings.exts."omni.services.livestream.session"]
+# The dive does not outlive the person watching it. An interactive dive holds a
+# GPU that somebody else is queued for, and one abandoned with the window closed
+# would hold it until the lease expired.
+quitOnSessionEnded = true
+resumeTimeoutSeconds = 30
+waitForSessionReadyEvent = false
