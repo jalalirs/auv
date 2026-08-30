@@ -35,6 +35,15 @@ CORAL = pathlib.Path("/isaac-sim/coral")
 # for more steps, which makes it slower still.
 MOST_CATCHUP_SECONDS = 0.25
 
+# When to photograph the dive, in simulated seconds. Early, so that a run that
+# went wrong still left a picture of the place it went wrong in, and at the end,
+# so there is something to look at afterwards.
+#
+# A dive should leave more than numbers. Somebody reading a run a week later can
+# tell from one frame whether the vehicle was in the water it was meant to be in,
+# and no amount of telemetry says that as quickly.
+PHOTOGRAPH_AT = (2.0, 30.0)
+
 
 def _inherit_pythonpath() -> None:
     """Put PYTHONPATH on the path, which Kit's interpreter does not do itself.
@@ -63,6 +72,7 @@ class CoralCityShell(omni.ext.IExt):
         self.began = None
         self.waiting_until = None
         self.finished = False
+        self.photographs = list(PHOTOGRAPH_AT)
 
         if str(CORAL) not in sys.path:
             sys.path.insert(0, str(CORAL))
@@ -187,6 +197,8 @@ class CoralCityShell(omni.ext.IExt):
 
         dive.show()
         self.hud.show(dive.state())
+        if self.photographs and dive.simulated >= self.photographs[0]:
+            self._photograph(round(self.photographs.pop(0), 1))
         if dive.bridge is not None and dive.bridge.commanded:
             self.hud.flying(dive.bridge.commands_seen)
 
@@ -195,6 +207,27 @@ class CoralCityShell(omni.ext.IExt):
             dive.close()
             self._say("succeeded", simulatedSeconds=round(dive.simulated, 3))
             self.hud.finished()
+
+    def _photograph(self, at: float) -> None:
+        """Write out what the dive looks like.
+
+        Beside the brief, which is a directory the agent already mounted and
+        already reads — so a picture needs no new path, no new permission and no
+        way out of the container that did not already exist.
+        """
+        try:
+            from omni.kit.viewport.utility import capture_viewport_to_file, get_active_viewport
+
+            viewport = get_active_viewport()
+            if viewport is None:
+                return
+            where = pathlib.Path(
+                os.environ.get("CORAL_CITY_BRIEF", "/dive/dive.json")).parent
+            path = where / f"frame-{at:g}s.png"
+            capture_viewport_to_file(viewport, str(path))
+            self._say("photograph", at=at, path=str(path))
+        except Exception as exc:
+            carb.log_warn(f"Coral City could not photograph the dive: {exc}")
 
     # ── reporting ────────────────────────────────────────────────────────────
 
