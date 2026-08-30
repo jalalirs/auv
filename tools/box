@@ -123,6 +123,14 @@ command_up() {
     say "Building on the box (commit ${commit})…"
     on_box "${COMPOSE} build --build-arg COMMIT=${commit} --build-arg BUILT_AT=${built_at}"
 
+    # The simulation runtime is part of this environment even though nothing
+    # in the compose file runs it: the agent starts it per dive, and a host
+    # without it accepts dives it cannot perform. Built here so that bringing
+    # the environment up brings up all of it.
+    say "Building the simulation runtime…"
+    on_box "cd ~/${REMOTE_DIR} && docker build -q -f services/sim-runtime/Dockerfile \
+        -t coral-city/sim-runtime:${CORAL_CITY_IMAGE_TAG:-r1} . | tail -1"
+
     say "Applying the schema…"
     on_box "${COMPOSE} up --detach --wait record storage registry"
     on_box "${COMPOSE} run --rm migrate"
@@ -145,6 +153,10 @@ command_status() {
     printf '  registry   127.0.0.1:%s\n' "${REGISTRY_PORT}"
     printf '  console    127.0.0.1:%s\n' "${CONSOLE_PORT}"
     printf '  storage    127.0.0.1:%s  (console %s)\n' "${STORAGE_PORT}" "${STORAGE_CONSOLE_PORT}"
+    printf '\n'
+    say "Simulation runtime"
+    on_box "docker image inspect coral-city/sim-runtime:${CORAL_CITY_IMAGE_TAG:-r1} \
+        --format '  {{.RepoTags}}  {{.Size}} bytes' 2>/dev/null || echo '  absent — dives will be refused'"
     printf '\nReach them from here with:  ./tools/box tunnel\n'
 }
 
