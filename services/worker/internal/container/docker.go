@@ -267,11 +267,17 @@ func (r *Runtime) Create(ctx context.Context, spec Spec) (string, error) {
 	}
 
 	request := map[string]any{
-		"Image":           spec.Image,
-		"Cmd":             command,
-		"Env":             spec.Env,
-		"WorkingDir":      "/work",
-		"NetworkDisabled": !spec.Network,
+		"Image":      spec.Image,
+		"Cmd":        command,
+		"Env":        spec.Env,
+		"WorkingDir": "/work",
+		// Disabled means no networking at all, which contradicts joining
+		// another container's namespace: the two together produce a container
+		// that appears to have joined and can reach nothing, silently. Sharing
+		// a namespace is how a dive's two halves talk, so the sharing wins and
+		// the isolation comes from the namespace itself — it is the simulator's
+		// network, and the simulator has none of its own.
+		"NetworkDisabled": !spec.Network && spec.JoinNetworkOf == "",
 		"HostConfig":      hostConfig,
 	}
 
