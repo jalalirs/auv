@@ -66,6 +66,8 @@ type Platform interface {
 // Runtime is what it needs from the container runtime.
 type Runtime interface {
 	Create(ctx context.Context, spec container.Spec) (string, error)
+	Pull(ctx context.Context, image string) error
+	Present(ctx context.Context, image string) error
 	Start(ctx context.Context, id string) error
 	Wait(ctx context.Context, id string) (int, error)
 	Stop(ctx context.Context, id string, grace time.Duration) error
@@ -459,6 +461,16 @@ func (d *Diver) flyer(ctx context.Context, claimed Claimed, simID string,
 		// Inference needs a device, and on a single-GPU host it shares the one
 		// the simulator is using rather than taking a second.
 		spec.GPUs = []string{fmt.Sprint(claimed.DeviceIndex)}
+	}
+
+	// Autonomy comes from a registry, unlike this platform's own images, which
+	// are built on the host that runs them. Pinned by digest, so pulling it
+	// fetches exactly what the dive named and nothing that has since moved.
+	if err := d.runtime.Present(ctx, image); err != nil {
+		log.Info("fetching the autonomy", "image", image)
+		if err := d.runtime.Pull(ctx, image); err != nil {
+			return "", fmt.Errorf("fetching %s: %w", image, err)
+		}
 	}
 
 	id, err := d.runtime.Create(ctx, spec)
