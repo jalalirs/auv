@@ -1,0 +1,241 @@
+/* The control plane's operator console.
+ *
+ * Dense, quiet, and honest. It is a window onto the record, not the product:
+ * nothing here invents a basemap, fills an empty table with a placeholder, or
+ * shows a number the platform did not say. An empty state is a sentence
+ * explaining what would be there and why it is not.
+ */
+
+:root {
+  --ground: #eef1f4;
+  --surface: #ffffff;
+  --surface-2: #f5f8fa;
+  --ink: #0f1720;
+  --ink-soft: #33414f;
+  --muted: #5c6b79;
+  --rule: #d3dce3;
+  --rule-soft: #e5ebef;
+  --accent: #a2480a;
+  --accent-soft: #fbefe4;
+  --good: #1b6244;
+  --good-soft: #e2f1ea;
+  --warn: #8a5a06;
+  --warn-soft: #fbf0dc;
+  --bad: #8c2f2f;
+  --bad-soft: #f8e8e6;
+  --shadow: 0 1px 2px rgb(15 23 32 / 6%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0b1116;
+    --surface: #121b23;
+    --surface-2: #161f28;
+    --ink: #e7eef4;
+    --ink-soft: #c1cdd7;
+    --muted: #8ba0af;
+    --rule: #24323d;
+    --rule-soft: #1b2731;
+    --accent: #e89442;
+    --accent-soft: #2a1b0d;
+    --good: #5bc49a;
+    --good-soft: #12261e;
+    --warn: #d9a441;
+    --warn-soft: #2a2110;
+    --bad: #e28c86;
+    --bad-soft: #2a1614;
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%);
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+code, .mono, td.mono {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.86em;
+}
+
+/* ── shell ─────────────────────────────────────────────────────────────── */
+
+.shell { display: flex; min-height: 100vh; }
+
+.rail {
+  width: 15rem;
+  flex: none;
+  background: var(--surface);
+  border-right: 1px solid var(--rule);
+  padding: 1.25rem 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mark { padding: 0 1.25rem 1.25rem; border-bottom: 1px solid var(--rule-soft); }
+.mark h1 { font-size: 1rem; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+.mark p {
+  margin: 0.1rem 0 0;
+  font-size: 0.74rem;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+nav { padding: 0.75rem 0; flex: 1; }
+nav a {
+  display: block;
+  padding: 0.4rem 1.25rem;
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-size: 0.92rem;
+  border-left: 2px solid transparent;
+}
+nav a:hover { background: var(--surface-2); color: var(--ink); }
+nav a[aria-current="page"] {
+  border-left-color: var(--accent);
+  color: var(--ink);
+  font-weight: 600;
+  background: var(--surface-2);
+}
+
+.whoami {
+  padding: 0.9rem 1.25rem 0;
+  border-top: 1px solid var(--rule-soft);
+  font-size: 0.85rem;
+}
+.whoami strong { display: block; }
+.whoami span { color: var(--muted); font-size: 0.8rem; }
+
+main { flex: 1; padding: 2rem 2.25rem 5rem; max-width: 78rem; }
+
+/* ── headings ──────────────────────────────────────────────────────────── */
+
+h2 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 0 0 0.2rem;
+  letter-spacing: -0.012em;
+}
+.lede { color: var(--muted); margin: 0 0 1.6rem; max-width: 44rem; font-size: 0.94rem; }
+h3 { font-size: 0.95rem; font-weight: 600; margin: 2rem 0 0.6rem; }
+
+/* ── tables ────────────────────────────────────────────────────────────── */
+
+.scroll { overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; min-width: 34rem; }
+th, td { text-align: left; padding: 0.55rem 0.85rem; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+th {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--surface-2); }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+td a { color: var(--accent); text-decoration: none; }
+td a:hover { text-decoration: underline; }
+
+/* ── state ─────────────────────────────────────────────────────────────── */
+
+.tag {
+  display: inline-block;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  padding: 0.1rem 0.42rem;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.tag-good { background: var(--good-soft); color: var(--good); }
+.tag-warn { background: var(--warn-soft); color: var(--warn); }
+.tag-bad { background: var(--bad-soft); color: var(--bad); }
+.tag-idle { background: var(--surface-2); color: var(--muted); border: 1px solid var(--rule-soft); }
+.tag-accent { background: var(--accent-soft); color: var(--accent); }
+
+/* ── empty and refused ─────────────────────────────────────────────────── */
+
+.empty, .refused {
+  border: 1px dashed var(--rule);
+  border-radius: 4px;
+  padding: 1.1rem 1.25rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+  background: var(--surface);
+  max-width: 46rem;
+}
+.refused { border-style: solid; border-left: 3px solid var(--accent); color: var(--ink-soft); }
+.refused strong { color: var(--ink); display: block; margin-bottom: 0.2rem; }
+
+/* ── cards ─────────────────────────────────────────────────────────────── */
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.85rem; margin-bottom: 2rem; }
+.card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.9rem 1rem;
+  box-shadow: var(--shadow);
+}
+.card .label {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.card .value { font-size: 1.7rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.card .note { font-size: 0.8rem; color: var(--muted); }
+
+/* ── sign in ───────────────────────────────────────────────────────────── */
+
+.signin { min-height: 100vh; display: grid; place-items: center; padding: 2rem; }
+.signin form {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 2rem;
+  width: min(24rem, 100%);
+  box-shadow: var(--shadow);
+}
+.signin h1 { font-size: 1.25rem; margin: 0 0 0.2rem; }
+.signin p.lede { margin-bottom: 1.5rem; font-size: 0.9rem; }
+label { display: block; font-size: 0.82rem; color: var(--ink-soft); margin-bottom: 0.25rem; font-weight: 500; }
+input {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font: inherit;
+  margin-bottom: 1rem;
+}
+input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button {
+  font: inherit;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--surface);
+  cursor: pointer;
+}
+button:hover { filter: brightness(1.08); }
+button:disabled { opacity: 0.55; cursor: default; }
+button.quiet { background: transparent; color: var(--ink-soft); border-color: var(--rule); }
+
+.loading { color: var(--muted); font-size: 0.92rem; }

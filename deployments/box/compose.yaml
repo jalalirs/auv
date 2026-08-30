@@ -199,6 +199,26 @@ services:
         limits: { cpus: "1", memory: 1G }
     restart: unless-stopped
 
+  # The control plane's operator console: resources and governance. Not the
+  # application people dive in — that is a different thing, and letting an
+  # administration screen pretend to be a product is how the first attempt at
+  # this went wrong.
+  console:
+    image: coral-city/console:${CORAL_CITY_IMAGE_TAG:-r1}
+    pull_policy: never
+    build:
+      context: ../..
+      dockerfile: apps/console/Dockerfile
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    ports:
+      - "${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_CONSOLE_PORT:-18082}:8080"
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 512M }
+    restart: unless-stopped
+
 volumes:
   record:
   registry:
