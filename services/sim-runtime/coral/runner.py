@@ -97,6 +97,15 @@ class Dive:
             dtype=float)
         self.bridge = None
 
+        # What a person at the controls is asking for, as a body-frame wrench:
+        # surge, sway, heave, roll, pitch, yaw. Held here rather than in the
+        # shell so that flying it by hand goes through the same allocator and
+        # the same thrusters as flying it by program. A pilot and a controller
+        # should be able to do exactly the same things to this vehicle, and
+        # neither should be able to do anything the other cannot.
+        self.hand = np.zeros(6)
+        self.flown_by_hand = False
+
     # ── setting up ───────────────────────────────────────────────────────────
 
     def open(self, drawn: bool = False) -> bool:
@@ -253,9 +262,22 @@ class Dive:
     def done(self) -> bool:
         return self.taken >= self.steps
 
+    def take_the_controls(self, wrench) -> None:
+        """A person is flying it, in the vehicle's own body frame.
+
+        Ends any deference to autonomy for as long as the hand is on the
+        controls. There is no arbitration beyond that and there should not be:
+        two things flying one vehicle is not a mode anybody wants, and a pilot
+        who has taken hold of it has said which one wins.
+        """
+        self.hand = np.asarray(wrench, dtype=float)
+        self.flown_by_hand = bool(np.any(self.hand))
+
     def step(self) -> None:
         """One step of physics. Everything else is somebody else's schedule."""
-        if self.bridge is not None:
+        if self.flown_by_hand:
+            self.commands = self.allocator.allocate(self.hand)
+        elif self.bridge is not None:
             self.commands = self.bridge.commands()
 
         wrench = self.body.step(self.rotation, self.velocity, self.commands, self.dt)
@@ -310,6 +332,7 @@ class Dive:
             "depthM": round(float(-self.position[2]), 4),
             "speedMs": round(float(np.linalg.norm(self.velocity[:3])), 4),
             "commanded": bool(self.bridge.commanded) if self.bridge else False,
+            "byHand": self.flown_by_hand,
             "thrust": [round(float(c), 3) for c in self.commands],
             "position": [round(float(x), 4) for x in self.position],
         }

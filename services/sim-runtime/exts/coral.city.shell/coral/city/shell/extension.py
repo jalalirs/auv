@@ -24,6 +24,7 @@ import omni.ext
 import omni.kit.app
 import omni.usd
 
+from .controls import Controls
 from .hud import Hud
 
 # Where the runtime keeps the dive: the physics, the boundary, and the loader
@@ -73,6 +74,7 @@ class CoralCityShell(omni.ext.IExt):
         self.waiting_until = None
         self.finished = False
         self.photographs = list(PHOTOGRAPH_AT)
+        self.controls = None
 
         if str(CORAL) not in sys.path:
             sys.path.insert(0, str(CORAL))
@@ -80,6 +82,12 @@ class CoralCityShell(omni.ext.IExt):
 
         self.hud = Hud()
         self.hud.opened("opening the place…", "")
+        try:
+            self.controls = Controls()
+        except Exception as exc:
+            # A dive nobody can fly by hand is still a dive. Autonomy does not
+            # need a keyboard.
+            carb.log_warn(f"Coral City has no keyboard: {exc}")
 
         # Subscribed before anything is loaded, so that a failure to open has
         # somewhere to be reported rather than a black window.
@@ -189,7 +197,14 @@ class CoralCityShell(omni.ext.IExt):
         # and saying nothing until commanded deadlocks against a controller
         # waiting for a reading to respond to.
         if self.waiting_until is not None:
-            if dive.bridge is not None and dive.bridge.commanded:
+            if self.controls is not None and self.controls.flying:
+                # Somebody has taken hold of it. There is nothing left to wait
+                # for — the vehicle is being flown, which is what the wait was
+                # for.
+                self._say("pilot_took_the_controls")
+                self.waiting_until = None
+                self.began = time.monotonic()
+            elif dive.bridge is not None and dive.bridge.commanded:
                 self._say("autonomy_ready", waitedSeconds=0.0)
                 self.waiting_until = None
                 self.began = time.monotonic()
@@ -204,6 +219,9 @@ class CoralCityShell(omni.ext.IExt):
                 self.hud.waiting(self.waiting_until - time.monotonic())
                 self.hud.show(dive.state())
                 return
+
+        if self.controls is not None:
+            dive.take_the_controls(self.controls.wrench())
 
         # Advance to where wall-clock time says the vehicle should be. The
         # physics step is fixed; what varies is how many of them a frame is
@@ -221,7 +239,9 @@ class CoralCityShell(omni.ext.IExt):
         self.hud.show(dive.state())
         if self.photographs and dive.simulated >= self.photographs[0]:
             self._photograph(round(self.photographs.pop(0), 1))
-        if dive.bridge is not None and dive.bridge.commanded:
+        if dive.flown_by_hand:
+            self.hud.by_hand()
+        elif dive.bridge is not None and dive.bridge.commanded:
             self.hud.flying(dive.bridge.commands_seen)
 
         if dive.done:
@@ -269,6 +289,9 @@ class CoralCityShell(omni.ext.IExt):
         if self.dive is not None and not self.finished:
             self.dive.close()
             self.dive = None
+        if self.controls is not None:
+            self.controls.close()
+            self.controls = None
         if self.hud is not None:
             self.hud.close()
             self.hud = None
