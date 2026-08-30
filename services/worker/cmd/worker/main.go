@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -53,7 +52,7 @@ func run(logger *slog.Logger) error {
 
 	// Packages are cached beside the work directory and shared by every dive
 	// on this host, which is the point: a city fetched once is a city fetched.
-	packages, err := cache.New(filepath.Join(settings.WorkDir, "packages"), logger)
+	packages, err := cache.New(settings.WorkDir, logger)
 	if err != nil {
 		return err
 	}
@@ -61,7 +60,7 @@ func run(logger *slog.Logger) error {
 		logger.Info("package cache", "files", held, "bytes", bytes)
 	}
 	dive := diver.New(&platform{client}, runtime, packages,
-		settings.SimImage, settings.WorkDir,
+		settings.SimImage, settings.WorkDir, settings.HostWorkDir,
 		// Comfortably shorter than the lease, so one missed renewal does not
 		// cost the device.
 		settings.HeartbeatInterval, logger)
