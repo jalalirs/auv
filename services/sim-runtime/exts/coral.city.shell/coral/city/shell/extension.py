@@ -155,7 +155,10 @@ class CoralCityShell(omni.ext.IExt):
             # whatever the author of the place measured in.
             x, y, z = dive.position
             at = dive.drawn_at((x, y, z))
-            from_ = dive.drawn_at((x - 4.5, y - 4.5, z + 1.8))
+            # Kept well under the surface. The first attempt sat twenty
+            # centimetres below it, and the underside of the water filled the
+            # frame — a convincing picture of nothing.
+            from_ = dive.drawn_at((x - 3.4, y - 3.4, z + 0.9))
             up = Gf.Vec3d(0.0, 1.0, 0.0) if dive.up_axis == "Y" else Gf.Vec3d(0.0, 0.0, 1.0)
             # Aimed rather than angled. The first attempt set pitch and yaw by
             # hand, which is a guess that happens to be right for one starting
