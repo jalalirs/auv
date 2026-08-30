@@ -195,9 +195,19 @@ class Dive:
             hull = find_hull(pathlib.Path(
                 self.brief.get("vehiclePath", "/dive/vehicle")))
             if hull is not None:
-                stage.DefinePrim(self.vehicle_path + "/Hull").GetReferences() \
-                    .AddReference(str(hull))
-                self.say("hull_drawn", file=hull.name)
+                prim = stage.DefinePrim(self.vehicle_path + "/Hull")
+                prim.GetReferences().AddReference(str(hull))
+                # How big it came out. A vehicle package is authored by
+                # somebody else, in units of their choosing, and a BlueROV2
+                # drawn fifty metres long looks exactly like a wall.
+                drawn = UsdGeom.BBoxCache(
+                    Usd.TimeCode.Default(), [UsdGeom.Tokens.default_]
+                ).ComputeWorldBound(prim).ComputeAlignedRange()
+                size = None
+                if not drawn.IsEmpty():
+                    size = [round(float(v) / self.units_per_metre, 3)
+                            for v in drawn.GetSize()]
+                self.say("hull_drawn", file=hull.name, metresAcross=size)
 
             water = find_water(pathlib.Path(
                 self.brief.get("cityPath", "/dive/city")))
