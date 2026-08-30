@@ -15,18 +15,19 @@ for marine craft:
 The terms, and where each is handled:
 
   M_RB    rigid-body mass and inertia          PhysX, from the vehicle package
-  M_A     added mass — water accelerated       here, as a force (see below)
-          along with the hull
+  M_A     added mass — water accelerated       here, folded into the mass the
+          along with the hull                  integrator divides by
   C       Coriolis and centripetal             neglected, deliberately (below)
   D(v)    drag, linear and quadratic           here
   g(η)    weight and buoyancy                  here, and gravity is switched ON
   τ       what the thrusters produce           here, from allocation
 
 Two approximations are made on purpose, and both are stated where they are
-made rather than buried: added mass is applied as a force rather than folded
-into the mass matrix, and the Coriolis terms are dropped. Neither is right in
-general. Both are defensible for a slow survey ROV and neither is defensible
-for a vehicle doing several knots, which is why they are written down.
+made rather than buried: the added-mass matrix is treated as diagonal, and the
+Coriolis and centripetal terms are dropped. Neither is right in general. Both
+are defensible for a slow, nearly symmetric survey ROV and neither is
+defensible for a vehicle doing several knots, which is why they are written
+down where somebody changing the vehicle will read them.
 """
 
 from __future__ import annotations
@@ -159,12 +160,6 @@ class Body:
 
     def __init__(self, model: Hydrodynamics) -> None:
         self.model = model
-        self._previous_velocity = np.zeros(6)
-        self._have_previous = False
-
-    def reset(self) -> None:
-        self._previous_velocity = np.zeros(6)
-        self._have_previous = False
 
     def restoring(self, rotation: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Weight and buoyancy, in the body frame.
@@ -197,31 +192,31 @@ class Body:
         quadratic = self.model.quadratic_damping * np.abs(velocity) * velocity
         return -(linear + quadratic)
 
-    def added_mass(self, velocity: np.ndarray, dt: float) -> np.ndarray:
-        """The water that accelerates along with the hull, as a wrench.
+    def effective_mass(self) -> np.ndarray:
+        """Mass and inertia including the water that moves with the hull.
 
-        Properly this belongs in the mass matrix: it is not a force but a change
-        to what the vehicle's inertia *is*, and for a neutrally buoyant body it
-        is comparable to the vehicle's own mass — the BlueROV2's heave added
-        mass is 14.6 kg against a hull of 11.5. PhysX integrates a rigid body
-        with a fixed mass matrix and offers no way to add to it, so it is
-        applied here as a force opposing acceleration, with acceleration
-        estimated by differencing velocity.
+        Added mass is not a force. It is a statement that accelerating this
+        body means accelerating some water too, and for a neutrally buoyant
+        vehicle it is comparable to the hull itself — the BlueROV2's heave
+        added mass is 14.6 kg against 11.5 kg of vehicle. The honest way to
+        express that is to make the body heavier to accelerate, which is what
+        this returns and what the integrator divides by.
 
-        That approximation is stable at the small timesteps a simulator runs at
-        and degrades as the timestep grows, because a differenced acceleration
-        lags by half a step. It is the same compromise every ROV simulator on
-        PhysX makes. It is written down because a controller tuned against it
-        is tuned against the approximation as much as against the vehicle.
+        Applying it as a force instead is possible and wrong: the force depends
+        on acceleration, acceleration depends on the force, and estimating one
+        from differenced velocity makes a loop that diverges whenever the added
+        mass exceeds the hull mass. It does exceed it here, on the axis that
+        matters most for a vehicle holding depth.
+
+        The diagonal treatment is still an approximation — the real added-mass
+        matrix has off-diagonal terms coupling sway with yaw and heave with
+        pitch — but it is a stable one, and the coupling is small for a hull
+        this close to symmetric.
         """
-        if not self._have_previous or dt <= 0.0:
-            self._previous_velocity = velocity.copy()
-            self._have_previous = True
-            return np.zeros(6)
-
-        acceleration = (velocity - self._previous_velocity) / dt
-        self._previous_velocity = velocity.copy()
-        return -self.model.added_mass * acceleration
+        return np.concatenate([
+            np.full(3, self.model.mass_kg) + self.model.added_mass[:3],
+            self.model.added_mass[3:],
+        ])
 
     def thrust(self, commands: np.ndarray) -> np.ndarray:
         """What the thrusters produce, as a wrench in the body frame."""
@@ -239,16 +234,21 @@ class Body:
 
         `velocity` is the body-frame twist: linear then angular.
 
+        Added mass is deliberately not in here. It belongs in the mass the
+        integrator divides by — see effective_mass — because it is a change to
+        what the body's inertia is rather than a force acting on it.
+
         Coriolis and centripetal terms are not here. They scale with the square
         of velocity and matter for a vehicle turning hard at speed; a survey ROV
         at a quarter of a metre per second is not that vehicle, and including
         them badly would be worse than leaving them out honestly. A vehicle that
         does several knots needs them, and needs this function changed.
         """
+        del dt  # kept in the signature: a Coriolis term would need it.
+
         force, moment = self.restoring(rotation)
         wrench = np.concatenate([force, moment])
         wrench = wrench + self.damping(velocity)
-        wrench = wrench + self.added_mass(velocity, dt)
         if len(self.model.thrusters) > 0:
             wrench = wrench + self.thrust(commands)
         return wrench

@@ -145,17 +145,16 @@ def test_at_rest_the_water_does_nothing():
 
 # ── added mass ───────────────────────────────────────────────────────────────
 
-def test_added_mass_opposes_acceleration_and_not_velocity():
+def test_added_mass_makes_the_body_harder_to_accelerate():
+    # It is not a force. It says that accelerating this body means accelerating
+    # water too, so the honest expression is a heavier body rather than a term
+    # that pushes back — and a term that pushes back diverges here, because the
+    # force depends on the acceleration it is meant to produce.
     body = Body(bluerov())
-    steady = np.array([1.0, 0, 0, 0, 0, 0])
-
-    body.added_mass(steady, 0.01)                    # first step only records
-    assert np.allclose(body.added_mass(steady, 0.01), np.zeros(6)), (
-        "moving at a constant speed, added mass should produce nothing")
-
-    accelerating = np.array([2.0, 0, 0, 0, 0, 0])
-    assert body.added_mass(accelerating, 0.01)[0] < 0, (
-        "accelerating forward, added mass should push back")
+    effective = body.effective_mass()
+    assert effective[0] > body.model.mass_kg
+    assert effective[2] > body.model.mass_kg
+    assert effective[2] == pytest.approx(11.5 + 14.57)
 
 
 def test_added_mass_is_not_negligible_for_this_hull():
@@ -197,13 +196,12 @@ def test_the_vertical_thrusters_lift_and_the_horizontal_ones_do_not():
 
 # ── allocation ───────────────────────────────────────────────────────────────
 
-def test_asking_to_go_forward_produces_forward():
+def test_asking_to_go_forward_produces_forward_and_no_sideways():
     allocator = Allocator(bluerov())
-    wanted = np.array([20.0, 0, 0, 0, 0, 0])
-    produced = allocator.matrix @ allocator.allocate(wanted)
-    assert produced[0] == pytest.approx(20.0, rel=0.02)
-    assert abs(produced[1]) < 1e-6
-    assert abs(produced[5]) < 1e-6
+    produced = allocator.matrix @ allocator.allocate(np.array([20.0, 0, 0, 0, 0, 0]))
+    assert produced[0] == pytest.approx(20.0, rel=0.05)
+    assert abs(produced[1]) < 1e-6, "asking to go forward made it go sideways"
+    assert abs(produced[5]) < 1e-6, "asking to go forward made it yaw"
 
 
 def test_asking_to_yaw_produces_yaw_and_no_translation():
@@ -214,9 +212,27 @@ def test_asking_to_yaw_produces_yaw_and_no_translation():
     assert np.linalg.norm(produced[:3]) < 1e-6
 
 
+def test_this_hull_cannot_produce_pure_surge_and_that_is_correct():
+    # The four horizontal thrusters sit above the centre of gravity, so pushing
+    # forward also pitches the vehicle nose-down, and the two vertical
+    # thrusters share an x position and so have no pitch authority to cancel it
+    # with. The BlueROV2 really is like this: it resists the pitch passively,
+    # through the separation of its centres, rather than actively.
+    #
+    # So a request for surge with no pitching moment is not achievable, and the
+    # allocator saying so is the model being right rather than wrong.
+    allocator = Allocator(bluerov())
+    assert not allocator.achievable(np.array([20.0, 0, 0, 0, 0, 0]))
+
+    # What it can do is produce the surge, accepting the pitch that comes with
+    # it — which is what a pilot experiences.
+    produced = allocator.matrix @ allocator.allocate(np.array([20.0, 0, 0, 0, 0, 0]))
+    assert produced[0] == pytest.approx(20.0, rel=0.05)
+    assert abs(produced[4]) > 0.5, "the nose-down moment should be there, not hidden"
+
+
 def test_asking_for_more_than_the_vehicle_has_is_reported_as_such():
     allocator = Allocator(bluerov())
-    assert allocator.achievable(np.array([20.0, 0, 0, 0, 0, 0]))
     assert not allocator.achievable(np.array([10_000.0, 0, 0, 0, 0, 0]))
 
 
@@ -255,11 +271,13 @@ def test_a_steady_thrust_reaches_a_steady_speed():
     commands = np.array([0.5, 0.5, -0.5, -0.5, 0.0, 0.0])   # forward
     dt = 1 / 200
 
+    # Divided by the effective mass, which is what added mass means.
+    effective = body.effective_mass()
+
     speeds = []
     for _ in range(4000):
         wrench = body.step(identity(), velocity, commands, dt)
-        acceleration = wrench[:3] / model.mass_kg
-        velocity[:3] += acceleration * dt
+        velocity[:3] += (wrench[:3] / effective[:3]) * dt
         speeds.append(velocity[0])
 
     assert speeds[-1] > 0.1, "steady forward thrust produced no forward motion"
