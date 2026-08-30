@@ -200,10 +200,18 @@ def fly(app, brief: dict, scene: pathlib.Path, body, allocator) -> int:
     import time as wallclock
 
     if bridge is not None:
+        # Publishing while it waits, because otherwise neither side can go
+        # first: this was waiting for a command, the controller was waiting for
+        # a depth reading to respond to, and each was the other's precondition.
+        #
+        # A vehicle sitting in the water still has a depth and still reports it.
+        # Saying nothing until commanded would be the simulator behaving in a
+        # way no vehicle does, and it deadlocked exactly as that deserves.
         deadline = wallclock.monotonic() + float(brief.get("autonomyWaitSeconds", 60.0))
         while not bridge.commanded and wallclock.monotonic() < deadline:
+            bridge.publish(0.0, position, velocity, body.model.density)
             app.update()
-            wallclock.sleep(0.1)
+            wallclock.sleep(0.05)
         if bridge.commanded:
             say("autonomy_ready",
                 waitedSeconds=round(60.0 - (deadline - wallclock.monotonic()), 2))
