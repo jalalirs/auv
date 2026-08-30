@@ -65,6 +65,13 @@ excluded = [
     "semantics.schema.editor",
     "semantics.schema.property",
     "omni.kit.widget.cache_indicator",
+    # A file browser, and the Nucleus server it wants to list. There is nothing
+    # to browse: a dive is handed the place it runs in, by digest, before the
+    # application starts. Left loaded it spends the first minute failing to
+    # reach omniverse:// and saying so.
+    "omni.kit.window.filepicker",
+    "omni.kit.widget.filebrowser",
+    "omni.kit.window.content_browser",
 ]
 
 [settings.exts."omni.kit.viewport.window"]
