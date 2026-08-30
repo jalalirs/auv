@@ -117,6 +117,11 @@ type Diver struct {
 }
 
 
+// runtimeUser is the user the simulation runtime runs as, declared in its
+// image. Named here because the agent prepares directories the runtime writes
+// to, and a directory owned by whoever created it is one the runtime cannot use.
+const runtimeUser = 1234
+
 // New builds a diver.
 func New(platform Platform, runtime Runtime, packages *cache.Cache,
 	simImage, workDir, hostWorkDir, streamHost string,
@@ -231,6 +236,14 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	briefDir := filepath.Join(d.workDir, claimed.Run.ID)
 	if err := os.MkdirAll(briefDir, 0o755); err != nil {
 		return "failed", nil, fmt.Sprintf("could not prepare the work directory: %v", err)
+	}
+	// Handed to the simulator, which does not run as root and has things to
+	// leave here — the frames it photographed, at least. Without this the
+	// directory belongs to this agent and the simulator's writes fail with a
+	// permission error that Kit's asynchronous capture swallows: the dive
+	// reports taking a photograph, and there is no photograph.
+	if err := os.Chown(briefDir, runtimeUser, runtimeUser); err != nil {
+		log.Warn("the simulator may not be able to write beside its brief", "error", err)
 	}
 	encoded, err := json.MarshalIndent(brief, "", "  ")
 	if err != nil {
