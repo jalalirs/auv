@@ -60,8 +60,8 @@ services:
       # and somewhere whose exhaustion is this platform's problem alone.
       - ${CORAL_CITY_STORAGE_PATH:?set a path for stored bytes, on a filesystem with room}:/data
     ports:
-      - "${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_STORAGE_PORT:-19000}:9000"
-      - "${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_STORAGE_CONSOLE_PORT:-19001}:9001"
+      - "127.0.0.1:${CORAL_CITY_STORAGE_PORT:-19000}:9000"
+      - "127.0.0.1:${CORAL_CITY_STORAGE_CONSOLE_PORT:-19001}:9001"
     healthcheck:
       test: ["CMD-SHELL", "mc ready local || exit 1"]
       interval: 5s
@@ -84,7 +84,7 @@ services:
     volumes:
       - registry:/var/lib/registry
     ports:
-      - "${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_REGISTRY_PORT:-18081}:5000"
+      - "127.0.0.1:${CORAL_CITY_REGISTRY_PORT:-18081}:5000"
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:5000/v2/ || exit 1"]
       interval: 10s
