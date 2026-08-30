@@ -203,6 +203,10 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		"objective":      claimed.Objective,
 		"rosDomainId":    claimed.ROSDomainID,
 		"deviceIndex":    claimed.DeviceIndex,
+		// Whether anything is flying this vehicle. A dive that is flown paces
+		// itself to real time so the controller has time to exist in; one that
+		// is not runs as fast as the machine allows.
+		"autonomy": claimed.AutonomyImage != "",
 	}
 	briefDir := filepath.Join(d.workDir, claimed.Run.ID)
 	if err := os.MkdirAll(briefDir, 0o755); err != nil {
