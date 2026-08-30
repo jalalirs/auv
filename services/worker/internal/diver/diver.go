@@ -258,6 +258,11 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	log.Info("starting the simulator", "image", d.simImage, "city", city, "vehicle", vehicle,
 		"autonomy", claimed.AutonomyImage)
 
+	// Where the autonomy will find the vehicle. Docker resolves a container's
+	// name on the network it is attached to, so this is an address on the
+	// dive's network and nowhere else.
+	vehicleHost := "coral-sim-" + claimed.Run.ID
+
 	simulator := container.Spec{
 		Image: d.simImage,
 		Env: []string{
@@ -269,11 +274,18 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 			// vehicle must scope discovery the same way its autonomy does or
 			// they will not find one another.
 			"ROS_DOMAIN_ID=" + fmt.Sprint(claimed.ROSDomainID),
-			// Across the dive's own network, which is the only one either half
-			// is on. LOCALHOST would be the tighter-sounding setting and is the
-			// wrong one: it scopes discovery to a loopback that the two halves,
-			// being separate containers, do not share.
-			"ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET",
+			// No multicast. The dive's network is internal — no route off it
+			// in either direction — and an internal bridge does not carry the
+			// multicast that automatic discovery is built on, so a vehicle
+			// left to announce itself that way announces to nobody.
+			//
+			// It does not need to. The autonomy is told where the vehicle is
+			// and introduces itself directly, which is what happens when you
+			// point a stack at a real vehicle, and the vehicle learns of it
+			// from the introduction. Only one side has to know, and it has to
+			// be this one that is not told: the simulator starts first, and a
+			// peer named before it exists cannot be resolved.
+			"ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST",
 			"ROS_LOG_DIR=/tmp/ros",
 			// Same seed and same packages is the same run. Everything the
 			// platform claims about a result rests on the simulator honouring
@@ -292,7 +304,7 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		// The device it was given, and only that one. A dive that could see
 		// every GPU on the host could take one another dive is holding.
 		GPUs:   []string{fmt.Sprint(claimed.DeviceIndex)},
-		Name:   "coral-sim-" + claimed.Run.ID,
+		Name:   vehicleHost,
 		Attach: network,
 	}
 
@@ -331,7 +343,7 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		}
 	}
 	if claimed.AutonomyImage != "" {
-		autonomy, err := d.flyer(ctx, claimed, network, log)
+		autonomy, err := d.flyer(ctx, claimed, network, vehicleHost, log)
 		if err != nil {
 			log.Warn("the autonomy would not start; the dive continues untended",
 				"error", err)
@@ -468,7 +480,7 @@ func (d *Diver) keep(ctx context.Context, runID, output string, log *slog.Logger
 // namespace it shares with the simulator, and to nothing else. A stack that
 // wanted to reach the internet would be a stack doing something other than
 // flying a vehicle.
-func (d *Diver) flyer(ctx context.Context, claimed Claimed, network string,
+func (d *Diver) flyer(ctx context.Context, claimed Claimed, network, vehicleHost string,
 	log *slog.Logger) (string, error) {
 	image := claimed.AutonomyImage + "@" + claimed.AutonomyDigest
 
@@ -479,11 +491,19 @@ func (d *Diver) flyer(ctx context.Context, claimed Claimed, network string,
 			// The same domain as the vehicle, so they hear each other; a domain
 			// of their own, so no other dive on this host does.
 			"ROS_DOMAIN_ID=" + fmt.Sprint(claimed.ROSDomainID),
-			// Across the dive's network, which has the vehicle on it and
-			// nothing else. ROS_LOCALHOST_ONLY did this sort of thing and is
-			// deprecated in Jazzy; the range is what replaced it, and setting
-			// both would make the old one win and the new one be ignored.
-			"ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET",
+			// Told where the vehicle is rather than left to find it. The
+			// dive's network is internal and carries no multicast, so nothing
+			// is discovered by announcement; this introduces itself to the
+			// vehicle directly, and the vehicle learns of it from that.
+			//
+			// It is also how a stack reaches a real vehicle, which is the
+			// point: nothing here is a simulator-only arrangement.
+			//
+			// ROS_LOCALHOST_ONLY did this sort of thing and is deprecated in
+			// Jazzy; the range is what replaced it, and setting both would
+			// make the old one win and the new one be ignored.
+			"ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST",
+			"ROS_STATIC_PEERS=" + vehicleHost,
 			// The root filesystem is read-only, because this is somebody
 			// else's program running on our host. ROS insists on a log
 			// directory and gets the bounded temporary one, which is writable
