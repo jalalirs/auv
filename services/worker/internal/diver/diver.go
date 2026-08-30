@@ -233,8 +233,12 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 			// runs it on an operator's behalf.
 			"ACCEPT_EULA=Y",
 			"PRIVACY_CONSENT=Y",
-			// Two dives on one host must not hear each other over DDS.
+			// Two dives on one host must not hear each other over DDS, and the
+			// vehicle must scope discovery the same way its autonomy does or
+			// they will not find one another.
 			"ROS_DOMAIN_ID=" + fmt.Sprint(claimed.ROSDomainID),
+			"ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST",
+			"ROS_LOG_DIR=/tmp/ros",
 			// Same seed and same packages is the same run. Everything the
 			// platform claims about a result rests on the simulator honouring
 			// this rather than drawing its own.
@@ -426,9 +430,17 @@ func (d *Diver) flyer(ctx context.Context, claimed Claimed, simID string,
 			// The same domain as the vehicle, so they hear each other; a domain
 			// of their own, so no other dive on this host does.
 			"ROS_DOMAIN_ID=" + fmt.Sprint(claimed.ROSDomainID),
-			// Discovery over the loopback they share. Multicast off the host
-			// would let two dives on one network find each other.
-			"ROS_LOCALHOST_ONLY=1",
+			// Discovery over the loopback the two of them share, and nowhere
+			// else. ROS_LOCALHOST_ONLY did this and is deprecated in Jazzy;
+			// the range is what replaced it, and setting both would make the
+			// old one win and the new one be ignored.
+			"ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST",
+			// The root filesystem is read-only, because this is somebody
+			// else's program running on our host. ROS insists on a log
+			// directory and gets the bounded temporary one, which is writable
+			// and is thrown away with the container.
+			"ROS_LOG_DIR=/tmp/ros",
+			"HOME=/tmp",
 		},
 		// Bounded, because a stack in a loop should not take the host down with
 		// it. A vehicle controller that needs more than this is doing something
