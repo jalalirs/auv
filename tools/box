@@ -39,7 +39,6 @@ REGISTRY_PORT="${CORAL_CITY_REGISTRY_PORT:-18081}"
 # platform somebody else can find. Set it to one address — a Tailscale address,
 # say — to let the application on somebody's own machine reach it, and it stays
 # unreachable from everywhere else.
-BIND="${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}"
 # Storage and the registry are the host talking to itself — the agent pulls
 # through the daemon on this machine, and presigned URLs are followed down a
 # tunnel — so they stay on loopback whatever the platform is reachable at.
@@ -53,6 +52,19 @@ STORAGE_PORT="${CORAL_CITY_STORAGE_PORT:-19000}"
 STORAGE_CONSOLE_PORT="${CORAL_CITY_STORAGE_CONSOLE_PORT:-19001}"
 
 on_box() { LC_ALL=C ssh "${GPU_HOST}" "export LC_ALL=C LANG=C; $*"; }
+
+# Where the platform listens, asked of the box rather than assumed here.
+#
+# It is a fact about that machine, kept in its own .env beside its secrets, and
+# a copy of it in this shell is a second place for it to be wrong — which it
+# was: this reported loopback while the platform was listening somewhere else
+# entirely, so the one line telling somebody where to connect was the one line
+# that was false.
+bind_address() {
+    local said
+    said="$(on_box "sed -n 's/^CORAL_CITY_BIND_ADDRESS=//p' ~/${REMOTE_DIR}/deployments/box/.env" 2>/dev/null || true)"
+    printf '%s' "${said:-127.0.0.1}"
+}
 on_box_tty() { LC_ALL=C ssh -t "${GPU_HOST}" "export LC_ALL=C LANG=C; $*"; }
 
 die() { printf '\033[31m%s\033[0m\n' "$*" >&2; exit 1; }
@@ -162,7 +174,7 @@ command_up() {
     on_box "${COMPOSE} up --detach --wait"
 
     say "Checking that it answers…"
-    on_box "curl --fail --silent --show-error http://${BIND}:${API_PORT}/api/v1/platform" || true
+    on_box "curl --fail --silent --show-error http://$(bind_address):${API_PORT}/api/v1/platform" || true
     printf '\n\n'
     command_status
 }
@@ -172,9 +184,9 @@ command_status() {
     on_box "${COMPOSE} ps --format '  {{.Service}}\t{{.State}}\t{{.Status}}'" 2>/dev/null || true
     printf '\n'
     say "Endpoints on the box"
-    printf '  api        %s:%s\n' "${BIND}" "${API_PORT}"
+    printf '  api        %s:%s\n' "$(bind_address)" "${API_PORT}"
     printf '  registry   %s:%s\n' "${INTERNAL}" "${REGISTRY_PORT}"
-    printf '  console    127.0.0.1:%s\n' "${CONSOLE_PORT}"
+    printf '  console    %s:%s\n' "$(bind_address)" "${CONSOLE_PORT}"
     printf '  storage    %s:%s  (console %s)\n' "${INTERNAL}" "${STORAGE_PORT}" "${STORAGE_CONSOLE_PORT}"
     printf '\n'
     say "Simulation runtime"
@@ -207,8 +219,8 @@ command_tunnel() {
         -o ExitOnForwardFailure=yes \
         -o ServerAliveInterval=30 \
         -N \
-        -L "${API_PORT}:${BIND}:${API_PORT}" \
-        -L "${CONSOLE_PORT}:${BIND}:${CONSOLE_PORT}" \
+        -L "${API_PORT}:$(bind_address):${API_PORT}" \
+        -L "${CONSOLE_PORT}:$(bind_address):${CONSOLE_PORT}" \
         -L "${REGISTRY_PORT}:${INTERNAL}:${REGISTRY_PORT}" \
         -L "${STORAGE_PORT}:${INTERNAL}:${STORAGE_PORT}" \
         -L "${STORAGE_CONSOLE_PORT}:${INTERNAL}:${STORAGE_CONSOLE_PORT}" \
