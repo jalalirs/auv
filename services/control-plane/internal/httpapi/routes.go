@@ -238,9 +238,12 @@ func (rt *Router) registerAll() {
 		Resource: fromPath(policy.ResourceDive, "diveId"),
 		Also:     []policy.Action{policy.QueueRead},
 		Handle:   d.requestRun})
-	rt.register(Route{Method: "GET", Pattern: "/api/v1/runs/{runId}/events",
+	// Under the dive, because a run's events belong to it: the authority to
+	// read them is the authority to read the experiment they came from, and
+	// there is no such thing as authority over a run on its own.
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/dives/{diveId}/runs/{runId}/events",
 		Summary: "what happened during a run, in order", Action: policy.DiveRead,
-		Resource: atPlatform(), Handle: d.listRunEvents})
+		Resource: fromPath(policy.ResourceDive, "diveId"), Handle: d.listRunEvents})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/dives/{diveId}/runs",
 		Summary: "what a dive's executions did", Action: policy.DiveRead,
 		Resource: fromPath(policy.ResourceDive, "diveId"), Handle: d.listRuns})

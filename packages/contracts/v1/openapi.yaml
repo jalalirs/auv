@@ -942,7 +942,7 @@ paths:
                   leaseSeconds: { type: integer }
         '400':
           $ref: '#/components/responses/Invalid'
-  /api/v1/runs/{runId}/events:
+  /api/v1/dives/{diveId}/runs/{runId}/events:
     get:
       tags: [dives]
       summary: What happened during a run, in order
@@ -952,6 +952,11 @@ paths:
         recorded every physics step would be recording the integrator rather
         than the dive.
       parameters:
+        - name: diveId
+          in: path
+          required: true
+          description: The dive.
+          schema: { type: string }
         - name: runId
           in: path
           required: true
@@ -982,6 +987,7 @@ paths:
                       required: [id, occurredAt, kind, detail]
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v1/runs/{runId}/events:
     post:
       tags: [work]
       summary: What happened during a run
