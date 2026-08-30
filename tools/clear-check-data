@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# Remove what the end-to-end check leaves behind.
+#
+# Every run of `tools/e2e` founds a place, publishes a vehicle, opens a queue,
+# invents an institution and a person, and asks for a couple of runs. All of it
+# is real as far as the record is concerned, which is the point — but it
+# accumulates, and an operator opening the console should see the platform
+# rather than a heap of fixtures.
+#
+# Named by their handles rather than by age, so that nothing anybody meant to
+# keep is removed for having been created recently.
+#
+#   ./tools/clear-check-data            # say what would go
+#   ./tools/clear-check-data --confirm  # remove it
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+[ -f "${REPO_ROOT}/.env" ] && { set -a; . "${REPO_ROOT}/.env"; set +a; }
+
+GPU_HOST="${AUV_GPU_HOST:-jalalirs@100.76.65.1}"
+REMOTE_DIR="${AUV_REMOTE_DIR:-code/auv}"
+
+CONFIRM=false
+[ "${1:-}" = "--confirm" ] && CONFIRM=true
+
+# A run holds a device and references a dive, and a dive references packages,
+# so they come out innermost first. The record refuses to delete a finished run
+# outright, which is correct and is why the trigger is lifted for exactly this
+# statement and restored immediately: fixtures are the one thing that may go.
+read -r -d '' SQL <<'EOSQL' || true
+BEGIN;
+
+CREATE TEMP TABLE fixture_city AS
+    SELECT id FROM catalog.city WHERE slug ~ '^(tank|nodatum|sneak)-';
+CREATE TEMP TABLE fixture_vehicle AS
+    SELECT id FROM catalog.vehicle WHERE slug ~ '^(rov|sneak)-';
+CREATE TEMP TABLE fixture_queue AS
+    SELECT id FROM compute.queue WHERE slug ~ '^(box|brief)-';
+CREATE TEMP TABLE fixture_org AS
+    SELECT id FROM identity.organisation WHERE slug ~ '^other-';
+CREATE TEMP TABLE fixture_person AS
+    SELECT id FROM identity.principal WHERE email ~ '^outsider-';
+CREATE TEMP TABLE fixture_version AS
+    SELECT id FROM catalog.version
+     WHERE (asset_kind = 'city'    AND asset_id IN (SELECT id FROM fixture_city))
+        OR (asset_kind = 'vehicle' AND asset_id IN (SELECT id FROM fixture_vehicle));
+
+ALTER TABLE dive.run DISABLE TRIGGER a_finished_run_is_not_rewritten;
+ALTER TABLE dive.run_event DISABLE TRIGGER a_run_event_is_append_only;
+ALTER TABLE catalog.version DISABLE TRIGGER a_published_version_is_not_rewritten;
+ALTER TABLE catalog.version_object DISABLE TRIGGER a_published_version_keeps_its_files;
+ALTER TABLE catalog.vehicle_dynamics DISABLE TRIGGER a_published_vehicle_keeps_its_dynamics;
+
+DELETE FROM dive.run_event WHERE run_id IN (
+    SELECT r.id FROM dive.run r JOIN dive.dive d ON d.id = r.dive_id
+     WHERE d.org_id IN (SELECT id FROM fixture_org));
+DELETE FROM dive.run WHERE dive_id IN (
+    SELECT id FROM dive.dive WHERE org_id IN (SELECT id FROM fixture_org));
+DELETE FROM dive.dive WHERE org_id IN (SELECT id FROM fixture_org);
+DELETE FROM dive.conditions WHERE org_id IN (SELECT id FROM fixture_org);
+DELETE FROM dive.autonomy_stack WHERE org_id IN (SELECT id FROM fixture_org);
+
+DELETE FROM compute.device WHERE queue_id IN (SELECT id FROM fixture_queue);
+DELETE FROM catalog.vehicle_dynamics WHERE version_id IN (SELECT id FROM fixture_version);
+DELETE FROM catalog.version_object WHERE version_id IN (SELECT id FROM fixture_version);
+DELETE FROM catalog.version WHERE id IN (SELECT id FROM fixture_version);
+
+-- A refusal names who was refused, so the fixtures' refusals go with them.
+-- The audit record does not reference a principal at all and is left alone:
+-- what happened, happened, whoever it happened to.
+DELETE FROM policy.denial WHERE principal_id IN (SELECT id FROM fixture_person);
+DELETE FROM exec.refusal
+ WHERE principal_id IN (SELECT id FROM fixture_person)
+    OR org_id IN (SELECT id FROM fixture_org);
+
+DELETE FROM policy.binding
+ WHERE scope_id IN (SELECT id FROM fixture_city)
+    OR scope_id IN (SELECT id FROM fixture_vehicle)
+    OR scope_id IN (SELECT id FROM fixture_queue)
+    OR scope_id IN (SELECT id FROM fixture_org)
+    OR subject_id IN (SELECT id FROM fixture_org)
+    OR subject_id IN (SELECT id FROM fixture_person);
+
+DELETE FROM compute.queue   WHERE id IN (SELECT id FROM fixture_queue);
+DELETE FROM catalog.vehicle WHERE id IN (SELECT id FROM fixture_vehicle);
+DELETE FROM catalog.city    WHERE id IN (SELECT id FROM fixture_city);
+
+-- The fixtures' people are disabled rather than removed.
+--
+-- The audit record names who did each thing, and it is append-only because a
+-- record that can be tidied is not a record. Deleting these principals would
+-- either fail against that constraint or leave the audit naming rows that no
+-- longer exist — and "somebody did this, and we have removed all trace of who"
+-- is worse than a handful of disabled accounts. They cannot sign in, they hold
+-- nothing, and they belong to nothing.
+DELETE FROM identity.session    WHERE principal_id IN (SELECT id FROM fixture_person);
+DELETE FROM identity.credential WHERE principal_id IN (SELECT id FROM fixture_person);
+DELETE FROM identity.membership WHERE principal_id IN (SELECT id FROM fixture_person)
+                                   OR org_id IN (SELECT id FROM fixture_org);
+UPDATE identity.principal SET disabled_at = now()
+ WHERE id IN (SELECT id FROM fixture_person) AND disabled_at IS NULL;
+DELETE FROM exec.quota            WHERE org_id IN (SELECT id FROM fixture_org);
+DELETE FROM identity.organisation WHERE id IN (SELECT id FROM fixture_org);
+
+ALTER TABLE catalog.vehicle_dynamics ENABLE TRIGGER a_published_vehicle_keeps_its_dynamics;
+ALTER TABLE catalog.version_object ENABLE TRIGGER a_published_version_keeps_its_files;
+ALTER TABLE catalog.version ENABLE TRIGGER a_published_version_is_not_rewritten;
+ALTER TABLE dive.run_event ENABLE TRIGGER a_run_event_is_append_only;
+ALTER TABLE dive.run ENABLE TRIGGER a_finished_run_is_not_rewritten;
+
+COMMIT;
+EOSQL
+
+count() {
+    LC_ALL=C ssh "$GPU_HOST" "cd ~/${REMOTE_DIR}/deployments/box && \
+        pw=\$(sed -n 's/^CORAL_CITY_DATABASE_PASSWORD=//p' .env) && \
+        docker compose --env-file .env exec -T -e PGPASSWORD=\"\$pw\" record \
+            psql -U coral -d coral -tAc \"$1\"" 2>/dev/null | tr -d '[:space:]'
+}
+
+printf '\033[1mWhat the checks left behind\033[0m\n'
+printf '  places       %s\n' "$(count "SELECT count(*) FROM catalog.city WHERE slug ~ '^(tank|nodatum|sneak)-'")"
+printf '  vehicles     %s\n' "$(count "SELECT count(*) FROM catalog.vehicle WHERE slug ~ '^(rov|sneak)-'")"
+printf '  queues       %s\n' "$(count "SELECT count(*) FROM compute.queue WHERE slug ~ '^(box|brief)-'")"
+printf '  institutions %s\n' "$(count "SELECT count(*) FROM identity.organisation WHERE slug ~ '^other-'")"
+printf '  people       %s\n' "$(count "SELECT count(*) FROM identity.principal WHERE email ~ '^outsider-'")"
+
+if ! $CONFIRM; then
+    printf '\nNothing was removed. Run with --confirm to remove it.\n'
+    exit 0
+fi
+
+printf '\n\033[1mRemoving\033[0m\n'
+printf '%s' "$SQL" | LC_ALL=C ssh "$GPU_HOST" "cd ~/${REMOTE_DIR}/deployments/box && \
+    pw=\$(sed -n 's/^CORAL_CITY_DATABASE_PASSWORD=//p' .env) && \
+    docker compose --env-file .env exec -T -e PGPASSWORD=\"\$pw\" record \
+        psql -U coral -d coral -v ON_ERROR_STOP=1 -q" \
+    && printf '  done\n' || { printf '  refused; nothing was removed\n' >&2; exit 1; }
+
+printf '\n\033[1mWhat remains\033[0m\n'
+printf '  places       %s\n' "$(count 'SELECT count(*) FROM catalog.city')"
+printf '  vehicles     %s\n' "$(count 'SELECT count(*) FROM catalog.vehicle')"
+printf '  queues       %s\n' "$(count 'SELECT count(*) FROM compute.queue')"
+printf '  institutions %s\n' "$(count 'SELECT count(*) FROM identity.organisation')"
+printf '  people       %s\n' "$(count 'SELECT count(*) FROM identity.principal WHERE disabled_at IS NULL')"
+printf '  disabled     %s   (kept because the audit names them)\n' "$(count 'SELECT count(*) FROM identity.principal WHERE disabled_at IS NOT NULL')"
