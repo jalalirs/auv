@@ -165,6 +165,12 @@ class CoralCityShell(omni.ext.IExt):
             transform.ClearXformOpOrder()
             transform.AddTransformOp().Set(look)
             viewport.camera_path = camera_path
+            # Read back rather than assumed. Setting it is one line and failing
+            # to set it looks exactly the same from here — you get a picture
+            # either way, just not of what you aimed at.
+            self._say("camera", wanted=camera_path,
+                      looking_through=str(viewport.camera_path),
+                      eye=[round(float(v), 2) for v in from_])
         except Exception as exc:
             carb.log_warn(f"Coral City could not place the camera: {exc}")
 

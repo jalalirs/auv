@@ -135,14 +135,28 @@ class Dive:
         bounds = UsdGeom.BBoxCache(
             Usd.TimeCode.Default(), [UsdGeom.Tokens.default_]
         ).ComputeWorldBound(stage.GetPseudoRoot()).ComputeAlignedRange()
-        extent = None
+        extent = corner = far = None
         if not bounds.IsEmpty():
-            size = bounds.GetSize()
-            extent = [round(float(v) / self.units_per_metre, 2) for v in size]
+            metres = lambda v: [round(float(c) / self.units_per_metre, 2) for c in v]
+            extent, corner, far = (metres(bounds.GetSize()),
+                                   metres(bounds.GetMin()), metres(bounds.GetMax()))
+        self.bounds = (corner, far)
 
         self.say("place_open", scene=str(self.scene), prims=prims,
-                 metresAcross=extent, upAxis=str(self.up_axis),
+                 metresAcross=extent, from_=corner, to=far,
+                 upAxis=str(self.up_axis),
                  unitsPerMetre=round(self.units_per_metre, 4))
+
+        # Where the dive says to start, against where the place actually is.
+        # A vehicle placed outside its own tank is a dive definition that is
+        # wrong, and it should be said plainly rather than discovered by
+        # looking at a photograph of a wall.
+        if corner is not None:
+            inside = all(corner[i] <= self.position[i] <= far[i] for i in range(3))
+            if not inside:
+                self.say("vehicle_outside_the_place",
+                         position=[round(float(v), 2) for v in self.position],
+                         from_=corner, to=far)
 
         # Gravity on, which is the whole point: OceanSim disables it and applies
         # damping instead, and a vehicle with no weight has nothing for buoyancy
