@@ -943,6 +943,45 @@ paths:
         '400':
           $ref: '#/components/responses/Invalid'
   /api/v1/runs/{runId}/events:
+    get:
+      tags: [dives]
+      summary: What happened during a run, in order
+      description: >
+        The whole of it rather than a page: telemetry is emitted on simulated
+        time, so a dive of a few minutes produces tens of events. A run that
+        recorded every physics step would be recording the integrator rather
+        than the dive.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: The run.
+          schema: { type: string }
+      responses:
+        '200':
+          description: What happened.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer, format: int64 }
+                        occurredAt: { type: string, format: date-time }
+                        simulatedSeconds:
+                          type: number
+                          description: >
+                            Where in the dive this happened, which is what makes
+                            two runs of the same seed comparable moment by moment.
+                        kind: { type: string }
+                        detail: { type: object }
+                      required: [id, occurredAt, kind, detail]
+        '404':
+          $ref: '#/components/responses/NotFound'
     post:
       tags: [work]
       summary: What happened during a run

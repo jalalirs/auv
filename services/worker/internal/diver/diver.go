@@ -253,16 +253,24 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	if err != nil {
 		return "failed", nil, fmt.Sprintf("the simulator could not be started: %v", err)
 	}
+
+	// What the simulator said, kept as run events. Without this the trajectory
+	// exists only in a container's output and the container is gone: a dive
+	// that ran and left no record of what happened is a dive nobody can learn
+	// anything from, which is most of the point of running it.
+	summary := d.keep(ctx, claimed.Run.ID, result.Logs, log)
+
 	if result.ExitCode != 0 {
 		return "failed", map[string]any{
 			"exitCode": result.ExitCode, "seconds": elapsed.Seconds(),
 		}, fmt.Sprintf("the simulator exited %d", result.ExitCode)
 	}
 
-	return "succeeded", map[string]any{
-		"seconds":  elapsed.Seconds(),
-		"exitCode": 0,
-	}, ""
+	outcome = map[string]any{"seconds": elapsed.Seconds(), "exitCode": 0}
+	for key, value := range summary {
+		outcome[key] = value
+	}
+	return "succeeded", outcome, ""
 }
 
 // Package is one package the platform says this dive needs.
@@ -298,3 +306,57 @@ func (d *Diver) sync(ctx context.Context, runID, what string, packaged Package,
 // ErrNothingToDo is what a claim reports when the platform has no work, which
 // is the ordinary case rather than a failure.
 var ErrNothingToDo = errors.New("nothing to run")
+
+// keep records what the simulator reported, and returns what is worth summarising.
+//
+// The simulator writes one JSON object per line to its own output rather than
+// posting to the control plane. It has no credential and should not have one:
+// a simulator that had to authenticate would be a simulator that could be
+// locked out of reporting its own results, and the agent is already holding
+// the run's lease and already reading this.
+//
+// Anything that is not one of those objects is the simulator's ordinary noise —
+// Isaac Sim says a great deal on the way up — and is left out rather than
+// recorded as though it meant something.
+func (d *Diver) keep(ctx context.Context, runID, output string, log *slog.Logger) map[string]any {
+	summary := map[string]any{}
+	kept := 0
+
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "{") {
+			continue
+		}
+		var reported map[string]any
+		if err := json.Unmarshal([]byte(line), &reported); err != nil {
+			continue
+		}
+		kind, ok := reported["event"].(string)
+		if !ok {
+			continue
+		}
+		delete(reported, "event")
+
+		var simulated *float64
+		if at, ok := reported["t"].(float64); ok {
+			simulated = &at
+		}
+		if err := d.platform.Record(ctx, runID, kind, simulated, reported); err != nil {
+			log.Warn("could not record what the simulator said", "kind", kind, "error", err)
+			continue
+		}
+		kept++
+
+		// The last thing it said about where the vehicle got to is what a
+		// person asks first.
+		if kind == "settled" || kind == "succeeded" {
+			for key, value := range reported {
+				summary[key] = value
+			}
+		}
+	}
+
+	log.Info("recorded what the simulator said", "events", kept)
+	summary["events"] = kept
+	return summary
+}

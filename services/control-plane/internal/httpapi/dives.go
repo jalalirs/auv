@@ -473,3 +473,43 @@ func (d *Dependencies) runPackages(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, r, http.StatusOK, answer)
 }
+
+// listRunEvents lists what happened during a run, in order.
+//
+// The whole of it rather than a page: a dive of a few minutes produces tens of
+// events, not thousands, because telemetry is emitted on simulated time and a
+// run that recorded every physics step would be recording the integrator
+// rather than the dive.
+func (d *Dependencies) listRunEvents(w http.ResponseWriter, r *http.Request) {
+	rows, err := d.Pool.Query(r.Context(), `
+		SELECT id, occurred_at, simulated_seconds, kind, detail
+		  FROM dive.run_event WHERE run_id = $1 ORDER BY id`, r.PathValue("runId"))
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	defer rows.Close()
+
+	type event struct {
+		ID               int64           `json:"id"`
+		OccurredAt       time.Time       `json:"occurredAt"`
+		SimulatedSeconds *float64        `json:"simulatedSeconds,omitempty"`
+		Kind             string          `json:"kind"`
+		Detail           json.RawMessage `json:"detail"`
+	}
+	events := []event{}
+	for rows.Next() {
+		var one event
+		if err := rows.Scan(&one.ID, &one.OccurredAt, &one.SimulatedSeconds,
+			&one.Kind, &one.Detail); err != nil {
+			writeError(w, r, err)
+			return
+		}
+		events = append(events, one)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{"events": events})
+}
