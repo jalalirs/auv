@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/jalalirs/auv/services/worker/internal/cache"
@@ -80,6 +81,14 @@ type Diver struct {
 	simImage string
 	workDir  string
 
+	// hostWorkDir is the same directory as workDir, named as the host names it.
+	//
+	// A bind mount is resolved by the container runtime on the host, and this
+	// agent is itself a container: the path it knows a directory by is not the
+	// path the daemon will look for. Passing its own path produces a mount of
+	// nothing, silently, and a simulator that starts to an empty scene.
+	hostWorkDir string
+
 	// RenewEvery is how often the lease is extended. Comfortably shorter than
 	// the lease itself, so that one missed renewal does not lose the device.
 	renewEvery time.Duration
@@ -87,12 +96,22 @@ type Diver struct {
 
 // New builds a diver.
 func New(platform Platform, runtime Runtime, packages *cache.Cache,
-	simImage, workDir string, renewEvery time.Duration, logger *slog.Logger) *Diver {
+	simImage, workDir, hostWorkDir string, renewEvery time.Duration,
+	logger *slog.Logger) *Diver {
 	return &Diver{
 		platform: platform, runtime: runtime, cache: packages,
-		simImage: simImage, workDir: workDir,
+		simImage: simImage, workDir: workDir, hostWorkDir: hostWorkDir,
 		renewEvery: renewEvery, logger: logger,
 	}
+}
+
+// onHost translates a path this agent knows into the path the container
+// runtime will resolve it by.
+func (d *Diver) onHost(path string) string {
+	if d.hostWorkDir == "" || !strings.HasPrefix(path, d.workDir) {
+		return path
+	}
+	return filepath.Join(d.hostWorkDir, strings.TrimPrefix(path, d.workDir))
 }
 
 // Dive runs one, and always releases the device.
@@ -221,9 +240,9 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		// installation and cannot start without somewhere to put them.
 		WritableRoot: true,
 		Mounts: []container.Mount{
-			{Source: city, Target: "/dive/city", ReadOnly: true},
-			{Source: vehicle, Target: "/dive/vehicle", ReadOnly: true},
-			{Source: briefDir, Target: "/dive", ReadOnly: false},
+			{Source: d.onHost(briefDir), Target: "/dive", ReadOnly: false},
+			{Source: d.onHost(city), Target: "/dive/city", ReadOnly: true},
+			{Source: d.onHost(vehicle), Target: "/dive/vehicle", ReadOnly: true},
 		},
 		// The device it was given, and only that one. A dive that could see
 		// every GPU on the host could take one another dive is holding.
