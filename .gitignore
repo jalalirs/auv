@@ -16,3 +16,4 @@ coverage/
 
 # Operating-system noise.
 .DS_Store
+__pycache__/
