@@ -40,6 +40,12 @@ type Config struct {
 	// its GPUs can run — and a host that lacks it should say so on startup
 	// rather than accept a dive it cannot perform.
 	SimImage string
+
+	// StreamHost is the address somebody watching an interactive dive connects
+	// to. The host knows which machine it is; the control plane does not, and
+	// a platform that guessed would send people to a name that does not resolve
+	// from where they are.
+	StreamHost string
 }
 
 // Load reads the environment, refusing anything that has no safe default.
@@ -81,6 +87,7 @@ func Load() (Config, error) {
 	}
 
 	config.SimImage = os.Getenv("CORAL_CITY_SIM_IMAGE")
+	config.StreamHost = os.Getenv("CORAL_CITY_STREAM_HOST")
 	if config.SimImage == "" {
 		config.SimImage = "coral-city/sim-runtime:r1"
 	}

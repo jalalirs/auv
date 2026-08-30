@@ -187,6 +187,10 @@ services:
       # What a dive is simulated in. A property of this host rather than of the
       # platform: what it has, and what its GPUs can run.
       CORAL_CITY_SIM_IMAGE: ${CORAL_CITY_SIM_IMAGE:-127.0.0.1:18081/sim-runtime:r1}
+      # Where somebody watching an interactive dive connects. The address of
+      # this machine as the people who use it reach it — which this host knows
+      # and the control plane does not.
+      CORAL_CITY_STREAM_HOST: ${CORAL_CITY_STREAM_HOST:-127.0.0.1}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${CORAL_CITY_AGENT_HOST_WORKDIR:-/var/lib/coral-city/work}:/work
