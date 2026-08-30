@@ -33,15 +33,20 @@ read -r -d '' SQL <<'EOSQL' || true
 BEGIN;
 
 CREATE TEMP TABLE fixture_city AS
-    SELECT id FROM catalog.city WHERE slug ~ '^(tank|nodatum|sneak)-';
+    SELECT id FROM catalog.city WHERE slug ~ '^(tank|nodatum|sneak)-[0-9]{9,}$';
 CREATE TEMP TABLE fixture_vehicle AS
-    SELECT id FROM catalog.vehicle WHERE slug ~ '^(rov|sneak)-';
+    SELECT id FROM catalog.vehicle WHERE slug ~ '^(rov|sneak)-[0-9]{9,}$';
+-- The suite names its fixtures with a timestamp, and that suffix is what makes
+-- them identifiable. Matching the prefix alone matched 'box-gpus', which is the
+-- real queue this platform runs work on: the cleanup tried to delete the GPU
+-- every real dive had used, and was refused by the record — correctly, and
+-- narrowly. A tool for removing fixtures must not be able to name production.
 CREATE TEMP TABLE fixture_queue AS
-    SELECT id FROM compute.queue WHERE slug ~ '^(box|brief)-';
+    SELECT id FROM compute.queue WHERE slug ~ '^(box|brief)-[0-9]{9,}$';
 CREATE TEMP TABLE fixture_org AS
-    SELECT id FROM identity.organisation WHERE slug ~ '^other-';
+    SELECT id FROM identity.organisation WHERE slug ~ '^other-[0-9]{9,}$';
 CREATE TEMP TABLE fixture_person AS
-    SELECT id FROM identity.principal WHERE email ~ '^outsider-';
+    SELECT id FROM identity.principal WHERE email ~ '^outsider-[0-9]{9,}@';
 CREATE TEMP TABLE fixture_version AS
     SELECT id FROM catalog.version
      WHERE (asset_kind = 'city'    AND asset_id IN (SELECT id FROM fixture_city))
