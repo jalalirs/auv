@@ -258,16 +258,28 @@ func (c *Client) ClaimDive(ctx context.Context, targetName string, into any) err
 	return nil
 }
 
-// PackageFiles asks what a package contains and where to fetch each file.
-func (c *Client) PackageFiles(ctx context.Context, versionID string) ([]PackageFile, error) {
+// RunPackages asks what the packages a run needs contain, and where to fetch
+// each file.
+//
+// Asked through the run rather than by naming a package: an agent holds
+// authority over work and nothing else, and this is the one thing it needs to
+// see of the catalogue.
+func (c *Client) RunPackages(ctx context.Context, runID string) (city, vehicle PackageContents, err error) {
 	var answer struct {
-		Files []PackageFile `json:"files"`
+		City    PackageContents `json:"city"`
+		Vehicle PackageContents `json:"vehicle"`
 	}
 	if _, err := c.call(ctx, http.MethodGet,
-		"/api/v1/versions/"+versionID+"/files", nil, &answer); err != nil {
-		return nil, err
+		"/api/v1/runs/"+runID+"/packages", nil, &answer); err != nil {
+		return PackageContents{}, PackageContents{}, err
 	}
-	return answer.Files, nil
+	return answer.City, answer.Vehicle, nil
+}
+
+// PackageContents is one package and the files in it.
+type PackageContents struct {
+	VersionID string        `json:"versionId"`
+	Files     []PackageFile `json:"files"`
 }
 
 // PackageFile is one file in a package, and where its bytes are.
