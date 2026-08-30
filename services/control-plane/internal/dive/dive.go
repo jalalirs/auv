@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -464,6 +465,26 @@ func (s *Store) CreateDive(ctx context.Context, conn db.Conn, spec DiveSpec) (Di
 		objective = json.RawMessage(`{}`)
 	}
 
+	// A stack and a vehicle that cannot talk to each other are found out here
+	// rather than by a dive that claims a GPU, waits, and produces a result
+	// that looks like a controller flying badly.
+	if spec.AutonomyStackID != nil {
+		var contract, subscribes, publishes json.RawMessage
+		err := conn.QueryRow(ctx, `
+			SELECT coalesce(d.topic_contract, '{}'::jsonb), s.subscribes, s.publishes
+			  FROM dive.autonomy_stack s
+			  LEFT JOIN catalog.vehicle_dynamics d ON d.version_id = $2
+			 WHERE s.id = $1`, *spec.AutonomyStackID, spec.VehicleVersionID).
+			Scan(&contract, &subscribes, &publishes)
+		if err != nil {
+			return Dive{}, fmt.Errorf("%w: no such autonomy, or no such vehicle version",
+				domain.ErrInvalid)
+		}
+		if err := CheckContract(contract, subscribes, publishes); err != nil {
+			return Dive{}, err
+		}
+	}
+
 	id := ids.New(ids.KindDive)
 	_, err := conn.Exec(ctx, `
 		INSERT INTO dive.dive
@@ -890,4 +911,133 @@ func (s *Store) Expire(ctx context.Context, conn db.Conn) (int64, error) {
 		return 0, fmt.Errorf("expiring leases: %w", err)
 	}
 	return tag.RowsAffected(), nil
+}
+
+// ── What a stack may expect of a vehicle ─────────────────────────────────────
+
+// ContractMismatch says what a stack asked for that its vehicle does not offer.
+type ContractMismatch struct {
+	Missing []string
+	Unheard []string
+}
+
+// Error describes the mismatch in the terms somebody can act on.
+func (m ContractMismatch) Error() string {
+	parts := []string{}
+	if len(m.Missing) > 0 {
+		parts = append(parts, fmt.Sprintf(
+			"it subscribes to %s, which this vehicle does not publish",
+			strings.Join(m.Missing, ", ")))
+	}
+	if len(m.Unheard) > 0 {
+		parts = append(parts, fmt.Sprintf(
+			"it publishes %s, which this vehicle does not act on",
+			strings.Join(m.Unheard, ", ")))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// CheckContract reports whether a stack and a vehicle can talk to each other.
+//
+// Checked when a dive is defined rather than when it runs. A stack that
+// subscribes to a sonar on a vehicle that carries none will wait for a message
+// that never arrives — it will not fail, it will simply fly badly, and the
+// dive will produce a result that looks like a controller performing poorly
+// rather than a controller that was never told anything. That is the most
+// expensive kind of wrong answer this platform could give, and it costs a GPU
+// and a wait to find out.
+//
+// A stack that publishes something the vehicle ignores is reported too. It is
+// less serious — nothing is silently missing — but it means one of the two is
+// not what its author thinks it is.
+func CheckContract(vehicleContract, subscribes, publishes json.RawMessage) error {
+	offered, accepted, err := readContract(vehicleContract)
+	if err != nil {
+		return err
+	}
+	// A vehicle that states no contract cannot be checked against, and
+	// pretending otherwise would refuse every stack rather than none.
+	if len(offered) == 0 && len(accepted) == 0 {
+		return nil
+	}
+
+	wanted, err := readTopics(subscribes)
+	if err != nil {
+		return err
+	}
+	sends, err := readTopics(publishes)
+	if err != nil {
+		return err
+	}
+
+	var mismatch ContractMismatch
+	for _, topic := range wanted {
+		if !slices.Contains(offered, topic) {
+			mismatch.Missing = append(mismatch.Missing, topic)
+		}
+	}
+	for _, topic := range sends {
+		if !slices.Contains(accepted, topic) {
+			mismatch.Unheard = append(mismatch.Unheard, topic)
+		}
+	}
+	if len(mismatch.Missing) > 0 || len(mismatch.Unheard) > 0 {
+		return fmt.Errorf("%w: %s", domain.ErrInvalid, mismatch.Error())
+	}
+	return nil
+}
+
+// readContract reads what a vehicle publishes and what it acts on.
+func readContract(raw json.RawMessage) (publishes, subscribes []string, err error) {
+	if len(raw) == 0 {
+		return nil, nil, nil
+	}
+	var contract struct {
+		Publishes []struct {
+			Topic string `json:"topic"`
+		} `json:"publishes"`
+		Subscribes []struct {
+			Topic string `json:"topic"`
+		} `json:"subscribes"`
+	}
+	if err := json.Unmarshal(raw, &contract); err != nil {
+		return nil, nil, fmt.Errorf("%w: the vehicle's topic contract is not readable: %v",
+			domain.ErrInvalid, err)
+	}
+	for _, entry := range contract.Publishes {
+		publishes = append(publishes, entry.Topic)
+	}
+	for _, entry := range contract.Subscribes {
+		subscribes = append(subscribes, entry.Topic)
+	}
+	return publishes, subscribes, nil
+}
+
+// readTopics accepts either a list of names or a list of objects naming one,
+// because a stack's author should not have to guess which this platform wanted.
+func readTopics(raw json.RawMessage) ([]string, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var names []string
+	if err := json.Unmarshal(raw, &names); err == nil {
+		return names, nil
+	}
+
+	// A fresh slice, because a failed unmarshal into a slice leaves what it
+	// managed to decode behind: reading ["a", {"topic":"b"}] into []string
+	// appends "a" and then fails, and reusing that slice would silently prepend
+	// an empty topic to everything decoded the second way.
+	var entries []struct {
+		Topic string `json:"topic"`
+	}
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return nil, fmt.Errorf("%w: a topic list is names or objects naming a topic",
+			domain.ErrInvalid)
+	}
+	topics := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		topics = append(topics, entry.Topic)
+	}
+	return topics, nil
 }

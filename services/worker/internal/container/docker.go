@@ -134,6 +134,15 @@ type Spec struct {
 	// device another dive is holding.
 	GPUs []string
 
+	// JoinNetworkOf puts this container in another's network namespace.
+	//
+	// A dive is two processes that must hear each other over DDS and must not
+	// hear anybody else's. Sharing one namespace gives them a loopback nobody
+	// else is on, which is stronger than a shared bridge and simpler than
+	// arranging discovery: neither can reach the host's network, and neither
+	// can be reached from it.
+	JoinNetworkOf string
+
 	// WritableRoot relaxes the read-only root filesystem. A simulator writes
 	// shader and asset caches all over its own installation and cannot run
 	// without it; ordinary work can and does.
@@ -225,6 +234,10 @@ func (r *Runtime) Create(ctx context.Context, spec Spec) (string, error) {
 			mode = "ro"
 		}
 		binds = append(binds, mount.Source+":"+mount.Target+":"+mode)
+	}
+
+	if spec.JoinNetworkOf != "" {
+		network = "container:" + spec.JoinNetworkOf
 	}
 
 	hostConfig := map[string]any{
