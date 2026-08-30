@@ -110,7 +110,7 @@ class CoralCityShell(omni.ext.IExt):
         scene, body, allocator = prepared
 
         dive = Dive(brief, body, allocator, scene, self._say)
-        if not dive.open():
+        if not dive.open(drawn=True):
             self.hud.opened("the place would not open", str(scene))
             return
         dive.connect()
@@ -146,11 +146,19 @@ class CoralCityShell(omni.ext.IExt):
             stage = omni.usd.get_context().get_stage()
             camera_path = "/World/CoralCityCamera"
             camera = UsdGeom.Camera.Define(stage, camera_path)
+            camera.CreateFocalLengthAttr(24.0)
+            camera.CreateClippingRangeAttr(Gf.Vec2f(0.05, 5000.0))
+
             x, y, z = (float(v) for v in dive.position)
+            eye = Gf.Vec3d(x - 4.5, y - 4.5, z + 1.8)
+            # Aimed rather than angled. The first attempt set pitch and yaw by
+            # hand, which is a guess that happens to be right for one starting
+            # depth and wrong for every other; this is right for all of them.
+            look = Gf.Matrix4d().SetLookAt(eye, Gf.Vec3d(x, y, z),
+                                           Gf.Vec3d(0.0, 0.0, 1.0)).GetInverse()
             transform = UsdGeom.Xformable(camera.GetPrim())
             transform.ClearXformOpOrder()
-            transform.AddTranslateOp().Set(Gf.Vec3d(x - 6.0, y - 6.0, z + 2.5))
-            transform.AddRotateXYZOp().Set(Gf.Vec3f(74.0, 0.0, -45.0))
+            transform.AddTransformOp().Set(look)
             viewport.camera_path = camera_path
         except Exception as exc:
             carb.log_warn(f"Coral City could not place the camera: {exc}")

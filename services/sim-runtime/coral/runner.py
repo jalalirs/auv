@@ -23,6 +23,32 @@ import numpy as np
 PHYSICS_HZ = 200.0
 
 
+def find_hull(root: pathlib.Path) -> pathlib.Path | None:
+    """The vehicle's own geometry, if the package carries any.
+
+    The lighter of the two where a package ships both. A hull is looked at, not
+    collided with — the dynamics are integrated from the vehicle's parameters,
+    not from its triangles — so the three hundred megabyte version buys nothing
+    but a slower start.
+    """
+    candidates = sorted(root.glob("*.usd")) + sorted(root.glob("*.usda"))
+    if not candidates:
+        return None
+    for candidate in candidates:
+        if "low" in candidate.stem.lower():
+            return candidate
+    return min(candidates, key=lambda c: c.stat().st_size)
+
+
+def find_water(root: pathlib.Path) -> pathlib.Path | None:
+    """The place's water surface, which find_scene deliberately skips."""
+    for candidate in sorted(root.rglob("*.usd")) + sorted(root.rglob("*.usda")):
+        name = candidate.stem.lower()
+        if "water" in name or "surface" in name:
+            return candidate
+    return None
+
+
 def find_scene(root: pathlib.Path) -> pathlib.Path | None:
     """The USD a place is loaded from.
 
@@ -73,8 +99,15 @@ class Dive:
 
     # ── setting up ───────────────────────────────────────────────────────────
 
-    def open(self) -> bool:
-        """Load the place and put the vehicle in it. False if it would not open."""
+    def open(self, drawn: bool = False) -> bool:
+        """Load the place and put the vehicle in it. False if it would not open.
+
+        Drawn only when somebody is watching. The hull and the water surface are
+        tens of megabytes that no batch dive has any use for: the dynamics come
+        from the vehicle's parameters and not from its triangles, so nothing
+        loaded here changes the trajectory by so much as a millimetre. What it
+        changes is whether there is anything to see.
+        """
         import omni.usd
         from pxr import Gf, UsdGeom, UsdLux, UsdPhysics
 
@@ -96,8 +129,18 @@ class Dive:
         physics.CreateGravityDirectionAttr().Set(Gf.Vec3f(0.0, 0.0, -1.0))
         physics.CreateGravityMagnitudeAttr().Set(9.80665)
 
+        if drawn:
+            # A tank lit by one distant light is a tank you cannot see: the
+            # walls face away from it and go black, which is exactly what the
+            # first photograph of a dive showed. A dome fills them.
+            dome = UsdLux.DomeLight.Define(stage, "/World/Fill")
+            dome.CreateIntensityAttr(900.0)
+            dome.CreateColorAttr(Gf.Vec3f(0.42, 0.62, 0.78))
         if not stage.GetPrimAtPath("/World/Sun"):
-            UsdLux.DistantLight.Define(stage, "/World/Sun").CreateIntensityAttr(3000.0)
+            sun = UsdLux.DistantLight.Define(stage, "/World/Sun")
+            sun.CreateIntensityAttr(3000.0)
+            UsdGeom.Xformable(sun.GetPrim()).AddRotateXYZOp().Set(
+                Gf.Vec3f(-42.0, 0.0, 18.0))
 
         # A body of the vehicle's actual mass, at the vehicle's actual place.
         # What is being integrated is the dynamics; a dive that reported a
@@ -108,6 +151,24 @@ class Dive:
         self.placement = xform.AddTranslateOp()
         self.placement.Set(Gf.Vec3d(*self.position))
         self._Gf = Gf
+
+        if drawn:
+            # The hull hangs under our own transform rather than being it, so
+            # that whatever the vehicle package does to place itself cannot
+            # fight with where the dive says the vehicle is.
+            hull = find_hull(pathlib.Path(
+                self.brief.get("vehiclePath", "/dive/vehicle")))
+            if hull is not None:
+                stage.DefinePrim(self.vehicle_path + "/Hull").GetReferences() \
+                    .AddReference(str(hull))
+                self.say("hull_drawn", file=hull.name)
+
+            water = find_water(pathlib.Path(
+                self.brief.get("cityPath", "/dive/city")))
+            if water is not None and not stage.GetPrimAtPath("/World/Water"):
+                stage.DefinePrim("/World/Water").GetReferences() \
+                    .AddReference(str(water))
+                self.say("water_drawn", file=water.name)
 
         self.say("vehicle_placed",
                  position=[round(float(x), 3) for x in self.position])
