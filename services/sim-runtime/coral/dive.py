@@ -189,7 +189,34 @@ def fly(app, brief: dict, scene: pathlib.Path, body, allocator) -> int:
     simulated = 0.0
     reported = 0.0
 
-    say("running", steps=steps, physicsHz=PHYSICS_HZ, seconds=steps * dt)
+    # A controller needs wall-clock time to exist in.
+    #
+    # Left to itself the physics runs two thousand steps in well under a second,
+    # and a stack that takes five to start its node would find the dive already
+    # over — reporting, correctly and uselessly, that nothing flew the vehicle.
+    # So a dive with autonomy attached waits for it to appear and then runs at
+    # real time; one without runs as fast as the machine allows, which is the
+    # whole point of batch.
+    import time as wallclock
+
+    if bridge is not None:
+        deadline = wallclock.monotonic() + float(brief.get("autonomyWaitSeconds", 60.0))
+        while not bridge.commanded and wallclock.monotonic() < deadline:
+            app.update()
+            wallclock.sleep(0.1)
+        if bridge.commanded:
+            say("autonomy_ready",
+                waitedSeconds=round(60.0 - (deadline - wallclock.monotonic()), 2))
+        else:
+            # Not a failure. A vehicle nobody commands drifts, and a dive that
+            # recorded that is a real result — it is simply a different one, and
+            # the record says which.
+            say("autonomy_absent", waitedSeconds=60.0)
+
+    paced = bridge is not None and bridge.commanded
+    say("running", steps=steps, physicsHz=PHYSICS_HZ, seconds=steps * dt,
+        realTime=paced)
+    began = wallclock.monotonic()
 
     for step in range(steps):
         if bridge is not None:
@@ -227,6 +254,15 @@ def fly(app, brief: dict, scene: pathlib.Path, body, allocator) -> int:
 
         if step % 4 == 0:
             app.update()
+
+        # Paced only when something is flying it. Running ahead of the
+        # controller would mean the vehicle experienced a command issued for
+        # where it used to be, which is a lag no real vehicle has and no
+        # controller should be tuned against.
+        if paced:
+            ahead = began + simulated - wallclock.monotonic()
+            if ahead > 0:
+                wallclock.sleep(min(ahead, 0.05))
 
     say("settled",
         t=round(simulated, 3),
