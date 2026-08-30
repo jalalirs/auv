@@ -283,10 +283,22 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	}
 
 	// Somebody's own program, in the vehicle's network namespace and nobody
-	// else's. Not waited for: a stack that never comes up leaves the vehicle
-	// drifting, which is what would happen in the water, and a simulator that
-	// blocked until the controller was ready could never discover that one was
-	// too slow.
+	// else's — and started only once the vehicle is actually publishing.
+	//
+	// Order matters here in a way that is not obvious and cost a long time to
+	// find. A controller started first finds nobody and does not discover the
+	// vehicle when it appears sixty seconds later; started afterwards it sees
+	// every topic at once. Whatever the mechanism inside DDS, the behaviour is
+	// the one reality already has: nobody starts the controller before the
+	// vehicle is powered.
+	if claimed.AutonomyImage != "" {
+		if err := d.awaitVehicle(ctx, simID, log); err != nil {
+			log.Warn("the vehicle never came up; the dive continues untended", "error", err)
+			_ = d.platform.Record(ctx, claimed.Run.ID, "autonomy_skipped", nil,
+				map[string]any{"why": err.Error()})
+			claimed.AutonomyImage = ""
+		}
+	}
 	if claimed.AutonomyImage != "" {
 		autonomy, err := d.flyer(ctx, claimed, simID, log)
 		if err != nil {
@@ -513,4 +525,38 @@ func (d *Diver) landFlyer(ctx context.Context, runID, id string, log *slog.Logge
 		log.Warn("could not stop the autonomy", "container", id[:12], "error", err)
 	}
 	_ = d.runtime.Remove(stopping, id)
+}
+
+// awaitVehicle waits until the simulator is publishing before anything is
+// started to talk to it.
+//
+// The simulator says so on its own output, which the agent is already reading.
+// Polling that is cruder than being told, and it is honest: there is nothing
+// else that knows, and inventing a side channel for one fact would be a second
+// thing to keep working.
+func (d *Diver) awaitVehicle(ctx context.Context, simID string, log *slog.Logger) error {
+	// Generous, because it is waiting for a simulator to open a scene that may
+	// be hundreds of megabytes, and a dive that waited too little would run
+	// untended for a reason that had nothing to do with the autonomy.
+	deadline := time.Now().Add(5 * time.Minute)
+
+	for time.Now().Before(deadline) {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		output, err := d.runtime.Logs(ctx, simID, 200)
+		if err == nil && strings.Contains(output, `"event": "bridge_open"`) {
+			log.Info("the vehicle is publishing")
+			return nil
+		}
+		if err == nil && strings.Contains(output, `"event": "bridge_unavailable"`) {
+			return fmt.Errorf("the vehicle could not open its side of the boundary")
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
+	return fmt.Errorf("the vehicle did not start publishing within five minutes")
 }
