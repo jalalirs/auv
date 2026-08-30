@@ -134,14 +134,27 @@ type Spec struct {
 	// device another dive is holding.
 	GPUs []string
 
-	// JoinNetworkOf puts this container in another's network namespace.
+	// ShareNamespacesWith puts this container in another's network and IPC
+	// namespaces.
 	//
 	// A dive is two processes that must hear each other over DDS and must not
-	// hear anybody else's. Sharing one namespace gives them a loopback nobody
-	// else is on, which is stronger than a shared bridge and simpler than
-	// arranging discovery: neither can reach the host's network, and neither
-	// can be reached from it.
-	JoinNetworkOf string
+	// hear anybody else's. Sharing the network namespace gives them a loopback
+	// nobody else is on, which is stronger than a shared bridge and simpler
+	// than arranging discovery: neither can reach the host's network, and
+	// neither can be reached from it.
+	//
+	// The IPC namespace has to come with it, and finding out why cost days.
+	// DDS discovers over UDP and then, on noticing that its peer is on the same
+	// host, delivers the actual data through shared memory. Two containers can
+	// share a network namespace and still have separate /dev/shm, and when they
+	// do, everything that reports on discovery says the two halves found each
+	// other — every topic listed, every endpoint matched — while not one
+	// message is delivered. It is a failure that looks exactly like success
+	// from the outside, and every diagnostic that asks "can they see each
+	// other" answers yes.
+	//
+	// Same host, same shared memory. They are two processes on one vehicle.
+	ShareNamespacesWith string
 
 	// WritableRoot relaxes the read-only root filesystem. A simulator writes
 	// shader and asset caches all over its own installation and cannot run
@@ -236,13 +249,18 @@ func (r *Runtime) Create(ctx context.Context, spec Spec) (string, error) {
 		binds = append(binds, mount.Source+":"+mount.Target+":"+mode)
 	}
 
-	if spec.JoinNetworkOf != "" {
-		network = "container:" + spec.JoinNetworkOf
+	// Its own by default: shared memory is a way into another process, and
+	// only the two halves of one dive have any business in each other's.
+	ipc := "private"
+	if spec.ShareNamespacesWith != "" {
+		network = "container:" + spec.ShareNamespacesWith
+		ipc = "container:" + spec.ShareNamespacesWith
 	}
 
 	hostConfig := map[string]any{
 		"Binds":          binds,
 		"NetworkMode":    network,
+		"IpcMode":        ipc,
 		"ReadonlyRootfs": !spec.WritableRoot,
 		"CapDrop":        []string{"ALL"},
 		"SecurityOpt":    []string{"no-new-privileges"},
