@@ -115,6 +115,19 @@ export const api = {
   autonomy: (orgId: string) =>
     request<{ autonomy: AutonomyStack[] }>("GET", `/api/v1/organisations/${orgId}/autonomy`),
 
+  organisations: () =>
+    request<{ organisations: Organisation[] }>("GET", "/api/v1/organisations"),
+  people: () => request<{ people: Principal[] }>("GET", "/api/v1/people"),
+
+  createOrganisation: (slug: string, name: string) =>
+    request<Organisation>("POST", "/api/v1/organisations", { slug, name }),
+  createPerson: (displayName: string, email: string, secret: string) =>
+    request<Principal>("POST", "/api/v1/people", { displayName, email, secret }),
+  addMember: (orgId: string, principalId: string) =>
+    request<void>("POST", `/api/v1/organisations/${orgId}/members`, { principalId }),
+  removeMember: (orgId: string, principalId: string) =>
+    request<void>("DELETE", `/api/v1/organisations/${orgId}/members/${principalId}`),
+
   organisation: (id: string) =>
     request<{ organisation: Organisation; members: Principal[] }>(
       "GET", `/api/v1/organisations/${id}`),
@@ -127,4 +140,8 @@ export const api = {
     request<Binding>("POST", `/api/v1/queues/${id}/grants`, { subjectKind, subjectId, role }),
   revokeCityGrant: (cityId: string, bindingId: string) =>
     request<void>("DELETE", `/api/v1/cities/${cityId}/grants/${bindingId}`),
+  revokeVehicleGrant: (vehicleId: string, bindingId: string) =>
+    request<void>("DELETE", `/api/v1/vehicles/${vehicleId}/grants/${bindingId}`),
+  revokeQueueGrant: (queueId: string, bindingId: string) =>
+    request<void>("DELETE", `/api/v1/queues/${queueId}/grants/${bindingId}`),
 };

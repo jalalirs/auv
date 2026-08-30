@@ -373,3 +373,57 @@ func (d *Dependencies) readOwnDenials(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, r, http.StatusOK, map[string]any{"denials": denials})
 }
+
+// listOrganisations lists every institution on this installation.
+func (d *Dependencies) listOrganisations(w http.ResponseWriter, r *http.Request) {
+	organisations, err := d.Identity.Organisations(r.Context())
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{"organisations": organisations})
+}
+
+// listPeople lists everyone who can act.
+func (d *Dependencies) listPeople(w http.ResponseWriter, r *http.Request) {
+	people, err := d.Identity.People(r.Context())
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{"people": people})
+}
+
+// revokeAssetGrant withdraws a grant on a place, a vehicle, or a queue.
+//
+// One path for all three, because a grant is one idea and three ways to take
+// one back would be three things to get right.
+func (d *Dependencies) revokeAssetGrant(w http.ResponseWriter, r *http.Request,
+	action policy.Action, subjectKind, assetID string) {
+	principal, _ := principalOf(r.Context())
+	bindingID := r.PathValue("bindingId")
+
+	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		if err := d.Authorizer.Revoke(r.Context(), conn, bindingID); err != nil {
+			return err
+		}
+		return d.Audit.Record(r.Context(), conn, audit.Event{
+			ActorID: principal.ID, Action: string(action),
+			SubjectKind: subjectKind, SubjectID: assetID, Outcome: audit.Succeeded,
+			Detail: map[string]any{"revoked": bindingID},
+		})
+	})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (d *Dependencies) revokeVehicleGrant(w http.ResponseWriter, r *http.Request) {
+	d.revokeAssetGrant(w, r, policy.VehicleGrant, "vehicle", r.PathValue("vehicleId"))
+}
+
+func (d *Dependencies) revokeQueueGrant(w http.ResponseWriter, r *http.Request) {
+	d.revokeAssetGrant(w, r, policy.QueueGrant, "queue", r.PathValue("queueId"))
+}

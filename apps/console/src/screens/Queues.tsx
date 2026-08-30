@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api } from "../api/client.js";
 import { useAsked } from "../useAsync.js";
 import { Answered, Tag, When } from "./parts.js";
+import { Grants } from "./Access.js";
 
 /** The hardware, and who may submit to it. */
 export function Queues() {
@@ -71,7 +72,6 @@ export function Queues() {
 
 function QueueDetail({ id }: { id: string }) {
   const devices = useAsked(() => api.devices(id), [id]);
-  const grants = useAsked(() => api.queueGrants(id), [id]);
 
   return (
     <>
@@ -106,32 +106,13 @@ function QueueDetail({ id }: { id: string }) {
         )}
       </Answered>
 
-      <h3>Who may submit to this</h3>
-      <Answered
-        asked={grants}
-        empty={{
-          of: (value) => value.grants.length === 0,
-          say: "Nobody holds a grant on this queue, so only those with authority at the platform can run on it.",
-        }}
-      >
-        {(value) => (
-          <div className="scroll">
-            <table>
-              <thead><tr><th>Subject</th><th>Kind</th><th>Role</th><th>Granted</th></tr></thead>
-              <tbody>
-                {value.grants.map((binding) => (
-                  <tr key={binding.id}>
-                    <td className="mono">{binding.subjectId}</td>
-                    <td>{binding.subjectKind}</td>
-                    <td><Tag kind="accent">{binding.role}</Tag></td>
-                    <td><When value={binding.createdAt} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Answered>
+      <Grants
+        assetId={id}
+        noun="queue"
+        grants={() => api.queueGrants(id)}
+        grant={(kind, subject, role) => api.grantQueue(id, kind, subject, role)}
+        revoke={(bindingId) => api.revokeQueueGrant(id, bindingId)}
+      />
     </>
   );
 }

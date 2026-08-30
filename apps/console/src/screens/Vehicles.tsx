@@ -61,8 +61,11 @@ export function Vehicles() {
       {opened && <AssetDetail
         key={opened}
         id={opened}
+        noun="vehicle"
         versions={() => api.vehicleVersions(opened)}
         grants={() => api.vehicleGrants(opened)}
+        grantTo={(kind, subject, role) => api.grantVehicle(opened, kind, subject, role)}
+        revokeFrom={(bindingId) => api.revokeVehicleGrant(opened, bindingId)}
       />}
     </>
   );

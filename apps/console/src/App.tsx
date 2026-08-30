@@ -8,6 +8,7 @@ import { Queues } from "./screens/Queues.js";
 import { Dives } from "./screens/Dives.js";
 import { Refusals } from "./screens/Refusals.js";
 import { Overview } from "./screens/Overview.js";
+import { Access } from "./screens/Access.js";
 
 /**
  * The operator console for the control plane.
@@ -19,7 +20,7 @@ import { Overview } from "./screens/Overview.js";
  * a product.
  */
 
-type Screen = "overview" | "places" | "vehicles" | "queues" | "dives" | "refusals";
+type Screen = "overview" | "places" | "vehicles" | "queues" | "dives" | "access" | "refusals";
 
 const screens: { id: Screen; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -27,6 +28,7 @@ const screens: { id: Screen; label: string }[] = [
   { id: "vehicles", label: "Vehicles" },
   { id: "queues", label: "Queues" },
   { id: "dives", label: "Dives" },
+  { id: "access", label: "People and access" },
   { id: "refusals", label: "Refusals" },
 ];
 
@@ -110,6 +112,7 @@ export function App() {
         {screen === "vehicles" && <Vehicles />}
         {screen === "queues" && <Queues />}
         {screen === "dives" && <Dives organisations={signedIn.organisations} />}
+        {screen === "access" && <Access />}
         {screen === "refusals" && <Refusals />}
       </main>
     </div>
