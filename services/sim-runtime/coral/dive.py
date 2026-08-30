@@ -40,7 +40,10 @@ def say(kind: str, **detail) -> None:
     already holds the run's lease, and a simulator that had to authenticate
     would be a simulator that could be locked out of reporting its own results.
     """
-    print(json.dumps({"event": kind, **detail}), flush=True)
+    # Spaced separators so that the agent, which reads this output to know when
+    # the vehicle is publishing, can look for a stable marker rather than a
+    # shape json.dumps might render differently.
+    print(json.dumps({"event": kind, **detail}, separators=(", ", ": ")), flush=True)
 
 
 def main() -> int:
