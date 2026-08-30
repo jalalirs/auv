@@ -34,6 +34,12 @@ type Config struct {
 	// MaxInputBytes bounds what a worker will download for one input, so that
 	// a malformed job cannot fill the disk.
 	MaxInputBytes int64
+
+	// SimImage is what a dive is simulated in. Named here rather than by the
+	// platform because it is a property of this host — what it has, and what
+	// its GPUs can run — and a host that lacks it should say so on startup
+	// rather than accept a dive it cannot perform.
+	SimImage string
 }
 
 // Load reads the environment, refusing anything that has no safe default.
@@ -72,6 +78,11 @@ func Load() (Config, error) {
 		{"CORAL_CITY_WORKER_POLL_INTERVAL", 2 * time.Second, &config.PollInterval},
 		{"CORAL_CITY_WORKER_HEARTBEAT_INTERVAL", 15 * time.Second, &config.HeartbeatInterval},
 		{"CORAL_CITY_WORKER_REQUEST_TIMEOUT", 30 * time.Second, &config.RequestTimeout},
+	}
+
+	config.SimImage = os.Getenv("CORAL_CITY_SIM_IMAGE")
+	if config.SimImage == "" {
+		config.SimImage = "coral-city/sim-runtime:r1"
 	}
 	for _, setting := range durations {
 		value, err := duration(setting.name, setting.fallback)

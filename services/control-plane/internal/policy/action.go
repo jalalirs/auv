@@ -75,6 +75,12 @@ const (
 
 	// WorkLease covers a service principal taking work from the queue.
 	WorkLease Action = "work.lease"
+	// WorkClaim covers an agent taking the next dive its host can run, which
+	// holds a device and so is worth distinguishing from merely reporting.
+	WorkClaim Action = "work.claim"
+	// WorkReport covers an agent saying what is happening to work it holds:
+	// that it started, that it is still going, what it saw, and how it ended.
+	WorkReport Action = "work.report"
 )
 
 // requirement states the authority an action needs and the kinds of resource
@@ -122,7 +128,9 @@ var requirement = map[Action]struct {
 	ScheduleRead:  {RoleViewer, []ResourceKind{ResourcePlatform}},
 	ScheduleWrite: {RoleAdmin, []ResourceKind{ResourcePlatform}},
 
-	WorkLease: {RoleAdmin, []ResourceKind{ResourceWork}},
+	WorkLease:  {RoleAdmin, []ResourceKind{ResourceWork}},
+	WorkClaim:  {RoleContributor, []ResourceKind{ResourceWork}},
+	WorkReport: {RoleContributor, []ResourceKind{ResourceWork}},
 }
 
 // Requires reports the role an action needs and the resource kinds it applies

@@ -664,3 +664,226 @@ func (s *Store) Runs(ctx context.Context, diveID string) ([]Run, error) {
 	}
 	return runs, rows.Err()
 }
+
+// ── Running one ──────────────────────────────────────────────────────────────
+
+// Claimed is a run an agent has taken, with everything needed to compose it.
+//
+// The packages are named by version so the agent can ask for their files, and
+// the digests are the ones the run pinned rather than whatever those versions
+// hold now — a version cannot change once published, so the two agree, and
+// carrying both means the agent can check rather than trust.
+type Claimed struct {
+	Run              Run             `json:"run"`
+	CityVersionID    string          `json:"cityVersionId"`
+	VehicleVersionID string          `json:"vehicleVersionId"`
+	Conditions       Conditions      `json:"conditions"`
+	InitialState     json.RawMessage `json:"initialState"`
+	Objective        json.RawMessage `json:"objective"`
+
+	AutonomyImage  string          `json:"autonomyImage,omitempty"`
+	AutonomyDigest string          `json:"autonomyDigest,omitempty"`
+	AutonomyGPU    bool            `json:"autonomyWantsGpu"`
+	Subscribes     json.RawMessage `json:"autonomySubscribes,omitempty"`
+	Publishes      json.RawMessage `json:"autonomyPublishes,omitempty"`
+
+	DeviceIndex int    `json:"deviceIndex"`
+	DeviceUUID  string `json:"deviceUuid"`
+
+	// Two dives on one host must not hear each other over DDS, and a domain is
+	// how that is arranged. Derived from the device rather than drawn, so a run
+	// that is retried lands on the same domain as the device it holds.
+	ROSDomainID int `json:"rosDomainId"`
+}
+
+// ClaimNext takes the oldest queued run this target can run, and holds a device
+// for it.
+//
+// The device is chosen and locked in the same statement that admits the run, so
+// two agents asking at the same moment cannot both be told yes. The unique
+// index on running runs is the second line of defence; this is the first.
+//
+// Returns db.ErrNotFound when there is nothing to do, which is the ordinary
+// case and not an error.
+func (s *Store) ClaimNext(ctx context.Context, conn db.Conn, targetID string,
+	lease time.Duration) (Claimed, error) {
+	var claimed Claimed
+	var runID, deviceID string
+
+	err := conn.QueryRow(ctx, `
+		WITH candidate AS (
+		    SELECT r.id AS run_id, d.id AS device_id
+		      FROM dive.run r
+		      JOIN compute.queue q ON q.id = r.queue_id
+		      JOIN compute.device d ON d.queue_id = q.id
+		     WHERE r.state = 'queued'
+		       AND d.target_id = $1
+		       AND d.enabled
+		       AND NOT q.draining
+		       AND NOT EXISTS (
+		           SELECT 1 FROM dive.run held
+		            WHERE held.device_id = d.id
+		              AND held.state IN ('preparing', 'running'))
+		     ORDER BY r.requested_at
+		     LIMIT 1
+		     FOR UPDATE OF r, d SKIP LOCKED
+		)
+		UPDATE dive.run
+		   SET state = 'preparing',
+		       device_id = candidate.device_id,
+		       lease_expires_at = now() + $2::interval
+		  FROM candidate
+		 WHERE dive.run.id = candidate.run_id
+		RETURNING dive.run.id, candidate.device_id`,
+		targetID, lease.String()).Scan(&runID, &deviceID)
+	if err != nil {
+		return Claimed{}, db.Translate(err)
+	}
+
+	if claimed.Run, err = scanRun(conn.QueryRow(ctx, selectRun+` WHERE id = $1`, runID)); err != nil {
+		return Claimed{}, err
+	}
+
+	var stackImage, stackDigest *string
+	var wantsGPU *bool
+	var subscribes, publishes []byte
+	err = conn.QueryRow(ctx, `
+		SELECT d.city_version_id, d.vehicle_version_id, d.initial_state, d.objective,
+		       s.image_repository, s.image_digest, s.wants_gpu, s.subscribes, s.publishes,
+		       dev.device_index, dev.uuid
+		  FROM dive.dive d
+		  JOIN dive.run r ON r.dive_id = d.id
+		  JOIN compute.device dev ON dev.id = $2
+		  LEFT JOIN dive.autonomy_stack s ON s.id = d.autonomy_stack_id
+		 WHERE r.id = $1`, runID, deviceID).
+		Scan(&claimed.CityVersionID, &claimed.VehicleVersionID,
+			&claimed.InitialState, &claimed.Objective,
+			&stackImage, &stackDigest, &wantsGPU, &subscribes, &publishes,
+			&claimed.DeviceIndex, &claimed.DeviceUUID)
+	if err != nil {
+		return Claimed{}, fmt.Errorf("reading what the run needs: %w", err)
+	}
+	if stackImage != nil {
+		claimed.AutonomyImage = *stackImage
+		claimed.AutonomyDigest = *stackDigest
+		claimed.AutonomyGPU = *wantsGPU
+		claimed.Subscribes = subscribes
+		claimed.Publishes = publishes
+	}
+
+	if claimed.Conditions, err = scanConditions(conn.QueryRow(ctx, selectConditions+`
+		WHERE id = (SELECT conditions_id FROM dive.dive
+		             WHERE id = (SELECT dive_id FROM dive.run WHERE id = $1))`,
+		runID)); err != nil {
+		return Claimed{}, fmt.Errorf("reading the conditions: %w", err)
+	}
+
+	// Domains are 0–101 in the default DDS configuration; the device index
+	// keeps two dives on one host apart, and the offset leaves domain 0 for
+	// anything a person is running by hand.
+	claimed.ROSDomainID = 1 + (claimed.DeviceIndex % 100)
+	return claimed, nil
+}
+
+// Started records that the simulator is up and the run is under way.
+func (s *Store) Started(ctx context.Context, conn db.Conn, runID string) error {
+	tag, err := conn.Exec(ctx, `
+		UPDATE dive.run SET state = 'running', started_at = now()
+		 WHERE id = $1 AND state = 'preparing'`, runID)
+	if err != nil {
+		return fmt.Errorf("recording that a run started: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("%w: this run is not preparing, so it cannot start", domain.ErrInvalid)
+	}
+	return nil
+}
+
+// Renew extends the lease on a run an agent is still working on.
+//
+// A lease that is not renewed expires and the device is released, which is what
+// makes an agent that dies stop holding hardware. Renewing a finished run is
+// refused rather than ignored, because an agent renewing something that ended
+// has lost track of what it is doing.
+func (s *Store) Renew(ctx context.Context, conn db.Conn, runID string, lease time.Duration) error {
+	tag, err := conn.Exec(ctx, `
+		UPDATE dive.run SET lease_expires_at = now() + $2::interval
+		 WHERE id = $1 AND state IN ('preparing', 'running')`, runID, lease.String())
+	if err != nil {
+		return fmt.Errorf("renewing a lease: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("%w: this run is not in progress", domain.ErrInvalid)
+	}
+	return nil
+}
+
+// Record appends to what happened during a run.
+func (s *Store) Record(ctx context.Context, conn db.Conn, runID string,
+	kind string, simulatedSeconds *float64, detail json.RawMessage) error {
+	if len(detail) == 0 {
+		detail = json.RawMessage(`{}`)
+	}
+	_, err := conn.Exec(ctx, `
+		INSERT INTO dive.run_event (run_id, simulated_seconds, kind, detail)
+		VALUES ($1, $2, $3, $4)`, runID, simulatedSeconds, kind, detail)
+	if err != nil {
+		return fmt.Errorf("recording what happened: %w", err)
+	}
+	return nil
+}
+
+// Finish ends a run, for good.
+//
+// The record refuses to rewrite a finished run afterwards, so this is the last
+// thing anything says about it.
+func (s *Store) Finish(ctx context.Context, conn db.Conn, runID string,
+	state State, outcome json.RawMessage, failure string) error {
+	if !state.Finished() {
+		return fmt.Errorf("%w: %q is not a state a run finishes in", domain.ErrInvalid, state)
+	}
+	if (state == Failed) != (failure != "") {
+		return fmt.Errorf("%w: a failed run says why, and a run that says why has failed",
+			domain.ErrInvalid)
+	}
+	if len(outcome) == 0 {
+		outcome = json.RawMessage(`{}`)
+	}
+
+	var reason *string
+	if failure != "" {
+		reason = &failure
+	}
+	tag, err := conn.Exec(ctx, `
+		UPDATE dive.run
+		   SET state = $2::dive.run_state, ended_at = now(), outcome = $3,
+		       failure_reason = $4, lease_expires_at = NULL
+		 WHERE id = $1 AND state IN ('queued', 'preparing', 'running')`,
+		runID, string(state), outcome, reason)
+	if err != nil {
+		return fmt.Errorf("finishing a run: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("%w: this run has already finished", domain.ErrInvalid)
+	}
+	return nil
+}
+
+// Expire releases devices held by runs whose lease has run out.
+//
+// An agent that dies holds a GPU until this notices. Nothing else releases it,
+// because nothing else can tell the difference between an agent that is slow
+// and one that is gone — a lease is precisely the statement "I will say
+// something again by this time", and its absence is the only evidence there is.
+func (s *Store) Expire(ctx context.Context, conn db.Conn) (int64, error) {
+	tag, err := conn.Exec(ctx, `
+		UPDATE dive.run
+		   SET state = 'expired', ended_at = now(), lease_expires_at = NULL
+		 WHERE state IN ('preparing', 'running')
+		   AND lease_expires_at IS NOT NULL
+		   AND lease_expires_at < now()`)
+	if err != nil {
+		return 0, fmt.Errorf("expiring leases: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}

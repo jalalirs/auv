@@ -842,6 +842,142 @@ paths:
           $ref: '#/components/responses/Invalid'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/v1/runs/claim:
+    post:
+      tags: [work]
+      summary: Take the next dive this host can run
+      description: >
+        Answers 204 when there is nothing to do, which is the ordinary case: an
+        agent asks constantly and mostly there is no work. The device is chosen
+        and locked in the same statement that admits the run, so two agents
+        asking at the same moment cannot both be told yes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [targetId]
+              properties:
+                targetId: { type: string }
+      responses:
+        '200':
+          description: The dive, and everything needed to compose it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimedRun'
+        '204':
+          description: Nothing to run.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/runs/{runId}/started:
+    post:
+      tags: [work]
+      summary: The simulator is up
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: The run.
+          schema: { type: string }
+      responses:
+        '204':
+          description: Recorded.
+        '400':
+          $ref: '#/components/responses/Invalid'
+  /api/v1/runs/{runId}/renew:
+    post:
+      tags: [work]
+      summary: Still working; hold the device a while longer
+      description: >
+        An agent that stops saying this loses the device. It is the only way to
+        tell an agent that is slow from one that is gone: a lease is the
+        statement "I will say something again by this time", and its absence is
+        the only evidence there is.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: The run.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The lease, extended.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  leaseSeconds: { type: integer }
+        '400':
+          $ref: '#/components/responses/Invalid'
+  /api/v1/runs/{runId}/events:
+    post:
+      tags: [work]
+      summary: What happened during a run
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: The run.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kind]
+              properties:
+                kind: { type: string }
+                simulatedSeconds:
+                  type: number
+                  description: >
+                    Where in the dive this happened, which is what makes two
+                    runs of the same seed comparable moment by moment.
+                detail: { type: object }
+      responses:
+        '204':
+          description: Appended.
+        '400':
+          $ref: '#/components/responses/Invalid'
+  /api/v1/runs/{runId}/finished:
+    post:
+      tags: [work]
+      summary: How a run ended
+      description: >
+        The last thing anything says about it: the record refuses to rewrite a
+        finished run.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: The run.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [state]
+              properties:
+                state: { type: string, enum: [succeeded, failed, cancelled] }
+                outcome: { type: object }
+                failureReason:
+                  type: string
+                  description: >
+                    Required when the state is failed, and refused otherwise: a
+                    failed run says why, and a run that says why has failed.
+      responses:
+        '204':
+          description: Ended.
+        '400':
+          $ref: '#/components/responses/Invalid'
   /api/v1/queues:
     get:
       tags: [compute]
@@ -2459,6 +2595,34 @@ components:
             What this vehicle publishes and subscribes to, so that a stack
             expecting a sonar on a vehicle carrying none is refused at admission
             rather than discovering it mid-dive.
+    ClaimedRun:
+      type: object
+      description: >
+        A dive an agent has taken, with everything needed to compose it: which
+        packages to sync, what water, what autonomy, which device, and which DDS
+        domain so that two dives on one host do not hear each other.
+      properties:
+        run:
+          $ref: '#/components/schemas/Run'
+        cityVersionId: { type: string }
+        vehicleVersionId: { type: string }
+        conditions:
+          $ref: '#/components/schemas/Conditions'
+        initialState: { type: object }
+        objective: { type: object }
+        autonomyImage: { type: string }
+        autonomyDigest: { type: string }
+        autonomyWantsGpu: { type: boolean }
+        autonomySubscribes: { type: array, items: { type: string } }
+        autonomyPublishes: { type: array, items: { type: string } }
+        deviceIndex: { type: integer }
+        deviceUuid: { type: string }
+        rosDomainId:
+          type: integer
+          description: >
+            Derived from the device rather than drawn, so a run that is retried
+            lands on the same domain as the device it holds.
+      required: [run, cityVersionId, vehicleVersionId, conditions, deviceIndex, deviceUuid, rosDomainId]
     Queue:
       type: object
       description: >
