@@ -4,7 +4,7 @@
 // somebody's own box and there is no such thing as the one true Coral City. It
 // is remembered between launches; the password never is.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Platform, Refused, Unreachable } from "@coral-city/api";
 
@@ -21,9 +21,41 @@ export function SignIn({ onSignedIn }: {
   const [trying, setTrying] = useState(false);
   const [refusal, setRefusal] = useState("");
 
+  // Filled from a local file while this is being built, so that trying the
+  // application does not begin with typing a forty-eight character secret.
+  // The file is not in the repository and never should be; without it these are
+  // empty and the form behaves as it will for everybody else.
+  const waiting = import.meta.env.VITE_CORAL_CITY_PLATFORM as string | undefined;
+  const known = import.meta.env.VITE_CORAL_CITY_EMAIL as string | undefined;
+  const kept = import.meta.env.VITE_CORAL_CITY_SECRET as string | undefined;
+
   useEffect(() => {
-    setAddress(localStorage.getItem(REMEMBERED) ?? "http://127.0.0.1:18080");
-  }, []);
+    setAddress(waiting ?? localStorage.getItem(REMEMBERED) ?? "http://127.0.0.1:18080");
+    if (known !== undefined) setEmail(known);
+    if (kept !== undefined) setSecret(kept);
+  }, [waiting, known, kept]);
+
+  // And straight in, when all three are there. Signing in is not the part being
+  // worked on, and having to do it by hand forty times an afternoon is how a
+  // person stops trying the thing they are building.
+  const went = useRef(false);
+  useEffect(() => {
+    if (went.current) return;
+    if (waiting === undefined || known === undefined || kept === undefined) return;
+    went.current = true;
+    void (async () => {
+      setTrying(true);
+      try {
+        onSignedIn(await Platform.signIn(waiting, known, kept));
+      } catch (problem) {
+        setRefusal(problem instanceof Unreachable
+          ? `Nothing answered at ${waiting}.`
+          : problem instanceof Refused ? problem.message : "That did not work.");
+      } finally {
+        setTrying(false);
+      }
+    })();
+  }, [waiting, known, kept, onSignedIn]);
 
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
