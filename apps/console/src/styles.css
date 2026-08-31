@@ -239,3 +239,15 @@ button:disabled { opacity: 0.55; cursor: default; }
 button.quiet { background: transparent; color: var(--ink-soft); border-color: var(--rule); }
 
 .loading { color: var(--muted); font-size: 0.92rem; }
+
+/* An action inside a row, which should not shout across the table it sits in. */
+button.small {
+  padding: 0.22rem 0.6rem;
+  font-size: 0.78rem;
+  border-radius: 6px;
+}
+button.quiet.small:hover:not(:disabled) {
+  border-color: var(--warn, #c2703a);
+  color: var(--warn, #c2703a);
+  filter: none;
+}

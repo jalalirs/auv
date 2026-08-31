@@ -125,12 +125,37 @@ export function Dives({ organisations }: { organisations: Organisation[] }) {
   );
 }
 
+/** The states a run can still be stopped from. Everything else is history. */
+const LIVE = new Set(["queued", "preparing", "running"]);
+
 function RunsOf({ diveId }: { diveId: string }) {
-  const runs = useAsked(() => api.runs(diveId), [diveId]);
+  // Counted rather than a refetch on the hook, because asking again is asking
+  // again: the same question, with something about the world now different.
+  const [since, askAgain] = useState(0);
+  const runs = useAsked(() => api.runs(diveId), [diveId, since]);
+  const [ending, setEnding] = useState<string | undefined>();
+  const [refusal, setRefusal] = useState("");
+
+  async function end(runId: string): Promise<void> {
+    setEnding(runId);
+    setRefusal("");
+    try {
+      await api.cancelRun(diveId, runId);
+      // Asked for again rather than edited in place: what a run's state is now
+      // is the platform's answer, and a screen that decided for itself would
+      // show "cancelled" for something the agent had not let go of yet.
+      askAgain((n) => n + 1);
+    } catch (problem) {
+      setRefusal(problem instanceof Error ? problem.message : "that did not work");
+    } finally {
+      setEnding(undefined);
+    }
+  }
 
   return (
     <>
       <h3>Runs</h3>
+      {refusal === "" ? null : <p className="refusal">{refusal}</p>}
       <p className="lede" style={{ marginBottom: "0.8rem" }}>
         A run copies every determinant when it is admitted — the digests, the
         seed, the runtime — so that editing the dive afterwards cannot change
@@ -150,7 +175,7 @@ function RunsOf({ diveId }: { diveId: string }) {
               <thead>
                 <tr>
                   <th>State</th><th>Mode</th><th>Seed</th><th>Runtime</th>
-                  <th>Place</th><th>Vehicle</th><th>Requested</th>
+                  <th>Place</th><th>Vehicle</th><th>Requested</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -163,6 +188,15 @@ function RunsOf({ diveId }: { diveId: string }) {
                     <td><Digest value={run.cityDigest} /></td>
                     <td><Digest value={run.vehicleDigest} /></td>
                     <td><When value={run.requestedAt} /></td>
+                    <td>
+                      {LIVE.has(run.state) && (
+                        <button className="quiet small"
+                                disabled={ending === run.id}
+                                onClick={() => void end(run.id)}>
+                          {ending === run.id ? "ending…" : "End"}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
