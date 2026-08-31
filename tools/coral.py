@@ -98,10 +98,10 @@ def branching(rng, height=0.8):
     degrees, and tightening as the branches thin.
     """
     pieces = []
-    thickness = height * 0.055
+    thickness = height * 0.085
 
     def grow(base, direction, length, radius, depth):
-        if depth > 4 or length < 0.02 or radius < 0.004:
+        if depth > 5 or length < 0.015 or radius < 0.003:
             return
         # A branch does not go straight. It wanders towards the light, which is
         # up, and the wander is what stops a colony looking manufactured.
@@ -110,7 +110,10 @@ def branching(rng, height=0.8):
         tip = base + direction * length
         pieces.append(_cylinder(base, tip, radius, radius * 0.72))
 
-        children = 2 if depth < 3 else rng.integers(1, 3)
+        # Three at the base, two after — a staghorn colony is mostly tips, and
+        # two-way splitting all the way up gives a sparse candelabra rather
+        # than the dense thicket the thing actually is.
+        children = 3 if depth < 2 else (2 if depth < 4 else int(rng.integers(2, 4)))
         for _ in range(int(children)):
             spread = math.radians(rng.uniform(28, 52))
             axis = np.cross(direction, rng.normal(0, 1, 3))
@@ -122,9 +125,9 @@ def branching(rng, height=0.8):
                      + np.cross(axis, direction) * math.sin(spread)
                      + axis * np.dot(axis, direction) * (1 - math.cos(spread)))
             grow(tip, child, length * rng.uniform(0.62, 0.80),
-                 radius * rng.uniform(0.62, 0.78), depth + 1)
+                 radius * rng.uniform(0.70, 0.84), depth + 1)
 
-    grow(np.zeros(3), np.array([0.0, 0.0, 1.0]), height * 0.34, thickness, 0)
+    grow(np.zeros(3), np.array([0.0, 0.0, 1.0]), height * 0.30, thickness, 0)
     return _join(pieces)
 
 

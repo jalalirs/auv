@@ -53,7 +53,11 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     spread = float(patch.max() - patch.min()) or 1.0
     patch = (patch - patch.min()) / spread
 
-    want = lit * hold * (0.25 + 1.5 * patch)
+    # Thickets, not a sprinkle. Raising the patch term concentrates colonies
+    # into stands with clear sand between them, which is how a reef is built
+    # and also what makes it read as one: continuous cover somewhere, rather
+    # than uniform scatter everywhere.
+    want = lit * hold * (0.06 + 2.6 * patch ** 2.2)
     if want.sum() <= 0:
         return {"colonies": 0}
 
@@ -71,9 +75,11 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     weights = np.array([w for _, w in coral.COMMUNITY], dtype=float)
     weights /= weights.sum()
 
-    sizes = {"branching": 0.75, "massive": 0.55, "table": 0.34,
-             "brain": 0.45, "fan": 0.85, "finger": 0.5}
-    variants = 5
+    # Colonies the size colonies are. The first pass grew them at a third of
+    # this and the reef read as gravel with twigs in it.
+    sizes = {"branching": 1.15, "massive": 0.85, "table": 0.55,
+             "brain": 0.75, "fan": 1.10, "finger": 0.80}
+    variants = 6
     prototypes, colours = [], []
     for kind in kinds:
         for _ in range(variants):
@@ -84,7 +90,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     which_kind = rng.choice(len(kinds), size=how_many, p=weights)
     which = which_kind * variants + rng.integers(0, variants, how_many)
 
-    scale = rng.uniform(0.55, 1.7, how_many)
+    scale = rng.uniform(0.65, 2.1, how_many)
     # Larger colonies where it is shallower and brighter, which is true, and
     # also puts the big tables where they will actually be seen.
     scale = scale * np.clip(1.25 - depth[row, column] / 30.0, 0.5, 1.25)
@@ -100,6 +106,29 @@ def _triples(values) -> str:
     return ", ".join("(%.4g, %.4g, %.4g)" % (a, b, c) for a, b, c in values)
 
 
+def _skins(colours) -> str:
+    """A material per prototype.
+
+    A mesh carrying only a display colour gets flat shading, and under a bright
+    sun every colony comes out chalk-white — which is what the first reef looked
+    like: correct shapes, correct places, and the colour of bone.
+    """
+    skins = []
+    for i, colour in enumerate(colours):
+        skins.append(
+            '        def Material "Skin_%d"\n        {\n'
+            "            token outputs:surface.connect = "
+            "</Coral/Skins/Skin_%d/Surface.outputs:surface>\n"
+            '            def Shader "Surface"\n            {\n'
+            '                uniform token info:id = "UsdPreviewSurface"\n'
+            "                color3f inputs:diffuseColor = (%.3g, %.3g, %.3g)\n"
+            "                float inputs:roughness = 0.82\n"
+            "                float inputs:metallic = 0\n"
+            "                token outputs:surface\n"
+            "            }\n        }\n" % (i, i, colour[0], colour[1], colour[2]))
+    return '    def Scope "Skins"\n    {\n%s    }\n' % "".join(skins)
+
+
 def _instancer(prototypes, colours, x, y, z, which, scale, turn) -> str:
     """The reef, as one instancer over a handful of grown prototypes."""
     grown = []
@@ -107,7 +136,9 @@ def _instancer(prototypes, colours, x, y, z, which, scale, turn) -> str:
         counts = ", ".join(["3"] * len(faces))
         indices = ", ".join(str(v) for v in faces.reshape(-1))
         grown.append(
-            '\n        def Mesh "Coral_%d"\n        {\n'
+            '\n        def Mesh "Coral_%d" (\n'
+            '            prepend apiSchemas = ["MaterialBindingAPI"]\n'
+            "        )\n        {\n"
             '            uniform token subdivisionScheme = "none"\n'
             "            int[] faceVertexCounts = [%s]\n"
             "            int[] faceVertexIndices = [%s]\n"
@@ -115,8 +146,9 @@ def _instancer(prototypes, colours, x, y, z, which, scale, turn) -> str:
             "            color3f[] primvars:displayColor = [(%.3g, %.3g, %.3g)] (\n"
             '                interpolation = "constant"\n'
             "            )\n"
+            "            rel material:binding = </Coral/Skins/Skin_%d>\n"
             "        }\n" % (i, counts, indices, _triples(points),
-                             colour[0], colour[1], colour[2]))
+                             colour[0], colour[1], colour[2], i))
 
     # Turned about the vertical, as a quaternion — one line rather than a
     # matrix for every colony.
@@ -134,6 +166,7 @@ def _instancer(prototypes, colours, x, y, z, which, scale, turn) -> str:
         ")\n\n"
         'def PointInstancer "Coral"\n'
         "{\n"
+        "%s\n"
         "    point3f[] positions = [%s]\n"
         "    int[] protoIndices = [%s]\n"
         "    float3[] scales = [%s]\n"
@@ -142,6 +175,7 @@ def _instancer(prototypes, colours, x, y, z, which, scale, turn) -> str:
         '    def Scope "Grown"\n'
         "    {%s    }\n"
         "}\n" % (
+            _skins(colours),
             _triples(np.stack([x, y, z], axis=-1)),
             ", ".join(str(int(i)) for i in which),
             _triples(np.stack([scale, scale, scale], axis=-1)),
