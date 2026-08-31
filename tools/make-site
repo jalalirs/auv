@@ -163,8 +163,23 @@ def Xform "World"
 }}
 '''
     (where / "seabed.usda").write_text(body)
+
+    # The same heights again, as numbers rather than as a mesh.
+    #
+    # A dive needs to know how deep the bottom is under the vehicle — to land on
+    # it, to hold an altitude above it, to score a transect that was supposed to
+    # stay two metres off it. Asking the renderer would mean a ray cast into
+    # geometry that exists only when somebody is watching; asking physics would
+    # mean colliders on a scene that has none. The site knows, so the site says,
+    # and a batch dive with nothing drawn gets exactly the same answer as a
+    # dive somebody is flying.
+    height.astype("<f4").tofile(where / "seabed.f32")
     return {"lowest": lowest, "highest": highest,
-            "points": int(points.shape[0]), "triangles": int(faces.shape[0])}
+            "points": int(points.shape[0]), "triangles": int(faces.shape[0]),
+            "heightfield": {"rows": rows, "columns": columns,
+                            "format": "little-endian float32, row major, "
+                                      "south to north then west to east",
+                            "file": "seabed.f32"}}
 
 
 def main() -> int:
