@@ -517,6 +517,7 @@ class Dive:
         """Move the water. Still caustics are a painted floor."""
         if self.water is not None:
             self.water.drift(self.stage, self.simulated, follow=self.position)
+            self.water.light_for(self.stage, float(-self.position[2]))
 
     def show(self) -> None:
         """Move what is drawn to where the vehicle is.
