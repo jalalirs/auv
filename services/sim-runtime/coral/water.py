@@ -75,7 +75,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # takes most of it. The first attempt used a daylight intensity and produced
     # a seabed that was a black silhouette in green water: correct absorption,
     # nothing left to absorb.
-    sun.CreateIntensityAttr(14000.0)
+    sun.CreateIntensityAttr(22000.0)
     sun.CreateAngleAttr(2.0)
     sun.CreateColorAttr(Gf.Vec3f(0.85, 0.95, 1.0))
     UsdGeom.Xformable(sun.GetPrim()).AddRotateXYZOp().Set(Gf.Vec3f(-52.0, 0.0, 18.0))
@@ -84,7 +84,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # black. Underwater there is no such thing as an unlit surface: the medium
     # itself glows in every direction.
     sky = UsdLux.DomeLight.Define(stage, "/World/Water")
-    sky.CreateIntensityAttr(2200.0)
+    sky.CreateIntensityAttr(3200.0)
     sky.CreateColorAttr(Gf.Vec3f(*[c * 2.4 for c in SCATTER]))
 
     # ── the surface, from below ──────────────────────────────────────────────
@@ -104,6 +104,14 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     surface.CreateExtentAttr([Gf.Vec3f(-half, -half, water_level - 0.01),
                               Gf.Vec3f(half, half, water_level + 0.01)])
     surface.CreateDoubleSidedAttr(True)
+
+    # And it casts no shadow. It is a sheet of glass the size of the site
+    # directly between the sun and everything below, and a renderer that treats
+    # it as an occluder puts the entire seabed in shade — which is most of why
+    # the first water was a silhouette. Light through the surface is what the
+    # fog and the caustics are already modelling.
+    surface.GetPrim().CreateAttribute(
+        "primvars:doNotCastShadows", Sdf.ValueTypeNames.Bool).Set(True)
     _water_material(stage, surface)
 
     # ── caustics ─────────────────────────────────────────────────────────────
@@ -129,9 +137,12 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     caustics.CreateNormalizeAttr(False)
     caustics.GetPrim().CreateAttribute(
         "inputs:texture:file", Sdf.ValueTypeNames.Asset).Set("/isaac-sim/coral/caustics.png")
+    # No rotation. A rect light already faces its own -Z, which is downward
+    # here; turning it a half turn about X — which looked like the obvious way
+    # to point it at the seabed — pointed it at the sky, and the caustics lit
+    # the underside of the surface from above where nobody could see them.
     moving = UsdGeom.Xformable(caustics.GetPrim())
     moving.AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, water_level - 0.5))
-    moving.AddRotateXYZOp().Set(Gf.Vec3f(180.0, 0.0, 0.0))
 
     say("water_made",
         visibilityM=22.0, surfaceAtM=water_level,
