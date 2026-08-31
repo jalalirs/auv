@@ -81,6 +81,7 @@ class CoralCityShell(omni.ext.IExt):
         self._every = 3
         self._since = 0
         self._capturing = False
+        self._complained = False
         self._latest_state = {}
         self._alone_since = None
         self._watch_port = int(os.environ.get("CORAL_CITY_WATCH_PORT", "18102"))
@@ -316,7 +317,12 @@ class CoralCityShell(omni.ext.IExt):
             import cv2
             import numpy as np
 
-            pointer = ctypes.cast(buffer, ctypes.POINTER(ctypes.c_byte * size))
+            # The capture hands back an address, not a pointer. Casting an
+            # integer as though it were already one fails with "argument 1:
+            # wrong type" — fifty times a second, in a warning nobody reads,
+            # while the screen stays black and everything else looks correct.
+            held = buffer if not isinstance(buffer, int) else ctypes.c_void_p(buffer)
+            pointer = ctypes.cast(held, ctypes.POINTER(ctypes.c_ubyte * size))
             frame = np.frombuffer(pointer.contents, dtype=np.uint8)
             frame = frame.reshape(tall, wide, 4)
             # The capture is RGBA and the encoder wants BGR. Getting that
@@ -327,7 +333,12 @@ class CoralCityShell(omni.ext.IExt):
             if ok:
                 self.watch.send(jpeg.tobytes(), self._latest_state)
         except Exception as exc:
-            carb.log_warn(f"Coral City could not encode a frame: {exc}")
+            # Once, not once per frame. A fault in a loop that runs twenty times
+            # a second writes its own haystack.
+            if not self._complained:
+                self._complained = True
+                carb.log_error(f"Coral City could not encode a frame: {exc}")
+                self._say("frames_unavailable", why=str(exc)[:200])
 
     def _photograph(self, at: float) -> None:
         """Write out what the dive looks like.
