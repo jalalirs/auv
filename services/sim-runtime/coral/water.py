@@ -51,6 +51,23 @@ def make(stage, say, floor: float, water_level: float = 0.0,
 
     settings = carb.settings.get_settings()
 
+    # ── the camera ───────────────────────────────────────────────────────────
+    #
+    # A fixed exposure, because automatic exposure makes a simulator lie. It
+    # brightens a dark scene until it looks normal, which is exactly the
+    # information a dive is meant to carry — how much light there is at fifteen
+    # metres — and it means the same reef photographs differently depending on
+    # where the camera happens to be pointing. Two runs of one dive would not
+    # match, and an autonomy stack would learn from images no real camera takes.
+    #
+    # It is also why tuning the lights was a fight: every change was being
+    # partly undone by the renderer trying to be helpful.
+    settings.set("/rtx/post/histogram/enabled", False)
+    settings.set("/rtx/post/tonemap/op", 1)
+    settings.set("/rtx/post/tonemap/cameraShutter", 1.0 / 60.0)
+    settings.set("/rtx/post/tonemap/fNumber", 4.0)
+    settings.set("/rtx/post/tonemap/iso", 200.0)
+
     # ── the water ────────────────────────────────────────────────────────────
     #
     # The renderer's global fog, which is a general atmospheric effect being
@@ -61,7 +78,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     settings.set("/rtx/fog/fogColorIntensity", 1.0)
     # Visibility, near enough. Twenty metres is a good day on a reef; a diver
     # calls thirty exceptional and five a bad one.
-    settings.set("/rtx/fog/fogDistance", 34.0)
+    settings.set("/rtx/fog/fogDistance", 26.0)
     settings.set("/rtx/fog/fogDensity", 1.0)
     settings.set("/rtx/fog/fogHeightDensity", 1.0)
     settings.set("/rtx/fog/fogStartDistance", 0.5)
@@ -75,7 +92,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # takes most of it. The first attempt used a daylight intensity and produced
     # a seabed that was a black silhouette in green water: correct absorption,
     # nothing left to absorb.
-    sun.CreateIntensityAttr(22000.0)
+    sun.CreateIntensityAttr(3000.0)
     sun.CreateAngleAttr(2.0)
     sun.CreateColorAttr(Gf.Vec3f(0.85, 0.95, 1.0))
     UsdGeom.Xformable(sun.GetPrim()).AddRotateXYZOp().Set(Gf.Vec3f(-52.0, 0.0, 18.0))
@@ -84,7 +101,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # black. Underwater there is no such thing as an unlit surface: the medium
     # itself glows in every direction.
     sky = UsdLux.DomeLight.Define(stage, "/World/Water")
-    sky.CreateIntensityAttr(3200.0)
+    sky.CreateIntensityAttr(700.0)
     sky.CreateColorAttr(Gf.Vec3f(*[c * 2.4 for c in SCATTER]))
 
     # ── the surface, from below ──────────────────────────────────────────────
@@ -132,7 +149,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     caustics = UsdLux.RectLight.Define(stage, "/World/Caustics")
     caustics.CreateWidthAttr(90.0)
     caustics.CreateHeightAttr(90.0)
-    caustics.CreateIntensityAttr(60000.0)
+    caustics.CreateIntensityAttr(14000.0)
     caustics.CreateColorAttr(Gf.Vec3f(0.72, 0.94, 1.0))
     caustics.CreateNormalizeAttr(False)
     caustics.GetPrim().CreateAttribute(
