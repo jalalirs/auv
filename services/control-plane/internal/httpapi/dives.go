@@ -322,14 +322,20 @@ func (d *Dependencies) claimRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Recorded before the claim and outside it. Inside, it rode on the claim's
+	// transaction — which rolls back whenever there is no work, and no work is
+	// the ordinary answer. The host declared itself constantly and the
+	// declaration was discarded every single time.
+	if len(request.Runtimes) > 0 {
+		if err := d.Compute.SetRuntimes(r.Context(), d.Pool,
+			request.TargetID, request.Runtimes); err != nil {
+			writeError(w, r, err)
+			return
+		}
+	}
+
 	var claimed dive.Claimed
 	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
-		if len(request.Runtimes) > 0 {
-			if err := d.Compute.SetRuntimes(r.Context(), conn,
-				request.TargetID, request.Runtimes); err != nil {
-				return err
-			}
-		}
 		var err error
 		claimed, err = d.Dives.ClaimNext(r.Context(), conn, request.TargetID, d.LeaseDuration)
 		if err != nil {
