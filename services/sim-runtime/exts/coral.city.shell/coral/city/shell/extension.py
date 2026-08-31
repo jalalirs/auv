@@ -80,6 +80,9 @@ class CoralCityShell(omni.ext.IExt):
         self._product = None
         self._every = 3
         self._since = 0
+        self._capturing = False
+        self._latest_state = {}
+        self._alone_since = None
         self._watch_port = int(os.environ.get("CORAL_CITY_WATCH_PORT", "18102"))
 
         if str(CORAL) not in sys.path:
@@ -259,20 +262,17 @@ class CoralCityShell(omni.ext.IExt):
             self.hud.finished()
 
     def _open_the_window(self, camera_path: str) -> None:
-        """Start rendering frames for whoever is watching from elsewhere.
+        """Start sending frames to whoever is watching from elsewhere.
 
-        Through Replicator rather than the viewport's own capture, because this
-        has to work with no window, no viewer attached and nobody logged in —
-        which is the normal case for a machine in a rack.
+        Through the viewport's own capture rather than Replicator. Replicator is
+        the documented way to render headlessly and it does not load in this
+        application — its plugin wants a PhysX symbol that is not there — while
+        the viewport capture is already proven here, because it is what takes
+        the photographs a dive leaves behind.
         """
         try:
-            import omni.replicator.core as rep
+            from .watch import FRAMES_PER_SECOND, Watch
 
-            from .watch import FRAMES_PER_SECOND, TALL, WIDE, Watch
-
-            self._product = rep.create.render_product(camera_path, (WIDE, TALL))
-            self._frames = rep.AnnotatorRegistry.get_annotator("LdrColor")
-            self._frames.attach(self._product)
             self.watch = Watch(self._watch_port, self.controls, self._say)
             self._every = max(1, int(round(60.0 / FRAMES_PER_SECOND)))
         except Exception as exc:
@@ -280,29 +280,54 @@ class CoralCityShell(omni.ext.IExt):
             self._say("watch_unavailable", why=str(exc)[:200])
 
     def _send_a_frame(self, state: dict) -> None:
-        """One frame to the watchers, if anybody is there and it is time."""
+        """One frame to the watchers, if anybody is there and it is time.
+
+        Asked for, not waited on. The capture arrives on a later frame through a
+        callback, and blocking the simulation until a picture is ready would
+        make how fast the vehicle flies depend on how fast somebody's screen
+        draws.
+        """
         if self.watch is None or not self.watch.watched:
             return
         self._since += 1
-        if self._since < self._every:
+        if self._since < self._every or self._capturing:
             return
         self._since = 0
-        try:
-            import cv2
 
-            picture = self._frames.get_data()
-            if picture is None or getattr(picture, "size", 0) == 0:
+        try:
+            from omni.kit.viewport.utility import capture_viewport_to_buffer, get_active_viewport
+
+            viewport = get_active_viewport()
+            if viewport is None:
                 return
-            # Replicator hands back RGBA; the encoder wants BGR, and getting
-            # that backwards produces a picture that is right in every respect
-            # except that the water is orange.
-            ok, jpeg = cv2.imencode(
-                ".jpg", cv2.cvtColor(picture, cv2.COLOR_RGBA2BGR),
-                [int(cv2.IMWRITE_JPEG_QUALITY), 72])
-            if ok:
-                self.watch.send(jpeg.tobytes(), state)
+            self._latest_state = state
+            self._capturing = True
+            capture_viewport_to_buffer(viewport, self._encode)
         except Exception as exc:
-            carb.log_warn(f"Coral City could not send a frame: {exc}")
+            self._capturing = False
+            carb.log_warn(f"Coral City could not ask for a frame: {exc}")
+
+    def _encode(self, buffer, size, wide, tall, fmt=None) -> None:
+        """Turn a captured frame into something a socket can carry."""
+        self._capturing = False
+        try:
+            import ctypes
+
+            import cv2
+            import numpy as np
+
+            pointer = ctypes.cast(buffer, ctypes.POINTER(ctypes.c_byte * size))
+            frame = np.frombuffer(pointer.contents, dtype=np.uint8)
+            frame = frame.reshape(tall, wide, 4)
+            # The capture is RGBA and the encoder wants BGR. Getting that
+            # backwards produces a picture correct in every respect except that
+            # the water is orange.
+            ok, jpeg = cv2.imencode(".jpg", cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR),
+                                    [int(cv2.IMWRITE_JPEG_QUALITY), 72])
+            if ok:
+                self.watch.send(jpeg.tobytes(), self._latest_state)
+        except Exception as exc:
+            carb.log_warn(f"Coral City could not encode a frame: {exc}")
 
     def _photograph(self, at: float) -> None:
         """Write out what the dive looks like.

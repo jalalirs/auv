@@ -1400,6 +1400,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dives/{diveId}/runs/{runId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End a dive, or withdraw a request for one
+         * @description The same call whether it has started or not, because from the outside they are one act — I no longer want this — and which it turns out to be depends on whether a machine happened to be free a second ago. Nobody should have to know that to stop something they started.
+         *     Without this a request could be made and never withdrawn, and every one held a device until its lease ran out whether or not anybody was still watching.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    diveId: string;
+                    runId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description It is over. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dives/{diveId}/runs/{runId}/events": {
         parameters: {
             query?: never;

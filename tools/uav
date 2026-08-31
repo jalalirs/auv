@@ -17,6 +17,7 @@
 #   uav runs                recent runs, and what became of them
 #   uav watch [run]         what a dive reported, as it reported it
 #   uav stop                end the dive that is running
+#   uav clear               withdraw everything running or waiting
 #   uav sim <logs|said|opened|grep|shell>   the simulator, and what it said
 #
 #   uav check               the end-to-end checks, against the box
@@ -270,6 +271,25 @@ command_stop() {
     dim "${container}"
 }
 
+# Withdraw everything outstanding: what is running, and what is waiting.
+command_clear() {
+    TOKEN="${TOKEN:-$(token)}"
+    local org dives cleared=0
+    org="$(api GET /api/v1/me | json 'document["organisations"][0]["id"]')"
+    dives="$(api GET "/api/v1/organisations/${org}/dives" \
+        | json '" ".join(d["id"] for d in document["dives"])')"
+    for dive in ${dives}; do
+        for run in $(api GET "/api/v1/dives/${dive}/runs" | json '" ".join(
+            r["id"] for r in document["runs"]
+            if r["state"] in ("queued", "preparing", "running"))'); do
+            api POST "/api/v1/dives/${dive}/runs/${run}/cancel" >/dev/null
+            dim "  withdrew ${run}"
+            cleared=$((cleared + 1))
+        done
+    done
+    bold "${cleared} withdrawn"
+}
+
 command_api() {
     [ $# -ge 2 ] || die "uav api <method> <path> [body]"
     api "$1" "$2" "${3:-}"
@@ -289,6 +309,7 @@ case "${1:-}" in
     check)  shift; command_check "$@" ;;
     clean)  shift; command_clean "$@" ;;
     stop)   shift; command_stop "$@" ;;
+    clear)  shift; command_clear "$@" ;;
     api)    shift; command_api "$@" ;;
     ""|help|-h|--help)
         sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
