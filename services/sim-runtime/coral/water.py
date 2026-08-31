@@ -39,7 +39,7 @@ def is_it_deep(depth: float) -> float:
 
 
 def make(stage, say, floor: float, water_level: float = 0.0,
-         across: float = 1000.0) -> None:
+         across: float = 1000.0, working_depth: float = 10.0) -> None:
     """Put water over a place, and light it from above.
 
     Four things, in the order they matter: the fog that is the water itself, the
@@ -78,7 +78,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     settings.set("/rtx/fog/fogColorIntensity", 1.0)
     # Visibility, near enough. Twenty metres is a good day on a reef; a diver
     # calls thirty exceptional and five a bad one.
-    settings.set("/rtx/fog/fogDistance", 26.0)
+    settings.set("/rtx/fog/fogDistance", 17.0)
     settings.set("/rtx/fog/fogDensity", 1.0)
     settings.set("/rtx/fog/fogHeightDensity", 1.0)
     settings.set("/rtx/fog/fogStartDistance", 0.5)
@@ -92,7 +92,14 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # takes most of it. The first attempt used a daylight intensity and produced
     # a seabed that was a black silhouette in green water: correct absorption,
     # nothing left to absorb.
-    sun.CreateIntensityAttr(3000.0)
+    # What is left of the sun at the depth this dive happens at.
+    #
+    # Full daylight lights the seabed like a beach, because it is the light
+    # above the surface and not the light that got down here. The fog gives the
+    # colour of depth and this gives its dimness; without both, a reef at
+    # fifteen metres photographs like a sandbar at noon.
+    left = is_it_deep(max(0.0, working_depth))
+    sun.CreateIntensityAttr(3400.0 * left)
     sun.CreateAngleAttr(2.0)
     sun.CreateColorAttr(Gf.Vec3f(0.85, 0.95, 1.0))
     UsdGeom.Xformable(sun.GetPrim()).AddRotateXYZOp().Set(Gf.Vec3f(-52.0, 0.0, 18.0))
@@ -101,7 +108,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # black. Underwater there is no such thing as an unlit surface: the medium
     # itself glows in every direction.
     sky = UsdLux.DomeLight.Define(stage, "/World/Water")
-    sky.CreateIntensityAttr(700.0)
+    sky.CreateIntensityAttr(900.0 * left)
     sky.CreateColorAttr(Gf.Vec3f(*[c * 2.4 for c in SCATTER]))
 
     # ── the surface, from below ──────────────────────────────────────────────
@@ -149,7 +156,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     caustics = UsdLux.RectLight.Define(stage, "/World/Caustics")
     caustics.CreateWidthAttr(90.0)
     caustics.CreateHeightAttr(90.0)
-    caustics.CreateIntensityAttr(14000.0)
+    caustics.CreateIntensityAttr(9000.0 * left)
     caustics.CreateColorAttr(Gf.Vec3f(0.72, 0.94, 1.0))
     caustics.CreateNormalizeAttr(False)
     caustics.GetPrim().CreateAttribute(
@@ -162,7 +169,8 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     moving.AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, water_level - 0.5))
 
     say("water_made",
-        visibilityM=22.0, surfaceAtM=water_level,
+        visibilityM=17.0, surfaceAtM=water_level,
+        daylightLeft=round(left, 3), atDepthM=round(working_depth, 1),
         absorbsInM=list(ATTENUATION_METRES))
 
 
