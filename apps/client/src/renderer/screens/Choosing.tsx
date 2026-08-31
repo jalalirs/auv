@@ -11,6 +11,23 @@ import type { AssetVersion, City, Platform, Queue, Vehicle } from "@coral-city/a
 
 import { Badge, Card } from "./parts.js";
 
+const WHERE = "coral-city.place";
+const WHAT = "coral-city.vehicle";
+
+/**
+ * What to have chosen already: what you chose last time if it is still there,
+ * or the only one if there is only one.
+ *
+ * Deliberately not "the first of several". Picking one of many on somebody's
+ * behalf and letting them press a button that says Dive is how a person ends up
+ * in the wrong water without having chosen to be.
+ */
+function remembered<T extends { id: string }>(key: string, all: T[]): string | undefined {
+  const last = localStorage.getItem(key);
+  if (last !== null && all.some((one) => one.id === last)) return last;
+  return all.length === 1 ? all[0]!.id : undefined;
+}
+
 interface Loaded {
   places: City[];
   vehicles: Vehicle[];
@@ -34,6 +51,13 @@ export function Choosing({ platform, onAsked }: {
           platform.places(), platform.vehicles(), platform.queues(),
         ]);
         setLoaded({ places, vehicles, queues });
+
+        // Already chosen, where there is nothing to choose. One place and one
+        // vehicle is not a decision, and presenting it as one makes somebody
+        // click twice to say the only thing they could have said. What you
+        // picked last time is remembered for when there is more than one.
+        setPlace(remembered(WHERE, places));
+        setVehicle(remembered(WHAT, vehicles));
       } catch (problem) {
         setRefusal(problem instanceof Error ? problem.message : "could not read the catalogue");
       }
@@ -139,7 +163,8 @@ export function Choosing({ platform, onAsked }: {
             {loaded.places.map((one) => (
               <Card key={one.id} picture={undefined} name={one.name}
                     detail={one.summary || one.verticalDatum}
-                    chosen={one.id === place} onChoose={() => setPlace(one.id)} />
+                    chosen={one.id === place}
+                    onChoose={() => { setPlace(one.id); localStorage.setItem(WHERE, one.id); }} />
             ))}
           </div>
         </section>
@@ -150,7 +175,8 @@ export function Choosing({ platform, onAsked }: {
             {loaded.vehicles.map((one) => (
               <Card key={one.id} picture={undefined} name={one.name}
                     detail={one.summary || "a vehicle"}
-                    chosen={one.id === vehicle} onChoose={() => setVehicle(one.id)} />
+                    chosen={one.id === vehicle}
+                    onChoose={() => { setVehicle(one.id); localStorage.setItem(WHAT, one.id); }} />
             ))}
           </div>
         </section>

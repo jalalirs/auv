@@ -14,6 +14,7 @@
 #   uav app                 build and open Coral City on this machine
 #   uav dive [mode]         ask for a dive; interactive unless told otherwise
 #   uav watch [run]         what a dive reported, as it reported it
+#   uav stop                end the dive that is running
 #   uav sim <logs|said|opened|grep|shell>   the simulator, and what it said
 #
 #   uav check               the end-to-end checks, against the box
@@ -196,6 +197,21 @@ command_sim() {
     esac
 }
 
+# End the dive that is running, and give the machine back.
+#
+# By stopping the simulator, which is blunt: the agent notices, finishes the run
+# and releases the device. There is no way for a person to end their own dive
+# through the platform yet, which is a gap — you can ask for a machine and not
+# hand it back — and this is what stands in until there is.
+command_stop() {
+    local container
+    container="$(on_box "docker ps --format '{{.Names}}' | grep -E 'coral-(sim|autonomy)' | tr '\n' ' '")"
+    [ -n "${container// /}" ] || { dim "nothing is running"; return; }
+    on_box "docker stop ${container} >/dev/null"
+    bold "stopped"
+    dim "${container}"
+}
+
 command_api() {
     [ $# -ge 2 ] || die "uav api <method> <path> [body]"
     api "$1" "$2" "${3:-}"
@@ -212,6 +228,7 @@ case "${1:-}" in
     sim)    shift; command_sim "$@" ;;
     check)  shift; command_check "$@" ;;
     clean)  shift; command_clean "$@" ;;
+    stop)   shift; command_stop "$@" ;;
     api)    shift; command_api "$@" ;;
     ""|help|-h|--help)
         sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
