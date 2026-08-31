@@ -192,7 +192,13 @@ def main() -> int:
                        help="metres across, square")
     parse.add_argument("--most", type=int, default=512,
                        help="most samples along a side")
-    parse.add_argument("--into", default="catalog/cities")
+    # Outside the source tree by default. A place is built from public
+    # bathymetry and published to object storage by digest; a copy in the
+    # repository would be a second origin for the same bytes, and a large one —
+    # and an eleven megabyte generated file appearing in a checkout is enough to
+    # stop a deploy, which is exactly what it did.
+    parse.add_argument("--into",
+                       default=str(pathlib.Path.home() / "coral-city" / "places"))
     asked = parse.parse_args()
 
     where = pathlib.Path(asked.into) / asked.name
