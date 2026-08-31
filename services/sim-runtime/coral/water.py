@@ -61,7 +61,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     settings.set("/rtx/fog/fogColorIntensity", 1.0)
     # Visibility, near enough. Twenty metres is a good day on a reef; a diver
     # calls thirty exceptional and five a bad one.
-    settings.set("/rtx/fog/fogDistance", 22.0)
+    settings.set("/rtx/fog/fogDistance", 34.0)
     settings.set("/rtx/fog/fogDensity", 1.0)
     settings.set("/rtx/fog/fogHeightDensity", 1.0)
     settings.set("/rtx/fog/fogStartDistance", 0.5)
@@ -71,7 +71,11 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # Angled rather than overhead, so the seabed has relief in it. A light
     # straight down flattens everything it touches.
     sun = UsdLux.DistantLight.Define(stage, "/World/Sun")
-    sun.CreateIntensityAttr(2600.0)
+    # Bright, because the fog is between the sun and everything it lights and
+    # takes most of it. The first attempt used a daylight intensity and produced
+    # a seabed that was a black silhouette in green water: correct absorption,
+    # nothing left to absorb.
+    sun.CreateIntensityAttr(14000.0)
     sun.CreateAngleAttr(2.0)
     sun.CreateColorAttr(Gf.Vec3f(0.85, 0.95, 1.0))
     UsdGeom.Xformable(sun.GetPrim()).AddRotateXYZOp().Set(Gf.Vec3f(-52.0, 0.0, 18.0))
@@ -80,7 +84,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # black. Underwater there is no such thing as an unlit surface: the medium
     # itself glows in every direction.
     sky = UsdLux.DomeLight.Define(stage, "/World/Water")
-    sky.CreateIntensityAttr(420.0)
+    sky.CreateIntensityAttr(2200.0)
     sky.CreateColorAttr(Gf.Vec3f(*[c * 2.4 for c in SCATTER]))
 
     # ── the surface, from below ──────────────────────────────────────────────
@@ -112,12 +116,17 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # It is a cheat and it is the correct cheat — the pattern is real, its
     # motion is real, and what is being simulated here is a vehicle rather than
     # photon transport.
+    # Sized to the water it lights, not to the site. A rectangle a kilometre
+    # across, normalised, spreads its intensity over a square kilometre and
+    # arrives as nothing — which is what the first attempt did. This one is a
+    # patch that travels with the vehicle, which is the only part anybody can
+    # see anyway.
     caustics = UsdLux.RectLight.Define(stage, "/World/Caustics")
-    caustics.CreateWidthAttr(across)
-    caustics.CreateHeightAttr(across)
-    caustics.CreateIntensityAttr(9000.0)
+    caustics.CreateWidthAttr(90.0)
+    caustics.CreateHeightAttr(90.0)
+    caustics.CreateIntensityAttr(60000.0)
     caustics.CreateColorAttr(Gf.Vec3f(0.72, 0.94, 1.0))
-    caustics.CreateNormalizeAttr(True)
+    caustics.CreateNormalizeAttr(False)
     caustics.GetPrim().CreateAttribute(
         "inputs:texture:file", Sdf.ValueTypeNames.Asset).Set("/isaac-sim/coral/caustics.png")
     moving = UsdGeom.Xformable(caustics.GetPrim())
@@ -152,17 +161,24 @@ def _water_material(stage, surface) -> None:
     UsdShade.MaterialBindingAPI.Apply(surface.GetPrim()).Bind(material)
 
 
-def drift(stage, seconds: float) -> None:
-    """Move the caustics, because still caustics are a painted floor."""
+def drift(stage, seconds: float, follow=None) -> None:
+    """Move the caustics with the water, and keep them over the vehicle.
+
+    Still caustics are a painted floor, and caustics fixed to the world are a
+    patch of light the vehicle flies out of.
+    """
+    import math
+
     from pxr import Gf, UsdGeom
 
     light = stage.GetPrimAtPath("/World/Caustics")
     if not light:
         return
+    x, y = (follow[0], follow[1]) if follow is not None else (0.0, 0.0)
+    # A slow wander, the way a swell moves a caustic net across a bottom.
+    x += 5.0 * math.sin(seconds * 0.06)
+    y += 4.0 * math.cos(seconds * 0.043)
     for op in UsdGeom.Xformable(light).GetOrderedXformOps():
         if op.GetOpType() == UsdGeom.XformOp.TypeTranslate:
-            where = op.Get()
-            op.Set(Gf.Vec3d(0.9 * (seconds % 40.0) - 18.0,
-                            0.6 * ((seconds * 0.7) % 40.0) - 12.0,
-                            where[2]))
+            op.Set(Gf.Vec3d(x, y, op.Get()[2]))
             return
