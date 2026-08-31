@@ -106,6 +106,10 @@ class Dive:
         self.hand = np.zeros(6)
         self.flown_by_hand = False
 
+        # What this vehicle can do on each axis, so that a fraction asked for by
+        # a person can be turned into the force it meant.
+        self.capability = allocator.capability()
+
         # Filled in when the place is opened: where its floor is, and where the
         # top of its water is. Both in metres, in the dive's own frame.
         self.floor = None
@@ -352,16 +356,24 @@ class Dive:
     def done(self) -> bool:
         return self.taken >= self.steps
 
-    def take_the_controls(self, wrench) -> None:
-        """A person is flying it, in the vehicle's own body frame.
+    def take_the_controls(self, asked) -> None:
+        """A person is flying it. What they ask for is a fraction, not a force.
+
+        Half ahead and full rise are fractions of what this vehicle can do, and
+        turning them into a wrench is the vehicle's business — it is the only
+        thing that knows what it can do. Handing the fraction straight to the
+        allocator asks a hundred-newton vehicle for half a newton, which is
+        exactly what happened: the keys arrived, the display said somebody was
+        flying, and the vehicle sat there.
 
         Ends any deference to autonomy for as long as the hand is on the
         controls. There is no arbitration beyond that and there should not be:
         two things flying one vehicle is not a mode anybody wants, and a pilot
         who has taken hold of it has said which one wins.
         """
-        self.hand = np.asarray(wrench, dtype=float)
-        self.flown_by_hand = bool(np.any(self.hand))
+        fraction = np.clip(np.asarray(asked, dtype=float), -1.0, 1.0)
+        self.hand = fraction * self.capability
+        self.flown_by_hand = bool(np.any(fraction))
 
     def step(self) -> None:
         """One step of physics. Everything else is somebody else's schedule."""

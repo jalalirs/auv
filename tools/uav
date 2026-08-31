@@ -19,6 +19,7 @@
 #   uav stop                end the dive that is running
 #   uav clear               withdraw everything running or waiting
 #   uav frames [seconds]    connect to the running dive and say what arrives
+#   uav fly <keys> [secs]   hold keys on the running dive and say what happened
 #   uav sim <logs|said|opened|grep|shell>   the simulator, and what it said
 #
 #   uav check               the end-to-end checks, against the box
@@ -270,6 +271,43 @@ setTimeout(() => {
 "
 }
 
+# Fly the running dive from here, and say what the vehicle did.
+#
+#   uav fly SPACE 6      hold the rise key for six seconds
+#
+# Because "can a person fly this" is the milestone, and clicking at a window is
+# not a way to find out whether the answer stayed yes.
+command_fly() {
+    local keys="${1:-SPACE}" seconds="${2:-6}"
+    local host port
+    host="$(remote_env CORAL_CITY_STREAM_HOST)"; host="${host:-127.0.0.1}"
+    port="$(remote_env CORAL_CITY_STREAM_SIGNAL_PORT)"; port="${port:-18100}"
+    bold "holding ${keys} for ${seconds}s"
+    mise exec -- node --input-type=module -e "
+const held = '${keys}'.split(',').filter(Boolean);
+const socket = new WebSocket('ws://${host}:${port}/watch');
+socket.binaryType = 'arraybuffer';
+let first = null, last = null;
+socket.onmessage = (m) => {
+  if (typeof m.data !== 'string') return;
+  const said = JSON.parse(m.data);
+  if (first === null) first = said;
+  last = said;
+};
+socket.onopen = () => {
+  setInterval(() => socket.send(JSON.stringify({ held })), 40);
+};
+setTimeout(() => {
+  if (last === null) { console.log('  nothing arrived'); process.exit(1); }
+  console.log('  depth    ', first.depthM, '→', last.depthM);
+  console.log('  speed    ', last.speedMs);
+  console.log('  thrust   ', JSON.stringify(last.thrust));
+  console.log('  by hand  ', last.byHand);
+  process.exit(0);
+}, ${seconds} * 1000);
+"
+}
+
 # The simulator a dive is running in.
 command_sim() {
     local what="${1:-logs}"
@@ -340,6 +378,7 @@ case "${1:-}" in
     watch)  shift; command_watch "$@" ;;
     runs)   shift; command_runs "$@" ;;
     frames) shift; command_frames "$@" ;;
+    fly)    shift; command_fly "$@" ;;
     sim)    shift; command_sim "$@" ;;
     check)  shift; command_check "$@" ;;
     clean)  shift; command_clean "$@" ;;

@@ -283,6 +283,29 @@ class Allocator:
         self.matrix = np.column_stack(columns)
         self.inverse = np.linalg.pinv(self.matrix)
 
+    def capability(self) -> np.ndarray:
+        """The most this vehicle can produce on each axis, on its own.
+
+        Found by asking for one unit on an axis, seeing what commands that
+        needs, and scaling until the largest of them is at the stop. It is a
+        property of where the thrusters are, so it is answered here.
+
+        Needed because a person at the controls asks for a fraction — half
+        ahead, full rise — and a fraction is not a wrench. Handing 0.55 to an
+        allocator that reads newtons asks a hundred-newton vehicle for half a
+        newton, which is what it did: the keys reached the thrusters, the
+        display said somebody was flying, and the vehicle sat still.
+        """
+        most = np.zeros(6)
+        for axis in range(6):
+            want = np.zeros(6)
+            want[axis] = 1.0
+            commands = self.inverse @ want
+            largest = float(np.max(np.abs(commands)))
+            # An axis nothing can move stays at zero rather than at infinity.
+            most[axis] = 0.0 if largest < 1e-9 else 1.0 / largest
+        return most
+
     def allocate(self, wrench: np.ndarray) -> np.ndarray:
         """Commands in [-1, 1], one per thruster."""
         return np.clip(self.inverse @ wrench, -1.0, 1.0)
