@@ -179,15 +179,17 @@ class Dive:
 
         # Where a dive begins.
         #
-        # The middle of the site, a couple of metres under the surface, unless
-        # the dive says otherwise. A dive that starts whereever the origin
-        # happens to fall cannot be compared with another that also started
-        # nowhere in particular — and in this tank the origin is at one end.
+        # The middle of the water, a couple of metres under its surface, unless
+        # the dive says otherwise. A dive that starts wherever the origin happens
+        # to fall cannot be compared with another that also started nowhere in
+        # particular — and in this tank the origin is at one end.
         asked = (self.brief.get("initialState") or {}).get("positionM")
-        if asked is None and corner is not None:
-            self.position = np.array(self.spawn(corner, far), dtype=float)
-            self.say("spawned", at=[round(float(v), 2) for v in self.position],
-                     why="the middle of the place")
+        if asked is None:
+            where, why = self.spawn(corner, far)
+            if where is not None:
+                self.position = np.array(where, dtype=float)
+                self.say("spawned",
+                         at=[round(float(v), 2) for v in self.position], why=why)
         elif corner is not None:
             inside = all(corner[i] <= self.position[i] <= far[i] for i in range(3))
             if not inside:
@@ -271,18 +273,51 @@ class Dive:
                  position=[round(float(x), 3) for x in self.position])
         return True
 
-    def spawn(self, corner, far) -> list[float]:
-        """The middle of the place, two metres down.
+    def spawn(self, corner, far):
+        """The middle of the water, two metres down.
 
-        Two metres because that is where an ROV is put in from a boat, and
-        because a vehicle that begins on the bottom cannot be seen to sink and
-        one that begins at the surface is in the waves. Down from the top of the
-        water rather than up from the floor: the surface is where a dive starts
-        from, whatever the depth beneath it.
+        The water, not the scene. A scene's bounding box is inflated by whatever
+        is furthest from the origin in it — one stray prim makes a tow tank
+        ninety-five metres long — and the middle of that box can be a place with
+        nothing in it, which is what the first attempt produced: a vehicle
+        correctly centred in the frame, in an empty blue nowhere, with the tank
+        somewhere off to one side.
+
+        The water layer is the volume a dive happens in. It is read here rather
+        than measured from the drawn scene, because it is only drawn when
+        somebody is watching, and where a dive begins must not depend on whether
+        anybody is looking at it — a batch run and an interactive run of one
+        definition have to start in the same place or nothing about comparing
+        them means anything.
+
+        Two metres down because that is where an ROV goes in from a boat: one
+        that begins on the bottom cannot be seen to sink, and one that begins at
+        the surface is in the waves.
         """
-        middle = [(corner[0] + far[0]) / 2.0, (corner[1] + far[1]) / 2.0]
-        surface = self.water_level if self.water_level is not None else min(far[2], 0.0)
-        return [middle[0], middle[1], max(corner[2] + 0.5, surface - 2.0)]
+        from pxr import Usd, UsdGeom
+
+        water = find_water(pathlib.Path(self.brief.get("cityPath", "/dive/city")))
+        if water is not None:
+            try:
+                layer = Usd.Stage.Open(str(water))
+                per_metre = 1.0 / (UsdGeom.GetStageMetersPerUnit(layer) or 1.0)
+                wet = UsdGeom.BBoxCache(
+                    Usd.TimeCode.Default(), [UsdGeom.Tokens.default_]
+                ).ComputeWorldBound(layer.GetPseudoRoot()).ComputeAlignedRange()
+                if not wet.IsEmpty():
+                    low = [float(v) / per_metre for v in wet.GetMin()]
+                    high = [float(v) / per_metre for v in wet.GetMax()]
+                    return ([(low[0] + high[0]) / 2.0,
+                             (low[1] + high[1]) / 2.0,
+                             high[2] - 2.0], "the middle of the water")
+            except Exception as exc:
+                self.say("water_unreadable", why=str(exc)[:160])
+
+        if corner is None:
+            return (None, "")
+        return ([(corner[0] + far[0]) / 2.0, (corner[1] + far[1]) / 2.0,
+                 max(corner[2] + 0.5, min(far[2], 0.0) - 2.0)],
+                "the middle of the place, which has no water layer")
 
     def connect(self) -> None:
         """Open the boundary somebody else's autonomy talks across."""
