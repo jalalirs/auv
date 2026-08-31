@@ -175,7 +175,17 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     moving = UsdGeom.Xformable(caustics.GetPrim())
     moving.AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, water_level - 0.5))
 
+    # Read back, not assumed. A carb setting that does not exist accepts a
+    # value silently and changes nothing, so every number below could have been
+    # doing exactly nothing for as long as it has been here — and the way that
+    # presents is a scene that looks vaguely underwater because of the light
+    # while every adjustment to the fog does not move the picture at all.
+    applied = {name: settings.get("/rtx/fog/" + name)
+               for name in ("enabled", "fogDistance", "fogStartDistance",
+                            "fogColorIntensity")}
+
     say("water_made",
+        fogApplied=applied,
         visibilityM=17.0, surfaceAtM=water_level,
         daylightLeft=round(left, 3), atDepthM=round(working_depth, 1),
         absorbsInM=list(ATTENUATION_METRES))
