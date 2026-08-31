@@ -106,6 +106,17 @@ class Dive:
         self.hand = np.zeros(6)
         self.flown_by_hand = False
 
+        # Filled in when the place is opened: where its floor is, and where the
+        # top of its water is. Both in metres, in the dive's own frame.
+        self.floor = None
+        self.water_level = None
+        self.on_the_bottom = False
+
+        # How far the vehicle's middle is from its bottom. Taken from the hull
+        # when one is drawn, and a guess otherwise — a vehicle resting exactly
+        # on the floor with its centre on the floor is half buried.
+        self.half_height = 0.15
+
     # ── setting up ───────────────────────────────────────────────────────────
 
     def open(self, drawn: bool = False) -> bool:
@@ -156,13 +167,33 @@ class Dive:
                  upAxis=str(self.up_axis),
                  unitsPerMetre=round(self.units_per_metre, 4))
 
-        # Where the dive says to start, against where the place actually is.
-        # A vehicle placed outside its own tank is a dive definition that is
-        # wrong, and it should be said plainly rather than discovered by
-        # looking at a photograph of a wall.
-        if corner is not None:
+        # The floor. Everything below it is not water.
+        #
+        # A plane at the bottom of the site, which is exactly right for a tank
+        # and an approximation of a reef — the next version asks the terrain how
+        # high it is under the vehicle. Until then this is the difference
+        # between a dive that ends on the bottom and one that falls out of the
+        # world: without it an untended ROV was at twenty-two metres in a tank
+        # six metres deep, below everything, looking at nothing.
+        self.floor = None if corner is None else float(corner[2])
+
+        # Where a dive begins.
+        #
+        # The middle of the site, a couple of metres under the surface, unless
+        # the dive says otherwise. A dive that starts whereever the origin
+        # happens to fall cannot be compared with another that also started
+        # nowhere in particular — and in this tank the origin is at one end.
+        asked = (self.brief.get("initialState") or {}).get("positionM")
+        if asked is None and corner is not None:
+            self.position = np.array(self.spawn(corner, far), dtype=float)
+            self.say("spawned", at=[round(float(v), 2) for v in self.position],
+                     why="the middle of the place")
+        elif corner is not None:
             inside = all(corner[i] <= self.position[i] <= far[i] for i in range(3))
             if not inside:
+                # A vehicle placed outside its own tank is a dive definition
+                # that is wrong, and saying so beats discovering it by looking
+                # at a photograph of a wall.
                 self.say("vehicle_outside_the_place",
                          position=[round(float(v), 2) for v in self.position],
                          from_=corner, to=far)
@@ -216,18 +247,42 @@ class Dive:
                 if not drawn.IsEmpty():
                     size = [round(float(v) / self.units_per_metre, 3)
                             for v in drawn.GetSize()]
+                if size is not None:
+                    self.half_height = max(0.05, size[2] / 2.0)
                 self.say("hull_drawn", file=hull.name, metresAcross=size)
 
             water = find_water(pathlib.Path(
                 self.brief.get("cityPath", "/dive/city")))
             if water is not None and not stage.GetPrimAtPath("/World/Water"):
-                stage.DefinePrim("/World/Water").GetReferences() \
-                    .AddReference(str(water))
-                self.say("water_drawn", file=water.name)
+                surface = stage.DefinePrim("/World/Water")
+                surface.GetReferences().AddReference(str(water))
+                # Where the top of the water is, which is where depth is
+                # measured from and where a dive starts two metres below.
+                wet = UsdGeom.BBoxCache(
+                    Usd.TimeCode.Default(), [UsdGeom.Tokens.default_]
+                ).ComputeWorldBound(surface).ComputeAlignedRange()
+                if not wet.IsEmpty():
+                    self.water_level = float(wet.GetMax()[2]) / self.units_per_metre
+                self.say("water_drawn", file=water.name,
+                         surfaceAtM=None if self.water_level is None
+                         else round(self.water_level, 2))
 
         self.say("vehicle_placed",
                  position=[round(float(x), 3) for x in self.position])
         return True
+
+    def spawn(self, corner, far) -> list[float]:
+        """The middle of the place, two metres down.
+
+        Two metres because that is where an ROV is put in from a boat, and
+        because a vehicle that begins on the bottom cannot be seen to sink and
+        one that begins at the surface is in the waves. Down from the top of the
+        water rather than up from the floor: the surface is where a dive starts
+        from, whatever the depth beneath it.
+        """
+        middle = [(corner[0] + far[0]) / 2.0, (corner[1] + far[1]) / 2.0]
+        surface = self.water_level if self.water_level is not None else min(far[2], 0.0)
+        return [middle[0], middle[1], max(corner[2] + 0.5, surface - 2.0)]
 
     def connect(self) -> None:
         """Open the boundary somebody else's autonomy talks across."""
@@ -290,6 +345,7 @@ class Dive:
         self.position += self.rotation @ self.velocity[:3] * self.dt
         self.simulated += self.dt
         self.taken += 1
+        self.land()
 
         # Sensors at their own rate rather than every physics step: a real DVL
         # reports at tens of hertz, not two hundred, and a stack tuned against a
@@ -318,6 +374,39 @@ class Dive:
             return self._Gf.Vec3d(x, z, -y)
         return self._Gf.Vec3d(x, y, z)
 
+    def land(self) -> None:
+        """Stop the vehicle at the bottom, and at the surface.
+
+        Not a collision solver — a floor and a ceiling. It resolves by putting
+        the vehicle back where it was allowed to be and taking away the velocity
+        that carried it out, which is what a hard stop against a tank floor
+        does: it does not bounce and it does not keep pushing.
+
+        A vehicle held down by its thrusters stays down, because the thrust is
+        still applied; it simply cannot go through. That is the behaviour worth
+        having before a real height query exists, and it is the difference
+        between a dive that ends on the bottom and one that leaves the world.
+        """
+        if self.floor is not None:
+            bottom = self.floor + self.half_height
+            if self.position[2] < bottom:
+                self.position[2] = bottom
+                if self.velocity[2] < 0.0:
+                    self.velocity[2] = 0.0
+                    self.on_the_bottom = True
+                return
+            self.on_the_bottom = False
+
+        # The surface is a lid for the same reason. A vehicle that rises through
+        # it is a vehicle in the air, which this simulator has nothing true to
+        # say about.
+        if self.water_level is not None:
+            top = self.water_level - self.half_height
+            if self.position[2] > top:
+                self.position[2] = top
+                if self.velocity[2] > 0.0:
+                    self.velocity[2] = 0.0
+
     def show(self) -> None:
         """Move what is drawn to where the vehicle is.
 
@@ -333,6 +422,7 @@ class Dive:
             "speedMs": round(float(np.linalg.norm(self.velocity[:3])), 4),
             "commanded": bool(self.bridge.commanded) if self.bridge else False,
             "byHand": self.flown_by_hand,
+            "onTheBottom": self.on_the_bottom,
             "thrust": [round(float(c), 3) for c in self.commands],
             "position": [round(float(x), 4) for x in self.position],
         }
@@ -348,6 +438,9 @@ class Dive:
         reading["velocity"] = [round(float(v), 4) for v in self.velocity[:3]]
         reading["rates"] = [round(float(v), 4) for v in self.velocity[3:]]
         reading["thrusters"] = len(self.allocator.model.thrusters)
+        reading["floorM"] = None if self.floor is None else round(self.floor, 2)
+        reading["altitudeM"] = (None if self.floor is None
+                                else round(float(self.position[2]) - self.floor, 3))
         reading["netBuoyancyN"] = round(self.model_net_buoyancy(), 3)
         if self.bridge is not None:
             reading["topics"] = self.bridge.topics()

@@ -539,3 +539,9 @@ input:focus { border-color: var(--coral); }
   gap: 14px; color: var(--faint);
 }
 .opening p { margin: 0; font-size: 13.5px; }
+
+.dials { grid-template-columns: repeat(3, 1fr); }
+.resting {
+  margin: 0 0 10px; font-size: 11.5px; color: var(--vehicle);
+  letter-spacing: var(--wide);
+}

@@ -109,6 +109,7 @@ class CoralCityShell(omni.ext.IExt):
         self._since = 0
         self._capturing = False
         self._asked_at = 0.0
+        self._aim = None
         self._complained = False
         self._latest_state = {}
         self._alone_since = None
@@ -168,19 +169,45 @@ class CoralCityShell(omni.ext.IExt):
                                         f"{len(body.model.thrusters)} thrusters")
         self._watch_from(dive)
 
-        if dive.bridge is not None:
+        # Waiting only when somebody is actually coming. The agent knows
+        # whether it is about to start an autonomy container, and a dive with
+        # none spent its first minute waiting for a stack that was never going
+        # to arrive — while the person who asked to fly it watched a still
+        # picture and reasonably concluded it was broken.
+        expected = bool(brief.get("autonomyImage"))
+        if dive.bridge is not None and expected:
             self.waiting_until = time.monotonic() + float(
                 brief.get("autonomyWaitSeconds", 60.0))
         else:
             self.began = time.monotonic()
 
+    def _follow(self, dive) -> None:
+        """Keep the vehicle in shot as it moves."""
+        if self._aim is None:
+            return
+        try:
+            from pxr import Gf
+
+            x, y, z = dive.position
+            at = dive.drawn_at((x, y, z))
+            from_ = dive.drawn_at((x - 3.4, y - 3.4, z + 0.9))
+            up = Gf.Vec3d(0.0, 1.0, 0.0) if dive.up_axis == "Y" else Gf.Vec3d(0.0, 0.0, 1.0)
+            self._aim.Set(Gf.Matrix4d().SetLookAt(from_, at, up).GetInverse())
+        except Exception:
+            # A camera that will not move is not worth ending a dive over.
+            self._aim = None
+
     def _watch_from(self, dive) -> None:
         """Put the camera where the vehicle can be seen from.
 
-        Behind, above, and looking down slightly — the view you would want from
-        a chase boat. It does not follow: a camera that chases the vehicle makes
-        the vehicle look still and the water look moving, which is exactly
-        backwards for judging whether a controller is holding depth.
+        Behind, above, and looking down slightly — the view from a chase boat.
+
+        It follows. The first version deliberately did not, reasoning that a
+        camera chasing the vehicle makes the vehicle look still and the water
+        look moving, which is backwards for judging whether a controller holds
+        depth. That reasoning is sound and it does not matter: an untended ROV
+        leaves the shot in fifteen seconds, and you cannot judge anything about a
+        vehicle you cannot see. Being able to watch beats watching well.
         """
         try:
             from omni.kit.viewport.utility import get_active_viewport
@@ -212,7 +239,8 @@ class CoralCityShell(omni.ext.IExt):
             look = Gf.Matrix4d().SetLookAt(from_, at, up).GetInverse()
             transform = UsdGeom.Xformable(camera.GetPrim())
             transform.ClearXformOpOrder()
-            transform.AddTransformOp().Set(look)
+            self._aim = transform.AddTransformOp()
+            self._aim.Set(look)
             viewport.camera_path = camera_path
             self._open_the_window(camera_path)
             # Read back rather than assumed. Setting it is one line and failing
@@ -276,6 +304,7 @@ class CoralCityShell(omni.ext.IExt):
             dive.step()
 
         dive.show()
+        self._follow(dive)
         self.hud.show(dive.state())
         if self.photographs and dive.simulated >= self.photographs[0]:
             self._photograph(round(self.photographs.pop(0), 1))

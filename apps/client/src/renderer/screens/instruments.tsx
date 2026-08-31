@@ -28,6 +28,9 @@ export interface Reading {
   thrust?: number[];
   thrusters?: number;
   netBuoyancyN?: number;
+  floorM?: number | null;
+  altitudeM?: number | null;
+  onTheBottom?: boolean;
   commanded?: boolean;
   byHand?: boolean;
   commandsReceived?: number;
@@ -113,8 +116,12 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, c
         <Panel name="Vehicle">
           <div className="dials">
             <Dial of="depth" is={reading.depthM} unit="m" />
+            <Dial of="altitude" is={reading.altitudeM ?? undefined} unit="m" />
             <Dial of="speed" is={reading.speedMs} unit="m/s" />
           </div>
+          {reading.onTheBottom === true && (
+            <p className="resting">Resting on the bottom.</p>
+          )}
           <Axes name="velocity" of={reading.velocity} unit="m/s" />
           <Axes name="rates" of={reading.rates} unit="rad/s" />
           {reading.netBuoyancyN === undefined ? null : (
