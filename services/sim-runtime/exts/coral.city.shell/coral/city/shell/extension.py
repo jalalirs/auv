@@ -229,6 +229,7 @@ class CoralCityShell(omni.ext.IExt):
                 dive.publish()
                 self.hud.waiting(self.waiting_until - time.monotonic())
                 self.hud.show(dive.state())
+                self._send_a_frame(dive.instruments())
                 return
 
         if self.controls is not None:
@@ -250,7 +251,7 @@ class CoralCityShell(omni.ext.IExt):
         self.hud.show(dive.state())
         if self.photographs and dive.simulated >= self.photographs[0]:
             self._photograph(round(self.photographs.pop(0), 1))
-        self._send_a_frame(dive.state())
+        self._send_a_frame(dive.instruments())
         if dive.flown_by_hand:
             self.hud.by_hand()
         elif dive.bridge is not None and dive.bridge.commanded:

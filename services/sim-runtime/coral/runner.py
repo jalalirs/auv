@@ -337,6 +337,28 @@ class Dive:
             "position": [round(float(x), 4) for x in self.position],
         }
 
+    def instruments(self) -> dict:
+        """Everything an operator's panels want, in one reading.
+
+        More than state() carries, because state() goes into the run's record
+        and this goes onto somebody's screen twenty times a second. The record
+        should stay small; a screen can afford the whole vehicle.
+        """
+        reading = self.state()
+        reading["velocity"] = [round(float(v), 4) for v in self.velocity[:3]]
+        reading["rates"] = [round(float(v), 4) for v in self.velocity[3:]]
+        reading["thrusters"] = len(self.allocator.model.thrusters)
+        reading["netBuoyancyN"] = round(self.model_net_buoyancy(), 3)
+        if self.bridge is not None:
+            reading["topics"] = self.bridge.topics()
+            reading["commandsReceived"] = self.bridge.commands_seen
+        else:
+            reading["topics"] = []
+        return reading
+
+    def model_net_buoyancy(self) -> float:
+        return float(self.body.model.net_buoyancy_n)
+
     def close(self) -> None:
         self.say("settled",
                  t=round(self.simulated, 3),
