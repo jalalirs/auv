@@ -19,3 +19,4 @@ coverage/
 __pycache__/
 .uav-last-dive
 .uav-app.log
+.uav-frame.png
