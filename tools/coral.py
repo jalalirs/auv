@@ -27,12 +27,14 @@ import numpy as np
 # sheltered Indo-Pacific fore-reef: mostly branching and massive, tables where
 # there is light and room, and soft corals filling in.
 COMMUNITY = (
-    ("branching", 0.34),
-    ("massive", 0.22),
-    ("table", 0.12),
-    ("brain", 0.12),
-    ("fan", 0.10),
-    ("finger", 0.10),
+    ("rubble", 0.30),      # broken coral and stone: the floor of a real reef
+    ("encrusting", 0.16),  # sheets growing over the rock, holding it together
+    ("branching", 0.18),
+    ("massive", 0.12),
+    ("finger", 0.08),
+    ("brain", 0.06),
+    ("table", 0.06),
+    ("fan", 0.04),
 )
 
 # Colours corals actually are. The browns and tans are zooxanthellae, which is
@@ -305,8 +307,49 @@ def fan(rng, height=0.9):
     return _join(pieces)
 
 
+def rubble(rng, height=0.3):
+    """Broken coral and stone.
+
+    The thing that makes a reef a floor rather than a lawn of ornaments. Most of
+    a real reef, by area, is the wreckage of the last one: fragments, old heads
+    rolled and cemented, and sand between. Leave it out and every colony sits on
+    clean sand like a chess piece, which is exactly what the first reefs looked
+    like.
+    """
+    pieces = []
+    for _ in range(int(rng.integers(2, 5))):
+        where = np.array([rng.normal(0, height * 0.5), rng.normal(0, height * 0.5), 0.0])
+        pieces.append(_dome(where, height * rng.uniform(0.5, 1.2),
+                            height * rng.uniform(0.25, 0.55),
+                            rows=3, sides=7, wobble=height * 0.16, rng=rng))
+    return _join(pieces)
+
+
+def encrusting(rng, height=0.25):
+    """A sheet growing over the rock. Wide, low, and following what it is on."""
+    radius = height * rng.uniform(3.0, 6.0)
+    rows, sides = 3, 14
+    points, faces = [], []
+    for r in range(rows + 1):
+        share = r / rows
+        for s in range(sides):
+            a = 2 * math.pi * s / sides
+            lift = height * (1.0 - share ** 2) * rng.uniform(0.85, 1.15)
+            rr = radius * share * (1.0 + 0.22 * math.sin(4 * a + rng.uniform(0, 1)))
+            points.append([rr * math.cos(a), rr * math.sin(a), lift * 0.35])
+    points = np.array(points)
+    for r in range(rows):
+        base, nxt = r * sides, (r + 1) * sides
+        for s in range(sides):
+            t = (s + 1) % sides
+            faces.append([base + s, nxt + s, base + t])
+            faces.append([base + t, nxt + s, nxt + t])
+    return points, np.array(faces, dtype=int)
+
+
 GROWERS = {"branching": branching, "massive": massive, "table": table,
-           "brain": brain, "fan": fan, "finger": finger}
+           "brain": brain, "fan": fan, "finger": finger,
+           "rubble": rubble, "encrusting": encrusting}
 
 
 def grow_one(kind: str, rng, size: float):
@@ -318,7 +361,8 @@ def grow_one(kind: str, rng, size: float):
     # Roughened by however much that kind is rough. A boulder coral is knobbly;
     # a table's plate is nearly flat and only its edge is ragged.
     by = {"massive": 0.055, "brain": 0.030, "table": 0.020,
-          "branching": 0.014, "finger": 0.022, "fan": 0.008}[kind] * size
+          "branching": 0.014, "finger": 0.022, "fan": 0.008,
+          "rubble": 0.070, "encrusting": 0.030}[kind] * size
     points = roughen(points, by, rng, scale=2.0 + 6.0 / max(size, 0.2))
     # Every colony is turned, so a field of them has no grain.
     turn = rng.uniform(0, 2 * math.pi)

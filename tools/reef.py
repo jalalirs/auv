@@ -61,15 +61,39 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     if want.sum() <= 0:
         return {"colonies": 0}
 
+    # In stands, not sprinkled.
+    #
+    # Coral recruits next to coral: a colony breaks, the fragment lands beside
+    # it and grows, and the reef builds outward from what is already there. So
+    # places are chosen for a thicket and colonies are dropped around each one,
+    # which is what makes cover continuous somewhere instead of thin everywhere.
+    per_stand = 14
+    stands = max(1, how_many // per_stand)
     flat = (want / want.sum()).ravel()
-    picked = rng.choice(flat.size, size=how_many, p=flat)
+    picked = rng.choice(flat.size, size=stands, p=flat)
     row, column = np.unravel_index(picked, want.shape)
 
     step_x = across / max(1, columns - 1)
     step_y = across / max(1, rows - 1)
-    x = -across / 2 + column * step_x + rng.uniform(-step_x / 2, step_x / 2, how_many)
-    y = -across / 2 + row * step_y + rng.uniform(-step_y / 2, step_y / 2, how_many)
-    z = height[row, column] - 0.04    # bedded in, not balanced on top
+    centre_x = -across / 2 + column * step_x
+    centre_y = -across / 2 + row * step_y
+
+    # Every colony belongs to a stand, and sits within a couple of metres of it.
+    belongs = np.repeat(np.arange(stands), per_stand)[:how_many]
+    if belongs.size < how_many:
+        belongs = np.concatenate([belongs, rng.integers(0, stands, how_many - belongs.size)])
+    spread = rng.normal(0, 1.7, (how_many, 2))
+    x = centre_x[belongs] + spread[:, 0]
+    y = centre_y[belongs] + spread[:, 1]
+    x = np.clip(x, -across / 2, across / 2)
+    y = np.clip(y, -across / 2, across / 2)
+
+    # Sat on the seabed under wherever it actually landed, not under the middle
+    # of its stand — a colony two metres away can be half a metre lower.
+    at_column = np.clip(((x + across / 2) / step_x).astype(int), 0, columns - 1)
+    at_row = np.clip(((y + across / 2) / step_y).astype(int), 0, rows - 1)
+    z = height[at_row, at_column] - 0.04   # bedded in, not balanced on top
+    row, column = at_row, at_column
 
     kinds = [k for k, _ in coral.COMMUNITY]
     weights = np.array([w for _, w in coral.COMMUNITY], dtype=float)
@@ -78,7 +102,8 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # Colonies the size colonies are. The first pass grew them at a third of
     # this and the reef read as gravel with twigs in it.
     sizes = {"branching": 1.15, "massive": 0.85, "table": 0.55,
-             "brain": 0.75, "fan": 1.10, "finger": 0.80}
+             "brain": 0.75, "fan": 1.10, "finger": 0.80,
+             "rubble": 0.34, "encrusting": 0.30}
     variants = 6
     prototypes, colours = [], []
     for kind in kinds:
