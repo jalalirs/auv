@@ -49,6 +49,58 @@ def find_water(root: pathlib.Path) -> pathlib.Path | None:
     return None
 
 
+class Seabed:
+    """How deep the bottom is, anywhere in a site.
+
+    Read from the numbers the site carries rather than from its mesh. A ray cast
+    into the geometry would only work when the geometry is loaded, which is only
+    when somebody is watching — and a batch dive has to land in exactly the same
+    place as one being flown or nothing they say about each other means anything.
+
+    Sampled with bilinear interpolation, because a vehicle held two metres above
+    a reef by a controller reading a staircase will chase the steps.
+    """
+
+    def __init__(self, heights, across: float) -> None:
+        self.heights = heights
+        self.across = across
+        self.rows, self.columns = heights.shape
+
+    @classmethod
+    def of(cls, site: pathlib.Path, city: pathlib.Path):
+        """The heightfield a place carries, or nothing if it carries none."""
+        import json
+
+        try:
+            described = json.loads((city / "site.json").read_text())
+            field = described["mesh"]["heightfield"]
+            raw = np.fromfile(city / field["file"], dtype="<f4")
+            heights = raw.reshape(field["rows"], field["columns"])
+            return cls(heights, float(described["from"]["acrossMetres"]))
+        except Exception:
+            return None
+
+    def under(self, x: float, y: float) -> float:
+        """The height of the bottom at a point, in metres."""
+        # Into grid coordinates, clamped: outside the site the nearest edge is
+        # the honest answer, and it keeps a vehicle that wandered off from
+        # falling through the world.
+        u = (x / self.across + 0.5) * (self.columns - 1)
+        v = (y / self.across + 0.5) * (self.rows - 1)
+        u = min(max(u, 0.0), self.columns - 1.0001)
+        v = min(max(v, 0.0), self.rows - 1.0001)
+
+        column, row = int(u), int(v)
+        fu, fv = u - column, v - row
+        h = self.heights
+        return float(
+            h[row, column] * (1 - fu) * (1 - fv)
+            + h[row, column + 1] * fu * (1 - fv)
+            + h[row + 1, column] * (1 - fu) * fv
+            + h[row + 1, column + 1] * fu * fv
+        )
+
+
 def find_scene(root: pathlib.Path) -> pathlib.Path | None:
     """The USD a place is loaded from.
 
@@ -171,15 +223,19 @@ class Dive:
                  upAxis=str(self.up_axis),
                  unitsPerMetre=round(self.units_per_metre, 4))
 
-        # The floor. Everything below it is not water.
+        # The floor.
         #
-        # A plane at the bottom of the site, which is exactly right for a tank
-        # and an approximation of a reef — the next version asks the terrain how
-        # high it is under the vehicle. Until then this is the difference
-        # between a dive that ends on the bottom and one that falls out of the
-        # world: without it an untended ROV was at twenty-two metres in a tank
-        # six metres deep, below everything, looking at nothing.
+        # The site's own heightfield where it has one, so the bottom is the
+        # bottom under this vehicle rather than the deepest point in the place.
+        # On a reef with four metres of relief the difference is a vehicle
+        # resting on the coral and a vehicle four metres inside it.
+        self.seabed = Seabed.of(self.scene, pathlib.Path(
+            self.brief.get("cityPath", "/dive/city")))
         self.floor = None if corner is None else float(corner[2])
+        if self.seabed is not None:
+            self.say("seabed_known",
+                     samples=[self.seabed.rows, self.seabed.columns],
+                     acrossM=self.seabed.across)
 
         # Where a dive begins.
         #
@@ -434,8 +490,12 @@ class Dive:
         having before a real height query exists, and it is the difference
         between a dive that ends on the bottom and one that leaves the world.
         """
-        if self.floor is not None:
-            bottom = self.floor + self.half_height
+        floor = self.floor
+        if self.seabed is not None:
+            floor = self.seabed.under(float(self.position[0]), float(self.position[1]))
+
+        if floor is not None:
+            bottom = floor + self.half_height
             if self.position[2] < bottom:
                 self.position[2] = bottom
                 if self.velocity[2] < 0.0:
@@ -485,9 +545,12 @@ class Dive:
         reading["velocity"] = [round(float(v), 4) for v in self.velocity[:3]]
         reading["rates"] = [round(float(v), 4) for v in self.velocity[3:]]
         reading["thrusters"] = len(self.allocator.model.thrusters)
-        reading["floorM"] = None if self.floor is None else round(self.floor, 2)
-        reading["altitudeM"] = (None if self.floor is None
-                                else round(float(self.position[2]) - self.floor, 3))
+        floor = self.floor
+        if self.seabed is not None:
+            floor = self.seabed.under(float(self.position[0]), float(self.position[1]))
+        reading["floorM"] = None if floor is None else round(floor, 2)
+        reading["altitudeM"] = (None if floor is None
+                                else round(float(self.position[2]) - floor, 3))
         reading["netBuoyancyN"] = round(self.model_net_buoyancy(), 3)
         if self.bridge is not None:
             reading["topics"] = self.bridge.topics()
