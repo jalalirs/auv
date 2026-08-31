@@ -102,6 +102,23 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
             "points": int(sum(len(p) for p, _ in prototypes))}
 
 
+def _smooth_normals(points, faces):
+    """Vertex normals, averaged from the faces that meet there.
+
+    Without them a colony is shaded facet by facet and a boulder coral looks
+    like a cut gem — which is what the first dense reef looked like: right
+    shapes, right colours, and every one of them a polyhedron.
+    """
+    normals = np.zeros_like(points, dtype="float64")
+    a, b, c = points[faces[:, 0]], points[faces[:, 1]], points[faces[:, 2]]
+    face = np.cross(b - a, c - a)
+    for corner in range(3):
+        np.add.at(normals, faces[:, corner], face)
+    length = np.linalg.norm(normals, axis=1, keepdims=True)
+    length[length < 1e-12] = 1.0
+    return normals / length
+
+
 def _triples(values) -> str:
     return ", ".join("(%.4g, %.4g, %.4g)" % (a, b, c) for a, b, c in values)
 
@@ -143,11 +160,15 @@ def _instancer(prototypes, colours, x, y, z, which, scale, turn) -> str:
             "            int[] faceVertexCounts = [%s]\n"
             "            int[] faceVertexIndices = [%s]\n"
             "            point3f[] points = [%s]\n"
+            "            normal3f[] normals = [%s] (\n"
+            '                interpolation = "vertex"\n'
+            "            )\n"
             "            color3f[] primvars:displayColor = [(%.3g, %.3g, %.3g)] (\n"
             '                interpolation = "constant"\n'
             "            )\n"
             "            rel material:binding = </Coral/Skins/Skin_%d>\n"
             "        }\n" % (i, counts, indices, _triples(points),
+                             _triples(_smooth_normals(points, faces)),
                              colour[0], colour[1], colour[2], i))
 
     # Turned about the vertical, as a quaternion — one line rather than a

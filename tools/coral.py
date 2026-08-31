@@ -39,15 +39,21 @@ COMMUNITY = (
 # what most healthy coral looks like from a metre away; the pinks, purples and
 # yellows are pigments that show in shallow water. A reef of uniformly bright
 # colours is an aquarium poster, and a reef of uniform brown is a dead one.
+# Saturated, deliberately. Everything down here is lit by blue-green water and
+# seen through more of it, and both wash colour out — a palette that looks right
+# in a swatch comes back from the renderer as pastel. These are what the pigment
+# is, not what the photograph shows.
 PALETTE = (
-    (0.71, 0.54, 0.35),   # tan
-    (0.62, 0.44, 0.28),   # brown
-    (0.80, 0.62, 0.42),   # pale gold
-    (0.84, 0.49, 0.52),   # dusty pink
-    (0.70, 0.42, 0.62),   # purple
-    (0.86, 0.72, 0.38),   # yellow
-    (0.52, 0.62, 0.50),   # olive green
-    (0.90, 0.60, 0.36),   # orange
+    (0.68, 0.42, 0.16),   # tan
+    (0.52, 0.30, 0.12),   # brown
+    (0.82, 0.56, 0.20),   # gold
+    (0.86, 0.30, 0.36),   # pink
+    (0.62, 0.22, 0.60),   # purple
+    (0.92, 0.72, 0.16),   # yellow
+    (0.36, 0.56, 0.28),   # green
+    (0.94, 0.46, 0.14),   # orange
+    (0.74, 0.24, 0.24),   # red
+    (0.24, 0.46, 0.62),   # steel blue
 )
 
 
@@ -179,14 +185,14 @@ def _dome(centre, radius, height, rows=5, sides=10, squash=1.0, wobble=None, rng
 def massive(rng, height=0.7):
     """A boulder coral. Accretes evenly, ends up lumpy rather than smooth."""
     return _dome(np.zeros(3), height * rng.uniform(0.55, 0.85), height,
-                 rows=6, sides=14, squash=1.0,
+                 rows=9, sides=20, squash=1.0,
                  wobble=height * 0.045, rng=rng)
 
 
 def brain(rng, height=0.6):
     """A brain coral: a dome that folded its surface to get more of it."""
     radius = height * rng.uniform(0.8, 1.1)
-    rows, sides = 8, 22
+    rows, sides = 11, 30
     points = [np.array([0, 0, height])]
     turns = rng.uniform(4.0, 7.0)
     for r in range(1, rows + 1):
