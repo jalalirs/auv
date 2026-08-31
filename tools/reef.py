@@ -44,7 +44,12 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     for _ in range(3):
         coarse = 0.25 * (np.roll(coarse, 1, 0) + np.roll(coarse, -1, 0)
                          + np.roll(coarse, 1, 1) + np.roll(coarse, -1, 1))
-    patch = np.kron(coarse, np.ones((12, 12)))[:rows, :columns]
+    # Resampled by index rather than tiled, because a tiling only lands on the
+    # right shape when the size divides exactly and otherwise fails loudly at
+    # the first multiply.
+    up_rows = (np.arange(rows) * coarse.shape[0] // max(1, rows)).clip(0, coarse.shape[0] - 1)
+    up_columns = (np.arange(columns) * coarse.shape[1] // max(1, columns)).clip(0, coarse.shape[1] - 1)
+    patch = coarse[np.ix_(up_rows, up_columns)]
     spread = float(patch.max() - patch.min()) or 1.0
     patch = (patch - patch.min()) / spread
 
