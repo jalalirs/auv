@@ -78,7 +78,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     settings.set("/rtx/fog/fogColorIntensity", 1.0)
     # Visibility, near enough. Twenty metres is a good day on a reef; a diver
     # calls thirty exceptional and five a bad one.
-    settings.set("/rtx/fog/fogDistance", 13.0)
+    settings.set("/rtx/fog/fogDistance", 19.0)
     settings.set("/rtx/fog/fogDensity", 1.0)
     settings.set("/rtx/fog/fogHeightDensity", 1.0)
     settings.set("/rtx/fog/fogStartDistance", 0.5)
@@ -99,16 +99,16 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # colour of depth and this gives its dimness; without both, a reef at
     # fifteen metres photographs like a sandbar at noon.
     left = is_it_deep(max(0.0, working_depth))
-    sun.CreateIntensityAttr(1500.0 * left)
+    sun.CreateIntensityAttr(2400.0 * left)
     sun.CreateAngleAttr(2.0)
-    sun.CreateColorAttr(Gf.Vec3f(0.62, 0.90, 0.98))
+    sun.CreateColorAttr(Gf.Vec3f(0.86, 0.96, 0.98))
     UsdGeom.Xformable(sun.GetPrim()).AddRotateXYZOp().Set(Gf.Vec3f(-52.0, 0.0, 18.0))
 
     # Everything the water scatters back, which is what stops the shadows being
     # black. Underwater there is no such thing as an unlit surface: the medium
     # itself glows in every direction.
     sky = UsdLux.DomeLight.Define(stage, "/World/Water")
-    sky.CreateIntensityAttr(420.0 * left)
+    sky.CreateIntensityAttr(300.0 * left)
     # Strongly coloured, not a neutral fill. Everything not in direct sun is
     # lit by water, and water is blue-green: a grey ambient makes a reef look
     # like a quarry with a blue filter over it.
@@ -211,7 +211,7 @@ def light_for(stage, depth: float) -> None:
     from pxr import UsdLux
 
     left = is_it_deep(max(0.0, depth))
-    for path, base in (("/World/Sun", 1500.0), ("/World/Water", 420.0),
+    for path, base in (("/World/Sun", 2400.0), ("/World/Water", 300.0),
                        ("/World/Caustics", 5200.0)):
         prim = stage.GetPrimAtPath(path)
         if prim:
