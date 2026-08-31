@@ -81,6 +81,7 @@ class CoralCityShell(omni.ext.IExt):
         self._every = 3
         self._since = 0
         self._capturing = False
+        self._asked_at = 0.0
         self._complained = False
         self._latest_state = {}
         self._alone_since = None
@@ -291,23 +292,41 @@ class CoralCityShell(omni.ext.IExt):
         """
         if self.watch is None or not self.watch.watched:
             return
+        # A capture that never comes back must not stop every later one.
+        #
+        # The guard is here so that one frame is in flight at a time, and with
+        # nothing to clear it a callback that silently never fires means exactly
+        # one frame is ever asked for — no error, no picture, and every other
+        # sign saying the dive is healthy. Which is what happened.
+        if self._capturing and time.monotonic() - self._asked_at > 2.0:
+            self._capturing = False
+            if not self._complained:
+                self._complained = True
+                self._say("frames_unavailable",
+                          why="the renderer was asked for a frame and never answered")
+
         self._since += 1
         if self._since < self._every or self._capturing:
             return
         self._since = 0
 
         try:
-            from omni.kit.viewport.utility import capture_viewport_to_buffer, get_active_viewport
+            from omni.kit.viewport.utility import get_active_viewport
+            from omni.kit.widget.viewport.capture import ByteCapture
 
             viewport = get_active_viewport()
             if viewport is None:
                 return
             self._latest_state = state
             self._capturing = True
-            capture_viewport_to_buffer(viewport, self._encode)
+            self._asked_at = time.monotonic()
+            viewport.schedule_capture(ByteCapture(self._encode))
         except Exception as exc:
             self._capturing = False
-            carb.log_warn(f"Coral City could not ask for a frame: {exc}")
+            if not self._complained:
+                self._complained = True
+                carb.log_error(f"Coral City could not ask for a frame: {exc}")
+                self._say("frames_unavailable", why=str(exc)[:200])
 
     def _encode(self, buffer, size, wide, tall, fmt=None) -> None:
         """Turn a captured frame into something a socket can carry."""
