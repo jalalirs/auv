@@ -301,6 +301,29 @@ func (d *Dependencies) listRuns(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]any{"runs": runs})
 }
 
+// cancelRun ends a dive, or withdraws a request for one that has not started.
+//
+// The same call for both, because from the outside they are the same act —
+// "I no longer want this" — and which of them it turns out to be depends on
+// whether a machine happened to be free a second ago. A person should not have
+// to know that to stop something they started.
+func (d *Dependencies) cancelRun(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("runId")
+	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		if err := d.Dives.Finish(r.Context(), conn, runID,
+			dive.Cancelled, nil, ""); err != nil {
+			return err
+		}
+		return d.Dives.Record(r.Context(), conn, runID, "cancelled", nil,
+			json.RawMessage(`{"by":"the person who asked for it"}`))
+	})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ── What an agent does ───────────────────────────────────────────────────────
 
 // claimRun hands an agent the next dive its host can run, and a device to run

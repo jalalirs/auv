@@ -219,6 +219,16 @@ export class Platform {
     return this.#request("POST", `/api/v1/dives/${dive}/runs`, request);
   }
 
+  /**
+   * End a dive, or withdraw a request for one that has not started.
+   *
+   * The same call for both. Whether it had started is not something the person
+   * pressing the button knows or should have to.
+   */
+  cancel(dive: string, run: string): Promise<void> {
+    return this.#request("POST", `/api/v1/dives/${dive}/runs/${run}/cancel`);
+  }
+
   async events(dive: string, run: string): Promise<RunEvent[]> {
     const { events } = await this.#request<{ events: RunEvent[] }>(
       "GET", `/api/v1/dives/${dive}/runs/${run}/events`);

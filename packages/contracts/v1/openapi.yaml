@@ -942,6 +942,38 @@ paths:
                   leaseSeconds: { type: integer }
         '400':
           $ref: '#/components/responses/Invalid'
+  /api/v1/dives/{diveId}/runs/{runId}/cancel:
+    post:
+      tags: [dives]
+      summary: End a dive, or withdraw a request for one
+      description: >
+        The same call whether it has started or not, because from the outside
+        they are one act — I no longer want this — and which it turns out to be
+        depends on whether a machine happened to be free a second ago. Nobody
+        should have to know that to stop something they started.
+
+        Without this a request could be made and never withdrawn, and every one
+        held a device until its lease ran out whether or not anybody was still
+        watching.
+      parameters:
+        - name: diveId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: It is over.
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/dives/{diveId}/runs/{runId}/events:
     get:
       tags: [dives]

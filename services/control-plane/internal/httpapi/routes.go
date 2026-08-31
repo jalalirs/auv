@@ -247,6 +247,14 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/dives/{diveId}/runs",
 		Summary: "what a dive's executions did", Action: policy.DiveRead,
 		Resource: fromPath(policy.ResourceDive, "diveId"), Handle: d.listRuns})
+	// Ending a dive is asking for one, backwards: it is the same authority,
+	// because somebody who may take a machine may give it back. Without this
+	// there is no way to hand a GPU back at all — a request could be made and
+	// never withdrawn, and every one of them held a device until its lease ran
+	// out, whether or not anybody was still there.
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/dives/{diveId}/runs/{runId}/cancel",
+		Summary: "end a dive, or withdraw a request for one", Action: policy.RunRequest,
+		Resource: fromPath(policy.ResourceDive, "diveId"), Handle: d.cancelRun})
 
 	// What an agent does. These sit at the work scope rather than the dive's,
 	// because an agent holds authority over running work and over nothing else:
