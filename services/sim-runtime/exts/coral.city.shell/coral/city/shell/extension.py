@@ -19,6 +19,8 @@ import pathlib
 import sys
 import time
 
+import ctypes
+
 import carb
 import omni.ext
 import omni.kit.app
@@ -61,6 +63,31 @@ def _inherit_pythonpath() -> None:
     for entry in os.environ.get("PYTHONPATH", "").split(os.pathsep):
         if entry and entry not in sys.path:
             sys.path.append(entry)
+
+
+def bytes_of(buffer, size: int) -> bytes:
+    """The pixels behind whatever the capture handed us.
+
+    It is a PyCapsule — not a pointer, not an address, and passing it to
+    ctypes.cast fails with "argument 1: wrong type". Which is a sentence with no
+    useful information in it, and was the only evidence that anything was wrong
+    while the socket connected, the watcher was counted, the readings were
+    correct, and the screen stayed black.
+
+    The other shapes are tried too, because this is somebody else's callback and
+    a guess about its argument is exactly what went wrong the first two times.
+    """
+    if isinstance(buffer, (bytes, bytearray, memoryview)):
+        return bytes(buffer)
+
+    if isinstance(buffer, int):
+        return bytes(ctypes.cast(ctypes.c_void_p(buffer),
+                                 ctypes.POINTER(ctypes.c_ubyte * size)).contents)
+
+    ctypes.pythonapi.PyCapsule_GetPointer.restype = ctypes.c_void_p
+    ctypes.pythonapi.PyCapsule_GetPointer.argtypes = [ctypes.py_object, ctypes.c_char_p]
+    address = ctypes.pythonapi.PyCapsule_GetPointer(buffer, None)
+    return bytes(ctypes.cast(address, ctypes.POINTER(ctypes.c_ubyte * size)).contents)
 
 
 class CoralCityShell(omni.ext.IExt):
@@ -332,18 +359,10 @@ class CoralCityShell(omni.ext.IExt):
         """Turn a captured frame into something a socket can carry."""
         self._capturing = False
         try:
-            import ctypes
-
             import cv2
             import numpy as np
 
-            # The capture hands back an address, not a pointer. Casting an
-            # integer as though it were already one fails with "argument 1:
-            # wrong type" — fifty times a second, in a warning nobody reads,
-            # while the screen stays black and everything else looks correct.
-            held = buffer if not isinstance(buffer, int) else ctypes.c_void_p(buffer)
-            pointer = ctypes.cast(held, ctypes.POINTER(ctypes.c_ubyte * size))
-            frame = np.frombuffer(pointer.contents, dtype=np.uint8)
+            frame = np.frombuffer(bytes_of(buffer, size), dtype=np.uint8)
             frame = frame.reshape(tall, wide, 4)
             # The capture is RGBA and the encoder wants BGR. Getting that
             # backwards produces a picture correct in every respect except that

@@ -18,6 +18,7 @@
 #   uav watch [run]         what a dive reported, as it reported it
 #   uav stop                end the dive that is running
 #   uav clear               withdraw everything running or waiting
+#   uav frames [seconds]    connect to the running dive and say what arrives
 #   uav sim <logs|said|opened|grep|shell>   the simulator, and what it said
 #
 #   uav check               the end-to-end checks, against the box
@@ -236,6 +237,39 @@ for run in json.load(sys.stdin)["runs"][:4]:
     done
 }
 
+# Watch the running dive for a moment and say what actually arrives.
+#
+# The application is the real client, but "is anything coming down this socket"
+# is a question worth being able to ask without a window open — most of the ways
+# this has been broken looked identical from outside, and every one of them was
+# a different answer to exactly this.
+command_frames() {
+    local seconds="${1:-12}"
+    TOKEN="${TOKEN:-$(token)}"
+    local host port
+    host="$(remote_env CORAL_CITY_STREAM_HOST)"
+    port="$(remote_env CORAL_CITY_STREAM_SIGNAL_PORT)"
+    host="${host:-127.0.0.1}"; port="${port:-18100}"
+    bold "watching ws://${host}:${port}/watch for ${seconds}s"
+    mise exec -- node --input-type=module -e "
+const socket = new WebSocket('ws://${host}:${port}/watch');
+let frames = 0, readings = 0, bytes = 0, last = null;
+socket.binaryType = 'arraybuffer';
+socket.onopen = () => console.log('  connected');
+socket.onerror = (e) => console.log('  could not connect');
+socket.onmessage = (m) => {
+  if (typeof m.data === 'string') { readings += 1; last = JSON.parse(m.data); }
+  else { frames += 1; bytes += m.data.byteLength; }
+};
+setTimeout(() => {
+  console.log('  frames   ', frames, frames ? '(' + Math.round(bytes / frames / 1024) + ' KB each)' : '');
+  console.log('  readings ', readings);
+  if (last) console.log('  depth    ', last.depthM, ' topics', (last.topics ?? []).length);
+  process.exit(0);
+}, ${seconds} * 1000);
+"
+}
+
 # The simulator a dive is running in.
 command_sim() {
     local what="${1:-logs}"
@@ -305,6 +339,7 @@ case "${1:-}" in
     dive)   shift; command_dive "$@" ;;
     watch)  shift; command_watch "$@" ;;
     runs)   shift; command_runs "$@" ;;
+    frames) shift; command_frames "$@" ;;
     sim)    shift; command_sim "$@" ;;
     check)  shift; command_check "$@" ;;
     clean)  shift; command_clean "$@" ;;
