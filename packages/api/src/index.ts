@@ -184,6 +184,23 @@ export class Platform {
 
   // ── going in ───────────────────────────────────────────────────────────────
 
+  /**
+   * Record the water a dive happens in.
+   *
+   * Constructed water names no instant, deliberately: saying when would claim
+   * it was drawn from a measurement of the ocean at that moment, and it was
+   * not. The platform refuses conditions that claim a provenance they lack, and
+   * that refusal is the most important thing it says about any result.
+   */
+  defineConditions(organisation: string, conditions: {
+    kind: "observed" | "constructed";
+    name: string;
+    observedAt?: string;
+    parameters?: Record<string, unknown>;
+  }): Promise<Conditions> {
+    return this.#request("POST", `/api/v1/organisations/${organisation}/conditions`, conditions);
+  }
+
   defineDive(organisation: string, dive: {
     name: string;
     cityVersionId: string;
@@ -197,7 +214,7 @@ export class Platform {
   ask(dive: string, request: {
     queueId: string;
     mode: "interactive" | "batch";
-    runtimeVersion?: string;
+    runtimeVersion: string;
   }): Promise<Run> {
     return this.#request("POST", `/api/v1/dives/${dive}/runs`, request);
   }

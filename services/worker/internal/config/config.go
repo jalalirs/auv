@@ -41,6 +41,16 @@ type Config struct {
 	// rather than accept a dive it cannot perform.
 	SimImage string
 
+	// RuntimeVersion names the physics this host runs, and is reported to the
+	// platform every time this agent asks for work.
+	//
+	// A run records the runtime that produced it, because a physics fix changes
+	// results and comparing across one has to be refused rather than done
+	// quietly. Whoever asks for a dive has to be able to name a runtime that
+	// exists, and cannot know what a machine in a rack has on it — so the
+	// machine says so, and the platform repeats it.
+	RuntimeVersion string
+
 	// StreamHost is the address somebody watching an interactive dive connects
 	// to. The host knows which machine it is; the control plane does not, and
 	// a platform that guessed would send people to a name that does not resolve
@@ -99,6 +109,7 @@ func Load() (Config, error) {
 	}
 
 	config.SimImage = os.Getenv("CORAL_CITY_SIM_IMAGE")
+	config.RuntimeVersion = os.Getenv("CORAL_CITY_RUNTIME_VERSION")
 	config.StreamHost = os.Getenv("CORAL_CITY_STREAM_HOST")
 	config.StreamSignalPort = port("CORAL_CITY_STREAM_SIGNAL_PORT", 18100)
 	if config.SimImage == "" {
@@ -165,4 +176,16 @@ func port(name string, fallback int) int {
 		return fallback
 	}
 	return value
+}
+
+// Runtimes is what this host offers, as a list.
+//
+// One for now, because a host runs one simulation runtime. It is a list because
+// the platform's question is "what can this machine run", and a host with two
+// installed should be able to answer with both without the shape changing.
+func (c Config) Runtimes() []string {
+	if c.RuntimeVersion == "" {
+		return nil
+	}
+	return []string{c.RuntimeVersion}
 }

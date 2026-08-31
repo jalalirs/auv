@@ -313,7 +313,30 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Every institution on this installation */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The institutions. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            organisations?: components["schemas"]["Organisation"][];
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
         put?: never;
         /**
          * Found an institution
@@ -363,7 +386,34 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Everyone who can act
+         * @description Disabled principals are listed and say so. The audit record names who did each thing, so a name that once acted remains a name.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The people. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            people?: components["schemas"]["Principal"][];
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
         put?: never;
         /** Add someone who can sign in */
         post: {
@@ -1165,6 +1215,350 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take the next dive this host can run
+         * @description Answers 204 when there is nothing to do, which is the ordinary case: an agent asks constantly and mostly there is no work. The device is chosen and locked in the same statement that admits the run, so two agents asking at the same moment cannot both be told yes.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        targetId: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description The dive, and everything needed to compose it. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ClaimedRun"];
+                    };
+                };
+                /** @description Nothing to run. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{runId}/packages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The files of the packages this run needs
+         * @description Scoped to the run rather than to the catalogue. An agent holds authority over work and nothing else, so fetching a package by naming one would have meant widening what an agent may see to everything the platform publishes; asking through the run it holds widens nothing.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The run. */
+                    runId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The place and the vehicle, each with its files. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            city?: components["schemas"]["PackageContents"];
+                            vehicle?: components["schemas"]["PackageContents"];
+                        };
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{runId}/started": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The simulator is up */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The run. */
+                    runId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Recorded. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["Invalid"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{runId}/renew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Still working; hold the device a while longer
+         * @description An agent that stops saying this loses the device. It is the only way to tell an agent that is slow from one that is gone: a lease is the statement "I will say something again by this time", and its absence is the only evidence there is.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The run. */
+                    runId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The lease, extended. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            leaseSeconds?: number;
+                        };
+                    };
+                };
+                400: components["responses"]["Invalid"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dives/{diveId}/runs/{runId}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What happened during a run, in order
+         * @description The whole of it rather than a page: telemetry is emitted on simulated time, so a dive of a few minutes produces tens of events. A run that recorded every physics step would be recording the integrator rather than the dive.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The dive. */
+                    diveId: string;
+                    /** @description The run. */
+                    runId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What happened. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            events?: {
+                                /** Format: int64 */
+                                id: number;
+                                /** Format: date-time */
+                                occurredAt: string;
+                                /** @description Where in the dive this happened, which is what makes two runs of the same seed comparable moment by moment.
+                                 *      */
+                                simulatedSeconds?: number;
+                                kind: string;
+                                detail: Record<string, never>;
+                            }[];
+                        };
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{runId}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** What happened during a run */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The run. */
+                    runId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        kind: string;
+                        /** @description Where in the dive this happened, which is what makes two runs of the same seed comparable moment by moment.
+                         *      */
+                        simulatedSeconds?: number;
+                        detail?: Record<string, never>;
+                    };
+                };
+            };
+            responses: {
+                /** @description Appended. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["Invalid"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{runId}/finished": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * How a run ended
+         * @description The last thing anything says about it: the record refuses to rewrite a finished run.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The run. */
+                    runId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        state: "succeeded" | "failed" | "cancelled";
+                        outcome?: Record<string, never>;
+                        /** @description Required when the state is failed, and refused otherwise: a failed run says why, and a run that says why has failed.
+                         *      */
+                        failureReason?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Ended. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["Invalid"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/queues": {
         parameters: {
             query?: never;
@@ -1490,6 +1884,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/versions/{versionId}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A package's files, each with a short-lived URL to fetch it
+         * @description What a node needs to sync a package. A cache keyed by digest is append-only — a digest never changes meaning — so syncing a new version means fetching the files whose digests are new, not the package again.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The package version. */
+                    versionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The files. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            files?: {
+                                path: string;
+                                digest: string;
+                                /** Format: int64 */
+                                sizeBytes: number;
+                                mediaType: string;
+                                objectId: string;
+                                /** @description Short-lived and signed over the host the caller will use. Signing over the wrong one produces a URL that verifies and cannot be reached.
+                                 *      */
+                                url: string;
+                            }[];
+                        };
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/versions/{versionId}/publish": {
         parameters: {
             query?: never;
@@ -1530,6 +1980,88 @@ export interface paths {
             };
         };
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vehicles/{vehicleId}/grants/{bindingId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Withdraw the use of a vehicle */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The vehicle. */
+                    vehicleId: string;
+                    /** @description The grant. */
+                    bindingId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Withdrawn. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/queues/{queueId}/grants/{bindingId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Withdraw the use of a queue */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The queue. */
+                    queueId: string;
+                    /** @description The grant. */
+                    bindingId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Withdrawn. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -3155,6 +3687,39 @@ export interface components {
              *      */
             topicContract: Record<string, never>;
         };
+        PackageContents: {
+            versionId: string;
+            files: {
+                path?: string;
+                digest?: string;
+                /** Format: int64 */
+                sizeBytes?: number;
+                mediaType?: string;
+                /** @description Signed for a node on the network rather than a browser on somebody's desk. The same URL signed over the wrong host verifies and cannot be reached.
+                 *      */
+                url?: string;
+            }[];
+        };
+        /** @description A dive an agent has taken, with everything needed to compose it: which packages to sync, what water, what autonomy, which device, and which DDS domain so that two dives on one host do not hear each other.
+         *      */
+        ClaimedRun: {
+            run: components["schemas"]["Run"];
+            cityVersionId: string;
+            vehicleVersionId: string;
+            conditions: components["schemas"]["Conditions"];
+            initialState?: Record<string, never>;
+            objective?: Record<string, never>;
+            autonomyImage?: string;
+            autonomyDigest?: string;
+            autonomyWantsGpu?: boolean;
+            autonomySubscribes?: string[];
+            autonomyPublishes?: string[];
+            deviceIndex: number;
+            deviceUuid: string;
+            /** @description Derived from the device rather than drawn, so a run that is retried lands on the same domain as the device it holds.
+             *      */
+            rosDomainId: number;
+        };
         /** @description A pool of devices that access is granted to. The governed resource is the queue, not the device, which is what lets one workstation and a rack be described the same way and makes adding hardware an insert.
          *      */
         Queue: {
@@ -3170,6 +3735,9 @@ export interface components {
             devices: number;
             /** @description How many no run is holding. */
             free: number;
+            /** @description What the hosts behind this queue can simulate in, as they last reported when asking for work. A run must record the runtime that produced it, so whoever asks for a dive has to be able to name one that exists — and cannot know what a machine in a rack has on it. An empty list means no host behind this queue has said yet.
+             *      */
+            runtimes?: string[];
             /** Format: date-time */
             createdAt: string;
             createdBy: string;

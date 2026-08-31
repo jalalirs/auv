@@ -187,6 +187,10 @@ services:
       # What a dive is simulated in. A property of this host rather than of the
       # platform: what it has, and what its GPUs can run.
       CORAL_CITY_SIM_IMAGE: ${CORAL_CITY_SIM_IMAGE:-127.0.0.1:18081/sim-runtime:r1}
+      # What this host reports it can simulate in, every time it asks for work.
+      # Whoever asks for a dive names a runtime, and cannot know what is
+      # installed on a machine in a rack — so the machine says.
+      CORAL_CITY_RUNTIME_VERSION: ${CORAL_CITY_RUNTIME_VERSION:-isaac-6.0.1+oceansim}
       # Where somebody watching an interactive dive connects. The address of
       # this machine as the people who use it reach it — which this host knows
       # and the control plane does not.

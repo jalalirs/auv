@@ -2736,6 +2736,15 @@ components:
             which is how a host is taken out of service without killing a dive.
         devices: { type: integer, description: How many devices it holds. }
         free: { type: integer, description: How many no run is holding. }
+        runtimes:
+          type: array
+          items: { type: string }
+          description: >
+            What the hosts behind this queue can simulate in, as they last
+            reported when asking for work. A run must record the runtime that
+            produced it, so whoever asks for a dive has to be able to name one
+            that exists — and cannot know what a machine in a rack has on it.
+            An empty list means no host behind this queue has said yet.
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
       required: [id, slug, name, leaseSeconds, draining, devices, free, createdAt, createdBy]
