@@ -24,6 +24,7 @@ import (
 
 	"github.com/jalalirs/auv/services/worker/internal/cache"
 	"github.com/jalalirs/auv/services/worker/internal/container"
+	"github.com/jalalirs/auv/services/worker/internal/controlplane"
 )
 
 // Claimed is the dive the control plane handed over.
@@ -172,11 +173,23 @@ func (d *Diver) Dive(ctx context.Context, claimed Claimed) error {
 	// The lease is held for as long as this function runs and no longer.
 	// Cancelling it before reporting the outcome would let the run expire out
 	// from under the report.
+	//
+	// The dive runs under a context the lease can end, so that a cancellation
+	// arriving at the renewal stops the thing being cancelled rather than
+	// merely being noted next to it.
+	diving, over := context.WithCancel(ctx)
+	defer over()
 	holding, release := context.WithCancel(ctx)
-	go d.hold(holding, claimed.Run.ID, log)
+	go d.hold(holding, claimed.Run.ID, over, log)
 
-	state, outcome, failure := d.perform(ctx, claimed, log)
+	state, outcome, failure := d.perform(diving, claimed, log)
 	release()
+
+	// A dive somebody ended did not fail. It did what was asked of it, which
+	// was to stop.
+	if diving.Err() != nil && ctx.Err() == nil {
+		state, failure = "cancelled", ""
+	}
 
 	// Reported on a context of its own, because the one above may already be
 	// cancelled — and a dive whose outcome went unrecorded is a dive nobody can
@@ -191,8 +204,23 @@ func (d *Diver) Dive(ctx context.Context, claimed Claimed) error {
 	return nil
 }
 
-// hold keeps the lease alive until the dive is over.
-func (d *Diver) hold(ctx context.Context, runID string, log *slog.Logger) {
+// hold keeps the lease alive until the dive is over, and ends the dive when the
+// platform says it already is.
+//
+// The renewal is how a cancellation reaches this agent. Nothing pushes to a
+// host — it may be behind anything — so the way it learns that somebody ended
+// their dive is by being told, next time it says it is still here, that there
+// is nothing to be still here for.
+//
+// Which makes the difference between the platform refusing and the platform not
+// answering the important distinction in this loop. Not answering is a blip and
+// a lease outlives several. Answering "this run is not in progress" is a fact
+// that will not change by asking again — and treating it as a blip is exactly
+// what happened: the agent renewed a cancelled run every fifteen seconds
+// forever, never finished it, never asked for other work, and held a GPU for a
+// dive nobody wanted while somebody waited for a machine.
+func (d *Diver) hold(ctx context.Context, runID string, over context.CancelFunc,
+	log *slog.Logger) {
 	ticker := time.NewTicker(d.renewEvery)
 	defer ticker.Stop()
 	for {
@@ -200,12 +228,16 @@ func (d *Diver) hold(ctx context.Context, runID string, log *slog.Logger) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := d.platform.Renew(ctx, runID); err != nil && ctx.Err() == nil {
-				// Not fatal on its own: the lease outlives several renewals, so
-				// one failure is a blip and a run of them is a problem the
-				// expiry sweep will settle.
-				log.Warn("could not renew the lease", "error", err)
+			err := d.platform.Renew(ctx, runID)
+			if err == nil || ctx.Err() != nil {
+				continue
 			}
+			if errors.Is(err, controlplane.ErrRunIsOver) {
+				log.Info("the dive was ended by whoever asked for it")
+				over()
+				return
+			}
+			log.Warn("could not renew the lease", "error", err)
 		}
 	}
 }

@@ -304,9 +304,21 @@ func (c *Client) DiveStarted(ctx context.Context, runID string) error {
 	return err
 }
 
+// ErrRunIsOver is the platform saying this dive is no longer in progress.
+//
+// Distinct from failing to reach the platform, and the distinction is the whole
+// point: not answering is a blip and a lease outlives several of them, but
+// answering "this run is not in progress" is a fact that will not change by
+// asking again. An agent that treats the two alike either gives up a dive over
+// a dropped packet or holds a machine for a dive that somebody cancelled.
+var ErrRunIsOver = errors.New("this dive is no longer in progress")
+
 // RenewDive extends the lease on a dive still under way.
 func (c *Client) RenewDive(ctx context.Context, runID string) error {
-	_, err := c.call(ctx, http.MethodPost, "/api/v1/runs/"+runID+"/renew", nil, nil)
+	status, err := c.call(ctx, http.MethodPost, "/api/v1/runs/"+runID+"/renew", nil, nil)
+	if err != nil && status >= 400 && status < 500 {
+		return fmt.Errorf("%w: %v", ErrRunIsOver, err)
+	}
 	return err
 }
 
