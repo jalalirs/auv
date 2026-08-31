@@ -27,13 +27,13 @@ import numpy as np
 # sheltered Indo-Pacific fore-reef: mostly branching and massive, tables where
 # there is light and room, and soft corals filling in.
 COMMUNITY = (
-    ("rubble", 0.30),      # broken coral and stone: the floor of a real reef
-    ("encrusting", 0.16),  # sheets growing over the rock, holding it together
-    ("branching", 0.18),
-    ("massive", 0.12),
-    ("finger", 0.08),
-    ("brain", 0.06),
-    ("table", 0.06),
+    ("branching", 0.32),   # the signature of a reef, and what you see first
+    ("rubble", 0.18),      # broken coral and stone: the floor of a real one
+    ("encrusting", 0.12),  # sheets over the rock, holding it together
+    ("finger", 0.12),
+    ("massive", 0.10),
+    ("table", 0.07),
+    ("brain", 0.05),
     ("fan", 0.04),
 )
 
@@ -66,11 +66,26 @@ PALETTE = (
 )
 
 
-def a_colour(rng):
-    """One colour, drawn the way a reef is coloured rather than evenly."""
+def a_colour(rng, kind: str | None = None):
+    """One colour, drawn the way a reef is coloured rather than evenly.
+
+    And by species, because colour is not spread evenly across a reef: the
+    pinks and purples anybody photographs are nearly all branching Acropora and
+    Pocillopora tips, while the boulders and the rubble are brown. A palette
+    applied uniformly gives pink boulders and brown staghorn, which is exactly
+    backwards and reads as a toybox.
+    """
     colours = [c for c, _ in PALETTE]
     weights = np.array([w for _, w in PALETTE], dtype=float)
-    weights /= weights.sum()
+    if kind in ("branching", "table", "fan"):
+        # Shift toward the coloured end for the ones that are coloured.
+        weights = weights * np.array([0.4, 0.5, 0.7, 0.7, 1.0,
+                                      2.6, 2.2, 2.4, 2.0, 1.2])
+    elif kind in ("rubble", "encrusting"):
+        # And hard toward brown for the ones that are the reef's fabric.
+        weights = weights * np.array([2.2, 2.2, 1.8, 1.4, 0.6,
+                                      0.15, 0.2, 0.1, 0.1, 0.3])
+    weights = weights / weights.sum()
     return colours[int(rng.choice(len(colours), p=weights))]
 
 

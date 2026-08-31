@@ -30,7 +30,7 @@ ATTENUATION_METRES = (4.0, 17.0, 26.0)
 # What colour the water itself glows, from everything scattering light back.
 # Not the same as what it absorbs: the sea is blue-green because that is what is
 # left, and it is bright because the whole volume is scattering.
-SCATTER = (0.02, 0.20, 0.30)
+SCATTER = (0.015, 0.14, 0.30)
 
 
 def is_it_deep(depth: float) -> float:
@@ -75,7 +75,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # that absorbs and scatters over distance.
     settings.set("/rtx/fog/enabled", True)
     settings.set("/rtx/fog/fogColor", list(SCATTER))
-    settings.set("/rtx/fog/fogColorIntensity", 1.0)
+    settings.set("/rtx/fog/fogColorIntensity", 1.35)
     # Visibility, near enough. Twenty metres is a good day on a reef; a diver
     # calls thirty exceptional and five a bad one.
     settings.set("/rtx/fog/fogDistance", 11.0)
@@ -112,7 +112,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # Strongly coloured, not a neutral fill. Everything not in direct sun is
     # lit by water, and water is blue-green: a grey ambient makes a reef look
     # like a quarry with a blue filter over it.
-    sky.CreateColorAttr(Gf.Vec3f(0.06, 0.48, 0.68))
+    sky.CreateColorAttr(Gf.Vec3f(0.05, 0.38, 0.72))
 
     # ── the surface, from below ──────────────────────────────────────────────
     #
