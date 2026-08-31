@@ -365,6 +365,14 @@ def main() -> int:
         "underwater": round(float((depth > 0).mean()), 3),
         "mesh": made,
         "reef": reef,
+        # What this place is made of, named rather than guessed at. A runner
+        # picking "the first USD that is not obviously water" would load
+        # coral.usda as the world, because c sorts before s.
+        "layers": {
+            "terrain": "seabed.usda",
+            "heightfield": "seabed.f32",
+            **({"coral": "coral.usda"} if reef.get("colonies") else {}),
+        },
     }
     (where / "site.json").write_text(json.dumps(site, indent=2) + "\n")
 
