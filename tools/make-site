@@ -315,7 +315,11 @@ def main() -> int:
     # stop a deploy, which is exactly what it did.
     parse.add_argument("--texture", default="coast_sand_03",
                        help="a Poly Haven CC0 texture to surface the seabed with")
-    parse.add_argument("--tile", type=float, default=4.0,
+    # Ten metres, not four. A photograph of sand repeating every four metres
+    # over a kilometre of seabed reads as a checkerboard — the eye finds the
+    # period long before it stops seeing the grain, and once seen it is all
+    # anybody sees.
+    parse.add_argument("--tile", type=float, default=10.0,
                        help="metres the seabed texture repeats over")
     parse.add_argument("--into",
                        default=str(pathlib.Path.home() / "coral-city" / "places"))

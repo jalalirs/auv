@@ -275,7 +275,8 @@ class Dive:
             water.make(stage, self.say,
                        floor=self.floor if self.floor is not None else -20.0,
                        water_level=0.0,
-                       across=float(extent[0]) if extent else 1000.0)
+                       across=float(extent[0]) if extent else 1000.0,
+                       working_depth=abs(float(self.position[2])))
             self.water = water
 
         # A body of the vehicle's actual mass, at the vehicle's actual place.
