@@ -122,6 +122,11 @@ SEABED_MATERIAL = """
                 float2 inputs:st.connect = </World/Looks/Seabed/Place.outputs:result>
                 token inputs:wrapS = "repeat"
                 token inputs:wrapT = "repeat"
+                # Darkened, and pulled towards the colour wet sand actually is.
+                # A dry beach photographed in sunlight is the brightest thing in
+                # any scene it is in, and dropped straight onto a seabed it
+                # makes the whole reef read as a sandbar at noon.
+                float4 inputs:scale = (0.46, 0.44, 0.40, 1)
                 color3f outputs:rgb
             }
 

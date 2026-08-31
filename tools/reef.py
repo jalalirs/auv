@@ -57,7 +57,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # into stands with clear sand between them, which is how a reef is built
     # and also what makes it read as one: continuous cover somewhere, rather
     # than uniform scatter everywhere.
-    want = lit * hold * (0.06 + 2.6 * patch ** 2.2)
+    want = lit * hold * (0.02 + 3.2 * patch ** 3.0)
     if want.sum() <= 0:
         return {"colonies": 0}
 
@@ -67,7 +67,10 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # it and grows, and the reef builds outward from what is already there. So
     # places are chosen for a thicket and colonies are dropped around each one,
     # which is what makes cover continuous somewhere instead of thin everywhere.
-    per_stand = 14
+    # Big stands, tightly packed. A reef's cover is continuous where it is
+    # present and absent where it is not; the failure mode to avoid is thin
+    # everywhere, which reads as ornaments on a beach.
+    per_stand = 26
     stands = max(1, how_many // per_stand)
     flat = (want / want.sum()).ravel()
     picked = rng.choice(flat.size, size=stands, p=flat)
@@ -82,7 +85,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     belongs = np.repeat(np.arange(stands), per_stand)[:how_many]
     if belongs.size < how_many:
         belongs = np.concatenate([belongs, rng.integers(0, stands, how_many - belongs.size)])
-    spread = rng.normal(0, 1.7, (how_many, 2))
+    spread = rng.normal(0, 1.15, (how_many, 2))
     x = centre_x[belongs] + spread[:, 0]
     y = centre_y[belongs] + spread[:, 1]
     x = np.clip(x, -across / 2, across / 2)

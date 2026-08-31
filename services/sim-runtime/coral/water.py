@@ -108,7 +108,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # black. Underwater there is no such thing as an unlit surface: the medium
     # itself glows in every direction.
     sky = UsdLux.DomeLight.Define(stage, "/World/Water")
-    sky.CreateIntensityAttr(300.0 * left)
+    sky.CreateIntensityAttr(190.0 * left)
     # Strongly coloured, not a neutral fill. Everything not in direct sun is
     # lit by water, and water is blue-green: a grey ambient makes a reef look
     # like a quarry with a blue filter over it.
@@ -211,7 +211,7 @@ def light_for(stage, depth: float) -> None:
     from pxr import UsdLux
 
     left = is_it_deep(max(0.0, depth))
-    for path, base in (("/World/Sun", 1300.0), ("/World/Water", 300.0),
+    for path, base in (("/World/Sun", 1300.0), ("/World/Water", 190.0),
                        ("/World/Caustics", 5200.0)):
         prim = stage.GetPrimAtPath(path)
         if prim:
