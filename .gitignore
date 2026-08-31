@@ -19,9 +19,3 @@ coverage/
 __pycache__/
 .uav-last-dive
 .uav-app.log
-
-# Places built by tools/make-site. They are derived from public bathymetry and
-# published to object storage by digest; a copy in git would be a second origin
-# for the same bytes, and a large one.
-catalog/cities/*/seabed.usda
-catalog/cities/*/seabed.f32
