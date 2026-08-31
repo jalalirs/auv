@@ -92,3 +92,33 @@ func TestWorkGoesOnTheNetworkItWasGiven(t *testing.T) {
 		t.Errorf("a dive with the network capability went on %q, escaping its own network", got)
 	}
 }
+
+// An image with an entrypoint runs its entrypoint, and a spec that names a
+// command means to replace it rather than to hand it arguments.
+//
+// Docker appends Cmd to ENTRYPOINT, and the simulation runtime has one: it runs
+// a headless dive by default, which is what the image is for. So a spec asking
+// for the application produced a container running the headless runner with the
+// application's path as an argument it ignored — an interactive dive that
+// looked, from every side, like it had started correctly.
+func TestACommandReplacesTheImagesEntrypoint(t *testing.T) {
+	asked := createRequest(Spec{
+		Image:   "sim",
+		Command: []string{"/isaac-sim/kit/kit"},
+		Args:    []string{"/isaac-sim/apps/coral_city.kit", "--no-window"},
+	})
+
+	entrypoint, named := asked["Entrypoint"].([]string)
+	if !named || len(entrypoint) != 1 || entrypoint[0] != "/isaac-sim/kit/kit" {
+		t.Errorf("the command did not replace the entrypoint: %v", asked["Entrypoint"])
+	}
+	if command, _ := asked["Cmd"].([]string); len(command) != 2 {
+		t.Errorf("the arguments did not go to the command: %v", asked["Cmd"])
+	}
+
+	// And work that names no command still runs the image as the image intends.
+	plain := createRequest(Spec{Image: "sim", Args: []string{"--brief"}})
+	if _, named := plain["Entrypoint"]; named {
+		t.Error("work that named no command overrode the image's entrypoint")
+	}
+}

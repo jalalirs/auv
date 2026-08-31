@@ -17,3 +17,4 @@ coverage/
 # Operating-system noise.
 .DS_Store
 __pycache__/
+.uav-last-dive
