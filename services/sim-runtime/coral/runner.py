@@ -101,13 +101,32 @@ class Seabed:
         )
 
 
+def layers_of(root: pathlib.Path) -> dict:
+    """What a place says it is made of.
+
+    Named by the place rather than guessed at from filenames. A rule like "the
+    first USD that is not obviously water" loads a reef's coral as its world,
+    because c sorts before s — and it fails silently, with a dive apparently
+    running in a place made entirely of coral and no seabed at all.
+    """
+    import json
+
+    try:
+        return json.loads((root / "site.json").read_text()).get("layers", {})
+    except Exception:
+        return {}
+
+
 def find_scene(root: pathlib.Path) -> pathlib.Path | None:
     """The USD a place is loaded from.
 
-    A place may carry several — a scene and a water surface, say — so the one
-    that is not obviously a component is chosen, and the choice is reported so
-    that nobody has to guess which was used.
+    What the place says, where it says anything. Otherwise the old rule: a place
+    may carry several files, so the one that is not obviously a component wins,
+    and the choice is reported so nobody has to guess which was used.
     """
+    named = layers_of(root).get("terrain")
+    if named and (root / named).exists():
+        return root / named
     candidates = sorted(root.rglob("*.usd")) + sorted(root.rglob("*.usda"))
     if not candidates:
         return None
@@ -268,6 +287,8 @@ class Dive:
         physics.CreateGravityDirectionAttr().Set(Gf.Vec3f(0.0, 0.0, -1.0))
         physics.CreateGravityMagnitudeAttr().Set(9.80665)
 
+        city = pathlib.Path(self.brief.get("cityPath", "/dive/city"))
+
         if drawn:
             # Water. The fog that is the medium, the sun through the surface,
             # the surface seen from below, and the caustics it throws down.
@@ -311,6 +332,15 @@ class Dive:
                 if size is not None:
                     self.half_height = max(0.05, size[2] / 2.0)
                 self.say("hull_drawn", file=hull.name, metresAcross=size)
+
+            # The reef. Referenced rather than merged, so the seabed stays one
+            # file and the coral stays another — a place is layers, and a
+            # thousand colonies is not something to paste into a terrain.
+            reef = layers_of(city).get("coral")
+            if reef and (city / reef).exists() and not stage.GetPrimAtPath("/World/Coral"):
+                stage.DefinePrim("/World/Coral").GetReferences() \
+                    .AddReference(str(city / reef))
+                self.say("coral_drawn", file=reef)
 
             water = find_water(pathlib.Path(
                 self.brief.get("cityPath", "/dive/city")))
