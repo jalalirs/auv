@@ -10,6 +10,7 @@
 #   uav deploy              build and bring the platform up on the box
 #   uav status              what is running, and where to reach it
 #   uav logs [service]      follow a service
+#   uav agent [lines]       what the agent has been doing
 #
 #   uav app [open|close]    build and open Coral City on this machine
 #   uav dive [mode]         ask for a dive; interactive unless told otherwise
@@ -90,7 +91,32 @@ print($1)"; }
 
 # ── What it does ─────────────────────────────────────────────────────────────
 
-command_deploy() { "${HERE}/box" up; }
+# Send the code, then build it there.
+#
+# The sync was a separate step, and forgetting it deployed whatever the box
+# happened to have — which looked exactly like deploying: it built, it started,
+# it answered. A fix made here and "deployed" was simply not on that machine,
+# and the bug it fixed went on happening for another hour.
+command_deploy() {
+    "${HERE}/gpu" sync "${1:-deploy}" || die "could not send the code to the box"
+    "${HERE}/box" up
+}
+
+# What the agent has been doing.
+command_agent() {
+    on_box "docker logs --tail ${1:-25} coral-city-agent-1 2>&1" | python3 -c '
+import json, sys
+for line in sys.stdin:
+    try:
+        said = json.loads(line)
+    except Exception:
+        continue
+    detail = {k: v for k, v in said.items()
+              if k in ("runId", "image", "host", "signalPort", "failure",
+                       "error", "state", "device", "mode")}
+    print(f"  {said.get("time", "")[11:19]}  {said.get("msg", ""):<34} "
+          f"{detail if detail else ""}")'
+}
 command_status() { "${HERE}/box" status; }
 command_logs()   { "${HERE}/box" logs "${1:-}"; }
 command_check()  {
@@ -237,6 +263,7 @@ case "${1:-}" in
     deploy) shift; command_deploy "$@" ;;
     status) shift; command_status "$@" ;;
     logs)   shift; command_logs "$@" ;;
+    agent)  shift; command_agent "$@" ;;
     app)    shift; command_app "$@" ;;
     dive)   shift; command_dive "$@" ;;
     watch)  shift; command_watch "$@" ;;
