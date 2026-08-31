@@ -263,7 +263,6 @@ func (r *Runtime) Create(ctx context.Context, spec Spec) (string, error) {
 // createRequest is what the runtime is asked for, separated from the asking so
 // that what a spec grants a container can be checked without one running.
 func createRequest(spec Spec) map[string]any {
-	command := append(append([]string{}, spec.Command...), spec.Args...)
 
 	// No network unless the platform granted this work that capability. It is
 	// the default for everything an institution submits (ADR-0012).
@@ -333,9 +332,23 @@ func createRequest(spec Spec) map[string]any {
 		}}
 	}
 
+	// A command replaces the image's entrypoint rather than being handed to it.
+	//
+	// Docker appends Cmd to an ENTRYPOINT, and this image has one — it runs a
+	// dive by default, which is what it is for. Setting only Cmd therefore ran
+	// the default program with the intended one as its arguments, which it
+	// ignored: an interactive dive asked for the application and got the
+	// headless runner, and said nothing about it because nothing had gone
+	// wrong from where either of them stood.
+	entrypoint := spec.Command
+	arguments := spec.Args
+	if len(entrypoint) == 0 {
+		arguments = append(append([]string{}, spec.Command...), spec.Args...)
+	}
+
 	request := map[string]any{
 		"Image":      spec.Image,
-		"Cmd":        command,
+		"Cmd":        arguments,
 		"Env":        spec.Env,
 		"WorkingDir": "/work",
 		// Not disabled — moded. "none" is what `docker run --network none`
@@ -347,6 +360,9 @@ func createRequest(spec Spec) map[string]any {
 		// differs, and a dive's two halves talk over it.
 		"NetworkDisabled": false,
 		"HostConfig":      hostConfig,
+	}
+	if len(entrypoint) > 0 {
+		request["Entrypoint"] = entrypoint
 	}
 	if len(exposed) > 0 {
 		request["ExposedPorts"] = exposed

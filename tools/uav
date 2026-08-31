@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+# One way in.
+#
+# Everything anybody does with this platform, under one name. Not because a
+# wrapper is elegant, but because the alternative is what it replaced: pages of
+# ad-hoc curl and ssh, retyped slightly differently every time, each carrying
+# its own copy of an address or a port that had since moved. Half the failures
+# of an afternoon were a command that was right yesterday.
+#
+#   uav deploy              build and bring the platform up on the box
+#   uav status              what is running, and where to reach it
+#   uav logs [service]      follow a service
+#
+#   uav app                 build and open Coral City on this machine
+#   uav dive [mode]         ask for a dive; interactive unless told otherwise
+#   uav watch [run]         what a dive reported, as it reported it
+#   uav sim <logs|said|opened|grep|shell>   the simulator, and what it said
+#
+#   uav check               the end-to-end checks, against the box
+#   uav clean               remove what the checks leave behind
+#   uav api <method> <path> [body]   one request, signed in
+#
+# Nothing here holds a secret. Credentials come from the box's own .env, which
+# is where they were generated and where they stay.
+
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "${HERE}/.." && pwd)"
+[ -f "${ROOT}/.env" ] && { set -a; . "${ROOT}/.env"; set +a; }
+
+GPU_HOST="${AUV_GPU_HOST:-jalalirs@100.76.65.1}"
+REMOTE_DIR="${AUV_REMOTE_DIR:-code/auv}"
+
+bold() { printf '\033[1m%s\033[0m\n' "$1"; }
+dim()  { printf '\033[2m%s\033[0m\n' "$1"; }
+die()  { printf '\033[31m%s\033[0m\n' "$1" >&2; exit 1; }
+
+on_box() { LC_ALL=C ssh "${GPU_HOST}" "export LC_ALL=C LANG=C; $*"; }
+
+# ── Where the platform is, and who we are to it ──────────────────────────────
+#
+# Asked of the box every time rather than kept here. The address it listens on
+# and the secret it was given are facts about that machine, and a copy in this
+# script is a second place for them to be wrong.
+
+remote_env() { on_box "sed -n 's/^$1=//p' ~/${REMOTE_DIR}/deployments/box/.env"; }
+
+platform() {
+    local bind port
+    bind="$(remote_env CORAL_CITY_BIND_ADDRESS)"
+    port="$(remote_env CORAL_CITY_API_PORT)"
+    printf 'http://%s:%s' "${bind:-127.0.0.1}" "${port:-18080}"
+}
+
+token() {
+    local email secret answer
+    email="$(remote_env CORAL_CITY_ADMIN_EMAIL)"
+    secret="$(remote_env CORAL_CITY_ADMIN_SECRET)"
+    answer="$(curl --silent --max-time 15 -X POST "$(platform)/api/v1/sessions" \
+        -H 'content-type: application/json' \
+        -d "{\"email\":\"${email}\",\"secret\":\"${secret}\"}")"
+    printf '%s' "${answer}" | python3 -c '
+import json, sys
+try:
+    print(json.load(sys.stdin)["token"])
+except Exception:
+    sys.exit("could not sign in to the platform")'
+}
+
+# api <method> <path> [body] — one request, signed in, answer on stdout.
+api() {
+    local method="$1" path="$2" body="${3:-}"
+    local args=(--silent --max-time 60 -X "${method}"
+                -H "Authorization: Bearer ${TOKEN:-$(token)}")
+    [ -n "${body}" ] && args+=(-H 'content-type: application/json' -d "${body}")
+    curl "${args[@]}" "$(platform)${path}"
+}
+
+# json <expression> — read the answer on stdin with python, so that nothing here
+# has to parse JSON with sed.
+json() { python3 -c "
+import json, sys
+try:
+    document = json.load(sys.stdin)
+except Exception:
+    sys.exit('the platform did not answer with JSON')
+print($1)"; }
+
+# ── What it does ─────────────────────────────────────────────────────────────
+
+command_deploy() { "${HERE}/box" up; }
+command_status() { "${HERE}/box" status; }
+command_logs()   { "${HERE}/box" logs "${1:-}"; }
+command_check()  {
+    on_box "cd ~/${REMOTE_DIR} \
+        && export CORAL_CITY_API=$(platform) \
+        && export CORAL_CITY_ADMIN_EMAIL=\$(sed -n 's/^CORAL_CITY_ADMIN_EMAIL=//p' deployments/box/.env) \
+        && export CORAL_CITY_ADMIN_SECRET=\$(sed -n 's/^CORAL_CITY_ADMIN_SECRET=//p' deployments/box/.env) \
+        && ./tools/e2e"
+}
+command_clean() { "${HERE}/clear-check-data" "${1:---confirm}"; }
+
+# The application, on this machine.
+command_app() {
+    command -v mise >/dev/null || die "mise is not on the path"
+    ( cd "${ROOT}/apps/client" && mise exec -- pnpm build >/dev/null )
+    bold "Coral City"
+    ( cd "${ROOT}/apps/client" && exec mise exec -- npx electron . )
+}
+
+# Ask for a dive, the way the application does.
+command_dive() {
+    local mode="${1:-interactive}"
+    TOKEN="$(token)"
+
+    local org dive queue runtime run
+    org="$(api GET /api/v1/me | json 'document["organisations"][0]["id"]')"
+    dive="$(api GET "/api/v1/organisations/${org}/dives" \
+        | json 'document["dives"][0]["id"] if document["dives"] else ""')"
+    [ -n "${dive}" ] || die "there is no dive defined yet — make one in the application"
+
+    queue="$(api GET /api/v1/queues | json 'document["queues"][0]["id"]')"
+    runtime="$(api GET /api/v1/queues | json 'document["queues"][0]["runtimes"][0]')"
+    [ -n "${runtime}" ] || die "no host on that queue has said what it can run"
+
+    run="$(api POST "/api/v1/dives/${dive}/runs" \
+        "{\"queueId\":\"${queue}\",\"mode\":\"${mode}\",\"runtimeVersion\":\"${runtime}\"}" \
+        | json 'document.get("id") or document.get("error", {}).get("message", "")')"
+    case "${run}" in
+        run_*) ;;
+        *) die "${run:-the platform refused the dive}" ;;
+    esac
+
+    printf '%s %s\n' "${dive}" "${run}" > "${ROOT}/.uav-last-dive"
+    bold "${run}"
+    dim  "${mode} · $(platform)"
+    command_watch
+}
+
+# What a dive reported, as it reported it.
+command_watch() {
+    local dive run
+    if [ -n "${1:-}" ]; then
+        read -r dive run <<< "$(cat "${ROOT}/.uav-last-dive")"
+        run="$1"
+    else
+        [ -f "${ROOT}/.uav-last-dive" ] || die "no dive has been asked for yet"
+        read -r dive run < "${ROOT}/.uav-last-dive"
+    fi
+    TOKEN="${TOKEN:-$(token)}"
+
+    local seen=0
+    while :; do
+        api GET "/api/v1/dives/${dive}/runs/${run}/events" | python3 -c "
+import json, sys
+events = json.load(sys.stdin)['events']
+for event in events[${seen}:]:
+    when = event.get('simulatedSeconds')
+    at = f'{when:6.1f}s' if when is not None else '       '
+    detail = {k: v for k, v in (event.get('detail') or {}).items()
+              if k in ('depthM', 'speedMs', 'commanded', 'byHand', 'host',
+                       'signalPort', 'why', 'commandsReceived', 'state',
+                       'watching', 'port', 'metresAcross')}
+    print(f'  {at} {event[\"kind\"]:<22} {detail if detail else \"\"}')
+print('SEEN', len(events), file=sys.stderr)
+" 2> >(read -r _ n; seen="$n") || true
+        # Ends when the run does, which the platform says plainly.
+        local state
+        state="$(api GET "/api/v1/dives/${dive}/runs" \
+            | json "next((r['state'] for r in document['runs'] if r['id'] == '${run}'), '')")"
+        case "${state}" in
+            succeeded|failed|cancelled|expired) bold "${state}"; return ;;
+        esac
+        sleep 3
+    done
+}
+
+# The simulator a dive is running in.
+command_sim() {
+    local what="${1:-logs}"
+    local container
+    container="$(on_box "docker ps --format '{{.Names}}' | grep coral-sim | head -1")"
+    [ -n "${container}" ] || die "no dive is running"
+    case "${what}" in
+        logs)  on_box "docker logs --tail 200 --follow ${container}" ;;
+        said)  on_box "docker logs ${container} 2>&1 | grep -E '^\\{' | tail -40" ;;
+        opened) on_box "docker logs ${container} 2>&1 | grep -E '^\\{' | head -12" ;;
+        # Because the alternative was writing the same forty-character ssh
+        # pipeline by hand every time, slightly differently, and reading the
+        # result wrong when it came back empty for the wrong reason.
+        grep)  [ -n "${2:-}" ] || die "uav sim grep <pattern>"
+               on_box "docker logs ${container} 2>&1 | grep -iE '$2' | head -30" ;;
+        shell) ssh -t "${GPU_HOST}" "docker exec -it ${container} bash" ;;
+        *)     die "uav sim [logs|said|opened|grep <pattern>|shell]" ;;
+    esac
+}
+
+command_api() {
+    [ $# -ge 2 ] || die "uav api <method> <path> [body]"
+    api "$1" "$2" "${3:-}"
+    printf '\n'
+}
+
+case "${1:-}" in
+    deploy) shift; command_deploy "$@" ;;
+    status) shift; command_status "$@" ;;
+    logs)   shift; command_logs "$@" ;;
+    app)    shift; command_app "$@" ;;
+    dive)   shift; command_dive "$@" ;;
+    watch)  shift; command_watch "$@" ;;
+    sim)    shift; command_sim "$@" ;;
+    check)  shift; command_check "$@" ;;
+    clean)  shift; command_clean "$@" ;;
+    api)    shift; command_api "$@" ;;
+    ""|help|-h|--help)
+        sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    *) die "no such thing as 'uav $1' — try 'uav help'" ;;
+esac
