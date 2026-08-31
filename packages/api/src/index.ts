@@ -235,6 +235,12 @@ export class Platform {
     return events;
   }
 
+  async dives(organisation: string): Promise<Dive[]> {
+    const { dives } = await this.#request<{ dives: Dive[] }>(
+      "GET", `/api/v1/organisations/${organisation}/dives`);
+    return dives;
+  }
+
   async runs(dive: string): Promise<Run[]> {
     const { runs } = await this.#request<{ runs: Run[] }>(
       "GET", `/api/v1/dives/${dive}/runs`);
