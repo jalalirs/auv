@@ -11,7 +11,7 @@
 #   uav status              what is running, and where to reach it
 #   uav logs [service]      follow a service
 #
-#   uav app                 build and open Coral City on this machine
+#   uav app [open|close]    build and open Coral City on this machine
 #   uav dive [mode]         ask for a dive; interactive unless told otherwise
 #   uav watch [run]         what a dive reported, as it reported it
 #   uav stop                end the dive that is running
@@ -103,11 +103,26 @@ command_check()  {
 command_clean() { "${HERE}/clear-check-data" "${1:---confirm}"; }
 
 # The application, on this machine.
+#
+# Built and opened, and then this returns. It used to hold the terminal until
+# the window closed, which meant nobody could open the application and then look
+# at anything — so it got done by hand instead, differently every time, which is
+# the whole thing this tool exists to stop.
 command_app() {
     command -v mise >/dev/null || die "mise is not on the path"
-    ( cd "${ROOT}/apps/client" && mise exec -- pnpm build >/dev/null )
+    case "${1:-open}" in
+        close) pkill -f "electron \.$" 2>/dev/null || true; dim "closed"; return ;;
+        open) ;;
+        *) die "uav app [open|close]" ;;
+    esac
+
+    pkill -f "electron \.$" 2>/dev/null || true
+    ( cd "${ROOT}/apps/client" && mise exec -- pnpm build >/dev/null ) \
+        || die "the application would not build"
+    ( cd "${ROOT}/apps/client" && mise exec -- npx electron . \
+        > "${ROOT}/.uav-app.log" 2>&1 & )
     bold "Coral City"
-    ( cd "${ROOT}/apps/client" && exec mise exec -- npx electron . )
+    dim  "$(platform)"
 }
 
 # Ask for a dive, the way the application does.
