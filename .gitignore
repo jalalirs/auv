@@ -18,3 +18,4 @@ coverage/
 .DS_Store
 __pycache__/
 .uav-last-dive
+.uav-app.log
