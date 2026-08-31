@@ -39,22 +39,57 @@ COMMUNITY = (
 # what most healthy coral looks like from a metre away; the pinks, purples and
 # yellows are pigments that show in shallow water. A reef of uniformly bright
 # colours is an aquarium poster, and a reef of uniform brown is a dead one.
-# Saturated, deliberately. Everything down here is lit by blue-green water and
-# seen through more of it, and both wash colour out — a palette that looks right
-# in a swatch comes back from the renderer as pastel. These are what the pigment
-# is, not what the photograph shows.
+# What a reef is actually coloured.
+#
+# Overwhelmingly browns, tans and olives — that is zooxanthellae, the algae
+# living in the coral, and it is what nearly every healthy colony looks like
+# from a metre away. The pinks, purples and yellows are real and are the
+# minority: they are pigments that show in shallow, bright water, and a reef
+# where they are as common as brown is an aquarium poster.
+#
+# Saturated for the ones that are coloured, because everything down here is lit
+# by blue-green water and seen through more of it, and both wash colour out — a
+# palette that looks right in a swatch comes back pastel.
 PALETTE = (
-    (0.68, 0.42, 0.16),   # tan
-    (0.52, 0.30, 0.12),   # brown
-    (0.82, 0.56, 0.20),   # gold
-    (0.86, 0.30, 0.36),   # pink
-    (0.62, 0.22, 0.60),   # purple
-    (0.92, 0.72, 0.16),   # yellow
-    (0.36, 0.56, 0.28),   # green
-    (0.94, 0.46, 0.14),   # orange
-    (0.74, 0.24, 0.24),   # red
-    (0.24, 0.46, 0.62),   # steel blue
+    ((0.44, 0.31, 0.16), 0.20),   # dark brown
+    ((0.58, 0.41, 0.20), 0.20),   # brown
+    ((0.70, 0.53, 0.28), 0.16),   # tan
+    ((0.46, 0.46, 0.26), 0.12),   # olive
+    ((0.78, 0.62, 0.30), 0.09),   # gold
+    ((0.80, 0.36, 0.34), 0.06),   # pink
+    ((0.86, 0.62, 0.18), 0.06),   # yellow
+    ((0.52, 0.24, 0.50), 0.05),   # purple
+    ((0.88, 0.44, 0.16), 0.04),   # orange
+    ((0.30, 0.48, 0.52), 0.02),   # blue-grey
 )
+
+
+def a_colour(rng):
+    """One colour, drawn the way a reef is coloured rather than evenly."""
+    colours = [c for c, _ in PALETTE]
+    weights = np.array([w for _, w in PALETTE], dtype=float)
+    weights /= weights.sum()
+    return colours[int(rng.choice(len(colours), p=weights))]
+
+
+def roughen(points, by, rng, scale=2.4):
+    """Push every vertex about a bit, so nothing is a smooth primitive.
+
+    Coral is rough at every scale — corallites, ridges, the scars of old growth
+    — and a smooth dome reads as an egg however well it is shaded. This is not a
+    model of any of that; it is enough high-frequency variation that the eye
+    stops seeing a primitive.
+    """
+    if len(points) == 0:
+        return points
+    phase = rng.uniform(0, 6.283, 3)
+    wobble = (np.sin(points[:, 0] * scale + phase[0])
+              * np.sin(points[:, 1] * scale * 1.3 + phase[1])
+              * np.sin(points[:, 2] * scale * 0.9 + phase[2]))
+    radial = points - points.mean(axis=0)
+    length = np.linalg.norm(radial, axis=1, keepdims=True)
+    length[length < 1e-9] = 1.0
+    return points + (radial / length) * (wobble[:, None] * by)
 
 
 def _cylinder(a, b, radius_a, radius_b, sides=6):
@@ -279,6 +314,12 @@ def grow_one(kind: str, rng, size: float):
     points, faces = GROWERS[kind](rng, size)
     if len(points) == 0:
         return points, faces
+
+    # Roughened by however much that kind is rough. A boulder coral is knobbly;
+    # a table's plate is nearly flat and only its edge is ragged.
+    by = {"massive": 0.055, "brain": 0.030, "table": 0.020,
+          "branching": 0.014, "finger": 0.022, "fan": 0.008}[kind] * size
+    points = roughen(points, by, rng, scale=2.0 + 6.0 / max(size, 0.2))
     # Every colony is turned, so a field of them has no grain.
     turn = rng.uniform(0, 2 * math.pi)
     spin = np.array([[math.cos(turn), -math.sin(turn), 0],

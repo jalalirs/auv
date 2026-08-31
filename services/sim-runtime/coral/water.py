@@ -78,7 +78,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     settings.set("/rtx/fog/fogColorIntensity", 1.0)
     # Visibility, near enough. Twenty metres is a good day on a reef; a diver
     # calls thirty exceptional and five a bad one.
-    settings.set("/rtx/fog/fogDistance", 19.0)
+    settings.set("/rtx/fog/fogDistance", 14.0)
     settings.set("/rtx/fog/fogDensity", 1.0)
     settings.set("/rtx/fog/fogHeightDensity", 1.0)
     settings.set("/rtx/fog/fogStartDistance", 0.5)
@@ -99,7 +99,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # colour of depth and this gives its dimness; without both, a reef at
     # fifteen metres photographs like a sandbar at noon.
     left = is_it_deep(max(0.0, working_depth))
-    sun.CreateIntensityAttr(2400.0 * left)
+    sun.CreateIntensityAttr(1800.0 * left)
     sun.CreateAngleAttr(2.0)
     sun.CreateColorAttr(Gf.Vec3f(0.86, 0.96, 0.98))
     UsdGeom.Xformable(sun.GetPrim()).AddRotateXYZOp().Set(Gf.Vec3f(-52.0, 0.0, 18.0))
@@ -211,7 +211,7 @@ def light_for(stage, depth: float) -> None:
     from pxr import UsdLux
 
     left = is_it_deep(max(0.0, depth))
-    for path, base in (("/World/Sun", 2400.0), ("/World/Water", 300.0),
+    for path, base in (("/World/Sun", 1800.0), ("/World/Water", 300.0),
                        ("/World/Caustics", 5200.0)):
         prim = stage.GetPrimAtPath(path)
         if prim:
