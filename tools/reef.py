@@ -85,7 +85,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
         for _ in range(variants):
             prototypes.append(
                 coral.grow_one(kind, rng, sizes[kind] * rng.uniform(0.7, 1.4)))
-            colours.append(coral.PALETTE[int(rng.integers(0, len(coral.PALETTE)))])
+            colours.append(coral.a_colour(rng))
 
     which_kind = rng.choice(len(kinds), size=how_many, p=weights)
     which = which_kind * variants + rng.integers(0, variants, how_many)
