@@ -245,10 +245,17 @@ func (c *Client) call(ctx context.Context, method, path string, body any, into a
 // platform working correctly.
 var ErrNothingToRun = errors.New("nothing to run")
 
-// ClaimDive takes the next dive this host can run.
-func (c *Client) ClaimDive(ctx context.Context, targetName string, into any) error {
+// ClaimDive takes the next dive this host can run, and says what it can run it
+// in.
+//
+// The runtimes go with every request rather than being registered once, so the
+// platform's idea of this host cannot go stale while the host is alive: a
+// machine that has been upgraded reports the new runtime with its next
+// request, and one that no longer has a runtime stops offering it.
+func (c *Client) ClaimDive(ctx context.Context, targetName string,
+	runtimes []string, into any) error {
 	status, err := c.call(ctx, http.MethodPost, "/api/v1/runs/claim",
-		map[string]any{"targetId": targetName}, into)
+		map[string]any{"targetId": targetName, "runtimes": runtimes}, into)
 	if err != nil {
 		return err
 	}

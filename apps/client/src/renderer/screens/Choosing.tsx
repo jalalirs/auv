@@ -68,19 +68,43 @@ export function Choosing({ platform, onAsked }: {
         setRefusal("You are not a member of an institution, so there is nowhere to keep a dive.");
         return;
       }
+      // Every dive names the water it happened in, and the platform will not
+      // accept one that does not. Still water, and constructed — which is a
+      // claim about provenance, not a shrug: this water was invented, and
+      // saying when it was drawn from would pretend it was measured.
+      const water = await platform.defineConditions(institution.id, {
+        kind: "constructed",
+        name: "Still water",
+        parameters: { currentMetresPerSecond: 0 },
+      });
+
       const defined = await platform.defineDive(institution.id, {
         name: `${loaded.places.find((p) => p.id === place)?.name ?? "Dive"}`,
         cityVersionId: onePlace.id,
         vehicleVersionId: oneVehicle.id,
+        conditionsId: water.id,
       });
       const queue = loaded.queues[0];
       if (queue === undefined) {
         setRefusal("You have not been granted a queue to run this on.");
         return;
       }
+
+      // The runtime comes from the hosts behind the queue, which report what
+      // they can run every time they ask for work. A run records it because a
+      // physics fix changes results and comparing across one has to be refused
+      // rather than done quietly — and this application cannot know what is
+      // installed on a machine in a rack, so it does not guess.
+      const runtime = queue.runtimes?.[0];
+      if (runtime === undefined) {
+        setRefusal("No machine on that queue has said what it can run yet.");
+        return;
+      }
+
       const run = await platform.ask(defined.id, {
         queueId: queue.id,
         mode: "interactive",
+        runtimeVersion: runtime,
       });
       onAsked(defined.id, run.id);
     } catch (problem) {
@@ -138,7 +162,7 @@ export function Choosing({ platform, onAsked }: {
             ? "Choose a place."
             : chosenVehicle === undefined
               ? `${chosenPlace.name} — now choose a vehicle.`
-              : `${chosenVehicle.name} in ${chosenPlace.name}.`}
+              : `${chosenVehicle.name} in ${chosenPlace.name}, still water.`}
         </span>
         <span className="refusal">{refusal}</span>
         <span className="spacer" />

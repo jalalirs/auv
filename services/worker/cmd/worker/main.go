@@ -89,7 +89,8 @@ func run(logger *slog.Logger) error {
 		// is the expensive kind of waiting.
 		claim, cancelClaim := context.WithTimeout(ctx, settings.RequestTimeout)
 		var claimed diver.Claimed
-		claimErr := client.ClaimDive(claim, settings.TargetName, &claimed)
+		claimErr := client.ClaimDive(claim, settings.TargetName,
+			settings.Runtimes(), &claimed)
 		cancelClaim()
 
 		if claimErr == nil {

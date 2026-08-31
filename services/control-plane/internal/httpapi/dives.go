@@ -312,6 +312,10 @@ func (d *Dependencies) listRuns(w http.ResponseWriter, r *http.Request) {
 func (d *Dependencies) claimRun(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		TargetID string `json:"targetId"`
+		// What this host can simulate in. Sent with every request for work
+		// rather than registered once, so it cannot go stale while the host is
+		// alive: a machine that has been upgraded says so the next time it asks.
+		Runtimes []string `json:"runtimes"`
 	}
 	if err := readJSON(r, &request); err != nil {
 		writeError(w, r, err)
@@ -320,6 +324,12 @@ func (d *Dependencies) claimRun(w http.ResponseWriter, r *http.Request) {
 
 	var claimed dive.Claimed
 	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		if len(request.Runtimes) > 0 {
+			if err := d.Compute.SetRuntimes(r.Context(), conn,
+				request.TargetID, request.Runtimes); err != nil {
+				return err
+			}
+		}
 		var err error
 		claimed, err = d.Dives.ClaimNext(r.Context(), conn, request.TargetID, d.LeaseDuration)
 		if err != nil {

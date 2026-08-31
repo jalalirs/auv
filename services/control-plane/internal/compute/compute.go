@@ -38,6 +38,13 @@ type Queue struct {
 	// actually wants to know about a queue.
 	Devices int `json:"devices"`
 	Free    int `json:"free"`
+
+	// What the hosts behind this queue can simulate in, as they last reported.
+	//
+	// Here because a run must record the runtime that produced it, and whoever
+	// asks for a dive has to be able to name one that exists. It is a fact
+	// about machines in a rack, so the machines say it and this repeats it.
+	Runtimes []string `json:"runtimes"`
 }
 
 // Device is one GPU, in one queue, on a host that runs an agent.
@@ -117,7 +124,17 @@ const selectQueue = `
 	SELECT q.id, q.slug, q.name, q.summary, q.lease_seconds, q.draining,
 	       q.created_at, q.created_by,
 	       count(d.id) FILTER (WHERE d.enabled),
-	       count(d.id) FILTER (WHERE d.enabled AND r.id IS NULL)
+	       count(d.id) FILTER (WHERE d.enabled AND r.id IS NULL),
+	       -- What the hosts behind this queue say they can run. Distinct,
+	       -- because a queue of four identical machines offers one runtime and
+	       -- not four; sorted, so the answer does not shuffle between calls.
+	       coalesce(
+	           (SELECT array_agg(DISTINCT runtime ORDER BY runtime)
+	              FROM compute.device dd
+	              JOIN exec.target t ON t.id = dd.target_id
+	              CROSS JOIN LATERAL unnest(t.runtimes) AS runtime
+	             WHERE dd.queue_id = q.id AND dd.enabled),
+	           '{}')
 	FROM compute.queue q
 	LEFT JOIN compute.device d ON d.queue_id = q.id
 	LEFT JOIN dive.run r ON r.device_id = d.id AND r.state IN ('preparing', 'running')`
@@ -128,8 +145,31 @@ func scanQueue(row interface{ Scan(...any) error }) (Queue, error) {
 	var queue Queue
 	err := row.Scan(&queue.ID, &queue.Slug, &queue.Name, &queue.Summary,
 		&queue.LeaseSeconds, &queue.Draining, &queue.CreatedAt, &queue.CreatedBy,
-		&queue.Devices, &queue.Free)
+		&queue.Devices, &queue.Free, &queue.Runtimes)
+	if queue.Runtimes == nil {
+		// An empty list rather than a null, because a client asking what it may
+		// run should get "nothing" and not "unknown".
+		queue.Runtimes = []string{}
+	}
 	return queue, err
+}
+
+// SetRuntimes records what a host says it can simulate in.
+//
+// Said every time it asks for work rather than registered once, so it cannot go
+// stale while the host is alive: a machine that has been upgraded reports the
+// new runtime with its next request, and one that has been downgraded stops
+// offering the old one. A host that has never asked offers nothing, which is
+// true and is better than a default that is probably wrong.
+func (s *Store) SetRuntimes(ctx context.Context, conn db.Conn, target string,
+	runtimes []string) error {
+	_, err := conn.Exec(ctx,
+		`UPDATE exec.target SET runtimes = $2 WHERE name = $1 OR id = $1`,
+		target, runtimes)
+	if err != nil {
+		return fmt.Errorf("recording what %s can run: %w", target, err)
+	}
+	return nil
 }
 
 // CreateQueue opens a queue.

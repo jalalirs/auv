@@ -3735,6 +3735,9 @@ export interface components {
             devices: number;
             /** @description How many no run is holding. */
             free: number;
+            /** @description What the hosts behind this queue can simulate in, as they last reported when asking for work. A run must record the runtime that produced it, so whoever asks for a dive has to be able to name one that exists — and cannot know what a machine in a rack has on it. An empty list means no host behind this queue has said yet.
+             *      */
+            runtimes?: string[];
             /** Format: date-time */
             createdAt: string;
             createdBy: string;
