@@ -84,7 +84,115 @@ def read_patch(raster, centre, across, most):
     return np.flipud(filled), step
 
 
-def write_usd(where: pathlib.Path, name: str, height, across: float) -> dict:
+# What the seabed is made of.
+#
+# UsdPreviewSurface rather than a renderer's own material, because it is part of
+# OpenUSD and every renderer understands it — a place should not need this
+# platform's renderer to be looked at. The maps are photographed sand under CC0,
+# which is a real surface with real grain rather than a shader somebody tuned
+# until it looked about right.
+SEABED_MATERIAL = """
+    def Scope "Looks"
+    {
+        def Material "Seabed"
+        {
+            token outputs:surface.connect = </World/Looks/Seabed/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor.connect = </World/Looks/Seabed/Colour.outputs:rgb>
+                float inputs:roughness.connect = </World/Looks/Seabed/Roughness.outputs:r>
+                normal3f inputs:normal.connect = </World/Looks/Seabed/Bumps.outputs:rgb>
+                float inputs:metallic = 0
+                token outputs:surface
+            }
+
+            def Shader "Place"
+            {
+                uniform token info:id = "UsdPrimvarReader_float2"
+                token inputs:varname = "st"
+                float2 outputs:result
+            }
+
+            def Shader "Colour"
+            {
+                uniform token info:id = "UsdUVTexture"
+                asset inputs:file = @textures/seabed_colour.jpg@
+                float2 inputs:st.connect = </World/Looks/Seabed/Place.outputs:result>
+                token inputs:wrapS = "repeat"
+                token inputs:wrapT = "repeat"
+                color3f outputs:rgb
+            }
+
+            def Shader "Roughness"
+            {
+                uniform token info:id = "UsdUVTexture"
+                asset inputs:file = @textures/seabed_rough.jpg@
+                float2 inputs:st.connect = </World/Looks/Seabed/Place.outputs:result>
+                token inputs:wrapS = "repeat"
+                token inputs:wrapT = "repeat"
+                float outputs:r
+            }
+
+            def Shader "Bumps"
+            {
+                uniform token info:id = "UsdUVTexture"
+                asset inputs:file = @textures/seabed_normal.jpg@
+                float2 inputs:st.connect = </World/Looks/Seabed/Place.outputs:result>
+                token inputs:wrapS = "repeat"
+                token inputs:wrapT = "repeat"
+                float4 inputs:scale = (2, 2, 2, 1)
+                float4 inputs:bias = (-1, -1, -1, 0)
+                normal3f outputs:rgb
+            }
+        }
+    }
+"""
+
+UNTEXTURED_MATERIAL = """
+    def Scope "Looks"
+    {
+        def Material "Seabed"
+        {
+            token outputs:surface.connect = </World/Looks/Seabed/Surface.outputs:surface>
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.72, 0.68, 0.58)
+                float inputs:roughness = 0.9
+                float inputs:metallic = 0
+                token outputs:surface
+            }
+        }
+    }
+"""
+
+
+def fetch_texture(where: pathlib.Path, name: str) -> bool:
+    """The CC0 maps a seabed is surfaced with, from Poly Haven."""
+    import urllib.request
+
+    maps = {"seabed_colour": "diff", "seabed_rough": "rough", "seabed_normal": "nor_gl"}
+    into = where / "textures"
+    into.mkdir(exist_ok=True)
+    base = "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k"
+    for local, kind in maps.items():
+        target = into / f"{local}.jpg"
+        if target.exists():
+            continue
+        url = f"{base}/{name}/{name}_{kind}_2k.jpg"
+        try:
+            with urllib.request.urlopen(url, timeout=120) as answer:
+                target.write_bytes(answer.read())
+        except Exception as exc:
+            print(f"    could not fetch {kind}: {exc}")
+            return False
+    return True
+
+
+def write_usd(where: pathlib.Path, name: str, height, across: float,
+              tile: float, texture: str | None) -> dict:
     """The seabed, as a mesh, in a USD anybody can open."""
     import numpy as np
 
@@ -113,9 +221,14 @@ def write_usd(where: pathlib.Path, name: str, height, across: float) -> dict:
     faces[0::2] = np.stack([a, c, b], axis=-1)
     faces[1::2] = np.stack([b, c, d], axis=-1)
 
-    # Texture coordinates over the whole patch, so a material can be laid on it.
-    u = (grid_x / across + 0.5).reshape(-1).astype("float32")
-    v = (grid_y / across + 0.5).reshape(-1).astype("float32")
+    # Texture coordinates in metres over a tile, not zero-to-one over the site.
+    #
+    # A photograph of sand stretched across a kilometre is a kilometre-wide
+    # photograph of sand: every grain is three metres across and the seabed
+    # reads as a painted backdrop. Repeating it every few metres is what makes
+    # it ground.
+    u = (grid_x / tile).reshape(-1).astype("float32")
+    v = (grid_y / tile).reshape(-1).astype("float32")
 
     def numbers(values, per):
         out, row = [], []
@@ -134,6 +247,7 @@ def write_usd(where: pathlib.Path, name: str, height, across: float) -> dict:
         return ", ".join(f"({a:.5g}, {b:.5g})" for a, b in zip(us, vs))
 
     lowest, highest = float(height.min()), float(height.max())
+    material = SEABED_MATERIAL if texture else UNTEXTURED_MATERIAL
     body = f'''#usda 1.0
 (
     doc = "{name}: real seafloor, from a bathymetric survey. Metres, Z up, z=0 at the water surface."
@@ -159,7 +273,9 @@ def Xform "World"
             interpolation = "vertex"
         )
         float3[] extent = [({-across/2:.1f}, {-across/2:.1f}, {lowest:.2f}), ({across/2:.1f}, {across/2:.1f}, {highest:.2f})]
+        rel material:binding = </World/Looks/Seabed>
     }}
+{material}
 }}
 '''
     (where / "seabed.usda").write_text(body)
@@ -197,6 +313,10 @@ def main() -> int:
     # repository would be a second origin for the same bytes, and a large one —
     # and an eleven megabyte generated file appearing in a checkout is enough to
     # stop a deploy, which is exactly what it did.
+    parse.add_argument("--texture", default="coast_sand_03",
+                       help="a Poly Haven CC0 texture to surface the seabed with")
+    parse.add_argument("--tile", type=float, default=4.0,
+                       help="metres the seabed texture repeats over")
     parse.add_argument("--into",
                        default=str(pathlib.Path.home() / "coral-city" / "places"))
     asked = parse.parse_args()
@@ -205,7 +325,12 @@ def main() -> int:
     where.mkdir(parents=True, exist_ok=True)
 
     height, step = read_patch(asked.raster, tuple(asked.centre), asked.across, asked.most)
-    made = write_usd(where, asked.name, height, asked.across)
+
+    textured = False
+    if asked.texture:
+        textured = fetch_texture(where, asked.texture)
+    made = write_usd(where, asked.name, height, asked.across, asked.tile,
+                     asked.texture if textured else None)
 
     import numpy as np
     depth = -height

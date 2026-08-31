@@ -166,6 +166,7 @@ class Dive:
         # top of its water is. Both in metres, in the dive's own frame.
         self.floor = None
         self.water_level = None
+        self.water = None
         self.on_the_bottom = False
 
         # How far the vehicle's middle is from its bottom. Taken from the hull
@@ -268,17 +269,14 @@ class Dive:
         physics.CreateGravityMagnitudeAttr().Set(9.80665)
 
         if drawn:
-            # A tank lit by one distant light is a tank you cannot see: the
-            # walls face away from it and go black, which is exactly what the
-            # first photograph of a dive showed. A dome fills them.
-            dome = UsdLux.DomeLight.Define(stage, "/World/Fill")
-            dome.CreateIntensityAttr(900.0)
-            dome.CreateColorAttr(Gf.Vec3f(0.42, 0.62, 0.78))
-        if not stage.GetPrimAtPath("/World/Sun"):
-            sun = UsdLux.DistantLight.Define(stage, "/World/Sun")
-            sun.CreateIntensityAttr(3000.0)
-            UsdGeom.Xformable(sun.GetPrim()).AddRotateXYZOp().Set(
-                Gf.Vec3f(-42.0, 0.0, 18.0))
+            # Water. The fog that is the medium, the sun through the surface,
+            # the surface seen from below, and the caustics it throws down.
+            import water
+            water.make(stage, self.say,
+                       floor=self.floor if self.floor is not None else -20.0,
+                       water_level=0.0,
+                       across=float(extent[0]) if extent else 1000.0)
+            self.water = water
 
         # A body of the vehicle's actual mass, at the vehicle's actual place.
         # What is being integrated is the dynamics; a dive that reported a
@@ -513,6 +511,11 @@ class Dive:
                 self.position[2] = top
                 if self.velocity[2] > 0.0:
                     self.velocity[2] = 0.0
+
+    def stir(self) -> None:
+        """Move the water. Still caustics are a painted floor."""
+        if self.water is not None:
+            self.water.drift(self.stage, self.simulated)
 
     def show(self) -> None:
         """Move what is drawn to where the vehicle is.

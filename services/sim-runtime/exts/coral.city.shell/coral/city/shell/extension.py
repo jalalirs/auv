@@ -304,6 +304,7 @@ class CoralCityShell(omni.ext.IExt):
             dive.step()
 
         dive.show()
+        dive.stir()
         self._follow(dive)
         self.hud.show(dive.state())
         if self.photographs and dive.simulated >= self.photographs[0]:

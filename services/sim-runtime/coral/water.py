@@ -1,0 +1,168 @@
+"""What makes a place look like it is underwater.
+
+Isaac Sim has nothing for this. NVIDIA say so themselves — no underwater
+environment feature, no water material, no hydrodynamics — so what follows is
+built from the general-purpose parts the renderer does have: volumetric fog, a
+light that can carry a texture, and a surface with an index of refraction.
+
+The physics of it is worth stating, because the numbers below are not taste.
+Water absorbs light exponentially with distance, and it does so far faster at
+the red end than the blue: red is gone within a few metres, green survives
+perhaps twenty, blue further still. That is why the sea is blue, why a red
+vehicle at fifteen metres photographs grey, and why an autonomy stack trained on
+uncorrected images off a reef learns colours that do not exist. A simulator that
+gets this wrong teaches the same wrong thing, so it is worth getting right.
+
+Jerlov's water types are the standard shorthand — I is the clearest open ocean,
+III is coastal, 1C through 9C are increasingly turbid coastal water. The
+coefficients here are for clear coastal water, which is what a reef in a bay is.
+"""
+
+from __future__ import annotations
+
+# How far light of each colour travels before it is dimmed to 1/e, in metres.
+#
+# Clear coastal water, roughly Jerlov type 1C. Red is gone in four metres, which
+# is the single most visible fact about being underwater and the one a grey fog
+# gets wrong.
+ATTENUATION_METRES = (4.0, 17.0, 26.0)
+
+# What colour the water itself glows, from everything scattering light back.
+# Not the same as what it absorbs: the sea is blue-green because that is what is
+# left, and it is bright because the whole volume is scattering.
+SCATTER = (0.06, 0.28, 0.34)
+
+
+def is_it_deep(depth: float) -> float:
+    """How much daylight is left at a depth, as a fraction of the surface."""
+    return max(0.02, 2.718 ** (-depth / ATTENUATION_METRES[1]))
+
+
+def make(stage, say, floor: float, water_level: float = 0.0,
+         across: float = 1000.0) -> None:
+    """Put water over a place, and light it from above.
+
+    Four things, in the order they matter: the fog that is the water itself, the
+    sun coming through the surface, the surface seen from below, and the caustic
+    light the surface throws on the bottom.
+    """
+    import carb
+    from pxr import Gf, Sdf, UsdGeom, UsdLux
+
+    settings = carb.settings.get_settings()
+
+    # ── the water ────────────────────────────────────────────────────────────
+    #
+    # The renderer's global fog, which is a general atmospheric effect being
+    # used for the thing it is actually a good model of: a participating medium
+    # that absorbs and scatters over distance.
+    settings.set("/rtx/fog/enabled", True)
+    settings.set("/rtx/fog/fogColor", list(SCATTER))
+    settings.set("/rtx/fog/fogColorIntensity", 1.0)
+    # Visibility, near enough. Twenty metres is a good day on a reef; a diver
+    # calls thirty exceptional and five a bad one.
+    settings.set("/rtx/fog/fogDistance", 22.0)
+    settings.set("/rtx/fog/fogDensity", 1.0)
+    settings.set("/rtx/fog/fogHeightDensity", 1.0)
+    settings.set("/rtx/fog/fogStartDistance", 0.5)
+
+    # ── the sun ──────────────────────────────────────────────────────────────
+    #
+    # Angled rather than overhead, so the seabed has relief in it. A light
+    # straight down flattens everything it touches.
+    sun = UsdLux.DistantLight.Define(stage, "/World/Sun")
+    sun.CreateIntensityAttr(2600.0)
+    sun.CreateAngleAttr(2.0)
+    sun.CreateColorAttr(Gf.Vec3f(0.85, 0.95, 1.0))
+    UsdGeom.Xformable(sun.GetPrim()).AddRotateXYZOp().Set(Gf.Vec3f(-52.0, 0.0, 18.0))
+
+    # Everything the water scatters back, which is what stops the shadows being
+    # black. Underwater there is no such thing as an unlit surface: the medium
+    # itself glows in every direction.
+    sky = UsdLux.DomeLight.Define(stage, "/World/Water")
+    sky.CreateIntensityAttr(420.0)
+    sky.CreateColorAttr(Gf.Vec3f(*[c * 2.4 for c in SCATTER]))
+
+    # ── the surface, from below ──────────────────────────────────────────────
+    #
+    # Seen from underneath, water is a mirror everywhere except a cone straight
+    # up — total internal reflection, the "Snell's window" every diver knows.
+    # A transmissive surface with water's index of refraction produces that for
+    # free, which is worth far more than painting it on.
+    surface = UsdGeom.Mesh.Define(stage, "/World/Surface")
+    half = across / 2 * 1.5
+    surface.CreatePointsAttr([
+        Gf.Vec3f(-half, -half, water_level), Gf.Vec3f(half, -half, water_level),
+        Gf.Vec3f(half, half, water_level), Gf.Vec3f(-half, half, water_level)])
+    surface.CreateFaceVertexCountsAttr([4])
+    surface.CreateFaceVertexIndicesAttr([0, 1, 2, 3])
+    surface.CreateNormalsAttr([Gf.Vec3f(0, 0, -1)] * 4)
+    surface.CreateExtentAttr([Gf.Vec3f(-half, -half, water_level - 0.01),
+                              Gf.Vec3f(half, half, water_level + 0.01)])
+    surface.CreateDoubleSidedAttr(True)
+    _water_material(stage, surface)
+
+    # ── caustics ─────────────────────────────────────────────────────────────
+    #
+    # The net of light the surface focuses onto the bottom. Ray-traced caustics
+    # are the honest way and they are far too slow to fly against, so this is
+    # the way every underwater scene has ever done it: a light with a caustic
+    # texture projected downward, scrolling.
+    #
+    # It is a cheat and it is the correct cheat — the pattern is real, its
+    # motion is real, and what is being simulated here is a vehicle rather than
+    # photon transport.
+    caustics = UsdLux.RectLight.Define(stage, "/World/Caustics")
+    caustics.CreateWidthAttr(across)
+    caustics.CreateHeightAttr(across)
+    caustics.CreateIntensityAttr(9000.0)
+    caustics.CreateColorAttr(Gf.Vec3f(0.72, 0.94, 1.0))
+    caustics.CreateNormalizeAttr(True)
+    caustics.GetPrim().CreateAttribute(
+        "inputs:texture:file", Sdf.ValueTypeNames.Asset).Set("/isaac-sim/coral/caustics.png")
+    moving = UsdGeom.Xformable(caustics.GetPrim())
+    moving.AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, water_level - 0.5))
+    moving.AddRotateXYZOp().Set(Gf.Vec3f(180.0, 0.0, 0.0))
+
+    say("water_made",
+        visibilityM=22.0, surfaceAtM=water_level,
+        absorbsInM=list(ATTENUATION_METRES))
+
+
+def _water_material(stage, surface) -> None:
+    """Glass with water's index of refraction, because that is what water is.
+
+    1.333 is not a number to tune. It is why the surface is a mirror at a
+    glancing angle and a window overhead, and getting it right gives Snell's
+    window for nothing — the bright circle straight up that every diver knows,
+    which no amount of painting produces convincingly.
+    """
+    from pxr import Gf, Sdf, UsdShade
+
+    material = UsdShade.Material.Define(stage, "/World/Looks/Water")
+    shader = UsdShade.Shader.Define(stage, "/World/Looks/Water/Surface")
+    shader.CreateIdAttr("UsdPreviewSurface")
+    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
+        Gf.Vec3f(0.05, 0.22, 0.30))
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.06)
+    shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+    shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(0.22)
+    shader.CreateInput("ior", Sdf.ValueTypeNames.Float).Set(1.333)
+    material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+    UsdShade.MaterialBindingAPI.Apply(surface.GetPrim()).Bind(material)
+
+
+def drift(stage, seconds: float) -> None:
+    """Move the caustics, because still caustics are a painted floor."""
+    from pxr import Gf, UsdGeom
+
+    light = stage.GetPrimAtPath("/World/Caustics")
+    if not light:
+        return
+    for op in UsdGeom.Xformable(light).GetOrderedXformOps():
+        if op.GetOpType() == UsdGeom.XformOp.TypeTranslate:
+            where = op.Get()
+            op.Set(Gf.Vec3d(0.9 * (seconds % 40.0) - 18.0,
+                            0.6 * ((seconds * 0.7) % 40.0) - 12.0,
+                            where[2]))
+            return
