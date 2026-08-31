@@ -313,6 +313,10 @@ def main() -> int:
     # repository would be a second origin for the same bytes, and a large one —
     # and an eleven megabyte generated file appearing in a checkout is enough to
     # stop a deploy, which is exactly what it did.
+    parse.add_argument("--coral", type=int, default=40000,
+                       help="how many coral colonies to grow onto the seabed")
+    parse.add_argument("--seed", type=int, default=1,
+                       help="the same seed grows the same reef")
     parse.add_argument("--texture", default="coast_sand_03",
                        help="a Poly Haven CC0 texture to surface the seabed with")
     # Ten metres, not four. A photograph of sand repeating every four metres
@@ -336,6 +340,12 @@ def main() -> int:
     made = write_usd(where, asked.name, height, asked.across, asked.tile,
                      asked.texture if textured else None)
 
+    reef = {"colonies": 0}
+    if asked.coral > 0:
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+        import reef as grow_reef
+        reef = grow_reef.plant(where, height, asked.across, asked.seed, asked.coral)
+
     import numpy as np
     depth = -height
     wet = depth[depth > 0]
@@ -354,6 +364,7 @@ def main() -> int:
         "shallowestM": round(float(wet.min()) if wet.size else 0.0, 2),
         "underwater": round(float((depth > 0).mean()), 3),
         "mesh": made,
+        "reef": reef,
     }
     (where / "site.json").write_text(json.dumps(site, indent=2) + "\n")
 
@@ -362,6 +373,9 @@ def main() -> int:
     print(f"    {made['points']:,} points, {made['triangles']:,} triangles")
     print(f"    depth {site['shallowestM']} to {site['deepestM']} m, "
           f"{site['underwater']*100:.0f}% underwater")
+    if reef["colonies"]:
+        print(f"    {reef['colonies']:,} coral colonies from "
+              f"{reef['prototypes']} grown prototypes")
     print(f"    {where}/seabed.usda")
     return 0
 
