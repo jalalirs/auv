@@ -30,7 +30,7 @@ ATTENUATION_METRES = (4.0, 17.0, 26.0)
 # What colour the water itself glows, from everything scattering light back.
 # Not the same as what it absorbs: the sea is blue-green because that is what is
 # left, and it is bright because the whole volume is scattering.
-SCATTER = (0.06, 0.28, 0.34)
+SCATTER = (0.04, 0.26, 0.33)
 
 
 def is_it_deep(depth: float) -> float:
@@ -101,7 +101,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     left = is_it_deep(max(0.0, working_depth))
     sun.CreateIntensityAttr(3400.0 * left)
     sun.CreateAngleAttr(2.0)
-    sun.CreateColorAttr(Gf.Vec3f(0.85, 0.95, 1.0))
+    sun.CreateColorAttr(Gf.Vec3f(0.62, 0.90, 0.98))
     UsdGeom.Xformable(sun.GetPrim()).AddRotateXYZOp().Set(Gf.Vec3f(-52.0, 0.0, 18.0))
 
     # Everything the water scatters back, which is what stops the shadows being
@@ -109,7 +109,10 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # itself glows in every direction.
     sky = UsdLux.DomeLight.Define(stage, "/World/Water")
     sky.CreateIntensityAttr(900.0 * left)
-    sky.CreateColorAttr(Gf.Vec3f(*[c * 2.4 for c in SCATTER]))
+    # Strongly coloured, not a neutral fill. Everything not in direct sun is
+    # lit by water, and water is blue-green: a grey ambient makes a reef look
+    # like a quarry with a blue filter over it.
+    sky.CreateColorAttr(Gf.Vec3f(0.10, 0.62, 0.74))
 
     # ── the surface, from below ──────────────────────────────────────────────
     #
@@ -195,6 +198,26 @@ def _water_material(stage, surface) -> None:
     shader.CreateInput("ior", Sdf.ValueTypeNames.Float).Set(1.333)
     material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
     UsdShade.MaterialBindingAPI.Apply(surface.GetPrim()).Bind(material)
+
+
+def light_for(stage, depth: float) -> None:
+    """Set the light to what is left at this depth.
+
+    Called as the vehicle moves, because the light at two metres and the light
+    at fifteen are not the same light — and a scene lit once at the surface
+    stays lit that way all the way to the bottom, which is the single most
+    obviously wrong thing an underwater renderer can do.
+    """
+    from pxr import UsdLux
+
+    left = is_it_deep(max(0.0, depth))
+    for path, base in (("/World/Sun", 3400.0), ("/World/Water", 900.0),
+                       ("/World/Caustics", 9000.0)):
+        prim = stage.GetPrimAtPath(path)
+        if prim:
+            attribute = prim.GetAttribute("inputs:intensity")
+            if attribute:
+                attribute.Set(base * left)
 
 
 def drift(stage, seconds: float, follow=None) -> None:
