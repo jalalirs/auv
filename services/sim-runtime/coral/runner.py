@@ -515,7 +515,7 @@ class Dive:
     def stir(self) -> None:
         """Move the water. Still caustics are a painted floor."""
         if self.water is not None:
-            self.water.drift(self.stage, self.simulated)
+            self.water.drift(self.stage, self.simulated, follow=self.position)
 
     def show(self) -> None:
         """Move what is drawn to where the vehicle is.
