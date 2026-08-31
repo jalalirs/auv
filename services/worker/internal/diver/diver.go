@@ -116,6 +116,25 @@ type Diver struct {
 }
 
 
+// AnHour is how long an interactive dive is given.
+//
+// Not because an hour is meaningful, but because a person flying a vehicle
+// stops when they stop, and the alternative to a generous bound is no bound at
+// all — which is a dive holding a GPU after everybody has gone home.
+const anHour = 3600.0
+
+// durationOf is how long a dive should last, in simulated seconds.
+//
+// Ten seconds for batch, which is what every dive has been so far and is plenty
+// to settle a controller and score it. A dive definition will carry its own
+// length when there is something that needs a different one.
+func durationOf(claimed Claimed) float64 {
+	if claimed.Run.Mode == "interactive" {
+		return anHour
+	}
+	return 10.0
+}
+
 // runtimeUser is the user the simulation runtime runs as, declared in its
 // image. Named here because the agent prepares directories the runtime writes
 // to, and a directory owned by whoever created it is one the runtime cannot use.
@@ -226,6 +245,13 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		"initialState":   claimed.InitialState,
 		"objective":      claimed.Objective,
 		"rosDomainId":    claimed.ROSDomainID,
+		// How long there is to be. A batch dive is as long as it was defined to
+		// be; an interactive one lasts until the person flying it leaves, which
+		// is not a number, so it is given an hour and ended early when they go.
+		// Ten seconds is the right length for a dive nobody watches and an
+		// absurd one for a dive somebody is trying to fly — it was over before
+		// the application could connect.
+		"durationSeconds": durationOf(claimed),
 		"deviceIndex":    claimed.DeviceIndex,
 		// Whether anything is flying this vehicle. A dive that is flown paces
 		// itself to real time so the controller has time to exist in; one that
@@ -386,6 +412,17 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	}
 
 	if watching {
+		// Only once it is actually listening. Recorded at container start, this
+		// told the application where to connect roughly a minute before there
+		// was anything there — Isaac Sim takes that long to come up — so the
+		// first thing somebody saw after asking to dive was a connection
+		// refused. The simulator says when it is ready on its own output, which
+		// this agent already reads.
+		if err := d.await(ctx, simID, `"event": "watch_open"`,
+			"the dive can be watched", log); err != nil {
+			log.Warn("the dive never opened a window", "error", err)
+		}
+
 		// Where to watch it. Recorded on the run rather than printed, because
 		// whoever asked for the dive is not the process that started it and may
 		// not be at a terminal at all.
@@ -652,28 +689,43 @@ func (d *Diver) landFlyer(ctx context.Context, runID, id string, log *slog.Logge
 
 // awaitVehicle waits until the simulator is publishing before anything is
 // started to talk to it.
-//
-// The simulator says so on its own output, which the agent is already reading.
-// Polling that is cruder than being told, and it is honest: there is nothing
-// else that knows, and inventing a side channel for one fact would be a second
-// thing to keep working.
 func (d *Diver) awaitVehicle(ctx context.Context, simID string, log *slog.Logger) error {
-	// Generous, because it is waiting for a simulator to open a scene that may
-	// be hundreds of megabytes, and a dive that waited too little would run
-	// untended for a reason that had nothing to do with the autonomy.
+	if err := d.await(ctx, simID, `"event": "bridge_open"`,
+		"the vehicle is publishing", log); err != nil {
+		return err
+	}
+	return nil
+}
+
+// await waits for the simulator to say something on its own output.
+//
+// Polling a log is cruder than being told, and it is honest: the simulator is
+// the only thing that knows when it is ready, the agent already reads what it
+// says, and inventing a side channel for one fact would be a second thing to
+// keep working.
+//
+// Generous, because what is being waited for is a simulator opening a scene
+// that may be hundreds of megabytes on a machine that may be busy. Waiting too
+// little produces a dive that failed for a reason having nothing to do with the
+// dive.
+func (d *Diver) await(ctx context.Context, simID, marker, said string,
+	log *slog.Logger) error {
 	deadline := time.Now().Add(5 * time.Minute)
 
 	for time.Now().Before(deadline) {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		output, err := d.runtime.Logs(ctx, simID, 200)
-		if err == nil && strings.Contains(output, `"event": "bridge_open"`) {
-			log.Info("the vehicle is publishing")
+		output, err := d.runtime.Logs(ctx, simID, 400)
+		if err == nil && strings.Contains(output, marker) {
+			log.Info(said)
 			return nil
 		}
 		if err == nil && strings.Contains(output, `"event": "bridge_unavailable"`) {
 			return fmt.Errorf("the vehicle could not open its side of the boundary")
+		}
+		if err == nil && strings.Contains(output, `"event": "watch_unavailable"`) {
+			return fmt.Errorf("the dive could not open a window to be watched through")
 		}
 		select {
 		case <-ctx.Done():
@@ -681,5 +733,5 @@ func (d *Diver) awaitVehicle(ctx context.Context, simID string, log *slog.Logger
 		case <-time.After(2 * time.Second):
 		}
 	}
-	return fmt.Errorf("the vehicle did not start publishing within five minutes")
+	return fmt.Errorf("the simulator did not report %s within five minutes", said)
 }

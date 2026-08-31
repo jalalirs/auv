@@ -38,8 +38,11 @@ export function Water({ stream, onSurface }: {
 
   useEffect(() => {
     const held = new Set<string>();
-    const socket = new WebSocket(`ws://${stream.host}:${stream.signalPort}/watch`);
-    socket.binaryType = "blob";
+    let socket: WebSocket | undefined;
+    let attempts = 0;
+    let giveUpAt = 0;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let done = false;
 
     const down = (event: KeyboardEvent) => {
       if (event.key === "Escape") { onSurface(); return; }
@@ -60,12 +63,42 @@ export function Water({ stream, onSurface }: {
     window.addEventListener("blur", blur);
 
     const tell = setInterval(() => {
-      if (socket.readyState === WebSocket.OPEN) {
+      if (socket?.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ held: [...held] }));
       }
     }, TELL_EVERY);
 
-    socket.onmessage = async (message) => {
+    const connect = () => {
+      if (done) return;
+      socket = new WebSocket(`ws://${stream.host}:${stream.signalPort}/watch`);
+      socket.binaryType = "blob";
+      wire(socket);
+    };
+
+    // Retried rather than given up on. A socket refused once is usually a dive
+    // that has not finished opening its scene, which takes a minute; treating
+    // that as failure showed people "the dive stopped answering" while the dive
+    // was still starting up perfectly well.
+    const again = () => {
+      if (done) return;
+      if (giveUpAt === 0) giveUpAt = Date.now() + 120_000;
+      if (Date.now() > giveUpAt) {
+        setLost("The dive never answered.");
+        return;
+      }
+      attempts += 1;
+      setLost(undefined);
+      retry = setTimeout(connect, Math.min(1000 * attempts, 4000));
+    };
+
+    const wire = (open: WebSocket) => {
+      open.onopen = () => { giveUpAt = 0; attempts = 0; setLost(undefined); };
+      open.onmessage = onMessage;
+      open.onerror = () => { /* close follows, and carries the decision */ };
+      open.onclose = again;
+    };
+
+    const onMessage = async (message: MessageEvent) => {
       if (typeof message.data === "string") {
         setState(JSON.parse(message.data));
         return;
@@ -78,15 +111,17 @@ export function Water({ stream, onSurface }: {
       surface.getContext("2d")?.drawImage(picture, 0, 0);
       picture.close();
     };
-    socket.onerror = () => setLost("The dive stopped answering.");
-    socket.onclose = () => setLost((was) => was ?? "The dive ended.");
+
+    connect();
 
     return () => {
+      done = true;
       clearInterval(tell);
+      if (retry !== undefined) clearTimeout(retry);
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
       window.removeEventListener("blur", blur);
-      socket.close();
+      socket?.close();
     };
   }, [stream, onSurface]);
 
