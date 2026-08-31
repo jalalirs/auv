@@ -14,6 +14,7 @@
 #
 #   uav app [open|close]    build and open Coral City on this machine
 #   uav dive [mode]         ask for a dive; interactive unless told otherwise
+#   uav runs                recent runs, and what became of them
 #   uav watch [run]         what a dive reported, as it reported it
 #   uav stop                end the dive that is running
 #   uav sim <logs|said|opened|grep|shell>   the simulator, and what it said
@@ -218,6 +219,22 @@ print('SEEN', len(events), file=sys.stderr)
     done
 }
 
+# Recent runs, whoever asked for them.
+command_runs() {
+    TOKEN="${TOKEN:-$(token)}"
+    local org dives
+    org="$(api GET /api/v1/me | json 'document["organisations"][0]["id"]')"
+    dives="$(api GET "/api/v1/organisations/${org}/dives" \
+        | json '" ".join(d["id"] for d in document["dives"][:6])')"
+    for dive in ${dives}; do
+        api GET "/api/v1/dives/${dive}/runs" | python3 -c '
+import json, sys
+for run in json.load(sys.stdin)["runs"][:4]:
+    why = run.get("failureReason") or ""
+    print("  %s  %-10s %-12s %s" % (run["id"], run["state"], run["mode"], why[:70]))'
+    done
+}
+
 # The simulator a dive is running in.
 command_sim() {
     local what="${1:-logs}"
@@ -267,6 +284,7 @@ case "${1:-}" in
     app)    shift; command_app "$@" ;;
     dive)   shift; command_dive "$@" ;;
     watch)  shift; command_watch "$@" ;;
+    runs)   shift; command_runs "$@" ;;
     sim)    shift; command_sim "$@" ;;
     check)  shift; command_check "$@" ;;
     clean)  shift; command_clean "$@" ;;

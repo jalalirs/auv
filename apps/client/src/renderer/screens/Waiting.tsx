@@ -49,9 +49,19 @@ export function Waiting({ platform, dive, run, onRunning, onGiveUp }: {
       return;
     }
 
-    if (state?.state === "failed") {
+    // Every way a run can be over, not only the one that says failed. A run
+    // that expired while it waited is finished and will never start, and
+    // watching it for a stream is watching forever — which is exactly what
+    // this did: it sat on "waiting for a free GPU" with two free GPUs.
+    const over: Record<string, string> = {
+      failed: "The dive could not be started.",
+      expired: "That request waited too long and the platform let it go.",
+      cancelled: "The dive was cancelled.",
+      succeeded: "The dive finished before it could be watched.",
+    };
+    if (state !== undefined && state.state in over) {
       done.current = true;
-      setStuck(state.failureReason || "The dive could not be started.");
+      setStuck(state.failureReason || over[state.state]!);
       return;
     }
 
@@ -79,7 +89,7 @@ export function Waiting({ platform, dive, run, onRunning, onGiveUp }: {
         <div className="waiting">
           <h2>No water right now</h2>
           <p>{stuck}</p>
-          <button className="quiet" onClick={onGiveUp}>Back</button>
+          <button onClick={onGiveUp}>Try again</button>
         </div>
       </div>
     );
