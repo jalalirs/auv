@@ -112,6 +112,17 @@ export const api = {
     "GET", `/api/v1/organisations/${orgId}/dives`),
   dive: (id: string) => request<Dive>("GET", `/api/v1/dives/${id}`),
   runs: (diveId: string) => request<{ runs: Run[] }>("GET", `/api/v1/dives/${diveId}/runs`),
+
+  /**
+   * End a dive, or withdraw a request for one that has not started.
+   *
+   * One call for both, because from here they are the same act — "I no longer
+   * want this" — and which it turns out to be depends on whether a machine
+   * happened to be free a second ago. Nobody should have to know that to stop
+   * something they started.
+   */
+  cancelRun: (diveId: string, runId: string) =>
+    request<void>("POST", `/api/v1/dives/${diveId}/runs/${runId}/cancel`),
   autonomy: (orgId: string) =>
     request<{ autonomy: AutonomyStack[] }>("GET", `/api/v1/organisations/${orgId}/autonomy`),
 
