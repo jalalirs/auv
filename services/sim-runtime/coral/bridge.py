@@ -43,6 +43,12 @@ class Bridge:
         self._commanded = False
         self._commands_seen = 0
 
+        # What has crossed, per topic. Counted here because this is the only
+        # place that knows: a count somewhere else would be a second opinion
+        # about the same event, and the two would disagree the first time a
+        # message was dropped.
+        self._crossed: dict[str, int] = {}
+
         import os
 
         import rclpy
@@ -115,6 +121,7 @@ class Bridge:
             self._commands = np.clip(values, -1.0, 1.0)
             self._commanded = True
             self._commands_seen += 1
+            self._crossed["/thruster_cmd"] = self._crossed.get("/thruster_cmd", 0) + 1
 
     def _on_wrench(self, message) -> None:
         """A body-frame wrench, allocated across the thrusters here.
@@ -131,6 +138,28 @@ class Bridge:
             self._commands = self.allocator.allocate(wanted)
             self._commanded = True
             self._commands_seen += 1
+            self._crossed["/cmd_vel"] = self._crossed.get("/cmd_vel", 0) + 1
+
+    def topics(self) -> list[dict]:
+        """What this vehicle carries, and how much has crossed each.
+
+        The contract, as it actually stands rather than as it was declared —
+        which is the useful version when something is not arriving and the
+        question is whether it was ever published.
+        """
+        with self._lock:
+            crossed = dict(self._crossed)
+        return [
+            {"name": name, "type": kind, "way": way,
+             "messages": crossed.get(name, 0)}
+            for name, kind, way in (
+                ("/depth", "sensor_msgs/msg/FluidPressure", "from"),
+                ("/imu/data", "sensor_msgs/msg/Imu", "from"),
+                ("/dvl/twist", "geometry_msgs/msg/TwistWithCovarianceStamped", "from"),
+                ("/thruster_cmd", "std_msgs/msg/Float64MultiArray", "to"),
+                ("/cmd_vel", "geometry_msgs/msg/Twist", "to"),
+            )
+        ]
 
     def commands(self) -> np.ndarray:
         """What the thrusters are being told to do, right now.
@@ -188,6 +217,10 @@ class Bridge:
         twist.twist.twist.linear.y = float(velocity[1])
         twist.twist.twist.linear.z = float(velocity[2])
         self.dvl.publish(twist)
+
+        with self._lock:
+            for name in ("/depth", "/imu/data", "/dvl/twist"):
+                self._crossed[name] = self._crossed.get(name, 0) + 1
 
     def close(self) -> None:
         self._stop.set()
