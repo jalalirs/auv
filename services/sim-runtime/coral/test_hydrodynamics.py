@@ -292,3 +292,28 @@ def test_gravity_is_switched_on():
     model = bluerov()
     assert model.weight_n == pytest.approx(11.5 * GRAVITY)
     assert model.weight_n > 100.0
+
+
+def test_what_a_pilot_asks_for_is_a_fraction_of_what_the_vehicle_can_do():
+    """Half rise means half of this vehicle's heave, not half a newton.
+
+    A person at the controls asks for a fraction. The allocator reads newtons.
+    Handing one to the other unconverted asked a hundred-newton vehicle for half
+    a newton — the keys arrived, the display said somebody was flying, and the
+    vehicle did not move.
+    """
+    allocator = Allocator(bluerov())
+    most = allocator.capability()
+
+    # Heave is the axis both vertical thrusters serve, so it is the one with the
+    # least doubt about what the answer should be.
+    assert most[2] > 50.0, f"heave capability came out at {most[2]:.3f} N"
+
+    # Asking for all of it saturates and no more, which is what "all of it"
+    # should mean: the allocation is at the stop and not beyond it.
+    commands = allocator.allocate(np.array([0.0, 0.0, most[2], 0.0, 0.0, 0.0]))
+    assert 0.99 <= float(np.max(np.abs(commands))) <= 1.0
+
+    # And half of it is half the command, not something arbitrarily smaller.
+    half = allocator.allocate(np.array([0.0, 0.0, most[2] / 2, 0.0, 0.0, 0.0]))
+    assert 0.49 <= float(np.max(np.abs(half))) <= 0.51
