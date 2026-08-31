@@ -81,7 +81,11 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     settings.set("/rtx/fog/fogDistance", 11.0)
     settings.set("/rtx/fog/fogDensity", 1.0)
     settings.set("/rtx/fog/fogHeightDensity", 1.0)
-    settings.set("/rtx/fog/fogStartDistance", 0.5)
+    # Fog that begins at the lens greys out the thing you came to look at.
+    # Water does haze at half a metre, but not enough to matter, and starting
+    # further out keeps the colour of what is close while still burying the
+    # distance.
+    settings.set("/rtx/fog/fogStartDistance", 3.0)
 
     # ── the sun ──────────────────────────────────────────────────────────────
     #
