@@ -277,6 +277,11 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		"initialState":   claimed.InitialState,
 		"objective":      claimed.Objective,
 		"rosDomainId":    claimed.ROSDomainID,
+		// Whether anything is coming to fly this. The simulator waits for
+		// autonomy to appear before it starts, and a dive with none was
+		// spending its first minute waiting for a stack that was never going
+		// to arrive.
+		"autonomyImage": claimed.AutonomyImage,
 		// How long there is to be. A batch dive is as long as it was defined to
 		// be; an interactive one lasts until the person flying it leaves, which
 		// is not a number, so it is given an hour and ended early when they go.
