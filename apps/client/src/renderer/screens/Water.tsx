@@ -9,7 +9,9 @@
 // somebody notices, whereas a dropped set is corrected by the next one forty
 // milliseconds later. On a link that may lose a packet, state beats events.
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import type { Platform } from "@coral-city/api";
 
 import type { Stream } from "../App.js";
 
@@ -28,13 +30,30 @@ function named(event: KeyboardEvent): string | undefined {
   return undefined;
 }
 
-export function Water({ stream, onSurface }: {
+export function Water({ platform, stream, onSurface }: {
+  platform: Platform;
   stream: Stream;
   onSurface: () => void;
 }): React.JSX.Element {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [state, setState] = useState<Record<string, unknown>>({});
   const [lost, setLost] = useState<string | undefined>();
+
+  /**
+   * Leaving ends the dive, and gives the machine back.
+   *
+   * Not merely navigating away. A dive holds a GPU that somebody else is
+   * queued for, and one abandoned by closing a window held it for its full
+   * hour — so every attempt that appeared to do nothing left another dive
+   * waiting to take a machine and sit on it.
+   */
+  const leave = useCallback(() => {
+    void platform.cancel(stream.diveId, stream.runId).catch(() => {
+      // Already over, or the platform is unreachable. Either way there is
+      // nothing useful to say to somebody who has decided to leave.
+    });
+    onSurface();
+  }, [platform, stream, onSurface]);
 
   useEffect(() => {
     const held = new Set<string>();
@@ -45,7 +64,7 @@ export function Water({ stream, onSurface }: {
     let done = false;
 
     const down = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { onSurface(); return; }
+      if (event.key === "Escape") { leave(); return; }
       const key = named(event);
       if (key !== undefined) { held.add(key); event.preventDefault(); }
     };
@@ -58,9 +77,19 @@ export function Water({ stream, onSurface }: {
     // the wall of the tank.
     const blur = () => held.clear();
 
+    // Closing the window ends the dive as surely as pressing Surface does. A
+    // browser will not wait for a request during unload, but it will send a
+    // beacon, which is exactly what this is for: a thing that must be said
+    // even though nobody will be there to hear the answer.
+    const closing = () => {
+      navigator.sendBeacon?.(
+        `${platform.address}/api/v1/dives/${stream.diveId}/runs/${stream.runId}/cancel`);
+    };
+
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     window.addEventListener("blur", blur);
+    window.addEventListener("pagehide", closing);
 
     const tell = setInterval(() => {
       if (socket?.readyState === WebSocket.OPEN) {
@@ -121,9 +150,10 @@ export function Water({ stream, onSurface }: {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
       window.removeEventListener("blur", blur);
+      window.removeEventListener("pagehide", closing);
       socket?.close();
     };
-  }, [stream, onSurface]);
+  }, [stream, leave, platform]);
 
   const depth = state.depthM;
   const speed = state.speedMs;
@@ -132,6 +162,7 @@ export function Water({ stream, onSurface }: {
     <>
       <div className="viewport">
         <canvas ref={canvas} />
+        <button className="quiet leave" onClick={leave}>Surface</button>
         <div className="hud">
           <div className="reading">
             <span>depth</span>
@@ -146,7 +177,7 @@ export function Water({ stream, onSurface }: {
         {lost === undefined ? null : (
           <div className="lost">
             <h2>{lost}</h2>
-            <button className="quiet" onClick={onSurface}>Back</button>
+            <button className="quiet" onClick={leave}>Surface</button>
           </div>
         )}
       </div>

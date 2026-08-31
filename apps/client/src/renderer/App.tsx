@@ -1,14 +1,14 @@
 // Coral City, from the outside in.
 //
-// Four states and no more, because that is how many the thing actually has:
-// you are signed out, you are choosing, you are waiting for water, or you are
-// in it. Every screen below is one of those.
+// Four states and no more, because that is how many the thing actually has: you
+// are signed out, you are on the deck, you are waiting for water, or you are in
+// it.
 
 import { useCallback, useState } from "react";
 
 import { Platform } from "@coral-city/api";
 
-import { Choosing } from "./screens/Choosing.js";
+import { Deck } from "./screens/Deck.js";
 import { SignIn } from "./screens/SignIn.js";
 import { Water } from "./screens/Water.js";
 import { Waiting } from "./screens/Waiting.js";
@@ -17,14 +17,13 @@ import { Waiting } from "./screens/Waiting.js";
 export interface Stream {
   host: string;
   signalPort: number;
-  streamPort: number;
   diveId: string;
   runId: string;
 }
 
 type Where =
   | { at: "out" }
-  | { at: "choosing" }
+  | { at: "deck" }
   | { at: "waiting"; dive: string; run: string }
   | { at: "water"; stream: Stream };
 
@@ -34,31 +33,25 @@ export function App(): React.JSX.Element {
 
   const signedIn = useCallback((into: Platform) => {
     setPlatform(into);
-    setWhere({ at: "choosing" });
+    setWhere({ at: "deck" });
   }, []);
 
-  const leave = useCallback(() => setWhere({ at: "choosing" }), []);
+  const surface = useCallback(() => setWhere({ at: "deck" }), []);
 
   return (
     <div className="sea">
       <div className="chrome" />
       {platform === undefined || where.at === "out" ? (
         <SignIn onSignedIn={signedIn} />
-      ) : where.at === "choosing" ? (
-        <Choosing
-          platform={platform}
-          onAsked={(dive, run) => setWhere({ at: "waiting", dive, run })}
-        />
+      ) : where.at === "deck" ? (
+        <Deck platform={platform}
+              onDiving={(dive, run) => setWhere({ at: "waiting", dive, run })} />
       ) : where.at === "waiting" ? (
-        <Waiting
-          platform={platform}
-          dive={where.dive}
-          run={where.run}
-          onRunning={(stream) => setWhere({ at: "water", stream })}
-          onGiveUp={leave}
-        />
+        <Waiting platform={platform} dive={where.dive} run={where.run}
+                 onRunning={(stream) => setWhere({ at: "water", stream })}
+                 onGiveUp={surface} />
       ) : (
-        <Water stream={where.stream} onSurface={leave} />
+        <Water platform={platform} stream={where.stream} onSurface={surface} />
       )}
     </div>
   );

@@ -42,7 +42,6 @@ export function Waiting({ platform, dive, run, onRunning, onGiveUp }: {
       onRunning({
         host: String(detail.host),
         signalPort: Number(detail.signalPort),
-        streamPort: Number(detail.streamPort),
         diveId: dive,
         runId: run,
       });

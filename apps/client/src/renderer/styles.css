@@ -2,8 +2,8 @@
   Coral City.
 
   Deep water, one cold accent for what is alive and one warm for the vehicle —
-  the same two the heads-up display uses inside a dive, so that the application
-  and the water it opens onto are recognisably one thing.
+  the same two the heads-up display uses inside a dive, so the application and
+  the water it opens onto are recognisably one thing.
 
   Everything is dark because everything is underwater. There is no light theme
   and there should not be: the subject has one.
@@ -11,33 +11,32 @@
 
 :root {
   --abyss: #04080f;
+  --deep: #071220;
   --water: #0b1524;
-  --shelf: #101c2c;
-  --edge: #1b2c40;
+  --shelf: #0e1b2c;
+  --raised: #13253a;
+  --edge: #1b2f47;
+  --edge-lit: #2d4f70;
 
   --coral: #40c7f4;
+  --coral-deep: #1b6e93;
   --vehicle: #f0a84f;
+  --alive: #4fd48a;
 
-  --plain: #d6d2cc;
-  --faint: #7d8794;
-  --dim: #4d5866;
+  --plain: #dbe3ec;
+  --faint: #8496a8;
+  --dim: #56677a;
 
+  --rail: 232px;
   --tall: 1.15;
   --wide: 0.02em;
 
   color-scheme: dark;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-}
+html, body, #root { height: 100%; margin: 0; }
 
 body {
   background: var(--abyss);
@@ -47,29 +46,60 @@ body {
   overflow: hidden;
 }
 
-/* The strip the traffic lights sit in, which is draggable and nothing else. */
-.chrome {
-  height: 28px;
-  -webkit-app-region: drag;
-  flex: none;
+button, input, select { font: inherit; color: inherit; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: var(--edge);
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: content-box;
 }
 
-button,
-input {
-  font: inherit;
-  color: inherit;
-}
-
-/* ── the shape of every screen ─────────────────────────────────────────────── */
+/* ── the sea everything sits in ───────────────────────────────────────────── */
 
 .sea {
   height: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
+  isolation: isolate;
   background:
-    radial-gradient(120% 90% at 50% -20%, #16283d 0%, transparent 60%),
-    linear-gradient(180deg, var(--water) 0%, var(--abyss) 70%);
+    radial-gradient(140% 100% at 50% -30%, #17304a 0%, transparent 55%),
+    linear-gradient(180deg, var(--deep) 0%, var(--abyss) 62%);
 }
+
+/*
+  Light through water. Two very slow, very faint sweeps — the only movement in
+  the application when nothing is happening, because a still image of the sea is
+  the one thing the sea never is. Slow enough to read as depth rather than as an
+  animation somebody added.
+*/
+.sea::before {
+  content: "";
+  position: absolute;
+  inset: -20% -10% auto -10%;
+  height: 70%;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    conic-gradient(from 210deg at 30% 0%, transparent 0deg, rgba(64, 199, 244, 0.07) 12deg, transparent 26deg),
+    conic-gradient(from 160deg at 68% 0%, transparent 0deg, rgba(64, 199, 244, 0.05) 16deg, transparent 34deg);
+  filter: blur(18px);
+  animation: drift 34s ease-in-out infinite alternate;
+}
+
+@keyframes drift {
+  from { transform: translateX(-2%) scaleY(1); opacity: 0.75; }
+  to   { transform: translateX(2%) scaleY(1.08); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) { .sea::before { animation: none; } }
+
+/* The strip the traffic lights sit in, draggable and nothing else. */
+.chrome { height: 28px; -webkit-app-region: drag; flex: none; }
+
+/* ── signing in, waiting: one thing, centred ──────────────────────────────── */
 
 .middle {
   flex: 1;
@@ -82,330 +112,284 @@ input {
   min-height: 0;
 }
 
-/*
-  Choosing is the one screen with more content than fits, so it is the one
-  screen that scrolls — and what scrolls is the middle of it. The name stays at
-  the top and the way in stays at the bottom, because a screen where the button
-  you came for slides off the end is a screen nobody can use.
-*/
-.browse {
-  flex: 1;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  min-height: 0;
-}
+/* ── the mark ─────────────────────────────────────────────────────────────── */
 
-.browse > header {
-  padding: 4px 40px 20px;
-}
-
-.browse > .rails {
-  overflow-y: auto;
-  padding: 0 40px 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 26px;
-}
-
-.browse > footer {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 18px 40px;
-  border-top: 1px solid var(--edge);
-  background: rgba(4, 8, 15, 0.86);
-  backdrop-filter: blur(8px);
-}
-
-.browse > footer .spacer {
-  flex: 1;
-}
-
-/* ── the mark and the name ─────────────────────────────────────────────────── */
-
-.badge {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.badge img {
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-}
-
+.badge { display: flex; align-items: center; gap: 14px; }
+.badge img { width: 46px; height: 46px; border-radius: 12px; }
 .badge h1 {
-  margin: 0;
-  font-size: 25px;
-  font-weight: 600;
-  letter-spacing: var(--wide);
-  line-height: var(--tall);
+  margin: 0; font-size: 25px; font-weight: 600;
+  letter-spacing: var(--wide); line-height: var(--tall);
 }
+.badge p { margin: 2px 0 0; color: var(--faint); font-size: 13px; }
 
-.badge p {
-  margin: 2px 0 0;
-  color: var(--faint);
-  font-size: 13px;
-}
+/* ── the application proper ───────────────────────────────────────────────── */
 
-/* ── signing in ────────────────────────────────────────────────────────────── */
+.deck { flex: 1; display: grid; grid-template-columns: var(--rail) 1fr; min-height: 0; }
 
-.panel {
-  width: 380px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  color: var(--faint);
-  font-size: 12px;
-  letter-spacing: var(--wide);
-  text-transform: lowercase;
-}
-
-input {
-  background: #08111d;
-  border: 1px solid var(--edge);
-  border-radius: 9px;
-  padding: 11px 13px;
-  outline: none;
-  transition: border-color 120ms ease;
-}
-
-input:focus {
-  border-color: var(--coral);
-}
-
-button {
-  border: 1px solid transparent;
-  border-radius: 9px;
-  padding: 11px 18px;
-  background: var(--coral);
-  color: #04121a;
-  font-weight: 600;
-  letter-spacing: var(--wide);
-  cursor: pointer;
-  transition: filter 120ms ease, opacity 120ms ease;
-}
-
-button:hover:not(:disabled) {
-  filter: brightness(1.1);
-}
-
-button:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-button.quiet {
-  background: transparent;
-  border-color: var(--edge);
-  color: var(--plain);
-  font-weight: 500;
-}
-
-.refusal {
-  color: var(--vehicle);
-  font-size: 13px;
-  min-height: 20px;
-}
-
-/* ── choosing ──────────────────────────────────────────────────────────────── */
-
-.rail {
-  width: 100%;
-  max-width: 1000px;
-}
-
-.rail > h2 {
-  margin: 0 0 12px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--dim);
-}
-
-.cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
-  gap: 14px;
-}
-
-.card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  text-align: left;
-  padding: 0;
-  background: var(--shelf);
-  border: 1px solid var(--edge);
-  border-radius: 13px;
-  overflow: hidden;
-  color: var(--plain);
-  font-weight: 400;
-  letter-spacing: normal;
-  transition: border-color 130ms ease, transform 130ms ease;
-}
-
-.card:hover:not(:disabled) {
-  border-color: #2f4a66;
-  transform: translateY(-2px);
-  filter: none;
-}
-
-.card[aria-pressed="true"] {
-  border-color: var(--coral);
-}
-
-.card .picture {
-  aspect-ratio: 16 / 9;
-  background: linear-gradient(160deg, #12263a, #08111d);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--dim);
-  font-size: 11px;
-  letter-spacing: var(--wide);
-}
-
-.card .picture img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.card .said {
-  padding: 12px 14px 14px;
-}
-
-.card .said strong {
-  display: block;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: var(--tall);
-}
-
-.card .said span {
-  display: block;
-  margin-top: 3px;
-  color: var(--faint);
-  font-size: 12.5px;
-}
-
-/* ── going in ──────────────────────────────────────────────────────────────── */
-
-.go {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-
-.go button {
-  padding: 13px 34px;
-  font-size: 15px;
-}
-
-.note {
-  color: var(--faint);
-  font-size: 13px;
-}
-
-.waiting {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  text-align: center;
-  max-width: 420px;
-}
-
-.waiting h2 {
-  margin: 0;
-  font-size: 19px;
-  font-weight: 600;
-}
-
-.waiting p {
-  margin: 0;
-  color: var(--faint);
-}
-
-/* ── the water ─────────────────────────────────────────────────────────────── */
-
-.viewport {
-  flex: 1;
-  position: relative;
-  background: #000;
+nav {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 4px 14px 18px 20px;
+  border-right: 1px solid var(--edge);
   min-height: 0;
 }
 
-.viewport canvas {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: contain;
+nav .here { display: flex; align-items: center; gap: 11px; padding: 2px 8px 22px; }
+nav .here img { width: 32px; height: 32px; border-radius: 9px; }
+nav .here strong { font-size: 16px; font-weight: 600; letter-spacing: var(--wide); }
+
+nav h2 {
+  margin: 18px 0 6px; padding: 0 10px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--dim);
 }
 
-.hud {
-  position: absolute;
-  left: 24px;
-  bottom: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 16px 20px;
-  background: rgba(4, 8, 15, 0.72);
+nav a {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 8px 11px; border-radius: 9px;
+  color: var(--faint); font-size: 14px; cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 120ms ease, color 120ms ease;
+}
+nav a:hover { background: rgba(45, 79, 112, 0.22); color: var(--plain); }
+nav a[aria-current="page"] {
+  background: rgba(64, 199, 244, 0.1);
+  border-color: rgba(64, 199, 244, 0.28);
+  color: var(--plain);
+}
+nav a small { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+nav a.later { opacity: 0.42; cursor: default; }
+nav a.later:hover { background: none; color: var(--faint); }
+
+nav .who {
+  margin-top: auto; display: flex; align-items: center; gap: 10px;
+  padding: 10px 11px; border-radius: 10px; border: 1px solid var(--edge);
+  background: rgba(14, 27, 44, 0.6);
+}
+nav .who .initials {
+  width: 30px; height: 30px; flex: none; border-radius: 50%;
+  display: grid; place-items: center;
+  background: linear-gradient(150deg, var(--coral-deep), var(--coral));
+  color: #03121b; font-size: 12px; font-weight: 700;
+}
+nav .who div { min-width: 0; }
+nav .who strong { display: block; font-size: 13px; font-weight: 600; }
+nav .who span {
+  display: block; font-size: 11.5px; color: var(--dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ── a page ───────────────────────────────────────────────────────────────── */
+
+main { overflow-y: auto; min-height: 0; padding: 6px 40px 44px; }
+
+.page-head { padding: 4px 0 22px; }
+.page-head h1 {
+  margin: 0; font-size: 26px; font-weight: 600;
+  letter-spacing: var(--wide); line-height: var(--tall);
+}
+.page-head p { margin: 5px 0 0; color: var(--faint); max-width: 62ch; }
+
+section { margin-bottom: 30px; }
+section > h2 {
+  margin: 0 0 12px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--dim);
+}
+
+/* ── the hero ─────────────────────────────────────────────────────────────── */
+
+.hero {
+  position: relative;
   border: 1px solid var(--edge);
-  border-radius: 12px;
-  backdrop-filter: blur(6px);
+  border-radius: 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 140% at 84% -20%, rgba(64, 199, 244, 0.16), transparent 58%),
+    linear-gradient(140deg, var(--raised), var(--shelf) 62%, var(--water));
+  padding: 26px 28px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 26px;
+  align-items: end;
 }
 
-.reading {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
+.hero .said { min-width: 0; }
+.hero .eyebrow {
+  font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--coral);
 }
-
-.reading span {
-  width: 52px;
-  color: var(--faint);
-  font-size: 12px;
-  letter-spacing: var(--wide);
+.hero h2 {
+  margin: 8px 0 0; font-size: 30px; font-weight: 600;
+  line-height: var(--tall); letter-spacing: var(--wide); text-wrap: balance;
 }
+.hero p { margin: 8px 0 0; color: var(--faint); max-width: 54ch; }
 
-.reading strong {
-  font-size: 19px;
-  font-weight: 600;
+.hero .facts { display: flex; gap: 26px; margin-top: 18px; flex-wrap: wrap; }
+.fact span {
+  display: block; font-size: 11px; letter-spacing: var(--wide);
+  color: var(--dim); text-transform: lowercase;
+}
+.fact strong {
+  display: block; margin-top: 3px; font-size: 16px; font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
-.keys {
-  margin-top: 4px;
-  color: var(--dim);
-  font-size: 11.5px;
-  letter-spacing: var(--wide);
+.hero .act { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+
+/* ── buttons ──────────────────────────────────────────────────────────────── */
+
+button {
+  border: 1px solid transparent; border-radius: 10px; padding: 11px 18px;
+  background: var(--coral); color: #03121b;
+  font-weight: 600; letter-spacing: var(--wide); cursor: pointer;
+  transition: filter 120ms ease, opacity 120ms ease;
 }
+button:hover:not(:disabled) { filter: brightness(1.08); }
+button:disabled { opacity: 0.32; cursor: default; }
+button.big { padding: 14px 34px; font-size: 15.5px; border-radius: 11px; }
+button.quiet {
+  background: transparent; border-color: var(--edge); color: var(--plain); font-weight: 500;
+}
+button.quiet:hover:not(:disabled) { border-color: var(--edge-lit); filter: none; }
+
+/* ── cards ────────────────────────────────────────────────────────────────── */
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(238px, 1fr)); gap: 14px; }
+
+.card {
+  position: relative;
+  display: flex; flex-direction: column;
+  text-align: left; padding: 0;
+  background: var(--shelf); border: 1px solid var(--edge);
+  border-radius: 13px; overflow: hidden;
+  color: var(--plain); font-weight: 400; letter-spacing: normal;
+  transition: border-color 130ms ease, transform 130ms ease;
+}
+.card:hover:not(:disabled) {
+  border-color: var(--edge-lit); transform: translateY(-2px); filter: none;
+}
+.card[aria-pressed="true"] { border-color: var(--coral); }
+
+.card .picture {
+  aspect-ratio: 16 / 9;
+  background:
+    radial-gradient(120% 120% at 30% 0%, rgba(64, 199, 244, 0.12), transparent 60%),
+    linear-gradient(165deg, #12263a, #070f1a);
+  display: grid; place-items: center;
+  color: var(--dim); font-size: 11px; letter-spacing: var(--wide);
+}
+.card .picture img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.card .said { padding: 12px 14px 14px; }
+.card .said strong { display: block; font-size: 15px; font-weight: 600; line-height: var(--tall); }
+.card .said span { display: block; margin-top: 3px; color: var(--faint); font-size: 12.5px; }
+.card .said .specs {
+  display: flex; gap: 12px; margin-top: 9px;
+  font-size: 11.5px; color: var(--dim); font-variant-numeric: tabular-nums;
+}
+
+/* ── a list of things that happened ───────────────────────────────────────── */
+
+.ledger { display: flex; flex-direction: column; gap: 6px; }
+.ledger .row {
+  display: grid; grid-template-columns: 1fr auto auto;
+  gap: 16px; align-items: center;
+  padding: 11px 14px;
+  background: rgba(14, 27, 44, 0.5);
+  border: 1px solid var(--edge); border-radius: 10px;
+}
+.ledger .row strong { font-size: 14px; font-weight: 600; }
+.ledger .row .when {
+  color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums;
+}
+
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px; border-radius: 999px;
+  font-size: 11.5px; letter-spacing: var(--wide);
+  border: 1px solid var(--edge); color: var(--faint);
+}
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill.good { color: var(--alive); border-color: rgba(79, 212, 138, 0.3); }
+.pill.busy { color: var(--coral); border-color: rgba(64, 199, 244, 0.32); }
+.pill.bad  { color: var(--vehicle); border-color: rgba(240, 168, 79, 0.32); }
+
+/* ── forms ────────────────────────────────────────────────────────────────── */
+
+.panel { width: 380px; display: flex; flex-direction: column; gap: 14px; }
+
+label {
+  display: flex; flex-direction: column; gap: 6px;
+  color: var(--faint); font-size: 12px;
+  letter-spacing: var(--wide); text-transform: lowercase;
+}
+
+input {
+  background: #08111d; border: 1px solid var(--edge); border-radius: 9px;
+  padding: 11px 13px; outline: none; transition: border-color 120ms ease;
+}
+input:focus { border-color: var(--coral); }
+
+.refusal { color: var(--vehicle); font-size: 13px; min-height: 20px; }
+.note { color: var(--faint); font-size: 13px; }
+
+/* ── waiting ──────────────────────────────────────────────────────────────── */
+
+.waiting {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 16px; text-align: center; max-width: 440px;
+}
+.waiting h2 { margin: 0; font-size: 19px; font-weight: 600; }
+.waiting p { margin: 0; color: var(--faint); }
+
+/* A slow tide, so waiting looks like waiting and not like being stuck. */
+.tide { width: 180px; height: 2px; border-radius: 2px; background: var(--edge); overflow: hidden; }
+.tide::after {
+  content: ""; display: block; width: 40%; height: 100%;
+  background: var(--coral); animation: tide 2.4s ease-in-out infinite;
+}
+@keyframes tide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+@media (prefers-reduced-motion: reduce) { .tide::after { animation: none; } }
+
+/* ── nothing here yet ─────────────────────────────────────────────────────── */
+
+.empty {
+  border: 1px dashed var(--edge); border-radius: 13px;
+  padding: 26px 24px; color: var(--faint);
+  background: rgba(11, 21, 36, 0.4);
+}
+.empty strong { display: block; color: var(--plain); font-size: 15px; margin-bottom: 5px; }
+.empty p { margin: 0; max-width: 62ch; font-size: 13.5px; }
+.empty .soon {
+  display: inline-block; margin-top: 12px;
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim);
+}
+
+/* ── the water ────────────────────────────────────────────────────────────── */
+
+.viewport { flex: 1; position: relative; background: #000; min-height: 0; }
+.viewport canvas { width: 100%; height: 100%; display: block; object-fit: contain; }
+
+.hud {
+  position: absolute; left: 24px; bottom: 24px;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 16px 20px;
+  background: rgba(4, 8, 15, 0.72);
+  border: 1px solid var(--edge); border-radius: 12px;
+  backdrop-filter: blur(6px);
+}
+.reading { display: flex; align-items: baseline; gap: 12px; }
+.reading span { width: 52px; color: var(--faint); font-size: 12px; letter-spacing: var(--wide); }
+.reading strong { font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.keys { margin-top: 4px; color: var(--dim); font-size: 11.5px; letter-spacing: var(--wide); }
+
+.leave { position: absolute; top: 20px; right: 24px; }
 
 .lost {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  background: rgba(4, 8, 15, 0.82);
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px; background: rgba(4, 8, 15, 0.82);
 }
-
-.lost h2 {
-  margin: 0;
-  font-size: 19px;
-  font-weight: 600;
-}
+.lost h2 { margin: 0; font-size: 19px; font-weight: 600; }
