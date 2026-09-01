@@ -110,7 +110,13 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # band and then capped, and the two together moved the real figure by a
     # factor of three. Predicting it is how the same reef came out at 48%, 67%
     # and 99% cover on three consecutive builds without anybody meaning it to.
-    wanted_area = float((want * step_x * step_y).sum())
+    # Colonies are scattered, not tiled, so some of them land on each other.
+    # Area A of colonies dropped at random over ground G covers 1 - exp(-A/G)
+    # of it, not A/G — to cover half the ground you need seven tenths of it in
+    # colonies, and to cover nine tenths you need more than twice. Planting the
+    # naive area and measuring afterwards loses about two fifths of the cover,
+    # every time, which is what it did.
+    wanted_area = float((-np.log1p(-want) * step_x * step_y).sum())
     trial_rows, trial_columns = np.unravel_index(
         rng.choice(want.size, size=20000, p=(want / want.sum()).ravel()),
         want.shape)
