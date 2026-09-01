@@ -325,8 +325,11 @@ def main() -> int:
     # repository would be a second origin for the same bytes, and a large one —
     # and an eleven megabyte generated file appearing in a checkout is enough to
     # stop a deploy, which is exactly what it did.
-    parse.add_argument("--coral", type=int, default=40000,
-                       help="how many coral colonies to grow onto the seabed")
+    # A ceiling, not a target. How many colonies a reef needs is decided by the
+    # cover the ground can hold and the size the colonies came out at; this is
+    # only how many the pipeline is willing to write.
+    parse.add_argument("--coral", type=int, default=2400000,
+                       help="most coral colonies to write")
     parse.add_argument("--seed", type=int, default=1,
                        help="the same seed grows the same reef")
     parse.add_argument("--texture", default="coast_sand_03",
