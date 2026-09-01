@@ -57,7 +57,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # into stands with clear sand between them, which is how a reef is built
     # and also what makes it read as one: continuous cover somewhere, rather
     # than uniform scatter everywhere.
-    want = lit * hold * (0.22 + 2.4 * patch ** 1.6)
+    want = lit * hold * (0.05 + 2.8 * patch ** 2.0)
     if want.sum() <= 0:
         return {"colonies": 0}
 
@@ -85,7 +85,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     belongs = np.repeat(np.arange(stands), per_stand)[:how_many]
     if belongs.size < how_many:
         belongs = np.concatenate([belongs, rng.integers(0, stands, how_many - belongs.size)])
-    spread = rng.normal(0, 1.6, (how_many, 2))
+    spread = rng.normal(0, 0.95, (how_many, 2))
     x = centre_x[belongs] + spread[:, 0]
     y = centre_y[belongs] + spread[:, 1]
     x = np.clip(x, -across / 2, across / 2)
@@ -144,19 +144,26 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # half does not begin to make it back — which is exactly what happened when
     # the colonies were scaled down to match the vehicle: the sizes became
     # right and the reef became sparse in the same change.
+    # How solid each kind is inside its own outline. A branching colony's
+    # extent is mostly gaps — you can see the sand through it — and counting
+    # its bounding ellipse as covered ground overstates a staghorn thicket by
+    # about three times. A boulder is nearly all boulder.
+    solidity = {"branching": 0.32, "fan": 0.18, "finger": 0.55, "massive": 0.88,
+                "brain": 0.90, "table": 0.80, "rubble": 0.62, "encrusting": 0.75}
+
     footprint = np.zeros(len(prototypes))
     for i, (points, _) in enumerate(prototypes):
         if len(points):
             width = float(np.ptp(points[:, 0]))
             breadth = float(np.ptp(points[:, 1]))
-            # An ellipse through the colony's own extent, not its bounding box:
-            # coral is not square.
-            footprint[i] = np.pi * (width / 2) * (breadth / 2)
+            kind = kinds[i // variants]
+            footprint[i] = np.pi * (width / 2) * (breadth / 2) * solidity[kind]
     covered = float((footprint[which] * scale ** 2).sum())
 
-    # Over the ground coral was placed on, not the whole site — most of a site
-    # is too deep or too flat for it and including that says nothing.
-    reefy = float((want > want.max() * 0.08).sum())
+    # Over the ground coral actually grows on, not everywhere it might. A
+    # threshold low enough to include the whole site says the reef is thin
+    # when what is thin is the definition.
+    reefy = float((want > want.max() * 0.35).sum())
     cell = (across / max(1, columns - 1)) * (across / max(1, rows - 1))
     where_coral_is = max(1.0, reefy * cell)
 
