@@ -119,6 +119,6 @@ docker run --rm -u 0 -v "${here}/frames:/w" --entrypoint chmod "${image}" a+r -R
 
 ffmpeg -y -loglevel error -framerate 24 -pattern_type glob \
     -i "${here}/frames/frame_*.png" \
-    -c:v libx264 -pix_fmt yuv420p -crf 20 -vf 'scale=1280:-2' \
+    -c:v libx264 -pix_fmt yuv420p -crf 26 -preset slow -vf 'scale=1100:-2' \
     "${here}/tour.mp4"
 echo "  ${frames} frames → $(du -h "${here}/tour.mp4" | cut -f1)"
