@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# Fly the camera over a place and make a video of it. Runs on the box.
+#
+# This is not a dive. It opens the same place, the same water and the same
+# light a dive gets, and then flies a camera along a path instead of putting a
+# vehicle in and integrating anything. What comes back is something somebody
+# can look at and say what is wrong with.
+#
+# It goes around the control plane deliberately: there is no run, no lease and
+# no queue here, because there is nothing to schedule — one container, one GPU,
+# a couple of minutes, and no autonomy on the other side of a network waiting
+# to be introduced.
+#
+#   fly-over red-sea
+
+set -euo pipefail
+
+place="${1:-}"
+CITY="${HOME}/coral-city"
+work="${CITY}/work"
+
+# The newest published version of that place. Packages are content-addressed
+# and a place is published many times over an afternoon, so "red-sea" has to
+# mean the last one and not whichever the shell happens to sort first.
+newest_place() {
+    local best="" name
+    for d in "${work}"/packages/*/; do
+        [ -f "${d}/site.json" ] || continue
+        name="$(python3 -c "import json;print(json.load(open('${d}/site.json'))['name'])" 2>/dev/null)" || continue
+        [ -n "${place}" ] && [ "${name}" != "${place}" ] && continue
+        best="${d%/}"
+    done
+    printf '%s' "${best}"
+}
+
+city="$(newest_place)"
+[ -n "${city}" ] || { echo "no published place called '${place:-anything}'" >&2; exit 1; }
+
+vehicle=""
+for d in "${work}"/packages/*/; do
+    [ -f "${d}/dynamics.json" ] && vehicle="${d%/}"
+done
+[ -n "${vehicle}" ] || { echo "no vehicle package to open the scene with" >&2; exit 1; }
+
+image="$(docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' \
+    | awk '/sim-runtime/ {print $2; exit}')"
+[ -n "${image}" ] || { echo "the simulator image is not on this machine" >&2; exit 1; }
+
+here="${work}/tour"
+rm -rf "${here}"; mkdir -p "${here}/frames"; chmod -R 777 "${here}"
+
+# No autonomy: nothing is flying the vehicle, and a ROS bridge with nobody on
+# the other end is a minute of discovery timeouts for no reason.
+cat > "${here}/dive.json" <<JSON
+{"cityPath": "/dive/city", "vehiclePath": "/dive/vehicle",
+ "durationSeconds": 600, "autonomy": false}
+JSON
+chmod 666 "${here}/dive.json"
+
+echo "flying over $(python3 -c "import json;print(json.load(open('${city}/site.json'))['name'])") — ${city##*/}"
+
+docker rm -f coral-tour >/dev/null 2>&1 || true
+docker run -d --name coral-tour --gpus '"device=0"' \
+    -e ACCEPT_EULA=Y -e PRIVACY_CONSENT=Y \
+    -e ROS_LOG_DIR=/tmp/ros \
+    -e CORAL_CITY_SEED=1 \
+    -e CORAL_CITY_BRIEF=/dive/dive.json \
+    -e CORAL_CITY_TOUR=1 \
+    -e CORAL_CITY_TOUR_INTO=/dive/frames \
+    -v "${here}:/dive:rw" \
+    -v "${city}:/dive/city:ro" \
+    -v "${vehicle}:/dive/vehicle:ro" \
+    --entrypoint /isaac-sim/kit/kit \
+    "${image}" /isaac-sim/apps/coral_city.kit --no-window >/dev/null
+
+# Opening a hundred million triangles takes minutes, and the flight itself is
+# under a minute after that.
+for _ in $(seq 1 120); do
+    sleep 10
+    frames="$(ls "${here}/frames"/*.png 2>/dev/null | wc -l)"
+    printf '\r  %s frames' "${frames}"
+    docker logs coral-tour 2>&1 | grep -q '"event": "tour_done"' && break
+    docker logs coral-tour 2>&1 | grep -qE '"event": "(tour_failed|failed)"' && break
+    docker ps --format '{{.Names}}' | grep -q '^coral-tour$' || break
+done
+printf '\n'
+docker logs coral-tour 2>&1 | grep -E '"event": "(tour_|place_open|seabed_known|water_made|failed)' \
+    | tail -6 | sed 's/^/  /' || true
+
+frames="$(ls "${here}/frames"/*.png 2>/dev/null | wc -l)"
+docker rm -f coral-tour >/dev/null 2>&1 || true
+[ "${frames}" -gt 24 ] || { echo "the flight produced ${frames} frames" >&2; exit 1; }
+
+ffmpeg -y -loglevel error -framerate 24 -pattern_type glob \
+    -i "${here}/frames/frame_*.png" \
+    -c:v libx264 -pix_fmt yuv420p -crf 20 -vf 'scale=1280:-2' \
+    "${here}/tour.mp4"
+echo "  ${frames} frames → $(du -h "${here}/tour.mp4" | cut -f1)"
