@@ -109,6 +109,10 @@ frames="$(so_far)"
 docker rm -f coral-tour >/dev/null 2>&1 || true
 [ "${frames}" -gt 24 ] || { echo "the flight produced ${frames} frames" >&2; exit 1; }
 
+# Kit writes as the user inside the container, which is not the user out here,
+# and it writes private. Give them back through a container that is that user.
+docker run --rm -v "${here}:/w" --entrypoint chmod "${image}" -R a+rX /w/frames
+
 ffmpeg -y -loglevel error -framerate 24 -pattern_type glob \
     -i "${here}/frames/frame_*.png" \
     -c:v libx264 -pix_fmt yuv420p -crf 20 -vf 'scale=1280:-2' \
