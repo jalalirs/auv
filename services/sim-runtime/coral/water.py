@@ -69,11 +69,12 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     settings.set("/rtx/post/histogram/enabled", False)
     settings.set("/rtx/post/tonemap/op", 1)
     settings.set("/rtx/post/tonemap/cameraShutter", 1.0 / 60.0)
-    # A stop and a half down from where this started. Measured off an exposure
-    # ladder — the same reef at f/4, f/5.6, f/8 and f/11 in one run — where f/4
-    # came out at 0.59 mean on the reef and f/5.6 at 0.43, which is where a
-    # sunlit bottom in ten metres of water belongs.
-    settings.set("/rtx/post/tonemap/fNumber", 5.6)
+    # Measured off an exposure ladder — the same reef at four apertures in one
+    # run — and then reopened by a third of a stop once the fill light came
+    # down, because the two are the same knob seen from different ends and
+    # changing one without re-reading the other is how a scene ends up dark and
+    # correct at the same time.
+    settings.set("/rtx/post/tonemap/fNumber", 4.5)
     settings.set("/rtx/post/tonemap/iso", 200.0)
 
     # ── the water ────────────────────────────────────────────────────────────
