@@ -147,8 +147,8 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     footprint = np.zeros(len(prototypes))
     for i, (points, _) in enumerate(prototypes):
         if len(points):
-            width = points[:, 0].ptp()
-            breadth = points[:, 1].ptp()
+            width = float(np.ptp(points[:, 0]))
+            breadth = float(np.ptp(points[:, 1]))
             # An ellipse through the colony's own extent, not its bounding box:
             # coral is not square.
             footprint[i] = np.pi * (width / 2) * (breadth / 2)
