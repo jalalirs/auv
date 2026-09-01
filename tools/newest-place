@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Where the newest published version of a place is, on this machine.
+#
+# Packages are content-addressed and a place is published many times over an
+# afternoon, so "red-sea" has to mean the last one and not whichever the shell
+# happens to sort first. Both fly-over and the terrain sheet need this answer
+# and used to each have their own copy of it.
+set -euo pipefail
+place="${1:-}"
+best=""
+for d in "${HOME}"/coral-city/work/packages/*/; do
+    [ -f "${d}/site.json" ] || continue
+    name="$(python3 -c "import json;print(json.load(open('${d}/site.json'))['name'])" 2>/dev/null)" || continue
+    [ -n "${place}" ] && [ "${name}" != "${place}" ] && continue
+    best="${d%/}"
+done
+printf '%s' "${best}"

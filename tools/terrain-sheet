@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""Look at a place's ground with the water taken away.
+
+Every view of this site so far has been through thirty metres of scattering
+water, which is what a vehicle sees and is the wrong instrument for judging
+whether the ground under it is any good. This draws the ground on its own: from
+above with contours, from the side, and in oblique, dry.
+
+    terrain-sheet <site.json> <seabed.f32> <out.png>
+"""
+
+from __future__ import annotations
+
+import json
+import pathlib
+import sys
+
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.colors import LightSource, LinearSegmentedColormap
+
+
+# Shallow carbonate sand through reef to deep water. Chosen so that the parts of
+# a fringing reef separate by eye — the crest, the slope, the terrace — rather
+# than for looking like the sea, which it is not pretending to be.
+SEABED = LinearSegmentedColormap.from_list("seabed", [
+    (0.00, "#f2e6c8"), (0.12, "#dcc79a"), (0.30, "#b9a978"),
+    (0.52, "#7f9a86"), (0.72, "#4a7590"), (1.00, "#1d3355")])
+
+
+def read(site_path: pathlib.Path, field_path: pathlib.Path):
+    site = json.loads(site_path.read_text())
+    field = site["mesh"]["heightfield"]
+    heights = np.fromfile(field_path, dtype="<f4").reshape(
+        field["rows"], field["columns"])
+    return site, heights
+
+
+def draw(site: dict, heights, out: pathlib.Path) -> None:
+    across = float(site["from"]["acrossMetres"])
+    depth = -heights                       # metres below the surface, positive
+    rows, columns = depth.shape
+    step = across / (columns - 1)
+    x = np.arange(columns) * step
+    y = np.arange(rows) * step
+
+    fig = plt.figure(figsize=(19, 13), facecolor="#0e1218")
+    grid = fig.add_gridspec(3, 2, height_ratios=[2.05, 1.0, 0.85],
+                            hspace=0.30, wspace=0.16,
+                            left=0.045, right=0.975, top=0.925, bottom=0.055)
+
+    def dressed(ax, title):
+        ax.set_facecolor("#0e1218")
+        ax.set_title(title, color="#e8ecf2", fontsize=12, loc="left", pad=9)
+        for spine in ax.spines.values():
+            spine.set_color("#39404c")
+        ax.tick_params(colors="#8e97a6", labelsize=8)
+        return ax
+
+    # ── from above, lit from the north-west ─────────────────────────────────
+    ax = dressed(fig.add_subplot(grid[0, 0]),
+                 "from above — hillshaded, contours every 4 m")
+    # Shaded on depth, not on height. The ramp runs sand-to-deep-blue, so
+    # handing it height puts the sand at thirty-eight metres and the deep blue
+    # on the shore, which is a picture of this reef upside down.
+    light = LightSource(azdeg=315, altdeg=42)
+    shaded = light.shade(depth, cmap=SEABED, blend_mode="soft",
+                         vert_exag=9.0, dx=step, dy=step)
+    ax.imshow(shaded, origin="lower", extent=(0, across, 0, across))
+    ax.contour(x, y, depth, levels=np.arange(0, 40, 4),
+               colors="#0e1218", linewidths=0.45, alpha=0.55)
+    ax.contour(x, y, depth, levels=[1.0, 24.0], colors="#ffffff",
+               linewidths=1.0, alpha=0.7)
+    ax.set_xlabel("metres from the shore edge", color="#8e97a6", fontsize=9)
+    ax.set_ylabel("metres along the shore", color="#8e97a6", fontsize=9)
+
+    # ── in oblique, dry ─────────────────────────────────────────────────────
+    ax = dressed(fig.add_subplot(grid[0, 1], projection="3d"),
+                 "the ground, dry — looking in from open water, 8× vertical")
+    ax.set_facecolor("#0e1218")
+    every = max(1, columns // 260)
+    gx, gy = np.meshgrid(x[::every], y[::every])
+    coarse = depth[::every, ::every]
+    lit = light.shade(coarse, cmap=SEABED, blend_mode="soft",
+                      vert_exag=9.0, dx=step * every, dy=step * every)
+    ax.plot_surface(gx, gy, -coarse * 8.0, facecolors=lit,
+                    rcount=coarse.shape[0], ccount=coarse.shape[1],
+                    linewidth=0, antialiased=False, shade=False)
+    ax.view_init(elev=24, azim=-150)
+    ax.set_box_aspect((1.0, 1.0, 0.50), zoom=1.32)
+    ax.set_axis_off()
+
+    # ── from the side, out from the shore ───────────────────────────────────
+    ax = dressed(fig.add_subplot(grid[1, :]),
+                 "from the side — the profile out from the shore, at five "
+                 "places along it (true scale would be 25× flatter)")
+    for at, colour in zip(np.linspace(0.08, 0.92, 5),
+                          ("#f2e6c8", "#dcc79a", "#8fae9a", "#5f8fb0", "#7fa8d8")):
+        row = int(at * (rows - 1))
+        ax.plot(x, -depth[row], color=colour, linewidth=1.5,
+                label="%.0f m along" % (at * across))
+    ax.axhline(0, color="#4a5262", linewidth=1.0)
+    ax.fill_between(x, -depth.max(0), -depth.min(0), color="#2a3242", alpha=0.5,
+                    label="the band every profile falls in")
+    ax.set_xlim(0, across)
+    ax.set_xlabel("metres from the shore edge", color="#8e97a6", fontsize=9)
+    ax.set_ylabel("metres below the surface", color="#8e97a6", fontsize=9)
+    legend = ax.legend(loc="lower left", fontsize=8, framealpha=0.0, ncol=3)
+    for text in legend.get_texts():
+        text.set_color("#c8cfda")
+
+    # ── and across it, which is where the spurs are ─────────────────────────
+    ax = dressed(fig.add_subplot(grid[2, :]),
+                 "across the slope — the spur-and-groove, at three depths")
+    for at, colour, label in ((0.36, "#8fae9a", "on the upper slope"),
+                              (0.48, "#5f8fb0", "mid slope"),
+                              (0.60, "#7fa8d8", "lower slope")):
+        column = int(at * (columns - 1))
+        cut = -depth[:, column]
+        ax.plot(y, cut - cut.mean(), color=colour, linewidth=1.3,
+                label="%s (%.0f m out)" % (label, at * across))
+    ax.set_xlim(0, across)
+    ax.set_xlabel("metres along the shore", color="#8e97a6", fontsize=9)
+    ax.set_ylabel("metres above the local mean", color="#8e97a6", fontsize=9)
+    legend = ax.legend(loc="upper right", fontsize=8, framealpha=0.0, ncol=3)
+    for text in legend.get_texts():
+        text.set_color("#c8cfda")
+
+    surveyed = site.get("from", {}).get("surveyed", None)
+    fig.suptitle(
+        "%s   ·   %.0f m across   ·   %.1f m at its deepest   ·   %s"
+        % (site["name"], across, float(site["deepestM"]),
+           "surveyed" if surveyed else "constructed, not surveyed"),
+        color="#e8ecf2", fontsize=15, x=0.045, ha="left", y=0.968)
+    fig.savefig(out, dpi=100, facecolor="#0e1218")
+
+
+def main() -> int:
+    if len(sys.argv) != 4:
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
+    site, heights = read(pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]))
+    draw(site, heights, pathlib.Path(sys.argv[3]))
+    print(sys.argv[3])
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

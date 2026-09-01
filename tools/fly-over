@@ -24,33 +24,7 @@ collect_only=""
 CITY="${HOME}/coral-city"
 work="${CITY}/work"
 
-# The newest published version of that place. Packages are content-addressed
-# and a place is published many times over an afternoon, so "red-sea" has to
-# mean the last one and not whichever the shell happens to sort first.
-# How many frames have been written. Its own function because `ls` of an empty
-# directory fails, and a failing command substitution under `set -e` ends the
-# script — which it did, silently, leaving a container flying a path nobody was
-# waiting for.
-so_far() { find "${here}/frames" -name 'frame_*.png' 2>/dev/null | wc -l | tr -d ' '; }
-
-newest_place() {
-    local best="" name
-    for d in "${work}"/packages/*/; do
-        [ -f "${d}/site.json" ] || continue
-        name="$(python3 -c "import json;print(json.load(open('${d}/site.json'))['name'])" 2>/dev/null)" || continue
-        [ -n "${place}" ] && [ "${name}" != "${place}" ] && continue
-        best="${d%/}"
-    done
-    printf '%s' "${best}"
-}
-
-if [ -n "${collect_only}" ]; then
-    here="${work}/tour"
-    docker ps --format '{{.Names}}' | grep -q '^coral-tour$' \
-        || { echo "nothing is flying" >&2; exit 1; }
-else
-
-city="$(newest_place)"
+city="$("$(dirname "$0")/newest-place" "${place}")"
 [ -n "${city}" ] || { echo "no published place called '${place:-anything}'" >&2; exit 1; }
 
 vehicle=""

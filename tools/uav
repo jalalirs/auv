@@ -22,6 +22,7 @@
 #   uav fly <keys> [secs]   hold keys on the running dive and say what happened
 #   uav look [seconds]      dive, wait, and bring back the frame it took
 #   uav map [place]         fly over a place and bring back a video of it
+#   uav terrain [place]     the ground on its own, with the water taken away
 #   uav sim <logs|said|opened|grep|shell>   the simulator, and what it said
 #
 #   uav check               the end-to-end checks, against the box
@@ -361,6 +362,29 @@ print('  brightness %d   red %d  green %d  blue %d' % (int(a.mean()), r, g, b))
     bold "${ROOT}/.uav-frame.png"
 }
 
+# The ground on its own, with the water taken away.
+#
+#   uav terrain              the newest place published
+#   uav terrain red-sea      that one
+#
+# Because judging ground through thirty metres of scattering water is judging it
+# with the wrong instrument, and every question about whether a site is any good
+# — is it varied, does it have anywhere to hide, is it the same everywhere — is
+# a question about the ground.
+command_terrain() {
+    local into="${ROOT}/.uav-terrain.png"
+    local where
+    where="$(on_box "~/${REMOTE_DIR}/tools/newest-place ${1:-}")"
+    [ -n "${where}" ] || die "no published place called '${1:-anything}'"
+    dim "${where##*/}"
+
+    on_box "cat ${where}/site.json"   > "${ROOT}/.uav-site.json"
+    on_box "cat ${where}/seabed.f32"  > "${ROOT}/.uav-seabed.f32"
+    "${HERE}/terrain-sheet" "${ROOT}/.uav-site.json" "${ROOT}/.uav-seabed.f32" "${into}" >/dev/null
+    rm -f "${ROOT}/.uav-site.json" "${ROOT}/.uav-seabed.f32"
+    bold "${into}"
+}
+
 # Fly over a place and bring back a video of it.
 #
 #   uav map                 the newest place published
@@ -450,6 +474,7 @@ case "${1:-}" in
     fly)    shift; command_fly "$@" ;;
     look)   shift; command_look "$@" ;;
     map)    shift; command_map "$@" ;;
+    terrain) shift; command_terrain "$@" ;;
     sim)    shift; command_sim "$@" ;;
     check)  shift; command_check "$@" ;;
     clean)  shift; command_clean "$@" ;;
