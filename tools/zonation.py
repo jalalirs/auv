@@ -43,21 +43,23 @@ COVER = (0.10, 0.42, 0.34, 0.76, 0.84, 0.74, 0.56, 0.42, 0.26, 0.15, 0.04)
 #
 # Each band is (deepest metre, weights by kind, the biggest a colony gets).
 BANDS = (
-    (2.0, {"encrusting": 0.34, "rubble": 0.26, "massive": 0.22,
-           "branching": 0.10, "finger": 0.08}, 0.55),
-    (4.5, {"branching": 0.26, "massive": 0.22, "finger": 0.16,
-           "encrusting": 0.14, "rubble": 0.10, "table": 0.08,
-           "brain": 0.04}, 1.60),
-    (10.0, {"branching": 0.28, "massive": 0.20, "table": 0.14,
-            "finger": 0.14, "brain": 0.08, "encrusting": 0.08,
-            "rubble": 0.05, "fan": 0.03}, 2.40),
-    (18.0, {"massive": 0.22, "branching": 0.18, "table": 0.16,
-            "finger": 0.12, "brain": 0.10, "fan": 0.10,
-            "encrusting": 0.08, "rubble": 0.04}, 2.40),
-    (26.0, {"table": 0.24, "massive": 0.20, "fan": 0.18, "brain": 0.12,
-            "encrusting": 0.12, "branching": 0.08, "finger": 0.06}, 2.00),
-    (999.0, {"table": 0.32, "fan": 0.26, "encrusting": 0.18,
-             "massive": 0.14, "brain": 0.10}, 1.70),
+    (2.0, {"encrusting": 0.28, "rubble": 0.24, "massive": 0.20,
+           "branching": 0.09, "finger": 0.09, "plume": 0.06,
+           "sponge": 0.04}, 0.55),
+    (4.5, {"massive": 0.17, "plume": 0.16, "branching": 0.15, "finger": 0.12,
+           "encrusting": 0.10, "fan": 0.09, "rubble": 0.08, "sponge": 0.07,
+           "brain": 0.06}, 1.70),
+    (10.0, {"plume": 0.20, "fan": 0.16, "massive": 0.15, "branching": 0.11,
+            "finger": 0.09, "sponge": 0.08, "brain": 0.07, "table": 0.06,
+            "encrusting": 0.05, "rubble": 0.03}, 2.20),
+    (18.0, {"fan": 0.20, "plume": 0.17, "massive": 0.13, "sponge": 0.10,
+            "table": 0.10, "brain": 0.08, "branching": 0.07, "finger": 0.06,
+            "encrusting": 0.06, "rubble": 0.03}, 2.20),
+    (26.0, {"fan": 0.20, "table": 0.16, "sponge": 0.14, "plume": 0.13,
+            "massive": 0.12, "encrusting": 0.10, "brain": 0.08,
+            "branching": 0.07}, 2.00),
+    (999.0, {"table": 0.24, "fan": 0.18, "sponge": 0.18, "encrusting": 0.16,
+             "plume": 0.10, "massive": 0.08, "brain": 0.06}, 1.70),
 )
 
 
