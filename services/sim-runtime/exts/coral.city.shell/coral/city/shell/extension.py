@@ -464,8 +464,13 @@ class CoralCityShell(omni.ext.IExt):
             viewport = get_active_viewport()
             if viewport is None:
                 return
-            self.tour.place(dive.stage, viewport)
+            # Stirred first, then aimed. The water resets every light to what
+            # is left at the vehicle's depth on each stir, so anything the tour
+            # sets about the lights has to be set after it — which is why an
+            # eight-rung ladder of light changes came back with eight identical
+            # frames.
             dive.stir()
+            self.tour.place(dive.stage, viewport)
 
             # A rung of the ladder needs a frame or two for the setting to
             # reach the picture; only the last of them is worth keeping.
