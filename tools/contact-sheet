@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""Lay a directory of frames out side by side, labelled.
+
+    contact-sheet <directory> <out.png>
+
+For comparing settings, which is the only way to judge a setting: one at a time
+across five-minute renders is how a decision gets made on memory rather than on
+what is in front of you.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import sys
+
+from PIL import Image, ImageDraw
+
+
+def main() -> int:
+    if len(sys.argv) != 3:
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
+    frames = sorted(pathlib.Path(sys.argv[1]).glob("*.png"))
+    if not frames:
+        print("no frames to lay out", file=sys.stderr)
+        return 1
+
+    across = min(4, len(frames))
+    down = (len(frames) + across - 1) // across
+    wide, tall = 620, 349
+    label = 26
+    sheet = Image.new("RGB", (across * wide, down * (tall + label)), (14, 17, 22))
+    draw = ImageDraw.Draw(sheet)
+    for i, frame in enumerate(frames):
+        picture = Image.open(frame).convert("RGB").resize((wide, tall), Image.LANCZOS)
+        x, y = (i % across) * wide, (i // across) * (tall + label)
+        sheet.paste(picture, (x, y + label))
+        draw.text((x + 8, y + 7), frame.stem, fill=(226, 231, 240))
+    sheet.save(sys.argv[2])
+    print(sys.argv[2])
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
