@@ -315,7 +315,7 @@ class Ladder:
         settings.set("/persistent/app/viewport/displayOptions", 0)
         self.tidied = True
 
-    def _wear(self, stage) -> None:
+    def _wear(self, stage, say: bool = True) -> None:
         """Put everything back, then apply this rung."""
         import carb
 
@@ -338,16 +338,21 @@ class Ladder:
                 attribute = prim.GetAttribute("inputs:intensity") if prim else None
                 if attribute:
                     attribute.Set(float(value))
-        self.say("ladder_rung", at=self.name(), atFrame=self.taken)
+        if say:
+            self.say("ladder_rung", at=self.name(), atFrame=self.taken)
 
     def place(self, stage, viewport) -> None:
         from pxr import Gf, UsdGeom
 
         if not self.tidied:
             self._remember(stage)
-        if self.rung != self.set_for:
-            self.set_for = self.rung
-            self._wear(stage)
+        # Applied every frame, not only when the rung changes. The water resets
+        # every light to what is left at the vehicle's depth on each stir, so a
+        # rung set once is a rung undone one frame later — which is why two
+        # ladders of light changes came back with eight identical frames.
+        told = self.rung != self.set_for
+        self.set_for = self.rung
+        self._wear(stage, say=told)
 
         # A low pass over the reef, standing still. Two and a half metres up and
         # looking slightly down, which is where a vehicle works and so is the
