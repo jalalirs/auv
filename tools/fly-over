@@ -45,9 +45,14 @@ for d in "${work}"/packages/*/; do
 done
 [ -n "${vehicle}" ] || { echo "no vehicle package to open the scene with" >&2; exit 1; }
 
-image="$(docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' \
-    | awk '/sim-runtime/ {print $2; exit}')"
-[ -n "${image}" ] || { echo "the simulator image is not on this machine" >&2; exit 1; }
+# Named, and pulled. Picking whatever local image matched "sim-runtime" once
+# picked a build from two days earlier that had never heard of a tour — it
+# opened the place, flew nothing, and ran a full ten-minute dive instead, which
+# looks exactly like a tour that produced no frames. The registry is where the
+# deploy puts the image and is the only thing that knows which one is current.
+image="127.0.0.1:18081/sim-runtime:r1"
+docker pull -q "${image}" >/dev/null 2>&1 \
+    || { echo "the registry has no ${image}" >&2; exit 1; }
 
 rm -rf "${here}"; mkdir -p "${here}/frames"; chmod -R 777 "${here}"
 
