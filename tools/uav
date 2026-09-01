@@ -363,64 +363,18 @@ print('  brightness %d   red %d  green %d  blue %d' % (int(a.mean()), r, g, b))
 
 # Fly over a place and bring back a video of it.
 #
-#   uav map                 fly over the newest place
-#   uav map red-sea         fly over that one
+#   uav map                 the newest place published
+#   uav map red-sea         that one
 #
 # Because every judgement about a map so far has been made from one frame, three
-# metres off the bottom, pointing one way — which is the worst possible view for
-# asking whether the coral is in the right places, and is why that question kept
-# being answered wrong.
+# metres off the bottom, pointing one way — the worst possible view for asking
+# whether the coral is in the right places, and why that question kept getting
+# answered wrong.
 command_map() {
-    local place="${1:-}"
-    local where
-    where="$(on_box "ls -dt ~/coral-city/places/*/ 2>/dev/null | head -20")"
-    if [ -n "${place}" ]; then
-        where="$(on_box "echo ~/coral-city/places/${place}")"
-    else
-        where="$(printf '%s\n' "${where}" | head -1)"
-    fi
-    where="${where%/}"
-    [ -n "${where}" ] || die "no place to fly over"
-
-    bold "flying over ${where##*/}"
-
-    on_box "docker rm -f coral-tour >/dev/null 2>&1
-        rm -rf ${where}/tour && mkdir -p ${where}/tour && chmod 777 ${where}/tour
-        printf '%s' '{\"cityPath\":\"/dive/city\",\"vehiclePath\":\"/dive/vehicle\",\"mode\":\"interactive\",\"seed\":1,\"durationSeconds\":600}' > ${where}/dive.json
-        docker run -d --name coral-tour --gpus '\"device=0\"' \
-            -e ACCEPT_EULA=Y -e PRIVACY_CONSENT=Y \
-            -e CORAL_CITY_BRIEF=/dive/dive.json \
-            -e CORAL_CITY_TOUR=1 -e CORAL_CITY_TOUR_INTO=/dive/tour \
-            -e ROS_LOG_DIR=/tmp/ros \
-            -v ${where}:/dive:rw \
-            -v ${where}:/dive/city:ro \
-            -v \$(ls -d ~/coral-city/work/packages/*/ | head -1):/dive/vehicle:ro \
-            --entrypoint /isaac-sim/kit/kit \
-            127.0.0.1:18081/sim-runtime:r1 /isaac-sim/apps/coral_city.kit --no-window >/dev/null"
-
-    dim "opening the place and flying the path"
-    local frames=0
-    for i in $(seq 1 90); do
-        sleep 10
-        frames="$(on_box "ls ${where}/tour/*.png 2>/dev/null | wc -l")"
-        on_box "docker logs coral-tour 2>&1 | grep -q '\"event\": \"tour_done\"'" && break
-        on_box "docker logs coral-tour 2>&1 | grep -qE '\"event\": \"(tour_failed|failed)\"'" && break
-        printf '\r  %s frames' "${frames}"
-    done
-    printf '\n'
-    on_box "docker logs coral-tour 2>&1 | grep -E '\"event\": \"(tour_|place_open|spawned|water_made|failed)' | tail -5" | sed 's/^/  /'
-
-    frames="$(on_box "ls ${where}/tour/*.png 2>/dev/null | wc -l")"
-    [ "${frames}" -gt 10 ] || { on_box "docker rm -f coral-tour >/dev/null 2>&1"; die "the flight produced ${frames} frames"; }
-
-    dim "making the video from ${frames} frames"
-    on_box "ffmpeg -y -loglevel error -framerate 24 -pattern_type glob \
-        -i '${where}/tour/frame_*.png' -c:v libx264 -pix_fmt yuv420p -crf 22 \
-        ${where}/tour.mp4"
-    on_box "docker rm -f coral-tour >/dev/null 2>&1"
-    on_box "cat ${where}/tour.mp4" > "${ROOT}/.uav-map.mp4"
+    on_box "~/${REMOTE_DIR}/tools/fly-over ${1:-}" | sed "s/^/  /"
+    on_box "cat ~/coral-city/work/tour/tour.mp4" > "${ROOT}/.uav-map.mp4"
+    [ -s "${ROOT}/.uav-map.mp4" ] || die "no video came back"
     bold "${ROOT}/.uav-map.mp4"
-    ls -lh "${ROOT}/.uav-map.mp4" | awk '{print "  " $5}'
 }
 
 # The simulator a dive is running in.
