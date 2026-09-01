@@ -135,8 +135,35 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
 
     (where / "coral.usda").write_text(
         _instancer(prototypes, colours, x, y, z, which, scale, turn))
+
+    # How much of the ground this actually covers.
+    #
+    # Measured, because cover goes as count times size squared and that is not
+    # a thing anybody estimates correctly by looking. Halving the size of every
+    # colony takes three quarters of the cover away, and raising the count by a
+    # half does not begin to make it back — which is exactly what happened when
+    # the colonies were scaled down to match the vehicle: the sizes became
+    # right and the reef became sparse in the same change.
+    footprint = np.zeros(len(prototypes))
+    for i, (points, _) in enumerate(prototypes):
+        if len(points):
+            width = points[:, 0].ptp()
+            breadth = points[:, 1].ptp()
+            # An ellipse through the colony's own extent, not its bounding box:
+            # coral is not square.
+            footprint[i] = np.pi * (width / 2) * (breadth / 2)
+    covered = float((footprint[which] * scale ** 2).sum())
+
+    # Over the ground coral was placed on, not the whole site — most of a site
+    # is too deep or too flat for it and including that says nothing.
+    reefy = float((want > want.max() * 0.08).sum())
+    cell = (across / max(1, columns - 1)) * (across / max(1, rows - 1))
+    where_coral_is = max(1.0, reefy * cell)
+
     return {"colonies": int(how_many), "prototypes": len(prototypes),
-            "points": int(sum(len(p) for p, _ in prototypes))}
+            "points": int(sum(len(p) for p, _ in prototypes)),
+            "coverOfReef": round(min(1.0, covered / where_coral_is), 3),
+            "reefAreaM2": int(where_coral_is)}
 
 
 def _smooth_normals(points, faces):

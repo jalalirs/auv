@@ -419,6 +419,8 @@ def main() -> int:
     if reef["colonies"]:
         print(f"    {reef['colonies']:,} coral colonies from "
               f"{reef['prototypes']} grown prototypes")
+        print(f"    {reef['coverOfReef']*100:.0f}% cover over "
+              f"{reef['reefAreaM2']:,} m² of reef")
     print(f"    {where}/seabed.usda")
     return 0
 
