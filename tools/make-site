@@ -308,6 +308,9 @@ def main() -> int:
     parse.add_argument("name")
     parse.add_argument("--raster",
                        help="a bathymetric survey to cut the terrain from")
+    parse.add_argument("--heights",
+                       help="a square already cut by tools/get-bathymetry — "
+                            "its .json, with the .f32 beside it")
     parse.add_argument("--build", choices=("fringing-reef",),
                        help="construct the terrain instead, where no survey exists")
     parse.add_argument("--centre", nargs=2, type=float,
@@ -346,10 +349,28 @@ def main() -> int:
         import fringing
         height, morphology = fringing.build(asked.across, asked.most, asked.seed)
         step, surveyed = 1, False
+        survey_note = None
+    elif asked.heights:
+        # Already centred, already cut, already square. Nothing here has to know
+        # about projections or geotransforms, which is the difference between
+        # this and --raster: that path wants a GDAL build on whatever machine
+        # runs it, and this one wants numpy.
+        import numpy as np
+        note = json.loads(pathlib.Path(asked.heights).read_text())
+        field = note["heightfield"]
+        beside = pathlib.Path(asked.heights).parent / field["file"]
+        height = np.fromfile(beside, dtype="<f4").reshape(
+            field["rows"], field["columns"])
+        asked.across = float(note["acrossMetres"])
+        if asked.centre is None:
+            asked.centre = (note["centre"]["latitude"], note["centre"]["longitude"])
+        morphology, surveyed, step = None, True, 1
+        survey_note = note
     elif asked.raster:
         height, step = read_patch(asked.raster, tuple(asked.centre or (0, 0)),
                                   asked.across, asked.most)
         morphology, surveyed = None, True
+        survey_note = None
     else:
         raise SystemExit("give it a --raster to cut from, or a --build to construct")
 
@@ -381,7 +402,17 @@ def main() -> int:
         # was never surveyed.
         "from": {
             "surveyed": surveyed,
-            **({"raster": pathlib.Path(asked.raster).name} if surveyed else {}),
+            **({"raster": pathlib.Path(asked.raster).name}
+               if surveyed and asked.raster else {}),
+            # Which surveys the ground was actually drawn from. "Real
+            # bathymetry" is a claim, and the difference between a lidar flown
+            # over a reef and a global grid interpolated across it is the
+            # difference between a site and a smooth ramp — so the site names
+            # the surveys rather than asserting the adjective.
+            **({"surveys": survey_note.get("surveys", []),
+                "source": survey_note.get("source"),
+                "surveyedFraction": survey_note.get("surveyedFraction")}
+               if survey_note else {}),
             **({"constructed": morphology} if morphology else {}),
             **({"centre": {"latitude": asked.centre[0],
                            "longitude": asked.centre[1]}} if asked.centre else {}),

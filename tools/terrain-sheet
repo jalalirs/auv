@@ -31,15 +31,33 @@ SEABED = LinearSegmentedColormap.from_list("seabed", [
 
 
 def read(site_path: pathlib.Path, field_path: pathlib.Path):
-    site = json.loads(site_path.read_text())
-    field = site["mesh"]["heightfield"]
+    """A published place or a freshly fetched square — both carry the same
+    facts under different names, and drawing either is the same drawing."""
+    note = json.loads(site_path.read_text())
+    field = note.get("mesh", {}).get("heightfield") or note["heightfield"]
     heights = np.fromfile(field_path, dtype="<f4").reshape(
         field["rows"], field["columns"])
+    site = {
+        "name": note["name"],
+        # A constructed site says which edge the shore is on; a surveyed one is
+        # whatever direction it was surveyed in, so the axes are named by the
+        # compass instead of by a shore that may not be there.
+        "shoreAt": note.get("from", {}).get("constructed", {}).get("shoreAt"),
+        "deepestM": note.get("deepestM") or -float(heights.min()),
+        "from": {
+            "acrossMetres": note.get("from", {}).get("acrossMetres")
+                            or note["acrossMetres"],
+            "surveyed": note.get("from", {}).get("surveyed",
+                                                 note.get("surveyed", False)),
+        },
+    }
     return site, heights
 
 
 def draw(site: dict, heights, out: pathlib.Path) -> None:
     across = float(site["from"]["acrossMetres"])
+    out, along = (("metres from the shore edge", "metres along the shore")
+                  if site.get("shoreAt") else ("metres east", "metres north"))
     depth = -heights                       # metres below the surface, positive
     rows, columns = depth.shape
     step = across / (columns - 1)
@@ -73,8 +91,8 @@ def draw(site: dict, heights, out: pathlib.Path) -> None:
                colors="#0e1218", linewidths=0.45, alpha=0.55)
     ax.contour(x, y, depth, levels=[1.0, 24.0], colors="#ffffff",
                linewidths=1.0, alpha=0.7)
-    ax.set_xlabel("metres from the shore edge", color="#8e97a6", fontsize=9)
-    ax.set_ylabel("metres along the shore", color="#8e97a6", fontsize=9)
+    ax.set_xlabel(out, color="#8e97a6", fontsize=9)
+    ax.set_ylabel(along, color="#8e97a6", fontsize=9)
 
     # ── in oblique, dry ─────────────────────────────────────────────────────
     ax = dressed(fig.add_subplot(grid[0, 1], projection="3d"),
@@ -94,18 +112,18 @@ def draw(site: dict, heights, out: pathlib.Path) -> None:
 
     # ── from the side, out from the shore ───────────────────────────────────
     ax = dressed(fig.add_subplot(grid[1, :]),
-                 "from the side — the profile out from the shore, at five "
-                 "places along it (true scale would be 25× flatter)")
+                 "from the side — the profile west to east, at five places "
+                 "north to south (true scale would be 25× flatter)")
     for at, colour in zip(np.linspace(0.08, 0.92, 5),
                           ("#f2e6c8", "#dcc79a", "#8fae9a", "#5f8fb0", "#7fa8d8")):
         row = int(at * (rows - 1))
         ax.plot(x, -depth[row], color=colour, linewidth=1.5,
-                label="%.0f m along" % (at * across))
+                label="%.0f m north" % (at * across))
     ax.axhline(0, color="#4a5262", linewidth=1.0)
     ax.fill_between(x, -depth.max(0), -depth.min(0), color="#2a3242", alpha=0.5,
                     label="the band every profile falls in")
     ax.set_xlim(0, across)
-    ax.set_xlabel("metres from the shore edge", color="#8e97a6", fontsize=9)
+    ax.set_xlabel(out, color="#8e97a6", fontsize=9)
     ax.set_ylabel("metres below the surface", color="#8e97a6", fontsize=9)
     legend = ax.legend(loc="lower left", fontsize=8, framealpha=0.0, ncol=3)
     for text in legend.get_texts():
@@ -113,16 +131,16 @@ def draw(site: dict, heights, out: pathlib.Path) -> None:
 
     # ── and across it, which is where the spurs are ─────────────────────────
     ax = dressed(fig.add_subplot(grid[2, :]),
-                 "across the slope — the spur-and-groove, at three depths")
-    for at, colour, label in ((0.36, "#8fae9a", "on the upper slope"),
-                              (0.48, "#5f8fb0", "mid slope"),
-                              (0.60, "#7fa8d8", "lower slope")):
+                 "south to north, at three places across the site")
+    for at, colour, label in ((0.36, "#8fae9a", "a third across"),
+                              (0.50, "#5f8fb0", "halfway"),
+                              (0.66, "#7fa8d8", "two thirds across")):
         column = int(at * (columns - 1))
         cut = -depth[:, column]
         ax.plot(y, cut - cut.mean(), color=colour, linewidth=1.3,
-                label="%s (%.0f m out)" % (label, at * across))
+                label="%s (%.0f m east)" % (label, at * across))
     ax.set_xlim(0, across)
-    ax.set_xlabel("metres along the shore", color="#8e97a6", fontsize=9)
+    ax.set_xlabel(along, color="#8e97a6", fontsize=9)
     ax.set_ylabel("metres above the local mean", color="#8e97a6", fontsize=9)
     legend = ax.legend(loc="upper right", fontsize=8, framealpha=0.0, ncol=3)
     for text in legend.get_texts():

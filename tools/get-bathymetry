@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""Fetch a square of real seafloor.
+
+NOAA's National Centers for Environmental Information publish a global mosaic
+of every bathymetric survey they hold, best-resolution-first, as an image
+service. Where somebody has flown lidar or run multibeam over a reef, that is
+what comes back — three metres a sample or better. Where nobody has, it falls
+through to the coarse global grid, and this says so rather than pretending.
+
+Fetched as a plain array with the square already centred and cut, so that
+nothing downstream has to know about projections, geotransforms or a GDAL
+build. What it writes is the heights, in metres above sea level, and a note of
+where they came from.
+
+    tools/get-bathymetry looe-key 24.5465 -81.4065 --across 1000
+
+Heights are metres above mean sea level, so the seabed is negative — the datum
+the rest of this platform already uses.
+"""
+
+from __future__ import annotations
+
+import argparse
+import io
+import json
+import math
+import pathlib
+import urllib.parse
+import urllib.request
+
+import numpy as np
+
+SERVICE = ("https://gis.ngdc.noaa.gov/arcgis/rest/services/DEM_mosaics/"
+           "DEM_all/ImageServer")
+
+# What NOAA marks as "no survey reached here".
+NOTHING = -9999.0
+# Below this is not seabed, it is the service's fill value.
+NONSENSE = -12000.0
+
+
+def metres_per_degree(latitude: float) -> tuple[float, float]:
+    """What a degree is worth here. Good to a fraction of a percent over a
+    site of a few kilometres, which is the size of thing this fetches."""
+    radians = math.radians(latitude)
+    north = 111_132.92 - 559.82 * math.cos(2 * radians) + 1.175 * math.cos(4 * radians)
+    east = 111_412.84 * math.cos(radians) - 93.5 * math.cos(3 * radians)
+    return east, north
+
+
+def ask(path: str, **query) -> bytes:
+    url = SERVICE + path + "?" + urllib.parse.urlencode(query)
+    with urllib.request.urlopen(url, timeout=120) as answer:
+        return answer.read()
+
+
+def fetch(latitude: float, longitude: float, across: float, samples: int):
+    """The square, as heights in metres above sea level."""
+    import tifffile
+
+    east, north = metres_per_degree(latitude)
+    half_lon, half_lat = (across / 2) / east, (across / 2) / north
+    bounds = (longitude - half_lon, latitude - half_lat,
+              longitude + half_lon, latitude + half_lat)
+
+    raw = ask("/exportImage", bbox=",".join("%.9f" % b for b in bounds),
+              bboxSR=4326, imageSR=4326, size="%d,%d" % (samples, samples),
+              format="tiff", pixelType="F32", noData=NOTHING,
+              interpolation="RSP_BilinearInterpolation", f="image")
+    heights = tifffile.imread(io.BytesIO(raw)).astype("float32")
+    # North is row zero in an image and row last in a heightfield, which is the
+    # convention everything downstream reads.
+    return np.flipud(heights), bounds
+
+
+def who_surveyed_it(bounds) -> list[dict]:
+    """Which surveys the mosaic drew this square from.
+
+    Asked because "real bathymetry" is a claim, and the difference between a
+    lidar flown over a reef and the global grid interpolated across it is the
+    difference between a site and a smooth ramp.
+    """
+    try:
+        answer = json.loads(ask(
+            "/query", geometry=",".join("%.9f" % b for b in bounds),
+            geometryType="esriGeometryEnvelope", inSR=4326,
+            spatialRel="esriSpatialRelIntersects", outFields="*",
+            returnGeometry="false", f="json"))
+    except Exception:
+        return []
+    seen, sources = set(), []
+    for feature in answer.get("features", []):
+        it = feature.get("attributes", {})
+        name = it.get("Name") or it.get("name") or it.get("DatasetName")
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        sources.append({
+            "name": name,
+            "sampleMetres": it.get("CellSize") or it.get("PixelSize"),
+        })
+    return sources[:8]
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(description="fetch a square of real seafloor")
+    parse.add_argument("name")
+    parse.add_argument("latitude", type=float)
+    parse.add_argument("longitude", type=float)
+    parse.add_argument("--across", type=float, default=1000.0,
+                       help="metres on a side")
+    parse.add_argument("--samples", type=int, default=512)
+    parse.add_argument("--into", default=".")
+    asked = parse.parse_args()
+
+    heights, bounds = fetch(asked.latitude, asked.longitude,
+                            asked.across, asked.samples)
+
+    known = np.isfinite(heights) & (heights > NONSENSE) & (heights != NOTHING)
+    covered = float(known.mean())
+    if covered < 0.5:
+        raise SystemExit("only %.0f%% of that square has been surveyed" % (100 * covered))
+
+    # Holes filled from their neighbours rather than left as holes, because a
+    # hole in a seabed is somewhere a vehicle falls through, and "the bottom is
+    # about here" beats "no data" to anybody flying one.
+    filled = np.where(known, heights, np.nan)
+    for _ in range(8):
+        if not np.isnan(filled).any():
+            break
+        neighbours = np.nanmean(np.stack([
+            np.roll(filled, 1, 0), np.roll(filled, -1, 0),
+            np.roll(filled, 1, 1), np.roll(filled, -1, 1)]), axis=0)
+        filled = np.where(np.isnan(filled), neighbours, filled)
+    filled = np.nan_to_num(filled, nan=float(np.nanmedian(heights[known])))
+
+    depth = -filled
+    into = pathlib.Path(asked.into)
+    into.mkdir(parents=True, exist_ok=True)
+    field = into / (asked.name + ".f32")
+    filled.astype("<f4").tofile(field)
+
+    note = {
+        "name": asked.name,
+        "surveyed": True,
+        "source": "NOAA NCEI bathymetry mosaic (DEM_all)",
+        "centre": {"latitude": asked.latitude, "longitude": asked.longitude},
+        "acrossMetres": asked.across,
+        "sampleMetres": round(asked.across / (asked.samples - 1), 3),
+        "surveyedFraction": round(covered, 4),
+        "deepestM": round(float(depth.max()), 2),
+        "shallowestM": round(float(depth.min()), 2),
+        "underwaterFraction": round(float((depth > 0.3).mean()), 4),
+        "surveys": who_surveyed_it(bounds),
+        "heightfield": {"rows": asked.samples, "columns": asked.samples,
+                        "format": "little-endian float32, row major, "
+                                  "south to north then west to east",
+                        "file": field.name},
+    }
+    (into / (asked.name + ".json")).write_text(json.dumps(note, indent=2) + "\n")
+    print(json.dumps({k: note[k] for k in
+                      ("name", "deepestM", "shallowestM", "underwaterFraction",
+                       "surveyedFraction", "sampleMetres")}, indent=2))
+    for survey in note["surveys"]:
+        print("  from: %s" % survey["name"])
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
