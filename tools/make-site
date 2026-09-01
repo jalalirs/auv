@@ -126,7 +126,7 @@ SEABED_MATERIAL = """
                 # A dry beach photographed in sunlight is the brightest thing in
                 # any scene it is in, and dropped straight onto a seabed it
                 # makes the whole reef read as a sandbar at noon.
-                float4 inputs:scale = (0.46, 0.44, 0.40, 1)
+                float4 inputs:scale = (0.66, 0.62, 0.55, 1)
                 color3f outputs:rgb
             }
 
@@ -398,6 +398,10 @@ def main() -> int:
         # What this place is made of, named rather than guessed at. A runner
         # picking "the first USD that is not obviously water" would load
         # coral.usda as the world, because c sorts before s.
+        # Where a dive begins here, when the place has an opinion about it.
+        **({"beginAt": morphology["beginAt"],
+            "beginBecause": morphology.get("beginBecause", "")}
+           if morphology and "beginAt" in morphology else {}),
         "layers": {
             "terrain": "seabed.usda",
             "heightfield": "seabed.f32",

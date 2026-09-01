@@ -119,10 +119,21 @@ def build(across: float, samples: int, seed: int = 1,
 
     depth = np.clip(depth, 0.35, deepest + 6.0)
 
+    # Where a dive should begin: over the fore-reef slope, in the middle of the
+    # coral, at a depth an ROV actually works at. The middle of a site is only
+    # the right answer when the site is uniform, and a reef is the opposite of
+    # uniform — its whole point is that the parts are different.
+    begin_x = float((crest_at + slope_to) * 0.45)
+    begin_column = int((begin_x / across + 0.5) * (samples - 1))
+    begin_column = max(0, min(samples - 1, begin_column))
+    bottom = float(depth[samples // 2, begin_column])
+
     return -depth.astype("float32"), {
         "morphology": "fringing reef: flat, crest, fore-reef slope with "
                       "spur-and-groove, sand terrace, deeper slope",
         "shoreAt": "the -x edge",
+        "beginAt": [round(begin_x, 1), 0.0, -round(max(2.0, bottom - 3.5), 1)],
+        "beginBecause": "over the fore-reef slope, three metres off the bottom",
         "spurSpacingM": wavelength,
         "crestDepthM": round(float(shallowest), 2),
         "terraceDepthM": 24.0,
