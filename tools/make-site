@@ -304,11 +304,15 @@ def Xform "World"
 
 
 def main() -> int:
-    parse = argparse.ArgumentParser(description="make a place out of real seafloor")
+    parse = argparse.ArgumentParser(description="make a place out of seafloor")
     parse.add_argument("name")
-    parse.add_argument("--raster", required=True)
-    parse.add_argument("--centre", nargs=2, type=float, required=True,
-                       metavar=("LAT", "LON"))
+    parse.add_argument("--raster",
+                       help="a bathymetric survey to cut the terrain from")
+    parse.add_argument("--build", choices=("fringing-reef",),
+                       help="construct the terrain instead, where no survey exists")
+    parse.add_argument("--centre", nargs=2, type=float,
+                       metavar=("LAT", "LON"),
+                       help="where this place is, whether surveyed or not")
     parse.add_argument("--across", type=float, default=1000.0,
                        help="metres across, square")
     parse.add_argument("--most", type=int, default=512,
@@ -337,7 +341,17 @@ def main() -> int:
     where = pathlib.Path(asked.into) / asked.name
     where.mkdir(parents=True, exist_ok=True)
 
-    height, step = read_patch(asked.raster, tuple(asked.centre), asked.across, asked.most)
+    if asked.build:
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+        import fringing
+        height, morphology = fringing.build(asked.across, asked.most, asked.seed)
+        step, surveyed = 1, False
+    elif asked.raster:
+        height, step = read_patch(asked.raster, tuple(asked.centre or (0, 0)),
+                                  asked.across, asked.most)
+        morphology, surveyed = None, True
+    else:
+        raise SystemExit("give it a --raster to cut from, or a --build to construct")
 
     textured = False
     if asked.texture:
@@ -357,9 +371,20 @@ def main() -> int:
 
     site = {
         "name": asked.name,
+        # Where this ground came from, and whether anybody measured it.
+        #
+        # The same distinction this platform already makes about water:
+        # observed conditions name the instant they were measured and
+        # constructed ones may not, because saying when would claim a
+        # provenance they lack. It applies exactly as much to the ground, and a
+        # result from a constructed seabed is a real result about a place that
+        # was never surveyed.
         "from": {
-            "raster": pathlib.Path(asked.raster).name,
-            "centre": {"latitude": asked.centre[0], "longitude": asked.centre[1]},
+            "surveyed": surveyed,
+            **({"raster": pathlib.Path(asked.raster).name} if surveyed else {}),
+            **({"constructed": morphology} if morphology else {}),
+            **({"centre": {"latitude": asked.centre[0],
+                           "longitude": asked.centre[1]}} if asked.centre else {}),
             "acrossMetres": asked.across,
             "sampleMetres": round(asked.across / max(1, height.shape[0] - 1), 2),
             "decimatedBy": step,
@@ -381,7 +406,8 @@ def main() -> int:
     }
     (where / "site.json").write_text(json.dumps(site, indent=2) + "\n")
 
-    print(f"  {asked.name}")
+    print(f"  {asked.name}"
+          f"{'' if surveyed else '  (terrain constructed, not surveyed)'}")
     print(f"    {asked.across:.0f} m across at {site['from']['sampleMetres']} m samples")
     print(f"    {made['points']:,} points, {made['triangles']:,} triangles")
     print(f"    depth {site['shallowestM']} to {site['deepestM']} m, "
