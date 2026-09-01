@@ -30,7 +30,11 @@ ATTENUATION_METRES = (4.0, 17.0, 26.0)
 # What colour the water itself glows, from everything scattering light back.
 # Not the same as what it absorbs: the sea is blue-green because that is what is
 # left, and it is bright because the whole volume is scattering.
-SCATTER = (0.015, 0.14, 0.30)
+#
+# Deeper and more saturated than the first version. A photograph of this reef
+# has warm coral against a strong blue; a paler scatter colour gives the same
+# geometry against a grey-cyan wash, and the coral picks the wash up too.
+SCATTER = (0.012, 0.10, 0.31)
 
 
 def is_it_deep(depth: float) -> float:
@@ -65,7 +69,11 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     settings.set("/rtx/post/histogram/enabled", False)
     settings.set("/rtx/post/tonemap/op", 1)
     settings.set("/rtx/post/tonemap/cameraShutter", 1.0 / 60.0)
-    settings.set("/rtx/post/tonemap/fNumber", 4.0)
+    # A stop and a half down from where this started. Measured off an exposure
+    # ladder — the same reef at f/4, f/5.6, f/8 and f/11 in one run — where f/4
+    # came out at 0.59 mean on the reef and f/5.6 at 0.43, which is where a
+    # sunlit bottom in ten metres of water belongs.
+    settings.set("/rtx/post/tonemap/fNumber", 5.6)
     settings.set("/rtx/post/tonemap/iso", 200.0)
 
     # ── the water ────────────────────────────────────────────────────────────
@@ -75,17 +83,23 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # that absorbs and scatters over distance.
     settings.set("/rtx/fog/enabled", True)
     settings.set("/rtx/fog/fogColor", list(SCATTER))
-    settings.set("/rtx/fog/fogColorIntensity", 1.35)
+    # The fog is added to everything the camera sees, so its strength is how
+    # much of the picture is water rather than reef. At 1.35, with fifteen
+    # metres of visibility and three metres of it starting at the lens, four
+    # fifths of a close-up colony was water — the reef came out the colour of
+    # marzipan and no exposure fixed it, because darkening the picture darkens
+    # the wash by exactly as much.
+    settings.set("/rtx/fog/fogColorIntensity", 0.95)
     # Visibility, near enough. Twenty metres is a good day on a reef; a diver
     # calls thirty exceptional and five a bad one.
-    settings.set("/rtx/fog/fogDistance", 15.0)
+    settings.set("/rtx/fog/fogDistance", 30.0)
     settings.set("/rtx/fog/fogDensity", 1.0)
     settings.set("/rtx/fog/fogHeightDensity", 1.0)
     # Fog that begins at the lens greys out the thing you came to look at.
     # Water does haze at half a metre, but not enough to matter, and starting
     # further out keeps the colour of what is close while still burying the
     # distance.
-    settings.set("/rtx/fog/fogStartDistance", 3.0)
+    settings.set("/rtx/fog/fogStartDistance", 8.0)
 
     # ── the sun ──────────────────────────────────────────────────────────────
     #
@@ -225,8 +239,12 @@ def light_for(stage, depth: float) -> None:
     from pxr import UsdLux
 
     left = is_it_deep(max(0.0, depth))
-    for path, base in (("/World/Sun", 1500.0), ("/World/Water", 260.0),
-                       ("/World/Caustics", 5200.0)):
+    # The sun is the key light and everything else is fill. The first balance
+    # had the caustics three and a half times the sun and a dome bright enough
+    # to fill every shadow, which is a scene with no direction in it — and a
+    # reef with no shadows on it has no shape.
+    for path, base in (("/World/Sun", 1500.0), ("/World/Water", 150.0),
+                       ("/World/Caustics", 1600.0)):
         prim = stage.GetPrimAtPath(path)
         if prim:
             attribute = prim.GetAttribute("inputs:intensity")
