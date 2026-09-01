@@ -119,18 +119,32 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     left = is_it_deep(max(0.0, working_depth))
     sun.CreateIntensityAttr(1500.0 * left)
     sun.CreateAngleAttr(2.0)
-    sun.CreateColorAttr(Gf.Vec3f(0.86, 0.96, 0.98))
+    # White balanced, the way every camera that has ever been pointed at a reef
+    # is white balanced.
+    #
+    # The light that reaches ten metres really is blue-green, and lighting the
+    # reef with it really does render a mustard coral blue-green: the first
+    # version did exactly that, correctly, and the reef came out the colour of
+    # nothing on earth. Every photograph of a reef in existence — including the
+    # ones this is being built from — was either strobed or white balanced,
+    # because otherwise there is no picture. So the key light carries the water's
+    # dimness but not its cast, the distance stays blue because the fog is still
+    # blue, and a yellow coral in front of the camera comes out yellow.
+    sun.CreateColorAttr(Gf.Vec3f(1.0, 0.98, 0.94))
     UsdGeom.Xformable(sun.GetPrim()).AddRotateXYZOp().Set(Gf.Vec3f(-52.0, 0.0, 18.0))
 
     # Everything the water scatters back, which is what stops the shadows being
     # black. Underwater there is no such thing as an unlit surface: the medium
     # itself glows in every direction.
     sky = UsdLux.DomeLight.Define(stage, "/World/Water")
-    sky.CreateIntensityAttr(260.0 * left)
-    # Strongly coloured, not a neutral fill. Everything not in direct sun is
-    # lit by water, and water is blue-green: a grey ambient makes a reef look
-    # like a quarry with a blue filter over it.
-    sky.CreateColorAttr(Gf.Vec3f(0.05, 0.38, 0.72))
+    sky.CreateIntensityAttr(150.0 * left)
+    # Coloured, but not so coloured that it becomes the illuminant. This was
+    # (0.05, 0.38, 0.72) — almost pure blue — and at that saturation it was not
+    # a fill light, it was the light: everything not in direct sun was rendered
+    # in blue, and since most of a reef is not in direct sun, the reef was blue.
+    # Measured, the brightest coral in the frame came out (0.14, 0.17, 0.18)
+    # against a mustard albedo of (0.72, 0.58, 0.22).
+    sky.CreateColorAttr(Gf.Vec3f(0.52, 0.68, 0.84))
 
     # ── the surface, from below ──────────────────────────────────────────────
     #
@@ -178,7 +192,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     caustics.CreateWidthAttr(90.0)
     caustics.CreateHeightAttr(90.0)
     caustics.CreateIntensityAttr(5200.0 * left)
-    caustics.CreateColorAttr(Gf.Vec3f(0.72, 0.94, 1.0))
+    caustics.CreateColorAttr(Gf.Vec3f(1.0, 0.97, 0.90))
     caustics.CreateNormalizeAttr(False)
     caustics.GetPrim().CreateAttribute(
         "inputs:texture:file", Sdf.ValueTypeNames.Asset).Set("/isaac-sim/coral/caustics.png")
