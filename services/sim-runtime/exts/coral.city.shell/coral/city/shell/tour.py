@@ -42,7 +42,10 @@ AS_DIVED = "as a dive sees it"
 #
 # Heights are metres above the water, so they are positive going up and the
 # seabed is somewhere below zero.
-SECONDS = 26.0
+# A fifth of the flight is spent out of the water, which is enough to read the
+# layout and no more. The rest is in it, because the water is the thing being
+# built and a video that is mostly a map is a video of the wrong subject.
+SECONDS = 30.0
 FRAMES_A_SECOND = 24
 
 
@@ -62,11 +65,11 @@ def where_to_look(at: float, across: float, reef_depth: float):
     """
     span = across / 2
 
-    if at < 0.24:
+    if at < 0.14:
         # The plan view: the whole site at once, turning slowly so the relief
         # reads. This is the view that shows where the coral is, which is the
         # one thing a frame taken from the seabed can never show.
-        t = at / 0.24
+        t = at / 0.14
         height = _lerp(across * 0.72, across * 0.52, t)
         turn = _lerp(-0.30, 0.30, t)
         eye = (math.sin(turn) * span * 0.30, math.cos(turn) * span * 0.30 - span * 0.30,
@@ -74,20 +77,20 @@ def where_to_look(at: float, across: float, reef_depth: float):
         target = (0.0, 0.0, -reef_depth)
         sees = PLAN
 
-    elif at < 0.42:
+    elif at < 0.30:
         # Down through the surface and onto the reef, still cleared, so the
         # slope and the spur-and-groove stay readable the whole way in.
-        t = (at - 0.24) / 0.18
+        t = (at - 0.14) / 0.16
         eye = (_lerp(span * 0.09, -span * 0.26, t),
                _lerp(-span * 0.21, -span * 0.30, t),
                _lerp(across * 0.52, -reef_depth + 26.0, t ** 1.7))
         target = (_lerp(0.0, -span * 0.10, t), _lerp(0.0, -span * 0.06, t), -reef_depth)
-        sees = PLAN if t < 0.62 else CLEARED
+        sees = PLAN if t < 0.45 else CLEARED
 
-    elif at < 0.78:
+    elif at < 0.72:
         # Across the reef at the height a survey flies, in the vehicle's own
         # water. Everything from here is what a dive will look like.
-        t = (at - 0.42) / 0.36
+        t = (at - 0.30) / 0.42
         eye = (_lerp(-span * 0.26, span * 0.24, t),
                _lerp(-span * 0.30, span * 0.16, t),
                _lerp(-reef_depth + 26.0, -reef_depth + 9.0, t))
@@ -98,7 +101,7 @@ def where_to_look(at: float, across: float, reef_depth: float):
 
     else:
         # And low through it, where the coral is taller than the vehicle.
-        t = (at - 0.78) / 0.22
+        t = (at - 0.72) / 0.28
         eye = (_lerp(span * 0.24, span * 0.02, t),
                _lerp(span * 0.16, -span * 0.04, t),
                _lerp(-reef_depth + 9.0, -reef_depth + 2.6, t))
