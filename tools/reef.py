@@ -158,19 +158,31 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
             breadth = float(np.ptp(points[:, 1]))
             kind = kinds[i // variants]
             footprint[i] = np.pi * (width / 2) * (breadth / 2) * solidity[kind]
-    covered = float((footprint[which] * scale ** 2).sum())
+    # Cover measured where the colonies actually are, square metre by square
+    # metre.
+    #
+    # A single number over "the reef" is not a measurement, because it depends
+    # entirely on how generously the reef is defined — a loose threshold makes a
+    # dense reef look thin and a tight one saturates at a hundred per cent
+    # whatever the count is. Both happened. What a diver means by cover is
+    # local: stand somewhere on the reef, look down, and see how much of the
+    # ground is coral.
+    covered_by = footprint[which] * scale ** 2
+    metres = np.floor_divide(
+        np.stack([x + across / 2, y + across / 2], axis=-1), 1.0).astype(int)
+    metres = np.clip(metres, 0, int(across) - 1)
+    per_metre = np.zeros((int(across), int(across)))
+    np.add.at(per_metre, (metres[:, 1], metres[:, 0]), covered_by)
 
-    # Over the ground coral actually grows on, not everywhere it might. A
-    # threshold low enough to include the whole site says the reef is thin
-    # when what is thin is the definition.
-    reefy = float((want > want.max() * 0.35).sum())
-    cell = (across / max(1, columns - 1)) * (across / max(1, rows - 1))
-    where_coral_is = max(1.0, reefy * cell)
+    lived_in = per_metre[per_metre > 0.02]
+    cover = float(np.clip(np.median(lived_in), 0, 1)) if lived_in.size else 0.0
+    thick = float((per_metre > 0.45).sum())
 
     return {"colonies": int(how_many), "prototypes": len(prototypes),
             "points": int(sum(len(p) for p, _ in prototypes)),
-            "coverOfReef": round(min(1.0, covered / where_coral_is), 3),
-            "reefAreaM2": int(where_coral_is)}
+            "coverWhereItGrows": round(cover, 3),
+            "reefAreaM2": int(lived_in.size),
+            "denseAreaM2": int(thick)}
 
 
 def _smooth_normals(points, faces):
