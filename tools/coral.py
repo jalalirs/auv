@@ -74,6 +74,9 @@ PALETTE = {
     "rust":       (0.74, 0.34, 0.14),
     "purple":     (0.44, 0.27, 0.46),
     "red":        (0.54, 0.24, 0.18),
+    "gorgonian":  (0.62, 0.47, 0.24),
+    "sponge red": (0.66, 0.22, 0.14),
+    "lavender":   (0.56, 0.52, 0.68),
 }
 
 # And which of them, by what the colony is. Colour is not spread evenly across a
@@ -92,8 +95,12 @@ BY_KIND = {
                    "brown": 2, "grey green": 1},
     "table":      {"tan": 4, "ochre": 3, "mustard": 3, "brown": 2,
                    "olive": 2, "chalk": 1},
-    "fan":        {"tan": 5, "purple": 4, "olive": 3, "brown": 3,
-                   "dark brown": 2, "pale gold": 1},
+    "fan":        {"gorgonian": 5, "tan": 4, "purple": 3, "olive": 3,
+                   "brown": 3, "dark brown": 2, "lavender": 1},
+    "plume":      {"gorgonian": 5, "olive": 4, "tan": 3, "mustard": 3,
+                   "brown": 3, "dark brown": 2, "grey green": 1},
+    "sponge":     {"sponge red": 4, "rust": 4, "red": 3, "purple": 2,
+                   "brown": 2, "lavender": 2, "chalk": 1},
     "encrusting": {"brown": 4, "dark brown": 3, "olive": 3, "grey green": 3,
                    "red": 2, "rust": 2, "mustard": 1},
     "rubble":     {"dark brown": 4, "brown": 4, "grey green": 3, "olive": 3,
@@ -327,29 +334,124 @@ def table(rng, height=0.5):
     return _join([stem, (points, np.array(faces, dtype=int))])
 
 
-def fan(rng, height=0.9):
-    """A sea fan: branching in a plane, because it feeds on the current."""
+def fan(rng, height=1.0):
+    """A sea fan.
+
+    Gorgonia, and the thing that makes a Caribbean reef photograph the way it
+    does: a broad net held up across the current, a metre or more of it,
+    standing vertically off ground that is otherwise all domes. Half of what is
+    in a photograph of this reef is gorgonian, and the first version of this
+    grew a twig — five levels of thin branch that rendered as a purple stick.
+
+    Built as a dense dichotomous net in one plane, because that is what it is.
+    Close up a sea fan is visibly a mesh; at ten metres the mesh reads as a
+    sheet, and both come out of the same geometry.
+    """
     pieces = []
-    thickness = height * 0.018
+    thickness = height * 0.011
+    lean = rng.uniform(-0.12, 0.12)      # fans are not perfectly flat
 
     def grow(base, direction, length, radius, depth):
-        if depth > 5 or length < 0.015:
+        if depth > 8 or length < 0.012:
             return
-        direction = direction + np.array([rng.normal(0, 0.05), 0.0, 0.16])
+        # Fans splay outward as they rise and the tips crowd together, which is
+        # what gives one its outline. Growing straight up gives a bush.
+        direction = direction + np.array([rng.normal(0, 0.04), lean * 0.1, 0.10])
         direction /= np.linalg.norm(direction)
         tip = base + direction * length
-        pieces.append(_cylinder(base, tip, radius, radius * 0.8, sides=4))
+        pieces.append(_cylinder(base, tip, radius, radius * 0.86, sides=4))
+        spreading = math.radians(rng.uniform(16, 30) * (1.0 + 0.5 / (depth + 1)))
         for turn in (-1, 1):
-            spread = math.radians(rng.uniform(22, 40)) * turn
+            spread = spreading * turn
             child = np.array([
                 direction[0] * math.cos(spread) - direction[2] * math.sin(spread),
-                direction[1] * 0.25,
+                direction[1] * 0.12,
                 direction[0] * math.sin(spread) + direction[2] * math.cos(spread)])
             child /= np.linalg.norm(child)
-            grow(tip, child, length * rng.uniform(0.68, 0.84),
-                 radius * 0.82, depth + 1)
+            grow(tip, child, length * rng.uniform(0.78, 0.90),
+                 radius * 0.90, depth + 1)
 
-    grow(np.zeros(3), np.array([0.0, 0.0, 1.0]), height * 0.3, thickness, 0)
+    # A short bare stalk, then the net.
+    stalk = height * 0.16
+    pieces.append(_cylinder(np.zeros(3), np.array([0.0, 0.0, stalk]),
+                            thickness * 2.4, thickness * 1.6, sides=6))
+    grow(np.array([0.0, 0.0, stalk]), np.array([0.0, 0.0, 1.0]),
+         height * 0.24, thickness, 0)
+    return _join(pieces)
+
+
+def plume(rng, height=0.9):
+    """A sea plume, or a sea rod.
+
+    The other half of the gorgonians: not a net but a bundle of tall whips, each
+    one furred with short side branchlets, leaning together. They stand as high
+    as a sea fan and read as feathery rather than flat, and a reef with fans but
+    no plumes looks like a reef where somebody has been tidying.
+    """
+    pieces = []
+    stems = int(rng.integers(3, 7))
+    thickness = height * 0.016
+
+    for _ in range(stems):
+        # Each whip leaves the holdfast at its own angle and curves upright.
+        away = rng.uniform(0, 2 * math.pi)
+        lean = rng.uniform(0.10, 0.34)
+        at = np.array([math.cos(away) * height * 0.04,
+                       math.sin(away) * height * 0.04, 0.0])
+        direction = np.array([math.cos(away) * lean, math.sin(away) * lean, 1.0])
+        direction /= np.linalg.norm(direction)
+        length = height * rng.uniform(0.75, 1.0)
+        steps = 7
+        for step in range(steps):
+            piece = length / steps
+            tip = at + direction * piece
+            wide = thickness * (1.0 - 0.6 * step / steps)
+            pieces.append(_cylinder(at, tip, wide, wide * 0.9, sides=4))
+            # The fur: short branchlets, alternating sides, all raked upward.
+            if step > 0:
+                for side in (-1, 1):
+                    across = np.cross(direction, np.array([0.0, 0.0, 1.0]))
+                    length_of = np.linalg.norm(across)
+                    if length_of < 1e-6:
+                        continue
+                    across /= length_of
+                    out = across * side + direction * 1.1
+                    out /= np.linalg.norm(out)
+                    pieces.append(_cylinder(
+                        tip, tip + out * height * rng.uniform(0.05, 0.10),
+                        wide * 0.55, wide * 0.2, sides=3))
+            at = tip
+            direction = direction + np.array([0.0, 0.0, 0.16])
+            direction /= np.linalg.norm(direction)
+    return _join(pieces)
+
+
+def sponge(rng, height=0.6):
+    """A barrel or tube sponge.
+
+    Not a coral at all, and on this reef there is no telling it from one at
+    twenty metres: a rust-coloured barrel standing where the gorgonians thin
+    out. Sponges are most of the colour in a Caribbean photograph that is not
+    gorgonian.
+    """
+    pieces = []
+    tubes = int(rng.integers(1, 4))
+    for _ in range(tubes):
+        away = rng.uniform(0, 2 * math.pi)
+        at = np.array([math.cos(away) * height * 0.22,
+                       math.sin(away) * height * 0.22, 0.0])
+        tall = height * rng.uniform(0.6, 1.15)
+        wide = height * rng.uniform(0.16, 0.30)
+        lean = np.array([rng.normal(0, 0.10), rng.normal(0, 0.10), 1.0])
+        lean /= np.linalg.norm(lean)
+        # Waisted: narrow at the holdfast, widest two thirds up, and a rim.
+        rings = 4
+        for r in range(rings):
+            low, high = r / rings, (r + 1) / rings
+            fatten = lambda t: wide * (0.62 + 0.55 * math.sin(math.pi * t ** 0.8))
+            pieces.append(_cylinder(at + lean * tall * low,
+                                    at + lean * tall * high,
+                                    fatten(low), fatten(high), sides=10))
     return _join(pieces)
 
 
@@ -394,8 +496,8 @@ def encrusting(rng, height=0.25):
 
 
 GROWERS = {"branching": branching, "massive": massive, "table": table,
-           "brain": brain, "fan": fan, "finger": finger,
-           "rubble": rubble, "encrusting": encrusting}
+           "brain": brain, "fan": fan, "plume": plume, "sponge": sponge,
+           "finger": finger, "rubble": rubble, "encrusting": encrusting}
 
 
 def grow_one(kind: str, rng, size: float):
@@ -407,7 +509,8 @@ def grow_one(kind: str, rng, size: float):
     # Roughened by however much that kind is rough. A boulder coral is knobbly;
     # a table's plate is nearly flat and only its edge is ragged.
     by = {"massive": 0.055, "brain": 0.030, "table": 0.020,
-          "branching": 0.014, "finger": 0.022, "fan": 0.008,
+          "branching": 0.014, "finger": 0.022, "fan": 0.006,
+          "plume": 0.006, "sponge": 0.045,
           "rubble": 0.070, "encrusting": 0.030}[kind] * size
     points = roughen(points, by, rng, scale=2.0 + 6.0 / max(size, 0.2))
     # Every colony is turned, so a field of them has no grain.

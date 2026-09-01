@@ -50,8 +50,12 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # extent is mostly gaps — you can see the sand through it — and counting its
     # bounding ellipse as covered ground overstates a staghorn thicket by about
     # three times. A boulder is nearly all boulder.
-    solidity = {"branching": 0.32, "fan": 0.18, "finger": 0.55, "massive": 0.88,
-                "brain": 0.90, "table": 0.80, "rubble": 0.62, "encrusting": 0.75}
+    # A gorgonian is nearly all hole — you can see the reef through a sea fan,
+    # and counting its outline as covered ground would say a field of them was
+    # a pavement.
+    solidity = {"branching": 0.32, "fan": 0.14, "plume": 0.20, "sponge": 0.80,
+                "finger": 0.55, "massive": 0.88, "brain": 0.90, "table": 0.80,
+                "rubble": 0.62, "encrusting": 0.75}
 
     # Colonies the size colonies are, against a vehicle 0.46 m long. On a
     # Caribbean fore reef most of what you swim past is between a fist and a
@@ -63,14 +67,18 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # true number and it is not a number this pipeline can write to a text USD.
     # Colonies at their real size need about a third as many.
     sizes = {"branching": 0.95, "massive": 0.70, "table": 0.55,
-             "brain": 0.62, "fan": 0.80, "finger": 0.60,
-             "rubble": 0.30, "encrusting": 0.34}
+             "brain": 0.62, "finger": 0.60, "rubble": 0.30,
+             "encrusting": 0.34,
+             # The gorgonians stand as tall as anything on the reef and are
+             # most of its silhouette. A sea fan at eighty centimetres is a
+             # seedling; a metre and a bit is an ordinary one.
+             "fan": 1.15, "plume": 0.95, "sponge": 0.60}
     # A table two metres across is a table; the same multiplier on a plate that
     # is already three metres wide gives a seven metre sheet, and a handful of
     # those fill the view and read as scenery flats.
     per_kind = {"branching": 1.0, "rubble": 1.0, "encrusting": 0.36,
                 "finger": 1.0, "massive": 0.9, "table": 0.55,
-                "brain": 0.9, "fan": 1.0}
+                "brain": 0.9, "fan": 0.9, "plume": 0.9, "sponge": 0.9}
 
     kinds = sorted({kind for _, weights, _ in zonation.BANDS for kind in weights})
     variants = 6
@@ -89,7 +97,10 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
             footprint[i] = (np.pi * (width / 2) * (breadth / 2)
                             * solidity[kinds[i // variants]])
 
-    widths = np.array([max(1e-3, float(np.ptp(points[:, 0])))
+    # Capped on how tall it stands, not how wide it is. A sea fan is a metre
+    # and a half of height on a thirty centimetre footprint, and capping its
+    # width lets it grow to three metres tall on a reef crest.
+    widths = np.array([max(1e-3, float(np.ptp(points[:, 2])))
                        for points, _ in prototypes])
     kind_scale = np.array([per_kind[k] for k in kinds])
 
