@@ -43,6 +43,19 @@ def _lerp(a, b, t):
     return a + (b - a) * t
 
 
+def _ahead(eye, heading, lead: float):
+    """A point on the bottom, that far in front of the camera.
+
+    Aiming at a fixed landmark makes the camera swing wildly as it passes it,
+    and aiming at the horizon aims through the whole site. Aiming a fixed
+    distance ahead keeps the pitch steady and the subject close.
+    """
+    length = math.hypot(*heading) or 1.0
+    return (eye[0] + heading[0] / length * lead,
+            eye[1] + heading[1] / length * lead,
+            1.0)
+
+
 def where_to_look(at: float, across: float):
     """Where the camera is and what it looks at, this far into the flight.
 
@@ -80,24 +93,24 @@ def where_to_look(at: float, across: float):
 
     if at < 0.62:
         # Across the reef from the crest to the terrace, at the height a survey
-        # flies. Still cleared: fifteen metres of visibility from twelve metres
-        # up is a blue rectangle, and the point of this leg is the layout.
+        # flies — and looking down at it rather than along it. A camera at that
+        # height aimed at the horizon is aimed through four hundred metres of
+        # water, and four hundred metres of any water is a flat wash. What is
+        # wanted is the ground, so the camera looks at the ground.
         t = (at - 0.30) / 0.32
+        up = _lerp(15.0, 11.0, t)
         eye = (_lerp(-span * 0.26, span * 0.24, t),
-               _lerp(-span * 0.30, span * 0.16, t),
-               _lerp(14.0, 11.0, t))
-        target = (_lerp(-span * 0.10, span * 0.46, t),
-                  _lerp(-span * 0.06, span * 0.30, t), 1.0)
+               _lerp(-span * 0.30, span * 0.16, t), up)
+        target = _ahead(eye, (span * 0.50, span * 0.46), up * 1.5)
         return eye, target, CLEARED, "bottom"
 
     # And low through it, in the vehicle's own water, where the coral is taller
     # than the vehicle and fifteen metres is all anybody gets.
     t = (at - 0.62) / 0.38
+    up = _lerp(11.0, 2.6, min(1.0, t * 2.2))
     eye = (_lerp(span * 0.24, -span * 0.06, t),
-           _lerp(span * 0.16, -span * 0.10, t),
-           _lerp(11.0, 2.6, min(1.0, t * 2.2)))
-    target = (_lerp(span * 0.46, -span * 0.28, t),
-              _lerp(span * 0.30, -span * 0.18, t), 1.2)
+           _lerp(span * 0.16, -span * 0.10, t), up)
+    target = _ahead(eye, (-span * 0.30, -span * 0.26), max(9.0, up * 2.4))
     return eye, target, CLEARED if t < 0.18 else AS_DIVED, "bottom"
 
 
