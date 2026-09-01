@@ -7,6 +7,16 @@
 # and used to each have their own copy of it.
 set -euo pipefail
 place="${1:-}"
+
+# A place that has been built but whose package nothing has pulled down yet
+# still exists, in the directory it was built into. Looking there first means a
+# new site can be flown over the moment it is made, rather than only after some
+# run has staged it.
+if [ -n "${place}" ] && [ -f "${HOME}/coral-city/places/${place}/site.json" ]; then
+    printf '%s' "${HOME}/coral-city/places/${place}"
+    exit 0
+fi
+
 best=""
 for d in "${HOME}"/coral-city/work/packages/*/; do
     [ -f "${d}/site.json" ] || continue
