@@ -107,7 +107,7 @@ docker rm -f coral-tour >/dev/null 2>&1 || true
 # Belt and braces. The flight sets a umask that leaves the frames readable, but
 # an older image will have written them private to a user that does not exist
 # out here, and then nothing can encode them.
-docker run --rm -u 0 -v "${here}/frames:/w" --entrypoint chmod "${image}" a+r -R /w/.
+docker run --rm -u 0 -v "${here}/frames:/w" --entrypoint chmod "${image}" -R a+r /w
 
 [ "${how}" = "ladder" ] && { echo "  ${frames} frames in ${here}/frames"; exit 0; }
 
