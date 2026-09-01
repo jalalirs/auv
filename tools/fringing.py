@@ -123,7 +123,10 @@ def build(across: float, samples: int, seed: int = 1,
     # coral, at a depth an ROV actually works at. The middle of a site is only
     # the right answer when the site is uniform, and a reef is the opposite of
     # uniform — its whole point is that the parts are different.
-    begin_x = float((crest_at + slope_to) * 0.45)
+    # Two thirds of the way down the slope, where a reef is at its best and an
+    # ROV has room under it. Near the crest the bottom is a metre or two down,
+    # the light is almost surface light, and there is nowhere to fly.
+    begin_x = float(crest_at + (slope_to - crest_at) * 0.62)
     begin_column = int((begin_x / across + 0.5) * (samples - 1))
     begin_column = max(0, min(samples - 1, begin_column))
 
@@ -140,8 +143,13 @@ def build(across: float, samples: int, seed: int = 1,
         "morphology": "fringing reef: flat, crest, fore-reef slope with "
                       "spur-and-groove, sand terrace, deeper slope",
         "shoreAt": "the -x edge",
-        "beginAt": [round(begin_x, 1), round(begin_y, 1), -round(max(2.0, bottom - 6.0), 1)],
-        "beginBecause": "over a spur on the fore-reef slope, six metres off the bottom",
+        # Four metres off the bottom, and never shallower than six down. The
+        # first version subtracted a fixed six metres from the bottom depth and
+        # clamped, which on a shallow spur put the vehicle two metres under the
+        # surface — in the brightest water on the reef, with nothing beneath it.
+        "beginAt": [round(begin_x, 1), round(begin_y, 1),
+                    -round(max(6.0, bottom - 4.0), 1)],
+        "beginBecause": "over a spur, two thirds down the fore-reef slope",
         "spurSpacingM": wavelength,
         "crestDepthM": round(float(shallowest), 2),
         "terraceDepthM": 24.0,

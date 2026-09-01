@@ -103,7 +103,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # colour of depth and this gives its dimness; without both, a reef at
     # fifteen metres photographs like a sandbar at noon.
     left = is_it_deep(max(0.0, working_depth))
-    sun.CreateIntensityAttr(2600.0 * left)
+    sun.CreateIntensityAttr(1500.0 * left)
     sun.CreateAngleAttr(2.0)
     sun.CreateColorAttr(Gf.Vec3f(0.86, 0.96, 0.98))
     UsdGeom.Xformable(sun.GetPrim()).AddRotateXYZOp().Set(Gf.Vec3f(-52.0, 0.0, 18.0))
@@ -225,7 +225,7 @@ def light_for(stage, depth: float) -> None:
     from pxr import UsdLux
 
     left = is_it_deep(max(0.0, depth))
-    for path, base in (("/World/Sun", 2600.0), ("/World/Water", 260.0),
+    for path, base in (("/World/Sun", 1500.0), ("/World/Water", 260.0),
                        ("/World/Caustics", 5200.0)):
         prim = stage.GetPrimAtPath(path)
         if prim:
