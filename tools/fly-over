@@ -16,6 +16,11 @@
 set -euo pipefail
 
 place="${1:-}"
+# Wait on a flight already in the air, rather than starting one. Opening a
+# place takes minutes, and throwing that away to re-run the part after it is
+# a bad trade.
+collect_only=""
+[ "${place}" = "--collect" ] && { collect_only=1; place=""; }
 CITY="${HOME}/coral-city"
 work="${CITY}/work"
 
@@ -33,6 +38,12 @@ newest_place() {
     printf '%s' "${best}"
 }
 
+if [ -n "${collect_only}" ]; then
+    here="${work}/tour"
+    docker ps --format '{{.Names}}' | grep -q '^coral-tour$' \
+        || { echo "nothing is flying" >&2; exit 1; }
+else
+
 city="$(newest_place)"
 [ -n "${city}" ] || { echo "no published place called '${place:-anything}'" >&2; exit 1; }
 
@@ -45,6 +56,12 @@ done
 image="$(docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' \
     | awk '/sim-runtime/ {print $2; exit}')"
 [ -n "${image}" ] || { echo "the simulator image is not on this machine" >&2; exit 1; }
+
+# How many frames have been written. Its own function because `ls` of an empty
+# directory fails, and a failing command substitution under `set -e` ends the
+# script — which it did, silently, leaving a container flying a path nobody was
+# waiting for.
+so_far() { find "${here}/frames" -name 'frame_*.png' 2>/dev/null | wc -l | tr -d ' '; }
 
 here="${work}/tour"
 rm -rf "${here}"; mkdir -p "${here}/frames"; chmod -R 777 "${here}"
@@ -72,12 +89,13 @@ docker run -d --name coral-tour --gpus '"device=0"' \
     -v "${vehicle}:/dive/vehicle:ro" \
     --entrypoint /isaac-sim/kit/kit \
     "${image}" /isaac-sim/apps/coral_city.kit --no-window >/dev/null
+fi
 
 # Opening a hundred million triangles takes minutes, and the flight itself is
 # under a minute after that.
 for _ in $(seq 1 120); do
     sleep 10
-    frames="$(ls "${here}/frames"/*.png 2>/dev/null | wc -l)"
+    frames="$(so_far)"
     printf '\r  %s frames' "${frames}"
     docker logs coral-tour 2>&1 | grep -q '"event": "tour_done"' && break
     docker logs coral-tour 2>&1 | grep -qE '"event": "(tour_failed|failed)"' && break
@@ -87,7 +105,7 @@ printf '\n'
 docker logs coral-tour 2>&1 | grep -E '"event": "(tour_|place_open|seabed_known|water_made|failed)' \
     | tail -6 | sed 's/^/  /' || true
 
-frames="$(ls "${here}/frames"/*.png 2>/dev/null | wc -l)"
+frames="$(so_far)"
 docker rm -f coral-tour >/dev/null 2>&1 || true
 [ "${frames}" -gt 24 ] || { echo "the flight produced ${frames} frames" >&2; exit 1; }
 
