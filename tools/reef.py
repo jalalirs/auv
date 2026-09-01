@@ -1,13 +1,22 @@
 """Putting coral where coral would be.
 
-Not scattered evenly. Reef-building coral needs light, so it thins with depth
-and stops altogether below about twenty-five metres. It needs something to hold
-to, so it prefers slope and rock over flat sand, but not a cliff. And it grows
-in patches with clearings between them, so an even lawn of it reads as carpet.
+Where each square metre of ground can hold is worked out in zonation.py, from
+light, wave energy and whether the ground is rock or sand. What is here is the
+planting: how many colonies that cover needs, which of them go where, and what
+shape each one is.
+
+Two things changed after the first reef was flown over and looked at from
+above. Colonies used to be drawn from one mix for the whole site, which put
+staghorn thickets on the crest where the waves break them and boulder heads at
+thirty metres where there is no light to build them with; they are now drawn
+from the mix for the depth they landed at. And the count used to be given, with
+the resulting cover discovered afterwards; it is now worked out from the cover
+that is wanted and the size the colonies actually came out, because cover goes
+as count times size squared and nobody estimates that correctly by looking.
 
 Every colony is grown, so no two are the same, and they are placed through a
-point instancer: forty thousand colonies cost what thirty do, because thirty is
-how many distinct ones there are.
+point instancer: a million colonies cost what fifty do, because fifty is how
+many distinct ones there are.
 """
 
 from __future__ import annotations
@@ -18,6 +27,7 @@ import pathlib
 import numpy as np
 
 import coral
+import zonation
 
 
 def plant(where: pathlib.Path, height, across: float, seed: int,
@@ -25,91 +35,44 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     """Grow a reef onto a seabed, and write it beside it."""
     rng = np.random.default_rng(seed)
     rows, columns = height.shape
-
     depth = -height
-    dy, dx = np.gradient(height.astype("float64"),
-                         across / max(1, rows - 1), across / max(1, columns - 1))
-    slope = np.hypot(dx, dy)
 
-    # Light: full to about eight metres, gone by twenty-five.
-    lit = np.clip((25.0 - depth) / 17.0, 0.0, 1.0) ** 1.5
-    lit[depth < 0.8] = 0.0        # too shallow — it dries and gets broken up
-
-    # Something to hold to. A little slope is good; a cliff is not.
-    hold = np.clip(0.45 + slope * 2.6, 0.35, 1.0) * np.clip(1.6 - slope, 0.2, 1.0)
-
-    # Patchiness. Low-frequency noise, smoothed, leaves the clearings a real
-    # reef has instead of covering everything at one density.
-    coarse = rng.random((max(2, rows // 12), max(2, columns // 12)))
-    for _ in range(3):
-        coarse = 0.25 * (np.roll(coarse, 1, 0) + np.roll(coarse, -1, 0)
-                         + np.roll(coarse, 1, 1) + np.roll(coarse, -1, 1))
-    # Resampled by index rather than tiled, because a tiling only lands on the
-    # right shape when the size divides exactly and otherwise fails loudly at
-    # the first multiply.
-    up_rows = (np.arange(rows) * coarse.shape[0] // max(1, rows)).clip(0, coarse.shape[0] - 1)
-    up_columns = (np.arange(columns) * coarse.shape[1] // max(1, columns)).clip(0, coarse.shape[1] - 1)
-    patch = coarse[np.ix_(up_rows, up_columns)]
-    spread = float(patch.max() - patch.min()) or 1.0
-    patch = (patch - patch.min()) / spread
-
-    # Thickets, not a sprinkle. Raising the patch term concentrates colonies
-    # into stands with clear sand between them, which is how a reef is built
-    # and also what makes it read as one: continuous cover somewhere, rather
-    # than uniform scatter everywhere.
-    want = lit * hold * (0.05 + 2.8 * patch ** 2.0)
+    # What kind of ground this is, everywhere.
+    ground = zonation.describe(height, across)
+    want = zonation.cover(ground, rng)
     if want.sum() <= 0:
         return {"colonies": 0}
 
-    # In stands, not sprinkled.
-    #
-    # Coral recruits next to coral: a colony breaks, the fragment lands beside
-    # it and grows, and the reef builds outward from what is already there. So
-    # places are chosen for a thicket and colonies are dropped around each one,
-    # which is what makes cover continuous somewhere instead of thin everywhere.
-    # Big stands, tightly packed. A reef's cover is continuous where it is
-    # present and absent where it is not; the failure mode to avoid is thin
-    # everywhere, which reads as ornaments on a beach.
-    per_stand = 26
-    stands = max(1, how_many // per_stand)
-    flat = (want / want.sum()).ravel()
-    picked = rng.choice(flat.size, size=stands, p=flat)
-    row, column = np.unravel_index(picked, want.shape)
-
     step_x = across / max(1, columns - 1)
     step_y = across / max(1, rows - 1)
-    centre_x = -across / 2 + column * step_x
-    centre_y = -across / 2 + row * step_y
 
-    # Every colony belongs to a stand, and sits within a couple of metres of it.
-    belongs = np.repeat(np.arange(stands), per_stand)[:how_many]
-    if belongs.size < how_many:
-        belongs = np.concatenate([belongs, rng.integers(0, stands, how_many - belongs.size)])
-    spread = rng.normal(0, 0.95, (how_many, 2))
-    x = centre_x[belongs] + spread[:, 0]
-    y = centre_y[belongs] + spread[:, 1]
-    x = np.clip(x, -across / 2, across / 2)
-    y = np.clip(y, -across / 2, across / 2)
+    # How solid each kind is inside its own outline. A branching colony's
+    # extent is mostly gaps — you can see the sand through it — and counting its
+    # bounding ellipse as covered ground overstates a staghorn thicket by about
+    # three times. A boulder is nearly all boulder.
+    solidity = {"branching": 0.32, "fan": 0.18, "finger": 0.55, "massive": 0.88,
+                "brain": 0.90, "table": 0.80, "rubble": 0.62, "encrusting": 0.75}
 
-    # Sat on the seabed under wherever it actually landed, not under the middle
-    # of its stand — a colony two metres away can be half a metre lower.
-    at_column = np.clip(((x + across / 2) / step_x).astype(int), 0, columns - 1)
-    at_row = np.clip(((y + across / 2) / step_y).astype(int), 0, rows - 1)
-    z = height[at_row, at_column] - 0.04   # bedded in, not balanced on top
-    row, column = at_row, at_column
+    # Colonies the size colonies are, against a vehicle 0.46 m long. On a
+    # Caribbean fore reef most of what you swim past is between a fist and a
+    # metre, with old boulder heads a good deal bigger.
+    #
+    # These are larger than the first pass, and deliberately: cover goes as
+    # count times size squared, and a reef of 60% cover built from hand-sized
+    # colonies needs seven million of them over a square kilometre. That is the
+    # true number and it is not a number this pipeline can write to a text USD.
+    # Colonies at their real size need about a third as many.
+    sizes = {"branching": 0.95, "massive": 0.70, "table": 0.55,
+             "brain": 0.62, "fan": 0.80, "finger": 0.60,
+             "rubble": 0.30, "encrusting": 0.34}
+    # A table two metres across is a table; the same multiplier on a plate that
+    # is already three metres wide gives a seven metre sheet, and a handful of
+    # those fill the view and read as scenery flats.
+    per_kind = {"branching": 1.0, "rubble": 1.0, "encrusting": 0.36,
+                "finger": 1.0, "massive": 0.9, "table": 0.55,
+                "brain": 0.9, "fan": 1.0}
 
-    kinds = [k for k, _ in coral.COMMUNITY]
-    weights = np.array([w for _, w in coral.COMMUNITY], dtype=float)
-    weights /= weights.sum()
-
-    # Colonies the size colonies are. The first pass grew them at a third of
-    # this and the reef read as gravel with twigs in it.
-    # Against the vehicle, which is 0.46 m long. A colony the size of a car is
-    # a colony somebody grew for a photograph; on a reef most of what you swim
-    # past is between a fist and a metre, with the occasional old head bigger.
-    sizes = {"branching": 0.62, "massive": 0.42, "table": 0.30,
-             "brain": 0.40, "fan": 0.55, "finger": 0.42,
-             "rubble": 0.22, "encrusting": 0.24}
+    kinds = sorted({kind for _, weights, _ in zonation.BANDS for kind in weights})
     variants = 6
     prototypes, colours = [], []
     for kind in kinds:
@@ -118,48 +81,75 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
                 coral.grow_one(kind, rng, sizes[kind] * rng.uniform(0.7, 1.4)))
             colours.append(coral.a_colour(rng, kind))
 
-    which_kind = rng.choice(len(kinds), size=how_many, p=weights)
-    which = which_kind * variants + rng.integers(0, variants, how_many)
-
-    # Scaled by kind. A table two metres across is a table; the same multiplier
-    # on a plate that is already three metres wide gives a seven metre sheet,
-    # and a handful of those fill the view and read as scenery flats.
-    per_kind = np.array([{"branching": 1.0, "rubble": 1.0, "encrusting": 0.36,
-                          "finger": 1.0, "massive": 0.9, "table": 0.55,
-                          "brain": 0.9, "fan": 1.0}[k] for k in kinds])
-    scale = rng.uniform(0.65, 1.8, how_many) * per_kind[which_kind]
-    # Larger colonies where it is shallower and brighter, which is true, and
-    # also puts the big tables where they will actually be seen.
-    scale = scale * np.clip(1.25 - depth[row, column] / 30.0, 0.5, 1.25)
-    turn = rng.uniform(0, 2 * math.pi, how_many)
-
-    (where / "coral.usda").write_text(
-        _instancer(prototypes, colours, x, y, z, which, scale, turn))
-
-    # How much of the ground this actually covers.
-    #
-    # Measured, because cover goes as count times size squared and that is not
-    # a thing anybody estimates correctly by looking. Halving the size of every
-    # colony takes three quarters of the cover away, and raising the count by a
-    # half does not begin to make it back — which is exactly what happened when
-    # the colonies were scaled down to match the vehicle: the sizes became
-    # right and the reef became sparse in the same change.
-    # How solid each kind is inside its own outline. A branching colony's
-    # extent is mostly gaps — you can see the sand through it — and counting
-    # its bounding ellipse as covered ground overstates a staghorn thicket by
-    # about three times. A boulder is nearly all boulder.
-    solidity = {"branching": 0.32, "fan": 0.18, "finger": 0.55, "massive": 0.88,
-                "brain": 0.90, "table": 0.80, "rubble": 0.62, "encrusting": 0.75}
-
     footprint = np.zeros(len(prototypes))
     for i, (points, _) in enumerate(prototypes):
         if len(points):
             width = float(np.ptp(points[:, 0]))
             breadth = float(np.ptp(points[:, 1]))
-            kind = kinds[i // variants]
-            footprint[i] = np.pi * (width / 2) * (breadth / 2) * solidity[kind]
-    # Cover measured where the colonies actually are, square metre by square
-    # metre.
+            footprint[i] = (np.pi * (width / 2) * (breadth / 2)
+                            * solidity[kinds[i // variants]])
+
+    # How many colonies that cover needs.
+    #
+    # Given rather than guessed. The ground wants a certain number of square
+    # metres covered; a colony covers, on average, a certain number; the count
+    # is the quotient. Asking for a round million instead and finding out
+    # afterwards what cover it produced is how the same reef came out at 48%,
+    # 67% and 99% on three consecutive builds without anybody meaning it to.
+    typical_scale = 1.15 * float(np.mean([per_kind[k] for k in kinds]))
+    each_covers = float(footprint.mean()) * typical_scale ** 2
+    needed = float((want * step_x * step_y).sum()) / max(each_covers, 1e-6)
+    how_many = int(min(how_many, max(1000, needed)))
+
+    # In stands, not sprinkled.
+    #
+    # Coral recruits next to coral: a colony breaks, the fragment lands beside
+    # it and grows, and the reef builds outward from what is already there. So
+    # places are chosen for a thicket and colonies are dropped around each one,
+    # which is what makes cover continuous where it is present rather than thin
+    # everywhere — the failure mode that reads as ornaments on a beach.
+    per_stand = 22
+    stands = max(1, how_many // per_stand)
+    flat = (want / want.sum()).ravel()
+    picked = rng.choice(flat.size, size=stands, p=flat)
+    stand_row, stand_column = np.unravel_index(picked, want.shape)
+    centre_x = -across / 2 + stand_column * step_x
+    centre_y = -across / 2 + stand_row * step_y
+
+    belongs = np.repeat(np.arange(stands), per_stand)[:how_many]
+    if belongs.size < how_many:
+        belongs = np.concatenate(
+            [belongs, rng.integers(0, stands, how_many - belongs.size)])
+    spread = rng.normal(0, 0.95, (how_many, 2))
+    x = np.clip(centre_x[belongs] + spread[:, 0], -across / 2, across / 2)
+    y = np.clip(centre_y[belongs] + spread[:, 1], -across / 2, across / 2)
+
+    # Sat on the seabed under wherever it actually landed, not under the middle
+    # of its stand — a colony two metres away can be half a metre lower.
+    column = np.clip(((x + across / 2) / step_x).astype(int), 0, columns - 1)
+    row = np.clip(((y + across / 2) / step_y).astype(int), 0, rows - 1)
+    z = height[row, column] - 0.04   # bedded in, not balanced on top
+
+    # What shape each one is, decided by the depth it landed at rather than by
+    # one mix for the whole site.
+    at_depth = depth[row, column]
+    kinds, which_kind, cap = zonation.community(at_depth, rng)
+
+    which_kind = rng.choice(len(kinds), size=how_many, p=weights)
+    which = which_kind * variants + rng.integers(0, variants, how_many)
+
+    kind_scale = np.array([per_kind[k] for k in kinds])
+    scale = rng.uniform(0.65, 1.8, how_many) * kind_scale[which_kind]
+    # No bigger than the band allows. A three metre table belongs on the fore
+    # reef and not on a crest that is scoured to the rock every winter.
+    widths = np.array([max(1e-3, float(np.ptp(p[:, 0]))) for p, _ in prototypes])
+    scale = np.minimum(scale, cap / widths[which])
+    turn = rng.uniform(0, 2 * math.pi, how_many)
+
+    (where / "coral.usda").write_text(
+        _instancer(prototypes, colours, x, y, z, which, scale, turn))
+
+    # How much of the ground this actually covers, square metre by square metre.
     #
     # A single number over "the reef" is not a measurement, because it depends
     # entirely on how generously the reef is defined — a loose threshold makes a
@@ -178,7 +168,9 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     cover = float(np.clip(np.median(lived_in), 0, 1)) if lived_in.size else 0.0
     thick = float((per_metre > 0.45).sum())
 
+    asked_for = float(np.average(want, weights=want > 0.02)) if (want > 0.02).any() else 0.0
     return {"colonies": int(how_many), "prototypes": len(prototypes),
+            "coverAskedFor": round(asked_for, 3),
             "points": int(sum(len(p) for p, _ in prototypes)),
             "coverWhereItGrows": round(cover, 3),
             "reefAreaM2": int(lived_in.size),
