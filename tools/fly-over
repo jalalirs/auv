@@ -109,9 +109,10 @@ frames="$(so_far)"
 docker rm -f coral-tour >/dev/null 2>&1 || true
 [ "${frames}" -gt 24 ] || { echo "the flight produced ${frames} frames" >&2; exit 1; }
 
-# Kit writes as the user inside the container, which is not the user out here,
-# and it writes private. Give them back through a container that is that user.
-docker run --rm -v "${here}/frames:/w" --entrypoint chmod "${image}" a+r -R /w/.
+# Belt and braces. The flight sets a umask that leaves the frames readable, but
+# an older image will have written them private to a user that does not exist
+# out here, and then nothing can encode them.
+docker run --rm -u 0 -v "${here}/frames:/w" --entrypoint chmod "${image}" a+r -R /w/.
 
 ffmpeg -y -loglevel error -framerate 24 -pattern_type glob \
     -i "${here}/frames/frame_*.png" \
