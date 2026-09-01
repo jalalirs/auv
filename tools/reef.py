@@ -89,16 +89,34 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
             footprint[i] = (np.pi * (width / 2) * (breadth / 2)
                             * solidity[kinds[i // variants]])
 
+    widths = np.array([max(1e-3, float(np.ptp(points[:, 0])))
+                       for points, _ in prototypes])
+    kind_scale = np.array([per_kind[k] for k in kinds])
+
+    def a_draw(at_depth, rng):
+        """Which prototype each colony is, how big, and what it covers."""
+        _, which_kind, cap = zonation.community(at_depth, rng)
+        which = which_kind * variants + rng.integers(0, variants, len(at_depth))
+        scale = rng.uniform(0.65, 1.8, len(at_depth)) * kind_scale[which_kind]
+        # No bigger than the band allows. A three metre table belongs on the
+        # fore reef, not on a crest scoured to the rock every winter.
+        scale = np.minimum(scale, cap / widths[which])
+        return which, scale, footprint[which] * scale ** 2
+
     # How many colonies that cover needs.
     #
-    # Given rather than guessed. The ground wants a certain number of square
-    # metres covered; a colony covers, on average, a certain number; the count
-    # is the quotient. Asking for a round million instead and finding out
-    # afterwards what cover it produced is how the same reef came out at 48%,
-    # 67% and 99% on three consecutive builds without anybody meaning it to.
-    typical_scale = 1.15 * float(np.mean([per_kind[k] for k in kinds]))
-    each_covers = float(footprint.mean()) * typical_scale ** 2
-    needed = float((want * step_x * step_y).sum()) / max(each_covers, 1e-6)
+    # Measured from a trial draw rather than predicted from average sizes,
+    # because the average is not what gets planted: kinds are drawn per depth
+    # band and then capped, and the two together moved the real figure by a
+    # factor of three. Predicting it is how the same reef came out at 48%, 67%
+    # and 99% cover on three consecutive builds without anybody meaning it to.
+    wanted_area = float((want * step_x * step_y).sum())
+    trial_rows, trial_columns = np.unravel_index(
+        rng.choice(want.size, size=20000, p=(want / want.sum()).ravel()),
+        want.shape)
+    each_covers = float(a_draw(depth[trial_rows, trial_columns],
+                               np.random.default_rng(seed + 1))[2].mean())
+    needed = wanted_area / max(each_covers, 1e-6)
     how_many = int(min(how_many, max(1000, needed)))
 
     # In stands, not sprinkled.
@@ -143,17 +161,8 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
 
     # What shape each one is, decided by the depth it landed at rather than by
     # one mix for the whole site.
-    at_depth = depth[row, column]
-    kinds, which_kind, cap = zonation.community(at_depth, rng)
-
-    which = which_kind * variants + rng.integers(0, variants, how_many)
-
-    kind_scale = np.array([per_kind[k] for k in kinds])
-    scale = rng.uniform(0.65, 1.8, how_many) * kind_scale[which_kind]
-    # No bigger than the band allows. A three metre table belongs on the fore
-    # reef and not on a crest that is scoured to the rock every winter.
-    widths = np.array([max(1e-3, float(np.ptp(p[:, 0]))) for p, _ in prototypes])
-    scale = np.minimum(scale, cap / widths[which])
+    which, scale, covered_by = a_draw(depth[row, column], rng)
+    which_kind = which // variants
     turn = rng.uniform(0, 2 * math.pi, how_many)
 
     (where / "coral.usda").write_text(
@@ -167,7 +176,6 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # whatever the count is. Both happened. What a diver means by cover is
     # local: stand somewhere on the reef, look down, and see how much of the
     # ground is coral.
-    covered_by = footprint[which] * scale ** 2
     metres = np.floor_divide(
         np.stack([x + across / 2, y + across / 2], axis=-1), 1.0).astype(int)
     metres = np.clip(metres, 0, int(across) - 1)
