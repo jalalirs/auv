@@ -135,7 +135,6 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     at_depth = depth[row, column]
     kinds, which_kind, cap = zonation.community(at_depth, rng)
 
-    which_kind = rng.choice(len(kinds), size=how_many, p=weights)
     which = which_kind * variants + rng.integers(0, variants, how_many)
 
     kind_scale = np.array([per_kind[k] for k in kinds])
