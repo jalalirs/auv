@@ -106,6 +106,9 @@ docker logs coral-tour 2>&1 | grep -E '"event": "(tour_|place_open|seabed_known|
     | tail -6 | sed 's/^/  /' || true
 
 frames="$(so_far)"
+# Kept, because the container is removed straight after and everything it said
+# about what it opened and how far it could see goes with it.
+docker logs coral-tour > "${here}/flight.log" 2>&1 || true
 docker rm -f coral-tour >/dev/null 2>&1 || true
 [ "${frames}" -gt 24 ] || { echo "the flight produced ${frames} frames" >&2; exit 1; }
 
