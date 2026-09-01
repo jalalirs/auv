@@ -57,7 +57,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # into stands with clear sand between them, which is how a reef is built
     # and also what makes it read as one: continuous cover somewhere, rather
     # than uniform scatter everywhere.
-    want = lit * hold * (0.02 + 3.2 * patch ** 3.0)
+    want = lit * hold * (0.22 + 2.4 * patch ** 1.6)
     if want.sum() <= 0:
         return {"colonies": 0}
 
@@ -85,7 +85,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     belongs = np.repeat(np.arange(stands), per_stand)[:how_many]
     if belongs.size < how_many:
         belongs = np.concatenate([belongs, rng.integers(0, stands, how_many - belongs.size)])
-    spread = rng.normal(0, 1.15, (how_many, 2))
+    spread = rng.normal(0, 1.6, (how_many, 2))
     x = centre_x[belongs] + spread[:, 0]
     y = centre_y[belongs] + spread[:, 1]
     x = np.clip(x, -across / 2, across / 2)
