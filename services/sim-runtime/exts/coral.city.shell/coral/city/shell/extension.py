@@ -184,10 +184,19 @@ class CoralCityShell(omni.ext.IExt):
             # nothing on the host can open.
             os.umask(0o022)
             self._tour_into.mkdir(parents=True, exist_ok=True)
-            deep = abs(float(dive.position[2]))
-            self.tour = Tour(dive.across_metres(), deep, self._say)
+            # The bottom, sampled the way a dive samples it. The first version
+            # handed over the vehicle's spawn depth as if it were the seabed's,
+            # which put the survey leg twenty metres above the water looking
+            # down at the surface for a third of the video.
+            def floor_at(x, y, dive=dive):
+                if dive.seabed is not None:
+                    return dive.seabed.under(float(x), float(y))
+                return dive.floor
+
+            self.tour = Tour(dive.across_metres(), floor_at, self._say)
             self._say("tour_begins", frames=self.tour.frames,
-                      acrossM=dive.across_metres())
+                      acrossM=dive.across_metres(),
+                      floorAtMiddleM=floor_at(0.0, 0.0))
 
         # Waiting only when somebody is actually coming. The agent knows
         # whether it is about to start an autonomy container, and a dive with
