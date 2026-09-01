@@ -126,14 +126,22 @@ def build(across: float, samples: int, seed: int = 1,
     begin_x = float((crest_at + slope_to) * 0.45)
     begin_column = int((begin_x / across + 0.5) * (samples - 1))
     begin_column = max(0, min(samples - 1, begin_column))
-    bottom = float(depth[samples // 2, begin_column])
+
+    # Over a spur, not in a groove. The grooves are the reef's drainage: bare
+    # sand channels, deliberately clear of coral, and the middle of the site
+    # lands in one about as often as not — which puts the vehicle in the only
+    # empty strip on the whole slope, looking along it.
+    begin_y = wavelength * 0.25
+    begin_row = int((begin_y / across + 0.5) * (samples - 1))
+    begin_row = max(0, min(samples - 1, begin_row))
+    bottom = float(depth[begin_row, begin_column])
 
     return -depth.astype("float32"), {
         "morphology": "fringing reef: flat, crest, fore-reef slope with "
                       "spur-and-groove, sand terrace, deeper slope",
         "shoreAt": "the -x edge",
-        "beginAt": [round(begin_x, 1), 0.0, -round(max(2.0, bottom - 6.0), 1)],
-        "beginBecause": "over the fore-reef slope, six metres off the bottom",
+        "beginAt": [round(begin_x, 1), round(begin_y, 1), -round(max(2.0, bottom - 6.0), 1)],
+        "beginBecause": "over a spur on the fore-reef slope, six metres off the bottom",
         "spurSpacingM": wavelength,
         "crestDepthM": round(float(shallowest), 2),
         "terraceDepthM": 24.0,
