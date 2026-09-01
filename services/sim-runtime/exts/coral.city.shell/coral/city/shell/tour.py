@@ -169,24 +169,35 @@ class Tour:
         self.seeing = sees
         settings = carb.settings.get_settings()
 
-        # The surface is only in the way when looking down at the site from
-        # outside it.
-        surface = stage.GetPrimAtPath("/World/Surface")
-        if surface and surface.IsValid():
-            shown = UsdGeom.Imageable(surface)
-            shown.MakeInvisible() if sees == PLAN else shown.MakeVisible()
+        # Two things are only in the way when looking down at the site from
+        # outside it: the surface, which from above is opaque, and the caustics
+        # light, whose rectangular footprint from seven hundred metres up is a
+        # hard-edged bright panel across a third of the reef.
+        for path in ("/World/Surface", "/World/Caustics"):
+            prim = stage.GetPrimAtPath(path)
+            if prim and prim.IsValid():
+                shown = UsdGeom.Imageable(prim)
+                shown.MakeInvisible() if sees == PLAN else shown.MakeVisible()
 
-        if sees == AS_DIVED:
-            settings.set("/rtx/fog/fogDistance", 15.0)
-            settings.set("/rtx/fog/fogStartDistance", 3.0)
-            settings.set("/rtx/fog/fogColorIntensity", 1.35)
-        else:
-            # Not "no fog": a haze that reaches for hundreds of metres still
-            # reads as water and still puts distance in the picture. What goes
-            # is the fifteen metres.
+        if sees == PLAN:
+            # No haze at all. Seven hundred metres of even a very long fog is
+            # still seven hundred metres of it, and the plan view exists to
+            # show the ground rather than the water over it.
+            settings.set("/rtx/fog/enabled", False)
+        elif sees == CLEARED:
+            settings.set("/rtx/fog/enabled", True)
+            # Not "no fog": a haze reaching for hundreds of metres still reads
+            # as water and still puts distance in the picture. What goes is the
+            # fifteen metres.
             settings.set("/rtx/fog/fogDistance", self._far())
             settings.set("/rtx/fog/fogStartDistance", 40.0)
             settings.set("/rtx/fog/fogColorIntensity", 0.75)
+        else:
+            settings.set("/rtx/fog/enabled", True)
+            settings.set("/rtx/fog/fogDistance", 15.0)
+            settings.set("/rtx/fog/fogStartDistance", 3.0)
+            settings.set("/rtx/fog/fogColorIntensity", 1.35)
+
         self.say("tour_sees", how=sees, atFrame=self.taken)
 
     def place(self, stage, viewport) -> None:
