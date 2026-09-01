@@ -126,7 +126,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # places are chosen for a thicket and colonies are dropped around each one,
     # which is what makes cover continuous where it is present rather than thin
     # everywhere — the failure mode that reads as ornaments on a beach.
-    per_stand = 22
+    per_stand = 8
     stands = max(1, how_many // per_stand)
     flat = (want / want.sum()).ravel()
     picked = rng.choice(flat.size, size=stands, p=flat)
