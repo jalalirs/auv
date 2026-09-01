@@ -178,6 +178,11 @@ class CoralCityShell(omni.ext.IExt):
         self._watch_from(dive)
 
         if self._touring:
+            # Frames are written by whoever Kit runs as inside the container
+            # and read by whoever is encoding them outside it, and those are
+            # not the same user. Default permissions make six hundred files
+            # nothing on the host can open.
+            os.umask(0o022)
             self._tour_into.mkdir(parents=True, exist_ok=True)
             deep = abs(float(dive.position[2]))
             self.tour = Tour(dive.across_metres(), deep, self._say)
