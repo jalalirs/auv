@@ -120,7 +120,18 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     if belongs.size < how_many:
         belongs = np.concatenate(
             [belongs, rng.integers(0, stands, how_many - belongs.size)])
-    spread = rng.normal(0, 0.95, (how_many, 2))
+
+    # How wide a stand is: as wide as its colonies need in order to reach the
+    # cover that ground was asked for, and no wider.
+    #
+    # A fixed couple of metres was fine while colonies were hand-sized and
+    # became nonsense when they were grown to full size — twenty-two colonies a
+    # metre across inside a two metre circle is ten of them in the same place.
+    # It measured as ninety per cent cover over a fifth of the site, which is
+    # both numbers being wrong in opposite directions at once.
+    here = np.clip(want[stand_row, stand_column], 0.04, 0.94)
+    reach = np.sqrt(per_stand * each_covers / (np.pi * here)) * 0.62
+    spread = rng.normal(0, 1.0, (how_many, 2)) * reach[belongs][:, None]
     x = np.clip(centre_x[belongs] + spread[:, 0], -across / 2, across / 2)
     y = np.clip(centre_y[belongs] + spread[:, 1], -across / 2, across / 2)
 
