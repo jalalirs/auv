@@ -27,14 +27,14 @@ import numpy as np
 # sheltered Indo-Pacific fore-reef: mostly branching and massive, tables where
 # there is light and room, and soft corals filling in.
 COMMUNITY = (
-    ("branching", 0.32),   # the signature of a reef, and what you see first
-    ("rubble", 0.18),      # broken coral and stone: the floor of a real one
-    ("encrusting", 0.12),  # sheets over the rock, holding it together
-    ("finger", 0.12),
-    ("massive", 0.10),
-    ("table", 0.07),
-    ("brain", 0.05),
-    ("fan", 0.04),
+    ("branching", 0.34),   # the signature of a reef, and what you see first
+    ("rubble", 0.22),      # broken coral and stone: the floor of a real one
+    ("finger", 0.14),
+    ("massive", 0.11),
+    ("encrusting", 0.07),  # sheets over the rock; too many read as litter
+    ("table", 0.06),
+    ("brain", 0.04),
+    ("fan", 0.02),
 )
 
 # Colours corals actually are. The browns and tans are zooxanthellae, which is
@@ -342,7 +342,7 @@ def rubble(rng, height=0.3):
 
 def encrusting(rng, height=0.25):
     """A sheet growing over the rock. Wide, low, and following what it is on."""
-    radius = height * rng.uniform(3.0, 6.0)
+    radius = height * rng.uniform(2.0, 3.4)
     rows, sides = 3, 14
     points, faces = [], []
     for r in range(rows + 1):
@@ -351,7 +351,7 @@ def encrusting(rng, height=0.25):
             a = 2 * math.pi * s / sides
             lift = height * (1.0 - share ** 2) * rng.uniform(0.85, 1.15)
             rr = radius * share * (1.0 + 0.22 * math.sin(4 * a + rng.uniform(0, 1)))
-            points.append([rr * math.cos(a), rr * math.sin(a), lift * 0.35])
+            points.append([rr * math.cos(a), rr * math.sin(a), lift * 0.22])
     points = np.array(points)
     for r in range(rows):
         base, nxt = r * sides, (r + 1) * sides

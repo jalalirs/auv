@@ -104,9 +104,12 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
 
     # Colonies the size colonies are. The first pass grew them at a third of
     # this and the reef read as gravel with twigs in it.
-    sizes = {"branching": 1.15, "massive": 0.85, "table": 0.55,
-             "brain": 0.75, "fan": 1.10, "finger": 0.80,
-             "rubble": 0.34, "encrusting": 0.30}
+    # Against the vehicle, which is 0.46 m long. A colony the size of a car is
+    # a colony somebody grew for a photograph; on a reef most of what you swim
+    # past is between a fist and a metre, with the occasional old head bigger.
+    sizes = {"branching": 0.62, "massive": 0.42, "table": 0.30,
+             "brain": 0.40, "fan": 0.55, "finger": 0.42,
+             "rubble": 0.22, "encrusting": 0.24}
     variants = 6
     prototypes, colours = [], []
     for kind in kinds:
@@ -121,7 +124,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # Scaled by kind. A table two metres across is a table; the same multiplier
     # on a plate that is already three metres wide gives a seven metre sheet,
     # and a handful of those fill the view and read as scenery flats.
-    per_kind = np.array([{"branching": 1.0, "rubble": 1.0, "encrusting": 0.42,
+    per_kind = np.array([{"branching": 1.0, "rubble": 1.0, "encrusting": 0.36,
                           "finger": 1.0, "massive": 0.9, "table": 0.55,
                           "brain": 0.9, "fan": 1.0}[k] for k in kinds])
     scale = rng.uniform(0.65, 1.8, how_many) * per_kind[which_kind]
