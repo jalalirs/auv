@@ -16,6 +16,8 @@
 set -euo pipefail
 
 place="${1:-}"
+# "path" flies over the place; "ladder" holds still and steps the exposure.
+how="${2:-1}"
 # Wait on a flight already in the air, rather than starting one. Opening a
 # place takes minutes, and throwing that away to re-run the part after it is
 # a bad trade.
@@ -72,7 +74,7 @@ docker run -d --name coral-tour --gpus '"device=0"' \
     -e ROS_LOG_DIR=/tmp/ros \
     -e CORAL_CITY_SEED=1 \
     -e CORAL_CITY_BRIEF=/dive/dive.json \
-    -e CORAL_CITY_TOUR=1 \
+    -e CORAL_CITY_TOUR="${how}" \
     -e CORAL_CITY_TOUR_INTO=/dive/frames \
     -v "${here}:/dive:rw" \
     -v "${city}:/dive/city:ro" \
@@ -100,12 +102,14 @@ frames="$(so_far)"
 # about what it opened and how far it could see goes with it.
 docker logs coral-tour > "${here}/flight.log" 2>&1 || true
 docker rm -f coral-tour >/dev/null 2>&1 || true
-[ "${frames}" -gt 24 ] || { echo "the flight produced ${frames} frames" >&2; exit 1; }
+[ "${frames}" -gt 6 ] || { echo "the flight produced ${frames} frames" >&2; exit 1; }
 
 # Belt and braces. The flight sets a umask that leaves the frames readable, but
 # an older image will have written them private to a user that does not exist
 # out here, and then nothing can encode them.
 docker run --rm -u 0 -v "${here}/frames:/w" --entrypoint chmod "${image}" a+r -R /w/.
+
+[ "${how}" = "ladder" ] && { echo "  ${frames} frames in ${here}/frames"; exit 0; }
 
 ffmpeg -y -loglevel error -framerate 24 -pattern_type glob \
     -i "${here}/frames/frame_*.png" \

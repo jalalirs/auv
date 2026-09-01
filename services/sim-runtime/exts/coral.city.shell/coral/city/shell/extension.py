@@ -28,7 +28,7 @@ import omni.usd
 
 from .controls import Controls
 from .hud import Hud
-from .tour import Tour
+from .tour import Ladder, Tour
 
 # Where the runtime keeps the dive: the physics, the boundary, and the loader
 # the headless runner uses too.
@@ -119,7 +119,8 @@ class CoralCityShell(omni.ext.IExt):
         # place, same water, same light — only the camera differs, and no
         # physics runs at all.
         self.tour = None
-        self._touring = bool(os.environ.get("CORAL_CITY_TOUR"))
+        # "1" flies the path; "ladder" holds still and steps the exposure.
+        self._touring = os.environ.get("CORAL_CITY_TOUR") or ""
         self._tour_into = pathlib.Path(
             os.environ.get("CORAL_CITY_TOUR_INTO", "/dive/tour"))
 
@@ -193,7 +194,9 @@ class CoralCityShell(omni.ext.IExt):
                     return dive.seabed.under(float(x), float(y))
                 return dive.floor
 
-            self.tour = Tour(dive.across_metres(), floor_at, self._say)
+            self.tour = (Ladder(floor_at, self._say)
+                         if self._touring == "ladder"
+                         else Tour(dive.across_metres(), floor_at, self._say))
             self._say("tour_begins", frames=self.tour.frames,
                       acrossM=dive.across_metres(),
                       floorAtMiddleM=floor_at(0.0, 0.0))
@@ -464,7 +467,14 @@ class CoralCityShell(omni.ext.IExt):
             self.tour.place(dive.stage, viewport)
             dive.stir()
 
-            frame = self._tour_into / ("frame_%05d.png" % self.tour.taken)
+            # A rung of the ladder needs a frame or two for the setting to
+            # reach the picture; only the last of them is worth keeping.
+            if hasattr(self.tour, "keep") and not self.tour.keep():
+                self.tour.taken += 1
+                return
+            frame = self._tour_into / (
+                ("%s.png" % self.tour.name()) if hasattr(self.tour, "name")
+                else ("frame_%05d.png" % self.tour.taken))
             self.tour.waiting = True
             capture = capture_viewport_to_file(viewport, str(frame))
             self.tour.taken += 1

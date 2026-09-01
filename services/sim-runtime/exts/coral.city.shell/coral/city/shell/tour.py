@@ -227,3 +227,102 @@ class Tour:
         moving.AddTransformOp().Set(look)
         if str(viewport.camera_path) != camera_path:
             viewport.camera_path = camera_path
+
+
+# ── the exposure ladder ──────────────────────────────────────────────────────
+#
+# Every judgement about how this reef is lit has been one setting, one flight,
+# five minutes, look, guess again. That is a bad loop, and it is why the reef
+# spent a week the colour of marzipan: the palette was brown the whole time and
+# nobody could tell, because checking cost a render.
+#
+# So: hold the camera still and step the exposure instead. One container open,
+# a dozen frames, every one of them the same reef under a different setting,
+# side by side.
+
+# Stops of aperture, and how much of the caustic light to keep. Caustics are a
+# modulation of sunlight and not a second sun, so the question of how strong
+# they should be is asked here alongside the exposure rather than after it.
+APERTURES = (4.0, 5.6, 8.0, 11.0)
+CAUSTICS = (1.0, 0.30, 0.12)
+SETTLE = 3          # frames for a setting to reach the picture
+
+
+class Ladder:
+    """The same view of the same reef, at every exposure worth trying."""
+
+    def __init__(self, floor_at, say) -> None:
+        self.floor_at = floor_at
+        self.say = say
+        self.rungs = [(f, c) for c in CAUSTICS for f in APERTURES]
+        self.frames = len(self.rungs) * SETTLE
+        self.taken = 0
+        self.waiting = False
+        self.tidied = False
+        self.was = {}
+
+    @property
+    def done(self) -> bool:
+        return self.taken >= self.frames
+
+    @property
+    def rung(self):
+        return self.rungs[min(self.taken // SETTLE, len(self.rungs) - 1)]
+
+    def name(self) -> str:
+        aperture, caustic = self.rung
+        return "f%.1f_caustics%.2f" % (aperture, caustic)
+
+    def keep(self) -> bool:
+        """Only the last frame of each rung: the first two are Kit catching up."""
+        return self.taken % SETTLE == SETTLE - 1
+
+    def place(self, stage, viewport) -> None:
+        from pxr import Gf, UsdGeom
+
+        if not self.tidied:
+            import carb
+
+            settings = carb.settings.get_settings()
+            settings.set("/app/viewport/grid/enabled", False)
+            settings.set("/app/viewport/show/axis", False)
+            settings.set("/persistent/app/viewport/displayOptions", 0)
+            for path in ("/World/Sun", "/World/Water", "/World/Caustics"):
+                prim = stage.GetPrimAtPath(path)
+                if prim:
+                    attribute = prim.GetAttribute("inputs:intensity")
+                    if attribute:
+                        self.was[path] = float(attribute.Get() or 0.0)
+            self.tidied = True
+
+        import carb
+
+        aperture, caustic = self.rung
+        settings = carb.settings.get_settings()
+        settings.set("/rtx/post/histogram/enabled", False)
+        settings.set("/rtx/post/tonemap/fNumber", aperture)
+        light = stage.GetPrimAtPath("/World/Caustics")
+        if light and "/World/Caustics" in self.was:
+            attribute = light.GetAttribute("inputs:intensity")
+            if attribute:
+                attribute.Set(self.was["/World/Caustics"] * caustic)
+
+        # A low pass over the reef, standing still. Two and a half metres up
+        # and looking slightly down, which is where a vehicle works and so is
+        # the view the exposure has to be right for.
+        floor = self.floor_at(0.0, 0.0)
+        floor = -20.0 if floor is None else float(floor)
+        eye = (0.0, -14.0, floor + 2.6)
+        target = (0.0, 4.0, floor + 1.2)
+
+        camera_path = "/World/TourCamera"
+        camera = UsdGeom.Camera.Define(stage, camera_path)
+        camera.CreateFocalLengthAttr(18.0)
+        camera.CreateClippingRangeAttr(Gf.Vec2f(0.1, 12000.0))
+        look = Gf.Matrix4d().SetLookAt(
+            Gf.Vec3d(*eye), Gf.Vec3d(*target), Gf.Vec3d(0, 0, 1)).GetInverse()
+        moving = UsdGeom.Xformable(camera.GetPrim())
+        moving.ClearXformOpOrder()
+        moving.AddTransformOp().Set(look)
+        if str(viewport.camera_path) != camera_path:
+            viewport.camera_path = camera_path
