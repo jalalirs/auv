@@ -36,7 +36,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     lit[depth < 0.8] = 0.0        # too shallow — it dries and gets broken up
 
     # Something to hold to. A little slope is good; a cliff is not.
-    hold = np.clip(slope * 3.2, 0.15, 1.0) * np.clip(1.6 - slope, 0.2, 1.0)
+    hold = np.clip(0.45 + slope * 2.6, 0.35, 1.0) * np.clip(1.6 - slope, 0.2, 1.0)
 
     # Patchiness. Low-frequency noise, smoothed, leaves the clearings a real
     # reef has instead of covering everything at one density.

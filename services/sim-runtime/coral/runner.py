@@ -265,6 +265,19 @@ class Dive:
         # particular — and in this tank the origin is at one end.
         asked = (self.brief.get("initialState") or {}).get("positionM")
         if asked is None:
+            # What the place says, if it says anything. The middle of a site is
+            # only the right answer when the site is uniform, and a reef is the
+            # opposite of uniform: its parts are different on purpose, and
+            # starting on the wave-scoured flat looking out at the reef is not
+            # the same dive as starting over the slope in the middle of it.
+            said = self._site_says()
+            if said is not None:
+                self.position = np.array(said[0], dtype=float)
+                self.say("spawned",
+                         at=[round(float(v), 2) for v in self.position],
+                         why=said[1])
+                asked = said[0]
+        if asked is None:
             where, why = self.spawn(corner, far)
             if where is not None:
                 self.position = np.array(where, dtype=float)
@@ -361,6 +374,21 @@ class Dive:
         self.say("vehicle_placed",
                  position=[round(float(x), 3) for x in self.position])
         return True
+
+    def _site_says(self):
+        """Where this place says a dive should begin, if it says."""
+        import json
+
+        try:
+            city = pathlib.Path(self.brief.get("cityPath", "/dive/city"))
+            described = json.loads((city / "site.json").read_text())
+            begin = described.get("beginAt")
+            if begin and len(begin) == 3:
+                return list(begin), described.get(
+                    "beginBecause", "where the place says a dive begins")
+        except Exception:
+            pass
+        return None
 
     def spawn(self, corner, far):
         """The middle of the water, two metres down.
