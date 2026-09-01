@@ -52,41 +52,72 @@ COMMUNITY = (
 # Saturated for the ones that are coloured, because everything down here is lit
 # by blue-green water and seen through more of it, and both wash colour out — a
 # palette that looks right in a swatch comes back pastel.
-PALETTE = (
-    ((0.44, 0.31, 0.16), 0.20),   # dark brown
-    ((0.58, 0.41, 0.20), 0.20),   # brown
-    ((0.70, 0.53, 0.28), 0.16),   # tan
-    ((0.46, 0.46, 0.26), 0.12),   # olive
-    ((0.78, 0.62, 0.30), 0.09),   # gold
-    ((0.80, 0.36, 0.34), 0.06),   # pink
-    ((0.86, 0.62, 0.18), 0.06),   # yellow
-    ((0.52, 0.24, 0.50), 0.05),   # purple
-    ((0.88, 0.44, 0.16), 0.04),   # orange
-    ((0.30, 0.48, 0.52), 0.02),   # blue-grey
-)
+# What a Caribbean fore reef is actually coloured.
+#
+# Taken from photographs of this reef rather than from a general idea of coral.
+# Looe Key is mustard and ochre and olive and tan — the mounding Montastraea and
+# Porites that build it are yellow-brown, the gorgonians standing over them are
+# tan and dusty purple, the dead patches are chalk white, and the accents are
+# rust sponges and the occasional red encrusting sheet. The pinks and mints an
+# aquarium catalogue is full of are Indo-Pacific, and putting them here gave a
+# reef the colour of marzipan.
+PALETTE = {
+    "mustard":    (0.72, 0.58, 0.22),
+    "ochre":      (0.80, 0.62, 0.26),
+    "pale gold":  (0.84, 0.75, 0.46),
+    "tan":        (0.66, 0.52, 0.32),
+    "olive":      (0.42, 0.44, 0.23),
+    "brown":      (0.44, 0.32, 0.17),
+    "dark brown": (0.30, 0.22, 0.12),
+    "grey green": (0.40, 0.47, 0.39),
+    "chalk":      (0.84, 0.82, 0.75),
+    "rust":       (0.74, 0.34, 0.14),
+    "purple":     (0.44, 0.27, 0.46),
+    "red":        (0.54, 0.24, 0.18),
+}
+
+# And which of them, by what the colony is. Colour is not spread evenly across a
+# reef: the mounding heads that build it are yellow-brown almost without
+# exception, the sea fans over them are tan and purple, and the rubble and
+# encrusting sheets between are the colour of old rock. One palette applied
+# uniformly gives purple boulders and mustard sea fans, which is backwards.
+BY_KIND = {
+    "massive":    {"mustard": 5, "ochre": 4, "pale gold": 3, "tan": 3,
+                   "olive": 2, "brown": 2, "chalk": 1},
+    "brain":      {"mustard": 4, "ochre": 3, "pale gold": 3, "tan": 3,
+                   "olive": 2, "grey green": 2, "chalk": 1},
+    "branching":  {"tan": 4, "ochre": 4, "mustard": 3, "brown": 3,
+                   "pale gold": 2, "chalk": 1, "purple": 1},
+    "finger":     {"mustard": 4, "tan": 3, "ochre": 3, "olive": 2,
+                   "brown": 2, "grey green": 1},
+    "table":      {"tan": 4, "ochre": 3, "mustard": 3, "brown": 2,
+                   "olive": 2, "chalk": 1},
+    "fan":        {"tan": 5, "purple": 4, "olive": 3, "brown": 3,
+                   "dark brown": 2, "pale gold": 1},
+    "encrusting": {"brown": 4, "dark brown": 3, "olive": 3, "grey green": 3,
+                   "red": 2, "rust": 2, "mustard": 1},
+    "rubble":     {"dark brown": 4, "brown": 4, "grey green": 3, "olive": 3,
+                   "tan": 2, "chalk": 1},
+}
+_ANY = {"mustard": 4, "ochre": 3, "tan": 3, "olive": 2, "brown": 2,
+        "dark brown": 2, "pale gold": 2, "grey green": 1, "chalk": 1}
 
 
 def a_colour(rng, kind: str | None = None):
-    """One colour, drawn the way a reef is coloured rather than evenly.
+    """One colour, drawn the way this reef is coloured rather than evenly.
 
-    And by species, because colour is not spread evenly across a reef: the
-    pinks and purples anybody photographs are nearly all branching Acropora and
-    Pocillopora tips, while the boulders and the rubble are brown. A palette
-    applied uniformly gives pink boulders and brown staghorn, which is exactly
-    backwards and reads as a toybox.
+    Varied a little on the way out: two colonies of the same species a metre
+    apart are not the same colour to four decimal places, and a reef built from
+    twelve exact hues reads as twelve exact hues however many colonies there are.
     """
-    colours = [c for c, _ in PALETTE]
-    weights = np.array([w for _, w in PALETTE], dtype=float)
-    if kind in ("branching", "table", "fan"):
-        # Shift toward the coloured end for the ones that are coloured.
-        weights = weights * np.array([0.4, 0.5, 0.7, 0.7, 1.0,
-                                      2.6, 2.2, 2.4, 2.0, 1.2])
-    elif kind in ("rubble", "encrusting"):
-        # And hard toward brown for the ones that are the reef's fabric.
-        weights = weights * np.array([2.2, 2.2, 1.8, 1.4, 0.6,
-                                      0.15, 0.2, 0.1, 0.1, 0.3])
-    weights = weights / weights.sum()
-    return colours[int(rng.choice(len(colours), p=weights))]
+    mix = BY_KIND.get(kind or "", _ANY)
+    names = list(mix)
+    weights = np.array([mix[name] for name in names], dtype=float)
+    weights /= weights.sum()
+    base = np.array(PALETTE[names[int(rng.choice(len(names), p=weights))]])
+    # Brightness together, hue a little apart.
+    shifted = base * rng.uniform(0.82, 1.16) + rng.normal(0, 0.022, 3)
+    return tuple(float(v) for v in np.clip(shifted, 0.02, 0.97))
 
 
 def roughen(points, by, rng, scale=2.4):

@@ -244,8 +244,12 @@ class Tour:
 # modulation of sunlight and not a second sun, so the question of how strong
 # they should be is asked here alongside the exposure rather than after it.
 APERTURES = (4.0, 5.6, 8.0, 11.0)
-CAUSTICS = (1.0, 0.30, 0.12)
-SETTLE = 3          # frames for a setting to reach the picture
+CAUSTICS = (1.0, 0.22)
+# Frames to wait before keeping one. Changing a tonemap setting rebuilds the
+# render pipeline, which takes the better part of a minute on a scene this size
+# — so the setting is changed once when the rung changes and never again, and
+# the wait is for the rebuild rather than for the picture to settle.
+SETTLE = 8
 
 
 class Ladder:
@@ -260,6 +264,7 @@ class Ladder:
         self.waiting = False
         self.tidied = False
         self.was = {}
+        self.set_for = None
 
     @property
     def done(self) -> bool:
@@ -295,17 +300,20 @@ class Ladder:
                         self.was[path] = float(attribute.Get() or 0.0)
             self.tidied = True
 
-        import carb
-
         aperture, caustic = self.rung
-        settings = carb.settings.get_settings()
-        settings.set("/rtx/post/histogram/enabled", False)
-        settings.set("/rtx/post/tonemap/fNumber", aperture)
-        light = stage.GetPrimAtPath("/World/Caustics")
-        if light and "/World/Caustics" in self.was:
-            attribute = light.GetAttribute("inputs:intensity")
-            if attribute:
-                attribute.Set(self.was["/World/Caustics"] * caustic)
+        if self.rung != self.set_for:
+            import carb
+
+            self.set_for = self.rung
+            settings = carb.settings.get_settings()
+            settings.set("/rtx/post/histogram/enabled", False)
+            settings.set("/rtx/post/tonemap/fNumber", aperture)
+            light = stage.GetPrimAtPath("/World/Caustics")
+            if light and "/World/Caustics" in self.was:
+                attribute = light.GetAttribute("inputs:intensity")
+                if attribute:
+                    attribute.Set(self.was["/World/Caustics"] * caustic)
+            self.say("ladder_rung", at=self.name(), atFrame=self.taken)
 
         # A low pass over the reef, standing still. Two and a half metres up
         # and looking slightly down, which is where a vehicle works and so is
