@@ -24,6 +24,18 @@ collect_only=""
 CITY="${HOME}/coral-city"
 work="${CITY}/work"
 
+# How many frames have been written. Its own function because `ls` of an empty
+# directory fails, and a failing command substitution under `set -e` ends the
+# script — which it did, silently, leaving a container flying a path nobody was
+# waiting for.
+here="${work}/tour"
+so_far() { find "${here}/frames" -name 'frame_*.png' 2>/dev/null | wc -l | tr -d ' '; }
+
+if [ -n "${collect_only}" ]; then
+    docker ps --format '{{.Names}}' | grep -q '^coral-tour$' \
+        || { echo "nothing is flying" >&2; exit 1; }
+else
+
 city="$("$(dirname "$0")/newest-place" "${place}")"
 [ -n "${city}" ] || { echo "no published place called '${place:-anything}'" >&2; exit 1; }
 
@@ -37,7 +49,6 @@ image="$(docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' \
     | awk '/sim-runtime/ {print $2; exit}')"
 [ -n "${image}" ] || { echo "the simulator image is not on this machine" >&2; exit 1; }
 
-here="${work}/tour"
 rm -rf "${here}"; mkdir -p "${here}/frames"; chmod -R 777 "${here}"
 
 # No autonomy: nothing is flying the vehicle, and a ROS bridge with nobody on
