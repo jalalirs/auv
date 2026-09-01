@@ -28,6 +28,7 @@ import omni.usd
 
 from .controls import Controls
 from .hud import Hud
+from .tour import Tour
 
 # Where the runtime keeps the dive: the physics, the boundary, and the loader
 # the headless runner uses too.
@@ -114,6 +115,13 @@ class CoralCityShell(omni.ext.IExt):
         self._latest_state = {}
         self._alone_since = None
         self._watch_port = int(os.environ.get("CORAL_CITY_WATCH_PORT", "18102"))
+        # Flying over the place to look at it, rather than diving in it. Same
+        # place, same water, same light — only the camera differs, and no
+        # physics runs at all.
+        self.tour = None
+        self._touring = bool(os.environ.get("CORAL_CITY_TOUR"))
+        self._tour_into = pathlib.Path(
+            os.environ.get("CORAL_CITY_TOUR_INTO", "/dive/tour"))
 
         if str(CORAL) not in sys.path:
             sys.path.insert(0, str(CORAL))
@@ -168,6 +176,13 @@ class CoralCityShell(omni.ext.IExt):
             brief.get("vehicleName") or f"{body.model.mass_kg:g} kg, "
                                         f"{len(body.model.thrusters)} thrusters")
         self._watch_from(dive)
+
+        if self._touring:
+            self._tour_into.mkdir(parents=True, exist_ok=True)
+            deep = abs(float(dive.position[2]))
+            self.tour = Tour(dive.across_metres(), deep, self._say)
+            self._say("tour_begins", frames=self.tour.frames,
+                      acrossM=dive.across_metres())
 
         # Waiting only when somebody is actually coming. The agent knows
         # whether it is about to start an autonomy container, and a dive with
@@ -260,6 +275,10 @@ class CoralCityShell(omni.ext.IExt):
     def _frame(self, event) -> None:
         dive = self.dive
         if dive is None or self.finished:
+            return
+
+        if self.tour is not None:
+            self._fly_the_tour(dive)
             return
 
         # Waiting for somebody to take the controls. The vehicle publishes while
@@ -411,6 +430,40 @@ class CoralCityShell(omni.ext.IExt):
                 self._complained = True
                 carb.log_error(f"Coral City could not encode a frame: {exc}")
                 self._say("frames_unavailable", why=str(exc)[:200])
+
+    def _fly_the_tour(self, dive) -> None:
+        """One frame of the flight over, then the next."""
+        if self.tour.waiting:
+            return
+        if self.tour.done:
+            self.finished = True
+            self._say("tour_done", frames=self.tour.taken,
+                      into=str(self._tour_into))
+            return
+
+        try:
+            from omni.kit.viewport.utility import capture_viewport_to_file, get_active_viewport
+
+            viewport = get_active_viewport()
+            if viewport is None:
+                return
+            self.tour.place(dive.stage, viewport)
+            dive.stir()
+
+            frame = self._tour_into / ("frame_%05d.png" % self.tour.taken)
+            self.tour.waiting = True
+            capture = capture_viewport_to_file(viewport, str(frame))
+            self.tour.taken += 1
+            # Kit hands back something awaitable; whether it does or not, the
+            # frame is written by the time the next few updates have gone by.
+            self.tour.waiting = False
+            if self.tour.taken % 48 == 0:
+                self._say("tour_flying", frames=self.tour.taken)
+        except Exception as exc:
+            self.tour.waiting = False
+            carb.log_error(f"Coral City could not fly the tour: {exc}")
+            self._say("tour_failed", why=str(exc)[:200])
+            self.finished = True
 
     def _photograph(self, at: float) -> None:
         """Write out what the dive looks like.

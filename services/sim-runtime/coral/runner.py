@@ -571,6 +571,13 @@ class Dive:
                 if self.velocity[2] > 0.0:
                     self.velocity[2] = 0.0
 
+    def across_metres(self) -> float:
+        """How wide this place is, in metres."""
+        corner, far = self.bounds
+        if corner is None:
+            return 1000.0
+        return max(float(far[0] - corner[0]), float(far[1] - corner[1]))
+
     def stir(self) -> None:
         """Move the water. Still caustics are a painted floor."""
         if self.water is not None:
