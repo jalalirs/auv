@@ -111,7 +111,7 @@ docker rm -f coral-tour >/dev/null 2>&1 || true
 
 # Kit writes as the user inside the container, which is not the user out here,
 # and it writes private. Give them back through a container that is that user.
-docker run --rm -v "${here}:/w" --entrypoint chmod "${image}" -R a+rX /w/frames
+docker run --rm -v "${here}/frames:/w" --entrypoint chmod "${image}" a+r -R /w/.
 
 ffmpeg -y -loglevel error -framerate 24 -pattern_type glob \
     -i "${here}/frames/frame_*.png" \
