@@ -27,6 +27,12 @@ work="${CITY}/work"
 # The newest published version of that place. Packages are content-addressed
 # and a place is published many times over an afternoon, so "red-sea" has to
 # mean the last one and not whichever the shell happens to sort first.
+# How many frames have been written. Its own function because `ls` of an empty
+# directory fails, and a failing command substitution under `set -e` ends the
+# script — which it did, silently, leaving a container flying a path nobody was
+# waiting for.
+so_far() { find "${here}/frames" -name 'frame_*.png' 2>/dev/null | wc -l | tr -d ' '; }
+
 newest_place() {
     local best="" name
     for d in "${work}"/packages/*/; do
@@ -56,12 +62,6 @@ done
 image="$(docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' \
     | awk '/sim-runtime/ {print $2; exit}')"
 [ -n "${image}" ] || { echo "the simulator image is not on this machine" >&2; exit 1; }
-
-# How many frames have been written. Its own function because `ls` of an empty
-# directory fails, and a failing command substitution under `set -e` ends the
-# script — which it did, silently, leaving a container flying a path nobody was
-# waiting for.
-so_far() { find "${here}/frames" -name 'frame_*.png' 2>/dev/null | wc -l | tr -d ' '; }
 
 here="${work}/tour"
 rm -rf "${here}"; mkdir -p "${here}/frames"; chmod -R 777 "${here}"
