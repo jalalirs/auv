@@ -243,23 +243,38 @@ class Tour:
 # Stops of aperture, and how much of the caustic light to keep. Caustics are a
 # modulation of sunlight and not a second sun, so the question of how strong
 # they should be is asked here alongside the exposure rather than after it.
-APERTURES = (4.0, 5.6, 8.0, 11.0)
-CAUSTICS = (1.0, 0.22)
-# Frames to wait before keeping one. Changing a tonemap setting rebuilds the
-# render pipeline, which takes the better part of a minute on a scene this size
-# — so the setting is changed once when the rung changes and never again, and
-# the wait is for the rebuild rather than for the picture to settle.
+# What to try. Each rung is a name and the settings that make it, so the ladder
+# can ask any question rather than only "which aperture" — which was the wrong
+# question the first time it was asked: the reef was not clipping at any
+# aperture, it was being veiled by something additive, and only turning the
+# candidates off one at a time says which.
+#
+# "fog" and "aperture" are read here; anything beginning with a slash is set on
+# carb directly; a light name sets that light's intensity.
+LOOKS = (
+    ("as-is", {}),
+    ("dome-60", {"/World/Water": 60.0}),
+    ("dome-20", {"/World/Water": 20.0}),
+    ("fog-half", {"/rtx/fog/fogColorIntensity": 0.45}),
+    ("fog-off", {"/rtx/fog/enabled": False}),
+    ("dome-20-fog-half", {"/World/Water": 20.0,
+                          "/rtx/fog/fogColorIntensity": 0.45}),
+    ("dome-20-fog-off", {"/World/Water": 20.0, "/rtx/fog/enabled": False}),
+    ("dome-20-sun-2400", {"/World/Water": 20.0, "/World/Sun": 2400.0}),
+)
+# Frames to wait before keeping one. Changing a render setting rebuilds the
+# pipeline, which takes a while on a scene this size — so a setting is applied
+# once when the rung changes and never again, and the wait is for the rebuild.
 SETTLE = 8
 
 
 class Ladder:
-    """The same view of the same reef, at every exposure worth trying."""
+    """The same view of the same reef, under each look worth trying."""
 
     def __init__(self, floor_at, say) -> None:
         self.floor_at = floor_at
         self.say = say
-        self.rungs = [(f, c) for c in CAUSTICS for f in APERTURES]
-        self.frames = len(self.rungs) * SETTLE
+        self.frames = len(LOOKS) * SETTLE
         self.taken = 0
         self.waiting = False
         self.tidied = False
@@ -272,52 +287,71 @@ class Ladder:
 
     @property
     def rung(self):
-        return self.rungs[min(self.taken // SETTLE, len(self.rungs) - 1)]
+        return LOOKS[min(self.taken // SETTLE, len(LOOKS) - 1)]
 
     def name(self) -> str:
-        aperture, caustic = self.rung
-        return "f%.1f_caustics%.2f" % (aperture, caustic)
+        return self.rung[0]
 
     def keep(self) -> bool:
-        """Only the last frame of each rung: the first two are Kit catching up."""
+        """Only the last frame of each rung; the rest are Kit catching up."""
         return self.taken % SETTLE == SETTLE - 1
+
+    def _remember(self, stage) -> None:
+        import carb
+
+        settings = carb.settings.get_settings()
+        for _, changes in LOOKS:
+            for what in changes:
+                if what in self.was:
+                    continue
+                if what.startswith("/rtx") or what.startswith("/app"):
+                    self.was[what] = settings.get(what)
+                else:
+                    prim = stage.GetPrimAtPath(what)
+                    attribute = prim.GetAttribute("inputs:intensity") if prim else None
+                    self.was[what] = float(attribute.Get()) if attribute else None
+        settings.set("/app/viewport/grid/enabled", False)
+        settings.set("/app/viewport/show/axis", False)
+        settings.set("/persistent/app/viewport/displayOptions", 0)
+        self.tidied = True
+
+    def _wear(self, stage) -> None:
+        """Put everything back, then apply this rung."""
+        import carb
+
+        settings = carb.settings.get_settings()
+        for what, before in self.was.items():
+            if what.startswith("/rtx") or what.startswith("/app"):
+                if before is not None:
+                    settings.set(what, before)
+            elif before is not None:
+                prim = stage.GetPrimAtPath(what)
+                attribute = prim.GetAttribute("inputs:intensity") if prim else None
+                if attribute:
+                    attribute.Set(before)
+
+        for what, value in self.rung[1].items():
+            if what.startswith("/rtx") or what.startswith("/app"):
+                settings.set(what, value)
+            else:
+                prim = stage.GetPrimAtPath(what)
+                attribute = prim.GetAttribute("inputs:intensity") if prim else None
+                if attribute:
+                    attribute.Set(float(value))
+        self.say("ladder_rung", at=self.name(), atFrame=self.taken)
 
     def place(self, stage, viewport) -> None:
         from pxr import Gf, UsdGeom
 
         if not self.tidied:
-            import carb
-
-            settings = carb.settings.get_settings()
-            settings.set("/app/viewport/grid/enabled", False)
-            settings.set("/app/viewport/show/axis", False)
-            settings.set("/persistent/app/viewport/displayOptions", 0)
-            for path in ("/World/Sun", "/World/Water", "/World/Caustics"):
-                prim = stage.GetPrimAtPath(path)
-                if prim:
-                    attribute = prim.GetAttribute("inputs:intensity")
-                    if attribute:
-                        self.was[path] = float(attribute.Get() or 0.0)
-            self.tidied = True
-
-        aperture, caustic = self.rung
+            self._remember(stage)
         if self.rung != self.set_for:
-            import carb
-
             self.set_for = self.rung
-            settings = carb.settings.get_settings()
-            settings.set("/rtx/post/histogram/enabled", False)
-            settings.set("/rtx/post/tonemap/fNumber", aperture)
-            light = stage.GetPrimAtPath("/World/Caustics")
-            if light and "/World/Caustics" in self.was:
-                attribute = light.GetAttribute("inputs:intensity")
-                if attribute:
-                    attribute.Set(self.was["/World/Caustics"] * caustic)
-            self.say("ladder_rung", at=self.name(), atFrame=self.taken)
+            self._wear(stage)
 
-        # A low pass over the reef, standing still. Two and a half metres up
-        # and looking slightly down, which is where a vehicle works and so is
-        # the view the exposure has to be right for.
+        # A low pass over the reef, standing still. Two and a half metres up and
+        # looking slightly down, which is where a vehicle works and so is the
+        # view any of this has to be right for.
         floor = self.floor_at(0.0, 0.0)
         floor = -20.0 if floor is None else float(floor)
         eye = (0.0, -14.0, floor + 2.6)
