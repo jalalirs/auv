@@ -190,7 +190,10 @@ class CoralCityShell(omni.ext.IExt):
 
             x, y, z = dive.position
             at = dive.drawn_at((x, y, z))
-            from_ = dive.drawn_at((x - 3.4, y - 3.4, z + 0.9))
+            # Far enough back to see past the vehicle, and high enough not to
+            # be inside the slope. Three metres behind and one up is fine over
+            # a flat tank floor and puts the camera in the reef on a slope.
+            from_ = dive.drawn_at((x - 7.0, y - 7.0, z + 3.2))
             up = Gf.Vec3d(0.0, 1.0, 0.0) if dive.up_axis == "Y" else Gf.Vec3d(0.0, 0.0, 1.0)
             self._aim.Set(Gf.Matrix4d().SetLookAt(from_, at, up).GetInverse())
         except Exception:
@@ -231,7 +234,7 @@ class CoralCityShell(omni.ext.IExt):
             # Kept well under the surface. The first attempt sat twenty
             # centimetres below it, and the underside of the water filled the
             # frame — a convincing picture of nothing.
-            from_ = dive.drawn_at((x - 3.4, y - 3.4, z + 0.9))
+            from_ = dive.drawn_at((x - 7.0, y - 7.0, z + 3.2))
             up = Gf.Vec3d(0.0, 1.0, 0.0) if dive.up_axis == "Y" else Gf.Vec3d(0.0, 0.0, 1.0)
             # Aimed rather than angled. The first attempt set pitch and yaw by
             # hand, which is a guess that happens to be right for one starting

@@ -118,7 +118,13 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     which_kind = rng.choice(len(kinds), size=how_many, p=weights)
     which = which_kind * variants + rng.integers(0, variants, how_many)
 
-    scale = rng.uniform(0.65, 2.1, how_many)
+    # Scaled by kind. A table two metres across is a table; the same multiplier
+    # on a plate that is already three metres wide gives a seven metre sheet,
+    # and a handful of those fill the view and read as scenery flats.
+    per_kind = np.array([{"branching": 1.0, "rubble": 1.0, "encrusting": 0.42,
+                          "finger": 1.0, "massive": 0.9, "table": 0.55,
+                          "brain": 0.9, "fan": 1.0}[k] for k in kinds])
+    scale = rng.uniform(0.65, 1.8, how_many) * per_kind[which_kind]
     # Larger colonies where it is shallower and brighter, which is true, and
     # also puts the big tables where they will actually be seen.
     scale = scale * np.clip(1.25 - depth[row, column] / 30.0, 0.5, 1.25)
