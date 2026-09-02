@@ -204,8 +204,10 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     thick = float((per_metre > 0.45).sum())
 
     asked_for = float(np.average(want, weights=want > 0.02)) if (want > 0.02).any() else 0.0
+    begin = zonation.best_ground(ground, want, across)
     return {"colonies": int(how_many), "prototypes": len(prototypes),
             "coverAskedFor": round(asked_for, 3),
+            "beginAt": begin,
             "points": int(sum(len(p) for p, _ in prototypes)),
             "coverWhereItGrows": round(cover, 3),
             "reefAreaM2": int(lived_in.size),

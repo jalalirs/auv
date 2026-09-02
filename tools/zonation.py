@@ -172,3 +172,44 @@ def community(depths, rng):
     running = np.cumsum(table, axis=1)
     picked = (running[band] < rng.random(len(band))[:, None]).sum(axis=1)
     return kinds, np.clip(picked, 0, len(kinds) - 1), caps[band]
+
+
+def best_ground(ground: dict, cover, across: float,
+                between=(8.0, 18.0), off_bottom: float = 3.0):
+    """Where on this site a dive should begin.
+
+    The middle of a site is the right answer only when the site is uniform, and
+    a reef is the opposite of uniform — its whole point is that the parts are
+    different. On real ground the middle can be, and at Looe Key is, three
+    metres of surf-scoured reef flat.
+
+    So: the best reef inside the depth band a vehicle actually works in, far
+    enough from the edge to fly in any direction, and with room underneath.
+    """
+    depth = ground["depth"]
+    rows, columns = depth.shape
+    step = across / max(1, columns - 1)
+
+    good = np.where((depth >= between[0]) & (depth <= between[1]), cover, 0.0)
+    # Not against the edge: a start point ten metres from the boundary is a
+    # start point with one direction to go.
+    margin = max(2, int(round(0.12 * rows)))
+    edge = np.zeros_like(good)
+    edge[margin:-margin, margin:-margin] = 1.0
+    good = good * edge
+    # Judged over a neighbourhood rather than a cell, so the answer is a good
+    # area and not the single luckiest square metre in a bad one.
+    good = _blur(good, 12.0, step)
+    if good.max() <= 0:
+        return None
+
+    row, column = np.unravel_index(int(good.argmax()), good.shape)
+    x = -across / 2 + column * step
+    y = -across / 2 + row * step
+    floor = float(-depth[row, column])
+    return {
+        "at": [round(float(x), 1), round(float(y), 1),
+               round(floor + off_bottom, 1)],
+        "depthM": round(float(depth[row, column]), 1),
+        "coverThere": round(float(cover[row, column]), 2),
+    }

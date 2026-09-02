@@ -433,6 +433,17 @@ def main() -> int:
         # picking "the first USD that is not obviously water" would load
         # coral.usda as the world, because c sorts before s.
         # Where a dive begins here, when the place has an opinion about it.
+        # Where a dive should begin. A constructed site knows because it was
+        # built to a plan; a surveyed one has to be read off its own ground, and
+        # the reef says where the reef is. Either way the middle of the site is
+        # the wrong answer — at Looe Key the middle is three metres of surf.
+        **({"beginAt": reef["beginAt"]["at"],
+            "beginBecause": "the best reef between eight and eighteen metres, "
+                            "three metres off the bottom (%.0f%% cover at %.0f m)"
+                            % (100 * reef["beginAt"]["coverThere"],
+                               reef["beginAt"]["depthM"])}
+           if reef.get("beginAt") and not (morphology and "beginAt" in morphology)
+           else {}),
         **({"beginAt": morphology["beginAt"],
             "beginBecause": morphology.get("beginBecause", "")}
            if morphology and "beginAt" in morphology else {}),
