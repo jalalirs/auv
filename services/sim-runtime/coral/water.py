@@ -55,6 +55,10 @@ def make(stage, say, floor: float, water_level: float = 0.0,
 
     settings = carb.settings.get_settings()
 
+    # How much daylight is left where this dive is happening. Wanted by both the
+    # lights and the camera, so it is worked out once.
+    left = is_it_deep(max(0.0, working_depth))
+
     # ── the camera ───────────────────────────────────────────────────────────
     #
     # A fixed exposure, because automatic exposure makes a simulator lie. It
@@ -75,7 +79,17 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # changing one without re-reading the other is how a scene ends up dark and
     # correct at the same time.
     settings.set("/rtx/post/tonemap/fNumber", 4.5)
-    settings.set("/rtx/post/tonemap/iso", 200.0)
+    # Exposed for the depth this dive works at, which is what anybody pointing
+    # a camera underwater does before they get in.
+    #
+    # The lights carry the real dimming — half the daylight is gone by twelve
+    # metres — and a fixed exposure on top of that makes the deep reef simply
+    # dark, which is true and is not a photograph. Compensating in the camera
+    # keeps both: the reef is exposed where the vehicle is working, and moving
+    # deeper than that still gets visibly darker, because the lights keep
+    # tracking depth while the exposure stays where it was set.
+    settings.set("/rtx/post/tonemap/iso",
+                 float(min(2000.0, 200.0 / max(left, 0.05))))
 
     # ── the water ────────────────────────────────────────────────────────────
     #
@@ -111,13 +125,9 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # takes most of it. The first attempt used a daylight intensity and produced
     # a seabed that was a black silhouette in green water: correct absorption,
     # nothing left to absorb.
-    # What is left of the sun at the depth this dive happens at.
-    #
     # Full daylight lights the seabed like a beach, because it is the light
     # above the surface and not the light that got down here. The fog gives the
-    # colour of depth and this gives its dimness; without both, a reef at
-    # fifteen metres photographs like a sandbar at noon.
-    left = is_it_deep(max(0.0, working_depth))
+    # colour of depth and this gives its dimness.
     sun.CreateIntensityAttr(1500.0 * left)
     sun.CreateAngleAttr(2.0)
     # White balanced, the way every camera that has ever been pointed at a reef
