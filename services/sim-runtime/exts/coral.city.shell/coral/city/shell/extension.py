@@ -196,7 +196,8 @@ class CoralCityShell(omni.ext.IExt):
 
             self.tour = (Ladder(floor_at, self._say)
                          if self._touring == "ladder"
-                         else Tour(dive.across_metres(), floor_at, self._say))
+                         else Tour(dive.across_metres(), floor_at, self._say,
+                                   begin=dive.position))
             self._say("tour_begins", frames=self.tour.frames,
                       acrossM=dive.across_metres(),
                       floorAtMiddleM=floor_at(0.0, 0.0))

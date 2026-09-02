@@ -56,68 +56,77 @@ def _ahead(eye, heading, lead: float):
             1.0)
 
 
-def where_to_look(at: float, across: float):
+def where_to_look(at: float, across: float, anchor, downhill):
     """Where the camera is and what it looks at, this far into the flight.
 
-    Heights are given as metres above the seabed rather than as depths, because
-    a fringing reef runs from ankle-deep to forty metres across one site and a
-    fixed depth is either buried at one end or in the air at the other. The one
-    exception is the plan view, which is above the water and says so.
+    The path is hung off two facts about the ground rather than off fractions
+    of the site: where the reef is at the depth a vehicle works at, and which
+    way the bottom falls away from there.
 
-    Returns the eye, the target, how far the camera can see, and whether the
-    heights are above the bottom or above the sea.
+    The first version used fractions, which was right for a site built to a
+    plan with its shore on a known edge and wrong for every surveyed one. On
+    Looe Key it flew the reef flat: the survey leg finished in one metre of
+    water and the low pass ended on ground with eighteen per cent cover, while
+    the fore reef the vehicle would actually be deployed on — eight to twenty
+    metres, sixty per cent cover, a third of the site — never appeared.
+
+    Heights are metres above the seabed, except the plan view, which is above
+    the sea and says so.
     """
     span = across / 2
+    ax, ay = anchor
+    dx, dy = downhill
+    # Across the slope, for the legs that run along a contour rather than down.
+    sx, sy = -dy, dx
 
     if at < 0.14:
         # The plan view: the whole site at once, turning slowly so the relief
-        # reads. This is the view that shows where the coral is, which is the
-        # one thing a frame taken from the seabed can never show.
+        # reads. The one view that shows where the reef is, which is the one
+        # thing a frame from the seabed can never show.
         t = at / 0.14
         turn = _lerp(-0.30, 0.30, t)
         eye = (math.sin(turn) * span * 0.30,
                math.cos(turn) * span * 0.30 - span * 0.30,
                _lerp(across * 0.72, across * 0.52, t))
-        target = (0.0, 0.0, 0.0)
-        return eye, target, PLAN, "sea"
+        return eye, (0.0, 0.0, 0.0), PLAN, "sea"
 
     if at < 0.30:
-        # Down through the surface and onto the reef. Cleared for the second
-        # half, so the slope and the spur-and-groove stay readable all the way.
+        # Down through the surface and onto the reef, arriving above the ground
+        # the site says a dive begins on.
         t = (at - 0.14) / 0.16
-        eye = (_lerp(span * 0.09, -span * 0.26, t),
-               _lerp(-span * 0.21, -span * 0.30, t),
-               _lerp(across * 0.52, 14.0, t ** 1.9))
-        target = (_lerp(0.0, -span * 0.10, t), _lerp(0.0, -span * 0.06, t), 0.0)
+        up = _lerp(across * 0.52, 16.0, t ** 1.9)
+        eye = (_lerp(ax - dx * span * 0.55, ax - dx * 210.0, t),
+               _lerp(ay - dy * span * 0.55, ay - dy * 210.0, t), up)
+        target = _ahead(eye, (dx, dy), max(30.0, up * 1.4))
         return eye, target, PLAN if t < 0.45 else CLEARED, "sea" if t < 0.45 else "bottom"
 
     if at < 0.62:
-        # Across the reef from the crest to the terrace, at the height a survey
-        # flies — and looking down at it rather than along it. A camera at that
-        # height aimed at the horizon is aimed through four hundred metres of
-        # water, and four hundred metres of any water is a flat wash. What is
-        # wanted is the ground, so the camera looks at the ground.
+        # Down the slope, from the shallow reef out over the drop, at the height
+        # a survey flies and looking at the ground rather than the horizon.
+        # This is the leg that shows the zonation: what grows at five metres,
+        # what grows at twenty, and where the coral gives out.
         t = (at - 0.30) / 0.32
         up = _lerp(15.0, 11.0, t)
-        eye = (_lerp(-span * 0.26, span * 0.24, t),
-               _lerp(-span * 0.30, span * 0.16, t), up)
-        target = _ahead(eye, (span * 0.50, span * 0.46), up * 1.5)
+        eye = (ax + dx * _lerp(-210.0, 240.0, t) + sx * _lerp(-40.0, 40.0, t),
+               ay + dy * _lerp(-210.0, 240.0, t) + sy * _lerp(-40.0, 40.0, t),
+               up)
+        target = _ahead(eye, (dx, dy), up * 1.5)
         return eye, target, CLEARED, "bottom"
 
-    # And low through it, in the vehicle's own water, where the coral is taller
-    # than the vehicle and fifteen metres is all anybody gets.
+    # And low through the reef itself, in the vehicle's own water, at the depth
+    # it will be deployed at.
     t = (at - 0.62) / 0.38
     up = _lerp(11.0, 2.6, min(1.0, t * 2.2))
-    eye = (_lerp(span * 0.24, -span * 0.06, t),
-           _lerp(span * 0.16, -span * 0.10, t), up)
-    target = _ahead(eye, (-span * 0.30, -span * 0.26), max(9.0, up * 2.4))
+    eye = (ax + dx * _lerp(120.0, -70.0, t) + sx * _lerp(30.0, -30.0, t),
+           ay + dy * _lerp(120.0, -70.0, t) + sy * _lerp(30.0, -30.0, t), up)
+    target = _ahead(eye, (-dx, -dy), max(9.0, up * 2.4))
     return eye, target, CLEARED if t < 0.18 else AS_DIVED, "bottom"
 
 
 class Tour:
     """Runs the camera along the path, one frame at a time."""
 
-    def __init__(self, across: float, floor_at, say) -> None:
+    def __init__(self, across: float, floor_at, say, begin=None) -> None:
         self.across = across
         # Where the bottom is, anywhere in the site. The same sampler a dive
         # flies over, so a height in this flight means what it means in a dive.
@@ -128,6 +137,40 @@ class Tour:
         self.waiting = False
         self.seeing = None
         self.tidied = False
+
+        # Where the reef is, and which way the bottom falls away from it. Both
+        # read off the ground: the site says where a dive begins, and the floor
+        # around that point says where the deep water is.
+        self.anchor = (float(begin[0]), float(begin[1])) if begin is not None else (0.0, 0.0)
+        self.downhill = self._which_way_is_deep()
+        self.say("tour_aimed", anchor=[round(v, 1) for v in self.anchor],
+                 downhill=[round(v, 2) for v in self.downhill],
+                 floorAtAnchorM=round(float(self.floor_at(*self.anchor) or 0.0), 1))
+
+    def _which_way_is_deep(self):
+        """The compass direction the seabed falls away in, from the anchor.
+
+        Sampled over a couple of hundred metres rather than differentiated at a
+        point, because at a point the answer is whichever boulder the anchor
+        happens to sit beside.
+        """
+        ax, ay = self.anchor
+        best, deepest = (0.0, -1.0), None
+        for step in range(16):
+            angle = 2 * math.pi * step / 16
+            dx, dy = math.cos(angle), math.sin(angle)
+            drop = 0.0
+            for reach in (80.0, 160.0, 240.0):
+                floor = self.floor_at(ax + dx * reach, ay + dy * reach)
+                if floor is None:
+                    drop = None
+                    break
+                drop += float(floor)
+            if drop is None:
+                continue
+            if deepest is None or drop < deepest:
+                deepest, best = drop, (dx, dy)
+        return best
 
     @property
     def done(self) -> bool:
@@ -208,7 +251,8 @@ class Tour:
             self._tidy()
 
         eye, target, sees, above = where_to_look(
-            self.taken / max(1, self.frames), self.across)
+            self.taken / max(1, self.frames), self.across,
+            self.anchor, self.downhill)
         self._see(stage, sees)
 
         eye = (eye[0], eye[1], self._height(eye[0], eye[1], eye[2], above))
