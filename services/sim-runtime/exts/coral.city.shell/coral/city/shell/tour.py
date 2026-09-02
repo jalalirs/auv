@@ -238,8 +238,8 @@ class Tour:
         else:
             settings.set("/rtx/fog/enabled", True)
             settings.set("/rtx/fog/fogDistance", 30.0)
-            settings.set("/rtx/fog/fogStartDistance", 8.0)
-            settings.set("/rtx/fog/fogColorIntensity", 0.95)
+            settings.set("/rtx/fog/fogStartDistance", 11.0)
+            settings.set("/rtx/fog/fogColorIntensity", 0.55)
 
         self.say("tour_sees", how=sees, atFrame=self.taken)
 

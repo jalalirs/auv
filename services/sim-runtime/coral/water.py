@@ -99,12 +99,18 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     settings.set("/rtx/fog/enabled", True)
     settings.set("/rtx/fog/fogColor", list(SCATTER))
     # The fog is added to everything the camera sees, so its strength is how
-    # much of the picture is water rather than reef. At 1.35, with fifteen
-    # metres of visibility and three metres of it starting at the lens, four
-    # fifths of a close-up colony was water — the reef came out the colour of
+    # much of the picture is water rather than reef, and where it starts is how
+    # close a thing has to be to keep its own colour.
+    #
+    # This began at 1.35 starting three metres from the lens, which put four
+    # fifths of a close-up colony under water: the reef came out the colour of
     # marzipan and no exposure fixed it, because darkening the picture darkens
-    # the wash by exactly as much.
-    settings.set("/rtx/fog/fogColorIntensity", 0.95)
+    # the wash by exactly as much. Measured at twelve metres on the fore reef,
+    # the near reef was still rendering (0.10, 0.17, 0.28) — blue over red — at
+    # 0.95 starting at eight metres. A photograph of this reef holds its colour
+    # out to about ten metres and goes blue behind that, so that is where the
+    # haze starts.
+    settings.set("/rtx/fog/fogColorIntensity", 0.55)
     # Visibility, near enough. Twenty metres is a good day on a reef; a diver
     # calls thirty exceptional and five a bad one.
     settings.set("/rtx/fog/fogDistance", 30.0)
@@ -114,7 +120,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # Water does haze at half a metre, but not enough to matter, and starting
     # further out keeps the colour of what is close while still burying the
     # distance.
-    settings.set("/rtx/fog/fogStartDistance", 8.0)
+    settings.set("/rtx/fog/fogStartDistance", 11.0)
 
     # ── the sun ──────────────────────────────────────────────────────────────
     #
