@@ -345,9 +345,15 @@ class Dive:
         # no picture.
         self.vehicle_path = "/World/Vehicle"
         xform = UsdGeom.Xform.Define(stage, self.vehicle_path)
-        self.placement = xform.AddTranslateOp()
+        # One transform for where it is and which way it points. A translate
+        # alone drew the hull level and facing the same way whatever the
+        # physics did with it: the dials said it rolled and turned, the
+        # picture said it did not, and a chase camera bolted to the heading
+        # made every yaw look like the camera circling a still vehicle.
+        xform.ClearXformOpOrder()
+        self.placement = xform.AddTransformOp()
         self._Gf = Gf
-        self.placement.Set(self.drawn_at(self.position))
+        self.placement.Set(self.pose())
 
         if drawn:
             # The hull hangs under our own transform rather than being it, so
@@ -678,6 +684,27 @@ class Dive:
             self.reported = self.simulated
             self.say("state", **self.state())
 
+    def pose(self):
+        """The hull's transform on this stage: its attitude and its position,
+        in the stage's units and the stage's idea of up."""
+        Gf = self._Gf
+        R = self.rotation
+        if self.up_axis == "Y":
+            # Our z is the stage's y, our y the stage's -z: P maps a vector of
+            # ours onto the stage, and the attitude becomes P R Pᵀ.
+            P = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]])
+            R = P @ R @ P.T
+        # USD multiplies row vectors, so the matrix it wants is the transpose
+        # of the one that turns a column vector.
+        rows = R.T
+        matrix = Gf.Matrix4d(
+            float(rows[0, 0]), float(rows[0, 1]), float(rows[0, 2]), 0.0,
+            float(rows[1, 0]), float(rows[1, 1]), float(rows[1, 2]), 0.0,
+            float(rows[2, 0]), float(rows[2, 1]), float(rows[2, 2]), 0.0,
+            0.0, 0.0, 0.0, 1.0)
+        matrix.SetTranslateOnly(self.drawn_at(self.position))
+        return matrix
+
     def drawn_at(self, position):
         """Where a point in metres falls on this stage.
 
@@ -747,7 +774,7 @@ class Dive:
         Separate from step() because it is not part of the dive: a headless run
         computes the same trajectory without ever doing this, and it must.
         """
-        self.placement.Set(self.drawn_at(self.position))
+        self.placement.Set(self.pose())
 
     def state(self) -> dict:
         return {
