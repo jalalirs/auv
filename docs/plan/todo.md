@@ -563,6 +563,18 @@ health page in the app that says what the box is doing.
 dive continues; the end-to-end script passes; the app shows the box's
 health.
 
+*Where it stands:* built and verified on the box (3 September). The agent
+writes the handles a successor needs beside each dive's brief; when it is
+stopped it hands its running dives over instead of ending them, and the
+agent that starts next adopts them — renews their leases, relays what the
+simulator says, waits for the end, keeps the recording, reports. Verified
+by redeploying the agent under an interactive dive: the simulator stayed up,
+the new agent logged the adoption, the run stayed running, and surfacing it
+afterwards kept its recording. Also done: the job broker records its
+refusals after the rollback; autonomy is builds under one name rather than
+slug-label; the record takes a state every five seconds; the Profile page
+shows the machines card by card with what each holds and what is in flight.
+
 ## 14. The application, tidied
 
 Everything a person meets gets one pass with fresh eyes: the console's

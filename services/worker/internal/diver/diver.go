@@ -119,6 +119,23 @@ type Runtime interface {
 	CreateNetwork(ctx context.Context, name string) (string, error)
 	RemoveNetwork(ctx context.Context, id string) error
 	JoinNetwork(ctx context.Context, network, id string) error
+	Running(ctx context.Context, id string) (bool, error)
+}
+
+// ErrHandedOver is what Dive reports when the agent is stopping and has left
+// the dive running for its successor to pick up.
+var ErrHandedOver = errors.New("the dive was handed over to the next agent")
+
+// handles is what a successor needs to take over a running dive: written
+// beside the brief while the dive runs, read by the agent that starts next.
+type handles struct {
+	Claimed     Claimed `json:"claimed"`
+	Simulator   string  `json:"simulator"`
+	Network     string  `json:"network"`
+	Autonomy    string  `json:"autonomy,omitempty"`
+	BriefDir    string  `json:"briefDir"`
+	SignalPort  int     `json:"signalPort"`
+	HandedOver  bool    `json:"handedOver"`
 }
 
 // Diver runs dives on one host.
@@ -156,7 +173,14 @@ type Diver struct {
 	// RenewEvery is how often the lease is extended. Comfortably shorter than
 	// the lease itself, so that one missed renewal does not lose the device.
 	renewEvery time.Duration
+
+	// stopping says whether the agent itself is going away, which is the
+	// difference between a dive that was ended and one to hand over.
+	stopping func() bool
 }
+
+// Stopping tells the diver how to know the agent is shutting down.
+func (d *Diver) Stopping(is func() bool) { d.stopping = is }
 
 
 // AnHour is how long an interactive dive is given.
@@ -238,6 +262,16 @@ func (d *Diver) Dive(ctx context.Context, claimed Claimed) error {
 
 	state, outcome, failure := d.perform(diving, claimed, log)
 	release()
+
+	// The agent itself is stopping — being redeployed, most likely — and the
+	// dive is still running. It is left exactly as it is, with its handles
+	// written beside its brief, for the agent that starts next to pick up.
+	// Restarting the agent used to end every dive it was running, which meant
+	// shipping a fix cost whoever was in the water their dive.
+	if state == "handed over" {
+		log.Info("dive handed over to the next agent")
+		return ErrHandedOver
+	}
 
 	// A dive somebody ended did not fail. It did what was asked of it, which
 	// was to stop.
@@ -388,11 +422,17 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 
 	// A network for this dive and nothing else, created before either half of
 	// it. Internal, so there is no route off it in either direction.
+	// What a successor would need to take this dive over, filled in as the
+	// pieces come up and written beside the brief.
+	kept := handles{Claimed: claimed, BriefDir: briefDir}
 	network, err := d.runtime.CreateNetwork(ctx, "coral-dive-"+claimed.Run.ID)
 	if err != nil {
 		return "failed", nil, fmt.Sprintf("the dive's network could not be created: %v", err)
 	}
 	defer func() {
+		if kept.HandedOver {
+			return
+		}
 		removing, stop := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer stop()
 		if err := d.runtime.RemoveNetwork(removing, network); err != nil {
@@ -492,6 +532,9 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		return "failed", nil, fmt.Sprintf("the simulator could not be created: %v", err)
 	}
 	defer func() {
+		if kept.HandedOver {
+			return
+		}
 		removing, stop := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer stop()
 		_ = d.runtime.Remove(removing, simID)
@@ -510,6 +553,13 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	if err := d.runtime.Start(ctx, simID); err != nil {
 		return "failed", nil, fmt.Sprintf("the simulator could not be started: %v", err)
 	}
+	kept.Simulator, kept.Network, kept.SignalPort = simID, network, signal
+	_ = writeHandles(briefDir, kept)
+	defer func() {
+		if !kept.HandedOver {
+			_ = os.Remove(filepath.Join(briefDir, "handles.json"))
+		}
+	}()
 
 	// What the simulator says while it opens — the place, the seabed, the
 	// water, the hull, the vehicle placed — reaches the run as it is said, so
@@ -568,7 +618,13 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 			_ = d.platform.Record(ctx, claimed.Run.ID, "autonomy_failed", nil,
 				map[string]any{"why": err.Error()})
 		} else {
-			defer d.landFlyer(ctx, claimed.Run.ID, autonomy, log)
+			kept.Autonomy = autonomy
+			_ = writeHandles(briefDir, kept)
+			defer func() {
+				if !kept.HandedOver {
+					d.landFlyer(ctx, claimed.Run.ID, autonomy, log)
+				}
+			}()
 		}
 	}
 
@@ -581,6 +637,14 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		if ctx.Err() == nil {
 			_ = d.runtime.Stop(stopping, simID, 10*time.Second)
 			return "failed", nil, fmt.Sprintf("the simulator did not finish: %v", err)
+		}
+		if d.stopping != nil && d.stopping() {
+			// Not the dive being ended: this agent going away. Leave the
+			// simulator, the autonomy and the network as they are, mark the
+			// handles, and let the next agent take over.
+			kept.HandedOver = true
+			_ = writeHandles(briefDir, kept)
+			return "handed over", nil, ""
 		}
 		// Ended by whoever asked for it. The simulator is asked to stop and
 		// given time to close the dive — flush its recording, say where the
@@ -600,8 +664,8 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	// anything from, which is most of the point of running it.
 	stopRelay()
 	summary := d.keep(ctx, claimed.Run.ID, result.Logs, relayed, log)
-	if kept := d.keepRecording(ctx, claimed.Run.ID, filepath.Join(briefDir, "recording"), log); kept > 0 {
-		summary["recording"] = map[string]any{"files": kept}
+	if files := d.keepRecording(ctx, claimed.Run.ID, filepath.Join(briefDir, "recording"), log); files > 0 {
+		summary["recording"] = map[string]any{"files": files}
 	}
 
 	if result.ExitCode != 0 && !ended {
@@ -688,9 +752,15 @@ func (d *Diver) keep(ctx context.Context, runID, output string, relayed *relay, 
 		if at, ok := reported["t"].(float64); ok {
 			simulated = &at
 		}
-		// Already relayed while the dive ran: counted, not recorded twice.
+		// Already relayed while the dive ran: counted, not recorded twice —
+		// but what it said about how the dive ended still goes in the summary.
 		if relayed != nil && relayed.was(line) {
 			kept++
+			if kind == "settled" || kind == "succeeded" || kind == "stopped" {
+				for key, value := range reported {
+					summary[key] = value
+				}
+			}
 			continue
 		}
 		if err := d.platform.Record(ctx, runID, kind, simulated, reported); err != nil {
@@ -1007,4 +1077,128 @@ func (d *Diver) relayEvents(ctx context.Context, runID, simID string, relayed *r
 			relayed.mark(line)
 		}
 	}
+}
+
+
+// ── Handing over ─────────────────────────────────────────────────────────────
+
+func writeHandles(briefDir string, kept handles) error {
+	encoded, err := json.MarshalIndent(kept, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(briefDir, "handles.json"), encoded, 0o644)
+}
+
+// Adopt picks up the dives the previous agent left running, one goroutine
+// each, and attends them to their end as if this agent had started them.
+func (d *Diver) Adopt(ctx context.Context, wg *sync.WaitGroup) int {
+	entries, err := os.ReadDir(d.workDir)
+	if err != nil {
+		return 0
+	}
+	adopted := 0
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "run_") {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(d.workDir, entry.Name(), "handles.json"))
+		if err != nil {
+			continue
+		}
+		var kept handles
+		if err := json.Unmarshal(raw, &kept); err != nil || !kept.HandedOver || kept.Simulator == "" {
+			continue
+		}
+		running, err := d.runtime.Running(ctx, kept.Simulator)
+		if err != nil || !running {
+			// Gone while nobody was watching. Nothing to attend; the platform's
+			// lease will expire it, and the handles are stale.
+			_ = os.Remove(filepath.Join(d.workDir, entry.Name(), "handles.json"))
+			continue
+		}
+		kept.BriefDir = filepath.Join(d.workDir, entry.Name())
+		adopted++
+		wg.Add(1)
+		go func(kept handles) {
+			defer wg.Done()
+			if err := d.resume(ctx, kept); err != nil && !errors.Is(err, ErrHandedOver) {
+				d.logger.Error("could not attend an adopted dive", "runId", kept.Claimed.Run.ID, "error", err)
+			}
+		}(kept)
+	}
+	return adopted
+}
+
+// resume attends a dive another agent started: renews its lease, relays what
+// the simulator says, waits for it to end, keeps what it left, and reports.
+func (d *Diver) resume(ctx context.Context, kept handles) error {
+	claimed := kept.Claimed
+	log := d.logger.With("runId", claimed.Run.ID, "device", claimed.DeviceUUID, "adopted", true)
+	log.Info("dive adopted from the previous agent", "simulator", kept.Simulator[:12])
+	kept.HandedOver = false
+	_ = writeHandles(kept.BriefDir, kept)
+
+	diving, over := context.WithCancel(ctx)
+	defer over()
+	holding, release := context.WithCancel(ctx)
+	go d.hold(holding, claimed.Run.ID, over, log)
+	_ = d.platform.Record(ctx, claimed.Run.ID, "adopted", nil, map[string]any{"by": "the agent that started next"})
+
+	relayed := &relay{seen: map[string]bool{}}
+	relaying, stopRelay := context.WithCancel(diving)
+	go d.relayEvents(relaying, claimed.Run.ID, kept.Simulator, relayed, log)
+
+	started := time.Now()
+	code, err := d.runtime.Wait(diving, kept.Simulator)
+	release()
+	stopRelay()
+	ended := false
+	if err != nil {
+		stopping, stop := context.WithTimeout(context.WithoutCancel(ctx), 60*time.Second)
+		defer stop()
+		if d.stopping != nil && d.stopping() {
+			kept.HandedOver = true
+			_ = writeHandles(kept.BriefDir, kept)
+			return ErrHandedOver
+		}
+		ended = true
+		_ = d.runtime.Stop(stopping, kept.Simulator, 20*time.Second)
+		ctx = stopping
+		code = 0
+	}
+	output, _ := d.runtime.Logs(ctx, kept.Simulator, 400)
+	summary := d.keep(ctx, claimed.Run.ID, output, relayed, log)
+	if files := d.keepRecording(ctx, claimed.Run.ID, filepath.Join(kept.BriefDir, "recording"), log); files > 0 {
+		summary["recording"] = map[string]any{"files": files}
+	}
+	if kept.Autonomy != "" {
+		d.landFlyer(ctx, claimed.Run.ID, kept.Autonomy, log)
+	}
+	removing, stopRemoving := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer stopRemoving()
+	_ = d.runtime.Remove(removing, kept.Simulator)
+	if kept.Network != "" {
+		_ = d.runtime.RemoveNetwork(removing, kept.Network)
+	}
+	_ = os.Remove(filepath.Join(kept.BriefDir, "handles.json"))
+
+	outcome := map[string]any{"seconds": time.Since(started).Seconds(), "exitCode": code, "adopted": true}
+	for key, value := range summary {
+		outcome[key] = value
+	}
+	state, failure := "succeeded", ""
+	if ended {
+		state = "cancelled"
+	} else if code != 0 {
+		state, failure = "failed", fmt.Sprintf("the simulator exited %d", code)
+	}
+	reporting, stop := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer stop()
+	if err := d.platform.Finish(reporting, claimed.Run.ID, state, outcome, failure); err != nil {
+		log.Error("could not report how the adopted dive ended", "state", state, "error", err)
+		return err
+	}
+	log.Info("adopted dive ended", "state", state)
+	return nil
 }

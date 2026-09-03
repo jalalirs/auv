@@ -1,9 +1,13 @@
 // Who you are here, and what you have been given.
 
-import type { Platform } from "@coral-city/api";
+import { useEffect, useState } from "react";
+
+import type { Device, Platform } from "@coral-city/api";
 
 import type { Held } from "./Deck.js";
 import { Empty, Fact, PageHead, Pill } from "./parts.js";
+
+const LIVE = new Set(["queued", "preparing", "running"]);
 
 export function Profile({ platform, held, free, devices }: {
   platform: Platform;
@@ -11,6 +15,18 @@ export function Profile({ platform, held, free, devices }: {
   free: number;
   devices: number;
 }): React.JSX.Element {
+  // The cards behind each queue, asked for once the page is open. What the
+  // box is doing is its own business to report, and this is the one page
+  // that reports it back.
+  const [cards, setCards] = useState<Map<string, Device[]>>(new Map());
+  useEffect(() => {
+    let gone = false;
+    void Promise.all(held.queues.map(async (q) => [q.id, await platform.devices(q.id).catch((): Device[] => [])] as const))
+      .then((each) => { if (!gone) setCards(new Map(each)); });
+    return () => { gone = true; };
+  }, [platform, held.queues]);
+  const inFlight = held.runs.filter((r) => LIVE.has(r.run.state));
+
   return (
     <>
       <PageHead title={held.you.displayName || "You"}
@@ -54,6 +70,33 @@ export function Profile({ platform, held, free, devices }: {
             ))}
           </div>
         )}
+      </section>
+
+      <section>
+        <h2>The machines</h2>
+        {held.queues.every((q) => (cards.get(q.id) ?? []).length === 0) ? (
+          <Empty title="No cards reported yet">
+            A host places its cards in a queue when its agent starts.
+          </Empty>
+        ) : (
+          <div className="ledger">
+            {held.queues.flatMap((queue) => (cards.get(queue.id) ?? []).map((card) => {
+              const holding = inFlight.filter((r) => r.run.placement?.holds.some((h) => h.deviceId === card.id));
+              const held_ = holding.reduce((n, r) => n + (r.run.placement?.holds
+                .filter((h) => h.deviceId === card.id).reduce((m, h) => m + h.gpuMemoryBytes, 0) ?? 0), 0);
+              return (
+                <div className="row" key={card.id}>
+                  <strong>card {card.deviceIndex}</strong>
+                  <span className="when">{card.model} · {(card.memoryBytes / 2 ** 30).toFixed(0)} GiB</span>
+                  <Pill kind={holding.length === 0 ? "good" : "busy"}>
+                    {holding.length === 0 ? "free" : `${holding.length} dive${holding.length > 1 ? "s" : ""} · ${(held_ / 2 ** 30).toFixed(0)} GiB held`}
+                  </Pill>
+                </div>
+              );
+            }))}
+          </div>
+        )}
+        <p className="aside">{inFlight.length === 0 ? "Nothing in flight." : `${inFlight.length} in flight: ${inFlight.map((r) => r.run.state).join(", ")}.`}</p>
       </section>
 
       <section>

@@ -138,8 +138,7 @@ class Platform:
 
     def stack(self, org_id: str, slug_or_id: str) -> dict:
         """By id, or by slug — the newest build registered under it."""
-        stacks = [s for s in self.autonomy(org_id)
-                  if slug_or_id in (s["slug"], s["id"]) or s["slug"].startswith(slug_or_id + "-")]
+        stacks = [s for s in self.autonomy(org_id) if slug_or_id in (s["slug"], s["id"])]
         if not stacks:
             raise SystemExit(f"no autonomy '{slug_or_id}' in this institution")
         return sorted(stacks, key=lambda s: s.get("createdAt", ""))[-1]

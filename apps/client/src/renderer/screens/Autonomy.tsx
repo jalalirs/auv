@@ -1,27 +1,50 @@
-// What flies the vehicle.
+// What flies the vehicle, other than you.
+//
+// The stacks this institution has deployed, newest first: each an image
+// pinned by digest, with what it needs of a machine. A stack is what a dive
+// is defined with on the dive page; deploying one is the SDK's job, from a
+// terminal, because a build is a build.
 
-import { Empty, PageHead } from "./parts.js";
+import type { Held } from "./Deck.js";
+import { Empty, PageHead, Pill, ago } from "./parts.js";
 
-export function Autonomy(): React.JSX.Element {
+export function Autonomy({ held }: { held: Held }): React.JSX.Element {
   return (
     <>
       <PageHead title="Autonomy"
-        says="Your stack, in a container, pinned by digest. It talks ROS 2 to the vehicle exactly as it would to a real one, and imports nothing of ours — the same binary should run in a tank and in the sea." />
+        says="Your controllers, in containers, pinned by digest. Each talks ROS 2 to the vehicle exactly as it would to a real one and imports nothing of ours — the same binary should run in a tank and in the sea." />
+
       <section>
-        <h2>How it works today</h2>
-        <Empty title="Register a stack from the console" soon="in the console, not here">
-          An autonomy stack is an image and a digest. The platform checks what it
-          subscribes to against the vehicle's topic contract before a dive is
-          admitted, so a stack asking for a sensor the vehicle does not carry is
-          refused at the door rather than left waiting for a message that never
-          comes.
-        </Empty>
+        <h2>Deployed to {held.institution?.name ?? "your institution"}</h2>
+        {held.stacks.length === 0 ? (
+          <Empty title="Nothing deployed yet">
+            Write a controller against the SDK and deploy it with <code>coral-city deploy</code>; it appears here and on the dive page.
+          </Empty>
+        ) : (
+          <div className="ledger">
+            {held.stacks.map((stack) => {
+              const needs = (stack.needs ?? {}) as { gpu?: boolean; gpuMemoryBytes?: number; cpu?: number; memoryBytes?: number };
+              const card = needs.gpu || stack.wantsGpu
+                ? `${needs.gpuMemoryBytes ? (needs.gpuMemoryBytes / 2 ** 30).toFixed(0) + " GiB of a card" : "a card"}`
+                : "no card";
+              return (
+                <div className="row" key={stack.id}>
+                  <strong>{stack.name}</strong>
+                  <span className="when">{stack.slug} · {stack.imageDigest.slice(7, 19)} · {ago(stack.createdAt)}</span>
+                  <Pill kind={needs.gpu || stack.wantsGpu ? "busy" : undefined}>{card}</Pill>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
+
       <section>
-        <h2>Coming</h2>
-        <Empty title="Push a stack from here" soon="not built yet">
-          Build, push and pin without leaving the application, and see which dives
-          ran which digest.
+        <h2>Deploying one</h2>
+        <Empty title="From the SDK" soon="one command">
+          <code>pip install -e packages/sdk-python</code>, write a class against <code>coral_city.Controller</code>,
+          try it in the tank with <code>coral-city tank</code>, then <code>coral-city deploy your.py --slug name</code>.
+          A controller that is a model says what it needs with <code>--gpu-memory 8G</code>, and the scheduler places the dive where both it and the simulator fit.
         </Empty>
       </section>
     </>

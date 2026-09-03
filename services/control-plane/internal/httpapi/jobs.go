@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"log/slog"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -69,6 +71,14 @@ func (d *Dependencies) submitJob(w http.ResponseWriter, r *http.Request) {
 		WalltimeSeconds:    request.WalltimeSeconds,
 		Egress:             egress,
 	})
+	var refusal *exec.Refusal
+	if errors.As(err, &refusal) {
+		// After the transaction that refused has rolled back; inside it the
+		// record would have gone with everything else.
+		if recording := d.Broker.RecordRefusal(r.Context(), d.Pool, refusal); recording != nil {
+			slog.WarnContext(r.Context(), "a refusal could not be recorded", "error", recording)
+		}
+	}
 	if err != nil {
 		writeError(w, r, err)
 		return

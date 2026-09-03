@@ -94,24 +94,9 @@ def deploy(controller_spec: str, slug: str, name: str, push_to: str, pulled_from
 
     platform = platform or Platform.from_session()
     institution = platform.organisation(org)
-    # A slug names one image, pinned by digest, and the platform refuses a
-    # second record under the same name — dives that pinned the first must
-    # keep meaning what they meant. So a new build of the same controller is
-    # registered under the slug with its label, and `dive --stack slug` takes
-    # the newest of them.
-    taken = {s["slug"] for s in platform.autonomy(institution["id"])}
-    registered_as = slug
-    if slug in taken:
-        registered_as = f"{slug}-{label or digest.split(':', 1)[1][:8]}"
-        if registered_as in taken:
-            raise SystemExit(f"'{registered_as}' is already registered; give this build a new --label")
-        tell(f"'{slug}' is taken by an earlier build; registering this one as '{registered_as}'")
-    # What the controller needs beside the simulator, so the scheduler places
-    # the dive where both fit rather than finding out when the container dies.
-    needs = dict(needs or {})
-    if wants_gpu or needs.get("gpuMemoryBytes"):
-        needs["gpu"] = True
-    stack = platform.register_autonomy(institution["id"], registered_as, name, repository, digest,
+    # Each registration is a build of the controller the slug names, pinned by
+    # digest; dives pin a build by id, so earlier dives keep theirs.
+    stack = platform.register_autonomy(institution["id"], slug, name, repository, digest,
                                        subscribes, publishes, wants_gpu or bool(needs.get("gpu")), needs)
     tell(f"registered as {stack['id']} ({stack['slug']}) in {institution['name']}")
     return stack

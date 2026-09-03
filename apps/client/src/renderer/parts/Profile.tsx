@@ -42,7 +42,8 @@ export function Profile({ of }: { of: Moment[] }): React.JSX.Element {
     ink.lineWidth = devicePixelRatio;
     for (let d = Math.ceil(shallow / every) * every; d <= deep; d += every) {
       ink.beginPath(); ink.moveTo(0, y(d)); ink.lineTo(width, y(d)); ink.stroke();
-      ink.fillText(`${d} m`, 4 * devicePixelRatio, y(d) + 2 * devicePixelRatio);
+      // Labels sit to the right of the pane's own name, which lives top left.
+      if (y(d) > 22 * devicePixelRatio) ink.fillText(`${d} m`, 4 * devicePixelRatio, y(d) + 2 * devicePixelRatio);
     }
 
     // The bottom.

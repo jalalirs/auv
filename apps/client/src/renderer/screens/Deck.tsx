@@ -147,7 +147,7 @@ export function Deck({ platform, onDiving }: {
           <VehicleDetail held={held} packages={packages} id={where.id} slug={where.slug}
                          onBack={() => setWhere({ page: "fleet" })} />
         ) : where.page === "autonomy" ? (
-          <Autonomy />
+          <Autonomy held={held} />
         ) : where.page === "runs" ? (
           <Runs platform={platform} held={held} onChanged={read}
                 onReplay={(dive, run) => setWhere({ page: "replay", dive, run })} />

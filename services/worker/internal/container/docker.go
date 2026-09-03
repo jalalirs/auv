@@ -403,6 +403,27 @@ func (r *Runtime) Wait(ctx context.Context, id string) (int, error) {
 }
 
 // Stop asks a container to end, and ends it if it does not.
+// Running reports whether a container exists and is running.
+func (r *Runtime) Running(ctx context.Context, id string) (bool, error) {
+	body, err := r.do(ctx, http.MethodGet, "/containers/"+id+"/json", nil)
+	if err != nil {
+		if strings.Contains(err.Error(), "404") || strings.Contains(strings.ToLower(err.Error()), "no such container") {
+			return false, nil
+		}
+		return false, err
+	}
+	defer body.Close()
+	var described struct {
+		State struct {
+			Running bool `json:"Running"`
+		} `json:"State"`
+	}
+	if err := json.NewDecoder(body).Decode(&described); err != nil {
+		return false, err
+	}
+	return described.State.Running, nil
+}
+
 func (r *Runtime) Stop(ctx context.Context, id string, grace time.Duration) error {
 	seconds := int(grace.Seconds())
 	if seconds < 1 {
