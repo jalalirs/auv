@@ -273,6 +273,33 @@ func (c *Client) ClaimDive(ctx context.Context, targetName string,
 	return nil
 }
 
+// RequestRunUpload asks for a grant to put one file of a run's recording in
+// storage.
+func (c *Client) RequestRunUpload(ctx context.Context, runID, sha256, mediaType string, size int64) (Grant, error) {
+	var grant Grant
+	_, err := c.call(ctx, http.MethodPost, "/api/v1/runs/"+runID+"/uploads",
+		map[string]any{"sha256": sha256, "sizeBytes": size, "mediaType": mediaType}, &grant)
+	return grant, err
+}
+
+// ConfirmRunUpload has the control plane check what arrived, and reports the
+// recorded object's identifier.
+func (c *Client) ConfirmRunUpload(ctx context.Context, runID, grantID string) (string, error) {
+	var object struct {
+		ID string `json:"id"`
+	}
+	_, err := c.call(ctx, http.MethodPost,
+		"/api/v1/runs/"+runID+"/uploads/"+grantID+"/confirm", map[string]any{}, &object)
+	return object.ID, err
+}
+
+// RecordArtefact names one file a run left behind.
+func (c *Client) RecordArtefact(ctx context.Context, runID, path, objectID string) error {
+	_, err := c.call(ctx, http.MethodPost, "/api/v1/runs/"+runID+"/artefacts",
+		map[string]any{"path": path, "objectId": objectID}, nil)
+	return err
+}
+
 // RunPackages asks what the packages a run needs contain, and where to fetch
 // each file.
 //

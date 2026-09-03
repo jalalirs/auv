@@ -152,6 +152,16 @@ def cmd_dive(args) -> int:
     return 0 if run["state"] == "succeeded" else 1
 
 
+def cmd_fetch(args) -> int:
+    from .platform import Platform
+
+    platform = Platform.from_session()
+    count = platform.fetch(args.dive, args.run, args.into,
+                           tell=lambda path, size: print(f"  {path}  {size / 1024:.1f} KB"))
+    print(f"{count} files into {args.into}")
+    return 0 if count else 1
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="coral-city", description="Write a controller, try it, deploy it, fly it.")
     parser.add_argument("--version", action="version", version=__version__)
@@ -211,6 +221,12 @@ def main(argv=None) -> int:
     p.add_argument("--no-wait", action="store_true")
     p.add_argument("--timeout", type=float, default=900.0)
     p.set_defaults(go=cmd_dive)
+
+    p = sub.add_parser("fetch", help="download what a run left behind: its recording")
+    p.add_argument("dive")
+    p.add_argument("run")
+    p.add_argument("--into", default="recording")
+    p.set_defaults(go=cmd_fetch)
 
     args = parser.parse_args(argv)
     return args.go(args)

@@ -21,6 +21,7 @@ import { PlaceDetail } from "./PlaceDetail.js";
 import { Places } from "./Places.js";
 import { Profile } from "./Profile.js";
 import { Runs } from "./Runs.js";
+import { Replay } from "./Replay.js";
 import { VehicleDetail } from "./VehicleDetail.js";
 
 export type { Held, Packages };
@@ -34,6 +35,7 @@ export type Where =
   | { page: "vehicle"; id?: string; slug?: string }
   | { page: "autonomy" }
   | { page: "runs" }
+  | { page: "replay"; dive: string; run: string }
   | { page: "profile" };
 
 type Rail = Where["page"];
@@ -147,7 +149,11 @@ export function Deck({ platform, onDiving }: {
         ) : where.page === "autonomy" ? (
           <Autonomy />
         ) : where.page === "runs" ? (
-          <Runs platform={platform} held={held} onChanged={read} />
+          <Runs platform={platform} held={held} onChanged={read}
+                onReplay={(dive, run) => setWhere({ page: "replay", dive, run })} />
+        ) : where.page === "replay" ? (
+          <Replay platform={platform} dive={where.dive} run={where.run}
+                  onBack={() => setWhere({ page: "runs" })} />
         ) : (
           <Profile platform={platform} held={held} free={free} devices={devices} />
         )}

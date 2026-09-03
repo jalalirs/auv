@@ -11,6 +11,7 @@ import (
 	"github.com/jalalirs/auv/services/control-plane/internal/audit"
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
 	"github.com/jalalirs/auv/services/control-plane/internal/dive"
+	"github.com/jalalirs/auv/services/control-plane/internal/domain"
 	"github.com/jalalirs/auv/services/control-plane/internal/policy"
 	"github.com/jalalirs/auv/services/control-plane/internal/storage"
 )
@@ -578,4 +579,126 @@ func (d *Dependencies) listRunEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]any{"events": events})
+}
+
+
+// ── What a run left behind ───────────────────────────────────────────────────
+
+type runUploadRequest struct {
+	SHA256    string `json:"sha256"`
+	SizeBytes int64  `json:"sizeBytes"`
+	MediaType string `json:"mediaType"`
+}
+
+// requestRunUpload hands an agent a grant to put one file of a run's
+// recording in storage. Derived material, never evidence: a simulator did not
+// observe anything.
+func (d *Dependencies) requestRunUpload(w http.ResponseWriter, r *http.Request) {
+	var request runUploadRequest
+	if err := readJSON(r, &request); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	principal, _ := principalOf(r.Context())
+	if _, err := d.Dives.Run(r.Context(), r.PathValue("runId")); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	digest, err := domain.ParseDigest(request.SHA256)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	mediaType := request.MediaType
+	if mediaType == "" {
+		mediaType = "application/octet-stream"
+	}
+	grant, err := d.Objects.RequestUpload(r.Context(), principal.ID, storage.UploadRequest{
+		Bucket: domain.Derived, Digest: digest, SizeBytes: request.SizeBytes, MediaType: mediaType,
+	}, storage.Internal)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusCreated, grant)
+}
+
+// confirmRunUpload checks what arrived against what was declared.
+func (d *Dependencies) confirmRunUpload(w http.ResponseWriter, r *http.Request) {
+	principal, _ := principalOf(r.Context())
+	object, err := d.Objects.ConfirmUpload(r.Context(), principal.ID, r.PathValue("grantId"))
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, object)
+}
+
+type recordArtefactRequest struct {
+	Path     string `json:"path"`
+	ObjectID string `json:"objectId"`
+}
+
+// recordArtefact names one file of a run's recording, once it is in storage.
+func (d *Dependencies) recordArtefact(w http.ResponseWriter, r *http.Request) {
+	var request recordArtefactRequest
+	if err := readJSON(r, &request); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	object, err := d.Objects.Object(r.Context(), request.ObjectID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	var artefact dive.Artefact
+	err = d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		var err error
+		artefact, err = d.Dives.RecordArtefact(r.Context(), conn, r.PathValue("runId"),
+			request.Path, object.ID, object.SizeBytes, object.MediaType)
+		return err
+	})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusCreated, artefact)
+}
+
+// listArtefacts is a run's recording, each file with a link that fetches it.
+func (d *Dependencies) listArtefacts(w http.ResponseWriter, r *http.Request) {
+	diveID, runID := r.PathValue("diveId"), r.PathValue("runId")
+	belongs, err := d.Dives.RunBelongsToDive(r.Context(), diveID, runID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	if !belongs {
+		writeError(w, r, db.ErrNotFound)
+		return
+	}
+	artefacts, err := d.Dives.Artefacts(r.Context(), runID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	type fetchable struct {
+		dive.Artefact
+		URL string `json:"url"`
+	}
+	answer := make([]fetchable, 0, len(artefacts))
+	for _, artefact := range artefacts {
+		object, err := d.Objects.Object(r.Context(), artefact.ObjectID)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		url, err := d.Objects.ReadURL(r.Context(), object, artefact.Path, storage.External)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		answer = append(answer, fetchable{Artefact: artefact, URL: url})
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{"artefacts": answer})
 }

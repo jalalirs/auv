@@ -854,6 +854,136 @@ paths:
           $ref: '#/components/responses/Invalid'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/v1/dives/{diveId}/runs/{runId}/artefacts:
+    get:
+      tags: [dives]
+      summary: What a run left behind
+      description: >
+        A run's recording — frames, poses, what its sensors said, how its task
+        went — as files, each fetchable through a link that expires.
+      parameters:
+        - name: diveId
+          in: path
+          required: true
+          description: The dive.
+          schema: { type: string }
+        - name: runId
+          in: path
+          required: true
+          description: The run.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The files.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  artefacts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Artefact'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/runs/{runId}/uploads:
+    post:
+      tags: [work]
+      summary: A grant to put one file of a run's recording in storage
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: The run.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [sha256, sizeBytes]
+              properties:
+                sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+                sizeBytes: { type: integer, format: int64, minimum: 1 }
+                mediaType: { type: string }
+      responses:
+        '201':
+          description: The grant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadGrant'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/runs/{runId}/uploads/{grantId}/confirm:
+    post:
+      tags: [work]
+      summary: Check a recording file against what was declared
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: The run.
+          schema: { type: string }
+        - name: grantId
+          in: path
+          required: true
+          description: The grant.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '200':
+          description: The recorded object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Object'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/runs/{runId}/artefacts:
+    post:
+      tags: [work]
+      summary: Name one file a run left behind
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: The run.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [path, objectId]
+              properties:
+                path: { type: string, description: Where the file sits within the recording. }
+                objectId: { type: string }
+      responses:
+        '201':
+          description: The artefact.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Artefact'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/v1/runs/claim:
     post:
       tags: [work]
@@ -3042,6 +3172,18 @@ components:
         createdBy: { type: string }
         revokedAt: { type: string, format: date-time }
 
+    Artefact:
+      type: object
+      description: One file of a run's recording, an object in storage named by its path within the recording.
+      required: [runId, path, objectId, sizeBytes, mediaType, recordedAt]
+      properties:
+        runId: { type: string }
+        path: { type: string }
+        objectId: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+        mediaType: { type: string }
+        recordedAt: { type: string, format: date-time }
+        url: { type: string, description: Fetches the bytes; expires. }
     Object:
       type: object
       required: [id, bucket, sha256, sizeBytes, mediaType, uploadedBy, uploadedAt]

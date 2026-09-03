@@ -9,10 +9,11 @@ import { Empty, PageHead, Pill, ago } from "./parts.js";
 
 const LIVE = new Set(["queued", "preparing", "running"]);
 
-export function Runs({ platform, held, onChanged }: {
+export function Runs({ platform, held, onChanged, onReplay }: {
   platform: Platform;
   held: Held;
   onChanged: () => void;
+  onReplay: (dive: string, run: string) => void;
 }): React.JSX.Element {
   const [ending, setEnding] = useState<string | undefined>();
 
@@ -59,11 +60,14 @@ export function Runs({ platform, held, onChanged }: {
           </Empty>
         ) : (
           <div className="ledger">
-            {held.runs.slice(0, 40).map(({ run }) => (
+            {held.runs.slice(0, 40).map(({ dive, run }) => (
               <div className="row" key={run.id}>
                 <strong>{run.mode === "interactive" ? "Flown" : "Batch"}</strong>
                 <span className="when">{ago(run.requestedAt)}</span>
                 <Result outcome={run.outcome} />
+                {recorded(run.outcome) ? (
+                  <button className="quiet small" onClick={() => onReplay(dive, run.id)}>Replay</button>
+                ) : null}
                 <Pill kind={run.state === "succeeded" ? "good"
                   : LIVE.has(run.state) ? "busy"
                   : run.state === "failed" ? "bad" : undefined}>
@@ -77,14 +81,20 @@ export function Runs({ platform, held, onChanged }: {
 
       <section>
         <h2>Coming</h2>
-        <Empty title="Replay, and scoring" soon="not built yet">
+        <Empty title="Running it again" soon="not built yet">
           A run pins everything it needed, so it can be run again and produce the
-          same trajectory. What is missing is watching it back, and a score against
-          what the dive was trying to do.
+          same trajectory. Playing a recording back is here; asking for the same
+          run again is not yet.
         </Empty>
       </section>
     </>
   );
+}
+
+/** Whether the run left a recording behind, as its outcome says. */
+function recorded(outcome: Record<string, unknown> | undefined): boolean {
+  const recording = outcome?.["recording"] as { files?: number } | undefined;
+  return typeof recording?.files === "number" && recording.files > 0;
 }
 
 /** What the dive achieved, when it was for something. */

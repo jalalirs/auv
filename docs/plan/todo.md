@@ -353,6 +353,46 @@ run's artefacts, with coverage computed from where the camera actually looked.
 replayed, and its coverage is a number derived from the poses rather than an
 assertion.
 
+*Where it stands:* done, and verified on the box (3 September). A batch survey
+dive under the runtime hold left a recording of 2,932 poses over its 600 s,
+listed by the API with fetchable links and fetched whole by the SDK; its
+coverage was 0 %, derived from the poses — it hovered 3.2 m up, outside the
+altitude band, and never moved — which is the number a survey nobody flew
+deserves. A batch hold-station dive left 323 poses and 60 frames over 65 s
+with its result (score 1.0) in the manifest, and the frames show the vehicle
+over the reef. A batch dive that records runs the renderer headless so its
+frames exist, and the application now leaves when the dive is over, which is
+how a rendered dive nobody watches hands its machine back.
+
+A dive that is for something records as it runs, beside its brief: poses at
+five hertz of simulated time — position, attitude, heading, depth, altitude,
+velocity, which view was being looked through and which frame was last taken
+— what every sensor said, how the task was going once a second, and the
+frames at one hertz through the viewport's own capture. A survey looks down
+by default, through a camera under the hull with the heading up the screen,
+so what it records is what it sees; a console may look elsewhere and the pose
+line says so. A manifest closes the recording with the counts, the camera as
+the catalogue describes it, and the task's result. When the dive is over the
+agent puts every file into storage the way every other file the platform
+holds goes — declared by digest, checked, then named — and records each as an
+artefact of the run; the run's outcome says how many. Whoever may read the
+dive may list them, each with a link that fetches it, and the SDK fetches a
+whole recording with `coral-city fetch`. The Dives page offers Replay on a
+run that recorded: the frame nearest the moment beside the chart with the
+track up to that moment, scrubbed or played.
+
+Coverage is derived rather than asserted: a survey's footprint on the bottom
+at each pose comes from the vehicle's camera — its field of view where the
+catalogue states one, else its focal length read as a 36 mm equivalent — and
+the altitude at that pose, and the cells that footprint covers are what count
+as seen. The result says which it used.
+
+Follow-ups. Frames are uploaded one file at a time, three requests each; a
+long survey should bundle them. The recording is the rendered view, not a
+sensor: a vehicle camera rendered on its own would record whatever the
+console looks at with. Replay draws the track on a bare grid, since the
+recording does not carry the site's map; it should.
+
 ---
 
 ## 6. Fly all of it

@@ -7,8 +7,13 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
@@ -213,4 +218,52 @@ func hostCapacity() controlplane.Capacity {
 		}
 	}
 	return capacity
+}
+
+
+// Keep puts one file of a run's recording in storage and names it against the
+// run: the bytes are declared by digest, put where the grant says, checked,
+// and only then recorded — the same three steps every file the platform holds
+// goes through.
+func (p *platform) Keep(ctx context.Context, runID, path, localPath, mediaType string) error {
+	file, err := os.Open(localPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		return err
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	grant, err := p.client.RequestRunUpload(ctx, runID, hex.EncodeToString(hasher.Sum(nil)), mediaType, info.Size())
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPut, grant.UploadURL, file)
+	if err != nil {
+		return err
+	}
+	request.ContentLength = info.Size()
+	request.Header.Set("Content-Type", mediaType)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode >= 400 {
+		raw, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
+		return fmt.Errorf("storage refused the write: %s: %s", response.Status, raw)
+	}
+	objectID, err := p.client.ConfirmRunUpload(ctx, runID, grant.ID)
+	if err != nil {
+		return err
+	}
+	return p.client.RecordArtefact(ctx, runID, path, objectID)
 }

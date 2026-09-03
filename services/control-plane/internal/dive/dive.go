@@ -1485,3 +1485,74 @@ func readTopics(raw json.RawMessage) ([]string, error) {
 	}
 	return topics, nil
 }
+
+
+// ── What a run left behind ───────────────────────────────────────────────────
+
+// Artefact is one file of a run's recording: an object in storage, named by
+// its path within the recording.
+type Artefact struct {
+	RunID      string    `json:"runId"`
+	Path       string    `json:"path"`
+	ObjectID   string    `json:"objectId"`
+	SizeBytes  int64     `json:"sizeBytes"`
+	MediaType  string    `json:"mediaType"`
+	RecordedAt time.Time `json:"recordedAt"`
+}
+
+// RecordArtefact names one file a run left, once its bytes are in storage.
+func (s *Store) RecordArtefact(ctx context.Context, conn db.Conn, runID, path, objectID string,
+	sizeBytes int64, mediaType string) (Artefact, error) {
+	path = strings.TrimSpace(path)
+	if path == "" || strings.HasPrefix(path, "/") || strings.Contains(path, "..") {
+		return Artefact{}, fmt.Errorf("%w: an artefact is named by a path inside the recording", domain.ErrInvalid)
+	}
+	var artefact Artefact
+	err := conn.QueryRow(ctx, `
+		INSERT INTO dive.artefact (run_id, path, object_id, size_bytes, media_type)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (run_id, path) DO UPDATE SET
+		    object_id = EXCLUDED.object_id, size_bytes = EXCLUDED.size_bytes,
+		    media_type = EXCLUDED.media_type, recorded_at = now()
+		RETURNING run_id, path, object_id, size_bytes, media_type, recorded_at`,
+		runID, path, objectID, sizeBytes, mediaType).
+		Scan(&artefact.RunID, &artefact.Path, &artefact.ObjectID, &artefact.SizeBytes,
+			&artefact.MediaType, &artefact.RecordedAt)
+	if err != nil {
+		if message, ok := db.RaisedMessage(err); ok {
+			return Artefact{}, fmt.Errorf("%w: %s", domain.ErrInvalid, message)
+		}
+		return Artefact{}, fmt.Errorf("recording an artefact: %w", err)
+	}
+	return artefact, nil
+}
+
+// Artefacts lists what a run left, in path order.
+func (s *Store) Artefacts(ctx context.Context, runID string) ([]Artefact, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT run_id, path, object_id, size_bytes, media_type, recorded_at
+		  FROM dive.artefact WHERE run_id = $1 ORDER BY path`, runID)
+	if err != nil {
+		return nil, fmt.Errorf("listing a run's artefacts: %w", err)
+	}
+	defer rows.Close()
+	artefacts := []Artefact{}
+	for rows.Next() {
+		var artefact Artefact
+		if err := rows.Scan(&artefact.RunID, &artefact.Path, &artefact.ObjectID, &artefact.SizeBytes,
+			&artefact.MediaType, &artefact.RecordedAt); err != nil {
+			return nil, err
+		}
+		artefacts = append(artefacts, artefact)
+	}
+	return artefacts, rows.Err()
+}
+
+// RunBelongsToDive says whether a run is one of this dive's, so a listing
+// under a dive cannot reach another dive's recording.
+func (s *Store) RunBelongsToDive(ctx context.Context, diveID, runID string) (bool, error) {
+	var count int
+	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM dive.run WHERE id = $1 AND dive_id = $2`,
+		runID, diveID).Scan(&count)
+	return count > 0, err
+}

@@ -182,6 +182,26 @@ class Platform:
     def events(self, dive_id: str, run_id: str) -> list[dict]:
         return self.call("GET", f"/api/v1/dives/{dive_id}/runs/{run_id}/events").get("events", [])
 
+    def artefacts(self, dive_id: str, run_id: str) -> list[dict]:
+        """What a run left behind, each file with a link that fetches it."""
+        return self.call("GET", f"/api/v1/dives/{dive_id}/runs/{run_id}/artefacts").get("artefacts", [])
+
+    def fetch(self, dive_id: str, run_id: str, into, tell=None) -> int:
+        """Download a run's recording into a directory. Returns how many files."""
+        import pathlib
+        import urllib.request
+        into = pathlib.Path(into)
+        count = 0
+        for artefact in self.artefacts(dive_id, run_id):
+            target = into / artefact["path"]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with urllib.request.urlopen(artefact["url"], timeout=60) as response:
+                target.write_bytes(response.read())
+            count += 1
+            if tell is not None:
+                tell(artefact["path"], artefact["sizeBytes"])
+        return count
+
     def cancel(self, dive_id: str, run_id: str) -> None:
         self.call("POST", f"/api/v1/dives/{dive_id}/runs/{run_id}/cancel")
 
