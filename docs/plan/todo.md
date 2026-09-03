@@ -390,8 +390,9 @@ as seen. The result says which it used.
 Follow-ups. Frames are uploaded one file at a time, three requests each; a
 long survey should bundle them. The recording is the rendered view, not a
 sensor: a vehicle camera rendered on its own would record whatever the
-console looks at with. Replay draws the track on a bare grid, since the
-recording does not carry the site's map; it should.
+console looks at with. The manifest now carries the site's coarse grid,
+the coral and the task's geometry, so a replay's chart stands on the
+recording alone; recordings made before that are charted about their start.
 
 ---
 
@@ -599,8 +600,13 @@ and a way to deploy from the app.
 docks scroll and its controller panel has one shape; the section's labels
 clear the pane name; a gamepad is read beside the keys — left stick surge
 and sway, right stick yaw and heave, triggers roll — and sent as fractions
-the vehicle adds to the keys; the Dives page names each dive and offers
-Replay; the Autonomy page lists what is deployed with what each needs; the
+the vehicle adds to the keys; the Dives page is a table — name over who
+flew it and when, score, Replay, state — rather than rows that wrapped;
+Replay plays simulated time at 1× to 30×, draws the site, coral and task
+under the track, and puts depth, altitude, speed and score traces under the
+scrubber with the moment marked, each clickable to seek; the end-to-end
+script sweeps what it founds (`./tools/box tidy`, also run on its own) so
+test tanks and probes no longer pile up in Places; the Autonomy page lists what is deployed with what each needs; the
 Profile page shows the machines. Tried and parked: the BlueROV2 hull
 decimated in Blender from 1.27 million faces to 60 thousand comes out at
 8 MB and looks right in shape, but its 2,251 per-face materials render grey

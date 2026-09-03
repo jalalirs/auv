@@ -42,6 +42,7 @@ class Recorder:
         self.poses = 0
         self.frames_taken = 0
         self.frame_name: str | None = None
+        self._site: dict | None = None
 
     def due_frame(self, t: float) -> str | None:
         """The frame file to write now, or None; the caller captures it."""
@@ -92,7 +93,24 @@ class Recorder:
         return manifest
 
     def manifest(self, dive, camera: dict | None, closed: bool) -> dict:
+        # The chart a replay draws needs what a console is handed on arrival:
+        # the bottom as a coarse grid, the coral, and what the task asked for.
+        # Kept in the recording, so a replay stands on its own — the site may
+        # have a newer version by then, and this is the one it was flown on.
+        if self._site is None:
+            try:
+                self._site = dive.hello().get("site") or {}
+            except Exception:
+                self._site = {}
+        geometry = None
+        if dive.task is not None:
+            try:
+                geometry = dive.task.geometry()
+            except Exception:
+                geometry = None
         manifest = {
+            "site": self._site or None,
+            "geometry": geometry,
             "poses": self.poses,
             "frames": self.frames_taken,
             "posesHz": round(1.0 / self.every, 2),

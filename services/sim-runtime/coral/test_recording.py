@@ -32,6 +32,8 @@ def test_a_survey_records_poses_sensors_task_and_a_manifest():
     assert manifest["poses"] == 20 and manifest["frames"] == 4
     assert manifest["camera"]["focalLengthMm"] == 21
     assert manifest["task"]["kind"] == "survey"
+    assert "rectangle" in manifest["geometry"], "a replay draws what the task asked for"
+    assert "site" in manifest, "a replay's chart stands on the recording alone"
     poses = [json.loads(line) for line in (into / "poses.jsonl").read_text().splitlines()]
     assert poses[0]["view"] == "down" and poses[-1]["frame"] == "frames/000004.jpg"
     sensors = [json.loads(line) for line in (into / "sensors.jsonl").read_text().splitlines()]

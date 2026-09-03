@@ -402,4 +402,11 @@ check "a place work can run is recorded" \
 
 # ---------------------------------------------------------------------------
 printf '\n\033[1m%d passed, %d failed\033[0m\n' "$passed" "$failed"
+
+# Everything this founded is litter once the checks are done, and it piled up
+# in the application's Places and Fleet pages until swept. Swept here, unless
+# somebody wants to look at what a run left (KEEP=1).
+if [ "${KEEP:-}" != "1" ] && [ -x "$(dirname "$0")/box" ]; then
+    "$(dirname "$0")/box" tidy || printf '\033[33mthe record could not be tidied; run ./tools/box tidy\033[0m\n'
+fi
 [ "$failed" -eq 0 ]
