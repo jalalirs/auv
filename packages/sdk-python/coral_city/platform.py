@@ -174,9 +174,11 @@ class Platform:
         return self.call("POST", f"/api/v1/organisations/{org_id}/dives", body)
 
     def run(self, dive_id: str, queue_id: str, mode: str = "batch",
-            runtime: str = "isaac-6.0.1+oceansim") -> dict:
-        return self.call("POST", f"/api/v1/dives/{dive_id}/runs",
-                         {"queueId": queue_id, "mode": mode, "runtimeVersion": runtime})
+            runtime: str = "isaac-6.0.1+oceansim", seed: int | None = None) -> dict:
+        body = {"queueId": queue_id, "mode": mode, "runtimeVersion": runtime}
+        if seed is not None:
+            body["seed"] = int(seed)
+        return self.call("POST", f"/api/v1/dives/{dive_id}/runs", body)
 
     def runs(self, dive_id: str) -> list[dict]:
         return self.call("GET", f"/api/v1/dives/{dive_id}/runs").get("runs", [])
