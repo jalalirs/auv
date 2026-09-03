@@ -113,6 +113,17 @@ carries the trajectory and which frame was taken at each moment; a survey's
 coverage in the result is derived from those poses and the vehicle's camera
 footprint, not asserted.
 
+## Run it again
+
+A run pins its place, vehicle, water, controller, seed and runtime, so it can
+be had again:
+
+```bash
+coral-city dive --place looe-key --vehicle bluerov2 --task hold --seed 42
+coral-city dive --again <diveId>/<runId>          # the same run, exactly
+coral-city compare <diveId> <runA> <runB>          # the largest difference in position
+```
+
 ## What is generated
 
 `coral_city/vehicles/*.py` come from `catalog/vehicles/*/dynamics.json`:
