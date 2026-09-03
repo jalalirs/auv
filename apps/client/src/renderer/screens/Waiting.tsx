@@ -108,6 +108,9 @@ export function Waiting({ platform, dive, run, onRunning, onGiveUp }: {
         <h2>{said}</h2>
         {placement === undefined ? null : <Where placement={placement} />}
         {steps.length === 0 ? null : (
+          <div className="progress"><div style={{ width: `${Math.round(100 * steps.filter((s) => s.state === "done").length / steps.length)}%` }} /></div>
+        )}
+        {steps.length === 0 ? null : (
           <ol className="steps">
             {steps.map((step) => (
               <li key={step.name} className={step.state}>
@@ -179,9 +182,16 @@ function progress(run: Run | undefined, events: RunEvent[]): Step[] {
   const wanted: Array<[string, string[]]> = [
     ["Cards allocated", ["claimed"]],
     ["Place and vehicle staged", ["packages_present"]],
-    ["Simulator opening", ["place_open", "vehicle_placed", "spawned"]],
+    ["Simulator starting", ["place_open", "seabed_known", "water_made", "hull_drawn", "coral_drawn", "vehicle_placed", "camera", "watch_open", "stream_open"]],
+    ["Place opened", ["place_open"]],
+    ["Seabed read", ["seabed_known"]],
+    ["Water made", ["water_made"]],
+    ["Hull drawn", ["hull_drawn"]],
+    ["Coral placed", ["coral_drawn", "vehicle_placed", "camera", "watch_open", "stream_open"]],
+    ["Vehicle in the water", ["vehicle_placed"]],
+    ["Camera placed", ["camera"]],
     ...(hasController ? [["Controller started", ["autonomy_started"]] as [string, string[]]] : []),
-    ["Stream open", ["stream_open"]],
+    ["Window open", ["watch_open", "stream_open"]],
   ];
   let nowFound = false;
   return wanted.map(([name, kinds]) => {

@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jalalirs/auv/services/worker/internal/cache"
@@ -510,6 +511,15 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		return "failed", nil, fmt.Sprintf("the simulator could not be started: %v", err)
 	}
 
+	// What the simulator says while it opens — the place, the seabed, the
+	// water, the hull, the vehicle placed — reaches the run as it is said, so
+	// whoever is waiting sees the scene opening rather than a minute of
+	// nothing. The per-second state lines are left for the end.
+	relayed := &relay{seen: map[string]bool{}}
+	relaying, stopRelay := context.WithCancel(ctx)
+	go d.relayEvents(relaying, claimed.Run.ID, simID, relayed, log)
+	defer stopRelay()
+
 	if watching {
 		// Only once it is actually listening. Recorded at container start, this
 		// told the application where to connect roughly a minute before there
@@ -588,7 +598,8 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	// exists only in a container's output and the container is gone: a dive
 	// that ran and left no record of what happened is a dive nobody can learn
 	// anything from, which is most of the point of running it.
-	summary := d.keep(ctx, claimed.Run.ID, result.Logs, log)
+	stopRelay()
+	summary := d.keep(ctx, claimed.Run.ID, result.Logs, relayed, log)
 	if kept := d.keepRecording(ctx, claimed.Run.ID, filepath.Join(briefDir, "recording"), log); kept > 0 {
 		summary["recording"] = map[string]any{"files": kept}
 	}
@@ -654,7 +665,7 @@ var ErrNothingToDo = errors.New("nothing to run")
 // Anything that is not one of those objects is the simulator's ordinary noise —
 // Isaac Sim says a great deal on the way up — and is left out rather than
 // recorded as though it meant something.
-func (d *Diver) keep(ctx context.Context, runID, output string, log *slog.Logger) map[string]any {
+func (d *Diver) keep(ctx context.Context, runID, output string, relayed *relay, log *slog.Logger) map[string]any {
 	summary := map[string]any{}
 	kept := 0
 
@@ -676,6 +687,11 @@ func (d *Diver) keep(ctx context.Context, runID, output string, log *slog.Logger
 		var simulated *float64
 		if at, ok := reported["t"].(float64); ok {
 			simulated = &at
+		}
+		// Already relayed while the dive ran: counted, not recorded twice.
+		if relayed != nil && relayed.was(line) {
+			kept++
+			continue
 		}
 		if err := d.platform.Record(ctx, runID, kind, simulated, reported); err != nil {
 			log.Warn("could not record what the simulator said", "kind", kind, "error", err)
@@ -930,4 +946,65 @@ func mediaTypeOf(path string) string {
 func recording(claimed Claimed) bool {
 	var objective map[string]any
 	return len(claimed.Objective) > 0 && json.Unmarshal(claimed.Objective, &objective) == nil && len(objective) > 0
+}
+
+
+// relay remembers which of the simulator's lines have already reached the run.
+type relay struct {
+	mu   sync.Mutex
+	seen map[string]bool
+}
+
+func (r *relay) was(line string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.seen[line]
+}
+
+func (r *relay) mark(line string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.seen[line] = true
+}
+
+// relayEvents records the simulator's events as they appear on its output,
+// every second, until told to stop. State lines, one a second for the whole
+// dive, are left for the end; everything else — the scene opening, the task
+// set, a photograph — is what somebody waiting wants to see now.
+func (d *Diver) relayEvents(ctx context.Context, runID, simID string, relayed *relay, log *slog.Logger) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Second):
+		}
+		output, err := d.runtime.Logs(ctx, simID, 400)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(output, "\n") {
+			line = strings.TrimSpace(line)
+			if !strings.HasPrefix(line, "{") || relayed.was(line) {
+				continue
+			}
+			var reported map[string]any
+			if err := json.Unmarshal([]byte(line), &reported); err != nil {
+				continue
+			}
+			kind, ok := reported["event"].(string)
+			if !ok || kind == "state" {
+				continue
+			}
+			delete(reported, "event")
+			var simulated *float64
+			if at, ok := reported["t"].(float64); ok {
+				simulated = &at
+			}
+			if err := d.platform.Record(ctx, runID, kind, simulated, reported); err != nil {
+				log.Warn("could not relay what the simulator said", "kind", kind, "error", err)
+				continue
+			}
+			relayed.mark(line)
+		}
+	}
 }
