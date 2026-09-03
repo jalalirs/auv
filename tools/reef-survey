@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+"""Write a surveyed reef into a place.
+
+tools/benthos read the survey and listed every colony standing on the seabed.
+This turns that list into the place's coral layer — the USD a dive opens — and
+says in site.json where a dive on this reef should begin. The grown reef the
+place used to carry is replaced, not merged: a colony is either where the survey
+saw one or it is not there.
+
+    tools/reef-survey ~/coral-city/places/looe-key ~/coral-city/reference/looe-key
+
+The layer is a point instancer over a few dozen prototypes, the same shape the
+grown reef used, so the runtime that draws it does not change. Prototypes are
+grown from tools/coral.py by kind — a boulder for a stony colony or a head, a
+lower lump for rock, a fan and a plume for the octocorals — in three shades
+each, and every colony picks the prototype of its kind whose shade is nearest
+the brightness the orthomosaic gave it. The hue is the reef's, from the
+photographs; the survey decides only how light or dark.
+
+Also copies picture.jpg into the place when the reference has one, so the
+platform can show the reef it will open.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import pathlib
+import shutil
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+# Hues from the Looe Key photographs (see docs/plan/looe-key-reality.md): the
+# same palette tools/flyover_corals.py stands on the Blender ground.
+HUE = {
+    "low": (0.36, 0.35, 0.27),
+    "stony": (0.72, 0.58, 0.22),
+    "head": (0.66, 0.52, 0.24),
+    "fan": (0.46, 0.30, 0.50),
+    "plume": (0.62, 0.50, 0.28),
+}
+SHADES = (0.72, 1.0, 1.28)
+KINDS = ("low", "stony", "head", "fan", "plume")
+
+
+def grow(kind: str, rng):
+    """One prototype of a kind, one metre tall, sitting on z = 0."""
+    import numpy as np
+
+    import coral
+
+    if kind in ("low", "stony", "head"):
+        points, faces = coral.massive(rng, height=1.0)
+        if kind == "low":
+            points = points * np.array([1.0, 1.0, 0.7])
+    elif kind == "fan":
+        points, faces = coral.fan(rng, height=1.0)
+    else:
+        points, faces = coral.plume(rng, height=1.0)
+    # Normalised so that a scale of (w/2, w/2, h) gives a colony w across and h tall.
+    span = max(float(np.ptp(points[:, 0])), float(np.ptp(points[:, 1])), 1e-3)
+    tall = max(float(np.ptp(points[:, 2])), 1e-3)
+    points = points / np.array([span / 2, span / 2, tall])
+    points[:, 2] -= points[:, 2].min()
+    return points, faces
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(description="write a surveyed reef into a place")
+    parse.add_argument("place", help="the place directory (site.json, seabed.f32)")
+    parse.add_argument("reference", help="the reference directory, with colonies.json")
+    parse.add_argument("--seed", type=int, default=3)
+    parse.add_argument("--begin-depth", type=float, nargs=2, default=(6.0, 12.0),
+                       metavar=("SHALLOW", "DEEP"),
+                       help="the depth band a dive should begin in, metres")
+    asked = parse.parse_args()
+
+    import numpy as np
+
+    place, ref = pathlib.Path(asked.place), pathlib.Path(asked.reference)
+    site = json.loads((place / "site.json").read_text())
+    listed = json.loads((ref / "colonies.json").read_text())
+    colonies = listed["colonies"]
+    if not colonies:
+        raise SystemExit("the survey lists no colonies")
+    field = site["mesh"]["heightfield"]
+    heights = np.fromfile(place / field["file"], dtype="<f4").reshape(field["rows"], field["columns"])
+    across = float(site["from"]["acrossMetres"])
+    rng = np.random.default_rng(asked.seed)
+    print(f"{site['name']}: {len(colonies):,} surveyed colonies")
+
+    # ── prototypes: kind × shade ─────────────────────────────────────────────
+    prototypes, colours, index = [], [], {}
+    for kind in KINDS:
+        points, faces = grow(kind, rng)
+        for s, shade in enumerate(SHADES):
+            index[(kind, s)] = len(prototypes)
+            prototypes.append((points, faces))
+            colours.append(tuple(min(1.0, c * shade) for c in HUE[kind]))
+
+    # ── every colony: which prototype, where, how big ────────────────────────
+    kinds = np.array([c["kind"] for c in colonies])
+    coin = rng.random(len(colonies)) < 0.5
+    drawn = np.where(kinds == "octocoral", np.where(coin, "fan", "plume"), kinds)
+    lum = np.array([np.mean(c["colour"]) if c.get("colour") else 0.5 for c in colonies])
+    reference = float(np.median(lum[lum > 0])) if (lum > 0).any() else 0.5
+    shade = np.clip(np.round((lum / max(reference, 1e-3) - 0.72) / 0.28), 0, 2).astype(int)
+    which = np.array([index[(k, s)] for k, s in zip(drawn, shade)])
+
+    d = np.array([c["diameterM"] for c in colonies]); h = np.array([c["heightM"] for c in colonies])
+    standing = np.isin(drawn, ("fan", "plume"))
+    # A boulder is never taller than it is wide; a spur edge the detector
+    # caught as a colony would otherwise stand as a pillar. Gorgonians do stand.
+    sx = np.where(standing, np.maximum(d, 0.3) / 2, d / 2)
+    sz = np.where(standing, np.clip(h * 1.6, 0.35, 1.4), np.clip(h, 0.04, 0.7 * np.maximum(d, 0.08)))
+    x = np.array([c["x"] for c in colonies]); y = np.array([c["y"] for c in colonies])
+    z = _floor(heights, across, x, y) - 0.02          # a little into the ground, no floating bases
+    turn = rng.uniform(0, 2 * math.pi, len(colonies))
+
+    (place / "coral.usda").write_text(_instancer(prototypes, colours, x, y, z, which, sx, sz, turn))
+    size = (place / "coral.usda").stat().st_size
+    print(f"  coral.usda: {len(prototypes)} prototypes, {len(colonies):,} instances, {size / 1e6:.1f} MB")
+
+    # ── where a dive begins: the densest surveyed reef in the working band ───
+    begin = _begin(x, y, -_floor(heights, across, x, y), asked.begin_depth, across)
+    picture = ref / "picture.jpg"
+    if picture.exists():
+        shutil.copy(picture, place / "picture.jpg")
+
+    site["reef"] = {
+        "source": listed.get("source"), "method": listed.get("method"),
+        "colonies": len(colonies), "prototypes": len(prototypes),
+        "kinds": {k: int((drawn == k).sum()) for k in KINDS},
+        "beginAt": begin,
+    }
+    site["beginAt"] = begin["at"]
+    site["beginBecause"] = ("the densest surveyed reef between %.0f and %.0f m, three metres off the bottom "
+                            "(%d colonies within 10 m, %.1f m deep)"
+                            % (asked.begin_depth[0], asked.begin_depth[1], begin["colonies"], begin["depthM"]))
+    site["layers"]["coral"] = "coral.usda"
+    if picture.exists():
+        site["picture"] = "picture.jpg"
+    (place / "site.json").write_text(json.dumps(site, indent=2) + "\n")
+    print(f"  begins at {begin['at']} — {site['beginBecause']}")
+    print(f"  {place / 'site.json'}")
+    return 0
+
+
+def _floor(heights, across, x, y):
+    """Seabed height under each colony, bilinear off the place's own grid."""
+    import numpy as np
+
+    rows, cols = heights.shape
+    fx = (x + across / 2) / (across / (cols - 1)); fy = (y + across / 2) / (across / (rows - 1))
+    j = np.clip(np.floor(fx).astype(int), 0, cols - 2); i = np.clip(np.floor(fy).astype(int), 0, rows - 2)
+    tx = np.clip(fx - j, 0, 1); ty = np.clip(fy - i, 0, 1)
+    return ((heights[i, j] * (1 - tx) + heights[i, j + 1] * tx) * (1 - ty)
+            + (heights[i + 1, j] * (1 - tx) + heights[i + 1, j + 1] * tx) * ty)
+
+
+def _begin(x, y, depth, band, across):
+    """The colony-densest point in the depth band, away from the edges, 3 m up."""
+    import numpy as np
+
+    cell = 10.0
+    n = int(across / cell)
+    ix = np.clip(((x + across / 2) / cell).astype(int), 0, n - 1)
+    iy = np.clip(((y + across / 2) / cell).astype(int), 0, n - 1)
+    ok = (depth >= band[0]) & (depth <= band[1])
+    counts = np.zeros((n, n)); np.add.at(counts, (iy[ok], ix[ok]), 1)
+    margin = int(0.1 * n)
+    counts[:margin, :] = counts[-margin:, :] = counts[:, :margin] = counts[:, -margin:] = 0
+    # Judged over a 30 m neighbourhood, so it is a good area and not one lucky cell.
+    k = np.ones((3, 3)); smooth = np.zeros_like(counts)
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            smooth += np.roll(np.roll(counts, dy, 0), dx, 1) * k[dy + 1, dx + 1]
+    r, c = np.unravel_index(int(smooth.argmax()), smooth.shape)
+    here = (ix == c) & (iy == r) & ok
+    floor = float(np.median(-depth[here])) if here.any() else float(-np.median(depth[ok]))
+    return {"at": [round(float(-across / 2 + (c + 0.5) * cell), 1), round(float(-across / 2 + (r + 0.5) * cell), 1),
+                   round(float(floor + 3.0), 1)],
+            "depthM": round(-floor, 1), "colonies": int(smooth[r, c])}
+
+
+def _instancer(prototypes, colours, x, y, z, which, sx, sz, turn) -> str:
+    """The reef as one point instancer, in the shape the runtime already draws."""
+    import numpy as np
+
+    import reef
+
+    half = turn / 2.0
+    orient = np.stack([np.cos(half), np.zeros_like(half), np.zeros_like(half), np.sin(half)], -1)
+    grown = []
+    for i, ((points, faces), colour) in enumerate(zip(prototypes, colours)):
+        grown.append(
+            '\n        def Mesh "Coral_%d" (\n'
+            '            prepend apiSchemas = ["MaterialBindingAPI"]\n'
+            "        )\n        {\n"
+            '            uniform token subdivisionScheme = "none"\n'
+            "            int[] faceVertexCounts = [%s]\n"
+            "            int[] faceVertexIndices = [%s]\n"
+            "            point3f[] points = [%s]\n"
+            "            normal3f[] normals = [%s] (\n"
+            '                interpolation = "vertex"\n'
+            "            )\n"
+            "            color3f[] primvars:displayColor = [(%.3g, %.3g, %.3g)] (\n"
+            '                interpolation = "constant"\n'
+            "            )\n"
+            "            rel material:binding = </Coral/Skins/Skin_%d>\n"
+            "        }\n" % (i, ", ".join(["3"] * len(faces)), ", ".join(str(v) for v in faces.reshape(-1)),
+                             reef._triples(points), reef._triples(reef._smooth_normals(points, faces)),
+                             colour[0], colour[1], colour[2], i))
+    return (
+        "#usda 1.0\n(\n"
+        '    doc = "Coral, where a survey saw it. Metres, Z up. Source in site.json."\n'
+        '    defaultPrim = "Coral"\n    metersPerUnit = 1\n    upAxis = "Z"\n)\n\n'
+        'def PointInstancer "Coral"\n{\n%s\n'
+        "    point3f[] positions = [%s]\n    int[] protoIndices = [%s]\n"
+        "    float3[] scales = [%s]\n    quath[] orientations = [%s]\n"
+        "    rel prototypes = [%s]\n\n    def Scope \"Grown\"\n    {%s    }\n}\n" % (
+            reef._skins(colours),
+            reef._triples(np.stack([x, y, z], -1)),
+            ", ".join(str(int(i)) for i in which),
+            reef._triples(np.stack([sx, sx, sz], -1)),
+            ", ".join("(%.5g, %.5g, %.5g, %.5g)" % tuple(q) for q in orient),
+            ", ".join("</Coral/Grown/Coral_%d>" % i for i in range(len(prototypes))),
+            "".join(grown)))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

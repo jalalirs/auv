@@ -1,0 +1,378 @@
+#!/usr/bin/env python3
+"""Fetch what is actually known about a place.
+
+A reef that is modelled from a general idea of a reef is wrong in every
+particular, and nobody can tell, because there is nothing to hold it against.
+This fetches the record for one place — who has surveyed it, photographed it,
+mapped it, imaged it from orbit — into one directory, so that every choice about
+what to put on the seabed can be traced to a measurement.
+
+    tools/reference looe-key 24.54586 -81.4072 \\
+        --cremp-site "Looe Key" --usgs-doi 10.5066/P1QRS3SK
+
+What it fetches, and from whom:
+
+  habitat     FWC Unified Florida Reef Tract Map polygons over the square
+  monitoring  FWC CREMP tables: percent cover by group and species, densities
+  photographs iNaturalist, research grade, licensed, within the radius
+  imagery     a USGS data release, by DOI: orthomosaic, DEM, point cloud
+  from space  Sentinel-2 true colour, the median of the clearest scenes
+
+Everything is public. The licence of each is written beside it, because "we
+found it online" is not a provenance.
+"""
+
+from __future__ import annotations
+
+import argparse
+import io
+import json
+import math
+import os
+import pathlib
+import re
+import sys
+import time
+import urllib.parse
+import urllib.request
+
+AGENT = "coral-city reference corpus (https://github.com/jalalirs/auv)"
+
+
+def get(url: str, timeout: int = 120, data: bytes | None = None, headers=None) -> bytes:
+    request = urllib.request.Request(url, data=data,
+                                     headers={"User-Agent": AGENT, **(headers or {})})
+    with urllib.request.urlopen(request, timeout=timeout) as answer:
+        return answer.read()
+
+
+def metres_per_degree(latitude: float) -> tuple[float, float]:
+    radians = math.radians(latitude)
+    north = 111_132.92 - 559.82 * math.cos(2 * radians) + 1.175 * math.cos(4 * radians)
+    east = 111_412.84 * math.cos(radians) - 93.5 * math.cos(3 * radians)
+    return east, north
+
+
+def bounds(latitude, longitude, across):
+    east, north = metres_per_degree(latitude)
+    dlon, dlat = (across / 2) / east, (across / 2) / north
+    return longitude - dlon, latitude - dlat, longitude + dlon, latitude + dlat
+
+
+# ── habitat ──────────────────────────────────────────────────────────────────
+
+REEF_MAP = ("https://gis.myfwc.com/hosting/rest/services/Open_Data/"
+            "Unified_Florida_Reef_Tract_Benthic_Habitat/MapServer/16/query")
+
+
+def habitat(into: pathlib.Path, box) -> dict | None:
+    """The Unified Reef Map's polygons over the square, as GeoJSON."""
+    query = urllib.parse.urlencode({
+        "geometry": ",".join("%.6f" % b for b in box), "geometryType": "esriGeometryEnvelope",
+        "inSR": 4326, "spatialRel": "esriSpatialRelIntersects", "outFields": "*",
+        "outSR": 4326, "f": "geojson"})
+    try:
+        raw = get(REEF_MAP + "?" + query)
+        parsed = json.loads(raw)
+    except Exception as exc:
+        print(f"  habitat: could not reach the Unified Reef Map ({exc})")
+        return None
+    if "features" not in parsed:
+        print(f"  habitat: the reef map answered without features: {str(parsed)[:120]}")
+        return None
+    (into / "habitat.geojson").write_bytes(raw)
+    kinds = {}
+    for f in parsed["features"]:
+        kinds[f["properties"].get("ClassLv2")] = kinds.get(f["properties"].get("ClassLv2"), 0) + 1
+    print(f"  habitat: {len(parsed['features'])} polygons — " +
+          ", ".join(f"{k} {v}" for k, v in sorted(kinds.items(), key=lambda kv: -kv[1])))
+    return {"file": "habitat.geojson", "polygons": len(parsed["features"]),
+            "source": "FWC Unified Florida Reef Tract Map v2.2", "licence": "public"}
+
+
+# ── monitoring ───────────────────────────────────────────────────────────────
+
+CREMP_ZIP = "https://gis.myfwc.com/Data/Zips/custom/CREMP/CREMP_CSV_Files2025.zip"
+
+
+def monitoring(into: pathlib.Path, site_name: str) -> dict | None:
+    """CREMP's tables, reduced to the stations at this site.
+
+    The whole archive is half a gigabyte and every table in it is for every
+    station in the Keys. What is kept is the rows for one site, which is a few
+    hundred kilobytes and is what anybody modelling that site needs.
+    """
+    import csv
+    import zipfile
+
+    where = into / "monitoring"
+    where.mkdir(exist_ok=True)
+    archive = into / "cremp.zip"
+    if not archive.exists():
+        print("  monitoring: fetching CREMP (50 MB)…")
+        try:
+            archive.write_bytes(get(CREMP_ZIP, timeout=900))
+        except Exception as exc:
+            print(f"  monitoring: could not fetch CREMP ({exc})")
+            return None
+    kept = {}
+    with zipfile.ZipFile(archive) as z:
+        for name in z.namelist():
+            if not name.endswith(".csv"):
+                continue
+            text = z.read(name).decode("utf-8-sig", errors="replace")
+            rows = list(csv.DictReader(io.StringIO(text)))
+            if not rows:
+                continue
+            key = next((k for k in rows[0] if k in ("SiteName", "Site_name")), None)
+            if key is None:
+                continue
+            ours = [r for r in rows if site_name.lower() in (r[key] or "").lower()]
+            if not ours:
+                continue
+            out = where / pathlib.Path(name).name
+            with out.open("w", newline="") as fh:
+                writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+                writer.writeheader()
+                writer.writerows(ours)
+            kept[out.name] = len(ours)
+    print(f"  monitoring: {len(kept)} CREMP tables with rows for '{site_name}'")
+    summary = _cover_summary(where)
+    return {"directory": "monitoring", "tables": kept, "coverByYear": summary,
+            "source": "FWC Coral Reef Evaluation and Monitoring Project, 2025 release",
+            "licence": "public domain"}
+
+
+def _cover_summary(where: pathlib.Path):
+    """Percent cover by group, per site and year, so the headline is in the record."""
+    import csv
+
+    table = where / "CREMP_Pcover_TaxaGroups_2024.csv"
+    if not table.exists():
+        return None
+    groups = ["StonyCoral", "Octocoral", "Porifera", "Zoanthidea", "Macroalgae", "Substrate"]
+    by = {}
+    for r in csv.DictReader(table.open(encoding="utf-8-sig")):
+        key = (r["SiteName"], r["SampleYear"])
+        by.setdefault(key, []).append(r)
+    summary = {}
+    for (site, year), rows in sorted(by.items()):
+        summary.setdefault(site, {})[year] = {
+            g: round(sum(float(r[g] or 0) for r in rows) / len(rows), 4) for g in groups}
+    for site, years in summary.items():
+        last = max(years)
+        line = "  ".join(f"{g} {100 * v:.1f}%" for g, v in years[last].items())
+        print(f"    {site} {last}: {line}")
+    return summary
+
+
+# ── photographs ──────────────────────────────────────────────────────────────
+
+INAT = "https://api.inaturalist.org/v1/"
+BENTHOS = [  # what builds the look of a Caribbean reef, in the order it matters
+    "Gorgonia ventalina", "Antillogorgia", "Palythoa caribaeorum", "Millepora alcicornis",
+    "Porites astreoides", "Siderastrea siderea", "Montastraea cavernosa", "Orbicella",
+    "Pseudodiploria strigosa", "Xestospongia muta", "Eunicea flexuosa", "Briareum asbestinum",
+    "Colpophyllia natans", "Agaricia agaricites", "Erythropodium caribaeorum", "Plexaura homomalla",
+    "Diploria labyrinthiformis", "Acropora palmata", "Dichocoenia stokesii", "Agelas", "Niphates"]
+
+
+def photographs(into: pathlib.Path, latitude, longitude, radius_km: float, per_taxon: int) -> dict | None:
+    """What divers have photographed here, and how often, plus a licensed gallery."""
+    gallery = into / "photographs"
+    gallery.mkdir(exist_ok=True)
+    base = {"lat": latitude, "lng": longitude, "radius": radius_km, "photos": "true"}
+    try:
+        counts = json.loads(get(INAT + "observations/species_counts?" + urllib.parse.urlencode(
+            {**base, "quality_grade": "research", "per_page": 200})))
+    except Exception as exc:
+        print(f"  photographs: could not reach iNaturalist ({exc})")
+        return None
+    species = [{"taxon": r["taxon"]["name"], "common": r["taxon"].get("preferred_common_name"),
+                "group": r["taxon"].get("iconic_taxon_name"), "observations": r["count"]}
+               for r in counts["results"]]
+    (into / "species_counts.json").write_text(json.dumps(species, indent=1))
+    benthic = [s for s in species if s["group"] in ("Animalia", "Plantae", "Chromista", "Protozoa")
+               or s["group"] is None]
+    print(f"  photographs: {counts['total_results']} species photographed within {radius_km} km; "
+          f"benthos: " + ", ".join(f"{s['taxon']} {s['observations']}" for s in benthic[:8]))
+
+    index = []
+    for name in BENTHOS:
+        query = urllib.parse.urlencode({**base, "taxon_name": name, "per_page": per_taxon,
+                                        "order_by": "votes",
+                                        "photo_license": "cc0,cc-by,cc-by-nc,cc-by-sa,cc-by-nc-sa"})
+        try:
+            found = json.loads(get(INAT + "observations?" + query))
+        except Exception as exc:
+            print(f"    {name}: {exc}")
+            continue
+        for o in found["results"]:
+            for p in o.get("photos", [])[:1]:
+                file = gallery / f"{name.replace(' ', '_')}_{o['id']}.jpg"
+                if not file.exists():
+                    try:
+                        file.write_bytes(get(p["url"].replace("square", "medium"), timeout=60))
+                    except Exception:
+                        continue
+                index.append({"file": file.name, "taxon": name,
+                              "observation": f"https://www.inaturalist.org/observations/{o['id']}",
+                              "licence": p.get("license_code"), "attribution": p.get("attribution"),
+                              "observed": o.get("observed_on")})
+        time.sleep(0.5)
+    (gallery / "index.json").write_text(json.dumps(index, indent=1))
+    print(f"  photographs: {len(index)} licensed reference photographs kept, with attribution")
+    return {"directory": "photographs", "photographs": len(index),
+            "speciesCounts": "species_counts.json", "source": "iNaturalist",
+            "licence": "per photograph, in photographs/index.json"}
+
+
+# ── imagery ──────────────────────────────────────────────────────────────────
+
+CMGDS = "https://cmgds.marine.usgs.gov"
+
+
+def imagery(into: pathlib.Path, doi: str, fetch_large: bool) -> dict | None:
+    """A USGS Coastal and Marine data release, listed and (the small parts) fetched.
+
+    The full-resolution tiles run to gigabytes each; they are listed with their
+    sizes and fetched only when asked, and then by whatever is running on the
+    machine with the disk, not by this.
+    """
+    where = into / "usgs"
+    where.mkdir(exist_ok=True)
+    slug = doi.replace("/", "-")
+    try:
+        page = get(f"{CMGDS}/data-releases/datarelease/{slug}/", timeout=120).decode(errors="ignore")
+    except Exception as exc:
+        print(f"  imagery: could not fetch the USGS release page ({exc})")
+        return None
+    paths = sorted(set(re.findall(r"/data-releases/media/[^\s\"'<>]+", page)))
+    files = []
+    for p in paths:
+        name = p.rsplit("/", 1)[-1]
+        if name.endswith(("_thumbnail.png", "_thumbnail.jpg")):
+            continue
+        files.append({"name": name, "url": CMGDS + p})
+    small = [f for f in files if re.search(r"quicklook|_25cm|_1m\.tif|metadata\.txt", f["name"])]
+    for f in small:
+        target = where / f["name"]
+        if not target.exists():
+            try:
+                target.write_bytes(get(f["url"], timeout=900))
+            except Exception as exc:
+                print(f"    {f['name']}: {exc}")
+    for f in files:
+        try:
+            request = urllib.request.Request(f["url"], method="HEAD", headers={"User-Agent": AGENT})
+            with urllib.request.urlopen(request, timeout=60) as answer:
+                f["bytes"] = int(answer.headers.get("Content-Length") or 0)
+        except Exception:
+            f["bytes"] = None
+    (where / "files.json").write_text(json.dumps(files, indent=1))
+    total = sum(f["bytes"] or 0 for f in files)
+    print(f"  imagery: USGS {doi}: {len(files)} files, {total / 1e9:.1f} GB; "
+          f"fetched the {len(small)} small ones")
+    if fetch_large:
+        (where / "fetch-all.sh").write_text(
+            "#!/usr/bin/env bash\n# Fetch every file of the release, resuming.\ncd \"$(dirname \"$0\")\"\n"
+            + "".join(f"[ -s {f['name']} ] || curl -sL --retry 3 -A coral-city -o {f['name']} {f['url']}\n"
+                      for f in files))
+        os.chmod(where / "fetch-all.sh", 0o755)
+        print(f"    wrote usgs/fetch-all.sh to get the rest where there is disk for it")
+    return {"directory": "usgs", "doi": doi, "files": len(files), "bytes": total,
+            "source": "U.S. Geological Survey", "licence": "public domain, credit USGS"}
+
+
+# ── from space ───────────────────────────────────────────────────────────────
+
+EARTH_SEARCH = "https://earth-search.aws.element84.com/v1/search"
+
+
+def from_space(into: pathlib.Path, box, scenes: int, cloud: float) -> dict | None:
+    """Sentinel-2 true colour over the square: the median of the clearest scenes.
+
+    A median across eight clear days takes out the glint, the waves and the odd
+    cloud shadow, and leaves what the bottom looks like from space — which is
+    the one view that shows a whole square kilometre of reef at once.
+    """
+    try:
+        import numpy as np
+        import rasterio
+        from rasterio.warp import transform_bounds
+        from rasterio.windows import from_bounds
+    except ImportError:
+        print("  from space: needs numpy and rasterio (python -m pip install rasterio)")
+        return None
+    body = json.dumps({"collections": ["sentinel-2-l2a"], "bbox": list(box), "limit": 100,
+                       "datetime": "2022-01-01T00:00:00Z/2030-01-01T00:00:00Z",
+                       "query": {"eo:cloud_cover": {"lt": cloud}}}).encode()
+    try:
+        found = json.loads(get(EARTH_SEARCH, data=body, headers={"Content-Type": "application/json"}))
+    except Exception as exc:
+        print(f"  from space: could not search Earth Search ({exc})")
+        return None
+    items = sorted(found["features"], key=lambda f: f["properties"]["eo:cloud_cover"])[:scenes]
+    stack, used = [], []
+    for f in items:
+        try:
+            with rasterio.open(f["assets"]["visual"]["href"]) as src:
+                window = from_bounds(*transform_bounds("EPSG:4326", src.crs, *box), src.transform)
+                stack.append(src.read([1, 2, 3], window=window).transpose(1, 2, 0))
+                used.append({"id": f["id"], "date": f["properties"]["datetime"][:10],
+                             "cloud": f["properties"]["eo:cloud_cover"]})
+        except Exception as exc:
+            print(f"    {f['id']}: {exc}")
+    if not stack:
+        return None
+    h = min(a.shape[0] for a in stack); w = min(a.shape[1] for a in stack)
+    median = np.median(np.stack([a[:h, :w] for a in stack]).astype("float32"), axis=0)
+    np.save(into / "sentinel_median_rgb.npy", median)
+    (into / "sentinel.json").write_text(json.dumps({"bbox": list(box), "scenes": used,
+                                                    "rows": h, "columns": w,
+                                                    "note": "row 0 is north"}, indent=1))
+    print(f"  from space: median of {len(used)} Sentinel-2 scenes, {w}x{h} at 10 m")
+    return {"file": "sentinel_median_rgb.npy", "scenes": len(used), "source": "Copernicus Sentinel-2 L2A via Earth Search",
+            "licence": "Copernicus open data"}
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(description="fetch what is known about a place")
+    parse.add_argument("name")
+    parse.add_argument("latitude", type=float)
+    parse.add_argument("longitude", type=float)
+    parse.add_argument("--across", type=float, default=1000.0, help="metres on a side")
+    parse.add_argument("--radius-km", type=float, default=1.5, help="for photographs")
+    parse.add_argument("--per-taxon", type=int, default=10, help="photographs kept per species")
+    parse.add_argument("--cremp-site", help="CREMP site name to keep rows for, e.g. 'Looe Key'")
+    parse.add_argument("--usgs-doi", help="a USGS data release to list and sample")
+    parse.add_argument("--fetch-large", action="store_true",
+                       help="write a script that fetches the whole USGS release")
+    parse.add_argument("--scenes", type=int, default=8)
+    parse.add_argument("--cloud", type=float, default=8.0, help="max cloud cover percent")
+    parse.add_argument("--into", default=str(pathlib.Path.home() / "coral-city" / "reference"))
+    asked = parse.parse_args()
+
+    into = pathlib.Path(asked.into) / asked.name
+    into.mkdir(parents=True, exist_ok=True)
+    box = bounds(asked.latitude, asked.longitude, asked.across)
+    print(f"{asked.name}: {asked.across:.0f} m square at {asked.latitude}, {asked.longitude}")
+
+    record = {"name": asked.name,
+              "centre": {"latitude": asked.latitude, "longitude": asked.longitude},
+              "acrossMetres": asked.across, "fetched": time.strftime("%Y-%m-%d"), "sources": {}}
+    record["sources"]["habitat"] = habitat(into, box)
+    if asked.cremp_site:
+        record["sources"]["monitoring"] = monitoring(into, asked.cremp_site)
+    record["sources"]["photographs"] = photographs(into, asked.latitude, asked.longitude,
+                                                    asked.radius_km, asked.per_taxon)
+    if asked.usgs_doi:
+        record["sources"]["imagery"] = imagery(into, asked.usgs_doi, asked.fetch_large)
+    record["sources"]["fromSpace"] = from_space(into, box, asked.scenes, asked.cloud)
+    (into / "reference.json").write_text(json.dumps(record, indent=1) + "\n")
+    print(f"  {into}/reference.json")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

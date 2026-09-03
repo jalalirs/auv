@@ -22,7 +22,8 @@
 #   uav fly <keys> [secs]   hold keys on the running dive and say what happened
 #   uav look [seconds]      dive, wait, and bring back the frame it took
 #   uav map [place]         fly over a place and bring back a video of it
-#   uav terrain [place]     the ground on its own, with the water taken away
+#   uav terrain <place>     fly over the ground, dry, and bring back the video
+#   uav terrain-sheet [place]  the ground as a figure: plan, profile, cross-section
 #   uav exposure [place]    the same reef at every exposure, side by side
 #   uav sim <logs|said|opened|grep|shell>   the simulator, and what it said
 #
@@ -365,14 +366,26 @@ print('  brightness %d   red %d  green %d  blue %d' % (int(a.mean()), r, g, b))
 
 # The ground on its own, with the water taken away.
 #
-#   uav terrain              the newest place published
-#   uav terrain red-sea      that one
+#   uav terrain looe-key                 the ground alone, chart look, twice the vertical
+#   uav terrain looe-key --corals        with the colonies standing on it
+#   uav terrain looe-key --corals --water   as a dive sees it
+#   uav terrain looe-key --true-scale    as it is
+#   uav terrain looe-key --plain         colour without the contours
 #
 # Because judging ground through thirty metres of scattering water is judging it
-# with the wrong instrument, and every question about whether a site is any good
-# — is it varied, does it have anywhere to hide, is it the same everywhere — is
-# a question about the ground.
+# with the wrong instrument. This is Blender on the box flying the real ground:
+# the survey's relief where a survey exists, the habitat map and the satellite
+# where it does not, and the depth written on it in contours.
 command_terrain() {
+    [ -n "${1:-}" ] || die "which place? the ground has to have been built by tools/ground first"
+    "${HERE}/terrain-flyover" "$@" | tail -1 | { read -r line; bold "${line}"; }
+}
+
+# The same ground as a figure — plan, profile, cross-section — for measuring.
+#
+#   uav terrain-sheet              the newest place published
+#   uav terrain-sheet red-sea      that one
+command_terrain_sheet() {
     local into="${ROOT}/.uav-terrain.png"
     local where
     where="$(on_box "~/${REMOTE_DIR}/tools/newest-place ${1:-}")"
@@ -494,6 +507,7 @@ case "${1:-}" in
     map)    shift; command_map "$@" ;;
     exposure) shift; command_exposure "$@" ;;
     terrain) shift; command_terrain "$@" ;;
+    terrain-sheet) shift; command_terrain_sheet "$@" ;;
     sim)    shift; command_sim "$@" ;;
     check)  shift; command_check "$@" ;;
     clean)  shift; command_clean "$@" ;;

@@ -1,0 +1,251 @@
+#!/usr/bin/env python3
+"""What is standing on the seabed, read off a survey.
+
+A photogrammetric survey of a reef carries every colony on it: the elevation
+model has each one as a bump standing off the pavement, and the orthomosaic has
+its colour. This walks the survey's tiles and writes a list of them — where,
+how wide, how tall, what colour — so that a reef can be rebuilt from what is
+there rather than from a distribution.
+
+    tools/benthos ~/coral-city/reference/looe-key --site ~/coral-city/places/looe-key
+
+Reads the 1 cm DEM tiles (and the 5 mm orthomosaic tiles beside them) at 2 cm,
+which is fine enough to hold a fist-sized Siderastrea and coarse enough to run
+over a tile in minutes. A colony is anything compact that stands at least eight
+centimetres above the median of its 1.2 m surroundings and is not the noise a
+structure-from-motion surface makes over textureless sand.
+
+Writes colonies.json in the reference directory: site metres, x east and y north
+of the site centre, with the survey's own depth under each.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import pathlib
+import sys
+import time
+
+WORK_RES = 0.02          # metres a pixel to work at
+BASE_M = 1.2             # what a colony stands above
+STANDS_M = 0.08          # by at least this
+WINDOW_M = 50.0          # the DEM is walked in squares this size
+
+
+def metres_per_degree(latitude: float):
+    r = math.radians(latitude)
+    north = 111_132.92 - 559.82 * math.cos(2 * r) + 1.175 * math.cos(4 * r)
+    east = 111_412.84 * math.cos(r) - 93.5 * math.cos(3 * r)
+    return east, north
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(description="list what stands on a surveyed seabed")
+    parse.add_argument("reference", help="the reference directory, with usgs/ tiles in it")
+    parse.add_argument("--site", required=True, help="the place, for its centre")
+    parse.add_argument("--only", help="only tiles whose name contains this, e.g. C-1")
+    parse.add_argument("--preview", action="store_true", help="write a picture per window")
+    parse.add_argument("--out", default="colonies.json", help="file to write, inside the reference directory")
+    parse.add_argument("--remote", action="store_true",
+                       help="read tiles not yet on disk straight from the release's server; the "
+                            "tiles are cloud-optimised, so working at 2 cm reads a quarter of the bytes")
+    asked = parse.parse_args()
+
+    import numpy as np
+    import rasterio
+    from rasterio.warp import transform
+    from rasterio.windows import Window
+    from scipy import ndimage
+
+    ref = pathlib.Path(asked.reference)
+    site = json.loads((pathlib.Path(asked.site) / "site.json").read_text())
+    lat0, lon0 = site["from"]["centre"]["latitude"], site["from"]["centre"]["longitude"]
+    me, mn = metres_per_degree(lat0)
+
+    dems = sorted(p for p in (ref / "usgs").glob("*DEM-*.tif") if not asked.only or asked.only in p.name)
+    remote, expected = {}, {}
+    if asked.remote and (ref / "usgs" / "files.json").exists():
+        for f in json.loads((ref / "usgs" / "files.json").read_text()):
+            remote[f["name"]] = f["url"]; expected[f["name"]] = f.get("bytes")
+        # A tile still downloading is a truncated TIFF; read it from the server instead.
+        dems = [p for p in dems if p.stat().st_size == expected.get(p.name, p.stat().st_size)]
+        have = {p.name for p in dems}
+        for name, url in remote.items():
+            if "DEM-" in name and name.endswith(".tif") and name not in have and (not asked.only or asked.only in name):
+                dems.append(pathlib.Path(url))
+        dems.sort(key=lambda p: p.name)
+    if not dems:
+        raise SystemExit(f"no DEM tiles under {ref / 'usgs'}")
+    found, summary = [], []
+    began = time.time()
+    for dem_path in dems:
+        tile = dem_path.stem.split("DEM-")[-1]
+        ortho_path = next(iter(sorted(p for p in (ref / "usgs").glob("*Orthomosaic-" + tile + ".tif")
+                                      if p.stat().st_size == expected.get(p.name, p.stat().st_size))), None)
+        if ortho_path is None:
+            ortho_path = remote.get("SQUID5_LKR_2022_Orthomosaic-" + tile + ".tif")
+        dem_source = str(dem_path) if dem_path.exists() else remote.get(dem_path.name, str(dem_path))
+        print(f"  {dem_path.name}: {'local' if dem_path.exists() else 'remote'} DEM, "
+              f"{'no' if ortho_path is None else ('local' if pathlib.Path(str(ortho_path)).exists() else 'remote')} orthomosaic", flush=True)
+        with rasterio.open(dem_source) as dem, (rasterio.open(str(ortho_path)) if ortho_path else _Nothing()) as ortho:
+            res = dem.res[0]
+            scale = int(round(WORK_RES / res))                       # 1 cm -> 2 cm
+            win_px = int(WINDOW_M / res)
+            out_px = win_px // scale
+            tile_found = 0
+            for row0 in range(0, dem.height, win_px):
+                for col0 in range(0, dem.width, win_px):
+                    w = Window(col0, row0, min(win_px, dem.width - col0), min(win_px, dem.height - row0))
+                    z = dem.read(1, window=w, out_shape=(int(w.height // scale), int(w.width // scale))).astype(float)
+                    z[z == dem.nodata] = np.nan
+                    valid = np.isfinite(z)
+                    if valid.mean() < 0.05:
+                        continue
+                    colour = None
+                    if ortho_path:
+                        ow = _same_ground(dem, w, ortho)
+                        colour = ortho.read([1, 2, 3], window=ow, out_shape=(3, z.shape[0], z.shape[1])).transpose(1, 2, 0)
+                    colonies, stand = find(z, valid, colour, WORK_RES, np)
+                    if asked.preview:
+                        _preview(z, stand, colonies, ref / "benthos-previews" / f"{dem_path.stem}_{row0}_{col0}.png", np)
+                    # to site metres: pixel centre -> tile CRS -> lon/lat -> metres from the centre
+                    if colonies:
+                        rows = np.array([c["row"] for c in colonies]) * scale + row0
+                        cols = np.array([c["col"] for c in colonies]) * scale + col0
+                        xs, ys = rasterio.transform.xy(dem.transform, rows, cols)
+                        lon, lat = transform(dem.crs, "EPSG:4326", list(xs), list(ys))
+                        for c, lo, la in zip(colonies, lon, lat):
+                            c["x"] = round((lo - lon0) * me, 2); c["y"] = round((la - lat0) * mn, 2)
+                            del c["row"], c["col"]
+                            c["tile"] = dem_path.stem.split("DEM-")[-1]
+                        found.extend(colonies); tile_found += len(colonies)
+            area = _tile_area(dem)
+            summary.append({"tile": dem_path.name, "colonies": tile_found})
+            print(f"  {dem_path.name}: {tile_found} colonies  ({time.time() - began:.0f} s)", flush=True)
+    (ref / asked.out).write_text(json.dumps({
+        "source": "USGS SQUID-5 survey, standing objects in the 1 cm DEM, coloured from the 5 mm orthomosaic",
+        "method": {"workResM": WORK_RES, "baseM": BASE_M, "standsM": STANDS_M},
+        "count": len(found), "tiles": summary, "colonies": found}, indent=None) + "\n")
+    if found:
+        import statistics
+        d = [c["diameterM"] for c in found]; h = [c["heightM"] for c in found]
+        print(f"{len(found)} colonies; diameter median {statistics.median(d):.2f} m, "
+              f"height median {statistics.median(h):.2f} m; "
+              f"kinds: " + ", ".join(f"{k} {sum(1 for c in found if c['kind'] == k)}"
+                                     for k in sorted({c['kind'] for c in found})))
+    print(f"  {ref / asked.out}")
+    return 0
+
+
+class _Nothing:
+    def __enter__(self):
+        return None
+
+    def __exit__(self, *a):
+        return False
+
+
+def _same_ground(dem, window, ortho):
+    """The orthomosaic window covering the same ground as a DEM window."""
+    from rasterio.windows import from_bounds
+    left, bottom, right, top = dem.window_bounds(window)
+    return from_bounds(left, bottom, right, top, ortho.transform)
+
+
+def _tile_area(dem):
+    return dem.width * dem.res[0] * dem.height * dem.res[1]
+
+
+def find(z, valid, colour, res, np):
+    """Everything compact that stands off the pavement in one window."""
+    from scipy import ndimage
+
+    # Holes filled from their nearest neighbour, so the filters see no cliffs.
+    nearest = ndimage.distance_transform_edt(~valid, return_distances=False, return_indices=True)
+    zf = z[tuple(nearest)]
+    # The pavement under everything: a median over 1.2 m. Taken on a grid four
+    # times coarser and interpolated back, because a 61-pixel median over six
+    # million pixels is minutes of CPU and the pavement does not have detail at
+    # two centimetres anyway.
+    coarse = zf[::4, ::4]
+    base = ndimage.median_filter(coarse, size=int(BASE_M / (4 * res)) | 1)
+    base = ndimage.zoom(base, (zf.shape[0] / base.shape[0], zf.shape[1] / base.shape[1]), order=1)
+    stand = zf - base
+    # Sand comes out of structure-from-motion as fine noise: rough at ten
+    # centimetres with nothing standing. Anything that rough is not a colony.
+    rough = np.sqrt(np.maximum(ndimage.uniform_filter(zf * zf, 5) - ndimage.uniform_filter(zf, 5) ** 2, 0))
+    sandlike = rough > 0.024
+    mask = (stand > STANDS_M) & valid & ~sandlike
+    mask = ndimage.binary_opening(mask, iterations=2)
+    mask = ndimage.binary_fill_holes(mask)
+    labels, k = ndimage.label(mask)
+    if k == 0:
+        return [], stand
+    idx = np.arange(1, k + 1)
+    area = ndimage.sum(mask, labels, idx) * res * res
+    height = ndimage.maximum(stand, labels, idx)
+    keep = (area >= 0.008) & (area < 12.0)
+    centres = ndimage.center_of_mass(mask, labels, idx[keep])
+    depth = ndimage.mean(zf, labels, idx[keep])
+    colonies = []
+    for i, (label, (r, c)) in enumerate(zip(idx[keep], centres)):
+        d = 2 * math.sqrt(area[label - 1] / math.pi)
+        rgb = None
+        if colour is not None:
+            sel = labels == label
+            rgb = colour[sel].reshape(-1, 3).mean(0) / 255.0
+        colonies.append({
+            "row": float(r), "col": float(c),
+            "diameterM": round(d, 3), "heightM": round(float(height[label - 1]), 3),
+            "floorZ": round(float(depth[i]), 3),
+            "colour": [round(float(v), 3) for v in rgb] if rgb is not None else None,
+            "kind": _kind(d, float(height[label - 1]), rgb),
+        })
+    return colonies, stand
+
+
+def _kind(diameter, height, rgb):
+    """A first guess at what a standing thing is, from its shape and colour.
+
+    Not a species identification. A mustard dome is live stony coral here —
+    Porites, Orbicella — because that is what mustard is on this reef; a tall
+    thin thing is a gorgonian holdfast or a sponge; a low grey lump is rock or
+    Siderastrea. The photographs decide the rest.
+    """
+    if rgb is not None:
+        yellow = (rgb[0] + rgb[1]) / 2 - rgb[2]
+        if yellow > 0.06 and height < 0.6:
+            return "stony"
+        if rgb[2] > rgb[1] + 0.03:
+            return "octocoral"
+    if height > 0.45 and diameter < 0.5:
+        return "octocoral"
+    if height > 0.25 and diameter > 0.6:
+        return "head"
+    return "low"
+
+
+def _preview(z, stand, colonies, path, np):
+    from PIL import Image, ImageDraw
+    path.parent.mkdir(parents=True, exist_ok=True)
+    zf = np.nan_to_num(z, nan=float(np.nanmedian(z)))
+    # A hillshade from the north-west, forty-five degrees up, in plain numpy.
+    dy, dx = np.gradient(zf, WORK_RES)
+    normal = np.stack([-dx, -dy, np.ones_like(zf)], -1)
+    normal /= np.linalg.norm(normal, axis=-1, keepdims=True)
+    light = np.array([-math.cos(math.radians(45)) * math.sin(math.radians(45)),
+                      math.cos(math.radians(45)) * math.cos(math.radians(45)), math.sin(math.radians(45))])
+    shade = np.clip(normal @ light, 0, 1)
+    img = Image.fromarray((shade * 255).astype(np.uint8)).convert("RGB")
+    draw = ImageDraw.Draw(img)
+    tint = {"stony": (255, 180, 0), "octocoral": (150, 60, 220), "head": (240, 90, 60), "low": (90, 200, 120)}
+    for c in colonies:
+        r = c["diameterM"] / 2 / WORK_RES
+        draw.ellipse([c["col"] - r, c["row"] - r, c["col"] + r, c["row"] + r], outline=tint[c["kind"]], width=2)
+    img.save(path)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
