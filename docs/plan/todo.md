@@ -573,7 +573,9 @@ the new agent logged the adoption, the run stayed running, and surfacing it
 afterwards kept its recording. Also done: the job broker records its
 refusals after the rollback; autonomy is builds under one name rather than
 slug-label; the record takes a state every five seconds; the Profile page
-shows the machines card by card with what each holds and what is in flight.
+shows the machines card by card with what each holds and what is in flight;
+the end-to-end script, given a dive quota for its institution, passes 68 of
+68 against the box.
 
 ## 14. The application, tidied
 
@@ -586,6 +588,19 @@ real: the stacks the institution has, what each needs, which dives flew it,
 and a way to deploy from the app.
 
 **Done when:** you walk every page and nothing makes you swear.
+
+*Where it stands:* in progress (3 September). Done so far: the console's
+docks scroll and its controller panel has one shape; the section's labels
+clear the pane name; a gamepad is read beside the keys — left stick surge
+and sway, right stick yaw and heave, triggers roll — and sent as fractions
+the vehicle adds to the keys; the Dives page names each dive and offers
+Replay; the Autonomy page lists what is deployed with what each needs; the
+Profile page shows the machines. Tried and parked: the BlueROV2 hull
+decimated in Blender from 1.27 million faces to 60 thousand comes out at
+8 MB and looks right in shape, but its 2,251 per-face materials render grey
+after the round trip, so the 44 MB hull stays until the colours survive.
+Still to do: the chart with the coral on it, and the walk through every
+page.
 
 ## 15. Water that moves
 

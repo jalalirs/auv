@@ -51,6 +51,10 @@ class Controls:
         self.held: set[str] = set()
         self._afar: set[str] = set()
         self._here: set[str] = set()
+        # A stick from afar: six fractions in [-1, 1], surge sway heave roll
+        # pitch yaw, added to whatever the keys ask. A stick centred is a
+        # stick saying nothing.
+        self._stick: list[float] = [0.0] * 6
         self._input = None
         self._keyboard = None
         self._subscription = None
@@ -70,9 +74,18 @@ class Controls:
         self._afar = keys
         self.held = self._here | self._afar
 
+    def stick_from_afar(self, fractions) -> None:
+        """What a stick over the network is asking, as fractions per axis."""
+        try:
+            values = [max(-1.0, min(1.0, float(v))) for v in list(fractions)[:6]]
+        except (TypeError, ValueError):
+            return
+        self._stick = (values + [0.0] * 6)[:6]
+
     def let_go(self) -> None:
         """Nobody is watching any more, so nobody is flying."""
         self._afar = set()
+        self._stick = [0.0] * 6
         self.held = set(self._here)
 
     def _on_key(self, event, *_) -> bool:
@@ -89,7 +102,7 @@ class Controls:
 
     @property
     def flying(self) -> bool:
-        return bool(self.held & set(LAYOUT))
+        return bool(self.held & set(LAYOUT)) or any(abs(v) > 0.02 for v in self._stick)
 
     def wrench(self) -> list[float]:
         """What the hands are asking for, in the vehicle's body frame."""
@@ -100,8 +113,11 @@ class Controls:
                 continue
             axis, sign = axis_and_sign
             asked[axis] += sign * (TURN if axis >= 3 else FIRM)
-        # Opposite keys held together cancel, which is correct and is also how
-        # you stop: let go of one and the other is still pushing.
+        # A stick adds to the keys. Opposite keys held together cancel, which
+        # is correct and is also how you stop: let go of one and the other is
+        # still pushing.
+        for axis, value in enumerate(self._stick):
+            asked[axis] += value
         return [max(-1.0, min(1.0, value)) for value in asked]
 
     def close(self) -> None:

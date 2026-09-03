@@ -97,7 +97,7 @@ const KEYS: { key: string; does: string }[] = [
   { key: "F", does: "pitch down" },
 ];
 
-export function Instruments({ reading, topics, held, history, frames, onLeave, onTune, onHoldHere, onEngage, onPlot, plotted, children }: {
+export function Instruments({ reading, topics, held, history, frames, onLeave, onTune, onHoldHere, onEngage, onPlot, plotted, pad, children }: {
   reading: Reading;
   topics: Topic[];
   held: string[];
@@ -109,6 +109,7 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, o
   onEngage: (controller: string) => void;
   onPlot: (topic: string) => void;
   plotted: string | undefined;
+  pad?: string;
   children: React.ReactNode;
 }): React.JSX.Element {
   const who = reading.controller?.flying ?? (reading.byHand === true ? "manual" : reading.commanded === true ? "stack" : undefined);
@@ -161,7 +162,7 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, o
           <ControllerPanel helm={reading.controller} onTune={onTune} onHoldHere={onHoldHere} onEngage={onEngage} />
         </Panel>
 
-        <Panel name="Controls" note="held, not tapped · roll and pitch only where the hull can">
+        <Panel name="Controls" note={pad ? `gamepad: ${pad.split("(")[0].trim()}` : "held, not tapped · roll and pitch only where the hull can"}>
           <ul className="keys">
             {KEYS.map(({ key, does }) => (
               <li key={key} className={held.includes(key) ? "down" : undefined}>
