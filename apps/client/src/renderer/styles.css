@@ -954,3 +954,14 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 .controller .station { min-height: 30px; }
 .controller .station span { font-variant-numeric: tabular-nums; }
 .who-flies { display: inline-block; min-width: 190px; }
+
+
+/* ── runs side by side ─────────────────────────────────────────────────── */
+.compared .group { border: 1px solid var(--edge); border-radius: 9px; padding: 10px 12px; margin-bottom: 10px; background: rgba(11, 21, 36, 0.5); }
+.compared .group strong { font-weight: 600; }
+.compared ul { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.compared li { display: grid; grid-template-columns: 140px 48px 1fr; gap: 10px; align-items: center; font-size: 12px; }
+.compared .score-bar { height: 6px; background: var(--edge); border-radius: 3px; overflow: hidden; display: block; }
+.compared .score-bar span { display: block; height: 100%; background: var(--coral); }
+.compared li b { font-variant-numeric: tabular-nums; }
+.compared li em { font-style: normal; color: var(--faint); }
