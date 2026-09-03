@@ -276,6 +276,13 @@ export class Platform {
     return dives;
   }
 
+  /** An institution's autonomy: the stacks people have deployed to it. */
+  async autonomy(organisation: string): Promise<AutonomyStack[]> {
+    const { autonomy } = await this.#request<{ autonomy: AutonomyStack[] }>(
+      "GET", `/api/v1/organisations/${organisation}/autonomy`);
+    return autonomy;
+  }
+
   /** What a run left behind: its recording, each file with a link that fetches it. */
   async artefacts(dive: string, run: string): Promise<Artefact[]> {
     const { artefacts } = await this.#request<{ artefacts: Artefact[] }>(
