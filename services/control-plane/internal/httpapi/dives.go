@@ -326,7 +326,25 @@ func (d *Dependencies) listRuns(w http.ResponseWriter, r *http.Request) {
 // to know that to stop something they started.
 func (d *Dependencies) cancelRun(w http.ResponseWriter, r *http.Request) {
 	runID := r.PathValue("runId")
-	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+	// Leaving a dive that is being flown is not cancelling it. The person got
+	// what they asked for — water, a vehicle, the controls — and left; the
+	// run succeeded and says they surfaced. Withdrawing a request that has
+	// not started, or ending a batch, is a cancellation.
+	current, err := d.Dives.Run(r.Context(), runID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	surfacing := current.State == dive.Running && current.Mode == dive.Interactive
+	err = d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		if surfacing {
+			if err := d.Dives.Finish(r.Context(), conn, runID,
+				dive.Succeeded, json.RawMessage(`{"surfaced":true}`), ""); err != nil {
+				return err
+			}
+			return d.Dives.Record(r.Context(), conn, runID, "surfaced", nil,
+				json.RawMessage(`{"by":"the person flying it"}`))
+		}
 		if err := d.Dives.Finish(r.Context(), conn, runID,
 			dive.Cancelled, nil, ""); err != nil {
 			return err

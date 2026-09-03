@@ -564,11 +564,22 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 
 	code, err := d.runtime.Wait(ctx, simID)
 	elapsed := time.Since(started)
+	ended := false
 	if err != nil {
-		stopping, stop := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		stopping, stop := context.WithTimeout(context.WithoutCancel(ctx), 60*time.Second)
 		defer stop()
-		_ = d.runtime.Stop(stopping, simID, 10*time.Second)
-		return "failed", nil, fmt.Sprintf("the simulator did not finish: %v", err)
+		if ctx.Err() == nil {
+			_ = d.runtime.Stop(stopping, simID, 10*time.Second)
+			return "failed", nil, fmt.Sprintf("the simulator did not finish: %v", err)
+		}
+		// Ended by whoever asked for it. The simulator is asked to stop and
+		// given time to close the dive — flush its recording, say where the
+		// vehicle settled — because a dive somebody surfaced from is a dive
+		// that happened, and what it left is worth keeping.
+		ended = true
+		_ = d.runtime.Stop(stopping, simID, 20*time.Second)
+		ctx = stopping
+		code = 0
 	}
 	output, _ := d.runtime.Logs(ctx, simID, 400)
 	result := container.Result{ExitCode: code, Logs: output}
@@ -582,7 +593,7 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		summary["recording"] = map[string]any{"files": kept}
 	}
 
-	if result.ExitCode != 0 {
+	if result.ExitCode != 0 && !ended {
 		return "failed", map[string]any{
 			"exitCode": result.ExitCode, "seconds": elapsed.Seconds(),
 		}, fmt.Sprintf("the simulator exited %d", result.ExitCode)
@@ -591,6 +602,9 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	outcome = map[string]any{"seconds": elapsed.Seconds(), "exitCode": 0}
 	for key, value := range summary {
 		outcome[key] = value
+	}
+	if ended {
+		return "cancelled", outcome, ""
 	}
 	return "succeeded", outcome, ""
 }

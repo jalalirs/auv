@@ -288,6 +288,9 @@ type Run struct {
 	// my dive" is the question a person asks while they wait.
 	Needs     Needs      `json:"needs"`
 	Placement *Placement `json:"placement,omitempty"`
+	// How many files the run left behind, so a listing can offer to play it
+	// back without asking about each run.
+	Artefacts int `json:"artefacts"`
 
 	RequestedAt    time.Time       `json:"requestedAt"`
 	RequestedBy    string          `json:"requestedBy"`
@@ -969,6 +972,10 @@ func (s *Store) Run(ctx context.Context, id string) (Run, error) {
 		return Run{}, db.Translate(err)
 	}
 	run.Placement, err = s.placementOn(ctx, s.pool, run)
+	if err != nil {
+		return Run{}, err
+	}
+	err = s.pool.QueryRow(ctx, `SELECT count(*) FROM dive.artefact WHERE run_id = $1`, id).Scan(&run.Artefacts)
 	return run, err
 }
 
@@ -998,6 +1005,10 @@ func (s *Store) Runs(ctx context.Context, diveID string) ([]Run, error) {
 			return nil, err
 		}
 		runs[i].Placement = placement
+		if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM dive.artefact WHERE run_id = $1`,
+			runs[i].ID).Scan(&runs[i].Artefacts); err != nil {
+			return nil, err
+		}
 	}
 	return runs, nil
 }
@@ -1333,7 +1344,21 @@ func (s *Store) Finish(ctx context.Context, conn db.Conn, runID string,
 		return fmt.Errorf("finishing a run: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("%w: this run has already finished", domain.ErrInvalid)
+		// A dive the person surfaced from is already over by their hand; what
+		// the agent then says about how it went — where the vehicle settled,
+		// the task's result, the recording — is added to it rather than
+		// refused. Anything else finished twice is a mistake.
+		merged, err := conn.Exec(ctx, `
+			UPDATE dive.run
+			   SET outcome = outcome || $2
+			 WHERE id = $1 AND state = 'succeeded' AND (outcome ->> 'surfaced') = 'true'`,
+			runID, outcome)
+		if err != nil {
+			return fmt.Errorf("adding to a surfaced run: %w", err)
+		}
+		if merged.RowsAffected() == 0 {
+			return fmt.Errorf("%w: this run has already finished", domain.ErrInvalid)
+		}
 	}
 	return nil
 }

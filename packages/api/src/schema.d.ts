@@ -4133,6 +4133,8 @@ export interface components {
             gpuShare: number;
             needs?: components["schemas"]["Needs"];
             placement?: components["schemas"]["Placement"];
+            /** @description How many files the run left behind. */
+            artefacts?: number;
             /** Format: date-time */
             requestedAt: string;
             requestedBy: string;

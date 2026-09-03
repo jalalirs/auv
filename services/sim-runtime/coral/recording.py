@@ -28,9 +28,14 @@ class Recorder:
         self.frame_every = 1.0 / frames_hz
         self.into.mkdir(parents=True, exist_ok=True)
         self.frames.mkdir(parents=True, exist_ok=True)
-        self._poses = (self.into / "poses.jsonl").open("w")
-        self._sensors = (self.into / "sensors.jsonl").open("w")
-        self._task = (self.into / "task.jsonl").open("w")
+        # Line-buffered, so a dive that is stopped without ceremony still
+        # leaves every line it wrote; a manifest is rewritten as it goes for
+        # the same reason.
+        self._poses = (self.into / "poses.jsonl").open("w", buffering=1)
+        self._sensors = (self.into / "sensors.jsonl").open("w", buffering=1)
+        self._task = (self.into / "task.jsonl").open("w", buffering=1)
+        self.last_manifest = -1e9
+        self.camera: dict | None = None
         self.last_pose = -1e9
         self.last_task = -1e9
         self.last_frame = -1e9
@@ -74,11 +79,19 @@ class Recorder:
         if dive.task is not None and t - self.last_task >= 1.0:
             self.last_task = t
             self._task.write(json.dumps({"t": round(t, 3), **dive.task.progress()}) + "\n")
+        if t - self.last_manifest >= 5.0:
+            self.last_manifest = t
+            (self.into / "manifest.json").write_text(json.dumps(self.manifest(dive, self.camera, closed=False), indent=2))
 
     def close(self, dive, camera: dict | None) -> dict:
         for handle in (self._poses, self._sensors, self._task):
             handle.flush()
             handle.close()
+        manifest = self.manifest(dive, camera, closed=True)
+        (self.into / "manifest.json").write_text(json.dumps(manifest, indent=2))
+        return manifest
+
+    def manifest(self, dive, camera: dict | None, closed: bool) -> dict:
         manifest = {
             "poses": self.poses,
             "frames": self.frames_taken,
@@ -89,8 +102,8 @@ class Recorder:
             "camera": camera,
             "task": None if dive.task is None else dive.task.result(),
             "files": ["poses.jsonl", "sensors.jsonl", "task.jsonl", "manifest.json"],
+            "closed": closed,
         }
-        (self.into / "manifest.json").write_text(json.dumps(manifest, indent=2))
         return manifest
 
 

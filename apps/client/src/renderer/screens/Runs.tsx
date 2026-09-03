@@ -65,13 +65,13 @@ export function Runs({ platform, held, onChanged, onReplay }: {
                 <strong>{run.mode === "interactive" ? "Flown" : "Batch"}</strong>
                 <span className="when">{ago(run.requestedAt)}</span>
                 <Result outcome={run.outcome} />
-                {recorded(run.outcome) ? (
+                {recorded(run) ? (
                   <button className="quiet small" onClick={() => onReplay(dive, run.id)}>Replay</button>
                 ) : null}
                 <Pill kind={run.state === "succeeded" ? "good"
                   : LIVE.has(run.state) ? "busy"
                   : run.state === "failed" ? "bad" : undefined}>
-                  {run.state}
+                  {run.state === "succeeded" && run.outcome?.["surfaced"] === true ? "surfaced" : run.state}
                 </Pill>
               </div>
             ))}
@@ -91,9 +91,10 @@ export function Runs({ platform, held, onChanged, onReplay }: {
   );
 }
 
-/** Whether the run left a recording behind, as its outcome says. */
-function recorded(outcome: Record<string, unknown> | undefined): boolean {
-  const recording = outcome?.["recording"] as { files?: number } | undefined;
+/** Whether the run left a recording behind. */
+function recorded(run: { artefacts?: number; outcome?: Record<string, unknown> }): boolean {
+  if ((run.artefacts ?? 0) > 0) return true;
+  const recording = run.outcome?.["recording"] as { files?: number } | undefined;
   return typeof recording?.files === "number" && recording.files > 0;
 }
 
