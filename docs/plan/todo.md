@@ -577,6 +577,12 @@ shows the machines card by card with what each holds and what is in flight;
 the end-to-end script, given a dive quota for its institution, passes 68 of
 68 against the box.
 
+Left open, and worth doing next: the box is shared, and with no dive running
+card 0 carries thirty gigabytes of other people's work. The scheduler counts
+only what dives hold, so it would happily place a twenty-gigabyte simulator
+beside that. The agent should report each card's free memory when it asks for
+work and the placement should trust the lesser of the two figures.
+
 ## 14. The application, tidied
 
 Everything a person meets gets one pass with fresh eyes: the console's
