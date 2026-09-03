@@ -538,6 +538,96 @@ the score is not yet computed.
 what it asks and what it is judged on, the dive is defined with its objective,
 and Inspect is shown with why it cannot be chosen yet.
 
+## Phase 2
+
+Phase 1 is a platform that works: a real reef, a vehicle you fly, controllers
+you write and deploy, dives placed by a scheduler, tasks scored, recordings
+kept. Phase 2 makes it something people can rely on and something that
+proves the point — a controller that learned, flying a task, scored. Same
+rule as before: one item at a time, proposed, approved, built, checked off.
+
+## 13. It does not fall over
+
+The evening's flying found the ways it does: restarting the agent ended
+every dive it was running; a dive asked for within twenty seconds of the
+last failed on a port; the console sat on a dead dive. Some are fixed. The
+rest of the class is: an agent that hands its running dives over to its
+successor instead of killing them (reattach to the containers it left, or
+drain before stopping); the job broker recording its refusals after the
+rollback as dives do; autonomy stacks with versions in the API instead of
+`slug-label`; the end-to-end script run against the new claim and kept
+green; one state event a second thinned to one every five in the record; a
+health page in the app that says what the box is doing.
+
+**Done when:** the agent can be redeployed under a running dive and the
+dive continues; the end-to-end script passes; the app shows the box's
+health.
+
+## 14. The application, tidied
+
+Everything a person meets gets one pass with fresh eyes: the console's
+panels laid out to one grid with nothing overlapping, the chart with the
+coral and the task's points on it, a gamepad read beside the keys, the Dives
+page as a real history — each run with its task, score, duration, controller
+and a Replay that shows the site under the track — and the Autonomy page
+real: the stacks the institution has, what each needs, which dives flew it,
+and a way to deploy from the app.
+
+**Done when:** you walk every page and nothing makes you swear.
+
+## 15. Water that moves
+
+Every dive so far is in still water. Constructed conditions gain a current
+— speed, heading, a shear with depth — and visibility, both felt by the
+physics and drawn by the renderer, chosen on the dive page and recorded on
+the run. Observed conditions take the current from the place's Aqualink and
+model data where there is any.
+
+**Done when:** a dive in two knots of current needs a different controller
+to hold station than one in still water, and you can see the difference.
+
+## 16. Sensors that are sensors
+
+The vehicle's camera is published on `/camera/image_raw` as the contract
+promises, rendered from the vehicle's own camera whatever the console looks
+through, and shown as a pane; the recording's frames become the camera's;
+the imaging sonar follows as a fan drawn from the seabed. A controller can
+then be written against what the vehicle sees.
+
+**Done when:** a stack subscribing to the camera receives frames, and the
+console shows the camera and the chase view at once.
+
+## 17. The first policy
+
+A controller that learned. Trained in the tank against a task with current
+— station hold first, then waypoints — with the SDK's gym-style loop, on the
+box's card as a batch job the scheduler places like a dive. Deployed with
+`--gpu-memory`, flown on the platform, scored, compared with the hand-written
+hold on the same dive and seed. The whole path a researcher would take, done
+once by us so it is known to work.
+
+**Done when:** a learned policy holds station in current with a score at
+least as good as the hand-written hold's, from the console.
+
+## 18. Tasks you can lay out
+
+Waypoints placed by clicking on the chart, a transect drawn as a line, a
+survey as a rectangle, saved with the dive; results across the runs of one
+dive shown together, so a change to a controller is a change in a number.
+
+**Done when:** you draw a survey on the chart, fly it twice with two
+controllers, and see which did better.
+
+## 19. Run it again
+
+A run pins everything it needed. Ask for it again with the same seed and
+compare the trajectories; a difference is a bug in the platform's own claim.
+Then the same dive across many conditions at once, which is the scored batch
+the roadmap always wanted.
+
+**Done when:** two runs of one seed leave the same trajectory, and a
+difference between controllers is shown as a difference between tracks.
+
 ## Not on this list
 
 Batch across many conditions. It is the same objective machinery from item 4,
