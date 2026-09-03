@@ -49,7 +49,8 @@ class Watch:
         # What somebody arriving needs once: the site to draw a map from, the
         # vehicle, the views there are.
         self.on_hello = on_hello
-        self.watchers: set = set()
+        # Each watcher's socket, and the queue its sender drains.
+        self.watchers: dict = {}
         self._loop = None
         self._latest = None
         self._thread = threading.Thread(target=self._serve, daemon=True)
@@ -81,14 +82,23 @@ class Watch:
                     await socket.send_str(json.dumps(self.on_hello()))
                 except Exception as exc:
                     carb.log_warn(f"Coral City could not greet a watcher: {exc}")
-            self.watchers.add(socket)
+            # One sender per watcher, fed a queue that holds only the newest
+            # frame. Sending straight from the capture callback put every
+            # frame on the wire as its own coroutine, and on a link slower
+            # than the renderer two of them interleaved mid-frame — which a
+            # browser answers by dropping the connection. A watcher on a slow
+            # link now sees fewer frames, each whole, and the newest.
+            latest: asyncio.Queue = asyncio.Queue(maxsize=1)
+            self.watchers[socket] = latest
+            sender = asyncio.ensure_future(self._deliver(socket, latest))
             self.say("watcher_arrived", watching=len(self.watchers))
             try:
                 async for message in socket:
                     if message.type == web.WSMsgType.TEXT:
                         self._hands(message.data)
             finally:
-                self.watchers.discard(socket)
+                self.watchers.pop(socket, None)
+                sender.cancel()
                 # Nobody watching is nobody at the controls. A vehicle left
                 # thrusting because a laptop lid closed is a vehicle in the wall.
                 if not self.watchers:
@@ -128,21 +138,38 @@ class Watch:
 
     # ── sending ──────────────────────────────────────────────────────────────
 
+    async def _deliver(self, socket, latest: asyncio.Queue) -> None:
+        """Drain one watcher's queue onto its socket, one frame at a time."""
+        try:
+            while True:
+                jpeg, payload = await latest.get()
+                await socket.send_bytes(jpeg)
+                await socket.send_str(payload)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            self.watchers.pop(socket, None)
+
     def send(self, jpeg: bytes, state: dict) -> None:
         """Hand a frame to the watchers. Never blocks the caller."""
         if self._loop is None or not self.watchers:
             return
         payload = json.dumps(state)
 
-        async def deliver():
-            for socket in list(self.watchers):
+        def offer():
+            for latest in list(self.watchers.values()):
+                # The newest frame replaces one nobody has taken yet.
+                if latest.full():
+                    try:
+                        latest.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
                 try:
-                    await socket.send_bytes(jpeg)
-                    await socket.send_str(payload)
-                except Exception:
-                    self.watchers.discard(socket)
+                    latest.put_nowait((jpeg, payload))
+                except asyncio.QueueFull:
+                    pass
 
-        asyncio.run_coroutine_threadsafe(deliver(), self._loop)
+        self._loop.call_soon_threadsafe(offer)
 
     @property
     def watched(self) -> bool:
