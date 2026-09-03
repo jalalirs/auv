@@ -10,6 +10,7 @@
 #   ./tools/box status
 #   ./tools/box logs control-plane
 #   ./tools/box tunnel
+#   ./tools/box tidy
 #   ./tools/box down
 #
 # Secrets are generated on the box and stay there. They are never written to
@@ -201,6 +202,19 @@ command_logs() {
     on_box_tty "${COMPOSE} logs --tail 200 --follow ${service}"
 }
 
+# The end-to-end script founds a tank, a probe, an observation ROV, a queue of
+# fake cards and an institution every time it runs, and the platform has no way
+# to delete a published thing — rightly, for a record. This is the operator's
+# broom: deployments/box/tidy.sql, run against the record on the box, removes
+# what the script made by the names it gives things, and nothing else.
+command_tidy() {
+    say "Sweeping the end-to-end script's litter out of the record…"
+    scp -q "${REPO_ROOT}/deployments/box/tidy.sql" "${GPU_HOST}:/tmp/coral-tidy.sql"
+    on_box "docker cp /tmp/coral-tidy.sql coral-city-record-1:/tmp/tidy.sql && \
+        docker exec coral-city-record-1 psql -U coral -d coral -v ON_ERROR_STOP=1 -f /tmp/tidy.sql \
+        | grep -Ev '^(BEGIN|SET|CREATE|SELECT [0-9]|COMMIT|DELETE 0)\$' && rm -f /tmp/coral-tidy.sql"
+}
+
 command_down() {
     say "Stopping (volumes are kept)…"
     on_box "${COMPOSE} down"
@@ -235,6 +249,7 @@ case "${1:-}" in
     logs)    shift; command_logs "$@" ;;
     down)    command_down ;;
     tunnel)  command_tunnel ;;
+    tidy)    command_tidy ;;
     ""|help|-h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' ;;
-    *) die "unknown command: $1 (try: init, up, status, logs, down, tunnel, secret)" ;;
+    *) die "unknown command: $1 (try: init, up, status, logs, down, tunnel, tidy, secret)" ;;
 esac

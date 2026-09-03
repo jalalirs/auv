@@ -932,7 +932,30 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 .files ul { list-style: none; padding: 0; margin: 6px 0 12px; font-size: 12px; }
 .files li { padding: 2px 0; }
 .files li em { color: var(--dim); font-style: normal; margin-left: 6px; }
-.ledger .row button.small { margin-left: auto; }
+
+/* ── the dives ledger: a fixed shape, so forty rows read as a table ───── */
+.ledger.runs .row { grid-template-columns: minmax(0, 1fr) auto 80px 120px; gap: 14px; }
+.ledger.runs .who { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ledger.runs .who strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ledger.runs .result { white-space: nowrap; }
+.ledger.runs .row button.small { justify-self: end; }
+.ledger.runs .pill { justify-self: end; }
+
+/* ── replay: the traces under the scrubber, and the pace ──────────────── */
+.scrub .speed { display: inline-flex; gap: 4px; }
+.scrub .speed button {
+  padding: 3px 8px; font-size: 11px; border-radius: 999px; border: 1px solid var(--edge);
+  background: transparent; color: var(--faint); cursor: pointer; font-variant-numeric: tabular-nums;
+}
+.scrub .speed button.chosen { color: var(--plain); border-color: var(--coral); }
+.replay-task { color: var(--faint); font-size: 12px; margin: -2px 0 10px; min-height: 16px; }
+.replay-task b { color: var(--plain); font-weight: 600; }
+.traces { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.trace { position: relative; height: 104px; background: #050a12; border: 1px solid var(--edge); border-radius: 6px; overflow: hidden; cursor: crosshair; }
+.trace canvas { width: 100%; height: 100%; display: block; }
+.trace .label { position: absolute; left: 8px; top: 5px; font-size: 11px; color: var(--faint); pointer-events: none; }
+.trace .label b { color: var(--plain); font-weight: 600; font-variant-numeric: tabular-nums; margin-left: 6px; }
+.trace .label i { font-style: normal; margin-left: 8px; }
 
 
 /* ── the waiting screen's bar ─────────────────────────────────────────── */

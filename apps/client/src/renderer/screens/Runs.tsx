@@ -37,15 +37,19 @@ export function Runs({ platform, held, onChanged, onReplay }: {
       {outstanding.length > 0 && (
         <section>
           <h2>Holding a machine</h2>
-          <div className="ledger">
-            {outstanding.map(({ dive, run }) => (
+          <div className="ledger runs">
+            {outstanding.map(({ dive, name, flownBy, run }) => (
               <div className="row" key={run.id}>
-                <strong>{run.mode === "interactive" ? "Flown" : "Batch"}</strong>
-                <Pill kind="busy">{run.state}</Pill>
-                <button className="quiet" disabled={ending === run.id}
+                <div className="who">
+                  <strong>{name}</strong>
+                  <span className="when">{meta(name, flownBy, run)}</span>
+                </div>
+                <span className="result" />
+                <button className="quiet small" disabled={ending === run.id}
                         onClick={() => void end(dive, run.id)}>
                   {ending === run.id ? "Ending…" : "End it"}
                 </button>
+                <Pill kind="busy">{run.state}</Pill>
               </div>
             ))}
           </div>
@@ -59,15 +63,17 @@ export function Runs({ platform, held, onChanged, onReplay }: {
             Dives appear here as soon as you ask for one.
           </Empty>
         ) : (
-          <div className="ledger">
+          <div className="ledger runs">
             {held.runs.slice(0, 40).map(({ dive, name, flownBy, run }) => (
               <div className="row" key={run.id}>
-                <strong>{name}</strong>
-                <span className="when">{flownBy} · {run.mode === "interactive" ? "flown" : "batch"} · {ago(run.requestedAt)}</span>
+                <div className="who">
+                  <strong>{name}</strong>
+                  <span className="when">{meta(name, flownBy, run)}</span>
+                </div>
                 <Result outcome={run.outcome} />
                 {recorded(run) ? (
                   <button className="quiet small" onClick={() => onReplay(dive, run.id)}>Replay</button>
-                ) : null}
+                ) : <span />}
                 <Pill kind={run.state === "succeeded" ? "good"
                   : LIVE.has(run.state) ? "busy"
                   : run.state === "failed" ? "bad" : undefined}>
@@ -88,6 +94,13 @@ export function Runs({ platform, held, onChanged, onReplay }: {
   );
 }
 
+/** The second line under a run's name: who flew it, unless the name already
+ *  says, how, and when. */
+function meta(name: string, flownBy: string, run: { mode: string; requestedAt: string }): string {
+  const who = name.includes(flownBy) ? "" : `${flownBy} · `;
+  return `${who}${run.mode === "interactive" ? "flown" : "batch"} · ${ago(run.requestedAt)}`;
+}
+
 /** Whether the run left a recording behind. */
 function recorded(run: { artefacts?: number; outcome?: Record<string, unknown> }): boolean {
   if ((run.artefacts ?? 0) > 0) return true;
@@ -96,9 +109,9 @@ function recorded(run: { artefacts?: number; outcome?: Record<string, unknown> }
 }
 
 /** What the dive achieved, when it was for something. */
-function Result({ outcome }: { outcome: Record<string, unknown> | undefined }): React.JSX.Element | null {
+function Result({ outcome }: { outcome: Record<string, unknown> | undefined }): React.JSX.Element {
   const task = outcome?.["task"] as { name?: string; score?: number; seconds?: number; done?: boolean } | undefined;
-  if (task === undefined || typeof task.score !== "number") return null;
+  if (task === undefined || typeof task.score !== "number") return <span className="result" />;
   return (
     <span className="result" title={task.done ? "the task ran to its end" : "the dive ended before the task did"}>
       {task.name}: <b>{(task.score * 100).toFixed(0)}%</b>
