@@ -111,6 +111,7 @@ class CoralCityShell(omni.ext.IExt):
         self._capturing = False
         self._asked_at = 0.0
         self._aim = None
+        self._chase_heading = None
         self._complained = False
         self._latest_state = {}
         self._alone_since = None
@@ -244,6 +245,17 @@ class CoralCityShell(omni.ext.IExt):
             heading = math.atan2(float(dive.rotation[1, 0]), float(dive.rotation[0, 0]))
             ahead = (math.cos(heading), math.sin(heading))
             view = getattr(dive, "view", "chase")
+            # The chase camera follows the heading with a lag rather than being
+            # bolted to it. Bolted, a yaw swung the camera with the hull and the
+            # world spun while the vehicle looked still, which reads as the
+            # camera turning and not the vehicle. Lagged, the hull visibly turns
+            # in the frame and the camera comes round after it.
+            if self._chase_heading is None:
+                self._chase_heading = heading
+            turn = (heading - self._chase_heading + math.pi) % (2 * math.pi) - math.pi
+            most = math.radians(35.0) * (1.0 / 60.0)
+            self._chase_heading += max(-most, min(most, turn * 0.08))
+            behind = (math.cos(self._chase_heading), math.sin(self._chase_heading))
             up_world = Gf.Vec3d(0.0, 1.0, 0.0) if dive.up_axis == "Y" else Gf.Vec3d(0.0, 0.0, 1.0)
             if view == "front":
                 eye = (x + 0.45 * ahead[0], y + 0.45 * ahead[1], z + 0.05)
@@ -256,10 +268,11 @@ class CoralCityShell(omni.ext.IExt):
                 aim = (x, y, z - 6.0)
                 up = dive.drawn_at((ahead[0], ahead[1], 0.0))
             elif view == "top":
+                # North up, like the chart, so a yaw is a vehicle turning on a
+                # still picture rather than a picture turning around a vehicle.
                 eye = (x, y, z + 14.0)
                 aim = (x, y, z)
-                # Heading up the screen: the camera's up is the way the vehicle points.
-                up = dive.drawn_at((ahead[0], ahead[1], 0.0))
+                up = dive.drawn_at((0.0, 1.0, 0.0))
             elif view == "orbit":
                 angle = dive.simulated * 0.25
                 eye = (x + 8.0 * math.cos(angle), y + 8.0 * math.sin(angle), z + 3.0)
@@ -269,7 +282,7 @@ class CoralCityShell(omni.ext.IExt):
                 # Behind and above, kept well under the surface: the first
                 # version sat twenty centimetres below it and the underside of
                 # the water filled the frame.
-                eye = (x - 9.0 * ahead[0], y - 9.0 * ahead[1], z + 3.2)
+                eye = (x - 9.0 * behind[0], y - 9.0 * behind[1], z + 3.2)
                 aim = (x, y, z)
                 up = up_world
             self._aim.Set(Gf.Matrix4d().SetLookAt(dive.drawn_at(eye), dive.drawn_at(aim), up).GetInverse())
