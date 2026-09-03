@@ -1,18 +1,27 @@
 // Going in.
 //
 // One screen, and the only one with a button that takes a machine. Everything
-// it needs is chosen already where there was nothing to choose, so the ordinary
-// case is: open the application, press Dive.
+// a dive is — where, what in, what for — is chosen on one composer with the
+// picture of the place behind it, so pressing Dive is a decision about
+// something you can see, and nothing is chosen by scrolling past it. What
+// needs no choosing is chosen already: what you chose last time if it is still
+// there, or the only one if there is only one. Nothing else is on this page;
+// what became of earlier dives is the Dives page's business.
 
 import { useState } from "react";
 
-import type { AssetVersion, Platform } from "@coral-city/api";
+import type { Platform } from "@coral-city/api";
 
-import type { Held } from "./Deck.js";
-import { Card, Empty, Fact, Pill, ago } from "./parts.js";
+import { PILOTED, TASKS, type Task } from "../catalog/tasks.js";
+import { alertKind, leadTemperature, useSea } from "../ocean/sea.js";
+import { Picker, type Choice } from "../parts/Picker.js";
+import { newestOf, whereIs } from "../platform/packages.js";
+import type { Held, Packages, Where } from "./Deck.js";
+import { Card, Credit, Fact, Pill, SeaPill, useLoadedPicture } from "./parts.js";
 
 const WHERE = "coral-city.place";
 const WHAT = "coral-city.vehicle";
+const WHY = "coral-city.task";
 
 /**
  * What to have chosen already: what you chose last time if it is still there,
@@ -28,22 +37,30 @@ function remembered<T extends { id: string }>(key: string, all: T[]): string | u
   return all.length === 1 ? all[0]!.id : undefined;
 }
 
-export function Dive({ platform, held, free, devices, onDiving, onChanged }: {
+export function Dive({ platform, held, packages, free, devices, onDiving, onChanged, onOpen }: {
   platform: Platform;
   held: Held;
+  packages: Packages;
   free: number;
   devices: number;
   onDiving: (dive: string, run: string) => void;
   onChanged: () => void;
+  onOpen: (where: Where) => void;
 }): React.JSX.Element {
   const [place, setPlace] = useState(() => remembered(WHERE, held.places));
   const [vehicle, setVehicle] = useState(() => remembered(WHAT, held.vehicles));
+  const [task, setTask] = useState<Task>(() =>
+    TASKS.find((t) => t.key === localStorage.getItem(WHY)) ?? PILOTED);
   const [asking, setAsking] = useState(false);
   const [refusal, setRefusal] = useState("");
 
   const chosenPlace = held.places.find((p) => p.id === place);
   const chosenVehicle = held.vehicles.find((v) => v.id === vehicle);
-  const ready = chosenPlace !== undefined && chosenVehicle !== undefined;
+  const placePackage = chosenPlace === undefined ? undefined : packages.places.get(chosenPlace.id);
+  const vehiclePackage = chosenVehicle === undefined ? undefined : packages.vehicles.get(chosenVehicle.id);
+  const sea = useSea(chosenPlace === undefined ? undefined : whereIs(chosenPlace.extent, placePackage?.site));
+  const ready = chosenPlace !== undefined && chosenVehicle !== undefined
+    && placePackage !== null && vehiclePackage !== null;
 
   async function go(): Promise<void> {
     if (!ready || held.institution === undefined) return;
@@ -57,12 +74,8 @@ export function Dive({ platform, held, free, devices, onDiving, onChanged }: {
         platform.versionsOfPlace(chosenPlace.id),
         platform.versionsOfVehicle(chosenVehicle.id),
       ]);
-      const newest = (all: AssetVersion[]): AssetVersion | undefined =>
-        all.filter((v) => v.publishedAt).sort((a, b) =>
-          (a.publishedAt! < b.publishedAt! ? 1 : -1))[0] ?? all[0];
-
-      const onePlace = newest(places);
-      const oneVehicle = newest(vehicles);
+      const onePlace = newestOf(places);
+      const oneVehicle = newestOf(vehicles);
       if (onePlace === undefined || oneVehicle === undefined) {
         setRefusal("That place or vehicle has no published package yet.");
         return;
@@ -77,8 +90,10 @@ export function Dive({ platform, held, free, devices, onDiving, onChanged }: {
         parameters: { currentMetresPerSecond: 0 },
       });
 
+      // The task is in the name until the platform records tasks (item 4);
+      // the record still says what the dive was for.
       const defined = await platform.defineDive(held.institution.id, {
-        name: `${chosenVehicle.name} in ${chosenPlace.name}`,
+        name: `${task.key === "piloted" ? "" : task.name + ": "}${chosenVehicle.name} in ${chosenPlace.name}`,
         cityVersionId: onePlace.id,
         vehicleVersionId: oneVehicle.id,
         conditionsId: water.id,
@@ -110,81 +125,128 @@ export function Dive({ platform, held, free, devices, onDiving, onChanged }: {
     }
   }
 
-  const recent = held.runs.slice(0, 4);
+  // ── what there is to choose from ─────────────────────────────────────────
+  const places: Choice[] = held.places.map((one) => {
+    const pkg = packages.places.get(one.id);
+    const site = pkg?.site;
+    return {
+      key: one.id, name: one.name, picture: pkg?.pictureUrl,
+      says: site?.deepestM !== undefined ? `${site.shallowestM?.toFixed(0) ?? "?"}–${site.deepestM.toFixed(0)} m`
+        : one.summary?.split(".")[0],
+      mark: <PlaceMark place={one} packages={packages} />,
+      later: pkg === null ? "no package yet" : undefined,
+    };
+  });
+  const vehicles: Choice[] = held.vehicles.map((one) => {
+    const pkg = packages.vehicles.get(one.id);
+    return {
+      key: one.id, name: one.name, picture: pkg?.pictureUrl,
+      says: [one.manufacturer, pkg?.dynamics ? `${pkg.dynamics.massKg} kg` : undefined].filter(Boolean).join(" · "),
+      later: pkg === null ? "no package yet" : pkg !== undefined && pkg.hull === undefined ? "no hull yet" : undefined,
+    };
+  });
+  const tasks: Choice[] = [PILOTED, ...TASKS].map((one) => ({
+    key: one.key, name: one.name, says: one.asks,
+  }));
+
+  // ── what the chosen place says about itself ──────────────────────────────
+  const site = placePackage?.site;
+  const picture = useLoadedPicture(placePackage?.pictureUrl);
+  const lead = sea.at === "known" ? leadTemperature(sea.record) : undefined;
+  const alert = sea.at === "known" ? sea.record.now.alertLevel?.value : undefined;
 
   return (
     <>
       <section>
-        <div className="hero">
-          <div className="said">
-            <div className="eyebrow">
-              {ready ? "Ready to dive" : "Choose where, and what in"}
-            </div>
-            <h2>{chosenPlace?.name ?? "A place"}</h2>
-            <p>{chosenPlace?.summary ?? "Pick somewhere below to go."}</p>
-            <div className="facts">
-              <Fact of="vehicle" is={chosenVehicle?.name ?? "—"} />
-              <Fact of="water" is="still" />
-              <Fact of="machines" is={`${free} free of ${devices}`} />
-            </div>
-          </div>
-          <div className="act">
-            <Pill kind={free > 0 ? "good" : "bad"}>
-              {free > 0 ? "a machine is free" : "everything is busy"}
-            </Pill>
-            <button className="big" disabled={asking || !ready} onClick={() => void go()}>
-              {asking ? "Asking for water…" : "Dive"}
-            </button>
-            <span className="refusal">{refusal}</span>
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <h2>Where</h2>
-        <div className="cards">
-          {held.places.map((one) => (
-            <Card key={one.id} name={one.name} detail={one.summary || one.verticalDatum}
-                  specs={[one.slug, one.verticalDatum]}
-                  chosen={one.id === place}
-                  onChoose={() => { setPlace(one.id); localStorage.setItem(WHERE, one.id); }} />
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <h2>What in</h2>
-        <div className="cards">
-          {held.vehicles.map((one) => (
-            <Card key={one.id} name={one.name} detail={one.summary || "a vehicle"}
-                  specs={[one.manufacturer || one.slug]}
-                  chosen={one.id === vehicle}
-                  onChoose={() => { setVehicle(one.id); localStorage.setItem(WHAT, one.id); }} />
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <h2>Lately</h2>
-        {recent.length === 0 ? (
-          <Empty title="No dives yet">
-            What you run appears here, with what it did and how to watch it again.
-          </Empty>
-        ) : (
-          <div className="ledger">
-            {recent.map(({ run }) => (
-              <div className="row" key={run.id}>
-                <strong>{run.mode === "interactive" ? "Flown" : "Batch"}</strong>
-                <span className="when">{ago(run.requestedAt)}</span>
-                <Pill kind={run.state === "succeeded" ? "good"
-                  : run.state === "running" || run.state === "preparing" ? "busy" : undefined}>
-                  {run.state}
-                </Pill>
+        <div className={`composer${picture ? " pictured" : ""}`}
+             style={picture ? { backgroundImage: `url("${picture}")` } : undefined}>
+          <div className="composer-top">
+            <div className="said">
+              <div className="eyebrow">
+                {ready ? "Ready to dive" : chosenPlace === undefined ? "Choose where" : chosenVehicle === undefined ? "Choose what in" : "Not yet"}
               </div>
-            ))}
+              <h2>{chosenPlace?.name ?? "Somewhere"}</h2>
+              <p>{chosenPlace?.summary ?? "Choose a place below; its picture and its sea appear here."}</p>
+              <div className="facts">
+                {lead === undefined ? null : (
+                  <Fact of={`water, ${lead.where}`} is={`${lead.value.toFixed(1)} °C`}
+                        note={`by ${lead.source}, from ${sea.at === "known" ? sea.record.site.name : ""} on Aqualink`} />
+                )}
+                {alert === undefined ? null : (
+                  <div className="fact"><span>heat stress</span>
+                    <strong><Pill kind={alertKind(alert)}>{["none", "watch", "warning", "alert 1", "alert 2"][Math.max(0, Math.min(4, Math.round(alert)))]}</Pill></strong>
+                  </div>
+                )}
+                {site?.deepestM === undefined ? null : (
+                  <Fact of="depth" is={`${site.shallowestM?.toFixed(0) ?? "?"}–${site.deepestM.toFixed(0)} m`} />
+                )}
+                {site?.beginAt === undefined ? null : (
+                  <Fact of="begins" is={`${(-site.beginAt[2]!).toFixed(1)} m down`} note={site.beginBecause} />
+                )}
+                {site?.reef?.colonies ? <Fact of="reef" is={`${site.reef.colonies.toLocaleString()} colonies`} note={site.reef.source} /> : null}
+                <Fact of="machines" is={`${free} free of ${devices}`} />
+              </div>
+            </div>
+            <div className="act">
+              <Pill kind={free > 0 ? "good" : "bad"}>
+                {free > 0 ? "a machine is free" : "everything is busy"}
+              </Pill>
+              <button className="big" disabled={asking || !ready} onClick={() => void go()}>
+                {asking ? "Asking for water…" : "Dive"}
+              </button>
+              <span className="refusal">{refusal}</span>
+            </div>
           </div>
-        )}
+          {placePackage?.credit && placePackage.credit.kind !== "render"
+            ? <div className="composer-credit"><Credit of={placePackage.credit} /></div> : null}
+        </div>
+
+        <div className="choose">
+          <Picker label="Where" choices={places} chosen={place}
+                  onChoose={(key) => { setPlace(key); localStorage.setItem(WHERE, key); }}
+                  onOpen={(key) => onOpen({ page: "place", id: key })} />
+          <Picker label="What in" choices={vehicles} chosen={vehicle}
+                  onChoose={(key) => { setVehicle(key); localStorage.setItem(WHAT, key); }}
+                  onOpen={(key) => onOpen({ page: "vehicle", id: key })} />
+          <Picker label="For" choices={tasks} chosen={task.key}
+                  onChoose={(key) => { const t = [PILOTED, ...TASKS].find((x) => x.key === key)!; setTask(t); localStorage.setItem(WHY, key); }}
+                  foot={task.judgedOn.length > 0
+                    ? <>Judged on {task.judgedOn.join(", ")}. Recorded with the dive now; scored when tasks are built.</>
+                    : <>No score. A person at the controls.</>} />
+        </div>
       </section>
     </>
+  );
+}
+
+/** The sea at a place, as the small mark on its row. */
+function PlaceMark({ place, packages }: { place: Held["places"][number]; packages: Packages }): React.JSX.Element | null {
+  const pkg = packages.places.get(place.id);
+  const sea = useSea(whereIs(place.extent, pkg?.site));
+  if (sea.at !== "known") return null;
+  return <SeaPill sea={sea} />;
+}
+
+/** A place's card, with today's sea in its corner — for the places page. */
+export function PlaceCard({ place, packages, chosen, onChoose, onOpen }: {
+  place: Held["places"][number];
+  packages: Packages;
+  chosen?: boolean;
+  onChoose?: () => void;
+  onOpen?: () => void;
+}): React.JSX.Element {
+  const pkg = packages.places.get(place.id);
+  const sea = useSea(whereIs(place.extent, pkg?.site));
+  const site = pkg?.site;
+  const specs = [
+    site?.from?.surveyed === true ? "surveyed" : site?.from?.surveyed === false ? "constructed" : place.slug,
+    site?.deepestM === undefined ? `datum: ${place.verticalDatum}` : `to ${site.deepestM.toFixed(0)} m`,
+    site?.reef?.colonies ? `${site.reef.colonies.toLocaleString()} colonies` : "",
+  ].filter(Boolean);
+  return (
+    <Card name={place.name} detail={place.summary || "a place"} picture={pkg?.pictureUrl}
+          specs={specs} corner={<SeaPill sea={sea} />}
+          chosen={chosen} onChoose={onChoose} onOpen={onOpen}
+          later={pkg === null ? "no package yet" : undefined} />
   );
 }

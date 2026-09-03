@@ -80,8 +80,11 @@ export function SignIn({ onSignedIn }: {
     }
   }
 
+  // Opened on the image of the thing itself: a vehicle over a reef, buoys in
+  // the water, the ground surveyed under it. What the platform is, before a
+  // word is read.
   return (
-    <div className="middle">
+    <div className="middle boot">
       <Badge under="Dive a vehicle you brought, in water we keep" />
       <form className="panel" onSubmit={submit}>
         <label>

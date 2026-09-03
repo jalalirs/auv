@@ -1,18 +1,29 @@
-// Where you may dive.
+// Where you may dive, and where you will be able to.
 //
 // Only what you have been granted appears — not filtered here, but simply not
 // listed by the platform. An asset nobody granted you is indistinguishable from
 // one that does not exist, which is deliberate, and it means this page never
 // has to explain an absence.
+//
+// Under them, the places the platform is for and has not built. Shown as what
+// they are — intentions, with what building each takes — so the shape of the
+// product is visible before the whole of it exists.
 
-import type { Held } from "./Deck.js";
+import { ENVIRONMENTS } from "../catalog/environments.js";
+import type { Held, Packages } from "./Deck.js";
+import { PlaceCard } from "./Dive.js";
 import { Card, Empty, PageHead } from "./parts.js";
 
-export function Places({ held }: { held: Held }): React.JSX.Element {
+export function Places({ held, packages, onOpen }: {
+  held: Held;
+  packages: Packages;
+  onOpen: (id: string) => void;
+}): React.JSX.Element {
+  const slugs = new Set(held.places.map((p) => p.slug));
   return (
     <>
       <PageHead title="Places"
-        says="Water we keep, versioned and granted. A dive pins the version it ran in, so the reef you dived is the reef anybody can dive again." />
+        says="Water we keep, versioned and granted. A dive pins the version it ran in, so the reef you dived is the reef anybody can dive again. Each place says what its sea is doing today, from the nearest monitoring site." />
       {held.places.length === 0 ? (
         <Empty title="Nothing granted yet">
           Places appear here once somebody grants your institution access to them.
@@ -21,20 +32,24 @@ export function Places({ held }: { held: Held }): React.JSX.Element {
         <section>
           <div className="cards">
             {held.places.map((one) => (
-              <Card key={one.id} name={one.name} detail={one.summary || "a place"}
-                    specs={[one.slug, `datum: ${one.verticalDatum}`,
-                            one.discoverable ? "listed" : "unlisted"]} />
+              <PlaceCard key={one.id} place={one} packages={packages} onOpen={() => onOpen(one.id)} />
             ))}
           </div>
         </section>
       )}
       <section>
-        <h2>Coming</h2>
-        <Empty title="Real reefs" soon="not built yet">
-          Bathymetry and photogrammetry, so a place is somewhere that exists rather
-          than a tank we had a scene for. The platform is built so this is a content
-          pipeline and not a rewrite.
-        </Empty>
+        <h2>The places this is for</h2>
+        <div className="cards">
+          {ENVIRONMENTS.map((one) => (
+            <Card key={one.key} name={one.name} detail={`${one.where} · ${one.purpose}`}
+                  specs={[one.standing, ...one.sources.slice(0, 1)]}
+                  later={one.becomes !== undefined && slugs.has(one.becomes)
+                    ? "grows from a place you have" : "not built yet"} />
+          ))}
+        </div>
+        <p className="note">
+          Each of these is real data first: a survey, a chart, a habitat map. What each takes is on its card; none is a scene somebody had lying around.
+        </p>
       </section>
     </>
   );
