@@ -230,9 +230,29 @@ export function Water({ platform, stream, onSurface }: {
 
     connect();
 
+    // The run itself, asked about every few seconds. A dive can end under the
+    // console — the agent restarted, the lease expired, the host went away —
+    // and a console left showing its last frame with the keys apparently
+    // working is worse than one that says so.
+    const over: Record<string, string> = {
+      expired: "The platform lost the dive: its lease ran out, usually because the agent on the host stopped.",
+      failed: "The dive failed on the host.",
+      cancelled: "The dive was ended.",
+      succeeded: "The dive is over.",
+    };
+    const watchRun = setInterval(() => {
+      void platform.runs(stream.diveId).then((runs) => {
+        const run = runs.find((r) => r.id === stream.runId);
+        if (run !== undefined && run.state in over && !done) {
+          setLost(run.failureReason || over[run.state]!);
+        }
+      }).catch(() => { /* asked again in a moment */ });
+    }, 5000);
+
     return () => {
       done = true;
       clearInterval(tell);
+      clearInterval(watchRun);
       if (retry !== undefined) clearTimeout(retry);
       window.removeEventListener("keydown", onDown);
       window.removeEventListener("keyup", onUp);
