@@ -114,9 +114,12 @@ class Report:
 class Tank:
     def __init__(self, vehicle: str = "bluerov2", start=(0.0, 0.0, -7.0), seconds: float = 60.0,
                  task: dict | None = None, sensed: bool = True, hz: float = 20.0,
-                 current: tuple[float, float] | None = None) -> None:
+                 current: tuple[float, float] | None = None, latency_ticks: int = 0) -> None:
         """`current` is (metres per second, heading in degrees the water flows
-        towards, from north clockwise); None is still water."""
+        towards, from north clockwise); None is still water. `latency_ticks`
+        delays every command by that many ticks, as the live loop does — a
+        policy that only holds with no delay will not hold on the platform."""
+        self.latency_ticks = int(latency_ticks)
         hydrodynamics, runner, Helm = _runtime()
         self.described = vehicles.load(vehicle)
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
@@ -152,6 +155,7 @@ class Tank:
         # The task is judged by the runtime's own code, from where the dive began.
         self.dive.begin_task(self.task)
         self._scored = 0.0
+        self._pending: list = []
         self.navigator = Navigator(density=self.model.density)
         self.steps_per_tick = max(1, int(round(1.0 / (self.hz * self.dive.dt))))
         self.tick_dt = self.steps_per_tick * self.dive.dt
@@ -195,10 +199,16 @@ class Tank:
             asked = np.asarray(asked, dtype=float)
             command = Command(wrench=asked) if asked.shape[0] == 6 and len(self.model.thrusters) != 6 \
                 else Command(wrench=asked)
-        if command.thrusters is not None:
-            self.bridge.say(command.thrusters)
+        # Through a delay line when asked, so the vehicle acts on what the
+        # controller said a few ticks ago, as it does live.
+        self._pending.append(command)
+        while len(self._pending) > self.latency_ticks + 1:
+            self._pending.pop(0)
+        acted = self._pending[0] if len(self._pending) > self.latency_ticks else Command.nothing()
+        if acted.thrusters is not None:
+            self.bridge.say(acted.thrusters)
         else:
-            wrench = np.zeros(6) if command.wrench is None else np.asarray(command.wrench, dtype=float)
+            wrench = np.zeros(6) if acted.wrench is None else np.asarray(acted.wrench, dtype=float)
             self.bridge.say(self.allocator.allocate(self.dive.helm.guard(wrench)))
         for _ in range(self.steps_per_tick):
             if self.dive.done:

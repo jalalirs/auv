@@ -36,6 +36,7 @@ from hold_policy import FEATURES, LinearHold, features  # noqa: E402
 
 CURRENT = (0.51, 90.0)      # one knot, flowing east
 SECONDS = 30.0
+LATENCY_TICKS = 3           # 150 ms at 20 Hz, about what the live loop has
 POPULATION = 24
 ELITE = 4
 GENERATIONS = 14
@@ -44,11 +45,16 @@ GENERATIONS = 14
 def rollout(weights: np.ndarray, seed_shift: float) -> float:
     """How well these weights hold station: the task's score, less a little
     for thrust spent, so the cheaper of two holds that both stay put wins."""
+    # Through the sensors and with the live loop's delay, or what is learned
+    # holds in the tank and nowhere else — which is what the first policy did:
+    # 0.48 here, 0.03 on the platform.
     tank = Tank("bluerov2", start=(seed_shift, 0.0, -7.0), seconds=SECONDS,
                 task=hold_station(seconds=SECONDS, radius_m=0.5, depth_band_m=0.3),
-                sensed=False, current=CURRENT)
+                sensed=True, current=CURRENT, latency_ticks=LATENCY_TICKS)
     report = tank.run(LinearHold.with_weights(weights))
-    return report.score - 0.05 * report.task["thrusterEffort"]
+    # Thrust is dear: a policy that thrashes is penalised for it, since the
+    # thrashing is also what does not survive a delay.
+    return report.score - 0.3 * report.task["thrusterEffort"]
 
 
 def main() -> int:
@@ -77,10 +83,10 @@ def main() -> int:
     print(f"learned: {max(final, best_score):.3f} in {CURRENT[0]} m/s current; hand-written hold for comparison:")
     from hold import StationHold
     hand = Tank("bluerov2", seconds=SECONDS, task=hold_station(seconds=SECONDS, radius_m=0.5, depth_band_m=0.3),
-                sensed=False, current=CURRENT).run(StationHold())
+                sensed=True, current=CURRENT, latency_ticks=LATENCY_TICKS).run(StationHold())
     print(f"  hand-written: score {hand.score:.3f} effort {hand.task['thrusterEffort']:.3f}")
     learned = Tank("bluerov2", seconds=SECONDS, task=hold_station(seconds=SECONDS, radius_m=0.5, depth_band_m=0.3),
-                   sensed=False, current=CURRENT).run(LinearHold.with_weights(chosen))
+                   sensed=True, current=CURRENT, latency_ticks=LATENCY_TICKS).run(LinearHold.with_weights(chosen))
     print(f"  learned:      score {learned.score:.3f} effort {learned.task['thrusterEffort']:.3f}")
 
     # Written out as a controller of its own, weights and all, so that the file

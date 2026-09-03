@@ -684,6 +684,17 @@ fight and not yet to fight cheaply. Deep it is not: a network in place of the
 matrix is the same path with more parameters, and that is the next thing to
 try. What it proves is the path: tank, weights, deploy, fly, score.
 
+Flown on the box in the same knot of current it trained for, it scored 0.03
+— 7.8 m off station, worse than the hand-written hold's 0.08 in that water.
+The tank had trained it on the true state with no delay between seeing and
+acting; live it sees a dead-reckoned position with about a hundred and fifty
+milliseconds between observation and thrust, and a high-gain policy that
+thrashes is exactly what a delay undoes. The tank now takes `latency_ticks`
+and the learner trains through the sensors with three ticks of delay and a
+heavier price on thrust; the retrained policy's live score is recorded below
+as it lands. The lesson is the one every sim-to-real paper reports, and the
+platform now has the knob to learn it with.
+
 ## 18. Tasks you can lay out
 
 Waypoints placed by clicking on the chart, a transect drawn as a line, a
