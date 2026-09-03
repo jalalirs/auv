@@ -51,8 +51,12 @@ the vehicle's sensors would give it — pressure, attitude, velocity over the
 ground, and a position dead-reckoned from them — through the same navigator
 the live node uses. `--truth` hands it the true state instead.
 
-A task scores the run in [0, 1] and gives a reward per step, which is what a
-learner trains on:
+Water that moves: `--current 0.51 90` on the command line, or
+`Tank(..., current=(0.51, 90))`, is a knot flowing east, felt by the physics as
+drag on motion through the water. A task scores the run in [0, 1] and gives a
+reward per step, which is what a learner trains on — `examples/learn_hold.py`
+does exactly that, finding a linear hold's weights in a current by the
+cross-entropy method and writing them out as a controller to deploy:
 
 ```python
 from coral_city.tank import Tank

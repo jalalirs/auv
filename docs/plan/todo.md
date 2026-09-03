@@ -647,6 +647,14 @@ then be written against what the vehicle sees.
 **Done when:** a stack subscribing to the camera receives frames, and the
 console shows the camera and the chase view at once.
 
+*Where it stands:* half (3 September). The vehicle publishes
+`/camera/image_raw` as the contract promises — RGB frames at two a second —
+whenever the picture being rendered is the vehicle's own camera, front or
+down, which it is on every batch survey and whenever the console looks
+through it. A chase or orbit picture is not published as a sensor. The other
+half, the camera rendered on its own so the console can watch chase and
+camera at once, needs a second render product, and the sonar with it.
+
 ## 17. The first policy
 
 A controller that learned. Trained in the tank against a task with current

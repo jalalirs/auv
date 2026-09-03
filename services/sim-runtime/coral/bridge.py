@@ -58,7 +58,7 @@ class Bridge:
 
         import rclpy
         from geometry_msgs.msg import Twist, TwistWithCovarianceStamped
-        from sensor_msgs.msg import FluidPressure, Imu
+        from sensor_msgs.msg import FluidPressure, Image, Imu
         from std_msgs.msg import Float64MultiArray
 
         self._rclpy = rclpy
@@ -86,6 +86,11 @@ class Bridge:
         self.imu = self.node.create_publisher(Imu, "/imu/data", 10)
         self.dvl = self.node.create_publisher(
             TwistWithCovarianceStamped, "/dvl/twist", 10)
+        # The camera: what the vehicle sees, as the frames the renderer
+        # produces when the view is the vehicle's own. A stack written
+        # against a camera receives what a camera on the hull would give it.
+        self.camera = self.node.create_publisher(Image, "/camera/image_raw", 2)
+        self._Image = Image
 
         # What it acts on. Two ways of saying the same thing: per-thruster for
         # a stack that would rather allocate thrust itself, and a body wrench
@@ -166,6 +171,25 @@ class Bridge:
             self._commands_seen += 1
             self._crossed["/cmd_vel"] = self._crossed.get("/cmd_vel", 0) + 1
 
+    def publish_image(self, rgba, wide: int, tall: int) -> None:
+        """One frame from the vehicle's camera, as an RGB image message."""
+        try:
+            import numpy as np
+            frame = np.frombuffer(rgba, dtype=np.uint8).reshape(tall, wide, 4)[:, :, :3]
+            message = self._Image()
+            message.header.stamp = self.node.get_clock().now().to_msg()
+            message.header.frame_id = "camera"
+            message.height, message.width = int(tall), int(wide)
+            message.encoding = "rgb8"
+            message.is_bigendian = 0
+            message.step = int(wide) * 3
+            message.data = np.ascontiguousarray(frame).tobytes()
+            self.camera.publish(message)
+            with self._lock:
+                self._crossed["/camera/image_raw"] = self._crossed.get("/camera/image_raw", 0) + 1
+        except Exception:
+            pass
+
     def topics(self) -> list[dict]:
         """What this vehicle carries, and how much has crossed each.
 
@@ -189,6 +213,7 @@ class Bridge:
                 ("/depth", "sensor_msgs/msg/FluidPressure", "from"),
                 ("/imu/data", "sensor_msgs/msg/Imu", "from"),
                 ("/dvl/twist", "geometry_msgs/msg/TwistWithCovarianceStamped", "from"),
+                ("/camera/image_raw", "sensor_msgs/msg/Image", "from"),
                 ("/thruster_cmd", "std_msgs/msg/Float64MultiArray", "to"),
                 ("/cmd_vel", "geometry_msgs/msg/Twist", "to"),
             )
