@@ -97,7 +97,7 @@ const KEYS: { key: string; does: string }[] = [
   { key: "F", does: "pitch down" },
 ];
 
-export function Instruments({ reading, topics, held, history, frames, onLeave, onTune, onHoldHere, onEngage, onPlot, plotted, pad, children }: {
+export function Instruments({ reading, topics, held, history, frames, onLeave, onTune, onHoldHere, onEngage, onPlot, plotted, pad, water, children }: {
   reading: Reading;
   topics: Topic[];
   held: string[];
@@ -110,6 +110,8 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, o
   onPlot: (topic: string) => void;
   plotted: string | undefined;
   pad?: string;
+  /** What the water is doing, from the dive's greeting. */
+  water?: { currentMetresPerSecond: number; currentHeadingDeg: number; visibilityM?: number | null };
   children: React.ReactNode;
 }): React.JSX.Element {
   const who = reading.controller?.flying ?? (reading.byHand === true ? "manual" : reading.commanded === true ? "stack" : undefined);
@@ -209,6 +211,14 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, o
             <p className="aside">
               {reading.netBuoyancyN < 0 ? "Sinks" : "Floats"} at rest —
               {" "}{Math.abs(reading.netBuoyancyN).toFixed(2)} N net buoyancy.
+            </p>
+          )}
+          {water === undefined ? null : (
+            <p className="aside">
+              {water.currentMetresPerSecond > 0.01
+                ? `Current ${(water.currentMetresPerSecond / 0.5144).toFixed(1)} kn towards ${water.currentHeadingDeg.toFixed(0).padStart(3, "0")}°`
+                : "Still water"}
+              {water.visibilityM ? ` · ${water.visibilityM.toFixed(0)} m visibility` : ""}.
             </p>
           )}
         </Panel>
