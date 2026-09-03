@@ -126,3 +126,15 @@ def test_hold_here_moves_the_station():
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+def test_a_roll_key_leans_the_hull_and_lets_it_come_back():
+    dive = a_dive()
+    run(dive, 3.0)
+    dive.take_the_controls([0.0, 0.0, 0.0, 1.0, 0.0, 0.0])
+    run(dive, 8.0)
+    rolled = math.degrees(dive.observation().roll)
+    assert 5.0 < abs(rolled) < 35.0, f"a full roll key should lean the hull, not capsize it: {rolled:.1f}°"
+    dive.take_the_controls([0.0] * 6)
+    run(dive, 15.0)
+    assert abs(math.degrees(dive.observation().roll)) < 3.0, "let go, it rights itself"
