@@ -15,6 +15,8 @@ export interface Site {
   heights: number[];
   deepestM: number;
   shallowestM: number;
+  /** Where the coral is, world x and y, thinned for drawing. */
+  coral?: number[][];
 }
 
 export interface Fix { x: number; y: number }
@@ -82,6 +84,16 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
     ink.strokeStyle = "#2a4160";
     ink.lineWidth = devicePixelRatio;
     ink.strokeRect(left, top, side, side);
+
+    // The coral, as it stands on the bottom.
+    if (site?.coral && site.coral.length > 0) {
+      ink.fillStyle = "rgba(244, 197, 66, 0.55)";
+      const r = (large ? 1.6 : 1.0) * devicePixelRatio;
+      for (const [cx, cy] of site.coral) {
+        const [x, y] = toScreen(cx!, cy!);
+        ink.fillRect(x - r, y - r, 2 * r, 2 * r);
+      }
+    }
 
     // Where it began.
     if (beganAt !== undefined && beganAt.length >= 2) {
