@@ -1187,12 +1187,17 @@ func (s *Store) ClaimNext(ctx context.Context, conn db.Conn, targetName string,
 			return Claimed{}, fmt.Errorf("holding a card: %w", err)
 		}
 	}
-	// The lowest slot no other dive on this host holds.
+	// The lowest slot no other dive on this host holds — counting a dive
+	// that ended in the last minute as still holding its slot, because its
+	// simulator is still being asked to stop and still has the port. A dive
+	// surfaced and asked for again at once used to fail on that port.
 	taken, err := conn.Query(ctx, `
 		SELECT DISTINCT r.host_slot FROM dive.run r
 		  JOIN compute.device d ON d.id = r.device_id
 		  JOIN exec.target t ON t.id = d.target_id
-		 WHERE t.name = $1 AND r.state IN ('preparing', 'running') AND r.host_slot IS NOT NULL`, targetName)
+		 WHERE t.name = $1 AND r.host_slot IS NOT NULL
+		   AND (r.state IN ('preparing', 'running')
+		        OR (r.ended_at IS NOT NULL AND r.ended_at > now() - interval '60 seconds'))`, targetName)
 	if err != nil {
 		return Claimed{}, fmt.Errorf("reading the host's slots: %w", err)
 	}
