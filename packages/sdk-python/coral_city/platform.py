@@ -145,17 +145,20 @@ class Platform:
 
     # ── dives ────────────────────────────────────────────────────────────────
 
-    def conditions(self, org_id: str) -> dict:
-        """Still water, made once per institution."""
-        try:
-            had = self.call("GET", f"/api/v1/organisations/{org_id}/conditions").get("conditions", [])
-            for one in had:
-                if one.get("name") == "Still water":
-                    return one
-        except Refused:
-            pass
+    def conditions(self, org_id: str, current: tuple[float, float] | None = None,
+                   visibility_m: float | None = None) -> dict:
+        """Constructed water: still by default, or with a current (metres per
+        second, heading it flows towards) and a visibility."""
+        parameters = {"currentMetresPerSecond": 0, "currentHeadingDeg": 0}
+        name = "Still water"
+        if current is not None and current[0] > 0:
+            parameters = {"currentMetresPerSecond": float(current[0]), "currentHeadingDeg": float(current[1])}
+            name = f"{current[0] / 0.5144:.1f} knots towards {current[1]:.0f}°"
+        if visibility_m:
+            parameters["visibilityM"] = float(visibility_m)
+            name += f", {visibility_m:.0f} m visibility"
         return self.call("POST", f"/api/v1/organisations/{org_id}/conditions", {
-            "kind": "constructed", "name": "Still water", "parameters": {"currentMetresPerSecond": 0}})
+            "kind": "constructed", "name": name, "parameters": parameters})
 
     def define_dive(self, org_id: str, name: str, city_version: str, vehicle_version: str,
                     conditions: str, stack: str | None, initial_state: dict | None = None,

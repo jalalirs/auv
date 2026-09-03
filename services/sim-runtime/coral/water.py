@@ -43,7 +43,8 @@ def is_it_deep(depth: float) -> float:
 
 
 def make(stage, say, floor: float, water_level: float = 0.0,
-         across: float = 1000.0, working_depth: float = 10.0) -> None:
+         across: float = 1000.0, working_depth: float = 10.0,
+         visibility_m: float | None = None) -> None:
     """Put water over a place, and light it from above.
 
     Four things, in the order they matter: the fog that is the water itself, the
@@ -113,14 +114,17 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     settings.set("/rtx/fog/fogColorIntensity", 0.55)
     # Visibility, near enough. Twenty metres is a good day on a reef; a diver
     # calls thirty exceptional and five a bad one.
-    settings.set("/rtx/fog/fogDistance", 30.0)
+    # The conditions may say otherwise: the fog scales with the visibility
+    # asked for, seventeen metres being what the numbers below were tuned to.
+    scale = 1.0 if not visibility_m else max(0.15, float(visibility_m) / 17.0)
+    settings.set("/rtx/fog/fogDistance", 30.0 * scale)
     settings.set("/rtx/fog/fogDensity", 1.0)
     settings.set("/rtx/fog/fogHeightDensity", 1.0)
     # Fog that begins at the lens greys out the thing you came to look at.
     # Water does haze at half a metre, but not enough to matter, and starting
     # further out keeps the colour of what is close while still burying the
     # distance.
-    settings.set("/rtx/fog/fogStartDistance", 11.0)
+    settings.set("/rtx/fog/fogStartDistance", 11.0 * scale)
 
     # ── the sun ──────────────────────────────────────────────────────────────
     #
@@ -231,7 +235,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
 
     say("water_made",
         fogApplied=applied,
-        visibilityM=17.0, surfaceAtM=water_level,
+        visibilityM=round(17.0 * scale, 1), surfaceAtM=water_level,
         daylightLeft=round(left, 3), atDepthM=round(working_depth, 1),
         absorbsInM=list(ATTENUATION_METRES))
 

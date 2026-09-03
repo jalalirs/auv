@@ -45,6 +45,27 @@ export const TASKS: Task[] = [
     objective: { kind: "return", homeRadiusM: 2.0, surfaceDepthM: 0.5, timeLimitS: 300 } },
 ];
 
+/** What the water is doing: a current, and how far you can see. */
+export interface Water {
+  key: string;
+  name: string;
+  says: string;
+  parameters: { currentMetresPerSecond: number; currentHeadingDeg: number; visibilityM?: number };
+}
+
+export const WATERS: Water[] = [
+  { key: "still", name: "Still water", says: "No current. Visibility as the reef has it.",
+    parameters: { currentMetresPerSecond: 0, currentHeadingDeg: 0 } },
+  { key: "gentle", name: "A gentle set", says: "A quarter of a knot, flowing north.",
+    parameters: { currentMetresPerSecond: 0.13, currentHeadingDeg: 0 } },
+  { key: "knot", name: "One knot", says: "Half a metre a second, flowing east. The hold works for it.",
+    parameters: { currentMetresPerSecond: 0.51, currentHeadingDeg: 90 } },
+  { key: "two-knots", name: "Two knots", says: "A metre a second, flowing east. Near the BlueROV2's limit.",
+    parameters: { currentMetresPerSecond: 1.03, currentHeadingDeg: 90 } },
+  { key: "murky", name: "One knot, murky", says: "Half a metre a second and five metres of visibility.",
+    parameters: { currentMetresPerSecond: 0.51, currentHeadingDeg: 90, visibilityM: 5 } },
+];
+
 /** A free dive: no task, no score, a person at the controls. */
 export const PILOTED: Task = {
   key: "piloted", name: "Piloted",

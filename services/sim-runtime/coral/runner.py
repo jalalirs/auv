@@ -206,6 +206,13 @@ class Dive:
         self.bounds = (None, None)
         self.view = "chase"
         self.began_at = np.zeros(3)
+        # The water's own motion, in the world frame, metres per second. Read
+        # from the dive's conditions: still unless they say otherwise. Drag
+        # acts on the vehicle's motion through the water, not over the ground,
+        # so a vehicle doing nothing in a current is carried by it.
+        self.current = np.zeros(3)
+        self.visibility_m = None
+        self.read_conditions(brief.get("conditions"))
         # What the dive is for, judged as it runs. None when it is only flown.
         self.task = None
         # What it leaves behind. Opened with the task, beside the brief.
@@ -336,7 +343,8 @@ class Dive:
                        floor=self.floor if self.floor is not None else -20.0,
                        water_level=0.0,
                        across=float(extent[0]) if extent else 1000.0,
-                       working_depth=abs(float(self.position[2])))
+                       working_depth=abs(float(self.position[2])),
+                       visibility_m=self.visibility_m)
             self.water = water
 
         # A body of the vehicle's actual mass, at the vehicle's actual place.
@@ -550,6 +558,27 @@ class Dive:
             self.helm.hold_here(self.observation())
             self.say("hold_engaged", **self.helm.hold.status())
 
+    def read_conditions(self, conditions) -> None:
+        """What the water is doing, from the conditions the dive was defined with."""
+        parameters = {}
+        if isinstance(conditions, dict):
+            parameters = conditions.get("parameters") or {}
+        speed = float(parameters.get("currentMetresPerSecond", 0.0) or 0.0)
+        # The heading a current is named by is where it flows towards, from
+        # north, clockwise — the way a current is written on a chart.
+        heading = float(parameters.get("currentHeadingDeg", 0.0) or 0.0)
+        angle = np.radians(90.0 - heading)
+        self.current = np.array([speed * np.cos(angle), speed * np.sin(angle), 0.0])
+        visibility = parameters.get("visibilityM")
+        self.visibility_m = None if visibility in (None, "", 0) else float(visibility)
+
+    def conditions_said(self) -> dict:
+        speed = float(np.hypot(self.current[0], self.current[1]))
+        heading = (90.0 - np.degrees(np.arctan2(self.current[1], self.current[0]))) % 360.0 if speed > 1e-9 else 0.0
+        return {"currentMetresPerSecond": round(speed, 3), "currentHeadingDeg": round(float(heading), 1),
+                "current": [round(float(v), 4) for v in self.current[:2]],
+                "visibilityM": self.visibility_m}
+
     def begin_task(self, objective) -> None:
         """Where the dive begins is where its task is measured from.
 
@@ -606,6 +635,7 @@ class Dive:
             "view": self.view,
             "beganAt": [round(float(v), 3) for v in self.began_at],
             "task": None if self.task is None else self.task.describe(),
+            "conditions": self.conditions_said(),
         }
 
     def samples(self) -> dict:
@@ -645,7 +675,11 @@ class Dive:
         """One step of physics. Everything else is somebody else's schedule."""
         self.commands = self.helm.command(self.observation())
 
-        wrench = self.body.step(self.rotation, self.velocity, self.commands, self.dt)
+        # Drag is on the motion through the water. The current, in the body
+        # frame, is taken off the ground velocity before the water sees it.
+        through_water = self.velocity.copy()
+        through_water[:3] -= self.rotation.T @ self.current
+        wrench = self.body.step(self.rotation, through_water, self.commands, self.dt)
 
         # Semi-implicit Euler at a fixed step. Not because it is the best
         # integrator but because it is the same integrator every time, which

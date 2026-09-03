@@ -54,7 +54,8 @@ def cmd_tank(args) -> int:
         if args.task not in TASKS:
             raise SystemExit(f"no task '{args.task}'; there are {', '.join(TASKS)}")
         task = TASKS[args.task]()
-    tank = Tank(cls.vehicle, start=tuple(args.start), seconds=args.seconds, task=task, sensed=not args.truth)
+    tank = Tank(cls.vehicle, start=tuple(args.start), seconds=args.seconds, task=task, sensed=not args.truth,
+                current=tuple(args.current) if args.current else None)
     report = tank.run(controller)
     print(report)
     if args.trace:
@@ -115,7 +116,9 @@ def cmd_dive(args) -> int:
     vehicle = platform.vehicle(args.vehicle)
     city_version = platform.published(platform.city_versions(place["id"]))
     vehicle_version = platform.published(platform.vehicle_versions(vehicle["id"]))
-    conditions = platform.conditions(institution["id"])
+    conditions = platform.conditions(institution["id"],
+                                     current=tuple(args.current) if args.current else None,
+                                     visibility_m=args.visibility)
     queues = platform.queues()
     if not queues:
         raise SystemExit("no queue you may run on")
@@ -179,6 +182,7 @@ def main(argv=None) -> int:
     p.add_argument("--start", type=float, nargs=3, default=[0.0, 0.0, -7.0], metavar=("X", "Y", "Z"))
     p.add_argument("--task", help="hold | waypoints | transect | survey | return")
     p.add_argument("--truth", action="store_true", help="hand the controller the true state, not what its sensors would say")
+    p.add_argument("--current", type=float, nargs=2, metavar=("M_PER_S", "HEADING_DEG"), help="a current the water carries, flowing towards the heading")
     p.add_argument("--trace", action="store_true")
     p.add_argument("--json", action="store_true")
     p.set_defaults(go=cmd_tank)
@@ -212,6 +216,8 @@ def main(argv=None) -> int:
     p = sub.add_parser("dive", help="define a dive with a stack and run it")
     p.add_argument("--stack", help="autonomy slug or id; none means the dive is held by the runtime")
     p.add_argument("--task", help="what the dive is for: hold | waypoints | transect | survey | return")
+    p.add_argument("--current", type=float, nargs=2, metavar=("M_PER_S", "HEADING_DEG"), help="water flowing towards a heading")
+    p.add_argument("--visibility", type=float, help="metres you can see")
     p.add_argument("--place", required=True)
     p.add_argument("--vehicle", required=True)
     p.add_argument("--org")

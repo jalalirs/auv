@@ -28,13 +28,15 @@ export interface Geometry {
   rectangle?: { x: number; y: number }[];
 }
 
-export function Minimap({ site, track, position, headingDeg, beganAt, geometry, large }: {
+export function Minimap({ site, track, position, headingDeg, beganAt, geometry, current, large }: {
   site: Site | undefined;
   track: Fix[];
   position: number[] | undefined;
   headingDeg: number | undefined;
   beganAt: number[] | undefined;
   geometry?: Geometry;
+  /** The water's own motion, world x and y, metres per second. */
+  current?: number[];
   large: boolean;
 }): React.JSX.Element {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -161,6 +163,28 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
       ink.restore();
     }
 
+    // The current, as an arrow where a chart puts one, with its speed.
+    if (current !== undefined && current.length >= 2) {
+      const speed = Math.hypot(current[0]!, current[1]!);
+      if (speed > 0.01) {
+        const ax = left + side - 30 * devicePixelRatio;
+        const ay = top + 30 * devicePixelRatio;
+        const ux = current[0]! / speed, uy = -current[1]! / speed;   // screen y is down
+        const len = 18 * devicePixelRatio;
+        ink.strokeStyle = "#7fd3ff"; ink.fillStyle = "#7fd3ff"; ink.lineWidth = 2 * devicePixelRatio;
+        ink.beginPath(); ink.moveTo(ax - ux * len, ay - uy * len); ink.lineTo(ax + ux * len, ay + uy * len); ink.stroke();
+        ink.beginPath();
+        ink.moveTo(ax + ux * len, ay + uy * len);
+        ink.lineTo(ax + ux * len * 0.55 - uy * 5 * devicePixelRatio, ay + uy * len * 0.55 + ux * 5 * devicePixelRatio);
+        ink.lineTo(ax + ux * len * 0.55 + uy * 5 * devicePixelRatio, ay + uy * len * 0.55 - ux * 5 * devicePixelRatio);
+        ink.closePath(); ink.fill();
+        ink.font = `${10 * devicePixelRatio}px system-ui, sans-serif`;
+        ink.textBaseline = "top"; ink.textAlign = "right";
+        ink.fillText(`${(speed / 0.5144).toFixed(1)} kn`, left + side - 8 * devicePixelRatio, ay + 22 * devicePixelRatio);
+        ink.textAlign = "left";
+      }
+    }
+
     // North, and a scale.
     ink.fillStyle = "#9fb3cc";
     ink.font = `${11 * devicePixelRatio}px system-ui, sans-serif`;
@@ -175,7 +199,7 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
     ink.beginPath(); ink.moveTo(bx, by); ink.lineTo(bx + barPx, by); ink.stroke();
     ink.textBaseline = "bottom";
     ink.fillText(`${bar} m`, bx, by - 3 * devicePixelRatio);
-  }, [site, track, position, headingDeg, beganAt, geometry, large, track.length]);
+  }, [site, track, position, headingDeg, beganAt, geometry, current, large, track.length]);
 
   return <canvas ref={canvas} className="minimap" />;
 }
