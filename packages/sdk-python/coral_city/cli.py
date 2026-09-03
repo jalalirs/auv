@@ -124,6 +124,20 @@ def cmd_dive(args) -> int:
         raise SystemExit("no queue you may run on")
     queue = next((q for q in queues if args.queue in (q["slug"], q["id"])), queues[0]) if args.queue else queues[0]
 
+    if args.again:
+        # The same dive, the same seed: what a run pinned is what runs again.
+        earlier = next((r for r in platform.runs(args.again.split("/")[0]) if r["id"] == args.again.split("/")[-1]), None) \
+            if "/" in args.again else None
+        if earlier is None:
+            raise SystemExit("--again takes <diveId>/<runId>")
+        dive_id = args.again.split("/")[0]
+        run = platform.run(dive_id, queue["id"], mode="batch", seed=earlier["seed"])
+        print(f"dive {dive_id}  run {run['id']}  (again, seed {run['seed']})")
+        if args.no_wait:
+            return 0
+        run = platform.wait(dive_id, run["id"], timeout=args.timeout)
+        print(json.dumps({"state": run["state"], "outcome": run.get("outcome", {})}))
+        return 0 if run["state"] == "succeeded" else 1
     name = args.name or f"{stack['name'] if stack else 'Nobody'} flies the {vehicle.get('name', args.vehicle)} in {place.get('name', args.place)}"
     objective = None
     if args.task:
@@ -133,7 +147,7 @@ def cmd_dive(args) -> int:
         objective = TASKS[args.task]()
     dive = platform.define_dive(institution["id"], name, city_version["id"], vehicle_version["id"],
                                 conditions["id"], stack["id"] if stack else None, objective=objective)
-    run = platform.run(dive["id"], queue["id"], mode="interactive" if args.interactive else "batch")
+    run = platform.run(dive["id"], queue["id"], mode="interactive" if args.interactive else "batch", seed=args.seed)
     print(f"dive {dive['id']}  run {run['id']}  ({run['state']}, {run['mode']})")
     if args.no_wait:
         return 0
@@ -153,6 +167,34 @@ def cmd_dive(args) -> int:
     run = platform.wait(dive["id"], run["id"], timeout=args.timeout, tell=tell)
     print(json.dumps({"state": run["state"], "outcome": run.get("outcome", {})}))
     return 0 if run["state"] == "succeeded" else 1
+
+
+def cmd_compare(args) -> int:
+    """Two runs of one dive, pose by pose: the platform's claim that a seed is
+    a trajectory, checked."""
+    import json as _json
+    import tempfile
+
+    from .platform import Platform
+
+    platform = Platform.from_session()
+    traces = []
+    for run in (args.run_a, args.run_b):
+        into = tempfile.mkdtemp()
+        platform.fetch(args.dive, run, into)
+        poses = [_json.loads(l) for l in open(f"{into}/poses.jsonl") if l.strip()]
+        traces.append(poses)
+    a, b = traces
+    n = min(len(a), len(b))
+    if n == 0:
+        print("a run left no poses"); return 1
+    worst = 0.0
+    for i in range(n):
+        pa, pb = a[i]["position"], b[i]["position"]
+        worst = max(worst, sum((x - y) ** 2 for x, y in zip(pa, pb)) ** 0.5)
+    print(f"{n} poses compared ({len(a)} and {len(b)} recorded); largest difference in position {worst:.4f} m")
+    print("identical to the millimetre" if worst < 1e-3 else "the runs differ")
+    return 0 if worst < 1e-3 else 2
 
 
 def cmd_fetch(args) -> int:
@@ -218,6 +260,8 @@ def main(argv=None) -> int:
     p.add_argument("--task", help="what the dive is for: hold | waypoints | transect | survey | return")
     p.add_argument("--current", type=float, nargs=2, metavar=("M_PER_S", "HEADING_DEG"), help="water flowing towards a heading")
     p.add_argument("--visibility", type=float, help="metres you can see")
+    p.add_argument("--seed", type=int, help="the seed of an earlier run, to have it again")
+    p.add_argument("--again", help="a run id to run again: same dive, same seed")
     p.add_argument("--place", required=True)
     p.add_argument("--vehicle", required=True)
     p.add_argument("--org")
@@ -227,6 +271,12 @@ def main(argv=None) -> int:
     p.add_argument("--no-wait", action="store_true")
     p.add_argument("--timeout", type=float, default=900.0)
     p.set_defaults(go=cmd_dive)
+
+    p = sub.add_parser("compare", help="two runs of one dive, pose by pose")
+    p.add_argument("dive")
+    p.add_argument("run_a")
+    p.add_argument("run_b")
+    p.set_defaults(go=cmd_compare)
 
     p = sub.add_parser("fetch", help="download what a run left behind: its recording")
     p.add_argument("dive")
