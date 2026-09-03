@@ -83,6 +83,10 @@ class Hydrodynamics:
     added_mass: np.ndarray          # 6, diagonal of M_A
     linear_damping: np.ndarray      # 6, diagonal of D_l
     quadratic_damping: np.ndarray   # 6, diagonal of D_q
+    # The rigid body's own moments of inertia about its axes, kg·m². The
+    # off-diagonal terms of the tensor are dropped with the same justification
+    # as the added mass's: small for a hull this close to symmetric.
+    inertia: np.ndarray = field(default_factory=lambda: np.full(3, 0.1))
 
     thrusters: list[Thruster] = field(default_factory=list)
     density: float = DENSITY_SEAWATER
@@ -98,7 +102,10 @@ class Hydrodynamics:
         """
         document = json.loads(pathlib.Path(path).read_text())
         units = document.get("thrusters", {})
+        tensor = np.array(document.get("inertiaTensor", [0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1]), dtype=float)
+        inertia = np.abs(tensor.reshape(3, 3).diagonal()) if tensor.size == 9 else np.abs(tensor[:3])
         return cls(
+            inertia=inertia,
             mass_kg=float(document["massKg"]),
             displaced_volume_m3=float(document["displacedVolumeM3"]),
             centre_of_gravity=np.array(document["centreOfGravityM"], dtype=float),
@@ -154,6 +161,32 @@ class Hydrodynamics:
         than to this model."""
         return self.buoyancy_n - self.weight_n
 
+    def effective_mass(self) -> np.ndarray:
+        """Mass and inertia including the water that moves with the hull.
+
+        Added mass is not a force. It is a statement that accelerating this
+        body means accelerating some water too, and for a neutrally buoyant
+        vehicle it is comparable to the hull itself — the BlueROV2's heave
+        added mass is 14.6 kg against 11.5 kg of vehicle. The honest way to
+        express that is to make the body heavier to accelerate, which is what
+        this returns and what the integrator divides by.
+
+        Applying it as a force instead is possible and wrong: the force depends
+        on acceleration, acceleration depends on the force, and estimating one
+        from differenced velocity makes a loop that diverges whenever the added
+        mass exceeds the hull mass. It does exceed it here, on the axis that
+        matters most for a vehicle holding depth.
+
+        The diagonal treatment is still an approximation — the real added-mass
+        matrix has off-diagonal terms coupling sway with yaw and heave with
+        pitch — but it is a stable one, and the coupling is small for a hull
+        this close to symmetric.
+        """
+        return np.concatenate([
+            np.full(3, self.mass_kg) + self.added_mass[:3],
+            self.inertia + self.added_mass[3:],
+        ])
+
 
 class Body:
     """A vehicle being integrated, holding what must persist between steps."""
@@ -193,30 +226,8 @@ class Body:
         return -(linear + quadratic)
 
     def effective_mass(self) -> np.ndarray:
-        """Mass and inertia including the water that moves with the hull.
+        return self.model.effective_mass()
 
-        Added mass is not a force. It is a statement that accelerating this
-        body means accelerating some water too, and for a neutrally buoyant
-        vehicle it is comparable to the hull itself — the BlueROV2's heave
-        added mass is 14.6 kg against 11.5 kg of vehicle. The honest way to
-        express that is to make the body heavier to accelerate, which is what
-        this returns and what the integrator divides by.
-
-        Applying it as a force instead is possible and wrong: the force depends
-        on acceleration, acceleration depends on the force, and estimating one
-        from differenced velocity makes a loop that diverges whenever the added
-        mass exceeds the hull mass. It does exceed it here, on the axis that
-        matters most for a vehicle holding depth.
-
-        The diagonal treatment is still an approximation — the real added-mass
-        matrix has off-diagonal terms coupling sway with yaw and heave with
-        pitch — but it is a stable one, and the coupling is small for a hull
-        this close to symmetric.
-        """
-        return np.concatenate([
-            np.full(3, self.model.mass_kg) + self.model.added_mass[:3],
-            self.model.added_mass[3:],
-        ])
 
     def thrust(self, commands: np.ndarray) -> np.ndarray:
         """What the thrusters produce, as a wrench in the body frame."""
@@ -281,7 +292,24 @@ class Allocator:
             force, moment = thruster.wrench(1.0)
             columns.append(np.concatenate([force, moment]))
         self.matrix = np.column_stack(columns)
-        self.inverse = np.linalg.pinv(self.matrix)
+        # Which axes the thrusters can command. A six-thruster vectored frame
+        # has surge, sway, heave, yaw and — through the two verticals worked
+        # against each other — roll; pitch it cannot touch, because every
+        # newton of heave comes with the same pitching moment and nothing can
+        # take it away. Asking a pseudo-inverse over all six axes for "heave
+        # and no pitch" makes it trade the two off and deliver some of each.
+        # So the allocation is exact over the axes that can be commanded, taken
+        # in the order a pilot would rank them, and the rest fall where the
+        # hull puts them.
+        self.reachable = np.zeros(6, dtype=bool)
+        rows: list[int] = []
+        for axis in (0, 1, 2, 5, 3, 4):
+            tried = rows + [axis]
+            if np.linalg.matrix_rank(self.matrix[tried, :], tol=1e-9) == len(tried):
+                rows = tried
+                self.reachable[axis] = True
+        self.inverse = np.zeros((self.matrix.shape[1], 6))
+        self.inverse[:, rows] = np.linalg.pinv(self.matrix[rows, :])
 
     def capability(self) -> np.ndarray:
         """The most this vehicle can produce on each axis, on its own.

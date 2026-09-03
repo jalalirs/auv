@@ -38,10 +38,17 @@ QUALITY = 72
 class Watch:
     """Serves the dive to whoever is watching it."""
 
-    def __init__(self, port: int, controls, say) -> None:
+    def __init__(self, port: int, controls, say, on_message=None, on_hello=None) -> None:
         self.port = port
         self.controls = controls
         self.say = say
+        # Anything the watcher asks for that is not steering — a parameter
+        # moved, the hold re-engaged, a view, a controller — goes to whoever
+        # owns the dive.
+        self.on_message = on_message
+        # What somebody arriving needs once: the site to draw a map from, the
+        # vehicle, the views there are.
+        self.on_hello = on_hello
         self.watchers: set = set()
         self._loop = None
         self._latest = None
@@ -69,6 +76,11 @@ class Watch:
         async def watch(request):
             socket = web.WebSocketResponse(heartbeat=20)
             await socket.prepare(request)
+            if self.on_hello is not None:
+                try:
+                    await socket.send_str(json.dumps(self.on_hello()))
+                except Exception as exc:
+                    carb.log_warn(f"Coral City could not greet a watcher: {exc}")
             self.watchers.add(socket)
             self.say("watcher_arrived", watching=len(self.watchers))
             try:
@@ -105,9 +117,14 @@ class Watch:
         corrected forty milliseconds later by the next one.
         """
         try:
-            self.controls.held_from_afar(set(json.loads(raw).get("held", [])))
+            said = json.loads(raw)
+            if "held" in said:
+                self.controls.held_from_afar(set(said.get("held", [])))
+            if self.on_message is not None and any(
+                    key in said for key in ("tune", "hold", "view", "engage")):
+                self.on_message(said)
         except Exception as exc:
-            carb.log_warn(f"Coral City could not read what was held: {exc}")
+            carb.log_warn(f"Coral City could not read what was asked: {exc}")
 
     # ── sending ──────────────────────────────────────────────────────────────
 

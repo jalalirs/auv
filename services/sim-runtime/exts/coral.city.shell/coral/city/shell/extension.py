@@ -215,20 +215,53 @@ class CoralCityShell(omni.ext.IExt):
             self.began = time.monotonic()
 
     def _follow(self, dive) -> None:
-        """Keep the vehicle in shot as it moves."""
+        """Keep the vehicle in shot as it moves, from whichever view was asked.
+
+        chase: behind and above, along the vehicle's own heading, so turning
+        the vehicle turns the shot with it — the view from a chase boat. front:
+        from just ahead of the nose looking the way the vehicle looks, as its
+        own camera would. top: straight down from above, the vehicle's heading
+        up the screen, which is the view a chart gives. orbit: a slow circle
+        around it, for looking at the vehicle rather than through it.
+        """
         if self._aim is None:
             return
         try:
+            import math
+
             from pxr import Gf
 
-            x, y, z = dive.position
-            at = dive.drawn_at((x, y, z))
-            # Far enough back to see past the vehicle, and high enough not to
-            # be inside the slope. Three metres behind and one up is fine over
-            # a flat tank floor and puts the camera in the reef on a slope.
-            from_ = dive.drawn_at((x - 7.0, y - 7.0, z + 3.2))
-            up = Gf.Vec3d(0.0, 1.0, 0.0) if dive.up_axis == "Y" else Gf.Vec3d(0.0, 0.0, 1.0)
-            self._aim.Set(Gf.Matrix4d().SetLookAt(from_, at, up).GetInverse())
+            x, y, z = (float(v) for v in dive.position)
+            heading = math.atan2(float(dive.rotation[1, 0]), float(dive.rotation[0, 0]))
+            ahead = (math.cos(heading), math.sin(heading))
+            view = getattr(dive, "view", "chase")
+            up_world = Gf.Vec3d(0.0, 1.0, 0.0) if dive.up_axis == "Y" else Gf.Vec3d(0.0, 0.0, 1.0)
+            if view == "front":
+                eye = (x + 0.45 * ahead[0], y + 0.45 * ahead[1], z + 0.05)
+                aim = (x + 6.0 * ahead[0], y + 6.0 * ahead[1], z - 0.6)
+                up = up_world
+            elif view == "top":
+                eye = (x, y, z + 14.0)
+                aim = (x, y, z)
+                # Heading up the screen: the camera's up is the way the vehicle points.
+                up = dive.drawn_at((ahead[0], ahead[1], 0.0))
+            elif view == "orbit":
+                angle = dive.simulated * 0.25
+                eye = (x + 8.0 * math.cos(angle), y + 8.0 * math.sin(angle), z + 3.0)
+                aim = (x, y, z)
+                up = up_world
+            else:
+                # Behind and above, kept well under the surface: the first
+                # version sat twenty centimetres below it and the underside of
+                # the water filled the frame.
+                eye = (x - 9.0 * ahead[0], y - 9.0 * ahead[1], z + 3.2)
+                aim = (x, y, z)
+                up = up_world
+            if view == "top":
+                # Straight down cannot use the world's up; the drawn heading is it.
+                self._aim.Set(Gf.Matrix4d().SetLookAt(dive.drawn_at(eye), dive.drawn_at(aim), up).GetInverse())
+            else:
+                self._aim.Set(Gf.Matrix4d().SetLookAt(dive.drawn_at(eye), dive.drawn_at(aim), up).GetInverse())
         except Exception:
             # A camera that will not move is not worth ending a dive over.
             self._aim = None
@@ -373,7 +406,9 @@ class CoralCityShell(omni.ext.IExt):
         try:
             from .watch import FRAMES_PER_SECOND, Watch
 
-            self.watch = Watch(self._watch_port, self.controls, self._say)
+            self.watch = Watch(self._watch_port, self.controls, self._say,
+                               on_message=lambda said: self.dive is not None and self.dive.message(said),
+                               on_hello=lambda: self.dive.hello() if self.dive is not None else {"kind": "hello"})
             self._every = max(1, int(round(60.0 / FRAMES_PER_SECOND)))
         except Exception as exc:
             carb.log_warn(f"Coral City cannot be watched from elsewhere: {exc}")

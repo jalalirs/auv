@@ -49,6 +49,27 @@ def find_water(root: pathlib.Path) -> pathlib.Path | None:
     return None
 
 
+def _turn(small: np.ndarray) -> np.ndarray:
+    """The rotation matrix for a small rotation vector, Rodrigues' formula."""
+    angle = float(np.linalg.norm(small))
+    if angle < 1e-12:
+        return np.eye(3)
+    k = small / angle
+    K = np.array([[0.0, -k[2], k[1]], [k[2], 0.0, -k[0]], [-k[1], k[0], 0.0]])
+    R = np.eye(3) + np.sin(angle) * K + (1.0 - np.cos(angle)) * (K @ K)
+    # Renormalise: one Gram-Schmidt pass keeps it orthonormal over a long dive.
+    u, _, vt = np.linalg.svd(R)
+    return u @ vt
+
+
+# The cameras a console may look through. Rendered one at a time: the large
+# pane is whichever was asked for, and the other panes are drawn from the pose.
+VIEWS = ("chase", "front", "top", "orbit")
+
+# How coarse the map handed to a console is, per side.
+MAP_CELLS = 64
+
+
 class Seabed:
     """How deep the bottom is, anywhere in a site.
 
@@ -168,22 +189,23 @@ class Dive:
             dtype=float)
         self.bridge = None
 
-        # What a person at the controls is asking for, as a body-frame wrench:
-        # surge, sway, heave, roll, pitch, yaw. Held here rather than in the
-        # shell so that flying it by hand goes through the same allocator and
-        # the same thrusters as flying it by program. A pilot and a controller
-        # should be able to do exactly the same things to this vehicle, and
-        # neither should be able to do anything the other cannot.
-        self.hand = np.zeros(6)
-        self.flown_by_hand = False
-
-        # What this vehicle can do on each axis, so that a fraction asked for by
-        # a person can be turned into the force it meant.
-        self.capability = allocator.capability()
+        # Who flies. A helm decides every step whether the thrusters follow a
+        # hand on the controls, a stack talking over ROS 2, or the hold that
+        # keeps the vehicle where it was left. All three go through the same
+        # allocator and the same thrusters: a pilot and a program can do
+        # exactly the same things to this vehicle, and neither can do anything
+        # the other cannot.
+        from controllers import Helm
+        self.helm = Helm(allocator, self.dt)
+        self.capability = self.helm.capability
 
         # Filled in when the place is opened: where its floor is, and where the
         # top of its water is. Both in metres, in the dive's own frame.
         self.floor = None
+        self.seabed = None
+        self.bounds = (None, None)
+        self.view = "chase"
+        self.began_at = np.zeros(3)
         self.water_level = None
         self.water = None
         self.on_the_bottom = False
@@ -371,6 +393,7 @@ class Dive:
                          surfaceAtM=None if self.water_level is None
                          else round(self.water_level, 2))
 
+        self.began_at = self.position.copy()
         self.say("vehicle_placed",
                  position=[round(float(x), 3) for x in self.position])
         return True
@@ -442,9 +465,13 @@ class Dive:
             return
         try:
             from bridge import Bridge
+            from controllers import Helm
             self.bridge = Bridge(self.allocator.model, self.allocator,
                                  int(self.brief.get("rosDomainId", 0)),
                                  logger=lambda kind, **d: self.say(kind, **d))
+            # The helm learns of the stack the moment the boundary opens, and
+            # keeps whatever a hand has already tuned.
+            self.helm = Helm(self.allocator, self.dt, bridge=self.bridge)
             self.say("bridge_open", domain=self.brief.get("rosDomainId"),
                      publishes=["/depth", "/imu/data", "/dvl/twist"],
                      subscribes=["/thruster_cmd", "/cmd_vel"])
@@ -461,13 +488,17 @@ class Dive:
         """
         if self.bridge is not None:
             self.bridge.publish(self.simulated, self.position, self.velocity,
-                                self.body.model.density)
+                                self.body.model.density, self.rotation)
 
     # ── running ──────────────────────────────────────────────────────────────
 
     @property
     def done(self) -> bool:
         return self.taken >= self.steps
+
+    @property
+    def flown_by_hand(self) -> bool:
+        return self.helm.flying is self.helm.manual
 
     def take_the_controls(self, asked) -> None:
         """A person is flying it. What they ask for is a fraction, not a force.
@@ -476,24 +507,105 @@ class Dive:
         turning them into a wrench is the vehicle's business — it is the only
         thing that knows what it can do. Handing the fraction straight to the
         allocator asks a hundred-newton vehicle for half a newton, which is
-        exactly what happened: the keys arrived, the display said somebody was
-        flying, and the vehicle sat there.
+        exactly what happened once: the keys arrived, the display said somebody
+        was flying, and the vehicle sat there.
 
-        Ends any deference to autonomy for as long as the hand is on the
-        controls. There is no arbitration beyond that and there should not be:
-        two things flying one vehicle is not a mode anybody wants, and a pilot
-        who has taken hold of it has said which one wins.
+        While any key is down the hand has the vehicle; the moment all are up
+        the hold takes it back where it is. There is no arbitration beyond
+        that and there should not be.
         """
-        fraction = np.clip(np.asarray(asked, dtype=float), -1.0, 1.0)
-        self.hand = fraction * self.capability
-        self.flown_by_hand = bool(np.any(fraction))
+        self.helm.hands(asked)
+
+    def message(self, said: dict) -> None:
+        """Something the person watching asked for, other than steering.
+
+        `tune` moves a controller's parameter; `hold` re-engages the hold where
+        the vehicle is. Anything else is ignored rather than guessed at.
+        """
+        view = said.get("view")
+        if isinstance(view, str) and view in VIEWS:
+            self.view = view
+            self.say("view", view=view)
+        engage = said.get("engage")
+        if isinstance(engage, str):
+            if self.helm.engage(engage, self.observation()):
+                self.say("engaged", controller=engage, flying=self.helm.flying.name)
+        tune = said.get("tune")
+        if isinstance(tune, dict):
+            if self.helm.tune(str(tune.get("controller", "")), str(tune.get("name", "")),
+                              float(tune.get("value", 0.0))):
+                self.say("tuned", controller=tune.get("controller"),
+                         parameter=tune.get("name"), value=tune.get("value"))
+        if said.get("hold") == "here":
+            self.helm.hold_here(self.observation())
+            self.say("hold_engaged", **self.helm.hold.status())
+
+    def hello(self) -> dict:
+        """What somebody arriving at the console needs once: the site as a
+        coarse height grid to draw a map from, the vehicle, and the views."""
+        site = None
+        if self.seabed is not None:
+            rows, columns = self.seabed.rows, self.seabed.columns
+            step = max(1, max(rows, columns) // MAP_CELLS)
+            coarse = self.seabed.heights[::step, ::step]
+            site = {
+                "acrossM": self.seabed.across,
+                "rows": int(coarse.shape[0]), "columns": int(coarse.shape[1]),
+                "heights": [round(float(h), 2) for h in coarse.ravel()],
+                "deepestM": round(float(-self.seabed.heights.min()), 2),
+                "shallowestM": round(float(-self.seabed.heights.max()), 2),
+            }
+        elif self.bounds[0] is not None:
+            corner, far = self.bounds
+            site = {"acrossM": float(max(far[0] - corner[0], far[1] - corner[1])),
+                    "rows": 0, "columns": 0, "heights": [],
+                    "deepestM": round(float(-corner[2]), 2), "shallowestM": round(float(-far[2]), 2)}
+        return {
+            "kind": "hello",
+            "site": site,
+            "vehicle": {"thrusters": len(self.allocator.model.thrusters),
+                        "capabilityN": [round(float(v), 1) for v in self.capability]},
+            "views": list(VIEWS),
+            "view": self.view,
+            "beganAt": [round(float(v), 3) for v in self.began_at],
+        }
+
+    def samples(self) -> dict:
+        """The latest value on each topic, for a console plotting one.
+
+        What the sensors would say, worked out from the state the same way the
+        bridge works it out, so a plot of /depth is a plot of pressure whether
+        or not a stack is listening to it.
+        """
+        depth = max(float(-self.position[2]), 0.0)
+        R = self.rotation
+        roll = float(np.arctan2(R[2, 1], R[2, 2]))
+        pitch = float(-np.arcsin(max(-1.0, min(1.0, float(R[2, 0])))))
+        yaw = float(np.arctan2(R[1, 0], R[0, 0]))
+        said = {
+            "/depth": {"fluidPressurePa": round(101325.0 + self.body.model.density * 9.80665 * depth, 1)},
+            "/imu/data": {"rollDeg": round(np.degrees(roll), 2), "pitchDeg": round(np.degrees(pitch), 2),
+                          "yawDeg": round(np.degrees(yaw), 2),
+                          "p": round(float(self.velocity[3]), 4), "q": round(float(self.velocity[4]), 4),
+                          "r": round(float(self.velocity[5]), 4)},
+            "/dvl/twist": {"u": round(float(self.velocity[0]), 4), "v": round(float(self.velocity[1]), 4),
+                           "w": round(float(self.velocity[2]), 4)},
+            "/thruster_cmd": {f"t{i + 1}": round(float(c), 3) for i, c in enumerate(self.commands)},
+        }
+        return said
+
+    def observation(self):
+        from controllers import Observation
+
+        floor = self.floor
+        if self.seabed is not None:
+            floor = self.seabed.under(float(self.position[0]), float(self.position[1]))
+        return Observation(t=self.simulated, position=self.position, velocity=self.velocity,
+                           rotation=self.rotation, floor=floor, on_the_bottom=self.on_the_bottom)
 
     def step(self) -> None:
         """One step of physics. Everything else is somebody else's schedule."""
-        if self.flown_by_hand:
-            self.commands = self.allocator.allocate(self.hand)
-        elif self.bridge is not None:
-            self.commands = self.bridge.commands()
+        self.commands = self.helm.command(self.observation())
 
         wrench = self.body.step(self.rotation, self.velocity, self.commands, self.dt)
 
@@ -503,6 +615,11 @@ class Dive:
         self.velocity[:3] += (wrench[:3] / self.effective[:3]) * self.dt
         self.velocity[3:] += (wrench[3:] / self.effective[3:]) * self.dt
         self.position += self.rotation @ self.velocity[:3] * self.dt
+        # Attitude from the body rates, so that yaw is a heading somebody can
+        # hold and roll and pitch are what the righting moment acts against.
+        # Rodrigues on the small rotation this step; renormalised so a long
+        # dive does not drift off orthonormal.
+        self.rotation = self.rotation @ _turn(self.velocity[3:] * self.dt)
         self.simulated += self.dt
         self.taken += 1
         self.land()
@@ -596,9 +713,13 @@ class Dive:
         return {
             "t": round(self.simulated, 3),
             "depthM": round(float(-self.position[2]), 4),
+            "headingDeg": round(float(np.degrees(np.arctan2(self.rotation[1, 0], self.rotation[0, 0]))), 2),
+            "pitchDeg": round(float(np.degrees(-np.arcsin(max(-1.0, min(1.0, float(self.rotation[2, 0])))))), 2),
+            "rollDeg": round(float(np.degrees(np.arctan2(self.rotation[2, 1], self.rotation[2, 2]))), 2),
             "speedMs": round(float(np.linalg.norm(self.velocity[:3])), 4),
             "commanded": bool(self.bridge.commanded) if self.bridge else False,
             "byHand": self.flown_by_hand,
+            "flying": self.helm.flying.name,
             "onTheBottom": self.on_the_bottom,
             "thrust": [round(float(c), 3) for c in self.commands],
             "position": [round(float(x), 4) for x in self.position],
@@ -622,12 +743,35 @@ class Dive:
         reading["altitudeM"] = (None if floor is None
                                 else round(float(self.position[2]) - floor, 3))
         reading["netBuoyancyN"] = round(self.model_net_buoyancy(), 3)
+        reading["controller"] = self.helm.describe()
+        reading["samples"] = self.samples()
+        reading["view"] = self.view
         if self.bridge is not None:
             reading["topics"] = self.bridge.topics()
             reading["commandsReceived"] = self.bridge.commands_seen
         else:
-            reading["topics"] = []
+            # Nobody is listening, so nothing crosses — but the vehicle still
+            # carries these, and a console should be able to plot what its
+            # sensors would say. The contract, marked as not open.
+            reading["topics"] = self.contract_topics()
         return reading
+
+    def contract_topics(self) -> list[dict]:
+        """The vehicle's topic contract as a tree with nothing crossing it."""
+        if not hasattr(self, "_contract"):
+            self._contract = []
+            try:
+                import json
+                described = json.loads((pathlib.Path(self.brief.get("vehiclePath", "/dive/vehicle"))
+                                        / "dynamics.json").read_text())
+                contract = described.get("topicContract", {})
+                for topic in contract.get("publishes", []):
+                    self._contract.append({"name": topic["topic"], "type": topic["type"], "way": "from"})
+                for topic in contract.get("subscribes", []):
+                    self._contract.append({"name": topic["topic"], "type": topic["type"], "way": "to"})
+            except Exception:
+                pass
+        return [{**topic, "messages": 0, "rateHz": 0.0, "open": False} for topic in self._contract]
 
     def model_net_buoyancy(self) -> float:
         return float(self.body.model.net_buoyancy_n)

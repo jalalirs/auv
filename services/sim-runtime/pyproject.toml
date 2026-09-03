@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coral-city-runtime"
+version = "0.1.0"
+description = "The Coral City simulation runtime's physics and controllers, importable without Isaac Sim."
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24"]
+
+[tool.setuptools]
+packages = ["coral", "coral.controllers"]
+include-package-data = false
