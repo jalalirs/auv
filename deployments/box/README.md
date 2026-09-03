@@ -83,3 +83,12 @@ GPU, compose a scene, or wire a sim to an autonomy container — and the control
 plane has no notion of a vehicle, a city package, a dive, or a run. Those land
 on top of this, which is the right order: the orchestrator should wrap
 something that already works.
+
+## Stored bytes, from outside
+
+A presigned URL is signed over the host it names, so `CORAL_CITY_STORAGE_PUBLIC_ENDPOINT`
+must be the address a client will actually use. The loopback works for a
+console reached through a tunnel and for nothing else: a client on a laptop
+across the tailnet asked for a place's picture and got a URL only the box could
+reach. It is now the bind address, `100.76.65.1:19000`, and the storage port is
+published on that address rather than the loopback.

@@ -1,14 +1,17 @@
 // Between asking and being in the water.
 //
-// There is no GPU to pick. You asked for a dive; either a device is free and
-// the platform starts it, or none is and it says so. A queue with nothing free
-// is not an error and is not a failure — it is a thing that happens on shared
-// hardware, and the honest response is to say it plainly and offer to try
-// again.
+// There is no GPU to pick. You asked for a dive; the platform placed it on a
+// host and its cards, or queued it behind others and says where in line it is
+// and what it waits for, or refused it with the reason. A queue with nothing
+// free is not an error and is not a failure — it is a thing that happens on
+// shared hardware, and the honest response is to say it plainly.
+//
+// While it is placed, the steps are shown as they happen: allocated, the
+// place staged, the simulator opening, the controller connected, running.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { Platform, RunEvent } from "@coral-city/api";
+import type { Hold, Placement, Platform, Run, RunEvent } from "@coral-city/api";
 
 import type { Stream } from "../App.js";
 import { Badge } from "./parts.js";
@@ -26,6 +29,8 @@ export function Waiting({ platform, dive, run, onRunning, onGiveUp }: {
   const [said, setSaid] = useState("Finding you a machine…");
   const [stuck, setStuck] = useState<string | undefined>();
   const [waited, setWaited] = useState(0);
+  const [placement, setPlacement] = useState<Placement | undefined>();
+  const [steps, setSteps] = useState<Step[]>([]);
   const done = useRef(false);
 
   const look = useCallback(async () => {
@@ -64,12 +69,14 @@ export function Waiting({ platform, dive, run, onRunning, onGiveUp }: {
       return;
     }
 
-    // Queued means the platform has the request and no device yet. Preparing
-    // means it has one and is fetching the place, which on a first dive is
+    setPlacement(state?.placement);
+    setSteps(progress(state, events));
+    // Queued means the platform has the request and no cards yet. Preparing
+    // means it has them and is fetching the place, which on a first dive is
     // hundreds of megabytes and takes as long as it takes.
-    setSaid(state?.state === "preparing"
-      ? "Syncing the place onto the machine…"
-      : "Waiting for a free GPU…");
+    setSaid(state?.state === "preparing" || state?.state === "running"
+      ? "Opening the water…"
+      : "Waiting in line…");
   }, [platform, dive, run, onRunning]);
 
   useEffect(() => {
@@ -99,7 +106,18 @@ export function Waiting({ platform, dive, run, onRunning, onGiveUp }: {
       <Badge />
       <div className="waiting">
         <h2>{said}</h2>
-        <p>
+        {placement === undefined ? null : <Where placement={placement} />}
+        {steps.length === 0 ? null : (
+          <ol className="steps">
+            {steps.map((step) => (
+              <li key={step.name} className={step.state}>
+                <span className="mark">{step.state === "done" ? "✓" : step.state === "now" ? "…" : ""}</span>
+                {step.name}
+              </li>
+            ))}
+          </ol>
+        )}
+        <p className="quiet">
           {waited < 30
             ? "This takes a moment the first time."
             : "Still waiting. Somebody else may have the machine."}
@@ -108,4 +126,68 @@ export function Waiting({ platform, dive, run, onRunning, onGiveUp }: {
       </div>
     </div>
   );
+}
+
+/** Where the platform put the dive, or where it stands in line. */
+function Where({ placement }: { placement: Placement }): React.JSX.Element {
+  if (placement.state === "queued") {
+    const ahead = placement.ahead ?? 0;
+    return (
+      <p className="placement">
+        {ahead === 0 ? "Next in line" : `${ordinal(placement.position ?? ahead + 1)} in line, ${ahead} ahead`}
+        {placement.waitingFor ? `, waiting for ${placement.waitingFor}.` : "."}
+      </p>
+    );
+  }
+  const cards = placement.holds.map(describeHold).join(", ");
+  return (
+    <p className="placement">
+      Placed on <b>{placement.target ?? "a host"}</b>{cards ? `: ${cards}` : ""}.
+    </p>
+  );
+}
+
+function describeHold(hold: Hold): string {
+  const gib = hold.gpuMemoryBytes / 2 ** 30;
+  const amount = Number.isInteger(gib) ? `${gib} GiB` : `${gib.toFixed(1)} GiB`;
+  return `card ${hold.deviceIndex} (${amount}) for the ${hold.part}`;
+}
+
+function ordinal(n: number): string {
+  const rest = n % 100;
+  if (rest >= 11 && rest <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1: return `${n}st`;
+    case 2: return `${n}nd`;
+    case 3: return `${n}rd`;
+    default: return `${n}th`;
+  }
+}
+
+interface Step { name: string; state: "done" | "now" | "later" }
+
+/**
+ * The placement progressing, from what the platform recorded. Each step is
+ * done once its event has been seen; the first not done is what is happening
+ * now. Steps that this dive has no part for — a controller, when nobody
+ * brought one — are left out rather than shown as never happening.
+ */
+function progress(run: Run | undefined, events: RunEvent[]): Step[] {
+  if (run === undefined || run.state === "queued") return [];
+  const seen = new Set(events.map((e) => e.kind));
+  const hasController = run.autonomyDigest !== null && run.autonomyDigest !== undefined;
+  const wanted: Array<[string, string[]]> = [
+    ["Cards allocated", ["claimed"]],
+    ["Place and vehicle staged", ["packages_present"]],
+    ["Simulator opening", ["place_open", "vehicle_placed", "spawned"]],
+    ...(hasController ? [["Controller started", ["autonomy_started"]] as [string, string[]]] : []),
+    ["Stream open", ["stream_open"]],
+  ];
+  let nowFound = false;
+  return wanted.map(([name, kinds]) => {
+    const done = kinds.some((k) => seen.has(k));
+    if (done) return { name, state: "done" as const };
+    if (!nowFound) { nowFound = true; return { name, state: "now" as const }; }
+    return { name, state: "later" as const };
+  });
 }

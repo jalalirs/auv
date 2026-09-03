@@ -1,0 +1,69 @@
+{
+  "massKg": 13.5,
+  "displacedVolumeM3": 0.0134,
+
+  "centreOfGravityM": [0, 0, 0],
+  "centreOfBuoyancyM": [0, 0, 0.01],
+
+  "inertiaTensor": [0.26, 0, 0, 0, 0.23, 0, 0, 0, 0.37],
+
+  "addedMass": {
+    "note": "Diagonal of the 6x6 added-mass matrix, surge, sway, heave, roll, pitch, yaw, negative by the convention that they oppose acceleration. From Wu (2018), identified for the heavy configuration.",
+    "diagonal": [-6.36, -7.12, -18.68, -0.189, -0.135, -0.222]
+  },
+  "linearDamping": {
+    "note": "First-order drag, Wu (2018). Sway and roll and yaw were not separately identified there and are carried as small values rather than zero, so that the model is damped on every axis.",
+    "diagonal": [-13.7, -4.0, -33.0, -0.05, -0.8, -0.1]
+  },
+  "quadraticDamping": {
+    "note": "Second-order drag, Wu (2018).",
+    "diagonal": [-141.0, -217.0, -190.0, -1.19, -0.47, -1.5]
+  },
+
+  "thrusters": {
+    "note": "The eight-thruster heavy configuration: four vectored horizontals at 45 degrees as on the standard frame, and four verticals at the corners instead of two, which is what gives the heavy frame roll and pitch authority. Positions are metres from the centre of gravity; directions are unit vectors in the body frame.",
+    "model": "BlueRobotics T200",
+    "maxForwardN": 51.5,
+    "maxReverseN": 40.0,
+    "timeConstantS": 0.2,
+    "units": [
+      { "name": "front-right", "position": [0.156,  0.111,  0.085], "direction": [ 0.707, -0.707, 0] },
+      { "name": "front-left",  "position": [0.156, -0.111,  0.085], "direction": [ 0.707,  0.707, 0] },
+      { "name": "rear-right",  "position": [-0.156, 0.111,  0.085], "direction": [-0.707, -0.707, 0] },
+      { "name": "rear-left",   "position": [-0.156,-0.111,  0.085], "direction": [-0.707,  0.707, 0] },
+      { "name": "vertical-front-right", "position": [ 0.120,  0.218, 0], "direction": [0, 0, 1] },
+      { "name": "vertical-front-left",  "position": [ 0.120, -0.218, 0], "direction": [0, 0, 1] },
+      { "name": "vertical-rear-right",  "position": [-0.120,  0.218, 0], "direction": [0, 0, 1] },
+      { "name": "vertical-rear-left",   "position": [-0.120, -0.218, 0], "direction": [0, 0, 1] }
+    ]
+  },
+
+  "sensors": [
+    { "kind": "underwater_camera", "name": "forward",
+      "position": [0.30, 0, 0.10], "orientation": [0, 0, 0],
+      "focalLengthMm": 21, "widthPx": 1280, "heightPx": 720 },
+    { "kind": "imaging_sonar", "name": "forward_looking",
+      "position": [0.30, 0, 0.30], "orientation": [0, 0, 0],
+      "rangeM": [0.5, 10.0], "horizontalFovDeg": 130, "verticalFovDeg": 20 },
+    { "kind": "dvl", "name": "bottom_track", "position": [0, 0, -0.05] },
+    { "kind": "imu", "name": "body", "position": [0, 0, 0] },
+    { "kind": "barometer", "name": "depth", "position": [0, 0, 0] }
+  ],
+
+  "topicContract": {
+    "publishes": [
+      { "topic": "/camera/image_raw", "type": "sensor_msgs/msg/Image" },
+      { "topic": "/sonar/image",      "type": "sensor_msgs/msg/Image" },
+      { "topic": "/imu/data",         "type": "sensor_msgs/msg/Imu" },
+      { "topic": "/dvl/twist",        "type": "geometry_msgs/msg/TwistWithCovarianceStamped" },
+      { "topic": "/depth",            "type": "sensor_msgs/msg/FluidPressure" },
+      { "topic": "/tf",               "type": "tf2_msgs/msg/TFMessage" }
+    ],
+    "subscribes": [
+      { "topic": "/thruster_cmd", "type": "std_msgs/msg/Float64MultiArray",
+        "note": "Eight normalised commands in [-1, 1], in the order the thruster units are listed." },
+      { "topic": "/cmd_vel", "type": "geometry_msgs/msg/Twist",
+        "note": "A body-frame wrench for stacks that would rather not allocate thrust themselves." }
+    ]
+  }
+}

@@ -22,4 +22,13 @@ export default defineConfig({
   // application.
   base: "./",
   build: { outDir: resolve(here, "dist/renderer"), emptyOutDir: true },
+  // Only for looking at the page in a browser while building it. A browser
+  // will not let a page on one origin call a platform on another, and the
+  // packaged application has no such problem because it is not a page on an
+  // origin. So the dev server forwards the API to whichever platform
+  // CORAL_CITY_UPSTREAM names, and the page signs in to the dev server's own
+  // address. Nothing of this is in the built application.
+  server: process.env.CORAL_CITY_UPSTREAM === undefined ? undefined : {
+    proxy: { "/api": { target: process.env.CORAL_CITY_UPSTREAM, changeOrigin: true } },
+  },
 });

@@ -24,6 +24,22 @@ export type AutonomyStack = Schemas["AutonomyStack"];
 export type Conditions = Schemas["Conditions"];
 export type Dive = Schemas["Dive"];
 export type Run = Schemas["Run"];
+export type Placement = Schemas["Placement"];
+export type Needs = Schemas["Needs"];
+export type Hold = Schemas["Hold"];
+export type VehicleDynamics = Schemas["VehicleDynamics"];
+
+/**
+ * One file of a published package, with a short-lived URL to fetch it.
+ *
+ * Named from the operation that returns it, as with events below, so that a
+ * change to the contract's shape is a compile error here and not a blank
+ * picture in front of somebody.
+ */
+type FilesResponse =
+  paths["/api/v1/versions/{versionId}/files"]["get"]["responses"][200]["content"]["application/json"];
+
+export type PackageFile = NonNullable<FilesResponse["files"]>[number];
 
 /**
  * One thing that happened during a run.
@@ -171,6 +187,20 @@ export class Platform {
     return versions;
   }
 
+  /**
+   * The files of a package, each with a URL good for a little while.
+   *
+   * This is how a client learns anything a package says about itself — where
+   * a place is on the globe, what it looks like, how a vehicle moves — because
+   * the platform records packages and does not interpret them. A picture on a
+   * card is a file in the package or it is nothing.
+   */
+  async files(version: string): Promise<PackageFile[]> {
+    const { files } = await this.#request<{ files: PackageFile[] }>(
+      "GET", `/api/v1/versions/${version}/files`);
+    return files;
+  }
+
   async queues(): Promise<Queue[]> {
     const { queues } = await this.#request<{ queues: Queue[] }>("GET", "/api/v1/queues");
     return queues;
@@ -215,6 +245,8 @@ export class Platform {
     queueId: string;
     mode: "interactive" | "batch";
     runtimeVersion: string;
+    /** Over what the platform assembles from the dive's parts. */
+    needs?: Needs;
   }): Promise<Run> {
     return this.#request("POST", `/api/v1/dives/${dive}/runs`, request);
   }

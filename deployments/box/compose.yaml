@@ -22,7 +22,12 @@ x-platform-env: &platform-env
   # A presigned URL is signed over the host it names, so it must carry the
   # address the client will actually use. Inside this network that is
   # `storage`; to anything outside it is whatever the operator publishes.
-  CORAL_CITY_STORAGE_PUBLIC_ENDPOINT: ${CORAL_CITY_STORAGE_PUBLIC_ENDPOINT:-127.0.0.1:19000}
+  # By default the same address the API is published on, so that the client on
+  # a laptop across the network can fetch a package's picture with the URL the
+  # platform hands it. Before this it was the loopback, and every picture and
+  # site record a client asked for was signed over a host only the box could
+  # reach.
+  CORAL_CITY_STORAGE_PUBLIC_ENDPOINT: ${CORAL_CITY_STORAGE_PUBLIC_ENDPOINT:-${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_STORAGE_PORT:-19000}}
   CORAL_CITY_STORAGE_ACCESS_KEY: ${CORAL_CITY_STORAGE_ACCESS_KEY:?set a storage access key}
   CORAL_CITY_STORAGE_SECRET_KEY: ${CORAL_CITY_STORAGE_SECRET_KEY:?set a storage secret key}
   CORAL_CITY_STORAGE_BUCKET_PREFIX: coral
@@ -60,7 +65,7 @@ services:
       # and somewhere whose exhaustion is this platform's problem alone.
       - ${CORAL_CITY_STORAGE_PATH:?set a path for stored bytes, on a filesystem with room}:/data
     ports:
-      - "127.0.0.1:${CORAL_CITY_STORAGE_PORT:-19000}:9000"
+      - "${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_STORAGE_PORT:-19000}:9000"
       - "127.0.0.1:${CORAL_CITY_STORAGE_CONSOLE_PORT:-19001}:9001"
     healthcheck:
       test: ["CMD-SHELL", "mc ready local || exit 1"]

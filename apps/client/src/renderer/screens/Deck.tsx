@@ -10,72 +10,62 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import type { City, Organisation, Platform, Principal, Queue, Run, Vehicle }
-  from "@coral-city/api";
+import type { Platform } from "@coral-city/api";
 
 import mark from "../../../assets/coral-city.svg";
+import { readHeld, usePackages, type Held, type Packages } from "../platform/held.js";
 import { Autonomy } from "./Autonomy.js";
 import { Dive } from "./Dive.js";
 import { Fleet } from "./Fleet.js";
+import { PlaceDetail } from "./PlaceDetail.js";
 import { Places } from "./Places.js";
 import { Profile } from "./Profile.js";
 import { Runs } from "./Runs.js";
+import { VehicleDetail } from "./VehicleDetail.js";
 
-export interface Held {
-  you: Principal;
-  institution: Organisation | undefined;
-  places: City[];
-  vehicles: Vehicle[];
-  queues: Queue[];
-  runs: { dive: string; run: Run }[];
-}
+export type { Held, Packages };
 
-type Page = "dive" | "places" | "fleet" | "autonomy" | "runs" | "profile";
+/** Where in the application somebody is. Detail pages carry what they are of. */
+export type Where =
+  | { page: "dive" }
+  | { page: "places" }
+  | { page: "place"; id: string }
+  | { page: "fleet" }
+  | { page: "vehicle"; id?: string; slug?: string }
+  | { page: "autonomy" }
+  | { page: "runs" }
+  | { page: "profile" };
 
-const PAGES: { key: Page; name: string; count?: (held: Held) => number }[] = [
-  { key: "dive", name: "Dive" },
-  { key: "places", name: "Places", count: (h) => h.places.length },
-  { key: "fleet", name: "Fleet", count: (h) => h.vehicles.length },
-  { key: "autonomy", name: "Autonomy" },
-  { key: "runs", name: "Dives", count: (h) => h.runs.length },
+type Rail = Where["page"];
+
+const PAGES: { key: Rail; name: string; count?: (held: Held) => number; is: (where: Where) => boolean }[] = [
+  { key: "dive", name: "Dive", is: (w) => w.page === "dive" },
+  { key: "places", name: "Places", count: (h) => h.places.length, is: (w) => w.page === "places" || w.page === "place" },
+  { key: "fleet", name: "Fleet", count: (h) => h.vehicles.length, is: (w) => w.page === "fleet" || w.page === "vehicle" },
+  { key: "autonomy", name: "Autonomy", is: (w) => w.page === "autonomy" },
+  { key: "runs", name: "Dives", count: (h) => h.runs.length, is: (w) => w.page === "runs" },
 ];
 
 // Named here rather than left out, so the shape of the platform is visible
 // before the whole of it is built. Each says what it will be on its own page.
-const LATER: { key: string; name: string }[] = [
-  { key: "conditions", name: "Conditions" },
-  { key: "sweeps", name: "Sweeps" },
-  { key: "recordings", name: "Recordings" },
+const LATER: { key: string; name: string; will: string }[] = [
+  { key: "conditions", name: "Conditions", will: "Currents, turbidity and light, observed or constructed, named on every dive." },
+  { key: "sweeps", name: "Sweeps", will: "The same dive across many conditions, with nobody watching, scored." },
+  { key: "recordings", name: "Recordings", will: "What a survey recorded, listed, fetched and replayed." },
 ];
 
 export function Deck({ platform, onDiving }: {
   platform: Platform;
   onDiving: (dive: string, run: string) => void;
 }): React.JSX.Element {
-  const [page, setPage] = useState<Page>("dive");
+  const [where, setWhere] = useState<Where>({ page: "dive" });
   const [held, setHeld] = useState<Held | undefined>();
   const [trouble, setTrouble] = useState("");
+  const packages = usePackages(platform, held);
 
   const read = useCallback(async () => {
     try {
-      const [me, places, vehicles, queues] = await Promise.all([
-        platform.me(), platform.places(), platform.vehicles(), platform.queues(),
-      ]);
-      const institution = me.organisations[0];
-
-      // Every dive this institution has defined, and what became of each. The
-      // platform keeps runs under the dive that defined them, so gathering them
-      // is the client's job and not a missing endpoint.
-      let runs: { dive: string; run: Run }[] = [];
-      if (institution !== undefined) {
-        const dives = await platform.dives(institution.id);
-        const each = await Promise.all(
-          dives.slice(0, 12).map(async (dive) => (await platform.runs(dive.id))
-            .map((run) => ({ dive: dive.id, run }))));
-        runs = each.flat().sort((a, b) =>
-          a.run.requestedAt < b.run.requestedAt ? 1 : -1);
-      }
-      setHeld({ you: me.principal, institution, places, vehicles, queues, runs });
+      setHeld(await readHeld(platform));
     } catch (problem) {
       setTrouble(problem instanceof Error ? problem.message : "could not read the platform");
     }
@@ -92,7 +82,12 @@ export function Deck({ platform, onDiving }: {
 
   if (held === undefined) {
     return (
-      <div className="middle">
+      <div className="middle boot">
+        <div className="badge-big">
+          <img src={mark} alt="" />
+          <strong>Coral City</strong>
+        </div>
+        <div className="tide" />
         <p className="note">{trouble || "Reading the platform…"}</p>
       </div>
     );
@@ -112,8 +107,8 @@ export function Deck({ platform, onDiving }: {
         </div>
 
         {PAGES.map((one) => (
-          <a key={one.key} aria-current={page === one.key ? "page" : undefined}
-             onClick={() => setPage(one.key)}>
+          <a key={one.key} aria-current={one.is(where) ? "page" : undefined}
+             onClick={() => setWhere({ page: one.key } as Where)}>
             {one.name}
             {one.count === undefined ? null : <small>{one.count(held)}</small>}
           </a>
@@ -121,10 +116,10 @@ export function Deck({ platform, onDiving }: {
 
         <h2>Not yet</h2>
         {LATER.map((one) => (
-          <a key={one.key} className="later" title="Not built yet">{one.name}</a>
+          <a key={one.key} className="later" title={one.will}>{one.name}</a>
         ))}
 
-        <div className="who" onClick={() => setPage("profile")}
+        <div className="who" onClick={() => setWhere({ page: "profile" })}
              style={{ cursor: "pointer" }}>
           <div className="initials">{initials}</div>
           <div>
@@ -135,16 +130,23 @@ export function Deck({ platform, onDiving }: {
       </nav>
 
       <main>
-        {page === "dive" ? (
-          <Dive platform={platform} held={held} free={free} devices={devices}
-                onDiving={onDiving} onChanged={read} />
-        ) : page === "places" ? (
-          <Places held={held} />
-        ) : page === "fleet" ? (
-          <Fleet held={held} />
-        ) : page === "autonomy" ? (
+        {where.page === "dive" ? (
+          <Dive platform={platform} held={held} packages={packages} free={free} devices={devices}
+                onDiving={onDiving} onChanged={read} onOpen={setWhere} />
+        ) : where.page === "places" ? (
+          <Places held={held} packages={packages} onOpen={(id) => setWhere({ page: "place", id })} />
+        ) : where.page === "place" ? (
+          <PlaceDetail held={held} packages={packages} id={where.id}
+                       onBack={() => setWhere({ page: "places" })} />
+        ) : where.page === "fleet" ? (
+          <Fleet held={held} packages={packages}
+                 onOpen={(of) => setWhere({ page: "vehicle", ...of })} />
+        ) : where.page === "vehicle" ? (
+          <VehicleDetail held={held} packages={packages} id={where.id} slug={where.slug}
+                         onBack={() => setWhere({ page: "fleet" })} />
+        ) : where.page === "autonomy" ? (
           <Autonomy />
-        ) : page === "runs" ? (
+        ) : where.page === "runs" ? (
           <Runs platform={platform} held={held} onChanged={read} />
         ) : (
           <Profile platform={platform} held={held} free={free} devices={devices} />

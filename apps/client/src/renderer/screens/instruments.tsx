@@ -16,11 +16,44 @@ export interface Topic {
   type: string;
   way: "from" | "to";
   messages: number;
+  rateHz?: number;
+}
+
+/** One thing a hand may move on a controller while it runs. */
+export interface Tunable {
+  name: string;
+  value: number;
+  low: number;
+  high: number;
+  unit: string;
+  says: string;
+}
+
+export interface ControllerSaid {
+  name: string;
+  kind: "builtin" | "manual" | "external";
+  says: string;
+  parameters: Tunable[];
+  status: Record<string, unknown>;
+}
+
+export interface Helm {
+  flying: string;
+  preferred?: string | null;
+  changes: number;
+  controllers: ControllerSaid[];
 }
 
 export interface Reading {
   t?: number;
   depthM?: number;
+  headingDeg?: number;
+  pitchDeg?: number;
+  rollDeg?: number;
+  view?: string;
+  samples?: Record<string, Record<string, number>>;
+  flying?: string;
+  controller?: Helm;
   speedMs?: number;
   position?: number[];
   velocity?: number[];
@@ -48,17 +81,22 @@ const KEYS: { key: string; does: string }[] = [
   { key: "C", does: "dive" },
 ];
 
-export function Instruments({ reading, topics, held, history, frames, onLeave, children }: {
+export function Instruments({ reading, topics, held, history, frames, onLeave, onTune, onHoldHere, onEngage, onPlot, plotted, children }: {
   reading: Reading;
   topics: Topic[];
   held: string[];
   history: { t: number; depth: number; speed: number }[];
   frames: number;
   onLeave: () => void;
+  onTune: (controller: string, name: string, value: number) => void;
+  onHoldHere: () => void;
+  onEngage: (controller: string) => void;
+  onPlot: (topic: string) => void;
+  plotted: string | undefined;
   children: React.ReactNode;
 }): React.JSX.Element {
-  const flying = reading.byHand === true ? "you"
-    : reading.commanded === true ? "autonomy" : "nobody";
+  const who = reading.controller?.flying ?? (reading.byHand === true ? "manual" : reading.commanded === true ? "stack" : undefined);
+  const flying = who === "manual" ? "you" : who === "stack" ? "autonomy" : who === "hold" ? "hold" : "nobody";
 
   return (
     <div className="console">
@@ -71,6 +109,7 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, c
           <span className={`who-flies ${flying}`}>
             {flying === "you" ? "you have the controls"
               : flying === "autonomy" ? "autonomy is flying"
+              : flying === "hold" ? "the hold has it"
               : "nobody is flying"}
           </span>
           <span className="frames">{frames} frames</span>
@@ -79,23 +118,31 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, c
       </header>
 
       <aside className="dock left">
-        <Panel name="Topics" note={`${topics.length} on this vehicle`}>
+        <Panel name="Topics" note={topics.length === 0 ? "click one to plot it" : `${topics.length} on this vehicle · click to plot`}>
           {topics.length === 0 ? (
             <p className="none">The vehicle has not opened its boundary.</p>
           ) : (
             <ul className="topics">
               {topics.map((topic) => (
-                <li key={topic.name}>
+                <li key={topic.name} className={topic.name === plotted ? "plotted" : undefined}
+                    onClick={() => onPlot(topic.name)} title={`plot ${topic.name}`}>
                   <span className={`way ${topic.way}`}>{topic.way === "from" ? "▲" : "▼"}</span>
                   <div>
                     <strong>{topic.name}</strong>
                     <em>{topic.type}</em>
                   </div>
-                  <span className="count">{topic.messages.toLocaleString()}</span>
+                  <span className="count">
+                    {topic.rateHz !== undefined && topic.rateHz > 0 ? `${topic.rateHz.toFixed(0)} Hz` : ""}
+                    <small>{topic.messages.toLocaleString()}</small>
+                  </span>
                 </li>
               ))}
             </ul>
           )}
+        </Panel>
+
+        <Panel name="Controller" note={reading.controller ? `${reading.controller.controllers.length} on this vehicle` : undefined}>
+          <ControllerPanel helm={reading.controller} onTune={onTune} onHoldHere={onHoldHere} onEngage={onEngage} />
         </Panel>
 
         <Panel name="Controls" note="held, not tapped">
@@ -118,6 +165,11 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, c
             <Dial of="depth" is={reading.depthM} unit="m" />
             <Dial of="altitude" is={reading.altitudeM ?? undefined} unit="m" />
             <Dial of="speed" is={reading.speedMs} unit="m/s" />
+          </div>
+          <div className="dials">
+            <Dial of="heading" is={reading.headingDeg} unit="°" digits={0} />
+            <Dial of="pitch" is={reading.pitchDeg} unit="°" digits={1} />
+            <Dial of="roll" is={reading.rollDeg} unit="°" digits={1} />
           </div>
           {reading.onTheBottom === true && (
             <p className="resting">Resting on the bottom.</p>
@@ -148,6 +200,66 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, c
   );
 }
 
+/**
+ * Who has the vehicle, and what can be moved on them.
+ *
+ * Every parameter comes from the controller's own declaration, with its range;
+ * nothing here knows what a depth gain is. Moving a slider sends the value at
+ * once, and the reading that comes back is the controller's, so what the
+ * slider shows is what the vehicle is actually flying on.
+ */
+function ControllerPanel({ helm, onTune, onHoldHere, onEngage }: {
+  helm: Helm | undefined;
+  onTune: (controller: string, name: string, value: number) => void;
+  onHoldHere: () => void;
+  onEngage: (controller: string) => void;
+}): React.JSX.Element {
+  if (helm === undefined) return <p className="none">The vehicle has not said who flies it.</p>;
+  return (
+    <div className="helm">
+      {helm.controllers.map((one) => {
+        const flying = one.name === helm.flying;
+        const status = one.status ?? {};
+        return (
+          <details key={one.name} className={`controller${flying ? " flying" : ""}`} open={flying}>
+            <summary>
+              <span className="dot" />
+              <strong>{one.name}</strong>
+              <em>{flying ? "flying" : one.kind}</em>
+            </summary>
+            <p className="says">{one.says}</p>
+            {one.name !== "helm" && !flying ? (
+              <div className="station">
+                <span>{one.name === "stack" ? "the ordinary rule: the stack while it talks" : `keep the ${one.name} on it`}</span>
+                <button className="quiet small" onClick={() => onEngage(one.name)}>Give it the vehicle</button>
+              </div>
+            ) : null}
+            {one.name === "hold" ? (
+              <div className="station">
+                <span>station {fmt(status["targetDepthM"])} m · {fmt(status["targetHeadingDeg"], 0)}° · off by {fmt(status["offStationM"])} m</span>
+                <button className="quiet small" onClick={onHoldHere}>Hold here</button>
+              </div>
+            ) : null}
+            {one.parameters.map((p) => (
+              <label key={p.name} className="tunable" title={p.says}>
+                <span>{p.name}</span>
+                <input type="range" min={p.low} max={p.high} step={(p.high - p.low) / 200}
+                       value={p.value}
+                       onChange={(e) => onTune(one.name, p.name, Number(e.target.value))} />
+                <em>{p.value.toFixed(p.high - p.low > 5 ? 1 : 2)} {p.unit}</em>
+              </label>
+            ))}
+          </details>
+        );
+      })}
+    </div>
+  );
+}
+
+function fmt(value: unknown, digits = 2): string {
+  return typeof value === "number" ? value.toFixed(digits) : "—";
+}
+
 function Panel({ name, note, children }: {
   name: string;
   note?: string;
@@ -164,13 +276,13 @@ function Panel({ name, note, children }: {
   );
 }
 
-function Dial({ of, is, unit }: {
-  of: string; is: number | undefined; unit: string;
+function Dial({ of, is, unit, digits = 2 }: {
+  of: string; is: number | undefined; unit: string; digits?: number;
 }): React.JSX.Element {
   return (
     <div className="dial">
       <span>{of}</span>
-      <strong>{is === undefined ? "—" : is.toFixed(2)}</strong>
+      <strong>{is === undefined ? "—" : is.toFixed(digits)}</strong>
       <em>{unit}</em>
     </div>
   );
