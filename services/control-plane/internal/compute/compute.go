@@ -137,7 +137,11 @@ const selectQueue = `
 	           '{}')
 	FROM compute.queue q
 	LEFT JOIN compute.device d ON d.queue_id = q.id
-	LEFT JOIN dive.run r ON r.device_id = d.id AND r.state IN ('preparing', 'running')`
+	LEFT JOIN LATERAL (
+	    SELECT h.run_id AS id FROM dive.hold h
+	      JOIN dive.run held ON held.id = h.run_id
+	     WHERE h.device_id = d.id AND held.state IN ('preparing', 'running')
+	     LIMIT 1) r ON true`
 
 const groupQueue = ` GROUP BY q.id`
 
@@ -168,6 +172,22 @@ func (s *Store) SetRuntimes(ctx context.Context, conn db.Conn, target string,
 		target, runtimes)
 	if err != nil {
 		return fmt.Errorf("recording what %s can run: %w", target, err)
+	}
+	return nil
+}
+
+// SetCapacity records what a host has — processors and memory — as it says
+// every time it asks for work, for the same reason the runtimes are.
+func (s *Store) SetCapacity(ctx context.Context, conn db.Conn, target string,
+	cpu float64, memoryBytes int64) error {
+	if cpu <= 0 || memoryBytes <= 0 {
+		return nil
+	}
+	_, err := conn.Exec(ctx,
+		`UPDATE exec.target SET capacity_cpu = $2, capacity_memory_bytes = $3 WHERE name = $1 OR id = $1`,
+		target, cpu, memoryBytes)
+	if err != nil {
+		return fmt.Errorf("recording what %s has: %w", target, err)
 	}
 	return nil
 }
@@ -323,8 +343,8 @@ func (s *Store) ClaimFree(ctx context.Context, conn db.Conn, queueID string) (De
 		  AND d.enabled
 		  AND NOT q.draining
 		  AND NOT EXISTS (
-		      SELECT 1 FROM dive.run r
-		       WHERE r.device_id = d.id AND r.state IN ('preparing', 'running'))
+		      SELECT 1 FROM dive.hold h JOIN dive.run r ON r.id = h.run_id
+		       WHERE h.device_id = d.id AND r.state IN ('preparing', 'running'))
 		ORDER BY d.device_index
 		FOR UPDATE OF d SKIP LOCKED
 		LIMIT 1`, queueID))

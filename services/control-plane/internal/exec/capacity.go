@@ -104,23 +104,30 @@ func (b *Broker) Targets(ctx context.Context) ([]Target, error) {
 
 // SetQuota states what one organisation may consume at once.
 func (b *Broker) SetQuota(ctx context.Context, conn db.Conn, quota Quota) (Quota, error) {
-	if quota.MaxConcurrentJobs < 0 || quota.MaxCPU < 0 || quota.MaxMemoryBytes < 0 || quota.MaxGPU < 0 {
+	if quota.MaxConcurrentJobs < 0 || quota.MaxCPU < 0 || quota.MaxMemoryBytes < 0 || quota.MaxGPU < 0 ||
+		quota.MaxConcurrentDives < 0 || quota.MaxGPUHoursDaily < 0 {
 		return Quota{}, fmt.Errorf("%w: a quota is not negative", domain.ErrInvalid)
 	}
 	var stored Quota
 	err := conn.QueryRow(ctx, `
-		INSERT INTO exec.quota (org_id, max_concurrent_jobs, max_cpu, max_memory_bytes, max_gpu)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO exec.quota (org_id, max_concurrent_jobs, max_cpu, max_memory_bytes, max_gpu,
+		                        max_concurrent_dives, max_gpu_hours_daily)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (org_id) DO UPDATE SET
 		    max_concurrent_jobs = EXCLUDED.max_concurrent_jobs,
 		    max_cpu = EXCLUDED.max_cpu,
 		    max_memory_bytes = EXCLUDED.max_memory_bytes,
 		    max_gpu = EXCLUDED.max_gpu,
+		    max_concurrent_dives = EXCLUDED.max_concurrent_dives,
+		    max_gpu_hours_daily = EXCLUDED.max_gpu_hours_daily,
 		    updated_at = now()
-		RETURNING org_id, max_concurrent_jobs, max_cpu, max_memory_bytes, max_gpu, updated_at`,
-		quota.OrgID, quota.MaxConcurrentJobs, quota.MaxCPU, quota.MaxMemoryBytes, quota.MaxGPU).
+		RETURNING org_id, max_concurrent_jobs, max_cpu, max_memory_bytes, max_gpu,
+		          max_concurrent_dives, max_gpu_hours_daily, updated_at`,
+		quota.OrgID, quota.MaxConcurrentJobs, quota.MaxCPU, quota.MaxMemoryBytes, quota.MaxGPU,
+		quota.MaxConcurrentDives, quota.MaxGPUHoursDaily).
 		Scan(&stored.OrgID, &stored.MaxConcurrentJobs, &stored.MaxCPU,
-			&stored.MaxMemoryBytes, &stored.MaxGPU, &stored.UpdatedAt)
+			&stored.MaxMemoryBytes, &stored.MaxGPU, &stored.MaxConcurrentDives,
+			&stored.MaxGPUHoursDaily, &stored.UpdatedAt)
 	if err != nil {
 		return Quota{}, fmt.Errorf("setting a quota: %w", err)
 	}
@@ -131,10 +138,12 @@ func (b *Broker) SetQuota(ctx context.Context, conn db.Conn, quota Quota) (Quota
 func (b *Broker) Quota(ctx context.Context, orgID string) (Quota, map[string]any, error) {
 	var quota Quota
 	err := b.pool.QueryRow(ctx, `
-		SELECT org_id, max_concurrent_jobs, max_cpu, max_memory_bytes, max_gpu, updated_at
+		SELECT org_id, max_concurrent_jobs, max_cpu, max_memory_bytes, max_gpu,
+		       max_concurrent_dives, max_gpu_hours_daily, updated_at
 		FROM exec.quota WHERE org_id = $1`, orgID).
 		Scan(&quota.OrgID, &quota.MaxConcurrentJobs, &quota.MaxCPU,
-			&quota.MaxMemoryBytes, &quota.MaxGPU, &quota.UpdatedAt)
+			&quota.MaxMemoryBytes, &quota.MaxGPU, &quota.MaxConcurrentDives,
+			&quota.MaxGPUHoursDaily, &quota.UpdatedAt)
 	if err != nil {
 		return Quota{}, nil, db.Translate(err)
 	}
@@ -142,10 +151,25 @@ func (b *Broker) Quota(ctx context.Context, orgID string) (Quota, map[string]any
 	if err != nil {
 		return Quota{}, nil, err
 	}
+	var dives int
+	var hours float64
+	if err := b.pool.QueryRow(ctx, `
+		SELECT count(*) FILTER (WHERE r.state IN ('queued', 'preparing', 'running')),
+		       coalesce(sum(
+		           greatest(1, (SELECT count(DISTINCT device_id) FROM dive.hold h WHERE h.run_id = r.id))
+		           * extract(epoch FROM (coalesce(r.ended_at, now()) - coalesce(r.started_at, r.requested_at))) / 3600.0
+		       ) FILTER (WHERE r.started_at IS NOT NULL
+		                   AND coalesce(r.ended_at, now()) > now() - interval '24 hours'), 0)
+		  FROM dive.run r JOIN dive.dive d ON d.id = r.dive_id
+		 WHERE d.org_id = $1`, orgID).Scan(&dives, &hours); err != nil {
+		return Quota{}, nil, fmt.Errorf("reading the institution's dives: %w", err)
+	}
 	return quota, map[string]any{
-		"jobs":        current.Jobs,
-		"cpu":         current.CPU,
-		"memoryBytes": current.MemoryBytes,
-		"gpu":         current.GPU,
+		"jobs":         current.Jobs,
+		"cpu":          current.CPU,
+		"memoryBytes":  current.MemoryBytes,
+		"gpu":          current.GPU,
+		"dives":        dives,
+		"gpuHoursToday": fmt.Sprintf("%.2f", hours),
 	}, nil
 }

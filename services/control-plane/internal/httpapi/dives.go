@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"log/slog"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +25,8 @@ type registerStackRequest struct {
 	Subscribes      json.RawMessage `json:"subscribes,omitempty"`
 	Publishes       json.RawMessage `json:"publishes,omitempty"`
 	WantsGPU        bool            `json:"wantsGpu"`
+	// What it needs beside the simulator: gpu, gpuMemoryBytes, cpu, memoryBytes.
+	Needs json.RawMessage `json:"needs,omitempty"`
 }
 
 // registerStack records autonomy somebody brought.
@@ -52,6 +55,7 @@ func (d *Dependencies) registerStack(w http.ResponseWriter, r *http.Request) {
 			Subscribes:      request.Subscribes,
 			Publishes:       request.Publishes,
 			WantsGPU:        request.WantsGPU,
+			Needs:           request.Needs,
 			CreatedBy:       principal.ID,
 		})
 		if err != nil {
@@ -224,6 +228,9 @@ type requestRunRequest struct {
 	Seed           *int64   `json:"seed,omitempty"`
 	RuntimeVersion string   `json:"runtimeVersion"`
 	GPUShare       *float64 `json:"gpuShare,omitempty"`
+	// What the dive needs, over what the platform assembles from its parts:
+	// {simulator: {gpuMemoryBytes, cpu, memoryBytes}, controller: {…}}.
+	Needs json.RawMessage `json:"needs,omitempty"`
 }
 
 // requestRun asks for a dive to be executed.
@@ -270,6 +277,7 @@ func (d *Dependencies) requestRun(w http.ResponseWriter, r *http.Request) {
 			RuntimeVersion: request.RuntimeVersion,
 			GPUShare:       share,
 			RequestedBy:    principal.ID,
+			Needs:          request.Needs,
 		})
 		if err != nil {
 			return err
@@ -284,6 +292,14 @@ func (d *Dependencies) requestRun(w http.ResponseWriter, r *http.Request) {
 			},
 		})
 	})
+	var refused *dive.Refused
+	if errors.As(err, &refused) {
+		// Written down here, after the transaction that refused it has rolled
+		// back; inside it the record would have gone with everything else.
+		if recording := d.Dives.RecordRefusal(r.Context(), d.Pool, refused); recording != nil {
+			slog.WarnContext(r.Context(), "a refusal could not be recorded", "error", recording)
+		}
+	}
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -339,10 +355,20 @@ func (d *Dependencies) claimRun(w http.ResponseWriter, r *http.Request) {
 		// rather than registered once, so it cannot go stale while the host is
 		// alive: a machine that has been upgraded says so the next time it asks.
 		Runtimes []string `json:"runtimes"`
+		// What the host has, said the same way and for the same reason.
+		CapacityCPU         float64 `json:"capacityCpu"`
+		CapacityMemoryBytes int64   `json:"capacityMemoryBytes"`
 	}
 	if err := readJSON(r, &request); err != nil {
 		writeError(w, r, err)
 		return
+	}
+	if request.CapacityCPU > 0 && request.CapacityMemoryBytes > 0 {
+		if err := d.Compute.SetCapacity(r.Context(), d.Pool, request.TargetID,
+			request.CapacityCPU, request.CapacityMemoryBytes); err != nil {
+			writeError(w, r, err)
+			return
+		}
 	}
 
 	// Recorded before the claim and outside it. Inside, it rode on the claim's
@@ -364,10 +390,11 @@ func (d *Dependencies) claimRun(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
+		holds, _ := json.Marshal(claimed.Holds)
 		return d.Dives.Record(r.Context(), conn, claimed.Run.ID, "claimed", nil,
 			json.RawMessage(fmt.Sprintf(
-				`{"target":%q,"device":%q,"rosDomainId":%d}`,
-				request.TargetID, claimed.DeviceUUID, claimed.ROSDomainID)))
+				`{"target":%q,"device":%q,"rosDomainId":%d,"holds":%s}`,
+				request.TargetID, claimed.DeviceUUID, claimed.ROSDomainID, holds)))
 	})
 	if errors.Is(err, db.ErrNotFound) {
 		w.WriteHeader(http.StatusNoContent)

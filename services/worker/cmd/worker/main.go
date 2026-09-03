@@ -11,6 +11,10 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -77,6 +81,11 @@ func run(logger *slog.Logger) error {
 	idle := time.NewTimer(0)
 	defer idle.Stop()
 
+	// Dives in flight on this host, waited for on the way out so a stop does
+	// not abandon a vehicle mid-water without saying so.
+	var diving sync.WaitGroup
+	defer diving.Wait()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -90,15 +99,23 @@ func run(logger *slog.Logger) error {
 		claim, cancelClaim := context.WithTimeout(ctx, settings.RequestTimeout)
 		var claimed diver.Claimed
 		claimErr := client.ClaimDive(claim, settings.TargetName,
-			settings.Runtimes(), &claimed)
+			settings.Runtimes(), hostCapacity(), &claimed)
 		cancelClaim()
 
 		if claimErr == nil {
-			if err := dive.Dive(ctx, claimed); err != nil {
-				logger.Error("could not complete a dive",
-					"runId", claimed.Run.ID, "error", err)
-			}
-			idle.Reset(0)
+			// Beside whatever else is running, not after it. The platform
+			// placed this dive knowing what this host already carries; an agent
+			// that ran dives one at a time would leave the second card idle
+			// while a dive waited for it, which is what it did.
+			diving.Add(1)
+			go func(claimed diver.Claimed) {
+				defer diving.Done()
+				if err := dive.Dive(ctx, claimed); err != nil {
+					logger.Error("could not complete a dive",
+						"runId", claimed.Run.ID, "error", err)
+				}
+			}(claimed)
+			idle.Reset(2 * time.Second)
 			continue
 		}
 		if !errors.Is(claimErr, controlplane.ErrNothingToRun) {
@@ -176,4 +193,24 @@ func (p *platform) Record(ctx context.Context, runID, kind string,
 func (p *platform) Finish(ctx context.Context, runID, state string,
 	outcome any, failure string) error {
 	return p.client.FinishDive(ctx, runID, state, outcome, failure)
+}
+
+// hostCapacity is what this machine has: its processors, and its memory as
+// the kernel reports it. Read every time rather than once, because it costs
+// nothing and a value read once is a value that can be wrong for a year.
+func hostCapacity() controlplane.Capacity {
+	capacity := controlplane.Capacity{CPU: float64(runtime.NumCPU())}
+	if raw, err := os.ReadFile("/proc/meminfo"); err == nil {
+		for _, line := range strings.Split(string(raw), "\n") {
+			if strings.HasPrefix(line, "MemTotal:") {
+				fields := strings.Fields(line)
+				if len(fields) >= 2 {
+					if kib, err := strconv.ParseInt(fields[1], 10, 64); err == nil {
+						capacity.MemoryBytes = kib * 1024
+					}
+				}
+			}
+		}
+	}
+	return capacity
 }

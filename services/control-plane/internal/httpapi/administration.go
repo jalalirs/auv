@@ -268,6 +268,9 @@ type quotaRequest struct {
 	MaxCPU            float64 `json:"maxCpu"`
 	MaxMemoryBytes    int64   `json:"maxMemoryBytes"`
 	MaxGPU            int     `json:"maxGpu"`
+	// Dives: how many at once, and how many GPU-hours in a day.
+	MaxConcurrentDives int     `json:"maxConcurrentDives"`
+	MaxGPUHoursDaily   float64 `json:"maxGpuHoursDaily"`
 }
 
 // setQuota states what one institution may consume at once.
@@ -287,8 +290,10 @@ func (d *Dependencies) setQuota(w http.ResponseWriter, r *http.Request) {
 			OrgID:             orgID,
 			MaxConcurrentJobs: request.MaxConcurrentJobs,
 			MaxCPU:            request.MaxCPU,
-			MaxMemoryBytes:    request.MaxMemoryBytes,
-			MaxGPU:            request.MaxGPU,
+			MaxMemoryBytes:     request.MaxMemoryBytes,
+			MaxGPU:             request.MaxGPU,
+			MaxConcurrentDives: request.MaxConcurrentDives,
+			MaxGPUHoursDaily:   request.MaxGPUHoursDaily,
 		})
 		if err != nil {
 			return err
@@ -299,6 +304,7 @@ func (d *Dependencies) setQuota(w http.ResponseWriter, r *http.Request) {
 			Detail: map[string]any{
 				"maxConcurrentJobs": stored.MaxConcurrentJobs, "maxCpu": stored.MaxCPU,
 				"maxMemoryBytes": stored.MaxMemoryBytes, "maxGpu": stored.MaxGPU,
+				"maxConcurrentDives": stored.MaxConcurrentDives, "maxGpuHoursDaily": stored.MaxGPUHoursDaily,
 			},
 		})
 	})

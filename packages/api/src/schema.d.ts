@@ -758,6 +758,8 @@ export interface paths {
                         /** Format: int64 */
                         maxMemoryBytes: number;
                         maxGpu?: number;
+                        maxConcurrentDives?: number;
+                        maxGpuHoursDaily?: number;
                     };
                 };
             };
@@ -919,6 +921,7 @@ export interface paths {
                         /** @description Inference needs a device too, and on a single-GPU host it shares one with the simulator.
                          *      */
                         wantsGpu?: boolean;
+                        needs?: components["schemas"]["Part"];
                     };
                 };
             };
@@ -1192,11 +1195,13 @@ export interface paths {
                         runtimeVersion: string;
                         /** @default 1 */
                         gpuShare?: number;
+                        needs?: components["schemas"]["Needs"];
                     };
                 };
             };
             responses: {
-                /** @description The run, admitted and waiting for a device. */
+                /** @description The run, admitted: placed, or queued with its position and what it waits for. A dive that fits nowhere, a draining queue, a runtime no host offers, or an institution at its quota is refused with the reason instead.
+                 *      */
                 202: {
                     headers: {
                         [name: string]: unknown;
@@ -1207,6 +1212,7 @@ export interface paths {
                 };
                 400: components["responses"]["Invalid"];
                 403: components["responses"]["Forbidden"];
+                429: components["responses"]["Refused"];
             };
         };
         delete?: never;
@@ -1240,6 +1246,15 @@ export interface paths {
                 content: {
                     "application/json": {
                         targetId: string;
+                        /** @description What this host can simulate in, said with every request. */
+                        runtimes?: string[];
+                        /** @description Processors on the host, said with every request. */
+                        capacityCpu?: number;
+                        /**
+                         * Format: int64
+                         * @description Memory on the host, said with every request.
+                         */
+                        capacityMemoryBytes?: number;
                     };
                 };
             };
@@ -3759,11 +3774,57 @@ export interface components {
             autonomyWantsGpu?: boolean;
             autonomySubscribes?: string[];
             autonomyPublishes?: string[];
+            /** @description The simulator's card. */
             deviceIndex: number;
             deviceUuid: string;
-            /** @description Derived from the device rather than drawn, so a run that is retried lands on the same domain as the device it holds.
+            /** @description Everything the run holds, per part; the controller's card may differ from the simulator's. */
+            holds: components["schemas"]["Hold"][];
+            needs: components["schemas"]["Needs"];
+            /** @description The run's slot on its host, the lowest not held by another dive there. The DDS domain is 1 + slot and the stream port the host's base + slot, so two dives sharing a card neither hear nor watch each other.
              *      */
+            slot: number;
+            /** @description Derived from the slot, so two dives on one host do not hear each other. */
             rosDomainId: number;
+        };
+        /** @description What one half of a dive — the simulator, or the controller — needs of a machine. */
+        Part: {
+            gpu?: boolean;
+            /** Format: int64 */
+            gpuMemoryBytes?: number;
+            cpu?: number;
+            /** Format: int64 */
+            memoryBytes?: number;
+        };
+        /** @description What a dive needs, assembled from its parts. The simulator always needs a card; a controller needs one only if its stack says so. Placed as a whole: the two may share a card when its memory allows, or take two.
+         *      */
+        Needs: {
+            simulator?: components["schemas"]["Part"];
+            controller?: components["schemas"]["Part"];
+        };
+        /** @description One part of a run on one card. */
+        Hold: {
+            /** @enum {string} */
+            part: "simulator" | "controller";
+            deviceId: string;
+            deviceIndex: number;
+            deviceUuid: string;
+            model?: string;
+            /** Format: int64 */
+            gpuMemoryBytes: number;
+        };
+        /** @description Where a run stands with the scheduler: placed on which host and cards, queued at which position waiting for what, or over.
+         *      */
+        Placement: {
+            /** @enum {string} */
+            state: "placed" | "queued" | "over";
+            target?: string;
+            holds: components["schemas"]["Hold"][];
+            /** @description Place in line */
+            position?: number;
+            /** @description How many are waiting ahead of it. */
+            ahead?: number;
+            /** @description What has to come free */
+            waitingFor?: string;
         };
         /** @description A pool of devices that access is granted to. The governed resource is the queue, not the device, which is what lets one workstation and a rack be described the same way and makes adding hardware an insert.
          *      */
@@ -3815,6 +3876,7 @@ export interface components {
             subscribes?: string[];
             publishes?: string[];
             wantsGpu?: boolean;
+            needs?: components["schemas"]["Part"];
             /** Format: date-time */
             createdAt: string;
             createdBy: string;
@@ -3875,6 +3937,8 @@ export interface components {
             runtimeVersion: string;
             deviceId?: string | null;
             gpuShare: number;
+            needs?: components["schemas"]["Needs"];
+            placement?: components["schemas"]["Placement"];
             /** Format: date-time */
             requestedAt: string;
             requestedBy: string;
@@ -4067,6 +4131,10 @@ export interface components {
             /** Format: int64 */
             maxMemoryBytes: number;
             maxGpu: number;
+            /** @description How many dives at once. */
+            maxConcurrentDives: number;
+            /** @description GPU-hours in a day */
+            maxGpuHoursDaily: number;
             /** Format: date-time */
             updatedAt: string;
         };

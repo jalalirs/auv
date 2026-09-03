@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -41,6 +42,13 @@ type Cache struct {
 	root   string
 	client *http.Client
 	logger *slog.Logger
+
+	// One assembly of a version at a time. Two dives placed side by side may
+	// both need the same place, and two assemblies of it under one name would
+	// clear each other's staging and replace a directory a running simulator
+	// has mounted. The second waits, then finds everything held.
+	assembling sync.Mutex
+	versions   map[string]*sync.Mutex
 }
 
 // New opens a cache rooted at a directory, creating it if it is not there.
@@ -54,9 +62,23 @@ func New(root string, logger *slog.Logger) (*Cache, error) {
 		root: root,
 		// Long, because a city is hundreds of megabytes and a slow link is not
 		// a failure. The context the caller passes is what cancels this.
-		client: &http.Client{Timeout: 30 * time.Minute},
-		logger: logger,
+		client:   &http.Client{Timeout: 30 * time.Minute},
+		logger:   logger,
+		versions: map[string]*sync.Mutex{},
 	}, nil
+}
+
+// lockVersion serialises assemblies of one version.
+func (c *Cache) lockVersion(versionID string) func() {
+	c.assembling.Lock()
+	lock, ok := c.versions[versionID]
+	if !ok {
+		lock = &sync.Mutex{}
+		c.versions[versionID] = lock
+	}
+	c.assembling.Unlock()
+	lock.Lock()
+	return lock.Unlock
 }
 
 // objectPath is where a digest's bytes live: fanned out by the first byte, so
@@ -95,6 +117,16 @@ type Report struct {
 func (c *Cache) Sync(ctx context.Context, versionID string, files []File) (Report, error) {
 	started := time.Now()
 	report := Report{Directory: filepath.Join(c.root, "packages", versionID)}
+	defer c.lockVersion(versionID)()
+
+	// Already assembled, whole, from an earlier dive: left exactly where it
+	// is. Replacing it would pull the directory from under a simulator that
+	// may be running on it right now.
+	if c.assembled(report.Directory, files) {
+		report.Held = len(files)
+		report.Took = time.Since(started)
+		return report, nil
+	}
 
 	// Assembled under a temporary name and moved into place at the end, so
 	// that a directory bearing a version's name is either the whole package or
@@ -142,6 +174,19 @@ func (c *Cache) Sync(ctx context.Context, versionID string, files []File) (Repor
 
 	report.Took = time.Since(started)
 	return report, nil
+}
+
+// assembled reports whether a package directory holds every file it should,
+// by presence and size — the bytes were checked against their digest when
+// they were fetched, and a hard link to them cannot have changed.
+func (c *Cache) assembled(directory string, files []File) bool {
+	for _, file := range files {
+		info, err := os.Stat(filepath.Join(directory, filepath.FromSlash(file.Path)))
+		if err != nil || info.Size() != file.SizeBytes {
+			return false
+		}
+	}
+	return len(files) > 0
 }
 
 // fetch downloads one file and keeps it only if it is what was asked for.

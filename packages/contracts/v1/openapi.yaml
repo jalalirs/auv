@@ -477,6 +477,8 @@ paths:
                 maxCpu: { type: number, minimum: 0 }
                 maxMemoryBytes: { type: integer, format: int64, minimum: 0 }
                 maxGpu: { type: integer, minimum: 0 }
+                maxConcurrentDives: { type: integer, minimum: 0 }
+                maxGpuHoursDaily: { type: number, minimum: 0 }
       responses:
         '200':
           description: The quota.
@@ -625,6 +627,8 @@ paths:
                   description: >
                     Inference needs a device too, and on a single-GPU host it
                     shares one with the simulator.
+                needs:
+                  $ref: '#/components/schemas/Part'
       responses:
         '201':
           description: The autonomy stack.
@@ -831,13 +835,21 @@ paths:
                   minimum: 0
                   maximum: 1
                   default: 1
+                needs:
+                  $ref: '#/components/schemas/Needs'
       responses:
         '202':
-          description: The run, admitted and waiting for a device.
+          description: >
+            The run, admitted: placed, or queued with its position and what it
+            waits for. A dive that fits nowhere, a draining queue, a runtime no
+            host offers, or an institution at its quota is refused with the
+            reason instead.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Run'
+        '429':
+          $ref: '#/components/responses/Refused'
         '400':
           $ref: '#/components/responses/Invalid'
         '403':
@@ -861,6 +873,17 @@ paths:
               required: [targetId]
               properties:
                 targetId: { type: string }
+                runtimes:
+                  type: array
+                  items: { type: string }
+                  description: What this host can simulate in, said with every request.
+                capacityCpu:
+                  type: number
+                  description: Processors on the host, said with every request.
+                capacityMemoryBytes:
+                  type: integer
+                  format: int64
+                  description: Memory on the host, said with every request.
       responses:
         '200':
           description: The dive, and everything needed to compose it.
@@ -2741,14 +2764,72 @@ components:
         autonomyWantsGpu: { type: boolean }
         autonomySubscribes: { type: array, items: { type: string } }
         autonomyPublishes: { type: array, items: { type: string } }
-        deviceIndex: { type: integer }
+        deviceIndex: { type: integer, description: The simulator's card. }
         deviceUuid: { type: string }
-        rosDomainId:
+        holds:
+          type: array
+          items:
+            $ref: '#/components/schemas/Hold'
+          description: Everything the run holds, per part; the controller's card may differ from the simulator's.
+        needs:
+          $ref: '#/components/schemas/Needs'
+        slot:
           type: integer
           description: >
-            Derived from the device rather than drawn, so a run that is retried
-            lands on the same domain as the device it holds.
-      required: [run, cityVersionId, vehicleVersionId, conditions, deviceIndex, deviceUuid, rosDomainId]
+            The run's slot on its host, the lowest not held by another dive
+            there. The DDS domain is 1 + slot and the stream port the host's
+            base + slot, so two dives sharing a card neither hear nor watch
+            each other.
+        rosDomainId:
+          type: integer
+          description: Derived from the slot, so two dives on one host do not hear each other.
+      required: [run, cityVersionId, vehicleVersionId, conditions, deviceIndex, deviceUuid, holds, needs, slot, rosDomainId]
+    Part:
+      type: object
+      description: What one half of a dive — the simulator, or the controller — needs of a machine.
+      properties:
+        gpu: { type: boolean }
+        gpuMemoryBytes: { type: integer, format: int64 }
+        cpu: { type: number }
+        memoryBytes: { type: integer, format: int64 }
+    Needs:
+      type: object
+      description: >
+        What a dive needs, assembled from its parts. The simulator always needs
+        a card; a controller needs one only if its stack says so. Placed as a
+        whole: the two may share a card when its memory allows, or take two.
+      properties:
+        simulator:
+          $ref: '#/components/schemas/Part'
+        controller:
+          $ref: '#/components/schemas/Part'
+    Hold:
+      type: object
+      description: One part of a run on one card.
+      properties:
+        part: { type: string, enum: [simulator, controller] }
+        deviceId: { type: string }
+        deviceIndex: { type: integer }
+        deviceUuid: { type: string }
+        model: { type: string }
+        gpuMemoryBytes: { type: integer, format: int64 }
+      required: [part, deviceId, deviceIndex, deviceUuid, gpuMemoryBytes]
+    Placement:
+      type: object
+      description: >
+        Where a run stands with the scheduler: placed on which host and cards,
+        queued at which position waiting for what, or over.
+      properties:
+        state: { type: string, enum: [placed, queued, over] }
+        target: { type: string }
+        holds:
+          type: array
+          items:
+            $ref: '#/components/schemas/Hold'
+        position: { type: integer, description: Place in line, counting from one. }
+        ahead: { type: integer, description: How many are waiting ahead of it. }
+        waitingFor: { type: string, description: What has to come free, in words. }
+      required: [state, holds]
     Queue:
       type: object
       description: >
@@ -2813,6 +2894,8 @@ components:
         subscribes: { type: array, items: { type: string } }
         publishes: { type: array, items: { type: string } }
         wantsGpu: { type: boolean }
+        needs:
+          $ref: '#/components/schemas/Part'
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
       required: [id, orgId, slug, name, imageRepository, imageDigest, createdAt, createdBy]
@@ -2879,6 +2962,10 @@ components:
         runtimeVersion: { type: string }
         deviceId: { type: string, nullable: true }
         gpuShare: { type: number }
+        needs:
+          $ref: '#/components/schemas/Needs'
+        placement:
+          $ref: '#/components/schemas/Placement'
         requestedAt: { type: string, format: date-time }
         requestedBy: { type: string }
         startedAt: { type: string, format: date-time, nullable: true }
@@ -3089,13 +3176,15 @@ components:
 
     Quota:
       type: object
-      required: [orgId, maxConcurrentJobs, maxCpu, maxMemoryBytes, maxGpu, updatedAt]
+      required: [orgId, maxConcurrentJobs, maxCpu, maxMemoryBytes, maxGpu, maxConcurrentDives, maxGpuHoursDaily, updatedAt]
       properties:
         orgId: { type: string }
         maxConcurrentJobs: { type: integer }
         maxCpu: { type: number }
         maxMemoryBytes: { type: integer, format: int64 }
         maxGpu: { type: integer }
+        maxConcurrentDives: { type: integer, description: How many dives at once. }
+        maxGpuHoursDaily: { type: number, description: GPU-hours in a day, over every card a dive held. }
         updatedAt: { type: string, format: date-time }
 
     Denial:
