@@ -3096,6 +3096,7 @@ components:
           $ref: '#/components/schemas/Needs'
         placement:
           $ref: '#/components/schemas/Placement'
+        artefacts: { type: integer, description: How many files the run left behind. }
         requestedAt: { type: string, format: date-time }
         requestedBy: { type: string }
         startedAt: { type: string, format: date-time, nullable: true }

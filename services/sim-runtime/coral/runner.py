@@ -566,6 +566,7 @@ class Dive:
                 from recording import Recorder
                 self.recorder = Recorder(pathlib.Path(self.brief.get("recordInto",
                                          str(pathlib.Path(self.brief.get("cityPath", "/dive/city")).parent / "recording"))))
+                self.recorder.camera = self.camera()
                 self.say("recording", into=str(self.recorder.into))
             except Exception as exc:
                 self.say("recording_unavailable", why=str(exc)[:160])

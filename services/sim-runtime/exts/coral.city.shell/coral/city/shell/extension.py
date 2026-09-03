@@ -115,6 +115,14 @@ class CoralCityShell(omni.ext.IExt):
         self._latest_state = {}
         self._alone_since = None
         self._quit_at = None
+        # Set by the signal the agent sends to stop the dive; acted on from the
+        # update loop, where the dive can be closed properly.
+        self._asked_to_stop = False
+        try:
+            import signal
+            signal.signal(signal.SIGTERM, lambda *_: setattr(self, "_asked_to_stop", True))
+        except Exception as exc:
+            carb.log_warn(f"Coral City will not hear a stop: {exc}")
         self._watch_port = int(os.environ.get("CORAL_CITY_WATCH_PORT", "18102"))
         # Flying over the place to look at it, rather than diving in it. Same
         # place, same water, same light — only the camera differs, and no
@@ -329,6 +337,15 @@ class CoralCityShell(omni.ext.IExt):
     def _frame(self, event) -> None:
         dive = self.dive
         if dive is None:
+            return
+        if self._asked_to_stop and not self.finished:
+            # Whoever asked for this dive has ended it. Close it properly —
+            # flush the recording, say where the vehicle settled — and leave.
+            self.finished = True
+            self._quit_at = time.monotonic() + 2.0
+            dive.close()
+            self._say("stopped", simulatedSeconds=round(dive.simulated, 3))
+            self.hud.finished()
             return
         if self.finished:
             # Over. A couple of seconds for the last captured frame to reach its

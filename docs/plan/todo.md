@@ -402,6 +402,39 @@ task, be scored, leave, and have the machine given back.
 
 **Done when:** you do it and it is not annoying.
 
+*Where it stands:* the journey has been driven end to end from a script on
+the box, the way the application drives it, and what it found was fixed (3
+September); the judgement — you, at the keys, not annoyed — is still yours to
+make, and the numbers below say what to expect.
+
+What the script does is what you will do: ask for a waypoints dive on Looe
+Key in the BlueROV2, wait, arrive in the water, sit still for ten seconds
+under the hold, take the controls and drive to the first waypoint, watch the
+score change, let go and watch the hold take it back, surface, and look at
+what is left. What it found: leaving a dive marked it cancelled and threw
+away its result and recording, because the agent killed the simulator and
+the record refused a finished run any further word. Now leaving a dive you
+were flying ends it as succeeded and surfaced; the agent asks the simulator
+to stop and the simulator closes the dive properly — flushes its recording,
+says where the vehicle settled — and what it then reports is added to the
+run rather than refused. The recording is written line by line and its
+manifest rewritten as it goes, so even an unceremonious stop leaves it whole.
+The Dives page shows a left dive as surfaced, its score, and Replay.
+
+The scripted pass, as it stands: placed 3 s after asking; first frame 65 s
+later; ten seconds still under the hold with a centimetre of depth drift and
+no movement; the keys took the vehicle at once and the first waypoint was
+reached in 14 s with the score at 0.25; letting go handed it back to the hold;
+surfacing answered at once and, 45 s later, the run read succeeded and
+surfaced with its Waypoints score, a recording of 101 files, both cards free
+and no container left on the host. The whole thing, 161 s.
+
+Follow-ups for the pass in the application: the first frame takes about a
+minute after the dive is placed, all of it the scene opening; the waiting
+screen says so step by step, but a minute is a minute. Keys are the only
+controls; a gamepad would make it feel like a vehicle. The chart is drawn on
+the client and does not yet show the coral.
+
 ---
 
 ## 7. The reef into the place
