@@ -92,3 +92,16 @@ console reached through a tunnel and for nothing else: a client on a laptop
 across the tailnet asked for a place's picture and got a URL only the box could
 reach. It is now the bind address, `100.76.65.1:19000`, and the storage port is
 published on that address rather than the loopback.
+
+
+## Redeploying under a running dive
+
+The agent hands its running dives over when it is stopped: each dive's
+handles are written beside its brief in the work directory, and the agent
+that starts next adopts them — renews their leases, relays what the simulator
+says, waits for the end, keeps the recording, reports. So `docker compose up
+-d agent` under a dive no longer ends the dive. The simulator image is only
+read when a dive opens, so rebuilding it never touches a dive in progress;
+the control plane can be restarted freely, since agents renew leases for
+fifteen minutes and tolerate a gap. Check anyway before you redeploy:
+`docker ps | grep coral-sim` says what is in the water.
