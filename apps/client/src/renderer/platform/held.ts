@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import type { City, Organisation, Platform, Principal, Queue, Run, Vehicle } from "@coral-city/api";
+import type { City, Organisation, Platform, Principal, Queue, Run, Vehicle, AutonomyStack } from "@coral-city/api";
 
 import { placePackage, vehiclePackage, type PlacePackage, type VehiclePackage } from "./packages.js";
 
@@ -20,6 +20,8 @@ export interface Held {
   vehicles: Vehicle[];
   queues: Queue[];
   runs: { dive: string; run: Run }[];
+  /** The autonomy this institution has deployed, newest first. */
+  stacks: AutonomyStack[];
 }
 
 export interface Packages {
@@ -37,14 +39,17 @@ export async function readHeld(platform: Platform): Promise<Held> {
   // platform keeps runs under the dive that defined them, so gathering them
   // is the client's job and not a missing endpoint.
   let runs: { dive: string; run: Run }[] = [];
+  let stacks: AutonomyStack[] = [];
   if (institution !== undefined) {
+    stacks = (await platform.autonomy(institution.id).catch((): AutonomyStack[] => []))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     const dives = await platform.dives(institution.id);
     const each = await Promise.all(
       dives.slice(0, 12).map(async (dive) => (await platform.runs(dive.id))
         .map((run) => ({ dive: dive.id, run }))));
     runs = each.flat().sort((a, b) => (a.run.requestedAt < b.run.requestedAt ? 1 : -1));
   }
-  return { you: me.principal, institution, places, vehicles, queues, runs };
+  return { you: me.principal, institution, places, vehicles, queues, runs, stacks };
 }
 
 /**

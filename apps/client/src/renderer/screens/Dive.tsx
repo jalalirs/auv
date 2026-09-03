@@ -22,6 +22,10 @@ import { Card, Credit, Fact, Pill, SeaPill, useLoadedPicture } from "./parts.js"
 const WHERE = "coral-city.place";
 const WHAT = "coral-city.vehicle";
 const WHY = "coral-city.task";
+const WHO = "coral-city.controller";
+
+/** The controller a person is: keys, with the hold beneath them. */
+const MANUAL = "manual";
 
 /**
  * What to have chosen already: what you chose last time if it is still there,
@@ -51,6 +55,13 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
   const [vehicle, setVehicle] = useState(() => remembered(WHAT, held.vehicles));
   const [task, setTask] = useState<Task>(() =>
     TASKS.find((t) => t.key === localStorage.getItem(WHY)) ?? PILOTED);
+  // Who flies it: you, or a stack the institution deployed. A stack that has
+  // since gone falls back to you rather than to the wrong stack.
+  const [flownBy, setFlownBy] = useState<string>(() => {
+    const last = localStorage.getItem(WHO);
+    return last !== null && held.stacks.some((s) => s.id === last) ? last : MANUAL;
+  });
+  const chosenStack = held.stacks.find((s) => s.id === flownBy);
   const [asking, setAsking] = useState(false);
   const [refusal, setRefusal] = useState("");
 
@@ -98,6 +109,7 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
         vehicleVersionId: oneVehicle.id,
         conditionsId: water.id,
         objective: task.objective,
+        autonomyStackId: chosenStack?.id,
       });
 
       const queue = held.queues[0];
@@ -147,8 +159,21 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
     };
   });
   const tasks: Choice[] = [PILOTED, ...TASKS].map((one) => ({
-    key: one.key, name: one.name, says: one.asks,
+    key: one.key, name: one.name, says: one.asks, later: one.unavailable,
   }));
+  const controllers: Choice[] = [
+    { key: MANUAL, name: "You, at the keys", says: "Manual, with the hold beneath it: let go and it holds station." },
+    ...held.stacks.map((one) => {
+      const needs = (one.needs ?? {}) as { gpu?: boolean; gpuMemoryBytes?: number; cpu?: number; memoryBytes?: number };
+      const gpu = needs.gpu || one.wantsGpu
+        ? `${needs.gpuMemoryBytes ? (needs.gpuMemoryBytes / 2 ** 30).toFixed(0) + " GiB of a card" : "a card"}`
+        : "no card";
+      return {
+        key: one.id, name: one.name,
+        says: `${one.slug} · ${one.imageDigest.slice(7, 19)} · ${gpu}`,
+      };
+    }),
+  ];
 
   // ── what the chosen place says about itself ──────────────────────────────
   const site = placePackage?.site;
@@ -209,6 +234,11 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
           <Picker label="What in" choices={vehicles} chosen={vehicle}
                   onChoose={(key) => { setVehicle(key); localStorage.setItem(WHAT, key); }}
                   onOpen={(key) => onOpen({ page: "vehicle", id: key })} />
+          <Picker label="Flown by" choices={controllers} chosen={flownBy}
+                  onChoose={(key) => { setFlownBy(key); localStorage.setItem(WHO, key); }}
+                  foot={chosenStack === undefined
+                    ? <>W A S D, Q E, space and C. The hold has it whenever your hands are off.</>
+                    : <>Your stack flies from the start; the keys still win while they are held. Deploy more with <code>coral-city deploy</code>.</>} />
           <Picker label="For" choices={tasks} chosen={task.key}
                   onChoose={(key) => { const t = [PILOTED, ...TASKS].find((x) => x.key === key)!; setTask(t); localStorage.setItem(WHY, key); }}
                   foot={task.unavailable !== undefined
