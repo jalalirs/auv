@@ -651,7 +651,9 @@ console shows the camera and the chase view at once.
 `/camera/image_raw` as the contract promises — RGB frames at two a second —
 whenever the picture being rendered is the vehicle's own camera, front or
 down, which it is on every batch survey and whenever the console looks
-through it. A chase or orbit picture is not published as a sensor. The other
+through it — verified live: sixteen frames at two a second while the console
+looked through the front camera, none once it went back to chase. A chase or
+orbit picture is not published as a sensor. The other
 half, the camera rendered on its own so the console can watch chase and
 camera at once, needs a second render product, and the sonar with it.
 
