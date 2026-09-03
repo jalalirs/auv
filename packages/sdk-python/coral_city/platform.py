@@ -159,13 +159,16 @@ class Platform:
             "kind": "constructed", "name": "Still water", "parameters": {"currentMetresPerSecond": 0}})
 
     def define_dive(self, org_id: str, name: str, city_version: str, vehicle_version: str,
-                    conditions: str, stack: str | None, initial_state: dict | None = None) -> dict:
+                    conditions: str, stack: str | None, initial_state: dict | None = None,
+                    objective: dict | None = None) -> dict:
         body = {"name": name, "cityVersionId": city_version, "vehicleVersionId": vehicle_version,
                 "conditionsId": conditions}
         if stack:
             body["autonomyStackId"] = stack
         if initial_state:
             body["initialState"] = initial_state
+        if objective:
+            body["objective"] = objective
         return self.call("POST", f"/api/v1/organisations/{org_id}/dives", body)
 
     def run(self, dive_id: str, queue_id: str, mode: str = "batch",

@@ -1,37 +1,48 @@
 // The six tasks a dive can be for.
 //
-// From docs/plan/todo.md, item 4. Each says what it asks of the vehicle and
-// what it is judged on, because a task without a criterion is a suggestion.
-// The platform does not evaluate them yet; a dive can be defined for one now
-// so that the record says what the dive was for, and the score arrives when
-// item 4 does.
+// From docs/plan/todo.md, item 4. Each says what it asks of the vehicle, what
+// it is judged on, and the objective the dive is defined with — the document
+// the runtime evaluates as the dive runs, measured from where the dive begins.
+// The numbers here are the composer's defaults; the SDK's `coral_city.tasks`
+// spells the same fields for a script.
 
 export interface Task {
   key: string;
   name: string;
   asks: string;
   judgedOn: string[];
+  /** The objective, or undefined for a dive that is only flown. */
+  objective?: Record<string, unknown>;
+  /** Why it cannot be chosen yet, when it cannot. */
+  unavailable?: string;
 }
 
 export const TASKS: Task[] = [
   { key: "hold", name: "Hold station",
-    asks: "Stay at a point and depth for a set time.",
-    judgedOn: ["radius held", "depth band held", "duration"] },
+    asks: "Stay where you begin, within half a metre and a 30 cm depth band, for a minute.",
+    judgedOn: ["seconds on station of 60", "worst distance off", "thruster effort"],
+    objective: { kind: "hold-station", seconds: 60, radiusM: 0.5, depthBandM: 0.3 } },
   { key: "waypoints", name: "Waypoints",
-    asks: "Visit points in order.",
-    judgedOn: ["each reached within a radius", "in order", "under a time"] },
+    asks: "Visit four points in order: an eight-metre square ahead and to starboard, back to the start.",
+    judgedOn: ["points reached within a metre, in order", "under five minutes"],
+    objective: { kind: "waypoints", radiusM: 1.0, timeLimitS: 300,
+      points: [{ dx: 8, dy: 0 }, { dx: 8, dy: 8 }, { dx: 0, dy: 8 }, { dx: 0, dy: 0 }] } },
   { key: "transect", name: "Transect",
-    asks: "Fly a line at a fixed altitude above the seabed.",
-    judgedOn: ["altitude band", "heading tolerance", "length covered"] },
+    asks: "Fly twenty metres along your heading two metres above the bottom.",
+    judgedOn: ["length flown within half a metre of altitude", "heading within ten degrees"],
+    objective: { kind: "transect", lengthM: 20, altitudeM: 2.0, altitudeBandM: 0.5, headingToleranceDeg: 10, timeLimitS: 180 } },
   { key: "survey", name: "Survey",
-    asks: "Cover a rectangle in passes.",
-    judgedOn: ["fraction of the area seen", "overlap", "altitude"] },
+    asks: "Cover a twenty by ten metre rectangle ahead of you in passes, two metres up, three-metre swath.",
+    judgedOn: ["fraction of the rectangle seen", "at altitude"],
+    objective: { kind: "survey", widthM: 20, heightM: 10, altitudeM: 2.0, swathM: 3.0, altitudeBandM: 1.0, timeLimitS: 600 } },
   { key: "inspect", name: "Inspect",
     asks: "Approach a structure and circle it.",
-    judgedOn: ["object in frame", "from how many bearings", "at what distance"] },
+    judgedOn: ["object in frame", "from how many bearings", "at what distance"],
+    unavailable: "needs a structure in the place; none is placed yet" },
   { key: "return", name: "Return",
-    asks: "Come home and surface.",
-    judgedOn: ["distance from home", "final depth", "time taken"] },
+    asks: "Come back to where you began and surface.",
+    judgedOn: ["home within two metres", "surfaced", "time taken"],
+    objective: { kind: "return", homeRadiusM: 2.0, surfaceDepthM: 0.5, timeLimitS: 300 } },
 ];
 
 /** A free dive: no task, no score, a person at the controls. */

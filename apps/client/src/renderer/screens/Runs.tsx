@@ -63,6 +63,7 @@ export function Runs({ platform, held, onChanged }: {
               <div className="row" key={run.id}>
                 <strong>{run.mode === "interactive" ? "Flown" : "Batch"}</strong>
                 <span className="when">{ago(run.requestedAt)}</span>
+                <Result outcome={run.outcome} />
                 <Pill kind={run.state === "succeeded" ? "good"
                   : LIVE.has(run.state) ? "busy"
                   : run.state === "failed" ? "bad" : undefined}>
@@ -83,5 +84,16 @@ export function Runs({ platform, held, onChanged }: {
         </Empty>
       </section>
     </>
+  );
+}
+
+/** What the dive achieved, when it was for something. */
+function Result({ outcome }: { outcome: Record<string, unknown> | undefined }): React.JSX.Element | null {
+  const task = outcome?.["task"] as { name?: string; score?: number; seconds?: number; done?: boolean } | undefined;
+  if (task === undefined || typeof task.score !== "number") return null;
+  return (
+    <span className="result" title={task.done ? "the task ran to its end" : "the dive ended before the task did"}>
+      {task.name}: <b>{(task.score * 100).toFixed(0)}%</b>
+    </span>
   );
 }

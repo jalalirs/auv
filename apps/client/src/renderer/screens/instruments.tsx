@@ -44,6 +44,17 @@ export interface Helm {
   controllers: ControllerSaid[];
 }
 
+/** How the dive's task is going, as the runtime judges it. */
+export interface TaskProgress {
+  kind: string;
+  name: string;
+  score: number;
+  done: boolean;
+  says: string;
+  elapsedS: number;
+  detail: Record<string, unknown>;
+}
+
 export interface Reading {
   t?: number;
   depthM?: number;
@@ -52,6 +63,7 @@ export interface Reading {
   rollDeg?: number;
   view?: string;
   samples?: Record<string, Record<string, number>>;
+  task?: TaskProgress | null;
   flying?: string;
   controller?: Helm;
   speedMs?: number;
@@ -160,6 +172,18 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, o
       {children}
 
       <aside className="dock right">
+        {reading.task ? (
+          <Panel name="Task" note={reading.task.done ? "over" : `${reading.task.elapsedS.toFixed(0)} s in`}>
+            <div className="task">
+              <div className="task-head">
+                <strong>{reading.task.name}</strong>
+                <em>{(reading.task.score * 100).toFixed(0)}%</em>
+              </div>
+              <div className="score"><div style={{ width: `${Math.round(reading.task.score * 100)}%` }} /></div>
+              <p className="says">{reading.task.says}</p>
+            </div>
+          </Panel>
+        ) : null}
         <Panel name="Vehicle">
           <div className="dials">
             <Dial of="depth" is={reading.depthM} unit="m" />

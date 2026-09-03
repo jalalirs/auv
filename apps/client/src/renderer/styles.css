@@ -902,3 +902,14 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 .topics li.plotted strong { color: var(--coral); }
 .topics .count { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
 .topics .count small { color: var(--dim); font-size: 10px; }
+
+
+/* ── the task ─────────────────────────────────────────────────────────── */
+.task .task-head { display: flex; justify-content: space-between; align-items: baseline; }
+.task .task-head strong { font-weight: 600; }
+.task .task-head em { font-style: normal; color: var(--coral); font-variant-numeric: tabular-nums; }
+.task .score { height: 4px; background: var(--edge); border-radius: 2px; margin: 6px 0 8px; overflow: hidden; }
+.task .score div { height: 100%; background: var(--coral); transition: width 0.4s; }
+.task .says { margin: 0; color: var(--faint); font-size: 12px; }
+.ledger .result { color: var(--faint); font-size: 12px; }
+.ledger .result b { color: var(--plain); font-weight: 600; }

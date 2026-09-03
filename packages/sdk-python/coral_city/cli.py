@@ -51,10 +51,9 @@ def cmd_tank(args) -> int:
     controller = cls()
     task = None
     if args.task:
-        kind, _, argument = args.task.partition("=")
-        if kind not in TASKS:
-            raise SystemExit(f"no task '{kind}'; there are {', '.join(TASKS)}")
-        task = TASKS[kind](float(argument)) if argument else TASKS[kind]()
+        if args.task not in TASKS:
+            raise SystemExit(f"no task '{args.task}'; there are {', '.join(TASKS)}")
+        task = TASKS[args.task]()
     tank = Tank(cls.vehicle, start=tuple(args.start), seconds=args.seconds, task=task, sensed=not args.truth)
     report = tank.run(controller)
     print(report)
@@ -123,8 +122,14 @@ def cmd_dive(args) -> int:
     queue = next((q for q in queues if args.queue in (q["slug"], q["id"])), queues[0]) if args.queue else queues[0]
 
     name = args.name or f"{stack['name'] if stack else 'Nobody'} flies the {vehicle.get('name', args.vehicle)} in {place.get('name', args.place)}"
+    objective = None
+    if args.task:
+        from .tasks import TASKS
+        if args.task not in TASKS:
+            raise SystemExit(f"no task '{args.task}'; there are {', '.join(TASKS)}")
+        objective = TASKS[args.task]()
     dive = platform.define_dive(institution["id"], name, city_version["id"], vehicle_version["id"],
-                                conditions["id"], stack["id"] if stack else None)
+                                conditions["id"], stack["id"] if stack else None, objective=objective)
     run = platform.run(dive["id"], queue["id"], mode="interactive" if args.interactive else "batch")
     print(f"dive {dive['id']}  run {run['id']}  ({run['state']}, {run['mode']})")
     if args.no_wait:
@@ -133,7 +138,7 @@ def cmd_dive(args) -> int:
     def tell(event):
         detail = event.get("detail") or {}
         short = {k: v for k, v in detail.items() if k in (
-            "depthM", "speedMs", "commanded", "commandsReceived", "host", "signalPort", "why", "t")}
+            "depthM", "speedMs", "commanded", "commandsReceived", "host", "signalPort", "why", "t", "task", "kind", "score")}
         print(f"  {event.get('kind'):22s} {json.dumps(short) if short else ''}")
 
     if args.interactive:
@@ -162,7 +167,7 @@ def main(argv=None) -> int:
     p.add_argument("controller")
     p.add_argument("--seconds", type=float, default=60.0)
     p.add_argument("--start", type=float, nargs=3, default=[0.0, 0.0, -7.0], metavar=("X", "Y", "Z"))
-    p.add_argument("--task", help="hold | reach-depth=<m>")
+    p.add_argument("--task", help="hold | waypoints | transect | survey | return")
     p.add_argument("--truth", action="store_true", help="hand the controller the true state, not what its sensors would say")
     p.add_argument("--trace", action="store_true")
     p.add_argument("--json", action="store_true")
@@ -196,6 +201,7 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("dive", help="define a dive with a stack and run it")
     p.add_argument("--stack", help="autonomy slug or id; none means the dive is held by the runtime")
+    p.add_argument("--task", help="what the dive is for: hold | waypoints | transect | survey | return")
     p.add_argument("--place", required=True)
     p.add_argument("--vehicle", required=True)
     p.add_argument("--org")

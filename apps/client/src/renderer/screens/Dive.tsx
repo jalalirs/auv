@@ -90,13 +90,14 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
         parameters: { currentMetresPerSecond: 0 },
       });
 
-      // The task is in the name until the platform records tasks (item 4);
-      // the record still says what the dive was for.
+      // What the dive is for goes with it, and the runtime judges it as the
+      // dive runs; the name says so too, for anyone reading the record.
       const defined = await platform.defineDive(held.institution.id, {
         name: `${task.key === "piloted" ? "" : task.name + ": "}${chosenVehicle.name} in ${chosenPlace.name}`,
         cityVersionId: onePlace.id,
         vehicleVersionId: oneVehicle.id,
         conditionsId: water.id,
+        objective: task.objective,
       });
 
       const queue = held.queues[0];
@@ -191,7 +192,7 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
               <Pill kind={free > 0 ? "good" : "bad"}>
                 {free > 0 ? "a machine is free" : "everything is busy"}
               </Pill>
-              <button className="big" disabled={asking || !ready} onClick={() => void go()}>
+              <button className="big" disabled={asking || !ready || task.unavailable !== undefined} onClick={() => void go()}>
                 {asking ? "Asking for water…" : "Dive"}
               </button>
               <span className="refusal">{refusal}</span>
@@ -210,9 +211,11 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
                   onOpen={(key) => onOpen({ page: "vehicle", id: key })} />
           <Picker label="For" choices={tasks} chosen={task.key}
                   onChoose={(key) => { const t = [PILOTED, ...TASKS].find((x) => x.key === key)!; setTask(t); localStorage.setItem(WHY, key); }}
-                  foot={task.judgedOn.length > 0
-                    ? <>Judged on {task.judgedOn.join(", ")}. Recorded with the dive now; scored when tasks are built.</>
-                    : <>No score. A person at the controls.</>} />
+                  foot={task.unavailable !== undefined
+                    ? <>Not yet: {task.unavailable}.</>
+                    : task.judgedOn.length > 0
+                      ? <>{task.asks} Judged on {task.judgedOn.join(", ")}; the score is on the dive when it ends.</>
+                      : <>No score. A person at the controls.</>} />
         </div>
       </section>
     </>

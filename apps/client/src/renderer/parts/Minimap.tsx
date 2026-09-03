@@ -19,12 +19,22 @@ export interface Site {
 
 export interface Fix { x: number; y: number }
 
-export function Minimap({ site, track, position, headingDeg, beganAt, large }: {
+/** What a task asks for, as the runtime describes it for drawing. */
+export interface Geometry {
+  circle?: { x: number; y: number; radiusM: number };
+  points?: { x: number; y: number; depthM: number }[];
+  reached?: number;
+  line?: { x: number; y: number }[];
+  rectangle?: { x: number; y: number }[];
+}
+
+export function Minimap({ site, track, position, headingDeg, beganAt, geometry, large }: {
   site: Site | undefined;
   track: Fix[];
   position: number[] | undefined;
   headingDeg: number | undefined;
   beganAt: number[] | undefined;
+  geometry?: Geometry;
   large: boolean;
 }): React.JSX.Element {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -79,6 +89,43 @@ export function Minimap({ site, track, position, headingDeg, beganAt, large }: {
       ink.beginPath(); ink.arc(bx, by, 4 * devicePixelRatio, 0, Math.PI * 2); ink.stroke();
     }
 
+    // What the task asks for.
+    if (geometry !== undefined) {
+      ink.strokeStyle = "#f4c542";
+      ink.fillStyle = "#f4c542";
+      ink.lineWidth = 1.5 * devicePixelRatio;
+      ink.setLineDash([4 * devicePixelRatio, 3 * devicePixelRatio]);
+      if (geometry.circle) {
+        const [cx, cy] = toScreen(geometry.circle.x, geometry.circle.y);
+        const r = Math.max(3 * devicePixelRatio, (geometry.circle.radiusM / across) * side);
+        ink.beginPath(); ink.arc(cx, cy, r, 0, Math.PI * 2); ink.stroke();
+      }
+      if (geometry.line && geometry.line.length >= 2) {
+        ink.beginPath();
+        geometry.line.forEach((p, i) => { const [x, y] = toScreen(p.x, p.y); if (i === 0) ink.moveTo(x, y); else ink.lineTo(x, y); });
+        ink.stroke();
+      }
+      if (geometry.rectangle && geometry.rectangle.length >= 3) {
+        ink.beginPath();
+        geometry.rectangle.forEach((p, i) => { const [x, y] = toScreen(p.x, p.y); if (i === 0) ink.moveTo(x, y); else ink.lineTo(x, y); });
+        ink.closePath(); ink.stroke();
+      }
+      ink.setLineDash([]);
+      if (geometry.points) {
+        geometry.points.forEach((p, i) => {
+          const [x, y] = toScreen(p.x, p.y);
+          const reached = i < (geometry.reached ?? 0);
+          ink.beginPath(); ink.arc(x, y, 4 * devicePixelRatio, 0, Math.PI * 2);
+          if (reached) ink.fill(); else ink.stroke();
+          if (large) {
+            ink.font = `${10 * devicePixelRatio}px system-ui, sans-serif`;
+            ink.textBaseline = "middle";
+            ink.fillText(String(i + 1), x + 7 * devicePixelRatio, y);
+          }
+        });
+      }
+    }
+
     // The track.
     if (track.length > 1) {
       ink.beginPath();
@@ -128,7 +175,7 @@ export function Minimap({ site, track, position, headingDeg, beganAt, large }: {
     ink.beginPath(); ink.moveTo(bx, by); ink.lineTo(bx + barPx, by); ink.stroke();
     ink.textBaseline = "bottom";
     ink.fillText(`${bar} m`, bx, by - 3 * devicePixelRatio);
-  }, [site, track, position, headingDeg, beganAt, large, track.length]);
+  }, [site, track, position, headingDeg, beganAt, geometry, large, track.length]);
 
   return <canvas ref={canvas} className="minimap" />;
 }

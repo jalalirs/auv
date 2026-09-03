@@ -237,6 +237,8 @@ export class Platform {
     vehicleVersionId: string;
     conditionsId?: string;
     autonomyStackId?: string;
+    /** What the dive is for, judged by the runtime as it runs. */
+    objective?: Record<string, unknown>;
   }): Promise<Dive> {
     return this.#request("POST", `/api/v1/organisations/${organisation}/dives`, dive);
   }
