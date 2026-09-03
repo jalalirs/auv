@@ -119,6 +119,7 @@ class CoralCityShell(omni.ext.IExt):
         # Set by the signal the agent sends to stop the dive; acted on from the
         # update loop, where the dive can be closed properly.
         self._asked_to_stop = False
+        self._camera_published_at = 0.0
         try:
             import signal
             signal.signal(signal.SIGTERM, lambda *_: setattr(self, "_asked_to_stop", True))
@@ -513,8 +514,19 @@ class CoralCityShell(omni.ext.IExt):
             import cv2
             import numpy as np
 
-            frame = np.frombuffer(bytes_of(buffer, size), dtype=np.uint8)
+            raw = bytes_of(buffer, size)
+            frame = np.frombuffer(raw, dtype=np.uint8)
             frame = frame.reshape(tall, wide, 4)
+            # When the picture is the vehicle's own camera — front or down —
+            # it goes out on the camera topic too, at a couple a second, so a
+            # stack written against a camera gets frames. Any other view is
+            # a chase boat's picture and is not published as a sensor.
+            dive = self.dive
+            if (dive is not None and dive.bridge is not None
+                    and getattr(dive, "view", "chase") in ("front", "down")
+                    and time.monotonic() - self._camera_published_at >= 0.5):
+                self._camera_published_at = time.monotonic()
+                dive.bridge.publish_image(raw, wide, tall)
             # The capture is RGBA and the encoder wants BGR. Getting that
             # backwards produces a picture correct in every respect except that
             # the water is orange.
