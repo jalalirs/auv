@@ -23,6 +23,7 @@ and being too slow is one of the main things worth finding out.
 from __future__ import annotations
 
 import threading
+import time
 
 import numpy as np
 
@@ -48,6 +49,10 @@ class Bridge:
         # about the same event, and the two would disagree the first time a
         # message was dropped.
         self._crossed: dict[str, int] = {}
+        # For the rates: counts as they stood a moment ago, and when.
+        self._rate_at = time.monotonic()
+        self._rate_counts: dict[str, int] = {}
+        self._rates: dict[str, float] = {}
 
         import os
 
@@ -97,11 +102,32 @@ class Bridge:
         self._executor.add_node(self.node)
         self._spinning = threading.Thread(target=self._spin, daemon=True)
         self._stop = threading.Event()
+        self._parameters = _StackParameters(self.node, self._lock)
         self._spinning.start()
 
     def _spin(self) -> None:
+        turns = 0
         while not self._stop.is_set():
             self._executor.spin_once(timeout_sec=0.05)
+            turns += 1
+            # Every second or so, look at what the stack declares about
+            # itself. Cheap when nothing has changed; the futures it raises
+            # are completed by the very spin this loop is doing.
+            if turns % 20 == 0:
+                self._parameters.poll()
+
+    # ── the stack's own parameters ───────────────────────────────────────────
+
+    def parameters(self) -> list[dict]:
+        """What the stack lets a hand move, as it declared it over ROS 2."""
+        return self._parameters.declared()
+
+    def set_parameter(self, name: str, value: float) -> bool:
+        return self._parameters.set(name, value)
+
+    @property
+    def stack_node(self) -> str | None:
+        return self._parameters.remote
 
     # ── receiving ────────────────────────────────────────────────────────────
 
@@ -149,9 +175,16 @@ class Bridge:
         """
         with self._lock:
             crossed = dict(self._crossed)
+        now = time.monotonic()
+        if now - self._rate_at >= 1.0:
+            for name, count in crossed.items():
+                self._rates[name] = (count - self._rate_counts.get(name, 0)) / (now - self._rate_at)
+            self._rate_counts = crossed
+            self._rate_at = now
         return [
             {"name": name, "type": kind, "way": way,
-             "messages": crossed.get(name, 0)}
+             "messages": crossed.get(name, 0),
+             "rateHz": round(self._rates.get(name, 0.0), 1)}
             for name, kind, way in (
                 ("/depth", "sensor_msgs/msg/FluidPressure", "from"),
                 ("/imu/data", "sensor_msgs/msg/Imu", "from"),
@@ -186,7 +219,8 @@ class Bridge:
     # ── publishing ───────────────────────────────────────────────────────────
 
     def publish(self, simulated_seconds: float, position: np.ndarray,
-                velocity: np.ndarray, density: float) -> None:
+                velocity: np.ndarray, density: float,
+                rotation: np.ndarray | None = None) -> None:
         """What the vehicle's sensors report this step."""
         stamp = self.node.get_clock().now().to_msg()
 
@@ -208,6 +242,13 @@ class Bridge:
         imu.angular_velocity.x = float(velocity[3])
         imu.angular_velocity.y = float(velocity[4])
         imu.angular_velocity.z = float(velocity[5])
+        if rotation is not None:
+            # An IMU on a vehicle carries an attitude solution as well as
+            # rates, and a controller that has to hold a heading needs one.
+            # Body-to-world, as the message defines it.
+            w, x, y, z = _quaternion(rotation)
+            imu.orientation.w, imu.orientation.x = w, x
+            imu.orientation.y, imu.orientation.z = y, z
         self.imu.publish(imu)
 
         twist = self._TwistCov()
@@ -230,3 +271,134 @@ class Bridge:
             self.node.destroy_node()
         except Exception:
             pass
+
+
+def _quaternion(rotation: np.ndarray) -> tuple[float, float, float, float]:
+    """A rotation matrix as w, x, y, z. Shepperd's method, which stays
+    well-conditioned whichever component is largest."""
+    m = rotation
+    trace = float(m[0, 0] + m[1, 1] + m[2, 2])
+    if trace > 0.0:
+        s = (trace + 1.0) ** 0.5 * 2.0
+        return (0.25 * s, float(m[2, 1] - m[1, 2]) / s,
+                float(m[0, 2] - m[2, 0]) / s, float(m[1, 0] - m[0, 1]) / s)
+    if m[0, 0] > m[1, 1] and m[0, 0] > m[2, 2]:
+        s = (1.0 + m[0, 0] - m[1, 1] - m[2, 2]) ** 0.5 * 2.0
+        return (float(m[2, 1] - m[1, 2]) / s, 0.25 * s,
+                float(m[0, 1] + m[1, 0]) / s, float(m[0, 2] + m[2, 0]) / s)
+    if m[1, 1] > m[2, 2]:
+        s = (1.0 + m[1, 1] - m[0, 0] - m[2, 2]) ** 0.5 * 2.0
+        return (float(m[0, 2] - m[2, 0]) / s, float(m[0, 1] + m[1, 0]) / s,
+                0.25 * s, float(m[1, 2] + m[2, 1]) / s)
+    s = (1.0 + m[2, 2] - m[0, 0] - m[1, 1]) ** 0.5 * 2.0
+    return (float(m[1, 0] - m[0, 1]) / s, float(m[0, 2] + m[2, 0]) / s,
+            float(m[1, 2] + m[2, 1]) / s, 0.25 * s)
+
+
+class _StackParameters:
+    """What the stack on the other side declares a hand may move.
+
+    Found the way any ROS 2 tool would find it: the stack's node declares
+    parameters with ranges and descriptions, and this asks that node for
+    them through its parameter services. Nothing of ours is needed on the
+    stack's side — a node written with plain rclpy that declares a float
+    parameter with a floating_point_range shows up here with a slider.
+
+    Driven from the executor's own thread in small steps, because the futures
+    the parameter client returns are completed by that executor spinning,
+    and waiting on one from inside it would wait forever.
+    """
+
+    def __init__(self, node, lock) -> None:
+        self.node = node
+        self.lock = lock
+        self.remote: str | None = None
+        self.client = None
+        self._names: list[str] = []
+        self._pending = None          # (what, future)
+        self._described: dict[str, dict] = {}
+        self._values: dict[str, float] = {}
+        self._declared: list[dict] = []
+
+    def declared(self) -> list[dict]:
+        with self.lock:
+            return list(self._declared)
+
+    def set(self, name: str, value: float) -> bool:
+        if self.client is None:
+            return False
+        with self.lock:
+            if name not in self._values:
+                return False
+        try:
+            from rclpy.parameter import Parameter
+            self.client.set_parameters([Parameter(name, Parameter.Type.DOUBLE, float(value))])
+            with self.lock:
+                self._values[name] = float(value)
+                self._compose()
+            return True
+        except Exception:
+            return False
+
+    def poll(self) -> None:
+        try:
+            self._poll()
+        except Exception:
+            # A stack that vanished mid-question is a stack that vanished;
+            # the next poll starts again from discovery.
+            self._pending = None
+            self.client = None
+            self.remote = None
+
+    def _poll(self) -> None:
+        if self.client is None:
+            mine = self.node.get_name()
+            others = [name for name, namespace in self.node.get_node_names_and_namespaces()
+                      if name != mine and not name.startswith("_")]
+            if not others:
+                return
+            from rclpy.parameter_client import AsyncParameterClient
+            self.remote = others[0]
+            self.client = AsyncParameterClient(self.node, self.remote)
+            self._pending = ("list", self.client.list_parameters())
+            return
+        if self._pending is None:
+            self._pending = ("list", self.client.list_parameters())
+            return
+        what, future = self._pending
+        if not future.done():
+            return
+        result = future.result()
+        if what == "list":
+            names = [n for n in result.result.names if not n.startswith("use_sim_time")] if result else []
+            self._names = names
+            self._pending = ("describe", self.client.describe_parameters(names)) if names else None
+        elif what == "describe":
+            self._described = {}
+            for name, descriptor in zip(self._names, result.descriptors):
+                # Only what a hand can move: floating point with a range.
+                if descriptor.type != 3 or not descriptor.floating_point_range:
+                    continue
+                span = descriptor.floating_point_range[0]
+                self._described[name] = {
+                    "name": name, "low": float(span.from_value), "high": float(span.to_value),
+                    "unit": descriptor.additional_constraints, "says": descriptor.description,
+                }
+            names = list(self._described)
+            self._pending = ("get", self.client.get_parameters(names)) if names else None
+            if not names:
+                with self.lock:
+                    self._declared = []
+        elif what == "get":
+            with self.lock:
+                self._values = {}
+                for name, value in zip(list(self._described), result.values):
+                    self._values[name] = float(value.double_value)
+                self._compose()
+            self._pending = None
+
+    def _compose(self) -> None:
+        self._declared = [
+            {**described, "value": round(self._values.get(name, 0.0), 4)}
+            for name, described in self._described.items()
+        ]
