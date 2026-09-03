@@ -1,0 +1,292 @@
+#!/usr/bin/env python3
+"""The ground of a place, built from what was measured rather than guessed.
+
+Takes a published place (its 2 m bathymetry) and the reference fetched by
+tools/reference, and produces what a renderer needs to show the ground as it is:
+
+  seabed_1m.f32 / .json     a 1 m heightfield, with the survey DEM feathered
+                            in where one exists — real spurs where a lidar
+                            grid had rounded them off
+  survey_1m.npy             where that survey is, so a camera can be aimed at it
+  habitat_4096.npy          the habitat classes rasterised at 24 cm
+  colour_4096.png           what the bottom looks like: the orthomosaic where
+                            there is one, and elsewhere colours read off the
+                            orthomosaic laid by habitat class and shaded by
+                            the pattern the satellite sees
+  chart_4096.png            the same, depth-tinted and contoured every 2 m,
+                            for reading the terrain rather than admiring it
+
+    tools/ground ~/coral-city/places/looe-key ~/coral-city/reference/looe-key
+
+Row 0 of every array is south. The PNGs are saved the way a map is read, north
+at the top, so that in a renderer v = 0 is the south edge.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import pathlib
+import sys
+
+HABITAT_ORDER = ["Unconsolidated Sediment", "Seagrass (Discontinuous)", "Seagrass (Continuous)",
+                 "Reef Rubble", "Pavement", "Aggregate Reef", "Spur and Groove"]
+N = 4096
+
+
+def metres_per_degree(latitude: float) -> tuple[float, float]:
+    radians = math.radians(latitude)
+    north = 111_132.92 - 559.82 * math.cos(2 * radians) + 1.175 * math.cos(4 * radians)
+    east = 111_412.84 * math.cos(radians) - 93.5 * math.cos(3 * radians)
+    return east, north
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(description="build the ground of a place from its record")
+    parse.add_argument("site", help="the published place directory (site.json, seabed.f32)")
+    parse.add_argument("reference", help="what tools/reference fetched for it")
+    parse.add_argument("--into", help="where to write; the reference directory by default")
+    asked = parse.parse_args()
+
+    try:
+        import numpy as np
+        from PIL import Image
+        from scipy import ndimage
+    except ImportError as exc:
+        raise SystemExit(f"needs numpy, scipy and pillow: {exc}")
+
+    site_dir, ref = pathlib.Path(asked.site), pathlib.Path(asked.reference)
+    into = pathlib.Path(asked.into) if asked.into else ref
+    into.mkdir(parents=True, exist_ok=True)
+    site = json.loads((site_dir / "site.json").read_text())
+    across = float(site["from"]["acrossMetres"])
+    lat0 = site["from"]["centre"]["latitude"]; lon0 = site["from"]["centre"]["longitude"]
+    me, mn = metres_per_degree(lat0)
+    field = site["mesh"]["heightfield"]
+    h2 = np.fromfile(site_dir / field["file"], dtype="<f4").reshape(field["rows"], field["columns"]).astype(float)
+    print(f"{site['name']}: {across:.0f} m, bathymetry {field['rows']}x{field['columns']}")
+
+    # ── heightfield at 1 m, with the survey where there is one ───────────────
+    n = int(round(across)) + 1
+    h = ndimage.zoom(h2, (n / h2.shape[0], n / h2.shape[1]), order=3)
+    survey = _survey_dem(ref, lat0, lon0, me, mn)
+    have = np.zeros((n, n), dtype=bool)
+    offset = 0.0
+    if survey is not None:
+        dem, x0, y0 = survey                       # 1 m cells, row 0 south, site metres
+        D = np.full((n, n), np.nan)
+        yi = np.round(np.arange(dem.shape[0]) + y0 + across / 2).astype(int)
+        xi = np.round(np.arange(dem.shape[1]) + x0 + across / 2).astype(int)
+        oky = (yi >= 0) & (yi < n); okx = (xi >= 0) & (xi < n)
+        D[np.ix_(yi[oky], xi[okx])] = dem[np.ix_(oky, okx)]
+        valid = np.isfinite(D)
+        # The survey's vertical datum against the bathymetry's, read off the overlap.
+        offset = float(np.nanmedian((D - h)[valid]))
+        D -= offset
+        # Small holes filled from their neighbours; specks discarded; the survey
+        # body feathered into the bathymetry over six metres.
+        filled = D.copy()
+        for _ in range(6):
+            nan = ~np.isfinite(filled)
+            if not nan.any():
+                break
+            total = ndimage.uniform_filter(np.nan_to_num(filled, nan=0.0), 3, mode="constant") * 9
+            count = ndimage.uniform_filter(np.isfinite(filled).astype(float), 3, mode="constant") * 9
+            filled = np.where(nan & (count >= 3), total / np.maximum(count, 1), filled)
+        have = np.isfinite(filled)
+        labels, k = ndimage.label(have)
+        sizes = ndimage.sum(have, labels, range(1, k + 1))
+        have &= np.isin(labels, 1 + np.flatnonzero(sizes > 2000))
+        w = np.clip((ndimage.distance_transform_edt(have) - 1) / 6.0, 0, 1)
+        h = np.where(have, w * np.nan_to_num(filled) + (1 - w) * h, h)
+        print(f"  survey DEM merged over {100 * have.mean():.1f}% of the square; "
+              f"its datum sits {offset:+.2f} m from the bathymetry's")
+    h.astype("<f4").tofile(into / "seabed_1m.f32")
+    np.save(into / "survey_1m.npy", have)   # where the relief is the survey's, not the grid's
+    (into / "seabed_1m.json").write_text(json.dumps({
+        "rows": n, "columns": n, "acrossMetres": across, "file": "seabed_1m.f32",
+        "surveyFraction": round(float(have.mean()), 4), "surveyDatumOffsetM": round(offset, 3),
+        "format": "little-endian float32, row major, south to north then west to east"}, indent=1))
+
+    # ── habitat classes at texture resolution ────────────────────────────────
+    cls = _habitat(ref, lat0, lon0, me, mn, across)
+    if cls is None:
+        cls = np.zeros((N, N), dtype="int16")
+    np.save(into / "habitat_4096.npy", cls)
+
+    # ── colour ───────────────────────────────────────────────────────────────
+    ortho = _ortho(ref, lat0, lon0, me, mn)
+    sand_c, reef_c = np.array([0.76, 0.73, 0.61]), np.array([0.39, 0.36, 0.32])
+    warm = np.array([1.06, 1.0, 0.86])   # the dehazed survey product is neutral grey; this reef photographs warm
+    if ortho is not None:
+        rgb, al, fx0, fx1, fy0, fy1 = ortho
+        rgb = np.clip(rgb * warm, 0, 1)
+        lum = rgb.mean(-1)
+        bright = al & (lum > np.percentile(lum[al], 85)); dark = al & (lum < np.percentile(lum[al], 40))
+        sand_c = np.median(rgb[bright], axis=0); reef_c = np.median(rgb[dark], axis=0)
+        print(f"  colours from the orthomosaic: sand {sand_c.round(2)}, reef {reef_c.round(2)}")
+    seagrass_c = np.array([0.33, 0.38, 0.24]); rubble_c = 0.5 * sand_c + 0.5 * reef_c
+    deep_c = np.array([0.55, 0.54, 0.46])
+    by_class = {0: sand_c, 1: sand_c, 2: 0.55 * sand_c + 0.45 * seagrass_c, 3: seagrass_c,
+                4: rubble_c, 5: 0.7 * rubble_c + 0.3 * reef_c, 6: reef_c, 7: reef_c}
+    img = np.zeros((N, N, 3))
+    for k, c in by_class.items():
+        img[cls == k] = c
+    img = np.stack([ndimage.gaussian_filter(img[..., i], 10) for i in range(3)], -1)
+
+    pattern = _satellite_pattern(ref, lat0, lon0, me, mn, h, across)
+    if pattern is not None:
+        t = np.clip(pattern, -1, 1)[..., None]
+        img = np.where(t > 0, img * (1 - t * 0.6) + sand_c * t * 0.6,
+                       img * (1 + t * 0.6) + reef_c * (-t) * 0.6)
+    depth = -ndimage.zoom(h, (N / n, N / n), order=1)
+    fade = np.clip((depth - 24) / 8, 0, 1)[..., None]
+    img = img * (1 - fade) + deep_c * fade
+    rng = np.random.default_rng(2)
+    grain = ndimage.gaussian_filter(rng.normal(0, 1, (N, N)), 1.0); grain /= grain.std()
+    img = np.clip(img * (1 + 0.05 * grain)[..., None], 0, 1)
+
+    if ortho is not None:
+        sx = int(round((fx1 - fx0) / across * N)); sy = int(round((fy1 - fy0) / across * N))
+        rgb_r = np.asarray(Image.fromarray((rgb * 255).astype(np.uint8)).resize((sx, sy), Image.LANCZOS)) / 255.0
+        a_r = np.asarray(Image.fromarray((al * 255).astype(np.uint8)).resize((sx, sy), Image.NEAREST)) > 0
+        x0 = int(round((fx0 + across / 2) / across * N)); y0 = int(round((fy0 + across / 2) / across * N))
+        cx0, cy0 = max(0, x0), max(0, y0); cx1, cy1 = min(N, x0 + sx), min(N, y0 + sy)
+        sub = rgb_r[cy0 - y0:cy1 - y0, cx0 - x0:cx1 - x0]; suba = a_r[cy0 - y0:cy1 - y0, cx0 - x0:cx1 - x0]
+        wa = np.clip(ndimage.distance_transform_edt(suba) / 8.0, 0, 1)[..., None]
+        img[cy0:cy1, cx0:cx1] = wa * sub + (1 - wa) * img[cy0:cy1, cx0:cx1]
+    _save(img, into / "colour_4096.png", Image)
+
+    # ── the chart: depth tint and contours ───────────────────────────────────
+    stops = [(0, (0.95, 0.92, 0.80)), (4, (0.88, 0.86, 0.70)), (8, (0.72, 0.74, 0.62)),
+             (14, (0.50, 0.62, 0.62)), (22, (0.30, 0.45, 0.60)), (32, (0.12, 0.22, 0.42))]
+    ramp = np.zeros((N, N, 3))
+    for k in range(3):
+        ramp[..., k] = np.interp(depth, [d for d, _ in stops], [c[k] for _, c in stops])
+    chart = 0.55 * img + 0.45 * ramp
+    dz = ndimage.gaussian_filter(depth, 3)
+    lines = np.zeros((N, N), dtype=bool); heavy = np.zeros((N, N), dtype=bool)
+    for level in range(2, int(depth.max()) + 2, 2):
+        above = dz > level
+        edge = above ^ ndimage.binary_erosion(above)
+        (heavy if level % 10 == 0 else lines).__ior__(edge)
+    lines = ndimage.binary_dilation(lines, iterations=2); heavy = ndimage.binary_dilation(heavy, iterations=4)
+    chart[lines] *= 0.45; chart[heavy] *= 0.25
+    _save(chart, into / "chart_4096.png", Image)
+    print(f"  {into}/colour_4096.png, chart_4096.png, seabed_1m.f32, habitat_4096.npy")
+    return 0
+
+
+def _save(img, path, Image):
+    import numpy as np
+    Image.fromarray((np.clip(img[::-1], 0, 1) * 255).astype(np.uint8)).save(path)
+    Image.fromarray((np.clip(img[::-1], 0, 1) * 255).astype(np.uint8)).resize((1024, 1024)).save(
+        path.with_name(path.stem.replace("_4096", "") + "_preview.png"))
+
+
+def _survey_dem(ref, lat0, lon0, me, mn):
+    """The 1 m quicklook DEM of a USGS release, in site metres, row 0 south."""
+    import numpy as np
+    candidates = sorted((ref / "usgs").glob("*DEM_1m*.tif")) if (ref / "usgs").exists() else []
+    if not candidates:
+        return None
+    try:
+        import rasterio
+        from rasterio.warp import transform
+    except ImportError:
+        print("  survey DEM present but rasterio is missing; using the bathymetry alone")
+        return None
+    with rasterio.open(candidates[0]) as d:
+        dem = d.read(1).astype(float)
+        dem[dem == d.nodata] = np.nan
+        xs, ys = transform(d.crs, "EPSG:4326", [d.bounds.left, d.bounds.right], [d.bounds.bottom, d.bounds.top])
+    return dem[::-1], (xs[0] - lon0) * me, (ys[0] - lat0) * mn
+
+
+def _ortho(ref, lat0, lon0, me, mn):
+    """The 25 cm quicklook orthomosaic, row 0 south, with its site-metre footprint."""
+    import numpy as np
+    candidates = sorted((ref / "usgs").glob("*Ortho*25cm*.tif")) if (ref / "usgs").exists() else []
+    if not candidates:
+        return None
+    try:
+        import rasterio
+        from rasterio.warp import transform
+    except ImportError:
+        return None
+    with rasterio.open(candidates[0]) as o:
+        rgb = o.read([1, 2, 3]).transpose(1, 2, 0).astype("float32") / 255
+        al = o.read(4) > 0 if o.count >= 4 else np.ones(rgb.shape[:2], dtype=bool)
+        xs, ys = transform(o.crs, "EPSG:4326", [o.bounds.left, o.bounds.right], [o.bounds.bottom, o.bounds.top])
+    return (rgb[::-1], al[::-1], (xs[0] - lon0) * me, (xs[1] - lon0) * me,
+            (ys[0] - lat0) * mn, (ys[1] - lat0) * mn)
+
+
+def _habitat(ref, lat0, lon0, me, mn, across):
+    """Habitat polygons rasterised at texture resolution: 0 unmapped, then HABITAT_ORDER + 1."""
+    import numpy as np
+    path = ref / "habitat.geojson"
+    if not path.exists():
+        return None
+    try:
+        from rasterio import features
+        from rasterio.transform import from_origin
+    except ImportError:
+        return None
+    geo = json.loads(path.read_text())
+    shapes = []
+    for f in geo["features"]:
+        kind = f["properties"].get("ClassLv2")
+        ci = HABITAT_ORDER.index(kind) + 1 if kind in HABITAT_ORDER else 0
+        g = f["geometry"]
+        polys = [g["coordinates"]] if g["type"] == "Polygon" else g["coordinates"]
+        for p in polys:
+            rings = [[((x - lon0) * me, (y - lat0) * mn) for x, y in ring] for ring in p]
+            shapes.append(({"type": "Polygon", "coordinates": rings}, ci))
+    tr = from_origin(-across / 2, across / 2, across / N, across / N)
+    return features.rasterize(shapes, out_shape=(N, N), transform=tr, fill=0, dtype="int16")[::-1]
+
+
+def _satellite_pattern(ref, lat0, lon0, me, mn, h, across):
+    """Where the bottom is lighter or darker than its depth predicts, from orbit.
+
+    Only the pattern, in the green band: deep water subtracted, the trend with
+    depth taken out, the residual scaled to −1…1. The colours themselves are
+    not trusted through ten metres of water, and trying to trust them gave a
+    square kilometre of orange.
+    """
+    import numpy as np
+    from scipy import ndimage
+    path = ref / "sentinel_median_rgb.npy"
+    if not path.exists():
+        return None
+    meta = json.loads((ref / "sentinel.json").read_text())
+    s2 = np.load(path)[::-1].astype(float) / 255.0
+    bb = meta["bbox"]
+    sx0, sx1 = (bb[0] - lon0) * me, (bb[2] - lon0) * me
+    sy0, sy1 = (bb[1] - lat0) * mn, (bb[3] - lat0) * mn
+    n = h.shape[0]
+    G = s2[..., 1]
+    gy = np.linspace(sy0, sy1, G.shape[0]); gx = np.linspace(sx0, sx1, G.shape[1])
+    iy = np.clip((gy + across / 2) / across * (n - 1), 0, n - 1)
+    ix = np.clip((gx + across / 2) / across * (n - 1), 0, n - 1)
+    depth = -ndimage.map_coordinates(h, np.meshgrid(iy, ix, indexing="ij"), order=1)
+    deep = depth > 26
+    Gd = np.percentile(G[deep], 15) if deep.sum() > 50 else G.min()
+    L = np.log(np.clip(G - Gd, 0.003, None))
+    ok = depth < 24
+    if ok.sum() < 100:
+        return None
+    coef = np.polyfit(depth[ok], L[ok], 2)
+    resid = L - np.polyval(coef, np.clip(depth, 0, 24)); resid[~ok] = 0
+    resid = ndimage.gaussian_filter(resid, 0.7)
+    resid = np.clip(resid / (resid[ok].std() or 1.0), -1.6, 1.6) / 1.6
+    gyN = np.linspace(-across / 2, across / 2, N); gxN = gyN
+    jy = np.clip((gyN - sy0) / (sy1 - sy0) * (G.shape[0] - 1), 0, G.shape[0] - 1)
+    jx = np.clip((gxN - sx0) / (sx1 - sx0) * (G.shape[1] - 1), 0, G.shape[1] - 1)
+    return ndimage.map_coordinates(resid, np.meshgrid(jy, jx, indexing="ij"), order=3)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

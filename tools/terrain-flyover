@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# The ground of a place, flown over dry, as a video. Runs Blender on the box.
+#
+#   tools/terrain-flyover looe-key                # the ground alone, chart look, 2x vertical
+#   tools/terrain-flyover looe-key --corals       # with the colonies standing on it
+#   tools/terrain-flyover looe-key --corals --water   # as a dive sees it
+#   tools/terrain-flyover looe-key --true-scale   # no exaggeration
+#   tools/terrain-flyover looe-key --plain        # colour without contours
+#
+# The same flight every time, so the three can be compared frame for frame:
+# what the ground is, what stands on it, and what the water does to both.
+#
+# Wants the ground built first: tools/reference then tools/ground, on this
+# machine, into ~/coral-city/reference/<place>. That directory is synced to the
+# box, Blender renders there on the GPUs, the frames are encoded there, and the
+# video comes back here as .uav-terrain.mp4.
+#
+# Why not Isaac Sim, which already opens the place: because this is a picture
+# of the ground and not a dive, and a path tracer with a real material system
+# draws ground better and faster than a robotics simulator asked to.
+
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "${HERE}/.." && pwd)"
+[ -f "${ROOT}/.env" ] && { set -a; . "${ROOT}/.env"; set +a; }
+GPU_HOST="${AUV_GPU_HOST:-jalalirs@100.76.65.1}"
+REMOTE_DIR="${AUV_REMOTE_DIR:-code/auv}"
+BLENDER="${AUV_BLENDER:-\$HOME/tools/blender-4.5.3-linux-x64/blender}"
+
+place=""; exaggeration="2.0"; colour="chart_4096.png"; frames="720"; layers="ground"
+for arg in "$@"; do
+    case "${arg}" in
+        # True scale with colonies on: a stretched seabed under real-sized colonies lies about both.
+        --corals) layers="${layers},corals"; exaggeration="1.0" ;;
+        --water) layers="${layers},water"; colour="colour_4096.png"; exaggeration="1.0" ;;
+        --true-scale) exaggeration="1.0" ;;
+        --plain) colour="colour_4096.png" ;;
+        --frames=*) frames="${arg#*=}" ;;
+        --exaggerate=*) exaggeration="${arg#*=}" ;;
+        -*) echo "unknown option ${arg}" >&2; exit 2 ;;
+        *) place="${arg}" ;;
+    esac
+done
+[ -n "${place}" ] || { echo "which place?" >&2; exit 2; }
+
+ground="${HOME}/coral-city/reference/${place}"
+for need in seabed_1m.f32 seabed_1m.json habitat_4096.npy "${colour}"; do
+    [ -f "${ground}/${need}" ] || { echo "no ${need} in ${ground}; run tools/ground first" >&2; exit 1; }
+done
+case "${layers}" in *corals*)
+    [ -f "${ground}/colonies.json" ] || { echo "no colonies.json in ${ground}; run tools/benthos first" >&2; exit 1; } ;;
+esac
+
+on_box() { LC_ALL=C ssh "${GPU_HOST}" "export LC_ALL=C LANG=C; $*"; }
+
+echo "syncing the ground to the box"
+on_box "mkdir -p ~/coral-city/reference/${place}"
+rsync -az --include='seabed_1m.*' --include='habitat_4096.npy' --include='survey_1m.npy' \
+    --include='*_4096.png' --include='colonies.json' --include='assets/***' --exclude='*' \
+    "${ground}/" "${GPU_HOST}:coral-city/reference/${place}/"
+scp -q "${HERE}/flyover.py" "${HERE}/flyover_corals.py" "${HERE}/flyover_water.py" "${GPU_HOST}:coral-city/reference/${place}/"
+
+name="${layers//,/-}"
+out="coral-city/reference/${place}/flyover-${name}"
+echo "rendering ${name}: ${frames} frames at ${exaggeration}x vertical, ${colour}"
+on_box "rm -rf ${out} && mkdir -p ${out} && cd coral-city/reference/${place} && \
+    ${BLENDER} -b -P flyover.py -- . ~/${out} ${frames} ${exaggeration} ${colour} ${layers} > ~/${out}/render.log 2>&1; \
+    grep -E 'reef band|RENDER_DONE|Traceback|Error' ~/${out}/render.log | tail -4"
+on_box "ffmpeg -y -loglevel error -framerate 24 -pattern_type glob -i '${out}/frames/frame_*.png' \
+    -c:v libx264 -pix_fmt yuv420p -crf 25 -preset slow ${out}/terrain.mp4"
+video="${ROOT}/.uav-${name}.mp4"
+on_box "cat ${out}/terrain.mp4" > "${video}"
+[ -s "${video}" ] || { echo "no video came back" >&2; exit 1; }
+echo "${video}  (${layers}; vertical exaggeration ${exaggeration}x)"

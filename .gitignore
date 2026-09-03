@@ -21,3 +21,8 @@ __pycache__/
 .uav-app.log
 .uav-frame.png
 .uav-map.mp4
+.uav-ground*.mp4
+.uav-terrain.mp4
+.uav-terrain.png
+.uav-exposure.png
+.uav-exposure/
