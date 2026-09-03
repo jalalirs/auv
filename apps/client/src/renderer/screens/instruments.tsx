@@ -268,10 +268,17 @@ function ControllerPanel({ helm, onTune, onHoldHere, onEngage }: {
               <em>{flying ? "flying" : one.kind}</em>
             </summary>
             <p className="says">{one.says}</p>
-            {one.name !== "helm" && !flying ? (
+            {/* Always the same rows, whoever is flying. Rows that came and went
+                with the hand-over resized the panel twenty times a second
+                while a key was held, and everything below it moved. */}
+            {one.name !== "helm" ? (
               <div className="station">
-                <span>{one.name === "stack" ? "the ordinary rule: the stack while it talks" : `keep the ${one.name} on it`}</span>
-                <button className="quiet small" onClick={() => onEngage(one.name)}>Give it the vehicle</button>
+                <span>{flying ? "has the vehicle"
+                  : one.name === "stack" ? "the ordinary rule: the stack while it talks"
+                  : `keep the ${one.name} on it`}</span>
+                <button className="quiet small" disabled={flying} onClick={() => onEngage(one.name)}>
+                  {flying ? "Flying" : "Give it the vehicle"}
+                </button>
               </div>
             ) : null}
             {one.name === "hold" ? (

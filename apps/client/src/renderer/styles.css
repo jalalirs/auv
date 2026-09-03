@@ -939,3 +939,9 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 .waiting .progress { width: 320px; max-width: 80vw; height: 4px; background: var(--edge); border-radius: 2px; margin: 8px auto 4px; overflow: hidden; }
 .waiting .progress div { height: 100%; background: var(--coral); transition: width 0.6s; }
 .opening small { display: block; margin-top: 4px; color: var(--dim); }
+
+
+/* ── the controller rows keep their height ─────────────────────────────── */
+.controller .station { min-height: 30px; }
+.controller .station button:disabled { opacity: 0.5; cursor: default; }
+.controller summary em { min-width: 44px; text-align: right; display: inline-block; }
