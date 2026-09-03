@@ -68,7 +68,7 @@ class Hud:
                 self.status = ui.Label("", height=20, style={
                     "color": WARN, "font_size": 14})
                 ui.Spacer(height=10)
-                ui.Label("WASD  move    Q E  turn    SPACE C  rise, dive",
+                ui.Label("WASD  move    Q E  turn    SPACE C  rise, dive    Z X  roll    R F  pitch",
                          height=16, style={"color": FAINT, "font_size": 12})
 
     def opened(self, place: str, vehicle: str) -> None:

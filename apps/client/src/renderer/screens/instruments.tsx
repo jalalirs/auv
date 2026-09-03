@@ -91,6 +91,10 @@ const KEYS: { key: string; does: string }[] = [
   { key: "E", does: "yaw right" },
   { key: "SPACE", does: "rise" },
   { key: "C", does: "dive" },
+  { key: "Z", does: "roll left" },
+  { key: "X", does: "roll right" },
+  { key: "R", does: "pitch up" },
+  { key: "F", does: "pitch down" },
 ];
 
 export function Instruments({ reading, topics, held, history, frames, onLeave, onTune, onHoldHere, onEngage, onPlot, plotted, children }: {
@@ -157,7 +161,7 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, o
           <ControllerPanel helm={reading.controller} onTune={onTune} onHoldHere={onHoldHere} onEngage={onEngage} />
         </Panel>
 
-        <Panel name="Controls" note="held, not tapped">
+        <Panel name="Controls" note="held, not tapped · roll and pitch only where the hull can">
           <ul className="keys">
             {KEYS.map(({ key, does }) => (
               <li key={key} className={held.includes(key) ? "down" : undefined}>
