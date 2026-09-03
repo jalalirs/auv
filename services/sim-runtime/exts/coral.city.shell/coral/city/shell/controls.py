@@ -29,6 +29,11 @@ LAYOUT = {
     "W": (0, +1.0), "S": (0, -1.0),
     "D": (1, +1.0), "A": (1, -1.0),
     "SPACE": (2, +1.0), "C": (2, -1.0),
+    # Roll and pitch, for hulls that can: the BlueROV2 rolls on its two
+    # verticals and cannot pitch; the Heavy does both. A key for an axis the
+    # vehicle has no thrust on does nothing, honestly.
+    "X": (3, +1.0), "Z": (3, -1.0),
+    "R": (4, +1.0), "F": (4, -1.0),
     "E": (5, -1.0), "Q": (5, +1.0),
 }
 

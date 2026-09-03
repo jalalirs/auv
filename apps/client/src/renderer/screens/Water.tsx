@@ -26,7 +26,7 @@ import { Instruments, type Reading, type Topic } from "./instruments.js";
 const TELL_EVERY = 40;
 
 /** What the vehicle can be asked to do, and what asks for it. */
-const FLYING = new Set(["W", "A", "S", "D", "Q", "E", "SPACE", "C"]);
+const FLYING = new Set(["W", "A", "S", "D", "Q", "E", "SPACE", "C", "Z", "X", "R", "F"]);
 
 /** How much of the recent past the plots keep. */
 const REMEMBERED = 600;
