@@ -965,3 +965,22 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 .compared .score-bar span { display: block; height: 100%; background: var(--coral); }
 .compared li b { font-variant-numeric: tabular-nums; }
 .compared li em { font-style: normal; color: var(--faint); }
+
+
+/* ── the composer as a sentence ────────────────────────────────────────── */
+.sentence { display: flex; flex-direction: column; gap: 14px; margin-top: 18px; }
+.row-choice h3 { margin: 0 0 6px; padding: 0 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--dim); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px 7px 8px;
+  border: 1px solid var(--edge); border-radius: 999px; background: rgba(11, 21, 36, 0.62);
+  color: var(--plain); font-size: 13px; cursor: pointer; line-height: 1.2;
+}
+.chip img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
+.chip:hover { border-color: rgba(255, 255, 255, 0.25); }
+.chip.chosen { border-color: var(--coral); box-shadow: inset 0 0 0 1px var(--coral); }
+.chip.later { color: var(--dim); cursor: help; border-style: dashed; }
+.chip .pill { margin-left: 2px; }
+.row-said { margin: 6px 4px 0; color: var(--faint); font-size: 12.5px; line-height: 1.5; display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
+.row-said .option-open { color: var(--coral); cursor: pointer; }
+.row-said .picker-foot { margin: 0; flex-basis: 100%; }

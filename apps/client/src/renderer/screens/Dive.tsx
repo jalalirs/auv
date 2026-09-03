@@ -14,7 +14,7 @@ import type { Platform } from "@coral-city/api";
 
 import { PILOTED, TASKS, type Task, WATERS, type Water } from "../catalog/tasks.js";
 import { alertKind, leadTemperature, useSea } from "../ocean/sea.js";
-import { Picker, type Choice } from "../parts/Picker.js";
+import { Row, type Choice } from "../parts/Picker.js";
 import { newestOf, whereIs } from "../platform/packages.js";
 import type { Held, Packages, Where } from "./Deck.js";
 import { Card, Credit, Fact, Pill, SeaPill, useLoadedPicture } from "./parts.js";
@@ -165,16 +165,21 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
     key: one.key, name: one.name, says: one.asks, later: one.unavailable,
   }));
   const waters: Choice[] = WATERS.map((one) => ({ key: one.key, name: one.name, says: one.says }));
+  // One chip per controller, its newest build; earlier builds stay on the
+  // dives that pinned them and in the count.
+  const newestBuilds = [...new Map([...held.stacks].reverse().map((s) => [s.slug, s])).values()].reverse();
+  const buildsOf = (slug: string) => held.stacks.filter((s) => s.slug === slug).length;
   const controllers: Choice[] = [
     { key: MANUAL, name: "You, at the keys", says: "Manual, with the hold beneath it: let go and it holds station." },
-    ...held.stacks.map((one) => {
+    ...newestBuilds.map((one) => {
       const needs = (one.needs ?? {}) as { gpu?: boolean; gpuMemoryBytes?: number; cpu?: number; memoryBytes?: number };
       const gpu = needs.gpu || one.wantsGpu
         ? `${needs.gpuMemoryBytes ? (needs.gpuMemoryBytes / 2 ** 30).toFixed(0) + " GiB of a card" : "a card"}`
         : "no card";
+      const builds = buildsOf(one.slug);
       return {
         key: one.id, name: one.name,
-        says: `${one.slug} · ${one.imageDigest.slice(7, 19)} · ${gpu}`,
+        says: `${one.slug} · ${one.imageDigest.slice(7, 19)} · ${gpu}${builds > 1 ? ` · ${builds} builds, newest chosen` : ""}`,
       };
     }),
   ];
@@ -231,28 +236,25 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
             ? <div className="composer-credit"><Credit of={placePackage.credit} /></div> : null}
         </div>
 
-        <div className="choose">
-          <Picker label="Where" choices={places} chosen={place}
-                  onChoose={(key) => { setPlace(key); localStorage.setItem(WHERE, key); }}
-                  onOpen={(key) => onOpen({ page: "place", id: key })} />
-          <Picker label="What in" choices={vehicles} chosen={vehicle}
-                  onChoose={(key) => { setVehicle(key); localStorage.setItem(WHAT, key); }}
-                  onOpen={(key) => onOpen({ page: "vehicle", id: key })} />
-          <Picker label="Flown by" choices={controllers} chosen={flownBy}
-                  onChoose={(key) => { setFlownBy(key); localStorage.setItem(WHO, key); }}
-                  foot={chosenStack === undefined
-                    ? <>W A S D, Q E, space and C. The hold has it whenever your hands are off.</>
-                    : <>Your stack flies from the start; the keys still win while they are held. Deploy more with <code>coral-city deploy</code>.</>} />
-          <Picker label="In water that is" choices={waters} chosen={water.key}
-                  onChoose={(key) => { setWater(WATERS.find((w) => w.key === key)!); localStorage.setItem(HOW, key); }}
-                  foot={<>Constructed water: it names no instant, because it was not measured. The current is felt by the physics; visibility by the picture.</>} />
-          <Picker label="For" choices={tasks} chosen={task.key}
-                  onChoose={(key) => { const t = [PILOTED, ...TASKS].find((x) => x.key === key)!; setTask(t); localStorage.setItem(WHY, key); }}
-                  foot={task.unavailable !== undefined
-                    ? <>Not yet: {task.unavailable}.</>
-                    : task.judgedOn.length > 0
-                      ? <>{task.asks} Judged on {task.judgedOn.join(", ")}; the score is on the dive when it ends.</>
-                      : <>No score. A person at the controls.</>} />
+        <div className="sentence">
+          <Row label="Where" choices={places} chosen={place}
+               onChoose={(key) => { setPlace(key); localStorage.setItem(WHERE, key); }}
+               onOpen={(key) => onOpen({ page: "place", id: key })} />
+          <Row label="What in" choices={vehicles} chosen={vehicle}
+               onChoose={(key) => { setVehicle(key); localStorage.setItem(WHAT, key); }}
+               onOpen={(key) => onOpen({ page: "vehicle", id: key })} />
+          <Row label="Flown by" choices={controllers} chosen={flownBy}
+               onChoose={(key) => { setFlownBy(key); localStorage.setItem(WHO, key); }}
+               foot={chosenStack === undefined
+                 ? <>W A S D, Q E, space and C, or a gamepad. The hold has it whenever your hands are off.</>
+                 : <>Your stack flies from the start; the keys still win while they are held.</>} />
+          <Row label="In water that is" choices={waters} chosen={water.key}
+               onChoose={(key) => { setWater(WATERS.find((w) => w.key === key)!); localStorage.setItem(HOW, key); }} />
+          <Row label="For" choices={tasks} chosen={task.key}
+               onChoose={(key) => { const t = [PILOTED, ...TASKS].find((x) => x.key === key)!; setTask(t); localStorage.setItem(WHY, key); }}
+               foot={task.judgedOn.length > 0
+                 ? <>Judged on {task.judgedOn.join(", ")}; the score is on the dive when it ends.</>
+                 : undefined} />
         </div>
       </section>
     </>
