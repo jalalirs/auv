@@ -445,7 +445,11 @@ input:focus { border-color: var(--coral); }
   border: 1px solid var(--edge); border-radius: 11px;
   background: rgba(11, 21, 36, 0.62);
   overflow: hidden;
+  /* A panel is as tall as what it holds; the dock scrolls. Without this the
+     dock's flex squashed every panel to fit and clipped what did not. */
+  flex-shrink: 0;
 }
+.helm, .tunable, .keys, .dials, .axes { user-select: none; }
 .panel-box h3 {
   margin: 0; padding: 9px 12px;
   display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
