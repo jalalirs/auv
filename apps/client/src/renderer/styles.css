@@ -832,8 +832,8 @@ table.axes .delta { color: var(--vehicle); font-size: 11.5px; }
   display: flex; align-items: center; gap: 8px; padding: 7px 10px; cursor: pointer; list-style: none;
 }
 .controller summary::-webkit-details-marker { display: none; }
-.controller summary .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); }
-.controller.flying summary .dot { background: var(--alive); }
+.controller header .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); }
+.controller.flying header .dot { background: var(--alive); }
 .controller summary strong { font-size: 12.5px; font-weight: 600; }
 .controller summary em { margin-left: auto; color: var(--dim); font-size: 11px; font-style: normal; }
 .controller .says { margin: 0 10px 6px; color: var(--dim); font-size: 11px; line-height: 1.4; }
@@ -945,3 +945,12 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 .controller .station { min-height: 30px; }
 .controller .station button:disabled { opacity: 0.5; cursor: default; }
 .controller summary em { min-width: 44px; text-align: right; display: inline-block; }
+
+
+/* ── the controller boxes: a fixed shape ───────────────────────────────── */
+.controller header { display: flex; align-items: baseline; gap: 8px; padding: 8px 10px; }
+.controller header strong { font-weight: 600; flex: 1; }
+.controller header em { font-style: normal; color: var(--dim); font-size: 11.5px; min-width: 48px; text-align: right; }
+.controller .station { min-height: 30px; }
+.controller .station span { font-variant-numeric: tabular-nums; }
+.who-flies { display: inline-block; min-width: 190px; }

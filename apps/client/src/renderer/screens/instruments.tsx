@@ -9,7 +9,7 @@
 // worse than one that has fewer of them, because the whole purpose of the thing
 // is to be believed about what happened.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 export interface Topic {
   name: string;
@@ -242,35 +242,25 @@ function ControllerPanel({ helm, onTune, onHoldHere, onEngage }: {
   onHoldHere: () => void;
   onEngage: (controller: string) => void;
 }): React.JSX.Element {
-  // Which entries are open is yours, not the vehicle's. Bound to who was
-  // flying, the panels folded and unfolded on every hand-over — twenty times
-  // a second while a key was held. The first one flying starts open; after
-  // that, what you opened stays open.
-  const [opened, setOpened] = useState<Record<string, boolean> | undefined>();
-  useEffect(() => {
-    if (opened === undefined && helm !== undefined) {
-      setOpened(Object.fromEntries(helm.controllers.map((c) => [c.name, c.name === helm.flying])));
-    }
-  }, [helm, opened]);
   if (helm === undefined) return <p className="none">The vehicle has not said who flies it.</p>;
+  // Nothing here changes shape with who is flying. Every controller is shown
+  // the same way all the time — its rows, its sliders — and a hand-over moves
+  // only the dot and the word beside it, which have a fixed width. Folding
+  // and unfolding on the hand-over, or rows that came and went with it,
+  // resized the panel while a key was held and moved everything under it.
   return (
     <div className="helm">
       {helm.controllers.map((one) => {
         const flying = one.name === helm.flying;
         const status = one.status ?? {};
         return (
-          <details key={one.name} className={`controller${flying ? " flying" : ""}`}
-                   open={opened?.[one.name] ?? flying}
-                   onToggle={(e) => setOpened((was) => ({ ...(was ?? {}), [one.name]: (e.target as HTMLDetailsElement).open }))}>
-            <summary>
+          <section key={one.name} className={`controller${flying ? " flying" : ""}`}>
+            <header>
               <span className="dot" />
               <strong>{one.name}</strong>
               <em>{flying ? "flying" : one.kind}</em>
-            </summary>
+            </header>
             <p className="says">{one.says}</p>
-            {/* Always the same rows, whoever is flying. Rows that came and went
-                with the hand-over resized the panel twenty times a second
-                while a key was held, and everything below it moved. */}
             {one.name !== "helm" ? (
               <div className="station">
                 <span>{flying ? "has the vehicle"
@@ -296,7 +286,7 @@ function ControllerPanel({ helm, onTune, onHoldHere, onEngage }: {
                 <em>{p.value.toFixed(p.high - p.low > 5 ? 1 : 2)} {p.unit}</em>
               </label>
             ))}
-          </details>
+          </section>
         );
       })}
     </div>
