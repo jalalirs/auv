@@ -111,6 +111,24 @@ def cmd_dive(args) -> int:
 
     platform = Platform.from_session()
     institution = platform.organisation(args.org)
+    if args.again:
+        # The same dive, the same seed: what a run pinned is what runs again.
+        queues = platform.queues()
+        if not queues:
+            raise SystemExit("no queue you may run on")
+        queue = next((q for q in queues if args.queue in (q["slug"], q["id"])), queues[0]) if args.queue else queues[0]
+        earlier = next((r for r in platform.runs(args.again.split("/")[0]) if r["id"] == args.again.split("/")[-1]), None) \
+            if "/" in args.again else None
+        if earlier is None:
+            raise SystemExit("--again takes <diveId>/<runId>")
+        dive_id = args.again.split("/")[0]
+        run = platform.run(dive_id, queue["id"], mode="batch", seed=earlier["seed"])
+        print(f"dive {dive_id}  run {run['id']}  (again, seed {run['seed']})")
+        if args.no_wait:
+            return 0
+        run = platform.wait(dive_id, run["id"], timeout=args.timeout)
+        print(json.dumps({"state": run["state"], "outcome": run.get("outcome", {})}))
+        return 0 if run["state"] == "succeeded" else 1
     stack = platform.stack(institution["id"], args.stack) if args.stack else None
     place = platform.city(args.place)
     vehicle = platform.vehicle(args.vehicle)
@@ -124,20 +142,6 @@ def cmd_dive(args) -> int:
         raise SystemExit("no queue you may run on")
     queue = next((q for q in queues if args.queue in (q["slug"], q["id"])), queues[0]) if args.queue else queues[0]
 
-    if args.again:
-        # The same dive, the same seed: what a run pinned is what runs again.
-        earlier = next((r for r in platform.runs(args.again.split("/")[0]) if r["id"] == args.again.split("/")[-1]), None) \
-            if "/" in args.again else None
-        if earlier is None:
-            raise SystemExit("--again takes <diveId>/<runId>")
-        dive_id = args.again.split("/")[0]
-        run = platform.run(dive_id, queue["id"], mode="batch", seed=earlier["seed"])
-        print(f"dive {dive_id}  run {run['id']}  (again, seed {run['seed']})")
-        if args.no_wait:
-            return 0
-        run = platform.wait(dive_id, run["id"], timeout=args.timeout)
-        print(json.dumps({"state": run["state"], "outcome": run.get("outcome", {})}))
-        return 0 if run["state"] == "succeeded" else 1
     name = args.name or f"{stack['name'] if stack else 'Nobody'} flies the {vehicle.get('name', args.vehicle)} in {place.get('name', args.place)}"
     objective = None
     if args.task:
