@@ -17,7 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Platform } from "@coral-city/api";
 
 import type { Stream } from "../App.js";
-import { Minimap, type Fix, type Site } from "../parts/Minimap.js";
+import { Minimap, type Fix, type Geometry, type Site } from "../parts/Minimap.js";
 import { Profile, type Moment } from "../parts/Profile.js";
 import { TopicPlot, type Sample } from "../parts/TopicPlot.js";
 import { Instruments, type Reading, type Topic } from "./instruments.js";
@@ -47,6 +47,7 @@ interface Hello {
   views?: string[];
   view?: string;
   beganAt?: number[];
+  task?: { kind: string; name: string; geometry?: Geometry } | null;
 }
 
 function named(event: KeyboardEvent): string | undefined {
@@ -242,6 +243,11 @@ export function Water({ platform, stream, onSurface }: {
   }, [stream, leave, platform]);
 
   const site = hello?.site ?? undefined;
+  // The task's geometry, with what has been reached so far.
+  const geometry: Geometry | undefined = hello?.task?.geometry === undefined ? undefined : {
+    ...hello.task.geometry,
+    reached: typeof reading.task?.detail["reached"] === "number" ? (reading.task.detail["reached"] as number) : hello.task.geometry.reached,
+  };
   const views = hello?.views ?? ["chase", "front", "top", "orbit"];
   const looking = reading.view ?? hello?.view ?? "chase";
 
@@ -277,7 +283,8 @@ export function Water({ platform, stream, onSurface }: {
         );
       case "map":
         return <Minimap site={site} track={track.current} position={reading.position}
-                        headingDeg={reading.headingDeg} beganAt={hello?.beganAt} large={large} />;
+                        headingDeg={reading.headingDeg} beganAt={hello?.beganAt}
+                        geometry={geometry} large={large} />;
       case "profile":
         return <Profile of={history.current} />;
       case "plot":

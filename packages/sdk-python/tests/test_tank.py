@@ -12,28 +12,35 @@ sys.path.insert(0, str(HERE.parent / "examples"))
 
 from coral_city import Command, Controller  # noqa: E402
 from coral_city.tank import Tank  # noqa: E402
-from coral_city.tasks import HoldStation, ReachDepth  # noqa: E402
+from coral_city.tasks import hold_station, waypoints  # noqa: E402
 from hold import StationHold  # noqa: E402
 
 
 def test_the_example_holds_station_through_its_sensors():
-    tank = Tank("bluerov2", start=(0.0, 0.0, -7.0), seconds=40.0, task=HoldStation(), sensed=True)
+    tank = Tank("bluerov2", start=(0.0, 0.0, -7.0), seconds=45.0, task=hold_station(seconds=40), sensed=True)
     report = tank.run(StationHold())
     assert report.score > 0.8, str(report)
+    assert report.task["kind"] == "hold-station" and report.task["done"]
     assert abs(report.final["depthM"] - 7.0) < 0.1
 
 
-def test_a_target_depth_is_reached_and_scored():
+def test_a_target_depth_is_reached():
     controller = StationHold()
     controller.tune("depthM", 9.0)
-    tank = Tank("bluerov2", seconds=60.0, task=ReachDepth(9.0, tolerance_m=0.15))
+    tank = Tank("bluerov2", seconds=60.0)
     report = tank.run(controller)
-    assert report.score > 0.9, str(report)
-    assert abs(report.final["depthM"] - 9.0) < 0.15
+    assert abs(report.final["depthM"] - 9.0) < 0.15, str(report)
+
+
+def test_waypoints_are_scored_by_the_runtime():
+    # A hold never moves, so it reaches none of them; the score says so.
+    tank = Tank("bluerov2", seconds=10.0, task=waypoints(points=[{"dx": 5, "dy": 0}], time_limit_s=10))
+    report = tank.run(StationHold())
+    assert report.score == 0.0 and report.task["achieved"]["of"] == 1
 
 
 def test_stepping_it_yourself_like_a_learner():
-    tank = Tank("bluerov2", seconds=5.0, task=HoldStation(), sensed=False)
+    tank = Tank("bluerov2", seconds=5.0, task=hold_station(seconds=5), sensed=False)
     seen = tank.reset()
     steps = 0
     while not tank.done:

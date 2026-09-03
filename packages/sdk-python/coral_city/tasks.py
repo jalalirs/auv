@@ -1,102 +1,54 @@
-"""What a controller is scored on in the tank.
+"""What a controller is scored on.
 
-A task watches the dive and says, at the end, how well it went as a number in
-[0, 1], and along the way what each step was worth — which is the reward a
-learner trains on. The platform's tasks will be these same shapes evaluated by
-the runtime; until then the tank's scores are the ones there are.
+A task is an objective: a small document a dive is defined with, judged by the
+runtime as the dive runs — on the platform and in the tank alike, by the same
+code, so a controller that scores well on a laptop scores the same there. These
+are the objectives, written as functions so the fields are spelled once.
+Everything is measured from where the dive began.
 """
 
 from __future__ import annotations
 
-import math
 
-import numpy as np
-
-from .controller import Observation
-
-
-class Task:
-    name = "task"
-
-    def start(self, seen: Observation) -> None:
-        """The dive has begun; here is where the vehicle is."""
-
-    def step(self, seen: Observation, dt: float) -> float:
-        """What this step was worth."""
-        return 0.0
-
-    def score(self) -> float:
-        """How the dive went, in [0, 1]."""
-        return 0.0
-
-    def describe(self) -> dict:
-        return {"name": self.name}
+def hold_station(seconds: float = 60.0, radius_m: float = 0.5, depth_band_m: float = 0.3) -> dict:
+    """Stay where the dive began, within a radius and a depth band, for a time."""
+    return {"kind": "hold-station", "seconds": seconds, "radiusM": radius_m, "depthBandM": depth_band_m}
 
 
-class HoldStation(Task):
-    """Stay where the dive began: within a radius, at a depth, on a heading."""
-
-    name = "hold-station"
-
-    def __init__(self, radius_m: float = 0.25, depth_tolerance_m: float = 0.10,
-                 heading_tolerance_deg: float = 10.0) -> None:
-        self.radius = radius_m
-        self.depth_tolerance = depth_tolerance_m
-        self.heading_tolerance = math.radians(heading_tolerance_deg)
-        self.station = None
-        self.within = 0.0
-        self.total = 0.0
-
-    def start(self, seen: Observation) -> None:
-        self.station = (seen.position[:2].copy(), seen.depth, seen.heading)
-
-    def step(self, seen: Observation, dt: float) -> float:
-        xy, depth, heading = self.station
-        off = float(np.hypot(*(seen.position[:2] - xy)))
-        turned = abs((seen.heading - heading + math.pi) % (2 * math.pi) - math.pi)
-        there = (off <= self.radius and abs(seen.depth - depth) <= self.depth_tolerance
-                 and turned <= self.heading_tolerance)
-        self.total += dt
-        if there:
-            self.within += dt
-        # Dense enough to learn from: closer is better, there is best.
-        return 1.0 if there else -min(1.0, off + abs(seen.depth - depth))
-
-    def score(self) -> float:
-        return 0.0 if self.total == 0 else self.within / self.total
-
-    def describe(self) -> dict:
-        return {"name": self.name, "radiusM": self.radius, "depthToleranceM": self.depth_tolerance,
-                "score": round(self.score(), 3)}
+def waypoints(points: list[dict] | None = None, radius_m: float = 1.0, time_limit_s: float = 300.0) -> dict:
+    """Visit points in order: each {dx, dy, depthM?} ahead and to starboard of the start."""
+    made = {"kind": "waypoints", "radiusM": radius_m, "timeLimitS": time_limit_s}
+    if points is not None:
+        made["points"] = points
+    return made
 
 
-class ReachDepth(Task):
-    """Get to a depth and stay there; scored on the last part of the dive."""
-
-    name = "reach-depth"
-
-    def __init__(self, depth_m: float, tolerance_m: float = 0.10, judged_fraction: float = 0.25) -> None:
-        self.depth = depth_m
-        self.tolerance = tolerance_m
-        self.judged_fraction = judged_fraction
-        self.errors: list[tuple[float, float]] = []
-
-    def step(self, seen: Observation, dt: float) -> float:
-        error = abs(seen.depth - self.depth)
-        self.errors.append((dt, error))
-        return -error
-
-    def score(self) -> float:
-        if not self.errors:
-            return 0.0
-        tail = self.errors[int(len(self.errors) * (1 - self.judged_fraction)):]
-        within = sum(dt for dt, error in tail if error <= self.tolerance)
-        total = sum(dt for dt, _ in tail)
-        return 0.0 if total == 0 else within / total
-
-    def describe(self) -> dict:
-        return {"name": self.name, "depthM": self.depth, "toleranceM": self.tolerance,
-                "score": round(self.score(), 3)}
+def transect(length_m: float = 20.0, altitude_m: float = 2.0, altitude_band_m: float = 0.5,
+             heading_tolerance_deg: float = 10.0, heading_deg: float | None = None,
+             time_limit_s: float = 180.0) -> dict:
+    """Fly a line along the heading at a fixed altitude above the bottom."""
+    made = {"kind": "transect", "lengthM": length_m, "altitudeM": altitude_m,
+            "altitudeBandM": altitude_band_m, "headingToleranceDeg": heading_tolerance_deg,
+            "timeLimitS": time_limit_s}
+    if heading_deg is not None:
+        made["headingDeg"] = heading_deg
+    return made
 
 
-TASKS = {"hold": HoldStation, "hold-station": HoldStation, "reach-depth": ReachDepth}
+def survey(width_m: float = 20.0, height_m: float = 10.0, altitude_m: float = 2.0,
+           swath_m: float = 3.0, altitude_band_m: float = 1.0, time_limit_s: float = 600.0) -> dict:
+    """Cover a rectangle ahead of the start in passes, at an altitude, with a swath."""
+    return {"kind": "survey", "widthM": width_m, "heightM": height_m, "altitudeM": altitude_m,
+            "swathM": swath_m, "altitudeBandM": altitude_band_m, "timeLimitS": time_limit_s}
+
+
+def come_home(home_radius_m: float = 2.0, surface_depth_m: float = 0.5, time_limit_s: float = 300.0) -> dict:
+    """Come back to where the dive began and surface."""
+    return {"kind": "return", "homeRadiusM": home_radius_m, "surfaceDepthM": surface_depth_m,
+            "timeLimitS": time_limit_s}
+
+
+# For the command line: `--task hold`, `--task reach-depth=9` is gone; a depth
+# is a hold at another depth, which is a controller's business.
+TASKS = {"hold": hold_station, "hold-station": hold_station, "waypoints": waypoints,
+         "transect": transect, "survey": survey, "return": come_home}

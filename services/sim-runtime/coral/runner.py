@@ -206,6 +206,8 @@ class Dive:
         self.bounds = (None, None)
         self.view = "chase"
         self.began_at = np.zeros(3)
+        # What the dive is for, judged as it runs. None when it is only flown.
+        self.task = None
         self.water_level = None
         self.water = None
         self.on_the_bottom = False
@@ -393,7 +395,7 @@ class Dive:
                          surfaceAtM=None if self.water_level is None
                          else round(self.water_level, 2))
 
-        self.began_at = self.position.copy()
+        self.begin_task(self.brief.get("objective"))
         self.say("vehicle_placed",
                  position=[round(float(x), 3) for x in self.position])
         return True
@@ -540,6 +542,20 @@ class Dive:
             self.helm.hold_here(self.observation())
             self.say("hold_engaged", **self.helm.hold.status())
 
+    def begin_task(self, objective) -> None:
+        """Where the dive begins is where its task is measured from.
+
+        Called once the vehicle is placed; the tank calls it itself, since it
+        never opens a scene.
+        """
+        from tasks import task_for
+
+        self.began_at = self.position.copy()
+        self.task = task_for(objective, self.began_at,
+                             float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0])))
+        if self.task is not None:
+            self.say("task_set", task=self.task.describe())
+
     def hello(self) -> dict:
         """What somebody arriving at the console needs once: the site as a
         coarse height grid to draw a map from, the vehicle, and the views."""
@@ -568,6 +584,7 @@ class Dive:
             "views": list(VIEWS),
             "view": self.view,
             "beganAt": [round(float(v), 3) for v in self.began_at],
+            "task": None if self.task is None else self.task.describe(),
         }
 
     def samples(self) -> dict:
@@ -634,6 +651,12 @@ class Dive:
         # Once a second of simulated time, not of wall-clock: the report is part
         # of the run, and a report that depended on how fast the machine was
         # would make two runs of the same seed produce different records.
+        if self.task is not None:
+            floor = self.floor
+            if self.seabed is not None:
+                floor = self.seabed.under(float(self.position[0]), float(self.position[1]))
+            self.task.step(self.simulated, self.position,
+                           float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0])), floor, self.commands)
         if self.simulated - self.reported >= 1.0:
             self.reported = self.simulated
             self.say("state", **self.state())
@@ -746,6 +769,7 @@ class Dive:
         reading["controller"] = self.helm.describe()
         reading["samples"] = self.samples()
         reading["view"] = self.view
+        reading["task"] = None if self.task is None else self.task.progress()
         if self.bridge is not None:
             reading["topics"] = self.bridge.topics()
             reading["commandsReceived"] = self.bridge.commands_seen
@@ -780,7 +804,8 @@ class Dive:
         self.say("settled",
                  t=round(self.simulated, 3),
                  depthM=round(float(-self.position[2]), 4),
-                 speedMs=round(float(np.linalg.norm(self.velocity[:3])), 4))
+                 speedMs=round(float(np.linalg.norm(self.velocity[:3])), 4),
+                 **({} if self.task is None else {"task": self.task.result()}))
         if self.bridge is not None:
             # Whether anything actually flew it. A dive that ran with nobody at
             # the controls is a valid result and a different one, and the

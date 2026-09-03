@@ -313,6 +313,35 @@ closely, how long it took, how much was asked of the thrusters.
 **Done when:** a piloted dive shows its task and live progress, and a finished
 dive has a result recorded against it.
 
+*Where it stands:* done, and verified on the box (3 September). The dive page
+sends the task's objective with the dive — the document the runtime judges,
+measured from where the dive begins, so a task defined on the composer never
+needs the site's coordinates. Five are judged: hold station (seconds on
+station within a radius and a depth band), waypoints (reached in order within
+a radius, half marks over the time limit), transect (metres flown within the
+altitude band on heading), survey (fraction of the rectangle's half-metre
+cells seen from within the altitude band with the swath), return (home and
+surfaced). Inspect is listed and says why it cannot be chosen: nothing is
+placed to circle. Every step the task keeps a score in [0, 1] and says how it
+is going; the console shows it as a Task panel with a bar and a sentence, and
+draws the task on the chart — the station's circle, the waypoints numbered
+and filled as they are reached, the transect line, the survey rectangle. At
+the end the result — score, seconds, what was achieved, mean thruster effort
+— goes into the run's outcome, and the Dives page shows it on the row. A
+batch dive now lasts as long as its task needs rather than ten seconds. The
+SDK's tank scores with the runtime's own task code, so a controller scores
+the same on a laptop and on the platform.
+
+Verified: a batch hold-station dive under the runtime hold recorded its
+result (2 cm off station, thruster effort 0.006); a hand-flown waypoints dive
+showed the four points in the greeting and reached the first at 22 s with the
+progress and score changing live.
+
+Follow-ups. Survey coverage is geometric — a swath under the vehicle within
+an altitude band — not what a camera saw; item 5 makes it the frames. Inspect
+needs a structure in a place. A task's waypoints are relative to the start;
+absolute points, and points picked on the chart, are for the composer later.
+
 ---
 
 ## 5. Data collection
@@ -432,8 +461,9 @@ with its success criteria shown, disabled until item 4 makes them real.
 **Done when:** a task can be picked and the dive is defined with it, even while
 the score is not yet computed.
 
-*Where it stands:* the task is picked on the composer and written into the
-dive's name; the contract has no task field yet, which item 4 adds.
+*Where it stands:* done with item 4. The task is picked on the composer with
+what it asks and what it is judged on, the dive is defined with its objective,
+and Inspect is shown with why it cannot be chosen yet.
 
 ## Not on this list
 

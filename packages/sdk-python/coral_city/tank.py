@@ -7,11 +7,11 @@ this loop too.
 
 Two uses. Run a controller and get a score:
 
-    report = Tank("bluerov2", task=HoldStation()).run(MyController())
+    report = Tank("bluerov2", task=hold_station()).run(MyController())
 
 Or step it yourself, the way a learner does:
 
-    tank = Tank("bluerov2", task=ReachDepth(5.0))
+    tank = Tank("bluerov2", task=waypoints([{"dx": 5, "dy": 0}]))
     seen = tank.reset()
     while not tank.done:
         seen, reward, done, info = tank.step(policy(seen))
@@ -38,7 +38,6 @@ import numpy as np
 
 from .controller import Command, Controller, Observation
 from .sensing import Navigator
-from .tasks import Task
 from . import vehicles
 
 
@@ -114,7 +113,7 @@ class Report:
 
 class Tank:
     def __init__(self, vehicle: str = "bluerov2", start=(0.0, 0.0, -7.0), seconds: float = 60.0,
-                 task: Task | None = None, sensed: bool = True, hz: float = 20.0) -> None:
+                 task: dict | None = None, sensed: bool = True, hz: float = 20.0) -> None:
         hydrodynamics, runner, Helm = _runtime()
         self.described = vehicles.load(vehicle)
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
@@ -144,6 +143,9 @@ class Tank:
                                lambda kind, **d: self.events.append((kind, d)))
         self.bridge = _Bridge(len(self.model.thrusters))
         self.dive.helm = self._Helm(self.allocator, self.dive.dt, bridge=self.bridge)
+        # The task is judged by the runtime's own code, from where the dive began.
+        self.dive.begin_task(self.task)
+        self._scored = 0.0
         self.navigator = Navigator(density=self.model.density)
         self.steps_per_tick = max(1, int(round(1.0 / (self.hz * self.dive.dt))))
         self.tick_dt = self.steps_per_tick * self.dive.dt
@@ -198,11 +200,12 @@ class Tank:
             self.dive.step()
         seen = self.observe()
         reward = 0.0
-        if self.task is not None:
-            if not self.started:
-                self.task.start(seen)
-                self.started = True
-            reward = float(self.task.step(seen, self.tick_dt))
+        if self.dive.task is not None:
+            # The reward is the score earned this tick: dense where the task
+            # is (time on station, ground covered), and zero where it is not.
+            score = self.dive.task.score()
+            reward = float(score - self._scored)
+            self._scored = score
         self.trace.append({"t": round(seen.t, 3), "depthM": round(seen.depth, 4),
                            "headingDeg": round(float(np.degrees(seen.heading)), 2),
                            "x": round(float(seen.position[0]), 4), "y": round(float(seen.position[1]), 4),
@@ -216,9 +219,6 @@ class Tank:
         if problems:
             raise ValueError("this controller cannot fly this vehicle: " + "; ".join(problems))
         seen = self.reset()
-        if self.task is not None:
-            self.task.start(seen)
-            self.started = True
         controller.engage(seen)
         until = self.seconds if seconds is None else float(seconds)
         while not self.done and self.t < until:
@@ -230,8 +230,9 @@ class Tank:
         final = {"depthM": round(truth.depth, 3), "headingDeg": round(float(np.degrees(truth.heading)), 1),
                  "x": round(float(truth.position[0]), 3), "y": round(float(truth.position[1]), 3),
                  "offStartM": round(float(np.hypot(*(truth.position[:2] - self.origin[:2]))), 3)}
-        score = self.task.score() if self.task is not None else float("nan")
-        return Report(score=score, seconds=self.t, task=self.task.describe() if self.task else {},
+        task = self.dive.task
+        score = task.score() if task is not None else float("nan")
+        return Report(score=score, seconds=self.t, task=task.result() if task is not None else {},
                       final=final, trace=list(self.trace), events=list(self.events))
 
 

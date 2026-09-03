@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -164,12 +165,24 @@ const anHour = 3600.0
 
 // durationOf is how long a dive should last, in simulated seconds.
 //
-// Ten seconds for batch, which is what every dive has been so far and is plenty
-// to settle a controller and score it. A dive definition will carry its own
-// length when there is something that needs a different one.
+// An interactive dive lasts until the person leaves, bounded by an hour. A
+// batch dive lasts as long as its task needs: the seconds a hold asks for with
+// a little settling on top, a mission's time limit, five minutes for a task
+// that named neither, and ten seconds — enough to settle a controller and
+// record where it sat — for a dive that is for nothing in particular.
 func durationOf(claimed Claimed) float64 {
 	if claimed.Run.Mode == "interactive" {
 		return anHour
+	}
+	var objective map[string]any
+	if len(claimed.Objective) > 0 && json.Unmarshal(claimed.Objective, &objective) == nil && len(objective) > 0 {
+		if seconds, ok := objective["seconds"].(float64); ok && seconds > 0 {
+			return math.Min(anHour, seconds+5.0)
+		}
+		if limit, ok := objective["timeLimitS"].(float64); ok && limit > 0 {
+			return math.Min(anHour, limit)
+		}
+		return 300.0
 	}
 	return 10.0
 }
