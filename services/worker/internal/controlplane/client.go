@@ -239,6 +239,13 @@ func (c *Client) call(ctx context.Context, method, path string, body any, into a
 
 // ── Dives ────────────────────────────────────────────────────────────────────
 
+// Capacity is what this host has, said with every request for work so the
+// platform's idea of it cannot go stale while the host is alive.
+type Capacity struct {
+	CPU         float64
+	MemoryBytes int64
+}
+
 // ErrNothingToRun is what ClaimDive reports when the platform has no work.
 // The ordinary case, and not a failure: an agent asks constantly and mostly
 // there is nothing, and treating that as an error would fill a log with the
@@ -253,9 +260,10 @@ var ErrNothingToRun = errors.New("nothing to run")
 // machine that has been upgraded reports the new runtime with its next
 // request, and one that no longer has a runtime stops offering it.
 func (c *Client) ClaimDive(ctx context.Context, targetName string,
-	runtimes []string, into any) error {
+	runtimes []string, capacity Capacity, into any) error {
 	status, err := c.call(ctx, http.MethodPost, "/api/v1/runs/claim",
-		map[string]any{"targetId": targetName, "runtimes": runtimes}, into)
+		map[string]any{"targetId": targetName, "runtimes": runtimes,
+			"capacityCpu": capacity.CPU, "capacityMemoryBytes": capacity.MemoryBytes}, into)
 	if err != nil {
 		return err
 	}

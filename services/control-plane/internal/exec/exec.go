@@ -47,7 +47,11 @@ type Quota struct {
 	MaxCPU            float64   `json:"maxCpu"`
 	MaxMemoryBytes    int64     `json:"maxMemoryBytes"`
 	MaxGPU            int       `json:"maxGpu"`
-	UpdatedAt         time.Time `json:"updatedAt"`
+	// Dives, as distinct from jobs: how many at once, and how many GPU-hours
+	// in a day, counted over every card a dive held.
+	MaxConcurrentDives int     `json:"maxConcurrentDives"`
+	MaxGPUHoursDaily   float64 `json:"maxGpuHoursDaily"`
+	UpdatedAt          time.Time `json:"updatedAt"`
 }
 
 // JobState is where a job sits in its life.

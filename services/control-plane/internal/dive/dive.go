@@ -24,7 +24,9 @@ import (
 
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
 	"github.com/jalalirs/auv/services/control-plane/internal/domain"
+	"github.com/jalalirs/auv/services/control-plane/internal/exec"
 	"github.com/jalalirs/auv/services/control-plane/internal/ids"
+	"github.com/jalalirs/auv/services/control-plane/internal/reqctx"
 )
 
 // ── What a person brings ─────────────────────────────────────────────────────
@@ -43,8 +45,11 @@ type AutonomyStack struct {
 	Subscribes      json.RawMessage `json:"subscribes"`
 	Publishes       json.RawMessage `json:"publishes"`
 	WantsGPU        bool            `json:"wantsGpu"`
-	CreatedAt       time.Time       `json:"createdAt"`
-	CreatedBy       string          `json:"createdBy"`
+	// What it needs beside the simulator — gpu, gpuMemoryBytes, cpu,
+	// memoryBytes — written by whoever deployed it. What the scheduler places.
+	Needs     json.RawMessage `json:"needs"`
+	CreatedAt time.Time       `json:"createdAt"`
+	CreatedBy string          `json:"createdBy"`
 }
 
 // StackSpec describes autonomy to register.
@@ -57,6 +62,7 @@ type StackSpec struct {
 	Subscribes      json.RawMessage
 	Publishes       json.RawMessage
 	WantsGPU        bool
+	Needs           json.RawMessage
 	CreatedBy       string
 }
 
@@ -277,6 +283,12 @@ type Run struct {
 	DeviceID *string `json:"deviceId,omitempty"`
 	GPUShare float64 `json:"gpuShare"`
 
+	// What it was admitted needing, and where the scheduler put it — or where
+	// it stands in line. Filled by the store on every read, because "where is
+	// my dive" is the question a person asks while they wait.
+	Needs     Needs      `json:"needs"`
+	Placement *Placement `json:"placement,omitempty"`
+
 	RequestedAt    time.Time       `json:"requestedAt"`
 	RequestedBy    string          `json:"requestedBy"`
 	StartedAt      *time.Time      `json:"startedAt,omitempty"`
@@ -296,14 +308,14 @@ func NewStore(pool *db.Pool) *Store { return &Store{pool: pool} }
 
 const selectStack = `
 	SELECT id, org_id, slug, name, image_repository, image_digest,
-	       subscribes, publishes, wants_gpu, created_at, created_by
+	       subscribes, publishes, wants_gpu, needs, created_at, created_by
 	FROM dive.autonomy_stack`
 
 func scanStack(row interface{ Scan(...any) error }) (AutonomyStack, error) {
 	var stack AutonomyStack
 	err := row.Scan(&stack.ID, &stack.OrgID, &stack.Slug, &stack.Name,
 		&stack.ImageRepository, &stack.ImageDigest, &stack.Subscribes,
-		&stack.Publishes, &stack.WantsGPU, &stack.CreatedAt, &stack.CreatedBy)
+		&stack.Publishes, &stack.WantsGPU, &stack.Needs, &stack.CreatedAt, &stack.CreatedBy)
 	return stack, err
 }
 
@@ -319,15 +331,27 @@ func (s *Store) CreateStack(ctx context.Context, conn db.Conn, spec StackSpec) (
 	if len(publishes) == 0 {
 		publishes = json.RawMessage(`[]`)
 	}
+	needs := spec.Needs
+	if len(needs) == 0 || string(needs) == "null" {
+		needs = json.RawMessage(`{}`)
+	} else {
+		var part Part
+		if err := json.Unmarshal(needs, &part); err != nil {
+			return AutonomyStack{}, fmt.Errorf("%w: the stack's needs could not be read: %v", domain.ErrInvalid, err)
+		}
+		if part.GPUMemoryBytes < 0 || part.CPU < 0 || part.MemoryBytes < 0 {
+			return AutonomyStack{}, fmt.Errorf("%w: a need is not negative", domain.ErrInvalid)
+		}
+	}
 
 	id := ids.New(ids.KindStack)
 	_, err := conn.Exec(ctx, `
 		INSERT INTO dive.autonomy_stack
 		    (id, org_id, slug, name, image_repository, image_digest,
-		     subscribes, publishes, wants_gpu, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		     subscribes, publishes, wants_gpu, needs, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		id, spec.OrgID, spec.Slug, spec.Name, spec.ImageRepository,
-		spec.ImageDigest, subscribes, publishes, spec.WantsGPU, spec.CreatedBy)
+		spec.ImageDigest, subscribes, publishes, spec.WantsGPU, needs, spec.CreatedBy)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return AutonomyStack{}, fmt.Errorf("%w: this organisation already has a stack named %q",
@@ -546,25 +570,31 @@ type RunSpec struct {
 	RuntimeVersion string
 	GPUShare       float64
 	RequestedBy    string
+	// What the request says the dive needs, over what the platform would
+	// assemble from its parts. Optional.
+	Needs json.RawMessage
 }
 
 const selectRun = `
 	SELECT id, dive_id, queue_id, mode, state, city_digest, vehicle_digest,
 	       conditions_digest, autonomy_digest, seed, runtime_version, device_id,
 	       gpu_share, requested_at, requested_by, started_at, ended_at,
-	       lease_expires_at, outcome, failure_reason
+	       lease_expires_at, outcome, failure_reason, needs
 	FROM dive.run`
 
 func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 	var run Run
-	var city, vehicle, conditions []byte
+	var city, vehicle, conditions, needs []byte
 	err := row.Scan(&run.ID, &run.DiveID, &run.QueueID, &run.Mode, &run.State,
 		&city, &vehicle, &conditions, &run.AutonomyDigest, &run.Seed,
 		&run.RuntimeVersion, &run.DeviceID, &run.GPUShare, &run.RequestedAt,
 		&run.RequestedBy, &run.StartedAt, &run.EndedAt, &run.LeaseExpiresAt,
-		&run.Outcome, &run.FailureReason)
+		&run.Outcome, &run.FailureReason, &needs)
 	if err != nil {
 		return Run{}, err
+	}
+	if len(needs) > 0 {
+		_ = json.Unmarshal(needs, &run.Needs)
 	}
 	if run.CityDigest, err = domain.DigestFromBytes(city); err != nil {
 		return Run{}, err
@@ -578,12 +608,18 @@ func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 	return run, nil
 }
 
-// RequestRun admits an execution of a dive.
+// RequestRun admits an execution of a dive, or refuses it with the reason.
 //
 // Every determinant is copied here rather than referenced, so that editing the
 // dive afterwards cannot change what this result means. A run whose city or
 // vehicle version is unpublished is refused: a draft can still be rewritten,
 // and a result pinned to something rewritable is not a result.
+//
+// Then the scheduler's part. The dive's needs are assembled from its parts and
+// held against the queue: a queue that is draining, hosts that do not offer
+// the runtime, an institution at its quota, or cards that could never take the
+// dive are refusals, written down with the reason. A dive that could fit but
+// not now is admitted and queued, and told its place in line.
 func (s *Store) RequestRun(ctx context.Context, conn db.Conn, spec RunSpec) (Run, error) {
 	if _, err := ParseMode(string(spec.Mode)); err != nil {
 		return Run{}, err
@@ -630,15 +666,43 @@ func (s *Store) RequestRun(ctx context.Context, conn db.Conn, spec RunSpec) (Run
 		return Run{}, err
 	}
 
+	// What the dive needs, from what it is made of.
+	var orgID string
+	var stackNeeds []byte
+	var wantsGPU *bool
+	var stackID *string
+	err = conn.QueryRow(ctx, `
+		SELECT d.org_id, d.autonomy_stack_id, s.needs, s.wants_gpu
+		  FROM dive.dive d
+		  LEFT JOIN dive.autonomy_stack s ON s.id = d.autonomy_stack_id
+		 WHERE d.id = $1`, spec.DiveID).Scan(&orgID, &stackID, &stackNeeds, &wantsGPU)
+	if err != nil {
+		return Run{}, fmt.Errorf("%w: the dive does not exist", domain.ErrInvalid)
+	}
+	needs, err := NeedsFor(spec.Mode, stackNeeds, wantsGPU != nil && *wantsGPU, spec.Needs, stackID != nil)
+	if err != nil {
+		return Run{}, err
+	}
+	encodedNeeds, err := json.Marshal(needs)
+	if err != nil {
+		return Run{}, fmt.Errorf("encoding what the dive needs: %w", err)
+	}
+
+	if refusal, err := s.consider(ctx, conn, spec, orgID, needs); err != nil {
+		return Run{}, err
+	} else if refusal != nil {
+		return Run{}, &Refused{Refusal: refusal, OrgID: orgID, PrincipalID: spec.RequestedBy}
+	}
+
 	id := ids.New(ids.KindRun)
 	_, err = conn.Exec(ctx, `
 		INSERT INTO dive.run
 		    (id, dive_id, queue_id, mode, city_digest, vehicle_digest,
 		     conditions_digest, autonomy_digest, seed, runtime_version,
-		     gpu_share, requested_by)
+		     gpu_share, requested_by, needs)
 		SELECT $1, d.id, $2, $3::dive.run_mode,
 		       city.digest, vehicle.digest, $4, stack.image_digest,
-		       $5, $6, $7, $8
+		       $5, $6, $7, $8, $10
 		  FROM dive.dive d
 		  JOIN catalog.version city ON city.id = d.city_version_id
 		  JOIN catalog.version vehicle ON vehicle.id = d.vehicle_version_id
@@ -647,7 +711,7 @@ func (s *Store) RequestRun(ctx context.Context, conn db.Conn, spec RunSpec) (Run
 		   AND city.published_at IS NOT NULL
 		   AND vehicle.published_at IS NOT NULL`,
 		id, spec.QueueID, string(spec.Mode), conditionsDigest[:], seed, spec.RuntimeVersion,
-		share, spec.RequestedBy, spec.DiveID)
+		share, spec.RequestedBy, spec.DiveID, encodedNeeds)
 	if err != nil {
 		return Run{}, fmt.Errorf("requesting a run: %w", err)
 	}
@@ -658,13 +722,254 @@ func (s *Store) RequestRun(ctx context.Context, conn db.Conn, spec RunSpec) (Run
 			"%w: the dive does not exist, or its city or vehicle version is not published",
 			domain.ErrInvalid)
 	}
+	run.Placement, err = s.placementOn(ctx, conn, run)
+	if err != nil {
+		return Run{}, err
+	}
 	return run, nil
+}
+
+// consider is the scheduler's part of admission: whether this dive could be
+// placed on this queue at all, and whether its institution may have it.
+func (s *Store) consider(ctx context.Context, conn db.Conn, spec RunSpec, orgID string,
+	needs Needs) (*exec.Refusal, error) {
+	var draining bool
+	var runtimes []string
+	err := conn.QueryRow(ctx, `
+		SELECT q.draining,
+		       coalesce((SELECT array_agg(DISTINCT runtime)
+		                   FROM compute.device d
+		                   JOIN exec.target t ON t.id = d.target_id
+		                   CROSS JOIN LATERAL unnest(t.runtimes) AS runtime
+		                  WHERE d.queue_id = q.id AND d.enabled), '{}')
+		  FROM compute.queue q WHERE q.id = $1`, spec.QueueID).Scan(&draining, &runtimes)
+	if err != nil {
+		return nil, fmt.Errorf("%w: that queue does not exist", domain.ErrInvalid)
+	}
+	if draining {
+		return &exec.Refusal{Reason: exec.QueueDraining}, nil
+	}
+	if !slices.Contains(runtimes, spec.RuntimeVersion) {
+		return &exec.Refusal{Reason: exec.RuntimeUnavailable, Detail: map[string]any{
+			"runtime": spec.RuntimeVersion, "offered": runtimes}}, nil
+	}
+
+	// The institution's quota, locked so two requests at once cannot both be
+	// the last one allowed.
+	var maxDives int
+	var maxHours float64
+	err = conn.QueryRow(ctx, `
+		SELECT max_concurrent_dives, max_gpu_hours_daily
+		  FROM exec.quota WHERE org_id = $1 FOR UPDATE`, orgID).Scan(&maxDives, &maxHours)
+	if err != nil {
+		if db.Translate(err) == db.ErrNotFound {
+			return &exec.Refusal{Reason: exec.OrganisationHasNoQuota}, nil
+		}
+		return nil, fmt.Errorf("reading the quota: %w", err)
+	}
+	var inFlight int
+	var hoursToday float64
+	err = conn.QueryRow(ctx, `
+		SELECT count(*) FILTER (WHERE r.state IN ('queued', 'preparing', 'running')),
+		       coalesce(sum(
+		           greatest(1, (SELECT count(DISTINCT device_id) FROM dive.hold h WHERE h.run_id = r.id))
+		           * extract(epoch FROM (coalesce(r.ended_at, now()) - coalesce(r.started_at, r.requested_at))) / 3600.0
+		       ) FILTER (WHERE r.started_at IS NOT NULL
+		                   AND coalesce(r.ended_at, now()) > now() - interval '24 hours'), 0)
+		  FROM dive.run r JOIN dive.dive d ON d.id = r.dive_id
+		 WHERE d.org_id = $1`, orgID).Scan(&inFlight, &hoursToday)
+	if err != nil {
+		return nil, fmt.Errorf("reading what the institution has in flight: %w", err)
+	}
+	if inFlight+1 > maxDives {
+		return &exec.Refusal{Reason: exec.QuotaDivesExhausted, Detail: map[string]any{
+			"inFlight": inFlight, "limit": maxDives}}, nil
+	}
+	if hoursToday >= maxHours {
+		return &exec.Refusal{Reason: exec.QuotaGPUHoursExhausted, Detail: map[string]any{
+			"usedHours": fmt.Sprintf("%.1f", hoursToday), "limit": maxHours}}, nil
+	}
+
+	// Whether any host on this queue could ever take it.
+	cards, hosts, err := cardsOnQueue(ctx, conn, spec.QueueID)
+	if err != nil {
+		return nil, err
+	}
+	if len(cards) == 0 {
+		return &exec.Refusal{Reason: exec.NoDeviceFits, Detail: map[string]any{
+			"why": "the queue has no devices"}}, nil
+	}
+	var why string
+	for target, host := range hosts {
+		var mine []Card
+		for _, card := range cards {
+			if card.TargetID == target {
+				mine = append(mine, card)
+			}
+		}
+		fits, reason := CouldEverFit(needs, mine, host)
+		if fits {
+			return nil, nil
+		}
+		why = reason
+	}
+	return &exec.Refusal{Reason: exec.NoDeviceFits, Detail: map[string]any{
+		"why": why, "needs": needs}}, nil
+}
+
+// cardsOnQueue is every device on a queue and the host each sits on, with
+// what is held on them now.
+func cardsOnQueue(ctx context.Context, conn db.Conn, queueID string) ([]Card, map[string]Host, error) {
+	rows, err := conn.Query(ctx, `
+		SELECT d.id, d.target_id, d.device_index, d.uuid, d.model, d.memory_bytes, d.enabled,
+		       coalesce((SELECT sum(h.gpu_memory_bytes) FROM dive.hold h
+		                   JOIN dive.run r ON r.id = h.run_id
+		                  WHERE h.device_id = d.id AND r.state IN ('preparing', 'running')), 0),
+		       t.capacity_cpu, t.capacity_memory_bytes, t.enabled
+		  FROM compute.device d
+		  JOIN exec.target t ON t.id = d.target_id
+		 WHERE d.queue_id = $1
+		 ORDER BY d.target_id, d.device_index`, queueID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading the queue's devices: %w", err)
+	}
+	defer rows.Close()
+	cards := []Card{}
+	hosts := map[string]Host{}
+	for rows.Next() {
+		var card Card
+		var cpu float64
+		var memory int64
+		var targetEnabled bool
+		if err := rows.Scan(&card.ID, &card.TargetID, &card.Index, &card.UUID, &card.Model,
+			&card.MemoryBytes, &card.Enabled, &card.HeldBytes, &cpu, &memory, &targetEnabled); err != nil {
+			return nil, nil, err
+		}
+		card.Enabled = card.Enabled && targetEnabled
+		cards = append(cards, card)
+		if _, seen := hosts[card.TargetID]; !seen {
+			hosts[card.TargetID] = Host{CPU: cpu, MemoryBytes: memory}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	// What each host already carries, from the needs of the runs on it.
+	for target := range hosts {
+		held, err := conn.Query(ctx, `
+			SELECT DISTINCT r.id, r.needs FROM dive.run r
+			  JOIN dive.hold h ON h.run_id = r.id
+			  JOIN compute.device d ON d.id = h.device_id
+			 WHERE d.target_id = $1 AND r.state IN ('preparing', 'running')`, target)
+		if err != nil {
+			return nil, nil, fmt.Errorf("reading what a host carries: %w", err)
+		}
+		host := hosts[target]
+		for held.Next() {
+			var id string
+			var raw []byte
+			if err := held.Scan(&id, &raw); err != nil {
+				held.Close()
+				return nil, nil, err
+			}
+			var needs Needs
+			_ = json.Unmarshal(raw, &needs)
+			host.HeldCPU += needs.CPU()
+			host.HeldMemoryBytes += needs.MemoryBytes()
+		}
+		held.Close()
+		hosts[target] = host
+	}
+	return cards, hosts, nil
+}
+
+// Refused is a dive the scheduler declined, with who asked and for whom, so
+// that it can be written down after the transaction that declined it has
+// rolled back — a refusal recorded inside that transaction is a refusal
+// recorded nowhere.
+type Refused struct {
+	Refusal     *exec.Refusal
+	OrgID       string
+	PrincipalID string
+}
+
+func (r *Refused) Error() string { return r.Refusal.Error() }
+func (r *Refused) Unwrap() error { return r.Refusal }
+
+// RecordRefusal writes a refusal where refused jobs are written.
+func (s *Store) RecordRefusal(ctx context.Context, conn db.Conn, refused *Refused) error {
+	refusal := refused.Refusal
+	detail := refusal.Detail
+	if detail == nil {
+		detail = map[string]any{}
+	}
+	encoded, err := json.Marshal(detail)
+	if err != nil {
+		return fmt.Errorf("recording a refusal: %w", err)
+	}
+	if _, err := conn.Exec(ctx, `
+		INSERT INTO exec.refusal (id, org_id, principal_id, reason, detail, request_id)
+		VALUES ($1, $2, $3, $4::exec.refusal_reason, $5, $6)`,
+		ids.New(ids.KindRefusal), refused.OrgID, refused.PrincipalID,
+		string(refusal.Reason), encoded, reqctx.RequestID(ctx)); err != nil {
+		return fmt.Errorf("recording a refusal: %w", err)
+	}
+	return nil
+}
+
+// placementOn says where a run stands: held on which cards of which host, or
+// where in line and waiting for what.
+func (s *Store) placementOn(ctx context.Context, conn db.Conn, run Run) (*Placement, error) {
+	placement := &Placement{Holds: []Hold{}}
+	switch {
+	case run.State == Queued:
+		placement.State = "queued"
+		var ahead int
+		if err := conn.QueryRow(ctx, `
+			SELECT count(*) FROM dive.run
+			 WHERE queue_id = $1 AND state = 'queued' AND requested_at < $2`,
+			run.QueueID, run.RequestedAt).Scan(&ahead); err != nil {
+			return nil, fmt.Errorf("counting the line: %w", err)
+		}
+		placement.Ahead = ahead
+		placement.Position = ahead + 1
+		placement.WaitingFor = WaitingFor(run.Needs)
+		return placement, nil
+	case run.State.Finished():
+		placement.State = "over"
+	default:
+		placement.State = "placed"
+	}
+	rows, err := conn.Query(ctx, `
+		SELECT h.part, h.device_id, d.device_index, d.uuid, d.model, h.gpu_memory_bytes, t.name
+		  FROM dive.hold h
+		  JOIN compute.device d ON d.id = h.device_id
+		  JOIN exec.target t ON t.id = d.target_id
+		 WHERE h.run_id = $1
+		 ORDER BY h.part DESC`, run.ID)
+	if err != nil {
+		return nil, fmt.Errorf("reading what a run holds: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var hold Hold
+		if err := rows.Scan(&hold.Part, &hold.DeviceID, &hold.DeviceIndex, &hold.DeviceUUID,
+			&hold.Model, &hold.GPUMemoryBytes, &placement.Target); err != nil {
+			return nil, err
+		}
+		placement.Holds = append(placement.Holds, hold)
+	}
+	return placement, rows.Err()
 }
 
 // Run reads one run.
 func (s *Store) Run(ctx context.Context, id string) (Run, error) {
 	run, err := scanRun(s.pool.QueryRow(ctx, selectRun+` WHERE id = $1`, id))
-	return run, db.Translate(err)
+	if err != nil {
+		return Run{}, db.Translate(err)
+	}
+	run.Placement, err = s.placementOn(ctx, s.pool, run)
+	return run, err
 }
 
 // Runs lists a dive's executions, newest first.
@@ -683,7 +988,18 @@ func (s *Store) Runs(ctx context.Context, diveID string) ([]Run, error) {
 		}
 		runs = append(runs, run)
 	}
-	return runs, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	for i := range runs {
+		placement, err := s.placementOn(ctx, s.pool, runs[i])
+		if err != nil {
+			return nil, err
+		}
+		runs[i].Placement = placement
+	}
+	return runs, nil
 }
 
 // ── Running one ──────────────────────────────────────────────────────────────
@@ -708,8 +1024,17 @@ type Claimed struct {
 	Subscribes     json.RawMessage `json:"autonomySubscribes,omitempty"`
 	Publishes      json.RawMessage `json:"autonomyPublishes,omitempty"`
 
+	// The simulator's card, as it always was, and everything the run holds:
+	// the controller's card may be the same one or another.
 	DeviceIndex int    `json:"deviceIndex"`
 	DeviceUUID  string `json:"deviceUuid"`
+	Holds       []Hold `json:"holds"`
+	Needs       Needs  `json:"needs"`
+
+	// The run's slot on its host: the lowest not held by another dive there.
+	// The DDS domain and the stream port come from it, so two dives sharing
+	// a card neither hear nor watch each other.
+	Slot int `json:"slot"`
 
 	// Two dives on one host must not hear each other over DDS, and a domain is
 	// how that is arranged. Derived from the device rather than drawn, so a run
@@ -717,81 +1042,200 @@ type Claimed struct {
 	ROSDomainID int `json:"rosDomainId"`
 }
 
-// ClaimNext takes the oldest queued run this target can run, and holds a device
-// for it.
+// ClaimNext takes the oldest queued run this host can place now, and holds
+// what it needs.
 //
-// The device is chosen and locked in the same statement that admits the run, so
-// two agents asking at the same moment cannot both be told yes. The unique
-// index on running runs is the second line of defence; this is the first.
+// The host's cards are locked first, so two agents on one host asking at the
+// same moment cannot both be told yes; hosts do not share cards, so agents on
+// different hosts do not wait on each other. Then the queued runs on this
+// host's queues are tried oldest first, and the first that fits is placed: a
+// hold per part, the simulator's card recorded on the run as it always was.
 //
 // Returns db.ErrNotFound when there is nothing to do, which is the ordinary
 // case and not an error.
 func (s *Store) ClaimNext(ctx context.Context, conn db.Conn, targetName string,
 	lease time.Duration) (Claimed, error) {
 	var claimed Claimed
-	var runID, deviceID string
 
-	err := conn.QueryRow(ctx, `
-		WITH candidate AS (
-		    SELECT r.id AS run_id, d.id AS device_id
-		      FROM dive.run r
-		      JOIN compute.queue q ON q.id = r.queue_id
-		      JOIN compute.device d ON d.queue_id = q.id
-		      JOIN exec.target t ON t.id = d.target_id
-		     WHERE r.state = 'queued'
-		       -- An agent knows the name of the host it runs on, not the
-		       -- identifier the platform gave it, so the name is what it says.
-		       AND t.name = $1
-		       AND t.enabled
-		       AND d.enabled
-		       AND NOT q.draining
-		       AND NOT EXISTS (
-		           SELECT 1 FROM dive.run held
-		            WHERE held.device_id = d.id
-		              AND held.state IN ('preparing', 'running'))
-		     ORDER BY r.requested_at
-		     LIMIT 1
-		     FOR UPDATE OF r, d SKIP LOCKED
-		)
-		UPDATE dive.run
-		   SET state = 'preparing',
-		       device_id = candidate.device_id,
-		       lease_expires_at = now() + $2::interval
-		  FROM candidate
-		 WHERE dive.run.id = candidate.run_id
-		RETURNING dive.run.id, candidate.device_id`,
-		targetName, lease.String()).Scan(&runID, &deviceID)
+	// The host's cards, locked, with what is held on them.
+	rows, err := conn.Query(ctx, `
+		SELECT d.id, d.queue_id, d.target_id, d.device_index, d.uuid, d.model, d.memory_bytes,
+		       d.enabled AND t.enabled AND NOT q.draining,
+		       t.capacity_cpu, t.capacity_memory_bytes
+		  FROM compute.device d
+		  JOIN exec.target t ON t.id = d.target_id
+		  JOIN compute.queue q ON q.id = d.queue_id
+		 WHERE t.name = $1
+		 ORDER BY d.device_index
+		 FOR UPDATE OF d`, targetName)
 	if err != nil {
-		return Claimed{}, db.Translate(err)
+		return Claimed{}, fmt.Errorf("locking the host's cards: %w", err)
 	}
+	cards := []Card{}
+	queues := map[string][]Card{}
+	host := Host{}
+	for rows.Next() {
+		var card Card
+		var queueID string
+		if err := rows.Scan(&card.ID, &queueID, &card.TargetID, &card.Index, &card.UUID, &card.Model,
+			&card.MemoryBytes, &card.Enabled, &host.CPU, &host.MemoryBytes); err != nil {
+			rows.Close()
+			return Claimed{}, err
+		}
+		cards = append(cards, card)
+		queues[queueID] = append(queues[queueID], card)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return Claimed{}, err
+	}
+	if len(cards) == 0 {
+		return Claimed{}, db.ErrNotFound
+	}
+	held, err := conn.Query(ctx, `
+		SELECT h.device_id, h.gpu_memory_bytes, r.id, r.needs
+		  FROM dive.hold h
+		  JOIN dive.run r ON r.id = h.run_id
+		  JOIN compute.device d ON d.id = h.device_id
+		  JOIN exec.target t ON t.id = d.target_id
+		 WHERE t.name = $1 AND r.state IN ('preparing', 'running')`, targetName)
+	if err != nil {
+		return Claimed{}, fmt.Errorf("reading what the host carries: %w", err)
+	}
+	counted := map[string]bool{}
+	for held.Next() {
+		var deviceID, runID string
+		var bytes int64
+		var raw []byte
+		if err := held.Scan(&deviceID, &bytes, &runID, &raw); err != nil {
+			held.Close()
+			return Claimed{}, err
+		}
+		for i := range cards {
+			if cards[i].ID == deviceID {
+				cards[i].HeldBytes += bytes
+			}
+		}
+		for queueID := range queues {
+			for i := range queues[queueID] {
+				if queues[queueID][i].ID == deviceID {
+					queues[queueID][i].HeldBytes += bytes
+				}
+			}
+		}
+		if !counted[runID] {
+			counted[runID] = true
+			var needs Needs
+			_ = json.Unmarshal(raw, &needs)
+			host.HeldCPU += needs.CPU()
+			host.HeldMemoryBytes += needs.MemoryBytes()
+		}
+	}
+	held.Close()
+
+	// The line, oldest first, on the queues this host serves.
+	queueIDs := make([]string, 0, len(queues))
+	for id := range queues {
+		queueIDs = append(queueIDs, id)
+	}
+	waiting, err := conn.Query(ctx, `
+		SELECT r.id, r.queue_id, r.needs
+		  FROM dive.run r
+		 WHERE r.state = 'queued' AND r.queue_id = ANY($1)
+		 ORDER BY r.requested_at
+		 FOR UPDATE OF r SKIP LOCKED`, queueIDs)
+	if err != nil {
+		return Claimed{}, fmt.Errorf("reading the line: %w", err)
+	}
+	var runID string
+	var holds []Hold
+	for waiting.Next() {
+		var id, queueID string
+		var raw []byte
+		if err := waiting.Scan(&id, &queueID, &raw); err != nil {
+			waiting.Close()
+			return Claimed{}, err
+		}
+		var needs Needs
+		_ = json.Unmarshal(raw, &needs)
+		if placed, ok := Place(needs, queues[queueID], host); ok {
+			runID, holds = id, placed
+			break
+		}
+	}
+	waiting.Close()
+	if runID == "" {
+		return Claimed{}, db.ErrNotFound
+	}
+
+	simulator := holds[0]
+	for _, hold := range holds {
+		if _, err := conn.Exec(ctx, `
+			INSERT INTO dive.hold (run_id, device_id, part, gpu_memory_bytes)
+			VALUES ($1, $2, $3, $4)`, runID, hold.DeviceID, hold.Part, hold.GPUMemoryBytes); err != nil {
+			return Claimed{}, fmt.Errorf("holding a card: %w", err)
+		}
+	}
+	// The lowest slot no other dive on this host holds.
+	taken, err := conn.Query(ctx, `
+		SELECT DISTINCT r.host_slot FROM dive.run r
+		  JOIN compute.device d ON d.id = r.device_id
+		  JOIN exec.target t ON t.id = d.target_id
+		 WHERE t.name = $1 AND r.state IN ('preparing', 'running') AND r.host_slot IS NOT NULL`, targetName)
+	if err != nil {
+		return Claimed{}, fmt.Errorf("reading the host's slots: %w", err)
+	}
+	used := map[int]bool{}
+	for taken.Next() {
+		var slot int
+		if err := taken.Scan(&slot); err != nil {
+			taken.Close()
+			return Claimed{}, err
+		}
+		used[slot] = true
+	}
+	taken.Close()
+	slot := 0
+	for used[slot] {
+		slot++
+	}
+	if _, err := conn.Exec(ctx, `
+		UPDATE dive.run
+		   SET state = 'preparing', device_id = $2, host_slot = $4,
+		       lease_expires_at = now() + $3::interval
+		 WHERE id = $1`, runID, simulator.DeviceID, lease.String(), slot); err != nil {
+		return Claimed{}, fmt.Errorf("admitting the run: %w", err)
+	}
+	claimed.Slot = slot
 
 	if claimed.Run, err = scanRun(conn.QueryRow(ctx, selectRun+` WHERE id = $1`, runID)); err != nil {
 		return Claimed{}, err
 	}
+	claimed.Holds = holds
+	claimed.Needs = claimed.Run.Needs
+	claimed.DeviceIndex = simulator.DeviceIndex
+	claimed.DeviceUUID = simulator.DeviceUUID
 
 	var stackImage, stackDigest *string
 	var wantsGPU *bool
 	var subscribes, publishes []byte
 	err = conn.QueryRow(ctx, `
 		SELECT d.city_version_id, d.vehicle_version_id, d.initial_state, d.objective,
-		       s.image_repository, s.image_digest, s.wants_gpu, s.subscribes, s.publishes,
-		       dev.device_index, dev.uuid
+		       s.image_repository, s.image_digest, s.wants_gpu, s.subscribes, s.publishes
 		  FROM dive.dive d
 		  JOIN dive.run r ON r.dive_id = d.id
-		  JOIN compute.device dev ON dev.id = $2
 		  LEFT JOIN dive.autonomy_stack s ON s.id = d.autonomy_stack_id
-		 WHERE r.id = $1`, runID, deviceID).
+		 WHERE r.id = $1`, runID).
 		Scan(&claimed.CityVersionID, &claimed.VehicleVersionID,
 			&claimed.InitialState, &claimed.Objective,
-			&stackImage, &stackDigest, &wantsGPU, &subscribes, &publishes,
-			&claimed.DeviceIndex, &claimed.DeviceUUID)
+			&stackImage, &stackDigest, &wantsGPU, &subscribes, &publishes)
 	if err != nil {
 		return Claimed{}, fmt.Errorf("reading what the run needs: %w", err)
 	}
 	if stackImage != nil {
 		claimed.AutonomyImage = *stackImage
 		claimed.AutonomyDigest = *stackDigest
-		claimed.AutonomyGPU = *wantsGPU
+		claimed.AutonomyGPU = claimed.Needs.Controller != nil && claimed.Needs.Controller.GPU
 		claimed.Subscribes = subscribes
 		claimed.Publishes = publishes
 	}
@@ -803,10 +1247,10 @@ func (s *Store) ClaimNext(ctx context.Context, conn db.Conn, targetName string,
 		return Claimed{}, fmt.Errorf("reading the conditions: %w", err)
 	}
 
-	// Domains are 0–101 in the default DDS configuration; the device index
-	// keeps two dives on one host apart, and the offset leaves domain 0 for
-	// anything a person is running by hand.
-	claimed.ROSDomainID = 1 + (claimed.DeviceIndex % 100)
+	// Domains are 0–101 in the default DDS configuration; the slot keeps two
+	// dives on one host apart, and the offset leaves domain 0 for anything a
+	// person is running by hand.
+	claimed.ROSDomainID = 1 + (claimed.Slot % 100)
 	return claimed, nil
 }
 

@@ -51,6 +51,44 @@ type Claimed struct {
 	DeviceIndex int    `json:"deviceIndex"`
 	DeviceUUID  string `json:"deviceUuid"`
 	ROSDomainID int    `json:"rosDomainId"`
+
+	// Everything the run holds, per part. The simulator's card is DeviceIndex
+	// as it always was; the controller's may be another.
+	Holds []Hold `json:"holds"`
+	Needs Needs  `json:"needs"`
+	Slot  int    `json:"slot"`
+}
+
+// Hold is one part of the run on one card.
+type Hold struct {
+	Part           string `json:"part"`
+	DeviceIndex    int    `json:"deviceIndex"`
+	DeviceUUID     string `json:"deviceUuid"`
+	GPUMemoryBytes int64  `json:"gpuMemoryBytes"`
+}
+
+// Part is what one half of the dive needs of the machine.
+type Part struct {
+	GPU            bool    `json:"gpu"`
+	GPUMemoryBytes int64   `json:"gpuMemoryBytes"`
+	CPU            float64 `json:"cpu"`
+	MemoryBytes    int64   `json:"memoryBytes"`
+}
+
+// Needs is what the dive was admitted needing.
+type Needs struct {
+	Simulator  Part  `json:"simulator"`
+	Controller *Part `json:"controller"`
+}
+
+// controllerDevice is the card the controller was given, or -1 for none.
+func (c Claimed) controllerDevice() int {
+	for _, hold := range c.Holds {
+		if hold.Part == "controller" {
+			return hold.DeviceIndex
+		}
+	}
+	return -1
 }
 
 // Platform is what the diver needs from the control plane.
@@ -408,7 +446,9 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	// simulator only: it is ours, and the thing being kept from the outside is
 	// the autonomy, which stays on the internal network and nothing else.
 	watching := claimed.Run.Mode == "interactive"
-	signal := d.signalPort + claimed.DeviceIndex
+	// One port per dive on this host, from the slot the platform gave it; two
+	// simulators sharing a card would otherwise be watched on one port.
+	signal := d.signalPort + claimed.Slot
 	if watching {
 		simulator.Command = []string{"/isaac-sim/kit/kit"}
 		simulator.Args = []string{"/isaac-sim/apps/coral_city.kit", "--no-window"}
@@ -657,18 +697,21 @@ func (d *Diver) flyer(ctx context.Context, claimed Claimed, network, vehicleHost
 			"ROS_LOG_DIR=/tmp/ros",
 			"HOME=/tmp",
 		},
-		// Bounded, because a stack in a loop should not take the host down with
-		// it. A vehicle controller that needs more than this is doing something
-		// other than controlling a vehicle.
-		MemoryBytes: 4 << 30,
-		CPUs:        2,
+		// Bounded to what it was admitted needing, because a stack in a loop
+		// should not take the host down with it. What it was admitted needing
+		// is what its stack declared, or the platform's default of two
+		// processors and four gigabytes.
+		MemoryBytes: controllerMemory(claimed),
+		CPUs:        controllerCPUs(claimed),
 		// The dive's own network: the vehicle is on it, nothing else is, and
 		// being internal it has no route to the host and none back in.
 		Attach: network,
 	}
-	if claimed.AutonomyGPU {
-		// Inference needs a device, and on a single-GPU host it shares the one
-		// the simulator is using rather than taking a second.
+	if device := claimed.controllerDevice(); device >= 0 {
+		// Inference needs a card, and the scheduler said which: the
+		// simulator's when it fits beside it, another when it does not.
+		spec.GPUs = []string{fmt.Sprint(device)}
+	} else if claimed.AutonomyGPU {
 		spec.GPUs = []string{fmt.Sprint(claimed.DeviceIndex)}
 	}
 
@@ -694,9 +737,24 @@ func (d *Diver) flyer(ctx context.Context, claimed Claimed, network, vehicleHost
 	log.Info("autonomy flying", "image", image, "container", id[:12])
 	_ = d.platform.Record(ctx, claimed.Run.ID, "autonomy_started", nil, map[string]any{
 		"image": claimed.AutonomyImage, "digest": claimed.AutonomyDigest,
-		"rosDomainId": claimed.ROSDomainID, "gpu": claimed.AutonomyGPU,
+		"rosDomainId": claimed.ROSDomainID, "gpu": len(spec.GPUs) > 0,
+		"device": claimed.controllerDevice(), "cpus": spec.CPUs, "memoryBytes": spec.MemoryBytes,
 	})
 	return id, nil
+}
+
+func controllerMemory(claimed Claimed) int64 {
+	if claimed.Needs.Controller != nil && claimed.Needs.Controller.MemoryBytes > 0 {
+		return claimed.Needs.Controller.MemoryBytes
+	}
+	return 4 << 30
+}
+
+func controllerCPUs(claimed Claimed) float64 {
+	if claimed.Needs.Controller != nil && claimed.Needs.Controller.CPU > 0 {
+		return claimed.Needs.Controller.CPU
+	}
+	return 2
 }
 
 // landFlyer stops the autonomy container and keeps what it said.

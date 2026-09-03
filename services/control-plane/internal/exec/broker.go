@@ -33,6 +33,15 @@ const (
 	NoTargetHasCapacity          ReasonCode = "no_target_has_capacity"
 	NoTargetEnabled              ReasonCode = "no_target_enabled"
 	OrganisationHasNoQuota       ReasonCode = "organisation_has_no_quota"
+
+	// Dives. A dive is refused when no card on its queue could ever take it,
+	// when the queue is draining, when no host behind it offers the runtime,
+	// or when its institution is at its limit of dives or of GPU-hours.
+	NoDeviceFits           ReasonCode = "no_device_fits"
+	QueueDraining          ReasonCode = "queue_draining"
+	RuntimeUnavailable     ReasonCode = "runtime_unavailable"
+	QuotaDivesExhausted    ReasonCode = "quota_dives_exhausted"
+	QuotaGPUHoursExhausted ReasonCode = "quota_gpu_hours_exhausted"
 )
 
 // Explain renders a reason as a sentence a person can act on.
@@ -56,6 +65,21 @@ func (c ReasonCode) Explain(detail map[string]any) string {
 		return "no execution target is currently enabled"
 	case OrganisationHasNoQuota:
 		return "your organisation has no compute quota, so no work can be admitted for it"
+	case NoDeviceFits:
+		if why, ok := detail["why"].(string); ok && why != "" {
+			return "this dive fits nowhere on that queue: " + why
+		}
+		return "this dive fits nowhere on that queue"
+	case QueueDraining:
+		return "that queue is being drained and takes nothing new"
+	case RuntimeUnavailable:
+		return fmt.Sprintf("no host on that queue offers the runtime %v", detail["runtime"])
+	case QuotaDivesExhausted:
+		return fmt.Sprintf("your institution already has %v dives in flight, which is its limit of %v",
+			detail["inFlight"], detail["limit"])
+	case QuotaGPUHoursExhausted:
+		return fmt.Sprintf("your institution has used %v GPU-hours in the last day, which is its limit of %v",
+			detail["usedHours"], detail["limit"])
 	default:
 		return string(c)
 	}
