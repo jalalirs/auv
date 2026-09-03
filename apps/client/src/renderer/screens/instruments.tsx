@@ -9,7 +9,7 @@
 // worse than one that has fewer of them, because the whole purpose of the thing
 // is to be believed about what happened.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export interface Topic {
   name: string;
@@ -242,6 +242,16 @@ function ControllerPanel({ helm, onTune, onHoldHere, onEngage }: {
   onHoldHere: () => void;
   onEngage: (controller: string) => void;
 }): React.JSX.Element {
+  // Which entries are open is yours, not the vehicle's. Bound to who was
+  // flying, the panels folded and unfolded on every hand-over — twenty times
+  // a second while a key was held. The first one flying starts open; after
+  // that, what you opened stays open.
+  const [opened, setOpened] = useState<Record<string, boolean> | undefined>();
+  useEffect(() => {
+    if (opened === undefined && helm !== undefined) {
+      setOpened(Object.fromEntries(helm.controllers.map((c) => [c.name, c.name === helm.flying])));
+    }
+  }, [helm, opened]);
   if (helm === undefined) return <p className="none">The vehicle has not said who flies it.</p>;
   return (
     <div className="helm">
@@ -249,7 +259,9 @@ function ControllerPanel({ helm, onTune, onHoldHere, onEngage }: {
         const flying = one.name === helm.flying;
         const status = one.status ?? {};
         return (
-          <details key={one.name} className={`controller${flying ? " flying" : ""}`} open={flying}>
+          <details key={one.name} className={`controller${flying ? " flying" : ""}`}
+                   open={opened?.[one.name] ?? flying}
+                   onToggle={(e) => setOpened((was) => ({ ...(was ?? {}), [one.name]: (e.target as HTMLDetailsElement).open }))}>
             <summary>
               <span className="dot" />
               <strong>{one.name}</strong>
