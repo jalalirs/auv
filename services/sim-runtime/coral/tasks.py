@@ -241,13 +241,20 @@ class Transect(Task):
 
 
 class Survey(Task):
+    """Cover a rectangle. What counts as seen is what the camera's footprint
+    on the bottom covered at each pose — derived from the poses and the
+    camera, not asserted — when the vehicle carries a camera the catalogue
+    describes; a fixed swath otherwise."""
+
     kind = "survey"
     name = "Survey"
 
     CELL = 0.5
 
-    def __init__(self, objective, began_at, heading) -> None:
+    def __init__(self, objective, began_at, heading, camera: dict | None = None) -> None:
         super().__init__(objective, began_at, heading)
+        self.camera = camera
+        self.half_angle = footprint_half_angle(camera)
         self.width = float(objective.get("widthM", 20.0))     # along the heading
         self.height = float(objective.get("heightM", 10.0))   # to starboard
         self.altitude = float(objective.get("altitudeM", 2.0))
@@ -268,7 +275,14 @@ class Survey(Task):
         rel = position[:2] - self.began_at[:2]
         along = float(np.dot(rel, self.u))
         across = float(np.dot(rel, self.v))
-        half = self.swath / 2.0
+        # The footprint on the bottom from this altitude, when a camera is
+        # known; the declared swath when it is not.
+        if self.half_angle is not None:
+            half = max(0.25, min(10.0, self.altitude_now * math.tan(self.half_angle)))
+            self.swath_now = 2.0 * half
+        else:
+            half = self.swath / 2.0
+            self.swath_now = self.swath
         c0 = max(0, int((along - half) / self.CELL))
         c1 = min(self.columns, int((along + half) / self.CELL) + 1)
         r0 = max(0, int((across - half) / self.CELL))
@@ -286,7 +300,8 @@ class Survey(Task):
 
     def detail(self) -> dict:
         return {"fractionSeen": round(self.score(), 3), "widthM": self.width, "heightM": self.height,
-                "altitudeM": self.altitude, "swathM": self.swath}
+                "altitudeM": self.altitude, "swathM": round(getattr(self, "swath_now", self.swath), 2),
+                "swathFrom": "camera footprint" if self.half_angle is not None else "declared"}
 
     def geometry(self) -> dict:
         corners = []
@@ -363,7 +378,25 @@ TASKS = {"hold-station": HoldStation, "waypoints": Waypoints, "transect": Transe
          "survey": Survey, "return": Return}
 
 
-def task_for(objective, began_at, heading: float) -> Task | None:
+def footprint_half_angle(camera: dict | None) -> float | None:
+    """Half the camera's horizontal field of view, in radians, or None.
+
+    From the catalogue's field of view where it states one, else from the
+    focal length as a 36 mm-equivalent — which is what a focal length on its
+    own means to anybody reading it.
+    """
+    if not camera:
+        return None
+    fov = camera.get("horizontalFovDeg")
+    if fov:
+        return math.radians(float(fov)) / 2.0
+    focal = camera.get("focalLengthMm")
+    if focal:
+        return math.atan(18.0 / float(focal))
+    return None
+
+
+def task_for(objective, began_at, heading: float, camera: dict | None = None) -> Task | None:
     """The task an objective asks for, or None when the dive is only flown."""
     if not isinstance(objective, dict) or not objective:
         return None
@@ -373,4 +406,6 @@ def task_for(objective, began_at, heading: float) -> Task | None:
     made = TASKS.get(kind)
     if made is None:
         return None
+    if made is Survey:
+        return Survey(objective, began_at, heading, camera=camera)
     return made(objective, began_at, heading)

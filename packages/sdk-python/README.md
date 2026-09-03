@@ -93,6 +93,22 @@ publishes `/cmd_vel` or `/thruster_cmd`, and declares each tunable as a
 parameter with a floating-point range. Any ROS 2 tool can move them; the
 platform's console does.
 
+## What a dive leaves behind
+
+A dive that is for something records as it runs — poses at five hertz,
+what its sensors said, how its task was going, and the frames it saw at one
+hertz, looking down for a survey — and the platform keeps the recording as
+the run's artefacts. Fetch it:
+
+```bash
+coral-city fetch <diveId> <runId> --into recording
+```
+
+`manifest.json` says what is there and how the task ended; `poses.jsonl`
+carries the trajectory and which frame was taken at each moment; a survey's
+coverage in the result is derived from those poses and the vehicle's camera
+footprint, not asserted.
+
 ## What is generated
 
 `coral_city/vehicles/*.py` come from `catalog/vehicles/*/dynamics.json`:

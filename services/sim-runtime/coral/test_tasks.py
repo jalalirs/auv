@@ -100,3 +100,18 @@ def test_return_is_home_and_surfaced():
 def test_inspect_says_why_it_cannot_be_judged():
     task = task_for({"kind": "inspect"}, START, 0.0)
     assert task.done and "structure" in task.says()
+
+
+def test_survey_coverage_comes_from_the_camera_footprint_when_a_camera_is_known():
+    # A 21 mm lens on a 36 mm frame sees 81 degrees; two metres up that is a
+    # 3.4 m footprint, so one pass along a 3 m tall rectangle covers it.
+    camera = {"name": "forward", "focalLengthMm": 21}
+    task = task_for({"kind": "survey", "widthM": 10, "heightM": 3, "altitudeM": 2.0, "swathM": 0.5},
+                    START, 0.0, camera=camera)
+    walk(task, 10, lambda t: START + np.array([t, -1.5, 0]), floor=-7.0)
+    assert task.score() > 0.95, task.progress()
+    assert task.detail()["swathFrom"] == "camera footprint"
+    # Without a camera the declared half-metre swath sees a sixth of it.
+    plain = task_for({"kind": "survey", "widthM": 10, "heightM": 3, "altitudeM": 2.0, "swathM": 0.5}, START, 0.0)
+    walk(plain, 10, lambda t: START + np.array([t, -1.5, 0]), floor=-7.0)
+    assert plain.score() < 0.5, plain.progress()

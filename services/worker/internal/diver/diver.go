@@ -101,6 +101,8 @@ type Platform interface {
 	Renew(ctx context.Context, runID string) error
 	Record(ctx context.Context, runID, kind string, simulated *float64, detail any) error
 	Finish(ctx context.Context, runID, state string, outcome any, failure string) error
+	// Keep puts one file of the run's recording in storage and names it.
+	Keep(ctx context.Context, runID, path, localPath, mediaType string) error
 }
 
 // Runtime is what it needs from the container runtime.
@@ -459,12 +461,19 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	// simulator only: it is ours, and the thing being kept from the outside is
 	// the autonomy, which stays on the internal network and nothing else.
 	watching := claimed.Run.Mode == "interactive"
+	// A dive that is for something records what it sees, and seeing needs the
+	// renderer: a batch dive with a task runs the application headless rather
+	// than the runner alone, so its recording carries frames. It is not
+	// watched, so nothing is published.
+	rendering := watching || recording(claimed)
 	// One port per dive on this host, from the slot the platform gave it; two
 	// simulators sharing a card would otherwise be watched on one port.
 	signal := d.signalPort + claimed.Slot
-	if watching {
+	if rendering {
 		simulator.Command = []string{"/isaac-sim/kit/kit"}
 		simulator.Args = []string{"/isaac-sim/apps/coral_city.kit", "--no-window"}
+	}
+	if watching {
 		// Told the port rather than carrying it, so that what the host
 		// publishes, what the run recorded, and what the dive listens on are
 		// one number decided in one place.
@@ -569,6 +578,9 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	// that ran and left no record of what happened is a dive nobody can learn
 	// anything from, which is most of the point of running it.
 	summary := d.keep(ctx, claimed.Run.ID, result.Logs, log)
+	if kept := d.keepRecording(ctx, claimed.Run.ID, filepath.Join(briefDir, "recording"), log); kept > 0 {
+		summary["recording"] = map[string]any{"files": kept}
+	}
 
 	if result.ExitCode != 0 {
 		return "failed", map[string]any{
@@ -842,4 +854,66 @@ func (d *Diver) await(ctx context.Context, simID, marker, said string,
 		}
 	}
 	return fmt.Errorf("the simulator did not report %s within five minutes", said)
+}
+
+
+// keepRecording puts what the dive left in its recording directory into
+// storage, file by file, and names each against the run. Best effort: a file
+// that will not upload is logged and the rest still go, because a recording
+// with one frame missing is worth more than none.
+func (d *Diver) keepRecording(ctx context.Context, runID, root string, log *slog.Logger) int {
+	if _, err := os.Stat(root); err != nil {
+		return 0
+	}
+	kept, failed := 0, 0
+	keeping, stop := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Minute)
+	defer stop()
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return nil
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return nil
+		}
+		relative = filepath.ToSlash(relative)
+		if err := d.platform.Keep(keeping, runID, relative, path, mediaTypeOf(relative)); err != nil {
+			failed++
+			if failed <= 3 {
+				log.Warn("a recording file could not be kept", "path", relative, "error", err)
+			}
+			return nil
+		}
+		kept++
+		return nil
+	})
+	log.Info("recording kept", "files", kept, "failed", failed)
+	_ = d.platform.Record(keeping, runID, "recording_kept", nil, map[string]any{"files": kept, "failed": failed})
+	return kept
+}
+
+// mediaTypeOf is the media type a recording file is stored under, by name.
+func mediaTypeOf(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".json":
+		return "application/json"
+	case ".jsonl":
+		return "application/x-ndjson"
+	case ".csv":
+		return "text/csv"
+	default:
+		return "application/octet-stream"
+	}
+}
+
+
+// recording says whether a dive will leave a recording: it does when it is
+// for something, which is what the objective says.
+func recording(claimed Claimed) bool {
+	var objective map[string]any
+	return len(claimed.Objective) > 0 && json.Unmarshal(claimed.Objective, &objective) == nil && len(objective) > 0
 }

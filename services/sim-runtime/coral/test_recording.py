@@ -1,0 +1,42 @@
+"""A dive that is for something leaves a recording a person can open with nothing."""
+
+import json
+import pathlib
+import sys
+import tempfile
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+from hydrodynamics import Allocator, Body, Hydrodynamics  # noqa: E402
+from runner import Dive  # noqa: E402
+
+PACKAGE = pathlib.Path(__file__).resolve().parents[3] / "catalog/vehicles/bluerov2"
+
+
+def test_a_survey_records_poses_sensors_task_and_a_manifest():
+    model = Hydrodynamics.from_package(PACKAGE / "dynamics.json")
+    into = pathlib.Path(tempfile.mkdtemp()) / "recording"
+    said = []
+    dive = Dive({"durationSeconds": 4, "initialState": {"positionM": [0, 0, -7]},
+                 "vehiclePath": str(PACKAGE), "recordInto": str(into)},
+                Body(model), Allocator(model), pathlib.Path("nowhere.usda"),
+                lambda kind, **d: said.append((kind, d)))
+    dive.begin_task({"kind": "survey", "widthM": 10, "heightM": 5})
+    assert dive.view == "down", "a survey looks down"
+    while not dive.done:
+        dive.recorder.due_frame(dive.simulated)
+        dive.step()
+    dive.close()
+
+    manifest = json.loads((into / "manifest.json").read_text())
+    assert manifest["poses"] == 20 and manifest["frames"] == 4
+    assert manifest["camera"]["focalLengthMm"] == 21
+    assert manifest["task"]["kind"] == "survey"
+    poses = [json.loads(line) for line in (into / "poses.jsonl").read_text().splitlines()]
+    assert poses[0]["view"] == "down" and poses[-1]["frame"] == "frames/000004.jpg"
+    sensors = [json.loads(line) for line in (into / "sensors.jsonl").read_text().splitlines()]
+    assert "/depth" in sensors[0] and len(sensors) == 20
+    kinds = [kind for kind, _ in said]
+    assert "recording" in kinds and "recorded" in kinds
+    settled = next(d for kind, d in said if kind == "settled")
+    assert settled["task"]["achieved"]["swathFrom"] == "camera footprint"

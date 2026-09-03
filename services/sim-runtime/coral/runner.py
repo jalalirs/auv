@@ -64,7 +64,7 @@ def _turn(small: np.ndarray) -> np.ndarray:
 
 # The cameras a console may look through. Rendered one at a time: the large
 # pane is whichever was asked for, and the other panes are drawn from the pose.
-VIEWS = ("chase", "front", "top", "orbit")
+VIEWS = ("chase", "front", "down", "top", "orbit")
 
 # How coarse the map handed to a console is, per side.
 MAP_CELLS = 64
@@ -208,6 +208,8 @@ class Dive:
         self.began_at = np.zeros(3)
         # What the dive is for, judged as it runs. None when it is only flown.
         self.task = None
+        # What it leaves behind. Opened with the task, beside the brief.
+        self.recorder = None
         self.water_level = None
         self.water = None
         self.on_the_bottom = False
@@ -552,9 +554,21 @@ class Dive:
 
         self.began_at = self.position.copy()
         self.task = task_for(objective, self.began_at,
-                             float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0])))
+                             float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0])),
+                             camera=self.camera())
         if self.task is not None:
             self.say("task_set", task=self.task.describe())
+            # A dive that is for something records; a survey looks down, since
+            # what it records is what it sees. A console may look elsewhere.
+            if self.task.kind == "survey":
+                self.view = "down"
+            try:
+                from recording import Recorder
+                self.recorder = Recorder(pathlib.Path(self.brief.get("recordInto",
+                                         str(pathlib.Path(self.brief.get("cityPath", "/dive/city")).parent / "recording"))))
+                self.say("recording", into=str(self.recorder.into))
+            except Exception as exc:
+                self.say("recording_unavailable", why=str(exc)[:160])
 
     def hello(self) -> dict:
         """What somebody arriving at the console needs once: the site as a
@@ -657,6 +671,8 @@ class Dive:
                 floor = self.seabed.under(float(self.position[0]), float(self.position[1]))
             self.task.step(self.simulated, self.position,
                            float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0])), floor, self.commands)
+        if self.recorder is not None:
+            self.recorder.step(self)
         if self.simulated - self.reported >= 1.0:
             self.reported = self.simulated
             self.say("state", **self.state())
@@ -800,7 +816,29 @@ class Dive:
     def model_net_buoyancy(self) -> float:
         return float(self.body.model.net_buoyancy_n)
 
+    def camera(self) -> dict | None:
+        """The vehicle's camera, as the catalogue describes it, for whoever
+        turns poses into coverage."""
+        try:
+            import json
+            described = json.loads((pathlib.Path(self.brief.get("vehiclePath", "/dive/vehicle"))
+                                    / "dynamics.json").read_text())
+            for sensor in described.get("sensors", []):
+                if sensor.get("kind") == "underwater_camera":
+                    return {k: sensor[k] for k in ("name", "focalLengthMm", "widthPx", "heightPx",
+                                                    "horizontalFovDeg", "verticalFovDeg") if k in sensor}
+        except Exception:
+            pass
+        return None
+
     def close(self) -> None:
+        if self.recorder is not None:
+            try:
+                manifest = self.recorder.close(self, self.camera())
+                self.say("recorded", poses=manifest["poses"], frames=manifest["frames"])
+            except Exception as exc:
+                self.say("recording_failed", why=str(exc)[:160])
+            self.recorder = None
         self.say("settled",
                  t=round(self.simulated, 3),
                  depthM=round(float(-self.position[2]), 4),

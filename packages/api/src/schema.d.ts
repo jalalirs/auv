@@ -1221,6 +1221,200 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dives/{diveId}/runs/{runId}/artefacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What a run left behind
+         * @description A run's recording — frames, poses, what its sensors said, how its task went — as files, each fetchable through a link that expires.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The dive. */
+                    diveId: string;
+                    /** @description The run. */
+                    runId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The files. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            artefacts?: components["schemas"]["Artefact"][];
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{runId}/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A grant to put one file of a run's recording in storage */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The run. */
+                    runId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        sha256: string;
+                        /** Format: int64 */
+                        sizeBytes: number;
+                        mediaType?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description The grant. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["UploadGrant"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{runId}/uploads/{grantId}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check a recording file against what was declared */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The run. */
+                    runId: string;
+                    /** @description The grant. */
+                    grantId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            responses: {
+                /** @description The recorded object. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Object"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{runId}/artefacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Name one file a run left behind */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The run. */
+                    runId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Where the file sits within the recording. */
+                        path: string;
+                        objectId: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description The artefact. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Artefact"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/runs/claim": {
         parameters: {
             query?: never;
@@ -4008,6 +4202,19 @@ export interface components {
             createdBy: string;
             /** Format: date-time */
             revokedAt?: string;
+        };
+        /** @description One file of a run's recording, an object in storage named by its path within the recording. */
+        Artefact: {
+            runId: string;
+            path: string;
+            objectId: string;
+            /** Format: int64 */
+            sizeBytes: number;
+            mediaType: string;
+            /** Format: date-time */
+            recordedAt: string;
+            /** @description Fetches the bytes; expires. */
+            url?: string;
         };
         Object: {
             id: string;

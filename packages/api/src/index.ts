@@ -24,6 +24,7 @@ export type AutonomyStack = Schemas["AutonomyStack"];
 export type Conditions = Schemas["Conditions"];
 export type Dive = Schemas["Dive"];
 export type Run = Schemas["Run"];
+export type Artefact = Schemas["Artefact"];
 export type Placement = Schemas["Placement"];
 export type Needs = Schemas["Needs"];
 export type Hold = Schemas["Hold"];
@@ -273,6 +274,13 @@ export class Platform {
     const { dives } = await this.#request<{ dives: Dive[] }>(
       "GET", `/api/v1/organisations/${organisation}/dives`);
     return dives;
+  }
+
+  /** What a run left behind: its recording, each file with a link that fetches it. */
+  async artefacts(dive: string, run: string): Promise<Artefact[]> {
+    const { artefacts } = await this.#request<{ artefacts: Artefact[] }>(
+      "GET", `/api/v1/dives/${dive}/runs/${run}/artefacts`);
+    return artefacts;
   }
 
   async runs(dive: string): Promise<Run[]> {

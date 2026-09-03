@@ -114,6 +114,7 @@ class CoralCityShell(omni.ext.IExt):
         self._complained = False
         self._latest_state = {}
         self._alone_since = None
+        self._quit_at = None
         self._watch_port = int(os.environ.get("CORAL_CITY_WATCH_PORT", "18102"))
         # Flying over the place to look at it, rather than diving in it. Same
         # place, same water, same light — only the camera differs, and no
@@ -240,6 +241,12 @@ class CoralCityShell(omni.ext.IExt):
                 eye = (x + 0.45 * ahead[0], y + 0.45 * ahead[1], z + 0.05)
                 aim = (x + 6.0 * ahead[0], y + 6.0 * ahead[1], z - 0.6)
                 up = up_world
+            elif view == "down":
+                # The survey camera: under the hull, looking at the bottom, the
+                # vehicle's heading up the screen.
+                eye = (x, y, z - 0.15)
+                aim = (x, y, z - 6.0)
+                up = dive.drawn_at((ahead[0], ahead[1], 0.0))
             elif view == "top":
                 eye = (x, y, z + 14.0)
                 aim = (x, y, z)
@@ -257,11 +264,7 @@ class CoralCityShell(omni.ext.IExt):
                 eye = (x - 9.0 * ahead[0], y - 9.0 * ahead[1], z + 3.2)
                 aim = (x, y, z)
                 up = up_world
-            if view == "top":
-                # Straight down cannot use the world's up; the drawn heading is it.
-                self._aim.Set(Gf.Matrix4d().SetLookAt(dive.drawn_at(eye), dive.drawn_at(aim), up).GetInverse())
-            else:
-                self._aim.Set(Gf.Matrix4d().SetLookAt(dive.drawn_at(eye), dive.drawn_at(aim), up).GetInverse())
+            self._aim.Set(Gf.Matrix4d().SetLookAt(dive.drawn_at(eye), dive.drawn_at(aim), up).GetInverse())
         except Exception:
             # A camera that will not move is not worth ending a dive over.
             self._aim = None
@@ -325,7 +328,18 @@ class CoralCityShell(omni.ext.IExt):
 
     def _frame(self, event) -> None:
         dive = self.dive
-        if dive is None or self.finished:
+        if dive is None:
+            return
+        if self.finished:
+            # Over. A couple of seconds for the last captured frame to reach its
+            # file, then the application leaves, which is how a dive nobody is
+            # watching hands its machine back.
+            if self._quit_at is not None and time.monotonic() >= self._quit_at:
+                self._quit_at = None
+                try:
+                    omni.kit.app.get_app().post_quit()
+                except Exception as exc:
+                    carb.log_warn(f"Coral City could not quit: {exc}")
             return
 
         if self.tour is not None:
@@ -382,6 +396,7 @@ class CoralCityShell(omni.ext.IExt):
         self.hud.show(dive.state())
         if self.photographs and dive.simulated >= self.photographs[0]:
             self._photograph(round(self.photographs.pop(0), 1))
+        self._record_a_frame(dive)
         self._send_a_frame(dive.instruments())
         if dive.flown_by_hand:
             self.hud.by_hand()
@@ -390,6 +405,7 @@ class CoralCityShell(omni.ext.IExt):
 
         if dive.done:
             self.finished = True
+            self._quit_at = time.monotonic() + 2.0
             dive.close()
             self._say("succeeded", simulatedSeconds=round(dive.simulated, 3))
             self.hud.finished()
@@ -529,6 +545,32 @@ class CoralCityShell(omni.ext.IExt):
             carb.log_error(f"Coral City could not fly the tour: {exc}")
             self._say("tour_failed", why=str(exc)[:200])
             self.finished = True
+
+    def _record_a_frame(self, dive) -> None:
+        """A frame for the recording, when one is due.
+
+        Through the same capture as the photographs, to a file beside the
+        brief. What is recorded is what the viewport is looking through — the
+        survey camera when nobody has asked for another view — and the pose
+        line written beside it says which view that was.
+        """
+        recorder = getattr(dive, "recorder", None)
+        if recorder is None:
+            return
+        path = recorder.due_frame(float(dive.simulated))
+        if path is None:
+            return
+        try:
+            from omni.kit.viewport.utility import capture_viewport_to_file, get_active_viewport
+
+            viewport = get_active_viewport()
+            if viewport is None:
+                return
+            capture_viewport_to_file(viewport, path)
+        except Exception as exc:
+            if not self._complained:
+                self._complained = True
+                carb.log_warn(f"Coral City could not record a frame: {exc}")
 
     def _photograph(self, at: float) -> None:
         """Write out what the dive looks like.

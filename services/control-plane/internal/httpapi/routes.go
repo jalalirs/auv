@@ -247,6 +247,9 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/dives/{diveId}/runs",
 		Summary: "what a dive's executions did", Action: policy.DiveRead,
 		Resource: fromPath(policy.ResourceDive, "diveId"), Handle: d.listRuns})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/dives/{diveId}/runs/{runId}/artefacts",
+		Summary: "what a run left behind: its recording, each file fetchable", Action: policy.DiveRead,
+		Resource: fromPath(policy.ResourceDive, "diveId"), Handle: d.listArtefacts})
 	// Ending a dive is asking for one, backwards: it is the same authority,
 	// because somebody who may take a machine may give it back. Without this
 	// there is no way to hand a GPU back at all — a request could be made and
@@ -278,6 +281,15 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/runs/{runId}/finished",
 		Summary: "how a run ended", Action: policy.WorkReport,
 		Resource: atWork(), Handle: d.finishRun})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/runs/{runId}/uploads",
+		Summary: "a grant to put one file of a run's recording in storage", Action: policy.WorkReport,
+		Resource: atWork(), Handle: d.requestRunUpload})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/runs/{runId}/uploads/{grantId}/confirm",
+		Summary: "check a recording file against what was declared", Action: policy.WorkReport,
+		Resource: atWork(), Handle: d.confirmRunUpload})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/runs/{runId}/artefacts",
+		Summary: "name one file a run left behind", Action: policy.WorkReport,
+		Resource: atWork(), Handle: d.recordArtefact})
 
 	// Work.
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/jobs",
