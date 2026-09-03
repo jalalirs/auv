@@ -76,3 +76,11 @@ def test_thruster_commands_reach_the_thrusters():
     tank = Tank("bluerov2", seconds=6.0, sensed=False)
     report = tank.run(Spin())
     assert abs(report.final["headingDeg"]) > 5.0
+
+
+def test_a_current_is_felt_and_the_hold_fights_it():
+    still = Tank("bluerov2", seconds=30.0, task=hold_station(seconds=30), sensed=False).run(StationHold())
+    moving = Tank("bluerov2", seconds=30.0, task=hold_station(seconds=30), sensed=False,
+                  current=(0.3, 90.0)).run(StationHold())
+    assert moving.score > 0.8, str(moving)
+    assert moving.task["thrusterEffort"] > still.task["thrusterEffort"] * 2, "holding in a current costs thrust"

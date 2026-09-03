@@ -48,6 +48,7 @@ interface Hello {
   view?: string;
   beganAt?: number[];
   task?: { kind: string; name: string; geometry?: Geometry } | null;
+  conditions?: { currentMetresPerSecond: number; currentHeadingDeg: number; current: number[]; visibilityM?: number | null };
 }
 
 function named(event: KeyboardEvent): string | undefined {
@@ -330,7 +331,7 @@ export function Water({ platform, stream, onSurface }: {
       case "map":
         return <Minimap site={site} track={track.current} position={reading.position}
                         headingDeg={reading.headingDeg} beganAt={hello?.beganAt}
-                        geometry={geometry} large={large} />;
+                        geometry={geometry} current={hello?.conditions?.current} large={large} />;
       case "profile":
         return <Profile of={history.current} />;
       case "plot":

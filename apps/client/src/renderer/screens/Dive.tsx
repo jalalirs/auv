@@ -12,7 +12,7 @@ import { useState } from "react";
 
 import type { Platform } from "@coral-city/api";
 
-import { PILOTED, TASKS, type Task } from "../catalog/tasks.js";
+import { PILOTED, TASKS, type Task, WATERS, type Water } from "../catalog/tasks.js";
 import { alertKind, leadTemperature, useSea } from "../ocean/sea.js";
 import { Picker, type Choice } from "../parts/Picker.js";
 import { newestOf, whereIs } from "../platform/packages.js";
@@ -23,6 +23,7 @@ const WHERE = "coral-city.place";
 const WHAT = "coral-city.vehicle";
 const WHY = "coral-city.task";
 const WHO = "coral-city.controller";
+const HOW = "coral-city.water";
 
 /** The controller a person is: keys, with the hold beneath them. */
 const MANUAL = "manual";
@@ -62,6 +63,8 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
     return last !== null && held.stacks.some((s) => s.id === last) ? last : MANUAL;
   });
   const chosenStack = held.stacks.find((s) => s.id === flownBy);
+  const [water, setWater] = useState<Water>(() =>
+    WATERS.find((w) => w.key === localStorage.getItem(HOW)) ?? WATERS[0]!);
   const [asking, setAsking] = useState(false);
   const [refusal, setRefusal] = useState("");
 
@@ -95,10 +98,10 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
       // Every dive names the water it happened in. Constructed water names no
       // instant on purpose: saying when would claim it was drawn from a
       // measurement of the ocean, and it was not.
-      const water = await platform.defineConditions(held.institution.id, {
+      const conditions = await platform.defineConditions(held.institution.id, {
         kind: "constructed",
-        name: "Still water",
-        parameters: { currentMetresPerSecond: 0 },
+        name: water.name,
+        parameters: water.parameters,
       });
 
       // What the dive is for goes with it, and the runtime judges it as the
@@ -107,7 +110,7 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
         name: `${task.key === "piloted" ? "" : task.name + ": "}${chosenVehicle.name} in ${chosenPlace.name}`,
         cityVersionId: onePlace.id,
         vehicleVersionId: oneVehicle.id,
-        conditionsId: water.id,
+        conditionsId: conditions.id,
         objective: task.objective,
         autonomyStackId: chosenStack?.id,
       });
@@ -161,6 +164,7 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
   const tasks: Choice[] = [PILOTED, ...TASKS].map((one) => ({
     key: one.key, name: one.name, says: one.asks, later: one.unavailable,
   }));
+  const waters: Choice[] = WATERS.map((one) => ({ key: one.key, name: one.name, says: one.says }));
   const controllers: Choice[] = [
     { key: MANUAL, name: "You, at the keys", says: "Manual, with the hold beneath it: let go and it holds station." },
     ...held.stacks.map((one) => {
@@ -239,6 +243,9 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
                   foot={chosenStack === undefined
                     ? <>W A S D, Q E, space and C. The hold has it whenever your hands are off.</>
                     : <>Your stack flies from the start; the keys still win while they are held. Deploy more with <code>coral-city deploy</code>.</>} />
+          <Picker label="In water that is" choices={waters} chosen={water.key}
+                  onChoose={(key) => { setWater(WATERS.find((w) => w.key === key)!); localStorage.setItem(HOW, key); }}
+                  foot={<>Constructed water: it names no instant, because it was not measured. The current is felt by the physics; visibility by the picture.</>} />
           <Picker label="For" choices={tasks} chosen={task.key}
                   onChoose={(key) => { const t = [PILOTED, ...TASKS].find((x) => x.key === key)!; setTask(t); localStorage.setItem(WHY, key); }}
                   foot={task.unavailable !== undefined

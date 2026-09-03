@@ -113,7 +113,10 @@ class Report:
 
 class Tank:
     def __init__(self, vehicle: str = "bluerov2", start=(0.0, 0.0, -7.0), seconds: float = 60.0,
-                 task: dict | None = None, sensed: bool = True, hz: float = 20.0) -> None:
+                 task: dict | None = None, sensed: bool = True, hz: float = 20.0,
+                 current: tuple[float, float] | None = None) -> None:
+        """`current` is (metres per second, heading in degrees the water flows
+        towards, from north clockwise); None is still water."""
         hydrodynamics, runner, Helm = _runtime()
         self.described = vehicles.load(vehicle)
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
@@ -126,6 +129,9 @@ class Tank:
         self.body = hydrodynamics.Body(self.model)
         self.allocator = hydrodynamics.Allocator(self.model)
         self.brief = {"durationSeconds": float(seconds), "initialState": {"positionM": list(start)}}
+        if current is not None:
+            self.brief["conditions"] = {"kind": "constructed", "parameters": {
+                "currentMetresPerSecond": float(current[0]), "currentHeadingDeg": float(current[1])}}
         self._Dive, self._Helm = runner.Dive, Helm
         self.task = task
         self.sensed = sensed

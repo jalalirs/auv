@@ -613,6 +613,19 @@ model data where there is any.
 **Done when:** a dive in two knots of current needs a different controller
 to hold station than one in still water, and you can see the difference.
 
+*Where it stands:* built (3 September); the live check is below as it lands.
+Constructed conditions carry a current — metres per second, the heading it
+flows towards, the way a chart writes one — and a visibility. The physics
+drags on motion through the water rather than over the ground, so a vehicle
+doing nothing is carried and the hold spends thrust to stay: in the tank the
+hold in 0.3 m/s keeps station with more than twice the thruster effort of
+still water. The renderer scales its fog to the visibility asked for. The
+dive page has a fifth column, "In water that is", with still water, a gentle
+set, one knot, two knots, and one knot murky; the chart draws the current as
+an arrow with its speed; the SDK's tank and `coral-city dive` take
+`--current` and `--visibility`. Not yet: observed currents from the place's
+data, a shear with depth, and the water drawn moving.
+
 ## 16. Sensors that are sensors
 
 The vehicle's camera is published on `/camera/image_raw` as the contract
