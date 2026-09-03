@@ -669,6 +669,21 @@ once by us so it is known to work.
 **Done when:** a learned policy holds station in current with a score at
 least as good as the hand-written hold's, from the console.
 
+*Where it stands:* built, and the path walked once (3 September). The policy
+is a linear map from what the vehicle sees — where it is relative to where it
+began in its own frame, how deep relative to the start, how far its heading
+has swung, its velocities — to the wrench it asks; its weights are found in
+the tank by the cross-entropy method, seeded from the hand-written hold's
+gains, against hold-station in a one-knot current: twenty-four candidates a
+generation, fourteen generations, six minutes on a laptop. It is written out
+as a controller with the weights baked in, `examples/learned_hold.py`, so the
+file is the thing deployed. In the tank at a knot the hand-written hold scores
+0.15 and the learned one 0.48 — it stays on station three times as long, at
+twenty times the thruster effort, which is a policy that has learned to
+fight and not yet to fight cheaply. Deep it is not: a network in place of the
+matrix is the same path with more parameters, and that is the next thing to
+try. What it proves is the path: tank, weights, deploy, fly, score.
+
 ## 18. Tasks you can lay out
 
 Waypoints placed by clicking on the chart, a transect drawn as a line, a
@@ -692,6 +707,12 @@ the roadmap always wanted.
 
 **Done when:** two runs of one seed leave the same trajectory, and a
 difference between controllers is shown as a difference between tracks.
+
+*Where it stands:* the command line has it (3 September): `coral-city dive
+--seed N`, `coral-city dive --again <dive>/<run>` to run one exactly again,
+and `coral-city compare <dive> <runA> <runB>` to hold two recordings' poses
+against each other and report the largest difference in position. The
+verification is recorded below as it lands.
 
 ## Not on this list
 
