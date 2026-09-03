@@ -270,7 +270,8 @@ export function Water({ platform, stream, onSurface }: {
             {frames === 0 && lost === undefined && (
               <div className="opening">
                 <div className="tide" />
-                <p>Opening the scene…</p>
+                <p>{hello === undefined ? "Connecting to the dive…" : "Waiting for the first frame…"}</p>
+                {hello !== undefined && <small>The scene is open; frames are on their way.</small>}
               </div>
             )}
             {lost !== undefined && (

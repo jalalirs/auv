@@ -933,3 +933,9 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 .files li { padding: 2px 0; }
 .files li em { color: var(--dim); font-style: normal; margin-left: 6px; }
 .ledger .row button.small { margin-left: auto; }
+
+
+/* ── the waiting screen's bar ─────────────────────────────────────────── */
+.waiting .progress { width: 320px; max-width: 80vw; height: 4px; background: var(--edge); border-radius: 2px; margin: 8px auto 4px; overflow: hidden; }
+.waiting .progress div { height: 100%; background: var(--coral); transition: width 0.6s; }
+.opening small { display: block; margin-top: 4px; color: var(--dim); }
