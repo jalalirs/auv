@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coral-city"
+version = "0.1.0"
+description = "Write a controller for a Coral City vehicle, run it in a tank or a dive, and deploy it."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+# The headless tank runs the runtime's own physics, without Isaac Sim.
+tank = ["coral-city-runtime"]
+dev = ["pytest"]
+
+[project.scripts]
+coral-city = "coral_city.cli:main"
+
+[tool.setuptools]
+packages = ["coral_city", "coral_city.vehicles"]
