@@ -94,7 +94,13 @@ class Helm:
             unit[axis] = 1.0
             produced = self.allocator.matrix @ (self.allocator.inverse @ unit)
             lean = float(max(abs(produced[3]), abs(produced[4])))
-            if axis not in (3, 4) and lean > 1e-9:
+            # A commanded roll or pitch is a lean asked for directly, and is
+            # held to the same share of the righting moment as the lean any
+            # other axis causes by accident. At full key that is a hull tipped
+            # twenty degrees that comes back level when the key is let go —
+            # not one rolled onto its side with its heave pointing sideways,
+            # which is what a roll at the thrusters' full moment does.
+            if lean > 1e-9:
                 most[axis] = min(most[axis], allowed / lean)
         return most
 

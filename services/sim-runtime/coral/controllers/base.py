@@ -46,6 +46,14 @@ class Observation:
         """Yaw, radians, from the body x axis projected on the horizon."""
         return float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0]))
 
+    @property
+    def pitch(self) -> float:
+        return float(-np.arcsin(max(-1.0, min(1.0, float(self.rotation[2, 0])))))
+
+    @property
+    def roll(self) -> float:
+        return float(np.arctan2(self.rotation[2, 1], self.rotation[2, 2]))
+
 
 @dataclass
 class Command:
