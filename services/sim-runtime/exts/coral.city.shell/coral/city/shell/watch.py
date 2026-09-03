@@ -130,6 +130,8 @@ class Watch:
             said = json.loads(raw)
             if "held" in said:
                 self.controls.held_from_afar(set(said.get("held", [])))
+            if "stick" in said:
+                self.controls.stick_from_afar(said.get("stick") or [])
             if self.on_message is not None and any(
                     key in said for key in ("tune", "hold", "view", "engage")):
                 self.on_message(said)

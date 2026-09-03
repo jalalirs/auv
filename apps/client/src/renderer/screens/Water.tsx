@@ -71,6 +71,7 @@ export function Water({ platform, stream, onSurface }: {
   const [lost, setLost] = useState<string | undefined>();
   const [frames, setFrames] = useState(0);
   const [hello, setHello] = useState<Hello | undefined>();
+  const [pad, setPad] = useState<string | undefined>();
   const [panes, setPanes] = useState<Pane[]>(["water", "map", "profile", "plot"]);
   const [plotted, setPlotted] = useState<string | undefined>();
   const [tick, setTick] = useState(0);
@@ -153,9 +154,33 @@ export function Water({ platform, stream, onSurface }: {
     window.addEventListener("blur", blur);
     window.addEventListener("pagehide", closing);
 
+    // A gamepad, if one is plugged in, read every tick beside the keys: left
+    // stick surge and sway, right stick yaw and heave, triggers roll. Sent as
+    // fractions, which is what a stick is, and the vehicle adds them to the
+    // keys. A centred stick says nothing, so the hold keeps the vehicle.
+    let padSeen: string | undefined;
+    const readPad = (): number[] | undefined => {
+      const pads = navigator.getGamepads?.() ?? [];
+      const one = pads.find((p) => p !== null && p.connected);
+      if (one === undefined || one === null) { if (padSeen !== undefined) { padSeen = undefined; setPad(undefined); } return undefined; }
+      if (padSeen !== one.id) { padSeen = one.id; setPad(one.id); }
+      const dead = (v: number) => (Math.abs(v) < 0.08 ? 0 : v);
+      const axis = (i: number) => dead(one.axes[i] ?? 0);
+      const button = (i: number) => one.buttons[i]?.value ?? 0;
+      return [
+        -axis(1),                    // left stick up: ahead
+        axis(0),                     // left stick right: starboard
+        -axis(3),                    // right stick up: rise
+        button(7) - button(6),       // right trigger rolls right, left rolls left
+        0,
+        axis(2),                     // right stick right: yaw right
+      ].map((v) => Math.max(-1, Math.min(1, v)));
+    };
+
     const tell = setInterval(() => {
       if (socket?.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ held: [...down] }));
+        const stick = readPad();
+        socket.send(JSON.stringify(stick === undefined ? { held: [...down] } : { held: [...down], stick }));
       }
     }, TELL_EVERY);
 
@@ -317,7 +342,7 @@ export function Water({ platform, stream, onSurface }: {
     <Instruments reading={reading} topics={topics} held={held}
                  history={history.current} frames={frames} onLeave={leave}
                  onTune={tune} onHoldHere={holdHere} onEngage={engage} onPlot={plot}
-                 plotted={plotted}>
+                 plotted={plotted} pad={pad}>
       <div className="panes" data-tick={tick}>
         <div className="pane large">
           <span className="pane-name">{PANE_NAMES[panes[0]!]}</span>

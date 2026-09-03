@@ -60,10 +60,10 @@ export function Runs({ platform, held, onChanged, onReplay }: {
           </Empty>
         ) : (
           <div className="ledger">
-            {held.runs.slice(0, 40).map(({ dive, run }) => (
+            {held.runs.slice(0, 40).map(({ dive, name, run }) => (
               <div className="row" key={run.id}>
-                <strong>{run.mode === "interactive" ? "Flown" : "Batch"}</strong>
-                <span className="when">{ago(run.requestedAt)}</span>
+                <strong>{name}</strong>
+                <span className="when">{run.mode === "interactive" ? "flown" : "batch"} · {ago(run.requestedAt)}</span>
                 <Result outcome={run.outcome} />
                 {recorded(run) ? (
                   <button className="quiet small" onClick={() => onReplay(dive, run.id)}>Replay</button>

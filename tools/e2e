@@ -171,6 +171,11 @@ step "An asset nobody granted you is indistinguishable from one that does not ex
 
 OTHER_ORG=$(api "$ADMIN" POST /api/v1/organisations \
     "{\"slug\":\"other-$RUN\",\"name\":\"Other Institute\"}" | json "['id']")
+# A dive, like a job, is admitted against the institution's quota: two at
+# once and a day of one card is what a new institution gets here.
+check "the institution is given a quota" \
+    "$(status "$ADMIN" PUT "/api/v1/organisations/$OTHER_ORG/quota" \
+        '{"maxConcurrentJobs":4,"maxCpu":8,"maxMemoryBytes":17179869184,"maxGpu":0,"maxConcurrentDives":2,"maxGpuHoursDaily":24}')" "200"
 OUTSIDER=$(api "$ADMIN" POST /api/v1/people \
     "{\"displayName\":\"Outsider\",\"email\":\"outsider-$RUN@example.org\",\"secret\":\"outsider-secret-value\"}" \
     | json "['id']")
