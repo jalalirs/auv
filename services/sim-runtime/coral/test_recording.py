@@ -40,3 +40,12 @@ def test_a_survey_records_poses_sensors_task_and_a_manifest():
     assert "recording" in kinds and "recorded" in kinds
     settled = next(d for kind, d in said if kind == "settled")
     assert settled["task"]["achieved"]["swathFrom"] == "camera footprint"
+
+
+def test_coral_is_read_off_the_place_for_the_chart(tmp_path):
+    from runner import coral_positions
+    (tmp_path / "site.json").write_text('{"layers": {"coral": "coral.usda"}}')
+    (tmp_path / "coral.usda").write_text(
+        'def PointInstancer "Coral" {\n    point3f[] positions = [(-160.4, -14.33, -3.707), (1, 2, 3), (4.25, -5.5, 0)]\n}\n')
+    assert coral_positions(tmp_path) == [[-160.4, -14.3], [1.0, 2.0], [4.2, -5.5]]
+    assert coral_positions(tmp_path / "nowhere") == []

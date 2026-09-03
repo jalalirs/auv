@@ -626,6 +626,16 @@ an arrow with its speed; the SDK's tank and `coral-city dive` take
 `--current` and `--visibility`. Not yet: observed currents from the place's
 data, a shear with depth, and the water drawn moving.
 
+Verified live: a batch hold-station dive on Looe Key in one knot flowing east
+with five metres of visibility. The hand-written hold could not keep it:
+4.4 m off station, 4.8 of 60 seconds within half a metre, score 0.08 — a
+knot is at the edge of what the BlueROV2's guarded surge can push against,
+while in the tank it holds 0.3 m/s with room to spare. That is the point of
+the item: a current that changes which controller is good enough. The
+attitude guard is the lever a pilot has, and a controller that turned the
+current onto the beam, where the hull has fifteen times the authority, would
+be the clever one.
+
 ## 16. Sensors that are sensors
 
 The vehicle's camera is published on `/camera/image_raw` as the contract

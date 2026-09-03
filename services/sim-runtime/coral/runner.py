@@ -70,6 +70,28 @@ VIEWS = ("chase", "front", "down", "top", "orbit")
 MAP_CELLS = 64
 
 
+def coral_positions(city: pathlib.Path, at_most: int = 2000) -> list[list[float]]:
+    """Where the coral is, read off the place's point instancer, thinned to
+    what a chart can draw. The file is text, and the positions are one line
+    of it; nothing here needs USD to be loaded to answer a chart."""
+    import json
+    import re
+
+    try:
+        named = json.loads((city / "site.json").read_text()).get("layers", {}).get("coral", "coral.usda")
+        text = (city / named).read_text(errors="ignore")
+    except Exception:
+        return []
+    found = re.search(r"positions\s*=\s*\[([^\]]*)\]", text)
+    if not found:
+        return []
+    points = re.findall(r"\(\s*([-0-9.eE+]+)\s*,\s*([-0-9.eE+]+)\s*,\s*[-0-9.eE+]+\s*\)", found.group(1))
+    if not points:
+        return []
+    step = max(1, len(points) // at_most)
+    return [[round(float(x), 1), round(float(y), 1)] for x, y in points[::step]]
+
+
 class Seabed:
     """How deep the bottom is, anywhere in a site.
 
@@ -204,6 +226,7 @@ class Dive:
         self.floor = None
         self.seabed = None
         self.bounds = (None, None)
+        self.coral: list[list[float]] = []
         self.view = "chase"
         self.began_at = np.zeros(3)
         # The water's own motion, in the world frame, metres per second. Read
@@ -284,6 +307,9 @@ class Dive:
         # resting on the coral and a vehicle four metres inside it.
         self.seabed = Seabed.of(self.scene, pathlib.Path(
             self.brief.get("cityPath", "/dive/city")))
+        self.coral = coral_positions(pathlib.Path(self.brief.get("cityPath", "/dive/city")))
+        if self.coral:
+            self.say("coral_charted", colonies=len(self.coral))
         self.floor = None if corner is None else float(corner[2])
         if self.seabed is not None:
             self.say("seabed_known",
@@ -620,6 +646,7 @@ class Dive:
                 "heights": [round(float(h), 2) for h in coarse.ravel()],
                 "deepestM": round(float(-self.seabed.heights.min()), 2),
                 "shallowestM": round(float(-self.seabed.heights.max()), 2),
+                "coral": self.coral,
             }
         elif self.bounds[0] is not None:
             corner, far = self.bounds
