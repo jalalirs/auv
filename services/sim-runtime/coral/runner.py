@@ -680,7 +680,10 @@ class Dive:
                            float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0])), floor, self.commands)
         if self.recorder is not None:
             self.recorder.step(self)
-        if self.simulated - self.reported >= 1.0:
+        # Every five seconds of simulated time. One a second put four hundred
+        # lines on a five-minute run's record that nobody reads one by one;
+        # the console gets twenty a second over its own channel regardless.
+        if self.simulated - self.reported >= 5.0:
             self.reported = self.simulated
             self.say("state", **self.state())
 

@@ -17,6 +17,9 @@ import (
 type Refusal struct {
 	Reason ReasonCode
 	Detail map[string]any
+	// Who asked, and for whom, so the refusal can be written down afterwards.
+	OrgID       string
+	PrincipalID string
 }
 
 // Error renders the refusal for a caller.
@@ -248,7 +251,16 @@ func pickTarget(ctx context.Context, conn db.Conn, spec JobSpec) (Target, *Refus
 	return target, nil, nil
 }
 
+// refuse hands the refusal back to be recorded once the transaction that
+// produced it has rolled back — recorded inside it, it rolled back with it.
 func (b *Broker) refuse(ctx context.Context, conn db.Conn, spec JobSpec, refusal *Refusal) error {
+	refusal.OrgID, refusal.PrincipalID = spec.OrgID, spec.SubmittedBy
+	return refusal
+}
+
+// RecordRefusal writes a refusal down, on a connection outside the
+// transaction that refused.
+func (b *Broker) RecordRefusal(ctx context.Context, conn db.Conn, refusal *Refusal) error {
 	detail := refusal.Detail
 	if detail == nil {
 		detail = map[string]any{}
@@ -260,11 +272,11 @@ func (b *Broker) refuse(ctx context.Context, conn db.Conn, spec JobSpec, refusal
 	if _, err := conn.Exec(ctx, `
 		INSERT INTO exec.refusal (id, org_id, principal_id, reason, detail, request_id)
 		VALUES ($1, $2, $3, $4::exec.refusal_reason, $5, $6)`,
-		ids.New(ids.KindRefusal), spec.OrgID, spec.SubmittedBy,
+		ids.New(ids.KindRefusal), refusal.OrgID, refusal.PrincipalID,
 		string(refusal.Reason), encoded, reqctx.RequestID(ctx)); err != nil {
 		return fmt.Errorf("recording a refusal: %w", err)
 	}
-	return refusal
+	return nil
 }
 
 func insertJob(ctx context.Context, conn db.Conn, spec JobSpec, targetID string) (Job, error) {

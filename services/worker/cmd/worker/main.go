@@ -77,6 +77,8 @@ func run(logger *slog.Logger) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	// The diver tells a dive being ended from the agent going away by this.
+	dive.Stopping(func() bool { return ctx.Err() != nil })
 
 	logger.Info("worker ready",
 		"controlPlane", settings.ControlPlaneURL,
@@ -90,6 +92,12 @@ func run(logger *slog.Logger) error {
 	// not abandon a vehicle mid-water without saying so.
 	var diving sync.WaitGroup
 	defer diving.Wait()
+
+	// Whatever the previous agent left running is picked up first. A dive
+	// survives the agent being redeployed under it.
+	if adopted := dive.Adopt(ctx, &diving); adopted > 0 {
+		logger.Info("adopted dives left by the previous agent", "dives", adopted)
+	}
 
 	for {
 		select {
@@ -115,7 +123,7 @@ func run(logger *slog.Logger) error {
 			diving.Add(1)
 			go func(claimed diver.Claimed) {
 				defer diving.Done()
-				if err := dive.Dive(ctx, claimed); err != nil {
+				if err := dive.Dive(ctx, claimed); err != nil && !errors.Is(err, diver.ErrHandedOver) {
 					logger.Error("could not complete a dive",
 						"runId", claimed.Run.ID, "error", err)
 				}
