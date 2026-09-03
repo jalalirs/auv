@@ -343,7 +343,7 @@ export function Water({ platform, stream, onSurface }: {
     <Instruments reading={reading} topics={topics} held={held}
                  history={history.current} frames={frames} onLeave={leave}
                  onTune={tune} onHoldHere={holdHere} onEngage={engage} onPlot={plot}
-                 plotted={plotted} pad={pad}>
+                 plotted={plotted} pad={pad} water={hello?.conditions}>
       <div className="panes" data-tick={tick}>
         <div className="pane large">
           <span className="pane-name">{PANE_NAMES[panes[0]!]}</span>
