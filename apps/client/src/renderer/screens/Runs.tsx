@@ -60,10 +60,10 @@ export function Runs({ platform, held, onChanged, onReplay }: {
           </Empty>
         ) : (
           <div className="ledger">
-            {held.runs.slice(0, 40).map(({ dive, name, run }) => (
+            {held.runs.slice(0, 40).map(({ dive, name, flownBy, run }) => (
               <div className="row" key={run.id}>
                 <strong>{name}</strong>
-                <span className="when">{run.mode === "interactive" ? "flown" : "batch"} · {ago(run.requestedAt)}</span>
+                <span className="when">{flownBy} · {run.mode === "interactive" ? "flown" : "batch"} · {ago(run.requestedAt)}</span>
                 <Result outcome={run.outcome} />
                 {recorded(run) ? (
                   <button className="quiet small" onClick={() => onReplay(dive, run.id)}>Replay</button>
@@ -80,12 +80,9 @@ export function Runs({ platform, held, onChanged, onReplay }: {
       </section>
 
       <section>
-        <h2>Coming</h2>
-        <Empty title="Running it again" soon="not built yet">
-          A run pins everything it needed, so it can be run again and produce the
-          same trajectory. Playing a recording back is here; asking for the same
-          run again is not yet.
-        </Empty>
+        <h2>Side by side</h2>
+        <p className="aside">The same dive run more than once, with what each run scored — a change to a controller as a change in a number.</p>
+        <Compared runs={held.runs} />
       </section>
     </>
   );
@@ -106,5 +103,41 @@ function Result({ outcome }: { outcome: Record<string, unknown> | undefined }): 
     <span className="result" title={task.done ? "the task ran to its end" : "the dive ended before the task did"}>
       {task.name}: <b>{(task.score * 100).toFixed(0)}%</b>
     </span>
+  );
+}
+
+
+/** Dives with more than one scored run, each run's score beside the others'. */
+function Compared({ runs }: { runs: Held["runs"] }): React.JSX.Element {
+  const byDive = new Map<string, Held["runs"]>();
+  for (const one of runs) {
+    const task = (one.run.outcome as Record<string, unknown> | undefined)?.["task"] as { score?: number } | undefined;
+    if (typeof task?.score !== "number") continue;
+    byDive.set(one.dive, [...(byDive.get(one.dive) ?? []), one]);
+  }
+  const groups = [...byDive.values()].filter((g) => g.length > 1);
+  if (groups.length === 0) {
+    return <Empty title="Nothing to compare yet">Run a dive with a task twice, or with two controllers, and the scores line up here.</Empty>;
+  }
+  return (
+    <div className="compared">
+      {groups.map((group) => (
+        <div className="group" key={group[0]!.dive}>
+          <strong>{group[0]!.name}</strong>
+          <ul>
+            {group.map(({ run, flownBy }) => {
+              const task = (run.outcome as Record<string, unknown>)["task"] as { score: number; seconds?: number; thrusterEffort?: number };
+              return (
+                <li key={run.id}>
+                  <span className="score-bar"><span style={{ width: `${Math.round(task.score * 100)}%` }} /></span>
+                  <b>{(task.score * 100).toFixed(0)}%</b>
+                  <em>{flownBy} · seed {String(run.seed).slice(0, 6)} · effort {task.thrusterEffort?.toFixed(3) ?? "—"} · {ago(run.requestedAt)}</em>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </div>
   );
 }

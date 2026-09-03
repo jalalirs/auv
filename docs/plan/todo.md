@@ -678,6 +678,11 @@ dive shown together, so a change to a controller is a change in a number.
 **Done when:** you draw a survey on the chart, fly it twice with two
 controllers, and see which did better.
 
+*Where it stands:* the second half first (3 September). The Dives page shows
+each dive's scored runs side by side — score bar, who flew it, seed, thruster
+effort — so two controllers on one dive are two lines to compare. Laying a
+task out on the chart is still to do.
+
 ## 19. Run it again
 
 A run pins everything it needed. Ask for it again with the same seed and

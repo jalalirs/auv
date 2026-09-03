@@ -19,7 +19,7 @@ export interface Held {
   places: City[];
   vehicles: Vehicle[];
   queues: Queue[];
-  runs: { dive: string; name: string; run: Run }[];
+  runs: { dive: string; name: string; flownBy: string; run: Run }[];
   /** The autonomy this institution has deployed, newest first. */
   stacks: AutonomyStack[];
 }
@@ -38,7 +38,7 @@ export async function readHeld(platform: Platform): Promise<Held> {
   // Every dive this institution has defined, and what became of each. The
   // platform keeps runs under the dive that defined them, so gathering them
   // is the client's job and not a missing endpoint.
-  let runs: { dive: string; name: string; run: Run }[] = [];
+  let runs: { dive: string; name: string; flownBy: string; run: Run }[] = [];
   let stacks: AutonomyStack[] = [];
   if (institution !== undefined) {
     stacks = (await platform.autonomy(institution.id).catch((): AutonomyStack[] => []))
@@ -46,7 +46,12 @@ export async function readHeld(platform: Platform): Promise<Held> {
     const dives = await platform.dives(institution.id);
     const each = await Promise.all(
       dives.slice(0, 12).map(async (dive) => (await platform.runs(dive.id))
-        .map((run) => ({ dive: dive.id, name: dive.name, run }))));
+        .map((run) => ({
+          dive: dive.id, name: dive.name, run,
+          flownBy: dive.autonomyStackId
+            ? (stacks.find((s) => s.id === dive.autonomyStackId)?.name ?? "a stack since gone")
+            : "by hand",
+        }))));
     runs = each.flat().sort((a, b) => (a.run.requestedAt < b.run.requestedAt ? 1 : -1));
   }
   return { you: me.principal, institution, places, vehicles, queues, runs, stacks };
