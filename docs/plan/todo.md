@@ -697,9 +697,14 @@ acting; live it sees a dead-reckoned position with about a hundred and fifty
 milliseconds between observation and thrust, and a high-gain policy that
 thrashes is exactly what a delay undoes. The tank now takes `latency_ticks`
 and the learner trains through the sensors with three ticks of delay and a
-heavier price on thrust; the retrained policy's live score is recorded below
-as it lands. The lesson is the one every sim-to-real paper reports, and the
-platform now has the knob to learn it with.
+heavier price on thrust. Retrained that way it scores 1.00 in the tank at
+the hand hold's thrust, and flown live in the same knot it scores 0.29 —
+17.6 of 60 seconds on station, 1.9 m off at worst, against the hand-written
+hold's 0.08 in that water. Better than the hand, as the item asked; a long
+way from its tank score, which says the tank's picture of the live loop is
+still too kind. The lesson is the one every sim-to-real paper reports, and
+the platform now has the knobs to learn it with: what is still missing from
+the tank is what the next run should measure.
 
 ## 18. Tasks you can lay out
 
