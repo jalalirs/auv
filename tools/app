@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Start the Coral City application, from anywhere.
+#
+#   ./tools/app          build and open it
+#   ./tools/app dev      the renderer alone in a browser, against the box
+#
+# pnpm lives under mise in this repository, which is one command too many to
+# type before a dive; this is the one command.
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MISE="$(command -v mise || echo "$HOME/.local/bin/mise")"
+cd "$HERE/apps/client"
+case "${1:-start}" in
+    dev)  exec "$MISE" exec -- pnpm exec vite --config vite.renderer.config.mts ;;
+    *)    exec "$MISE" exec -- pnpm start ;;
+esac
