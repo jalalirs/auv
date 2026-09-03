@@ -95,8 +95,10 @@ export function Deck({ platform, onDiving }: {
     );
   }
 
-  const free = held.queues.reduce((n, q) => n + q.free, 0);
-  const devices = held.queues.reduce((n, q) => n + q.devices, 0);
+  // The queue a dive will run on is the first; its machines are the ones
+  // that matter here. Summing every queue counted test hardware alongside.
+  const free = held.queues[0]?.free ?? 0;
+  const devices = held.queues[0]?.devices ?? 0;
   const initials = (held.you.displayName || held.you.email || "?")
     .split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
 
