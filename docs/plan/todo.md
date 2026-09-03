@@ -711,8 +711,11 @@ difference between controllers is shown as a difference between tracks.
 *Where it stands:* the command line has it (3 September): `coral-city dive
 --seed N`, `coral-city dive --again <dive>/<run>` to run one exactly again,
 and `coral-city compare <dive> <runA> <runB>` to hold two recordings' poses
-against each other and report the largest difference in position. The
-verification is recorded below as it lands.
+against each other and report the largest difference in position. Verified
+on the box: a hold-station dive in a gentle current, seed 42, run twice —
+323 poses each, the largest difference in position 0.0000 m, identical to the
+millimetre. The claim the platform rests on holds. Still to do: the same dive
+across many conditions at once, and two controllers' tracks drawn together.
 
 ## Not on this list
 
