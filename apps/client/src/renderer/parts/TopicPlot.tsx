@@ -7,9 +7,19 @@ import { useEffect, useRef, useState } from "react";
 
 export interface Sample { t: number; values: Record<string, number> }
 
+/** What the vehicle says about the topic being looked at. */
+export interface About { name: string; type: string; way: "from" | "to"; messages: number }
+
 const INKS = ["#40c7f4", "#ff7a5c", "#9be564", "#f4c542", "#c58cff", "#5ce0c8", "#ff9fd6", "#a0aab8"];
 
-export function TopicPlot({ topic, of }: { topic: string | undefined; of: Sample[] }): React.JSX.Element {
+export function TopicPlot({ topic, of, about, onLook }: {
+  topic: string | undefined;
+  of: Sample[];
+  /** The topic's own entry in the contract, when there is one. */
+  about?: About;
+  /** Look through a camera, for a topic that carries pictures. */
+  onLook?: (view: string) => void;
+}): React.JSX.Element {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const fields = of.length === 0 ? [] : Object.keys(of[of.length - 1]!.values);
@@ -71,6 +81,39 @@ export function TopicPlot({ topic, of }: { topic: string | undefined; of: Sample
       ink.stroke();
     });
   }, [of, of.length, shown.join("|")]);
+
+  // Not everything on a vehicle is a number. A topic that carries pictures
+  // has nothing to plot and never will, and one nothing publishes has nothing
+  // to plot yet — and a blank pane says neither, which reads as broken.
+  const pictures = about !== undefined && about.type.endsWith("/Image");
+  const said = pictures
+    ? (about!.name.startsWith("/camera")
+        ? { title: "pictures, not numbers",
+            body: "The vehicle's own camera. Look through it in the water pane and it goes out on this topic as it is seen.",
+            look: "front" }
+        : { title: "pictures, not numbers",
+            body: "An imaging sonar the vehicle declares. Nothing renders it yet, so nothing is published on it." })
+    : about !== undefined && about.messages === 0 && of.length === 0
+      ? { title: "nothing has crossed it yet",
+          body: about.way === "to"
+            ? "The vehicle listens on this one. It fills in when a controller commands it."
+            : "Declared by the vehicle, and silent so far." }
+      : undefined;
+
+  if (said !== undefined) {
+    return (
+      <div className="topic-plot">
+        <div className="topic-said">
+          <strong>{topic}</strong>
+          <em>{said.title}</em>
+          <p>{said.body}</p>
+          {said.look !== undefined && onLook !== undefined ? (
+            <button className="quiet small" onClick={() => onLook(said.look!)}>Look through it</button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="topic-plot">
