@@ -265,7 +265,13 @@ class Dive:
         self.task = None
         # What it leaves behind. Opened with the task, beside the brief.
         self.recorder = None
-        self.water_level = None
+        # Where the water stops. Depth is measured from z = 0 everywhere, so
+        # that is the waterline unless a place ships a surface of its own and
+        # says otherwise. It used to be None until a place shipped one, which
+        # meant that on every place that does not — Looe Key among them — the
+        # surface was a picture with nothing behind it, and a vehicle could
+        # rise straight out of the sea and keep going.
+        self.water_level = 0.0
         self.water = None
         self.on_the_bottom = False
 
@@ -732,17 +738,23 @@ class Dive:
         """One step of physics. Everything else is somebody else's schedule."""
         self.commands = self.helm.command(self.observation())
 
+        # How much of the hull is under the surface. Everything the water does
+        # — hold it up, slow it down, give the thrusters something to push
+        # against, come along with it — is only true of the part that is in it.
+        submerged = self.submerged()
+
         # Drag is on the motion through the water. The current, in the body
         # frame, is taken off the ground velocity before the water sees it.
         through_water = self.velocity.copy()
         through_water[:3] -= self.rotation.T @ self.current
-        wrench = self.body.step(self.rotation, through_water, self.commands, self.dt)
+        wrench = self.body.step(self.rotation, through_water, self.commands, self.dt, submerged)
+        effective = self.effective if submerged >= 1.0 else self.body.effective_mass(submerged)
 
         # Semi-implicit Euler at a fixed step. Not because it is the best
         # integrator but because it is the same integrator every time, which
         # matters more than accuracy for a result two runs must agree on.
-        self.velocity[:3] += (wrench[:3] / self.effective[:3]) * self.dt
-        self.velocity[3:] += (wrench[3:] / self.effective[3:]) * self.dt
+        self.velocity[:3] += (wrench[:3] / effective[:3]) * self.dt
+        self.velocity[3:] += (wrench[3:] / effective[3:]) * self.dt
         self.position += self.rotation @ self.velocity[:3] * self.dt
         # Attitude from the body rates, so that yaw is a heading somebody can
         # hold and roll and pitch are what the righting moment acts against.
@@ -839,15 +851,28 @@ class Dive:
                 return
             self.on_the_bottom = False
 
-        # The surface is a lid for the same reason. A vehicle that rises through
-        # it is a vehicle in the air, which this simulator has nothing true to
-        # say about.
-        if self.water_level is not None:
-            top = self.water_level - self.half_height
-            if self.position[2] > top:
-                self.position[2] = top
-                if self.velocity[2] > 0.0:
-                    self.velocity[2] = 0.0
+        # There is no lid on the surface. There used to be, and it was never
+        # reached, because it was only built for places that ship a water
+        # layer. It is not wanted either: a vehicle that breaks the surface
+        # loses its buoyancy and its thrust as it emerges and falls back on
+        # its own, which is what a real one does and is worth being able to
+        # see happen.
+
+    def submerged(self) -> float:
+        """The share of the hull under the surface, from one to nothing.
+
+        The hull is treated as a box of its own height, so it goes from wholly
+        under to wholly out over its own depth rather than all at once. Sudden
+        is what makes a surface model unusable: a vehicle that loses all its
+        buoyancy in one step leaves at speed.
+        """
+        if self.water_level is None:
+            return 1.0
+        top_of_hull = float(self.position[2]) + self.half_height
+        if top_of_hull <= self.water_level:
+            return 1.0
+        under = self.water_level - (float(self.position[2]) - self.half_height)
+        return float(max(0.0, min(1.0, under / max(1e-6, 2.0 * self.half_height))))
 
     def across_metres(self) -> float:
         """How wide this place is, in metres."""
@@ -878,6 +903,8 @@ class Dive:
             "pitchDeg": round(float(np.degrees(-np.arcsin(max(-1.0, min(1.0, float(self.rotation[2, 0])))))), 2),
             "rollDeg": round(float(np.degrees(np.arctan2(self.rotation[2, 1], self.rotation[2, 2]))), 2),
             "speedMs": round(float(np.linalg.norm(self.velocity[:3])), 4),
+            "submerged": round(self.submerged(), 3),
+            "surfaced": self.submerged() < 1.0,
             "commanded": bool(self.bridge.commanded) if self.bridge else False,
             "byHand": self.flown_by_hand,
             "flying": self.helm.flying.name,

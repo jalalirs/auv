@@ -194,25 +194,31 @@ class Body:
     def __init__(self, model: Hydrodynamics) -> None:
         self.model = model
 
-    def restoring(self, rotation: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def restoring(self, rotation: np.ndarray, submerged: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
         """Weight and buoyancy, in the body frame.
 
         Both act along the world vertical whatever the vehicle's attitude, which
         is why they are rotated into the body frame rather than treated as
         constants: it is exactly this that rights the vehicle when it rolls.
 
+        Buoyancy is the weight of the water the hull displaces, so it is the
+        share of the hull under the surface that produces it. A vehicle rising
+        through the surface loses it as it emerges, which is why a breached
+        vehicle falls back rather than flying: at the surface it weighs its
+        1.7 N of negative buoyancy; out of the water it weighs 113 N.
+
         `rotation` is the body-to-world rotation matrix.
         """
         up_in_body = rotation.T @ np.array([0.0, 0.0, 1.0])
 
         weight = -self.model.weight_n * up_in_body
-        buoyancy = self.model.buoyancy_n * up_in_body
+        buoyancy = self.model.buoyancy_n * float(submerged) * up_in_body
 
         moment = (np.cross(self.model.centre_of_gravity, weight)
                   + np.cross(self.model.centre_of_buoyancy, buoyancy))
         return weight + buoyancy, moment
 
-    def damping(self, velocity: np.ndarray) -> np.ndarray:
+    def damping(self, velocity: np.ndarray, submerged: float = 1.0) -> np.ndarray:
         """Drag, as a wrench in the body frame.
 
         Linear drag dominates at the speeds a survey ROV works at; quadratic
@@ -223,24 +229,42 @@ class Body:
         """
         linear = self.model.linear_damping * velocity
         quadratic = self.model.quadratic_damping * np.abs(velocity) * velocity
-        return -(linear + quadratic)
+        # Air is not water. A hull out of the water keeps its momentum instead
+        # of being stopped by a drag a thousand times what the air can offer.
+        return -(linear + quadratic) * float(submerged)
 
-    def effective_mass(self) -> np.ndarray:
-        return self.model.effective_mass()
+    def effective_mass(self, submerged: float = 1.0) -> np.ndarray:
+        """How heavy the body is to accelerate, water included.
+
+        The added mass is water moving with the hull, so a hull that is half
+        out of the water carries half of it. Out of the water the vehicle is
+        simply its own mass.
+        """
+        mass = self.model.effective_mass()
+        if submerged >= 1.0:
+            return mass
+        added = mass - np.concatenate([np.full(3, self.model.mass_kg), self.model.inertia])
+        return mass - added * (1.0 - float(submerged))
 
 
-    def thrust(self, commands: np.ndarray) -> np.ndarray:
-        """What the thrusters produce, as a wrench in the body frame."""
+    def thrust(self, commands: np.ndarray, submerged: float = 1.0) -> np.ndarray:
+        """What the thrusters produce, as a wrench in the body frame.
+
+        A propeller in air moves air. It is scaled by how much of the hull is
+        under the surface rather than modelled properly, which is enough to
+        say the true thing: a vehicle that has broken the surface cannot drive
+        itself further out of the water.
+        """
         force = np.zeros(3)
         moment = np.zeros(3)
         for thruster, command in zip(self.model.thrusters, commands):
             unit_force, unit_moment = thruster.wrench(command)
             force += unit_force
             moment += unit_moment
-        return np.concatenate([force, moment])
+        return np.concatenate([force, moment]) * float(submerged)
 
     def step(self, rotation: np.ndarray, velocity: np.ndarray,
-             commands: np.ndarray, dt: float) -> np.ndarray:
+             commands: np.ndarray, dt: float, submerged: float = 1.0) -> np.ndarray:
         """Everything the water and the thrusters do this step, as one wrench.
 
         `velocity` is the body-frame twist: linear then angular.
@@ -257,11 +281,11 @@ class Body:
         """
         del dt  # kept in the signature: a Coriolis term would need it.
 
-        force, moment = self.restoring(rotation)
+        force, moment = self.restoring(rotation, submerged)
         wrench = np.concatenate([force, moment])
-        wrench = wrench + self.damping(velocity)
+        wrench = wrench + self.damping(velocity, submerged)
         if len(self.model.thrusters) > 0:
-            wrench = wrench + self.thrust(commands)
+            wrench = wrench + self.thrust(commands, submerged)
         return wrench
 
 

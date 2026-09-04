@@ -54,10 +54,23 @@ class Helm:
         # are not touched: it asked for those.
         self.righting_nm = float(model.buoyancy_n * abs(
             float(model.centre_of_buoyancy[2] - model.centre_of_gravity[2])))
-        self.parameters = {"attitudeGuard": Parameter(
-            "attitudeGuard", 0.35, 0.0, 1.0, "",
-            "the share of the hull's righting moment a command may lean on; 0 turns the guard off")}
+        # The bottom guard. Nothing in the vehicle knows that the ground is a
+        # thing to avoid: the hold will happily hold a depth the reef is
+        # already at, and a hand pushing down finds the seabed at full thrust.
+        # This defends a clearance the way the attitude guard defends the
+        # righting moment — by taking the descent away as it runs out, so the
+        # vehicle settles onto the guard rather than into the coral.
+        self.parameters = {
+            "attitudeGuard": Parameter(
+                "attitudeGuard", 0.35, 0.0, 1.0, "",
+                "the share of the hull's righting moment a command may lean on; 0 turns the guard off"),
+            "bottomGuardM": Parameter(
+                "bottomGuardM", 0.5, 0.0, 5.0, "m",
+                "clearance over the seabed the guard defends; 0 turns the guard off"),
+        }
         self.guarded = 0
+        self.grounded = 0
+        self.altitude: float | None = None
         self.hold.limit(self.authority())
 
     # ── what the console may do ──────────────────────────────────────────────
@@ -143,6 +156,33 @@ class Helm:
         self.guarded += 1
         return horizontal * s + rest
 
+    def bottom(self, wrench: np.ndarray, seen: Observation) -> np.ndarray:
+        """Take the descent away as the clearance runs out.
+
+        Only the descent, and only what is commanded: a vehicle already on the
+        bottom is left there, a vehicle rising is never held back, and every
+        other axis is untouched, so a survey flying a foot off the reef still
+        goes where it was sent. The guard fades in over the clearance rather
+        than switching, because a step change in heave is a controller
+        fighting a wall.
+        """
+        guard = self.parameters["bottomGuardM"].value
+        if guard <= 0.0 or seen.floor is None:
+            self.altitude = None
+            return wrench
+        self.altitude = float(seen.position[2]) - float(seen.floor)
+        if wrench[2] >= 0.0:
+            return wrench
+        # Nothing left at the hull, everything at the guard.
+        share = max(0.0, min(1.0, self.altitude / guard))
+        allowed = float(self.capability[2]) * share
+        if -wrench[2] <= allowed:
+            return wrench
+        self.grounded += 1
+        held = wrench.copy()
+        held[2] = -allowed
+        return held
+
     def hold_here(self, seen: Observation) -> None:
         """Re-engage the hold at wherever the vehicle is now."""
         self.hold.engage(seen)
@@ -210,7 +250,7 @@ class Helm:
         if asked.thrusters is not None:
             return np.clip(asked.thrusters, -1.0, 1.0)
         wrench = asked.wrench if asked.wrench is not None else np.zeros(6)
-        return self.allocator.allocate(self.guard(wrench))
+        return self.allocator.allocate(self.bottom(self.guard(wrench), seen))
 
     # ── what the console is told ─────────────────────────────────────────────
 
@@ -224,6 +264,8 @@ class Helm:
                 "says": "What sits between any controller and the thrusters.",
                 "parameters": [p.describe() for p in self.parameters.values()],
                 "status": {"rightingNm": round(self.righting_nm, 3), "guarded": self.guarded,
+                           "altitudeM": None if self.altitude is None else round(self.altitude, 2),
+                           "heldOffTheBottom": self.grounded,
                            "authorityN": [round(float(a), 1) for a in self.authority()]},
             }],
         }
