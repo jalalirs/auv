@@ -228,11 +228,11 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, o
         </Panel>
 
         <Panel name="Depth" note="last minute">
-          <Plot of={history} pick={(p) => p.depth} invert />
+          <Plot of={history} pick={(p) => p.depth} unit="m" invert />
         </Panel>
 
         <Panel name="Speed" note="last minute">
-          <Plot of={history} pick={(p) => p.speed} />
+          <Plot of={history} pick={(p) => p.speed} unit="m/s" />
         </Panel>
       </aside>
     </div>
@@ -379,9 +379,10 @@ function Thrusters({ of }: { of: number[] | undefined }): React.JSX.Element {
                    [value < 0 ? "right" : "left"]: "50%",
                  }} />
           </div>
-          <em>{value.toFixed(2)}</em>
+          <em>{(Object.is(value, -0) || Math.abs(value) < 0.005 ? 0 : value).toFixed(2)}</em>
         </div>
       ))}
+      <p className="unit">share of full thrust, −1 astern to 1 ahead</p>
     </div>
   );
 }
@@ -393,9 +394,11 @@ function Thrusters({ of }: { of: number[] | undefined }): React.JSX.Element {
  * library would be larger than the application. Depth is inverted: down is
  * down, which is the only way anybody reads a depth trace.
  */
-function Plot({ of, pick, invert }: {
+function Plot({ of, pick, unit, invert }: {
   of: { t: number; depth: number; speed: number }[];
   pick: (point: { t: number; depth: number; speed: number }) => number;
+  /** What the numbers are in. A trace without one is a shape, not a reading. */
+  unit: string;
   invert?: boolean;
 }): React.JSX.Element {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -447,7 +450,25 @@ function Plot({ of, pick, invert }: {
     ink.arc(x, y, 2.6 * devicePixelRatio, 0, Math.PI * 2);
     ink.fillStyle = "#40c7f4";
     ink.fill();
-  }, [of, pick, invert, of.length]);
+
+    // What it is worth, and between what. A trace with no numbers on it says
+    // only that something went up and came down again.
+    ink.font = `${10 * devicePixelRatio}px system-ui, sans-serif`;
+    ink.fillStyle = "#4d6485";
+    ink.textAlign = "right";
+    ink.textBaseline = "top";
+    ink.fillText(`${(invert === true ? low : high).toFixed(2)} ${unit}`,
+                 width - 5 * devicePixelRatio, 3 * devicePixelRatio);
+    ink.textBaseline = "bottom";
+    ink.fillText(`${(invert === true ? high : low).toFixed(2)} ${unit}`,
+                 width - 5 * devicePixelRatio, height - 3 * devicePixelRatio);
+    ink.textAlign = "left";
+    ink.textBaseline = "top";
+    ink.fillStyle = "#c9d6e6";
+    ink.font = `600 ${12 * devicePixelRatio}px system-ui, sans-serif`;
+    ink.fillText(`${values[values.length - 1]!.toFixed(2)} ${unit}`,
+                 5 * devicePixelRatio, 3 * devicePixelRatio);
+  }, [of, pick, invert, unit, of.length]);
 
   return (
     <div className="plot">
