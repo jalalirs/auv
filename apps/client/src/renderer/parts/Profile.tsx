@@ -97,6 +97,9 @@ export function Profile({ of }: { of: Moment[] }): React.JSX.Element {
     // pane exists to answer.
     const last = of[of.length - 1]!;
     const under = last.floor === undefined ? undefined : last.depth - -last.floor;
+    ink.fillStyle = "rgba(4, 8, 15, 0.66)";
+    ink.fillRect(width - 150 * devicePixelRatio, 0,
+                 150 * devicePixelRatio, (under === undefined ? 22 : 36) * devicePixelRatio);
     ink.font = `600 ${11 * devicePixelRatio}px system-ui, sans-serif`;
     ink.fillStyle = "#c9d6e6";
     ink.textAlign = "right";
