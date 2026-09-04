@@ -30,14 +30,16 @@ export function Axes({ basis, upAxis }: { basis: Basis | undefined; upAxis?: str
     { name: "X", axis: [1, 0, 0], ink: "#ff6b6b", ...flat([1, 0, 0]) },
     { name: "Y", axis: [0, 1, 0], ink: "#7bd88f", ...flat([0, 1, 0]) },
     { name: "Z", axis: [0, 0, 1], ink: "#5aa9ff", ...flat([0, 0, 1]) },
-  ].sort((a, b) => a.towards - b.towards);   // what points away is drawn first
+  // `towards` is how much an axis runs along the way the camera looks, so a
+  // positive one points away from the viewer: drawn first, and dimmed.
+  ].sort((a, b) => b.towards - a.towards);
 
   return (
     <div className="axes" title={`x east, y north, ${upAxis === "Y" ? "y" : "z"} up`}>
       <svg viewBox={`0 0 ${box} ${box}`} width={box} height={box} aria-hidden="true">
         <circle cx={middle} cy={middle} r={size + 6} className="axes-face" />
         {drawn.map((one) => (
-          <g key={one.name} opacity={one.towards < -0.55 ? 0.45 : 1}>
+          <g key={one.name} opacity={one.towards > 0.55 ? 0.4 : 1}>
             <line x1={middle} y1={middle} x2={one.x} y2={one.y} stroke={one.ink} strokeWidth={2} strokeLinecap="round" />
             <circle cx={one.x} cy={one.y} r={7} fill={one.ink} />
             <text x={one.x} y={one.y + 3.4} textAnchor="middle" className="axes-label">{one.name}</text>
