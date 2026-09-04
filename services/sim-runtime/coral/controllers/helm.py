@@ -16,8 +16,10 @@ import numpy as np
 
 from .base import Command, Controller, Observation, Parameter
 from .external import StackController
+from .failsafe import Failsafe
 from .hold import HoldController
 from .manual import ManualController
+from .pursue import PursueController
 
 
 class Helm:
@@ -29,8 +31,16 @@ class Helm:
         # much it sinks or floats on its own; both are the model's to say.
         self.hold = HoldController(self.capability, model.effective_mass(), -model.net_buoyancy_n, dt)
         self.manual = ManualController(self.capability, self.hold)
+        # The platform's own answer to a route, so a task can be flown by
+        # somebody who has not written a controller.
+        self.pursue = PursueController(self.capability, model.effective_mass(), -model.net_buoyancy_n, dt)
+        # And the one controller that outranks a hand on the keys.
+        self.failsafe = Failsafe(self.capability, model.effective_mass(), -model.net_buoyancy_n, dt)
         self.stack = None if bridge is None else StackController(bridge)
-        self.controllers: dict[str, Controller] = {"hold": self.hold, "manual": self.manual}
+        self.controllers: dict[str, Controller] = {
+            "hold": self.hold, "manual": self.manual, "pursue": self.pursue,
+            "failsafe": self.failsafe,
+        }
         if self.stack is not None:
             self.controllers["stack"] = self.stack
         self.flying: Controller = self.hold
@@ -71,11 +81,19 @@ class Helm:
         self.guarded = 0
         self.grounded = 0
         self.altitude: float | None = None
-        self.hold.limit(self.authority())
+        # Whether the route the platform flies is what has the vehicle when
+        # nobody else asks for it. Set when a dive is given a task to fly.
+        self.flying_the_route = False
+        for each in (self.hold, self.pursue, self.failsafe):
+            each.limit(self.authority())
 
     # ── what the console may do ──────────────────────────────────────────────
 
     def hands(self, fraction) -> None:
+        # A hand on the keys is a person taking the vehicle back, which is the
+        # one thing that ends a failsafe.
+        if self.failsafe.decided is not None and float(np.max(np.abs(np.asarray(fraction, dtype=float)))) > 0.01:
+            self.failsafe.stand_down()
         self.manual.ask(fraction)
 
     def tune(self, controller: str, name: str, value: float) -> bool:
@@ -84,7 +102,8 @@ class Helm:
             if parameter is None:
                 return False
             parameter.set(value)
-            self.hold.limit(self.authority())
+            for each in (self.hold, self.pursue, self.failsafe):
+                each.limit(self.authority())
             return True
         one = self.controllers.get(controller)
         return False if one is None else one.tune(name, value)
@@ -198,8 +217,11 @@ class Helm:
         """
         if name not in self.controllers:
             return False
+        if name == "failsafe":
+            return False        # it takes the vehicle; it is not given it
         if name == "hold":
             self.prefer = "hold"
+            self.failsafe.stand_down()
             self.hold_here(seen)
         elif name == "manual":
             self.prefer = "manual"
@@ -212,7 +234,24 @@ class Helm:
 
     # ── the decision ─────────────────────────────────────────────────────────
 
+    def fly(self, route) -> None:
+        """Give the platform's own controller a route, and the vehicle with it.
+
+        A dive with something to do is flown by this unless somebody takes it:
+        a hand at the keys wins, and a stack that is talking wins, because both
+        are somebody saying they would rather fly it themselves.
+        """
+        self.pursue.steer(route)
+        self.flying_the_route = bool(route)
+
+    def watch_the_battery(self, battery, dock=None) -> None:
+        self.failsafe.watch(battery, dock)
+
     def _choose(self, seen: Observation) -> Controller:
+        # Above everything, including a hand on the keys: there is no time to
+        # ask, and what is being prevented is a vehicle that never comes back.
+        if self.failsafe.must_come_home(seen):
+            return self.failsafe
         if self.manual.active:
             return self.manual
         if self.prefer == "hold":
@@ -221,6 +260,8 @@ class Helm:
             return self.manual
         if self.stack is not None and self.stack.talking(seen.t):
             return self.stack
+        if self.flying_the_route and not self.pursue.holding:
+            return self.pursue
         return self.hold
 
     def _hand_over(self, to: Controller, seen: Observation) -> None:

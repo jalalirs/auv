@@ -306,6 +306,25 @@ class CoralCityShell(omni.ext.IExt):
         """The world's axes as the camera sees them, and which way is up."""
         return {"basis": self._basis, "upAxis": "Z", "view": getattr(dive, "view", "chase")}
 
+    def _free_running(self) -> bool:
+        """Whether this dive may run faster than the clock on the wall.
+
+        Only when nobody would notice and nothing would be wrong: no watcher
+        on the socket, no stack talking to it — a controller issued a command
+        for where the vehicle used to be is a lag no real vehicle has — and
+        not a dive somebody is flying by hand.
+        """
+        dive = self.dive
+        if dive is None or self.waiting_until is not None or self.tour is not None:
+            return False
+        if self.watch is not None and self.watch.watched:
+            return False
+        if self.controls is not None and self.controls.flying:
+            return False
+        if dive.bridge is not None and dive.bridge.commanded:
+            return False
+        return str(self.brief.get("mode", "batch")) != "interactive"
+
     def _watch_from(self, dive) -> None:
         """Put the camera where the vehicle can be seen from.
 
@@ -428,13 +447,28 @@ class CoralCityShell(omni.ext.IExt):
         # physics step is fixed; what varies is how many of them a frame is
         # worth, which is the only way a fixed-step integrator and a variable
         # frame rate can both be true.
-        behind = min((time.monotonic() - self.began) - dive.simulated,
-                     MOST_CATCHUP_SECONDS)
-        steps = int(behind / dive.dt)
-        for _ in range(steps):
-            if dive.done:
-                break
-            dive.step()
+        #
+        # Unless nobody is waiting on the clock. A batch dive with no watcher
+        # and nothing talking to it is being run for its result, and pacing it
+        # to a wall clock nobody is reading turns an hour of dive into an hour
+        # of a graphics card. It then runs as fast as the machine will carry
+        # it, in bites that stop at the next frame the recording is owed, so
+        # what it leaves behind is the same either way — and so is the
+        # trajectory, because the step is the same fixed step.
+        if self._free_running():
+            until = time.monotonic() + 0.02
+            owed = dive.simulated + (self.dive.recorder.frame_every
+                                     if dive.recorder is not None else 1.0)
+            while not dive.done and dive.simulated < owed and time.monotonic() < until:
+                dive.step()
+        else:
+            behind = min((time.monotonic() - self.began) - dive.simulated,
+                         MOST_CATCHUP_SECONDS)
+            steps = int(behind / dive.dt)
+            for _ in range(steps):
+                if dive.done:
+                    break
+                dive.step()
 
         dive.show()
         dive.stir()
