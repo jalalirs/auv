@@ -275,10 +275,11 @@ function ControllerPanel({ helm, onTune, onHoldHere, onEngage }: {
             {one.name !== "helm" ? (
               <div className="station">
                 <span>{flying ? "has the vehicle"
-                  : one.name === "stack" ? "the ordinary rule: the stack while it talks"
-                  : `keep the ${one.name} on it`}</span>
-                <button className="quiet small" disabled={flying} onClick={() => onEngage(one.name)}>
-                  {flying ? "Flying" : "Give it the vehicle"}
+                  : one.name === "stack" ? "flies while it talks"
+                  : "standing by"}</span>
+                <button className="quiet small engage" disabled={flying} onClick={() => onEngage(one.name)}
+                        title={flying ? "It has the vehicle" : "Give it the vehicle, and keep it on it"}>
+                  {flying ? "Flying" : "Engage"}
                 </button>
               </div>
             ) : null}
