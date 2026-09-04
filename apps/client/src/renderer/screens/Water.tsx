@@ -19,6 +19,7 @@ import type { Platform } from "@coral-city/api";
 import type { Stream } from "../App.js";
 import { Minimap, type Fix, type Geometry, type Site } from "../parts/Minimap.js";
 import { Profile, type Moment } from "../parts/Profile.js";
+import { Axes, type Basis } from "../parts/Axes.js";
 import { TopicPlot, type Sample } from "../parts/TopicPlot.js";
 import { Instruments, type Reading, type Topic } from "./instruments.js";
 
@@ -48,6 +49,7 @@ interface Hello {
   view?: string;
   beganAt?: number[];
   task?: { kind: string; name: string; geometry?: Geometry } | null;
+  camera?: { basis?: Basis; upAxis?: string; view?: string };
   conditions?: { currentMetresPerSecond: number; currentHeadingDeg: number; current: number[]; visibilityM?: number | null };
 }
 
@@ -303,6 +305,7 @@ export function Water({ platform, stream, onSurface }: {
         return (
           <div className="viewport">
             <canvas ref={canvas} />
+            {large ? <Axes basis={reading.camera?.basis} upAxis={reading.camera?.upAxis} /> : null}
             {large ? (
               <div className="views">
                 {views.map((one) => (

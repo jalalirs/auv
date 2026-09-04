@@ -56,6 +56,8 @@ export interface TaskProgress {
 }
 
 export interface Reading {
+  /** Where the camera is looking, for the axes drawn in the corner. */
+  camera?: { basis?: { right: number[]; up: number[]; forward: number[] }; upAxis?: string; view?: string };
   t?: number;
   depthM?: number;
   headingDeg?: number;
