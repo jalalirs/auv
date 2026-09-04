@@ -20,8 +20,28 @@ export interface Held {
   vehicles: Vehicle[];
   queues: Queue[];
   runs: { dive: string; name: string; flownBy: string; run: Run }[];
-  /** The autonomy this institution has deployed, newest first. */
+  /** The autonomy this institution has deployed, newest first, every build. */
   stacks: AutonomyStack[];
+  /** The same as controllers: one per slug, its newest build first. */
+  controllers: Controller[];
+}
+
+/** A controller somebody deployed, across its builds. */
+export interface Controller {
+  slug: string;
+  name: string;
+  newest: AutonomyStack;
+  builds: AutonomyStack[];
+}
+
+/** Builds grouped by slug, newest build first within each, newest controller first. */
+export function controllersOf(stacks: AutonomyStack[]): Controller[] {
+  const by = new Map<string, AutonomyStack[]>();
+  for (const one of stacks) by.set(one.slug, [...(by.get(one.slug) ?? []), one]);
+  return [...by.entries()].map(([slug, builds]) => {
+    const sorted = [...builds].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    return { slug, name: sorted[0]!.name, newest: sorted[0]!, builds: sorted };
+  }).sort((a, b) => (a.newest.createdAt < b.newest.createdAt ? 1 : -1));
 }
 
 export interface Packages {
@@ -54,7 +74,7 @@ export async function readHeld(platform: Platform): Promise<Held> {
         }))));
     runs = each.flat().sort((a, b) => (a.run.requestedAt < b.run.requestedAt ? 1 : -1));
   }
-  return { you: me.principal, institution, places, vehicles, queues, runs, stacks };
+  return { you: me.principal, institution, places, vehicles, queues, runs, stacks, controllers: controllersOf(stacks) };
 }
 
 /**

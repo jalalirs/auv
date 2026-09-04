@@ -600,8 +600,13 @@ and a way to deploy from the app.
 docks scroll and its controller panel has one shape; the section's labels
 clear the pane name; a gamepad is read beside the keys — left stick surge
 and sway, right stick yaw and heave, triggers roll — and sent as fractions
-the vehicle adds to the keys; the Dives page is a table — name over who
-flew it and when, score, Replay, state — rather than rows that wrapped;
+the vehicle adds to the keys; the dive page is a five-line plan — where,
+in, flown by, water, for — each line the one chosen with a searchable list
+behind it, so it holds five choices or five hundred at the same height
+(chips wrapped and columns of cards did not scale); builds are folded into
+controllers by slug on the dive page and the Autonomy page, newest chosen;
+the Dives page is a table — name over who flew it and when, score, Replay,
+state — rather than rows that wrapped;
 Replay plays simulated time at 1× to 30×, draws the site, coral and task
 under the track, and puts depth, altitude, speed and score traces under the
 scrubber with the moment marked, each clickable to seek; the end-to-end

@@ -14,7 +14,8 @@ import type { Platform } from "@coral-city/api";
 
 import { PILOTED, TASKS, type Task, WATERS, type Water } from "../catalog/tasks.js";
 import { alertKind, leadTemperature, useSea } from "../ocean/sea.js";
-import { Row, type Choice } from "../parts/Picker.js";
+import { Line } from "../parts/Line.js";
+import type { Choice } from "../parts/Picker.js";
 import { newestOf, whereIs } from "../platform/packages.js";
 import type { Held, Packages, Where } from "./Deck.js";
 import { Card, Credit, Fact, Pill, SeaPill, useLoadedPicture } from "./parts.js";
@@ -162,24 +163,22 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
     };
   });
   const tasks: Choice[] = [PILOTED, ...TASKS].map((one) => ({
-    key: one.key, name: one.name, says: one.asks, later: one.unavailable,
+    key: one.key, name: one.name, later: one.unavailable,
+    says: one.judgedOn.length > 0 ? `${one.asks} · judged on ${one.judgedOn.join(", ")}` : one.asks,
   }));
   const waters: Choice[] = WATERS.map((one) => ({ key: one.key, name: one.name, says: one.says }));
-  // One chip per controller, its newest build; earlier builds stay on the
-  // dives that pinned them and in the count.
-  const newestBuilds = [...new Map([...held.stacks].reverse().map((s) => [s.slug, s])).values()].reverse();
-  const buildsOf = (slug: string) => held.stacks.filter((s) => s.slug === slug).length;
+  // One row per controller, its newest build chosen; earlier builds stay on
+  // the dives that pinned them and in the count.
   const controllers: Choice[] = [
-    { key: MANUAL, name: "You, at the keys", says: "Manual, with the hold beneath it: let go and it holds station." },
-    ...newestBuilds.map((one) => {
-      const needs = (one.needs ?? {}) as { gpu?: boolean; gpuMemoryBytes?: number; cpu?: number; memoryBytes?: number };
-      const gpu = needs.gpu || one.wantsGpu
+    { key: MANUAL, name: "You, at the keys", says: "W A S D, Q E, space and C, or a gamepad; the hold has it whenever your hands are off" },
+    ...held.controllers.map(({ slug, name, newest, builds }) => {
+      const needs = (newest.needs ?? {}) as { gpu?: boolean; gpuMemoryBytes?: number; cpu?: number; memoryBytes?: number };
+      const gpu = needs.gpu || newest.wantsGpu
         ? `${needs.gpuMemoryBytes ? (needs.gpuMemoryBytes / 2 ** 30).toFixed(0) + " GiB of a card" : "a card"}`
         : "no card";
-      const builds = buildsOf(one.slug);
       return {
-        key: one.id, name: one.name,
-        says: `${one.slug} · ${one.imageDigest.slice(7, 19)} · ${gpu}${builds > 1 ? ` · ${builds} builds, newest chosen` : ""}`,
+        key: newest.id, name, group: `deployed to ${held.institution?.name ?? "you"}`,
+        says: `${slug} · ${newest.imageDigest.slice(7, 19)} · ${gpu}${builds.length > 1 ? ` · ${builds.length} builds, newest chosen` : ""}`,
       };
     }),
   ];
@@ -236,25 +235,23 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
             ? <div className="composer-credit"><Credit of={placePackage.credit} /></div> : null}
         </div>
 
-        <div className="sentence">
-          <Row label="Where" choices={places} chosen={place}
-               onChoose={(key) => { setPlace(key); localStorage.setItem(WHERE, key); }}
-               onOpen={(key) => onOpen({ page: "place", id: key })} />
-          <Row label="What in" choices={vehicles} chosen={vehicle}
-               onChoose={(key) => { setVehicle(key); localStorage.setItem(WHAT, key); }}
-               onOpen={(key) => onOpen({ page: "vehicle", id: key })} />
-          <Row label="Flown by" choices={controllers} chosen={flownBy}
-               onChoose={(key) => { setFlownBy(key); localStorage.setItem(WHO, key); }}
-               foot={chosenStack === undefined
-                 ? <>W A S D, Q E, space and C, or a gamepad. The hold has it whenever your hands are off.</>
-                 : <>Your stack flies from the start; the keys still win while they are held.</>} />
-          <Row label="In water that is" choices={waters} chosen={water.key}
-               onChoose={(key) => { setWater(WATERS.find((w) => w.key === key)!); localStorage.setItem(HOW, key); }} />
-          <Row label="For" choices={tasks} chosen={task.key}
-               onChoose={(key) => { const t = [PILOTED, ...TASKS].find((x) => x.key === key)!; setTask(t); localStorage.setItem(WHY, key); }}
-               foot={task.judgedOn.length > 0
-                 ? <>Judged on {task.judgedOn.join(", ")}; the score is on the dive when it ends.</>
-                 : undefined} />
+        <div className="plan">
+          <Line label="Where" choices={places} chosen={place}
+                onChoose={(key) => { setPlace(key); localStorage.setItem(WHERE, key); }}
+                onOpen={(key) => onOpen({ page: "place", id: key })} />
+          <Line label="In" choices={vehicles} chosen={vehicle}
+                onChoose={(key) => { setVehicle(key); localStorage.setItem(WHAT, key); }}
+                onOpen={(key) => onOpen({ page: "vehicle", id: key })} />
+          <Line label="Flown by" choices={controllers} chosen={flownBy}
+                onChoose={(key) => { setFlownBy(key); localStorage.setItem(WHO, key); }}
+                onOpen={chosenStack === undefined ? undefined : () => onOpen({ page: "autonomy" })}
+                hint={chosenStack === undefined ? undefined
+                  : <>Your stack flies from the start; the keys still win while they are held.</>} />
+          <Line label="Water" choices={waters} chosen={water.key}
+                onChoose={(key) => { setWater(WATERS.find((w) => w.key === key)!); localStorage.setItem(HOW, key); }} />
+          <Line label="For" choices={tasks} chosen={task.key}
+                onChoose={(key) => { const t = [PILOTED, ...TASKS].find((x) => x.key === key)!; setTask(t); localStorage.setItem(WHY, key); }}
+                hint={task.judgedOn.length > 0 ? <>The score is on the dive when it ends.</> : undefined} />
         </div>
       </section>
     </>
