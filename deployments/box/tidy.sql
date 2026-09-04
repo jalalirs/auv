@@ -16,6 +16,10 @@ CREATE TEMP TABLE litter_queue AS
     SELECT id FROM compute.queue WHERE slug ~ '^(box|brief)-[0-9]+$';
 CREATE TEMP TABLE litter_org AS
     SELECT id FROM identity.organisation WHERE slug ~ '^other-[0-9]+$';
+CREATE TEMP TABLE litter_stack AS
+    SELECT id FROM dive.autonomy_stack
+     WHERE org_id IN (SELECT id FROM litter_org)
+        OR slug ~ '^hold-gpu[0-9]+-[0-9]+$' OR slug = 'station-hold-v2';
 CREATE TEMP TABLE litter_version AS
     SELECT id FROM catalog.version
      WHERE (asset_kind = 'city' AND asset_id IN (SELECT id FROM litter_city))
@@ -24,7 +28,8 @@ CREATE TEMP TABLE litter_dive AS
     SELECT id FROM dive.dive
      WHERE city_version_id IN (SELECT id FROM litter_version)
         OR vehicle_version_id IN (SELECT id FROM litter_version)
-        OR org_id IN (SELECT id FROM litter_org);
+        OR org_id IN (SELECT id FROM litter_org)
+        OR autonomy_stack_id IN (SELECT id FROM litter_stack);
 CREATE TEMP TABLE litter_run AS
     SELECT id FROM dive.run
      WHERE dive_id IN (SELECT id FROM litter_dive) OR queue_id IN (SELECT id FROM litter_queue);
@@ -35,7 +40,7 @@ DELETE FROM dive.run_event WHERE run_id IN (SELECT id FROM litter_run);
 DELETE FROM dive.run       WHERE id IN (SELECT id FROM litter_run);
 DELETE FROM dive.dive      WHERE id IN (SELECT id FROM litter_dive);
 DELETE FROM dive.run_artefact WHERE run_id IN (SELECT id FROM litter_run);
-DELETE FROM dive.autonomy_stack WHERE org_id IN (SELECT id FROM litter_org);
+DELETE FROM dive.autonomy_stack WHERE id IN (SELECT id FROM litter_stack);
 DELETE FROM dive.conditions WHERE org_id IN (SELECT id FROM litter_org);
 DELETE FROM compute.device WHERE queue_id IN (SELECT id FROM litter_queue);
 DELETE FROM compute.queue  WHERE id IN (SELECT id FROM litter_queue);
@@ -49,5 +54,6 @@ DELETE FROM identity.organisation WHERE id IN (SELECT id FROM litter_org);
 SELECT 'cities' AS what, count(*) FROM catalog.city
 UNION ALL SELECT 'vehicles', count(*) FROM catalog.vehicle
 UNION ALL SELECT 'queues', count(*) FROM compute.queue
-UNION ALL SELECT 'institutions', count(*) FROM identity.organisation;
+UNION ALL SELECT 'institutions', count(*) FROM identity.organisation
+UNION ALL SELECT 'controllers', count(DISTINCT slug) FROM dive.autonomy_stack;
 COMMIT;
