@@ -186,6 +186,28 @@ class Seabed:
         return np.array([0.0, 0.0, 1.0]) if length < 1e-9 else normal / length
 
 
+def _mentions(objective, kind: str) -> bool:
+    """Whether an objective, or any stage of it, is of this kind."""
+    if not isinstance(objective, dict):
+        return False
+    if str(objective.get("kind", "")) == kind:
+        return True
+    return any(_mentions(stage, kind) for stage in objective.get("stages", []))
+
+
+def _find_dock(objective):
+    """Where a dive says its dock is, wherever in the objective it says it."""
+    if not isinstance(objective, dict):
+        return None
+    if str(objective.get("kind", "")) == "dock":
+        return objective.get("dock") or objective.get("station") or objective
+    for stage in objective.get("stages", []):
+        found = _find_dock(stage)
+        if found is not None:
+            return found
+    return None
+
+
 def layers_of(root: pathlib.Path) -> dict:
     """What a place says it is made of.
 
@@ -247,6 +269,17 @@ class Dive:
         self.velocity = np.zeros(6)
         self.rotation = np.eye(3)
         self.effective = body.effective_mass()
+        # Why the dive stopped, in one word, decided by whatever stopped it. A
+        # dive whose clock ran out and a dive that finished its work are two
+        # different results, and used to be the same one.
+        self.ended = ""
+        # The battery the vehicle package declares, and whether a dock is
+        # putting charge back into it.
+        self.battery = None
+        self.charging = False
+        # How many times a hand picked the vehicle up and put it somewhere.
+        self.carried = 0
+        self.route_flying = ""
         self.commands = np.zeros(len(allocator.model.thrusters))
         self.position = np.array(
             (brief.get("initialState") or {}).get("positionM", [0.0, 0.0, -2.0]),
@@ -278,6 +311,18 @@ class Dive:
         self.current = np.zeros(3)
         self.visibility_m = None
         self.read_conditions(brief.get("conditions"))
+        # The battery the vehicle package declares. A vehicle that declares
+        # none flies as everything did before: for as long as it is asked to.
+        try:
+            from energy import Battery
+            self.battery = Battery.of(pathlib.Path(brief.get("vehiclePath", "/dive/vehicle")))
+            charge = brief.get("batteryCharge")
+            if self.battery is not None and charge is not None:
+                self.battery.remaining_wh = self.battery.capacity_wh * float(charge)
+            if self.battery is not None:
+                say("battery", **self.battery.said())
+        except Exception as exc:
+            say("battery_unavailable", why=str(exc)[:160])
         # What the dive is for, judged as it runs. None when it is only flown.
         self.task = None
         # What it leaves behind. Opened with the task, beside the brief.
@@ -588,7 +633,13 @@ class Dive:
 
     @property
     def done(self) -> bool:
-        return self.taken >= self.steps
+        return bool(self.ended) or self.taken >= self.steps
+
+    def finish(self, why: str) -> None:
+        """End the dive, for a reason worth recording."""
+        if not self.ended:
+            self.ended = why
+            self.say("ending", why=why, t=round(self.simulated, 2))
 
     @property
     def flown_by_hand(self) -> bool:
@@ -633,6 +684,60 @@ class Dive:
         if said.get("hold") == "here":
             self.helm.hold_here(self.observation())
             self.say("hold_engaged", **self.helm.hold.status())
+        place = said.get("place")
+        if isinstance(place, dict):
+            self.carry_to(place)
+        found = said.get("found")
+        if isinstance(found, (list, tuple)) and len(found) >= 2:
+            self.report_a_find(found)
+
+    def carry_to(self, where: dict) -> None:
+        """Pick the vehicle up and put it somewhere. A hand of God.
+
+        Flying a kilometre at a quarter of a metre a second to reach the thing
+        you wanted to look at is forty minutes of nothing, so a person watching
+        may click the chart and be there. It is not flying and is not pretended
+        to be: the vehicle arrives stopped, the hold takes the new pose, and
+        the number of times it happened goes into the state, the recording and
+        the run — so a controller that did the work is never quietly compared
+        with one that was carried.
+        """
+        x = float(where.get("x", self.position[0]))
+        y = float(where.get("y", self.position[1]))
+        floor = self.floor if self.seabed is None else self.seabed.under(x, y)
+        if where.get("depthM") is not None:
+            z = -float(where["depthM"])
+        elif floor is not None:
+            # A sensible height over whatever is there, rather than the depth
+            # it happened to be at somewhere else entirely.
+            z = floor + max(self.half_height + 0.2, float(where.get("altitudeM", 2.0)))
+        else:
+            z = float(self.position[2])
+        if floor is not None:
+            z = max(z, floor + self.half_height + 0.05)
+        if self.water_level is not None:
+            z = min(z, self.water_level - self.half_height)
+        self.position = np.array([x, y, z])
+        self.velocity = np.zeros(6)
+        self.carried += 1
+        self.helm.hold_here(self.observation())
+        self.helm.failsafe.stand_down()
+        if self.task is not None:
+            # The route is flown from where the vehicle is now: carrying it
+            # past three waypoints does not reach them.
+            self.route_flying = ""
+            self.steer_to_the_task()
+        self.say("carried", to=[round(float(v), 2) for v in self.position], times=self.carried)
+
+    def report_a_find(self, where) -> None:
+        """Somebody saying they have found the thing they were sent to find."""
+        from tasks import Mission, Search
+
+        task = self.task.stage if isinstance(self.task, Mission) else self.task
+        if isinstance(task, Search):
+            task.report(where)
+            self.say("reported", where=[round(float(v), 2) for v in where[:3]],
+                     right=task.detail()["found"])
 
     def read_conditions(self, conditions) -> None:
         """What the water is doing, from the conditions the dive was defined with."""
@@ -647,6 +752,47 @@ class Dive:
         self.current = np.array([speed * np.cos(angle), speed * np.sin(angle), 0.0])
         visibility = parameters.get("visibilityM")
         self.visibility_m = None if visibility in (None, "", 0) else float(visibility)
+        # Things that go wrong, on purpose and on the clock. A controller that
+        # has only ever flown a healthy vehicle in still water has not been
+        # tested, and a failure that happens at a stated second happens at the
+        # same second on a re-run — which is the only kind worth having.
+        self.failures = []
+        for said in (parameters.get("failures") or []):
+            if not isinstance(said, dict):
+                continue
+            self.failures.append({"kind": str(said.get("kind", "")),
+                                  "at": float(said.get("atS", 0.0)),
+                                  "which": said.get("which"),
+                                  "forS": said.get("forS")})
+        self.dead_thrusters: set[int] = set()
+        self.sensors_out_until = 0.0
+
+    def things_go_wrong(self) -> None:
+        """Apply whatever the conditions said would fail, when it said."""
+        for failure in self.failures:
+            if failure.get("done") or self.simulated < failure["at"]:
+                continue
+            failure["done"] = True
+            kind = failure["kind"]
+            if kind == "thruster":
+                which = failure.get("which")
+                dead = (list(range(len(self.commands))) if which is None
+                        else [int(which)] if not isinstance(which, list) else [int(w) for w in which])
+                for one_of_them in dead:
+                    if 0 <= one_of_them < len(self.commands):
+                        self.dead_thrusters.add(one_of_them)
+                self.say("thruster_failed", which=sorted(self.dead_thrusters))
+            elif kind == "sensors":
+                self.sensors_out_until = self.simulated + float(failure.get("forS") or 5.0)
+                self.say("sensors_out", untilS=round(self.sensors_out_until, 1))
+            elif kind == "current":
+                speed = float(failure.get("which") or 0.5)
+                self.current = self.current + np.array([speed, 0.0, 0.0])
+                self.say("gust", currentMs=round(float(np.hypot(*self.current[:2])), 3))
+
+    @property
+    def sensors_are_out(self) -> bool:
+        return self.simulated < self.sensors_out_until
 
     def conditions_said(self) -> dict:
         speed = float(np.hypot(self.current[0], self.current[1]))
@@ -664,11 +810,18 @@ class Dive:
         from tasks import task_for
 
         self.began_at = self.position.copy()
+        wants_coral = _mentions(objective, "treat")
         self.task = task_for(objective, self.began_at,
                              float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0])),
-                             camera=self.camera())
+                             camera=self.camera(),
+                             colonies=self.colonies_here() if wants_coral else None)
         if self.task is not None:
             self.say("task_set", task=self.task.describe())
+            # The platform flies what it can, so that choosing a task on the
+            # dive page and pressing Dive does the thing rather than watching
+            # the vehicle sit where it started. A stack or a hand still wins.
+            self.steer_to_the_task()
+            self.watch_the_energy()
             # A dive that is for something records; a survey looks down, since
             # what it records is what it sees. A console may look elsewhere.
             if self.task.kind == "survey":
@@ -689,6 +842,44 @@ class Dive:
             if self._coral:
                 self.say("coral_charted", colonies=len(self._coral))
         return self._coral
+
+    def colonies_here(self):
+        """Every colony in the place, for a task that is about the coral.
+
+        Unthinned, unlike the chart's copy: a patch fifteen metres across holds
+        a handful of the two thousand a chart draws and thousands of the real
+        ones, and a treatment score has to be a share of the real population.
+        """
+        return coral_positions(pathlib.Path(self.brief.get("cityPath", "/dive/city")),
+                               at_most=200000)
+
+    def steer_to_the_task(self) -> None:
+        """Hand the task's route to the platform's own controller.
+
+        Re-checked as the dive runs, because a mission's route changes when its
+        stage does.
+        """
+        if self.task is None:
+            return
+        which = self.task.route_id()
+        if which == self.route_flying:
+            return
+        route = self.task.route()
+        self.route_flying = which
+        self.helm.fly(route)
+        if route:
+            self.say("steering", legs=len(route), forTask=self.task.kind, stage=which)
+
+    def watch_the_energy(self) -> None:
+        """Tell the failsafe what it is watching and where home is."""
+        if self.battery is None:
+            return
+        home = None
+        objective = self.brief.get("objective") or {}
+        said = _find_dock(objective)
+        if said is not None and self.task is not None:
+            home = self.task.somewhere(said)
+        self.helm.watch_the_battery(self.battery, home)
 
     def hello(self) -> dict:
         """What somebody arriving at the console needs once: the site as a
@@ -745,6 +936,16 @@ class Dive:
                            "w": round(float(self.velocity[2]), 4)},
             "/thruster_cmd": {f"t{i + 1}": round(float(c), 3) for i, c in enumerate(self.commands)},
         }
+        if self.sensors_are_out:
+            # Quiet, not zero. A sensor that has dropped out publishes nothing,
+            # and a controller that treats missing as zero is the bug this is
+            # here to find.
+            return {"/thruster_cmd": said["/thruster_cmd"]}
+        if self.battery is not None:
+            said["/battery"] = {"percentage": round(self.battery.fraction * 100.0, 2),
+                                "voltage": round(self.battery.voltage * (0.85 + 0.15 * self.battery.fraction), 2),
+                                "watts": round(self.battery.watts, 1),
+                                "remainingWh": round(self.battery.remaining_wh, 2)}
         return said
 
     def observation(self):
@@ -758,12 +959,27 @@ class Dive:
 
     def step(self) -> None:
         """One step of physics. Everything else is somebody else's schedule."""
+        self.things_go_wrong()
         self.commands = self.helm.command(self.observation())
+        if self.dead_thrusters:
+            # A thruster that has failed produces nothing, whatever it is
+            # asked for. The allocator does not know, which is the point: the
+            # vehicle is now asymmetric and the controller has to cope.
+            for one_of_them in self.dead_thrusters:
+                if one_of_them < len(self.commands):
+                    self.commands[one_of_them] = 0.0
 
         # How much of the hull is under the surface. Everything the water does
         # — hold it up, slow it down, give the thrusters something to push
         # against, come along with it — is only true of the part that is in it.
         submerged = self.submerged()
+
+        # What it cost. A flat battery is a vehicle with no thrusters, which
+        # is a hull doing whatever its buoyancy says.
+        if self.battery is not None:
+            self.battery.draw(self.commands if not self.battery.flat else np.zeros_like(self.commands), self.dt)
+            if self.battery.flat:
+                self.commands = np.zeros_like(self.commands)
 
         # Drag is on the motion through the water. The current, in the body
         # frame, is taken off the ground velocity before the water sees it.
@@ -787,6 +1003,9 @@ class Dive:
         self.taken += 1
         self.against_the_ground = False
         self.land()
+        self.charge_at_the_dock()
+        self.steer_to_the_task()
+        self.consider_the_end()
 
         # Sensors at their own rate rather than every physics step: a real DVL
         # reports at tens of hertz, not two hundred, and a stack tuned against a
@@ -952,6 +1171,47 @@ class Dive:
         self.velocity[:3] = self.rotation.T @ moving
         self.against_the_ground = True
 
+    def charge_at_the_dock(self) -> None:
+        """On the station, the battery fills. That is what a dock is for."""
+        self.charging = False
+        if self.battery is None or self.task is None:
+            return
+        from tasks import Dock, Mission, Wait
+
+        stage = self.task.stage if isinstance(self.task, Mission) else self.task
+        docked = False
+        if isinstance(self.task, Mission):
+            docked = any(one.get("kind") == "dock" and one.get("achieved", {}).get("docked")
+                         for one in self.task.finished)
+        if isinstance(stage, Wait) and docked:
+            self.charging = True
+            self.battery.charge(float(self.brief.get("dockWatts", 120.0)), self.dt)
+        elif isinstance(stage, Dock) and stage.docked:
+            self.charging = True
+            self.battery.charge(float(self.brief.get("dockWatts", 120.0)), self.dt)
+
+    def consider_the_end(self) -> None:
+        """Every way a dive can be over other than its clock running out.
+
+        A task that is done is a dive that is done: the machine goes back
+        rather than holding station for the rest of an hour somebody asked for
+        because they did not know how long the job would take.
+        """
+        if self.ended:
+            return
+        if self.task is not None and self.task.done:
+            self.finish("failed" if self.task.failed() else "achieved")
+            return
+        if self.battery is not None and self.battery.flat:
+            self.finish("battery")
+            return
+        # The failsafe has taken the vehicle and got it there.
+        decided = self.helm.failsafe.decided
+        if decided == "surface" and self.submerged() < 1.0:
+            self.finish("surfaced")
+        elif decided == "dock" and self.helm.failsafe.pursue.holding:
+            self.finish("home")
+
     def submerged(self) -> float:
         """The share of the hull under the surface, from one to nothing.
 
@@ -1000,6 +1260,11 @@ class Dive:
             "submerged": round(self.submerged(), 3),
             "surfaced": self.submerged() < 1.0,
             "againstTheGround": self.against_the_ground,
+            "carried": self.carried,
+            **({"sensorsOut": True} if self.sensors_are_out else {}),
+            **({"deadThrusters": sorted(self.dead_thrusters)} if self.dead_thrusters else {}),
+            **({} if self.battery is None else {"battery": self.battery.said(),
+                                                "charging": self.charging}),
             "commanded": bool(self.bridge.commanded) if self.bridge else False,
             "byHand": self.flown_by_hand,
             "flying": self.helm.flying.name,
@@ -1083,11 +1348,19 @@ class Dive:
             except Exception as exc:
                 self.say("recording_failed", why=str(exc)[:160])
             self.recorder = None
+        result = None if self.task is None else self.task.result()
+        if result is not None and self.battery is not None:
+            # A controller that does the job on half the charge is the better
+            # controller, and until now there was no way to say so.
+            result["energyWh"] = round(self.battery.spent_wh, 3)
         self.say("settled",
                  t=round(self.simulated, 3),
                  depthM=round(float(-self.position[2]), 4),
                  speedMs=round(float(np.linalg.norm(self.velocity[:3])), 4),
-                 **({} if self.task is None else {"task": self.task.result()}))
+                 ended=self.ended or "time",
+                 carried=self.carried,
+                 **({} if self.battery is None else {"battery": self.battery.said()}),
+                 **({} if result is None else {"task": result}))
         if self.bridge is not None:
             # Whether anything actually flew it. A dive that ran with nobody at
             # the controls is a valid result and a different one, and the

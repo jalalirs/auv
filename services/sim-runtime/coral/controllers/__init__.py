@@ -2,9 +2,12 @@
 
 from .base import Command, Controller, Observation, Parameter
 from .external import StackController
+from .failsafe import Failsafe
 from .helm import Helm
 from .hold import HoldController
 from .manual import ManualController
+from .pursue import PursueController
 
-__all__ = ["Command", "Controller", "Helm", "HoldController", "ManualController",
-           "Observation", "Parameter", "StackController"]
+__all__ = ["Command", "Controller", "Failsafe", "Helm", "HoldController",
+           "ManualController", "Observation", "Parameter", "PursueController",
+           "StackController"]
