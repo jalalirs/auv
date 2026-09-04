@@ -435,7 +435,7 @@ input:focus { border-color: var(--coral); }
 
 .dock {
   display: flex; flex-direction: column; gap: 10px;
-  padding: 12px; overflow-y: auto; min-height: 0;
+  padding: 12px; overflow-y: auto; overflow-x: hidden; min-height: 0; min-width: 0;
 }
 .dock.left { grid-area: left; border-right: 1px solid var(--edge); }
 .dock.right { grid-area: right; border-left: 1px solid var(--edge); }
@@ -840,7 +840,12 @@ table.axes .delta { color: var(--vehicle); font-size: 11.5px; }
 .controller .station {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   margin: 0 10px 8px; color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums;
+  /* One line, always: a hand-over changes the words here, never the height. */
+  height: 26px; white-space: nowrap; overflow: hidden;
 }
+.controller .station span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.controller .station button { flex: none; white-space: nowrap; }
+.controller .station button.engage { width: 64px; text-align: center; }
 button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 .tunable {
   display: grid; grid-template-columns: 76px 1fr 64px; align-items: center; gap: 8px;
@@ -965,7 +970,6 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 
 
 /* ── the controller rows keep their height ─────────────────────────────── */
-.controller .station { min-height: 30px; }
 .controller .station button:disabled { opacity: 0.5; cursor: default; }
 .controller summary em { min-width: 44px; text-align: right; display: inline-block; }
 
@@ -974,7 +978,6 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 .controller header { display: flex; align-items: baseline; gap: 8px; padding: 8px 10px; }
 .controller header strong { font-weight: 600; flex: 1; }
 .controller header em { font-style: normal; color: var(--dim); font-size: 11.5px; min-width: 48px; text-align: right; }
-.controller .station { min-height: 30px; }
 .controller .station span { font-variant-numeric: tabular-nums; }
 .who-flies { display: inline-block; min-width: 190px; }
 
