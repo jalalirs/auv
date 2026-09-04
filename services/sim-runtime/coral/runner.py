@@ -13,6 +13,7 @@ what they do between calls.
 
 from __future__ import annotations
 
+import math
 import pathlib
 
 import numpy as np
@@ -169,6 +170,22 @@ class Seabed:
         )
 
 
+    def normal(self, x: float, y: float) -> np.ndarray:
+        """Which way the bottom faces at a point: a unit vector, z up.
+
+        From the slope of the height field over one cell either side, which is
+        as fine as the field is. A flat bottom returns straight up; the wall of
+        a spur returns something nearly horizontal, and that is the difference
+        between ground a vehicle settles onto and ground it runs into.
+        """
+        step = self.across / max(1, self.columns - 1)
+        east = self.under(x + step, y) - self.under(x - step, y)
+        north = self.under(x, y + step) - self.under(x, y - step)
+        normal = np.array([-east, -north, 2.0 * step])
+        length = float(np.linalg.norm(normal))
+        return np.array([0.0, 0.0, 1.0]) if length < 1e-9 else normal / length
+
+
 def layers_of(root: pathlib.Path) -> dict:
     """What a place says it is made of.
 
@@ -279,6 +296,10 @@ class Dive:
         # when one is drawn, and a guess otherwise — a vehicle resting exactly
         # on the floor with its centre on the floor is half buried.
         self.half_height = 0.15
+        # And how wide, which is how far ahead of itself it meets a wall.
+        self.half_width = 0.3
+        # Whether it is up against ground it cannot ride over.
+        self.against_the_ground = False
 
     # ── setting up ───────────────────────────────────────────────────────────
 
@@ -438,6 +459,7 @@ class Dive:
                             for v in drawn.GetSize()]
                 if size is not None:
                     self.half_height = max(0.05, size[2] / 2.0)
+                    self.half_width = max(0.1, max(size[0], size[1]) / 2.0)
                 self.say("hull_drawn", file=hull.name, metresAcross=size)
 
             # The reef. Referenced rather than merged, so the seabed stays one
@@ -763,6 +785,7 @@ class Dive:
         self.rotation = self.rotation @ _turn(self.velocity[3:] * self.dt)
         self.simulated += self.dt
         self.taken += 1
+        self.against_the_ground = False
         self.land()
 
         # Sensors at their own rate rather than every physics step: a real DVL
@@ -825,17 +848,20 @@ class Dive:
         return self._Gf.Vec3d(x, y, z)
 
     def land(self) -> None:
-        """Stop the vehicle at the bottom, and at the surface.
+        """Stop the vehicle where the ground is: under it, and ahead of it.
 
-        Not a collision solver — a floor and a ceiling. It resolves by putting
-        the vehicle back where it was allowed to be and taking away the velocity
-        that carried it out, which is what a hard stop against a tank floor
-        does: it does not bounce and it does not keep pushing.
+        Not a collision solver. Two constraints, resolved by putting the
+        vehicle back where it was allowed to be and taking away the velocity
+        that carried it out, which is what a hard stop against ground does: it
+        does not bounce and it does not keep pushing. A vehicle held down by
+        its thrusters stays down, because the thrust is still applied; it
+        simply cannot go through.
 
-        A vehicle held down by its thrusters stays down, because the thrust is
-        still applied; it simply cannot go through. That is the behaviour worth
-        having before a real height query exists, and it is the difference
-        between a dive that ends on the bottom and one that leaves the world.
+        The floor alone was not enough. Clamping depth and nothing else means
+        a vehicle driven at the rising face of a spur is lifted up it a
+        centimetre at a time — it crosses ground no vehicle could cross,
+        silently, and a controller that did that in the sea would be in
+        pieces. So ground too steep to ride over now stops it.
         """
         floor = self.floor
         if self.seabed is not None:
@@ -845,11 +871,11 @@ class Dive:
             bottom = floor + self.half_height
             if self.position[2] < bottom:
                 self.position[2] = bottom
-                if self.velocity[2] < 0.0:
-                    self.velocity[2] = 0.0
-                    self.on_the_bottom = True
-                return
-            self.on_the_bottom = False
+                self.settle()
+            else:
+                self.on_the_bottom = False
+
+        self.strike()
 
         # There is no lid on the surface. There used to be, and it was never
         # reached, because it was only built for places that ship a water
@@ -857,6 +883,74 @@ class Dive:
         # loses its buoyancy and its thrust as it emerges and falls back on
         # its own, which is what a real one does and is worth being able to
         # see happen.
+
+    # Ground steeper than this is a wall rather than a slope: a vehicle rides
+    # over what it can and is stopped by what it cannot. Fifty degrees is well
+    # past anything a reef's sand or rubble holds, and short of the near
+    # vertical faces of a spur, which is exactly the line worth drawing.
+    CLIMBS_UP_TO = math.cos(math.radians(50.0))
+
+    def settle(self) -> None:
+        """Take away the motion going into the ground, and leave the rest.
+
+        The ground is a surface, not a lift. Clamping depth and zeroing the
+        descent — which is all this used to do — meant a vehicle pressed onto a
+        slope was carried up it at no cost, gaining height it never worked for.
+        Removing the part of the motion that goes into the surface gives the
+        right answer at every angle without a special case: on a flat bottom
+        the descent stops, on a slope the push turns into travel along the
+        slope and the vehicle keeps only what it did not spend climbing, and
+        on a face near vertical almost nothing of it is left.
+        """
+        facing = (np.array([0.0, 0.0, 1.0]) if self.seabed is None
+                  else self.seabed.normal(float(self.position[0]), float(self.position[1])))
+        moving = self.rotation @ self.velocity[:3]
+        into = float(np.dot(moving, facing))
+        if into < 0.0:
+            self.velocity[:3] = self.rotation.T @ (moving - facing * into)
+        # Ground it is resting on, or a face it is up against. The two mean
+        # different things to whoever is reading: one is a dive that has
+        # landed, the other is a dive that is stuck.
+        self.on_the_bottom = bool(facing[2] > 0.7)
+        if facing[2] <= 0.7:
+            self.against_the_ground = True
+
+    def strike(self) -> None:
+        """Stop the vehicle against ground it cannot ride over.
+
+        It looks its own half-width ahead along the way it is actually moving,
+        which is where it will meet something before its centre does. If the
+        ground there stands above its keel and faces too steeply to be a slope,
+        the part of its motion going into that face is taken away — the rest is
+        left alone, so a vehicle stopped by a wall still slides along it, which
+        is what happens and what a pilot expects.
+        """
+        if self.seabed is None:
+            return
+        moving = self.rotation @ self.velocity[:3]
+        flat = moving[:2]
+        speed = float(np.linalg.norm(flat))
+        if speed < 1e-4:
+            return
+        ahead = self.position[:2] + (flat / speed) * self.half_width
+        there = self.seabed.under(float(ahead[0]), float(ahead[1]))
+        keel = float(self.position[2]) - self.half_height
+        if there <= keel:
+            return
+        facing = self.seabed.normal(float(ahead[0]), float(ahead[1]))
+        if facing[2] >= self.CLIMBS_UP_TO:
+            return                      # a slope, not a wall: it may ride up
+        into = facing[:2]
+        length = float(np.linalg.norm(into))
+        if length < 1e-9:
+            return
+        into = into / length
+        going = float(np.dot(flat, into))
+        if going >= 0.0:
+            return                      # already leaving the face
+        moving[:2] = flat - into * going
+        self.velocity[:3] = self.rotation.T @ moving
+        self.against_the_ground = True
 
     def submerged(self) -> float:
         """The share of the hull under the surface, from one to nothing.
@@ -905,6 +999,7 @@ class Dive:
             "speedMs": round(float(np.linalg.norm(self.velocity[:3])), 4),
             "submerged": round(self.submerged(), 3),
             "surfaced": self.submerged() < 1.0,
+            "againstTheGround": self.against_the_ground,
             "commanded": bool(self.bridge.commanded) if self.bridge else False,
             "byHand": self.flown_by_hand,
             "flying": self.helm.flying.name,

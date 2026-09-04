@@ -109,3 +109,137 @@ def test_a_dive_flown_by_the_hold_keeps_its_clearance():
         dive.step()
     assert dive.position[2] > -4.2, "it must not end up under the seabed"
     assert dive.helm.altitude is not None and dive.helm.altitude >= 0.0
+
+
+# ── ground ahead, not only ground below ──────────────────────────────────────
+
+def a_seabed(build):
+    """A 64 by 64 bottom over a hundred metres, from a function of x and y."""
+    from runner import Seabed
+
+    across, cells = 100.0, 64
+    heights = np.zeros((cells, cells))
+    for row in range(cells):
+        for column in range(cells):
+            x = (column / (cells - 1) - 0.5) * across
+            y = (row / (cells - 1) - 0.5) * across
+            heights[row, column] = build(x, y)
+    return Seabed(heights, across)
+
+
+def test_the_bottom_says_which_way_it_faces():
+    flat = a_seabed(lambda x, y: -10.0)
+    assert np.allclose(flat.normal(0.0, 0.0), [0, 0, 1], atol=1e-6), "flat ground faces up"
+    # A ramp climbing towards +x: the normal leans back against the climb.
+    ramp = a_seabed(lambda x, y: -10.0 + x)
+    faces = ramp.normal(0.0, 0.0)
+    assert faces[0] < -0.6 and faces[2] > 0.6, f"a one-in-one ramp faces up and back, got {faces}"
+
+
+def test_a_wall_stops_the_vehicle_and_a_slope_does_not():
+    # A face rising steeply beyond x = 0, ten metres tall.
+    wall = a_seabed(lambda x, y: -10.0 + (0.0 if x < 0 else min(10.0, x * 8.0)))
+    dive = a_dive(depth=9.0)
+    dive.seabed = wall
+    dive.half_width, dive.half_height = 0.3, 0.13
+    dive.position = np.array([-0.4, 0.0, -9.0])
+    dive.velocity[:3] = np.array([0.5, 0.0, 0.0])          # driving at the face
+    dive.strike()
+    assert dive.against_the_ground, "it should be stopped by ground it cannot climb"
+    assert abs(float(dive.velocity[0])) < 1e-6, "the motion into the wall is taken away"
+
+    # The same vehicle on a one-in-ten slope keeps going.
+    slope = a_seabed(lambda x, y: -10.0 + x * 0.1)
+    dive.seabed = slope
+    dive.against_the_ground = False
+    dive.velocity[:3] = np.array([0.5, 0.0, 0.0])
+    dive.strike()
+    assert not dive.against_the_ground, "a gentle slope is ground, not a wall"
+    assert abs(float(dive.velocity[0]) - 0.5) < 1e-9
+
+
+def test_a_vehicle_stopped_by_a_wall_still_slides_along_it():
+    wall = a_seabed(lambda x, y: -10.0 + (0.0 if x < 0 else min(10.0, x * 8.0)))
+    dive = a_dive(depth=9.0)
+    dive.seabed = wall
+    dive.half_width, dive.half_height = 0.3, 0.13
+    dive.position = np.array([-0.4, 0.0, -9.0])
+    dive.velocity[:3] = np.array([0.5, 0.4, 0.0])          # into the wall and along it
+    dive.strike()
+    assert abs(float(dive.velocity[0])) < 1e-6, "nothing goes into the face"
+    assert abs(float(dive.velocity[1]) - 0.4) < 1e-9, "what runs along it is untouched"
+
+
+def test_ground_below_the_keel_is_not_a_wall():
+    wall = a_seabed(lambda x, y: -10.0 + (0.0 if x < 0 else min(10.0, x * 8.0)))
+    dive = a_dive(depth=1.0)
+    dive.seabed = wall
+    dive.half_width, dive.half_height = 0.3, 0.13
+    dive.position = np.array([-0.4, 0.0, -1.0])            # flying well over the spur
+    dive.velocity[:3] = np.array([0.5, 0.0, 0.0])
+    dive.strike()
+    assert not dive.against_the_ground, "a wall it is flying over is not in its way"
+    assert abs(float(dive.velocity[0]) - 0.5) < 1e-9
+
+
+def test_a_vehicle_driven_at_a_spur_does_not_climb_it():
+    wall = a_seabed(lambda x, y: -10.0 + (0.0 if x < 0 else min(10.0, x * 8.0)))
+    dive = a_dive(depth=9.0, seconds=40)
+    dive.seabed = wall
+    dive.half_width, dive.half_height = 0.3, 0.13
+    dive.position = np.array([-3.0, 0.0, -9.5])
+    ahead = np.zeros(6)
+    ahead[0] = dive.helm.capability[0]
+    for _ in range(int(20.0 / dive.dt)):
+        dive.commands = dive.allocator.allocate(ahead)
+        wrench = dive.body.step(dive.rotation, dive.velocity, dive.commands, dive.dt, 1.0)
+        dive.velocity[:3] += (wrench[:3] / dive.effective[:3]) * dive.dt
+        dive.velocity[3:] += (wrench[3:] / dive.effective[3:]) * dive.dt
+        dive.position += dive.rotation @ dive.velocity[:3] * dive.dt
+        dive.rotation = dive.rotation
+        dive.land()
+    assert dive.position[0] < 0.2, f"it drove into the face and up it, reaching x = {dive.position[0]:.2f} m"
+    assert dive.against_the_ground, "it should end the run held against the face"
+    under = wall.under(float(dive.position[0]), float(dive.position[1]))
+    assert under <= dive.position[2] - dive.half_height + 1e-6, "and never inside the ground"
+    # It does rise, because full surge on a frame whose thrusters sit above its
+    # centre of gravity pitches the hull and turns some of that push upwards.
+    # That is the hull, not the terrain, and the guard has nothing to say about it.
+
+
+def test_a_slope_is_climbed_at_a_cost_rather_than_for_free():
+    """A vehicle pressed onto a slope goes along it, not through it — and pays.
+
+    The old floor clamped depth and nothing else, so a vehicle driven at a
+    rise was carried up it with its speed intact. What the ground can do is
+    turn motion, not add it.
+    """
+    slope = a_seabed(lambda x, y: -10.0 + x * 0.7)      # thirty-five degrees
+    dive = a_dive(depth=9.0)
+    dive.seabed = slope
+    dive.half_width, dive.half_height = 0.3, 0.13
+    here = slope.under(0.0, 0.0)
+    dive.position = np.array([0.0, 0.0, here + dive.half_height - 0.02])   # pressed in
+    dive.velocity[:3] = np.array([0.6, 0.0, 0.0])
+    before = float(np.linalg.norm(dive.velocity[:3]))
+    dive.land()
+
+    assert dive.position[2] >= here + dive.half_height - 1e-9, "it is put back on the surface"
+    after = dive.velocity[:3].copy()
+    assert after[0] < 0.6, "the push into the slope is spent"
+    assert after[2] > 0.0, "and some of it becomes travel up the slope"
+    assert float(np.linalg.norm(after)) <= before + 1e-9, "the ground never adds speed"
+    assert dive.on_the_bottom, "thirty-five degrees is ground to rest on"
+
+
+def test_a_flat_bottom_still_simply_stops_it():
+    flat = a_seabed(lambda x, y: -10.0)
+    dive = a_dive(depth=9.0)
+    dive.seabed = flat
+    dive.half_width, dive.half_height = 0.3, 0.13
+    dive.position = np.array([0.0, 0.0, -10.0])
+    dive.velocity[:3] = np.array([0.3, 0.0, -0.4])
+    dive.land()
+    assert abs(float(dive.velocity[2])) < 1e-9, "the descent is taken away"
+    assert abs(float(dive.velocity[0]) - 0.3) < 1e-9, "what runs along the bottom is not"
+    assert dive.on_the_bottom

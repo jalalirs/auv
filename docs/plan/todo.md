@@ -635,9 +635,18 @@ surface, loses what was holding it up and falls back on its own; the lid is
 gone. The seabed had a floor but no guard, so the helm gained one beside the
 attitude guard: it takes the commanded descent away as the clearance runs
 out, defends half a metre by default, never holds a vehicle back from
-rising, and reports the clearance it is keeping. Still missing: anything
-horizontal — the floor clamps depth only, so a vehicle driven at a rising
-spur rides up its face rather than striking it; the Autonomy page lists what is deployed with what each needs; the
+rising, and reports the clearance it is keeping. The ground became a surface rather than a
+lift the same day: the floor clamped depth and killed the descent, which
+carried a vehicle pressed onto a slope up it at no cost, so contact now
+removes the part of the motion going into the surface — flat ground stops
+the descent as before, a slope turns the push into travel along it and keeps
+only what was not spent climbing, a face near vertical leaves almost
+nothing — and a probe half its own width ahead stops it against ground too
+steep to ride over before it reaches it. Worth knowing: Looe Key's height
+field is 512 by 512 over a kilometre, so two metres to a cell, and its
+steepest ground is 35 degrees. Real spur faces are steeper than that and the
+grid cannot hold them, so how sharply a vehicle is stopped is set by the
+survey's resolution and not by this code; the Autonomy page lists what is deployed with what each needs; the
 Profile page shows the machines. Tried and parked: the BlueROV2 hull
 decimated in Blender from 1.27 million faces to 60 thousand comes out at
 8 MB and looks right in shape, but its 2,251 per-face materials render grey
