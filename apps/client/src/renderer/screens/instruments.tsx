@@ -56,6 +56,9 @@ export interface TaskProgress {
 }
 
 export interface Reading {
+  /** How much of the hull is under the surface, from one to nothing. */
+  submerged?: number;
+  surfaced?: boolean;
   /** Where the camera is looking, for the axes drawn in the corner. */
   camera?: { basis?: { right: number[]; up: number[]; forward: number[] }; upAxis?: string; view?: string };
   t?: number;
@@ -206,6 +209,13 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, o
           </div>
           {reading.onTheBottom === true && (
             <p className="resting">Resting on the bottom.</p>
+          )}
+          {typeof reading.submerged === "number" && reading.submerged < 1 && (
+            <p className="resting surfaced">
+              {reading.submerged <= 0
+                ? "Out of the water — no buoyancy, no thrust."
+                : `Breaking the surface — ${(reading.submerged * 100).toFixed(0)}% of the hull is in the water.`}
+            </p>
           )}
           <Axes name="velocity" of={reading.velocity} unit="m/s" />
           <Axes name="rates" of={reading.rates} unit="rad/s" />

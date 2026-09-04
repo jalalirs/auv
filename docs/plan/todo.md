@@ -625,7 +625,19 @@ colonies a chart draws rather than eighty thousand, and lets go every so
 often: 21 ms, and the same points. Tried and rejected: opening the dive a
 few frames into the update loop instead — which put the picture out on its
 own. Lesson kept: bisect with images, not with reasoning about what
-"cannot" matter; the Autonomy page lists what is deployed with what each needs; the
+"cannot" matter. The water got its two edges (4 September): the surface was
+a picture with nothing behind it — the lid in the code only engaged for
+places that ship a water layer, which Looe Key does not, and a dive that
+afternoon reached 0.75 m above the sea and kept its buoyancy, its drag and
+its thrust the whole way. Buoyancy, drag, thrust and added mass now follow
+the share of the hull under the surface, so a vehicle driven up breaks the
+surface, loses what was holding it up and falls back on its own; the lid is
+gone. The seabed had a floor but no guard, so the helm gained one beside the
+attitude guard: it takes the commanded descent away as the clearance runs
+out, defends half a metre by default, never holds a vehicle back from
+rising, and reports the clearance it is keeping. Still missing: anything
+horizontal — the floor clamps depth only, so a vehicle driven at a rising
+spur rides up its face rather than striking it; the Autonomy page lists what is deployed with what each needs; the
 Profile page shows the machines. Tried and parked: the BlueROV2 hull
 decimated in Blender from 1.27 million faces to 60 thousand comes out at
 8 MB and looks right in shape, but its 2,251 per-face materials render grey
