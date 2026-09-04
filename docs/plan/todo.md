@@ -611,7 +611,21 @@ Replay plays simulated time at 1× to 30×, draws the site, coral and task
 under the track, and puts depth, altitude, speed and score traces under the
 scrubber with the moment marked, each clickable to seek; the end-to-end
 script sweeps what it founds (`./tools/box tidy`, also run on its own) so
-test tanks and probes no longer pile up in Places; the Autonomy page lists what is deployed with what each needs; the
+test tanks and probes no longer pile up in Places; every picture went pure
+white for a night (4 September) — the stream, the recordings, the
+photographs — with physics, chart, task and instruments all fine and no
+error anywhere. Found by running one brief by hand against the images still
+on the box, halving what differed until one line remained: the coral chart's
+read of the place, which decoded a 7.7 MB file and ran a regex over the
+whole of it while the dive opened. Sleeping for the same tenth of a second
+was harmless and a busy loop of the same cost reproduced the white, so what
+the renderer cannot survive is the interpreter being held, not time passing.
+The read now takes the bytes undecoded, parses only the two thousand
+colonies a chart draws rather than eighty thousand, and lets go every so
+often: 21 ms, and the same points. Tried and rejected: opening the dive a
+few frames into the update loop instead — which put the picture out on its
+own. Lesson kept: bisect with images, not with reasoning about what
+"cannot" matter; the Autonomy page lists what is deployed with what each needs; the
 Profile page shows the machines. Tried and parked: the BlueROV2 hull
 decimated in Blender from 1.27 million faces to 60 thousand comes out at
 8 MB and looks right in shape, but its 2,251 per-face materials render grey
