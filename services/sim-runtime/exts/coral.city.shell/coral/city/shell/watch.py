@@ -132,8 +132,13 @@ class Watch:
                 self.controls.held_from_afar(set(said.get("held", [])))
             if "stick" in said:
                 self.controls.stick_from_afar(said.get("stick") or [])
+            # Everything else the dive knows how to be asked. The list used
+            # to be shorter than the dive's own, so a message it understood
+            # perfectly well never reached it — which looks exactly like a
+            # feature that does not work.
             if self.on_message is not None and any(
-                    key in said for key in ("tune", "hold", "view", "engage")):
+                    key in said for key in ("tune", "hold", "view", "engage",
+                                            "place", "found")):
                 self.on_message(said)
         except Exception as exc:
             carb.log_warn(f"Coral City could not read what was asked: {exc}")

@@ -93,6 +93,10 @@ export function Water({ platform, stream, onSurface }: {
   const holdHere = useCallback(() => say({ hold: "here" }), [say]);
   const engage = useCallback((controller: string) => say({ engage: controller }), [say]);
   const view = useCallback((which: string) => say({ view: which }), [say]);
+  // A hand of God, and recorded as one: the run counts how many times it
+  // happened, so a controller that did the work is never compared with one
+  // that was carried.
+  const carry = useCallback((x: number, y: number) => say({ place: { x, y } }), [say]);
 
   /** Swap a small pane into the large slot. */
   const enlarge = useCallback((pane: Pane) => {
@@ -334,7 +338,8 @@ export function Water({ platform, stream, onSurface }: {
       case "map":
         return <Minimap site={site} track={track.current} position={reading.position}
                         headingDeg={reading.headingDeg} beganAt={hello?.beganAt}
-                        geometry={geometry} current={hello?.conditions?.current} large={large} />;
+                        geometry={geometry} current={hello?.conditions?.current}
+                        marks={geometry?.marks} onCarry={large ? carry : undefined} large={large} />;
       case "profile":
         return <Profile of={history.current} />;
       case "plot":

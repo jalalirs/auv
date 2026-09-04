@@ -53,6 +53,7 @@ class PursueController(Controller):
         self.bearing = 0.0
         self.holding = True
         self.legs_done = 0
+        self.waiting_since: float | None = None
 
     # ── what it is told ──────────────────────────────────────────────────────
 
@@ -67,6 +68,7 @@ class PursueController(Controller):
         self.route = [dict(point) for point in (route or [])]
         self.at = 0
         self.legs_done = 0
+        self.waiting_since = None
         self.holding = not self.route
 
     def engage(self, seen: Observation) -> None:
@@ -91,7 +93,26 @@ class PursueController(Controller):
                            float(point.get("y", seen.position[1]))])
         flat = target - seen.position[:2]
         self.distance = float(np.hypot(*flat))
-        if self.distance <= self["arriveM"] and self._deep_enough(seen, point):
+        # A leg may ask for more than the route's usual care. Docking is the
+        # reason: a station is a forty-centimetre target approached slowly, and
+        # a controller that calls a metre "arrived" stops a metre short of it
+        # every time and never knows why.
+        arrive = float(point.get("arriveM", self["arriveM"]))
+        cruise = min(float(self["cruiseMs"]), float(point.get("speedMs", self["cruiseMs"])))
+        ease = min(float(self["easeM"]), float(point.get("easeM", self["easeM"])))
+        if self.distance <= arrive and self._deep_enough(seen, point):
+            # A leg may ask to be stayed at. Sampling a colony is ten seconds
+            # of holding still over it, and a route that arrives and leaves
+            # again immediately does the visiting without doing the work.
+            stay = float(point.get("holdS", 0.0))
+            if stay > 0.0:
+                if self.waiting_since is None:
+                    self.waiting_since = float(seen.t)
+                    self.station = seen.position[:2].copy()
+                    self.station_depth = self._depth_for(seen, point)
+                if float(seen.t) - self.waiting_since < stay:
+                    return self._hold(seen, at_depth=self.station_depth)
+            self.waiting_since = None
             self.at += 1
             self.legs_done += 1
             self.station = seen.position[:2].copy()
@@ -100,29 +121,46 @@ class PursueController(Controller):
 
         self.holding = False
         self.bearing = math.atan2(float(flat[1]), float(flat[0]))
-        off = wrap(self.bearing - seen.heading)
 
-        # Turn towards it before running at it. A vehicle that drives while
-        # badly off heading arrives sideways, and on a frame with vectored
-        # thrusters that is a long slow arc rather than a straight line.
-        facing = max(0.0, 1.0 - abs(off) / max(1e-6, math.radians(self["faceFirstDeg"])))
-        wanted = self["cruiseMs"] * min(1.0, self.distance / max(1e-6, self["easeM"])) * facing
-        surge = self._newtons(0, self["speedKp"] * (wanted - float(seen.velocity[0])))
-        # Nothing sideways is asked for: the heading loop puts the nose on the
-        # point, so sway is only used to kill what a current pushes on.
-        sway = self._newtons(1, -0.6 * float(seen.velocity[1]))
-        yaw = self.pilots.hold_heading(seen, self.bearing, self.dt)
+        # Where the nose points. Usually along the way it is going; but a leg
+        # may name something to keep looking at, which is what an inspection
+        # is — going round a thing while facing it — and the vehicle then
+        # crabs along its route rather than driving down it.
+        look = point.get("facing")
+        if isinstance(look, dict):
+            towards = np.array([float(look.get("x", target[0])) - float(seen.position[0]),
+                                float(look.get("y", target[1])) - float(seen.position[1])])
+            heading_wanted = math.atan2(float(towards[1]), float(towards[0]))
+            easing = 1.0
+        else:
+            heading_wanted = self.bearing
+            # Turn towards it before running at it. A vehicle that drives while
+            # badly off heading arrives sideways, and on a frame with vectored
+            # thrusters that is a long slow arc rather than a straight line.
+            off = wrap(self.bearing - seen.heading)
+            easing = max(0.0, 1.0 - abs(off) / max(1e-6, math.radians(self["faceFirstDeg"])))
+
+        speed = cruise * min(1.0, self.distance / max(1e-6, ease)) * easing
+        # The velocity it wants, in the world, turned into the vehicle's own
+        # frame: surge and sway together, so that where it points and where it
+        # goes are two separate questions.
+        wanted_world = np.array([flat[0], flat[1], 0.0]) / max(1e-6, self.distance) * speed
+        wanted_body = seen.rotation.T @ wanted_world
+        surge = self._newtons(0, self["speedKp"] * (float(wanted_body[0]) - float(seen.velocity[0])))
+        sway = self._newtons(1, self["speedKp"] * (float(wanted_body[1]) - float(seen.velocity[1])))
+        yaw = self.pilots.hold_heading(seen, heading_wanted, self.dt)
         heave = self.pilots.hold_depth(seen, self._depth_for(seen, point), self.dt)
         wrench = np.array([surge, sway, heave, 0.0, 0.0, yaw])
         return Command(wrench=np.clip(wrench, -self.capability, self.capability))
 
-    def _hold(self, seen: Observation) -> Command:
-        """The route is flown. Stay where it ended."""
-        self.holding = True
+    def _hold(self, seen: Observation, at_depth: float | None = None) -> Command:
+        """Stay where it is: the route is flown, or this leg is being waited at."""
+        self.holding = at_depth is None
         self.distance = 0.0
         if self.station is None:
             self.engage(seen)
-        heave = self.pilots.hold_depth(seen, self.station_depth or seen.depth, self.dt)
+        heave = self.pilots.hold_depth(seen, at_depth if at_depth is not None
+                                       else (self.station_depth or seen.depth), self.dt)
         yaw = self.pilots.hold_heading(seen, seen.heading, self.dt)
         surge, sway = self.pilots.hold_position(seen, self.station, self.dt)
         wrench = np.array([surge, sway, heave, 0.0, 0.0, yaw])
@@ -146,7 +184,8 @@ class PursueController(Controller):
         """
         if point.get("depthM") is None:
             return True
-        return abs(seen.depth - float(point["depthM"])) <= max(0.5, self["arriveM"])
+        arrive = float(point.get("arriveM", self["arriveM"]))
+        return abs(seen.depth - float(point["depthM"])) <= max(0.35, arrive)
 
     def _newtons(self, axis: int, acceleration: float) -> float:
         most = float(self.capability[axis])
@@ -154,6 +193,7 @@ class PursueController(Controller):
 
     def status(self) -> dict:
         return {"leg": self.at, "of": len(self.route), "legsDone": self.legs_done,
+                "waitingAtTheLeg": self.waiting_since is not None,
                 "toGoM": round(self.distance, 2),
                 "bearingDeg": round(math.degrees(self.bearing) % 360.0, 1),
                 "holding": self.holding}
