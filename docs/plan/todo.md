@@ -785,6 +785,184 @@ on the box: a hold-station dive in a gentle current, seed 42, run twice —
 millimetre. The claim the platform rests on holds. Still to do: the same dive
 across many conditions at once, and two controllers' tracks drawn together.
 
+## Phase 3 — a dive that is for something
+
+Phase 2 made the console honest and the water real. What it did not do is make
+a dive *mean* something: a task is measured but nothing flies it, a dive ends
+when its clock runs out rather than when its job is done, and a vehicle has
+neither a reason to come home nor anything to come home to. This phase is
+about the mission.
+
+One thing has to be said first, because it shapes the order. A waypoints dive
+run today sits exactly where it started and scores zero — the task watches, and
+the hold holds. Every task below is worthless until something can fly one, so
+that comes before the tasks themselves.
+
+
+## 20. Put the vehicle where you want it
+
+Flying a kilometre across a reef at a quarter of a metre a second to reach the
+thing you want to look at is forty minutes of nothing. On a manual dive,
+clicking the chart should put the vehicle there: placed, stopped, with the hold
+taking the new pose, and the depth taken from the bottom at that point unless
+you say otherwise.
+
+It is a hand of God and the record has to say so. A dive that was picked up and
+moved is not a dive a controller flew, so the run carries how many times it
+happened and its task score is marked as handled — otherwise the Dives page
+would compare a controller that did the work with one that was carried.
+
+**Done when:** you can click anywhere on the chart, arrive there, and the run
+says plainly that you did.
+
+
+## 21. Something in the platform that can fly a task
+
+Between the hold, which stays where it is put, and a stack somebody wrote,
+there is nothing. So the platform gets a guidance controller of its own: line
+of sight to the next point, depth held on the way, arrival by radius, and the
+same tuning knobs on the console as everything else. It is not clever and it
+is not meant to be — it is the reference every written controller is measured
+against, and the thing that makes a task on the dive page mean what it says.
+
+**Done when:** choosing Waypoints and pressing Dive flies the waypoints.
+
+
+## 22. A dive that ends when its task does
+
+A task reports done; the dive ignores it and runs to its clock. Reaching the
+last waypoint should end the dive, and so should failing: running out of time,
+running out of battery, or being told to surface. The run's outcome says which
+of those it was, the console says it in words, and a batch dive hands its
+machine back the moment there is nothing left to do.
+
+**Done when:** a waypoints dive asked for an hour ends in four minutes,
+succeeded, because it finished.
+
+
+## 23. Energy: a battery that runs down, and runs out
+
+Nothing in the vehicle costs anything, so nothing has to be decided. A battery
+changes that: capacity and hotel load declared by the vehicle package the same
+way its mass is, power drawn from what the thrusters are actually doing, state
+of charge on the console, on the `/battery` topic a stack can subscribe to, and
+in every recording. Flat means flat — the thrusters stop and the hull does
+whatever its buoyancy says. Every task result carries the energy it spent
+beside its score, because a controller that does the job on half the charge is
+the better controller and today there is no way to say so.
+
+The numbers come from the vehicle package, not from here: the BlueROV2's
+stock pack and its thruster curves are published, and inventing them would
+make every energy score a fiction.
+
+**Done when:** two controllers fly the same task and the record shows which one
+was cheaper.
+
+
+## 24. The failsafe that decides to come home
+
+With energy there is something to run out of, and with a dock there is
+somewhere to go. The failsafe sits above every controller in the helm — above
+even a hand on the keys — and holds one decision: whether what is left in the
+battery still covers the journey home with a margin. When it stops covering
+it, the vehicle goes: to the dock if the dock is reachable, to the surface if
+it is not, and it says which it chose and why. A vehicle that dies on the
+bottom because nobody was counting is the failure this exists to prevent.
+
+**Done when:** a dive run with a battery too small to finish surfaces on its
+own, and the record says it decided to.
+
+
+## 25. Things in the water
+
+A place is a bottom and its coral. Tasks need more: a target to find, an
+instrument to inspect, a dock to return to — objects planted at known
+positions, drawn in the scene, and known to the runtime as truth to score
+against. This is the layer under items 26 and 27 and it belongs in the place
+package, versioned with everything else, so a dive that found something can be
+run again and find the same thing.
+
+**Done when:** a place can carry objects, and a dive can be scored on what it
+did about one.
+
+
+## 26. The tasks worth flying
+
+With something to fly them and something to fly them at:
+
+  - **Reach a point.** The one everything else is built on: get there, and be
+    judged on how far you travelled against how far it was, how long it took
+    and what it cost. The interesting part is the bottom — the short way over
+    a spur is not the short way through the water.
+  - **Find something.** An object is planted where the vehicle is not told;
+    the vehicle searches, and reports where it thinks the thing is. Scored on
+    whether it was right, how close, and how long it took. This is the first
+    task that needs the camera to matter.
+  - **Treat an area.** A patch of real coral, and the vehicle has to pass
+    within reach of every colony in it, low enough and slow enough to do
+    something about them. Scored on the share of colonies covered and the
+    ground it went over twice. We have eighty-three thousand real colonies to
+    score against, which is what makes this worth doing here.
+  - **Inspect.** Hold a thing in frame from a fixed distance while going
+    around it. Scored on how much of it was seen and how steady the camera was.
+  - **Revisit.** Go to each of a list of marked colonies, hold there long
+    enough to sample, and come back. It is the survey a reef monitoring
+    programme actually runs.
+
+**Done when:** each one can be chosen on the dive page, flown by the platform's
+own guidance, and scored the same way twice.
+
+
+## 27. Docking, and a dive made of stages
+
+A dock is a place to charge and to hand over what was recorded. Docking is the
+hardest thing here and the most real: an approach cone, a tolerance on position
+and attitude, a speed slow enough not to break anything, and a positive
+latch — or a miss, which is a result too.
+
+It also forces the structural change this phase has been heading towards: a
+dive stops being one objective and becomes a sequence. Fly a survey, dock,
+charge for five minutes, undock, fly another. Each stage is scored on its own
+and the dive is scored on all of them, and a stage that fails ends the mission
+with the reason.
+
+**Done when:** one dive surveys, docks, charges, undocks and surveys again,
+and the record reads as five things that happened rather than one.
+
+
+## 28. Trials, not runs
+
+One run of one seed is an anecdote. A trial is the same dive over a set of
+seeds and conditions, run without anybody watching, reported as a mean and a
+spread. It is the only honest way to say one controller is better than
+another, and it is what makes the learning in item 17 worth continuing.
+
+**Done when:** the Dives page can say a controller scores 0.82 give or take
+0.05 over twenty runs, and show the worst one.
+
+
+## 29. Things going wrong on purpose
+
+A controller that has only ever flown a healthy vehicle in still water has not
+been tested. A dive should be able to lose a thruster at a stated time, have
+its sensors go quiet for a few seconds, or take a gust of current — declared
+in the conditions, recorded with the run, and identical on a re-run.
+
+**Done when:** a dive can be defined with a thruster that fails at two minutes,
+and two runs of it agree.
+
+
+## 30. Batch dives at the speed of the machine
+
+A batch dive with nobody watching still runs at wall-clock speed, sleeping
+between steps to keep pace with a clock nobody is reading. An hour of dive is
+an hour of GPU. Unpin it from the wall clock when nothing is being rendered or
+streamed and a trial of twenty runs stops being a day's work.
+
+**Done when:** a sixty-second batch dive takes a fraction of sixty seconds, and
+lands in exactly the same place as one that took sixty.
+
+
 ## Not on this list
 
 Batch across many conditions. It is the same objective machinery from item 4,
