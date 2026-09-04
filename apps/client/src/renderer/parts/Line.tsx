@@ -19,7 +19,7 @@ export function Line({ label, choices, chosen, onChoose, onOpen, hint }: {
   choices: Choice[];
   chosen: string | undefined;
   onChoose: (key: string) => void;
-  /** Open the chosen thing's own page. */
+  /** Open a thing's own page, from its row in the list. */
   onOpen?: (key: string) => void;
   /** A line under what is chosen, about what choosing it means. */
   hint?: React.ReactNode;
@@ -94,12 +94,8 @@ export function Line({ label, choices, chosen, onChoose, onOpen, hint }: {
           <span>{picked?.says ?? `${choices.filter((c) => c.later === undefined).length} to choose from`}</span>
         </span>
         {picked?.mark}
-        <span className="line-count">{choices.length > 1 ? `${choices.length}` : ""}</span>
         <span className="line-chevron" aria-hidden="true">▾</span>
       </button>
-      {picked && onOpen ? (
-        <a className="line-open" title="Open its page" onClick={() => onOpen(picked.key)}>open ›</a>
-      ) : <span />}
       {hint === undefined ? null : <div className="line-hint">{hint}</div>}
 
       {open ? (
@@ -122,6 +118,10 @@ export function Line({ label, choices, chosen, onChoose, onOpen, hint }: {
                     {one.later ? <em>{one.later}</em> : one.says ? <span>{one.says}</span> : null}
                   </span>
                   {one.mark}
+                  {onOpen && one.later === undefined ? (
+                    <a className="line-page" title="Its own page"
+                       onClick={(e) => { e.stopPropagation(); setOpen(false); onOpen(one.key); }}>page ›</a>
+                  ) : null}
                 </div>
               </div>
             ))}
