@@ -28,9 +28,12 @@ export interface Geometry {
   reached?: number;
   line?: { x: number; y: number }[];
   rectangle?: { x: number; y: number }[];
+  /** Colonies a treatment is working through, and which are done. */
+  marks?: { x: number; y: number; done?: boolean }[];
 }
 
-export function Minimap({ site, track, position, headingDeg, beganAt, geometry, current, large }: {
+export function Minimap({ site, track, position, headingDeg, beganAt, geometry, current, marks,
+                         onCarry, large }: {
   site: Site | undefined;
   track: Fix[];
   position: number[] | undefined;
@@ -39,6 +42,10 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
   geometry?: Geometry;
   /** The water's own motion, world x and y, metres per second. */
   current?: number[];
+  /** Things a task cares about: colonies to treat, and whether each is done. */
+  marks?: { x: number; y: number; done?: boolean }[];
+  /** Click the chart to put the vehicle there. */
+  onCarry?: (x: number, y: number) => void;
   large: boolean;
 }): React.JSX.Element {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -141,6 +148,16 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
             ink.fillText(String(i + 1), x + 7 * devicePixelRatio, y);
           }
         });
+      }
+    }
+
+    // What a task is working through, colony by colony.
+    if (marks && marks.length > 0) {
+      const r = 2.0 * devicePixelRatio;
+      for (const mark of marks) {
+        const [x, y] = toScreen(mark.x, mark.y);
+        ink.fillStyle = mark.done ? "rgba(124, 224, 160, 0.9)" : "rgba(244, 197, 66, 0.85)";
+        ink.beginPath(); ink.arc(x, y, r, 0, Math.PI * 2); ink.fill();
       }
     }
 
@@ -253,9 +270,28 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
     ink.fillStyle = "#c9d6e6";
     ink.textBaseline = "bottom";
     ink.fillText(label, bx, by - 4 * devicePixelRatio);
-  }, [site, track, position, headingDeg, beganAt, geometry, current, large, track.length]);
+  }, [site, track, position, headingDeg, beganAt, geometry, current, marks, large, track.length]);
 
-  return <canvas ref={canvas} className="minimap" />;
+  // Clicking the chart puts the vehicle there. The maths is the drawing's,
+  // read back: where the pointer is, in metres, on the same square the bottom
+  // was drawn on.
+  function carry(event: React.MouseEvent<HTMLCanvasElement>): void {
+    const surface = canvas.current;
+    if (surface === null || onCarry === undefined) return;
+    const box = surface.getBoundingClientRect();
+    const side = Math.min(box.width, box.height);
+    const left = (box.width - side) / 2;
+    const top = (box.height - side) / 2;
+    const across = site?.acrossM && site.acrossM > 0 ? site.acrossM : 100;
+    const u = (event.clientX - box.left - left) / side;
+    const v = (event.clientY - box.top - top) / side;
+    if (u < 0 || u > 1 || v < 0 || v > 1) return;
+    onCarry((u - 0.5) * across, (0.5 - v) * across);
+  }
+
+  return <canvas ref={canvas} className={`minimap${onCarry ? " carries" : ""}`}
+                 title={onCarry ? "double-click to put the vehicle here" : undefined}
+                 onDoubleClick={carry} />;
 }
 
 /** The height grid as an image: deep is dark, shallow is pale. */

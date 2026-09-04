@@ -532,6 +532,41 @@ input:focus { border-color: var(--coral); }
 /* plots */
 .thrusters .unit { margin: 8px 0 0; color: var(--dim); font-size: 10.5px; }
 .resting.surfaced { color: var(--vehicle); }
+
+/* ── the battery, and a mission's stages ──────────────────────────────── */
+.charge .cell {
+  position: relative; height: 10px; border-radius: 5px; overflow: hidden;
+  background: rgba(255, 255, 255, 0.06); border: 1px solid var(--edge); margin-bottom: 10px;
+}
+.charge .cell > div { height: 100%; background: var(--alive); transition: width 0.4s; }
+.charge .cell.low > div { background: var(--vehicle); }
+.charge .cell.charging > div { background: var(--coral); }
+.charge .cell .reserve { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255, 255, 255, 0.4); }
+.stages { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.stages li {
+  display: flex; align-items: baseline; gap: 8px; font-size: 11.5px; color: var(--dim);
+  padding: 3px 6px; border-radius: 5px; border-left: 2px solid transparent;
+}
+.stages li span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stages li em { font-style: normal; font-variant-numeric: tabular-nums; }
+.stages li.done { color: var(--faint); border-left-color: var(--alive); }
+.stages li.now { color: var(--plain); border-left-color: var(--coral); background: rgba(64, 199, 244, 0.07); }
+.stages li.failed { color: var(--vehicle); border-left-color: var(--vehicle); }
+canvas.minimap.carries { cursor: crosshair; }
+
+/* ── trials: the same dive, many times ────────────────────────────────── */
+.trials { display: flex; flex-direction: column; gap: 10px; }
+.trial { border: 1px solid var(--edge); border-radius: 9px; padding: 11px 13px; background: rgba(11, 21, 36, 0.5); }
+.trial-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.trial-head strong { font-weight: 600; }
+.trial-head .mean { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.trial-head .spread { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.trial-head .runs { margin-left: auto; color: var(--dim); font-size: 11.5px; }
+.spread-bar { position: relative; height: 8px; margin: 10px 0 4px; background: rgba(255, 255, 255, 0.05); border-radius: 4px; }
+.spread-bar .band { position: absolute; top: 0; bottom: 0; background: rgba(64, 199, 244, 0.28); border-radius: 4px; }
+.spread-bar .tick { position: absolute; top: -2px; width: 2px; height: 12px; background: var(--coral); border-radius: 1px; }
+.spread-bar .worst { background: var(--vehicle); }
+.trial .aside { margin: 4px 0 0; font-size: 11.5px; }
 .topic-said { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 16px; }
 .topic-said strong { font-size: 13px; font-weight: 600; }
 .topic-said em { font-style: normal; color: var(--vehicle); font-size: 11.5px; }

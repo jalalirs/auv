@@ -793,12 +793,17 @@ class Inspect(Task):
                             "depthM": float(-self.target[2])}]}
 
     def route(self) -> list[dict]:
+        # Round it, facing it the whole way: an inspection that looks where it
+        # is going has its back to the thing it came to look at, which is how
+        # a lap of a structure sees one side of it.
+        looking = {"x": float(self.target[0]), "y": float(self.target[1])}
         route = []
-        for sector in range(self.SECTORS + 1):
-            angle = 2.0 * math.pi * sector / self.SECTORS
+        for sector in range(self.SECTORS * 2 + 1):
+            angle = math.pi * sector / self.SECTORS
             route.append({"x": float(self.target[0] + self.radius * math.cos(angle)),
                           "y": float(self.target[1] + self.radius * math.sin(angle)),
-                          "depthM": float(-self.target[2])})
+                          "depthM": float(-self.target[2]),
+                          "facing": looking, "arriveM": max(0.4, self.radius * 0.2)})
         return route
 
     def failed(self) -> bool:
@@ -856,7 +861,10 @@ class Revisit(Task):
                 "reached": sum(1 for h in self.held if h >= self.hold_for)}
 
     def route(self) -> list[dict]:
-        return [{"x": float(m[0]), "y": float(m[1]), "depthM": float(-m[2])} for m in self.marks]
+        # Held at, not merely passed over: the sample is the ten seconds.
+        return [{"x": float(m[0]), "y": float(m[1]), "depthM": float(-m[2]),
+                 "arriveM": max(0.25, self.reach * 0.6), "holdS": self.hold_for + 1.0}
+                for m in self.marks]
 
     def failed(self) -> bool:
         return self.done and self.score() < 0.999
@@ -946,9 +954,17 @@ class Dock(Task):
         # vehicle that arrives from the side arrives across the cradle.
         into = np.array([math.cos(self.facing), math.sin(self.facing)])
         gate = self.station[:2] - into * self.approach
-        return [{"x": float(gate[0]), "y": float(gate[1]), "depthM": float(-self.station[2])},
-                {"x": float(self.station[0]), "y": float(self.station[1]),
-                 "depthM": float(-self.station[2])}]
+        return [
+            {"x": float(gate[0]), "y": float(gate[1]), "depthM": float(-self.station[2]),
+             "arriveM": max(0.5, self.approach * 0.15)},
+            # Onto the cradle: inside half the tolerance, and slower than the
+            # station will accept, because arriving fast is a miss.
+            {"x": float(self.station[0]), "y": float(self.station[1]),
+             "depthM": float(-self.station[2]),
+             "arriveM": max(0.08, self.tolerance * 0.5),
+             "speedMs": max(0.05, self.speed_limit * 0.5),
+             "easeM": max(1.0, self.approach * 0.6)},
+        ]
 
     def failed(self) -> bool:
         return self.done and not self.docked

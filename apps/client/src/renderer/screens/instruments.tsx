@@ -59,6 +59,13 @@ export interface Reading {
   /** How much of the hull is under the surface, from one to nothing. */
   submerged?: number;
   surfaced?: boolean;
+  /** What is left in the pack, and what it is drawing. */
+  battery?: { fraction: number; remainingWh: number; capacityWh: number; watts: number;
+              volts: number; enduranceS?: number | null; flat: boolean; reserveFraction: number };
+  charging?: boolean;
+  carried?: number;
+  sensorsOut?: boolean;
+  deadThrusters?: number[];
   /** Up against ground it cannot ride over. */
   againstTheGround?: boolean;
   /** Where the camera is looking, for the axes drawn in the corner. */
@@ -195,6 +202,7 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, o
               </div>
               <div className="score"><div style={{ width: `${Math.round(reading.task.score * 100)}%` }} /></div>
               <p className="says">{reading.task.says}</p>
+              <Stages of={reading.task} />
             </div>
           </Panel>
         ) : null}
@@ -240,6 +248,11 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, o
           )}
         </Panel>
 
+        {reading.battery ? (
+          <Panel name="Battery" note={reading.charging ? "on charge" : `${reading.battery.watts.toFixed(0)} W`}>
+            <Charge of={reading.battery} charging={reading.charging === true} />
+          </Panel>
+        ) : null}
         <Panel name="Thrusters" note={reading.thrusters ? `${reading.thrusters} fitted` : undefined}>
           <Thrusters of={reading.thrust} />
         </Panel>
@@ -400,6 +413,53 @@ function Thrusters({ of }: { of: number[] | undefined }): React.JSX.Element {
         </div>
       ))}
       <p className="unit">share of full thrust, −1 astern to 1 ahead</p>
+    </div>
+  );
+}
+
+/** A mission's stages: what happened, what is happening, what is to come. */
+function Stages({ of }: { of: TaskProgress }): React.JSX.Element | null {
+  const stages = of.detail["stages"] as { name?: string; kind?: string; score?: number;
+                                          done?: boolean; failed?: boolean }[] | undefined;
+  if (!Array.isArray(stages) || stages.length < 2) return null;
+  const at = typeof of.detail["stage"] === "number" ? (of.detail["stage"] as number) : 0;
+  const total = typeof of.detail["of"] === "number" ? (of.detail["of"] as number) : stages.length;
+  return (
+    <ol className="stages">
+      {stages.map((stage, i) => (
+        <li key={i} className={i === at ? "now" : stage.failed ? "failed" : stage.done ? "done" : undefined}>
+          <span>{stage.name ?? stage.kind}</span>
+          <em>{stage.score === undefined ? "—" : `${(stage.score * 100).toFixed(0)}%`}</em>
+        </li>
+      ))}
+      {stages.length < total ? <li className="later"><span>{total - stages.length} still to come</span></li> : null}
+    </ol>
+  );
+}
+
+/** What is left in the battery, and how long that is. */
+function Charge({ of, charging }: {
+  of: NonNullable<Reading["battery"]>;
+  charging: boolean;
+}): React.JSX.Element {
+  const share = Math.max(0, Math.min(1, of.fraction));
+  const left = of.enduranceS == null ? undefined : of.enduranceS;
+  return (
+    <div className="charge">
+      <div className={`cell${share <= of.reserveFraction ? " low" : ""}${charging ? " charging" : ""}`}>
+        <div style={{ width: `${(share * 100).toFixed(1)}%` }} />
+        <span className="reserve" style={{ left: `${(of.reserveFraction * 100).toFixed(1)}%` }} />
+      </div>
+      <div className="dials">
+        <Dial of="charge" is={share * 100} unit="%" digits={0} />
+        <Dial of="left" is={left === undefined ? undefined : left / 60} unit="min" digits={0} />
+        <Dial of="draw" is={of.watts} unit="W" digits={0} />
+      </div>
+      <p className="aside">
+        {of.flat ? "Flat. The thrusters have stopped."
+          : charging ? "On the station, taking charge."
+          : `${of.remainingWh.toFixed(0)} of ${of.capacityWh.toFixed(0)} Wh at ${of.volts.toFixed(1)} V. The mark is the reserve.`}
+      </p>
     </div>
   );
 }

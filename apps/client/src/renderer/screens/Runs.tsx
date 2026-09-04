@@ -86,6 +86,16 @@ export function Runs({ platform, held, onChanged, onReplay }: {
       </section>
 
       <section>
+        <h2>Trials</h2>
+        <p className="aside">
+          One run of one seed is an anecdote. The same dive flown more than once is a
+          number with a spread on it, which is the only honest way to say one controller
+          is better than another.
+        </p>
+        <Trials runs={held.runs} />
+      </section>
+
+      <section>
         <h2>Side by side</h2>
         <p className="aside">The same dive run more than once, with what each run scored — a change to a controller as a change in a number.</p>
         <Compared runs={held.runs} />
@@ -119,6 +129,80 @@ function Result({ outcome }: { outcome: Record<string, unknown> | undefined }): 
   );
 }
 
+
+/** The same dive and controller flown several times: a mean and a spread.
+ *
+ *  Grouped by what was actually being tested — the dive and who flew it — so
+ *  two controllers on one dive are two trials rather than one muddle. A run
+ *  that was carried by hand is left out of the arithmetic and said so, because
+ *  a vehicle that was picked up did not fly the thing being measured.
+ */
+function Trials({ runs }: { runs: Held["runs"] }): React.JSX.Element {
+  const groups = new Map<string, Held["runs"]>();
+  for (const one of runs) {
+    const outcome = one.run.outcome as Record<string, unknown> | undefined;
+    const task = outcome?.["task"] as { score?: number } | undefined;
+    if (typeof task?.score !== "number") continue;
+    const key = `${one.dive}|${one.flownBy}`;
+    groups.set(key, [...(groups.get(key) ?? []), one]);
+  }
+  const trials = [...groups.values()].filter((g) => g.length > 1)
+    .sort((a, b) => b.length - a.length);
+  if (trials.length === 0) {
+    return (
+      <Empty title="Nothing flown twice yet">
+        Run the same dive again — from the app, or with <code>coral-city dive --again</code> —
+        and its runs are gathered here as a mean and a spread.
+      </Empty>
+    );
+  }
+  return (
+    <div className="trials">
+      {trials.map((group) => <Trial key={group[0]!.run.id} group={group} />)}
+    </div>
+  );
+}
+
+function Trial({ group }: { group: Held["runs"] }): React.JSX.Element {
+  const scored = group.map((one) => {
+    const outcome = one.run.outcome as Record<string, unknown>;
+    const task = outcome["task"] as { score: number; thrusterEffort?: number; energyWh?: number };
+    return { one, score: task.score, energy: task.energyWh,
+             carried: typeof outcome["carried"] === "number" ? (outcome["carried"] as number) : 0 };
+  });
+  const clean = scored.filter((s) => s.carried === 0);
+  const counted = clean.length > 1 ? clean : scored;
+  const scores = counted.map((s) => s.score);
+  const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+  const spread = Math.sqrt(scores.reduce((a, b) => a + (b - mean) ** 2, 0) / scores.length);
+  const worst = Math.min(...scores);
+  const best = Math.max(...scores);
+  const energies = counted.map((s) => s.energy).filter((e): e is number => typeof e === "number");
+  const energy = energies.length ? energies.reduce((a, b) => a + b, 0) / energies.length : undefined;
+  const carried = scored.length - clean.length;
+  return (
+    <div className="trial">
+      <div className="trial-head">
+        <strong>{group[0]!.name}</strong>
+        <span className="mean">{(mean * 100).toFixed(0)}%</span>
+        <span className="spread">± {(spread * 100).toFixed(0)} · worst {(worst * 100).toFixed(0)}% · best {(best * 100).toFixed(0)}%</span>
+        <span className="runs">{counted.length} runs by {group[0]!.flownBy}</span>
+      </div>
+      <div className="spread-bar" title="the band is one standard deviation either side of the mean">
+        <span className="band" style={{ left: `${Math.max(0, (mean - spread) * 100)}%`,
+                                        width: `${Math.min(100, spread * 200)}%` }} />
+        {scores.map((score, i) => (
+          <span key={i} className={`tick${score === worst ? " worst" : ""}`}
+                style={{ left: `calc(${(score * 100).toFixed(1)}% - 1px)` }} />
+        ))}
+      </div>
+      <p className="aside">
+        {energy === undefined ? "" : `${energy.toFixed(1)} Wh a run on average. `}
+        {carried > 0 ? `${carried} run${carried > 1 ? "s were" : " was"} carried by hand and left out.` : ""}
+      </p>
+    </div>
+  );
+}
 
 /** Dives with more than one scored run, each run's score beside the others'. */
 function Compared({ runs }: { runs: Held["runs"] }): React.JSX.Element {

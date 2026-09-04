@@ -815,6 +815,14 @@ would compare a controller that did the work with one that was carried.
 **Done when:** you can click anywhere on the chart, arrive there, and the run
 says plainly that you did.
 
+*Where it stands:* done and verified on the box (4 September). Double-clicking
+the chart carries the vehicle: on a live dive at Looe Key it went from
+(115.2, −25.0) to exactly the point asked for, at 2 m over the bottom there
+rather than the depth it had been at, stopped, with the hold taking the new
+pose and the route re-steered from where it now is. The count is in the state,
+the recording and the result, and a carried run is left out of a trial's
+arithmetic and said so.
+
 
 ## 21. Something in the platform that can fly a task
 
@@ -827,6 +835,15 @@ against, and the thing that makes a task on the dive page mean what it says.
 
 **Done when:** choosing Waypoints and pressing Dive flies the waypoints.
 
+*Where it stands:* done (4 September). `coral/controllers/pursue.py`: turn
+towards the point, run at a speed that eases off as it arrives, hold the depth
+or the altitude the leg asks for, hold at the end. A leg can also say how close
+counts as arrived, how slowly to come in, what to keep facing, and how long to
+stay — which is what docking to forty centimetres and holding ten seconds over
+a colony to sample turned out to need. Flying the tasks found both gaps: an
+inspection that looked where it was going saw one side of twelve, and a revisit
+that did not stay sampled two marks of three.
+
 
 ## 22. A dive that ends when its task does
 
@@ -838,6 +855,10 @@ machine back the moment there is nothing left to do.
 
 **Done when:** a waypoints dive asked for an hour ends in four minutes,
 succeeded, because it finished.
+
+*Where it stands:* done and verified (4 September). A reach asked for 400 s
+ended at 88.3 s, `achieved`. Every ending is named: achieved, failed, battery,
+surfaced, home, or time.
 
 
 ## 23. Energy: a battery that runs down, and runs out
@@ -858,6 +879,12 @@ make every energy score a fiction.
 **Done when:** two controllers fly the same task and the record shows which one
 was cheaper.
 
+*Where it stands:* done and verified (4 September). The BlueROV2 package now
+declares its pack and its thrusters' power, published as version 4. A 25 m
+transit costs 0.74 Wh at 27.8 W; treating 193 colonies over 135 m costs 4.7 Wh.
+It is on the console with its reserve marked, on `/battery`, in the recording
+and beside every score. Flat stops the thrusters and ends the dive.
+
 
 ## 24. The failsafe that decides to come home
 
@@ -872,6 +899,11 @@ bottom because nobody was counting is the failure this exists to prevent.
 **Done when:** a dive run with a battery too small to finish surfaces on its
 own, and the record says it decided to.
 
+*Where it stands:* done and verified on the box (4 September). Sent 300 m with
+11.5% of a charge, it flew 127 m, decided at the reserve and surfaced on its
+own — ended `surfaced` at 0.13 m with 10.0% left. It outranks a hand on the
+keys, and a hand on the keys is the one thing that takes the vehicle back.
+
 
 ## 25. Things in the water
 
@@ -884,6 +916,13 @@ run again and find the same thing.
 
 **Done when:** a place can carry objects, and a dive can be scored on what it
 did about one.
+
+*Where it stands:* done as far as the tasks need it (4 September). A thing is
+named either in the place's own coordinates or as so far ahead and to starboard
+of where the dive began, and the tasks score against it: the search's target,
+the inspection's structure, the revisit's marks, the dock's station. The coral
+is the real thing already — the treatment reads the colonies the survey found,
+unthinned.
 
 
 ## 26. The tasks worth flying
@@ -912,6 +951,14 @@ With something to fly them and something to fly them at:
 **Done when:** each one can be chosen on the dive page, flown by the platform's
 own guidance, and scored the same way twice.
 
+*Where it stands:* done and every one flown on Looe Key (4 September):
+reach 25 m — score 1.00, directness 1.00, 88 s, 0.74 Wh;
+find it — found at 355 s, score 0.83, closest pass 5.3 m;
+treat a patch — 193 of 193 colonies, score 1.00, 135.6 m, 4.7 Wh;
+inspect — 12 of 12 sides, score 1.00, 173 s;
+revisit and sample — 3 of 3, score 1.00, 159 s;
+dock — docked at 0.40 m and 0.015 m/s, score 1.00, 122 s.
+
 
 ## 27. Docking, and a dive made of stages
 
@@ -929,6 +976,12 @@ with the reason.
 **Done when:** one dive surveys, docks, charges, undocks and surveys again,
 and the record reads as five things that happened rather than one.
 
+*Where it stands:* done and flown (4 September). Survey, dock, charge for five
+minutes, survey again: four stages in order, each scored on its own line,
+mission score 1.00, ended `achieved` at 732 s. A stage that fails ends the
+mission and the record says which one. The battery fills while it sits on the
+station.
+
 
 ## 28. Trials, not runs
 
@@ -939,6 +992,11 @@ another, and it is what makes the learning in item 17 worth continuing.
 
 **Done when:** the Dives page can say a controller scores 0.82 give or take
 0.05 over twenty runs, and show the worst one.
+
+*Where it stands:* done in the application (4 September). Runs are grouped by
+the dive and who flew it, and reported as a mean, a spread, the worst and the
+best, with every run's score as a tick on the band and the average energy
+underneath. Runs that were carried by hand are left out and said so.
 
 
 ## 29. Things going wrong on purpose
@@ -951,6 +1009,11 @@ in the conditions, recorded with the run, and identical on a re-run.
 **Done when:** a dive can be defined with a thruster that fails at two minutes,
 and two runs of it agree.
 
+*Where it stands:* done (4 September). The conditions carry failures: a
+thruster dead at a stated second, sensors quiet for a stated span — quiet, not
+zero, because a controller that reads missing as zero is the bug this finds —
+and a gust of current. Two runs of one failure agree to the millimetre.
+
 
 ## 30. Batch dives at the speed of the machine
 
@@ -961,6 +1024,12 @@ streamed and a trial of twenty runs stops being a day's work.
 
 **Done when:** a sixty-second batch dive takes a fraction of sixty seconds, and
 lands in exactly the same place as one that took sixty.
+
+*Where it stands:* done (4 September). A batch dive with no watcher, no stack
+and no hand on it runs as fast as the machine will carry it, in bites that stop
+at the next frame its recording is owed. The four-stage mission simulated 732 s
+in 203 s of wall clock; the treatment 574 s in 161 s. The step is the same fixed
+step, so the trajectory is the same either way.
 
 
 ## Not on this list
