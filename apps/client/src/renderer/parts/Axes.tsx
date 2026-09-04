@@ -13,7 +13,7 @@
 
 export interface Basis { right: number[]; up: number[]; forward: number[] }
 
-export function Axes({ basis, upAxis }: { basis: Basis | undefined; upAxis?: string }): React.JSX.Element | null {
+export function WorldAxes({ basis, upAxis }: { basis: Basis | undefined; upAxis?: string }): React.JSX.Element | null {
   if (basis === undefined) return null;
   const size = 34;
   const middle = size + 10;
@@ -35,18 +35,18 @@ export function Axes({ basis, upAxis }: { basis: Basis | undefined; upAxis?: str
   ].sort((a, b) => b.towards - a.towards);
 
   return (
-    <div className="axes" title={`x east, y north, ${upAxis === "Y" ? "y" : "z"} up`}>
+    <div className="world-axes" title={`x east, y north, ${upAxis === "Y" ? "y" : "z"} up`}>
       <svg viewBox={`0 0 ${box} ${box}`} width={box} height={box} aria-hidden="true">
-        <circle cx={middle} cy={middle} r={size + 6} className="axes-face" />
+        <circle cx={middle} cy={middle} r={size + 6} className="world-axes-face" />
         {drawn.map((one) => (
           <g key={one.name} opacity={one.towards > 0.55 ? 0.4 : 1}>
             <line x1={middle} y1={middle} x2={one.x} y2={one.y} stroke={one.ink} strokeWidth={2} strokeLinecap="round" />
             <circle cx={one.x} cy={one.y} r={7} fill={one.ink} />
-            <text x={one.x} y={one.y + 3.4} textAnchor="middle" className="axes-label">{one.name}</text>
+            <text x={one.x} y={one.y + 3.4} textAnchor="middle" className="world-axes-label">{one.name}</text>
           </g>
         ))}
       </svg>
-      <span className="axes-said">{upAxis === "Y" ? "y" : "z"} up</span>
+      <span className="world-axes-said">{upAxis === "Y" ? "y" : "z"} up</span>
     </div>
   );
 }

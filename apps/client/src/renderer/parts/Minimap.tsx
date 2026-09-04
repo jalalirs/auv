@@ -88,7 +88,7 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
     // The coral, as it stands on the bottom. Round and half-transparent, so
     // two thousand colonies read as reef rather than as a solid smear.
     if (site?.coral && site.coral.length > 0) {
-      ink.fillStyle = "rgba(247, 205, 104, 0.38)";
+      ink.fillStyle = "rgba(250, 208, 96, 0.62)";
       const r = (large ? 1.5 : 0.9) * devicePixelRatio;
       ink.beginPath();
       for (const [cx, cy] of site.coral) {
@@ -277,13 +277,16 @@ function shade(site: Site): HTMLCanvasElement {
       // neighbours a light would come from.
       const west = site.heights[row * site.columns + Math.max(0, column - 1)] ?? h;
       const north = site.heights[Math.min(site.rows - 1, row + 1) * site.columns + column] ?? h;
-      const relief = Math.max(-0.3, Math.min(0.3, ((h - west) + (h - north)) / Math.max(0.5, span) * 6));
+      const relief = Math.max(-0.18, Math.min(0.18, ((h - west) + (h - north)) / Math.max(0.5, span) * 5));
       const lit = 1 + relief;
+      // Depth as a ramp with its shallow end held back: lighting the whole
+      // kilometre made the reef read as fog rather than as ground.
+      const ramp = share * share * 0.75 + share * 0.25;
       // Rows count up with y; the image counts down. Flip so north is up.
       const at = ((site.rows - 1 - row) * site.columns + column) * 4;
-      pixels.data[at] = Math.round(Math.min(255, (10 + 104 * share) * lit));
-      pixels.data[at + 1] = Math.round(Math.min(255, (34 + 138 * share) * lit));
-      pixels.data[at + 2] = Math.round(Math.min(255, (66 + 118 * share) * lit));
+      pixels.data[at] = Math.round(Math.min(255, (6 + 74 * ramp) * lit));
+      pixels.data[at + 1] = Math.round(Math.min(255, (22 + 104 * ramp) * lit));
+      pixels.data[at + 2] = Math.round(Math.min(255, (44 + 96 * ramp) * lit));
       pixels.data[at + 3] = 255;
     }
   }
