@@ -878,19 +878,44 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
   display: grid; grid-template-columns: 1fr 240px; gap: 6px; padding: 6px;
   min-height: 0; min-width: 0; background: #020509;
 }
-.pane { position: relative; background: #050a12; border: 1px solid var(--edge); border-radius: 6px; overflow: hidden; min-height: 0; }
+.pane {
+  position: relative; background: #050a12; border: 1px solid var(--edge);
+  border-radius: 8px; overflow: hidden; min-height: 0;
+  /* A header strip and the pane's own content. The name used to float over
+     the canvas, where it collided with whatever the canvas drew in its top
+     left — north on the chart, the first depth line on the section. */
+  display: grid; grid-template-rows: auto minmax(0, 1fr);
+}
+.pane > :not(.pane-name) { min-height: 0; }
 .pane.large { grid-column: 1; }
 .small-panes { display: grid; grid-template-rows: repeat(3, 1fr); gap: 6px; min-height: 0; }
 .pane.small { cursor: pointer; }
 .pane.small:hover { border-color: var(--coral); }
 .pane-name {
-  position: absolute; top: 6px; left: 8px; z-index: 2; font-size: 10.5px; letter-spacing: var(--wide);
+  z-index: 2; font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
   text-transform: uppercase; color: var(--dim); pointer-events: none;
+  padding: 6px 10px 5px; border-bottom: 1px solid var(--edge);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012));
 }
+.pane.small:hover .pane-name { color: var(--faint); }
 .pane .viewport, .pane .minimap, .pane .profile, .pane .topic-plot { width: 100%; height: 100%; }
 .pane .viewport canvas { width: 100%; height: 100%; }
 .pane canvas.minimap, .pane canvas.profile { display: block; width: 100%; height: 100%; }
-.views { position: absolute; top: 6px; right: 8px; z-index: 2; display: flex; gap: 4px; }
+.views { position: absolute; top: 8px; right: 8px; z-index: 2; display: flex; gap: 4px; }
+
+/* ── which way the world points, in the corner of the picture ─────────── */
+.axes {
+  position: absolute; right: 10px; bottom: 10px; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  pointer-events: none; user-select: none;
+}
+.axes svg { display: block; }
+.axes-face { fill: rgba(4, 8, 15, 0.42); stroke: rgba(159, 179, 204, 0.16); }
+.axes-label { fill: #04080f; font: 600 9px system-ui, sans-serif; }
+.axes-said {
+  font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--dim); background: rgba(4, 8, 15, 0.5); padding: 1px 6px; border-radius: 999px;
+}
 .views button {
   background: rgba(5, 10, 18, 0.75); color: var(--faint); border: 1px solid var(--edge);
   border-radius: 4px; font-size: 11px; padding: 3px 8px; cursor: pointer;

@@ -111,6 +111,7 @@ class CoralCityShell(omni.ext.IExt):
         self._capturing = False
         self._asked_at = 0.0
         self._aim = None
+        self._basis = None
         self._chase_heading = None
         self._complained = False
         self._latest_state = {}
@@ -262,23 +263,27 @@ class CoralCityShell(omni.ext.IExt):
                 eye = (x + 0.45 * ahead[0], y + 0.45 * ahead[1], z + 0.05)
                 aim = (x + 6.0 * ahead[0], y + 6.0 * ahead[1], z - 0.6)
                 up = up_world
+                up_ours = (0.0, 0.0, 1.0)
             elif view == "down":
                 # The survey camera: under the hull, looking at the bottom, the
                 # vehicle's heading up the screen.
                 eye = (x, y, z - 0.15)
                 aim = (x, y, z - 6.0)
                 up = dive.drawn_at((ahead[0], ahead[1], 0.0))
+                up_ours = (ahead[0], ahead[1], 0.0)
             elif view == "top":
                 # North up, like the chart, so a yaw is a vehicle turning on a
                 # still picture rather than a picture turning around a vehicle.
                 eye = (x, y, z + 14.0)
                 aim = (x, y, z)
                 up = dive.drawn_at((0.0, 1.0, 0.0))
+                up_ours = (0.0, 1.0, 0.0)
             elif view == "orbit":
                 angle = dive.simulated * 0.25
                 eye = (x + 8.0 * math.cos(angle), y + 8.0 * math.sin(angle), z + 3.0)
                 aim = (x, y, z)
                 up = up_world
+                up_ours = (0.0, 0.0, 1.0)
             else:
                 # Behind and above, kept well under the surface: the first
                 # version sat twenty centimetres below it and the underside of
@@ -286,10 +291,20 @@ class CoralCityShell(omni.ext.IExt):
                 eye = (x - 9.0 * behind[0], y - 9.0 * behind[1], z + 3.2)
                 aim = (x, y, z)
                 up = up_world
+                up_ours = (0.0, 0.0, 1.0)
             self._aim.Set(Gf.Matrix4d().SetLookAt(dive.drawn_at(eye), dive.drawn_at(aim), up).GetInverse())
+            # Which way the world's own axes fall on the screen, for the little
+            # set of axes a console draws in the corner. Worked out here
+            # because this is where the camera is aimed; anywhere else would be
+            # a second opinion about where it points.
+            self._basis = _basis(eye, aim, up_ours)
         except Exception:
             # A camera that will not move is not worth ending a dive over.
             self._aim = None
+
+    def _looking(self, dive) -> dict:
+        """The world's axes as the camera sees them, and which way is up."""
+        return {"basis": self._basis, "upAxis": "Z", "view": getattr(dive, "view", "chase")}
 
     def _watch_from(self, dive) -> None:
         """Put the camera where the vehicle can be seen from.
@@ -496,6 +511,8 @@ class CoralCityShell(omni.ext.IExt):
             viewport = get_active_viewport()
             if viewport is None:
                 return
+            if self._basis is not None and self.dive is not None:
+                state["camera"] = self._looking(self.dive)
             self._latest_state = state
             self._capturing = True
             self._asked_at = time.monotonic()
@@ -662,3 +679,29 @@ class CoralCityShell(omni.ext.IExt):
         if self.hud is not None:
             self.hud.close()
             self.hud = None
+
+
+def _basis(eye, aim, up):
+    """The camera's right, up and forward, in the world the dive is flown in.
+
+    Not the stage's axes: a place may be authored Y up and in centimetres, and
+    none of that is true of the water the vehicle is in. These are the axes a
+    person reading a heading is thinking in — x east, y north, z up.
+    """
+    import math
+
+    def minus(a, b):
+        return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
+
+    def cross(a, b):
+        return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+
+    def unit(v):
+        n = math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
+        return (0.0, 0.0, 0.0) if n < 1e-9 else (v[0] / n, v[1] / n, v[2] / n)
+
+    forward = unit(minus(aim, eye))
+    right = unit(cross(forward, up))
+    return {"right": [round(v, 4) for v in right],
+            "up": [round(v, 4) for v in unit(cross(right, forward))],
+            "forward": [round(v, 4) for v in forward]}

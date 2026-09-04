@@ -85,14 +85,18 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
     ink.lineWidth = devicePixelRatio;
     ink.strokeRect(left, top, side, side);
 
-    // The coral, as it stands on the bottom.
+    // The coral, as it stands on the bottom. Round and half-transparent, so
+    // two thousand colonies read as reef rather than as a solid smear.
     if (site?.coral && site.coral.length > 0) {
-      ink.fillStyle = "rgba(244, 197, 66, 0.55)";
-      const r = (large ? 1.6 : 1.0) * devicePixelRatio;
+      ink.fillStyle = "rgba(247, 205, 104, 0.38)";
+      const r = (large ? 1.5 : 0.9) * devicePixelRatio;
+      ink.beginPath();
       for (const [cx, cy] of site.coral) {
         const [x, y] = toScreen(cx!, cy!);
-        ink.fillRect(x - r, y - r, 2 * r, 2 * r);
+        ink.moveTo(x + r, y);
+        ink.arc(x, y, r, 0, Math.PI * 2);
       }
+      ink.fill();
     }
 
     // Where it began.
@@ -149,9 +153,15 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
         const [x, y] = toScreen(track[i]!.x, track[i]!.y);
         ink.lineTo(x, y);
       }
-      ink.strokeStyle = "rgba(64, 199, 244, 0.85)";
-      ink.lineWidth = 1.5 * devicePixelRatio;
+      const [ax, ay] = toScreen(track[0]!.x, track[0]!.y);
+      const [bx, by] = toScreen(track[track.length - 1]!.x, track[track.length - 1]!.y);
+      const age = ink.createLinearGradient(ax, ay, bx, by);
+      age.addColorStop(0, "rgba(64, 199, 244, 0.18)");
+      age.addColorStop(1, "rgba(110, 220, 255, 0.95)");
+      ink.strokeStyle = age;
+      ink.lineWidth = 1.8 * devicePixelRatio;
       ink.lineJoin = "round";
+      ink.lineCap = "round";
       ink.stroke();
     }
 
@@ -162,6 +172,10 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
       const size = (large ? 9 : 6) * devicePixelRatio;
       ink.save();
       ink.translate(vx, vy);
+      ink.beginPath();
+      ink.arc(0, 0, size * 1.9, 0, Math.PI * 2);
+      ink.fillStyle = "rgba(255, 122, 92, 0.16)";
+      ink.fill();
       // Heading is measured from +x towards +y in the world; on screen y is down.
       ink.rotate(-heading);
       ink.beginPath();
@@ -197,20 +211,48 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
       }
     }
 
-    // North, and a scale.
-    ink.fillStyle = "#9fb3cc";
-    ink.font = `${11 * devicePixelRatio}px system-ui, sans-serif`;
+    // North, as a needle in the corner rather than two characters of text.
+    const nx = left + side - 16 * devicePixelRatio;
+    const ny = top + 18 * devicePixelRatio;
+    ink.save();
+    ink.translate(nx, ny);
+    ink.beginPath();
+    ink.moveTo(0, -9 * devicePixelRatio);
+    ink.lineTo(4 * devicePixelRatio, 5 * devicePixelRatio);
+    ink.lineTo(0, 2 * devicePixelRatio);
+    ink.lineTo(-4 * devicePixelRatio, 5 * devicePixelRatio);
+    ink.closePath();
+    ink.fillStyle = "rgba(159, 179, 204, 0.75)";
+    ink.fill();
+    ink.restore();
+    ink.fillStyle = "rgba(159, 179, 204, 0.75)";
+    ink.font = `${9 * devicePixelRatio}px system-ui, sans-serif`;
+    ink.textAlign = "center";
     ink.textBaseline = "top";
-    ink.fillText("N ↑", left + 8 * devicePixelRatio, top + 6 * devicePixelRatio);
+    ink.fillText("N", nx, ny + 7 * devicePixelRatio);
+    ink.textAlign = "left";
+
+    // The scale, on a strip of its own so it reads over any bottom.
     const bar = niceBar(across);
     const barPx = (bar / across) * side;
-    const bx = left + side - barPx - 10 * devicePixelRatio;
-    const by = top + side - 14 * devicePixelRatio;
-    ink.strokeStyle = "#9fb3cc";
-    ink.lineWidth = 2 * devicePixelRatio;
+    const bx = left + side - barPx - 12 * devicePixelRatio;
+    const by = top + side - 13 * devicePixelRatio;
+    const label = `${bar} m`;
+    ink.font = `${10 * devicePixelRatio}px system-ui, sans-serif`;
+    const wide = ink.measureText(label).width;
+    ink.fillStyle = "rgba(4, 8, 15, 0.55)";
+    ink.fillRect(bx - 6 * devicePixelRatio, by - 15 * devicePixelRatio,
+                 Math.max(barPx, wide) + 12 * devicePixelRatio, 22 * devicePixelRatio);
+    ink.strokeStyle = "#c9d6e6";
+    ink.lineWidth = 1.5 * devicePixelRatio;
     ink.beginPath(); ink.moveTo(bx, by); ink.lineTo(bx + barPx, by); ink.stroke();
+    ink.beginPath();
+    ink.moveTo(bx, by - 3 * devicePixelRatio); ink.lineTo(bx, by + 3 * devicePixelRatio);
+    ink.moveTo(bx + barPx, by - 3 * devicePixelRatio); ink.lineTo(bx + barPx, by + 3 * devicePixelRatio);
+    ink.stroke();
+    ink.fillStyle = "#c9d6e6";
     ink.textBaseline = "bottom";
-    ink.fillText(`${bar} m`, bx, by - 3 * devicePixelRatio);
+    ink.fillText(label, bx, by - 4 * devicePixelRatio);
   }, [site, track, position, headingDeg, beganAt, geometry, current, large, track.length]);
 
   return <canvas ref={canvas} className="minimap" />;
@@ -230,11 +272,18 @@ function shade(site: Site): HTMLCanvasElement {
     for (let column = 0; column < site.columns; column += 1) {
       const h = site.heights[row * site.columns + column] ?? low;
       const share = Math.max(0, Math.min(1, (h - low) / span));
+      // A little relief, lit from the north west, so a reef reads as ground
+      // and not as a wash of blue. The slope is the difference to the
+      // neighbours a light would come from.
+      const west = site.heights[row * site.columns + Math.max(0, column - 1)] ?? h;
+      const north = site.heights[Math.min(site.rows - 1, row + 1) * site.columns + column] ?? h;
+      const relief = Math.max(-0.3, Math.min(0.3, ((h - west) + (h - north)) / Math.max(0.5, span) * 6));
+      const lit = 1 + relief;
       // Rows count up with y; the image counts down. Flip so north is up.
       const at = ((site.rows - 1 - row) * site.columns + column) * 4;
-      pixels.data[at] = Math.round(12 + 90 * share);
-      pixels.data[at + 1] = Math.round(38 + 120 * share);
-      pixels.data[at + 2] = Math.round(70 + 110 * share);
+      pixels.data[at] = Math.round(Math.min(255, (10 + 104 * share) * lit));
+      pixels.data[at + 1] = Math.round(Math.min(255, (34 + 138 * share) * lit));
+      pixels.data[at + 2] = Math.round(Math.min(255, (66 + 118 * share) * lit));
       pixels.data[at + 3] = 255;
     }
   }
