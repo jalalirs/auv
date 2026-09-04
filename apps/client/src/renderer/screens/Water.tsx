@@ -335,7 +335,8 @@ export function Water({ platform, stream, onSurface }: {
       case "profile":
         return <Profile of={history.current} />;
       case "plot":
-        return <TopicPlot topic={plotted} of={plotted === undefined ? [] : (series.current.get(plotted) ?? [])} />;
+        return <TopicPlot topic={plotted} of={plotted === undefined ? [] : (series.current.get(plotted) ?? [])}
+                          about={topics.find((t) => t.name === plotted)} onLook={view} />;
     }
   }
 

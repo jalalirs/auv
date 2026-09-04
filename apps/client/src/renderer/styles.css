@@ -531,6 +531,10 @@ input:focus { border-color: var(--coral); }
 
 /* plots */
 .thrusters .unit { margin: 8px 0 0; color: var(--dim); font-size: 10.5px; }
+.topic-said { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 16px; }
+.topic-said strong { font-size: 13px; font-weight: 600; }
+.topic-said em { font-style: normal; color: var(--vehicle); font-size: 11.5px; }
+.topic-said p { margin: 0; color: var(--faint); font-size: 12px; line-height: 1.5; max-width: 46ch; }
 .plot { position: relative; height: 74px; }
 .plot canvas { width: 100%; height: 100%; display: block; }
 .plot .none { position: absolute; inset: 0; display: grid; place-items: center; }
