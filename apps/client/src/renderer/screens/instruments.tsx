@@ -59,6 +59,8 @@ export interface Reading {
   /** How much of the hull is under the surface, from one to nothing. */
   submerged?: number;
   surfaced?: boolean;
+  /** Up against ground it cannot ride over. */
+  againstTheGround?: boolean;
   /** Where the camera is looking, for the axes drawn in the corner. */
   camera?: { basis?: { right: number[]; up: number[]; forward: number[] }; upAxis?: string; view?: string };
   t?: number;
@@ -209,6 +211,9 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, o
           </div>
           {reading.onTheBottom === true && (
             <p className="resting">Resting on the bottom.</p>
+          )}
+          {reading.againstTheGround === true && (
+            <p className="resting surfaced">Up against the ground — it cannot go that way.</p>
           )}
           {typeof reading.submerged === "number" && reading.submerged < 1 && (
             <p className="resting surfaced">
