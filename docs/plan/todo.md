@@ -1032,6 +1032,52 @@ in 203 s of wall clock; the treatment 574 s in 161 s. The step is the same fixed
 step, so the trajectory is the same either way.
 
 
+## What a dive is made of
+
+Six things, chosen separately, crossed at the moment somebody presses Dive.
+Keeping them apart is not tidiness: it is the only way one task can be flown
+on four technologies, or one controller judged across five waters, and the
+results mean anything.
+
+  **The place.** A city and a published version of its package: the bottom as
+  a height field, the coral where the survey found it, the textures, and what
+  the site says about itself. Versioned, pinned by digest on every run.
+
+  **The vehicle.** A vehicle and a published version: mass, buoyancy, inertia,
+  added mass, damping, thrusters and where they point, the sensors it carries,
+  the battery it carries, and the instruments it navigates by. Also versioned
+  and pinned. Nothing about a dive is written into it.
+
+  **The technology it knows where it is by.** Two halves that belong to two
+  different people, and they must not be one thing. What the vehicle carries
+  is the vehicle's, stated by whoever published it. What is *deployed in the
+  water* — a ship overhead with a USBL, an array of transponders on the
+  seabed, nothing at all — is the situation's. A dive may also unship what the
+  vehicle has: the same hull without its Doppler log is a different problem
+  and should not need a second vehicle in the catalogue.
+
+  **The water.** What the sea is doing: the current as a speed and a heading,
+  how far you can see, and anything that is going to go wrong on purpose — a
+  thruster at two minutes, the sensors quiet for five seconds, a gust. Held as
+  a conditions document, named, versioned, pinned by the run.
+
+  **Who flies it.** A person at the keys, the platform's own guidance, or a
+  stack somebody wrote and deployed as an image pinned by digest. The helm
+  decides between them every step, and one thing outranks all of them: the
+  failsafe, which is watching whether the job can still be paid for.
+
+  **What it is for.** An objective: a task, or a mission of several stages.
+  Scored as the dive runs, against the truth, and reduced to a result with the
+  energy it cost.
+
+The line that matters most runs between the last two and everything else. A
+controller is handed what the vehicle *knows* — a position dead reckoned from
+a Doppler log and a compass, a heading that is a degree or two wrong, a depth
+from pressure — and never what is true. The task is scored on what is true.
+The gap between those two is underwater navigation, and it is why a reach of
+sixty metres is a real task rather than a straight line.
+
+
 ## Not on this list
 
 Batch across many conditions. It is the same objective machinery from item 4,

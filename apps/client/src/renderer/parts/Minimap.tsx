@@ -33,7 +33,7 @@ export interface Geometry {
 }
 
 export function Minimap({ site, track, position, headingDeg, beganAt, geometry, current, marks,
-                         onCarry, large }: {
+                         onCarry, believed, large }: {
   site: Site | undefined;
   track: Fix[];
   position: number[] | undefined;
@@ -46,6 +46,8 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
   marks?: { x: number; y: number; done?: boolean }[];
   /** Click the chart to put the vehicle there. */
   onCarry?: (x: number, y: number) => void;
+  /** Where the vehicle believes it is, which is not where it is. */
+  believed?: number[];
   large: boolean;
 }): React.JSX.Element {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -182,6 +184,28 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
       ink.stroke();
     }
 
+    // Where it believes it is, and the gap between that and where it is. On a
+    // chart drawn from the simulator's truth this is the one thing the vehicle
+    // itself cannot see, and it is the thing that decides whether a task is
+    // reached or missed.
+    if (believed !== undefined && believed.length >= 2 && position !== undefined) {
+      const [bx, by] = toScreen(believed[0]!, believed[1]!);
+      const [vx, vy] = toScreen(position[0]!, position[1]!);
+      if (Math.hypot(bx - vx, by - vy) > 1.5 * devicePixelRatio) {
+        ink.strokeStyle = "rgba(255, 255, 255, 0.35)";
+        ink.lineWidth = devicePixelRatio;
+        ink.setLineDash([3 * devicePixelRatio, 3 * devicePixelRatio]);
+        ink.beginPath(); ink.moveTo(vx, vy); ink.lineTo(bx, by); ink.stroke();
+        ink.setLineDash([]);
+      }
+      const r = (large ? 6 : 4) * devicePixelRatio;
+      ink.strokeStyle = "rgba(255, 255, 255, 0.6)";
+      ink.lineWidth = 1.3 * devicePixelRatio;
+      ink.beginPath(); ink.arc(bx, by, r, 0, Math.PI * 2); ink.stroke();
+      ink.beginPath(); ink.moveTo(bx - r, by); ink.lineTo(bx + r, by);
+      ink.moveTo(bx, by - r); ink.lineTo(bx, by + r); ink.stroke();
+    }
+
     // The vehicle, pointing where it points.
     if (position !== undefined && position.length >= 2) {
       const [vx, vy] = toScreen(position[0]!, position[1]!);
@@ -270,7 +294,7 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
     ink.fillStyle = "#c9d6e6";
     ink.textBaseline = "bottom";
     ink.fillText(label, bx, by - 4 * devicePixelRatio);
-  }, [site, track, position, headingDeg, beganAt, geometry, current, marks, large, track.length]);
+  }, [site, track, position, headingDeg, beganAt, geometry, current, marks, believed, large, track.length]);
 
   // Clicking the chart puts the vehicle there. The maths is the drawing's,
   // read back: where the pointer is, in metres, on the same square the bottom

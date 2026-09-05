@@ -283,6 +283,10 @@ class Dive:
         # How many times somebody has asked to start the task over.
         self.attempts = 1
         self.objective = None
+        # Where the vehicle believes it is. Built when the dive is placed,
+        # because a navigator has to start from somewhere known — which for a
+        # vehicle is wherever it was last on the surface.
+        self.navigation = None
         # Whether the task has finished on an interactive dive, where finishing
         # says so rather than ending the dive.
         self.task_over = False
@@ -737,6 +741,11 @@ class Dive:
             # past three waypoints does not reach them.
             self.route_flying = ""
             self.steer_to_the_task()
+        if self.navigation is not None:
+            # It was picked up and put somewhere; it did not swim there, and
+            # nothing it carries could have told it. A hand of God knows where
+            # it put the thing.
+            self.navigation.believed = self.position.copy()
         self.say("carried", to=[round(float(v), 2) for v in self.position], times=self.carried)
 
     def start_again(self) -> None:
@@ -768,6 +777,9 @@ class Dive:
         for failure in self.failures:
             failure.pop("done", None)
         self.route_flying = ""
+        # It is back where it was deployed, so its navigator starts from there
+        # too: the drift it accumulated belonged to the attempt that is over.
+        self.begin_navigating()
         self.helm.failsafe.stand_down()
         self.helm.hold_here(self.observation())
         self.begin_task(self.objective, again=True)
@@ -797,6 +809,16 @@ class Dive:
         self.current = np.array([speed * np.cos(angle), speed * np.sin(angle), 0.0])
         visibility = parameters.get("visibilityM")
         self.visibility_m = None if visibility in (None, "", 0) else float(visibility)
+        # What is deployed in this water to fix a position with, if anything.
+        # The vehicle's instruments are the vehicle's; this is the water's, and
+        # a dive is one crossed with the other.
+        aiding = parameters.get("positioning")
+        self.aiding = dict(aiding) if isinstance(aiding, dict) else {"kind": "none"}
+        # What of the vehicle's own suite is fitted for this dive. The same
+        # hull with and without a Doppler log is two different problems, and
+        # saying so should not need a second vehicle in the catalogue.
+        fitted = parameters.get("fitted")
+        self.fitted = dict(fitted) if isinstance(fitted, dict) else {}
         # Things that go wrong, on purpose and on the clock. A controller that
         # has only ever flown a healthy vehicle in still water has not been
         # tested, and a failure that happens at a stated second happens at the
@@ -861,6 +883,7 @@ class Dive:
         if not again:
             self.began_at = self.position.copy()
             self.began_rotation = self.rotation.copy()
+            self.begin_navigating()
             self.began_with_wh = (0.0 if self.battery is None else self.battery.remaining_wh)
         wants_coral = _mentions(objective, "treat")
         self.task = task_for(objective, self.began_at,
@@ -895,6 +918,48 @@ class Dive:
             if self._coral:
                 self.say("coral_charted", colonies=len(self._coral))
         return self._coral
+
+    def begin_navigating(self) -> None:
+        """Give the vehicle its own idea of where it is, starting from here.
+
+        Two separate declarations, belonging to two different people: the
+        instruments are the vehicle's, stated by whoever published it, and
+        anything deployed in the water — an LBL array, a ship with a USBL,
+        nothing at all — is the water's, stated by whoever defined the
+        conditions. Keeping them apart is what lets one task be flown on four
+        different technologies.
+        """
+        try:
+            from navigation import Navigation
+
+            self.navigation = Navigation(suite={**self.instruments(), **self.fitted},
+                                         aiding=self.aiding,
+                                         began_at=self.position,
+                                         seed=int(self.brief.get("seed", 0)))
+            self.say("navigating", **self.navigation.said(self.position, self.simulated))
+        except Exception as exc:
+            self.navigation = None
+            self.say("navigation_unavailable", why=str(exc)[:160])
+
+    def instruments(self) -> dict:
+        """What this vehicle has to navigate with, from its own package.
+
+        A package may state it outright; otherwise it is read off the sensors
+        the package lists, because a vehicle that carries a Doppler log has one
+        whether or not anybody wrote down its accuracy.
+        """
+        import json
+
+        try:
+            described = json.loads((pathlib.Path(self.brief.get("vehiclePath", "/dive/vehicle"))
+                                    / "dynamics.json").read_text())
+        except Exception:
+            return {}
+        stated = described.get("navigation")
+        if isinstance(stated, dict):
+            return stated
+        kinds = {str(one_of_them.get("kind", "")) for one_of_them in described.get("sensors", [])}
+        return {"dvl": "dvl" in kinds}
 
     def colonies_here(self):
         """Every colony in the place, for a task that is about the coral.
@@ -994,6 +1059,17 @@ class Dive:
             # and a controller that treats missing as zero is the bug this is
             # here to find.
             return {"/thruster_cmd": said["/thruster_cmd"]}
+        if self.navigation is not None:
+            # What a stack subscribes to for its own position: the estimate,
+            # never the truth. The truth is not on any topic, here or in the sea.
+            said["/navigation"] = {
+                "x": round(float(self.navigation.believed[0]), 3),
+                "y": round(float(self.navigation.believed[1]), 3),
+                "z": round(float(self.navigation.believed[2]), 3),
+                "bottomLock": 1.0 if self.navigation.bottom_lock else 0.0,
+                "sinceFixS": -1.0 if self.navigation.last_fix_t is None
+                             else round(self.simulated - self.navigation.last_fix_t, 1),
+            }
         if self.battery is not None:
             said["/battery"] = {"percentage": round(self.battery.fraction * 100.0, 2),
                                 "voltage": round(self.battery.voltage * (0.85 + 0.15 * self.battery.fraction), 2),
@@ -1002,17 +1078,43 @@ class Dive:
         return said
 
     def observation(self):
+        """What the vehicle knows about itself — not what is true about it.
+
+        The difference is the whole of underwater navigation. A controller is
+        handed where the vehicle believes it is, worked out from its log, its
+        compass and its pressure sensor, and where it believes it is pointing,
+        which is out by whatever the compass is out by. What is actually true
+        stays here, for the tasks to score against and for the console to draw
+        beside it.
+        """
         from controllers import Observation
 
         floor = self.floor
         if self.seabed is not None:
             floor = self.seabed.under(float(self.position[0]), float(self.position[1]))
-        return Observation(t=self.simulated, position=self.position, velocity=self.velocity,
-                           rotation=self.rotation, floor=floor, on_the_bottom=self.on_the_bottom)
+        if self.navigation is None:
+            return Observation(t=self.simulated, position=self.position, velocity=self.velocity,
+                               rotation=self.rotation, floor=floor, on_the_bottom=self.on_the_bottom)
+        believed_floor = None if floor is None else floor + (self.navigation.believed[2] - float(self.position[2]))
+        return Observation(t=self.simulated,
+                           position=self.navigation.believed.copy(),
+                           velocity=self.velocity,
+                           rotation=self.navigation.believed_rotation(self.rotation),
+                           floor=believed_floor,
+                           on_the_bottom=self.on_the_bottom)
 
     def step(self) -> None:
         """One step of physics. Everything else is somebody else's schedule."""
         self.things_go_wrong()
+        # Where it thinks it is, before anything is asked of it: a controller
+        # commands on the estimate it had at the start of the step, which is
+        # what one on a real vehicle does.
+        if self.navigation is not None:
+            floor = self.floor
+            if self.seabed is not None:
+                floor = self.seabed.under(float(self.position[0]), float(self.position[1]))
+            self.navigation.step(self.simulated, self.position, self.velocity,
+                                 self.rotation, floor, self.dt)
         self.commands = self.helm.command(self.observation())
         if self.dead_thrusters:
             # A thruster that has failed produces nothing, whatever it is
@@ -1324,6 +1426,8 @@ class Dive:
             "surfaced": self.submerged() < 1.0,
             "againstTheGround": self.against_the_ground,
             "carried": self.carried,
+            **({} if self.navigation is None
+               else {"navigation": self.navigation.said(self.position, self.simulated)}),
             "attempt": self.attempts,
             "taskOver": self.task_over,
             **({"sensorsOut": True} if self.sensors_are_out else {}),
@@ -1425,6 +1529,8 @@ class Dive:
                  ended=self.ended or "time",
                  carried=self.carried,
                  attempts=self.attempts,
+                 **({} if self.navigation is None
+                    else {"navigation": self.navigation.said(self.position, self.simulated)}),
                  **({} if self.battery is None else {"battery": self.battery.said()}),
                  **({} if result is None else {"task": result}))
         if self.bridge is not None:

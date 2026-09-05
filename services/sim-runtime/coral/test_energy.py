@@ -272,7 +272,11 @@ def test_a_task_can_be_started_again_where_it_began():
         dive.step()
         if dive.task.done:
             break
-    assert dive.task.detail()["arrived"], "and it can be flown again"
+    # Whether it *arrives* is a navigation question, not a retry question: it
+    # flies to where it believes the point is, and where that is depends on
+    # what its instruments have done to it on the way.
+    assert dive.task.detail()["toGoM"] < 4.0, "it flies the leg again and ends up at the point"
+    assert dive.helm.pursue.holding, "and it believes it is there"
 
 
 def test_an_interactive_dive_does_not_end_when_its_task_does():

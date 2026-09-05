@@ -131,11 +131,14 @@ export const HOW_TO: Record<string, string> = {
     "Fly the rectangle in passes a swath apart, like mowing. Keep the altitude steady — what is not seen from "
     + "the right height is not covered — and turn at the ends rather than cutting the corner.",
   reach:
-    "Point at the marker on the chart and go. It is scored on how far you travelled against how far it was, "
-    + "so a straight run beats a fast one that wanders.",
+    "The point is so many metres ahead of where you were put in — in the vehicle's own frame, because there is "
+    + "no GPS down here. It flies on what its log and compass believe, and it is scored on where it actually "
+    + "ends up, so the gap between the two is the task. Straight beats fast: you are judged on the ground you "
+    + "covered against the ground there was.",
   search:
-    "Nobody will tell you where it is. Fly the box in passes so nothing is left unlooked-at, "
-    + "and keep it in front of you: the camera only sees what it faces.",
+    "Nobody will tell you where it is. Fly the box in passes so nothing is left unlooked-at, and keep it in "
+    + "front of you: the camera only sees what it faces. Your own position is dead reckoned, so the box you "
+    + "think you are covering drifts with you.",
   treat:
     "Go low and slow over the patch until every colony has been passed within reach. "
     + "The chart marks them as they are done. Height matters more than speed here.",
@@ -146,7 +149,8 @@ export const HOW_TO: Record<string, string> = {
     "Go to each mark and stay there. The sample is the ten seconds of holding still, not the arriving.",
   dock:
     "Line up on the approach and come in straight and slowly. Inside forty centimetres, under a quarter of a "
-    + "metre a second, and pointing the right way — arriving fast is a miss.",
+    + "metre a second, and pointing the right way — arriving fast is a miss. Forty centimetres is finer than "
+    + "dead reckoning gets you, which is why a real station has something on it to home to.",
   wait:
     "Nothing to do but stay put. Drifting off the station is what loses marks.",
   mission:

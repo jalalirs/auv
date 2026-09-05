@@ -12,10 +12,12 @@ import { useState } from "react";
 
 import type { Platform } from "@coral-city/api";
 
+import { POSITIONING, type Positioning } from "../catalog/positioning.js";
 import { PILOTED, TASKS, type Task, WATERS, type Water } from "../catalog/tasks.js";
 import { alertKind, leadTemperature, useSea } from "../ocean/sea.js";
 import { Line } from "../parts/Line.js";
 import { ControllerArt } from "../parts/ControllerArt.js";
+import { PositioningArt } from "../parts/PositioningArt.js";
 import { TaskArt } from "../parts/TaskArt.js";
 import { WaterArt } from "../parts/WaterArt.js";
 import type { Choice } from "../parts/Picker.js";
@@ -28,6 +30,7 @@ const WHAT = "coral-city.vehicle";
 const WHY = "coral-city.task";
 const WHO = "coral-city.controller";
 const HOW = "coral-city.water";
+const KNOWS = "coral-city.positioning";
 
 /** The controller a person is: keys, with the hold beneath them. */
 const MANUAL = "manual";
@@ -69,6 +72,10 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
   const chosenStack = held.stacks.find((s) => s.id === flownBy);
   const [water, setWater] = useState<Water>(() =>
     WATERS.find((w) => w.key === localStorage.getItem(HOW)) ?? WATERS[0]!);
+  // How it knows where it is. Kept apart from the water because one is what
+  // the sea is doing and the other is what has been deployed in it.
+  const [knows, setKnows] = useState<Positioning>(() =>
+    POSITIONING.find((p) => p.key === localStorage.getItem(KNOWS)) ?? POSITIONING[0]!);
   const [asking, setAsking] = useState(false);
   const [refusal, setRefusal] = useState("");
 
@@ -102,10 +109,14 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
       // Every dive names the water it happened in. Constructed water names no
       // instant on purpose: saying when would claim it was drawn from a
       // measurement of the ocean, and it was not.
+      // The situation the dive happens in: what the water is doing, and what
+      // is deployed in it to navigate by. One document, because a run has to
+      // pin both — a survey flown on dead reckoning and the same survey inside
+      // an array are two different results and must not look like one.
       const conditions = await platform.defineConditions(held.institution.id, {
         kind: "constructed",
-        name: water.name,
-        parameters: water.parameters,
+        name: `${water.name} · ${knows.name}`,
+        parameters: { ...water.parameters, ...knows.parameters },
       });
 
       // What the dive is for goes with it, and the runtime judges it as the
@@ -170,6 +181,10 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
     says: one.judgedOn.length > 0 ? `${one.asks} · judged on ${one.judgedOn.join(", ")}` : one.asks,
     // The shape of the thing it asks for, drawn: a task has a pattern, not a face.
     art: <TaskArt kind={(one.objective?.["kind"] as string) ?? one.key} />,
+  }));
+  const positions: Choice[] = POSITIONING.map((one) => ({
+    key: one.key, name: one.name, says: `${one.says} ${one.expect}`,
+    art: <PositioningArt kind={one.key} />,
   }));
   const waters: Choice[] = WATERS.map((one) => ({
     key: one.key, name: one.name, says: one.says,
@@ -264,6 +279,9 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
                   : <>Your stack flies from the start; the keys still win while they are held.</>} />
           <Line label="Water" choices={waters} chosen={water.key}
                 onChoose={(key) => { setWater(WATERS.find((w) => w.key === key)!); localStorage.setItem(HOW, key); }} />
+          <Line label="Knows where it is by" choices={positions} chosen={knows.key}
+                onChoose={(key) => { setKnows(POSITIONING.find((p) => p.key === key)!); localStorage.setItem(KNOWS, key); }}
+                hint={<>There is no GPS underwater. What it believes about its own position is what it flies on, and the task is scored on where it actually is.</>} />
           <Line label="For" choices={tasks} chosen={task.key}
                 onChoose={(key) => { const t = [PILOTED, ...TASKS].find((x) => x.key === key)!; setTask(t); localStorage.setItem(WHY, key); }}
                 hint={task.judgedOn.length > 0 ? <>The score is on the dive when it ends.</> : undefined} />
