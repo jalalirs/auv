@@ -1091,7 +1091,11 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 .line.open .line-chosen { border-color: var(--coral); }
 .line-chosen img, .line-row img { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; display: block; }
 .line-blank { width: 34px; height: 34px; border-radius: 8px; background: rgba(255, 255, 255, 0.04); display: block; }
-.task-art { display: block; width: 34px; height: 34px; }
+.task-art { display: block; width: 34px; height: 34px; flex: none; }
+.card .drawn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 100%; }
+.card .drawn .task-art { width: 64px; height: 64px; opacity: 0.95; }
+.card .drawn span { color: var(--dim); font-size: 11px; }
+.ledger .row .task-art { margin-right: 2px; }
 .task-art-ground { fill: rgba(64, 199, 244, 0.07); stroke: rgba(159, 179, 204, 0.14); }
 .line-said { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
 .line-said strong { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
