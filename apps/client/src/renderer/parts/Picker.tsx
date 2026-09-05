@@ -18,6 +18,8 @@ export interface Choice {
   later?: string;
   /** A heading the row sits under when a list is long: whose, or what kind. */
   group?: string;
+  /** Drawn rather than photographed: for things that have a shape, not a face. */
+  art?: React.ReactNode;
 }
 
 export function Picker({ label, choices, chosen, onChoose, onOpen, foot }: {

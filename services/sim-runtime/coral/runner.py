@@ -280,6 +280,14 @@ class Dive:
         # How many times a hand picked the vehicle up and put it somewhere.
         self.carried = 0
         self.route_flying = ""
+        # How many times somebody has asked to start the task over.
+        self.attempts = 1
+        self.objective = None
+        # Whether the task has finished on an interactive dive, where finishing
+        # says so rather than ending the dive.
+        self.task_over = False
+        self.began_rotation = np.eye(3)
+        self.began_with_wh = 0.0
         self.commands = np.zeros(len(allocator.model.thrusters))
         self.position = np.array(
             (brief.get("initialState") or {}).get("positionM", [0.0, 0.0, -2.0]),
@@ -687,6 +695,8 @@ class Dive:
         place = said.get("place")
         if isinstance(place, dict):
             self.carry_to(place)
+        if said.get("reset") or said.get("retry"):
+            self.start_again()
         found = said.get("found")
         if isinstance(found, (list, tuple)) and len(found) >= 2:
             self.report_a_find(found)
@@ -728,6 +738,41 @@ class Dive:
             self.route_flying = ""
             self.steer_to_the_task()
         self.say("carried", to=[round(float(v), 2) for v in self.position], times=self.carried)
+
+    def start_again(self) -> None:
+        """Put it back where the dive began and try the task again.
+
+        A person who wants another go at a task should not have to surface,
+        hand the machine back, define a new dive and wait for a scene to open
+        — the vehicle is right here and the task is a thing that can start
+        over. The vehicle goes back to where it began, stopped and level, the
+        battery back to the charge it began with, and the task is built again
+        from the same objective, so its score and its clock start from
+        nothing. The attempt is counted and the run remembers how many there
+        were, because a score on the fourth try is not a score on the first.
+        """
+        self.position = self.began_at.copy()
+        self.rotation = self.began_rotation.copy()
+        self.velocity = np.zeros(6)
+        self.commands = np.zeros_like(self.commands)
+        self.against_the_ground = False
+        self.on_the_bottom = False
+        self.ended = ""
+        self.attempts += 1
+        if self.battery is not None:
+            self.battery.remaining_wh = self.began_with_wh
+            self.battery.spent_wh = 0.0
+            self.battery.flat = False
+        self.dead_thrusters.clear()
+        self.sensors_out_until = 0.0
+        for failure in self.failures:
+            failure.pop("done", None)
+        self.route_flying = ""
+        self.helm.failsafe.stand_down()
+        self.helm.hold_here(self.observation())
+        self.begin_task(self.objective, again=True)
+        self.say("started_again", attempt=self.attempts,
+                 at=[round(float(v), 2) for v in self.position])
 
     def report_a_find(self, where) -> None:
         """Somebody saying they have found the thing they were sent to find."""
@@ -801,7 +846,7 @@ class Dive:
                 "current": [round(float(v), 4) for v in self.current[:2]],
                 "visibilityM": self.visibility_m}
 
-    def begin_task(self, objective) -> None:
+    def begin_task(self, objective, again: bool = False) -> None:
         """Where the dive begins is where its task is measured from.
 
         Called once the vehicle is placed; the tank calls it itself, since it
@@ -809,14 +854,22 @@ class Dive:
         """
         from tasks import task_for
 
-        self.began_at = self.position.copy()
+        # Kept, so that starting again asks for the same thing. Reading it
+        # back off the brief was a second copy of the truth, and on a dive
+        # whose objective was handed in rather than briefed it was empty.
+        self.objective = objective
+        if not again:
+            self.began_at = self.position.copy()
+            self.began_rotation = self.rotation.copy()
+            self.began_with_wh = (0.0 if self.battery is None else self.battery.remaining_wh)
         wants_coral = _mentions(objective, "treat")
         self.task = task_for(objective, self.began_at,
                              float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0])),
                              camera=self.camera(),
                              colonies=self.colonies_here() if wants_coral else None)
         if self.task is not None:
-            self.say("task_set", task=self.task.describe())
+            self.task_over = False
+            self.say("task_set", task=self.task.describe(), attempt=self.attempts)
             # The platform flies what it can, so that choosing a task on the
             # dive page and pressing Dive does the thing rather than watching
             # the vehicle sit where it started. A stack or a hand still wins.
@@ -1200,6 +1253,16 @@ class Dive:
         if self.ended:
             return
         if self.task is not None and self.task.done:
+            if str(self.brief.get("mode", "batch")) == "interactive":
+                # Somebody is watching. Ending here would take the water away
+                # from them at the exact moment there is something to look at,
+                # and asking for another go would mean another dive and
+                # another scene. The vehicle holds where it is, the console
+                # says how it went, and they can try again or surface.
+                if not self.task_over:
+                    self.task_over = True
+                    self.say("task_over", result=self.task.result(), attempt=self.attempts)
+                return
             self.finish("failed" if self.task.failed() else "achieved")
             return
         if self.battery is not None and self.battery.flat:
@@ -1261,6 +1324,8 @@ class Dive:
             "surfaced": self.submerged() < 1.0,
             "againstTheGround": self.against_the_ground,
             "carried": self.carried,
+            "attempt": self.attempts,
+            "taskOver": self.task_over,
             **({"sensorsOut": True} if self.sensors_are_out else {}),
             **({"deadThrusters": sorted(self.dead_thrusters)} if self.dead_thrusters else {}),
             **({} if self.battery is None else {"battery": self.battery.said(),
@@ -1359,6 +1424,7 @@ class Dive:
                  speedMs=round(float(np.linalg.norm(self.velocity[:3])), 4),
                  ended=self.ended or "time",
                  carried=self.carried,
+                 attempts=self.attempts,
                  **({} if self.battery is None else {"battery": self.battery.said()}),
                  **({} if result is None else {"task": result}))
         if self.bridge is not None:

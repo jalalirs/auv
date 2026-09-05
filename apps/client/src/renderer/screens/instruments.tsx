@@ -11,6 +11,8 @@
 
 import { useEffect, useRef } from "react";
 
+import { HOW_TO } from "../catalog/tasks.js";
+
 export interface Topic {
   name: string;
   type: string;
@@ -45,6 +47,13 @@ export interface Helm {
 }
 
 /** How the dive's task is going, as the runtime judges it. */
+/** What the dive said it was for when it opened, before anything has run. */
+export interface Brief {
+  kind: string;
+  name: string;
+  objective?: Record<string, unknown>;
+}
+
 export interface TaskProgress {
   kind: string;
   name: string;
@@ -64,6 +73,8 @@ export interface Reading {
               volts: number; enduranceS?: number | null; flat: boolean; reserveFraction: number };
   charging?: boolean;
   carried?: number;
+  attempt?: number;
+  taskOver?: boolean;
   sensorsOut?: boolean;
   deadThrusters?: number[];
   /** Up against ground it cannot ride over. */
@@ -111,7 +122,8 @@ const KEYS: { key: string; does: string }[] = [
   { key: "F", does: "pitch down" },
 ];
 
-export function Instruments({ reading, topics, held, history, frames, onLeave, onTune, onHoldHere, onEngage, onPlot, plotted, pad, water, children }: {
+export function Instruments({ reading, topics, held, history, frames, onLeave, onTune, onHoldHere,
+                              onEngage, onPlot, plotted, pad, water, brief, onRetry, children }: {
   reading: Reading;
   topics: Topic[];
   held: string[];
@@ -126,6 +138,10 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, o
   pad?: string;
   /** What the water is doing, from the dive's greeting. */
   water?: { currentMetresPerSecond: number; currentHeadingDeg: number; visibilityM?: number | null };
+  /** What the dive said it was for when it opened, before anything has run. */
+  brief?: Brief;
+  /** Put the vehicle back where it began and try the task again. */
+  onRetry?: () => void;
   children: React.ReactNode;
 }): React.JSX.Element {
   const who = reading.controller?.flying ?? (reading.byHand === true ? "manual" : reading.commanded === true ? "stack" : undefined);
@@ -193,16 +209,31 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, o
       {children}
 
       <aside className="dock right">
-        {reading.task ? (
-          <Panel name="Task" note={reading.task.done ? "over" : `${reading.task.elapsedS.toFixed(0)} s in`}>
+        {reading.task || brief ? (
+          <Panel name="What this dive is for"
+                 note={reading.task ? (reading.task.done ? "over" : `${reading.task.elapsedS.toFixed(0)} s in`)
+                                    : "not begun"}>
             <div className="task">
               <div className="task-head">
-                <strong>{reading.task.name}</strong>
-                <em>{(reading.task.score * 100).toFixed(0)}%</em>
+                <strong>{reading.task?.name ?? brief?.name ?? "A dive"}</strong>
+                {reading.task ? <em>{(reading.task.score * 100).toFixed(0)}%</em> : null}
               </div>
-              <div className="score"><div style={{ width: `${Math.round(reading.task.score * 100)}%` }} /></div>
-              <p className="says">{reading.task.says}</p>
-              <Stages of={reading.task} />
+              <div className="score">
+                <div style={{ width: `${Math.round((reading.task?.score ?? 0) * 100)}%` }} />
+              </div>
+              <p className="says">{reading.task?.says ?? "waiting for the first reading"}</p>
+              <Stages of={reading.task ?? undefined} />
+              {reading.taskOver ? (
+                <div className="task-over">
+                  <strong>{(reading.task?.score ?? 0) >= 0.999 ? "Done." : "That is the end of it."}</strong>
+                  <span>{(reading.attempt ?? 1) > 1 ? `attempt ${reading.attempt}` : "first attempt"}</span>
+                  {onRetry ? <button className="quiet small" onClick={onRetry}>Try again</button> : null}
+                </div>
+              ) : null}
+              <Briefing brief={brief} reading={reading} />
+              {onRetry && !reading.taskOver ? (
+                <button className="quiet small again" onClick={onRetry}>Start it again</button>
+              ) : null}
             </div>
           </Panel>
         ) : null}
@@ -418,7 +449,8 @@ function Thrusters({ of }: { of: number[] | undefined }): React.JSX.Element {
 }
 
 /** A mission's stages: what happened, what is happening, what is to come. */
-function Stages({ of }: { of: TaskProgress }): React.JSX.Element | null {
+function Stages({ of }: { of: TaskProgress | undefined }): React.JSX.Element | null {
+  if (of === undefined) return null;
   const stages = of.detail["stages"] as { name?: string; kind?: string; score?: number;
                                           done?: boolean; failed?: boolean }[] | undefined;
   if (!Array.isArray(stages) || stages.length < 2) return null;
@@ -462,6 +494,40 @@ function Charge({ of, charging }: {
       </p>
     </div>
   );
+}
+
+/** What the dive was sent to do, how it is judged, and how to go about it. */
+function Briefing({ brief, reading }: {
+  brief: Brief | undefined;
+  reading: Reading;
+}): React.JSX.Element | null {
+  const kind = reading.task?.kind ?? brief?.kind;
+  if (kind === undefined) return null;
+  const objective = (brief?.objective ?? {}) as Record<string, unknown>;
+  const asked = Object.entries(objective)
+    .filter(([key, value]) => key !== "kind" && key !== "stages" && typeof value !== "object")
+    .slice(0, 7);
+  return (
+    <details className="briefing" open={!reading.task || reading.task.elapsedS < 25}>
+      <summary>What it asks, and how to do it</summary>
+      {HOW_TO[kind] ? <p className="how">{HOW_TO[kind]}</p> : null}
+      {asked.length > 0 ? (
+        <ul className="asked">
+          {asked.map(([key, value]) => (
+            <li key={key}><span>{words(key)}</span><em>{String(value)}</em></li>
+          ))}
+        </ul>
+      ) : null}
+    </details>
+  );
+}
+
+/** A camelCase field as words somebody reads. */
+function words(key: string): string {
+  return key
+    .replace(/([A-Z])/g, " $1")
+    .replace(/ M$/, " (m)").replace(/ S$/, " (s)").replace(/ Deg$/, " (°)").replace(/ Ms$/, " (m/s)")
+    .toLowerCase();
 }
 
 /**

@@ -138,7 +138,7 @@ class Watch:
             # feature that does not work.
             if self.on_message is not None and any(
                     key in said for key in ("tune", "hold", "view", "engage",
-                                            "place", "found")):
+                                            "place", "found", "reset", "retry")):
                 self.on_message(said)
         except Exception as exc:
             carb.log_warn(f"Coral City could not read what was asked: {exc}")

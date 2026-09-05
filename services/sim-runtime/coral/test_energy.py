@@ -247,3 +247,59 @@ def test_two_runs_of_one_failure_agree():
         first.step()
         second.step()
     assert np.allclose(first.position, second.position, atol=1e-12), "a failure on the clock is repeatable"
+
+
+# ── another go at the same task ──────────────────────────────────────────────
+
+def test_a_task_can_be_started_again_where_it_began():
+    dive = a_dive(seconds=900, objective={"kind": "reach", "dx": 30.0, "dy": 0.0, "radiusM": 1.5})
+    began = dive.position.copy()
+    for _ in range(int(60 / dive.dt)):
+        dive.step()
+    assert float(np.linalg.norm(dive.position[:2] - began[:2])) > 5.0, "it went somewhere"
+    spent = dive.battery.spent_wh
+    assert spent > 0
+
+    dive.start_again()
+    assert np.allclose(dive.position, began), "it is back where the dive began"
+    assert float(np.linalg.norm(dive.velocity)) == 0.0, "and stopped"
+    assert dive.attempts == 2
+    assert dive.battery.spent_wh == 0.0 and dive.battery.remaining_wh == dive.began_with_wh
+    assert dive.task.elapsed() == 0.0 and dive.task.score() < 0.01, "the task starts from nothing"
+    assert dive.state()["attempt"] == 2
+
+    for _ in range(int(400 / dive.dt)):
+        dive.step()
+        if dive.task.done:
+            break
+    assert dive.task.detail()["arrived"], "and it can be flown again"
+
+
+def test_an_interactive_dive_does_not_end_when_its_task_does():
+    model = Hydrodynamics.from_package(VEHICLE / "dynamics.json")
+    brief = {"durationSeconds": 900, "mode": "interactive", "vehiclePath": str(VEHICLE),
+             "initialState": {"positionM": [0, 0, -4]},
+             "objective": {"kind": "reach", "dx": 12.0, "dy": 0.0, "radiusM": 1.5}}
+    dive = Dive(brief, Body(model), Allocator(model), pathlib.Path("nowhere.usda"),
+                lambda kind, **said: None)
+    dive.floor = -12.0
+    dive.begin_task(brief["objective"])
+    for _ in range(int(400 / dive.dt)):
+        dive.step()
+        if dive.task.done:
+            break
+    assert dive.task.done, "the task finished"
+    for _ in range(int(20 / dive.dt)):
+        dive.step()
+    assert not dive.done, "the dive is still there for whoever is watching"
+    assert dive.state()["taskOver"] is True
+    assert dive.ended == ""
+
+
+def test_a_batch_dive_still_ends_when_its_task_does():
+    dive = a_dive(seconds=900, objective={"kind": "reach", "dx": 12.0, "dy": 0.0, "radiusM": 1.5})
+    for _ in range(int(400 / dive.dt)):
+        dive.step()
+        if dive.done:
+            break
+    assert dive.done and dive.ended == "achieved", "nobody is watching a batch dive"

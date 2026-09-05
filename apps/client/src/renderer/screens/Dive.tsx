@@ -15,6 +15,7 @@ import type { Platform } from "@coral-city/api";
 import { PILOTED, TASKS, type Task, WATERS, type Water } from "../catalog/tasks.js";
 import { alertKind, leadTemperature, useSea } from "../ocean/sea.js";
 import { Line } from "../parts/Line.js";
+import { TaskArt } from "../parts/TaskArt.js";
 import type { Choice } from "../parts/Picker.js";
 import { newestOf, whereIs } from "../platform/packages.js";
 import type { Held, Packages, Where } from "./Deck.js";
@@ -165,6 +166,8 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
   const tasks: Choice[] = [PILOTED, ...TASKS].map((one) => ({
     key: one.key, name: one.name, later: one.unavailable,
     says: one.judgedOn.length > 0 ? `${one.asks} · judged on ${one.judgedOn.join(", ")}` : one.asks,
+    // The shape of the thing it asks for, drawn: a task has a pattern, not a face.
+    art: <TaskArt kind={(one.objective?.["kind"] as string) ?? one.key} />,
   }));
   const waters: Choice[] = WATERS.map((one) => ({ key: one.key, name: one.name, says: one.says }));
   // One row per controller, its newest build chosen; earlier builds stay on
