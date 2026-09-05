@@ -342,7 +342,8 @@ export function Water({ platform, stream, onSurface }: {
         return <Minimap site={site} track={track.current} position={reading.position}
                         headingDeg={reading.headingDeg} beganAt={hello?.beganAt}
                         geometry={geometry} current={hello?.conditions?.current}
-                        marks={geometry?.marks} onCarry={large ? carry : undefined} large={large} />;
+                        marks={geometry?.marks} onCarry={large ? carry : undefined}
+                        believed={reading.navigation?.believed} large={large} />;
       case "profile":
         return <Profile of={history.current} />;
       case "plot":

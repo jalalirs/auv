@@ -73,6 +73,11 @@ export interface Reading {
               volts: number; enduranceS?: number | null; flat: boolean; reserveFraction: number };
   charging?: boolean;
   carried?: number;
+  /** Where it believes it is, and how far that is from where it is. */
+  navigation?: {
+    believed: number[]; driftM: number; bottomLock: boolean; headingBiasDeg: number;
+    fixes: number; fixFrom: string; sinceFixS?: number | null; aiding: string; travelledM: number;
+  };
   attempt?: number;
   taskOver?: boolean;
   sensorsOut?: boolean;
@@ -279,6 +284,27 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, o
           )}
         </Panel>
 
+        {reading.navigation ? (
+          <Panel name="Where it thinks it is" note={reading.navigation.aiding === "none"
+            ? "dead reckoning" : reading.navigation.aiding.toUpperCase()}>
+            <div className="dials">
+              <Dial of="drift" is={reading.navigation.driftM} unit="m" />
+              <Dial of="travelled" is={reading.navigation.travelledM} unit="m" digits={0} />
+              <Dial of="since fix" is={reading.navigation.sinceFixS ?? undefined} unit="s" digits={0} />
+            </div>
+            <p className="aside">
+              {reading.navigation.bottomLock
+                ? "The log has the bottom."
+                : "No bottom lock — it is guessing at its own speed."}
+              {" "}Compass out by {reading.navigation.headingBiasDeg.toFixed(1)}°.
+            </p>
+            <p className="aside">
+              {reading.navigation.fixes > 0
+                ? `${reading.navigation.fixes} fixes, the last from ${reading.navigation.fixFrom}.`
+                : "No fix since it was put in the water."}
+            </p>
+          </Panel>
+        ) : null}
         {reading.battery ? (
           <Panel name="Battery" note={reading.charging ? "on charge" : `${reading.battery.watts.toFixed(0)} W`}>
             <Charge of={reading.battery} charging={reading.charging === true} />
