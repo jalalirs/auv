@@ -1,11 +1,15 @@
 // A card for a place, a vehicle, or something that will be one.
 //
-// The picture is a real render of the thing itself, taken from its own package,
-// or nothing at all. A card with invented art on it would be a card that lies
-// about which reef you are about to dive.
+// The picture is a real render of the thing itself, taken from its own package.
+// A card with invented art on it would be a card that lies about which reef you
+// are about to dive, so nothing here is ever a stock photograph of something
+// similar — but a thing that has no package yet can still be drawn from what is
+// actually known about it, its thrusters or its depth, and `art` is that.
 
 export interface CardProps {
   picture?: string;
+  /** Drawn from the thing's own numbers, for one that has no package yet. */
+  art?: React.ReactNode;
   name: string;
   detail: string;
   specs?: string[];
@@ -19,7 +23,7 @@ export interface CardProps {
   later?: string;
 }
 
-export function Card({ picture, name, detail, specs, corner, chosen, onChoose, onOpen, later }: CardProps): React.JSX.Element {
+export function Card({ picture, art, name, detail, specs, corner, chosen, onChoose, onOpen, later }: CardProps): React.JSX.Element {
   const usable = later === undefined;
   return (
     <div className={`card${chosen ? " chosen" : ""}${usable ? "" : " later"}`}
@@ -29,9 +33,11 @@ export function Card({ picture, name, detail, specs, corner, chosen, onChoose, o
          onClick={usable ? onChoose : undefined}
          onKeyDown={(e) => { if (usable && onChoose && (e.key === "Enter" || e.key === " ")) onChoose(); }}>
       <div className="picture">
-        {picture === undefined
-          ? <span>{usable ? "no picture yet" : later}</span>
-          : <img src={picture} alt="" loading="lazy" />}
+        {picture !== undefined
+          ? <img src={picture} alt="" loading="lazy" />
+          : art !== undefined
+            ? <div className="drawn">{art}{usable ? null : <span>{later}</span>}</div>
+            : <span>{usable ? "no picture yet" : later}</span>}
         {corner === undefined ? null : <div className="corner">{corner}</div>}
         {chosen ? <div className="tick" aria-hidden="true">✓</div> : null}
       </div>

@@ -15,7 +15,9 @@ import type { Platform } from "@coral-city/api";
 import { PILOTED, TASKS, type Task, WATERS, type Water } from "../catalog/tasks.js";
 import { alertKind, leadTemperature, useSea } from "../ocean/sea.js";
 import { Line } from "../parts/Line.js";
+import { ControllerArt } from "../parts/ControllerArt.js";
 import { TaskArt } from "../parts/TaskArt.js";
+import { WaterArt } from "../parts/WaterArt.js";
 import type { Choice } from "../parts/Picker.js";
 import { newestOf, whereIs } from "../platform/packages.js";
 import type { Held, Packages, Where } from "./Deck.js";
@@ -169,11 +171,19 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
     // The shape of the thing it asks for, drawn: a task has a pattern, not a face.
     art: <TaskArt kind={(one.objective?.["kind"] as string) ?? one.key} />,
   }));
-  const waters: Choice[] = WATERS.map((one) => ({ key: one.key, name: one.name, says: one.says }));
+  const waters: Choice[] = WATERS.map((one) => ({
+    key: one.key, name: one.name, says: one.says,
+    // The water's own two numbers, drawn: where it runs and how far you see.
+    art: <WaterArt speedMs={one.parameters.currentMetresPerSecond}
+                   headingDeg={one.parameters.currentHeadingDeg}
+                   visibilityM={one.parameters.visibilityM} />,
+  }));
   // One row per controller, its newest build chosen; earlier builds stay on
   // the dives that pinned them and in the count.
   const controllers: Choice[] = [
-    { key: MANUAL, name: "You, at the keys", says: "W A S D, Q E, space and C, or a gamepad; the hold has it whenever your hands are off" },
+    { key: MANUAL, name: "You, at the keys",
+      says: "W A S D, Q E, space and C, or a gamepad; the hold has it whenever your hands are off",
+      art: <ControllerArt manual /> },
     ...held.controllers.map(({ slug, name, newest, builds }) => {
       const needs = (newest.needs ?? {}) as { gpu?: boolean; gpuMemoryBytes?: number; cpu?: number; memoryBytes?: number };
       const gpu = needs.gpu || newest.wantsGpu
@@ -182,6 +192,8 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
       return {
         key: newest.id, name, group: `deployed to ${held.institution?.name ?? "you"}`,
         says: `${slug} · ${newest.imageDigest.slice(7, 19)} · ${gpu}${builds.length > 1 ? ` · ${builds.length} builds, newest chosen` : ""}`,
+        // A controller has no face; it has a digest. That is what is drawn.
+        art: <ControllerArt digest={newest.imageDigest} />,
       };
     }),
   ];

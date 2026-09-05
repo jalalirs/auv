@@ -6,6 +6,7 @@
 
 import { CATALOGUE } from "../catalog/vehicles.js";
 import type { Held, Packages } from "./Deck.js";
+import { VehiclePlan } from "../parts/PlanArt.js";
 import { Card, Empty, PageHead } from "./parts.js";
 
 export function Fleet({ held, packages, onOpen }: {
@@ -48,6 +49,7 @@ export function Fleet({ held, packages, onOpen }: {
           <div className="cards">
             {notYet.map((one) => (
               <Card key={one.slug} name={one.name} detail={one.summary}
+                    art={<VehiclePlan thrusters={thrustersOf(one.dynamics)} size={64} />}
                     specs={[one.manufacturer, `${one.dynamics.massKg} kg`]}
                     later={one.notYet ?? "not published"}
                     onOpen={() => onOpen({ slug: one.slug })} />
@@ -68,4 +70,18 @@ export function Fleet({ held, packages, onOpen }: {
       </section>
     </>
   );
+}
+
+
+/**
+ * Where a catalogued vehicle's thrusters are, whichever way its package says
+ * it. The platform's own dynamics carry a list; a package copied out of a
+ * paper wraps them in `units` beside the note that describes the layout.
+ */
+function thrustersOf(dynamics: unknown): { position?: number[]; direction?: number[] }[] {
+  const said = (dynamics ?? {}) as { thrusters?: unknown };
+  const thrusters = said.thrusters as { units?: unknown[] } | unknown[] | undefined;
+  if (Array.isArray(thrusters)) return thrusters as { position?: number[] }[];
+  if (thrusters && Array.isArray(thrusters.units)) return thrusters.units as { position?: number[] }[];
+  return [];
 }

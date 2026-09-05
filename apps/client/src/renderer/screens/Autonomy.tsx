@@ -7,6 +7,7 @@
 // is defined with on the dive page; deploying one is the SDK's job, from a
 // terminal, because a build is a build.
 
+import { ControllerArt } from "../parts/ControllerArt.js";
 import type { Held } from "./Deck.js";
 import { Empty, PageHead, Pill, ago } from "./parts.js";
 
@@ -31,6 +32,7 @@ export function Autonomy({ held }: { held: Held }): React.JSX.Element {
                 : "no card";
               return (
                 <div className="row" key={slug}>
+                  <ControllerArt digest={newest.imageDigest} size={28} />
                   <strong>{name}</strong>
                   <span className="when">
                     {slug} · {newest.imageDigest.slice(7, 19)} · {ago(newest.createdAt)}

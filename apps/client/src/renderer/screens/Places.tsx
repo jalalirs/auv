@@ -12,6 +12,7 @@
 import { ENVIRONMENTS } from "../catalog/environments.js";
 import type { Held, Packages } from "./Deck.js";
 import { PlaceCard } from "./Dive.js";
+import { PlacePlan } from "../parts/PlanArt.js";
 import { Card, Empty, PageHead } from "./parts.js";
 
 export function Places({ held, packages, onOpen }: {
@@ -42,6 +43,7 @@ export function Places({ held, packages, onOpen }: {
         <div className="cards">
           {ENVIRONMENTS.map((one) => (
             <Card key={one.key} name={one.name} detail={`${one.where} · ${one.purpose}`}
+                  art={<PlacePlan standing={one.standing} deepestM={depthOf(one)} size={64} />}
                   specs={[one.standing, ...one.sources.slice(0, 1)]}
                   later={one.becomes !== undefined && slugs.has(one.becomes)
                     ? "grows from a place you have" : "not built yet"} />
@@ -53,4 +55,12 @@ export function Places({ held, packages, onOpen }: {
       </section>
     </>
   );
+}
+
+
+/** How deep a planned place goes, read out of what it says about itself. */
+function depthOf(one: { purpose?: string; takes?: string; summary?: string }): number | undefined {
+  const said = `${one.purpose ?? ""} ${one.takes ?? ""} ${one.summary ?? ""}`;
+  const found = said.match(/(\d{1,3})\s*(?:m\b|metres)/);
+  return found ? Number(found[1]) : undefined;
 }
