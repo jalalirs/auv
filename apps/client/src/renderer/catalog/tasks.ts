@@ -10,6 +10,8 @@ export interface Task {
   key: string;
   name: string;
   asks: string;
+  /** How a person actually does it, in the water, with these controls. */
+  howTo?: string;
   judgedOn: string[];
   /** The objective, or undefined for a dive that is only flown. */
   objective?: Record<string, unknown>;
@@ -105,4 +107,50 @@ export const PILOTED: Task = {
   key: "piloted", name: "Piloted",
   asks: "Fly it yourself. No score.",
   judgedOn: [],
+};
+
+
+/**
+ * How to do each of them, for somebody at the keys.
+ *
+ * Keyed by the runtime's own kind rather than the composer's, because the
+ * console is told what the dive is for by the dive, not by what was clicked
+ * an hour ago — a stack can set an objective this application never offered.
+ */
+export const HOW_TO: Record<string, string> = {
+  "hold-station":
+    "Let go of the keys. The hold has the vehicle whenever your hands are off it, and holding still is what it does. "
+    + "If you have drifted, press Hold here to make this spot the station.",
+  waypoints:
+    "W drives ahead, Q and E turn. Put the nose on the next point on the chart and run at it; "
+    + "the yellow circle fills as each one is reached. Space and C trim the depth.",
+  transect:
+    "Hold your heading and fly a straight line. The altitude band is what is scored, so watch the section pane "
+    + "and keep the trace parallel to the bottom rather than level.",
+  survey:
+    "Fly the rectangle in passes a swath apart, like mowing. Keep the altitude steady — what is not seen from "
+    + "the right height is not covered — and turn at the ends rather than cutting the corner.",
+  reach:
+    "Point at the marker on the chart and go. It is scored on how far you travelled against how far it was, "
+    + "so a straight run beats a fast one that wanders.",
+  search:
+    "Nobody will tell you where it is. Fly the box in passes so nothing is left unlooked-at, "
+    + "and keep it in front of you: the camera only sees what it faces.",
+  treat:
+    "Go low and slow over the patch until every colony has been passed within reach. "
+    + "The chart marks them as they are done. Height matters more than speed here.",
+  inspect:
+    "Circle it while facing it — yaw with Q and E as you go round with A and D. "
+    + "It is scored on how many of its twelve sides were actually seen.",
+  revisit:
+    "Go to each mark and stay there. The sample is the ten seconds of holding still, not the arriving.",
+  dock:
+    "Line up on the approach and come in straight and slowly. Inside forty centimetres, under a quarter of a "
+    + "metre a second, and pointing the right way — arriving fast is a miss.",
+  wait:
+    "Nothing to do but stay put. Drifting off the station is what loses marks.",
+  mission:
+    "Several stages, in order. The panel says which one you are on; finish it and the next begins.",
+  return:
+    "Come back to where you began, then rise. Home first, surface second — both are scored.",
 };

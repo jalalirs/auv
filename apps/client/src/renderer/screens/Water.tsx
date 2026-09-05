@@ -97,6 +97,9 @@ export function Water({ platform, stream, onSurface }: {
   // happened, so a controller that did the work is never compared with one
   // that was carried.
   const carry = useCallback((x: number, y: number) => say({ place: { x, y } }), [say]);
+  // Another go at the same task, without surfacing and defining a new dive:
+  // the vehicle is already here and the water is already open.
+  const retry = useCallback(() => say({ reset: true }), [say]);
 
   /** Swap a small pane into the large slot. */
   const enlarge = useCallback((pane: Pane) => {
@@ -352,7 +355,11 @@ export function Water({ platform, stream, onSurface }: {
     <Instruments reading={reading} topics={topics} held={held}
                  history={history.current} frames={frames} onLeave={leave}
                  onTune={tune} onHoldHere={holdHere} onEngage={engage} onPlot={plot}
-                 plotted={plotted} pad={pad} water={hello?.conditions}>
+                 plotted={plotted} pad={pad} water={hello?.conditions}
+                 brief={hello?.task ? { kind: hello.task.kind, name: hello.task.name,
+                                        objective: (hello.task as { objective?: Record<string, unknown> }).objective }
+                                    : undefined}
+                 onRetry={hello?.task ? retry : undefined}>
       <div className="panes" data-tick={tick}>
         <div className="pane large">
           <span className="pane-name">{PANE_NAMES[panes[0]!]}</span>
