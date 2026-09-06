@@ -34,6 +34,31 @@ import urllib.request
 BOX = os.environ.get("AUV_GPU_HOST", "jalalirs@100.76.65.1")
 REMOTE = os.environ.get("AUV_REMOTE_DIR", "code/auv")
 
+# One connection, held open, rather than one per request. Every call here is a
+# curl on the box, and opening an SSH session for each of them cost more than
+# the request did — the machines sat idle while this script shook hands.
+SSH = ["ssh", "-o", "ControlMaster=auto", "-o", "ControlPersist=600",
+       "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4",
+       "-o", "ControlPath=/tmp/coral-matrix-%r@%h:%p", BOX]
+
+
+def over_the_wire(command: str, feed: str | None = None, tries: int = 4) -> str:
+    """Run something on the box, and do not give up on a dropped connection.
+
+    A matrix takes hours and a link that never blinks in that time does not
+    exist. Losing one request is not losing the run.
+    """
+    trouble = None
+    for attempt in range(tries):
+        try:
+            done = subprocess.run([*SSH, f"export LC_ALL=C; {command}"], input=feed,
+                                  capture_output=True, text=True, check=True)
+            return done.stdout.strip()
+        except subprocess.CalledProcessError as failed:
+            trouble = failed
+            time.sleep(3 * (attempt + 1))
+    raise RuntimeError(f"the box stopped answering: {trouble}")
+
 # ── what gets crossed ────────────────────────────────────────────────────────
 
 WATERS = {
@@ -54,7 +79,15 @@ POSITIONING = {
     "no-dvl": ("No Doppler log", {"positioning": {"kind": "none"}, "fitted": {"dvl": False}}),
     "poor-compass": ("Compass five degrees out", {"positioning": {"kind": "none"},
                                                   "fitted": {"headingAccuracyDeg": 5.0}}),
+    # Not part of the general cross: a beacon on a dock says nothing about
+    # where you are and everything about where the dock is, so it belongs to
+    # the docking task and to nothing else. Asked for by name.
+    "beacon": ("Beacon on the station", {"positioning": {"kind": "beacon", "everyS": 1,
+                                                         "accuracyM": 0.3, "rangeM": 60}}),
 }
+
+# What `run` crosses when it is not told otherwise.
+GENERAL = ["dead-reckoning", "usbl", "lbl", "no-dvl", "poor-compass"]
 
 # Cut down so that one dive is a couple of minutes of simulated time rather
 # than half an hour: the point of the matrix is the comparison, and a longer
@@ -88,8 +121,7 @@ SLACK = 120
 # ── talking to the platform ──────────────────────────────────────────────────
 
 def on_box(command: str) -> str:
-    return subprocess.run(["ssh", BOX, f"export LC_ALL=C; {command}"],
-                          capture_output=True, text=True, check=True).stdout.strip()
+    return over_the_wire(command)
 
 
 class Platform:
@@ -114,12 +146,10 @@ class Platform:
             command += ["-H", f"authorization: Bearer {self.token}"]
         if body is not None:
             command += ["-d", "@-"]
-        done = subprocess.run(["ssh", BOX, "export LC_ALL=C; " + " ".join(
+        out = over_the_wire(" ".join(
             part if part.startswith("-") or part.startswith("http") or part in (
-                "curl", "-sS", method) else f"'{part}'" for part in command)],
-            input=None if body is None else json.dumps(body),
-            capture_output=True, text=True, check=True)
-        out = done.stdout.strip()
+                "curl", "-sS", method) else f"'{part}'" for part in command),
+            feed=None if body is None else json.dumps(body))
         if not out:
             return {}
         answer = json.loads(out)
@@ -206,7 +236,7 @@ def run_matrix(args) -> None:
 
     tasks = args.tasks.split(",") if args.tasks else list(TASKS)
     waters = args.waters.split(",") if args.waters else list(WATERS)
-    technologies = args.technologies.split(",") if args.technologies else list(POSITIONING)
+    technologies = args.technologies.split(",") if args.technologies else GENERAL
 
     already = {} if args.again else flown(platform)
     wanted = [(t, w, p) for t in tasks for w in waters for p in technologies
@@ -219,14 +249,27 @@ def run_matrix(args) -> None:
     # idle while the last of the batch finishes. One asked for as soon as one
     # finishes keeps every card working, and one spare in the queue means a
     # machine never waits for this script to notice.
-    at_once = max(1, int(queue.get("devices", 1))) + 1
+    # As many as the institution is allowed to have in the water at once. The
+    # platform refuses the rest, and rightly: a quota is a quota whoever is
+    # asking. What this must not do is treat that refusal as a failure.
+    at_once = int(args.at_once)
     asked: list = []
     began = time.monotonic()
     for i, (task, water, technology) in enumerate(wanted, start=1):
         while len(asked) >= at_once:
             time.sleep(10)
             asked = still_going(platform, asked)
-        asked.append(fly(platform, city, vehicle, queue["id"], runtime, task, water, technology))
+        while True:
+            try:
+                asked.append(fly(platform, city, vehicle, queue["id"], runtime,
+                                 task, water, technology))
+                break
+            except RuntimeError as refused:
+                if "in flight" not in str(refused):
+                    raise
+                # The quota is full. Wait for one to come out of the water.
+                time.sleep(15)
+                asked = still_going(platform, asked)
         each = (time.monotonic() - began) / max(1, i - 1) if i > 1 else 0
         left = (len(wanted) - i) * each / 60.0
         print(f"  [{i}/{len(wanted)}] {name_of(task, water, technology)}"
@@ -277,6 +320,8 @@ def main() -> int:
         one.add_argument("--waters", default="")
         one.add_argument("--technologies", default="")
         one.add_argument("--again", action="store_true")
+        one.add_argument("--at-once", dest="at_once", default=4,
+                         help="how many dives to have in the water at a time")
         one.add_argument("--json", action="store_true")
     args = parser.parse_args()
     try:
