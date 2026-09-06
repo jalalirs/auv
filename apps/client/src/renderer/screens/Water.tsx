@@ -21,6 +21,7 @@ import { Minimap, type Fix, type Geometry, type Site } from "../parts/Minimap.js
 import { Profile, type Moment } from "../parts/Profile.js";
 import { WorldAxes, type Basis } from "../parts/Axes.js";
 import { TopicPlot, type Sample } from "../parts/TopicPlot.js";
+import { canDecode, decodeInto, type Video } from "../platform/video.js";
 import { Instruments, type Reading, type Topic } from "./instruments.js";
 
 /** How often the keys held are sent, whether or not they changed. */
@@ -81,6 +82,8 @@ export function Water({ platform, stream, onSurface }: {
   const history = useRef<Moment[]>([]);
   const track = useRef<Fix[]>([]);
   const series = useRef<Map<string, Sample[]>>(new Map());
+  // The decoder, when the dive can send video and this machine can take it.
+  const video = useRef<Video | undefined>(undefined);
   const socketRef = useRef<WebSocket | undefined>(undefined);
 
   const say = useCallback((message: Record<string, unknown>) => {
@@ -199,9 +202,22 @@ export function Water({ platform, stream, onSurface }: {
         const said = JSON.parse(message.data) as Reading & { kind?: string };
         if (said.kind === "hello") {
           setHello(said as unknown as Hello);
+          // Ask for video if there is video to be had. Until this is asked
+          // for, the dive sends pictures — so a console that cannot decode
+          // one simply never asks and never notices.
+          const offered = (said as unknown as { video?: { codec?: string | null } }).video;
+          if (video.current === undefined && offered?.codec === "h264" && canDecode()
+              && canvas.current !== null) {
+            video.current = decodeInto(canvas.current, () => setFrames((n) => n + 1));
+            socket?.send(JSON.stringify({ want: "h264" }));
+          }
           return;
         }
-        setReading(said);
+        // Merged, not replaced. The dive sends the numbers that move every
+        // frame and the things that do not — the topic tree, every declared
+        // parameter — once a second, because sending those twenty times a
+        // second cost as much as the picture.
+        setReading((was) => ({ ...was, ...said }));
         if (said.topics !== undefined) setTopics(said.topics);
         if (typeof said.t === "number") {
           history.current.push({
@@ -231,6 +247,15 @@ export function Water({ platform, stream, onSurface }: {
           setTick((n) => n + 1);
         }
         return;
+      }
+      // Video, if this dive is sending it: two bytes of mark in front, and
+      // the picture is drawn by the decoder rather than here.
+      if (video.current !== undefined) {
+        const packet = await (message.data as Blob).arrayBuffer();
+        if (packet.byteLength > 2 && new Uint8Array(packet, 0, 1)[0] === 0x56) {
+          video.current.take(packet);
+          return;
+        }
       }
       const picture = await createImageBitmap(message.data as Blob);
       const surface = canvas.current;
@@ -294,6 +319,10 @@ export function Water({ platform, stream, onSurface }: {
       window.removeEventListener("blur", blur);
       window.removeEventListener("pagehide", closing);
       socket?.close();
+      // A decoder holds buffers on the graphics card; leaving one open when a
+      // dive ends is how the next one has none to work with.
+      video.current?.close();
+      video.current = undefined;
     };
   }, [stream, leave, platform]);
 

@@ -932,7 +932,7 @@ class Dive:
         try:
             from navigation import Navigation
 
-            self.navigation = Navigation(suite={**self.instruments(), **self.fitted},
+            self.navigation = Navigation(suite={**self.navigation_suite(), **self.fitted},
                                          aiding=self.aiding,
                                          began_at=self.position,
                                          seed=int(self.brief.get("seed", 0)))
@@ -941,7 +941,7 @@ class Dive:
             self.navigation = None
             self.say("navigation_unavailable", why=str(exc)[:160])
 
-    def instruments(self) -> dict:
+    def navigation_suite(self) -> dict:
         """What this vehicle has to navigate with, from its own package.
 
         A package may state it outright; otherwise it is read off the sensors
@@ -1442,12 +1442,19 @@ class Dive:
             "position": [round(float(x), 4) for x in self.position],
         }
 
-    def instruments(self) -> dict:
+    def instruments(self, whole: bool = True) -> dict:
         """Everything an operator's panels want, in one reading.
 
         More than state() carries, because state() goes into the run's record
         and this goes onto somebody's screen twenty times a second. The record
         should stay small; a screen can afford the whole vehicle.
+
+        Not all of it every frame, though. The topic tree, every controller's
+        every declared parameter and the vehicle's fixed numbers do not change
+        between one twentieth of a second and the next, and sending them
+        anyway cost as much as the picture did — a megabit and a half of the
+        same JSON, twenty times a second. They go once a second; the numbers
+        that move go every frame, and a console keeps what it was last told.
         """
         reading = self.state()
         reading["velocity"] = [round(float(v), 4) for v in self.velocity[:3]]
@@ -1460,13 +1467,16 @@ class Dive:
         reading["altitudeM"] = (None if floor is None
                                 else round(float(self.position[2]) - floor, 3))
         reading["netBuoyancyN"] = round(self.model_net_buoyancy(), 3)
-        reading["controller"] = self.helm.describe()
         reading["samples"] = self.samples()
         reading["view"] = self.view
         reading["task"] = None if self.task is None else self.task.progress()
         if self.bridge is not None:
-            reading["topics"] = self.bridge.topics()
             reading["commandsReceived"] = self.bridge.commands_seen
+        if not whole:
+            return reading
+        reading["controller"] = self.helm.describe()
+        if self.bridge is not None:
+            reading["topics"] = self.bridge.topics()
         else:
             # Nobody is listening, so nothing crosses — but the vehicle still
             # carries these, and a console should be able to plot what its

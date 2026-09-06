@@ -106,8 +106,8 @@ class CoralCityShell(omni.ext.IExt):
         self.watch = None
         self._frames = None
         self._product = None
-        self._every = 3
-        self._since = 0
+        self._every = 1.0 / 20.0
+        self._sent_at = 0.0
         self._capturing = False
         self._asked_at = 0.0
         self._aim = None
@@ -121,6 +121,11 @@ class CoralCityShell(omni.ext.IExt):
         # update loop, where the dive can be closed properly.
         self._asked_to_stop = False
         self._camera_published_at = 0.0
+        # The video encoder, opened only when a watcher says it can decode one.
+        self.video = None
+        self._wants_video = False
+        self._video_said_at = 0.0
+        self._whole_at = 0.0
         try:
             import signal
             signal.signal(signal.SIGTERM, lambda *_: setattr(self, "_asked_to_stop", True))
@@ -477,7 +482,14 @@ class CoralCityShell(omni.ext.IExt):
         if self.photographs and dive.simulated >= self.photographs[0]:
             self._photograph(round(self.photographs.pop(0), 1))
         self._record_a_frame(dive)
-        self._send_a_frame(dive.instruments())
+        # The whole reading once a second; the numbers that move every frame.
+        whole = time.monotonic() - self._whole_at > 1.0
+        if whole:
+            self._whole_at = time.monotonic()
+        self._send_a_frame(dive.instruments(whole=whole))
+        if self.video is not None and time.monotonic() - self._video_said_at > 5.0:
+            self._video_said_at = time.monotonic()
+            self._say("video", **self.video.said())
         if dive.flown_by_hand:
             self.hud.by_hand()
         elif dive.bridge is not None and dive.bridge.commanded:
@@ -504,11 +516,50 @@ class CoralCityShell(omni.ext.IExt):
 
             self.watch = Watch(self._watch_port, self.controls, self._say,
                                on_message=lambda said: self.dive is not None and self.dive.message(said),
-                               on_hello=lambda: self.dive.hello() if self.dive is not None else {"kind": "hello"})
-            self._every = max(1, int(round(60.0 / FRAMES_PER_SECOND)))
+                               on_hello=self._greeting,
+                               on_want=self._wanted)
+            self._every = 1.0 / max(1, FRAMES_PER_SECOND)
         except Exception as exc:
             carb.log_warn(f"Coral City cannot be watched from elsewhere: {exc}")
             self._say("watch_unavailable", why=str(exc)[:200])
+
+    def _greeting(self) -> dict:
+        """What a watcher is told on arrival, and what it may ask to be sent."""
+        from .stream import Encoder
+        from .watch import FRAMES_PER_SECOND, TALL, WIDE
+
+        said = self.dive.hello() if self.dive is not None else {"kind": "hello"}
+        # The size is not promised here: it is whatever the frames turn out to
+        # be, and the watcher's decoder reads it off the stream.
+        said["video"] = {"codec": "h264" if Encoder.available() else None,
+                         "framesPerSecond": FRAMES_PER_SECOND}
+        return said
+
+    def _wanted(self, want: str) -> None:      # noqa: D401 — see below
+        """A watcher saying what it can decode.
+
+        Only noted here. The encoder cannot be opened until a frame has been
+        captured, because an encoder has to be told the size of what it is
+        being given and the only honest source for that is a frame — asking
+        the viewport for the size it was configured with produced a picture
+        misread at every row, which looks like interference and is arithmetic.
+        """
+        self._wants_video = (want == "h264")
+
+    def _open_the_encoder(self, wide: int, tall: int) -> None:
+        """Start encoding at the size the frames actually are."""
+        from .stream import Encoder
+        from .watch import FRAMES_PER_SECOND
+
+        video = Encoder(wide, tall, FRAMES_PER_SECOND,
+                        on_packet=lambda unit, key: self.watch.send(unit, self._latest_state,
+                                                                    video=True, key=key),
+                        say=self._say)
+        if video.start():
+            self.video = video
+        else:
+            self._wants_video = False
+            self._say("video_declined", why="no encoder here; sending pictures")
 
     def _send_a_frame(self, state: dict) -> None:
         """One frame to the watchers, if anybody is there and it is time.
@@ -533,10 +584,15 @@ class CoralCityShell(omni.ext.IExt):
                 self._say("frames_unavailable",
                           why="the renderer was asked for a frame and never answered")
 
-        self._since += 1
-        if self._since < self._every or self._capturing:
+        # Paced by the clock and not by how often this is called. It used to
+        # take every third update on the assumption that updates come sixty a
+        # second; when the encoder got cheap enough that they came at a hundred
+        # and eighty, the stream quietly went to fifty-nine frames a second and
+        # three times the bandwidth nobody asked for.
+        now = time.monotonic()
+        if self._capturing or now - self._sent_at < self._every:
             return
-        self._since = 0
+        self._sent_at = now
 
         try:
             from omni.kit.viewport.utility import get_active_viewport
@@ -581,6 +637,21 @@ class CoralCityShell(omni.ext.IExt):
             # The capture is RGBA and the encoder wants BGR. Getting that
             # backwards produces a picture correct in every respect except that
             # the water is orange.
+            wants_video = self.watch is not None and self.watch.wants_video
+            if wants_video:
+                if self.video is None:
+                    self._open_the_encoder(wide, tall)
+                elif (self.video.wide, self.video.tall) != (wide, tall):
+                    # The window was resized under it. An encoder cannot change
+                    # its mind about the size, so it is replaced.
+                    self.video.stop()
+                    self._open_the_encoder(wide, tall)
+            if self.video is not None and wants_video:
+                # Straight into the encoder as raw pixels: the whole point of
+                # it is that this frame is never made into a picture of its own.
+                self.video.write(cv2.cvtColor(frame, cv2.COLOR_RGBA2BGRA).tobytes())
+                if not self.watch.wants_pictures:
+                    return
             ok, jpeg = cv2.imencode(".jpg", cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR),
                                     [int(cv2.IMWRITE_JPEG_QUALITY), 72])
             if ok:
@@ -704,6 +775,10 @@ class CoralCityShell(omni.ext.IExt):
         if self.dive is not None and not self.finished:
             self.dive.close()
             self.dive = None
+        if self.video is not None:
+            self._say("video_closed", **self.video.said())
+            self.video.stop()
+            self.video = None
         if self.watch is not None:
             self.watch.close()
             self.watch = None
