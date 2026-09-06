@@ -50,6 +50,7 @@ interface Hello {
   view?: string;
   beganAt?: number[];
   task?: { kind: string; name: string; geometry?: Geometry } | null;
+  positioning?: { kind: string; at?: number[]; anchors?: number[][]; rangeM?: number };
   camera?: { basis?: Basis; upAxis?: string; view?: string };
   conditions?: { currentMetresPerSecond: number; currentHeadingDeg: number; current: number[]; visibilityM?: number | null };
 }
@@ -372,7 +373,8 @@ export function Water({ platform, stream, onSurface }: {
                         headingDeg={reading.headingDeg} beganAt={hello?.beganAt}
                         geometry={geometry} current={hello?.conditions?.current}
                         marks={geometry?.marks} onCarry={large ? carry : undefined}
-                        believed={reading.navigation?.believed} large={large} />;
+                        believed={reading.navigation?.believed}
+                        positioning={hello?.positioning} large={large} />;
       case "profile":
         return <Profile of={history.current} />;
       case "plot":

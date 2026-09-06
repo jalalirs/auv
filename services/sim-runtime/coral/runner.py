@@ -1030,7 +1030,36 @@ class Dive:
             "beganAt": [round(float(v), 3) for v in self.began_at],
             "task": None if self.task is None else self.task.describe(),
             "conditions": self.conditions_said(),
+            # What is deployed in this water and where, so a chart can draw it.
+            # A console that shows a vehicle navigating and not what it is
+            # navigating by is showing half of it.
+            "positioning": self.positioning_said(),
         }
+
+    def positioning_said(self) -> dict:
+        """The technology this dive is navigating by, for the chart and the panel."""
+        said = {"kind": str(self.aiding.get("kind", "none")),
+                "fitted": dict(self.fitted),
+                "suite": {**self.navigation_suite(), **self.fitted}}
+        where = self.aiding.get("at")
+        if where is not None:
+            said["at"] = [round(float(v), 2) for v in where]
+        for key in ("rangeM", "everyS", "accuracyM", "accuracyPercent"):
+            if self.aiding.get(key) is not None:
+                said[key] = self.aiding[key]
+        # An array is three transponders in a triangle around its middle, and
+        # that is how it is laid: a chart should show where they are rather
+        # than a circle standing in for them.
+        if said["kind"] == "lbl" and where is not None:
+            import math as _math
+
+            reach = float(self.aiding.get("rangeM", 150.0))
+            said["anchors"] = [
+                [round(float(where[0]) + reach * 0.8 * _math.cos(a), 2),
+                 round(float(where[1]) + reach * 0.8 * _math.sin(a), 2)]
+                for a in (_math.radians(90), _math.radians(210), _math.radians(330))
+            ]
+        return said
 
     def samples(self) -> dict:
         """The latest value on each topic, for a console plotting one.

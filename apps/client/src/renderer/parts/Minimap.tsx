@@ -33,7 +33,7 @@ export interface Geometry {
 }
 
 export function Minimap({ site, track, position, headingDeg, beganAt, geometry, current, marks,
-                         onCarry, believed, large }: {
+                         onCarry, believed, positioning, large }: {
   site: Site | undefined;
   track: Fix[];
   position: number[] | undefined;
@@ -48,6 +48,10 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
   onCarry?: (x: number, y: number) => void;
   /** Where the vehicle believes it is, which is not where it is. */
   believed?: number[];
+  /** What is deployed in this water to navigate by, and where it is. */
+  positioning?: {
+    kind: string; at?: number[]; anchors?: number[][]; rangeM?: number;
+  };
   large: boolean;
 }): React.JSX.Element {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -184,6 +188,57 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
       ink.stroke();
     }
 
+    // What it is navigating by, drawn where it actually is: the transponders
+    // of an array, or the ship holding station overhead. A console that shows
+    // a vehicle navigating and not what it is navigating by shows half of it.
+    if (positioning !== undefined && positioning.kind !== "none") {
+      const reach = positioning.rangeM;
+      if (positioning.at && positioning.at.length >= 2 && reach) {
+        const [cx, cy] = toScreen(positioning.at[0]!, positioning.at[1]!);
+        ink.strokeStyle = "rgba(124, 224, 160, 0.28)";
+        ink.lineWidth = devicePixelRatio;
+        ink.setLineDash([5 * devicePixelRatio, 4 * devicePixelRatio]);
+        ink.beginPath();
+        ink.arc(cx, cy, Math.max(4, (reach / across) * side), 0, Math.PI * 2);
+        ink.stroke();
+        ink.setLineDash([]);
+      }
+      const marks = positioning.anchors
+        ?? (positioning.at && positioning.at.length >= 2 ? [positioning.at] : []);
+      for (const [ax, ay] of marks) {
+        const [x, y] = toScreen(ax!, ay!);
+        ink.fillStyle = "rgba(124, 224, 160, 0.9)";
+        if (positioning.kind === "usbl") {
+          // A ship: it is on the surface, over there.
+          ink.beginPath();
+          ink.moveTo(x - 6 * devicePixelRatio, y - 2 * devicePixelRatio);
+          ink.lineTo(x + 6 * devicePixelRatio, y - 2 * devicePixelRatio);
+          ink.lineTo(x + 3 * devicePixelRatio, y + 4 * devicePixelRatio);
+          ink.lineTo(x - 3 * devicePixelRatio, y + 4 * devicePixelRatio);
+          ink.closePath();
+          ink.fill();
+        } else {
+          ink.beginPath();
+          ink.arc(x, y, 3.4 * devicePixelRatio, 0, Math.PI * 2);
+          ink.fill();
+          ink.strokeStyle = "rgba(124, 224, 160, 0.5)";
+          ink.lineWidth = devicePixelRatio;
+          ink.beginPath();
+          ink.arc(x, y, 6.5 * devicePixelRatio, 0, Math.PI * 2);
+          ink.stroke();
+        }
+        // The line it is ranging along, when the vehicle is somewhere to draw to.
+        if (position !== undefined && position.length >= 2) {
+          const [vx0, vy0] = toScreen(position[0]!, position[1]!);
+          ink.strokeStyle = "rgba(124, 224, 160, 0.18)";
+          ink.lineWidth = devicePixelRatio;
+          ink.setLineDash([2 * devicePixelRatio, 4 * devicePixelRatio]);
+          ink.beginPath(); ink.moveTo(x, y); ink.lineTo(vx0, vy0); ink.stroke();
+          ink.setLineDash([]);
+        }
+      }
+    }
+
     // Where it believes it is, and the gap between that and where it is. On a
     // chart drawn from the simulator's truth this is the one thing the vehicle
     // itself cannot see, and it is the thing that decides whether a task is
@@ -294,7 +349,8 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
     ink.fillStyle = "#c9d6e6";
     ink.textBaseline = "bottom";
     ink.fillText(label, bx, by - 4 * devicePixelRatio);
-  }, [site, track, position, headingDeg, beganAt, geometry, current, marks, believed, large, track.length]);
+  }, [site, track, position, headingDeg, beganAt, geometry, current, marks, believed,
+      positioning, large, track.length]);
 
   // Clicking the chart puts the vehicle there. The maths is the drawing's,
   // read back: where the pointer is, in metres, on the same square the bottom

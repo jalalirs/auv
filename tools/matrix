@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""Fly every task, in every water, on every positioning technology.
+
+One dive is an anecdote. What this platform is for is the crossing: the same
+task on dead reckoning and inside an array, the same controller in still water
+and in a knot of current, and the difference between them as a number rather
+than an impression.
+
+So this defines a dive for every combination and runs it as a batch through
+the platform itself — the same path the application uses, so every one of them
+lands in the record with its recording, and every one can be replayed in the
+app afterwards. Nothing here reaches into the simulator.
+
+    ./tools/matrix run            fly everything that has not been flown
+    ./tools/matrix run --tasks reach,dock --waters still
+    ./tools/matrix show           the matrix as it stands
+
+It is resumable: a combination that already has a run in the record is left
+alone unless --again is given, so a machine that fell over halfway is picked
+up by running it again.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+BOX = os.environ.get("AUV_GPU_HOST", "jalalirs@100.76.65.1")
+REMOTE = os.environ.get("AUV_REMOTE_DIR", "code/auv")
+
+# ── what gets crossed ────────────────────────────────────────────────────────
+
+WATERS = {
+    "still": ("Still water", {"currentMetresPerSecond": 0, "currentHeadingDeg": 0}),
+    "gentle": ("A gentle set", {"currentMetresPerSecond": 0.13, "currentHeadingDeg": 0}),
+    "one-knot": ("One knot", {"currentMetresPerSecond": 0.51, "currentHeadingDeg": 90}),
+    "two-knots": ("Two knots", {"currentMetresPerSecond": 1.03, "currentHeadingDeg": 45}),
+    "murky": ("One knot, murky", {"currentMetresPerSecond": 0.51, "currentHeadingDeg": 90,
+                                  "visibilityM": 4.0}),
+}
+
+POSITIONING = {
+    "dead-reckoning": ("Dead reckoning", {"positioning": {"kind": "none"}}),
+    "usbl": ("USBL overhead", {"positioning": {"kind": "usbl", "everyS": 2, "accuracyPercent": 0.5,
+                                               "rangeM": 500}}),
+    "lbl": ("LBL array", {"positioning": {"kind": "lbl", "everyS": 3, "accuracyM": 0.5,
+                                          "rangeM": 150}}),
+    "no-dvl": ("No Doppler log", {"positioning": {"kind": "none"}, "fitted": {"dvl": False}}),
+    "poor-compass": ("Compass five degrees out", {"positioning": {"kind": "none"},
+                                                  "fitted": {"headingAccuracyDeg": 5.0}}),
+}
+
+# Cut down so that one dive is a couple of minutes of simulated time rather
+# than half an hour: the point of the matrix is the comparison, and a longer
+# survey compares the same things more slowly.
+TASKS = {
+    "hold-station": {"kind": "hold-station", "seconds": 60, "radiusM": 0.5, "depthBandM": 0.3},
+    "waypoints": {"kind": "waypoints", "radiusM": 1.5, "timeLimitS": 300,
+                  "points": [{"dx": 10, "dy": 0}, {"dx": 10, "dy": 10}, {"dx": 0, "dy": 0}]},
+    "transect": {"kind": "transect", "lengthM": 20, "altitudeM": 2.0, "altitudeBandM": 0.5,
+                 "headingToleranceDeg": 12, "timeLimitS": 240},
+    "survey": {"kind": "survey", "widthM": 12, "heightM": 6, "altitudeM": 2.0, "swathM": 3.0,
+               "altitudeBandM": 1.0, "timeLimitS": 300},
+    "reach": {"kind": "reach", "dx": 30, "dy": 0, "radiusM": 2.0, "timeLimitS": 240},
+    "search": {"kind": "search", "widthM": 20, "heightM": 12, "altitudeM": 2.5, "seeM": 6,
+               "target": {"dx": 15, "dy": 8}, "timeLimitS": 300},
+    "treat": {"kind": "treat", "radiusM": 6, "reachM": 1.5, "altitudeM": 1.5,
+              "altitudeBandM": 1.5, "speedMs": 0.35, "timeLimitS": 400},
+    "inspect": {"kind": "inspect", "dx": 10, "dy": 0, "radiusM": 4.0, "bandM": 2.0,
+                "timeLimitS": 300},
+    "revisit": {"kind": "revisit", "reachM": 1.2, "holdS": 8, "timeLimitS": 300,
+                "marks": [{"dx": 8, "dy": 0}, {"dx": 14, "dy": 6}]},
+    "dock": {"kind": "dock", "dx": 12, "dy": 0, "approachM": 5, "toleranceM": 0.4,
+             "headingToleranceDeg": 25, "speedMs": 0.25, "timeLimitS": 300},
+    "return": {"kind": "return", "homeRadiusM": 2.0, "surfaceDepthM": 0.5, "timeLimitS": 240},
+}
+
+# How long the machine is allowed to hold, whatever the task's own limit says.
+SLACK = 120
+
+
+# ── talking to the platform ──────────────────────────────────────────────────
+
+def on_box(command: str) -> str:
+    return subprocess.run(["ssh", BOX, f"export LC_ALL=C; {command}"],
+                          capture_output=True, text=True, check=True).stdout.strip()
+
+
+class Platform:
+    def __init__(self) -> None:
+        env = on_box(f"grep -E '^CORAL_CITY_(ADMIN_EMAIL|ADMIN_SECRET|BIND_ADDRESS)=' "
+                     f"~/{REMOTE}/deployments/box/.env")
+        said = dict(line.split("=", 1) for line in env.splitlines() if "=" in line)
+        self.where = f"http://{said.get('CORAL_CITY_BIND_ADDRESS', '127.0.0.1')}:18080"
+        self.token = self.call("POST", "/api/v1/sessions", {
+            "email": said["CORAL_CITY_ADMIN_EMAIL"],
+            "secret": said["CORAL_CITY_ADMIN_SECRET"]}, signed=False)["token"]
+        me = self.call("GET", "/api/v1/me")
+        self.org = me["organisations"][0]["id"]
+
+    def call(self, method: str, path: str, body=None, signed: bool = True):
+        """One request, made from the box because that is where the platform
+        listens. The body goes over stdin rather than the command line, so
+        nothing has to survive two levels of shell quoting."""
+        command = ["curl", "-sS", "-X", method, f"{self.where}{path}",
+                   "-H", "content-type: application/json"]
+        if signed:
+            command += ["-H", f"authorization: Bearer {self.token}"]
+        if body is not None:
+            command += ["-d", "@-"]
+        done = subprocess.run(["ssh", BOX, "export LC_ALL=C; " + " ".join(
+            part if part.startswith("-") or part.startswith("http") or part in (
+                "curl", "-sS", method) else f"'{part}'" for part in command)],
+            input=None if body is None else json.dumps(body),
+            capture_output=True, text=True, check=True)
+        out = done.stdout.strip()
+        if not out:
+            return {}
+        answer = json.loads(out)
+        if isinstance(answer, dict) and "error" in answer:
+            raise RuntimeError(f"{path}: {answer['error'].get('message')}")
+        return answer
+
+
+def newest_version(platform: Platform, kind: str, slug: str) -> str:
+    listed = platform.call("GET", f"/api/v1/{kind}")[kind]
+    asset = next(one for one in listed if one["slug"] == slug)
+    versions = platform.call("GET", f"/api/v1/{kind}/{asset['id']}/versions")["versions"]
+    published = [v for v in versions if v.get("publishedAt")]
+    return max(published or versions, key=lambda v: v["ordinal"])["id"]
+
+
+# ── the matrix ───────────────────────────────────────────────────────────────
+
+def name_of(task: str, water: str, technology: str) -> str:
+    return f"{task} · {WATERS[water][0]} · {POSITIONING[technology][0]}"
+
+
+def flown(platform: Platform) -> dict:
+    """What is already in the record, by the name the matrix gives it."""
+    already = {}
+    for dive in platform.call("GET", f"/api/v1/organisations/{platform.org}/dives")["dives"]:
+        if " · " not in dive["name"]:
+            continue
+        runs = platform.call("GET", f"/api/v1/dives/{dive['id']}/runs")["runs"]
+        for run in runs:
+            if run["state"] in ("succeeded", "failed"):
+                already[dive["name"]] = {"dive": dive["id"], "run": run["id"],
+                                         "state": run["state"], "outcome": run.get("outcome") or {}}
+                break
+    return already
+
+
+def fly(platform: Platform, city: str, vehicle: str, queue: str, runtime: str,
+        task: str, water: str, technology: str) -> dict:
+    water_name, water_parameters = WATERS[water]
+    technology_name, technology_parameters = POSITIONING[technology]
+    objective = dict(TASKS[task])
+    parameters = {**water_parameters, **technology_parameters}
+    # An array and a ship are somewhere: put them where the dive begins, which
+    # is where a vessel would hold station and where an array would be laid.
+    conditions = platform.call("POST", f"/api/v1/organisations/{platform.org}/conditions", {
+        "kind": "constructed", "name": f"{water_name} · {technology_name}",
+        "parameters": parameters})
+    dive = platform.call("POST", f"/api/v1/organisations/{platform.org}/dives", {
+        "name": name_of(task, water, technology),
+        "cityVersionId": city, "vehicleVersionId": vehicle,
+        "conditionsId": conditions["id"], "objective": objective})
+    run = platform.call("POST", f"/api/v1/dives/{dive['id']}/runs", {
+        "queueId": queue, "mode": "batch", "runtimeVersion": runtime})
+    return {"dive": dive["id"], "run": run["id"], "name": dive["name"]}
+
+
+def wait_for(platform: Platform, asked: list, patience: int = 3600) -> None:
+    began = time.monotonic()
+    while time.monotonic() - began < patience:
+        left = []
+        for one in asked:
+            runs = platform.call("GET", f"/api/v1/dives/{one['dive']}/runs")["runs"]
+            state = next((r["state"] for r in runs if r["id"] == one["run"]), "gone")
+            if state in ("queued", "preparing", "running"):
+                left.append(one)
+        if not left:
+            return
+        time.sleep(15)
+
+
+def run_matrix(args) -> None:
+    platform = Platform()
+    city = newest_version(platform, "cities", args.place)
+    vehicle = newest_version(platform, "vehicles", args.vehicle)
+    queues = platform.call("GET", "/api/v1/queues")["queues"]
+    queue = queues[0]
+    runtime = queue["runtimes"][0]
+
+    tasks = args.tasks.split(",") if args.tasks else list(TASKS)
+    waters = args.waters.split(",") if args.waters else list(WATERS)
+    technologies = args.technologies.split(",") if args.technologies else list(POSITIONING)
+
+    already = {} if args.again else flown(platform)
+    wanted = [(t, w, p) for t in tasks for w in waters for p in technologies
+              if args.again or name_of(t, w, p) not in already]
+    print(f"{len(tasks)} tasks × {len(waters)} waters × {len(technologies)} technologies "
+          f"= {len(tasks) * len(waters) * len(technologies)}; {len(wanted)} still to fly",
+          flush=True)
+
+    at_once = max(1, int(queue.get("devices", 1)))
+    asked: list = []
+    for i, (task, water, technology) in enumerate(wanted, start=1):
+        asked.append(fly(platform, city, vehicle, queue["id"], runtime, task, water, technology))
+        print(f"  [{i}/{len(wanted)}] {name_of(task, water, technology)}", flush=True)
+        if len(asked) >= at_once:
+            wait_for(platform, asked)
+            asked = []
+    wait_for(platform, asked)
+    print("all flown", flush=True)
+    show_matrix(args)
+
+
+def show_matrix(args) -> None:
+    platform = Platform()
+    already = flown(platform)
+    rows = []
+    for name, one in sorted(already.items()):
+        task = one["outcome"].get("task") or {}
+        navigation = one["outcome"].get("navigation") or {}
+        rows.append({
+            "name": name,
+            "state": one["state"],
+            "ended": one["outcome"].get("ended", ""),
+            "score": task.get("score"),
+            "seconds": task.get("seconds"),
+            "energyWh": task.get("energyWh"),
+            "driftM": navigation.get("driftM"),
+            "fixes": navigation.get("fixes"),
+            "dive": one["dive"], "run": one["run"],
+        })
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return
+    print(f"{'task · water · technology':<62}{'score':>7}{'drift':>8}{'Wh':>7}  ended")
+    for row in rows:
+        score = "—" if row["score"] is None else f"{row['score'] * 100:.0f}%"
+        drift = "—" if row["driftM"] is None else f"{row['driftM']:.2f}"
+        energy = "—" if row["energyWh"] is None else f"{row['energyWh']:.2f}"
+        print(f"{row['name']:<62}{score:>7}{drift:>8}{energy:>7}  {row['ended']}")
+    print(f"\n{len(rows)} runs in the record")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="what", required=True)
+    for what in ("run", "show"):
+        one = sub.add_parser(what)
+        one.add_argument("--place", default="looe-key")
+        one.add_argument("--vehicle", default="bluerov2")
+        one.add_argument("--tasks", default="")
+        one.add_argument("--waters", default="")
+        one.add_argument("--technologies", default="")
+        one.add_argument("--again", action="store_true")
+        one.add_argument("--json", action="store_true")
+    args = parser.parse_args()
+    try:
+        (run_matrix if args.what == "run" else show_matrix)(args)
+    except (urllib.error.URLError, RuntimeError, subprocess.CalledProcessError) as trouble:
+        print(f"stopped: {trouble}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
