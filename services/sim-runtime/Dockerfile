@@ -47,6 +47,20 @@ ENV RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 # dives on one host do not hear each other.
 ENV ROS_DOMAIN_ID=0
 
+# An encoder, for sending the picture somewhere far away.
+#
+# A JPEG a frame is eleven megabits of the same reef over and over, which is
+# invisible on the same network and unusable from anywhere else. ffmpeg is
+# here for its H.264 encoders — the card's own NVENC first, the processor's
+# x264 if the card will not have us — and it turns that into something like a
+# megabit and a half. Half a megabyte of package for an order of magnitude
+# less to send.
+USER root
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+USER 1234:1234
+
 # Extensions in extsUser are discovered by Kit; the directory name is the
 # extension id. Owned by the image's user, because a read-only extension
 # directory stops Kit writing the bytecode it expects to write.
