@@ -52,6 +52,21 @@ function shape(kind: string): React.JSX.Element {
         </>
       );
 
+    // One transponder, and the vehicle homing on it.
+    case "beacon":
+      return (
+        <>
+          <path d="M30 33 L30 27" stroke={MARK} strokeWidth="1.6" />
+          <circle cx="30" cy="25.5" r="2.4" fill={MARK} />
+          {[6, 10, 14].map((r) => (
+            <path key={r} d={`M${30 - r} 25.5 A ${r} ${r} 0 0 1 ${30} ${25.5 - r}`}
+                  fill="none" stroke={MARK} strokeWidth="1" opacity={0.55 - r * 0.02} />
+          ))}
+          <rect x="9" y="19" width="7" height="4.5" rx="1.4" fill={INK} />
+          <path d="M17 21 L24 23" stroke={INK} strokeWidth="1.2" strokeDasharray="2 2" />
+        </>
+      );
+
     // The log, pinging the bottom, and nothing else.
     case "no-dvl":
       return (

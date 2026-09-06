@@ -37,8 +37,10 @@ What a fix is, and where it comes from:
   GNSS               At the surface, and only there.
 
   A beacon           A single transponder on a dock: range and bearing to that
-                     one thing, which is all homing needs and no use for
-                     knowing where you are.
+                     one thing. It says nothing about where you are and
+                     everything about where the dock is, which is what the
+                     last five metres of a docking needs — dead reckoning is
+                     out by more than the cradle is wide.
 
 The vehicle carries what its package says it carries. The water carries what
 the conditions say is deployed in it. A dive with neither is a dive on dead
@@ -86,6 +88,14 @@ class Navigation:
         self.reach = float(self.aiding.get("rangeM", 300.0))
         self.at = None if self.aiding.get("at") is None else np.array(self.aiding["at"], dtype=float)
         self.surface_fix_at = float(self.aiding.get("surfaceFixDepthM", 0.5))
+        # How much of a fix to believe. A fix is not the truth either: it has
+        # its own error, and steering at every one of them makes a vehicle
+        # chase the noise — which is why station-keeping on raw USBL is worse
+        # than station-keeping on dead reckoning, and why every real vehicle
+        # runs a filter. This is the simplest honest one: dead reckoning
+        # carries the position between fixes, and a fix pulls it a share of
+        # the way rather than teleporting it.
+        self.trust = float(self.aiding.get("trust", 0.25))
 
         # Drawn once, held for the dive: this vehicle's compass is wrong by
         # this much today, and its log reads this much fast or slow.
@@ -154,7 +164,10 @@ class Navigation:
             # to nothing.
             if self.kind == "none" and not self.aiding.get("gnss", True):
                 return
-            self._take(t, position, 2.5, "a satellite fix at the surface")
+            # At the surface there is nothing better to be had, so the fix is
+            # taken whole rather than blended: that is the reset an AUV
+            # surfaces for.
+            self._take(t, position, 2.5, "a satellite fix at the surface", trust=1.0)
             return
         if self.kind == "none" or (self.last_fix_t is not None and t - self.last_fix_t < self.every):
             return
@@ -164,6 +177,20 @@ class Navigation:
             if self.at is not None and float(np.linalg.norm(self.at[:2] - position[:2])) > self.reach:
                 return
             self._take(t, position, self.fix_accuracy, "an LBL fix from the array")
+        elif self.kind == "beacon":
+            # A transponder on the dock. It gives the range and bearing to
+            # that one thing and nothing about the world, so what it corrects
+            # is the vehicle's idea of where it is *relative to the dock* —
+            # which, since the dock's position is known, is a position.
+            if self.at is None:
+                return
+            away = float(np.linalg.norm(self.at - np.asarray(position, dtype=float)))
+            if away > self.reach:
+                return
+            # Close in it is very good and far out it is nothing, which is what
+            # a short-baseline homing transponder actually is.
+            self._take(t, position, max(0.05, self.fix_accuracy * max(0.2, away / 10.0)),
+                       "a beacon on the dock")
         elif self.kind == "usbl":
             if self.at is None:
                 slant = depth
@@ -173,9 +200,11 @@ class Navigation:
                 return
             self._take(t, position, max(0.3, slant * self.slant_share), "a USBL fix from the surface")
 
-    def _take(self, t: float, position, accuracy: float, from_: str) -> None:
-        self.believed[0] = float(position[0]) + float(self._noise.normal(0.0, accuracy))
-        self.believed[1] = float(position[1]) + float(self._noise.normal(0.0, accuracy))
+    def _take(self, t: float, position, accuracy: float, from_: str, trust: float | None = None) -> None:
+        said = np.array([float(position[0]) + float(self._noise.normal(0.0, accuracy)),
+                         float(position[1]) + float(self._noise.normal(0.0, accuracy))])
+        share = self.trust if trust is None else trust
+        self.believed[:2] += (said - self.believed[:2]) * max(0.0, min(1.0, share))
         self.fixes += 1
         self.last_fix_t = t
         self.last_fix_from = from_
@@ -197,6 +226,7 @@ class Navigation:
 
     def said(self, position, t: float) -> dict:
         return {"believed": [round(float(v), 3) for v in self.believed],
+                "trust": self.trust,
                 "driftM": round(self.drift(position), 3),
                 "bottomLock": self.bottom_lock,
                 "headingBiasDeg": round(math.degrees(self.heading_bias), 2),
