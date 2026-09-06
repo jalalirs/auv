@@ -170,3 +170,51 @@ def test_navigation_error_is_what_makes_a_far_point_hard():
     off = float(np.linalg.norm(dive.position[:2] - target[:2]))
     assert off > 0.05, f"and be somewhere else, but it was {off:.2f} m off"
     assert dive.navigation.drift(dive.position) > 0.05
+
+
+# ── believing a fix, but not all of it ───────────────────────────────────────
+
+def test_a_fix_pulls_the_estimate_rather_than_teleporting_it():
+    """Steering at every raw fix makes a vehicle chase the noise.
+
+    Station-keeping on raw USBL scored worse than station-keeping on dead
+    reckoning, which is the wrong way round and is what every real vehicle
+    runs a filter to avoid.
+    """
+    dive = a_dive(positioning={"kind": "usbl", "everyS": 0.5, "accuracyPercent": 2.0,
+                               "at": [0.0, 0.0, 0.0], "trust": 0.25}, seed=6)
+    swim(dive, 30.0)
+    steady = dive.navigation.believed.copy()
+    # One fix does not move it far, because it is a quarter believed.
+    dive.navigation.maybe_fix(dive.simulated + 10.0, dive.position)
+    moved = float(np.linalg.norm(dive.navigation.believed[:2] - steady[:2]))
+    assert moved < 3.0, f"one fix moved the estimate {moved:.1f} m; it should be nudged, not thrown"
+
+    # And over many fixes it still converges on the truth.
+    for _ in range(200):
+        dive.simulated += 1.0
+        dive.navigation.maybe_fix(dive.simulated, dive.position)
+    assert dive.navigation.drift(dive.position) < 2.0, "many fixes still bring it home"
+
+
+def test_the_surface_fix_is_believed_completely():
+    dive = a_dive(seed=8)
+    swim(dive, 200.0)
+    assert dive.navigation.drift(dive.position) > 0.2
+    dive.position[2] = -0.2
+    dive.navigation.step(dive.simulated, dive.position, np.zeros(6), dive.rotation, dive.floor, dive.dt)
+    assert dive.navigation.drift(dive.position) < 6.0, "the sky is a reset, not a nudge"
+
+
+def test_a_beacon_on_the_dock_gets_better_as_you_close_on_it():
+    far = a_dive(positioning={"kind": "beacon", "everyS": 1.0, "accuracyM": 0.3,
+                              "rangeM": 60.0, "at": [40.0, 0.0, -6.0]}, seed=12)
+    swim(far, 30.0)                     # twelve metres out of forty
+    away = float(np.linalg.norm(far.navigation.believed[:2] - np.array([40.0, 0.0])))
+    close = a_dive(positioning={"kind": "beacon", "everyS": 1.0, "accuracyM": 0.3,
+                                "rangeM": 60.0, "at": [40.0, 0.0, -6.0]}, seed=12)
+    swim(close, 95.0)                   # right up to it
+    assert close.navigation.fixes > 10
+    assert close.navigation.drift(close.position) < 0.6, (
+        "a homing beacon at close range is what docking needs and dead reckoning is not")
+    assert away > 0.0

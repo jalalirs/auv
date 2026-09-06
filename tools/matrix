@@ -177,18 +177,23 @@ def fly(platform: Platform, city: str, vehicle: str, queue: str, runtime: str,
     return {"dive": dive["id"], "run": run["id"], "name": dive["name"]}
 
 
+def still_going(platform: Platform, asked: list) -> list:
+    """Which of these have not finished yet."""
+    left = []
+    for one in asked:
+        runs = platform.call("GET", f"/api/v1/dives/{one['dive']}/runs")["runs"]
+        state = next((r["state"] for r in runs if r["id"] == one["run"]), "gone")
+        if state in ("queued", "preparing", "running"):
+            left.append(one)
+    return left
+
+
 def wait_for(platform: Platform, asked: list, patience: int = 3600) -> None:
     began = time.monotonic()
-    while time.monotonic() - began < patience:
-        left = []
-        for one in asked:
-            runs = platform.call("GET", f"/api/v1/dives/{one['dive']}/runs")["runs"]
-            state = next((r["state"] for r in runs if r["id"] == one["run"]), "gone")
-            if state in ("queued", "preparing", "running"):
-                left.append(one)
-        if not left:
-            return
-        time.sleep(15)
+    while asked and time.monotonic() - began < patience:
+        asked = still_going(platform, asked)
+        if asked:
+            time.sleep(15)
 
 
 def run_matrix(args) -> None:
@@ -210,14 +215,22 @@ def run_matrix(args) -> None:
           f"= {len(tasks) * len(waters) * len(technologies)}; {len(wanted)} still to fly",
           flush=True)
 
-    at_once = max(1, int(queue.get("devices", 1)))
+    # Kept full rather than drained: with a batch at a time both machines sit
+    # idle while the last of the batch finishes. One asked for as soon as one
+    # finishes keeps every card working, and one spare in the queue means a
+    # machine never waits for this script to notice.
+    at_once = max(1, int(queue.get("devices", 1))) + 1
     asked: list = []
+    began = time.monotonic()
     for i, (task, water, technology) in enumerate(wanted, start=1):
+        while len(asked) >= at_once:
+            time.sleep(10)
+            asked = still_going(platform, asked)
         asked.append(fly(platform, city, vehicle, queue["id"], runtime, task, water, technology))
-        print(f"  [{i}/{len(wanted)}] {name_of(task, water, technology)}", flush=True)
-        if len(asked) >= at_once:
-            wait_for(platform, asked)
-            asked = []
+        each = (time.monotonic() - began) / max(1, i - 1) if i > 1 else 0
+        left = (len(wanted) - i) * each / 60.0
+        print(f"  [{i}/{len(wanted)}] {name_of(task, water, technology)}"
+              f"{'' if i < 3 else f'   about {left:.0f} min left'}", flush=True)
     wait_for(platform, asked)
     print("all flown", flush=True)
     show_matrix(args)

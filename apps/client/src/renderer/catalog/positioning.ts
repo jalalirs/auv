@@ -53,6 +53,15 @@ export const POSITIONING: Positioning[] = [
     },
   },
   {
+    key: "beacon",
+    name: "A beacon on the station",
+    says: "One transponder on the dock, ranging and bearing to it — nothing about the world, everything about the dock.",
+    expect: "Centimetres alongside it, useless from far away. This is what docking needs and dead reckoning cannot give.",
+    parameters: {
+      positioning: { kind: "beacon", everyS: 1, accuracyM: 0.3, rangeM: 60, at: [0, 0, -6] },
+    },
+  },
+  {
     key: "no-dvl",
     name: "No Doppler log",
     says: "The log is unshipped: a compass, a clock and whatever the vehicle believes about its own speed.",
