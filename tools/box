@@ -11,6 +11,7 @@
 #   ./tools/box logs control-plane
 #   ./tools/box tunnel
 #   ./tools/box tidy
+#   ./tools/box clean-dives
 #   ./tools/box down
 #
 # Secrets are generated on the box and stay there. They are never written to
@@ -215,6 +216,17 @@ command_tidy() {
         | grep -Ev '^(BEGIN|SET|CREATE|SELECT [0-9]|COMMIT|DELETE 0)\$' && rm -f /tmp/coral-tidy.sql"
 }
 
+# Clear the record of dives so a demonstration starts from nothing. The
+# places, the vehicles, their packages, the controllers and the machines all
+# stay; what goes is every dive, run and recording made with them.
+command_clean_dives() {
+    say "Clearing every dive and run from the record…"
+    scp -q "${REPO_ROOT}/deployments/box/clean-dives.sql" "${GPU_HOST}:/tmp/coral-clean.sql"
+    on_box "docker cp /tmp/coral-clean.sql coral-city-record-1:/tmp/clean.sql && \
+        docker exec coral-city-record-1 psql -U coral -d coral -v ON_ERROR_STOP=1 -f /tmp/clean.sql \
+        | grep -Ev '^(BEGIN|SET|COMMIT|DELETE [0-9]+)\$' && rm -f /tmp/coral-clean.sql"
+}
+
 command_down() {
     say "Stopping (volumes are kept)…"
     on_box "${COMPOSE} down"
@@ -250,6 +262,7 @@ case "${1:-}" in
     down)    command_down ;;
     tunnel)  command_tunnel ;;
     tidy)    command_tidy ;;
+    clean-dives) command_clean_dives ;;
     ""|help|-h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' ;;
-    *) die "unknown command: $1 (try: init, up, status, logs, down, tunnel, tidy, secret)" ;;
+    *) die "unknown command: $1 (try: init, up, status, logs, down, tunnel, tidy, clean-dives, secret)" ;;
 esac
