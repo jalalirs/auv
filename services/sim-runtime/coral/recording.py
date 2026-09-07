@@ -102,6 +102,10 @@ class Recorder:
             "rates": [round(float(v), 4) for v in dive.velocity[3:]],
             "view": dive.view,
             "frame": self.frame_name,
+            # Where this frame was seen from, so a replay can paint the world
+            # back onto it. Absent on a dive nobody rendered, which is fine:
+            # there is no picture to paint on either.
+            "camera": getattr(dive, "looking", None),
         }
         floor = dive.floor
         if dive.seabed is not None:

@@ -14,6 +14,7 @@ is a replay would be worth nothing.
 from __future__ import annotations
 
 import json
+import math
 import os
 import pathlib
 import sys
@@ -36,6 +37,13 @@ CORAL = pathlib.Path("/isaac-sim/coral")
 
 # How much faster than the clock on the wall a dive nobody is watching may run.
 MOST_TIMES_REAL = 4.0
+
+# The lens the console looks through. Written down rather than left to the
+# defaults, because a console that paints the world onto its own picture needs
+# the field of view to be a fact and not an inference: 24 mm across a 20.955 mm
+# aperture is 47.2 degrees wide, and the vertical follows the frame's shape.
+FOCAL_LENGTH_MM = 24.0
+APERTURE_MM = 20.955
 
 # How far behind wall-clock time the physics is allowed to fall before it stops
 # trying to catch up. Without a bound, one slow frame makes the next frame ask
@@ -115,6 +123,10 @@ class CoralCityShell(omni.ext.IExt):
         self._asked_at = 0.0
         self._aim = None
         self._basis = None
+        self._eye = None
+        self._camera_prim = None
+        self._lens = _lens(16.0, 9.0)   # until a frame says otherwise
+        self._lens_for = None
         self._chase_heading = None
         self._complained = False
         self._latest_state = {}
@@ -307,13 +319,47 @@ class CoralCityShell(omni.ext.IExt):
             # because this is where the camera is aimed; anywhere else would be
             # a second opinion about where it points.
             self._basis = _basis(eye, aim, up_ours)
+            # Where the eye is, not only which way it faces. A basis alone says
+            # how the world is turned on the screen, which is enough for a set
+            # of axes in the corner and nothing else; to draw a station circle
+            # on the seabed you need the point it is being seen from.
+            self._eye = [round(float(v), 4) for v in eye]
+            dive.looking = self._looking(dive)
         except Exception:
             # A camera that will not move is not worth ending a dive over.
             self._aim = None
 
+    def _conform_lens(self, wide: int, tall: int) -> None:
+        """Match the aperture to the frame, so no conform policy has an opinion.
+
+        The frame is 16:9 and the aperture is set to 16:9, and while those
+        agree this does nothing. It is here for the day they do not: a
+        viewport of another shape would otherwise be silently widened or
+        cropped by Kit, and every overlay drawn on the picture would be wrong
+        by exactly that much, in a way that looks like a bug in the drawing.
+        """
+        if (wide, tall) == self._lens_for or not wide or not tall:
+            return
+        self._lens_for = (wide, tall)
+        self._lens = _lens(float(wide), float(tall))
+        try:
+            if self._camera_prim is not None:
+                self._camera_prim.GetVerticalApertureAttr().Set(
+                    APERTURE_MM * float(tall) / float(wide))
+        except Exception as exc:
+            self._say("lens_unchanged", why=str(exc)[:200], wide=wide, tall=tall)
+
     def _looking(self, dive) -> dict:
-        """The world's axes as the camera sees them, and which way is up."""
-        return {"basis": self._basis, "upAxis": "Z", "view": getattr(dive, "view", "chase")}
+        """Everything needed to put a world point on this picture.
+
+        The eye, the axes it looks along, and how wide it sees. With these a
+        console can do what the renderer did — take a place in the water and
+        work out the pixel it fell on — and so draw the task on the seabed
+        rather than in a box beside it.
+        """
+        return {"basis": self._basis, "eye": self._eye, "upAxis": "Z",
+                "view": getattr(dive, "view", "chase"),
+                **self._lens}
 
     def _free_running(self) -> bool:
         """Whether this dive may run faster than the clock on the wall.
@@ -356,7 +402,18 @@ class CoralCityShell(omni.ext.IExt):
             stage = omni.usd.get_context().get_stage()
             camera_path = "/World/CoralCityCamera"
             camera = UsdGeom.Camera.Define(stage, camera_path)
-            camera.CreateFocalLengthAttr(24.0)
+            camera.CreateFocalLengthAttr(FOCAL_LENGTH_MM)
+            # An aperture of our own choosing, matched to the frame. USD's
+            # default aperture is 1.37:1 and the frame is 16:9, and what Kit
+            # does about that mismatch is a policy — it fits one axis and
+            # widens the other, and which one is a setting. A console that
+            # paints the world onto the picture cannot be guessing at that:
+            # the whole overlay hangs off the field of view. So the aperture
+            # is set to the frame's own shape, and then every conform policy
+            # agrees and the field of view is the one written down below.
+            camera.CreateHorizontalApertureAttr(APERTURE_MM)
+            camera.CreateVerticalApertureAttr(APERTURE_MM * 9.0 / 16.0)
+            self._camera_prim = camera
             near = 0.02 * dive.units_per_metre
             camera.CreateClippingRangeAttr(Gf.Vec2f(near, near * 500000.0))
 
@@ -631,6 +688,7 @@ class CoralCityShell(omni.ext.IExt):
     def _encode(self, buffer, size, wide, tall, fmt=None) -> None:
         """Turn a captured frame into something a socket can carry."""
         self._capturing = False
+        self._conform_lens(wide, tall)
         try:
             import cv2
             import numpy as np
@@ -756,6 +814,7 @@ class CoralCityShell(omni.ext.IExt):
     def _recorded(self, buffer, size, wide, tall, fmt=None) -> None:
         """A captured frame, into the recording's video."""
         self._recording_frame = False
+        self._conform_lens(wide, tall)
         recorder = getattr(self.dive, "recorder", None)
         if recorder is None:
             return
@@ -832,6 +891,14 @@ class CoralCityShell(omni.ext.IExt):
         if self.hud is not None:
             self.hud.close()
             self.hud = None
+
+
+def _lens(wide: float, tall: float) -> dict:
+    """How wide the camera sees, for a frame of this shape."""
+    return {"horizontalFovDeg": round(math.degrees(
+                2.0 * math.atan(APERTURE_MM / (2.0 * FOCAL_LENGTH_MM))), 3),
+            "verticalFovDeg": round(math.degrees(
+                2.0 * math.atan(APERTURE_MM * (tall / wide) / (2.0 * FOCAL_LENGTH_MM))), 3)}
 
 
 def _basis(eye, aim, up):
