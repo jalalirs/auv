@@ -130,11 +130,17 @@ class Platform:
                      f"~/{REMOTE}/deployments/box/.env")
         said = dict(line.split("=", 1) for line in env.splitlines() if "=" in line)
         self.where = f"http://{said.get('CORAL_CITY_BIND_ADDRESS', '127.0.0.1')}:18080"
-        self.token = self.call("POST", "/api/v1/sessions", {
-            "email": said["CORAL_CITY_ADMIN_EMAIL"],
-            "secret": said["CORAL_CITY_ADMIN_SECRET"]}, signed=False)["token"]
+        # Kept, because a session does not last as long as a matrix does.
+        self.who = (said["CORAL_CITY_ADMIN_EMAIL"], said["CORAL_CITY_ADMIN_SECRET"])
+        self.token = ""
+        self.sign_in()
         me = self.call("GET", "/api/v1/me")
         self.org = me["organisations"][0]["id"]
+
+    def sign_in(self) -> None:
+        email, secret = self.who
+        self.token = self.call("POST", "/api/v1/sessions",
+                               {"email": email, "secret": secret}, signed=False)["token"]
 
     def call(self, method: str, path: str, body=None, signed: bool = True):
         """One request, made from the box because that is where the platform
@@ -154,7 +160,14 @@ class Platform:
             return {}
         answer = json.loads(out)
         if isinstance(answer, dict) and "error" in answer:
-            raise RuntimeError(f"{path}: {answer['error'].get('message')}")
+            said = str(answer["error"].get("message", ""))
+            # A session runs out long before a matrix does. Signing in again is
+            # not an error to stop on; it is what the token being temporary
+            # means.
+            if signed and ("sign in" in said or answer["error"].get("code") == "unauthenticated"):
+                self.sign_in()
+                return self.call(method, path, body, signed=True)
+            raise RuntimeError(f"{path}: {said}")
         return answer
 
 
@@ -279,6 +292,45 @@ def run_matrix(args) -> None:
     show_matrix(args)
 
 
+def grid(rows, args) -> None:
+    """The matrix as a grid, which is the only way to read it.
+
+    Two of them, because there are three dimensions and a page has two: every
+    task against every technology in one body of water, and every task against
+    every water on one technology. Averaging over a dimension instead would
+    hide the thing that matters — the water dominates everything, and a
+    technology compared across all waters looks like every other technology.
+    """
+    got = {}
+    for row in rows:
+        parts = [part.strip() for part in row["name"].split("·")]
+        if len(parts) == 3:
+            got[tuple(parts)] = row
+
+    def table(title, columns, cell, note) -> None:
+        print(f"\n{title}")
+        print(f"{'':<14}" + "".join(f"{c[:13]:>14}" for c in columns))
+        for task in TASKS:
+            line = f"{task:<14}"
+            for column in columns:
+                row = cell(task, column)
+                line += f"{'—' if row is None or row['score'] is None else f'{row[chr(115)+chr(99)+chr(111)+chr(114)+chr(101)]*100:.0f}%':>14}"
+            print(line)
+        print(f"  {note}")
+
+    water = WATERS[args.water][0] if args.water in WATERS else WATERS["still"][0]
+    technology = (POSITIONING[args.technology][0] if args.technology in POSITIONING
+                  else POSITIONING["dead-reckoning"][0])
+    table(f"every technology, in {water.lower()}",
+          [POSITIONING[k][0] for k in GENERAL],
+          lambda task, column: got.get((task, water, column)),
+          "the water is held still so the technology is what differs")
+    table(f"every water, on {technology.lower()}",
+          [WATERS[k][0] for k in WATERS],
+          lambda task, column: got.get((task, column, technology)),
+          "the technology is held so the water is what differs")
+
+
 def show_matrix(args) -> None:
     platform = Platform()
     already = flown(platform)
@@ -299,6 +351,9 @@ def show_matrix(args) -> None:
         })
     if args.json:
         print(json.dumps(rows, indent=2))
+        return
+    if args.grid:
+        grid(rows, args)
         return
     print(f"{'task · water · technology':<62}{'score':>7}{'drift':>8}{'Wh':>7}  ended")
     for row in rows:
@@ -323,6 +378,10 @@ def main() -> int:
         one.add_argument("--at-once", dest="at_once", default=4,
                          help="how many dives to have in the water at a time")
         one.add_argument("--json", action="store_true")
+        one.add_argument("--grid", action="store_true", help="as a table rather than a list")
+        one.add_argument("--water", default="still", help="which water the technology grid holds")
+        one.add_argument("--technology", default="dead-reckoning",
+                         help="which technology the water grid holds")
     args = parser.parse_args()
     try:
         (run_matrix if args.what == "run" else show_matrix)(args)
