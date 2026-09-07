@@ -1029,16 +1029,19 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
    place by however much it was stretched. */
 .replay { display: grid; gap: 10px; margin-bottom: 10px; }
 .replay .stage {
-  display: grid; place-items: center; width: 100%;
-  height: min(calc(100vh - 300px), calc((100vw - 340px) * 9 / 16));
-  min-height: 340px;
+  /* Held to the frame's own shape rather than the window's. The overlay is
+     drawn in the picture's coordinates and laid over the whole box, so if the
+     box is not the picture's shape the video letterboxes inside it and every
+     drawn thing sits a little away from the thing it marks. */
+  aspect-ratio: 16 / 9;
+  width: min(100%, calc((100vh - 290px) * 16 / 9));
+  min-width: 480px; margin: 0 auto; position: relative;
 }
+.replay .stage > video, .replay .stage > img { position: absolute; inset: 0; }
 .replay .frame, .replay .chart { background: #050a12; border: 1px solid var(--edge); border-radius: 6px; overflow: hidden; position: relative; }
-.replay .stage { border: none; background: transparent; }
-.replay .stage > * { grid-area: 1 / 1; }
-.replay .stage { position: relative; }
+.replay .stage { border: none; background: #050a12; }
 .replay .stage video, .replay .stage img {
-  width: 100%; height: 100%; object-fit: contain; display: block;
+  width: 100%; height: 100%; object-fit: fill; display: block;
 }
 /* The overlay sits exactly on the picture, in the picture's own coordinates,
    and never intercepts a click meant for the video behind it. */

@@ -13,7 +13,7 @@
 // instruments live on the edges of the picture. All of it hangs off the camera
 // the runtime wrote into each frame — see project.ts, which is the whole trick.
 
-import { Lens, WIDE, TALL, heldInside, inFrame, type Looking, type OnScreen } from "./project.js";
+import { Lens, WIDE, TALL, heldInside, inFrame, writtenFrom, type Looking, type OnScreen } from "./project.js";
 import type { Geometry } from "./Minimap.js";
 
 /** What was deployed in this water to give fixes, as the record describes it. */
@@ -110,9 +110,9 @@ function InTheWater({ lens, told }: { lens: Lens; told: Told }): React.JSX.Eleme
                 fill="none" stroke={ink} strokeWidth="2.5" opacity="0.95" />
           <path d={lens.ring([g.circle.x, g.circle.y, floor], g.circle.radiusM * 2.4)}
                 fill="none" stroke={ink} strokeWidth="1" strokeDasharray="6 8" opacity="0.4" />
-          <path d={lens.path([[g.circle.x, g.circle.y, floor], [g.circle.x, g.circle.y, floor + 1.6]])}
+          <path d={lens.path([[g.circle.x, g.circle.y, floor], [g.circle.x, g.circle.y, floor + 0.85]])}
                 fill="none" stroke={ink} strokeWidth="1.2" opacity="0.55" />
-          <Label lens={lens} at={[g.circle.x, g.circle.y, floor + 1.9]} ink={ink} text="station" />
+          <Label lens={lens} at={[g.circle.x, g.circle.y, floor + 1.05]} ink={ink} text="station" />
         </>
       ) : null}
 
@@ -189,13 +189,14 @@ function Deployed({ lens, told }: { lens: Lens; told: Told }): React.JSX.Element
     // a dock beacon is on the bottom. Both are one thing rather than three.
     : [[d.at[0]!, d.at[1]!, d.kind === "usbl" ? 0 : (d.at[2] ?? seabed)]];
   const named = d.kind === "lbl" ? "transponder" : d.kind === "usbl" ? "ship" : "beacon";
+  const card = told.task?.name ? { x: 18, y: 14, wide: 442, tall: told.task.asks ? 140 : 108 } : undefined;
   return (
     <g>
       {anchors.map((a, i) => {
         const away = Math.hypot(a[0]! - told.position[0]!, a[1]! - told.position[1]!);
         return (
           <Anchor key={i} lens={lens} at={a} from={told.position} named={named}
-                  heard={d.rangeM === undefined || away <= d.rangeM} reach={d.rangeM} />
+                  heard={d.rangeM === undefined || away <= d.rangeM} reach={d.rangeM} keepOut={card} />
         );
       })}
       {/* Where the array stops working, on the bottom. Leaving it is the
@@ -209,12 +210,14 @@ function Deployed({ lens, told }: { lens: Lens; told: Told }): React.JSX.Element
   );
 }
 
-function Anchor({ lens, at, from, named, heard }: {
+function Anchor({ lens, at, from, named, heard, keepOut }: {
   lens: Lens; at: number[]; from: number[]; named: string; heard: boolean; reach?: number;
+  keepOut?: { x: number; y: number; wide: number; tall: number };
 }): React.JSX.Element | null {
   const on = lens.at(at);
   if (on === null) return null;
-  const held = inFrame(on, 0) ? on : heldInside(on);
+  const held = inFrame(on, 0) ? on : heldInside(on, 26, keepOut);
+  const written = writtenFrom(held);
   const away = Math.hypot(at[0]! - from[0]!, at[1]! - from[1]!, at[2]! - from[2]!);
   return (
     <g opacity={heard ? 0.9 : 0.35}>
@@ -226,7 +229,9 @@ function Anchor({ lens, at, from, named, heard }: {
       ) : null}
       <circle cx={held.x} cy={held.y} r="7" fill="none" stroke={FIX} strokeWidth="2" />
       <circle cx={held.x} cy={held.y} r="2" fill={FIX} />
-      <text x={held.x + 12} y={held.y + 4} fontSize="14" fill={FIX}>{named} · {away.toFixed(0)} m</text>
+      <text x={held.x + written.dx} y={held.y + 4} fontSize="14" fill={FIX} textAnchor={written.anchor}>
+        {named} · {away.toFixed(0)} m
+      </text>
     </g>
   );
 }
@@ -258,7 +263,7 @@ function Belief({ lens, told }: { lens: Lens; told: Told }): React.JSX.Element |
 function Vehicle({ lens, told }: { lens: Lens; told: Told }): React.JSX.Element | null {
   const on = lens.at(told.position);
   if (on === null || !inFrame(on, 120)) return null;
-  const half = Math.max(10, lens.metresAcross(on.awayM) * (told.vehicle?.halfWidthM ?? 0.3) * 1.6);
+  const half = Math.max(10, lens.metresAcross(on.awayM) * (told.vehicle?.halfWidthM ?? 0.3) * 1.25);
   const arm = half * 0.45;
   // Corners rather than a box: a box hides the thing it is drawn around.
   const corner = (dx: number, dy: number) =>
@@ -363,21 +368,23 @@ function Asked({ told }: { told: Told }): React.JSX.Element | null {
   const wide = 430;
   return (
     <g>
-      <rect x="24" y="20" width={wide} height={task.asks ? 116 : 92} rx="10"
+      <rect x="24" y="20" width={wide} height={task.asks ? 128 : 96} rx="10"
             fill="#04121e" opacity="0.55" />
       <text x="44" y="48" fontSize="19" fill="#eaf4ff" fontWeight="600">{task.name}</text>
-      {task.asks ? <Wrapped x={44} y={70} wide={wide - 40} size={13} fill={QUIET} text={task.asks} /> : null}
-      <text x={44} y={task.asks ? 112 : 74} fontSize="13" fill={QUIET}>{task.says ?? ""}</text>
-      <rect x="44" y={task.asks ? 122 : 84} width={wide - 40} height="5" rx="2.5" fill="#0e2233" />
-      <rect x="44" y={task.asks ? 122 : 84} width={(wide - 40) * score} height="5" rx="2.5"
-            fill={task.done ? DONE : TASK} />
-      <text x={wide - 4} y={44} textAnchor="end" fontSize="21" fill={task.done ? DONE : TASK}
+      <text x={wide - 4} y={48} textAnchor="end" fontSize="21" fill={task.done ? DONE : TASK}
             fontWeight="600">{(score * 100).toFixed(0)}%</text>
+      {task.asks ? <Wrapped x={44} y={74} wide={wide - 44} size={13} fill={QUIET} text={task.asks} /> : null}
+      <text x={44} y={task.asks ? 120 : 78} fontSize="13" fill={QUIET}>{task.says ?? ""}</text>
+      {/* The clock lives at the end of the line the task is talking on, which
+          is the one place on the card nothing else wants. */}
       {told.elapsedS === undefined ? null : (
-        <text x={wide - 4} y={64} textAnchor="end" fontSize="13" fill={QUIET}>
+        <text x={wide - 4} y={task.asks ? 120 : 78} textAnchor="end" fontSize="13" fill={QUIET}>
           {told.elapsedS.toFixed(0)} s{told.ofS ? ` of ${told.ofS.toFixed(0)}` : ""}
         </text>
       )}
+      <rect x="44" y={task.asks ? 132 : 88} width={wide - 44} height="5" rx="2.5" fill="#0e2233" />
+      <rect x="44" y={task.asks ? 132 : 88} width={(wide - 44) * score} height="5" rx="2.5"
+            fill={task.done ? DONE : TASK} />
       {task.done || task.failed ? (
         <text x={WIDE / 2} y={TALL - 54} textAnchor="middle" fontSize="30"
               fill={task.failed ? BELIEF : DONE} fontWeight="600" letterSpacing="3">
