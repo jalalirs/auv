@@ -84,8 +84,11 @@ export interface Reading {
   deadThrusters?: number[];
   /** Up against ground it cannot ride over. */
   againstTheGround?: boolean;
-  /** Where the camera is looking, for the axes drawn in the corner. */
-  camera?: { basis?: { right: number[]; up: number[]; forward: number[] }; upAxis?: string; view?: string };
+  /** Where the camera is, for the axes in the corner and for the overlay:
+      with the eye and the field of view, the world can be drawn onto the
+      picture rather than beside it. */
+  camera?: { basis?: { right: number[]; up: number[]; forward: number[] }; eye?: number[];
+             horizontalFovDeg?: number; verticalFovDeg?: number; upAxis?: string; view?: string };
   t?: number;
   depthM?: number;
   headingDeg?: number;
