@@ -8,7 +8,7 @@
 // an empty panel that explains itself is honest and one that shows invented
 // content so the screen looks finished is not. The second is more tempting.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Platform } from "@coral-city/api";
 
@@ -65,6 +65,10 @@ export function Deck({ platform, onDiving }: {
   const [trouble, setTrouble] = useState("");
   const packages = usePackages(platform, held);
 
+  const held_ = useRef<Held | undefined>(undefined);
+  held_.current = held;
+
+  /** Everything, dives included. Asked for when something has changed. */
   const read = useCallback(async () => {
     try {
       setHeld(await readHeld(platform));
@@ -76,11 +80,21 @@ export function Deck({ platform, onDiving }: {
   useEffect(() => { void read(); }, [read]);
 
   // Kept fresh while somebody is looking at it. A queue that says one GPU is
-  // free is only useful if it was true recently.
+  // free is only useful if it was true recently — but the dives are not that,
+  // and re-reading hundreds of them every ten seconds is a thing to do to a
+  // platform rather than ask of it.
   useEffect(() => {
-    const again = setInterval(() => { void read(); }, 10_000);
+    const again = setInterval(() => {
+      void (async () => {
+        try {
+          setHeld(await readHeld(platform, held_.current));
+        } catch {
+          // A tick that fails keeps what it had; the next one will do.
+        }
+      })();
+    }, 10_000);
     return () => clearInterval(again);
-  }, [read]);
+  }, [platform]);
 
   if (held === undefined) {
     return (

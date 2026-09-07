@@ -16,6 +16,14 @@ export function Runs({ platform, held, onChanged, onReplay }: {
   onReplay: (dive: string, run: string) => void;
 }): React.JSX.Element {
   const [ending, setEnding] = useState<string | undefined>();
+  // A record with a matrix in it is a record somebody has to find one row of.
+  const [sift, setSift] = useState("");
+  const [showing, setShowing] = useState(60);
+  const words = sift.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = words.length === 0 ? held.runs : held.runs.filter(({ name, flownBy }) => {
+    const said = `${name} ${flownBy}`.toLowerCase();
+    return words.every((word) => said.includes(word));
+  });
 
   async function end(dive: string, run: string): Promise<void> {
     setEnding(run);
@@ -58,13 +66,22 @@ export function Runs({ platform, held, onChanged, onReplay }: {
 
       <section>
         <h2>All of them</h2>
+        {held.runs.length > 12 ? (
+          <div className="sift">
+            <input value={sift} onChange={(e) => setSift(e.target.value)}
+                   placeholder={`Search ${held.runs.length} runs — a task, a water, a technology…`} />
+            <span>{shown.length === held.runs.length
+              ? `${held.runs.length} runs`
+              : `${shown.length} of ${held.runs.length}`}</span>
+          </div>
+        ) : null}
         {held.runs.length === 0 ? (
           <Empty title="Nothing has been run yet">
             Dives appear here as soon as you ask for one.
           </Empty>
         ) : (
           <div className="ledger runs">
-            {held.runs.slice(0, 40).map(({ dive, name, flownBy, run }) => (
+            {shown.slice(0, showing).map(({ dive, name, flownBy, run }) => (
               <div className="row" key={run.id}>
                 <div className="who">
                   <strong>{name}</strong>
@@ -81,6 +98,11 @@ export function Runs({ platform, held, onChanged, onReplay }: {
                 </Pill>
               </div>
             ))}
+            {shown.length > showing ? (
+              <button className="quiet more" onClick={() => setShowing(showing + 100)}>
+                {shown.length - showing} more
+              </button>
+            ) : null}
           </div>
         )}
       </section>

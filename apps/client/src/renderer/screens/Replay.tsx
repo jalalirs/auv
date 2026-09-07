@@ -63,6 +63,13 @@ export function Replay({ platform, dive, run, onBack }: {
   const [task, setTask] = useState<TaskLine[]>([]);
   const [manifest, setManifest] = useState<Manifest | undefined>();
   const [at, setAt] = useState(0);
+  // The frames, downloaded and held in memory rather than fetched as the
+  // scrubber moves. Each one was a request to storage over whatever link this
+  // machine has, and at five times speed the next was asked for long before
+  // the last arrived — so the picture never changed at all. A recording is a
+  // few tens of megabytes and downloading it is what a recording is for.
+  const [pictures, setPictures] = useState<Map<string, string>>(new Map());
+  const [fetched, setFetched] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [pace, setPace] = useState(5);
   const [trouble, setTrouble] = useState<string | undefined>();
@@ -132,7 +139,36 @@ export function Replay({ platform, dive, run, onBack }: {
     setPlaying((p) => !p);
   }
 
-  const frames = useMemo(() => new Map((files ?? []).filter((f) => f.path.startsWith("frames/")).map((f) => [f.path, f.url ?? ""])), [files]);
+  const frames = useMemo(
+    () => new Map((files ?? []).filter((f) => f.path.startsWith("frames/")).map((f) => [f.path, f.url ?? ""])),
+    [files]);
+
+  // Downloaded once, a dozen at a time, as soon as the recording is known.
+  useEffect(() => {
+    if (frames.size === 0) return;
+    let gone = false;
+    const held = new Map<string, string>();
+    void (async () => {
+      const paths = [...frames.keys()].sort();
+      for (let from = 0; from < paths.length && !gone; from += 12) {
+        await Promise.all(paths.slice(from, from + 12).map(async (path) => {
+          try {
+            const blob = await (await fetch(frames.get(path)!)).blob();
+            if (!gone) held.set(path, URL.createObjectURL(blob));
+          } catch {
+            // A frame that will not come is one the replay does without.
+          }
+        }));
+        if (gone) break;
+        setPictures(new Map(held));
+        setFetched(held.size);
+      }
+    })();
+    return () => {
+      gone = true;
+      for (const url of held.values()) URL.revokeObjectURL(url);
+    };
+  }, [frames]);
   const pose = poses[at];
   const now = pose?.t ?? 0;
 
@@ -171,10 +207,10 @@ export function Replay({ platform, dive, run, onBack }: {
   const frameUrl = useMemo(() => {
     for (let i = at; i >= 0; i -= 1) {
       const name = poses[i]?.frame;
-      if (name) return frames.get(name);
+      if (name) return pictures.get(name) ?? frames.get(name);
     }
     return undefined;
-  }, [poses, at, frames]);
+  }, [poses, at, frames, pictures]);
 
   const traces = useMemo<Series[]>(() => {
     const t = poses.map((p) => p.t);
@@ -220,6 +256,12 @@ export function Replay({ platform, dive, run, onBack }: {
       <div className="replay">
         <div className="frame">
           {frameUrl ? <img src={frameUrl} alt="what the vehicle saw" /> : <div className="none">no frame yet</div>}
+          {frames.size > 0 && fetched < frames.size ? (
+            <div className="fetching">
+              <span style={{ width: `${(fetched / frames.size) * 100}%` }} />
+              <em>downloading the dive — {fetched} of {frames.size} frames</em>
+            </div>
+          ) : null}
         </div>
         <div className="chart">
           <Minimap site={fitted} track={track} position={position} headingDeg={pose?.headingDeg}
