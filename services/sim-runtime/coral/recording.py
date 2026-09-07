@@ -111,6 +111,12 @@ class Recorder:
         if dive.seabed is not None:
             floor = dive.seabed.under(float(dive.position[0]), float(dive.position[1]))
         pose["altitudeM"] = None if floor is None else round(float(dive.position[2]) - floor, 4)
+        # Where the vehicle believes it is, beside where it is. The gap between
+        # those two is the whole of what a positioning technology buys, and it
+        # is worth having on the frame rather than only in a plot.
+        navigation = getattr(dive, "navigation", None)
+        if navigation is not None:
+            pose["believed"] = [round(float(v), 3) for v in navigation.believed]
         self._poses.write(json.dumps(pose) + "\n")
         self._sensors.write(json.dumps({"t": round(t, 3), **dive.samples()}) + "\n")
         self.poses += 1
@@ -149,9 +155,21 @@ class Recorder:
                 geometry = dive.task.geometry()
             except Exception:
                 geometry = None
+        # What was deployed in this water to give fixes, and where it sits:
+        # the array's transponders, the ship overhead, the beacon on the dock.
+        # A replay that draws the vehicle believing itself somewhere it is not
+        # should be able to draw what would have told it otherwise.
+        positioning = None
+        try:
+            positioning = dive.positioning_said()
+        except Exception:
+            positioning = None
         manifest = {
             "site": self._site or None,
             "geometry": geometry,
+            "positioning": positioning,
+            "vehicle": {"halfWidthM": round(float(getattr(dive, "half_width", 0.25)), 3),
+                        "halfHeightM": round(float(getattr(dive, "half_height", 0.15)), 3)},
             "poses": self.poses,
             "frames": self.frames_taken,
             "posesHz": round(1.0 / self.every, 2),
