@@ -328,17 +328,49 @@ export function Replay({ platform, dive, run, onBack }: {
   }, [site, poses, origin]);
   const track: Fix[] = useMemo(() => poses.slice(0, at + 1).map((p) => shift(p.position[0]!, p.position[1]!)), [poses, at, origin]);
   const progress = useMemo(() => lastBefore(task, now), [task, now]);
-  const geometry = useMemo<Geometry | undefined>(() => {
+  /**
+   * The task's geometry as it stood at this moment, in the world's own metres.
+   *
+   * The recording keeps one geometry, which is the state at the *end* of the
+   * dive: every waypoint reached, every colony treated. Played back as it
+   * stands, a replay shows the task finished from its first frame. What did
+   * change second by second is in the task's own progress, so that is read
+   * back over it — in whatever word that task uses, since only waypoints says
+   * "reached": a revisit samples, a reach arrives, a dock docks, a search
+   * finds, and a treatment records which colonies it has done.
+   */
+  const geometryNow = useMemo<Geometry | undefined>(() => {
     const g = manifest?.geometry;
     if (!g) return undefined;
-    const moved: Geometry = {};
+    const detail = progress?.detail ?? {};
+    const counted = (key: string): number | undefined =>
+      typeof detail[key] === "number" ? (detail[key] as number)
+      : typeof detail[key] === "boolean" ? (detail[key] ? 1 : 0) : undefined;
+    const bits = detail["doneBits"];
+    return {
+      ...g,
+      reached: counted("reached") ?? counted("sampled") ?? counted("arrived")
+        ?? counted("docked") ?? counted("found") ?? g.reached,
+      marks: g.marks && Array.isArray(bits)
+        ? g.marks.map((m, i) => ({
+            ...m, done: (((bits[i >> 3] as number) ?? 0) >> (7 - (i & 7)) & 1) === 1,
+          }))
+        : g.marks,
+    };
+  }, [manifest, progress]);
+
+  /** The same, moved into the chart's frame. */
+  const geometry = useMemo<Geometry | undefined>(() => {
+    const g = geometryNow;
+    if (!g) return undefined;
+    const moved: Geometry = { ...g };
     if (g.circle) moved.circle = { ...g.circle, ...shift(g.circle.x, g.circle.y) };
     if (g.points) moved.points = g.points.map((p) => ({ ...p, ...shift(p.x, p.y) }));
     if (g.line) moved.line = g.line.map((p) => shift(p.x, p.y));
     if (g.rectangle) moved.rectangle = g.rectangle.map((p) => shift(p.x, p.y));
-    moved.reached = typeof progress?.detail?.["reached"] === "number" ? (progress.detail["reached"] as number) : g.reached;
+    if (g.marks) moved.marks = g.marks.map((m) => ({ ...m, ...shift(m.x, m.y) }));
     return moved;
-  }, [manifest, origin, progress]);
+  }, [geometryNow, origin]);
   const position = pose ? [pose.position[0]! - origin[0], pose.position[1]! - origin[1]] : undefined;
   const beganAt = manifest?.beganAt ? [manifest.beganAt[0]! - origin[0], manifest.beganAt[1]! - origin[1]] : undefined;
 
@@ -380,7 +412,7 @@ export function Replay({ platform, dive, run, onBack }: {
       site: manifest?.site ?? null,
       floorM: pose.altitudeM === null || pose.altitudeM === undefined
         ? null : pose.position[2]! - pose.altitudeM,
-      geometry: manifest?.geometry ?? null,
+      geometry: geometryNow ?? null,
       positioning: manifest?.positioning ?? null,
       vehicle: manifest?.vehicle ?? null,
       task: {
@@ -395,7 +427,7 @@ export function Replay({ platform, dive, run, onBack }: {
       ofS: manifest?.seconds,
       showing: hud,
     };
-  }, [pose, progress, manifest, battery, now, hud]);
+  }, [pose, progress, manifest, geometryNow, battery, now, hud]);
 
   const traces = useMemo<Series[]>(() => {
     const t = poses.map((p) => p.t);

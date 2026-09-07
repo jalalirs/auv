@@ -105,6 +105,17 @@ const QUIET = "#c9d8e8";
 export function Hud(told: Told): React.JSX.Element | null {
   if (told.showing === false) return null;
   const lens = told.looking?.eye && told.looking.basis ? new Lens(told.looking) : null;
+  // Where a marker held to the edge must not land. Anything out of shot ends
+  // up against an edge, and the edges are where the instruments are: without
+  // this a transponder writes its range across the battery and a waypoint
+  // parks itself on the heading tape.
+  const keepOut: Box[] = [
+    { x: WIDE - 190, y: 8, wide: 190, tall: 44 },              // the overlay switch
+    { x: WIDE / 2 - 300, y: 0, wide: 600, tall: 88 },           // the heading tape
+    { x: 0, y: TALL / 2 - 60, wide: 230, tall: 150 },           // depth and altitude
+    { x: WIDE - 230, y: TALL / 2 - 60, wide: 230, tall: 150 },  // speed and battery
+  ];
+  if (told.task?.name) keepOut.push({ x: 18, y: 14, wide: 442, tall: told.task.asks ? 152 : 120 });
   return (
     // No filter over this. A drop shadow on the whole overlay looked right and
     // was catastrophic: the group's bounding box takes in a range circle a
@@ -117,9 +128,9 @@ export function Hud(told: Told): React.JSX.Element | null {
       <g>
         {lens === null ? null : (
           <>
-            <Deployed lens={lens} told={told} />
-            <InTheWater lens={lens} told={told} />
-            <Belief lens={lens} told={told} />
+            <Deployed lens={lens} told={told} keepOut={keepOut} />
+            <InTheWater lens={lens} told={told} keepOut={keepOut} />
+            <Belief lens={lens} told={told} keepOut={keepOut} />
             <Vehicle lens={lens} told={told} />
           </>
         )}
@@ -129,6 +140,19 @@ export function Hud(told: Told): React.JSX.Element | null {
       </g>
     </svg>
   );
+}
+
+/**
+ * How far above the bottom a task's own mark stands over a place, if it does.
+ *
+ * Nothing, for a station or a plot. For an inspection it is the height of the
+ * thing being inspected, which is the whole reason there is a ring under it.
+ */
+function overhead(g: Geometry, x: number, y: number, floor: number): number {
+  for (const p of g.points ?? []) {
+    if (Math.hypot(p.x - x, p.y - y) < 0.5) return Math.max(0, -p.depthM - floor);
+  }
+  return 0;
 }
 
 /** A ring lying on the bottom: every point of it at the height under itself. */
@@ -145,7 +169,9 @@ function lying(told: Told, x: number, y: number, radiusM: number, sides = 64): n
 
 // ── the task, drawn where the task is ───────────────────────────────────────
 
-function InTheWater({ lens, told }: { lens: Lens; told: Told }): React.JSX.Element | null {
+function InTheWater({ lens, told, keepOut }: {
+  lens: Lens; told: Told; keepOut: Box[];
+}): React.JSX.Element | null {
   const g = told.geometry;
   if (!g) return null;
   // Everything below is drawn on the bottom, sampled where it is drawn, so a
@@ -175,7 +201,14 @@ function InTheWater({ lens, told }: { lens: Lens; told: Told }): React.JSX.Eleme
             <path d={lens.path(lying(told, g.circle.x, g.circle.y, g.circle.radiusM * 2.4), true)}
                   fill="none" stroke={ink} strokeWidth="1" strokeDasharray="6 8" opacity="0.4" />
           ) : null}
-          <path d={lens.path([on(g.circle.x, g.circle.y), on(g.circle.x, g.circle.y, 0.85)])}
+          {/* A mast, so a ring on the bottom can be found from off to one
+              side. Where the task also marks a point over the same spot — an
+              inspection has its subject some metres up — the mast runs all
+              the way to it, because the ring and the mark are one thing and
+              drawn apart they read as two. */}
+          <path d={lens.path([on(g.circle.x, g.circle.y),
+                              on(g.circle.x, g.circle.y,
+                                 Math.max(0.85, overhead(g, g.circle.x, g.circle.y, ground(told, g.circle.x, g.circle.y))))])}
                 fill="none" stroke={ink} strokeWidth="1.2" opacity="0.55" />
           {ringIs === "" ? null : (
             <Label lens={lens} at={on(g.circle.x, g.circle.y, 1.05)} ink={ink} text={ringIs} />
@@ -204,7 +237,7 @@ function InTheWater({ lens, told }: { lens: Lens; told: Told }): React.JSX.Eleme
         return (
           <Gate key={i} lens={lens} at={[p.x, p.y, -p.depthM]} from={told.position}
                 ink={reached ? DONE : next ? TASK : QUIET} number={i + 1}
-                dim={!next && !reached} ranged={next} />
+                dim={!next && !reached} ranged={next} keepOut={keepOut} />
         );
       })}
 
@@ -214,7 +247,7 @@ function InTheWater({ lens, told }: { lens: Lens; told: Told }): React.JSX.Eleme
       {(g.marks ?? []).map((m, i) => (
         <Gate key={`m${i}`} lens={lens} at={on(m.x, m.y, 0.25)} from={told.position}
               ink={m.done ? DONE : TASK} number={null} dim={m.done === true} ranged={false}
-              small />
+              small keepOut={keepOut} />
       ))}
     </g>
   );
@@ -272,14 +305,17 @@ function Covered({ lens, corners, seen, told }: {
   );
 }
 
-function Gate({ lens, at, from, ink, number, dim, ranged, small }: {
+function Gate({ lens, at, from, ink, number, dim, ranged, small, keepOut }: {
   lens: Lens; at: number[]; from: number[]; ink: string;
-  number: number | null; dim: boolean; ranged: boolean; small?: boolean;
+  number: number | null; dim: boolean; ranged: boolean; small?: boolean; keepOut?: Box[];
 }): React.JSX.Element | null {
   const on = lens.at(at);
   if (on === null) return null;
   const shown = inFrame(on, 0);
-  const held = shown ? on : heldInside(on);
+  // A colony out of shot is not worth an arrow: there are a hundred of them,
+  // and the picture is about the ones in front of you.
+  if (!shown && small) return null;
+  const held = shown ? on : heldInside(on, 26, keepOut);
   // A gate held to the edge is a sign saying which way, not a gate: drawn at
   // the size it would be, it hangs half off the picture.
   const size = shown
@@ -293,8 +329,12 @@ function Gate({ lens, at, from, ink, number, dim, ranged, small }: {
       {number === null ? null : (
         <text x={held.x} y={held.y + 5} textAnchor="middle" fontSize="15" fill={ink} fontWeight="600">{number}</text>
       )}
+      {/* The range goes above the gate, unless above the gate is off the top
+          of the picture — which is where a target up a slope ends up, and the
+          one case where the distance matters most. */}
       {ranged ? (
-        <text x={held.x} y={held.y - size - 8} textAnchor="middle" fontSize="15" fill={ink}>
+        <text x={held.x} y={held.y - size - 8 < 22 ? held.y + size + 17 : held.y - size - 8}
+              textAnchor="middle" fontSize="15" fill={ink}>
           {away.toFixed(1)} m
         </text>
       ) : null}
@@ -304,13 +344,15 @@ function Gate({ lens, at, from, ink, number, dim, ranged, small }: {
 
 // ── what is fixing the vehicle, drawn where it was laid ─────────────────────
 
-function Deployed({ lens, told }: { lens: Lens; told: Told }): React.JSX.Element | null {
+function Deployed({ lens, told, keepOut }: {
+  lens: Lens; told: Told; keepOut: Box[];
+}): React.JSX.Element | null {
   const d = told.positioning;
   if (!d || d.kind === "none") return null;
   // A ship keeping station overhead is above the vehicle, wherever that is.
   if (d.overhead === true) {
     return <Anchor lens={lens} at={[told.position[0]!, told.position[1]!, 0]}
-                   from={told.position} named="ship" heard reach={d.rangeM} />;
+                   from={told.position} named="ship" heard reach={d.rangeM} keepOut={keepOut} />;
   }
   if (!d.at) return null;
   const seabed = (told.beganAt ?? told.position)[2] ?? -10;
@@ -323,8 +365,6 @@ function Deployed({ lens, told }: { lens: Lens; told: Told }): React.JSX.Element
   // What a pinned marker has to keep off: the task card, and the button that
   // puts the overlay away. Both live in corners, and a transponder behind the
   // vehicle is pinned to a corner every frame of every dive.
-  const keepOut: Box[] = [{ x: WIDE - 190, y: 8, wide: 190, tall: 44 }];
-  if (told.task?.name) keepOut.push({ x: 18, y: 14, wide: 442, tall: told.task.asks ? 140 : 108 });
   return (
     <g>
       {anchors.map((a, i) => {
@@ -373,7 +413,9 @@ function Anchor({ lens, at, from, named, heard, keepOut }: {
 
 // ── the two positions ───────────────────────────────────────────────────────
 
-function Belief({ lens, told }: { lens: Lens; told: Told }): React.JSX.Element | null {
+function Belief({ lens, told, keepOut }: {
+  lens: Lens; told: Told; keepOut: Box[];
+}): React.JSX.Element | null {
   const believed = told.believed;
   if (!believed) return null;
   const drift = Math.hypot(believed[0]! - told.position[0]!, believed[1]! - told.position[1]!);
@@ -382,17 +424,28 @@ function Belief({ lens, told }: { lens: Lens; told: Told }): React.JSX.Element |
   if (drift < 0.4) return null;
   const on = lens.at(believed);
   if (on === null) return null;
-  const held = inFrame(on, 0) ? on : heldInside(on);
-  const size = Math.max(9, Math.min(60, lens.metresAcross(on.awayM) * 0.5));
+  const shown = inFrame(on, 40);
+  const held = shown ? on : heldInside(on, 26, keepOut);
+  // A box the size the vehicle would look at that range, while it is in shot.
+  // Held to the edge it is not a place any more, only a direction, so it
+  // shrinks to a mark and writes its distance inwards rather than across
+  // whatever instrument it happens to be standing on.
+  const size = shown ? Math.max(9, Math.min(60, lens.metresAcross(on.awayM) * 0.5)) : 11;
+  const written = writtenFrom(held);
   return (
     <g>
       <path d={lens.path([drawnAt(told), believed])} fill="none" stroke={BELIEF} strokeWidth="1.4"
             strokeDasharray="5 5" opacity="0.75" />
       <rect x={held.x - size} y={held.y - size * 0.5} width={size * 2} height={size}
             fill="none" stroke={BELIEF} strokeWidth="1.6" strokeDasharray="6 4" opacity="0.9" />
-      <text x={held.x} y={held.y - size * 0.5 - 8} textAnchor="middle" fontSize="14" fill={BELIEF}>
-        thinks it is here · {drift.toFixed(1)} m out
-      </text>
+      {shown ? (
+        <text x={held.x} y={held.y - size * 0.5 - 8} textAnchor="middle" fontSize="14" fill={BELIEF}>
+          thinks it is here · {drift.toFixed(1)} m out
+        </text>
+      ) : (
+        <text x={held.x + written.dx} y={held.y + 4} textAnchor={written.anchor} fontSize="14"
+              fill={BELIEF}>{drift.toFixed(1)} m out</text>
+      )}
     </g>
   );
 }
