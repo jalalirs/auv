@@ -353,6 +353,10 @@ class Dive:
         # when one is drawn, and a guess otherwise — a vehicle resting exactly
         # on the floor with its centre on the floor is half buried.
         self.half_height = 0.15
+        # How far the drawn hull sits from the origin the physics uses. Nothing
+        # until a hull is loaded and measured; nothing at all on a dive that
+        # draws nothing.
+        self.hull_offset = [0.0, 0.0, 0.0]
         # And how wide, which is how far ahead of itself it meets a wall.
         self.half_width = 0.3
         # Whether it is up against ground it cannot ride over.
@@ -517,7 +521,30 @@ class Dive:
                 if size is not None:
                     self.half_height = max(0.05, size[2] / 2.0)
                     self.half_width = max(0.1, max(size[0], size[1]) / 2.0)
-                self.say("hull_drawn", file=hull.name, metresAcross=size)
+                # And where it sits relative to the vehicle. The physics has
+                # its origin at the centre of gravity; the geometry has its
+                # origin wherever whoever modelled it put one, and for this
+                # hull that is a fifth of a metre below what is drawn. Nothing
+                # about the dive depends on this — but a marker drawn around
+                # the vehicle on the picture does, and one drawn at the origin
+                # sits visibly under the thing it is marking.
+                #
+                # Taken as a local bound so it is the offset within our own
+                # transform rather than a position in the world, then turned
+                # back into our metres and our idea of up.
+                self.hull_offset = [0.0, 0.0, 0.0]
+                if not drawn.IsEmpty():
+                    local = UsdGeom.BBoxCache(
+                        Usd.TimeCode.Default(), [UsdGeom.Tokens.default_]
+                    ).ComputeLocalBound(prim).ComputeAlignedRange()
+                    if not local.IsEmpty():
+                        middle = local.GetMidpoint()
+                        ours = [float(v) / self.units_per_metre for v in middle]
+                        if self.up_axis == "Y":
+                            ours = [ours[0], -ours[2], ours[1]]
+                        self.hull_offset = [round(v, 4) for v in ours]
+                self.say("hull_drawn", file=hull.name, metresAcross=size,
+                         drawnAboveOriginM=self.hull_offset)
 
             # The reef. Referenced rather than merged, so the seabed stays one
             # file and the coral stays another — a place is layers, and a
@@ -1028,7 +1055,8 @@ class Dive:
                         # How big it is, for a bracket drawn around it on the
                         # picture: a marker the size of the thing it marks.
                         "halfWidthM": round(float(self.half_width), 3),
-                        "halfHeightM": round(float(self.half_height), 3)},
+                        "halfHeightM": round(float(self.half_height), 3),
+                        "offsetM": list(self.hull_offset)},
             "views": list(VIEWS),
             "view": self.view,
             "beganAt": [round(float(v), 3) for v in self.began_at],

@@ -43,7 +43,11 @@ export interface Told {
   beganAt?: number[] | null;
   geometry?: Geometry | null;
   positioning?: Deployment | null;
-  vehicle?: { halfWidthM?: number; halfHeightM?: number } | null;
+  vehicle?: { halfWidthM?: number; halfHeightM?: number;
+              /** Where the drawn hull sits relative to the origin, in the
+                  vehicle's own frame. The physics works at the centre of
+                  gravity and the model was drawn around something else. */
+              offsetM?: number[] } | null;
   task?: {
     name?: string;
     kind?: string;
@@ -256,7 +260,7 @@ function Belief({ lens, told }: { lens: Lens; told: Told }): React.JSX.Element |
   const size = Math.max(9, Math.min(60, lens.metresAcross(on.awayM) * 0.5));
   return (
     <g>
-      <path d={lens.path([told.position, believed])} fill="none" stroke={BELIEF} strokeWidth="1.4"
+      <path d={lens.path([drawnAt(told), believed])} fill="none" stroke={BELIEF} strokeWidth="1.4"
             strokeDasharray="5 5" opacity="0.75" />
       <rect x={held.x - size} y={held.y - size * 0.5} width={size * 2} height={size}
             fill="none" stroke={BELIEF} strokeWidth="1.6" strokeDasharray="6 4" opacity="0.9" />
@@ -268,7 +272,7 @@ function Belief({ lens, told }: { lens: Lens; told: Told }): React.JSX.Element |
 }
 
 function Vehicle({ lens, told }: { lens: Lens; told: Told }): React.JSX.Element | null {
-  const on = lens.at(told.position);
+  const on = lens.at(drawnAt(told));
   if (on === null || !inFrame(on, 120)) return null;
   const half = Math.max(10, lens.metresAcross(on.awayM) * (told.vehicle?.halfWidthM ?? 0.3) * 1.25);
   const arm = half * 0.45;
@@ -282,6 +286,26 @@ function Vehicle({ lens, told }: { lens: Lens; told: Told }): React.JSX.Element 
             fill="none" stroke="#eaf4ff" strokeWidth="1.6" />
     </g>
   );
+}
+
+/**
+ * Where the hull appears, as against where the vehicle is.
+ *
+ * The offset is in the vehicle's own frame, so it turns with the vehicle:
+ * something drawn a fifth of a metre above the origin stays above it through
+ * a yaw and leans with a roll, which is what you see in the picture.
+ */
+export function drawnAt(told: Told): number[] {
+  const offset = told.vehicle?.offsetM;
+  if (offset === undefined || offset.every((v) => v === 0)) return told.position;
+  const heading = (told.headingDeg * Math.PI) / 180;
+  const cos = Math.cos(heading);
+  const sin = Math.sin(heading);
+  return [
+    told.position[0]! + offset[0]! * cos - offset[1]! * sin,
+    told.position[1]! + offset[0]! * sin + offset[1]! * cos,
+    told.position[2]! + (offset[2] ?? 0),
+  ];
 }
 
 function Label({ lens, at, ink, text }: { lens: Lens; at: number[]; ink: string; text: string }):

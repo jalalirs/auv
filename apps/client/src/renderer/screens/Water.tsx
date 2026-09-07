@@ -53,7 +53,7 @@ interface Hello {
   beganAt?: number[];
   task?: { kind: string; name: string; geometry?: Geometry } | null;
   positioning?: { kind: string; at?: number[]; anchors?: number[][]; rangeM?: number; overhead?: boolean };
-  vehicle?: { halfWidthM?: number; halfHeightM?: number };
+  vehicle?: { halfWidthM?: number; halfHeightM?: number; offsetM?: number[] };
   camera?: { basis?: Basis; upAxis?: string; view?: string };
   conditions?: { currentMetresPerSecond: number; currentHeadingDeg: number; current: number[]; visibilityM?: number | null };
 }
