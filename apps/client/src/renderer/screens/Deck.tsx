@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Platform } from "@coral-city/api";
 
+import boot from "../../../assets/boot.jpg";
 import mark from "../../../assets/coral-city.svg";
 import { readHeld, usePackages, type Held, type Packages } from "../platform/held.js";
 import { Autonomy } from "./Autonomy.js";
@@ -99,6 +100,11 @@ export function Deck({ platform, onDiving }: {
   if (held === undefined) {
     return (
       <div className="middle boot">
+        {/* Shown whole rather than cropped to fill: the picture has its own
+            wordmark down the left, and anything that crops to the window eats
+            it on the first narrow screen. The blur behind fills what is left
+            over, so there are no bars and nothing is lost. */}
+        <img className="boot-art" src={boot} alt="" />
         <div className="badge-big">
           <img src={mark} alt="" />
           <strong>Coral City</strong>
