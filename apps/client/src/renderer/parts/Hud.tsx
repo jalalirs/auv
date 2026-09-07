@@ -13,7 +13,8 @@
 // instruments live on the edges of the picture. All of it hangs off the camera
 // the runtime wrote into each frame — see project.ts, which is the whole trick.
 
-import { Lens, WIDE, TALL, heldInside, inFrame, writtenFrom, type Looking, type OnScreen } from "./project.js";
+import { Lens, WIDE, TALL, heldInside, inFrame, writtenFrom,
+         type Box, type Looking, type OnScreen } from "./project.js";
 import type { Geometry } from "./Minimap.js";
 
 /** What was deployed in this water to give fixes, as the record describes it. */
@@ -69,13 +70,15 @@ export function Hud(told: Told): React.JSX.Element | null {
   if (told.showing === false) return null;
   const lens = told.looking?.eye && told.looking.basis ? new Lens(told.looking) : null;
   return (
-    <svg className="hud" viewBox={`0 0 ${WIDE} ${TALL}`} preserveAspectRatio="none" aria-hidden="true">
-      <defs>
-        <filter id="hud-shadow" x="-30%" y="-30%" width="160%" height="160%">
-          <feDropShadow dx="0" dy="1" stdDeviation="2" floodColor="#000" floodOpacity="0.85" />
-        </filter>
-      </defs>
-      <g filter="url(#hud-shadow)">
+    // No filter over this. A drop shadow on the whole overlay looked right and
+    // was catastrophic: the group's bounding box takes in a range circle a
+    // hundred and fifty metres across, whose projection runs to tens of
+    // thousands of units, so the filter region became enormous, the layer was
+    // rasterised at a fraction of the resolution to fit, and the video behind
+    // it came out blurred and three times darker. Text is legible from the
+    // stroke behind it in the stylesheet instead, which costs nothing.
+    <svg className="world-hud" viewBox={`0 0 ${WIDE} ${TALL}`} preserveAspectRatio="none" aria-hidden="true">
+      <g>
         {lens === null ? null : (
           <>
             <Deployed lens={lens} told={told} />
@@ -189,14 +192,18 @@ function Deployed({ lens, told }: { lens: Lens; told: Told }): React.JSX.Element
     // a dock beacon is on the bottom. Both are one thing rather than three.
     : [[d.at[0]!, d.at[1]!, d.kind === "usbl" ? 0 : (d.at[2] ?? seabed)]];
   const named = d.kind === "lbl" ? "transponder" : d.kind === "usbl" ? "ship" : "beacon";
-  const card = told.task?.name ? { x: 18, y: 14, wide: 442, tall: told.task.asks ? 140 : 108 } : undefined;
+  // What a pinned marker has to keep off: the task card, and the button that
+  // puts the overlay away. Both live in corners, and a transponder behind the
+  // vehicle is pinned to a corner every frame of every dive.
+  const keepOut: Box[] = [{ x: WIDE - 190, y: 8, wide: 190, tall: 44 }];
+  if (told.task?.name) keepOut.push({ x: 18, y: 14, wide: 442, tall: told.task.asks ? 140 : 108 });
   return (
     <g>
       {anchors.map((a, i) => {
         const away = Math.hypot(a[0]! - told.position[0]!, a[1]! - told.position[1]!);
         return (
           <Anchor key={i} lens={lens} at={a} from={told.position} named={named}
-                  heard={d.rangeM === undefined || away <= d.rangeM} reach={d.rangeM} keepOut={card} />
+                  heard={d.rangeM === undefined || away <= d.rangeM} reach={d.rangeM} keepOut={keepOut} />
         );
       })}
       {/* Where the array stops working, on the bottom. Leaving it is the
@@ -212,7 +219,7 @@ function Deployed({ lens, told }: { lens: Lens; told: Told }): React.JSX.Element
 
 function Anchor({ lens, at, from, named, heard, keepOut }: {
   lens: Lens; at: number[]; from: number[]; named: string; heard: boolean; reach?: number;
-  keepOut?: { x: number; y: number; wide: number; tall: number };
+  keepOut?: Box[];
 }): React.JSX.Element | null {
   const on = lens.at(at);
   if (on === null) return null;

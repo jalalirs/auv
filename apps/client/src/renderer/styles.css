@@ -1045,8 +1045,13 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 }
 /* The overlay sits exactly on the picture, in the picture's own coordinates,
    and never intercepts a click meant for the video behind it. */
-.hud { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.hud text { font-family: inherit; paint-order: stroke; stroke: rgba(2, 8, 14, 0.75); stroke-width: 3px; }
+/* Not .hud: that name was taken, by the panel of readings the live dive
+   draws in its corner — which has a dark translucent background and a six
+   pixel backdrop blur. An overlay called .hud inherited both and quietly
+   frosted the entire picture it was drawn over, which looks like a rendering
+   fault in the video rather than a stylesheet collision. */
+.world-hud { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.world-hud text { font-family: inherit; paint-order: stroke; stroke: rgba(2, 8, 14, 0.75); stroke-width: 3px; }
 .on-picture {
   position: absolute; right: 14px; bottom: 14px; width: 210px; height: 210px;
   border: 1px solid rgba(160, 200, 235, 0.28); border-radius: 8px; overflow: hidden;
