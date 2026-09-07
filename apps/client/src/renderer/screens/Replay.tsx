@@ -80,6 +80,10 @@ export function Replay({ platform, dive, run, onBack }: {
   const [local, setLocal] = useState<string | undefined>();
   const [downloaded, setDownloaded] = useState(0);
   const [ofBytes, setOfBytes] = useState(0);
+  // What the player is actually doing, shown when it is not showing a
+  // picture. A black rectangle that says nothing is the worst thing a replay
+  // can do, because every explanation for it looks the same from outside.
+  const [player, setPlayer] = useState("opening the video…");
   const [playing, setPlaying] = useState(false);
   const [pace, setPace] = useState(5);
   const [trouble, setTrouble] = useState<string | undefined>();
@@ -252,7 +256,15 @@ export function Replay({ platform, dive, run, onBack }: {
     // assigning the same time is not a seek. So the first frame is got by
     // playing it for an instant and stopping, which is the one thing that
     // always works; after that it is seeked like anything else.
+    const tell = () => setPlayer(
+      showing.error
+        ? `the video would not play — error ${showing.error.code}: ${showing.error.message || "no reason given"}`
+        : showing.readyState >= 2
+          ? ""
+          : `waiting for the video — state ${showing.readyState}, ${(showing.buffered.length > 0
+              ? `${showing.buffered.end(0).toFixed(1)} s buffered` : "nothing buffered yet")}`);
     const go = () => {
+      tell();
       if (showing.readyState < 2) {
         void showing.play().then(() => {
           showing.pause();
@@ -265,11 +277,15 @@ export function Replay({ platform, dive, run, onBack }: {
       if (Math.abs(showing.currentTime - filmed) > 0.2) showing.currentTime = filmed;
     };
     go();
-    showing.addEventListener("loadedmetadata", go);
-    showing.addEventListener("loadeddata", go);
+    for (const when of ["loadedmetadata", "loadeddata", "canplay", "seeked", "error", "stalled"]) {
+      showing.addEventListener(when, go);
+    }
+    const watching = setInterval(tell, 1000);
     return () => {
-      showing.removeEventListener("loadedmetadata", go);
-      showing.removeEventListener("loadeddata", go);
+      clearInterval(watching);
+      for (const when of ["loadedmetadata", "loadeddata", "canplay", "seeked", "error", "stalled"]) {
+        showing.removeEventListener(when, go);
+      }
     };
   }, [filmed, film_url, local]);
 
@@ -357,7 +373,15 @@ export function Replay({ platform, dive, run, onBack }: {
       <div className="replay">
         <div className="frame">
           {film_url !== undefined
-            ? <video ref={film} src={local ?? film_url} muted playsInline preload="auto" />
+            ? <>
+                <video ref={film} src={local ?? film_url} muted playsInline preload="auto" />
+                {player === "" ? null : (
+                  <div className="none">
+                    {player}
+                    <em>{local === undefined ? "from the box" : "from this machine"}</em>
+                  </div>
+                )}
+              </>
             : frameUrl ? <img src={frameUrl} alt="what the vehicle saw" />
             : <div className="none">no frame yet</div>}
           {film_url !== undefined && local === undefined ? (
