@@ -73,17 +73,21 @@ export function Replay({ platform, dive, run, onBack }: {
   const [pictures, setPictures] = useState<Map<string, string>>(new Map());
   const [fetched, setFetched] = useState(0);
   const film = useRef<HTMLVideoElement>(null);
-  // The video, once it is here rather than over there. It streams from
-  // storage the moment it is opened, so there is something to look at, and is
-  // downloaded whole in the background — because scrubbing a video over a
-  // slow link is a black screen and a wait at every drag of the scrubber.
+  // The video, once it is here rather than over there.
+  //
+  // It cannot be played where it lives. The application is a page loaded from
+  // disk, and a page loaded from disk is not allowed to play media fetched
+  // over http — the player refuses it outright, with "media load rejected by
+  // URL safety check", while happily fetching the same bytes with fetch and
+  // showing pictures from the same store. So the recording is downloaded and
+  // played from here, which is what it should do over a slow link anyway.
   const [local, setLocal] = useState<string | undefined>();
   const [downloaded, setDownloaded] = useState(0);
   const [ofBytes, setOfBytes] = useState(0);
   // What the player is actually doing, shown when it is not showing a
   // picture. A black rectangle that says nothing is the worst thing a replay
   // can do, because every explanation for it looks the same from outside.
-  const [player, setPlayer] = useState("opening the video…");
+  const [player, setPlayer] = useState("");
   const [playing, setPlaying] = useState(false);
   const [pace, setPace] = useState(5);
   const [trouble, setTrouble] = useState<string | undefined>();
@@ -250,12 +254,13 @@ export function Replay({ platform, dive, run, onBack }: {
 
   useEffect(() => {
     const showing = film.current;
-    if (showing === null || film_url === undefined) return;
+    if (showing === null || local === undefined) return;
     // A video that has never decoded a frame draws a black rectangle, and
     // seeking it to where it already is does not make it decode one —
     // assigning the same time is not a seek. So the first frame is got by
     // playing it for an instant and stopping, which is the one thing that
     // always works; after that it is seeked like anything else.
+    // Only about the local copy now; there is nothing else it could be doing.
     const tell = () => setPlayer(
       showing.error
         ? `the video would not play — error ${showing.error.code}: ${showing.error.message || "no reason given"}`
@@ -374,7 +379,9 @@ export function Replay({ platform, dive, run, onBack }: {
         <div className="frame">
           {film_url !== undefined
             ? <>
-                <video ref={film} src={local ?? film_url} muted playsInline preload="auto" />
+                {local === undefined ? null : (
+                  <video ref={film} src={local} muted playsInline preload="auto" />
+                )}
                 {player === "" ? null : (
                   <div className="none">
                     {player}
@@ -385,15 +392,17 @@ export function Replay({ platform, dive, run, onBack }: {
             : frameUrl ? <img src={frameUrl} alt="what the vehicle saw" />
             : <div className="none">no frame yet</div>}
           {film_url !== undefined && local === undefined ? (
-            <div className="fetching">
-              <span style={{ width: `${ofBytes > 0 ? (downloaded / ofBytes) * 100 : 0}%` }} />
-              <em>
-                {ofBytes > 0
-                  ? `downloading the dive — ${(downloaded / 1e6).toFixed(1)} of ${(ofBytes / 1e6).toFixed(1)} MB`
-                  : "downloading the dive…"}
-                {" · playing from the box meanwhile"}
-              </em>
-            </div>
+            <>
+              <div className="none">
+                fetching the dive
+                <em>{ofBytes > 0
+                  ? `${(downloaded / 1e6).toFixed(1)} of ${(ofBytes / 1e6).toFixed(1)} MB`
+                  : "asking the box for it"}</em>
+              </div>
+              <div className="fetching">
+                <span style={{ width: `${ofBytes > 0 ? (downloaded / ofBytes) * 100 : 0}%` }} />
+              </div>
+            </>
           ) : null}
           {film_url === undefined && frames.size > 0 && fetched < frames.size ? (
             <div className="fetching">
