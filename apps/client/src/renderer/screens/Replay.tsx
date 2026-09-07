@@ -247,16 +247,30 @@ export function Replay({ platform, dive, run, onBack }: {
   useEffect(() => {
     const showing = film.current;
     if (showing === null || film_url === undefined) return;
-    // Told where to be even when that is where it already is: a video that is
-    // never seeked has never decoded anything, and shows a black rectangle.
+    // A video that has never decoded a frame draws a black rectangle, and
+    // seeking it to where it already is does not make it decode one —
+    // assigning the same time is not a seek. So the first frame is got by
+    // playing it for an instant and stopping, which is the one thing that
+    // always works; after that it is seeked like anything else.
     const go = () => {
-      if (Math.abs(showing.currentTime - filmed) > 0.2 || showing.readyState < 2) {
-        showing.currentTime = filmed;
+      if (showing.readyState < 2) {
+        void showing.play().then(() => {
+          showing.pause();
+          showing.currentTime = filmed;
+        }).catch(() => {
+          showing.currentTime = Math.max(0.04, filmed);
+        });
+        return;
       }
+      if (Math.abs(showing.currentTime - filmed) > 0.2) showing.currentTime = filmed;
     };
-    if (showing.readyState >= 1) go();
+    go();
     showing.addEventListener("loadedmetadata", go);
-    return () => showing.removeEventListener("loadedmetadata", go);
+    showing.addEventListener("loadeddata", go);
+    return () => {
+      showing.removeEventListener("loadedmetadata", go);
+      showing.removeEventListener("loadeddata", go);
+    };
   }, [filmed, film_url, local]);
 
   // The chart. A recording made before the manifest carried the site has no
