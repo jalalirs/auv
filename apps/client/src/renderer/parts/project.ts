@@ -135,11 +135,26 @@ export function inFrame(on: OnScreen | null, margin = 0): on is OnScreen {
     && on.y >= -margin && on.y <= TALL + margin;
 }
 
-/** Held to the picture's edge, so a marker off-screen still says which way. */
-export function heldInside(on: OnScreen, margin = 26): OnScreen {
-  return {
-    ...on,
-    x: Math.max(margin, Math.min(WIDE - margin, on.x)),
-    y: Math.max(margin, Math.min(TALL - margin, on.y)),
-  };
+/**
+ * Held to the picture's edge, so a marker off-screen still says which way.
+ *
+ * `keepOut` is somewhere it must not land — the task card, in practice. A
+ * transponder a hundred metres behind the vehicle is always off screen, so its
+ * marker is always pinned, and pinned to the top left is exactly where the
+ * card is: it would sit under the card's text every frame of every dive.
+ */
+export function heldInside(on: OnScreen, margin = 26,
+                           keepOut?: { x: number; y: number; wide: number; tall: number }): OnScreen {
+  let x = Math.max(margin, Math.min(WIDE - margin, on.x));
+  let y = Math.max(margin, Math.min(TALL - margin, on.y));
+  if (keepOut && x > keepOut.x && x < keepOut.x + keepOut.wide
+      && y > keepOut.y && y < keepOut.y + keepOut.tall) {
+    y = keepOut.y + keepOut.tall + 14;
+  }
+  return { ...on, x, y };
+}
+
+/** Which side of the picture a marker is on, for writing its label inwards. */
+export function writtenFrom(on: OnScreen): { anchor: "start" | "end"; dx: number } {
+  return on.x > WIDE * 0.62 ? { anchor: "end", dx: -12 } : { anchor: "start", dx: 12 };
 }
