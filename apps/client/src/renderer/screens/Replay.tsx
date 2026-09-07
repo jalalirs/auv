@@ -73,6 +73,13 @@ export function Replay({ platform, dive, run, onBack }: {
   const [pictures, setPictures] = useState<Map<string, string>>(new Map());
   const [fetched, setFetched] = useState(0);
   const film = useRef<HTMLVideoElement>(null);
+  // The video, once it is here rather than over there. It streams from
+  // storage the moment it is opened, so there is something to look at, and is
+  // downloaded whole in the background — because scrubbing a video over a
+  // slow link is a black screen and a wait at every drag of the scrubber.
+  const [local, setLocal] = useState<string | undefined>();
+  const [downloaded, setDownloaded] = useState(0);
+  const [ofBytes, setOfBytes] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [pace, setPace] = useState(5);
   const [trouble, setTrouble] = useState<string | undefined>();
@@ -154,6 +161,40 @@ export function Replay({ platform, dive, run, onBack }: {
       .map((f) => [f.path, f.url ?? ""])),
     [files]);
 
+  // The whole video, brought here.
+  useEffect(() => {
+    if (film_url === undefined) return;
+    let gone = false;
+    let held: string | undefined;
+    void (async () => {
+      try {
+        const answer = await fetch(film_url);
+        const size = Number(answer.headers.get("content-length") ?? 0);
+        if (!gone) setOfBytes(size);
+        const reader = answer.body?.getReader();
+        if (reader === undefined) return;
+        const parts: Uint8Array[] = [];
+        let got = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done || gone) break;
+          parts.push(value);
+          got += value.byteLength;
+          setDownloaded(got);
+        }
+        if (gone) return;
+        held = URL.createObjectURL(new Blob(parts as BlobPart[], { type: "video/mp4" }));
+        setLocal(held);
+      } catch {
+        // It is still watchable from storage; this only makes it quick.
+      }
+    })();
+    return () => {
+      gone = true;
+      if (held !== undefined) URL.revokeObjectURL(held);
+    };
+  }, [film_url]);
+
   // Downloaded once, a dozen at a time, as soon as the recording is known.
   // Only for the older recordings; a video is left to the player, which knows
   // how to fetch the part of it that is being watched.
@@ -206,8 +247,17 @@ export function Replay({ platform, dive, run, onBack }: {
   useEffect(() => {
     const showing = film.current;
     if (showing === null || film_url === undefined) return;
-    if (Math.abs(showing.currentTime - filmed) > 0.2) showing.currentTime = filmed;
-  }, [filmed, film_url]);
+    // Told where to be even when that is where it already is: a video that is
+    // never seeked has never decoded anything, and shows a black rectangle.
+    const go = () => {
+      if (Math.abs(showing.currentTime - filmed) > 0.2 || showing.readyState < 2) {
+        showing.currentTime = filmed;
+      }
+    };
+    if (showing.readyState >= 1) go();
+    showing.addEventListener("loadedmetadata", go);
+    return () => showing.removeEventListener("loadedmetadata", go);
+  }, [filmed, film_url, local]);
 
   // The chart. A recording made before the manifest carried the site has no
   // bottom to draw; it is charted about where it began, at the scale it covered.
@@ -288,14 +338,25 @@ export function Replay({ platform, dive, run, onBack }: {
   return (
     <>
       <PageHead title="Replay" back="Dives" onBack={onBack}
-                says={`${poses.length} poses, ${frames.size} frames, ${manifest?.seconds?.toFixed(0) ?? "?"} s`
+                says={`${poses.length} poses, ${manifest?.video?.frames ?? frames.size} frames, ${manifest?.seconds?.toFixed(0) ?? "?"} s`
                   + (manifest?.task?.name ? ` · ${manifest.task.name} ${((manifest.task.score ?? 0) * 100).toFixed(0)}%` : "")} />
       <div className="replay">
         <div className="frame">
           {film_url !== undefined
-            ? <video ref={film} src={film_url} muted playsInline preload="auto" />
+            ? <video ref={film} src={local ?? film_url} muted playsInline preload="auto" />
             : frameUrl ? <img src={frameUrl} alt="what the vehicle saw" />
             : <div className="none">no frame yet</div>}
+          {film_url !== undefined && local === undefined ? (
+            <div className="fetching">
+              <span style={{ width: `${ofBytes > 0 ? (downloaded / ofBytes) * 100 : 0}%` }} />
+              <em>
+                {ofBytes > 0
+                  ? `downloading the dive — ${(downloaded / 1e6).toFixed(1)} of ${(ofBytes / 1e6).toFixed(1)} MB`
+                  : "downloading the dive…"}
+                {" · playing from the box meanwhile"}
+              </em>
+            </div>
+          ) : null}
           {film_url === undefined && frames.size > 0 && fetched < frames.size ? (
             <div className="fetching">
               <span style={{ width: `${(fetched / frames.size) * 100}%` }} />
