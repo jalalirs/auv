@@ -159,8 +159,11 @@ function Gate({ lens, at, from, ink, number, dim, ranged }: {
 }): React.JSX.Element | null {
   const on = lens.at(at);
   if (on === null) return null;
-  const held = inFrame(on, 0) ? on : heldInside(on);
-  const size = Math.max(7, Math.min(46, lens.metresAcross(on.awayM) * 0.8));
+  const shown = inFrame(on, 0);
+  const held = shown ? on : heldInside(on);
+  // A gate held to the edge is a sign saying which way, not a gate: drawn at
+  // the size it would be, it hangs half off the picture.
+  const size = shown ? Math.max(7, Math.min(46, lens.metresAcross(on.awayM) * 0.8)) : 13;
   const away = Math.hypot(at[0]! - from[0]!, at[1]! - from[1]!);
   return (
     <g opacity={dim ? 0.45 : 1}>
@@ -253,7 +256,9 @@ function Belief({ lens, told }: { lens: Lens; told: Told }): React.JSX.Element |
   const believed = told.believed;
   if (!believed) return null;
   const drift = Math.hypot(believed[0]! - told.position[0]!, believed[1]! - told.position[1]!);
-  if (drift < 0.15) return null;      // agreeing is not worth drawing
+  // Below this the two are the same thing to look at, and a box drawn over
+  // the hull every frame says less than the number under the picture does.
+  if (drift < 0.4) return null;
   const on = lens.at(believed);
   if (on === null) return null;
   const held = inFrame(on, 0) ? on : heldInside(on);
