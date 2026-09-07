@@ -227,6 +227,31 @@ command_clean_dives() {
         | grep -Ev '^(BEGIN|SET|COMMIT|DELETE [0-9]+)\$' && rm -f /tmp/coral-clean.sql"
 }
 
+# Forget particular dives, by id, on stdin — one per line. For re-flying a
+# handful that were made against an older simulator: without this, flying them
+# again leaves two runs under one name and the record no longer says which.
+command_forget_dives() {
+    local ids
+    ids="$(cat)"
+    [ -n "${ids}" ] || die "no dive ids on stdin"
+    # Ids are checked here rather than trusted: everything that reaches the
+    # record's shell is built from them.
+    printf '%s\n' "${ids}" | grep -Evq '^[A-Za-z0-9_]+$' && die "those are not dive ids"
+    local count
+    count="$(printf '%s\n' "${ids}" | wc -l | tr -d ' ')"
+    say "Forgetting ${count} dives and everything they left…"
+    {
+        printf 'DROP TABLE IF EXISTS coral_forget;\nCREATE TEMP TABLE coral_forget (id text);\n'
+        printf '%s\n' "${ids}" | sed "s/.*/INSERT INTO coral_forget VALUES ('&');/"
+        cat "${REPO_ROOT}/deployments/box/forget-dives.sql"
+    } > /tmp/coral-forget.sql
+    scp -q /tmp/coral-forget.sql "${GPU_HOST}:/tmp/coral-forget.sql"
+    on_box "docker cp /tmp/coral-forget.sql coral-city-record-1:/tmp/forget.sql && \
+        docker exec coral-city-record-1 psql -U coral -d coral -v ON_ERROR_STOP=1 -f /tmp/forget.sql \
+        | grep -Ev '^(BEGIN|SET|CREATE TABLE|DROP TABLE|INSERT 0 1|COMMIT|DELETE [0-9]+)\$' && rm -f /tmp/coral-forget.sql"
+    rm -f /tmp/coral-forget.sql
+}
+
 command_down() {
     say "Stopping (volumes are kept)…"
     on_box "${COMPOSE} down"
@@ -263,6 +288,7 @@ case "${1:-}" in
     tunnel)  command_tunnel ;;
     tidy)    command_tidy ;;
     clean-dives) command_clean_dives ;;
+    forget-dives) command_forget_dives ;;
     ""|help|-h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' ;;
-    *) die "unknown command: $1 (try: init, up, status, logs, down, tunnel, tidy, clean-dives, secret)" ;;
+    *) die "unknown command: $1 (try: init, up, status, logs, down, tunnel, tidy, clean-dives, forget-dives, secret)" ;;
 esac
