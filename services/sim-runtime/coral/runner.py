@@ -1024,7 +1024,11 @@ class Dive:
             "kind": "hello",
             "site": site,
             "vehicle": {"thrusters": len(self.allocator.model.thrusters),
-                        "capabilityN": [round(float(v), 1) for v in self.capability]},
+                        "capabilityN": [round(float(v), 1) for v in self.capability],
+                        # How big it is, for a bracket drawn around it on the
+                        # picture: a marker the size of the thing it marks.
+                        "halfWidthM": round(float(self.half_width), 3),
+                        "halfHeightM": round(float(self.half_height), 3)},
             "views": list(VIEWS),
             "view": self.view,
             "beganAt": [round(float(v), 3) for v in self.began_at],
