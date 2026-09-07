@@ -715,7 +715,15 @@ class Treat(Task):
     def detail(self) -> dict:
         return {"treated": int(self.treated.sum()), "of": int(len(self.colonies)),
                 "radiusM": self.radius, "reachM": self.reach, "altitudeM": self.altitude,
-                "speedLimitMs": self.speed_limit, "travelledM": round(self.travelled, 1)}
+                "speedLimitMs": self.speed_limit, "travelledM": round(self.travelled, 1),
+                # Which ones, not just how many. The recording's geometry keeps
+                # the colonies and their state at the end of the dive, so a
+                # replay drawing from it shows every colony treated from the
+                # first frame — the one thing a treatment replay is for is
+                # watching them go green in the order they were worked.
+                # A bit each, eight to a byte: a hundred and twenty colonies
+                # is sixteen bytes a second.
+                "doneBits": [int(v) for v in np.packbits(self.treated[:400])]}
 
     def geometry(self) -> dict:
         drawn = {"circle": {"x": float(self.centre[0]), "y": float(self.centre[1]),
