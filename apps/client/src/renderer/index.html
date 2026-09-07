@@ -2,8 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <!--
+      Pictures may come from the store over http, and so may anything fetched;
+      media may not, and must be played from a copy fetched into this page. It
+      is worth saying why, because the symptom is a black rectangle and an
+      error that names none of this: media had no rule of its own here, so it
+      fell to default-src and was refused — while the images beside it, on the
+      same host, loaded. A recording is downloaded and played as a blob, which
+      is what a replay over a slow link should do anyway; http stays out.
+    -->
     <meta http-equiv="Content-Security-Policy"
-          content="default-src 'self'; img-src 'self' data: blob: http: https:; style-src 'self' 'unsafe-inline'; connect-src *" />
+          content="default-src 'self'; img-src 'self' data: blob: http: https:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src *" />
     <title>Coral City</title>
   </head>
   <body>
