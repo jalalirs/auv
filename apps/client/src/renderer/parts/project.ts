@@ -75,6 +75,10 @@ export class Lens {
    * so the crossing point is worked out and the path stops there.
    */
   path(places: number[][], close = false): string {
+    // Kept to a few frames' worth either side. A point a hundred and fifty
+    // metres away and nearly edge-on projects to tens of thousands of units,
+    // and a renderer asked to draw that has to reason about a canvas that size.
+    const near_enough = (v: number): string => Math.max(-4000, Math.min(4000, v)).toFixed(1);
     const ahead = (p: number[]): number =>
       dot([p[0]! - this.eye[0]!, p[1]! - this.eye[1]!, p[2]! - this.eye[2]!], this.forward);
     const near = 0.06;
@@ -85,7 +89,7 @@ export class Lens {
       const here = run[i]!;
       const on = this.at(here);
       if (on !== null) {
-        d += `${drawing ? "L" : "M"}${on.x.toFixed(1)} ${on.y.toFixed(1)}`;
+        d += `${drawing ? "L" : "M"}${near_enough(on.x)} ${near_enough(on.y)}`;
         drawing = true;
         continue;
       }
@@ -105,7 +109,7 @@ export class Lens {
           here[2]! + (other[2]! - here[2]!) * share,
         ]);
         if (edge === null) continue;
-        d += `${drawing ? "L" : "M"}${edge.x.toFixed(1)} ${edge.y.toFixed(1)}`;
+        d += `${drawing ? "L" : "M"}${near_enough(edge.x)} ${near_enough(edge.y)}`;
         drawing = other === next ? false : true;
       }
       if (next === undefined || ahead(next) <= near) drawing = false;
@@ -143,16 +147,19 @@ export function inFrame(on: OnScreen | null, margin = 0): on is OnScreen {
  * marker is always pinned, and pinned to the top left is exactly where the
  * card is: it would sit under the card's text every frame of every dive.
  */
-export function heldInside(on: OnScreen, margin = 26,
-                           keepOut?: { x: number; y: number; wide: number; tall: number }): OnScreen {
-  let x = Math.max(margin, Math.min(WIDE - margin, on.x));
+export function heldInside(on: OnScreen, margin = 26, keepOut: Box[] = []): OnScreen {
+  const x = Math.max(margin, Math.min(WIDE - margin, on.x));
   let y = Math.max(margin, Math.min(TALL - margin, on.y));
-  if (keepOut && x > keepOut.x && x < keepOut.x + keepOut.wide
-      && y > keepOut.y && y < keepOut.y + keepOut.tall) {
-    y = keepOut.y + keepOut.tall + 14;
+  for (const box of keepOut) {
+    if (x > box.x && x < box.x + box.wide && y > box.y && y < box.y + box.tall) {
+      y = box.y + box.tall + 14;
+    }
   }
   return { ...on, x, y };
 }
+
+/** Somewhere a pinned marker must not land: a card, a button. */
+export interface Box { x: number; y: number; wide: number; tall: number }
 
 /** Which side of the picture a marker is on, for writing its label inwards. */
 export function writtenFrom(on: OnScreen): { anchor: "start" | "end"; dx: number } {
