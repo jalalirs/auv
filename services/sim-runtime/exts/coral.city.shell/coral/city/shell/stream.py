@@ -24,6 +24,7 @@ for the next one.
 
 from __future__ import annotations
 
+import queue
 import shutil
 import subprocess
 import threading
@@ -40,9 +41,12 @@ SEQUENCE = 7           # SPS, which comes with the keyframe
 class Encoder:
     """Frames in, H.264 access units out."""
 
-    def __init__(self, wide: int, tall: int, fps: int, on_packet, say,
-                 bitrate: str = "1200k", peak: str = "1800k") -> None:
+    def __init__(self, wide: int, tall: int, fps: int, on_packet=None, say=None,
+                 bitrate: str = "1200k", peak: str = "1800k", into=None) -> None:
         self.wide, self.tall, self.fps = wide, tall, fps
+        # Where it goes: to a callback, packet by packet, for a watcher on a
+        # socket; or into a file, for a recording somebody will play back.
+        self.into = None if into is None else str(into)
         self.on_packet = on_packet
         self.say = say
         self.bitrate, self.peak = bitrate, peak
@@ -53,7 +57,13 @@ class Encoder:
         self.written = 0
         self.dropped = 0
         self.bytes = 0
-        self._writing = threading.Lock()
+        # Frames are handed over rather than written here. A frame is four
+        # megabytes and a pipe holds sixty-four kilobytes, so writing one from
+        # the thread that is running the simulation stops the simulation until
+        # the encoder has caught up — which, at eight frames of a dive per
+        # second of it, stops it altogether.
+        self._waiting: queue.Queue = queue.Queue(maxsize=2)
+        self._writer: threading.Thread | None = None
         self._buffer = bytearray()
         self._headers = b""
 
@@ -77,18 +87,26 @@ class Encoder:
             ("libx264", ["-preset", "ultrafast", "-tune", "zerolatency"]),
         ):
             command = [
-                "ffmpeg", "-hide_banner", "-loglevel", "error",
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                 "-f", "rawvideo", "-pix_fmt", "bgra",
                 "-s", f"{self.wide}x{self.tall}", "-r", str(self.fps), "-i", "-",
                 "-an", "-c:v", codec, *options,
                 "-b:v", self.bitrate, "-maxrate", self.peak, "-bufsize", "300k",
-                "-g", str(self.fps * 2), "-bf", "0", "-aud", "1",
-                "-pix_fmt", "yuv420p", "-f", "h264", "-",
+                "-g", str(self.fps * 2), "-bf", "0",
+                "-pix_fmt", "yuv420p",
             ]
+            if self.into is None:
+                # To a socket: delimited, so whole pictures can be told apart.
+                command += ["-aud", "1", "-f", "h264", "-"]
+            else:
+                # To a file a browser can seek in: the index at the front, so
+                # it can be played before it has finished downloading.
+                command += ["-movflags", "+faststart", "-f", "mp4", self.into]
             try:
-                self.process = subprocess.Popen(command, stdin=subprocess.PIPE,
-                                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                                bufsize=0)
+                self.process = subprocess.Popen(
+                    command, stdin=subprocess.PIPE,
+                    stdout=None if self.into is not None else subprocess.PIPE,
+                    stderr=subprocess.PIPE, bufsize=0)
             except Exception as exc:
                 carb.log_warn(f"Coral City could not start {codec}: {exc}")
                 continue
@@ -96,8 +114,11 @@ class Encoder:
             # cannot get, a driver that will not have it — and the reader
             # notices that and says so.
             self.codec = codec
-            self.reader = threading.Thread(target=self._read, name="coral.video", daemon=True)
-            self.reader.start()
+            self._writer = threading.Thread(target=self._feed, name="coral.video.in", daemon=True)
+            self._writer.start()
+            if self.into is None:
+                self.reader = threading.Thread(target=self._read, name="coral.video", daemon=True)
+                self.reader.start()
             self.say("video_open", codec=codec, wide=self.wide, tall=self.tall,
                      fps=self.fps, bitrate=self.bitrate)
             return True
@@ -108,8 +129,23 @@ class Encoder:
         if process is None:
             return
         try:
+            # Let the writer finish what it has before the input is closed,
+            # or the last second of the recording is not in it.
+            for _ in range(50):
+                if self._waiting.empty():
+                    break
+                threading.Event().wait(0.05)
             if process.stdin:
                 process.stdin.close()
+            if self.into is not None:
+                # A file has to be finished: the index is written when the
+                # encoder is allowed to close, and a killed encoder leaves a
+                # video nothing will play.
+                try:
+                    process.wait(timeout=20)
+                except Exception:
+                    process.terminate()
+                return
             process.terminate()
         except Exception:
             pass
@@ -117,29 +153,40 @@ class Encoder:
     # ── frames ───────────────────────────────────────────────────────────────
 
     def write(self, frame: bytes) -> None:
-        """One raw BGRA frame. Dropped rather than queued if the pipe is full."""
-        process = self.process
-        if process is None or process.stdin is None:
-            return
-        if not self._writing.acquire(blocking=False):
-            self.dropped += 1
+        """One raw BGRA frame, handed to the writer. Never blocks the caller."""
+        if self.process is None:
             return
         try:
-            # Every byte of it, in a loop. An unbuffered pipe writes what fits
-            # and tells you how much that was; ignoring the answer tears the
-            # frame in half and hands the encoder two of somebody else's.
-            at, whole = 0, len(frame)
-            while at < whole:
-                wrote = process.stdin.write(frame[at:])
-                if not wrote:
-                    break
-                at += wrote
-            self.written += 1
-        except (BrokenPipeError, ValueError, OSError) as exc:
-            self.say("video_stopped", why=str(exc)[:120], sent=self.sent)
-            self.process = None
-        finally:
-            self._writing.release()
+            self._waiting.put_nowait(frame)
+        except queue.Full:
+            # A late frame of a live picture is no use, and a dropped one of a
+            # recording is an eighth of a second. Either beats stopping the
+            # simulation to wait for an encoder.
+            self.dropped += 1
+
+    def _feed(self) -> None:
+        """Frames into the encoder, on a thread of their own."""
+        while True:
+            frame = self._waiting.get()
+            process = self.process
+            if frame is None or process is None or process.stdin is None:
+                return
+            try:
+                # Every byte of it, in a loop. An unbuffered pipe writes what
+                # fits and says how much that was; ignoring the answer tears
+                # the frame in half and hands the encoder two of somebody
+                # else's.
+                at, whole = 0, len(frame)
+                while at < whole:
+                    wrote = process.stdin.write(frame[at:])
+                    if not wrote:
+                        break
+                    at += wrote
+                self.written += 1
+            except (BrokenPipeError, ValueError, OSError) as exc:
+                self.say("video_stopped", why=str(exc)[:120], sent=self.sent)
+                self.process = None
+                return
 
     def _read(self) -> None:
         """Annex-B out of the encoder, split into whole pictures."""
@@ -221,7 +268,8 @@ class Encoder:
         return bytes(kept)
 
     def said(self) -> dict:
-        return {"codec": self.codec, "packets": self.sent, "framesIn": self.written,
+        return {"codec": self.codec, "into": self.into,
+                "packets": self.sent, "framesIn": self.written,
                 "bytes": self.bytes,
                 "droppedFrames": self.dropped,
                 "kbPerSecond": None if self.sent == 0

@@ -21,13 +21,27 @@ import numpy as np
 
 
 class Recorder:
-    def __init__(self, into: pathlib.Path, hz: float = 5.0, frames_hz: float = 1.0) -> None:
+    # How many pictures a second of the dive the recording keeps.
+    #
+    # It was one, which is a slideshow: four hundred seconds of dive came back
+    # as three hundred and seventy stills, and no amount of downloading them
+    # first makes one picture a second look like movement. Eight is a dive
+    # somebody can watch, and as video rather than as eight files a second it
+    # is smaller than the stills were.
+    FRAMES_HZ = 8.0
+
+    def __init__(self, into: pathlib.Path, hz: float = 5.0, frames_hz: float = FRAMES_HZ) -> None:
         self.into = into
         self.frames = into / "frames"
         self.every = 1.0 / hz
         self.frame_every = 1.0 / frames_hz
         self.into.mkdir(parents=True, exist_ok=True)
-        self.frames.mkdir(parents=True, exist_ok=True)
+        # The dive as one video, whose clock is the dive's clock: a frame is
+        # captured every eighth of a simulated second and encoded at eight a
+        # second, so a moment in the recording is at that many seconds in the
+        # video and a player can simply be told where to go.
+        self.video = None
+        self.video_name = "dive.mp4"
         # Line-buffered, so a dive that is stopped without ceremony still
         # leaves every line it wrote; a manifest is rewritten as it goes for
         # the same reason.
@@ -44,14 +58,33 @@ class Recorder:
         self.frame_name: str | None = None
         self._site: dict | None = None
 
-    def due_frame(self, t: float) -> str | None:
-        """The frame file to write now, or None; the caller captures it."""
+    def due(self, t: float) -> bool:
+        """Whether a picture is owed at this moment of the dive."""
         if t - self.last_frame < self.frame_every:
-            return None
+            return False
         self.last_frame = t
+        return True
+
+    def captured(self) -> None:
+        """A frame has actually been written into the video.
+
+        Counted here rather than when one is owed, because the two are not the
+        same: a capture that was still in flight when the next was due is a
+        frame the video does not have, and a pose pointing at a frame that was
+        never written is a replay showing the wrong moment. The pose points at
+        the frame's place in the video, and the video is played by going to it.
+        """
         self.frames_taken += 1
-        self.frame_name = f"frames/{self.frames_taken:06d}.jpg"
-        return str(self.into / self.frame_name)
+        self.frame_name = f"{self.video_name}#{self.frames_taken - 1}"
+
+    def video_wanted(self) -> tuple[int, str]:
+        """What an encoder for this recording should be: its rate, and where.
+
+        The encoder itself belongs to whoever can capture a frame — the shell
+        extension — because it is the only thing that knows how big a frame is
+        until one arrives. This says what it should be told.
+        """
+        return int(round(1.0 / self.frame_every)), str(self.into / self.video_name)
 
     def step(self, dive) -> None:
         t = float(dive.simulated)
@@ -88,6 +121,10 @@ class Recorder:
         for handle in (self._poses, self._sensors, self._task):
             handle.flush()
             handle.close()
+        if self.video:
+            # Finished rather than killed: the index at the front of a video is
+            # written as the encoder closes, and without it nothing will play.
+            self.video.stop()
         manifest = self.manifest(dive, camera, closed=True)
         (self.into / "manifest.json").write_text(json.dumps(manifest, indent=2))
         return manifest
@@ -119,6 +156,9 @@ class Recorder:
             "beganAt": [round(float(v), 3) for v in dive.began_at],
             "camera": camera,
             "task": None if dive.task is None else dive.task.result(),
+            "video": {"file": self.video_name,
+                       "framesPerSecond": round(1.0 / self.frame_every, 2),
+                       "frames": self.frames_taken} if self.video else None,
             "files": ["poses.jsonl", "sensors.jsonl", "task.jsonl", "manifest.json"],
             "closed": closed,
         }

@@ -24,18 +24,22 @@ def test_a_survey_records_poses_sensors_task_and_a_manifest():
     dive.begin_task({"kind": "survey", "widthM": 10, "heightM": 5})
     assert dive.view == "down", "a survey looks down"
     while not dive.done:
-        dive.recorder.due_frame(dive.simulated)
+        if dive.recorder.due(dive.simulated):
+            dive.recorder.captured()
         dive.step()
     dive.close()
 
     manifest = json.loads((into / "manifest.json").read_text())
-    assert manifest["poses"] == 20 and manifest["frames"] == 4
+    assert manifest["poses"] == 20 and manifest["frames"] == 32
     assert manifest["camera"]["focalLengthMm"] == 21
     assert manifest["task"]["kind"] == "survey"
     assert "rectangle" in manifest["geometry"], "a replay draws what the task asked for"
     assert "site" in manifest, "a replay's chart stands on the recording alone"
     poses = [json.loads(line) for line in (into / "poses.jsonl").read_text().splitlines()]
-    assert poses[0]["view"] == "down" and poses[-1]["frame"] == "frames/000004.jpg"
+    assert poses[0]["view"] == "down"
+    # A pose points at a moment in the dive's video rather than at a file of
+    # its own, because the video's clock is the dive's clock.
+    assert poses[-1]["frame"].startswith("dive.mp4#")
     sensors = [json.loads(line) for line in (into / "sensors.jsonl").read_text().splitlines()]
     assert "/depth" in sensors[0] and len(sensors) == 20
     kinds = [kind for kind, _ in said]
