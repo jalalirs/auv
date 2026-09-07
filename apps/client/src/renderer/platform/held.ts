@@ -49,7 +49,17 @@ export interface Packages {
   vehicles: Map<string, VehiclePackage | null>;
 }
 
-export async function readHeld(platform: Platform): Promise<Held> {
+/**
+ * What a refresh is for.
+ *
+ * The catalogue is cheap and wants to be current: a queue that says a machine
+ * is free is only useful if it was true seconds ago. The dives are neither —
+ * with a matrix in the record that is hundreds of requests, and nothing about
+ * them changes between one ten-second tick and the next unless somebody is
+ * flying. So a tick reads the catalogue and keeps the dives it already had,
+ * and the dives are read afresh only when the application asks for them.
+ */
+export async function readHeld(platform: Platform, keep?: Held): Promise<Held> {
   const [me, places, vehicles, queues] = await Promise.all([
     platform.me(), platform.places(), platform.vehicles(), platform.queues(),
   ]);
@@ -63,16 +73,31 @@ export async function readHeld(platform: Platform): Promise<Held> {
   if (institution !== undefined) {
     stacks = (await platform.autonomy(institution.id).catch((): AutonomyStack[] => []))
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    // Every dive the institution has, not the last dozen. Twelve was fine
+    // when twelve was all there were; a matrix of two hundred and seventy-five
+    // is a record with two hundred and seventy-five things to look at, and a
+    // Dives page that quietly shows the newest few of them is a page that
+    // lies about what was run.
+    //
+    // The platform keeps runs under their dive, so this is one request each.
+    // In batches, because two hundred and seventy-five at once is a thing to
+    // do to a machine rather than ask of it.
+    if (keep !== undefined) {
+      return { ...keep, you: me.principal, institution, places, vehicles, queues };
+    }
     const dives = await platform.dives(institution.id);
-    const each = await Promise.all(
-      dives.slice(0, 12).map(async (dive) => (await platform.runs(dive.id))
-        .map((run) => ({
-          dive: dive.id, name: dive.name, run,
-          flownBy: dive.autonomyStackId
-            ? (stacks.find((s) => s.id === dive.autonomyStackId)?.name ?? "a stack since gone")
-            : "by hand",
-        }))));
-    runs = each.flat().sort((a, b) => (a.run.requestedAt < b.run.requestedAt ? 1 : -1));
+    const named = (dive: { id: string; name: string; autonomyStackId?: string | null }) =>
+      dive.autonomyStackId
+        ? (stacks.find((s) => s.id === dive.autonomyStackId)?.name ?? "a stack since gone")
+        : "by hand";
+    const gathered: { dive: string; name: string; flownBy: string; run: Run }[] = [];
+    for (let at = 0; at < dives.length; at += 24) {
+      const batch = await Promise.all(dives.slice(at, at + 24).map(async (dive) =>
+        (await platform.runs(dive.id).catch((): Run[] => []))
+          .map((run) => ({ dive: dive.id, name: dive.name, run, flownBy: named(dive) }))));
+      gathered.push(...batch.flat());
+    }
+    runs = gathered.sort((a, b) => (a.run.requestedAt < b.run.requestedAt ? 1 : -1));
   }
   return { you: me.principal, institution, places, vehicles, queues, runs, stacks, controllers: controllersOf(stacks) };
 }
