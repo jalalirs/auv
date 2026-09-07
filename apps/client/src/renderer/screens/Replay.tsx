@@ -44,6 +44,8 @@ interface Manifest {
   task?: { name?: string; score?: number; done?: boolean; achieved?: Record<string, unknown> } | null;
   site?: Site | null;
   geometry?: Geometry | null;
+  /** The dive as one video, whose clock is the dive's clock. */
+  video?: { file: string; framesPerSecond: number; frames: number } | null;
 }
 
 /** One trace under the scrubber: a series over the dive, its name, its unit. */
@@ -70,6 +72,7 @@ export function Replay({ platform, dive, run, onBack }: {
   // few tens of megabytes and downloading it is what a recording is for.
   const [pictures, setPictures] = useState<Map<string, string>>(new Map());
   const [fetched, setFetched] = useState(0);
+  const film = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [pace, setPace] = useState(5);
   const [trouble, setTrouble] = useState<string | undefined>();
@@ -139,13 +142,23 @@ export function Replay({ platform, dive, run, onBack }: {
     setPlaying((p) => !p);
   }
 
+  // A recording is one video now: eight pictures a second, whose clock is the
+  // dive's clock, so playing it is telling it where to be. Older recordings
+  // are a picture a second in separate files, and those still work.
+  const film_url = useMemo(
+    () => (files ?? []).find((f) => f.path.endsWith(".mp4"))?.url,
+    [files]);
+
   const frames = useMemo(
-    () => new Map((files ?? []).filter((f) => f.path.startsWith("frames/")).map((f) => [f.path, f.url ?? ""])),
+    () => new Map((files ?? []).filter((f) => f.path.startsWith("frames/") && f.path.endsWith(".jpg"))
+      .map((f) => [f.path, f.url ?? ""])),
     [files]);
 
   // Downloaded once, a dozen at a time, as soon as the recording is known.
+  // Only for the older recordings; a video is left to the player, which knows
+  // how to fetch the part of it that is being watched.
   useEffect(() => {
-    if (frames.size === 0) return;
+    if (frames.size === 0 || film_url !== undefined) return;
     let gone = false;
     const held = new Map<string, string>();
     void (async () => {
@@ -168,9 +181,33 @@ export function Replay({ platform, dive, run, onBack }: {
       gone = true;
       for (const url of held.values()) URL.revokeObjectURL(url);
     };
-  }, [frames]);
+  }, [frames, film_url]);
+
   const pose = poses[at];
   const now = pose?.t ?? 0;
+
+  // Where in the video this moment of the dive is.
+  //
+  // Not the moment itself: a frame that was owed while the last one was still
+  // being read back is a frame the video does not have, so the poses point at
+  // the frame's place in the video and that is what the player is told. The
+  // dive's clock and the video's clock are different clocks, and pretending
+  // they are one shows the wrong moment.
+  const filmed = useMemo(() => {
+    const fps = manifest?.video?.framesPerSecond ?? 8;
+    for (let i = at; i >= 0; i -= 1) {
+      const name = poses[i]?.frame;
+      const at_ = name?.indexOf("#") ?? -1;
+      if (name && at_ >= 0) return Number(name.slice(at_ + 1)) / Math.max(1, fps);
+    }
+    return 0;
+  }, [poses, at, manifest]);
+
+  useEffect(() => {
+    const showing = film.current;
+    if (showing === null || film_url === undefined) return;
+    if (Math.abs(showing.currentTime - filmed) > 0.2) showing.currentTime = filmed;
+  }, [filmed, film_url]);
 
   // The chart. A recording made before the manifest carried the site has no
   // bottom to draw; it is charted about where it began, at the scale it covered.
@@ -255,8 +292,11 @@ export function Replay({ platform, dive, run, onBack }: {
                   + (manifest?.task?.name ? ` · ${manifest.task.name} ${((manifest.task.score ?? 0) * 100).toFixed(0)}%` : "")} />
       <div className="replay">
         <div className="frame">
-          {frameUrl ? <img src={frameUrl} alt="what the vehicle saw" /> : <div className="none">no frame yet</div>}
-          {frames.size > 0 && fetched < frames.size ? (
+          {film_url !== undefined
+            ? <video ref={film} src={film_url} muted playsInline preload="auto" />
+            : frameUrl ? <img src={frameUrl} alt="what the vehicle saw" />
+            : <div className="none">no frame yet</div>}
+          {film_url === undefined && frames.size > 0 && fetched < frames.size ? (
             <div className="fetching">
               <span style={{ width: `${(fetched / frames.size) * 100}%` }} />
               <em>downloading the dive — {fetched} of {frames.size} frames</em>

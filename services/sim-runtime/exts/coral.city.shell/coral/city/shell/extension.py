@@ -34,6 +34,9 @@ from .tour import Ladder, Tour
 # the headless runner uses too.
 CORAL = pathlib.Path("/isaac-sim/coral")
 
+# How much faster than the clock on the wall a dive nobody is watching may run.
+MOST_TIMES_REAL = 4.0
+
 # How far behind wall-clock time the physics is allowed to fall before it stops
 # trying to catch up. Without a bound, one slow frame makes the next frame ask
 # for more steps, which makes it slower still.
@@ -123,6 +126,7 @@ class CoralCityShell(omni.ext.IExt):
         self._camera_published_at = 0.0
         # The video encoder, opened only when a watcher says it can decode one.
         self.video = None
+        self._recording_frame = False
         self._wants_video = False
         self._video_said_at = 0.0
         self._whole_at = 0.0
@@ -461,10 +465,20 @@ class CoralCityShell(omni.ext.IExt):
         # what it leaves behind is the same either way — and so is the
         # trajectory, because the step is the same fixed step.
         if self._free_running():
+            # As fast as the machine will carry it, up to a point. A dive that
+            # is recording captures eight frames of itself per second of dive,
+            # so running twenty times real time means a hundred and sixty
+            # readbacks a second — which is not fast, it is a stall. Four times
+            # is quick and leaves the machine able to do it.
             until = time.monotonic() + 0.02
             owed = dive.simulated + (self.dive.recorder.frame_every
                                      if dive.recorder is not None else 1.0)
-            while not dive.done and dive.simulated < owed and time.monotonic() < until:
+            allowed = (time.monotonic() - self.began) * MOST_TIMES_REAL
+            # And not at all while the recording is waiting on a frame: a dive
+            # that runs on past a capture it has not taken is a dive whose
+            # video is missing the moment it went past.
+            while (not dive.done and dive.simulated < owed and not self._recording_frame
+                   and dive.simulated < allowed and time.monotonic() < until):
                 dive.step()
         else:
             behind = min((time.monotonic() - self.began) - dive.simulated,
@@ -713,24 +727,54 @@ class CoralCityShell(omni.ext.IExt):
     def _record_a_frame(self, dive) -> None:
         """A frame for the recording, when one is due.
 
-        Through the same capture as the photographs, to a file beside the
-        brief. What is recorded is what the viewport is looking through — the
-        survey camera when nobody has asked for another view — and the pose
-        line written beside it says which view that was.
+        Asked for as raw pixels rather than written out as a picture, because
+        the recording is a video now: one capture goes into an encoder whose
+        clock is the dive's clock. What is recorded is what the viewport is
+        looking through — the survey camera when nobody has asked for another
+        view — and the pose line beside it says which view that was.
         """
         recorder = getattr(dive, "recorder", None)
-        if recorder is None:
+        if recorder is None or self._recording_frame:
             return
-        path = recorder.due_frame(float(dive.simulated))
-        if path is None:
+        if not recorder.due(float(dive.simulated)):
             return
         try:
-            from omni.kit.viewport.utility import capture_viewport_to_file, get_active_viewport
+            from omni.kit.viewport.utility import get_active_viewport
+            from omni.kit.widget.viewport.capture import ByteCapture
 
             viewport = get_active_viewport()
             if viewport is None:
                 return
-            capture_viewport_to_file(viewport, path)
+            self._recording_frame = True
+            viewport.schedule_capture(ByteCapture(self._recorded))
+        except Exception as exc:
+            self._recording_frame = False
+            if not self._complained:
+                self._complained = True
+                carb.log_warn(f"Coral City could not record a frame: {exc}")
+
+    def _recorded(self, buffer, size, wide, tall, fmt=None) -> None:
+        """A captured frame, into the recording's video."""
+        self._recording_frame = False
+        recorder = getattr(self.dive, "recorder", None)
+        if recorder is None:
+            return
+        try:
+            import cv2
+            import numpy as np
+
+            if recorder.video is None:
+                from .stream import Encoder
+
+                fps, into = recorder.video_wanted()
+                video = Encoder(wide, tall, fps, say=self._say,
+                                bitrate="900k", peak="1400k", into=into)
+                recorder.video = video if video.start() else False
+            if not recorder.video:
+                return
+            frame = np.frombuffer(bytes_of(buffer, size), dtype=np.uint8).reshape(tall, wide, 4)
+            recorder.video.write(cv2.cvtColor(frame, cv2.COLOR_RGBA2BGRA).tobytes())
+            recorder.captured()
         except Exception as exc:
             if not self._complained:
                 self._complained = True

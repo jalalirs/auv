@@ -999,6 +999,8 @@ func mediaTypeOf(path string) string {
 		return "image/jpeg"
 	case ".png":
 		return "image/png"
+	case ".mp4":
+		return "video/mp4"
 	case ".json":
 		return "application/json"
 	case ".jsonl":
