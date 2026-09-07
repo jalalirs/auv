@@ -42,11 +42,23 @@ SSH = ["ssh", "-o", "ControlMaster=auto", "-o", "ControlPersist=600",
        "-o", "ControlPath=/tmp/coral-matrix-%r@%h:%p", BOX]
 
 
-def over_the_wire(command: str, feed: str | None = None, tries: int = 4) -> str:
+def over_the_wire(command: str, feed: str | None = None, tries: int = 9) -> str:
     """Run something on the box, and do not give up on a dropped connection.
 
     A matrix takes hours and a link that never blinks in that time does not
     exist. Losing one request is not losing the run.
+
+    How long to wait before giving up is the whole question. The box is shared
+    and it is not always ours: a heavy build, somebody else's job, four
+    simulators at once, and it stops answering ssh entirely for a minute or
+    two — this run has already been killed once by exactly that, eighteen
+    seconds of patience against a two-minute outage. So the waiting grows to
+    minutes and the total is the better part of ten, which is longer than the
+    box has ever been away and still shorter than the hours a matrix takes.
+
+    The shared connection is dropped on the way, because a master socket whose
+    connection died is a socket every later attempt fails on instantly; the
+    next attempt then opens a fresh one.
     """
     trouble = None
     for attempt in range(tries):
@@ -56,7 +68,9 @@ def over_the_wire(command: str, feed: str | None = None, tries: int = 4) -> str:
             return done.stdout.strip()
         except subprocess.CalledProcessError as failed:
             trouble = failed
-            time.sleep(3 * (attempt + 1))
+            subprocess.run([*SSH[:-1], "-O", "exit", SSH[-1]],
+                           capture_output=True, text=True)
+            time.sleep(min(90, 4 * 2 ** attempt))
     raise RuntimeError(f"the box stopped answering: {trouble}")
 
 # ── what gets crossed ────────────────────────────────────────────────────────
