@@ -30,6 +30,8 @@ export interface Geometry {
   rectangle?: { x: number; y: number }[];
   /** Colonies a treatment is working through, and which are done. */
   marks?: { x: number; y: number; done?: boolean }[];
+  /** A survey's coverage: a grid over the rectangle, a bit to the cell. */
+  seen?: { rows: number; columns: number; cells: number[] };
 }
 
 export function Minimap({ site, track, position, headingDeg, beganAt, geometry, current, marks,

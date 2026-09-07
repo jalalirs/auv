@@ -107,6 +107,12 @@ function InTheWater({ lens, told }: { lens: Lens; told: Told }): React.JSX.Eleme
   const floor = (told.beganAt ?? told.position)[2] ?? told.position[2]!;
   const done = told.task?.done === true;
   const ink = done ? DONE : TASK;
+  // A ring means a different thing to each task that draws one, and the word
+  // for it is the task's, not the shape's: the same circle is the station to
+  // hold, the dock to come home to, the plot to work through, or the thing to
+  // go and look at.
+  const ringIs = { "hold-station": "station", return: "home", treat: "the plot",
+                   inspect: "the mark", dock: "the dock" }[told.task?.kind ?? ""] ?? "";
   return (
     <g>
       {g.circle ? (
@@ -119,7 +125,9 @@ function InTheWater({ lens, told }: { lens: Lens; told: Told }): React.JSX.Eleme
                 fill="none" stroke={ink} strokeWidth="1" strokeDasharray="6 8" opacity="0.4" />
           <path d={lens.path([[g.circle.x, g.circle.y, floor], [g.circle.x, g.circle.y, floor + 0.85]])}
                 fill="none" stroke={ink} strokeWidth="1.2" opacity="0.55" />
-          <Label lens={lens} at={[g.circle.x, g.circle.y, floor + 1.05]} ink={ink} text="station" />
+          {ringIs === "" ? null : (
+            <Label lens={lens} at={[g.circle.x, g.circle.y, floor + 1.05]} ink={ink} text={ringIs} />
+          )}
         </>
       ) : null}
 
@@ -129,8 +137,11 @@ function InTheWater({ lens, told }: { lens: Lens; told: Told }): React.JSX.Eleme
       ) : null}
 
       {g.rectangle ? (
-        <path d={lens.path(g.rectangle.map((p) => [p.x, p.y, floor]), true)} fill="none"
-              stroke={ink} strokeWidth="2" opacity="0.8" />
+        <>
+          <Covered lens={lens} corners={g.rectangle} seen={g.seen} floor={floor} />
+          <path d={lens.path(g.rectangle.map((p) => [p.x, p.y, floor]), true)} fill="none"
+                stroke={ink} strokeWidth="2" opacity="0.8" />
+        </>
       ) : null}
 
       {/* Waypoints as gates standing in the water: reached ones go quiet, the
@@ -145,17 +156,70 @@ function InTheWater({ lens, told }: { lens: Lens; told: Told }): React.JSX.Eleme
         );
       })}
 
+      {/* Colonies. Small marks, at a size that says "this one" rather than
+          covering it: a colony is a thing you are meant to see under the
+          marker, and forty of them at gate size is a picture of markers. */}
       {(g.marks ?? []).map((m, i) => (
         <Gate key={`m${i}`} lens={lens} at={[m.x, m.y, floor]} from={told.position}
-              ink={m.done ? DONE : TASK} number={null} dim={m.done === true} ranged={false} />
+              ink={m.done ? DONE : TASK} number={null} dim={m.done === true} ranged={false}
+              small />
       ))}
     </g>
   );
 }
 
-function Gate({ lens, at, from, ink, number, dim, ranged }: {
+/**
+ * What a survey has actually covered, painted on the bottom.
+ *
+ * A survey is scored on the fraction of its rectangle the camera has been
+ * over, and that fraction is the one thing about it worth watching: which
+ * lanes are done, where the gaps are, whether the turn at the end left a
+ * strip. It arrives as a bit per cell, packed eight to a byte, so it is
+ * unpacked here and drawn as runs along each row rather than as one path per
+ * cell — a run of twenty cells is one quad and looks like a painted stripe,
+ * which is what it is.
+ */
+function Covered({ lens, corners, seen, floor }: {
+  lens: Lens; corners: { x: number; y: number }[];
+  seen?: { rows: number; columns: number; cells: number[] }; floor: number;
+}): React.JSX.Element | null {
+  if (seen === undefined || corners.length < 4 || seen.rows < 1 || seen.columns < 1) return null;
+  const origin = corners[0]!;
+  const along = corners[1]!;      // the width edge
+  const across = corners[3]!;     // and the height edge
+  const u = [(along.x - origin.x) / seen.columns, (along.y - origin.y) / seen.columns];
+  const v = [(across.x - origin.x) / seen.rows, (across.y - origin.y) / seen.rows];
+  const covered = (r: number, c: number): boolean => {
+    const bit = r * seen.columns + c;
+    return ((seen.cells[bit >> 3] ?? 0) >> (7 - (bit & 7)) & 1) === 1;
+  };
+  const at = (a: number, b: number): number[] =>
+    [origin.x + u[0]! * a + v[0]! * b, origin.y + u[1]! * a + v[1]! * b, floor + 0.02];
+  const stripes: string[] = [];
+  for (let r = 0; r < seen.rows; r += 1) {
+    let from: number | null = null;
+    for (let c = 0; c <= seen.columns; c += 1) {
+      const on = c < seen.columns && covered(r, c);
+      if (on && from === null) from = c;
+      if (!on && from !== null) {
+        stripes.push(lens.path([at(from, r), at(c, r), at(c, r + 1), at(from, r + 1)], true));
+        from = null;
+      }
+    }
+  }
+  return (
+    <g>
+      {stripes.map((d, i) => (
+        <path key={i} d={d} fill={DONE} fillOpacity="0.16" stroke={DONE} strokeOpacity="0.25"
+              strokeWidth="0.7" />
+      ))}
+    </g>
+  );
+}
+
+function Gate({ lens, at, from, ink, number, dim, ranged, small }: {
   lens: Lens; at: number[]; from: number[]; ink: string;
-  number: number | null; dim: boolean; ranged: boolean;
+  number: number | null; dim: boolean; ranged: boolean; small?: boolean;
 }): React.JSX.Element | null {
   const on = lens.at(at);
   if (on === null) return null;
@@ -163,7 +227,9 @@ function Gate({ lens, at, from, ink, number, dim, ranged }: {
   const held = shown ? on : heldInside(on);
   // A gate held to the edge is a sign saying which way, not a gate: drawn at
   // the size it would be, it hangs half off the picture.
-  const size = shown ? Math.max(7, Math.min(46, lens.metresAcross(on.awayM) * 0.8)) : 13;
+  const size = shown
+    ? Math.max(small ? 5 : 7, Math.min(small ? 15 : 46, lens.metresAcross(on.awayM) * (small ? 0.25 : 0.8)))
+    : small ? 7 : 13;
   const away = Math.hypot(at[0]! - from[0]!, at[1]! - from[1]!);
   return (
     <g opacity={dim ? 0.45 : 1}>
