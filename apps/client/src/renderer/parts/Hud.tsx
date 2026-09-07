@@ -167,8 +167,14 @@ function InTheWater({ lens, told }: { lens: Lens; told: Told }): React.JSX.Eleme
               when the vehicle has drifted off and is looking elsewhere. */}
           <path d={lens.path(lying(told, g.circle.x, g.circle.y, g.circle.radiusM), true)}
                 fill="none" stroke={ink} strokeWidth="2.5" opacity="0.95" />
-          <path d={lens.path(lying(told, g.circle.x, g.circle.y, g.circle.radiusM * 2.4), true)}
-                fill="none" stroke={ink} strokeWidth="1" strokeDasharray="6 8" opacity="0.4" />
+          {/* A second ring outside the first is a way of finding a
+              half-metre station from a few metres off. Around a six-metre
+              plot of coral it is a boundary that does not exist, so it is
+              drawn only where the thing itself is too small to see. */}
+          {g.circle.radiusM <= 1.5 ? (
+            <path d={lens.path(lying(told, g.circle.x, g.circle.y, g.circle.radiusM * 2.4), true)}
+                  fill="none" stroke={ink} strokeWidth="1" strokeDasharray="6 8" opacity="0.4" />
+          ) : null}
           <path d={lens.path([on(g.circle.x, g.circle.y), on(g.circle.x, g.circle.y, 0.85)])}
                 fill="none" stroke={ink} strokeWidth="1.2" opacity="0.55" />
           {ringIs === "" ? null : (
