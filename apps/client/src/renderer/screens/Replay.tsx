@@ -374,6 +374,12 @@ export function Replay({ platform, dive, run, onBack }: {
       speedMs: pose.velocity ? Math.hypot(pose.velocity[0]!, pose.velocity[1]!, pose.velocity[2]!) : null,
       batteryPercent: near(battery),
       beganAt: manifest?.beganAt ?? null,
+      // The bottom, so what a task asks for is drawn on it: the grid the
+      // recording carries, and failing that the height under the vehicle,
+      // which its altitude gives exactly.
+      site: manifest?.site ?? null,
+      floorM: pose.altitudeM === null || pose.altitudeM === undefined
+        ? null : pose.position[2]! - pose.altitudeM,
       geometry: manifest?.geometry ?? null,
       positioning: manifest?.positioning ?? null,
       vehicle: manifest?.vehicle ?? null,
