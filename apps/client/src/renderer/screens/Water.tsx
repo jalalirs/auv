@@ -359,7 +359,8 @@ export function Water({ platform, stream, onSurface }: {
                    headingDeg={reading.headingDeg ?? 0} depthM={reading.depthM ?? 0}
                    altitudeM={reading.altitudeM} speedMs={reading.speedMs}
                    batteryPercent={reading.battery ? reading.battery.fraction * 100 : null}
-                   beganAt={hello?.beganAt} geometry={geometry} positioning={hello?.positioning}
+                   beganAt={hello?.beganAt} site={hello?.site} floorM={reading.floorM}
+                   geometry={geometry} positioning={hello?.positioning}
                    vehicle={hello?.vehicle}
                    task={hello?.task ? {
                      name: hello.task.name, kind: hello.task.kind,

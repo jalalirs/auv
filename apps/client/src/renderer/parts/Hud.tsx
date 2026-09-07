@@ -41,6 +41,10 @@ export interface Told {
   speedMs?: number | null;
   batteryPercent?: number | null;
   beganAt?: number[] | null;
+  /** The bottom, as the recording describes it: a coarse height grid. */
+  site?: { acrossM: number; rows: number; columns: number; heights: number[] } | null;
+  /** The bottom under the vehicle right now, when there is no grid. */
+  floorM?: number | null;
   geometry?: Geometry | null;
   positioning?: Deployment | null;
   vehicle?: { halfWidthM?: number; halfHeightM?: number;
@@ -61,6 +65,34 @@ export interface Told {
   ofS?: number;
   /** Hidden, for looking at the picture on its own. */
   showing?: boolean;
+}
+
+/**
+ * The height of the bottom at a place, sampled as the simulator samples it.
+ *
+ * Everything a task asks for sits on the seabed — a station, a transect, the
+ * rectangle of a survey, the colonies to treat — and the seabed is not flat
+ * and is not at the depth the dive happened to begin at. Drawing at the start
+ * depth put a survey's coverage two metres above the bottom, which in the
+ * down-looking view is behind the camera: nothing appeared at all.
+ */
+function ground(told: Told, x: number, y: number): number {
+  const site = told.site;
+  if (site && site.rows > 1 && site.columns > 1 && site.acrossM > 0) {
+    const u = Math.min(Math.max((x / site.acrossM + 0.5) * (site.columns - 1), 0), site.columns - 1.0001);
+    const v = Math.min(Math.max((y / site.acrossM + 0.5) * (site.rows - 1), 0), site.rows - 1.0001);
+    const column = Math.floor(u);
+    const row = Math.floor(v);
+    const fu = u - column;
+    const fv = v - row;
+    const at = (r: number, c: number): number => site.heights[r * site.columns + c] ?? 0;
+    return at(row, column) * (1 - fu) * (1 - fv) + at(row, column + 1) * fu * (1 - fv)
+         + at(row + 1, column) * (1 - fu) * fv + at(row + 1, column + 1) * fu * fv;
+  }
+  // No grid: the bottom under the vehicle is a better answer than the depth
+  // the dive started at, and the recording measured it.
+  if (told.floorM !== null && told.floorM !== undefined) return told.floorM;
+  return (told.beganAt ?? told.position)[2] ?? told.position[2]!;
 }
 
 // One palette, so that a thing means the same colour wherever it is drawn.
@@ -99,12 +131,26 @@ export function Hud(told: Told): React.JSX.Element | null {
   );
 }
 
+/** A ring lying on the bottom: every point of it at the height under itself. */
+function lying(told: Told, x: number, y: number, radiusM: number, sides = 64): number[][] {
+  const points: number[][] = [];
+  for (let i = 0; i < sides; i += 1) {
+    const a = (i / sides) * Math.PI * 2;
+    const px = x + radiusM * Math.cos(a);
+    const py = y + radiusM * Math.sin(a);
+    points.push([px, py, ground(told, px, py) + 0.03]);
+  }
+  return points;
+}
+
 // ── the task, drawn where the task is ───────────────────────────────────────
 
 function InTheWater({ lens, told }: { lens: Lens; told: Told }): React.JSX.Element | null {
   const g = told.geometry;
   if (!g) return null;
-  const floor = (told.beganAt ?? told.position)[2] ?? told.position[2]!;
+  // Everything below is drawn on the bottom, sampled where it is drawn, so a
+  // ring on a slope leans with the slope rather than hanging level over it.
+  const on = (x: number, y: number, up = 0): number[] => [x, y, ground(told, x, y) + up];
   const done = told.task?.done === true;
   const ink = done ? DONE : TASK;
   // A ring means a different thing to each task that draws one, and the word
@@ -119,27 +165,27 @@ function InTheWater({ lens, told }: { lens: Lens; told: Told }): React.JSX.Eleme
         <>
           {/* The station: a ring where it is, and a mast so it is findable
               when the vehicle has drifted off and is looking elsewhere. */}
-          <path d={lens.ring([g.circle.x, g.circle.y, floor], g.circle.radiusM)}
+          <path d={lens.path(lying(told, g.circle.x, g.circle.y, g.circle.radiusM), true)}
                 fill="none" stroke={ink} strokeWidth="2.5" opacity="0.95" />
-          <path d={lens.ring([g.circle.x, g.circle.y, floor], g.circle.radiusM * 2.4)}
+          <path d={lens.path(lying(told, g.circle.x, g.circle.y, g.circle.radiusM * 2.4), true)}
                 fill="none" stroke={ink} strokeWidth="1" strokeDasharray="6 8" opacity="0.4" />
-          <path d={lens.path([[g.circle.x, g.circle.y, floor], [g.circle.x, g.circle.y, floor + 0.85]])}
+          <path d={lens.path([on(g.circle.x, g.circle.y), on(g.circle.x, g.circle.y, 0.85)])}
                 fill="none" stroke={ink} strokeWidth="1.2" opacity="0.55" />
           {ringIs === "" ? null : (
-            <Label lens={lens} at={[g.circle.x, g.circle.y, floor + 1.05]} ink={ink} text={ringIs} />
+            <Label lens={lens} at={on(g.circle.x, g.circle.y, 1.05)} ink={ink} text={ringIs} />
           )}
         </>
       ) : null}
 
       {g.line ? (
-        <path d={lens.path(g.line.map((p) => [p.x, p.y, floor]))} fill="none" stroke={ink}
+        <path d={lens.path(g.line.map((p) => on(p.x, p.y, 0.02)))} fill="none" stroke={ink}
               strokeWidth="1.6" strokeDasharray="10 7" opacity="0.7" />
       ) : null}
 
       {g.rectangle ? (
         <>
-          <Covered lens={lens} corners={g.rectangle} seen={g.seen} floor={floor} />
-          <path d={lens.path(g.rectangle.map((p) => [p.x, p.y, floor]), true)} fill="none"
+          <Covered lens={lens} corners={g.rectangle} seen={g.seen} told={told} />
+          <path d={lens.path(g.rectangle.map((p) => on(p.x, p.y, 0.02)), true)} fill="none"
                 stroke={ink} strokeWidth="2" opacity="0.8" />
         </>
       ) : null}
@@ -160,7 +206,7 @@ function InTheWater({ lens, told }: { lens: Lens; told: Told }): React.JSX.Eleme
           covering it: a colony is a thing you are meant to see under the
           marker, and forty of them at gate size is a picture of markers. */}
       {(g.marks ?? []).map((m, i) => (
-        <Gate key={`m${i}`} lens={lens} at={[m.x, m.y, floor]} from={told.position}
+        <Gate key={`m${i}`} lens={lens} at={on(m.x, m.y, 0.25)} from={told.position}
               ink={m.done ? DONE : TASK} number={null} dim={m.done === true} ranged={false}
               small />
       ))}
@@ -179,9 +225,9 @@ function InTheWater({ lens, told }: { lens: Lens; told: Told }): React.JSX.Eleme
  * cell — a run of twenty cells is one quad and looks like a painted stripe,
  * which is what it is.
  */
-function Covered({ lens, corners, seen, floor }: {
+function Covered({ lens, corners, seen, told }: {
   lens: Lens; corners: { x: number; y: number }[];
-  seen?: { rows: number; columns: number; cells: number[] }; floor: number;
+  seen?: { rows: number; columns: number; cells: number[] }; told: Told;
 }): React.JSX.Element | null {
   if (seen === undefined || corners.length < 4 || seen.rows < 1 || seen.columns < 1) return null;
   const origin = corners[0]!;
@@ -193,8 +239,11 @@ function Covered({ lens, corners, seen, floor }: {
     const bit = r * seen.columns + c;
     return ((seen.cells[bit >> 3] ?? 0) >> (7 - (bit & 7)) & 1) === 1;
   };
-  const at = (a: number, b: number): number[] =>
-    [origin.x + u[0]! * a + v[0]! * b, origin.y + u[1]! * a + v[1]! * b, floor + 0.02];
+  const at = (a: number, b: number): number[] => {
+    const x = origin.x + u[0]! * a + v[0]! * b;
+    const y = origin.y + u[1]! * a + v[1]! * b;
+    return [x, y, ground(told, x, y) + 0.03];
+  };
   const stripes: string[] = [];
   for (let r = 0; r < seen.rows; r += 1) {
     let from: number | null = null;
@@ -476,7 +525,12 @@ function Asked({ told }: { told: Told }): React.JSX.Element | null {
       <text x={wide - 4} y={48} textAnchor="end" fontSize="21" fill={task.done ? DONE : TASK}
             fontWeight="600">{(score * 100).toFixed(0)}%</text>
       {task.asks ? <Wrapped x={44} y={74} wide={wide - 44} size={13} fill={QUIET} text={task.asks} /> : null}
-      <text x={44} y={task.asks ? 120 : 78} fontSize="13" fill={QUIET}>{task.says ?? ""}</text>
+      {/* Kept short enough to leave the clock its corner: what a task says
+          about itself runs to "11.9 of 20 m along, 11.1 m within band,
+          altitude 1.95 m", and the full line under the picture has room. */}
+      <text x={44} y={task.asks ? 120 : 78} fontSize="13" fill={QUIET}>
+        {(task.says ?? "").length > 44 ? `${(task.says ?? "").slice(0, 43)}…` : task.says ?? ""}
+      </text>
       {/* The clock lives at the end of the line the task is talking on, which
           is the one place on the card nothing else wants. */}
       {told.elapsedS === undefined ? null : (

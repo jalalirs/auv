@@ -110,7 +110,12 @@ export class Lens {
         ]);
         if (edge === null) continue;
         d += `${drawing ? "L" : "M"}${near_enough(edge.x)} ${near_enough(edge.y)}`;
-        drawing = other === next ? false : true;
+        // Crossing towards the point behind ends the visible run; crossing
+        // towards the one in front begins one, and the next point joins it.
+        // This was the wrong way round, and the effect was silent: a transect
+        // whose start lay behind the camera emitted two moves and no line at
+        // all, so the task's own shape simply never appeared.
+        drawing = other === next;
       }
       if (next === undefined || ahead(next) <= near) drawing = false;
     }
