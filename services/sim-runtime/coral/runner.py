@@ -1041,7 +1041,17 @@ class Dive:
         said = {"kind": str(self.aiding.get("kind", "none")),
                 "fitted": dict(self.fitted),
                 "suite": {**self.navigation_suite(), **self.fitted}}
+        # Where the fixes actually come from, which is not always what the dive
+        # was asked for: an array with no stated position is laid around the
+        # start. What is drawn should be what is used.
         where = self.aiding.get("at")
+        if where is None and self.navigation is not None and self.navigation.at is not None:
+            where = [float(v) for v in self.navigation.at]
+        # A transceiver with nowhere stated is a ship keeping station over the
+        # vehicle — which is what the fix model does, taking the slant range as
+        # the depth — so it is drawn above the vehicle rather than at a place.
+        if said["kind"] == "usbl" and self.aiding.get("at") is None:
+            said["overhead"] = True
         if where is not None:
             said["at"] = [round(float(v), 2) for v in where]
         for key in ("rangeM", "everyS", "accuracyM", "accuracyPercent"):
@@ -1054,11 +1064,18 @@ class Dive:
             import math as _math
 
             reach = float(self.aiding.get("rangeM", 150.0))
-            said["anchors"] = [
+            laid = [
                 [round(float(where[0]) + reach * 0.8 * _math.cos(a), 2),
                  round(float(where[1]) + reach * 0.8 * _math.sin(a), 2)]
                 for a in (_math.radians(90), _math.radians(210), _math.radians(330))
             ]
+            # On the bottom, where a transponder is: the array's stated depth
+            # is the depth of the middle of it, and the seabed is not flat.
+            for anchor in laid:
+                floor = None if self.seabed is None else self.seabed.under(anchor[0], anchor[1])
+                anchor.append(round(float(floor if floor is not None
+                                          else (where[2] if len(where) > 2 else -10.0)) + 0.5, 2))
+            said["anchors"] = laid
         return said
 
     def samples(self) -> dict:

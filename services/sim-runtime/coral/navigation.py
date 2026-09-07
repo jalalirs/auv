@@ -87,6 +87,13 @@ class Navigation:
         self.slant_share = float(self.aiding.get("accuracyPercent", 0.5)) / 100.0
         self.reach = float(self.aiding.get("rangeM", 300.0))
         self.at = None if self.aiding.get("at") is None else np.array(self.aiding["at"], dtype=float)
+        # An array with no stated position is an array laid around where the
+        # dive began. It has to be somewhere: without a position it has no
+        # extent either, and a set of transponders that can be heard from
+        # anywhere in the sea is not a thing that exists — nor is it something
+        # a picture can show the vehicle leaving.
+        if self.at is None and self.kind == "lbl" and began_at is not None:
+            self.at = np.array(began_at, dtype=float)
         self.surface_fix_at = float(self.aiding.get("surfaceFixDepthM", 0.5))
         # How much of a fix to believe. A fix is not the truth either: it has
         # its own error, and steering at every one of them makes a vehicle

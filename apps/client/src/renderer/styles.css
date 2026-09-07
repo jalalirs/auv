@@ -1018,8 +1018,44 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 
 
 /* ── replay ───────────────────────────────────────────────────────────── */
-.replay { display: grid; grid-template-columns: 3fr 2fr; gap: 10px; height: 420px; margin-bottom: 10px; }
+/* The picture is the page.
+   It used to be three fifths of a 420-pixel row with the chart beside it and
+   the numbers underneath, which is a layout for a document about a dive rather
+   than a dive. Now the frame takes the window and everything known about the
+   moment is painted onto it — the task where the task is, the transponders
+   where they were laid, the instruments around the edge. The picture is held
+   to sixteen by nine, because that is the shape the camera recorded and a
+   frame stretched to fit the window would put every drawn thing in the wrong
+   place by however much it was stretched. */
+.replay { display: grid; gap: 10px; margin-bottom: 10px; }
+.replay .stage {
+  display: grid; place-items: center; width: 100%;
+  height: min(calc(100vh - 300px), calc((100vw - 340px) * 9 / 16));
+  min-height: 340px;
+}
 .replay .frame, .replay .chart { background: #050a12; border: 1px solid var(--edge); border-radius: 6px; overflow: hidden; position: relative; }
+.replay .stage { border: none; background: transparent; }
+.replay .stage > * { grid-area: 1 / 1; }
+.replay .stage { position: relative; }
+.replay .stage video, .replay .stage img {
+  width: 100%; height: 100%; object-fit: contain; display: block;
+}
+/* The overlay sits exactly on the picture, in the picture's own coordinates,
+   and never intercepts a click meant for the video behind it. */
+.hud { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.hud text { font-family: inherit; paint-order: stroke; stroke: rgba(2, 8, 14, 0.75); stroke-width: 3px; }
+.on-picture {
+  position: absolute; right: 14px; bottom: 14px; width: 210px; height: 210px;
+  border: 1px solid rgba(160, 200, 235, 0.28); border-radius: 8px; overflow: hidden;
+  background: rgba(4, 10, 18, 0.55); backdrop-filter: blur(2px);
+}
+.on-picture canvas { width: 100%; height: 100%; display: block; }
+.hud-toggle {
+  position: absolute; right: 14px; top: 14px; z-index: 2;
+  background: rgba(4, 10, 18, 0.6); border: 1px solid rgba(160, 200, 235, 0.25);
+  color: var(--dim); border-radius: 999px; padding: 4px 12px; font-size: 11px; cursor: pointer;
+}
+.hud-toggle:hover { color: var(--plain); border-color: rgba(160, 200, 235, 0.5); }
 .replay .frame img, .replay .frame video { width: 100%; height: 100%; object-fit: contain; display: block; }
 .replay .frame .none {
   position: absolute; inset: 0; display: flex; flex-direction: column;

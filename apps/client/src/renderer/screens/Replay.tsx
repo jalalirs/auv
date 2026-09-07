@@ -11,7 +11,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { Artefact, Platform } from "@coral-city/api";
 
+import { Hud, type Deployment } from "../parts/Hud.js";
 import { Minimap, type Fix, type Geometry, type Site } from "../parts/Minimap.js";
+import type { Looking } from "../parts/project.js";
+import { TASKS } from "../catalog/tasks.js";
 import { Empty, PageHead } from "./parts.js";
 
 interface Pose {
@@ -23,6 +26,10 @@ interface Pose {
   velocity?: number[];
   view?: string;
   frame?: string | null;
+  /** Where this frame was seen from, so the world can be drawn back onto it. */
+  camera?: Looking | null;
+  /** Where the vehicle believed it was at that moment. */
+  believed?: number[] | null;
 }
 
 interface TaskLine {
@@ -41,9 +48,13 @@ interface Manifest {
   seconds: number;
   beganAt?: number[];
   camera?: Record<string, unknown> | null;
-  task?: { name?: string; score?: number; done?: boolean; achieved?: Record<string, unknown> } | null;
+  task?: { name?: string; kind?: string; score?: number; done?: boolean;
+           achieved?: Record<string, unknown> } | null;
   site?: Site | null;
   geometry?: Geometry | null;
+  /** What was deployed in this water to give fixes, and where it sits. */
+  positioning?: Deployment | null;
+  vehicle?: { halfWidthM?: number; halfHeightM?: number } | null;
   /** The dive as one video, whose clock is the dive's clock. */
   video?: { file: string; framesPerSecond: number; frames: number } | null;
 }
@@ -62,6 +73,9 @@ export function Replay({ platform, dive, run, onBack }: {
   const [files, setFiles] = useState<Artefact[] | undefined>();
   const [poses, setPoses] = useState<Pose[]>([]);
   const [effort, setEffort] = useState<{ t: number; v: number }[]>([]);
+  const [battery, setBattery] = useState<{ t: number; v: number }[]>([]);
+  // The picture on its own, for looking at the dive rather than reading it.
+  const [hud, setHud] = useState(true);
   const [task, setTask] = useState<TaskLine[]>([]);
   const [manifest, setManifest] = useState<Manifest | undefined>();
   const [at, setAt] = useState(0);
@@ -118,6 +132,9 @@ export function Replay({ platform, dive, run, onBack }: {
         setTask(progress);
         setManifest(said);
         // The thrusters' mean absolute command: how hard the vehicle worked.
+        setBattery(sensors.map((s) => ({
+          t: s.t, v: Number((s["/battery"] as Record<string, number> | undefined)?.["percentage"] ?? NaN),
+        })).filter((b) => Number.isFinite(b.v)));
         setEffort(sensors.map((s) => {
           const cmd = s["/thruster_cmd"] as Record<string, number> | undefined;
           const values = cmd ? Object.values(cmd) : [];
@@ -334,6 +351,46 @@ export function Replay({ platform, dive, run, onBack }: {
     return undefined;
   }, [poses, at, frames, pictures]);
 
+  // What the HUD paints. The chart works in metres from the origin it chose;
+  // the picture works in the world the dive was flown in, because that is the
+  // only frame the camera knows about. So this reads the record directly and
+  // shifts nothing.
+  const painted = useMemo(() => {
+    if (pose === undefined) return undefined;
+    const kind = progress?.kind ?? manifest?.task?.kind;
+    const asked = TASKS.find((one) => one.objective?.["kind"] === kind);
+    const near = (rows: { t: number; v: number }[]): number | null => {
+      let found: number | null = null;
+      for (const row of rows) { if (row.t > now) break; found = row.v; }
+      return found;
+    };
+    return {
+      looking: pose.camera ?? null,
+      position: pose.position,
+      believed: pose.believed ?? null,
+      headingDeg: pose.headingDeg,
+      depthM: pose.depthM,
+      altitudeM: pose.altitudeM ?? null,
+      speedMs: pose.velocity ? Math.hypot(pose.velocity[0]!, pose.velocity[1]!, pose.velocity[2]!) : null,
+      batteryPercent: near(battery),
+      beganAt: manifest?.beganAt ?? null,
+      geometry: manifest?.geometry ?? null,
+      positioning: manifest?.positioning ?? null,
+      vehicle: manifest?.vehicle ?? null,
+      task: {
+        name: progress?.name ?? manifest?.task?.name,
+        kind: progress?.kind,
+        asks: asked?.asks,
+        says: progress?.says,
+        score: progress?.score ?? manifest?.task?.score,
+        done: progress?.done ?? manifest?.task?.done,
+      },
+      elapsedS: now,
+      ofS: manifest?.seconds,
+      showing: hud,
+    };
+  }, [pose, progress, manifest, battery, now, hud]);
+
   const traces = useMemo<Series[]>(() => {
     const t = poses.map((p) => p.t);
     const out: Series[] = [
@@ -376,7 +433,7 @@ export function Replay({ platform, dive, run, onBack }: {
                 says={`${poses.length} poses, ${manifest?.video?.frames ?? frames.size} frames, ${manifest?.seconds?.toFixed(0) ?? "?"} s`
                   + (manifest?.task?.name ? ` · ${manifest.task.name} ${((manifest.task.score ?? 0) * 100).toFixed(0)}%` : "")} />
       <div className="replay">
-        <div className="frame">
+        <div className="frame stage">
           {film_url !== undefined
             ? <>
                 {local === undefined ? null : (
@@ -391,6 +448,17 @@ export function Replay({ platform, dive, run, onBack }: {
               </>
             : frameUrl ? <img src={frameUrl} alt="what the vehicle saw" />
             : <div className="none">no frame yet</div>}
+          {painted === undefined ? null : <Hud {...painted} />}
+          {/* The chart, on the picture rather than beside it: a corner of the
+              screen the way a game keeps its map, since what it is for is
+              knowing where you are in something you are already looking at. */}
+          <div className="on-picture">
+            <Minimap site={fitted} track={track} position={position} headingDeg={pose?.headingDeg}
+                     beganAt={beganAt} geometry={geometry} large={false} />
+          </div>
+          <button className="hud-toggle" onClick={() => setHud((was) => !was)}>
+            {hud ? "hide the overlay" : "show the overlay"}
+          </button>
           {film_url !== undefined && local === undefined ? (
             <>
               <div className="none">
@@ -410,10 +478,6 @@ export function Replay({ platform, dive, run, onBack }: {
               <em>downloading the dive — {fetched} of {frames.size} frames</em>
             </div>
           ) : null}
-        </div>
-        <div className="chart">
-          <Minimap site={fitted} track={track} position={position} headingDeg={pose?.headingDeg}
-                   beganAt={beganAt} geometry={geometry} large />
         </div>
       </div>
       <div className="scrub">
