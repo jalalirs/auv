@@ -1040,7 +1040,14 @@ class Dive:
         # model, another planner — is not this code's business. It is checked
         # first, because a plan that names a manoeuvre which does not exist is
         # a vehicle that stops in the water for no reason anyone can see.
+        # A plan may come with the dive, or ride inside the objective it
+        # satisfies — which is how one reaches a vehicle without the platform
+        # needing a second field for it: the dive says what it wants and how
+        # it means to go about it, together.
         given = self.brief.get("plan")
+        if not isinstance(given, dict):
+            given = (self.brief.get("objective") or {}).get("plan") \
+                if isinstance(self.brief.get("objective"), dict) else None
         if isinstance(given, dict) and given.get("manoeuvres"):
             wrong = plan.what_is_wrong(given)
             if wrong:
