@@ -133,6 +133,39 @@ def command_diff(args) -> int:
     return 0
 
 
+def command_set(args) -> int:
+    """Change one thing about a plan and write it out again.
+
+    The point of a plan being a document is that a person can disagree with
+    part of it without throwing the rest away — fly the same survey a metre
+    lower, arrive a little tighter — and still have something checkable to
+    hand back to the vehicle.
+    """
+    document = read(args.plan)
+    by_id = {str(m.get("id")): m for m in document.get("manoeuvres", [])}
+    for change in args.changes:
+        if "=" not in change or "." not in change.split("=")[0]:
+            raise SystemExit(f"say it as manoeuvre.field=value, not {change!r}")
+        where, value = change.split("=", 1)
+        name, field = where.split(".", 1)
+        manoeuvre = by_id.get(name)
+        if manoeuvre is None:
+            raise SystemExit(f"there is no manoeuvre called {name} in this plan")
+        try:
+            manoeuvre[field] = json.loads(value)
+        except json.JSONDecodeError:
+            manoeuvre[field] = value
+        print(f"{AMBER}{name}.{field}{OFF} is now {manoeuvre[field]}")
+    wrong = planning.what_is_wrong(document)
+    for one in wrong:
+        print(f"{RED}{one}{OFF}")
+    document["by"] = "changed by hand"
+    out = args.out or args.plan
+    pathlib.Path(out).write_text(json.dumps(document, indent=2))
+    print(f"{DIM}written to {out} · {len(planning.legs_of(document))} legs when flown{OFF}")
+    return 1 if wrong else 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     doing = parser.add_subparsers(dest="doing", required=True)
@@ -151,6 +184,12 @@ def main() -> int:
                         help="half the camera's field of view, radians")
     making.add_argument("--name", default="")
     making.set_defaults(run=command_for)
+
+    setting = doing.add_parser("set", help="change one thing about a plan")
+    setting.add_argument("plan")
+    setting.add_argument("changes", nargs="+", metavar="m1.field=value")
+    setting.add_argument("--out", help="write here instead of over the original")
+    setting.set_defaults(run=command_set)
 
     comparing = doing.add_parser("diff", help="two plans, side by side")
     comparing.add_argument("left")

@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+"""Say what you want; see the plan it became; change it; fly it.
+
+  ./tools/ask "survey a 60 by 30 metre area north at 4 metres up, then come home and surface"
+  ./tools/ask "..." --out plan.json
+  ./tools/plan set plan.json s1m1.altitudeM=3 --out mine.json
+  ./tools/ask --fly mine.json --task survey
+
+The reading is printed beside the plan on purpose. A person who cannot see
+what the machine heard cannot tell a good plan from a lucky one, and the whole
+value of asking in words is lost the moment you have to trust it.
+
+Where this happens is not incidental: at the dock, or at the surface, over a
+link with bandwidth. The acoustic channel underwater carries a few hundred
+bits a second, so what goes down it is the compiled plan — never the sentence.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import pathlib
+import sys
+
+HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent / "services/sim-runtime/coral"))
+
+import tasking  # noqa: E402
+from controllers import plan as planning  # noqa: E402
+
+BOLD, DIM, OFF = "\033[1m", "\033[2m", "\033[0m"
+GREEN, RED, AMBER = "\033[32m", "\033[31m", "\033[33m"
+
+
+def command_ask(args) -> int:
+    at = [float(v) for v in args.at.split(",")]
+    understood = tasking.understand(args.said, at=at, heading=math.radians(args.heading),
+                                    camera_half_angle=args.half_angle)
+    for line in understood["read"]:
+        print(f"{GREEN}heard{OFF}  {line}")
+    for line in understood.get("missed", []):
+        print(f"{AMBER}not understood{OFF}  {line}")
+    if understood.get("why"):
+        print(f"{RED}{understood['why']}{OFF}")
+    document = understood.get("plan")
+    if document is None:
+        return 1
+    wrong = planning.what_is_wrong(document)
+    if wrong:
+        for one in wrong:
+            print(f"{RED}{one}{OFF}")
+        return 1
+    print()
+    print(f"{BOLD}{document['plan']}{OFF}{DIM} · by {document.get('by')}{OFF}")
+    for manoeuvre in document["manoeuvres"]:
+        print(f"  {manoeuvre['id']:>6}  {manoeuvre['kind']:<15} "
+              f"{len(manoeuvre.get('points', [])) or ''}"
+              f"{'' if manoeuvre.get('points') else json.dumps(manoeuvre.get('at', {}))}")
+    print(f"{DIM}{len(planning.legs_of(document))} legs when flown{OFF}")
+    if args.out:
+        pathlib.Path(args.out).write_text(json.dumps(document, indent=2))
+        print(f"{DIM}written to {args.out}{OFF}")
+    return 0
+
+
+def command_fly(args) -> int:
+    """Put a plan in the water, on the platform, as a dive."""
+    document = json.loads(pathlib.Path(args.plan).read_text())
+    wrong = planning.what_is_wrong(document)
+    if wrong:
+        for one in wrong:
+            print(f"{RED}{one}{OFF}")
+        return 1
+    matrix = (HERE / "matrix").read_text().split("def run_matrix")[0]
+    mod: dict = {}
+    exec(compile(matrix, "matrix", "exec"), mod)
+    platform = mod["Platform"]()
+    city = mod["newest_version"](platform, "cities", args.place)
+    vehicle = mod["newest_version"](platform, "vehicles", args.vehicle)
+    queue = platform.call("GET", "/api/v1/queues")["queues"][0]
+    runtime = queue["runtimes"][0]
+
+    # The plan rides inside the objective it satisfies. The objective is what
+    # the dive is scored on; the plan is how this attempt means to do it, and
+    # keeping them together is what lets two plans be compared on one task.
+    objective = dict(json.loads(args.objective) if args.objective
+                     else dict(mod["TASKS"][args.task]))
+    objective["plan"] = document
+    water_name, water_parameters = mod["WATERS"][args.water]
+    technology_name, technology_parameters = mod["POSITIONING"][args.technology]
+    conditions = platform.call("POST", f"/api/v1/organisations/{platform.org}/conditions", {
+        "kind": "constructed", "name": f"{water_name} · {technology_name}",
+        "parameters": {**water_parameters, **technology_parameters}})
+    dive = platform.call("POST", f"/api/v1/organisations/{platform.org}/dives", {
+        "name": args.name or document.get("plan", "a plan")[:60],
+        "cityVersionId": city, "vehicleVersionId": vehicle,
+        "conditionsId": conditions["id"], "objective": objective})
+    run = platform.call("POST", f"/api/v1/dives/{dive['id']}/runs", {
+        "queueId": queue["id"], "mode": "batch", "runtimeVersion": runtime})
+    print(f"{GREEN}in the water{OFF}  {dive['name']}")
+    print(f"{DIM}{dive['id']} · {run['id']}{OFF}")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("said", nargs="?", help="what you want, in words")
+    parser.add_argument("--at", default="115,-25,-4.1",
+                        help="where the vehicle begins: x,y,z in metres")
+    parser.add_argument("--heading", type=float, default=0.0, help="degrees")
+    parser.add_argument("--half-angle", type=float, default=0.41,
+                        help="half the camera's field of view, radians")
+    parser.add_argument("--out", help="write the plan here")
+    parser.add_argument("--fly", metavar="PLAN", help="put a written plan in the water")
+    parser.add_argument("--task", default="survey", help="the objective it is scored against")
+    parser.add_argument("--objective", help="the whole objective, as JSON")
+    parser.add_argument("--name", help="what to call the dive")
+    parser.add_argument("--place", default="looe-key")
+    parser.add_argument("--vehicle", default="bluerov2")
+    parser.add_argument("--runtime", default="isaac-sim")
+    parser.add_argument("--water", default="still")
+    parser.add_argument("--technology", default="dead-reckoning")
+    args = parser.parse_args()
+    if args.fly:
+        return command_fly(args)
+    if not args.said:
+        parser.error("say what you want, or --fly a plan you have already written")
+    return command_ask(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
