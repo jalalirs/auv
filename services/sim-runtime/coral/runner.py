@@ -975,7 +975,7 @@ class Dive:
             self.navigation = Navigation(suite={**self.navigation_suite(), **self.fitted},
                                          aiding=self.aiding,
                                          began_at=self.position,
-                                         seed=int(self.brief.get("seed", 0)))
+                                         seed=int(self.seed()))
             self.say("navigating", **self.navigation.said(self.position, self.simulated))
         except Exception as exc:
             self.navigation = None
@@ -1035,6 +1035,13 @@ class Dive:
         # itself needs the goal and not a route — that is the whole of the
         # difference between a vehicle being asked and one being driven.
         self.helm.tasked(goal)
+        named = self.who_should_fly()
+        if named and named != getattr(self, "_asked_for", None):
+            self._asked_for = named
+            if self.helm.engage(named, self.observation()):
+                self.say("flying_with", controller=named)
+            else:
+                self.say("no_such_controller", asked=named)
         # A plan given to the dive is flown as given. Nothing here works out
         # what to do: the document says, and where it came from — a person, a
         # model, another planner — is not this code's business. It is checked
@@ -1069,6 +1076,32 @@ class Dive:
                      manoeuvres=len(self.document.get("manoeuvres", [])),
                      forTask=self.task.kind, goal=goal.get("kind"),
                      stage=which, by=self.planned_by)
+
+    def seed(self) -> int:
+        """What makes two dives comparable: the same water, wrong the same way.
+
+        A benchmark that gives one controller a favourable draw of compass
+        error is not a benchmark. The seed may be stated by the dive, or ride
+        with the objective — which is where a bench puts it, so that the same
+        task set is identically wrong for everyone flying it.
+        """
+        objective = self.brief.get("objective")
+        if isinstance(objective, dict) and objective.get("seed") is not None:
+            return int(objective["seed"])
+        return int(self.brief.get("seed", 0))
+
+    def who_should_fly(self) -> str:
+        """Which controller this dive asked for, if it asked for one.
+
+        A dive that names a controller is how a bench flies the same task set
+        with two different ones. Nothing else changes — same water, same fit,
+        same seed — so the difference in what comes back is attributable.
+        """
+        objective = self.brief.get("objective")
+        named = self.brief.get("controller")
+        if not named and isinstance(objective, dict):
+            named = objective.get("controller")
+        return str(named or "")
 
     def believed(self):
         """Where the vehicle thinks it is. What a controller is allowed to use."""

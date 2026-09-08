@@ -138,3 +138,49 @@ def test_the_plan_is_written_down_with_the_recording(tmp_path):
     assert manifest["plan"]["by"] == "the platform's planner"
     assert "plan.json" in manifest["files"]
     assert plan.legs_of(kept), "and what was kept cannot be flown again"
+
+
+# ── the bench's requirements of a dive ───────────────────────────────────────
+#
+# Two things have to be true of a dive before two controllers can be compared
+# over one: it must fly the controller it is told to, and it must be wrong in
+# the same way each time. Without the first there is nothing to compare; without
+# the second the comparison is a draw of noise wearing a table.
+
+
+def test_a_dive_flies_the_controller_it_is_named():
+    dive = a_dive({"objective": {"kind": "reach", "dx": 60.0, "dy": 0.0, "radiusM": 3.0,
+                                 "controller": "ponder"}})
+    run(dive, 2.0)
+    assert dive.helm.prefer == "ponder", "the dive ignored the controller it was given"
+    assert [d for kind, d in dive.said if kind == "flying_with"], "and said nothing about it"
+    run(dive, 40.0)
+    assert dive.helm.who_flew()["mostly"] == "ponder", dive.helm.who_flew()
+
+
+def test_a_dive_told_of_a_controller_that_does_not_exist_says_so_and_flies_on():
+    dive = a_dive({"objective": {"kind": "reach", "dx": 40.0, "dy": 0.0,
+                                 "controller": "a-model-we-have-not-written"}})
+    run(dive, 5.0)
+    assert [d for kind, d in dive.said if kind == "no_such_controller"], "it said nothing"
+    assert dive.helm.flying.name in ("pursue", "hold"), "and it stopped flying"
+
+
+def test_the_same_seed_is_wrong_in_the_same_way_twice():
+    """What makes a bench a bench.
+
+    Two dives, same objective, same seed: the navigation must go astray
+    identically. Change the seed and it must not — otherwise the seed is
+    decoration and every comparison is a draw of noise.
+    """
+    def drift_of(seed: int) -> float:
+        dive = a_dive({"objective": {"kind": "reach", "dx": 80.0, "dy": 0.0, "radiusM": 3.0,
+                                     "seed": seed},
+                       "conditions": {"positioning": {"kind": "none"},
+                                      "headingAccuracyDeg": 4.0}})
+        run(dive, 90.0)
+        return float(dive.navigation.drift(dive.position)) if dive.navigation else 0.0
+
+    once, again = drift_of(7), drift_of(7)
+    assert once == again, f"the same seed drifted differently: {once} then {again}"
+    assert drift_of(8) != once, "every seed drifts the same way, so the seed does nothing"
