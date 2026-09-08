@@ -157,23 +157,39 @@ def a_pondering_dive(seconds: float = 90.0, think_s: float = 2.0) -> Dive:
     return dive
 
 
+def settle(dive, seconds: float = 10.0) -> None:
+    """Wait for a thought to land, then step enough to take delivery of it.
+
+    Nothing here runs in real time — forty simulated seconds go by in a
+    fraction of a wall second — so a thought that honestly takes two of them is
+    still out when the loop ends. A dive that is really deliberating is held to
+    the clock on the wall for exactly this reason; a test is not, so it waits.
+    """
+    slow = dive.helm.thinking.get("ponder")
+    if slow is not None and slow._thread is not None:
+        slow._thread.join(timeout=seconds)
+    run(dive, 1.0)
+
+
 def test_a_controller_may_take_seconds_to_answer_and_the_vehicle_flies_on():
     """Two seconds of thinking, sixty steps a second, and no stall."""
     dive = a_pondering_dive(seconds=60.0, think_s=2.0)
     began = time.monotonic()
-    run(dive, 40.0)
-    steps = 40.0 / dive.dt
-    # The flight loop never waited on the slow one: forty simulated seconds of
-    # stepping must not have taken anything like the wall time of the thoughts
-    # that were taken during it.
-    assert time.monotonic() - began < 2.0, "the flight loop waited for a thought"
-    slow = dive.helm.thinking.get("ponder")
-    assert slow is not None and slow.thoughts >= 1, "nothing was ever thought"
-    assert slow.latencies and max(slow.latencies) >= 1.9, "the thinking did not actually take time"
+    run(dive, 20.0)
+    flying_took = time.monotonic() - began
+    # The flight loop never waited on the slow one: twenty simulated seconds of
+    # stepping, with a two-second thought outstanding throughout, must not have
+    # cost anything like two seconds of wall time.
+    assert flying_took < 1.5, f"the flight loop waited for a thought — {flying_took:.2f} s"
+    slow = dive.helm.thinking["ponder"]
+    assert slow.said()["thinking"], "nothing was thinking while the vehicle flew"
+    settle(dive)
+    assert slow.thoughts >= 1, "the thought never landed"
+    assert max(slow.latencies) >= 1.9, "the thinking did not actually take time"
     assert dive.helm.ponder.plans >= 1, "no plan was ever taken delivery of"
-    # And it flew: the vehicle went towards the point it was asked for.
+    # And having decided, it flies what it decided.
+    run(dive, 25.0)
     assert dive.position[0] > 3.0, f"it did not set off — {dive.position[0]:.2f} m"
-    assert steps > 0
 
 
 def test_a_thought_that_fails_is_recorded_and_the_dive_carries_on():
@@ -194,6 +210,7 @@ def test_a_thought_that_fails_is_recorded_and_the_dive_carries_on():
 def test_what_the_slow_loop_did_is_on_the_record():
     dive = a_pondering_dive(seconds=40.0, think_s=0.2)
     run(dive, 25.0)
+    settle(dive)
     said = dive.helm.thought()
     assert "ponder" in said, "the record does not say anything was thinking"
     assert said["ponder"]["thoughts"] >= 1
