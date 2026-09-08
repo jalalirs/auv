@@ -403,6 +403,16 @@ class Return(Task):
         self.home_radius = float(objective.get("homeRadiusM", 2.0))
         self.surface = float(objective.get("surfaceDepthM", 0.5))
         self.limit = float(objective.get("timeLimitS", 300.0))
+        # Home is where the dive began unless the objective says otherwise —
+        # and a return that begins at home is not a return. `awayM` puts home
+        # that far astern, which is the situation the task is about: a vehicle
+        # at the far end of its work, asked to come back.
+        self.home_at = self.somewhere(objective.get("home"), fallback=self.began_at)
+        away = float(objective.get("awayM", 0.0))
+        if away > 0:
+            ahead = np.array(self.ahead())
+            self.home_at = self.home_at.copy()
+            self.home_at[:2] = self.began_at[:2] - ahead * away
         self.home = False
         self.surfaced = False
         self.distance = 0.0
@@ -410,7 +420,7 @@ class Return(Task):
         self.farthest = 0.0
 
     def judge(self, elapsed, position, heading, floor) -> None:
-        self.distance = float(np.hypot(*(position[:2] - self.began_at[:2])))
+        self.distance = float(np.hypot(*(position[:2] - self.home_at[:2])))
         self.depth = float(-position[2])
         self.farthest = max(self.farthest, self.distance)
         if self.distance <= self.home_radius:
@@ -432,10 +442,11 @@ class Return(Task):
                 "depthM": round(self.depth, 2), "farthestM": round(self.farthest, 2), "timeLimitS": self.limit}
 
     def geometry(self) -> dict:
-        return {"circle": {"x": float(self.began_at[0]), "y": float(self.began_at[1]), "radiusM": self.home_radius}}
+        return {"circle": {"x": float(self.home_at[0]), "y": float(self.home_at[1]),
+                           "radiusM": self.home_radius}}
 
     def goal(self) -> dict:
-        return {"kind": "go", "to": [float(self.began_at[0]), float(self.began_at[1])],
+        return {"kind": "go", "to": [float(self.home_at[0]), float(self.home_at[1])],
                 "depthM": float(self.surface), "radiusM": self.home_radius}
 
     def failed(self) -> bool:

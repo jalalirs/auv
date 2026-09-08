@@ -933,8 +933,16 @@ class Dive:
                 self.view = "down"
             try:
                 from recording import Recorder
+
+                # How long this is expected to take decides how often it is
+                # filmed, so that a mission of a kilometre and a task of thirty
+                # metres leave recordings of about the same size.
+                expected = None
+                if isinstance(self.objective, dict):
+                    expected = self.objective.get("timeLimitS") or self.objective.get("seconds")
                 self.recorder = Recorder(pathlib.Path(self.brief.get("recordInto",
-                                         str(pathlib.Path(self.brief.get("cityPath", "/dive/city")).parent / "recording"))))
+                                         str(pathlib.Path(self.brief.get("cityPath", "/dive/city")).parent / "recording"))),
+                                         frames_hz=Recorder.rate_for(expected))
                 self.recorder.camera = self.camera()
                 self.say("recording", into=str(self.recorder.into))
             except Exception as exc:
