@@ -98,8 +98,11 @@ def test_a_dive_can_be_flown_from_a_plan_it_is_given():
         "manoeuvres": [
             {"id": "out", "kind": "goto", "at": {"x": 25.0, "y": 18.0, "depthM": 7.0},
              "arriveM": 3.0, "next": "in"},
+            # Inside a metre, not three: the task counts arrival at three, and
+            # a plan that stops the moment it is three metres out may stop just
+            # outside the circle it was aiming at.
             {"id": "in", "kind": "goto", "at": {"x": 50.0, "y": 0.0, "depthM": 7.0},
-             "arriveM": 3.0},
+             "arriveM": 1.0},
         ],
     }
     dive = a_dive({"objective": {"kind": "reach", "dx": 50.0, "dy": 0.0, "radiusM": 3.0,
@@ -109,7 +112,7 @@ def test_a_dive_can_be_flown_from_a_plan_it_is_given():
     run(dive, 60.0)
     assert dive.position[1] > 4.0, ("it went straight to the point rather than flying the plan "
                                     f"— {dive.position[1]:.1f} m to starboard")
-    run(dive, 240.0)
+    run(dive, 400.0)
     assert dive.task.detail()["arrived"], "and it never got there"
 
 
