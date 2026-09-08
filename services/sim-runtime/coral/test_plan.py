@@ -40,6 +40,12 @@ def a_dive(brief: dict) -> Dive:
                 body, allocator, pathlib.Path("nowhere.usda"),
                 lambda kind, **d: said.append((kind, d)))
     dive.said = said
+    dive.floor = -12.0
+    # Placing the vehicle is what begins a task, and placing it needs a scene.
+    # Nothing here opens one, so the task is begun by hand — which is what the
+    # tank does too, for the same reason.
+    if brief.get("objective"):
+        dive.begin_task(brief["objective"])
     return dive
 
 
@@ -98,9 +104,6 @@ def test_a_dive_can_be_flown_from_a_plan_it_is_given():
     }
     dive = a_dive({"objective": {"kind": "reach", "dx": 50.0, "dy": 0.0, "radiusM": 3.0,
                                  "timeLimitS": 600}, "plan": given})
-    # Nothing is planned until the dive is under way: a plan is worked out
-    # when the task begins, which is the first step and not the constructor.
-    run(dive, 1.0)
     assert dive.document is given, "the dive did not take the plan it was handed"
     assert dive.planned_by == "a person"
     run(dive, 60.0)
