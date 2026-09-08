@@ -71,22 +71,25 @@ class Task:
         """What to draw on the chart: points, a line, a rectangle, in world xy."""
         return {}
 
-    def route(self) -> list[dict]:
-        """The path that does this task, in world metres.
+    def goal(self) -> dict:
+        """What this task wants, in the world's own coordinates. Not how.
 
-        A task that says what it wants and cannot say how to go about it is a
-        task nobody can fly without writing a controller first. Every task here
-        can hand over a route the platform's own guidance will follow, so
-        choosing one on the dive page and pressing Dive does the thing.
+        A task used to carry the route that solved it, and the runtime flew
+        that route — so what was being measured was a line we had supplied,
+        and no controller was compared to anything. What a task says now is
+        the specification: cover this rectangle at this altitude, hold this
+        station, come home to this dock. Working out a path that satisfies it
+        is a controller's job, and the platform's own planner is one of those
+        (controllers/plan.py) rather than a privilege of the task.
 
-        A controller of somebody's own ignores all of this: it is handed the
-        objective and the sensors, and the route is the platform showing its
-        working, not an instruction.
+        Stated absolutely, never relative to where the vehicle happens to be,
+        because that is what a plan is: the same document whether it was
+        written by a person, emitted by a model, or worked out here.
         """
-        return []
+        return {}
 
-    def route_id(self) -> str:
-        """Changes when the route changes, so the vehicle can be re-steered."""
+    def goal_id(self) -> str:
+        """Changes when the goal changes, so a controller can be told again."""
         return self.kind
 
     def failed(self) -> bool:
@@ -148,32 +151,6 @@ class Task:
                                        said.get("depthM"))
         return None if fallback is None else np.asarray(fallback, dtype=float)
 
-    def lawnmower(self, centre: np.ndarray, width: float, height: float,
-                  swath: float, altitude=None, depth=None) -> list[dict]:
-        """Up and down a rectangle, the way a survey is actually flown.
-
-        The rectangle runs along the dive's heading and out to starboard from
-        `centre`, which is its near corner, and the legs are a swath apart —
-        so the ground between them is what the camera sees rather than what
-        somebody hoped.
-        """
-        ahead = np.array(self.ahead())
-        right = np.array([ahead[1], -ahead[0]])
-        legs = max(1, int(math.ceil(height / max(0.5, swath))))
-        route = []
-        for leg in range(legs + 1):
-            across = min(height, leg * swath)
-            ends = [0.0, width] if leg % 2 == 0 else [width, 0.0]
-            for along in ends:
-                point = centre[:2] + ahead * along + right * across
-                said = {"x": float(point[0]), "y": float(point[1])}
-                if altitude is not None:
-                    said["altitudeM"] = float(altitude)
-                elif depth is not None:
-                    said["depthM"] = float(depth)
-                route.append(said)
-        return route
-
 
 class HoldStation(Task):
     kind = "hold-station"
@@ -214,8 +191,9 @@ class HoldStation(Task):
     def geometry(self) -> dict:
         return {"circle": {"x": float(self.began_at[0]), "y": float(self.began_at[1]), "radiusM": self.radius}}
 
-    def route(self) -> list[dict]:
-        return []          # staying put is what the hold is for
+    def goal(self) -> dict:
+        return {"kind": "hold", "at": [float(v) for v in self.began_at],
+                "radiusM": self.radius}
 
 
 class Waypoints(Task):
@@ -270,8 +248,9 @@ class Waypoints(Task):
         return {"points": [{"x": float(p[0]), "y": float(p[1]), "depthM": float(-p[2])} for p in self.points],
                 "reached": self.reached}
 
-    def route(self) -> list[dict]:
-        return [{"x": float(p[0]), "y": float(p[1]), "depthM": float(-p[2])} for p in self.points]
+    def goal(self) -> dict:
+        return {"kind": "visit", "points": [[float(v) for v in p] for p in self.points],
+                "radiusM": self.radius}
 
     def failed(self) -> bool:
         return self.done and self.reached < len(self.points)
@@ -324,9 +303,10 @@ class Transect(Task):
         return {"line": [{"x": float(self.began_at[0]), "y": float(self.began_at[1])},
                          {"x": float(end[0]), "y": float(end[1])}]}
 
-    def route(self) -> list[dict]:
+    def goal(self) -> dict:
         end = self.began_at[:2] + self.ahead_xy * self.length
-        return [{"x": float(end[0]), "y": float(end[1]), "altitudeM": self.altitude}]
+        return {"kind": "line", "from": [float(v) for v in self.began_at[:2]],
+                "to": [float(end[0]), float(end[1])], "altitudeM": self.altitude}
 
 
 class Survey(Task):
@@ -400,15 +380,15 @@ class Survey(Task):
         return {"rectangle": corners, "seen": {"rows": self.rows, "columns": self.columns,
                                                "cells": [int(v) for v in np.packbits(self.seen.ravel())]}}
 
-    def route(self) -> list[dict]:
-        # A swath apart, from the footprint the camera will actually have at
-        # the altitude this survey asked for.
-        if self.half_angle is not None:
-            swath = 2.0 * max(0.25, self.altitude * math.tan(self.half_angle))
-        else:
-            swath = self.swath
-        return self.lawnmower(self.began_at, self.width, self.height,
-                              swath * 0.9, altitude=self.altitude)
+    def goal(self) -> dict:
+        # The rectangle, said in the world rather than as "ahead of where you
+        # started": a corner, a direction along it, and two lengths. How far
+        # apart to fly the lanes is not stated, because that depends on what
+        # the vehicle can see and is therefore the controller's business.
+        return {"kind": "cover", "corner": [float(v) for v in self.began_at[:2]],
+                "along": [float(v) for v in self.u[:2]],
+                "widthM": self.width, "heightM": self.height,
+                "altitudeM": self.altitude, "swathM": self.swath}
 
     def failed(self) -> bool:
         return self.done and self.score() < 0.999
@@ -454,9 +434,9 @@ class Return(Task):
     def geometry(self) -> dict:
         return {"circle": {"x": float(self.began_at[0]), "y": float(self.began_at[1]), "radiusM": self.home_radius}}
 
-    def route(self) -> list[dict]:
-        return [{"x": float(self.began_at[0]), "y": float(self.began_at[1]),
-                 "depthM": float(self.surface)}]
+    def goal(self) -> dict:
+        return {"kind": "go", "to": [float(self.began_at[0]), float(self.began_at[1])],
+                "depthM": float(self.surface), "radiusM": self.home_radius}
 
     def failed(self) -> bool:
         return self.done and not self.surfaced
@@ -540,9 +520,8 @@ class Reach(Task):
                 "line": [{"x": float(self.began_at[0]), "y": float(self.began_at[1])},
                          {"x": float(self.target[0]), "y": float(self.target[1])}]}
 
-    def route(self) -> list[dict]:
-        return [{"x": float(self.target[0]), "y": float(self.target[1]),
-                 "depthM": float(-self.target[2])}]
+    def goal(self) -> dict:
+        return {"kind": "go", "to": [float(v) for v in self.target], "radiusM": self.radius}
 
     def failed(self) -> bool:
         return self.done and not self.arrived
@@ -643,10 +622,12 @@ class Search(Task):
             drawn["reached"] = 1
         return drawn
 
-    def route(self) -> list[dict]:
-        swath = 2.0 * max(0.5, self.altitude * math.tan(self.half_angle)) + self.see
-        return self.lawnmower(self.began_at, self.width, self.height,
-                              max(2.0, swath * 0.8), altitude=self.altitude)
+    def goal(self) -> dict:
+        ahead = np.array(self.ahead())
+        return {"kind": "cover", "corner": [float(v) for v in self.began_at[:2]],
+                "along": [float(ahead[0]), float(ahead[1])],
+                "widthM": self.width, "heightM": self.height,
+                "altitudeM": self.altitude, "seeM": self.see}
 
     def failed(self) -> bool:
         return self.done and not self.found
@@ -733,13 +714,11 @@ class Treat(Task):
                               for c, d in zip(self.colonies[:400], self.treated[:400])]
         return drawn
 
-    def route(self) -> list[dict]:
-        corner = self.centre.copy()
+    def goal(self) -> dict:
         ahead = np.array(self.ahead())
-        right = np.array([ahead[1], -ahead[0]])
-        corner[:2] = self.centre[:2] - ahead * self.radius - right * self.radius
-        return self.lawnmower(corner, 2.0 * self.radius, 2.0 * self.radius,
-                              max(1.0, self.reach * 1.6), altitude=self.altitude)
+        return {"kind": "work", "centre": [float(v) for v in self.centre],
+                "along": [float(ahead[0]), float(ahead[1])],
+                "radiusM": self.radius, "reachM": self.reach, "altitudeM": self.altitude}
 
     def failed(self) -> bool:
         return self.done and self.score() < 0.999
@@ -800,19 +779,9 @@ class Inspect(Task):
                 "points": [{"x": float(self.target[0]), "y": float(self.target[1]),
                             "depthM": float(-self.target[2])}]}
 
-    def route(self) -> list[dict]:
-        # Round it, facing it the whole way: an inspection that looks where it
-        # is going has its back to the thing it came to look at, which is how
-        # a lap of a structure sees one side of it.
-        looking = {"x": float(self.target[0]), "y": float(self.target[1])}
-        route = []
-        for sector in range(self.SECTORS * 2 + 1):
-            angle = math.pi * sector / self.SECTORS
-            route.append({"x": float(self.target[0] + self.radius * math.cos(angle)),
-                          "y": float(self.target[1] + self.radius * math.sin(angle)),
-                          "depthM": float(-self.target[2]),
-                          "facing": looking, "arriveM": max(0.4, self.radius * 0.2)})
-        return route
+    def goal(self) -> dict:
+        return {"kind": "circle", "at": [float(v) for v in self.target],
+                "radiusM": self.radius, "sectors": self.SECTORS}
 
     def failed(self) -> bool:
         return self.done and self.score() < 0.999
@@ -868,11 +837,11 @@ class Revisit(Task):
                            for m in self.marks],
                 "reached": sum(1 for h in self.held if h >= self.hold_for)}
 
-    def route(self) -> list[dict]:
-        # Held at, not merely passed over: the sample is the ten seconds.
-        return [{"x": float(m[0]), "y": float(m[1]), "depthM": float(-m[2]),
-                 "arriveM": max(0.25, self.reach * 0.6), "holdS": self.hold_for + 1.0}
-                for m in self.marks]
+    def goal(self) -> dict:
+        # Held at, not merely passed over: the sample is the ten seconds, and
+        # the goal says so rather than leaving it to a route to imply.
+        return {"kind": "visit", "points": [[float(v) for v in m] for m in self.marks],
+                "radiusM": self.reach, "holdS": self.hold_for}
 
     def failed(self) -> bool:
         return self.done and self.score() < 0.999
@@ -957,22 +926,10 @@ class Dock(Task):
                 "circle": {"x": float(self.station[0]), "y": float(self.station[1]),
                            "radiusM": self.approach}}
 
-    def route(self) -> list[dict]:
-        # The gate first, on the station's own heading, then straight in. A
-        # vehicle that arrives from the side arrives across the cradle.
-        into = np.array([math.cos(self.facing), math.sin(self.facing)])
-        gate = self.station[:2] - into * self.approach
-        return [
-            {"x": float(gate[0]), "y": float(gate[1]), "depthM": float(-self.station[2]),
-             "arriveM": max(0.5, self.approach * 0.15)},
-            # Onto the cradle: inside half the tolerance, and slower than the
-            # station will accept, because arriving fast is a miss.
-            {"x": float(self.station[0]), "y": float(self.station[1]),
-             "depthM": float(-self.station[2]),
-             "arriveM": max(0.08, self.tolerance * 0.5),
-             "speedMs": max(0.05, self.speed_limit * 0.5),
-             "easeM": max(1.0, self.approach * 0.6)},
-        ]
+    def goal(self) -> dict:
+        return {"kind": "dock", "station": [float(v) for v in self.station],
+                "facingDeg": math.degrees(self.facing), "approachM": self.approach,
+                "toleranceM": self.tolerance, "speedLimitMs": self.speed_limit}
 
     def failed(self) -> bool:
         return self.done and not self.docked
@@ -1017,8 +974,8 @@ class Wait(Task):
         return {"waitedS": round(self.waited, 1), "askedS": self.seconds,
                 "driftM": round(self.drift, 2), "reason": self.reason}
 
-    def route(self) -> list[dict]:
-        return []
+    def goal(self) -> dict:
+        return {"kind": "hold", "at": [float(v) for v in self.began_at]}
 
     def failed(self) -> bool:
         return self.done and self.waited < self.seconds - 1.0
@@ -1105,11 +1062,11 @@ class Mission(Task):
         stage = self.stage
         return {} if stage is None else stage.geometry()
 
-    def route(self) -> list[dict]:
+    def goal(self) -> dict:
         stage = self.stage
-        return [] if stage is None else stage.route()
+        return {} if stage is None else stage.goal()
 
-    def route_id(self) -> str:
+    def goal_id(self) -> str:
         return f"mission:{self.at}"
 
     def describe(self) -> dict:

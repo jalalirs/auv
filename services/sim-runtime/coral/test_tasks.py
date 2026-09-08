@@ -119,8 +119,15 @@ def test_inspect_wants_every_side_of_the_thing():
     assert 0.3 < half.score() < 0.7 and not half.done
 
 
-def test_a_route_exists_for_every_task_the_platform_offers():
-    """A task nobody can fly is a task that watches. Each one says how."""
+def test_every_task_states_a_goal_a_planner_can_fly():
+    """A task says what it wants; a planner works out how.
+
+    Both halves are checked here, because the split is the point: the task must
+    say something in the world's own terms, and the platform's planner must be
+    able to turn that into a path. Neither half may know about the other.
+    """
+    from controllers import plan
+
     for objective in ({"kind": "waypoints"}, {"kind": "transect", "lengthM": 20},
                       {"kind": "survey", "widthM": 10, "heightM": 6},
                       {"kind": "reach", "dx": 20}, {"kind": "search", "widthM": 20, "heightM": 10},
@@ -128,7 +135,22 @@ def test_a_route_exists_for_every_task_the_platform_offers():
                       {"kind": "dock", "dx": 12}, {"kind": "return"}):
         task = task_for(objective, START, 0.0, camera={"focalLengthMm": 21})
         assert task is not None, objective
-        assert task.route(), f"{objective['kind']} has no route to fly"
+        goal = task.goal()
+        assert goal.get("kind"), f"{objective['kind']} says nothing about what it wants"
+        route = plan.route_for(goal, believed=START, camera_half_angle=0.41)
+        assert route, f"the planner cannot fly {objective['kind']}"
+        for leg in route:
+            assert "x" in leg and "y" in leg, f"{objective['kind']} planned a leg going nowhere"
+
+
+def test_a_task_cannot_hand_over_its_own_answer():
+    """The whole of item 31, as one assertion.
+
+    A task that can name a waypoint is a task that has done the controller's
+    work, and a matrix flown that way measures a line we supplied.
+    """
+    task = task_for({"kind": "survey", "widthM": 10, "heightM": 6}, START, 0.0)
+    assert not hasattr(task, "route"), "a task is still carrying its own solution"
 
 
 def test_reaching_a_point_rewards_going_directly():

@@ -280,6 +280,8 @@ class Dive:
         # How many times a hand picked the vehicle up and put it somewhere.
         self.carried = 0
         self.route_flying = ""
+        # Who worked out the path being flown, once something has.
+        self.planned_by = ""
         # How many times somebody has asked to start the task over.
         self.attempts = 1
         self.objective = None
@@ -999,21 +1001,52 @@ class Dive:
                                at_most=200000)
 
     def steer_to_the_task(self) -> None:
-        """Hand the task's route to the platform's own controller.
+        """Plan a way of doing what the task asks, and fly that.
 
-        Re-checked as the dive runs, because a mission's route changes when its
+        The task states a goal and the planner works out a path — which is the
+        line that matters, because until it was drawn the task carried its own
+        solution and every dive measured a route we had supplied. What is here
+        is the platform's own planner (controllers/plan.py); somebody else's
+        controller ignores all of it and is handed the goal and the sensors.
+
+        Re-planned when the goal changes, which for a mission is when its
         stage does.
         """
         if self.task is None:
             return
-        which = self.task.route_id()
+        which = self.task.goal_id()
         if which == self.route_flying:
             return
-        route = self.task.route()
+        from controllers import plan
+
+        goal = self.task.goal()
+        route = plan.route_for(goal, believed=self.believed(),
+                               camera_half_angle=self.camera_half_angle())
         self.route_flying = which
+        self.planned_by = "the platform's planner"
         self.helm.fly(route)
         if route:
-            self.say("steering", legs=len(route), forTask=self.task.kind, stage=which)
+            self.say("planned", legs=len(route), forTask=self.task.kind, goal=goal.get("kind"),
+                     stage=which, by=self.planned_by)
+
+    def believed(self):
+        """Where the vehicle thinks it is. What a controller is allowed to use."""
+        if self.navigation is not None:
+            return np.asarray(self.navigation.believed, dtype=float)
+        return np.asarray(self.position, dtype=float)
+
+    def camera_half_angle(self) -> float | None:
+        """Half the camera's horizontal field of view, radians, if it has one.
+
+        A fact about the vehicle, which is why a planner is told it and a task
+        is not: how far apart to fly the lanes of a survey depends on what the
+        thing can see.
+        """
+        described = self.camera()
+        if described is None:
+            return None
+        wide = described.get("horizontalFovDeg")
+        return None if wide is None else math.radians(float(wide) / 2.0)
 
     def watch_the_energy(self) -> None:
         """Tell the failsafe what it is watching and where home is."""
@@ -1606,6 +1639,12 @@ class Dive:
                 self.say("recording_failed", why=str(exc)[:160])
             self.recorder = None
         result = None if self.task is None else self.task.result()
+        if result is not None:
+            # Which controller had the vehicle, and who worked out the path it
+            # was following. A result without these is a number nobody can
+            # attribute, which is what every dive in the record was until now.
+            result["flownBy"] = self.helm.who_flew()
+            result["plannedBy"] = self.planned_by or None
         if result is not None and self.battery is not None:
             # A controller that does the job on half the charge is the better
             # controller, and until now there was no way to say so.
