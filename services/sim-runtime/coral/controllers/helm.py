@@ -44,6 +44,7 @@ class Helm:
         if self.stack is not None:
             self.controllers["stack"] = self.stack
         self.flying: Controller = self.hold
+        self.steps_flown: dict[str, int] = {}
         self.engaged = False
         self.changes = 0
         # What the console asked to have the vehicle when no hand is on it:
@@ -285,6 +286,12 @@ class Helm:
             self.hold.engage(seen)
             self._hand_over(self.hold, seen)
         chosen = self._choose(seen)
+        # Who actually flew it, counted rather than assumed. A dive was
+        # recorded as flown by whatever was configured, which is not the same
+        # thing as what had the vehicle: a failsafe that took over for the
+        # last third of a dive is a different result, and until this was
+        # counted the difference had to be inferred from the trajectory.
+        self.steps_flown[chosen.name] = self.steps_flown.get(chosen.name, 0) + 1
         if chosen is not self.flying:
             self._hand_over(chosen, seen)
         asked: Command = chosen.observe(seen)
@@ -294,6 +301,16 @@ class Helm:
         return self.allocator.allocate(self.bottom(self.guard(wrench), seen))
 
     # ── what the console is told ─────────────────────────────────────────────
+
+    def who_flew(self) -> dict:
+        """What share of the dive each controller had of the vehicle."""
+        total = sum(self.steps_flown.values())
+        if total == 0:
+            return {}
+        return {"mostly": max(self.steps_flown, key=self.steps_flown.get),
+                "shares": {name: round(count / total, 3)
+                           for name, count in sorted(self.steps_flown.items(),
+                                                     key=lambda kv: -kv[1])}}
 
     def describe(self) -> dict:
         return {
