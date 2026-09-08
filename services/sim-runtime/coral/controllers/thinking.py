@@ -12,11 +12,13 @@ one thought at a time, and the flight loop never waits for it: it keeps flying
 whatever it last decided. When a thought comes back it is handed over on the
 flight thread, between steps, so a controller never has to think about locks.
 
-What this costs is counted rather than hidden. A thought that takes two seconds
-is two seconds during which the vehicle is acting on older information, and it
-is charged in simulated seconds — a dive with a thinking controller does not
-run faster than the clock on the wall, because a brain that is slow in reality
-must be slow here or the benchmark is a lie.
+What this costs is counted rather than hidden, and it is charged in the dive's
+own seconds. A thought measured at a second and a half in reality is not
+handed over until the dive has advanced a second and a half — whether the dive
+is running at real time on a graphics card or a thousand times faster in a
+test. Charge it in wall-clock instead and the same controller on a quicker
+computer appears to think for free, which would make every benchmark a
+measurement of the machine it ran on.
 
 What can go wrong is recorded rather than fatal: a thought that raises is
 counted and dropped, a thought that takes longer than its patience is
@@ -39,7 +41,7 @@ class Thinking:
         # a tighter budget can enforce its own.
         self.patience = float(patience)
         self._thread: threading.Thread | None = None
-        self._done: list[tuple[float, object]] = []      # (asked at, what it decided)
+        self._done: list[tuple[float, float, object]] = []   # asked at, took, decided
         self._failed: list[tuple[float, str]] = []
         self._lock = threading.Lock()
         self.asked_at: float | None = None               # simulated time of the request
@@ -54,23 +56,31 @@ class Thinking:
 
     def tick(self, seen) -> None:
         """Called every step: take delivery of a thought, and ask for another."""
-        self._deliver()
+        self._deliver(seen.t)
         self._maybe_ask(seen)
 
-    def _deliver(self) -> None:
+    def _deliver(self, now: float) -> None:
+        """Hand over the thoughts that have had time to happen.
+
+        Time here is the dive's, not the machine's. A thought that took a
+        second and a half in reality costs a second and a half of the dive,
+        whether the dive is running at real time on a graphics card or a
+        thousand times faster in a test — otherwise the same controller on a
+        quicker computer would appear to think for free, and every benchmark
+        would be measuring the machine.
+        """
+        keep: list = []
         with self._lock:
             done, self._done = self._done, []
             failed, self._failed = self._failed, []
-        for asked_at, decided in done:
-            self.thoughts += 1
-            self.last_at = asked_at
-            if decided is None:
+        for asked_at, took, decided in done:
+            if now < asked_at + took:
+                keep.append((asked_at, took, decided))
                 continue
-            try:
-                self.controller.on_thought(decided)
-            except Exception as exc:                     # a controller's own fault
-                self.failures += 1
-                self._say(f"applying a thought failed: {exc}")
+            self.landed(asked_at, took, decided)
+        if keep:
+            with self._lock:
+                self._done = keep + self._done
         for _asked_at, why in failed:
             self.failures += 1
             self._say(why)
@@ -99,6 +109,18 @@ class Thinking:
 
     # ── the slow loop's side ─────────────────────────────────────────────────
 
+    def landed(self, asked_at: float, took: float, decided) -> None:
+        """One thought, delivered on the flight thread."""
+        self.thoughts += 1
+        self.last_at = asked_at
+        if decided is None:
+            return
+        try:
+            self.controller.on_thought(decided)
+        except Exception as exc:                         # a controller's own fault
+            self.failures += 1
+            self._say(f"applying a thought failed: {exc}")
+
     def _think(self, seen, at: float) -> None:
         began = time.monotonic()
         try:
@@ -110,7 +132,7 @@ class Thinking:
         took = time.monotonic() - began
         with self._lock:
             self.latencies.append(took)
-            self._done.append((at, decided))
+            self._done.append((at, took, decided))
 
     def _say(self, why: str) -> None:
         self.trouble = why[:200]
