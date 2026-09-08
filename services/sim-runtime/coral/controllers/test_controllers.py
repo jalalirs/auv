@@ -12,6 +12,7 @@ from __future__ import annotations
 import math
 import pathlib
 import sys
+import time
 
 import numpy as np
 import pytest
@@ -138,3 +139,62 @@ def test_a_roll_key_leans_the_hull_and_lets_it_come_back():
     dive.take_the_controls([0.0] * 6)
     run(dive, 15.0)
     assert abs(math.degrees(dive.observation().roll)) < 3.0, "let go, it rights itself"
+
+
+# ── the slow clock ───────────────────────────────────────────────────────────
+#
+# A controller may think off the flight loop. What has to be true is that the
+# vehicle keeps flying while it does, that a thought which fails is recorded
+# rather than fatal, and that nothing about deciding ever happens on the step.
+
+
+def a_pondering_dive(seconds: float = 90.0, think_s: float = 2.0) -> Dive:
+    dive = a_dive(seconds=seconds)
+    dive.helm.prefer = "ponder"
+    dive.helm.ponder.tune("thinkS", think_s)
+    dive.helm.ponder.tune("everyS", 10.0)
+    dive.helm.tasked({"kind": "go", "to": [40.0, 0.0], "depthM": 7.0, "radiusM": 2.0})
+    return dive
+
+
+def test_a_controller_may_take_seconds_to_answer_and_the_vehicle_flies_on():
+    """Two seconds of thinking, sixty steps a second, and no stall."""
+    dive = a_pondering_dive(seconds=60.0, think_s=2.0)
+    began = time.monotonic()
+    run(dive, 40.0)
+    steps = 40.0 / dive.dt
+    # The flight loop never waited on the slow one: forty simulated seconds of
+    # stepping must not have taken anything like the wall time of the thoughts
+    # that were taken during it.
+    assert time.monotonic() - began < 2.0, "the flight loop waited for a thought"
+    slow = dive.helm.thinking.get("ponder")
+    assert slow is not None and slow.thoughts >= 1, "nothing was ever thought"
+    assert slow.latencies and max(slow.latencies) >= 1.9, "the thinking did not actually take time"
+    assert dive.helm.ponder.plans >= 1, "no plan was ever taken delivery of"
+    # And it flew: the vehicle went towards the point it was asked for.
+    assert dive.position[0] > 3.0, f"it did not set off — {dive.position[0]:.2f} m"
+    assert steps > 0
+
+
+def test_a_thought_that_fails_is_recorded_and_the_dive_carries_on():
+    dive = a_pondering_dive(seconds=40.0, think_s=0.0)
+
+    def broken(goal, believed):
+        raise RuntimeError("the model was not there")
+
+    dive.helm.ponder._decide = broken
+    run(dive, 25.0)
+    slow = dive.helm.thinking["ponder"]
+    assert slow.failures >= 1, "a thought that raised was not counted"
+    assert "not there" in getattr(slow, "trouble", ""), "and it did not say what went wrong"
+    assert dive.helm.flying.name == "ponder", "the dive stopped being flown"
+    assert abs(-dive.position[2] - 7.0) < 0.6, "and it did not hold its depth while failing"
+
+
+def test_what_the_slow_loop_did_is_on_the_record():
+    dive = a_pondering_dive(seconds=40.0, think_s=0.2)
+    run(dive, 25.0)
+    said = dive.helm.thought()
+    assert "ponder" in said, "the record does not say anything was thinking"
+    assert said["ponder"]["thoughts"] >= 1
+    assert said["ponder"]["slowestS"] >= 0.15, said["ponder"]

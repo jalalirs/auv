@@ -530,7 +530,18 @@ class CoralCityShell(omni.ext.IExt):
             until = time.monotonic() + 0.02
             owed = dive.simulated + (self.dive.recorder.frame_every
                                      if dive.recorder is not None else 1.0)
-            allowed = (time.monotonic() - self.began) * MOST_TIMES_REAL
+            # A dive whose controller thinks does not outrun the clock on the
+            # wall. Thinking costs real seconds — a model answers in one or two
+            # — and if the dive were running at four times real time those
+            # would be charged as eight, which would make a benchmark reward
+            # whoever ran on the slower machine.
+            times_real = MOST_TIMES_REAL
+            try:
+                if dive.helm.deliberating():
+                    times_real = 1.0
+            except Exception:
+                pass
+            allowed = (time.monotonic() - self.began) * times_real
             # And not at all while the recording is waiting on a frame: a dive
             # that runs on past a capture it has not taken is a dive whose
             # video is missing the moment it went past.

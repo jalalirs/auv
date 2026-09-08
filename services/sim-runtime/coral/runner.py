@@ -1028,6 +1028,10 @@ class Dive:
         from controllers import plan
 
         goal = self.task.goal()
+        # Every controller is told what the dive is for. One that plans for
+        # itself needs the goal and not a route — that is the whole of the
+        # difference between a vehicle being asked and one being driven.
+        self.helm.tasked(goal)
         route = plan.route_for(goal, believed=self.believed(),
                                camera_half_angle=self.camera_half_angle())
         self.route_flying = which
@@ -1653,6 +1657,13 @@ class Dive:
             # attribute, which is what every dive in the record was until now.
             result["flownBy"] = self.helm.who_flew()
             result["plannedBy"] = self.planned_by or None
+            # What the slow loops did, when anything used one: how many
+            # thoughts, how long they took, and how many failed. A controller
+            # that scores well by thinking for four seconds a step is not
+            # obviously the better controller, and this is where that shows.
+            thought = self.helm.thought()
+            if thought:
+                result["thought"] = thought
         if result is not None and self.battery is not None:
             # A controller that does the job on half the charge is the better
             # controller, and until now there was no way to say so.

@@ -19,7 +19,9 @@ from .external import StackController
 from .failsafe import Failsafe
 from .hold import HoldController
 from .manual import ManualController
+from .ponder import PonderController
 from .pursue import PursueController
+from .thinking import Thinking
 
 
 class Helm:
@@ -34,17 +36,25 @@ class Helm:
         # The platform's own answer to a route, so a task can be flown by
         # somebody who has not written a controller.
         self.pursue = PursueController(self.capability, model.effective_mass(), -model.net_buoyancy_n, dt)
+        # And one that is handed the goal instead of a route and works out its
+        # own way of doing it, on a clock slow enough for something real to be
+        # doing the working out. Nobody flies with it unless it is asked for.
+        self.ponder = PonderController(self.capability, model.effective_mass(),
+                                       -model.net_buoyancy_n, dt)
         # And the one controller that outranks a hand on the keys.
         self.failsafe = Failsafe(self.capability, model.effective_mass(), -model.net_buoyancy_n, dt)
         self.stack = None if bridge is None else StackController(bridge)
         self.controllers: dict[str, Controller] = {
             "hold": self.hold, "manual": self.manual, "pursue": self.pursue,
-            "failsafe": self.failsafe,
+            "ponder": self.ponder, "failsafe": self.failsafe,
         }
         if self.stack is not None:
             self.controllers["stack"] = self.stack
         self.flying: Controller = self.hold
         self.steps_flown: dict[str, int] = {}
+        # A slow loop for each controller that wants one, started the first
+        # time it has the vehicle. Most never will.
+        self.thinking: dict[str, Thinking] = {}
         self.engaged = False
         self.changes = 0
         # What the console asked to have the vehicle when no hand is on it:
@@ -245,6 +255,35 @@ class Helm:
         self.pursue.steer(route)
         self.flying_the_route = bool(route)
 
+    def deliberating(self) -> bool:
+        """Whether anything here wants a slow clock.
+
+        A dive with one does not run faster than the clock on the wall: a
+        thought that takes two seconds in reality has to cost two seconds
+        here, or a benchmark rewards being slow.
+        """
+        return any(getattr(c, "thinks_every", None) for c in self.controllers.values()
+                   if c is self.flying or self.prefer == c.name)
+
+    def tasked(self, goal: dict) -> None:
+        """Tell every controller what the dive is for.
+
+        Not a route: the goal. A controller that plans for itself is handed
+        this and works out its own way of doing it, which is the difference
+        between a vehicle that is asked and one that is driven.
+        """
+        for controller in self.controllers.values():
+            try:
+                controller.tasked(goal)
+            except Exception:
+                # A controller that cannot be told what the dive is for is
+                # still allowed to fly it.
+                pass
+
+    def thought(self) -> dict:
+        """What the slow loops did, for the record and for the console."""
+        return {name: slow.said() for name, slow in self.thinking.items()}
+
     def watch_the_battery(self, battery, dock=None) -> None:
         self.failsafe.watch(battery, dock)
 
@@ -259,6 +298,10 @@ class Helm:
             return self.hold
         if self.prefer == "manual":
             return self.manual
+        # Asked for by name. A controller that plans for itself is not chosen
+        # because a route happens to exist — nobody gave it one.
+        if self.prefer == "ponder":
+            return self.ponder
         if self.stack is not None and self.stack.talking(seen.t):
             return self.stack
         if self.flying_the_route and not self.pursue.holding:
@@ -286,6 +329,14 @@ class Helm:
             self.hold.engage(seen)
             self._hand_over(self.hold, seen)
         chosen = self._choose(seen)
+        # Whatever has the vehicle gets its slow loop turned, before it is
+        # asked what to do — so a thought that landed since the last step is
+        # already applied when the flight loop reads it.
+        if getattr(chosen, "thinks_every", None):
+            slow = self.thinking.get(chosen.name)
+            if slow is None:
+                slow = self.thinking[chosen.name] = Thinking(chosen)
+            slow.tick(seen)
         # Who actually flew it, counted rather than assumed. A dive was
         # recorded as flown by whatever was configured, which is not the same
         # thing as what had the vehicle: a failsafe that took over for the
