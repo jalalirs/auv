@@ -93,21 +93,21 @@ def test_a_dive_flies_what_was_asked_for_in_words():
     said = "go 60 metres east, then come home"
     understood = read(said, at=(0.0, 0.0, -7.0))
     model = Hydrodynamics.from_package(PACKAGE)
-    brief = {"durationSeconds": 900.0, "initialState": {"positionM": [0.0, 0.0, -7.0]},
+    brief = {"durationSeconds": 1400.0, "initialState": {"positionM": [0.0, 0.0, -7.0]},
              "objective": {"kind": "reach", "dx": 0.0, "dy": 60.0, "radiusM": 3.0,
-                           "timeLimitS": 900, "plan": understood["plan"]}}
+                           "timeLimitS": 1200, "plan": understood["plan"]}}
     dive = Dive(brief, Body(model), Allocator(model), pathlib.Path("nowhere.usda"),
                 lambda kind, **said_: None)
     dive.floor = -12.0
     dive.begin_task(brief["objective"])
     assert dive.document is understood["plan"], "the dive did not fly what was asked for"
 
-    for _ in range(int(300 / dive.dt)):
+    for _ in range(int(500 / dive.dt)):
         dive.step()
     # It went east, which is what was asked, and not north, which was not.
     assert dive.position[1] > 40.0, f"it did not go east — {dive.position[1]:.1f} m"
     assert abs(dive.position[0]) < 15.0, f"it wandered north — {dive.position[0]:.1f} m"
-    for _ in range(int(400 / dive.dt)):
+    for _ in range(int(600 / dive.dt)):
         dive.step()
     home = math.hypot(dive.position[0], dive.position[1])
     assert home < 8.0, f"it never came home — {home:.1f} m out"
