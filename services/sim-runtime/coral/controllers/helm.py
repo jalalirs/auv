@@ -237,6 +237,13 @@ class Helm:
         elif name == "manual":
             self.prefer = "manual"
             self._hand_over(self.manual, seen)
+        elif name == "ponder":
+            # Asked for by name, and kept: a controller that plans for itself
+            # is not chosen because a route happens to exist, since nobody
+            # gave it one.
+            self.prefer = "ponder"
+            self.failsafe.stand_down()
+            self._hand_over(self.ponder, seen)
         else:
             self.prefer = None
             if self.stack is not None and self.stack.talking(seen.t):
