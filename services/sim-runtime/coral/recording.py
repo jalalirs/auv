@@ -30,6 +30,21 @@ class Recorder:
     # is smaller than the stills were.
     FRAMES_HZ = 8.0
 
+    # About how many frames a recording should hold, whatever the mission's
+    # length. Eight a second is right for a task of a few minutes and wrong
+    # for one that flies a kilometre: at that rate an hour-long survey is a
+    # gigabyte, and there are two hundred and seventy-five of them. So the
+    # rate follows the dive — eight a second for the short ones, down to a
+    # floor for the long — and a recording stays about this many frames.
+    FRAMES_WANTED = 2000
+    SLOWEST_HZ = 1.5
+
+    @classmethod
+    def rate_for(cls, seconds: float | None) -> float:
+        if not seconds or seconds <= 0:
+            return cls.FRAMES_HZ
+        return max(cls.SLOWEST_HZ, min(cls.FRAMES_HZ, cls.FRAMES_WANTED / float(seconds)))
+
     def __init__(self, into: pathlib.Path, hz: float = 5.0, frames_hz: float = FRAMES_HZ) -> None:
         self.into = into
         self.frames = into / "frames"

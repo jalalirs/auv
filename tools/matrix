@@ -103,29 +103,35 @@ POSITIONING = {
 # What `run` crosses when it is not told otherwise.
 GENERAL = ["dead-reckoning", "usbl", "lbl", "no-dvl", "poor-compass"]
 
-# Cut down so that one dive is a couple of minutes of simulated time rather
-# than half an hour: the point of the matrix is the comparison, and a longer
-# survey compares the same things more slowly.
+# Missions long enough for navigation error to compound, which is the only
+# reason navigation is a subject. The first version of this table was cut down
+# to a couple of minutes a dive on the grounds that the point was the
+# comparison — and the comparison came back flat, five technologies to one
+# number, because thirty metres of dead reckoning is as good as an array.
+# Hundreds of metres and tens of minutes is where they separate, and it is
+# also what a vehicle is actually sent out to do.
 TASKS = {
-    "hold-station": {"kind": "hold-station", "seconds": 60, "radiusM": 0.5, "depthBandM": 0.3},
-    "waypoints": {"kind": "waypoints", "radiusM": 1.5, "timeLimitS": 300,
-                  "points": [{"dx": 10, "dy": 0}, {"dx": 10, "dy": 10}, {"dx": 0, "dy": 0}]},
-    "transect": {"kind": "transect", "lengthM": 20, "altitudeM": 2.0, "altitudeBandM": 0.5,
-                 "headingToleranceDeg": 12, "timeLimitS": 240},
-    "survey": {"kind": "survey", "widthM": 12, "heightM": 6, "altitudeM": 2.0, "swathM": 3.0,
-               "altitudeBandM": 1.0, "timeLimitS": 300},
-    "reach": {"kind": "reach", "dx": 30, "dy": 0, "radiusM": 2.0, "timeLimitS": 240},
-    "search": {"kind": "search", "widthM": 20, "heightM": 12, "altitudeM": 2.5, "seeM": 6,
-               "target": {"dx": 15, "dy": 8}, "timeLimitS": 300},
-    "treat": {"kind": "treat", "radiusM": 6, "reachM": 1.5, "altitudeM": 1.5,
-              "altitudeBandM": 1.5, "speedMs": 0.35, "timeLimitS": 400},
-    "inspect": {"kind": "inspect", "dx": 10, "dy": 0, "radiusM": 4.0, "bandM": 2.0,
-                "timeLimitS": 300},
-    "revisit": {"kind": "revisit", "reachM": 1.2, "holdS": 8, "timeLimitS": 300,
-                "marks": [{"dx": 8, "dy": 0}, {"dx": 14, "dy": 6}]},
-    "dock": {"kind": "dock", "dx": 12, "dy": 0, "approachM": 5, "toleranceM": 0.4,
-             "headingToleranceDeg": 25, "speedMs": 0.25, "timeLimitS": 300},
-    "return": {"kind": "return", "homeRadiusM": 2.0, "surfaceDepthM": 0.5, "timeLimitS": 240},
+    "hold-station": {"kind": "hold-station", "seconds": 300, "radiusM": 0.5, "depthBandM": 0.3},
+    "waypoints": {"kind": "waypoints", "radiusM": 3.0, "timeLimitS": 1200,
+                  "points": [{"dx": 80, "dy": 0}, {"dx": 80, "dy": 60}, {"dx": 0, "dy": 60},
+                             {"dx": 0, "dy": 0}]},
+    "transect": {"kind": "transect", "lengthM": 200, "altitudeM": 3.0, "altitudeBandM": 0.6,
+                 "headingToleranceDeg": 12, "timeLimitS": 900},
+    "survey": {"kind": "survey", "widthM": 60, "heightM": 30, "altitudeM": 5.0, "swathM": 4.0,
+               "altitudeBandM": 1.2, "timeLimitS": 1500},
+    "reach": {"kind": "reach", "dx": 250, "dy": 0, "radiusM": 3.0, "timeLimitS": 1200},
+    "search": {"kind": "search", "widthM": 80, "heightM": 50, "altitudeM": 4.0, "seeM": 8,
+               "target": {"dx": 62, "dy": 34}, "timeLimitS": 1500},
+    "treat": {"kind": "treat", "radiusM": 15, "reachM": 1.5, "altitudeM": 1.5,
+              "altitudeBandM": 1.5, "speedMs": 0.35, "timeLimitS": 1500},
+    "inspect": {"kind": "inspect", "dx": 60, "dy": 0, "radiusM": 6.0, "bandM": 2.5,
+                "timeLimitS": 900},
+    "revisit": {"kind": "revisit", "reachM": 2.0, "holdS": 10, "timeLimitS": 1200,
+                "marks": [{"dx": 50, "dy": 0}, {"dx": 95, "dy": 40}, {"dx": 30, "dy": 65}]},
+    "dock": {"kind": "dock", "dx": 80, "dy": 0, "approachM": 8, "toleranceM": 0.4,
+             "headingToleranceDeg": 25, "speedMs": 0.25, "timeLimitS": 1200},
+    "return": {"kind": "return", "homeRadiusM": 3.0, "surfaceDepthM": 0.5, "timeLimitS": 900,
+               "awayM": 150},
 }
 
 # How long the machine is allowed to hold, whatever the task's own limit says.
