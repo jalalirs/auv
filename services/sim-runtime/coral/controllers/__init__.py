@@ -7,9 +7,11 @@ from .helm import Helm
 from .hold import HoldController
 from .manual import ManualController
 from . import plan
+from .ponder import PonderController
 from .pursue import PursueController
 
 __all__ = ["Command", "Controller", "Failsafe", "Helm", "HoldController",
            "ManualController", "Observation", "Parameter", "PursueController",
     "plan",
+    "PonderController",
            "StackController"]

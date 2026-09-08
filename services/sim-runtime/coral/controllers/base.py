@@ -93,14 +93,31 @@ class Parameter:
 
 
 class Controller:
-    """The interface. Subclasses fill in observe() and declare parameters."""
+    """The interface. Subclasses fill in observe() and declare parameters.
+
+    Two clocks, and a controller may use one or both. `observe` is the flight
+    loop: it is called every physics step, must return quickly, and must not
+    wait for anything. `think` is the slow one: it is called on its own thread,
+    no faster than `thinks_every` simulated seconds, may take as long as it
+    needs, may reach the network, may call a model, and may fail — and while it
+    is away the vehicle keeps flying on whatever it last decided.
+
+    That split is what makes a controller that reasons possible at all. A
+    model asked to look at a frame answers in a second or two; put that in the
+    flight loop and the vehicle stops sixty times a second.
+    """
 
     name: str = "controller"
     kind: str = "builtin"          # builtin | manual | external
     says: str = ""
+    # How often this controller wants to think, in simulated seconds. None
+    # means it does not — most controllers are arithmetic and want the fast
+    # loop only.
+    thinks_every: float | None = None
 
     def __init__(self) -> None:
         self.parameters: dict[str, Parameter] = {}
+        self.goal: dict = {}
 
     def declare(self, name: str, value: float, low: float, high: float,
                 unit: str = "", says: str = "") -> Parameter:
@@ -121,6 +138,29 @@ class Controller:
 
     def observe(self, seen: Observation) -> Command:
         raise NotImplementedError
+
+    def think(self, seen: Observation):
+        """Decide something, slowly, off the flight loop.
+
+        Called on its own thread when `thinks_every` says so. Whatever it
+        returns is handed to `on_thought` on the flight thread, so neither of
+        these ever needs a lock. Raising is allowed: it is counted, reported,
+        and the vehicle carries on with the last thought that worked.
+        """
+        return None
+
+    def on_thought(self, decided) -> None:
+        """Take delivery of what `think` decided. On the flight thread."""
+
+    def tasked(self, goal: dict) -> None:
+        """Told what the dive is for, in the world's own coordinates.
+
+        A controller that plans for itself needs the goal rather than a route
+        — that is the whole of the difference between being driven and being
+        asked. Stored by default; ignored by controllers that are handed a
+        route instead.
+        """
+        self.goal = dict(goal or {})
 
     def engage(self, seen: Observation) -> None:
         """Told it now has the vehicle, and where the vehicle is."""
