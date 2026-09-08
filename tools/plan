@@ -1,0 +1,166 @@
+#!/usr/bin/env python3
+"""Read a plan, check it, and hold two of them side by side.
+
+A plan is a document now — a graph of manoeuvres in the shape IMC uses — which
+means it is a thing you can look at before it is flown, keep after it is, and
+compare against another. This is the tool for doing those three things.
+
+  ./tools/plan show survey.json
+  ./tools/plan check written-by-a-model.json
+  ./tools/plan diff the-planners.json the-models.json
+  ./tools/plan for '{"kind": "cover", "corner": [0,0], "widthM": 60, "heightM": 30}'
+
+`diff` is the one that matters: two controllers asked to do one task produce
+two documents, and the difference between them is the difference between the
+controllers, stated before either of them gets wet.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import sys
+
+HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent / "services/sim-runtime/coral"))
+
+from controllers import plan as planning  # noqa: E402
+
+BOLD, DIM, OFF = "\033[1m", "\033[2m", "\033[0m"
+GREEN, RED, AMBER = "\033[32m", "\033[31m", "\033[33m"
+
+
+def read(path: str) -> dict:
+    try:
+        document = json.loads(pathlib.Path(path).read_text())
+    except Exception as trouble:
+        raise SystemExit(f"{path}: {trouble}")
+    if not isinstance(document, dict):
+        raise SystemExit(f"{path} is not a plan")
+    return document
+
+
+def where(manoeuvre: dict) -> str:
+    """One line saying where a manoeuvre puts the vehicle."""
+    kind = manoeuvre.get("kind")
+    if kind == "follow-path":
+        points = manoeuvre.get("points", [])
+        ends = ""
+        if points:
+            first, last = points[0], points[-1]
+            ends = (f" from {first['x']:.0f}, {first['y']:.0f}"
+                    f" to {last['x']:.0f}, {last['y']:.0f}")
+        deep = (f" at {manoeuvre['altitudeM']:.1f} m up"
+                if manoeuvre.get("altitudeM") is not None else "")
+        return f"{len(points)} points{ends}{deep}"
+    at = manoeuvre.get("at") or {}
+    said = f"{at.get('x', 0):.1f}, {at.get('y', 0):.1f}"
+    if at.get("depthM") is not None:
+        said += f" at {at['depthM']:.1f} m down"
+    if at.get("altitudeM") is not None:
+        said += f" at {at['altitudeM']:.1f} m up"
+    for key, unit in (("arriveM", "m to count as arrived"), ("speedMs", "m/s"),
+                      ("holdS", "s held")):
+        if manoeuvre.get(key) is not None:
+            said += f" · {manoeuvre[key]:g} {unit}"
+    return said
+
+
+def command_show(args) -> int:
+    document = read(args.plan)
+    wrong = planning.what_is_wrong(document)
+    print(f"{BOLD}{document.get('plan', 'a plan')}{OFF}"
+          f"{DIM} · {document.get('describedBy', 'no format stated')}{OFF}")
+    goal = document.get("for") or {}
+    if goal:
+        print(f"{DIM}for a {goal.get('kind')} goal{OFF}")
+    for manoeuvre in document.get("manoeuvres", []):
+        print(f"  {manoeuvre.get('id', '?'):>4}  {manoeuvre.get('kind', '?'):<16} {where(manoeuvre)}")
+    legs = planning.legs_of(document)
+    print(f"{DIM}{len(legs)} legs when flown{OFF}")
+    if wrong:
+        print()
+        for one in wrong:
+            print(f"{RED}  {one}{OFF}")
+        return 1
+    return 0
+
+
+def command_check(args) -> int:
+    wrong = planning.what_is_wrong(read(args.plan))
+    if not wrong:
+        print(f"{GREEN}the plan is one this vehicle can fly{OFF}")
+        return 0
+    for one in wrong:
+        print(f"{RED}{one}{OFF}")
+    return 1
+
+
+def command_for(args) -> int:
+    goal = json.loads(args.goal)
+    document = planning.plan_for(goal, camera_half_angle=args.half_angle, named=args.name)
+    print(json.dumps(document, indent=2))
+    return 0
+
+
+def command_diff(args) -> int:
+    """Two plans for one task, side by side."""
+    left, right = read(args.left), read(args.right)
+    ours = {str(m.get("id")): m for m in left.get("manoeuvres", [])}
+    theirs = {str(m.get("id")): m for m in right.get("manoeuvres", [])}
+    width = 46
+    print(f"{BOLD}{left.get('plan', args.left):<{width}}{right.get('plan', args.right)}{OFF}")
+    print(f"{DIM}{len(ours)} manoeuvres, {len(planning.legs_of(left))} legs"
+          f"{'':<{max(1, width - 30)}}"
+          f"{len(theirs)} manoeuvres, {len(planning.legs_of(right))} legs{OFF}")
+    print()
+    same = 0
+    for name in sorted(set(ours) | set(theirs), key=lambda n: (n not in ours, n)):
+        mine, yours = ours.get(name), theirs.get(name)
+        if mine == yours:
+            same += 1
+            if not args.all:
+                continue
+            ink = DIM
+        else:
+            ink = AMBER
+        told = (f"{mine.get('kind')}: {where(mine)}" if mine else "—")
+        other = (f"{yours.get('kind')}: {where(yours)}" if yours else "—")
+        print(f"{ink}{name:>4}  {told[:width - 6]:<{width - 6}}{other[:width]}{OFF}")
+    if same and not args.all:
+        print(f"{DIM}and {same} the same in both{OFF}")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    doing = parser.add_subparsers(dest="doing", required=True)
+
+    showing = doing.add_parser("show", help="read a plan out loud")
+    showing.add_argument("plan")
+    showing.set_defaults(run=command_show)
+
+    checking = doing.add_parser("check", help="say whether it can be flown")
+    checking.add_argument("plan")
+    checking.set_defaults(run=command_check)
+
+    making = doing.add_parser("for", help="what the platform's planner would do with a goal")
+    making.add_argument("goal", help="a goal, as JSON")
+    making.add_argument("--half-angle", type=float, default=0.41,
+                        help="half the camera's field of view, radians")
+    making.add_argument("--name", default="")
+    making.set_defaults(run=command_for)
+
+    comparing = doing.add_parser("diff", help="two plans, side by side")
+    comparing.add_argument("left")
+    comparing.add_argument("right")
+    comparing.add_argument("--all", action="store_true", help="including what matches")
+    comparing.set_defaults(run=command_diff)
+
+    args = parser.parse_args()
+    return args.run(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

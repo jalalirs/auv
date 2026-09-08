@@ -179,8 +179,22 @@ class Recorder:
             positioning = dive.positioning_said()
         except Exception:
             positioning = None
+        # The plan it flew, kept beside the poses rather than only implied by
+        # them. A recording that shows where a vehicle went and not what it
+        # was trying to do cannot be compared with anything.
+        document = getattr(dive, "document", None)
+        if isinstance(document, dict) and document.get("manoeuvres"):
+            try:
+                (self.into / "plan.json").write_text(json.dumps(document, indent=2))
+            except Exception:
+                document = None
         manifest = {
             "site": self._site or None,
+            "plan": None if not isinstance(document, dict) else {
+                "plan": document.get("plan"), "by": getattr(dive, "planned_by", "") or None,
+                "manoeuvres": len(document.get("manoeuvres", [])),
+                "file": "plan.json",
+            },
             "geometry": geometry,
             "positioning": positioning,
             "vehicle": {"halfWidthM": round(float(getattr(dive, "half_width", 0.25)), 3),
@@ -197,7 +211,8 @@ class Recorder:
             "video": {"file": self.video_name,
                        "framesPerSecond": round(1.0 / self.frame_every, 2),
                        "frames": self.frames_taken} if self.video else None,
-            "files": ["poses.jsonl", "sensors.jsonl", "task.jsonl", "manifest.json"],
+            "files": ["poses.jsonl", "sensors.jsonl", "task.jsonl", "manifest.json"]
+                     + (["plan.json"] if isinstance(document, dict) else []),
             "closed": closed,
         }
         return manifest

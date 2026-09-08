@@ -280,8 +280,11 @@ class Dive:
         # How many times a hand picked the vehicle up and put it somewhere.
         self.carried = 0
         self.route_flying = ""
-        # Who worked out the path being flown, once something has.
+        # Who worked out the path being flown, once something has, and the
+        # plan document it is flying — kept so that a dive can be read back a
+        # year later and two plans for one task can be held side by side.
         self.planned_by = ""
+        self.document: dict | None = None
         # How many times somebody has asked to start the task over.
         self.attempts = 1
         self.objective = None
@@ -1032,13 +1035,32 @@ class Dive:
         # itself needs the goal and not a route — that is the whole of the
         # difference between a vehicle being asked and one being driven.
         self.helm.tasked(goal)
-        route = plan.route_for(goal, believed=self.believed(),
-                               camera_half_angle=self.camera_half_angle())
+        # A plan given to the dive is flown as given. Nothing here works out
+        # what to do: the document says, and where it came from — a person, a
+        # model, another planner — is not this code's business. It is checked
+        # first, because a plan that names a manoeuvre which does not exist is
+        # a vehicle that stops in the water for no reason anyone can see.
+        given = self.brief.get("plan")
+        if isinstance(given, dict) and given.get("manoeuvres"):
+            wrong = plan.what_is_wrong(given)
+            if wrong:
+                self.say("plan_refused", why=wrong[:4])
+                given = None
+            else:
+                self.document = given
+                self.planned_by = str(given.get("by") or "the plan it was given")
+        if not isinstance(getattr(self, "document", None), dict) or given is None:
+            self.document = plan.plan_for(goal, believed=self.believed(),
+                                          camera_half_angle=self.camera_half_angle(),
+                                          named=self.task.kind)
+            self.planned_by = "the platform's planner"
+        route = plan.legs_of(self.document)
         self.route_flying = which
-        self.planned_by = "the platform's planner"
         self.helm.fly(route)
-        if route:
-            self.say("planned", legs=len(route), forTask=self.task.kind, goal=goal.get("kind"),
+        if route or self.document:
+            self.say("planned", legs=len(route),
+                     manoeuvres=len(self.document.get("manoeuvres", [])),
+                     forTask=self.task.kind, goal=goal.get("kind"),
                      stage=which, by=self.planned_by)
 
     def believed(self):
