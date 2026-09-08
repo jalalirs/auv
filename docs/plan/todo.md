@@ -1032,6 +1032,138 @@ in 203 s of wall clock; the treatment 574 s in 161 s. The step is the same fixed
 step, so the trajectory is the same either way.
 
 
+# Phase 4 — the vehicle is asked, not driven
+
+Two hundred and seventy-five dives said almost nothing, and the reason is
+structural rather than a matter of scale. Every task carries a `route()` that
+is the answer to itself: the survey hands over its own lawnmower, the treatment
+hands over its colonies in order, and the platform's guidance follows the line
+it was given. The question and the answer come out of the same object, so no
+controller is being measured, and the technology a vehicle navigates by barely
+shows because there is nothing to get wrong over thirty metres.
+
+What real vehicles do is not the problem. A HUGIN flying a preplanned lawnmower
+on INS and DVL is exactly this, and it is most of the industry. The problem is
+that we score the plan we supplied, over distances too short for error to
+compound, and call the result a comparison.
+
+Fixing it in this order, because each step is worthless without the one before.
+
+---
+
+## 31. A task states its goal, not its solution
+
+`route()` comes out of the scored path. A task says what it wants — a place to
+be, an area to cover, colonies to treat, a dock to sit in — and what counts as
+having done it. Nothing about how.
+
+What flies it becomes an ordinary controller like any other: `plan.py`, the
+baseline, which reads the goal and works out its own route by the same
+arithmetic the tasks used to hold. It is deployed and pinned the way a written
+controller is, and it appears in results under its own name. Anybody's
+controller starts level with it.
+
+**Done when:** no task class can name a waypoint, every dive on the record says
+which controller flew it, and the baseline scores what the built-in guidance
+scored before — because the route is the same route, moved to where it belongs.
+
+---
+
+## 32. Missions long enough for navigation to matter
+
+Ten metres cannot tell dead reckoning from an LBL array, and the matrix proved
+it: still water, five technologies, one number. Real missions are kilometres
+and tens of minutes, and that is the whole reason navigation error is a
+subject — it compounds.
+
+Task parameters move up an order of magnitude: transects of hundreds of metres,
+surveys of hectares, transits with a return leg. Dives run free at the machine's
+speed, as the batch already does.
+
+**Done when:** the same task, flown on dead reckoning and inside an array, gives
+two clearly different results, and the difference is drift rather than luck.
+
+---
+
+## 33. A task says what it needs to know
+
+Positioning and tasks are not independent, and pretending they are is what made
+the matrix flat. Docking needs a bearing to the dock, not a position in the
+world. A georeferenced mosaic needs absolute fixes or the product is wrong even
+when the flying was right. Close inspection needs nothing absolute at all.
+
+Each task declares the kind of position knowledge it requires — absolute,
+relative to a named thing, terrain-relative, or none — and the platform refuses
+a dive it cannot support, saying why, instead of flying it and scoring nothing.
+
+**Done when:** the composer greys out what cannot work, with a sentence about
+why, and the matrix has feasible and infeasible regions rather than a wash.
+
+---
+
+## 34. A controller with two clocks
+
+An inner loop at the physics rate that must be quick and must not fail, and a
+deliberative loop at a fraction of a hertz that may be slow, may reach the
+network, may call a model, and may return nothing. The inner loop keeps flying
+whatever the outer one does — holds its last plan, and the failsafe still
+outranks both.
+
+Without this split there is no way to write a controller that thinks. With it,
+a vision-language model looking at a frame every two seconds is an ordinary
+citizen of the platform.
+
+**Done when:** a controller can take two seconds to answer and the vehicle
+neither stops nor lurches, and a controller that throws in its slow loop is
+recorded as having done so and keeps flying.
+
+---
+
+## 35. A plan is a document, in a format that exists
+
+Borrowed rather than invented: the shape of an IMC plan — a graph of manoeuvres
+with parameters and transitions — which is what Neptus speaks and what the
+LSTS toolchain has flown for years, with an eye on MAVLink's mission items,
+which our own BlueROV2 already understands.
+
+Then a plan is a thing that can be written by a person, emitted by a model,
+diffed, stored with the run, and replayed. What the vehicle is given is the
+same artefact whoever wrote it.
+
+**Done when:** a dive can be flown from a plan document alone, the document is
+kept with the run, and two plans for the same task can be compared side by side.
+
+---
+
+## 36. Tasking in words, at the dock
+
+The language layer, last, because it is worthless before the rest and easy
+after it. A task given as text — or a photograph of a reef with a circle drawn
+on it — is turned into a plan document by a model, shown to a person, and
+flown.
+
+It happens at the dock or the surface, over a real link, because the acoustic
+channel is JANUS-shaped: a few hundred bits a second, seconds of latency,
+lossy. Sending prose down it is not physics. What goes down is the compiled
+plan, or a short code that selects one.
+
+**Done when:** somebody types what they want, sees the plan it became, changes
+one thing about it, and flies it.
+
+---
+
+## 37. The benchmark, and the leaderboard
+
+The point of all of the above. Fixed seeds, identical water, identical fit,
+budgets for time, energy and tokens; every controller build flown over the same
+task set; results kept as a table that grows: score, drift, energy, time,
+and what it cost to think — tokens and latency — because a controller that
+scores five per cent better and costs a second a step is not obviously better.
+
+**Done when:** two controllers can be compared on one screen over the same
+hundred dives, and the difference between them is attributable to something.
+
+
 ## What a dive is made of
 
 Six things, chosen separately, crossed at the moment somebody presses Dive.
