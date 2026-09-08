@@ -114,6 +114,110 @@ def command_run(args) -> int:
     return command_show(args)
 
 
+# ── flying it here, with no simulator at all ─────────────────────────────────
+
+def command_dry(args) -> int:
+    """Fly the suite in this process: no Isaac, no graphics card, no queue.
+
+    The physics is the same integrator the simulator steps, and everything a
+    controller is judged on — where it went, what it spent, how far its
+    navigation wandered — comes out of that rather than out of the picture. So
+    a controller can be written and benched in the time it takes to run this,
+    which is the difference between benchmarking as a ritual and as a habit.
+
+    What it cannot tell you is anything about seeing: no camera, no frames.
+    A survey is scored on where the vehicle went, which is honest, and a
+    controller that would have looked somewhere is not asked to.
+    """
+    sys.path.insert(0, str(HERE.parent / "services/sim-runtime/coral"))
+    import pathlib as _pathlib
+
+    from hydrodynamics import Allocator, Body, Hydrodynamics
+    from runner import Dive
+
+    package = HERE.parent / "catalog/vehicles" / args.vehicle / "dynamics.json"
+    model = Hydrodynamics.from_package(package)
+    water_name, water = WATERS[WATER]
+    technology_name, technology = POSITIONING[TECHNOLOGY]
+    rows = []
+    print(f"{BOLD}{args.suite}{OFF} flown here by {BOLD}{args.controller}{OFF} "
+          f"{DIM}· {water_name} · {technology_name} · no simulator{OFF}")
+    for task in SUITES[args.suite]:
+        objective = dict(TASKS[task])
+        objective["controller"] = args.controller
+        objective["seed"] = seed_for(args.suite, task)
+        seconds = float(objective.get("timeLimitS") or objective.get("seconds") or 600.0)
+        dive = Dive({"durationSeconds": seconds + 60.0,
+                     "initialState": {"positionM": [0.0, 0.0, -6.0]},
+                     "vehiclePath": str(package.parent),
+                     "objective": objective,
+                     "conditions": {**water, **technology}},
+                    Body(model), Allocator(model), _pathlib.Path("nowhere.usda"),
+                    lambda kind, **said: None)
+        dive.floor = -12.0
+        dive.begin_task(objective)
+        # A controller's own knobs, moved before it flies. Two settings of one
+        # controller are two controllers as far as a bench is concerned, and
+        # the interesting question about a thinking one is what its thinking
+        # costs — which you cannot ask without being able to make it slower.
+        for change in args.tune:
+            name, value = change.split("=", 1)
+            flying = dive.helm.controllers.get(args.controller)
+            if flying is None or not flying.tune(name, float(value)):
+                raise SystemExit(f"{args.controller} has no parameter called {name}")
+        for _ in range(int((seconds + 30.0) / dive.dt)):
+            dive.step()
+            if dive.done:
+                break
+        dive.close()
+        said = dive.task.result() if dive.task else {}
+        # Who flew it and what it thought come from the helm, not the task:
+        # the task knows what was achieved, the helm knows who was flying and
+        # what it cost them to decide.
+        thought = dive.helm.thought()
+        who = dive.helm.who_flew()
+        called = args.called or args.controller
+        rows.append({
+            "name": named(args.suite, called, task), "suite": args.suite,
+            "controller": called, "task": task,
+            "score": said.get("score", 0.0),
+            "ended": dive.ended or "time",
+            "seconds": said.get("seconds", 0.0),
+            "energyWh": round(dive.battery.spent_wh, 3) if dive.battery else 0.0,
+            "driftM": round(float(dive.navigation.drift(dive.position)), 3)
+                      if dive.navigation else 0.0,
+            "flownBy": who.get("mostly", "?"),
+            "thoughts": sum((t or {}).get("thoughts") or 0 for t in thought.values()),
+            "slowestThoughtS": max([(t or {}).get("slowestS") or 0.0
+                                    for t in thought.values()], default=0.0),
+        })
+        print(f"  {task:<12} {rows[-1]['score'] * 100:5.0f}%  "
+              f"{rows[-1]['driftM']:6.2f} m drift  {rows[-1]['energyWh']:6.2f} Wh  "
+              f"{DIM}flown by {rows[-1]['flownBy']}{OFF}")
+    kept = _bench_file(args.suite)
+    called = args.called or args.controller
+    held = [r for r in _read_rows(args.suite) if r["controller"] != called]
+    kept.write_text(json.dumps(held + rows, indent=2))
+    print(f"{GREEN}on the bench{OFF}{DIM} · kept in {kept}{OFF}")
+    return command_show(args)
+
+
+def _bench_file(suite: str) -> pathlib.Path:
+    where = HERE.parent / "docs/bench"
+    where.mkdir(parents=True, exist_ok=True)
+    return where / f"{suite}.json"
+
+
+def _read_rows(suite: str) -> list[dict]:
+    kept = _bench_file(suite)
+    if not kept.exists():
+        return []
+    try:
+        return json.loads(kept.read_text())
+    except Exception:
+        return []
+
+
 # ── reading it back ──────────────────────────────────────────────────────────
 
 def flown(platform) -> list[dict]:
@@ -159,8 +263,15 @@ def summarise(rows: list[dict]) -> dict:
             "achieved": sum(1 for r in rows if r["ended"] == "achieved")}
 
 
+def rows_for(args) -> list[dict]:
+    """What is on the bench: what was flown here, and what was flown for real."""
+    if args.here:
+        return [r for r in _read_rows(args.suite) if r["suite"] == args.suite]
+    return [r for r in flown(Platform()) if r["suite"] == args.suite]
+
+
 def command_show(args) -> int:
-    rows = [r for r in flown(Platform()) if r["suite"] == args.suite]
+    rows = rows_for(args)
     if not rows:
         print("nothing on the bench yet")
         return 0
@@ -192,7 +303,7 @@ def command_show(args) -> int:
 
 
 def command_compare(args) -> int:
-    rows = [r for r in flown(Platform()) if r["suite"] == args.suite]
+    rows = rows_for(args)
     ours = {r["task"]: r for r in rows if r["controller"] == args.left}
     theirs = {r["task"]: r for r in rows if r["controller"] == args.right}
     both = [t for t in SUITES[args.suite] if t in ours and t in theirs]
@@ -232,8 +343,8 @@ def _attribution(mine: dict, yours: dict, left: str, right: str) -> str:
         said = f"{better} scores {abs(gap):.1f} points better than {worse}"
     energy = yours["energyWh"] - mine["energyWh"]
     if abs(energy) > 0.05:
-        said += (f", and spends {abs(energy):.2f} Wh "
-                 f"{'more' if energy > 0 else 'less'} doing it")
+        said += (f". {right} spends {abs(energy):.2f} Wh "
+                 f"{'more' if energy > 0 else 'less'} than {left} doing it")
     if yours["thoughts"] or mine["thoughts"]:
         said += (f". {right} thought {yours['thoughts']} times, the slowest taking "
                  f"{yours['slowestThoughtS']:.2f} s")
@@ -246,13 +357,15 @@ def _attribution(mine: dict, yours: dict, left: str, right: str) -> str:
 
 
 def command_rows(args) -> int:
-    print(json.dumps([r for r in flown(Platform()) if r["suite"] == args.suite], indent=2))
+    print(json.dumps(rows_for(args), indent=2))
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--suite", default="standard", choices=sorted(SUITES))
+    parser.add_argument("--here", action="store_true",
+                        help="what was flown here with no simulator, rather than on the platform")
     doing = parser.add_subparsers(dest="doing", required=True)
 
     running = doing.add_parser("run", help="fly the suite with one controller")
@@ -262,6 +375,16 @@ def main() -> int:
     running.add_argument("--at-once", type=int, default=2)
     running.add_argument("--again", action="store_true", help="re-fly what is already there")
     running.set_defaults(run=command_run)
+
+    drying = doing.add_parser("dry", help="fly the suite here, with no simulator")
+    drying.add_argument("--controller", required=True)
+    drying.add_argument("--vehicle", default="bluerov2")
+    drying.add_argument("--tune", action="append", default=[], metavar="NAME=VALUE",
+                        help="move one of the controller's own parameters")
+    drying.add_argument("--as", dest="called", default="",
+                        help="record it under this name, so two settings of one "
+                             "controller can be compared as two controllers")
+    drying.set_defaults(run=command_dry, here=True)
 
     showing = doing.add_parser("show", help="the table")
     showing.set_defaults(run=command_show)
