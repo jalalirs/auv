@@ -102,12 +102,15 @@ def test_a_dive_flies_what_was_asked_for_in_words():
     dive.begin_task(brief["objective"])
     assert dive.document is understood["plan"], "the dive did not fly what was asked for"
 
-    for _ in range(int(500 / dive.dt)):
+    # Watched throughout rather than sampled at a moment: how long a leg takes
+    # is the vehicle's business, and a test that asks "where is it at t=500?"
+    # is a test about the thrust curve rather than about what was asked for.
+    went, wandered = 0.0, 0.0
+    for _ in range(int(1100 / dive.dt)):
         dive.step()
-    # It went east, which is what was asked, and not north, which was not.
-    assert dive.position[1] > 40.0, f"it did not go east — {dive.position[1]:.1f} m"
-    assert abs(dive.position[0]) < 15.0, f"it wandered north — {dive.position[0]:.1f} m"
-    for _ in range(int(600 / dive.dt)):
-        dive.step()
+        went = max(went, float(dive.position[1]))
+        wandered = max(wandered, abs(float(dive.position[0])))
+    assert went > 50.0, f"it never went the sixty metres east it was asked for — {went:.1f} m"
+    assert wandered < 15.0, f"it wandered north, which nobody asked for — {wandered:.1f} m"
     home = math.hypot(dive.position[0], dive.position[1])
     assert home < 8.0, f"it never came home — {home:.1f} m out"
