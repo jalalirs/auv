@@ -27,6 +27,150 @@ import math
 
 import numpy as np
 
+# What a plan document says it is, so that a file found on its own can be
+# recognised, and so that the shape can change later without silence.
+DESCRIBED_BY = "coral.city/plan/1"
+
+# The manoeuvres this vehicle can fly. Named after IMC's, because that is the
+# vocabulary the tooling in this field already speaks.
+KINDS = ("goto", "follow-path", "station-keeping")
+
+
+def plan_for(goal: dict, believed=None, camera_half_angle: float | None = None,
+             named: str = "") -> dict:
+    """A plan document for a goal: what this planner decided, written down.
+
+    The document is the artefact, not the route. It is what a person could
+    write by hand, what a model will be asked to emit, what is kept with the
+    run so that a dive can be read a year later, and what two controllers can
+    be compared through. Its shape is borrowed rather than invented — a graph
+    of manoeuvres with parameters and a transition to the next, which is what
+    an IMC plan is and what Neptus has flown for years.
+    """
+    legs = route_for(goal, believed=believed, camera_half_angle=camera_half_angle)
+    kind = str(goal.get("kind", ""))
+    manoeuvres: list[dict] = []
+    if kind in ("cover", "work") and len(legs) > 1:
+        # Lanes are one manoeuvre, not thirty: a survey is a path to follow,
+        # and writing it out as thirty separate points would lose the fact
+        # that they are one thing done at one altitude.
+        manoeuvres.append({
+            "id": "m1", "kind": "follow-path",
+            "points": [{"x": leg["x"], "y": leg["y"]} for leg in legs],
+            "altitudeM": legs[0].get("altitudeM"),
+        })
+    elif kind == "hold":
+        at = goal.get("at") or [0.0, 0.0, 0.0]
+        manoeuvres.append({
+            "id": "m1", "kind": "station-keeping",
+            "at": {"x": float(at[0]), "y": float(at[1]), "depthM": float(-at[2])},
+            "radiusM": goal.get("radiusM"),
+        })
+    else:
+        for i, leg in enumerate(legs, start=1):
+            manoeuvre = {"id": f"m{i}", "kind": "goto",
+                         "at": {"x": leg["x"], "y": leg["y"]}}
+            for key in ("depthM", "altitudeM"):
+                if leg.get(key) is not None:
+                    manoeuvre["at"][key] = leg[key]
+            for key in ("arriveM", "speedMs", "easeM", "holdS", "facing"):
+                if leg.get(key) is not None:
+                    manoeuvre[key] = leg[key]
+            manoeuvres.append(manoeuvre)
+    for one, following in zip(manoeuvres, manoeuvres[1:]):
+        one["next"] = following["id"]
+    return {
+        "describedBy": DESCRIBED_BY,
+        "plan": named or (kind or "plan"),
+        "for": goal,
+        "start": manoeuvres[0]["id"] if manoeuvres else None,
+        "manoeuvres": manoeuvres,
+    }
+
+
+def legs_of(document: dict) -> list[dict]:
+    """Compile a plan document into the legs a follower flies.
+
+    Following the transitions rather than the order they were written in: a
+    plan is a graph, and a document whose manoeuvres are listed out of order
+    is still the same plan.
+    """
+    by_id = {str(m.get("id")): m for m in document.get("manoeuvres", [])}
+    at = document.get("start") or (document.get("manoeuvres") or [{}])[0].get("id")
+    legs: list[dict] = []
+    seen: set[str] = set()
+    while at is not None and str(at) in by_id and str(at) not in seen:
+        seen.add(str(at))
+        manoeuvre = by_id[str(at)]
+        legs.extend(_legs_of_one(manoeuvre))
+        at = manoeuvre.get("next")
+    return legs
+
+
+def _legs_of_one(manoeuvre: dict) -> list[dict]:
+    kind = str(manoeuvre.get("kind", "goto"))
+    if kind == "follow-path":
+        common = {k: manoeuvre[k] for k in ("altitudeM", "depthM", "speedMs", "facing", "arriveM")
+                  if manoeuvre.get(k) is not None}
+        return [{"x": float(p["x"]), "y": float(p["y"]), **common}
+                for p in manoeuvre.get("points", [])]
+    if kind == "station-keeping":
+        # Nothing to fly to: staying is what it asks for, and the follower
+        # holds wherever it runs out of route.
+        return []
+    at = manoeuvre.get("at") or {}
+    leg = {"x": float(at.get("x", 0.0)), "y": float(at.get("y", 0.0))}
+    for key in ("depthM", "altitudeM"):
+        if at.get(key) is not None:
+            leg[key] = float(at[key])
+    for key in ("arriveM", "speedMs", "easeM", "holdS"):
+        if manoeuvre.get(key) is not None:
+            leg[key] = float(manoeuvre[key])
+    if manoeuvre.get("facing") is not None:
+        leg["facing"] = manoeuvre["facing"]
+    return [leg]
+
+
+def what_is_wrong(document: dict) -> list[str]:
+    """Everything wrong with a plan document, in sentences. Empty means fly it.
+
+    Checked before a dive rather than discovered during one: a plan that names
+    a manoeuvre which does not exist is a vehicle that stops in the water
+    halfway through a mission for no reason a person could see.
+    """
+    wrong: list[str] = []
+    manoeuvres = document.get("manoeuvres")
+    if not isinstance(manoeuvres, list) or not manoeuvres:
+        return ["the plan has no manoeuvres"]
+    ids: set[str] = set()
+    for i, manoeuvre in enumerate(manoeuvres):
+        if not isinstance(manoeuvre, dict):
+            wrong.append(f"manoeuvre {i + 1} is not a manoeuvre")
+            continue
+        name = str(manoeuvre.get("id", ""))
+        if not name:
+            wrong.append(f"manoeuvre {i + 1} has no id")
+        elif name in ids:
+            wrong.append(f"two manoeuvres are called {name}")
+        ids.add(name)
+        kind = str(manoeuvre.get("kind", ""))
+        if kind not in KINDS:
+            wrong.append(f"{name or i + 1} is a {kind or 'nameless'} manoeuvre, "
+                         f"which this vehicle cannot fly")
+        if kind == "follow-path" and not manoeuvre.get("points"):
+            wrong.append(f"{name} is a path with no points")
+        if kind in ("goto", "station-keeping") and not isinstance(manoeuvre.get("at"), dict):
+            wrong.append(f"{name} does not say where")
+    for manoeuvre in manoeuvres:
+        if isinstance(manoeuvre, dict) and manoeuvre.get("next") is not None \
+                and str(manoeuvre["next"]) not in ids:
+            wrong.append(f"{manoeuvre.get('id')} hands over to {manoeuvre['next']}, "
+                         f"which is not in this plan")
+    start = document.get("start")
+    if start is not None and str(start) not in ids:
+        wrong.append(f"the plan starts at {start}, which is not in it")
+    return wrong
+
 
 def route_for(goal: dict, believed=None, camera_half_angle: float | None = None) -> list[dict]:
     """The path this planner would fly to satisfy a goal.
