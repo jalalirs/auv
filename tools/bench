@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+"""The bench: the same dives, flown by different controllers, compared.
+
+  ./tools/bench run --controller pursue
+  ./tools/bench run --controller ponder
+  ./tools/bench show
+  ./tools/bench compare pursue ponder
+
+Everything that is not the controller is held still. The same eight tasks, the
+same water, the same fit, and — the part that is easy to forget — the same
+seed, so that the compass is wrong in exactly the same way for everyone. A
+bench that gives one controller a favourable draw of noise is not a bench, it
+is an anecdote with a table.
+
+What is reported is not only the score. A controller that scores five per cent
+better while spending twice the energy is not obviously better, and one that
+scores better by thinking for four seconds a step is not better at all on a
+vehicle with a battery. So: score, how far its navigation drifted, energy,
+time in the water, and what it cost to think — how many thoughts, and how long
+the slowest took.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import pathlib
+import statistics
+import sys
+
+HERE = pathlib.Path(__file__).resolve().parent
+MATRIX = (HERE / "matrix").read_text().split("def run_matrix")[0]
+mod: dict = {}
+exec(compile(MATRIX, "matrix", "exec"), mod)
+
+Platform = mod["Platform"]
+TASKS, WATERS, POSITIONING = mod["TASKS"], mod["WATERS"], mod["POSITIONING"]
+
+BOLD, DIM, OFF = "\033[1m", "\033[2m", "\033[0m"
+GREEN, RED, AMBER = "\033[32m", "\033[31m", "\033[33m"
+
+# The suite. Eight of the eleven tasks: the ones a controller can be judged on
+# rather than the ones that judge the water. Held here rather than taken from a
+# flag, because a benchmark whose contents move is not one.
+SUITES = {
+    "standard": ["reach", "waypoints", "transect", "survey", "search",
+                 "treat", "inspect", "dock"],
+    "quick": ["reach", "transect", "dock"],
+}
+
+# The conditions the suite is flown in. One water, one fit, so that what is
+# being compared is the controller and nothing else.
+WATER = "gentle"
+TECHNOLOGY = "dead-reckoning"
+
+
+def seed_for(suite: str, task: str) -> int:
+    """The same number for the same dive, whoever is flying it, forever.
+
+    Not Python's hash: that is salted per process, so the same task would draw
+    different water on Tuesday than it did on Monday and every comparison
+    across days would be quietly worthless. A digest is the same number on
+    every machine and every run, which is the entire requirement.
+    """
+    return int(hashlib.sha256(f"{suite}/{task}".encode()).hexdigest()[:8], 16) % 100000
+
+
+def named(suite: str, controller: str, task: str) -> str:
+    return f"bench · {suite} · {controller} · {task}"
+
+
+# ── flying it ────────────────────────────────────────────────────────────────
+
+def command_run(args) -> int:
+    platform = Platform()
+    tasks = SUITES[args.suite]
+    city = mod["newest_version"](platform, "cities", args.place)
+    vehicle = mod["newest_version"](platform, "vehicles", args.vehicle)
+    queue = platform.call("GET", "/api/v1/queues")["queues"][0]
+    runtime = queue["runtimes"][0]
+    water_name, water = WATERS[WATER]
+    technology_name, technology = POSITIONING[TECHNOLOGY]
+    conditions = platform.call("POST", f"/api/v1/organisations/{platform.org}/conditions", {
+        "kind": "constructed", "name": f"the bench · {water_name} · {technology_name}",
+        "parameters": {**water, **technology}})
+
+    already = {row["name"] for row in flown(platform)} if not args.again else set()
+    asked = []
+    print(f"{BOLD}{args.suite}{OFF} flown by {BOLD}{args.controller}{OFF} "
+          f"{DIM}· {water_name} · {technology_name}{OFF}")
+    for task in tasks:
+        name = named(args.suite, args.controller, task)
+        if name in already:
+            print(f"{DIM}  {task} — already flown{OFF}")
+            continue
+        objective = dict(TASKS[task])
+        # What makes the comparison a comparison: the controller by name, and
+        # the same seed for the same task whoever is flying it.
+        objective["controller"] = args.controller
+        objective["seed"] = seed_for(args.suite, task)
+        dive = platform.call("POST", f"/api/v1/organisations/{platform.org}/dives", {
+            "name": name, "cityVersionId": city, "vehicleVersionId": vehicle,
+            "conditionsId": conditions["id"], "objective": objective})
+        run = platform.call("POST", f"/api/v1/dives/{dive['id']}/runs", {
+            "queueId": queue["id"], "mode": "batch", "runtimeVersion": runtime})
+        asked.append({"dive": dive["id"], "run": run["id"], "name": name})
+        print(f"  {task}")
+        if len(asked) % args.at_once == 0:
+            mod["wait_for"](platform, asked[-args.at_once:])
+    if asked:
+        mod["wait_for"](platform, asked)
+    print(f"{GREEN}flown{OFF}")
+    return command_show(args)
+
+
+# ── reading it back ──────────────────────────────────────────────────────────
+
+def flown(platform) -> list[dict]:
+    """Every bench dive in the record, as rows."""
+    rows = []
+    for dive in platform.call("GET", f"/api/v1/organisations/{platform.org}/dives")["dives"]:
+        if not dive["name"].startswith("bench · "):
+            continue
+        parts = [p.strip() for p in dive["name"].split("·")]
+        if len(parts) != 4:
+            continue
+        for run in platform.call("GET", f"/api/v1/dives/{dive['id']}/runs").get("runs", []):
+            if run["state"] != "succeeded":
+                continue
+            out = run.get("outcome") or {}
+            task_said = out.get("task") or {}
+            thought = task_said.get("thought") or {}
+            slowest = max([(t or {}).get("slowestS") or 0.0 for t in thought.values()], default=0.0)
+            thoughts = sum([(t or {}).get("thoughts") or 0 for t in thought.values()])
+            rows.append({
+                "name": dive["name"], "suite": parts[1], "controller": parts[2], "task": parts[3],
+                "score": task_said.get("score", 0.0),
+                "ended": out.get("ended", "?"),
+                "seconds": task_said.get("seconds", 0.0),
+                "energyWh": task_said.get("energyWh", 0.0),
+                "driftM": (out.get("navigation") or {}).get("driftM", 0.0),
+                "flownBy": (task_said.get("flownBy") or {}).get("mostly", "?"),
+                "thoughts": thoughts, "slowestThoughtS": slowest,
+                "dive": dive["id"], "run": run["id"],
+            })
+            break
+    return rows
+
+
+def summarise(rows: list[dict]) -> dict:
+    def mean(key):
+        values = [r[key] for r in rows if r.get(key) is not None]
+        return statistics.fmean(values) if values else 0.0
+    return {"dives": len(rows), "score": mean("score"), "energyWh": mean("energyWh"),
+            "driftM": mean("driftM"), "seconds": mean("seconds"),
+            "thoughts": sum(r["thoughts"] for r in rows),
+            "slowestThoughtS": max([r["slowestThoughtS"] for r in rows], default=0.0),
+            "achieved": sum(1 for r in rows if r["ended"] == "achieved")}
+
+
+def command_show(args) -> int:
+    rows = [r for r in flown(Platform()) if r["suite"] == args.suite]
+    if not rows:
+        print("nothing on the bench yet")
+        return 0
+    controllers = sorted({r["controller"] for r in rows})
+    tasks = [t for t in SUITES[args.suite] if any(r["task"] == t for r in rows)]
+    print(f"{BOLD}{args.suite}{OFF}{DIM} · {len(rows)} dives{OFF}\n")
+    print(f"{'':<14}" + "".join(f"{c:>13}" for c in controllers))
+    for task in tasks:
+        line = f"{task:<14}"
+        for controller in controllers:
+            found = next((r for r in rows if r["task"] == task and r["controller"] == controller), None)
+            line += f"{('%.0f%%' % (found['score'] * 100)) if found else '—':>13}"
+        print(line)
+    print()
+    print(f"{'':<14}" + "".join(f"{c:>13}" for c in controllers))
+    for label, key, form in (("score", "score", lambda v: f"{v * 100:.1f}%"),
+                             ("achieved", "achieved", lambda v: f"{v:.0f}"),
+                             ("drift", "driftM", lambda v: f"{v:.2f} m"),
+                             ("energy", "energyWh", lambda v: f"{v:.2f} Wh"),
+                             ("in the water", "seconds", lambda v: f"{v:.0f} s"),
+                             ("thoughts", "thoughts", lambda v: f"{v:.0f}"),
+                             ("slowest thought", "slowestThoughtS", lambda v: f"{v:.2f} s")):
+        line = f"{DIM}{label:<14}{OFF}"
+        for controller in controllers:
+            said = summarise([r for r in rows if r["controller"] == controller])
+            line += f"{form(said[key]):>13}"
+        print(line)
+    return 0
+
+
+def command_compare(args) -> int:
+    rows = [r for r in flown(Platform()) if r["suite"] == args.suite]
+    ours = {r["task"]: r for r in rows if r["controller"] == args.left}
+    theirs = {r["task"]: r for r in rows if r["controller"] == args.right}
+    both = [t for t in SUITES[args.suite] if t in ours and t in theirs]
+    if not both:
+        print(f"{args.left} and {args.right} have no task in common on this bench")
+        return 1
+    print(f"{BOLD}{args.left}{OFF} against {BOLD}{args.right}{OFF}"
+          f"{DIM} · {len(both)} tasks, the same water and the same seeds{OFF}\n")
+    print(f"{'':<14}{args.left:>10}{args.right:>10}{'':>4}{'energy':>16}{'thinking':>12}")
+    for task in both:
+        mine, yours = ours[task], theirs[task]
+        gap = (yours["score"] - mine["score"]) * 100
+        ink = GREEN if gap > 1 else RED if gap < -1 else DIM
+        energy = yours["energyWh"] - mine["energyWh"]
+        print(f"{task:<14}{mine['score'] * 100:9.0f}%{yours['score'] * 100:9.0f}%"
+              f"{ink}{gap:+8.0f}{OFF}"
+              f"{energy:+11.2f} Wh{yours['slowestThoughtS']:9.2f} s")
+    mine, yours = summarise(list(ours.values())), summarise(list(theirs.values()))
+    gap = (yours["score"] - mine["score"]) * 100
+    print()
+    print(f"{BOLD}{'overall':<14}{mine['score'] * 100:9.1f}%{yours['score'] * 100:9.1f}%"
+          f"{gap:+8.1f}{OFF}"
+          f"{yours['energyWh'] - mine['energyWh']:+11.2f} Wh"
+          f"{yours['slowestThoughtS']:9.2f} s")
+    print()
+    print(_attribution(mine, yours, args.left, args.right))
+    return 0
+
+
+def _attribution(mine: dict, yours: dict, left: str, right: str) -> str:
+    """What the difference is, said in a sentence rather than left to the eye."""
+    gap = (yours["score"] - mine["score"]) * 100
+    if abs(gap) < 1.0:
+        said = f"{right} and {left} score the same on this bench"
+    else:
+        better, worse = (right, left) if gap > 0 else (left, right)
+        said = f"{better} scores {abs(gap):.1f} points better than {worse}"
+    energy = yours["energyWh"] - mine["energyWh"]
+    if abs(energy) > 0.05:
+        said += (f", and spends {abs(energy):.2f} Wh "
+                 f"{'more' if energy > 0 else 'less'} doing it")
+    if yours["thoughts"] or mine["thoughts"]:
+        said += (f". {right} thought {yours['thoughts']} times, the slowest taking "
+                 f"{yours['slowestThoughtS']:.2f} s")
+    drift = yours["driftM"] - mine["driftM"]
+    if abs(drift) > 0.2:
+        said += (f". Its navigation ended {abs(drift):.2f} m "
+                 f"{'further out' if drift > 0 else 'closer in'}, which is the same water "
+                 f"and the same seeds, so it is the flying")
+    return said + "."
+
+
+def command_rows(args) -> int:
+    print(json.dumps([r for r in flown(Platform()) if r["suite"] == args.suite], indent=2))
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--suite", default="standard", choices=sorted(SUITES))
+    doing = parser.add_subparsers(dest="doing", required=True)
+
+    running = doing.add_parser("run", help="fly the suite with one controller")
+    running.add_argument("--controller", required=True)
+    running.add_argument("--place", default="looe-key")
+    running.add_argument("--vehicle", default="bluerov2")
+    running.add_argument("--at-once", type=int, default=2)
+    running.add_argument("--again", action="store_true", help="re-fly what is already there")
+    running.set_defaults(run=command_run)
+
+    showing = doing.add_parser("show", help="the table")
+    showing.set_defaults(run=command_show)
+
+    comparing = doing.add_parser("compare", help="two controllers, side by side")
+    comparing.add_argument("left")
+    comparing.add_argument("right")
+    comparing.set_defaults(run=command_compare)
+
+    rows = doing.add_parser("rows", help="every row, as JSON")
+    rows.set_defaults(run=command_rows)
+
+    args = parser.parse_args()
+    return args.run(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
