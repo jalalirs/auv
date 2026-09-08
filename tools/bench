@@ -278,15 +278,18 @@ def command_show(args) -> int:
     controllers = sorted({r["controller"] for r in rows})
     tasks = [t for t in SUITES[args.suite] if any(r["task"] == t for r in rows)]
     print(f"{BOLD}{args.suite}{OFF}{DIM} · {len(rows)} dives{OFF}\n")
-    print(f"{'':<14}" + "".join(f"{c:>13}" for c in controllers))
+    def column(name: str) -> str:
+        return (name if len(name) <= 15 else name[:14] + "…").rjust(17)
+
+    print(f"{'':<14}" + "".join(column(c) for c in controllers))
     for task in tasks:
         line = f"{task:<14}"
         for controller in controllers:
             found = next((r for r in rows if r["task"] == task and r["controller"] == controller), None)
-            line += f"{('%.0f%%' % (found['score'] * 100)) if found else '—':>13}"
+            line += f"{('%.0f%%' % (found['score'] * 100)) if found else '—':>17}"
         print(line)
     print()
-    print(f"{'':<14}" + "".join(f"{c:>13}" for c in controllers))
+    print(f"{'':<14}" + "".join(column(c) for c in controllers))
     for label, key, form in (("score", "score", lambda v: f"{v * 100:.1f}%"),
                              ("achieved", "achieved", lambda v: f"{v:.0f}"),
                              ("drift", "driftM", lambda v: f"{v:.2f} m"),
@@ -297,7 +300,7 @@ def command_show(args) -> int:
         line = f"{DIM}{label:<14}{OFF}"
         for controller in controllers:
             said = summarise([r for r in rows if r["controller"] == controller])
-            line += f"{form(said[key]):>13}"
+            line += f"{form(said[key]):>17}"
         print(line)
     return 0
 

@@ -9,7 +9,7 @@
     "seconds": 1200.0,
     "energyWh": 9.73,
     "driftM": 5.467,
-    "flownBy": "?",
+    "flownBy": "pursue",
     "thoughts": 0,
     "slowestThoughtS": 0.0
   },
@@ -23,7 +23,7 @@
     "seconds": 900.0,
     "energyWh": 7.338,
     "driftM": 4.765,
-    "flownBy": "?",
+    "flownBy": "pursue",
     "thoughts": 0,
     "slowestThoughtS": 0.0
   },
@@ -37,7 +37,7 @@
     "seconds": 1200.0,
     "energyWh": 9.094,
     "driftM": 7.476,
-    "flownBy": "?",
+    "flownBy": "hold",
     "thoughts": 0,
     "slowestThoughtS": 0.0
   },
@@ -84,45 +84,45 @@
     "slowestThoughtS": 0.0
   },
   {
-    "name": "bench \u00b7 quick \u00b7 ponder thinking 1.2 s \u00b7 reach",
+    "name": "bench \u00b7 quick \u00b7 ponder, 1.5 s to decide \u00b7 reach",
     "suite": "quick",
-    "controller": "ponder thinking 1.2 s",
+    "controller": "ponder, 1.5 s to decide",
     "task": "reach",
     "score": 0.489,
     "ended": "failed",
     "seconds": 1200.0,
-    "energyWh": 9.739,
-    "driftM": 5.468,
+    "energyWh": 9.737,
+    "driftM": 5.466,
     "flownBy": "ponder",
-    "thoughts": 34,
-    "slowestThoughtS": 1.417
+    "thoughts": 27,
+    "slowestThoughtS": 1.713
   },
   {
-    "name": "bench \u00b7 quick \u00b7 ponder thinking 1.2 s \u00b7 transect",
+    "name": "bench \u00b7 quick \u00b7 ponder, 1.5 s to decide \u00b7 transect",
     "suite": "quick",
-    "controller": "ponder thinking 1.2 s",
+    "controller": "ponder, 1.5 s to decide",
     "task": "transect",
     "score": 0.973,
     "ended": "achieved",
     "seconds": 900.0,
-    "energyWh": 7.37,
+    "energyWh": 7.369,
     "driftM": 4.765,
     "flownBy": "ponder",
-    "thoughts": 25,
-    "slowestThoughtS": 1.491
+    "thoughts": 20,
+    "slowestThoughtS": 1.654
   },
   {
-    "name": "bench \u00b7 quick \u00b7 ponder thinking 1.2 s \u00b7 dock",
+    "name": "bench \u00b7 quick \u00b7 ponder, 1.5 s to decide \u00b7 dock",
     "suite": "quick",
-    "controller": "ponder thinking 1.2 s",
+    "controller": "ponder, 1.5 s to decide",
     "task": "dock",
     "score": 0.0,
     "ended": "failed",
     "seconds": 1200.0,
-    "energyWh": 9.446,
-    "driftM": 6.878,
+    "energyWh": 9.427,
+    "driftM": 7.042,
     "flownBy": "ponder",
-    "thoughts": 34,
-    "slowestThoughtS": 1.36
+    "thoughts": 28,
+    "slowestThoughtS": 1.618
   }
 ]
