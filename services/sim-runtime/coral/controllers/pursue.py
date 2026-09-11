@@ -78,6 +78,16 @@ class PursueController(Controller):
         if not self.route:
             self.holding = True
 
+    def wants_back(self, seen: Observation) -> bool:
+        """Whether it should be given the vehicle again, having finished.
+
+        Asked by the helm every step, because a controller that has handed over
+        cannot notice anything: it is not being called. This is the one thing
+        it still needs to know — that the place it left the vehicle is no
+        longer the place it was asked for.
+        """
+        return bool(self.route) and self.holding and self._adrift(seen)
+
     def _adrift(self, seen: Observation) -> bool:
         """Whether the vehicle has come off the end of its route.
 
