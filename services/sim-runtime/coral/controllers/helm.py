@@ -311,7 +311,11 @@ class Helm:
             return self.ponder
         if self.stack is not None and self.stack.talking(seen.t):
             return self.stack
-        if self.flying_the_route and not self.pursue.holding:
+        # The route, while it is being flown — and again if the end of it
+        # stops being where the vehicle is. A fix that lands after arrival
+        # moves the vehicle's idea of itself, and the hold would sit at the
+        # old place for the rest of the dive believing it had arrived.
+        if self.flying_the_route and (not self.pursue.holding or self.pursue.wants_back(seen)):
             return self.pursue
         return self.hold
 
