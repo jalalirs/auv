@@ -66,8 +66,8 @@ export function Plan({ flying, at }: {
 }): React.JSX.Element | null {
   if (flying === undefined || !flying.manoeuvres?.length) return null;
   return (
-    <div className="plan">
-      <div className="plan-head">
+    <div className="flight-plan">
+      <div className="flight-plan-head">
         <strong>{flying.plan || "the plan"}</strong>
         {flying.by ? <em>{flying.by}</em> : null}
       </div>

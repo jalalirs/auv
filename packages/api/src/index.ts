@@ -22,6 +22,8 @@ export type Queue = Schemas["Queue"];
 export type Device = Schemas["Device"];
 export type AutonomyStack = Schemas["AutonomyStack"];
 export type Conditions = Schemas["Conditions"];
+export type PlanDocument = Schemas["PlanDocument"];
+export type DraftedPlan = Schemas["DraftedPlan"];
 export type Dive = Schemas["Dive"];
 export type Run = Schemas["Run"];
 export type Artefact = Schemas["Artefact"];
@@ -230,6 +232,25 @@ export class Platform {
     parameters?: Record<string, unknown>;
   }): Promise<Conditions> {
     return this.#request("POST", `/api/v1/organisations/${organisation}/conditions`, conditions);
+  }
+
+  /**
+   * Ask the platform to turn what you said into a plan.
+   *
+   * Drafted on the platform rather than here, because the key that reaches a
+   * model must not reach an application somebody installs. What comes back has
+   * already been checked against the manoeuvres a vehicle can actually fly.
+   *
+   * Always answers: no model configured, a model that refuses, and a plan that
+   * cannot be flown are ordinary outcomes with a reason attached, and the
+   * reading comes back beside the plan so that what the machine heard can be
+   * seen rather than trusted.
+   */
+  draftPlan(organisation: string, asked: {
+    said: string;
+    from?: { x?: number; y?: number; depthM?: number; headingDeg?: number };
+  }): Promise<DraftedPlan> {
+    return this.#request("POST", `/api/v1/organisations/${organisation}/plans/draft`, asked);
   }
 
   defineDive(organisation: string, dive: {

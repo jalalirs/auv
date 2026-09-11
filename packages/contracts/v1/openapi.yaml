@@ -692,23 +692,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  plan:
-                    type: object
-                    nullable: true
-                    description: The plan document, or null when none could be drafted.
-                  read:
-                    type: array
-                    items: { type: string }
-                    description: What was understood, in its own words.
-                  missed:
-                    type: array
-                    items: { type: string }
-                    description: What meant nothing here.
-                  why:
-                    type: string
-                    description: Why there is no plan, when there is none.
+                $ref: '#/components/schemas/DraftedPlan'
         '400':
           $ref: '#/components/responses/Invalid'
         '403':
@@ -3102,6 +3086,66 @@ components:
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
       required: [id, orgId, slug, name, imageRepository, imageDigest, createdAt, createdBy]
+    PlanDocument:
+      type: object
+      description: >
+        A plan: a graph of manoeuvres with parameters and a transition to the
+        next. The shape is borrowed rather than invented — it is what an IMC
+        plan is, and what the tooling in this field already speaks.
+      required: [manoeuvres]
+      properties:
+        describedBy: { type: string, description: What this document is, so a file found alone is recognisable. }
+        plan: { type: string, description: A short name. }
+        by: { type: string, description: Who worked it out — a person, a model, the platform. }
+        start: { type: string, description: Which manoeuvre begins it. }
+        manoeuvres:
+          type: array
+          items:
+            type: object
+            required: [id, kind]
+            properties:
+              id: { type: string }
+              kind: { type: string, enum: [goto, follow-path, station-keeping] }
+              next: { type: string, description: The manoeuvre this hands over to. }
+              at:
+                type: object
+                properties:
+                  x: { type: number }
+                  y: { type: number }
+                  depthM: { type: number }
+                  altitudeM: { type: number }
+              points:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    x: { type: number }
+                    y: { type: number }
+              altitudeM: { type: number }
+              arriveM: { type: number, description: How close counts as reached. }
+              speedMs: { type: number }
+              holdS: { type: number, description: Seconds to stay there. }
+              radiusM: { type: number }
+    DraftedPlan:
+      type: object
+      description: >
+        What came of asking. The reading travels with the plan on purpose:
+        somebody who cannot see what the machine heard cannot tell a good plan
+        from a lucky one.
+      properties:
+        plan:
+          allOf: [{ $ref: '#/components/schemas/PlanDocument' }]
+          nullable: true
+          description: The plan, or null when none could be drafted.
+        read:
+          type: array
+          items: { type: string }
+          description: What was understood, in its own words.
+        missed:
+          type: array
+          items: { type: string }
+          description: What meant nothing here.
+        why: { type: string, description: Why there is no plan, when there is none. }
     Conditions:
       type: object
       description: >

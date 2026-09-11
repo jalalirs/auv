@@ -17,6 +17,7 @@ import { PILOTED, TASKS, type Task, WATERS, type Water } from "../catalog/tasks.
 import { alertKind, leadTemperature, useSea } from "../ocean/sea.js";
 import { Line } from "../parts/Line.js";
 import { ControllerArt } from "../parts/ControllerArt.js";
+import { Plan, type Flying } from "../parts/Plan.js";
 import { PositioningArt } from "../parts/PositioningArt.js";
 import { TaskArt } from "../parts/TaskArt.js";
 import { WaterArt } from "../parts/WaterArt.js";
@@ -34,6 +35,10 @@ const KNOWS = "coral-city.positioning";
 
 /** The controller a person is: keys, with the hold beneath them. */
 const MANUAL = "manual";
+
+/** What asking looks like, so the box does not have to be guessed at. */
+const ASKING_LOOKS_LIKE =
+  "survey a 60 by 30 metre area north at 5 metres up, then come home and surface";
 
 /**
  * The controllers the platform brings with it, as against the ones somebody
@@ -88,6 +93,33 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
   });
   const chosenStack = held.stacks.find((s) => s.id === flownBy);
   const builtIn = BUILT_IN.find((one) => one.key === flownBy)?.key;
+
+  // Asking for a dive in words. The drafting happens on the platform, because
+  // the key that reaches a model must not reach an application somebody
+  // installs — and what comes back has already been checked against what a
+  // vehicle can actually fly. Nothing here trusts it: the plan is shown, and
+  // flying it is a separate press.
+  const [words, setWords] = useState("");
+  const [drafting, setDrafting] = useState(false);
+  const [drafted, setDrafted] = useState<Flying | undefined>();
+  const [heard, setHeard] = useState<{ read: string[]; missed: string[]; why?: string }>();
+
+  async function draft(): Promise<void> {
+    if (held.institution === undefined || words.trim() === "") return;
+    setDrafting(true);
+    try {
+      const answered = await platform.draftPlan(held.institution.id, { said: words });
+      setDrafted(answered.plan === null || answered.plan === undefined
+        ? undefined : (answered.plan as unknown as Flying));
+      setHeard({ read: answered.read ?? [], missed: answered.missed ?? [], why: answered.why });
+    } catch (trouble) {
+      setHeard({ read: [], missed: [words],
+                 why: trouble instanceof Error ? trouble.message : "the platform could not be asked" });
+      setDrafted(undefined);
+    } finally {
+      setDrafting(false);
+    }
+  }
   const [water, setWater] = useState<Water>(() =>
     WATERS.find((w) => w.key === localStorage.getItem(HOW)) ?? WATERS[0]!);
   // How it knows where it is. Kept apart from the water because one is what
@@ -148,8 +180,14 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
         // is flying; a deployed stack is a pinned image and goes in its own
         // field. They are different kinds of thing and are not squeezed into
         // one.
-        objective: builtIn === undefined ? task.objective
-                                         : { ...task.objective, controller: builtIn },
+        // What the dive is for, how it means to go about it, and who should
+        // fly it — one document, because they are pinned together or the
+        // result cannot be attributed to any of them.
+        objective: {
+          ...task.objective,
+          ...(builtIn === undefined ? {} : { controller: builtIn }),
+          ...(drafted === undefined ? {} : { plan: drafted }),
+        },
         autonomyStackId: chosenStack?.id,
       });
 
@@ -290,6 +328,44 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
           </div>
           {placePackage?.credit && placePackage.credit.kind !== "render"
             ? <div className="composer-credit"><Credit of={placePackage.credit} /></div> : null}
+        </div>
+
+        {/* Asking for a dive in words, beside choosing one from a list.
+            Both end in the same place — an objective with a plan attached —
+            and neither is the real one: a plan is a document however it was
+            arrived at. What is shown before anything flies is what the
+            platform heard, because a person who cannot see that cannot tell a
+            good plan from a lucky one. */}
+        <div className="asking">
+          <label htmlFor="say">Or say what you want</label>
+          <div className="asking-row">
+            <input id="say" type="text" value={words} placeholder={ASKING_LOOKS_LIKE}
+                   onChange={(e) => setWords(e.target.value)}
+                   onKeyDown={(e) => { if (e.key === "Enter") void draft(); }} />
+            <button className="quiet" disabled={drafting || words.trim() === ""}
+                    onClick={() => void draft()}>
+              {drafting ? "asking…" : "draft a plan"}
+            </button>
+            {drafted === undefined ? null : (
+              <button className="quiet" onClick={() => { setDrafted(undefined); setHeard(undefined); }}>
+                forget it
+              </button>
+            )}
+          </div>
+          {heard === undefined ? null : (
+            <div className="heard">
+              {heard.read.map((line, at) => <p key={at} className="read">heard · {line}</p>)}
+              {heard.missed.map((line, at) => <p key={at} className="not-read">not understood · {line}</p>)}
+              {heard.why ? <p className="why">{heard.why}</p> : null}
+            </div>
+          )}
+          {drafted === undefined ? null : (
+            <>
+              <Plan flying={drafted} />
+              <p className="read">This is what will be flown. The task above is still what it is
+                scored against.</p>
+            </>
+          )}
         </div>
 
         <div className="plan">
