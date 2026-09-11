@@ -1208,24 +1208,42 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
    A list rather than a diagram: the chart already shows where the manoeuvres
    are, and what a list adds is their order, their parameters, and which one
    the vehicle is on — none of which a picture of the seabed says. */
-.plan { overflow: auto; padding: 12px 14px; font-size: 12.5px; height: 100%; }
-.plan-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
-.plan-head strong { font-size: 13.5px; font-weight: 600; }
-.plan-head em { font-style: normal; color: var(--faint); font-size: 11.5px; }
-.plan ol { list-style: none; margin: 0; padding: 0; counter-reset: manoeuvre; }
-.plan li {
+.flight-plan { overflow: auto; padding: 12px 14px; font-size: 12.5px; height: 100%; }
+.flight-plan-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.flight-plan-head strong { font-size: 13.5px; font-weight: 600; }
+.flight-plan-head em { font-style: normal; color: var(--faint); font-size: 11.5px; }
+.flight-plan ol { list-style: none; margin: 0; padding: 0; counter-reset: manoeuvre; }
+.flight-plan li {
   display: grid; grid-template-columns: 22px 86px minmax(0, 1fr); gap: 10px;
   align-items: baseline; padding: 5px 0; border-top: 1px solid var(--edge);
   counter-increment: manoeuvre;
 }
-.plan li::before {
+.flight-plan li::before {
   content: counter(manoeuvre); color: var(--faint); font-variant-numeric: tabular-nums;
   font-size: 11px; text-align: right;
 }
-.plan li.on { color: var(--plain); }
-.plan li.on::before { color: var(--coral); }
-.plan .what { color: var(--plain); }
-.plan .where { color: var(--dim); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+.flight-plan li.on { color: var(--plain); }
+.flight-plan li.on::before { color: var(--coral); }
+.flight-plan .what { color: var(--plain); }
+.flight-plan .where { color: var(--dim); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
 .flew { margin: -2px 0 12px; }
 .flew summary { cursor: pointer; color: var(--faint); font-size: 12px; }
-.flew .plan { height: auto; max-height: 260px; border: 1px solid var(--edge); border-radius: 6px; margin-top: 8px; }
+.flew .flight-plan { height: auto; max-height: 260px; border: 1px solid var(--edge); border-radius: 6px; margin-top: 8px; }
+
+/* ── asking for a dive in words ───────────────────────────────────────────
+   Beside the list of choices, not instead of it. Both end in the same place:
+   an objective with a plan attached. */
+.asking { margin-top: 18px; max-width: 880px; display: flex; flex-direction: column; gap: 8px; }
+.asking label { font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--dim); padding-left: 4px; }
+.asking-row { display: flex; gap: 8px; align-items: center; }
+.asking input {
+  flex: 1; padding: 9px 12px; border: 1px solid var(--edge); border-radius: 9px;
+  background: rgba(11, 21, 36, 0.6); color: var(--plain); font: inherit; font-size: 13px; outline: none;
+}
+.asking input:focus { border-color: var(--coral); }
+.asking input::placeholder { color: var(--faint); }
+.heard p, .asking > p { margin: 2px 0; font-size: 12.5px; }
+.heard .read, .asking > p.read { color: var(--dim); }
+.heard .not-read { color: var(--amber, #d2842a); }
+.heard .why { color: var(--faint); }
+.asking .flight-plan { height: auto; max-height: 240px; border: 1px solid var(--edge); border-radius: 8px; }

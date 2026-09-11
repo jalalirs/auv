@@ -945,6 +945,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organisations/{orgId}/plans/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft a plan from what somebody said
+         * @description Words in, a plan out. The drafting happens here rather than in a console because the key that reaches a model must not: an application somebody installs cannot be trusted with a secret. What comes back has been checked against the manoeuvres a vehicle can actually fly, so a plan nobody can follow is refused here rather than discovered halfway through a dive.
+         *
+         *     Always answers. A platform with no model configured, a model that refuses, and a model whose plan cannot be flown are all ordinary outcomes with a reason attached, not errors — and the reading is returned beside the plan, because somebody who cannot see what the machine heard cannot tell a good plan from a lucky one.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The institution. */
+                    orgId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description What you want */
+                        said: string;
+                        /** @description Where the vehicle will be when it is asked. A plan is written in the world's coordinates and an instruction like "two hundred metres north" is not, so the drafting needs somewhere to start from.
+                         *      */
+                        from?: {
+                            x?: number;
+                            y?: number;
+                            depthM?: number;
+                            headingDeg?: number;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description The plan, and what was made of the words. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DraftedPlan"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organisations/{orgId}/conditions": {
         parameters: {
             query?: never;
@@ -4074,6 +4136,54 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
             createdBy: string;
+        };
+        /** @description A plan: a graph of manoeuvres with parameters and a transition to the next. The shape is borrowed rather than invented — it is what an IMC plan is, and what the tooling in this field already speaks.
+         *      */
+        PlanDocument: {
+            /** @description What this document is */
+            describedBy?: string;
+            /** @description A short name. */
+            plan?: string;
+            /** @description Who worked it out — a person */
+            by?: string;
+            /** @description Which manoeuvre begins it. */
+            start?: string;
+            manoeuvres: {
+                id: string;
+                /** @enum {string} */
+                kind: "goto" | "follow-path" | "station-keeping";
+                /** @description The manoeuvre this hands over to. */
+                next?: string;
+                at?: {
+                    x?: number;
+                    y?: number;
+                    depthM?: number;
+                    altitudeM?: number;
+                };
+                points?: {
+                    x?: number;
+                    y?: number;
+                }[];
+                altitudeM?: number;
+                /** @description How close counts as reached. */
+                arriveM?: number;
+                speedMs?: number;
+                /** @description Seconds to stay there. */
+                holdS?: number;
+                radiusM?: number;
+            }[];
+        };
+        /** @description What came of asking. The reading travels with the plan on purpose: somebody who cannot see what the machine heard cannot tell a good plan from a lucky one.
+         *      */
+        DraftedPlan: {
+            /** @description The plan, or null when none could be drafted. */
+            plan?: components["schemas"]["PlanDocument"] | null;
+            /** @description What was understood, in its own words. */
+            read?: string[];
+            /** @description What meant nothing here. */
+            missed?: string[];
+            /** @description Why there is no plan */
+            why?: string;
         };
         /** @description The water a dive happens in — either the ocean as it was at an instant, or a situation somebody constructed.
          *      */
