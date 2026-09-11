@@ -13,6 +13,7 @@ import type { Artefact, Platform } from "@coral-city/api";
 
 import { Hud, type Deployment } from "../parts/Hud.js";
 import { Minimap, type Fix, type Geometry, type Site } from "../parts/Minimap.js";
+import { Plan, type Flying } from "../parts/Plan.js";
 import type { Looking } from "../parts/project.js";
 import { TASKS } from "../catalog/tasks.js";
 import { Empty, PageHead } from "./parts.js";
@@ -78,6 +79,10 @@ export function Replay({ platform, dive, run, onBack }: {
   const [hud, setHud] = useState(true);
   const [task, setTask] = useState<TaskLine[]>([]);
   const [manifest, setManifest] = useState<Manifest | undefined>();
+  // The plan this run flew, kept with the recording. A replay that shows where
+  // a vehicle went and not what it was trying to do cannot be argued with;
+  // with the plan beside it, the two can be held against each other.
+  const [flying, setFlying] = useState<Flying | undefined>();
   const [at, setAt] = useState(0);
   // The frames, downloaded and held in memory rather than fetched as the
   // scrubber moves. Each one was a request to storage over whatever link this
@@ -131,6 +136,12 @@ export function Replay({ platform, dive, run, onBack }: {
         setPoses(read);
         setTask(progress);
         setManifest(said);
+        const written = named("plan.json");
+        if (written) {
+          void fetch(written).then((answer) => answer.json()).then(
+            (document: Flying) => { if (!gone) setFlying(document); },
+            () => undefined);
+        }
         // The thrusters' mean absolute command: how hard the vehicle worked.
         setBattery(sensors.map((s) => ({
           t: s.t, v: Number((s["/battery"] as Record<string, number> | undefined)?.["percentage"] ?? NaN),
@@ -470,6 +481,12 @@ export function Replay({ platform, dive, run, onBack }: {
       <PageHead title="Replay" back="Dives" onBack={onBack}
                 says={`${poses.length} poses, ${manifest?.video?.frames ?? frames.size} frames, ${manifest?.seconds?.toFixed(0) ?? "?"} s`
                   + (manifest?.task?.name ? ` · ${manifest.task.name} ${((manifest.task.score ?? 0) * 100).toFixed(0)}%` : "")} />
+      {flying === undefined ? null : (
+        <details className="flew">
+          <summary>the plan it flew — {flying.manoeuvres.length} manoeuvres{flying.by ? `, ${flying.by}` : ""}</summary>
+          <Plan flying={flying} />
+        </details>
+      )}
       <div className="replay">
         <div className="frame stage">
           {film_url !== undefined

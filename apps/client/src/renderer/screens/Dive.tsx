@@ -36,6 +36,23 @@ const KNOWS = "coral-city.positioning";
 const MANUAL = "manual";
 
 /**
+ * The controllers the platform brings with it, as against the ones somebody
+ * deployed. They are chosen by name and the name travels with the objective,
+ * which is how a dive says who should fly it without the platform needing a
+ * second field for something a task already implies.
+ *
+ * They are here so that the comparison the bench makes at the command line can
+ * be made by hand as well: the same task, the same water, two controllers.
+ */
+const BUILT_IN: { key: string; name: string; says: string }[] = [
+  { key: "pursue", name: "The platform's planner",
+    says: "Works out a route for the task and flies it. The floor a written controller has to beat." },
+  { key: "ponder", name: "The one that thinks",
+    says: "Given the goal rather than a route, it decides for itself — on a slow loop, "
+        + "the way a controller with a model in it would." },
+];
+
+/**
  * What to have chosen already: what you chose last time if it is still there,
  * or the only one if there is only one.
  *
@@ -70,6 +87,7 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
     return last !== null && held.stacks.some((s) => s.id === last) ? last : MANUAL;
   });
   const chosenStack = held.stacks.find((s) => s.id === flownBy);
+  const builtIn = BUILT_IN.find((one) => one.key === flownBy)?.key;
   const [water, setWater] = useState<Water>(() =>
     WATERS.find((w) => w.key === localStorage.getItem(HOW)) ?? WATERS[0]!);
   // How it knows where it is. Kept apart from the water because one is what
@@ -126,7 +144,12 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
         cityVersionId: onePlace.id,
         vehicleVersionId: oneVehicle.id,
         conditionsId: conditions.id,
-        objective: task.objective,
+        // A built-in controller is asked for by name, inside the objective it
+        // is flying; a deployed stack is a pinned image and goes in its own
+        // field. They are different kinds of thing and are not squeezed into
+        // one.
+        objective: builtIn === undefined ? task.objective
+                                         : { ...task.objective, controller: builtIn },
         autonomyStackId: chosenStack?.id,
       });
 
@@ -199,6 +222,10 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
     { key: MANUAL, name: "You, at the keys",
       says: "W A S D, Q E, space and C, or a gamepad; the hold has it whenever your hands are off",
       art: <ControllerArt manual /> },
+    ...(task.key === "piloted" ? [] : BUILT_IN.map(({ key, name, says }) => ({
+      key, name, says, group: "the platform's own",
+      art: <ControllerArt />,
+    }))),
     ...held.controllers.map(({ slug, name, newest, builds }) => {
       const needs = (newest.needs ?? {}) as { gpu?: boolean; gpuMemoryBytes?: number; cpu?: number; memoryBytes?: number };
       const gpu = needs.gpu || newest.wantsGpu

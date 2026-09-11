@@ -12,6 +12,7 @@
 import { useEffect, useRef } from "react";
 
 import { HOW_TO } from "../catalog/tasks.js";
+import type { Manoeuvre } from "../parts/Plan.js";
 
 export interface Topic {
   name: string;
@@ -113,6 +114,8 @@ export interface Reading {
   byHand?: boolean;
   commandsReceived?: number;
   topics?: Topic[];
+  /** The plan being flown, when the dive has one. */
+  plan?: { plan?: string | null; by?: string | null; manoeuvres: Manoeuvre[] };
 }
 
 const KEYS: { key: string; does: string }[] = [

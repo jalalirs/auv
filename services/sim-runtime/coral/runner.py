@@ -1660,6 +1660,14 @@ class Dive:
         if not whole:
             return reading
         reading["controller"] = self.helm.describe()
+        # The plan being flown, so a console can show what the vehicle is
+        # trying to do rather than only what it is doing. It is in the slow
+        # half of the reading because it changes when a mission changes stage
+        # and not otherwise.
+        if isinstance(self.document, dict):
+            reading["plan"] = {"plan": self.document.get("plan"),
+                               "by": self.planned_by or None,
+                               "manoeuvres": self.document.get("manoeuvres", [])}
         if self.bridge is not None:
             reading["topics"] = self.bridge.topics()
         else:

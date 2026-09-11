@@ -19,6 +19,7 @@ import type { Platform } from "@coral-city/api";
 import type { Stream } from "../App.js";
 import { Hud } from "../parts/Hud.js";
 import { Minimap, type Fix, type Geometry, type Site } from "../parts/Minimap.js";
+import { Plan } from "../parts/Plan.js";
 import { Profile, type Moment } from "../parts/Profile.js";
 import { WorldAxes, type Basis } from "../parts/Axes.js";
 import { TopicPlot, type Sample } from "../parts/TopicPlot.js";
@@ -39,10 +40,10 @@ const REMEMBERED = 600;
 const TRACKED = 4000;
 
 /** The panes, and what each shows. */
-export type Pane = "water" | "map" | "profile" | "plot";
+export type Pane = "water" | "map" | "profile" | "plot" | "plan";
 
 const PANE_NAMES: Record<Pane, string> = {
-  water: "water", map: "chart", profile: "section", plot: "plot",
+  water: "water", map: "chart", profile: "section", plot: "plot", plan: "plan",
 };
 
 interface Hello {
@@ -409,6 +410,8 @@ export function Water({ platform, stream, onSurface }: {
                         positioning={hello?.positioning} large={large} />;
       case "profile":
         return <Profile of={history.current} />;
+      case "plan":
+        return <Plan flying={reading.plan} />;
       case "plot":
         return <TopicPlot topic={plotted} of={plotted === undefined ? [] : (series.current.get(plotted) ?? [])}
                           about={topics.find((t) => t.name === plotted)} onLook={view} />;
