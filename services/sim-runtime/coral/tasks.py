@@ -542,11 +542,18 @@ class Search(Task):
     """Find something that is out there, without being told where.
 
     The vehicle is given an area and not a position. The thing is found when it
-    comes into view — close enough for the camera to resolve it and inside the
-    camera's cone — or when a controller says it has found it and is right. Both
-    count, because a stack that recognises what it sees is doing the task and a
-    platform that flies a pattern until the thing is in front of it is doing the
-    task too.
+    passes through the camera's footprint on the bottom — or when a controller
+    says it has found it and is right. Both count, because a stack that
+    recognises what it sees is doing the task, and a platform that flies a
+    pattern until the thing goes under it is doing the task too.
+
+    Under it, not in front of it. This was written as a forward cone, and the
+    result was a search that only succeeded when the navigation was bad: a
+    vehicle flying tidy lanes passes its target abeam, which a cone in front
+    never sees, while one wandering by twenty metres eventually points at it.
+    A survey camera looks down. What it sees is a swath under the vehicle as
+    wide as the altitude and the lens make it, and how far you can see through
+    the water decides whether it sees the bottom at all.
 
     The chart is told the area and never the answer.
     """
@@ -589,15 +596,27 @@ class Search(Task):
         flat = self.target[:2] - position[:2]
         away = float(np.hypot(*flat))
         self.closest = min(self.closest, away)
-        if not self.found and away <= self.see:
-            # In view: close enough, and inside the camera's cone.
-            bearing = math.atan2(float(flat[1]), float(flat[0]))
-            if abs(wrap(bearing - heading)) <= self.half_angle:
-                self.found = True
-                self.found_at = elapsed
-                self.done = True
+        if not self.found and away <= self.swath_at(position, floor):
+            self.found = True
+            self.found_at = elapsed
+            self.done = True
         if elapsed >= self.limit:
             self.done = True
+
+    def swath_at(self, position, floor) -> float:
+        """How far to either side the camera is seeing the bottom, right now.
+
+        Two things decide it and both are real: the lens and the height it is
+        flown at give the footprint, and the water decides whether the bottom
+        is visible at all. Fly too high for the visibility and the camera is
+        looking at green.
+        """
+        altitude = None if floor is None else float(position[2]) - float(floor)
+        if altitude is None:
+            altitude = self.altitude
+        if altitude > self.see:
+            return 0.0                      # too high to see the bottom in this water
+        return max(0.25, altitude * math.tan(self.half_angle))
 
     def score(self) -> float:
         if not self.found:

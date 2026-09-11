@@ -184,3 +184,64 @@ def test_the_same_seed_is_wrong_in_the_same_way_twice():
     once, again = drift_of(7), drift_of(7)
     assert once == again, f"the same seed drifted differently: {once} then {again}"
     assert drift_of(8) != once, "every seed drifts the same way, so the seed does nothing"
+
+
+# ── two faults the long matrix found ─────────────────────────────────────────
+
+def test_a_vehicle_pushed_off_the_end_of_its_route_goes_back():
+    """The hold holds a position; the route holds a goal.
+
+    Twenty-five return dives ended seven metres from home with a controller
+    that believed it had arrived: the follower reached the last point, handed
+    over to the hold, and the fix that corrected its position afterwards was
+    never acted on by anything. The end of a route is still a place now.
+    """
+    dive = a_dive({"objective": {"kind": "reach", "dx": 20.0, "dy": 0.0, "radiusM": 2.0,
+                                 "timeLimitS": 900}})
+    run(dive, 120.0)
+    assert dive.helm.pursue.holding, "it never got to the end of its route"
+    # What a late fix does: the vehicle's idea of itself moves. Here it is the
+    # vehicle that moves, which is the same thing from the controller's side.
+    dive.position += np.array([7.0, 0.0, 0.0])
+    run(dive, 3.0)
+    assert not dive.helm.pursue.holding, "it stayed put seven metres off the point"
+    run(dive, 120.0)
+    back = float(np.hypot(dive.position[0] - 20.0, dive.position[1]))
+    assert back < 3.0, f"it never closed the gap — {back:.1f} m out"
+
+
+def test_a_search_finds_what_passes_under_it_rather_than_in_front_of_it():
+    """A camera that looks down sees a swath beneath, not a cone ahead.
+
+    Written as a cone, a search only succeeded when the navigation was bad
+    enough to point the vehicle at the target: tidy lanes pass it abeam.
+    """
+    from tasks import task_for
+
+    objective = {"kind": "search", "widthM": 40.0, "heightM": 20.0, "altitudeM": 8.0,
+                 "seeM": 12.0, "target": {"dx": 20.0, "dy": 0.0}, "timeLimitS": 600}
+    abeam = task_for(objective, np.array(START), 0.0, camera={"horizontalFovDeg": 47.0})
+    # Straight past it, one metre to the side, looking dead ahead the whole way
+    # — which is how a lawnmower meets anything it is looking for.
+    for step in range(60):
+        at = np.array([START[0] + step * 0.5, START[1] + 1.0, START[2]])
+        abeam.step(step * 1.0, at, 0.0, START[2] - 8.0, [0.1])
+    assert abeam.detail()["found"], "it passed a metre over the thing and did not see it"
+
+    wide = task_for(objective, np.array(START), 0.0, camera={"horizontalFovDeg": 47.0})
+    for step in range(60):
+        at = np.array([START[0] + step * 0.5, START[1] + 14.0, START[2]])
+        wide.step(step * 1.0, at, 0.0, START[2] - 8.0, [0.1])
+    assert not wide.detail()["found"], "it saw something fourteen metres to one side"
+
+
+def test_a_search_flown_too_high_for_the_water_sees_nothing():
+    from tasks import task_for
+
+    objective = {"kind": "search", "widthM": 40.0, "heightM": 20.0, "altitudeM": 8.0,
+                 "seeM": 4.0, "target": {"dx": 20.0, "dy": 0.0}, "timeLimitS": 600}
+    task = task_for(objective, np.array(START), 0.0, camera={"horizontalFovDeg": 47.0})
+    for step in range(60):
+        at = np.array([START[0] + step * 0.5, START[1], START[2]])
+        task.step(step * 1.0, at, 0.0, START[2] - 8.0, [0.1])
+    assert not task.detail()["found"], "it saw the bottom from twice the visibility"

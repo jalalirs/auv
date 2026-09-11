@@ -120,8 +120,12 @@ TASKS = {
     "survey": {"kind": "survey", "widthM": 60, "heightM": 30, "altitudeM": 5.0, "swathM": 4.0,
                "altitudeBandM": 1.2, "timeLimitS": 1500},
     "reach": {"kind": "reach", "dx": 250, "dy": 0, "radiusM": 3.0, "timeLimitS": 1200},
-    "search": {"kind": "search", "widthM": 80, "heightM": 50, "altitudeM": 4.0, "seeM": 8,
-               "target": {"dx": 62, "dy": 34}, "timeLimitS": 1500},
+    # Flown high, because the swath is the camera's footprint and nothing else
+    # now: at four metres it is three and a half wide, and covering the area
+    # would take longer than the dive. Eight metres doubles it, and the water
+    # here is clear enough to see the bottom from there.
+    "search": {"kind": "search", "widthM": 60, "heightM": 36, "altitudeM": 8.0, "seeM": 12,
+               "target": {"dx": 46, "dy": 25}, "timeLimitS": 1500},
     "treat": {"kind": "treat", "radiusM": 15, "reachM": 1.5, "altitudeM": 1.5,
               "altitudeBandM": 1.5, "speedMs": 0.35, "timeLimitS": 1500},
     "inspect": {"kind": "inspect", "dx": 60, "dy": 0, "radiusM": 6.0, "bandM": 2.5,
