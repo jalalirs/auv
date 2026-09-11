@@ -54,6 +54,13 @@ type Config struct {
 	UploadGrantLifetime   time.Duration
 	MaxObjectBytes        int64
 
+	// A model this platform may ask for a plan, and the key to ask with. All
+	// three empty on a platform that has not been given one, which is not an
+	// error: drafting then says plainly that there is nothing to ask.
+	ModelURL string
+	Model    string
+	ModelKey string
+
 	SessionLifetime time.Duration
 	SecureCookies   bool
 
@@ -72,6 +79,10 @@ func Load() (Config, error) {
 		// Where a client reaches storage, when that differs from where this
 		// process does. A presigned URL is signed over its host.
 		StoragePublicEndpoint: os.Getenv("CORAL_CITY_STORAGE_PUBLIC_ENDPOINT"),
+
+		ModelURL: os.Getenv("CORAL_CITY_MODEL_URL"),
+		ModelKey: os.Getenv("CORAL_CITY_MODEL_KEY"),
+		Model:    valueOrDefault("CORAL_CITY_MODEL", "claude-sonnet-5"),
 	}
 
 	required := []struct {
