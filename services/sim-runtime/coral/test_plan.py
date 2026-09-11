@@ -213,9 +213,15 @@ def test_a_vehicle_pushed_off_the_end_of_its_route_goes_back():
     dive.navigation.believed = dive.navigation.believed + np.array([7.0, 0.0, 0.0])
     run(dive, 3.0)
     assert not dive.helm.pursue.holding, "it stayed put seven metres off the point"
+    moved_from = dive.position.copy()
     run(dive, 150.0)
-    back = float(np.hypot(dive.position[0] - 20.0, dive.position[1]))
-    assert back < 3.0, f"it never closed the gap — {back:.1f} m out"
+    # Closed in the only terms the vehicle has. It flies to where it now
+    # believes the point is, which is seven metres from where it truly is —
+    # that is what acting on a fix means, and a controller that ignored the
+    # correction because it had already arrived is the fault being fixed.
+    believed = float(np.hypot(dive.navigation.believed[0] - 20.0, dive.navigation.believed[1]))
+    assert believed < 3.0, f"it never went back for it — {believed:.1f} m out by its own reckoning"
+    assert float(np.linalg.norm(dive.position - moved_from)) > 3.0, "and it never actually moved"
 
 
 def test_a_search_finds_what_passes_under_it_rather_than_in_front_of_it():
