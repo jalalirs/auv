@@ -596,7 +596,8 @@ class Search(Task):
         flat = self.target[:2] - position[:2]
         away = float(np.hypot(*flat))
         self.closest = min(self.closest, away)
-        if not self.found and away <= self.swath_at(position, floor):
+        swath = self.swath_at(position, floor)
+        if not self.found and swath > 0.0 and away <= swath:
             self.found = True
             self.found_at = elapsed
             self.done = True
