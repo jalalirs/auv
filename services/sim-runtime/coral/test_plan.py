@@ -207,9 +207,10 @@ def test_a_vehicle_pushed_off_the_end_of_its_route_goes_back():
                                             "arriveM": 1.5}]}})
     run(dive, 150.0)
     assert dive.helm.pursue.holding, "it never got to the end of its route"
-    # What a late fix does: the vehicle's idea of itself moves. Here it is the
-    # vehicle that moves, which is the same thing from the controller's side.
-    dive.position += np.array([7.0, 0.0, 0.0])
+    # What a late fix does, and the only thing that matters here: the vehicle's
+    # idea of itself moves. Moving the vehicle instead would prove nothing —
+    # dead reckoning integrates its own speed and never notices being carried.
+    dive.navigation.believed = dive.navigation.believed + np.array([7.0, 0.0, 0.0])
     run(dive, 3.0)
     assert not dive.helm.pursue.holding, "it stayed put seven metres off the point"
     run(dive, 150.0)
