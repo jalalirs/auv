@@ -14,6 +14,7 @@ import (
 	"github.com/jalalirs/auv/services/control-plane/internal/exec"
 	"github.com/jalalirs/auv/services/control-plane/internal/identity"
 	"github.com/jalalirs/auv/services/control-plane/internal/platform"
+	"github.com/jalalirs/auv/services/control-plane/internal/planning"
 	"github.com/jalalirs/auv/services/control-plane/internal/policy"
 	"github.com/jalalirs/auv/services/control-plane/internal/storage"
 )
@@ -33,6 +34,11 @@ type Dependencies struct {
 	Blobs      *storage.Blobs
 	Broker     *exec.Broker
 	Logger     *slog.Logger
+
+	// Drafter turns what somebody said into a plan, by asking a model. Left
+	// unconfigured on a platform that has not been given one, and it says so
+	// rather than pretending: a console that cannot draft should tell you why.
+	Drafter planning.Drafter
 
 	// LeaseDuration is how long a worker holds an attempt before it must
 	// report in again.

@@ -217,6 +217,9 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations/{orgId}/autonomy",
 		Summary: "an institution's autonomy", Action: policy.DiveRead,
 		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.listStacks})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/plans/draft",
+		Summary: "draft a plan from what somebody said", Action: policy.DiveWrite,
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.draftPlan})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/conditions",
 		Summary: "record water, observed or constructed", Action: policy.DiveWrite,
 		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.createConditions})
