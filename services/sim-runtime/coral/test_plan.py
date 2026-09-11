@@ -196,16 +196,23 @@ def test_a_vehicle_pushed_off_the_end_of_its_route_goes_back():
     over to the hold, and the fix that corrected its position afterwards was
     never acted on by anything. The end of a route is still a place now.
     """
-    dive = a_dive({"objective": {"kind": "reach", "dx": 20.0, "dy": 0.0, "radiusM": 2.0,
-                                 "timeLimitS": 900}})
-    run(dive, 120.0)
+    # A task that does not end the moment the vehicle arrives, so that there is
+    # still a dive to fly when the correction lands: a reach is over at the
+    # point it reaches, which is exactly when this fault used to begin.
+    dive = a_dive({"objective": {"kind": "wait", "seconds": 900.0},
+                   "plan": {"describedBy": plan.DESCRIBED_BY, "plan": "twenty metres on",
+                            "start": "m1",
+                            "manoeuvres": [{"id": "m1", "kind": "goto",
+                                            "at": {"x": 20.0, "y": 0.0, "depthM": 7.0},
+                                            "arriveM": 1.5}]}})
+    run(dive, 150.0)
     assert dive.helm.pursue.holding, "it never got to the end of its route"
     # What a late fix does: the vehicle's idea of itself moves. Here it is the
     # vehicle that moves, which is the same thing from the controller's side.
     dive.position += np.array([7.0, 0.0, 0.0])
     run(dive, 3.0)
     assert not dive.helm.pursue.holding, "it stayed put seven metres off the point"
-    run(dive, 120.0)
+    run(dive, 150.0)
     back = float(np.hypot(dive.position[0] - 20.0, dive.position[1]))
     assert back < 3.0, f"it never closed the gap — {back:.1f} m out"
 
