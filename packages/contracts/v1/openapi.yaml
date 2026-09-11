@@ -640,6 +640,79 @@ paths:
           $ref: '#/components/responses/Invalid'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/v1/organisations/{orgId}/plans/draft:
+    post:
+      tags: [dives]
+      summary: Draft a plan from what somebody said
+      description: >
+        Words in, a plan out. The drafting happens here rather than in a console
+        because the key that reaches a model must not: an application somebody
+        installs cannot be trusted with a secret. What comes back has been
+        checked against the manoeuvres a vehicle can actually fly, so a plan
+        nobody can follow is refused here rather than discovered halfway
+        through a dive.
+
+
+        Always answers. A platform with no model configured, a model that
+        refuses, and a model whose plan cannot be flown are all ordinary
+        outcomes with a reason attached, not errors — and the reading is
+        returned beside the plan, because somebody who cannot see what the
+        machine heard cannot tell a good plan from a lucky one.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [said]
+              properties:
+                said: { type: string, description: What you want, in words. }
+                from:
+                  type: object
+                  description: >
+                    Where the vehicle will be when it is asked. A plan is
+                    written in the world's coordinates and an instruction like
+                    "two hundred metres north" is not, so the drafting needs
+                    somewhere to start from.
+                  properties:
+                    x: { type: number }
+                    y: { type: number }
+                    depthM: { type: number }
+                    headingDeg: { type: number }
+      responses:
+        '200':
+          description: The plan, and what was made of the words.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan:
+                    type: object
+                    nullable: true
+                    description: The plan document, or null when none could be drafted.
+                  read:
+                    type: array
+                    items: { type: string }
+                    description: What was understood, in its own words.
+                  missed:
+                    type: array
+                    items: { type: string }
+                    description: What meant nothing here.
+                  why:
+                    type: string
+                    description: Why there is no plan, when there is none.
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/v1/organisations/{orgId}/conditions:
     post:
       tags: [dives]
