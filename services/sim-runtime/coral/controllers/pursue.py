@@ -78,6 +78,20 @@ class PursueController(Controller):
         if not self.route:
             self.holding = True
 
+    def _adrift(self, seen: Observation) -> bool:
+        """Whether the vehicle has come off the end of its route.
+
+        Judged with hysteresis, and against where the vehicle believes it is,
+        like everything else a controller does: going back for a centimetre
+        would have it setting off again every time a fix landed.
+        """
+        last = self.route[-1]
+        flat = np.array([float(last.get("x", seen.position[0])),
+                         float(last.get("y", seen.position[1]))]) - seen.position[:2]
+        away = float(np.hypot(*flat))
+        arrive = float(last.get("arriveM", self["arriveM"]))
+        return away > max(2.0 * arrive, arrive + 1.0)
+
     def limit(self, authority: np.ndarray) -> None:
         self.capability = np.asarray(authority, dtype=float)
         self.pilots.limit(authority)
@@ -87,6 +101,21 @@ class PursueController(Controller):
     def observe(self, seen: Observation) -> Command:
         point = self.route[self.at] if self.at < len(self.route) else None
         if point is None:
+            # The route is flown, and staying at the end of it is the job —
+            # but only while the vehicle is still there. A fix that arrives
+            # after the last leg can move the vehicle's idea of itself by
+            # several metres, and until now nothing acted on that: the hold
+            # holds a position, not a goal, so a return that was corrected
+            # after arriving sat seven metres from home for the rest of the
+            # dive with a controller that thought it was there.
+            #
+            # So the last point is still a point. Drift far enough off it and
+            # the route is not finished after all.
+            if self.route and self._adrift(seen):
+                self.at = len(self.route) - 1
+                self.holding = False
+                self.legs_done = max(0, self.legs_done - 1)
+                return self.observe(seen)
             return self._hold(seen)
 
         target = np.array([float(point.get("x", seen.position[0])),

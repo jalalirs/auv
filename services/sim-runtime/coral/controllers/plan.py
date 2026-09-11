@@ -258,7 +258,12 @@ def _cover(goal: dict, half_angle: float | None) -> list[dict]:
         swath = 2.0 * max(0.25, altitude * math.tan(half_angle))
     else:
         swath = float(goal.get("swathM", 3.0))
-    swath += float(goal.get("seeM", 0.0))          # a search sees wider than it photographs
+    # The lane spacing is the camera's footprint and nothing else. It used to
+    # have the water's visibility added to it, on the reasoning that a search
+    # sees further than it photographs — which is not true of a camera looking
+    # down: what it sees is the swath under it, and visibility only decides
+    # whether it can see the bottom at all. Adding it opened the lanes to
+    # twice what the camera covered and the target passed between them.
     return _lawnmower(goal, max(1.0, swath * 0.85), altitude)
 
 
