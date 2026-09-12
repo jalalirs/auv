@@ -2,9 +2,22 @@ package httpapi
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/jalalirs/auv/services/control-plane/internal/planning"
 )
+
+// How long drafting may take. Far longer than anything else this service does,
+// and deliberately so: a model that reasons before it answers thinks for the
+// better part of a minute, and the server's ordinary write timeout — thirty
+// seconds, which is generous for a database query — cuts the connection while
+// the model is still thinking. The client then sees a dead socket and no
+// reason for it.
+//
+// Extended for this route alone rather than raised for the whole server: every
+// other request here should still be fast, and a slow dependency behind one of
+// them is a fault rather than a feature.
+const draftingTakes = 4 * time.Minute
 
 // Drafting a plan from words.
 //
@@ -34,7 +47,13 @@ func (d *Dependencies) draftPlan(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	read, err := d.Drafter.Draft(r.Context(), request.Said, request.From)
+	// The connection must outlive the thinking.
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(draftingTakes)); err != nil {
+		d.Logger.Warn("could not extend the deadline for drafting", "error", err)
+	}
+	asking, stop := contextWithTimeout(r, draftingTakes)
+	defer stop()
+	read, err := d.Drafter.Draft(asking, request.Said, request.From)
 	if err != nil {
 		writeError(w, r, err)
 		return

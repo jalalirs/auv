@@ -114,10 +114,23 @@ which needs a model to ask. Three settings, and the platform is fine without
 any of them:
 
 ```
-CORAL_CITY_MODEL_URL=https://api.anthropic.com/v1/messages
+CORAL_CITY_MODEL_URL=https://api.fuse.humainaic.com/v1/chat/completions
 CORAL_CITY_MODEL_KEY=...
-CORAL_CITY_MODEL=claude-sonnet-5          # optional; this is the default
+CORAL_CITY_MODEL=MiniMaxAI/MiniMax-M3
+CORAL_CITY_MODEL_MAX_TOKENS=12000         # optional; this is the default
 ```
+
+Two shapes of endpoint are understood, and which one is in front of us is read
+off the URL rather than configured: a path ending `/chat/completions` is spoken
+to the way vLLM, litellm and most gateways expect — the system prompt as the
+first message, the key as a bearer token, the answer in `choices` — and
+anything else the way the messages API expects. An operator who has a URL
+should not also have to know what to call its shape.
+
+The token budget is generous because a model that reasons before it answers
+spends most of it thinking. MiniMax given two thousand tokens returns two
+thousand tokens of reasoning and no plan at all, which looks exactly like a
+model that cannot plan; drafting says so specifically, and names the setting.
 
 They go in `.env` on the box and nowhere else. The console never sees the key —
 drafting is a platform capability precisely so that a secret is not handed to
