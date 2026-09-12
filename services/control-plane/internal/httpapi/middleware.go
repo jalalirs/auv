@@ -54,6 +54,18 @@ func (s *statusRecorder) Write(body []byte) (int, error) {
 	return written, err
 }
 
+// Unwrap hands back the writer underneath, so that a handler which needs the
+// connection itself can reach it.
+//
+// Without this, anything wrapping the response writer hides the connection
+// from http.ResponseController, and a handler asking to extend its write
+// deadline is told the feature is not supported — which is what happened to
+// drafting a plan: the model thought for forty seconds, the server closed the
+// connection at thirty, and the console saw an empty reply with no reason
+// attached. A recorder that counts bytes should not also decide what a
+// handler may do with its own connection.
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
 // Flush lets streaming responses reach the client as they are produced.
 func (s *statusRecorder) Flush() {
 	if flusher, ok := s.ResponseWriter.(http.Flusher); ok {
