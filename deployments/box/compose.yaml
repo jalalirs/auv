@@ -31,6 +31,14 @@ x-platform-env: &platform-env
   CORAL_CITY_STORAGE_ACCESS_KEY: ${CORAL_CITY_STORAGE_ACCESS_KEY:?set a storage access key}
   CORAL_CITY_STORAGE_SECRET_KEY: ${CORAL_CITY_STORAGE_SECRET_KEY:?set a storage secret key}
   CORAL_CITY_STORAGE_BUCKET_PREFIX: coral
+  # A model this platform may ask to draft a plan from words, and the key to
+  # ask with. Both empty unless the operator sets them, which is not an error:
+  # drafting then says plainly that there is nothing to ask. They are named
+  # here rather than passed wholesale, because a service should receive the
+  # secrets it needs and not every secret the machine holds.
+  CORAL_CITY_MODEL_URL: ${CORAL_CITY_MODEL_URL:-}
+  CORAL_CITY_MODEL_KEY: ${CORAL_CITY_MODEL_KEY:-}
+  CORAL_CITY_MODEL: ${CORAL_CITY_MODEL:-}
 
 services:
   record:
