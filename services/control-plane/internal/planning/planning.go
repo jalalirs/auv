@@ -377,6 +377,16 @@ func (d Drafter) Draft(ctx context.Context, said string, from From, envelope Env
 		document.DescribedBy = DescribedBy
 	}
 	document.By = "a model: " + d.Model
+	// A plan with nothing in it and reasons attached is not a broken plan, it
+	// is a refusal — and a good one. Asked to spiral to two hundred metres,
+	// launch a drone and take a water sample, the model planned none of it and
+	// said why, four times over; the check below called that "the plan has no
+	// manoeuvres" and threw the reasons away. What a model could not do is the
+	// most useful thing it has to say.
+	if len(document.Manoeuvres) == 0 && len(document.Cannot) > 0 {
+		return Read{Missed: document.Cannot,
+			Why: "none of that can be done by this vehicle"}, nil
+	}
 	if wrong := WhatIsWrong(document); len(wrong) > 0 {
 		return Read{Missed: []string{said},
 			Why: "the model's plan cannot be flown: " + strings.Join(wrong, "; ")}, nil
