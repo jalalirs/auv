@@ -105,3 +105,30 @@ read when a dive opens, so rebuilding it never touches a dive in progress;
 the control plane can be restarted freely, since agents renew leases for
 fifteen minutes and tolerate a gap. Check anyway before you redeploy:
 `docker ps | grep coral-sim` says what is in the water.
+
+
+## Asking for a plan in words
+
+The console can hand what somebody typed to the platform and get a plan back,
+which needs a model to ask. Three settings, and the platform is fine without
+any of them:
+
+```
+CORAL_CITY_MODEL_URL=https://api.anthropic.com/v1/messages
+CORAL_CITY_MODEL_KEY=...
+CORAL_CITY_MODEL=claude-sonnet-5          # optional; this is the default
+```
+
+They go in `.env` on the box and nowhere else. The console never sees the key —
+drafting is a platform capability precisely so that a secret is not handed to
+an application somebody installs — and the compose file names these three
+variables explicitly rather than passing the environment wholesale, so a
+service receives the secrets it needs and not every secret the machine holds.
+
+With none of them set, drafting answers plainly that there is no model to ask
+and points at the command line, where `./tools/ask` has a reader that needs no
+model and understands the ordinary words: surveys, transects, stations, docks,
+colonies, bearings, and "then". Nothing else changes.
+
+A key added to `.env` only reaches the service on the next `./tools/box up`:
+compose reads the file when a container starts.
