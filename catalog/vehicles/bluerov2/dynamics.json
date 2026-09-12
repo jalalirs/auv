@@ -1,6 +1,11 @@
 {
   "massKg": 11.5,
   "displacedVolumeM3": 0.011054,
+  "envelope": {
+    "maxDepthM": 100.0,
+    "maxSpeedMs": 1.5,
+    "minAltitudeM": 0.3
+  },
   "centreOfGravityM": [
     0,
     0,

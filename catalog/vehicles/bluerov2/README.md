@@ -3,6 +3,16 @@
 The parameters a simulator integrates to make this behave like a submarine
 rather than a box with gravity switched off.
 
+## What it can be asked to do
+
+`envelope` states the limits of the vehicle rather than its dynamics: a hundred
+metres of depth, a metre and a half a second, and thirty centimetres off the
+bottom. They are the manufacturer's figures for the heavy configuration, and
+they are here because a platform that cannot read a vehicle's limits cannot
+refuse a plan that exceeds them — which is how a request to dive to two
+hundred metres came back as a plan a model had quietly rewritten into
+something legal, with nothing anywhere saying the depth had been dropped.
+
 ## Where these numbers come from
 
 They are **published values for the BlueROV2**, not measurements we took. The

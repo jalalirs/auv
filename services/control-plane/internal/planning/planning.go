@@ -60,6 +60,12 @@ type Document struct {
 	By          string      `json:"by,omitempty"`
 	Start       string      `json:"start,omitempty"`
 	Manoeuvres  []Manoeuvre `json:"manoeuvres"`
+
+	// What was asked for and is not in the plan. The model is told to say so,
+	// and what it says is shown to the person rather than kept: a plan that
+	// silently drops half an instruction reads exactly like one that did all
+	// of it.
+	Cannot []string `json:"cannot,omitempty"`
 }
 
 // Read is what came back from a drafting: the plan, what was understood, and
@@ -130,6 +136,78 @@ func orIndex(name string, at int) string {
 	return fmt.Sprintf("manoeuvre %d", at+1)
 }
 
+// Envelope is what the vehicle can be asked to do, as its package states it.
+//
+// Checked against every plan, because a plan can be perfectly well formed and
+// still impossible: asked to spiral to two hundred metres, a model returned a
+// tidy legal survey at two metres and said nothing about having dropped the
+// depth. Flyable and faithful are different questions, and this is the first
+// of them the platform can actually answer.
+type Envelope struct {
+	MaxDepthM    float64 `json:"maxDepthM,omitempty"`
+	MaxSpeedMs   float64 `json:"maxSpeedMs,omitempty"`
+	MinAltitudeM float64 `json:"minAltitudeM,omitempty"`
+}
+
+func (e Envelope) stated() bool {
+	return e.MaxDepthM > 0 || e.MaxSpeedMs > 0 || e.MinAltitudeM > 0
+}
+
+// says describes the envelope for a model, in the words of the prompt.
+func (e Envelope) says() string {
+	parts := []string{}
+	if e.MaxDepthM > 0 {
+		parts = append(parts, fmt.Sprintf("it cannot go deeper than %.0f m", e.MaxDepthM))
+	}
+	if e.MaxSpeedMs > 0 {
+		parts = append(parts, fmt.Sprintf("it cannot go faster than %.1f m/s", e.MaxSpeedMs))
+	}
+	if e.MinAltitudeM > 0 {
+		parts = append(parts, fmt.Sprintf("it cannot fly lower than %.1f m above the bottom",
+			e.MinAltitudeM))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "\nThis vehicle has limits: " + strings.Join(parts, ", ") +
+		". Anything asked of it beyond these is something you must not plan."
+}
+
+// beyond lists the ways a plan asks for more than the vehicle has.
+func beyond(document *Document, envelope Envelope) []string {
+	if document == nil || !envelope.stated() {
+		return nil
+	}
+	wrong := []string{}
+	for _, manoeuvre := range document.Manoeuvres {
+		name := orIndex(manoeuvre.ID, 0)
+		if envelope.MaxDepthM > 0 {
+			if deep, ok := manoeuvre.At["depthM"]; ok && deep > envelope.MaxDepthM {
+				wrong = append(wrong, fmt.Sprintf(
+					"%s goes to %.0f m, and this vehicle is rated to %.0f m",
+					name, deep, envelope.MaxDepthM))
+			}
+		}
+		if envelope.MinAltitudeM > 0 {
+			low, ok := manoeuvre.At["altitudeM"]
+			if !ok && manoeuvre.AltitudeM != nil {
+				low, ok = *manoeuvre.AltitudeM, true
+			}
+			if ok && low < envelope.MinAltitudeM {
+				wrong = append(wrong, fmt.Sprintf(
+					"%s flies %.2f m off the bottom, and this vehicle will not go below %.1f m",
+					name, low, envelope.MinAltitudeM))
+			}
+		}
+		if envelope.MaxSpeedMs > 0 && manoeuvre.SpeedMs != nil && *manoeuvre.SpeedMs > envelope.MaxSpeedMs {
+			wrong = append(wrong, fmt.Sprintf(
+				"%s asks for %.2f m/s, and this vehicle does %.1f m/s",
+				name, *manoeuvre.SpeedMs, envelope.MaxSpeedMs))
+		}
+	}
+	return wrong
+}
+
 // Where the vehicle is when it is asked, which a plan needs because a plan is
 // written in the world's coordinates and an instruction is not.
 type From struct {
@@ -185,12 +263,15 @@ A "follow-path" has {"points": [{"x","y"}], "altitudeM"} and is how a survey or 
 A "station-keeping" has {"at": {...}, "radiusM"}.
 The vehicle is at x=%.1f, y=%.1f, depth %.1f m, heading %.0f degrees, where x is north and y is east.
 Metres throughout, and every position is in the world rather than relative to the vehicle.
+If any part of what you are asked for cannot be done with these manoeuvres and this vehicle,
+leave it out of the plan and list it in "cannot": ["…"], in plain words, one entry per thing.
+Do not invent a manoeuvre to stand in for something you cannot do.
 Say nothing but the JSON.`
 
 var firstObject = regexp.MustCompile(`(?s)\{.*\}`)
 
 // Draft asks the model for a plan and checks what comes back.
-func (d Drafter) Draft(ctx context.Context, said string, from From) (Read, error) {
+func (d Drafter) Draft(ctx context.Context, said string, from From, envelope Envelope) (Read, error) {
 	if !d.Configured() {
 		return Read{
 			Missed: []string{said},
@@ -199,7 +280,7 @@ func (d Drafter) Draft(ctx context.Context, said string, from From) (Read, error
 				"where a reader that needs no model understands the usual words.",
 		}, nil
 	}
-	system := fmt.Sprintf(told, from.X, from.Y, from.DepthM, from.HeadingDeg)
+	system := fmt.Sprintf(told, from.X, from.Y, from.DepthM, from.HeadingDeg) + envelope.says()
 	asking := map[string]any{"model": d.Model, "max_tokens": d.maxTokens()}
 	if d.completions() {
 		// Temperature nailed down: a plan is not a place for variety, and two
@@ -300,11 +381,19 @@ func (d Drafter) Draft(ctx context.Context, said string, from From) (Read, error
 		return Read{Missed: []string{said},
 			Why: "the model's plan cannot be flown: " + strings.Join(wrong, "; ")}, nil
 	}
+	if wrong := beyond(document, envelope); len(wrong) > 0 {
+		return Read{Missed: []string{said},
+			Why: "the plan asks for more than this vehicle has: " + strings.Join(wrong, "; ")}, nil
+	}
 	name := document.Plan
 	if name == "" {
 		name = "a plan"
 	}
-	return Read{Plan: document, Said: []string{"a model read this as " + name}}, nil
+	// What it could not do travels with what it did. A model asked for a drone
+	// and a water sample plans neither and mentions neither, and the plan that
+	// comes back looks like a complete answer to the question.
+	return Read{Plan: document, Said: []string{"a model read this as " + name},
+		Missed: document.Cannot}, nil
 }
 
 func shorten(said string) string {
