@@ -96,6 +96,7 @@ func run(logger *slog.Logger) error {
 		Logger:          logger,
 		Drafter: planning.Drafter{
 			URL: settings.ModelURL, Key: settings.ModelKey, Model: settings.Model,
+			MaxTokens: settings.ModelMaxTokens,
 		},
 		LeaseDuration:   settings.LeaseDuration,
 		SessionLifetime: settings.SessionLifetime,

@@ -57,9 +57,10 @@ type Config struct {
 	// A model this platform may ask for a plan, and the key to ask with. All
 	// three empty on a platform that has not been given one, which is not an
 	// error: drafting then says plainly that there is nothing to ask.
-	ModelURL string
-	Model    string
-	ModelKey string
+	ModelURL       string
+	Model          string
+	ModelKey       string
+	ModelMaxTokens int
 
 	SessionLifetime time.Duration
 	SecureCookies   bool
@@ -82,8 +83,16 @@ func Load() (Config, error) {
 
 		ModelURL: os.Getenv("CORAL_CITY_MODEL_URL"),
 		ModelKey: os.Getenv("CORAL_CITY_MODEL_KEY"),
-		Model:    valueOrDefault("CORAL_CITY_MODEL", "claude-sonnet-5"),
+		Model:    valueOrDefault("CORAL_CITY_MODEL", ""),
 	}
+	// A model that reasons before it answers spends most of its budget
+	// thinking; cut short, it returns the thinking and no plan at all, which
+	// looks exactly like a model that cannot plan.
+	tokens, err := number("CORAL_CITY_MODEL_MAX_TOKENS", 12000)
+	if err != nil {
+		return Config{}, err
+	}
+	config.ModelMaxTokens = tokens
 
 	required := []struct {
 		name        string

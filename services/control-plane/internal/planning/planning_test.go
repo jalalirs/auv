@@ -109,3 +109,71 @@ func TestAModelThatWillNotAnswerIsReportedRatherThanRaised(t *testing.T) {
 		t.Fatalf("it did not report the refusal: %+v", read)
 	}
 }
+
+// The endpoints worth using are not all the same shape. A gateway in front of
+// vLLM — which is what most local and hosted fleets are — speaks chat
+// completions: the system prompt is the first message, the key is a bearer
+// token, and the answer is in choices. Reading which one it is off the URL
+// means an operator who has a URL does not also have to know what to call it.
+
+func TestACompletionsEndpointIsSpokenToInItsOwnShape(t *testing.T) {
+	var asked map[string]any
+	var bearer string
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bearer = r.Header.Get("authorization")
+		_ = json.NewDecoder(r.Body).Decode(&asked)
+		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []map[string]any{
+			{"message": map[string]string{"content": `{"plan": "north", "start": "m1", ` +
+				`"manoeuvres": [{"id": "m1", "kind": "goto", "at": {"x": 200, "y": 0}}]}`}},
+		}})
+	}))
+	defer endpoint.Close()
+
+	read, err := Drafter{URL: endpoint.URL + "/v1/chat/completions", Key: "k", Model: "minimax"}.
+		Draft(context.Background(), "go two hundred metres north", From{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.Plan == nil {
+		t.Fatalf("a good plan was refused: %+v", read)
+	}
+	if bearer != "Bearer k" {
+		t.Errorf("the key was not sent as a bearer token: %q", bearer)
+	}
+	messages, _ := asked["messages"].([]any)
+	if len(messages) != 2 {
+		t.Fatalf("the system prompt was not sent as a message: %v", asked["messages"])
+	}
+	first, _ := messages[0].(map[string]any)
+	if first["role"] != "system" {
+		t.Errorf("the first message is not the system prompt: %v", first["role"])
+	}
+	if asked["temperature"] != float64(0) {
+		t.Errorf("a plan was asked for with temperature %v; it must be pinned", asked["temperature"])
+	}
+}
+
+func TestAModelThatThinksItsWholeBudgetAwaySaysWhatToDo(t *testing.T) {
+	// What MiniMax does when it is given two thousand tokens: it reasons for
+	// all of them and the answer comes back empty. Reported as itself rather
+	// than as "did not answer with a plan", because the remedy is a number.
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []map[string]any{
+			{"message": map[string]string{"content": "", "reasoning": "The user wants a survey…"},
+				"finish_reason": "length"},
+		}})
+	}))
+	defer endpoint.Close()
+
+	read, err := Drafter{URL: endpoint.URL + "/v1/chat/completions", Key: "k", Model: "minimax",
+		MaxTokens: 2000}.Draft(context.Background(), "survey the reef", From{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.Plan != nil {
+		t.Fatal("an empty answer was taken for a plan")
+	}
+	if !strings.Contains(read.Why, "MAX_TOKENS") {
+		t.Fatalf("it did not say how to fix it: %q", read.Why)
+	}
+}
