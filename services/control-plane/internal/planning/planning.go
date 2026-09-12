@@ -232,7 +232,9 @@ func (d Drafter) Draft(ctx context.Context, said string, from From) (Read, error
 
 	client := d.Client
 	if client == nil {
-		client = &http.Client{Timeout: 90 * time.Second}
+		// Long, because thinking is slow and the alternative is a platform
+		// that appears to be broken whenever it is asked something hard.
+		client = &http.Client{Timeout: 3 * time.Minute}
 	}
 	answered, err := client.Do(ask)
 	if err != nil {
