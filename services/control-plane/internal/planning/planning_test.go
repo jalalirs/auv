@@ -270,3 +270,32 @@ func TestWhatAModelCouldNotDoIsCarriedBackWithThePlan(t *testing.T) {
 		t.Fatalf("what it could not do was dropped: %v", read.Missed)
 	}
 }
+
+func TestARefusalWithReasonsIsNotABrokenPlan(t *testing.T) {
+	// What MiniMax actually returns, asked for four impossible things: an
+	// empty plan and four reasons. Reported as a refusal with the reasons, not
+	// as "the plan has no manoeuvres" with the reasons discarded.
+	refusing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"content": []map[string]string{{"text": `
+			{"plan": "no feasible actions", "start": "m1", "manoeuvres": [],
+			 "cannot": ["Spiral down to 200 metres exceeds the vehicle's 100 m depth limit",
+			            "Launching a drone is not a supported manoeuvre"]}`}}})
+	}))
+	defer refusing.Close()
+
+	read, err := Drafter{URL: refusing.URL, Key: "x", Model: "test"}.Draft(
+		context.Background(), "spiral to two hundred metres and launch a drone", From{},
+		Envelope{MaxDepthM: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.Plan != nil {
+		t.Fatal("an empty plan was accepted as a plan")
+	}
+	if len(read.Missed) != 2 {
+		t.Fatalf("the reasons were thrown away: %v", read.Missed)
+	}
+	if strings.Contains(read.Why, "no manoeuvres") {
+		t.Fatalf("an honest refusal was reported as a malformed plan: %q", read.Why)
+	}
+}
