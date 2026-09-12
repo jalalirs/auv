@@ -44,7 +44,7 @@ func TestAPlanThatCanBeFlownHasNothingWrongWithIt(t *testing.T) {
 }
 
 func TestWithNoModelItSaysSoRatherThanFailing(t *testing.T) {
-	read, err := Drafter{}.Draft(context.Background(), "survey the reef", From{})
+	read, err := Drafter{}.Draft(context.Background(), "survey the reef", From{}, Envelope{})
 	if err != nil {
 		t.Fatalf("asking with no model configured should not be an error: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestAModelsPlanIsCheckedBeforeItIsBelieved(t *testing.T) {
 		`[{"id": "m1", "kind": "teleport", "at": {"x": 1, "y": 2}}]}`)
 	defer bad.Close()
 	read, err := Drafter{URL: bad.URL, Key: "x", Model: "test"}.Draft(
-		context.Background(), "teleport to the reef", From{})
+		context.Background(), "teleport to the reef", From{}, Envelope{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestAModelsPlanIsCheckedBeforeItIsBelieved(t *testing.T) {
 		`[{"id": "m1", "kind": "goto", "at": {"x": 200, "y": 0, "depthM": 5}}]}` + "\n```")
 	defer good.Close()
 	read, err = Drafter{URL: good.URL, Key: "x", Model: "test"}.Draft(
-		context.Background(), "go two hundred metres north", From{})
+		context.Background(), "go two hundred metres north", From{}, Envelope{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestACompletionsEndpointIsSpokenToInItsOwnShape(t *testing.T) {
 	defer endpoint.Close()
 
 	read, err := Drafter{URL: endpoint.URL + "/v1/chat/completions", Key: "k", Model: "minimax"}.
-		Draft(context.Background(), "go two hundred metres north", From{})
+		Draft(context.Background(), "go two hundred metres north", From{}, Envelope{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestAModelThatThinksItsWholeBudgetAwaySaysWhatToDo(t *testing.T) {
 	defer endpoint.Close()
 
 	read, err := Drafter{URL: endpoint.URL + "/v1/chat/completions", Key: "k", Model: "minimax",
-		MaxTokens: 2000}.Draft(context.Background(), "survey the reef", From{})
+		MaxTokens: 2000}.Draft(context.Background(), "survey the reef", From{}, Envelope{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,5 +175,98 @@ func TestAModelThatThinksItsWholeBudgetAwaySaysWhatToDo(t *testing.T) {
 	}
 	if !strings.Contains(read.Why, "MAX_TOKENS") {
 		t.Fatalf("it did not say how to fix it: %q", read.Why)
+	}
+}
+
+// Flyable and faithful are different questions.
+//
+// A plan can be perfectly well formed and still impossible: asked to spiral to
+// two hundred metres, a model returned a tidy legal survey at two metres and
+// said nothing about having dropped the depth. The vehicle states its limits,
+// and the platform checks the plan against them — because a limit enforced
+// only by the thing that wants to exceed it is not a limit.
+
+func TestAPlanBeyondTheVehicleIsRefusedWithTheNumbers(t *testing.T) {
+	deep := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"content": []map[string]string{{"text": `
+			{"plan": "down we go", "start": "m1", "manoeuvres": [
+			 {"id": "m1", "kind": "goto", "at": {"x": 0, "y": 0, "depthM": 200}}]}`}}})
+	}))
+	defer deep.Close()
+
+	read, err := Drafter{URL: deep.URL, Key: "x", Model: "test"}.Draft(
+		context.Background(), "dive to two hundred metres", From{},
+		Envelope{MaxDepthM: 100, MaxSpeedMs: 1.5, MinAltitudeM: 0.3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.Plan != nil {
+		t.Fatal("a plan twice as deep as the vehicle was accepted")
+	}
+	for _, want := range []string{"200 m", "rated to 100 m"} {
+		if !strings.Contains(read.Why, want) {
+			t.Errorf("the refusal does not say %q: %s", want, read.Why)
+		}
+	}
+}
+
+func TestTheSamePlanIsFineWhenTheVehicleCanDoIt(t *testing.T) {
+	fine := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"content": []map[string]string{{"text": `
+			{"plan": "down a bit", "start": "m1", "manoeuvres": [
+			 {"id": "m1", "kind": "goto", "at": {"x": 0, "y": 0, "depthM": 40}}]}`}}})
+	}))
+	defer fine.Close()
+
+	read, err := Drafter{URL: fine.URL, Key: "x", Model: "test"}.Draft(
+		context.Background(), "dive to forty metres", From{}, Envelope{MaxDepthM: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.Plan == nil {
+		t.Fatalf("a plan well inside the vehicle's depth was refused: %s", read.Why)
+	}
+}
+
+func TestTheVehiclesLimitsAreToldToTheModel(t *testing.T) {
+	var asked map[string]any
+	listening := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&asked)
+		_ = json.NewEncoder(w).Encode(map[string]any{"content": []map[string]string{{"text": `
+			{"plan": "a", "start": "m1", "manoeuvres": [
+			 {"id": "m1", "kind": "goto", "at": {"x": 1, "y": 1}}]}`}}})
+	}))
+	defer listening.Close()
+
+	_, err := Drafter{URL: listening.URL, Key: "x", Model: "test"}.Draft(
+		context.Background(), "survey it", From{}, Envelope{MaxDepthM: 100, MaxSpeedMs: 1.5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	system, _ := asked["system"].(string)
+	if !strings.Contains(system, "cannot go deeper than 100 m") {
+		t.Fatalf("the model was not told what the vehicle can do: %q", system)
+	}
+}
+
+func TestWhatAModelCouldNotDoIsCarriedBackWithThePlan(t *testing.T) {
+	honest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"content": []map[string]string{{"text": `
+			{"plan": "survey only", "start": "m1",
+			 "cannot": ["launch a drone", "collect a water sample"],
+			 "manoeuvres": [{"id": "m1", "kind": "goto", "at": {"x": 1, "y": 1}}]}`}}})
+	}))
+	defer honest.Close()
+
+	read, err := Drafter{URL: honest.URL, Key: "x", Model: "test"}.Draft(
+		context.Background(), "survey it, launch a drone and take a water sample", From{}, Envelope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.Plan == nil {
+		t.Fatalf("the plan was refused: %s", read.Why)
+	}
+	if len(read.Missed) != 2 || !strings.Contains(strings.Join(read.Missed, " | "), "drone") {
+		t.Fatalf("what it could not do was dropped: %v", read.Missed)
 	}
 }

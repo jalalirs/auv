@@ -33,6 +33,11 @@ type draftPlanRequest struct {
 	// world's coordinates, and an instruction like "two hundred metres north"
 	// is not, so the drafting needs somewhere to start from.
 	From planning.From `json:"from"`
+	// What the vehicle can be asked to do, as its package states it. Sent by
+	// whoever is composing the dive, because they have chosen the vehicle and
+	// hold its package; the platform does the checking, because a limit
+	// enforced only by the thing that wants to exceed it is not a limit.
+	Envelope planning.Envelope `json:"envelope"`
 }
 
 func (d *Dependencies) draftPlan(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +58,7 @@ func (d *Dependencies) draftPlan(w http.ResponseWriter, r *http.Request) {
 	}
 	asking, stop := contextWithTimeout(r, draftingTakes)
 	defer stop()
-	read, err := d.Drafter.Draft(asking, request.Said, request.From)
+	read, err := d.Drafter.Draft(asking, request.Said, request.From, request.Envelope)
 	if err != nil {
 		writeError(w, r, err)
 		return
