@@ -142,11 +142,36 @@ type From struct {
 // Drafter asks a model for a plan. Nothing here is clever: a prompt that
 // states the format exactly, and a refusal to believe the answer until it has
 // been checked.
+//
+// Two shapes of endpoint, because the useful ones are not all the same. The
+// messages shape takes the system prompt as its own field and answers with
+// content blocks; the completions shape — what vLLM, litellm and most
+// gateways speak — takes the system prompt as the first message and answers
+// with choices. Which one is in front of us is read off the URL rather than
+// configured, because an operator who has a URL should not also have to know
+// what to call it.
 type Drafter struct {
-	URL    string
-	Key    string
-	Model  string
-	Client *http.Client
+	URL   string
+	Key   string
+	Model string
+	// How much the model may spend answering. Generous by default: a model
+	// that reasons before it answers spends most of this thinking, and one cut
+	// short returns its thinking with no plan attached — which looks exactly
+	// like a model that cannot plan.
+	MaxTokens int
+	Client    *http.Client
+}
+
+// completions says whether this endpoint speaks the chat-completions shape.
+func (d Drafter) completions() bool {
+	return strings.Contains(d.URL, "/chat/completions") || strings.Contains(d.URL, "/completions")
+}
+
+func (d Drafter) maxTokens() int {
+	if d.MaxTokens > 0 {
+		return d.MaxTokens
+	}
+	return 12000
 }
 
 // Configured says whether this platform has been given a model to ask.
@@ -174,12 +199,22 @@ func (d Drafter) Draft(ctx context.Context, said string, from From) (Read, error
 				"where a reader that needs no model understands the usual words.",
 		}, nil
 	}
-	body, err := json.Marshal(map[string]any{
-		"model":      d.Model,
-		"max_tokens": 2000,
-		"system":     fmt.Sprintf(told, from.X, from.Y, from.DepthM, from.HeadingDeg),
-		"messages":   []map[string]string{{"role": "user", "content": said}},
-	})
+	system := fmt.Sprintf(told, from.X, from.Y, from.DepthM, from.HeadingDeg)
+	asking := map[string]any{"model": d.Model, "max_tokens": d.maxTokens()}
+	if d.completions() {
+		// Temperature nailed down: a plan is not a place for variety, and two
+		// runs of one benchmark asking the same thing should get the same
+		// answer or the benchmark is measuring the weather.
+		asking["temperature"] = 0
+		asking["messages"] = []map[string]string{
+			{"role": "system", "content": system},
+			{"role": "user", "content": said},
+		}
+	} else {
+		asking["system"] = system
+		asking["messages"] = []map[string]string{{"role": "user", "content": said}}
+	}
+	body, err := json.Marshal(asking)
 	if err != nil {
 		return Read{}, err
 	}
@@ -188,8 +223,12 @@ func (d Drafter) Draft(ctx context.Context, said string, from From) (Read, error
 		return Read{}, err
 	}
 	ask.Header.Set("content-type", "application/json")
-	ask.Header.Set("x-api-key", d.Key)
-	ask.Header.Set("anthropic-version", "2023-06-01")
+	if d.completions() {
+		ask.Header.Set("authorization", "Bearer "+d.Key)
+	} else {
+		ask.Header.Set("x-api-key", d.Key)
+		ask.Header.Set("anthropic-version", "2023-06-01")
+	}
 
 	client := d.Client
 	if client == nil {
@@ -210,14 +249,39 @@ func (d Drafter) Draft(ctx context.Context, said string, from From) (Read, error
 	}
 
 	var envelope struct {
+		// The messages shape.
 		Content []struct {
 			Text string `json:"text"`
 		} `json:"content"`
+		// And the completions shape.
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+				// Where a reasoning model puts its thinking. Read only to say
+				// something useful when it thought instead of answering.
+				Reasoning string `json:"reasoning"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
 	}
-	if err := json.Unmarshal(raw, &envelope); err != nil || len(envelope.Content) == 0 {
+	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return Read{Missed: []string{said}, Why: "the model did not answer with a plan"}, nil
 	}
-	found := firstObject.FindString(envelope.Content[0].Text)
+	answer := ""
+	switch {
+	case len(envelope.Content) > 0:
+		answer = envelope.Content[0].Text
+	case len(envelope.Choices) > 0:
+		answer = envelope.Choices[0].Message.Content
+		if strings.TrimSpace(answer) == "" && envelope.Choices[0].Message.Reasoning != "" {
+			return Read{Missed: []string{said},
+				Why: "the model spent its whole answer thinking and never got to the plan; " +
+					"give it more room with CORAL_CITY_MODEL_MAX_TOKENS"}, nil
+		}
+	default:
+		return Read{Missed: []string{said}, Why: "the model did not answer with a plan"}, nil
+	}
+	found := firstObject.FindString(answer)
 	if found == "" {
 		return Read{Missed: []string{said}, Why: "the model answered without a plan in it"}, nil
 	}
