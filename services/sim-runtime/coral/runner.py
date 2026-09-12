@@ -1056,7 +1056,7 @@ class Dive:
             given = (self.brief.get("objective") or {}).get("plan") \
                 if isinstance(self.brief.get("objective"), dict) else None
         if isinstance(given, dict) and given.get("manoeuvres"):
-            wrong = plan.what_is_wrong(given)
+            wrong = plan.what_is_wrong(given, self.envelope())
             if wrong:
                 self.say("plan_refused", why=wrong[:4])
                 given = None
@@ -1108,6 +1108,26 @@ class Dive:
         if self.navigation is not None:
             return np.asarray(self.navigation.believed, dtype=float)
         return np.asarray(self.position, dtype=float)
+
+    def envelope(self) -> dict:
+        """What this vehicle can be asked to do, as its package states it.
+
+        Read here as well as in the control plane, because a plan handed
+        straight to a dive never goes near the control plane, and a limit that
+        only one door enforces is a limit with a way round it.
+        """
+        if not hasattr(self, "_envelope"):
+            self._envelope = {}
+            try:
+                import json
+                described = json.loads((pathlib.Path(self.brief.get("vehiclePath", "/dive/vehicle"))
+                                        / "dynamics.json").read_text())
+                stated = described.get("envelope")
+                if isinstance(stated, dict):
+                    self._envelope = stated
+            except Exception:
+                pass
+        return self._envelope
 
     def camera_half_angle(self) -> float | None:
         """Half the camera's horizontal field of view, radians, if it has one.

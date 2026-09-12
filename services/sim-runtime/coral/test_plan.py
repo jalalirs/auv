@@ -259,3 +259,40 @@ def test_a_search_flown_too_high_for_the_water_sees_nothing():
         at = np.array([START[0] + step * 0.5, START[1], START[2]])
         task.step(step * 1.0, at, 0.0, START[2] - 8.0, [0.1])
     assert not task.detail()["found"], "it saw the bottom from twice the visibility"
+
+
+def test_a_plan_beyond_the_vehicle_is_refused_by_the_dive_too():
+    """The control plane is not the only door.
+
+    A plan drafted from words is checked there; a plan handed straight to a
+    dive never goes near it. A limit that only one door enforces is a limit
+    with a way round it.
+    """
+    from controllers import plan as planning
+
+    envelope = {"maxDepthM": 100.0, "maxSpeedMs": 1.5, "minAltitudeM": 0.3}
+    deep = {"manoeuvres": [{"id": "m1", "kind": "goto", "at": {"x": 0, "y": 0, "depthM": 200}}]}
+    wrong = planning.what_is_wrong(deep, envelope)
+    assert any("200 m" in one and "rated to 100 m" in one for one in wrong), wrong
+    assert not planning.what_is_wrong(deep), "the envelope was checked without being given"
+
+    scraping = {"manoeuvres": [{"id": "m1", "kind": "follow-path", "altitudeM": 0.1,
+                                "points": [{"x": 0, "y": 0}]}]}
+    assert any("0.10 m off the bottom" in one for one in planning.what_is_wrong(scraping, envelope))
+
+    fine = {"manoeuvres": [{"id": "m1", "kind": "goto", "at": {"x": 0, "y": 0, "depthM": 40}}]}
+    assert not planning.what_is_wrong(fine, envelope)
+
+
+def test_a_dive_refuses_a_plan_its_vehicle_cannot_fly():
+    dive = a_dive({"vehiclePath": str(PACKAGE.parent),
+                   "objective": {"kind": "reach", "dx": 40.0, "dy": 0.0, "radiusM": 3.0},
+                   "plan": {"describedBy": plan.DESCRIBED_BY, "plan": "far too deep",
+                            "start": "m1",
+                            "manoeuvres": [{"id": "m1", "kind": "goto",
+                                            "at": {"x": 40.0, "y": 0.0, "depthM": 250.0}}]}})
+    run(dive, 2.0)
+    refused = [d for kind, d in dive.said if kind == "plan_refused"]
+    assert refused, "a plan two hundred and fifty metres down was accepted"
+    assert any("rated to 100 m" in one for one in refused[0]["why"]), refused
+    assert dive.planned_by == "the platform's planner", "and nothing planned in its place"
