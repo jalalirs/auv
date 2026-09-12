@@ -131,12 +131,50 @@ def _legs_of_one(manoeuvre: dict) -> list[dict]:
     return [leg]
 
 
-def what_is_wrong(document: dict) -> list[str]:
+def beyond(document: dict, envelope: dict | None) -> list[str]:
+    """The ways a plan asks for more than the vehicle has.
+
+    The control plane checks this when it drafts a plan from words, and that
+    was not enough: a plan handed straight to a dive never goes near the
+    control plane. A limit that only one door enforces is a limit with a way
+    round it.
+    """
+    if not envelope:
+        return []
+    deepest = float(envelope.get("maxDepthM") or 0.0)
+    quickest = float(envelope.get("maxSpeedMs") or 0.0)
+    lowest = float(envelope.get("minAltitudeM") or 0.0)
+    wrong: list[str] = []
+    for manoeuvre in document.get("manoeuvres", []):
+        if not isinstance(manoeuvre, dict):
+            continue
+        name = manoeuvre.get("id") or "a manoeuvre"
+        at = manoeuvre.get("at") if isinstance(manoeuvre.get("at"), dict) else {}
+        deep = at.get("depthM")
+        if deepest and deep is not None and float(deep) > deepest:
+            wrong.append(f"{name} goes to {float(deep):.0f} m, and this vehicle "
+                         f"is rated to {deepest:.0f} m")
+        low = at.get("altitudeM", manoeuvre.get("altitudeM"))
+        if lowest and low is not None and float(low) < lowest:
+            wrong.append(f"{name} flies {float(low):.2f} m off the bottom, and this "
+                         f"vehicle will not go below {lowest:.1f} m")
+        fast = manoeuvre.get("speedMs")
+        if quickest and fast is not None and float(fast) > quickest:
+            wrong.append(f"{name} asks for {float(fast):.2f} m/s, and this vehicle "
+                         f"does {quickest:.1f} m/s")
+    return wrong
+
+
+def what_is_wrong(document: dict, envelope: dict | None = None) -> list[str]:
     """Everything wrong with a plan document, in sentences. Empty means fly it.
 
     Checked before a dive rather than discovered during one: a plan that names
     a manoeuvre which does not exist is a vehicle that stops in the water
     halfway through a mission for no reason a person could see.
+
+    With an envelope, also whether the vehicle can do what the plan asks —
+    which is a different question from whether the plan is well formed, and
+    the one a hundred-metre hull asked to dive to two hundred fails.
     """
     wrong: list[str] = []
     manoeuvres = document.get("manoeuvres")
@@ -169,7 +207,7 @@ def what_is_wrong(document: dict) -> list[str]:
     start = document.get("start")
     if start is not None and str(start) not in ids:
         wrong.append(f"the plan starts at {start}, which is not in it")
-    return wrong
+    return wrong + beyond(document, envelope)
 
 
 def route_for(goal: dict, believed=None, camera_half_angle: float | None = None) -> list[dict]:
