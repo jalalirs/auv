@@ -686,6 +686,19 @@ paths:
                     y: { type: number }
                     depthM: { type: number }
                     headingDeg: { type: number }
+                envelope:
+                  type: object
+                  description: >
+                    What the vehicle can be asked to do, as its package states
+                    it. Sent by whoever is composing the dive, because they
+                    have chosen the vehicle and hold its package; the checking
+                    happens here, because a limit enforced only by the thing
+                    that wants to exceed it is not a limit. A plan beyond it is
+                    refused with the numbers.
+                  properties:
+                    maxDepthM: { type: number }
+                    maxSpeedMs: { type: number }
+                    minAltitudeM: { type: number }
       responses:
         '200':
           description: The plan, and what was made of the words.
@@ -2876,6 +2889,18 @@ components:
           type: number
           exclusiveMinimum: 0
           description: Buoyancy is computed from this, so a vehicle without it cannot float.
+        envelope:
+          type: object
+          description: >
+            What this vehicle can be asked to do, as against how it behaves. A
+            platform that cannot read a vehicle's limits cannot refuse a plan
+            that exceeds them, which is how a request to dive to two hundred
+            metres came back as a plan quietly rewritten into something legal,
+            with nothing anywhere saying the depth had been dropped.
+          properties:
+            maxDepthM: { type: number, exclusiveMinimum: 0 }
+            maxSpeedMs: { type: number, exclusiveMinimum: 0 }
+            minAltitudeM: { type: number, minimum: 0 }
         centreOfGravityM:
           type: array
           minItems: 3
@@ -3098,6 +3123,14 @@ components:
         plan: { type: string, description: A short name. }
         by: { type: string, description: Who worked it out — a person, a model, the platform. }
         start: { type: string, description: Which manoeuvre begins it. }
+        cannot:
+          type: array
+          items: { type: string }
+          description: >
+            What was asked for and is not in the plan. A model is told to say
+            so rather than invent a manoeuvre to stand in for something it
+            cannot do, because a plan that silently drops half an instruction
+            reads exactly like one that did all of it.
         manoeuvres:
           type: array
           items:
