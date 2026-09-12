@@ -249,6 +249,8 @@ export class Platform {
   draftPlan(organisation: string, asked: {
     said: string;
     from?: { x?: number; y?: number; depthM?: number; headingDeg?: number };
+    /** What the chosen vehicle can be asked to do, from its own package. */
+    envelope?: { maxDepthM?: number; maxSpeedMs?: number; minAltitudeM?: number };
   }): Promise<DraftedPlan> {
     return this.#request("POST", `/api/v1/organisations/${organisation}/plans/draft`, asked);
   }

@@ -984,6 +984,13 @@ export interface paths {
                             depthM?: number;
                             headingDeg?: number;
                         };
+                        /** @description What the vehicle can be asked to do, as its package states it. Sent by whoever is composing the dive, because they have chosen the vehicle and hold its package; the checking happens here, because a limit enforced only by the thing that wants to exceed it is not a limit. A plan beyond it is refused with the numbers.
+                         *      */
+                        envelope?: {
+                            maxDepthM?: number;
+                            maxSpeedMs?: number;
+                            minAltitudeM?: number;
+                        };
                     };
                 };
             };
@@ -3988,6 +3995,13 @@ export interface components {
             massKg: number;
             /** @description Buoyancy is computed from this, so a vehicle without it cannot float. */
             displacedVolumeM3: number;
+            /** @description What this vehicle can be asked to do, as against how it behaves. A platform that cannot read a vehicle's limits cannot refuse a plan that exceeds them, which is how a request to dive to two hundred metres came back as a plan quietly rewritten into something legal, with nothing anywhere saying the depth had been dropped.
+             *      */
+            envelope?: {
+                maxDepthM?: number;
+                maxSpeedMs?: number;
+                minAltitudeM?: number;
+            };
             centreOfGravityM: number[];
             /** @description Distinct from the centre of gravity. The distance between them is the lever arm that rights the vehicle when it rolls; let them coincide and there is no restoring moment at all.
              *      */
@@ -4148,6 +4162,9 @@ export interface components {
             by?: string;
             /** @description Which manoeuvre begins it. */
             start?: string;
+            /** @description What was asked for and is not in the plan. A model is told to say so rather than invent a manoeuvre to stand in for something it cannot do, because a plan that silently drops half an instruction reads exactly like one that did all of it.
+             *      */
+            cannot?: string[];
             manoeuvres: {
                 id: string;
                 /** @enum {string} */

@@ -108,7 +108,12 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
     if (held.institution === undefined || words.trim() === "") return;
     setDrafting(true);
     try {
-      const answered = await platform.draftPlan(held.institution.id, { said: words });
+      // The vehicle's own limits go with the words: the platform does the
+      // refusing, but the numbers belong to the package we have already read.
+      const answered = await platform.draftPlan(held.institution.id, {
+        said: words,
+        envelope: vehiclePackage?.dynamics?.envelope,
+      });
       setDrafted(answered.plan === null || answered.plan === undefined
         ? undefined : (answered.plan as unknown as Flying));
       setHeard({ read: answered.read ?? [], missed: answered.missed ?? [], why: answered.why });
