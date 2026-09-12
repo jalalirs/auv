@@ -331,7 +331,7 @@ func (d Drafter) Draft(ctx context.Context, said string, from From, envelope Env
 			Why: fmt.Sprintf("the model refused: %s", strings.TrimSpace(shorten(string(raw))))}, nil
 	}
 
-	var envelope struct {
+	var reply struct {
 		// The messages shape.
 		Content []struct {
 			Text string `json:"text"`
@@ -347,16 +347,16 @@ func (d Drafter) Draft(ctx context.Context, said string, from From, envelope Env
 			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 	}
-	if err := json.Unmarshal(raw, &envelope); err != nil {
+	if err := json.Unmarshal(raw, &reply); err != nil {
 		return Read{Missed: []string{said}, Why: "the model did not answer with a plan"}, nil
 	}
 	answer := ""
 	switch {
-	case len(envelope.Content) > 0:
-		answer = envelope.Content[0].Text
-	case len(envelope.Choices) > 0:
-		answer = envelope.Choices[0].Message.Content
-		if strings.TrimSpace(answer) == "" && envelope.Choices[0].Message.Reasoning != "" {
+	case len(reply.Content) > 0:
+		answer = reply.Content[0].Text
+	case len(reply.Choices) > 0:
+		answer = reply.Choices[0].Message.Content
+		if strings.TrimSpace(answer) == "" && reply.Choices[0].Message.Reasoning != "" {
 			return Read{Missed: []string{said},
 				Why: "the model spent its whole answer thinking and never got to the plan; " +
 					"give it more room with CORAL_CITY_MODEL_MAX_TOKENS"}, nil
