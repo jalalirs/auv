@@ -101,7 +101,7 @@ func TestAModelThatWillNotAnswerIsReportedRatherThanRaised(t *testing.T) {
 	}))
 	defer refused.Close()
 	read, err := Drafter{URL: refused.URL, Key: "x", Model: "test"}.Draft(
-		context.Background(), "survey the reef", From{})
+		context.Background(), "survey the reef", From{}, Envelope{})
 	if err != nil {
 		t.Fatalf("a model refusing is not this platform failing: %v", err)
 	}
