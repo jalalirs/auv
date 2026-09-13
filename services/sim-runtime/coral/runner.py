@@ -1437,6 +1437,11 @@ class Dive:
             self.navigation.step(self.simulated, self.position, self.velocity,
                                  self.rotation, floor, self.dt)
         self.commands = self.helm.command(self.observation())
+        # A vehicle that is not moved by thrust is moved by this: the pump and
+        # the sliding mass get a step towards whatever the controller asked
+        # for, before the water is asked what it does about it.
+        if getattr(self.helm, "actuators", None) is not None:
+            self.body.model.ask_actuators(self.helm.actuators, self.dt)
         if self.dead_thrusters:
             # A thruster that has failed produces nothing, whatever it is
             # asked for. The allocator does not know, which is the point: the

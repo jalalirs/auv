@@ -159,6 +159,27 @@ class Hydrodynamics:
     thermal_expansion_per_c: float = 0.0
     reference_temperature_c: float = 20.0
 
+    # What this vehicle is commanded in. "wrench" is a hull with thrusters and
+    # is what every vehicle here has been; anything else is a vehicle that
+    # moves some other way and whose controller answers in its own terms.
+    commanded_in: str = "wrench"
+    # What those terms are, when they are not thrust — the package's own
+    # description of its actuators, read by whatever knows how to fly it.
+    actuators: dict = field(default_factory=dict)
+    # How far this hull may be leaned by a command, as a share of its righting
+    # moment. A survey ROV wants this small; a glider pitches steeply on
+    # purpose and wants the guard out of the way. It is a fact about the
+    # vehicle and it used to be a constant in the helm.
+    attitude_guard: float = 0.5
+
+    # Where the actuators have got to. Not configuration: state, moved a
+    # little each step towards what was asked for, because a pump has a rate
+    # and a battery on a screw thread has a speed. A vehicle whose buoyancy
+    # engine answered instantly could stop dead in the water column, which is
+    # the one thing a glider cannot do.
+    vbd_m3: float = 0.0
+    mass_shift_m: np.ndarray = field(default_factory=lambda: np.zeros(3))
+
     @classmethod
     def from_package(cls, path: str | pathlib.Path, density: float = DENSITY_SEAWATER
                      ) -> "Hydrodynamics":
@@ -194,6 +215,9 @@ class Hydrodynamics:
                 for unit in units.get("units", [])
             ],
             density=density,
+            commanded_in=str(document.get("commandedIn", "wrench")),
+            actuators=dict(document.get("actuators", {}) or {}),
+            attitude_guard=float(hull.get("attitudeGuard", 0.5)),
             compressibility_per_dbar=float(hull.get("compressibilityPerDbar", 0.0)),
             thermal_expansion_per_c=float(hull.get("thermalExpansionPerC", 0.0)),
             reference_temperature_c=float(hull.get("referenceTemperatureC", 20.0)),
@@ -220,6 +244,53 @@ class Hydrodynamics:
         """What the vehicle weighs in air."""
         return self.mass_kg * GRAVITY
 
+    def ask_actuators(self, demand: dict | None, dt: float) -> None:
+        """Move the actuators towards what was asked, as fast as they go.
+
+        A buoyancy engine is a pump: it is told a volume and gets there in its
+        own time, and that time is most of what makes a glider's dive cycle
+        hours rather than minutes. A mass on a screw thread is the same.
+
+        Everything is in the vehicle's own units, because the vehicle's package
+        named them: cubic centimetres of displacement, metres of travel for the
+        mass that sets pitch and roll.
+        """
+        if not demand:
+            return
+        limits = self.actuators or {}
+        low, high = limits.get("vbdCcRange", [-400.0, 400.0])
+        rate = float(limits.get("vbdRateCcPerS", 5.0))
+        wanted_cc = float(demand.get("vbdCc", self.vbd_m3 * 1e6))
+        wanted_cc = max(float(low), min(float(high), wanted_cc))
+        step = rate * max(0.0, float(dt))
+        now_cc = self.vbd_m3 * 1e6
+        now_cc += max(-step, min(step, wanted_cc - now_cc))
+        self.vbd_m3 = now_cc * 1e-6
+
+        travel = float(limits.get("massShiftM", 0.0))
+        side = float(limits.get("massRollM", travel))
+        speed = float(limits.get("massRateMPerS", 0.01))
+        move = speed * max(0.0, float(dt))
+        for axis, reach, key in ((0, travel, "pitchM"), (1, side, "rollM")):
+            if reach <= 0.0:
+                continue
+            wanted = max(-reach, min(reach, float(demand.get(key, self.mass_shift_m[axis]))))
+            now = float(self.mass_shift_m[axis])
+            self.mass_shift_m[axis] = now + max(-move, min(move, wanted - now))
+
+    def centre_of_gravity_now(self) -> np.ndarray:
+        """Where the vehicle's mass actually is, with the movable part moved.
+
+        A glider steers by shifting a battery. Moving `m` kilos by `d` metres
+        on a hull of `M` moves the whole body's centre of gravity by `m·d/M` —
+        a couple of centimetres on a Seaglider, which against a righting arm of
+        the same order is the difference between diving and climbing.
+        """
+        moving = float((self.actuators or {}).get("massShiftKg", 0.0))
+        if moving <= 0.0 or self.mass_kg <= 0.0:
+            return self.centre_of_gravity
+        return self.centre_of_gravity + self.mass_shift_m * (moving / self.mass_kg)
+
     def volume_at(self, depth_m: float = 0.0, temperature_c: float | None = None) -> float:
         """The volume this hull actually has, down there and at that temperature.
 
@@ -233,7 +304,7 @@ class Hydrodynamics:
         coefficient has the volume it always had, at every depth, which is what
         every dive in the record has assumed.
         """
-        volume = self.displaced_volume_m3
+        volume = self.displaced_volume_m3 + self.vbd_m3
         if self.compressibility_per_dbar:
             volume *= 1.0 - self.compressibility_per_dbar * max(0.0, float(depth_m))
         if self.thermal_expansion_per_c and temperature_c is not None:
@@ -322,7 +393,9 @@ class Body:
         buoyancy = (self.model.buoyancy_n_at(depth_m, temperature_c, density)
                     * float(submerged) * up_in_body)
 
-        moment = (np.cross(self.model.centre_of_gravity, weight)
+        # Where the mass is, not where it was built: a vehicle that steers by
+        # moving a battery does it by moving this.
+        moment = (np.cross(self.model.centre_of_gravity_now(), weight)
                   + np.cross(self.model.centre_of_buoyancy, buoyancy))
         return weight + buoyancy, moment
 
