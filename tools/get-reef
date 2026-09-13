@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+"""Fetch a real reef: its shape from the light coming off it, and its colour.
+
+NOAA's mosaic stops at the edge of American waters and GMRT, which does not,
+is half a kilometre a sample out here — over a reef that is a smooth ramp with
+nothing on it. Neither is any use for the Red Sea, and the Red Sea is where the
+work is.
+
+What there is instead is the water being clear. Sentinel-2 photographs every
+reef on earth every five days at ten metres a pixel, free and without an
+account, and in water this clear the bottom is plainly visible in the picture.
+Two things come out of one scene:
+
+  * the *shape*, from Stumpf's ratio — blue light goes deeper than green, so
+    the ratio of their logarithms rises with depth almost independently of what
+    the bottom is made of, which is what makes it work over a reef where the
+    bottom changes every few metres;
+  * the *colour*, from the true-colour composite, which is the reef as it
+    actually looks from above and is what the seabed should be painted with.
+
+What this does not give is calibrated depth. The ratio is linear in depth with
+two constants nobody knows without measuring something, and this scales it
+against the reef's own geomorphology instead: the crest sits near the surface
+and the bottom disappears at the depth light stops reaching. That is honest
+about shape and approximate about metres, and the record says so rather than
+claiming a survey.
+
+The way to fix it is ICESat-2's ATL24 — NASA's laser measures real depths along
+its tracks, fifty-seven granules cross these reefs, and two of them would pin
+the constants properly. It needs an Earthdata account.
+
+    tools/get-reef al-fahal 22.2840 38.9620 --across 3000
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import pathlib
+import urllib.request
+
+import numpy as np
+
+SEARCH = "https://earth-search.aws.element84.com/v1/search"
+COLLECTION = "sentinel-2-c1-l2a"
+
+# Where the bottom stops showing in the green band. Below this the pixel is
+# water column and nothing else, and any depth read from it is invented.
+BOTTOM_VISIBLE = 0.020
+# How deep light reaches in water this clear. The Red Sea is about as clear as
+# the open ocean gets, which is why this works here at all.
+OPTICAL_LIMIT_M = 22.0
+SHALLOWEST_M = 0.4
+
+
+def metres_per_degree(latitude: float) -> tuple[float, float]:
+    radians = math.radians(latitude)
+    north = 111_132.92 - 559.82 * math.cos(2 * radians) + 1.175 * math.cos(4 * radians)
+    east = 111_412.84 * math.cos(radians) - 93.5 * math.cos(3 * radians)
+    return east, north
+
+
+def clearest_scene(box, since: str, cloud: float) -> dict:
+    """The least cloudy scene over this reef. Cloud is the whole problem: a
+    reef under one is a reef you cannot see the bottom of."""
+    asking = json.dumps({
+        "collections": [COLLECTION], "bbox": list(box),
+        "datetime": f"{since}/2030-01-01T00:00:00Z",
+        "query": {"eo:cloud_cover": {"lt": cloud}},
+        "sortby": [{"field": "properties.eo:cloud_cover", "direction": "asc"}],
+        "limit": 1}).encode()
+    request = urllib.request.Request(SEARCH, data=asking,
+                                     headers={"content-type": "application/json"})
+    with urllib.request.urlopen(request, timeout=120) as answer:
+        found = json.loads(answer.read())
+    if not found.get("features"):
+        raise SystemExit("no clear scene over that reef; try --cloud or --since")
+    return found["features"][0]
+
+
+def read_band(scene: dict, key: str, box, samples: int) -> np.ndarray:
+    """One band, as surface reflectance, over the square asked for.
+
+    The scale and offset come from the scene rather than a constant: processing
+    baseline 04.00 moved reflectance by a tenth and a reader that does not know
+    it reads land everywhere, which is exactly what it did.
+    """
+    import rasterio
+    from rasterio.warp import transform_bounds
+    from rasterio.windows import from_bounds
+
+    asset = scene["assets"][key]
+    band = (asset.get("raster:bands") or [{}])[0]
+    scale, offset = band.get("scale", 1e-4), band.get("offset", 0.0)
+    with rasterio.open(asset["href"]) as source:
+        bounds = transform_bounds("EPSG:4326", source.crs, *box)
+        window = from_bounds(*bounds, source.transform)
+        raw = source.read(1, window=window, out_shape=(samples, samples)).astype("float64")
+    return raw * scale + offset
+
+
+def read_colour(scene: dict, box, samples: int) -> np.ndarray:
+    import rasterio
+    from rasterio.warp import transform_bounds
+    from rasterio.windows import from_bounds
+
+    with rasterio.open(scene["assets"]["visual"]["href"]) as source:
+        bounds = transform_bounds("EPSG:4326", source.crs, *box)
+        window = from_bounds(*bounds, source.transform)
+        return source.read(window=window, out_shape=(3, samples, samples))
+
+
+# The smallest thing that will be believed to be reef, in square metres. Kept
+# as an area and not a pixel count so it means the same thing whatever the
+# square is sampled at — the first version counted pixels, which quietly became
+# a third as strict when the same reef was fetched at 512 samples instead of
+# 300, and let the confetti back in.
+SMALLEST_REEF_M2 = 1500.0
+
+
+def only_real_reef(seen, sample_m: float):
+    """Throw away the specks.
+
+    Sunglint off a wave, or plain sensor noise, puts the odd bright pixel in
+    open water, and a bright pixel is indistinguishable from a bottom at two
+    metres. Left alone they become pinnacles standing fifty metres out of the
+    fore-reef with nothing around them, scattered across the deep like confetti
+    — which is not what a reef looks like and is the first thing anybody
+    notices about the picture.
+
+    A reef is a connected thing, and fifteen hundred square metres is smaller
+    than any patch reef a ten-metre pixel could resolve and larger than any run
+    of noise.
+    """
+    from scipy import ndimage
+
+    labelled, count = ndimage.label(seen)
+    if count == 0:
+        return seen
+    smallest = max(4.0, SMALLEST_REEF_M2 / max(1.0, sample_m ** 2))
+    sizes = ndimage.sum(seen, labelled, range(1, count + 1))
+    keep = np.zeros(count + 1, dtype=bool)
+    keep[1:] = sizes >= smallest
+    return keep[labelled]
+
+
+def depth_from(blue, green, nir, sample_m: float):
+    """Stumpf's ratio, scaled to the reef's own geomorphology.
+
+    Returns the depth, and two masks: where the bottom was actually visible,
+    and where it was not and the number is therefore a model rather than a
+    measurement.
+    """
+    land = nir > 0.03
+    seen = (~land) & (green > BOTTOM_VISIBLE)
+    seen = only_real_reef(seen, sample_m)
+    deep = (~land) & ~seen
+
+    n = 1000.0
+    ratio = (np.log(np.clip(n * blue, 1.0001, None))
+             / np.log(np.clip(n * green, 1.0001, None)))
+    over_reef = np.where(seen, ratio, np.nan)
+    if np.isfinite(over_reef).sum() < 100:
+        raise SystemExit("almost no bottom visible here; is this open water?")
+    lo, hi = np.nanpercentile(over_reef, 1), np.nanpercentile(over_reef, 99)
+    depth = SHALLOWEST_M + (over_reef - lo) / (hi - lo) * (OPTICAL_LIMIT_M - SHALLOWEST_M)
+    return np.clip(depth, 0.0, OPTICAL_LIMIT_M), seen, deep, land
+
+
+def fall_away(depth, seen, deep, land, to_depth: float):
+    """Carry the fore-reef down past where the light stopped.
+
+    Everything under the optical limit is a guess and is drawn as one. The
+    guess has to be a smooth one: the first version took each dark pixel's
+    depth from the nearest pixel that still had a bottom, which tiles the deep
+    water into polygons around whichever bit of reef happened to be closest —
+    a Voronoi diagram of the reef edge, drawn in bathymetry, and it looks
+    exactly as invented as it is.
+
+    So the slope is relaxed instead. Depth is held fixed where the bottom was
+    actually seen and at the far-field figure around the frame, and Laplace's
+    equation is solved in between: the smoothest surface that meets both, which
+    is a fair drawing of a slope nobody has measured and has no features in it
+    that somebody might mistake for real ones.
+    """
+    known = seen | land
+    field = np.where(seen, depth, np.nan)
+    field = np.where(land, -0.6, field)
+    guess = np.where(np.isnan(field), to_depth, field)
+
+    # A frame of deep water around the edge, so the slope has somewhere to fall
+    # to rather than flattening out against the boundary.
+    held = known.copy()
+    held[0, :] = held[-1, :] = held[:, 0] = held[:, -1] = True
+    edge_value = guess.copy()
+    for side in (np.s_[0, :], np.s_[-1, :], np.s_[:, 0], np.s_[:, -1]):
+        edge_value[side] = np.where(known[side], guess[side], to_depth)
+
+    out = guess.copy()
+    out[held] = edge_value[held]
+    for _ in range(600):
+        blurred = 0.25 * (np.roll(out, 1, 0) + np.roll(out, -1, 0)
+                          + np.roll(out, 1, 1) + np.roll(out, -1, 1))
+        out = np.where(held, edge_value, blurred)
+    return out
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(description="fetch a real reef from space")
+    parse.add_argument("name")
+    parse.add_argument("latitude", type=float)
+    parse.add_argument("longitude", type=float)
+    parse.add_argument("--across", type=float, default=3000.0, help="metres on a side")
+    parse.add_argument("--samples", type=int, default=512)
+    parse.add_argument("--since", default="2022-01-01T00:00:00Z")
+    parse.add_argument("--cloud", type=float, default=3.0, help="most cloud, per cent")
+    parse.add_argument("--deep", type=float, default=60.0,
+                       help="depth the fore-reef falls to past the optical limit")
+    parse.add_argument("--into", default=".")
+    asked = parse.parse_args()
+
+    east, north = metres_per_degree(asked.latitude)
+    half_lon = (asked.across / 2) / east
+    half_lat = (asked.across / 2) / north
+    box = (asked.longitude - half_lon, asked.latitude - half_lat,
+           asked.longitude + half_lon, asked.latitude + half_lat)
+
+    scene = clearest_scene(box, asked.since, asked.cloud)
+    when = scene["properties"]["datetime"][:10]
+    cloud = scene["properties"].get("eo:cloud_cover", 0.0)
+    print(f"{scene['id']}  {when}  {cloud:.2f}% cloud")
+
+    blue = read_band(scene, "blue", box, asked.samples)
+    green = read_band(scene, "green", box, asked.samples)
+    nir = read_band(scene, "nir", box, asked.samples)
+    sample = asked.across / (asked.samples - 1)
+    depth, seen, deep, land = depth_from(blue, green, nir, sample)
+    full = fall_away(depth, seen, deep, land, asked.deep)
+
+    into = pathlib.Path(asked.into)
+    into.mkdir(parents=True, exist_ok=True)
+    heights = (-full).astype("<f4")
+    field = into / (asked.name + ".f32")
+    heights.tofile(field)
+
+    colour = read_colour(scene, box, asked.samples)
+    try:
+        from PIL import Image
+        picture = into / (asked.name + "-colour.png")
+        Image.fromarray(np.transpose(colour, (1, 2, 0))).save(picture)
+    except Exception:
+        picture = None
+
+    detail = float(np.nanmedian(np.abs(np.diff(np.where(seen, depth, np.nan), axis=1))))
+    note = {
+        "name": asked.name,
+        # Not a survey, and the record must not imply one. What it is: shape
+        # from the light coming off the bottom, scaled against the reef's own
+        # geomorphology rather than against anything anybody measured.
+        "surveyed": False,
+        "method": "Sentinel-2 satellite-derived bathymetry, Stumpf log-ratio, uncalibrated",
+        "source": f"Copernicus Sentinel-2 {scene['id']}",
+        "observedAt": when,
+        "cloudPercent": round(float(cloud), 3),
+        "centre": {"latitude": asked.latitude, "longitude": asked.longitude},
+        "acrossMetres": asked.across,
+        "sampleMetres": round(sample, 3),
+        "bottomVisibleFraction": round(float(seen.mean()), 4),
+        "beyondOpticalDepthFraction": round(float(deep.mean()), 4),
+        "opticalLimitM": OPTICAL_LIMIT_M,
+        "deepestM": round(float(full.max()), 2),
+        "shallowestM": round(float(full.min()), 2),
+        "medianDetailM": round(detail, 3),
+        "toCalibrate": "ICESat-2 ATL24 crosses this reef; two granules would pin the scale",
+        "colour": None if picture is None else picture.name,
+        "heightfield": {"rows": asked.samples, "columns": asked.samples,
+                        "format": "little-endian float32, row major, "
+                                  "south to north then west to east",
+                        "file": field.name},
+    }
+    (into / (asked.name + ".json")).write_text(json.dumps(note, indent=2) + "\n")
+    for key in ("bottomVisibleFraction", "beyondOpticalDepthFraction",
+                "shallowestM", "deepestM", "medianDetailM", "sampleMetres"):
+        print(f"  {key:<28} {note[key]}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
