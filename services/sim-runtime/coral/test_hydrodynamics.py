@@ -236,11 +236,21 @@ def test_asking_for_more_than_the_vehicle_has_is_reported_as_such():
     assert not allocator.achievable(np.array([10_000.0, 0, 0, 0, 0, 0]))
 
 
-def test_a_vehicle_with_no_thrusters_cannot_be_flown():
+def test_a_vehicle_with_no_thrusters_has_nothing_to_allocate_and_that_is_fine():
+    """This used to refuse the hull outright, and the message was the
+    platform's assumption about what a vehicle is: "a vehicle with no
+    thrusters cannot be flown". A buoyancy glider has no thrusters and is
+    flown perfectly well — by displacing a few hundred cubic centimetres and
+    letting its wings do the rest. What was really true is narrower and less
+    interesting: there is nothing here for an allocator to do.
+    """
     model = bluerov()
     model.thrusters = []
-    with pytest.raises(ValueError, match="no thrusters"):
-        Allocator(model)
+    allocator = Allocator(model)
+    assert allocator.matrix.shape == (6, 0)
+    assert allocator.allocate(np.ones(6)).shape == (0,)
+    assert not allocator.reachable.any(), "no axis is reachable by thrust"
+    assert np.allclose(allocator.capability(), np.zeros(6))
 
 
 # ── whole-body behaviour ─────────────────────────────────────────────────────
