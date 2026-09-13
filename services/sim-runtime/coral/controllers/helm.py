@@ -98,6 +98,7 @@ class Helm:
         self.steps = 0
         self.withheld_n = 0.0
         self.worst_withheld_n = 0.0
+        self.at_the_stop = 0
         self.altitude: float | None = None
         # Whether the route the platform flies is what has the vehicle when
         # nobody else asks for it. Set when a dive is given a task to fly.
@@ -377,11 +378,30 @@ class Helm:
     # ── what the console is told ─────────────────────────────────────────────
 
     def _withheld(self, asked: np.ndarray, given: np.ndarray) -> None:
-        """Note how much horizontal push the guards took off this step."""
+        """Note how far this step was held short of what was wanted.
+
+        Two ways, because the guard bites in two places and the obvious one is
+        not the one that matters. `guard()` trims a wrench that leans the hull
+        too far — but every loop is already limited to `authority()`, which is
+        that same allowance worked out per axis, so by the time a wrench gets
+        here it has usually been cut already and `guard()` finds nothing left
+        to do. Counting only what `guard()` took reported a vehicle pinned at
+        its ceiling for a whole dive as never having been held back at all.
+
+        So the ceiling is asked about directly: a horizontal command sitting
+        at the most its axis is allowed is a vehicle pushing as hard as it is
+        permitted to, whoever did the cutting.
+        """
         self.steps += 1
         lost = float(np.hypot(asked[0] - given[0], asked[1] - given[1]))
         self.withheld_n += lost
         self.worst_withheld_n = max(self.worst_withheld_n, lost)
+        most = self.authority()
+        for axis in (0, 1):
+            ceiling = float(most[axis])
+            if ceiling > 0.0 and abs(float(given[axis])) >= ceiling - 1e-6:
+                self.at_the_stop += 1
+                return
 
     def held_back(self) -> dict | None:
         """What the vehicle was not allowed to do, for the dive's result.
@@ -391,11 +411,12 @@ class Helm:
         leans too easily to push hard is a different fact from a dive that
         failed because nothing flew it well, and the number is the difference.
         """
-        if self.steps == 0 or self.guarded == 0:
+        if self.steps == 0 or (self.guarded == 0 and self.at_the_stop == 0):
             return None
         return {
-            "steps": self.guarded,
-            "shareOfDive": round(self.guarded / self.steps, 3),
+            "trimmedSteps": self.guarded,
+            "atTheStopSteps": self.at_the_stop,
+            "shareOfDive": round(max(self.guarded, self.at_the_stop) / self.steps, 3),
             "meanWithheldN": round(self.withheld_n / self.steps, 2),
             "worstWithheldN": round(self.worst_withheld_n, 2),
             "horizontalCeilingN": round(float(self.authority()[0]), 2),

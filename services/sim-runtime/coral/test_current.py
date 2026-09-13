@@ -44,3 +44,39 @@ def test_still_water_is_the_default():
     dive = Dive({"durationSeconds": 10, "initialState": {"positionM": [0, 0, -7]}},
                 Body(model), Allocator(model), pathlib.Path("nowhere.usda"), lambda k, **d: None)
     assert np.allclose(dive.current, 0.0)
+
+
+def test_a_vehicle_held_down_by_its_own_hull_says_so():
+    """A dive that fails because the guard would not let it push says which.
+
+    Two knots on the bow is more than this hull can be asked for: the
+    horizontal thrusters sit above the centre of gravity, the righting moment
+    is two newton-metres, and the attitude guard stops the push well before
+    the thrusters run out. The vehicle is swept away — and a score of one per
+    cent with nothing beside it reads as a controller that cannot fly, which
+    is the wrong thing to conclude and the wrong thing to go and fix.
+
+    The guard reports through two paths and only the second one fires here.
+    `guard()` trims a wrench that leans the hull too far, but every loop is
+    already limited to `authority()` — the same allowance per axis — so the
+    wrench arrives pre-cut and `guard()` has nothing to trim. For a while this
+    was counted as "never held back" while the hull sat pinned at twenty-six
+    degrees for the whole dive.
+    """
+    dive = a_dive({"currentMetresPerSecond": 1.03, "currentHeadingDeg": 90.0})
+    for _ in range(int(90 / dive.dt)):
+        dive.step()
+    held = dive.helm.held_back()
+    assert held is not None, "swept away at its ceiling and reporting nothing"
+    assert held["shareOfDive"] > 0.5, held
+    assert held["horizontalCeilingN"] > 0.0, held
+    swept = float(np.hypot(dive.position[0], dive.position[1]))
+    assert swept > 5.0, f"two knots should carry it off, and it went {swept:.1f} m"
+
+
+def test_a_vehicle_that_was_never_held_back_says_nothing():
+    """Still water asks nothing of the guard, and silence is the report."""
+    dive = a_dive({"currentMetresPerSecond": 0.0, "currentHeadingDeg": 0.0})
+    for _ in range(int(60 / dive.dt)):
+        dive.step()
+    assert dive.helm.held_back() is None
