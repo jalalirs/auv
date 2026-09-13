@@ -41,12 +41,19 @@ class Helm:
         # doing the working out. Nobody flies with it unless it is asked for.
         self.ponder = PonderController(self.capability, model.effective_mass(),
                                        -model.net_buoyancy_n, dt)
+        # And one that asks a model instead of working it out. Asked for by
+        # name like the ponder, and for the same reason: nobody should be
+        # spending somebody's tokens because a route happened to exist.
+        from .asking import AskingController
+
+        self.asking = AskingController(self.capability, model.effective_mass(),
+                                       -model.net_buoyancy_n, dt)
         # And the one controller that outranks a hand on the keys.
         self.failsafe = Failsafe(self.capability, model.effective_mass(), -model.net_buoyancy_n, dt)
         self.stack = None if bridge is None else StackController(bridge)
         self.controllers: dict[str, Controller] = {
             "hold": self.hold, "manual": self.manual, "pursue": self.pursue,
-            "ponder": self.ponder, "failsafe": self.failsafe,
+            "ponder": self.ponder, "asking": self.asking, "failsafe": self.failsafe,
         }
         # A vehicle with no thrusters gets the controller that can fly it, and
         # loses the ones that cannot. A hold that commands a wrench on a hull
@@ -261,13 +268,13 @@ class Helm:
         elif name == "manual":
             self.prefer = "manual"
             self._hand_over(self.manual, seen)
-        elif name == "ponder":
+        elif name in ("ponder", "asking"):
             # Asked for by name, and kept: a controller that plans for itself
             # is not chosen because a route happens to exist, since nobody
             # gave it one.
-            self.prefer = "ponder"
+            self.prefer = name
             self.failsafe.stand_down()
-            self._hand_over(self.ponder, seen)
+            self._hand_over(self.controllers[name], seen)
         else:
             self.prefer = None
             if self.stack is not None and self.stack.talking(seen.t):
@@ -331,8 +338,8 @@ class Helm:
             return self.manual
         # Asked for by name. A controller that plans for itself is not chosen
         # because a route happens to exist — nobody gave it one.
-        if self.prefer == "ponder":
-            return self.ponder
+        if self.prefer in ("ponder", "asking"):
+            return self.controllers[self.prefer]
         if self.stack is not None and self.stack.talking(seen.t):
             return self.stack
         # The route, while it is being flown — and again if the end of it
