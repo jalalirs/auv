@@ -13,8 +13,9 @@ ROV with an autopilot feels.
 Every loop works in accelerations — metres per second squared per metre of
 error, radians per second squared per radian — and the vehicle's own effective
 mass turns those into newtons. So the gains mean the same thing on an
-eleven-kilogram vehicle and a hundred-kilogram one: kp 0.5 is a loop with a
-natural period of nine seconds on both, and kd 1.4 damps it critically on both.
+eleven-kilogram vehicle and a hundred-kilogram one: kp 2.0 is a loop with a
+natural period of four and a half seconds on both, and kd 2.83 — twice the
+root of kp — damps it critically on both.
 
 The one thing the loops do not have to discover is the trim. A vehicle that is
 a newton or two heavy would otherwise sink until the integrator caught up, on
@@ -48,12 +49,16 @@ class Autopilots:
     def __init__(self, owner: Controller, mass: np.ndarray, capability: np.ndarray,
                  trim_n: float) -> None:
         d = owner.declare
-        # Depth: the slowest axis, with the most drag and the most added mass,
-        # and on a frame whose vertical thrusters sit ahead of the centre of
-        # gravity every newton of heave also pitches the hull — so it is asked
-        # for gently.
-        d("depthKp", 0.5, 0.0, 4.0, "1/s²", "heave per metre of depth error")
-        d("depthKd", 1.4, 0.0, 6.0, "1/s", "heave against vertical speed")
+        # Depth: the slowest axis, with the most drag and the most added mass.
+        # It used to be asked for gently as well, because the vehicle's two
+        # vertical thrusters were modelled twelve centimetres forward of the
+        # centre of gravity and every newton of heave pitched the hull. They
+        # sit on the beam, where heave is pure and costs the attitude guard
+        # nothing, so the caution was paid for a fault that is no longer there
+        # and the loop is asked for properly: critically damped, about four
+        # and a half seconds to settle.
+        d("depthKp", 2.0, 0.0, 4.0, "1/s²", "heave per metre of depth error")
+        d("depthKd", 2.83, 0.0, 6.0, "1/s", "heave against vertical speed")
         d("depthKi", 0.08, 0.0, 1.0, "1/s³", "slow correction for a trim the model has wrong")
         d("trimN", trim_n, -50.0, 50.0, "N", "the steady heave that makes the vehicle neutral; the model's own by default")
         d("headingKp", 2.0, 0.0, 10.0, "1/s²", "yaw per radian of heading error")
@@ -64,7 +69,7 @@ class Autopilots:
         d("deadbandM", 0.02, 0.0, 0.5, "m", "closer than this counts as there")
         self.owner = owner
         self.mass = np.asarray(mass, dtype=float)
-        self.depth = Pid(0.5, 0.08, 1.4)
+        self.depth = Pid(2.0, 0.08, 2.83)
         self.heading = Pid(2.0, 0.0, 2.8)
         self.surge = Pid(0.4, 0.05, 1.3)
         self.sway = Pid(0.4, 0.05, 1.3)

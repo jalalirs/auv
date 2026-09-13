@@ -74,8 +74,19 @@ def test_hands_take_the_vehicle_and_the_hold_takes_it_back():
     run(dive, 10.0)
     assert dive.helm.flying.name == "manual"
     assert dive.position[0] > 1.0, "half ahead for ten seconds should have moved it"
-    # Assisted: depth held while pushing ahead.
-    assert abs(-dive.position[2] - 7.0) < 0.15
+    # Assisted: the depth is held, but not perfectly, and the difference is
+    # the vehicle rather than the assist. This is a standard BlueROV2: its two
+    # vertical thrusters sit on the beam, so it has no pitch authority at all,
+    # and its four horizontal thrusters sit eight centimetres above the centre
+    # of gravity, so half ahead pitches it nose-down and some of that thrust
+    # becomes descent. The assist fights it with pure heave and gives ground.
+    #
+    # This bound was fifteen centimetres while the vertical thrusters were
+    # modelled twelve centimetres forward of the centre of gravity, where the
+    # heave that held the depth also pitched the nose back up and cancelled
+    # most of the dip. That cancellation was an accident of a mis-placed
+    # thruster, not a property of the vehicle, and it is gone with it.
+    assert abs(-dive.position[2] - 7.0) < 0.6
 
     # Let go. The hold takes it where it is and keeps it there.
     dive.take_the_controls([0.0] * 6)

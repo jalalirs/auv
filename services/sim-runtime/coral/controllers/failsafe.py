@@ -40,7 +40,14 @@ class Failsafe(Controller):
         self.pursue.name = "failsafe"
         self.declare("marginFraction", 0.25, 0.0, 2.0, "",
                      "how much more than the journey home it insists on having")
-        self.declare("surfaceAtM", 0.4, 0.0, 5.0, "m", "the depth it calls the surface")
+        # The surface, and not a little under it. This was four tenths of a
+        # metre, which is deeper than the hull is tall: a vehicle that reached
+        # it was still wholly in the water, and a dive only ends when the hull
+        # actually breaks through. It surfaced anyway for as long as the depth
+        # loop was loose enough to wander past its own setpoint — so the thing
+        # making the failsafe work was the thing making it inaccurate, and
+        # tightening the loop stopped the vehicle ever getting out.
+        self.declare("surfaceAtM", 0.0, 0.0, 5.0, "m", "the depth it calls the surface")
         self.declare("armed", 1.0, 0.0, 1.0, "", "0 lets the dive spend everything it has")
         self.battery = None
         self.dock: np.ndarray | None = None

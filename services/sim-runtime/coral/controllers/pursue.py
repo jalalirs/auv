@@ -201,8 +201,14 @@ class PursueController(Controller):
         self.distance = 0.0
         if self.station is None:
             self.engage(seen)
+        # `is not None`, not `or`: a station depth of zero is the surface, and
+        # a vehicle sent there is the whole of what the failsafe does. Written
+        # with `or`, the surface read as "no depth asked for" and the vehicle
+        # held whatever depth it already had — out of battery, three metres
+        # down, station-keeping until the clock ran out.
+        station = self.station_depth if self.station_depth is not None else seen.depth
         heave = self.pilots.hold_depth(seen, at_depth if at_depth is not None
-                                       else (self.station_depth or seen.depth), self.dt)
+                                       else station, self.dt)
         yaw = self.pilots.hold_heading(seen, seen.heading, self.dt)
         surge, sway = self.pilots.hold_position(seen, self.station, self.dt)
         wrench = np.array([surge, sway, heave, 0.0, 0.0, yaw])
