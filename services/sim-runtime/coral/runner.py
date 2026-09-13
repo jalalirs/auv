@@ -1245,8 +1245,17 @@ class Dive:
         described = self.camera()
         if described is None:
             return None
-        wide = described.get("horizontalFovDeg")
-        return None if wide is None else math.radians(float(wide) / 2.0)
+        # The task's own function, rather than half of it written again. These
+        # were two functions computing one number and only one of them knew
+        # that a focal length is a field of view: the BlueROV2 states 21 mm and
+        # no angle, so the planner was told the vehicle had no camera and
+        # spaced a survey's lanes by the objective's nominal swath — four
+        # metres, against the eight and a half the camera actually sees. Every
+        # strip was covered twice, the far edge was never reached, and a survey
+        # in still water with a perfect fix could not score above 77%.
+        from tasks import footprint_half_angle
+
+        return footprint_half_angle(described)
 
     def watch_the_energy(self) -> None:
         """Tell the failsafe what it is watching and where home is."""
