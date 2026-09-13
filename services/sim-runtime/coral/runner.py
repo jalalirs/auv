@@ -1754,6 +1754,12 @@ class Dive:
             thought = self.helm.thought()
             if thought:
                 result["thought"] = thought
+            # What the vehicle was not allowed to do. A score is a judgement on
+            # the controller, and it is the wrong judgement when the thrusters
+            # were being held down the whole dive by the hull's own limits.
+            held = self.helm.held_back()
+            if held is not None:
+                result["heldBack"] = held
         if result is not None and self.battery is not None:
             # A controller that does the job on half the charge is the better
             # controller, and until now there was no way to say so.

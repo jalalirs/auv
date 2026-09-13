@@ -83,7 +83,7 @@ class Helm:
         # vehicle settles onto the guard rather than into the coral.
         self.parameters = {
             "attitudeGuard": Parameter(
-                "attitudeGuard", 0.35, 0.0, 1.0, "",
+                "attitudeGuard", 0.7, 0.0, 1.0, "",
                 "the share of the hull's righting moment a command may lean on; 0 turns the guard off"),
             "bottomGuardM": Parameter(
                 "bottomGuardM", 0.5, 0.0, 5.0, "m",
@@ -91,6 +91,13 @@ class Helm:
         }
         self.guarded = 0
         self.grounded = 0
+        # What the guard actually cost, rather than how often it spoke. A dive
+        # can be held back for its whole length and score two per cent with
+        # nothing in the record saying the vehicle was never allowed to try —
+        # which reads as a controller that cannot fly, and is not.
+        self.steps = 0
+        self.withheld_n = 0.0
+        self.worst_withheld_n = 0.0
         self.altitude: float | None = None
         # Whether the route the platform flies is what has the vehicle when
         # nobody else asks for it. Set when a dive is given a task to fly.
@@ -360,9 +367,41 @@ class Helm:
         if asked.thrusters is not None:
             return np.clip(asked.thrusters, -1.0, 1.0)
         wrench = asked.wrench if asked.wrench is not None else np.zeros(6)
-        return self.allocator.allocate(self.bottom(self.guard(wrench), seen))
+        given = self.bottom(self.guard(wrench), seen)
+        self._withheld(wrench, given)
+        # What the guards left, told back to whoever asked — so a loop sitting
+        # against a ceiling knows it is, rather than winding up against it.
+        chosen.delivered(wrench, given)
+        return self.allocator.allocate(given)
 
     # ── what the console is told ─────────────────────────────────────────────
+
+    def _withheld(self, asked: np.ndarray, given: np.ndarray) -> None:
+        """Note how much horizontal push the guards took off this step."""
+        self.steps += 1
+        lost = float(np.hypot(asked[0] - given[0], asked[1] - given[1]))
+        self.withheld_n += lost
+        self.worst_withheld_n = max(self.worst_withheld_n, lost)
+
+    def held_back(self) -> dict | None:
+        """What the vehicle was not allowed to do, for the dive's result.
+
+        None when the guards never bit, so that a result only carries this
+        when it explains something. A dive that failed because its vehicle
+        leans too easily to push hard is a different fact from a dive that
+        failed because nothing flew it well, and the number is the difference.
+        """
+        if self.steps == 0 or self.guarded == 0:
+            return None
+        return {
+            "steps": self.guarded,
+            "shareOfDive": round(self.guarded / self.steps, 3),
+            "meanWithheldN": round(self.withheld_n / self.steps, 2),
+            "worstWithheldN": round(self.worst_withheld_n, 2),
+            "horizontalCeilingN": round(float(self.authority()[0]), 2),
+            "heldOffTheBottom": self.grounded,
+            "why": "the attitude guard held the push down to keep the hull from leaning over",
+        }
 
     def who_flew(self) -> dict:
         """What share of the dive each controller had of the vehicle."""

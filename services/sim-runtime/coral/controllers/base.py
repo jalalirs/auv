@@ -165,6 +165,22 @@ class Controller:
     def engage(self, seen: Observation) -> None:
         """Told it now has the vehicle, and where the vehicle is."""
 
+    def delivered(self, asked: np.ndarray, given: np.ndarray) -> None:
+        """Told what the vehicle actually did with the wrench it asked for.
+
+        Between a controller and the thrusters sit the attitude guard and the
+        bottom guard, and both of them take force away. A controller never saw
+        that happen: it asked for twenty newtons, was given seven, and the only
+        evidence was that the error would not close. An integrator in that
+        position winds up against a ceiling it has not been told about, and
+        every newton-second it accumulates is discarded — so it cannot even
+        wind down again once the vehicle is free.
+
+        This is the other half of the conversation. The default is to ignore
+        it, because a controller that allocates its own thrusters was never
+        guarded in the first place.
+        """
+
     def status(self) -> dict:
         """Anything a console should show about this controller's state."""
         return {}
