@@ -83,7 +83,7 @@ class Helm:
         # vehicle settles onto the guard rather than into the coral.
         self.parameters = {
             "attitudeGuard": Parameter(
-                "attitudeGuard", 0.7, 0.0, 1.0, "",
+                "attitudeGuard", 0.5, 0.0, 1.0, "",
                 "the share of the hull's righting moment a command may lean on; 0 turns the guard off"),
             "bottomGuardM": Parameter(
                 "bottomGuardM", 0.5, 0.0, 5.0, "m",
