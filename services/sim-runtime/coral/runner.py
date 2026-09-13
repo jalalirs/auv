@@ -914,8 +914,9 @@ class Dive:
         self.salinity_psu = parameters.get("salinityPsu")
         self.temperature_c = parameters.get("temperatureC")
         stated = parameters.get("densityKgM3")
-        if stated not in (None, ""):
-            self.density = float(stated)
+        self.stated_density = None if stated in (None, "") else float(stated)
+        if self.stated_density is not None:
+            self.density = self.stated_density
         elif self.salinity_psu not in (None, "") and self.temperature_c not in (None, ""):
             self.salinity_psu = float(self.salinity_psu)
             self.temperature_c = float(self.temperature_c)
@@ -936,6 +937,55 @@ class Dive:
         calibrated = parameters.get("depthGaugeDensityKgM3")
         self.depth_gauge_density = (self.density if calibrated in (None, "")
                                     else float(calibrated))
+        # How the temperature goes down the water column, as depth-temperature
+        # pairs. A single number is a column all one temperature, which is what
+        # a reef in ten metres of water effectively is and what every dive so
+        # far has assumed. It stops being true for anything that profiles: the
+        # Red Sea is famously warm at depth, holding around 21.5 °C below the
+        # surface layer, and a hull that shrinks when it is cold notices.
+        profile = parameters.get("temperatureProfile")
+        self.temperature_profile = None
+        if isinstance(profile, (list, tuple)) and len(profile) >= 2:
+            pairs = sorted((float(d), float(c)) for d, c in profile)
+            self.temperature_profile = pairs
+            if self.temperature_c is None:
+                self.temperature_c = pairs[0][1]
+
+    def temperature_at(self, depth_m: float) -> float | None:
+        """How warm the water is at that depth, straight-line between the
+        stated points and flat above the first and below the last."""
+        if self.temperature_profile is None:
+            return None if self.temperature_c is None else float(self.temperature_c)
+        pairs = self.temperature_profile
+        depth = max(0.0, float(depth_m))
+        if depth <= pairs[0][0]:
+            return pairs[0][1]
+        for (shallow, warm), (deep, cold) in zip(pairs, pairs[1:]):
+            if depth <= deep:
+                share = (depth - shallow) / max(1e-9, deep - shallow)
+                return warm + share * (cold - warm)
+        return pairs[-1][1]
+
+    def density_at(self, depth_m: float) -> float:
+        """The water's density where the vehicle is.
+
+        Salinity and temperature give it at the surface; the weight of the
+        water above does the rest. It is not a small correction — a thousand
+        metres down, water is 0.4% denser than the same water at the top, which
+        is four kilos a cubic metre, as much as the whole difference between a
+        Florida reef and the Red Sea.
+
+        Water that was handed a density outright is taken at its word at every
+        depth: somebody who measured it did not ask to be extrapolated.
+        """
+        from hydrodynamics import density_of
+
+        if self.salinity_psu is None or self.stated_density is not None:
+            return self.density
+        warm = self.temperature_at(depth_m)
+        if warm is None:
+            return self.density
+        return density_of(float(self.salinity_psu), float(warm), max(0.0, float(depth_m)))
 
     def conditions_said(self) -> dict:
         speed = float(np.hypot(self.current[0], self.current[1]))
@@ -1401,7 +1451,13 @@ class Dive:
         # frame, is taken off the ground velocity before the water sees it.
         through_water = self.velocity.copy()
         through_water[:3] -= self.rotation.T @ self.current
-        wrench = self.body.step(self.rotation, through_water, self.commands, self.dt, submerged)
+        # Where the vehicle is, handed to the physics: the water it is actually
+        # floating in and the hull it actually has down there, rather than the
+        # ones it had at the surface.
+        here = float(-self.position[2])
+        wrench = self.body.step(self.rotation, through_water, self.commands, self.dt, submerged,
+                                depth_m=here, temperature_c=self.temperature_at(here),
+                                density=self.density_at(here))
         effective = self.effective if submerged >= 1.0 else self.body.effective_mass(submerged)
 
         # Semi-implicit Euler at a fixed step. Not because it is the best

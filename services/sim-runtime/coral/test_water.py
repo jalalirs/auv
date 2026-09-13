@@ -98,3 +98,102 @@ def test_the_dive_says_what_water_it_was_in():
     assert said["depthGaugeDensityKgM3"] == DENSITY_SEAWATER
     # A gauge that matches its water is not worth a line.
     assert "depthGaugeDensityKgM3" not in a_dive(RED_SEA).conditions_said()
+
+
+# ── a hull that is squeezed and chilled ──────────────────────────────────────
+
+def a_hull(compressibility=0.0, expansion=0.0, reference=20.0, volume=0.0507, mass=52.0):
+    """A bare model with the coefficients set directly.
+
+    No vehicle in the catalogue states these yet, deliberately: the BlueROV2
+    works in a hundred metres where the effect is small, and inventing a
+    compressibility for it would be putting a number in the record that nobody
+    measured. The Seaglider will be the first package to state them, because
+    for a vehicle that works to a thousand metres they are not a correction.
+    """
+    model = Hydrodynamics.from_package(PACKAGE)
+    model.displaced_volume_m3 = volume
+    model.mass_kg = mass
+    model.compressibility_per_dbar = compressibility
+    model.thermal_expansion_per_c = expansion
+    model.reference_temperature_c = reference
+    return model
+
+
+def test_the_pressure_half_of_the_equation_of_state_is_published_too():
+    for salinity, temperature, dbar, published in ((35.0, 25.0, 0.0, 1023.34306),
+                                                   (35.0, 5.0, 0.0, 1027.67547),
+                                                   (35.0, 25.0, 10000.0, 1062.53817),
+                                                   (35.0, 5.0, 10000.0, 1069.48914)):
+        got = density_of(salinity, temperature, dbar)
+        assert abs(got - published) < 1e-3, f"S={salinity} T={temperature} p={dbar}: {got}"
+
+
+def test_water_is_denser_underneath_more_water():
+    surface = density_of(40.6, 22.0, 0.0)
+    deep = density_of(40.6, 22.0, 1000.0)
+    assert deep > surface
+    # Four kilos a cubic metre — as much as the whole gap between the two sites.
+    assert 4.0 < deep - surface < 4.6
+
+
+def test_a_rigid_hull_is_the_same_size_everywhere():
+    """What every vehicle in the catalogue is, and must go on being."""
+    model = a_hull()
+    assert model.volume_at(0.0, 26.0) == model.displaced_volume_m3
+    assert model.volume_at(1000.0, 2.0) == model.displaced_volume_m3
+
+
+def test_a_hull_squeezed_at_depth_displaces_less():
+    model = a_hull(compressibility=4.0e-6)
+    lost = model.displaced_volume_m3 - model.volume_at(1000.0)
+    assert lost > 0.0
+    # About 200 cc on a glider-sized hull, which is most of the working range
+    # of the buoyancy engine that is its only means of propulsion.
+    assert 0.00018 < lost < 0.00022, f"{lost * 1e6:.0f} cc"
+
+
+def test_a_hull_shrinks_when_the_water_is_cold():
+    model = a_hull(expansion=69e-6, reference=26.0)
+    assert model.volume_at(0.0, 4.0) < model.volume_at(0.0, 26.0)
+    assert model.volume_at(0.0, 26.0) == model.displaced_volume_m3
+
+
+def test_whether_it_sinks_faster_as_it_goes_down_is_which_effect_wins():
+    """The design problem of a glider, and not something to assume.
+
+    Water gets denser with depth and the hull gets smaller; they push the same
+    sum in opposite directions. A hull squeezed harder than the water loses the
+    race and grows heavier the deeper it goes, which runs away. One squeezed
+    less than the water grows lighter and stops descending. Gliders are built
+    to sit near the middle on purpose.
+    """
+    shallow_water = density_of(40.6, 22.0, 0.0)
+    deep_water = density_of(40.6, 22.0, 1000.0)
+    water_compressibility = (deep_water / shallow_water - 1.0) / 1000.0
+
+    soft = a_hull(compressibility=water_compressibility * 2.0)
+    stiff = a_hull(compressibility=water_compressibility * 0.5)
+    for model in (soft, stiff):
+        model.density = shallow_water
+    up_top = soft.buoyancy_n_at(0.0, density=shallow_water)
+    assert soft.buoyancy_n_at(1000.0, density=deep_water) < up_top, "too soft: it sinks away"
+    assert stiff.buoyancy_n_at(1000.0, density=deep_water) > up_top, "too stiff: it stops going down"
+
+
+def test_a_temperature_profile_is_read_down_the_column():
+    """The Red Sea stays warm at depth, which is why it is worth stating."""
+    dive = a_dive({"salinityPsu": 40.6,
+                   "temperatureProfile": [[0, 26.0], [200, 21.5], [1000, 21.5]]})
+    assert dive.temperature_at(0.0) == 26.0
+    assert dive.temperature_at(100.0) == 23.75            # straight line between the two
+    assert dive.temperature_at(200.0) == 21.5
+    assert dive.temperature_at(5000.0) == 21.5            # flat below the last point
+    # And the water is denser down there for both reasons at once.
+    assert dive.density_at(1000.0) > dive.density_at(0.0)
+
+
+def test_water_somebody_measured_is_not_extrapolated():
+    dive = a_dive({"salinityPsu": 40.6, "temperatureC": 26.0, "densityKgM3": 1031.0})
+    assert dive.density_at(0.0) == 1031.0
+    assert dive.density_at(1000.0) == 1031.0
