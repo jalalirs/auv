@@ -255,3 +255,35 @@ def test_water_too_far_out_of_trim_is_refused_before_the_dive():
     assert refusals, "it cannot be made neutral and should say so"
     assert "cc" in refusals[0]["why"]
     assert dive.task is None
+
+
+def test_a_section_that_arrives_with_nothing_in_it_is_not_a_section():
+    """Covering the ground is half of it.
+
+    A section is a picture of the water column against distance. A glider that
+    makes the far end but profiles every two kilometres has brought back a
+    picture with nothing in it: the eddy it was sent to find is smaller than
+    the gap between its teeth. That is a failed section that looks exactly like
+    a successful transit, and scoring it on distance alone says so.
+    """
+    from tasks import task_for
+
+    def fly(every_m):
+        task = task_for({"kind": "section", "toward": {"dx": 4000, "dy": 0},
+                         "bandM": [10, 200], "profileEveryM": 500.0,
+                         "timeLimitS": 40000}, np.array([0.0, 0.0, -10.0]), 0.0)
+        for metre in range(0, 4001, 25):
+            deep = 200.0 if (metre // every_m) % 2 else 10.0
+            task.step(float(metre), np.array([float(metre), 0.0, -deep]),
+                      0.0, -400.0, [0.0])
+        return task
+
+    sparse = fly(1000)
+    assert sparse.detail()["alongFraction"] == 1.0, "it got there"
+    assert sparse.detail()["profiles"] < 4
+    assert sparse.score() < 0.5, "and brought back almost nothing"
+
+    proper = fly(250)
+    assert proper.detail()["profiles"] >= 7
+    assert proper.score() > 0.85
+    assert proper.score() > sparse.score()

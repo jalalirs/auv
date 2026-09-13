@@ -1180,6 +1180,12 @@ class Section(Task):
         self.line = self.toward[:2] - self.began_at[:2]
         self.length = float(np.hypot(*self.line)) or 1.0
         self.along_unit = self.line / self.length
+        # How finely the column has to be sampled for the section to be worth
+        # having. Stated as the distance between profiles, because that is what
+        # an oceanographer asks for: a Red Sea eddy is a few kilometres across
+        # and a profile every ten would not see one.
+        self.every = float(objective.get("profileEveryM", 0.0))
+        self.wanted_profiles = (self.length / self.every) if self.every > 0 else 0.0
         self.furthest = 0.0
         self.off_line = 0.0
         self.worst_off = 0.0
@@ -1190,7 +1196,10 @@ class Section(Task):
         rel = position[:2] - self.began_at[:2]
         along = float(np.dot(rel, self.along_unit))
         self.furthest = max(self.furthest, along)
-        self.off_line = float(abs(np.cross(self.along_unit, rel)))
+        # The 2-D cross product, written out. numpy dropped cross() on
+        # two-vectors, and it is one multiplication either way.
+        self.off_line = float(abs(self.along_unit[0] * rel[1]
+                                  - self.along_unit[1] * rel[0]))
         self.worst_off = max(self.worst_off, self.off_line)
         depth = float(-position[2])
         if self.descending and depth >= self.deep:
@@ -1203,16 +1212,39 @@ class Section(Task):
             self.done = True
 
     def score(self) -> float:
-        return float(min(1.0, max(0.0, self.furthest / self.length)))
+        """Distance along the line, and whether the profiles are usable.
+
+        Getting there is half of it. A section is a picture of the water
+        column against distance, and a glider that covers the ground but
+        profiles it every four kilometres has brought back a picture with
+        nothing in it — the eddy it was sent to find is two kilometres across
+        and falls between the teeth. Profiles too far apart to resolve what
+        was being looked for is a failed section that looks like a successful
+        transit.
+        """
+        got_there = float(min(1.0, max(0.0, self.furthest / self.length)))
+        return got_there * self.resolution()
+
+    def resolution(self) -> float:
+        """How much of the asked-for sampling it actually delivered."""
+        if self.wanted_profiles <= 0:
+            return 1.0
+        return float(min(1.0, (self.legs / 2.0) / self.wanted_profiles))
 
     def says(self) -> str:
         return (f"{self.furthest:.0f} m of {self.length:.0f} along, "
-                f"{self.legs // 2} profiles, {self.off_line:.0f} m off the line")
+                f"{self.legs // 2} of {self.wanted_profiles:.0f} profiles, "
+                f"{self.off_line:.0f} m off the line")
 
     def detail(self) -> dict:
         return {"alongM": round(self.furthest, 1), "lengthM": round(self.length, 1),
                 "fraction": round(self.score(), 3),
+                "alongFraction": round(min(1.0, self.furthest / self.length), 3),
                 "profiles": self.legs // 2,
+                "profilesWanted": round(self.wanted_profiles, 1) or None,
+                "profileEveryM": round(self.furthest / max(1, self.legs // 2), 1)
+                                 if self.legs >= 2 else None,
+                "resolution": round(self.resolution(), 3),
                 "bandM": [self.shallow, self.deep],
                 "offLineM": round(self.off_line, 1),
                 "worstOffLineM": round(self.worst_off, 1)}
