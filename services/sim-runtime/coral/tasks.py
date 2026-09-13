@@ -23,7 +23,7 @@ import math
 import numpy as np
 
 KINDS = ("hold-station", "waypoints", "transect", "survey", "reach", "search",
-         "treat", "outplant", "inspect", "revisit", "dock", "wait", "mission", "return")
+         "treat", "outplant", "monitor", "inspect", "revisit", "dock", "wait", "mission", "return")
 
 
 def wrap(angle: float) -> float:
@@ -926,6 +926,166 @@ class Outplant(Task):
         return self.done and self.score() < 0.999
 
 
+class Monitor(Task):
+    """Work a grid cell to a standard something can be reconstructed from.
+
+    A survey scores the ground it passed over. That is the wrong question for
+    a monitoring programme, because a run that covers every square metre from
+    the wrong height, or too fast for the shutter, produces imagery no
+    photogrammetry will close — and scores full marks for it. The hundred
+    hectares at Shushah Island are monitored so that a model can be built and
+    compared against last year's; coverage that cannot be reconstructed is a
+    dive that has to be flown again.
+
+    So a cell counts when it was imaged *usefully*: from inside a tight
+    altitude band, because altitude is scale and scale drifting through a
+    mosaic is what tears it; and slowly enough not to smear. Both are held
+    against the truth, and both are things a vehicle fighting a current stops
+    being able to do long before it stops covering ground.
+
+    What it comes back with is a finding rather than a percentage: how much of
+    the cell is usable, and how many colonies were under the camera while it
+    was.
+    """
+
+    kind = "monitor"
+    name = "Monitor a grid cell"
+
+    CELL = 0.5
+
+    def __init__(self, objective, began_at, heading, camera: dict | None = None,
+                 colonies=None) -> None:
+        super().__init__(objective, began_at, heading)
+        self.camera = camera
+        self.half_angle = footprint_half_angle(camera)
+        cell = objective.get("cell") or {}
+        self.width = float(objective.get("widthM", cell.get("widthM", 25.0)))
+        self.height = float(objective.get("heightM", cell.get("heightM", 25.0)))
+        self.name_of_cell = str(cell.get("name", "") or objective.get("cellName", ""))
+        self.altitude = float(objective.get("altitudeM", 4.0))
+        # Tighter than a survey's on purpose. A survey wants to have been over
+        # the ground; this wants every frame at the same scale.
+        self.band = float(objective.get("altitudeBandM", 0.5))
+        self.speed_limit = float(objective.get("speedMs", 0.3))
+        self.swath = float(objective.get("swathM", 3.0))
+        self.limit = float(objective.get("timeLimitS", 1800.0))
+
+        ahead = self.ahead()
+        self.u = np.array(ahead)
+        self.v = np.array([ahead[1], -ahead[0]])
+        self.columns = max(1, int(round(self.width / self.CELL)))
+        self.rows = max(1, int(round(self.height / self.CELL)))
+        self.seen = np.zeros((self.rows, self.columns), dtype=bool)     # passed over
+        self.usable = np.zeros((self.rows, self.columns), dtype=bool)   # and worth having
+
+        near = []
+        for colony in (colonies or []):
+            rel = np.array([float(colony[0]), float(colony[1])]) - self.began_at[:2]
+            along, across = float(np.dot(rel, self.u)), float(np.dot(rel, self.v))
+            if 0.0 <= along <= self.width and 0.0 <= across <= self.height:
+                near.append([along, across])
+        self.colonies = np.array(near, dtype=float) if near else np.zeros((0, 2))
+        self.imaged = np.zeros(len(self.colonies), dtype=bool)
+
+        self.altitude_now: float | None = None
+        self.speed = 0.0
+        self.too_high = 0
+        self.too_fast = 0
+        self.last: np.ndarray | None = None
+        self.last_t: float | None = None
+        self.swath_now = self.swath
+
+    def judge(self, elapsed, position, heading, floor) -> None:
+        if self.last is not None and self.last_t is not None and elapsed > self.last_t:
+            self.speed = float(np.linalg.norm(position - self.last) / (elapsed - self.last_t))
+        self.last, self.last_t = position.copy(), elapsed
+        self.altitude_now = None if floor is None else float(position[2] - floor)
+        if elapsed >= self.limit or self.usable.all():
+            self.done = True
+            return
+        if self.altitude_now is None:
+            return
+
+        if self.half_angle is not None:
+            half = max(0.25, min(10.0, self.altitude_now * math.tan(self.half_angle)))
+            self.swath_now = 2.0 * half
+        else:
+            half = self.swath / 2.0
+
+        rel = position[:2] - self.began_at[:2]
+        along = float(np.dot(rel, self.u))
+        across = float(np.dot(rel, self.v))
+        c0 = max(0, int((along - half) / self.CELL))
+        c1 = min(self.columns, int((along + half) / self.CELL) + 1)
+        r0 = max(0, int((across - half) / self.CELL))
+        r1 = min(self.rows, int((across + half) / self.CELL) + 1)
+        if not (c0 < c1 and r0 < r1):
+            return
+        self.seen[r0:r1, c0:c1] = True
+
+        # Counted once each, on the step it first goes wrong, so the numbers
+        # say how much of the dive was spent unusable rather than how many
+        # physics steps it took.
+        high = abs(self.altitude_now - self.altitude) > self.band
+        fast = self.speed > self.speed_limit
+        if high or fast:
+            self.too_high += 1 if high else 0
+            self.too_fast += 1 if fast else 0
+            return
+        self.usable[r0:r1, c0:c1] = True
+        if len(self.colonies):
+            under = ((np.abs(self.colonies[:, 0] - along) <= half)
+                     & (np.abs(self.colonies[:, 1] - across) <= half))
+            self.imaged |= under
+
+    def score(self) -> float:
+        return float(self.usable.mean())
+
+    def says(self) -> str:
+        covered, good = self.seen.mean(), self.usable.mean()
+        if covered <= 0.0:
+            return "nothing of the cell yet"
+        return (f"{good * 100:.0f}% usable of {covered * 100:.0f}% covered, "
+                f"{int(self.imaged.sum())} of {len(self.colonies)} colonies imaged")
+
+    def detail(self) -> dict:
+        return {"cell": self.name_of_cell or None,
+                "widthM": self.width, "heightM": self.height,
+                "fractionSeen": round(float(self.seen.mean()), 3),
+                "fractionUsable": round(float(self.usable.mean()), 3),
+                "altitudeM": self.altitude, "altitudeBandM": self.band,
+                "speedLimitMs": self.speed_limit,
+                "swathM": round(self.swath_now, 2),
+                "swathFrom": "camera footprint" if self.half_angle is not None else "declared",
+                # Why the unusable part was unusable. A cell that came back at
+                # forty per cent is a different problem depending on which of
+                # these is large, and re-flying it blind is how a programme
+                # wastes a season.
+                "stepsTooHigh": self.too_high, "stepsTooFast": self.too_fast,
+                "coloniesImaged": int(self.imaged.sum()), "coloniesInCell": int(len(self.colonies)),
+                "usableCells": {"rows": self.rows, "columns": self.columns,
+                                "cells": [int(v) for v in np.packbits(self.usable.ravel())]}}
+
+    def geometry(self) -> dict:
+        corners = []
+        for a, b in ((0, 0), (self.width, 0), (self.width, self.height), (0, self.height)):
+            point = self.began_at[:2] + self.u * a + self.v * b
+            corners.append({"x": float(point[0]), "y": float(point[1])})
+        return {"rectangle": corners,
+                "seen": {"rows": self.rows, "columns": self.columns,
+                         "cells": [int(v) for v in np.packbits(self.usable.ravel())]}}
+
+    def goal(self) -> dict:
+        return {"kind": "cover", "corner": [float(v) for v in self.began_at[:2]],
+                "along": [float(v) for v in self.u[:2]],
+                "widthM": self.width, "heightM": self.height,
+                "altitudeM": self.altitude, "swathM": self.swath,
+                "speedMs": self.speed_limit}
+
+    def failed(self) -> bool:
+        return self.done and self.score() < 0.9
+
+
 class Inspect(Task):
     """Go round a thing, keeping it in frame from a fixed distance.
 
@@ -1302,7 +1462,7 @@ class Unavailable(Task):
 
 
 TASKS = {"hold-station": HoldStation, "waypoints": Waypoints, "transect": Transect,
-         "outplant": Outplant,
+         "outplant": Outplant, "monitor": Monitor,
          "survey": Survey, "return": Return, "reach": Reach, "search": Search,
          "treat": Treat, "inspect": Inspect, "revisit": Revisit, "dock": Dock,
          "wait": Wait}
@@ -1346,6 +1506,8 @@ def task_for(objective, began_at, heading: float, camera: dict | None = None,
         return None
     if made is Survey:
         return Survey(objective, began_at, heading, camera=camera)
+    if made is Monitor:
+        return Monitor(objective, began_at, heading, camera=camera, colonies=colonies)
     if made is Search:
         return Search(objective, began_at, heading, camera=camera)
     if made is Inspect:

@@ -1019,7 +1019,8 @@ class Dive:
             self.began_rotation = self.rotation.copy()
             self.begin_navigating()
             self.began_with_wh = (0.0 if self.battery is None else self.battery.remaining_wh)
-        wants_coral = _mentions(objective, "treat")
+        # Every task that is about the coral rather than about the ground.
+        wants_coral = any(_mentions(objective, kind) for kind in ("treat", "monitor"))
         self.task = task_for(objective, self.began_at,
                              float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0])),
                              camera=self.camera(),
