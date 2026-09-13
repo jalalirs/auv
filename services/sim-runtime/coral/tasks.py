@@ -23,7 +23,7 @@ import math
 import numpy as np
 
 KINDS = ("hold-station", "waypoints", "transect", "survey", "reach", "search",
-         "treat", "outplant", "monitor", "inspect", "revisit", "dock", "wait", "mission", "return")
+         "treat", "outplant", "monitor", "profile", "section", "inspect", "revisit", "dock", "wait", "mission", "return")
 
 
 def wrap(angle: float) -> float:
@@ -33,6 +33,12 @@ def wrap(angle: float) -> float:
 class Task:
     kind = "task"
     name = "Task"
+    # Whether this asks the vehicle to stop. Most tasks do somewhere — arrive,
+    # hold, work, dock — and a vehicle that cannot stop cannot be asked. A
+    # glider is the reason the question exists: it does not hover badly, it
+    # falls out of the water column, and a dive that lets it try is a dive
+    # that has wasted somebody's day proving something arithmetic.
+    needs_hover = True
 
     def __init__(self, objective: dict, began_at, heading: float) -> None:
         self.objective = objective
@@ -1086,6 +1092,143 @@ class Monitor(Task):
         return self.done and self.score() < 0.9
 
 
+class Profile(Task):
+    """Down to a depth and back. The unit a glider mission is built from.
+
+    Everything a buoyancy glider does is made of these: it cannot hold a depth
+    and it cannot stop, so the only thing it can be asked for is the shape of
+    the sawtooth and how many teeth. What comes back is a column of water
+    measured top to bottom, which is what an oceanographer wanted in the first
+    place.
+    """
+
+    kind = "profile"
+    name = "Profile the water column"
+    needs_hover = False
+
+    def __init__(self, objective, began_at, heading) -> None:
+        super().__init__(objective, began_at, heading)
+        self.to = float(objective.get("toM", 200.0))
+        self.back_to = float(objective.get("fromM", 10.0))
+        self.cycles = max(1, int(objective.get("cycles", 1)))
+        self.limit = float(objective.get("timeLimitS", 7200.0))
+        self.deepest = 0.0
+        self.shallowest = 1e9
+        self.legs = 0                       # half a sawtooth each
+        self.descending = True
+        self.turned_at: list[float] = []
+
+    def judge(self, elapsed, position, heading, floor) -> None:
+        depth = float(-position[2])
+        self.deepest = max(self.deepest, depth)
+        self.shallowest = min(self.shallowest, depth)
+        if self.descending and depth >= self.to:
+            self.descending = False
+            self.legs += 1
+            self.turned_at.append(round(elapsed, 1))
+        elif not self.descending and depth <= self.back_to:
+            self.descending = True
+            self.legs += 1
+            self.turned_at.append(round(elapsed, 1))
+        if self.legs >= self.cycles * 2 or elapsed >= self.limit:
+            self.done = True
+
+    def score(self) -> float:
+        return min(1.0, self.legs / float(self.cycles * 2))
+
+    def says(self) -> str:
+        return (f"{self.legs // 2} of {self.cycles} profiles, "
+                f"{self.deepest:.0f} m deepest")
+
+    def detail(self) -> dict:
+        return {"cycles": self.cycles, "legs": self.legs,
+                "completed": self.legs // 2,
+                "toM": self.to, "fromM": self.back_to,
+                "deepestM": round(self.deepest, 1),
+                "shallowestM": round(self.shallowest, 1) if self.shallowest < 1e8 else None,
+                "turnedAtS": self.turned_at[:60]}
+
+    def goal(self) -> dict:
+        return {"kind": "profile", "bandM": [self.back_to, self.to], "cycles": self.cycles}
+
+    def failed(self) -> bool:
+        return self.done and self.score() < 0.999
+
+
+class Section(Task):
+    """A sawtooth along a line: profiles, one after another, going somewhere.
+
+    What a glider is actually sent out to do. The vehicle is given a line and a
+    depth band and it saws its way along, and the science is the column against
+    distance. It is also where the current stops being a nuisance and becomes
+    the result — a glider that is set down on the wrong end of a knot does not
+    arrive, and where it ends up instead is the measurement.
+    """
+
+    kind = "section"
+    name = "Fly a section"
+    needs_hover = False
+
+    def __init__(self, objective, began_at, heading) -> None:
+        super().__init__(objective, began_at, heading)
+        band = objective.get("bandM") or [10.0, 200.0]
+        self.shallow, self.deep = float(min(band)), float(max(band))
+        self.limit = float(objective.get("timeLimitS", 14400.0))
+        toward = self.somewhere(objective.get("toward"),
+                                self.out_from_start(1000.0, 0.0))
+        self.toward = np.asarray(toward, dtype=float)
+        self.line = self.toward[:2] - self.began_at[:2]
+        self.length = float(np.hypot(*self.line)) or 1.0
+        self.along_unit = self.line / self.length
+        self.furthest = 0.0
+        self.off_line = 0.0
+        self.worst_off = 0.0
+        self.legs = 0
+        self.descending = True
+
+    def judge(self, elapsed, position, heading, floor) -> None:
+        rel = position[:2] - self.began_at[:2]
+        along = float(np.dot(rel, self.along_unit))
+        self.furthest = max(self.furthest, along)
+        self.off_line = float(abs(np.cross(self.along_unit, rel)))
+        self.worst_off = max(self.worst_off, self.off_line)
+        depth = float(-position[2])
+        if self.descending and depth >= self.deep:
+            self.descending = False
+            self.legs += 1
+        elif not self.descending and depth <= self.shallow:
+            self.descending = True
+            self.legs += 1
+        if self.furthest >= self.length or elapsed >= self.limit:
+            self.done = True
+
+    def score(self) -> float:
+        return float(min(1.0, max(0.0, self.furthest / self.length)))
+
+    def says(self) -> str:
+        return (f"{self.furthest:.0f} m of {self.length:.0f} along, "
+                f"{self.legs // 2} profiles, {self.off_line:.0f} m off the line")
+
+    def detail(self) -> dict:
+        return {"alongM": round(self.furthest, 1), "lengthM": round(self.length, 1),
+                "fraction": round(self.score(), 3),
+                "profiles": self.legs // 2,
+                "bandM": [self.shallow, self.deep],
+                "offLineM": round(self.off_line, 1),
+                "worstOffLineM": round(self.worst_off, 1)}
+
+    def geometry(self) -> dict:
+        return {"path": [{"x": float(self.began_at[0]), "y": float(self.began_at[1])},
+                         {"x": float(self.toward[0]), "y": float(self.toward[1])}]}
+
+    def goal(self) -> dict:
+        return {"kind": "section", "to": [float(v) for v in self.toward[:2]],
+                "bandM": [self.shallow, self.deep]}
+
+    def failed(self) -> bool:
+        return self.done and self.score() < 0.9
+
+
 class Inspect(Task):
     """Go round a thing, keeping it in frame from a fixed distance.
 
@@ -1463,6 +1606,7 @@ class Unavailable(Task):
 
 TASKS = {"hold-station": HoldStation, "waypoints": Waypoints, "transect": Transect,
          "outplant": Outplant, "monitor": Monitor,
+         "profile": Profile, "section": Section,
          "survey": Survey, "return": Return, "reach": Reach, "search": Search,
          "treat": Treat, "inspect": Inspect, "revisit": Revisit, "dock": Dock,
          "wait": Wait}

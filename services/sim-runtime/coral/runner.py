@@ -1025,6 +1025,18 @@ class Dive:
                              float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0])),
                              camera=self.camera(),
                              colonies=self.colonies_here() if wants_coral else None)
+        # A task this vehicle has no way of doing is refused here rather than
+        # flown badly. A glider asked to hold station does not hold it poorly;
+        # it falls out of the water column while the clock runs, and the result
+        # is a score nobody can read and a day nobody gets back.
+        if self.task is not None and getattr(self.task, "needs_hover", False) \
+                and not self.body.model.can_hover:
+            self.say("task_refused", task=self.task.kind,
+                     why=("this vehicle has no thrusters and cannot hold a position "
+                          "or a depth; it is flown by buoyancy and wings"),
+                     instead=["profile", "section"])
+            self.task = None
+            return
         if self.task is not None:
             self.task_over = False
             self.say("task_set", task=self.task.describe(), attempt=self.attempts)
