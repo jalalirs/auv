@@ -967,6 +967,40 @@ class Dive:
             if self.temperature_c is None:
                 self.temperature_c = pairs[0][1]
 
+    def ballasted_for_this_water(self) -> dict | None:
+        """Whether this hull can be trimmed neutral in the water it is in.
+
+        Only a question for a vehicle whose propulsion *is* its buoyancy. An
+        ROV that is a newton or two out flies through it on the thrusters and
+        never notices; a glider that is a newton out has spent its engine
+        before it starts, because displacing a little more or less water than
+        it weighs is the only thing it can do.
+
+        And the Red Sea is where it bites. A hull ballasted in ordinary
+        seawater is buoyant here — forty and a half parts per thousand against
+        thirty-five — and cancelling that comes out of the same few hundred
+        cubic centimetres that were supposed to fly the mission. It is a known
+        way to lose a deployment, it is arithmetic, and it should be arithmetic
+        somebody does on shore rather than a discovery made at sea.
+        """
+        model = self.body.model
+        actuators = model.actuators or {}
+        if model.can_hover or "vbdCcRange" not in actuators:
+            return None
+        low, high = actuators["vbdCcRange"]
+        here = self.density_at(0.0)
+        # What the hull would have to displace, or stop displacing, to hang
+        # still in this water.
+        surplus_kg = model.displaced_volume_m3 * here - model.mass_kg
+        needed_cc = -surplus_kg / here * 1e6
+        working = max(abs(float(low)), abs(float(high)))
+        return {"waterDensityKgM3": round(here, 2),
+                "outOfTrimKg": round(surplus_kg, 3),
+                "toCancelCc": round(needed_cc, 1),
+                "engineRangeCc": round(working, 1),
+                "shareOfEngine": round(abs(needed_cc) / max(1e-9, working), 3),
+                "enough": abs(needed_cc) < working}
+
     def temperature_at(self, depth_m: float) -> float | None:
         """How warm the water is at that depth, straight-line between the
         stated points and flat above the first and below the last."""
@@ -1053,6 +1087,20 @@ class Dive:
                      instead=["profile", "section"])
             self.task = None
             return
+        # Before anything else: can this hull even be made neutral here?
+        trim = self.ballasted_for_this_water()
+        if trim is not None and trim["shareOfEngine"] > 0.05:
+            self.say("ballast", **trim,
+                     why=("this hull was not ballasted for this water; cancelling "
+                          "the difference costs part of the only propulsion it has"))
+            if not trim["enough"]:
+                self.say("task_refused", task=getattr(self.task, "kind", "?"),
+                         why=("this vehicle cannot be trimmed neutral in this water: "
+                              f"{abs(trim['toCancelCc']):.0f} cc against an engine "
+                              f"of {trim['engineRangeCc']:.0f} cc"),
+                         instead=["ballast it for this sea before the dive"])
+                self.task = None
+                return
         if self.task is not None:
             self.task_over = False
             self.say("task_set", task=self.task.describe(), attempt=self.attempts)

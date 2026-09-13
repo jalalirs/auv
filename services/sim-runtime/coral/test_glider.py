@@ -215,3 +215,43 @@ def test_a_hull_that_cannot_hover_is_the_one_launched_from_the_surface():
         pathlib.Path(__file__).resolve().parents[3] / "catalog/vehicles/bluerov2/dynamics.json")
     assert not glider.can_hover, "no thrusters, so no holding anything"
     assert rov.can_hover
+
+
+def test_a_hull_ballasted_for_the_wrong_sea_is_caught_on_shore():
+    """Arithmetic somebody should do before the ship sails.
+
+    A glider's propulsion *is* its buoyancy, so a hull that is out of trim has
+    spent its engine before it starts. Ballast it in ordinary seawater, put it
+    in the Red Sea at 40.6 PSU, and cancelling the difference costs a third of
+    the working range — a known way to lose a deployment, and pure arithmetic.
+    """
+    dive, said = a_dive_of({"kind": "profile", "toM": 100.0, "fromM": 10.0})
+    # Ballasted for ordinary seawater rather than for here.
+    dive.body.model.displaced_volume_m3 = dive.body.model.mass_kg / density_of(35.0, 20.0)
+    dive.salinity_psu, dive.temperature_c = 40.6, 26.0
+    dive.stated_density = None
+    dive.density = density_of(40.6, 26.0)
+
+    trim = dive.ballasted_for_this_water()
+    assert trim is not None, "a glider is exactly the vehicle this matters for"
+    assert trim["outOfTrimKg"] > 0.0, "it floats where it was meant to hang still"
+    assert 100.0 < abs(trim["toCancelCc"]) < 160.0, trim
+    assert 0.25 < trim["shareOfEngine"] < 0.5, "about a third of the engine, spent on salt"
+    assert trim["enough"], "costly, but it can still be trimmed"
+
+
+def test_an_ROV_is_not_asked_the_question():
+    """A vehicle that flies on thrusters is a newton out and never notices."""
+    rov = pathlib.Path(__file__).resolve().parents[3] / "catalog/vehicles/bluerov2/dynamics.json"
+    dive, _ = a_dive_of({"kind": "hold-station", "seconds": 60}, package=rov)
+    assert dive.ballasted_for_this_water() is None
+
+
+def test_water_too_far_out_of_trim_is_refused_before_the_dive():
+    dive, said = a_dive_of({"kind": "profile", "toM": 100.0, "fromM": 10.0})
+    dive.body.model.displaced_volume_m3 *= 1.03      # grossly mis-ballasted
+    dive.begin_task(dive.brief["objective"])
+    refusals = [d for k, d in said if k == "task_refused"]
+    assert refusals, "it cannot be made neutral and should say so"
+    assert "cc" in refusals[0]["why"]
+    assert dive.task is None
