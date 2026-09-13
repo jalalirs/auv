@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+"""Fly a mission against everything that could go wrong with it.
+
+A dive that works is not the question. Ship time is the scarce thing, weather
+windows close, and a season's outplanting happens or does not; what somebody
+planning a mission wants to know is not whether it works but *what breaks it*,
+and there is no way to find that out except by going and finding out. Once.
+
+So: a mission, and a list of the things nobody is sure about — how hard the
+current will be running and from where, whether the water will still be clear
+after the weather, whether the array gets laid, whether a thruster gives out an
+hour in. Each of those is a dimension, every combination is a dive, and the
+whole cross product is flown overnight through the ordinary platform.
+
+What comes back is not a grid of numbers. A grid of numbers is what the matrix
+already produced and nobody could read. What comes back is which combinations
+failed, what they had in common, and the one change that saves the most of
+them — which is the sentence a dive plan actually turns on.
+
+    tools/what-if missions/outplant-b7.json
+    tools/what-if missions/outplant-b7.json --show          (read the last run)
+
+The mission file names the place, the vehicle, the objective, the water that is
+not in doubt, and the doubts:
+
+    {"name": "outplant B7",
+     "place": "al-fahal", "vehicle": "bluerov2",
+     "objective": {...},
+     "water": {"salinityPsu": 40.6, "temperatureC": 29.0},
+     "good": 0.8,
+     "doubts": {
+       "current":  {"still": {}, "half a knot": {"currentMetresPerSecond": 0.26}},
+       "fix":      {"array": {"positioning": {"kind": "lbl", "everyS": 3}},
+                    "none":  {"positioning": {"kind": "none"}}}}}
+"""
+
+from __future__ import annotations
+
+import argparse
+import itertools
+import json
+import pathlib
+import sys
+import time
+
+HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+
+
+def platform():
+    from importlib.machinery import SourceFileLoader
+    return SourceFileLoader("matrix", str(HERE / "matrix")).load_module()
+
+
+def combinations(doubts: dict):
+    """Every way the doubts could resolve, as (label, parameters)."""
+    names = list(doubts)
+    for picked in itertools.product(*[list(doubts[n]) for n in names]):
+        chosen = dict(zip(names, picked))
+        water = {}
+        for dimension, which in chosen.items():
+            said = doubts[dimension][which]
+            for key, value in said.items():
+                # Failures accumulate rather than replace: two things going
+                # wrong on one dive is the case worth flying, not the case to
+                # drop because two dimensions both wanted the same key.
+                if key == "failures":
+                    water.setdefault("failures", []).extend(value)
+                elif key == "fitted":
+                    water.setdefault("fitted", {}).update(value)
+                else:
+                    water[key] = value
+        yield chosen, water
+
+
+def fly_them(mission: dict, at_once: int, again: bool):
+    m = platform()
+    p = m.Platform()
+    city = m.newest_version(p, "cities", mission["place"])
+    vehicle = m.newest_version(p, "vehicles", mission["vehicle"])
+    queue = p.call("GET", "/api/v1/queues")["queues"][0]
+    runtime = queue["runtimes"][0]
+    base = dict(mission.get("water") or {})
+    wanted = list(combinations(mission["doubts"]))
+    print(f"{len(wanted)} scenarios", flush=True)
+
+    already = {}
+    if not again:
+        for dive in p.call("GET", f"/api/v1/organisations/{p.org}/dives")["dives"]:
+            if dive["name"].startswith(mission["name"] + " ~ "):
+                already[dive["name"]] = dive["id"]
+
+    asked, done = [], []
+    for i, (chosen, water) in enumerate(wanted, start=1):
+        label = mission["name"] + " ~ " + " · ".join(f"{k}:{v}" for k, v in chosen.items())
+        if label in already:
+            continue
+        while len(asked) >= at_once:
+            time.sleep(10)
+            asked = [one for one in asked if still_going(p, one)]
+        parameters = {**base, **water}
+        conditions = p.call("POST", f"/api/v1/organisations/{p.org}/conditions", {
+            "kind": "constructed", "name": label[:120], "parameters": parameters})
+        dive = p.call("POST", f"/api/v1/organisations/{p.org}/dives", {
+            "name": label, "cityVersionId": city, "vehicleVersionId": vehicle,
+            "conditionsId": conditions["id"], "objective": mission["objective"]})
+        run = p.call("POST", f"/api/v1/dives/{dive['id']}/runs",
+                     {"queueId": queue["id"], "mode": "batch", "runtimeVersion": runtime})
+        asked.append({"dive": dive["id"], "run": run["id"], "chosen": chosen})
+        done.append(label)
+        print(f"  [{i}/{len(wanted)}] {label}", flush=True)
+    while asked:
+        time.sleep(15)
+        asked = [one for one in asked if still_going(p, one)]
+    return read_them(mission)
+
+
+def still_going(p, one) -> bool:
+    runs = p.call("GET", f"/api/v1/dives/{one['dive']}/runs")["runs"]
+    state = next((r["state"] for r in runs if r["id"] == one["run"]), "gone")
+    return state in ("queued", "preparing", "running")
+
+
+def read_them(mission: dict):
+    """Every scenario that has been flown, with how it went."""
+    m = platform()
+    p = m.Platform()
+    prefix = mission["name"] + " ~ "
+    out = []
+    for dive in p.call("GET", f"/api/v1/organisations/{p.org}/dives")["dives"]:
+        if not dive["name"].startswith(prefix):
+            continue
+        runs = p.call("GET", f"/api/v1/dives/{dive['id']}/runs")["runs"]
+        run = next((r for r in runs if r["state"] in ("succeeded", "failed")), None)
+        if run is None:
+            continue
+        outcome = run.get("outcome") or {}
+        task = outcome.get("task") or {}
+        chosen = {}
+        for part in dive["name"][len(prefix):].split(" · "):
+            if ":" in part:
+                key, value = part.split(":", 1)
+                chosen[key] = value
+        out.append({"chosen": chosen, "score": float(task.get("score") or 0.0),
+                    "ended": outcome.get("ended"), "says": task.get("says"),
+                    "heldBack": bool(task.get("heldBack")),
+                    "driftM": (outcome.get("navigation") or {}).get("driftM")})
+    return out
+
+
+def what_it_means(flown: list, good: float) -> None:
+    """The point of the whole thing: what broke it, and what fixes the most."""
+    if not flown:
+        print("nothing flown yet")
+        return
+    survived = [f for f in flown if f["score"] >= good]
+    failed = [f for f in flown if f["score"] < good]
+    print(f"\nSurvives {len(survived)} of {len(flown)} scenarios "
+          f"(a mission counts as done at {good:.0%}).\n")
+    if not failed:
+        print("Nothing in the doubt list breaks it.")
+        return
+
+    dimensions = sorted({k for f in flown for k in f["chosen"]})
+    # Which single setting explains the most failures, and which setting would
+    # rescue the most. They are not the same question and the second is the
+    # useful one.
+    blame = []
+    for dimension in dimensions:
+        for value in sorted({f["chosen"].get(dimension) for f in flown}):
+            here = [f for f in flown if f["chosen"].get(dimension) == value]
+            bad = [f for f in here if f["score"] < good]
+            if here:
+                blame.append((len(bad) / len(here), len(bad), dimension, value, len(here)))
+    blame.sort(reverse=True)
+
+    print("Where the failures are:")
+    for share, bad, dimension, value, total in blame[:8]:
+        if bad == 0:
+            continue
+        bar = "█" * int(round(share * 24))
+        print(f"  {dimension:>12} = {value:<16} {bad:3d}/{total:<3d} fail  {bar}")
+
+    worst = blame[0]
+    print(f"\nThe single worst thing is {worst[2]} = {worst[3]}: "
+          f"{worst[1]} of {worst[4]} scenarios fail with it.")
+
+    # Holding the worst dimension aside, is there a setting of anything else
+    # that recovers them?
+    doomed = [f for f in failed if f["chosen"].get(worst[2]) == worst[3]]
+    rescue = []
+    for dimension in dimensions:
+        if dimension == worst[2]:
+            continue
+        for value in sorted({f["chosen"].get(dimension) for f in doomed}):
+            with_it = [f for f in flown
+                       if f["chosen"].get(worst[2]) == worst[3]
+                       and f["chosen"].get(dimension) == value]
+            saved = [f for f in with_it if f["score"] >= good]
+            if with_it:
+                rescue.append((len(saved), len(with_it), dimension, value))
+    rescue.sort(reverse=True)
+    if rescue and rescue[0][0] > 0:
+        saved, of, dimension, value = rescue[0]
+        print(f"Of those, setting {dimension} to {value} saves {saved} of {of}.")
+    else:
+        print("Nothing else in the doubt list rescues them.")
+
+    guarded = [f for f in failed if f["heldBack"]]
+    if guarded:
+        print(f"\n{len(guarded)} of the failures were the vehicle being held "
+              f"back by its own hull, not the plan.")
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(description="fly a mission against what could go wrong")
+    parse.add_argument("mission")
+    parse.add_argument("--show", action="store_true", help="read what has already been flown")
+    parse.add_argument("--again", action="store_true", help="re-fly scenarios already in the record")
+    parse.add_argument("--at-once", type=int, default=4)
+    asked = parse.parse_args()
+
+    mission = json.loads(pathlib.Path(asked.mission).read_text())
+    flown = read_them(mission) if asked.show else fly_them(mission, asked.at_once, asked.again)
+    what_it_means(flown, float(mission.get("good", 0.8)))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

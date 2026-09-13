@@ -1,0 +1,37 @@
+{
+  "name": "outplant B7",
+  "note": "A grid cell of the restoration, planted at three-metre spacing. The question is not whether it works in still water — it is which of the things nobody can promise about a working day will stop it.",
+  "place": "al-fahal",
+  "vehicle": "bluerov2",
+  "good": 0.8,
+  "water": {"salinityPsu": 40.6, "temperatureC": 29.0},
+  "objective": {
+    "kind": "outplant",
+    "cell": {"widthM": 18.0, "heightM": 12.0, "spacingM": 3.0},
+    "placeM": 0.6, "toleranceM": 1.0,
+    "altitudeM": 1.0, "altitudeBandM": 0.6,
+    "speedMs": 0.25, "holdS": 4.0, "timeLimitS": 2400.0
+  },
+  "doubts": {
+    "current": {
+      "still":     {"currentMetresPerSecond": 0.0, "currentHeadingDeg": 0},
+      "gentle":    {"currentMetresPerSecond": 0.15, "currentHeadingDeg": 30},
+      "half knot": {"currentMetresPerSecond": 0.26, "currentHeadingDeg": 30},
+      "one knot":  {"currentMetresPerSecond": 0.51, "currentHeadingDeg": 30}
+    },
+    "fix": {
+      "array":   {"positioning": {"kind": "lbl", "everyS": 3, "accuracyM": 0.5, "rangeM": 400}},
+      "ship":    {"positioning": {"kind": "usbl", "everyS": 2, "accuracyPercent": 0.5, "rangeM": 500}},
+      "nothing": {"positioning": {"kind": "none"}}
+    },
+    "water clarity": {
+      "clear": {},
+      "murky": {"visibilityM": 5.0}
+    },
+    "trouble": {
+      "none":     {},
+      "thruster": {"failures": [{"kind": "thruster", "which": 2, "atS": 600}]},
+      "no log":   {"fitted": {"dvl": false}}
+    }
+  }
+}
