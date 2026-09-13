@@ -1,0 +1,30 @@
+{
+  "name": "section Thuwal",
+  "note": "A glider section out across the shelf, sampling the column every half kilometre. The question is how much current it takes before the vehicle stops arriving — and whether the answer changes if it is ballasted for the sea it is actually in.",
+  "place": "thuwal-deep",
+  "vehicle": "seaglider",
+  "good": 0.7,
+  "water": {"salinityPsu": 40.6,
+            "temperatureProfile": [[0, 30.0], [100, 22.5], [700, 21.5]],
+            "positioning": {"kind": "none"},
+            "fitted": {"dvl": false, "flightModel": true}},
+  "objective": {
+    "kind": "section",
+    "toward": {"dx": 2500, "dy": 0},
+    "bandM": [15.0, 250.0],
+    "profileEveryM": 500.0,
+    "timeLimitS": 14400.0
+  },
+  "doubts": {
+    "current": {
+      "still":     {"currentMetresPerSecond": 0.0, "currentHeadingDeg": 0},
+      "a fifth":   {"currentMetresPerSecond": 0.2, "currentHeadingDeg": 270},
+      "a third":   {"currentMetresPerSecond": 0.33, "currentHeadingDeg": 270},
+      "half knot": {"currentMetresPerSecond": 0.26, "currentHeadingDeg": 90}
+    },
+    "ballast": {
+      "for this sea": {},
+      "for the ocean": {"densityKgM3": 1024.76}
+    }
+  }
+}
