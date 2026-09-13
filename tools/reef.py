@@ -31,14 +31,14 @@ import zonation
 
 
 def plant(where: pathlib.Path, height, across: float, seed: int,
-          how_many: int) -> dict:
+          how_many: int, picture=None) -> dict:
     """Grow a reef onto a seabed, and write it beside it."""
     rng = np.random.default_rng(seed)
     rows, columns = height.shape
     depth = -height
 
     # What kind of ground this is, everywhere.
-    ground = zonation.describe(height, across)
+    ground = zonation.describe(height, across, picture=picture)
     want = zonation.cover(ground, rng)
     if want.sum() <= 0:
         return {"colonies": 0}

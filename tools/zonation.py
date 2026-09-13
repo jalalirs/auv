@@ -80,8 +80,16 @@ def _blur(field, metres: float, step: float):
     return field
 
 
-def describe(height, across: float) -> dict:
-    """Read a seabed and say what kind of ground each square metre of it is."""
+def describe(height, across: float, picture=None) -> dict:
+    """Read a seabed and say what kind of ground each square metre of it is.
+
+    `picture` is the place photographed from above, when there is one, as rows
+    of RGB. Where it exists it is believed over the inference: whether ground
+    is rock or sand is a thing a picture of it shows directly, and working it
+    out from the slope instead is guessing at something already observed. Sand
+    is the brightest thing on a reef from above — it reflects where coral and
+    rock absorb — so the darker half of a lit seabed is the living half.
+    """
     depth = -np.asarray(height, dtype="float64")
     rows, columns = depth.shape
     step = across / max(1, columns - 1)
@@ -108,6 +116,15 @@ def describe(height, across: float) -> dict:
     hard *= 1.0 - 0.85 * plain
     hard = np.clip(hard, 0.02, 1.0)
 
+    if picture is not None:
+        seen = _hard_from_picture(picture, depth.shape)
+        if seen is not None:
+            # Two thirds the picture, one third the shape. Not all of the
+            # picture, because at ten metres a pixel a patch of coral smaller
+            # than a tennis court averages away into the sand around it, and
+            # the shape still knows that ground standing proud is swept.
+            hard = np.clip(0.67 * seen + 0.33 * hard, 0.02, 1.0)
+
     ceiling = np.interp(depth, DEPTH_M, COVER)
 
     # A wall sheds everything that lands on it.
@@ -116,6 +133,30 @@ def describe(height, across: float) -> dict:
     return {"depth": depth, "slope": slope, "stands": stands,
             "hard": hard, "ceiling": ceiling, "standing": standing,
             "step": step}
+
+
+def _hard_from_picture(picture, shape):
+    """How much of each cell is not sand, from the light coming off it."""
+    picture = np.asarray(picture, dtype="float64")
+    if picture.ndim == 3 and picture.shape[0] == 3:
+        picture = np.transpose(picture, (1, 2, 0))
+    if picture.ndim != 3 or picture.shape[2] < 3:
+        return None
+    if picture.shape[:2] != tuple(shape):
+        rows = (np.arange(shape[0]) * picture.shape[0] // shape[0]).clip(0, picture.shape[0] - 1)
+        cols = (np.arange(shape[1]) * picture.shape[1] // shape[1]).clip(0, picture.shape[1] - 1)
+        picture = picture[np.ix_(rows, cols)]
+    brightness = picture[..., :3].mean(axis=2)
+    lit = brightness > 1.0                    # anything the sun reached at all
+    if lit.sum() < 50:
+        return None
+    # Stretched against this reef's own sand rather than an absolute: how
+    # bright a seabed photographs depends on the water over it, and a threshold
+    # that works at Looe Key is wrong at twenty metres in the Red Sea.
+    sand, dark = np.percentile(brightness[lit], 85), np.percentile(brightness[lit], 15)
+    if sand - dark < 1e-6:
+        return None
+    return np.clip((sand - brightness) / (sand - dark), 0.0, 1.0)
 
 
 def cover(ground: dict, rng, patchiness: float = 1.0):
