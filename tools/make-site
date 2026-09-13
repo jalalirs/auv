@@ -197,7 +197,7 @@ def fetch_texture(where: pathlib.Path, name: str) -> bool:
 
 
 def write_usd(where: pathlib.Path, name: str, height, across: float,
-              tile: float, texture: str | None) -> dict:
+              tile: float, texture: str | None, photograph: bool = False) -> dict:
     """The seabed, as a mesh, in a USD anybody can open."""
     import numpy as np
 
@@ -253,6 +253,17 @@ def write_usd(where: pathlib.Path, name: str, height, across: float,
 
     lowest, highest = float(height.min()), float(height.max())
     material = SEABED_MATERIAL if texture else UNTEXTURED_MATERIAL
+    if photograph:
+        # The sand correction exists because a dry beach photographed in
+        # sunlight is the brightest thing in any scene. This is a reef
+        # photographed through twenty metres of water, which is the opposite
+        # problem, and correcting it again takes it further from the truth.
+        material = material.replace("float4 inputs:scale = (1.05, 1.0, 0.92, 1)",
+                                    "float4 inputs:scale = (1.25, 1.2, 1.1, 1)")
+        material = material.replace('token inputs:wrapS = "repeat"',
+                                    'token inputs:wrapS = "clamp"')
+        material = material.replace('token inputs:wrapT = "repeat"',
+                                    'token inputs:wrapT = "clamp"')
     body = f'''#usda 1.0
 (
     doc = "{name}: real seafloor, from a bathymetric survey. Metres, Z up, z=0 at the water surface."
@@ -332,6 +343,9 @@ def main() -> int:
                        help="most coral colonies to write")
     parse.add_argument("--seed", type=int, default=1,
                        help="the same seed grows the same reef")
+    parse.add_argument("--photograph",
+                       help="an image of this square to surface it with, "
+                            "instead of a tiled stock seabed")
     parse.add_argument("--texture", default="coast_sand_03",
                        help="a Poly Haven CC0 texture to surface the seabed with")
     # Ten metres, not four. A photograph of sand repeating every four metres
@@ -367,7 +381,14 @@ def main() -> int:
         asked.across = float(note["acrossMetres"])
         if asked.centre is None:
             asked.centre = (note["centre"]["latitude"], note["centre"]["longitude"])
-        morphology, surveyed, step = None, True, 1
+        # What the heights say about themselves, rather than an assumption.
+        # This was hardcoded True, which meant a square derived from a
+        # satellite picture — shape from the light coming off the bottom,
+        # depths scaled against the reef's own geomorphology — was recorded as
+        # a survey. It is not one, it says so, and the site has to carry that
+        # through rather than launder it.
+        morphology, step = None, 1
+        surveyed = bool(note.get("surveyed", True))
         survey_note = note
     elif asked.raster:
         height, step = read_patch(asked.raster, tuple(asked.centre or (0, 0)),
@@ -377,17 +398,40 @@ def main() -> int:
     else:
         raise SystemExit("give it a --raster to cut from, or a --build to construct")
 
-    textured = False
-    if asked.texture:
+    textured, photograph = False, False
+    if asked.photograph:
+        # The reef, surfaced with a photograph of itself. A stock seabed tiled
+        # over a real reef is the thing that makes a site look invented: the
+        # shape is right and the surface is somebody else's sand, repeating.
+        # A ten-metre satellite pixel is coarse for a close-up, and it is the
+        # actual colour of the actual coral in the actual place.
+        from PIL import Image
+        into = where / "textures"
+        into.mkdir(exist_ok=True)
+        # Roughness and bumps still come from the stock seabed: at arm's length
+        # a reef has a grain that a ten-metre pixel cannot know about, and
+        # borrowing it is honest as long as the *colour* — the thing anybody
+        # would recognise the place by — is the reef's own.
+        fetch_texture(where, asked.texture)
+        Image.open(asked.photograph).convert("RGB").save(
+            into / "seabed_colour.jpg", quality=94)
+        textured, asked.tile, photograph = True, asked.across, True
+    elif asked.texture:
         textured = fetch_texture(where, asked.texture)
     made = write_usd(where, asked.name, height, asked.across, asked.tile,
-                     asked.texture if textured else None)
+                     asked.texture if textured else None, photograph=photograph)
 
     reef = {"colonies": 0}
     if asked.coral > 0:
         sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
         import reef as grow_reef
-        reef = grow_reef.plant(where, height, asked.across, asked.seed, asked.coral)
+        seen_from_above = None
+        if asked.photograph:
+            from PIL import Image
+            seen_from_above = np.asarray(
+                Image.open(asked.photograph).convert("RGB"), dtype="float64")
+        reef = grow_reef.plant(where, height, asked.across, asked.seed, asked.coral,
+                               picture=seen_from_above)
 
     import numpy as np
     depth = -height
@@ -416,6 +460,10 @@ def main() -> int:
                 "source": survey_note.get("source"),
                 "surveyedFraction": survey_note.get("surveyedFraction")}
                if survey_note else {}),
+            **({k: survey_note[k] for k in
+                ("method", "observedAt", "opticalLimitM", "bottomVisibleFraction",
+                 "beyondOpticalDepthFraction", "medianDetailM", "toCalibrate")
+                if survey_note and k in survey_note}),
             **({"constructed": morphology} if morphology else {}),
             **({"centre": {"latitude": asked.centre[0],
                            "longitude": asked.centre[1]}} if asked.centre else {}),
