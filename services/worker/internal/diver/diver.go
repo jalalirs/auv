@@ -197,6 +197,25 @@ const anHour = 3600.0
 // a little settling on top, a mission's time limit, five minutes for a task
 // that named neither, and ten seconds — enough to settle a controller and
 // record where it sat — for a dive that is for nothing in particular.
+// flyWithNeedsAModel says whether a dive named a controller that has to reach
+// off the machine to do its job. Read from the objective because that is the
+// part of a dive definition that reaches the simulator untouched.
+func flyWithNeedsAModel(objective json.RawMessage) bool {
+	if len(objective) == 0 {
+		return false
+	}
+	var said struct {
+		FlyWith string `json:"flyWith"`
+	}
+	if err := json.Unmarshal(objective, &said); err != nil {
+		return false
+	}
+	// Named rather than inferred. A controller that wants the network has to
+	// be on this list, so that adding one is a decision somebody makes here
+	// rather than something a dive can claim for itself.
+	return said.FlyWith == "asking"
+}
+
 func durationOf(claimed Claimed) float64 {
 	if claimed.Run.Mode == "interactive" {
 		return anHour
@@ -448,9 +467,33 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	// dive's network and nowhere else.
 	vehicleHost := "coral-sim-" + claimed.Run.ID
 
+	// Whether this dive asked to be flown by something that has to ask a
+	// model. Everything an institution submits runs with no route off its own
+	// network (ADR-0012), and that is the right default — a dive is somebody
+	// else's code on our machine. But a controller whose whole method is to
+	// ask a question cannot work behind it, and refusing to grant the
+	// capability at all is not a security decision, it is a missing feature
+	// with a security-shaped excuse. So it is granted to the dives that say
+	// they need it, and to no others, which is what the capability is for.
+	wantsAModel := flyWithNeedsAModel(claimed.Objective)
+	modelEnv := []string{}
+	if wantsAModel {
+		for _, name := range []string{"CORAL_CITY_MODEL_URL", "CORAL_CITY_MODEL",
+			"CORAL_CITY_MODEL_KEY", "CORAL_CITY_MODEL_MAX_TOKENS"} {
+			if value := os.Getenv(name); value != "" {
+				modelEnv = append(modelEnv, name+"="+value)
+			}
+		}
+		if len(modelEnv) == 0 {
+			log.Warn("a dive asked to be flown by a model and this host has none configured",
+				"run", claimed.Run.ID)
+		}
+	}
+
 	simulator := container.Spec{
-		Image: d.simImage,
-		Env: []string{
+		Image:   d.simImage,
+		Network: wantsAModel,
+		Env: append(modelEnv, []string{
 			// The licence is accepted by whoever runs this, and the platform
 			// runs it on an operator's behalf.
 			"ACCEPT_EULA=Y",
@@ -477,7 +520,7 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 			// this rather than drawing its own.
 			"CORAL_CITY_SEED=" + fmt.Sprint(claimed.Run.Seed),
 			"CORAL_CITY_BRIEF=/dive/dive.json",
-		},
+		}...),
 		// A simulator writes shader and asset caches all over its own
 		// installation and cannot start without somewhere to put them.
 		WritableRoot: true,

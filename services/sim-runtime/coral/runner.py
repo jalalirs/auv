@@ -1104,6 +1104,17 @@ class Dive:
         if self.task is not None:
             self.task_over = False
             self.say("task_set", task=self.task.describe(), attempt=self.attempts)
+            # Who flies it, when the dive asked for somebody in particular.
+            # Carried on the objective because the objective is the one part of
+            # a dive definition that travels to the simulator untouched — and
+            # because which controller flew it is part of what a dive *was*,
+            # the same way the vehicle and the water are.
+            named = str((objective or {}).get("flyWith") or "")
+            if named and self.helm.engage(named, self.observation()):
+                self.say("flying_with", controller=named)
+            elif named:
+                self.say("cannot_fly_with", controller=named,
+                         have=sorted(self.helm.controllers))
             # The platform flies what it can, so that choosing a task on the
             # dive page and pressing Dive does the thing rather than watching
             # the vehicle sit where it started. A stack or a hand still wins.
