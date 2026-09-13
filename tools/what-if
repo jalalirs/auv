@@ -149,7 +149,16 @@ def read_them(mission: dict):
 
 
 def what_it_means(flown: list, good: float) -> None:
-    """The point of the whole thing: what broke it, and what fixes the most."""
+    """The point of the whole thing: what breaks it, and what would fix it.
+
+    Ranked by how much a thing *changes* the outcome, not by how often it is
+    present when the mission fails. Those are different and the second one is
+    misleading: in a sweep where the current is what kills you, half the
+    failures also happen to be in murky water and half in clear, and listing
+    both at fifty per cent invites somebody to go and worry about visibility.
+    A dimension whose settings all fail equally is telling you it does not
+    matter, and it should be said once, quietly, and not ranked.
+    """
     if not flown:
         print("nothing flown yet")
         return
@@ -162,54 +171,63 @@ def what_it_means(flown: list, good: float) -> None:
         return
 
     dimensions = sorted({k for f in flown for k in f["chosen"]})
-    # Which single setting explains the most failures, and which setting would
-    # rescue the most. They are not the same question and the second is the
-    # useful one.
-    blame = []
+    matters, indifferent = [], []
     for dimension in dimensions:
+        rates = []
         for value in sorted({f["chosen"].get(dimension) for f in flown}):
             here = [f for f in flown if f["chosen"].get(dimension) == value]
+            if not here:
+                continue
             bad = [f for f in here if f["score"] < good]
-            if here:
-                blame.append((len(bad) / len(here), len(bad), dimension, value, len(here)))
-    blame.sort(reverse=True)
-
-    print("Where the failures are:")
-    for share, bad, dimension, value, total in blame[:8]:
-        if bad == 0:
+            rates.append((len(bad) / len(here), len(bad), len(here), value))
+        if not rates:
             continue
-        bar = "█" * int(round(share * 24))
-        print(f"  {dimension:>12} = {value:<16} {bad:3d}/{total:<3d} fail  {bar}")
+        spread = max(r[0] for r in rates) - min(r[0] for r in rates)
+        (matters if spread >= 0.15 else indifferent).append((spread, dimension, sorted(rates, reverse=True)))
+    matters.sort(reverse=True)
 
-    worst = blame[0]
-    print(f"\nThe single worst thing is {worst[2]} = {worst[3]}: "
-          f"{worst[1]} of {worst[4]} scenarios fail with it.")
+    for spread, dimension, rates in matters:
+        print(f"{dimension}  (changes the outcome by {spread:.0%})")
+        for share, bad, total, value in rates:
+            bar = "█" * int(round(share * 20)) or "·"
+            print(f"    {str(value):<16} {total - bad:2d}/{total:<2d} survive   {bar}")
+        print()
 
-    # Holding the worst dimension aside, is there a setting of anything else
-    # that recovers them?
-    doomed = [f for f in failed if f["chosen"].get(worst[2]) == worst[3]]
+    if indifferent:
+        print("Made no difference: " + ", ".join(d for _, d, _ in indifferent) + ".\n")
+
+    if not matters:
+        print("Nothing in the doubt list explains the failures on its own.")
+        return
+
+    # The worst single setting, and whether anything else recovers it.
+    _, dimension, rates = matters[0]
+    share, bad, total, value = rates[0]
+    print(f"The mission turns on {dimension}. At {value} it fails "
+          f"{bad} times out of {total}.")
+
+    doomed = [f for f in flown if f["chosen"].get(dimension) == value]
     rescue = []
-    for dimension in dimensions:
-        if dimension == worst[2]:
+    for other in dimensions:
+        if other == dimension:
             continue
-        for value in sorted({f["chosen"].get(dimension) for f in doomed}):
-            with_it = [f for f in flown
-                       if f["chosen"].get(worst[2]) == worst[3]
-                       and f["chosen"].get(dimension) == value]
+        for setting in sorted({f["chosen"].get(other) for f in doomed}):
+            with_it = [f for f in doomed if f["chosen"].get(other) == setting]
             saved = [f for f in with_it if f["score"] >= good]
             if with_it:
-                rescue.append((len(saved), len(with_it), dimension, value))
+                rescue.append((len(saved) / len(with_it), len(saved), len(with_it), other, setting))
     rescue.sort(reverse=True)
-    if rescue and rescue[0][0] > 0:
-        saved, of, dimension, value = rescue[0]
-        print(f"Of those, setting {dimension} to {value} saves {saved} of {of}.")
+    if rescue and rescue[0][1] > 0:
+        _, saved, of, other, setting = rescue[0]
+        print(f"Setting {other} to {setting} saves {saved} of those {of}.")
     else:
-        print("Nothing else in the doubt list rescues them.")
+        print("Nothing else in the doubt list rescues them: "
+              f"if the {dimension} is {value}, do not go.")
 
     guarded = [f for f in failed if f["heldBack"]]
     if guarded:
-        print(f"\n{len(guarded)} of the failures were the vehicle being held "
-              f"back by its own hull, not the plan.")
+        print(f"\n{len(guarded)} of the failures were the vehicle held back by its "
+              f"own hull rather than by the plan — a better plan will not fix those.")
 
 
 def main() -> int:
