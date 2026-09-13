@@ -61,7 +61,7 @@
     ]
   },
   "thrusters": {
-    "note": "The standard six-thruster vectored layout: four horizontal at 45 degrees giving surge, sway and yaw, and two vertical giving heave. Positions are metres from the centre of gravity; directions are unit vectors in the body frame.",
+    "note": "The standard six-thruster vectored layout: four horizontal at 45 degrees giving surge, sway and yaw, and two vertical giving heave. Positions are metres from the centre of gravity; directions are unit vectors in the body frame. The verticals sit on the beam at mid-body, which is why the stock vehicle has no pitch authority and is passively stable in pitch: they were briefly modelled 12 cm forward, and every newton of depth-holding heave then pitched the hull and spent the attitude guard's budget, leaving too little horizontal thrust to hold station in a current.",
     "model": "BlueRobotics T200",
     "maxForwardN": 51.5,
     "maxReverseN": 40.0,
@@ -122,7 +122,7 @@
       {
         "name": "vertical-right",
         "position": [
-          0.12,
+          0,
           0.218,
           0
         ],
@@ -135,7 +135,7 @@
       {
         "name": "vertical-left",
         "position": [
-          0.12,
+          0,
           -0.218,
           0
         ],

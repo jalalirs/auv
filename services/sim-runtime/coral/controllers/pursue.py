@@ -102,6 +102,9 @@ class PursueController(Controller):
         arrive = float(last.get("arriveM", self["arriveM"]))
         return away > max(2.0 * arrive, arrive + 1.0)
 
+    def delivered(self, asked, given) -> None:
+        self.pilots.unwind(asked, given)
+
     def limit(self, authority: np.ndarray) -> None:
         self.capability = np.asarray(authority, dtype=float)
         self.pilots.limit(authority)

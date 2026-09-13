@@ -31,6 +31,11 @@ import numpy as np
 from .base import Command, Controller, Observation
 from .pid import Pid
 
+# How quickly an integral gives back force the vehicle was never given. A
+# guard that bites for a single step is weather; one that bites for a second
+# is a ceiling, and that is what the loops should learn.
+TRACKING_S = 1.0
+
 
 def wrap(angle: float) -> float:
     """An angle into (-pi, pi]."""
@@ -86,6 +91,33 @@ class Autopilots:
     def reset(self) -> None:
         for loop in (self.depth, self.heading, self.surge, self.sway):
             loop.reset()
+
+    def unwind(self, asked: np.ndarray, given: np.ndarray) -> None:
+        """Take back what the loops asked for and did not get.
+
+        Each axis is limited to what it could produce on its own, which is not
+        what it gets: the attitude guard couples them, and a hull already
+        leaning on its heave has little left to spend on going anywhere. So a
+        loop can sit at a limit it was never told about with its integral
+        winding, and the wind-up is not harmless — it is stored force that
+        comes out at the worst moment, when the vehicle is finally free and
+        the loop is still carrying a minute of unmet error.
+
+        The correction is the standard one: push the integral back towards the
+        value that would have asked for exactly what was delivered. Over a
+        second, not in a step, because a guard that bites for one frame of a
+        swell is not a ceiling.
+        """
+        for loop, axis, gain in ((self.depth, 2, "depthKi"), (self.surge, 0, "positionKi"),
+                                 (self.sway, 1, "positionKi")):
+            ki = self.owner[gain]
+            if ki <= 0.0 or self.mass[axis] <= 0.0:
+                continue
+            shortfall = (float(given[axis]) - float(asked[axis])) / self.mass[axis]
+            if shortfall == 0.0:
+                continue
+            loop.integral += (shortfall / ki) * (self.owner.dt / TRACKING_S)
+            loop.integral = max(-loop.integral_limit, min(loop.integral_limit, loop.integral))
 
     def hold_depth(self, seen: Observation, target: float, dt: float) -> float:
         """Heave, in newtons, that holds a depth. Positive is up."""
@@ -172,6 +204,9 @@ class HoldController(Controller):
         wrench = np.array([surge, sway, heave, 0.0, 0.0, yaw])
         self.last_error = float(np.hypot(*(self.target_position - seen.position[:2])))
         return Command(wrench=np.clip(wrench, -self.capability, self.capability))
+
+    def delivered(self, asked, given) -> None:
+        self.pilots.unwind(asked, given)
 
     def status(self) -> dict:
         return {"targetDepthM": round(self.target_depth, 3),
