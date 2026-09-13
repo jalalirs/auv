@@ -243,12 +243,30 @@ def route_for(goal: dict, believed=None, camera_half_angle: float | None = None)
 # ── the goals, one at a time ─────────────────────────────────────────────────
 
 def _visit(goal: dict) -> list[dict]:
-    """Points in the order given. A hold at each, when the goal asks for one."""
+    """Points in the order given. A hold at each, when the goal asks for one.
+
+    A goal that names an altitude is flown at that altitude, not at the depth
+    its points happen to carry. The points of a working task are laid out on a
+    chart, so their depth is whatever the vehicle started at — and a task that
+    has to be *close to the bottom* to do its work, like planting something,
+    then holds the starting depth over a seabed that slopes away underneath it
+    and never gets near enough to do anything.
+
+    That is not a hypothetical. An outplanting over a real reef flew every mark
+    in the cell, held station at each one for as long as it was asked to, and
+    planted nothing at all in forty minutes: it was seven metres up the whole
+    time, because the plan it was given said nothing about height.
+    """
     hold = goal.get("holdS")
     arrive = goal.get("radiusM")
+    altitude = goal.get("altitudeM")
     route = []
     for p in goal.get("points", []):
-        leg = {"x": float(p[0]), "y": float(p[1]), "depthM": float(-p[2])}
+        leg = {"x": float(p[0]), "y": float(p[1])}
+        if altitude is not None:
+            leg["altitudeM"] = float(altitude)
+        else:
+            leg["depthM"] = float(-p[2])
         if arrive is not None:
             leg["arriveM"] = max(0.25, float(arrive) * 0.6)
         if hold is not None:

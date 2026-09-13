@@ -112,3 +112,26 @@ def test_a_task_with_nowhere_to_plant_says_so_rather_than_inventing_a_grid():
     assert task.marks == []
     assert task.score() == 0.0
     assert task.says() == "nowhere to plant"
+
+
+def test_the_plan_carries_the_height_the_work_needs():
+    """A planting task has to be near the bottom, and the plan must say so.
+
+    The marks of a working task are laid out on a chart, so the depth they
+    carry is whatever the vehicle happened to start at. Flown as a depth over a
+    seabed that slopes away, the vehicle arrives above every mark, holds
+    station at each one exactly as asked, and plants nothing — which is what it
+    did over a real reef for forty minutes.
+    """
+    import sys, pathlib as _p
+    sys.path.insert(0, str(_p.Path(__file__).resolve().parent / "controllers"))
+    from controllers import plan as planner
+
+    task = a_task()
+    goal = task.goal()
+    assert goal["altitudeM"] == task.altitude, "the goal knows the work needs height"
+    legs = planner.route_for(goal)
+    assert legs, "it should plan something"
+    for leg in legs:
+        assert leg.get("altitudeM") == task.altitude, leg
+        assert "depthM" not in leg, "a depth here is the bug: the bottom moves"
