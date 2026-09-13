@@ -124,7 +124,27 @@ class Navigation:
         # right: a vehicle with no log is not a vehicle with a slightly worse
         # log, and a draw that came out near zero would say it was.
         self.blind_scale = 1.0 + float(draw.choice([-1.0, 1.0])) * float(draw.uniform(0.1, 0.32))
+        # A vehicle that flies a model it has been calibrated against knows its
+        # speed through the water rather better than one guessing from thrust:
+        # a glider's flight model is fitted to its own dives and is good to a
+        # few per cent. What it still cannot see is the water itself.
+        self.flight_model = bool(suite.get("flightModel", False))
+        self.flight_scale = 1.0 + float(draw.normal(0.0, float(suite.get("flightModelError", 0.03))))
         self._noise = draw
+
+        # What the water is doing, when the dive has told us. It matters here
+        # for one reason and it is the whole of underwater navigation: a log
+        # that reads off the bottom measures the ground going past, and one
+        # that does not measures the water going past. The difference between
+        # those two is the current, and a vehicle without bottom lock has no
+        # way of knowing it is being carried.
+        self.current = np.zeros(3)
+        # Where and when it last had a real fix, for working out what the water
+        # did while it was under.
+        self.down_since: float | None = None
+        self.down_from: np.ndarray | None = None
+        self.depth_averaged_current: np.ndarray | None = None
+        self.current_estimates = 0
 
         self.believed = np.array(began_at if began_at is not None else [0.0, 0.0, 0.0], dtype=float)
         self.bottom_lock = True
@@ -154,11 +174,20 @@ class Navigation:
         # it, the vehicle is reduced to what it can infer from its own motion
         # through the water, which is much worse — a fifth of the speed lost
         # or gained, and no way to know which.
-        through = np.asarray(velocity[:3], dtype=float)
+        over_ground = np.asarray(velocity[:3], dtype=float)
         if self.bottom_lock:
-            read = through * self.scale + self._noise.normal(0.0, self.dvl_noise, 3)
+            # A Doppler log pings the seabed, so what it measures is the ground
+            # going past: the current is already in it and costs nothing.
+            read = over_ground * self.scale + self._noise.normal(0.0, self.dvl_noise, 3)
         else:
-            read = through * self.blind_scale + self._noise.normal(0.0, self.dvl_noise * 5.0, 3)
+            # Nothing to ping. Whatever the vehicle knows about its own motion
+            # is motion through the water, and the water is moving. This is the
+            # error that no amount of better instrumentation fixes and the
+            # reason a glider's position is a guess until it surfaces.
+            through_water = over_ground - measured.T @ self.current
+            scale = self.flight_scale if self.flight_model else self.blind_scale
+            spread = self.dvl_noise * (2.0 if self.flight_model else 5.0)
+            read = through_water * scale + self._noise.normal(0.0, spread, 3)
 
         self.believed[:2] += (measured @ read)[:2] * dt
         self.travelled += float(np.linalg.norm(np.asarray(velocity[:3]))) * dt
@@ -175,6 +204,28 @@ class Navigation:
 
         self.maybe_fix(t, position)
 
+    def estimate_the_current(self, t: float, position) -> None:
+        """What the water did, from the gap between belief and the sky.
+
+        Only worth anything for a vehicle that had nothing else the whole time
+        it was down — a glider, or any AUV with no log and no acoustics. A
+        vehicle that was taking fixes all the way has already been corrected
+        towards the truth and the gap says nothing about the water.
+        """
+        if self.down_since is None or self.down_from is None:
+            return
+        under = float(t) - float(self.down_since)
+        if under < 60.0 or self.bottom_lock or self.kind in ("lbl", "usbl", "beacon"):
+            return
+        drift = np.asarray(position, dtype=float)[:2] - self.believed[:2]
+        self.depth_averaged_current = np.array([drift[0] / under, drift[1] / under, 0.0])
+        self.current_estimates += 1
+
+    def went_under(self, t: float, position) -> None:
+        """Note the vehicle leaving the surface with a known position."""
+        self.down_since = float(t)
+        self.down_from = np.asarray(position, dtype=float).copy()
+
     def maybe_fix(self, t: float, position) -> None:
         """A fix from outside, if there is anything out there to give one."""
         depth = float(-position[2])
@@ -184,11 +235,25 @@ class Navigation:
             # to nothing.
             if self.kind == "none" and not self.aiding.get("gnss", True):
                 return
+            # Before the fix wipes it out: what the water did while it was
+            # under. This is not an aside — for a glider it is the product.
+            #
+            # The vehicle dead reckoned through the column on its own speed
+            # through the water, and arrived somewhere the water put it. The
+            # difference between where it reckoned it would surface and where
+            # it actually did, divided by the time it was down, is the current
+            # averaged over everything it flew through. Every other row in the
+            # positioning table treats that difference as the error being
+            # studied. This one sells it.
+            self.estimate_the_current(t, position)
             # At the surface there is nothing better to be had, so the fix is
             # taken whole rather than blended: that is the reset an AUV
             # surfaces for.
             self._take(t, position, 2.5, "a satellite fix at the surface", trust=1.0)
+            self.down_since, self.down_from = None, None
             return
+        if self.down_since is None and depth > self.surface_fix_at:
+            self.went_under(t, position)
         if self.kind == "none" or (self.last_fix_t is not None and t - self.last_fix_t < self.every):
             return
         if self.kind == "lbl":
@@ -254,4 +319,11 @@ class Navigation:
                 "fixFrom": self.last_fix_from,
                 "sinceFixS": None if self.last_fix_t is None else round(t - self.last_fix_t, 1),
                 "aiding": self.kind,
-                "travelledM": round(self.travelled, 1)}
+                "travelledM": round(self.travelled, 1),
+                **({} if self.depth_averaged_current is None else {
+                    "depthAveragedCurrentMs": [round(float(v), 4)
+                                               for v in self.depth_averaged_current[:2]],
+                    "depthAveragedCurrentSpeedMs": round(
+                        float(np.hypot(*self.depth_averaged_current[:2])), 4),
+                    "currentEstimates": self.current_estimates,
+                })}

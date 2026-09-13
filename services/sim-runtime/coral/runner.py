@@ -1446,6 +1446,10 @@ class Dive:
             floor = self.floor
             if self.seabed is not None:
                 floor = self.seabed.under(float(self.position[0]), float(self.position[1]))
+            # What the water is doing, so that a vehicle without a log can be
+            # carried by it without noticing — which is the whole of why an
+            # AUV's position is a guess.
+            self.navigation.current = self.current
             self.navigation.step(self.simulated, self.position, self.velocity,
                                  self.rotation, floor, self.dt)
         self.commands = self.helm.command(self.observation())
