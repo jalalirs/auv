@@ -180,6 +180,13 @@ class Hydrodynamics:
     vbd_m3: float = 0.0
     mass_shift_m: np.ndarray = field(default_factory=lambda: np.zeros(3))
 
+    # The wings, for a vehicle that has them. Eriksen's parameterisation for
+    # the Seaglider, taken from the paper rather than invented: lift and drag
+    # on the angle of attack and the dynamic pressure, against the square of a
+    # reference length which is the hull. Empty for a vehicle with no wings,
+    # which is every vehicle here so far.
+    wings: dict = field(default_factory=dict)
+
     @classmethod
     def from_package(cls, path: str | pathlib.Path, density: float = DENSITY_SEAWATER
                      ) -> "Hydrodynamics":
@@ -215,6 +222,7 @@ class Hydrodynamics:
                 for unit in units.get("units", [])
             ],
             density=density,
+            wings=dict(document.get("wings", {}) or {}),
             commanded_in=str(document.get("commandedIn", "wrench")),
             actuators=dict(document.get("actuators", {}) or {}),
             attitude_guard=float(hull.get("attitudeGuard", 0.5)),
@@ -444,6 +452,62 @@ class Body:
             moment += unit_moment
         return np.concatenate([force, moment]) * float(submerged)
 
+    def lift_and_drag(self, velocity: np.ndarray, density: float,
+                      submerged: float = 1.0) -> np.ndarray:
+        """What the wings do, in the body frame.
+
+        Eriksen's flight model for the Seaglider, which is worth taking from
+        the paper rather than inventing: lift proportional to the angle of
+        attack, drag with a skin-friction term that falls off with dynamic
+        pressure and an induced term that grows with the square of the angle.
+
+            q = ½ρV²                    the dynamic pressure
+            L = q·l²·a·α                lift
+            D = q·l²·(b·q^(-¼) + c·α²)  drag
+
+        The angle of attack is between the hull and the water going past it,
+        and it is the whole mechanism: a vehicle that is merely heavy sinks,
+        and a vehicle that is heavy *and* pointing slightly nose-down turns
+        that sinking into forward motion. Which is why a glider has no
+        propeller and still crosses oceans.
+
+        Past the stall the wing stops working, and a glider that has lost its
+        pitch control finds this out. Modelled as the lift falling away rather
+        than a cliff, because a cliff in a force model is a spike in an
+        integrator and not a stall.
+        """
+        wing = self.model.wings
+        if not wing:
+            return np.zeros(6)
+        u, w = float(velocity[0]), float(velocity[2])
+        speed_squared = u * u + w * w
+        if speed_squared < 1e-12:
+            return np.zeros(6)
+        speed = math.sqrt(speed_squared)
+        length = float(wing.get("referenceLengthM", 1.8))
+        q = 0.5 * float(density) * speed_squared * float(submerged)
+        if q <= 0.0:
+            return np.zeros(6)
+
+        # A wing only works from in front. A hull going backwards through the
+        # water is not at a large angle of attack, it is not flying at all —
+        # and a model that computes an angle anyway gets a number that grows
+        # without limit and takes the integrator with it.
+        if u <= 0.0:
+            working, lift = 0.0, 0.0
+        else:
+            alpha = math.atan2(-w, u)
+            stall = math.radians(float(wing.get("stallDeg", 45.0)))
+            working = alpha if abs(alpha) <= stall else alpha * (stall / abs(alpha)) ** 2
+            lift = q * length ** 2 * float(wing.get("liftPerRadian", 3.836)) * working
+        drag = q * length ** 2 * (float(wing.get("dragBase", 0.00988)) * q ** -0.25
+                                  + float(wing.get("inducedDrag", 5.487)) * working ** 2)
+
+        along = np.array([u, 0.0, w]) / speed          # where the water is going
+        across = np.array([-w, 0.0, u]) / speed        # perpendicular to it, lift's way
+        force = lift * across - drag * along
+        return np.concatenate([force, np.zeros(3)])
+
     def step(self, rotation: np.ndarray, velocity: np.ndarray,
              commands: np.ndarray, dt: float, submerged: float = 1.0,
              depth_m: float = 0.0, temperature_c: float | None = None,
@@ -467,6 +531,9 @@ class Body:
         force, moment = self.restoring(rotation, submerged, depth_m, temperature_c, density)
         wrench = np.concatenate([force, moment])
         wrench = wrench + self.damping(velocity, submerged)
+        if self.model.wings:
+            wrench = wrench + self.lift_and_drag(
+                velocity, self.model.density if density is None else density, submerged)
         if len(self.model.thrusters) > 0:
             wrench = wrench + self.thrust(commands, submerged)
         return wrench

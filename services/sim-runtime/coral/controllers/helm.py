@@ -48,9 +48,22 @@ class Helm:
             "hold": self.hold, "manual": self.manual, "pursue": self.pursue,
             "ponder": self.ponder, "failsafe": self.failsafe,
         }
+        # A vehicle with no thrusters gets the controller that can fly it, and
+        # loses the ones that cannot. A hold that commands a wrench on a hull
+        # with nothing to produce one is not a controller holding station
+        # badly; it is a controller that does nothing at all while the vehicle
+        # falls, and offering it is worse than not having it.
+        self.glide = None
+        if getattr(model, "commanded_in", "wrench") == "buoyancy":
+            from .glide import GlideController
+
+            self.glide = GlideController(dt)
+            self.controllers = {"glide": self.glide, "failsafe": self.failsafe}
+            if self.stack is not None:
+                self.controllers["stack"] = self.stack
         if self.stack is not None:
             self.controllers["stack"] = self.stack
-        self.flying: Controller = self.hold
+        self.flying: Controller = self.hold if self.glide is None else self.glide
         self.steps_flown: dict[str, int] = {}
         # A slow loop for each controller that wants one, started the first
         # time it has the vehicle. Most never will.
@@ -326,6 +339,8 @@ class Helm:
         # stops being where the vehicle is. A fix that lands after arrival
         # moves the vehicle's idea of itself, and the hold would sit at the
         # old place for the rest of the dive believing it had arrived.
+        if self.glide is not None:
+            return self.glide
         if self.flying_the_route and (not self.pursue.holding or self.pursue.wants_back(seen)):
             return self.pursue
         return self.hold
@@ -347,9 +362,10 @@ class Helm:
     def command(self, seen: Observation) -> np.ndarray:
         """Thruster commands for this step, from whoever has the vehicle."""
         if not self.engaged:
-            # The first step of the dive: the hold takes the starting pose.
-            self.hold.engage(seen)
-            self._hand_over(self.hold, seen)
+            # The first step of the dive: whatever flies this hull takes it.
+            first = self.hold if self.glide is None else self.glide
+            first.engage(seen)
+            self._hand_over(first, seen)
         chosen = self._choose(seen)
         # Whatever has the vehicle gets its slow loop turned, before it is
         # asked what to do — so a thought that landed since the last step is
