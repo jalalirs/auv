@@ -135,3 +135,36 @@ def test_the_plan_carries_the_height_the_work_needs():
     for leg in legs:
         assert leg.get("altitudeM") == task.altitude, leg
         assert "depthM" not in leg, "a depth here is the bug: the bottom moves"
+
+
+def test_a_working_stop_is_not_reached_until_the_vehicle_is_at_working_height():
+    """The bug that made an outplanting plant nothing over a real reef.
+
+    Thirty-five marks, held at every one, none planted. The first mark was
+    where the dive began; the vehicle was two metres below the surface and
+    fourteen above the bottom; the route counted it reached the instant the
+    dive started, and moved on. The task then waited forty minutes for a mark
+    the vehicle had already left.
+    """
+    import sys, pathlib as _p
+    sys.path.insert(0, str(_p.Path(__file__).resolve().parent))
+    from controllers.pursue import PursueController
+    from controllers.base import Observation
+    import numpy as _np
+
+    follower = PursueController(_np.full(6, 50.0), _np.full(6, 12.0), 1.5, 0.005)
+    stop = {"x": 0.0, "y": 0.0, "altitudeM": 1.0, "holdS": 4.0, "arriveM": 0.4}
+
+    def seen(altitude):
+        floor = -16.0
+        return Observation(t=0.0, position=_np.array([0.0, 0.0, floor + altitude]),
+                           velocity=_np.zeros(6), rotation=_np.eye(3),
+                           floor=floor, on_the_bottom=False)
+
+    assert not follower._deep_enough(seen(14.0), stop), "still on its way down"
+    assert follower._deep_enough(seen(1.0), stop), "at working height"
+
+    # A leg that is merely flown over, rather than worked at, is never waited
+    # on — stopping the route every time the ground rose would be worse.
+    passing = {"x": 0.0, "y": 0.0, "altitudeM": 3.0}
+    assert follower._deep_enough(seen(14.0), passing)

@@ -226,14 +226,34 @@ class PursueController(Controller):
     def _deep_enough(self, seen: Observation, point: dict) -> bool:
         """Whether the height this leg asked for has been reached as well.
 
-        Only for a leg that names a depth. A leg that names an altitude is
-        flying a carpet over the bottom and is never waited on: it would stop
-        the route every time the ground rose.
+        A leg that names a depth is waited on. A leg that merely names an
+        altitude is not: that is a carpet flown over the bottom, and waiting on
+        it would stop the route every time the ground rose.
+
+        But a leg that names an altitude *and* asks to be stayed at is neither
+        of those. It is somewhere work happens, and the work is the reason the
+        height was asked for — a manipulator has to reach the seabed, a camera
+        has to be near enough to see. Counted as reached the moment the vehicle
+        is over it, the route ticks the stop off while the vehicle is still
+        fourteen metres up on its way down from the surface, and moves on.
+
+        Which is exactly what happened: an outplanting flew all thirty-five
+        marks of a cell, held station at every one, and planted nothing. The
+        first mark was where the dive began, the vehicle was two metres below
+        the surface at the time, and the route counted it done before the
+        descent had started. The task spent the next forty minutes waiting for
+        a mark the vehicle had already left.
         """
-        if point.get("depthM") is None:
+        if point.get("depthM") is not None:
+            arrive = float(point.get("arriveM", self["arriveM"]))
+            return abs(seen.depth - float(point["depthM"])) <= max(0.35, arrive)
+        altitude = point.get("altitudeM")
+        if altitude is None or not float(point.get("holdS", 0.0)) > 0.0:
             return True
-        arrive = float(point.get("arriveM", self["arriveM"]))
-        return abs(seen.depth - float(point["depthM"])) <= max(0.35, arrive)
+        if seen.altitude is None:
+            return True                    # nothing to measure against; do not stall
+        return abs(seen.altitude - float(altitude)) <= max(0.5,
+                                                           float(point.get("arriveM", self["arriveM"])))
 
     def _newtons(self, axis: int, acceleration: float) -> float:
         most = float(self.capability[axis])
