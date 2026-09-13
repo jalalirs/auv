@@ -33,6 +33,17 @@ import numpy as np
 SERVICE = ("https://gis.ngdc.noaa.gov/arcgis/rest/services/DEM_mosaics/"
            "DEM_all/ImageServer")
 
+# And a second source, because the first one stops at the edge of American
+# waters. NOAA's mosaic is the best thing there is where it reaches: it is
+# every survey they hold, best first, and over a reef somebody has flown it is
+# centimetres. It has nothing at all over the Red Sea.
+#
+# GMRT is the global synthesis — every multibeam cruise anyone has contributed,
+# merged, and the coarse satellite grid underneath where nobody has been. It is
+# tens of metres a sample rather than centimetres, which is useless for a reef
+# and exactly right for the water column a glider works in.
+GMRT = "https://www.gmrt.org/services/GridServer"
+
 # What NOAA marks as "no survey reached here".
 NOTHING = -9999.0
 # Below this is not seabed, it is the service's fill value.
@@ -52,6 +63,48 @@ def ask(path: str, **query) -> bytes:
     url = SERVICE + path + "?" + urllib.parse.urlencode(query)
     with urllib.request.urlopen(url, timeout=120) as answer:
         return answer.read()
+
+
+def fetch_gmrt(latitude: float, longitude: float, across: float, samples: int):
+    """The same square, from the global synthesis.
+
+    Returned as an ESRI ASCII grid, which is a header and then the numbers row
+    by row from the north edge down — so it is flipped on the way out, like
+    everything else here, because a heightfield counts from the south.
+    """
+    east, north = metres_per_degree(latitude)
+    half_lon, half_lat = (across / 2) / east, (across / 2) / north
+    bounds = (longitude - half_lon, latitude - half_lat,
+              longitude + half_lon, latitude + half_lat)
+    url = GMRT + "?" + urllib.parse.urlencode({
+        "minlongitude": "%.9f" % bounds[0], "maxlongitude": "%.9f" % bounds[2],
+        "minlatitude": "%.9f" % bounds[1], "maxlatitude": "%.9f" % bounds[3],
+        "format": "esriascii", "resolution": "max"})
+    with urllib.request.urlopen(url, timeout=300) as answer:
+        text = answer.read().decode("ascii", "replace")
+
+    header, rows = {}, []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        first = line.split(None, 1)[0]
+        if first.replace(".", "", 1).replace("-", "", 1).isdigit() or first.startswith("-"):
+            rows.append([float(v) for v in line.split()])
+        else:
+            key, value = line.split(None, 1)
+            header[key.lower()] = float(value)
+    grid = np.array(rows, dtype="float32")
+    nothing = header.get("nodata_value", -2147483648.0)
+    grid = np.where(np.isclose(grid, nothing), np.nan, grid)
+    grid = np.flipud(grid)
+
+    # Resampled onto the square the caller asked for, nearest sample, because
+    # interpolating a seabed is inventing one.
+    rows_out = np.clip(np.round(np.linspace(0, grid.shape[0] - 1, samples)).astype(int),
+                       0, grid.shape[0] - 1)
+    cols_out = np.clip(np.round(np.linspace(0, grid.shape[1] - 1, samples)).astype(int),
+                       0, grid.shape[1] - 1)
+    return grid[np.ix_(rows_out, cols_out)], bounds, header.get("cellsize")
 
 
 def fetch(latitude: float, longitude: float, across: float, samples: int):
@@ -111,10 +164,41 @@ def main() -> int:
                        help="metres on a side")
     parse.add_argument("--samples", type=int, default=512)
     parse.add_argument("--into", default=".")
+    parse.add_argument("--from", dest="source", default="auto",
+                       choices=("auto", "noaa", "gmrt"),
+                       help="auto tries NOAA and falls back to the global synthesis")
     asked = parse.parse_args()
 
-    heights, bounds = fetch(asked.latitude, asked.longitude,
-                            asked.across, asked.samples)
+    source, cell = "NOAA NCEI bathymetry mosaic (DEM_all)", None
+    heights, bounds = None, None
+    if asked.source in ("auto", "noaa"):
+        try:
+            heights, bounds = fetch(asked.latitude, asked.longitude,
+                                    asked.across, asked.samples)
+            known = np.isfinite(heights) & (heights > NONSENSE) & (heights != NOTHING)
+            if float(known.mean()) < 0.5 and asked.source == "auto":
+                heights = None      # NOAA does not reach here; ask the world
+            elif asked.source == "auto":
+                # Covered is not the same as surveyed. Where nobody has run a
+                # ship, the mosaic still answers — out of ETOPO, the global
+                # fifteen-arcsecond grid, which is half a kilometre a sample
+                # smoothed over everything. That is a ramp, not a seabed, and
+                # it is worth going and asking the synthesis whether anybody
+                # has actually been there.
+                named = [s.get("name", "") for s in who_surveyed_it(bounds)]
+                if named and all(n.upper().startswith("ETOPO") for n in named):
+                    print("NOAA has only the global grid here (%s); asking GMRT"
+                          % named[0])
+                    heights = None
+        except Exception as trouble:
+            if asked.source == "noaa":
+                raise
+            print("NOAA had nothing here (%s); asking GMRT" % str(trouble)[:80])
+            heights = None
+    if heights is None:
+        heights, bounds, cell = fetch_gmrt(asked.latitude, asked.longitude,
+                                           asked.across, asked.samples)
+        source = "GMRT global multi-resolution topography synthesis"
 
     known = np.isfinite(heights) & (heights > NONSENSE) & (heights != NOTHING)
     covered = float(known.mean())
@@ -143,7 +227,7 @@ def main() -> int:
     note = {
         "name": asked.name,
         "surveyed": True,
-        "source": "NOAA NCEI bathymetry mosaic (DEM_all)",
+        "source": source,
         "centre": {"latitude": asked.latitude, "longitude": asked.longitude},
         "acrossMetres": asked.across,
         "sampleMetres": round(asked.across / (asked.samples - 1), 3),
@@ -151,7 +235,8 @@ def main() -> int:
         "deepestM": round(float(depth.max()), 2),
         "shallowestM": round(float(depth.min()), 2),
         "underwaterFraction": round(float((depth > 0.3).mean()), 4),
-        "surveys": who_surveyed_it(bounds),
+        "surveys": who_surveyed_it(bounds) if source.startswith("NOAA") else [],
+        "sourceSampleDegrees": cell,
         "heightfield": {"rows": asked.samples, "columns": asked.samples,
                         "format": "little-endian float32, row major, "
                                   "south to north then west to east",
