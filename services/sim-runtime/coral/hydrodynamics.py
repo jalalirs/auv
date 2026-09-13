@@ -187,6 +187,16 @@ class Hydrodynamics:
     # which is every vehicle here so far.
     wings: dict = field(default_factory=dict)
 
+    @property
+    def can_hover(self) -> bool:
+        """Whether this vehicle can stop and stay somewhere.
+
+        Anything with thrusters can. A buoyancy glider cannot, at all: it has
+        no way to hold a position and no way to hold a depth, and one that
+        stops flying falls. It is not a matter of doing it badly.
+        """
+        return len(self.thrusters) > 0
+
     @classmethod
     def from_package(cls, path: str | pathlib.Path, density: float = DENSITY_SEAWATER
                      ) -> "Hydrodynamics":
@@ -556,9 +566,19 @@ class Allocator:
     """
 
     def __init__(self, model: Hydrodynamics) -> None:
-        if not model.thrusters:
-            raise ValueError("a vehicle with no thrusters cannot be flown")
         self.model = model
+        if not model.thrusters:
+            # A vehicle with nothing to allocate. This used to be refused
+            # outright — "a vehicle with no thrusters cannot be flown" — which
+            # was the platform's assumption about what a vehicle is, written
+            # down one layer below where anybody was looking for it. A
+            # buoyancy glider has no thrusters and is flown perfectly well;
+            # there is simply nothing for this object to do, and saying so is
+            # better than refusing the hull.
+            self.matrix = np.zeros((6, 0))
+            self.inverse = np.zeros((0, 6))
+            self.reachable = np.zeros(6, dtype=bool)
+            return
 
         # Column per thruster: the wrench it produces at full forward thrust.
         columns = []
@@ -599,6 +619,8 @@ class Allocator:
         display said somebody was flying, and the vehicle sat still.
         """
         most = np.zeros(6)
+        if self.inverse.shape[0] == 0:
+            return most            # nothing to command with, on any axis
         for axis in range(6):
             want = np.zeros(6)
             want[axis] = 1.0

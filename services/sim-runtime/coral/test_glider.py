@@ -133,3 +133,64 @@ def test_the_red_sea_costs_it_a_third_of_its_engine():
     cc = surplus_kg / red_sea * 1e6
     assert surplus_kg > 0.0, "it floats where it was meant to be neutral"
     assert 100.0 < cc < 160.0, f"{cc:.0f} cc of an engine whose working range is 350"
+
+
+# ── missions a glider can be given, and the ones it cannot ───────────────────
+
+def a_dive_of(objective, package=PACKAGE, seconds=4000.0):
+    from runner import Dive
+    said = []
+    model = Hydrodynamics.from_package(package)
+    model.density = density_of(35.0, 15.0)
+    brief = {"durationSeconds": seconds,
+             "initialState": {"positionM": [0, 0, -10]},
+             "conditions": {"kind": "constructed", "parameters": {"salinityPsu": 35.0,
+                                                                  "temperatureC": 15.0}},
+             "objective": objective}
+    dive = Dive(brief, Body(model), Allocator(model), pathlib.Path("nowhere.usda"),
+                lambda kind, **detail: said.append((kind, detail)))
+    return dive, said
+
+
+def test_a_glider_asked_to_hold_station_says_it_cannot():
+    """Not badly. At all. It has no way to hold a position or a depth, and a
+    dive that lets it try wastes a day proving something arithmetic."""
+    dive, said = a_dive_of({"kind": "hold-station", "seconds": 300})
+    dive.begin_task(dive.brief["objective"])
+    refusals = [d for k, d in said if k == "task_refused"]
+    assert refusals, "it should have refused"
+    assert refusals[0]["task"] == "hold-station"
+    assert "profile" in refusals[0]["instead"]
+    assert dive.task is None
+
+
+def test_the_same_task_is_fine_on_a_vehicle_with_thrusters():
+    rov = pathlib.Path(__file__).resolve().parents[3] / "catalog/vehicles/bluerov2/dynamics.json"
+    dive, said = a_dive_of({"kind": "hold-station", "seconds": 300}, package=rov)
+    dive.begin_task(dive.brief["objective"])
+    assert not [d for k, d in said if k == "task_refused"]
+    assert dive.task is not None
+
+
+def test_a_glider_is_given_the_controller_that_can_fly_it():
+    dive, _ = a_dive_of({"kind": "profile", "toM": 100.0, "fromM": 10.0})
+    assert "glide" in dive.helm.controllers
+    assert "hold" not in dive.helm.controllers, "a hold on a hull with no thrusters does nothing"
+    assert dive.helm.flying.name == "glide"
+
+
+def test_a_glider_flies_a_profile_down_and_back():
+    """The unit a glider mission is built from, flown for real: buoyancy,
+    wings, a sliding battery, and no thrust anywhere."""
+    dive, _ = a_dive_of({"kind": "profile", "toM": 60.0, "fromM": 12.0, "cycles": 1,
+                         "timeLimitS": 4000.0}, seconds=4000.0)
+    dive.begin_task(dive.brief["objective"])
+    assert dive.task is not None
+    for _ in range(int(3000.0 / dive.dt)):
+        dive.step()
+        if dive.done:
+            break
+    detail = dive.task.detail()
+    assert detail["deepestM"] > 55.0, f"it should have got down: {detail}"
+    assert dive.task.legs >= 1, "and turned round"
+    assert float(np.linalg.norm(dive.position[:2])) > 50.0, "making ground while it did it"
