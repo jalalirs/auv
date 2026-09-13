@@ -1,0 +1,65 @@
+{
+  "name": "outplant B7 how long",
+  "note": "The first sweep said: at half a knot, do not go. That was the only answer its doubt list could give, because every scenario in it had the same two hours to work in \u2014 so a mission that was merely slower looked exactly like one that was impossible. It was planting every mark it reached correctly, to within sixty centimetres, and simply running out of clock at ten of thirty-five. This asks the question that was actually being asked: how long does the current cost, and is there a cell size that fits the window?",
+  "place": "al-fahal",
+  "vehicle": "bluerov2",
+  "good": 0.8,
+  "water": {
+    "salinityPsu": 40.6,
+    "temperatureC": 29.0,
+    "positioning": {
+      "kind": "lbl",
+      "everyS": 3,
+      "accuracyM": 0.5,
+      "rangeM": 400
+    }
+  },
+  "objective": {
+    "kind": "outplant",
+    "cell": {
+      "widthM": 18.0,
+      "heightM": 12.0,
+      "spacingM": 3.0
+    },
+    "placeM": 0.6,
+    "toleranceM": 1.0,
+    "altitudeM": 1.0,
+    "altitudeBandM": 0.6,
+    "speedMs": 0.25,
+    "holdS": 4.0,
+    "timeLimitS": 2400.0
+  },
+  "doubts": {
+    "current": {
+      "still": {
+        "currentMetresPerSecond": 0.0,
+        "currentHeadingDeg": 0
+      },
+      "gentle": {
+        "currentMetresPerSecond": 0.15,
+        "currentHeadingDeg": 30
+      },
+      "half knot": {
+        "currentMetresPerSecond": 0.26,
+        "currentHeadingDeg": 30
+      }
+    },
+    "window": {
+      "40 min": {
+        "objective": {
+          "timeLimitS": 2400.0
+        }
+      },
+      "80 min": {
+        "objective": {
+          "timeLimitS": 4800.0
+        }
+      },
+      "120 min": {
+        "objective": {
+          "timeLimitS": 7200.0
+        }
+      }
+    }
+  }
+}
