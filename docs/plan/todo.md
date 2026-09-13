@@ -1164,6 +1164,200 @@ scores five per cent better and costs a second a step is not obviously better.
 hundred dives, and the difference between them is attributable to something.
 
 
+
+# Phase 5 — the Red Sea, and a vehicle that has no thrusters
+
+Everything above was built against one reef in Florida and one small ROV on a
+tether, and both of those choices are now load-bearing in ways nobody chose.
+The water has a density constant in it. The vehicle has six thrusters and a
+wrench, and every layer between a controller and the water assumes force.
+
+The work KAUST is doing is the reason to fix it: a hundred hectares at Shushah
+Island divided into operational grids, two million corals outplanted by 2030,
+monitored by AUVs and photogrammetry. Their water is the saltiest open sea on
+earth. Their vehicles include a Seaglider, which does not have a propeller.
+
+A Seaglider is also the vehicle that most exercises what this platform is for.
+It carries no Doppler log — too hungry for a ten-month mission — and hears no
+acoustic fix underwater. It dead reckons by running its own hydrodynamic model
+as a velocity sensor and does not see GPS again until it surfaces, hours later.
+The standard scientific product of a glider dive is the depth-averaged current,
+worked out from the gap between where it reckoned it would surface and where
+GPS says it did. That gap is the thing every other dive in this list treats as
+an error, and a glider hands it over as the result.
+
+---
+
+## 38. Water that has a density
+
+Salinity and temperature belong to the conditions, next to the current and the
+visibility, and density follows from them. At present `DENSITY_SEAWATER` is
+1025 and it is an argument to the vehicle's constructor, which puts the
+water's own property inside the vehicle — so a dive cannot ask for different
+water, and two dives in different seas are the same dive.
+
+Compare the two sites rather than a site against a constant. Looe Key in
+summer is 36 PSU at 29 °C, which the UNESCO equation of state makes 1022.8;
+the northern Red Sea is 40.6 PSU at 26 °C, which is 1027.3. On our BlueROV2
+that moves net buoyancy from −1.90 N to −1.42 N — a quarter of the vehicle's
+entire trim, and the depth loop's feed-forward with it. On a Seaglider it is
+more interesting still: a hull ballasted for ordinary seawater is 127 g buoyant
+in the Red Sea, and cancelling that costs 124 cc — a third of the working range
+of a buoyancy engine that is the vehicle's only means of propulsion.
+
+There is a second effect worth having. A depth gauge is a pressure sensor and a
+division, and the number it divides by is a density chosen on shore: one set
+for 1025 and flown in the Red Sea reads 100.22 m at a hundred. Small, but it is
+a bias rather than noise — the same fraction wrong at every depth, and worse
+the deeper the vehicle goes — which is the opposite of how every other error in
+this platform behaves, and today it cannot be simulated at all.
+
+**Done when:** a dive states the water it is in, the same vehicle floats
+differently in the Red Sea than in Florida, and a depth sensor trimmed for the
+wrong sea is wrong by the right amount.
+
+---
+
+## 39. A hull that is squeezed and chilled
+
+Volume is a constant in the package, and for a vehicle that works at five
+metres that is fine. For one that works at a thousand it is not: the hull
+compresses with pressure and shrinks when cold, and on a glider the volume
+that change accounts for is comparable to the whole authority of the buoyancy
+engine. Eriksen's flight model does not write V, it writes V(t, p, T), and the
+reason is that on this vehicle the difference flies it.
+
+**Done when:** a vehicle package states its compressibility and thermal
+expansion, and a dive to depth has to trim for the hull it will have down
+there rather than the one it had at the surface.
+
+---
+
+## 40. Propulsion that is not thrust
+
+A controller answers with a wrench, or with thruster commands, and the helm,
+the attitude guard, the allocator and the failsafe all assume one of those two
+is what a vehicle takes. A buoyancy glider takes neither. It is told how much
+to displace and where to put its mass, and its wings do the rest.
+
+So a third form: a vehicle package declares what it is commanded in, and a
+controller answers in the vehicle's own terms. The attitude guard becomes the
+vehicle's rather than the platform's along the way, because a guard that holds
+lean below thirty degrees is protecting an ROV from turning over and is
+strangling a glider whose entire method is to fly at a steep angle.
+
+**Done when:** two vehicles that are commanded in different units are flown by
+the same helm, and neither knows about the other's actuators.
+
+---
+
+## 41. The Seaglider
+
+The AUV of AUVs: 1.8 m, 52 kg, a thousand metres, a quarter of a metre a
+second, ten months in the water, and no propeller anywhere on it. It moves by
+displacing about 800 cc more or less than its own mass of seawater and letting
+a pair of wings turn falling into going somewhere, and it steers by rolling a
+mass inside itself.
+
+The flight model is Eriksen's and it is taken from the paper rather than
+invented: lift and drag parameterised on angle of attack and dynamic pressure,
+pitch as the sum of attack angle and glide angle, glide slopes from 0.2 to 3.
+Buoyancy from the difference between the vehicle's mass and the seawater its
+volume displaces, which is why 38 and 39 come first.
+
+What it cannot do is as much of the point as what it can. It cannot hover: a
+glider that stops flying falls. It cannot hold station, which is the first task
+this platform ever had. It cannot make headway against much more than 0.4 m/s,
+so three of the five waters in the matrix simply carry it away — and that is
+the envelope, not a defect to tune out.
+
+**Done when:** a Seaglider flies a sawtooth to depth and back on buoyancy
+alone, and refuses a task that asks it to hover instead of quietly failing at
+one.
+
+---
+
+## 42. Missions a glider can be given
+
+`hold-station` is impossible, `waypoints` is the wrong shape, and a survey
+flown as a lawnmower at constant altitude is a thing this vehicle cannot do.
+What it does instead is a **section** — a sawtooth along a line, sampling the
+water column as it goes; a **profile** — down to a depth and back, the unit a
+glider mission is actually built from; and a **virtual mooring** — holding a
+place by circling it, which is the closest a vehicle that cannot stop gets to
+staying put.
+
+**Done when:** a glider mission is stated in the terms a glider pilot uses, and
+the tasks an ROV flies and the tasks a glider flies live in the same list
+without either pretending to be the other.
+
+---
+
+## 43. Navigation by flight model, and the current as the answer
+
+A new way of knowing where you are, and the one this platform has been building
+towards without having an example of it. No Doppler log, no acoustic fix, no
+aiding of any kind between one surfacing and the next: the vehicle estimates
+its own speed through the water from the model it flies by, integrates that for
+hours, and finds out how wrong it was when GPS comes back.
+
+Then the difference between the reckoned surfacing position and the true one is
+divided by the time down, and that is the depth-averaged current — the thing a
+glider is sent out to measure. Every other row in the positioning table treats
+that difference as the error being studied. This one sells it.
+
+**Done when:** a glider surfaces, the gap between belief and truth is reported
+as a current, and the number is close to the current the dive was actually
+given.
+
+---
+
+## 44. Long missions, cheaply
+
+A glider dive cycle is hours and its endurance is months, against the twenty
+minutes every dive in this record has taken. The saving grace is that a glider
+is a water-column vehicle and not an imaging one: nothing about a section needs
+a camera, so nothing about it needs Isaac. Flown as physics alone, at a step
+chosen for the vehicle rather than for a renderer, a dive that takes six hours
+of simulated time need not take six hours of anybody's afternoon.
+
+**Done when:** a multi-day glider mission runs without a GPU, and a dive that
+does need pictures still gets them.
+
+---
+
+## 45. Shushah Island
+
+Their site, from their survey. The Red Sea Decade Expedition published the
+OceanXplorer multibeam as GeoTIFFs on Zenodo — 2,863 lines over 49,418 km²,
+one grid at 40 m over the deep survey and six at 5 m in the shallows — and the
+Allen Coral Atlas has benthic and geomorphic classes at 5 m over every reef
+shallower than fifteen metres. Between them that is bathymetry and habitat from
+the same kind of measured source Looe Key was built from, which is the standard
+this platform already holds itself to.
+
+The hundred hectares are divided into operational grids because that is how the
+restoration is actually run, and a grid cell is the natural unit of a
+monitoring mission.
+
+**Done when:** a dive can be flown over Shushah Island, and every height and
+every colony in it traces back to a published survey.
+
+---
+
+## 46. A picture you could reconstruct from
+
+Coverage is scored as area passed over, and that is not what a photogrammetric
+survey is for: a run that covers every square metre at the wrong altitude, or
+in a roll, or too fast for the shutter, produces images nothing can be built
+from and scores full marks. Overlap between frames, altitude held steady enough
+for scale, and motion slow enough to be sharp are what make a reconstruction
+possible.
+
+**Done when:** two surveys that cover the same ground score differently because
+one of them could be turned into a model and the other could not.
+
+
 ## What a dive is made of
 
 Six things, chosen separately, crossed at the moment somebody presses Dive.

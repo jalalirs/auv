@@ -78,6 +78,13 @@ class Navigation:
         self.dvl_noise = float(suite.get("dvlNoiseMs", 0.002))
         self.heading_accuracy = math.radians(float(suite.get("headingAccuracyDeg", 2.0)))
         self.depth_noise = float(suite.get("depthNoiseM", 0.02))
+        # A depth gauge is a pressure sensor and a division, and the number it
+        # divides by is a density somebody chose on shore. Get the water wrong
+        # and every depth is wrong in proportion: a gauge set for ordinary
+        # seawater, flown in the Red Sea, reads four tenths of a metre deep at
+        # a hundred. Both the same by default, which is a gauge that happens to
+        # suit its water — what every dive before this one assumed.
+        self.gauge_scale = float(suite.get("depthGaugeScale", 1.0))
 
         # What is deployed in this water, if anything.
         self.aiding = dict(aiding or {})
@@ -158,7 +165,13 @@ class Navigation:
         # Depth is not dead reckoned. Pressure is depth, to a centimetre or so,
         # for as long as the vehicle is in the water — which is why an AUV's
         # error is a horizontal error and never a vertical one.
-        self.believed[2] = float(position[2]) + float(self._noise.normal(0.0, self.depth_noise))
+        #
+        # Never a *random* vertical one, at least. A gauge calibrated for the
+        # wrong sea is biased rather than noisy: it does not wander, it reads
+        # the same fraction wrong at every depth, and it gets worse the deeper
+        # the vehicle goes.
+        self.believed[2] = (float(position[2]) * self.gauge_scale
+                            + float(self._noise.normal(0.0, self.depth_noise)))
 
         self.maybe_fix(t, position)
 
