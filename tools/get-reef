@@ -100,6 +100,91 @@ def read_band(scene: dict, key: str, box, samples: int) -> np.ndarray:
     return raw * scale + offset
 
 
+# How far each band gets into clear water, in metres — the same figures the
+# runtime fogs a dive with, so the correction here and the attenuation there
+# are the same physics read in opposite directions. Red is gone in four metres,
+# which is why a reef photographed from orbit is blue.
+REACHES_M = (4.0, 17.0, 26.0)          # red, green, blue
+
+
+def bottom_colour(colour, depth, seen, deep, land):
+    """Take the water back out of the picture.
+
+    A satellite photograph of a reef is not the reef's colour. It is the reef's
+    colour after the light has been down through fifteen metres of water and
+    back up again, and the sea has taken most of the red on the way. Handed to
+    a renderer as an albedo it gets attenuated a second time — so the seabed
+    comes out nearly black while the coral, which carries its own material,
+    stays lit above it. That is what the first reef dive looked like: pale
+    colonies floating over a dark nothing.
+
+    The inversion is the standard one. What the satellite sees is the deep
+    water's own colour, plus whatever the bottom sent back, dimmed by the trip:
+
+        seen = deep + (bottom - deep) · e^(-2·z/reach)
+
+    turned round. The deep-water colour is measured from this same picture
+    rather than assumed — it is sitting right there in the half of the frame
+    where the bottom is out of reach — and the depth is the one the ratio
+    already worked out, which is the part that makes this possible at all.
+
+    Red is the difficult one: gone in four metres means the correction is
+    e^(2z/4), which at fifteen metres is a factor of eighteen hundred applied
+    to sensor noise. So the trip is only unwound as far as the light plausibly
+    got, and past that the bottom is left the colour of the deepest ground that
+    was actually seen.
+    """
+    picture = np.transpose(colour, (1, 2, 0)).astype("float64") / 255.0
+    water = ~land & (deep | seen)
+    if not water.any():
+        return colour
+    far = np.array([np.median(picture[..., band][deep]) if deep.any() else 0.0
+                    for band in range(3)])
+
+    # Only unwind what can be unwound. Beyond this the exponent is amplifying
+    # noise rather than recovering a colour.
+    unwind_to = np.array([min(8.0, REACHES_M[0]), 18.0, 22.0])
+    out = picture.copy()
+    for band in range(3):
+        z = np.clip(np.nan_to_num(depth, nan=0.0), 0.0, unwind_to[band])
+        gain = np.exp(2.0 * z / REACHES_M[band])
+        recovered = far[band] + (picture[..., band] - far[band]) * gain
+        out[..., band] = np.where(seen, recovered, picture[..., band])
+
+    # Whatever is past the light goes the colour of the deepest ground that was
+    # actually seen, rather than the water's own blue.
+    if seen.any():
+        deepest = np.nanpercentile(np.where(seen, depth, np.nan), 90)
+        skirt = seen & (depth >= deepest)
+        if skirt.any():
+            out[deep] = out[skirt].mean(axis=0)
+    out[land] = picture[land]
+
+    # Not white balanced, and that is the finding rather than an omission.
+    #
+    # Balancing against the sand was the obvious next move — it is what a
+    # diver's camera does — and it made the reef worse: a pink crest over a
+    # cyan lagoon. The reason is in the constant at the top of this file. Red
+    # is gone in four metres. Over a reef in fifteen, the red band of a
+    # satellite picture holds no bottom signal at all, only sensor noise, and
+    # no amount of correctly-shaped exponent recovers information that was
+    # never recorded. Every band the water left is real; the one it took is
+    # gone, and balancing the other two against each other only spreads the
+    # missing one around.
+    #
+    # So what comes out of this is honest about what it is: the *structure* of
+    # the bottom — where the sand is, where the coral is, where the rubble is —
+    # in the two bands that survived. It is not the colour of the reef, and a
+    # renderer should take the shape of things from it and their colour from
+    # what they are.
+    lit = out[water]
+    if lit.size:
+        high = np.percentile(lit, 99.0)
+        if high > 1e-6:
+            out = out / high * 0.88
+    return (np.clip(out, 0.0, 1.0) * 255).astype("uint8").transpose(2, 0, 1)
+
+
 def read_colour(scene: dict, box, samples: int) -> np.ndarray:
     import rasterio
     from rasterio.warp import transform_bounds
@@ -245,10 +330,16 @@ def main() -> int:
     heights.tofile(field)
 
     colour = read_colour(scene, box, asked.samples)
+    corrected = bottom_colour(colour, depth, seen, deep, land)
+    picture = None
     try:
         from PIL import Image
         picture = into / (asked.name + "-colour.png")
-        Image.fromarray(np.transpose(colour, (1, 2, 0))).save(picture)
+        Image.fromarray(np.transpose(corrected, (1, 2, 0))).save(picture)
+        # The picture as the satellite took it, kept beside the corrected one:
+        # it is the evidence, and the corrected one is an inference from it.
+        Image.fromarray(np.transpose(colour, (1, 2, 0))).save(
+            into / (asked.name + "-as-seen.png"))
     except Exception:
         picture = None
 
@@ -274,6 +365,11 @@ def main() -> int:
         "medianDetailM": round(detail, 3),
         "toCalibrate": "ICESat-2 ATL24 crosses this reef; two granules would pin the scale",
         "colour": None if picture is None else picture.name,
+        "colourIs": ("bottom reflectance with the water column taken back out, in "
+                     "the bands that survived it — structure, not true colour. "
+                     "Red is gone in four metres, so a reef in fifteen has no red "
+                     "left to recover and this cannot say what colour the coral is."),
+        "colourAsSeen": None if picture is None else asked.name + "-as-seen.png",
         "heightfield": {"rows": asked.samples, "columns": asked.samples,
                         "format": "little-endian float32, row major, "
                                   "south to north then west to east",
