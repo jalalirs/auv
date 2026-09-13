@@ -208,6 +208,14 @@ services:
       # this machine as the people who use it reach it — which this host knows
       # and the control plane does not.
       CORAL_CITY_STREAM_HOST: ${CORAL_CITY_STREAM_HOST:-127.0.0.1}
+      # A model a dive may be flown by, passed on to the dives that ask to be.
+      # Only those: a dive that does not name a controller which needs one gets
+      # no network and no key, which is what every dive an institution submits
+      # is and should stay.
+      CORAL_CITY_MODEL_URL: ${CORAL_CITY_MODEL_URL:-}
+      CORAL_CITY_MODEL_KEY: ${CORAL_CITY_MODEL_KEY:-}
+      CORAL_CITY_MODEL: ${CORAL_CITY_MODEL:-}
+      CORAL_CITY_MODEL_MAX_TOKENS: ${CORAL_CITY_MODEL_MAX_TOKENS:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${CORAL_CITY_AGENT_HOST_WORKDIR:-/var/lib/coral-city/work}:/work
