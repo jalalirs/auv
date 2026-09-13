@@ -1357,6 +1357,73 @@ possible.
 **Done when:** two surveys that cover the same ground score differently because
 one of them could be turned into a model and the other could not.
 
+---
+
+## 47. Tasks a reef programme actually sets
+
+The eleven tasks in the matrix are manoeuvres with a score attached — reach a
+point, cover a rectangle, hold a station. They are the right tasks for asking
+whether a controller can fly, and they are nobody's job. No reef programme has
+ever funded a dive to hold station for five minutes.
+
+What KAUST is actually doing at Shushah Island is a hundred hectares cut into
+operational grids, two million corals outplanted by 2030, in-situ nurseries
+making a hundred thousand a year, and the whole of it monitored by vehicles
+carrying cameras. So: **monitor a grid cell** to a standard a reconstruction
+can be built from, and come back with what is on it; **outplant** — visit a
+set of planting positions, place something at each, and log where it went;
+**census** — find the colonies in an area and say which are bleached; **tend a
+nursery** — visit every structure and image it.
+
+These are not harder than what is already here. They are the same geometry
+with the work put back in, and the difference is that somebody would pay for
+the answer. It also gives the model-driven controller and the model-driven
+planner something worth being asked, which neither has had.
+
+**Done when:** a dive can be given a job from the restoration's own vocabulary,
+and what it comes back with is a finding rather than a score.
+
+---
+
+## 48. A dive flown from words, end to end
+
+Drafting exists: the control plane asks a model for a plan document, checks it
+against the vehicle's envelope, and refuses what the hull cannot do. It has
+never flown. Nothing connects the plan a model wrote to a dive that runs, so
+the language layer is a demonstration of itself.
+
+Close it. Somebody types what they want, sees the plan it became, changes one
+thing about it, presses Dive, and watches the vehicle fly the document that
+came back. The same artefact all the way down — written by a model, read by a
+person, flown by a controller, kept with the run and replayable afterwards.
+
+**Done when:** a dive in the record has a plan nobody wrote by hand, and the
+words that produced it are stored beside it.
+
+---
+
+## 49. A controller that is a model
+
+`ponder` is the shape of a model-driven controller with the model left out:
+the fast loop flies whatever plan it holds, the slow loop thinks on its own
+clock and is charged in simulated seconds, a decision that fails leaves the
+last one flying. All of it built and tested around a `_decide` that returns
+the same route the platform's planner would.
+
+Put something in it. A model that is handed the goal, what the vehicle
+believes about itself, and — this is the part worth building for — what the
+camera is looking at, and that answers with a plan it has changed its mind
+about. A survey that sees bleaching and stops to look. A transect that finds
+the reef is not where the chart said.
+
+Then the benchmark has two contestants and item 37 finally means something:
+two controllers over the same hundred dives, and the difference attributable
+to something. Every dive in this record so far was flown by the same
+arrangement of PID loops.
+
+**Done when:** a model flies a dive it was not given a route for, and the
+record says what it decided, when, what it cost in tokens and seconds, and
+whether it did better than the loops.
 
 ## What a dive is made of
 
