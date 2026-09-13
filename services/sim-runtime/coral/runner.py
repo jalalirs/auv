@@ -451,6 +451,22 @@ class Dive:
                          at=[round(float(v), 2) for v in self.position],
                          why=said[1])
                 asked = said[0]
+        if asked is None and not self.body.model.can_hover:
+            # A vehicle that cannot hold a depth is not lowered to one. A
+            # glider goes over the side of a ship and starts by falling, and
+            # where it starts falling from is the surface.
+            #
+            # The default is the middle of the water, which is right for
+            # something that can stop there and wrong for something that
+            # cannot: this put a Seaglider on the seabed of a six-hundred-metre
+            # site and then asked it to profile the top three hundred, so it
+            # spent the whole dive climbing and never flew the task at all.
+            top = 0.0 if self.water_level is None else float(self.water_level)
+            self.position = np.array([float(self.position[0]), float(self.position[1]),
+                                      top - self.half_height - 0.5])
+            self.say("spawned", at=[round(float(v), 2) for v in self.position],
+                     why="launched from the surface: this vehicle cannot hold a depth")
+            asked = [float(v) for v in self.position]
         if asked is None:
             where, why = self.spawn(corner, far)
             if where is not None:

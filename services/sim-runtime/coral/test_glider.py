@@ -194,3 +194,24 @@ def test_a_glider_flies_a_profile_down_and_back():
     assert detail["deepestM"] > 55.0, f"it should have got down: {detail}"
     assert dive.task.legs >= 1, "and turned round"
     assert float(np.linalg.norm(dive.position[:2])) > 50.0, "making ground while it did it"
+
+
+def test_a_hull_that_cannot_hover_is_the_one_launched_from_the_surface():
+    """The rule behind where a glider starts.
+
+    The default start is the middle of the water, which is right for something
+    that can stop there. It put a Seaglider on the seabed of a six-hundred-metre
+    site and then asked it to profile the top three hundred, so the dive was
+    spent climbing and the task was never flown. A vehicle that cannot hold a
+    depth is launched from the surface instead, the way one goes over the side
+    of a ship.
+
+    Only the decision is checked here. The placement itself happens while a
+    scene is being opened and wants a scene to test against; what it turns on
+    is this.
+    """
+    glider = Hydrodynamics.from_package(PACKAGE)
+    rov = Hydrodynamics.from_package(
+        pathlib.Path(__file__).resolve().parents[3] / "catalog/vehicles/bluerov2/dynamics.json")
+    assert not glider.can_hover, "no thrusters, so no holding anything"
+    assert rov.can_hover
