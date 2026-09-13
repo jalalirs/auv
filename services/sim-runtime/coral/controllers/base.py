@@ -67,10 +67,24 @@ class Command:
 
     wrench: np.ndarray | None = None       # body frame, newtons and newton-metres
     thrusters: np.ndarray | None = None    # per thruster, in [-1, 1]
+    # What a vehicle that is not moved by thrust is asked for, in its own
+    # terms. A buoyancy glider has no propeller anywhere on it: it is told how
+    # much water to displace and where to put its mass, and its wings turn
+    # falling into going somewhere. There is no wrench to ask for and no
+    # thruster to command, and a platform whose only two answers are those has
+    # quietly decided what kind of vehicle a vehicle is.
+    #
+    # Deliberately a plain mapping. What the actuators are belongs to the
+    # vehicle's package, not to this file, and a helm that had to know the
+    # names would be the same assumption in a different place.
+    actuators: dict | None = None
 
     @classmethod
     def nothing(cls) -> "Command":
         return cls(wrench=np.zeros(6))
+
+    def is_empty(self) -> bool:
+        return self.wrench is None and self.thrusters is None and self.actuators is None
 
 
 @dataclass

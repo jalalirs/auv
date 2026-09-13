@@ -83,7 +83,7 @@ class Helm:
         # vehicle settles onto the guard rather than into the coral.
         self.parameters = {
             "attitudeGuard": Parameter(
-                "attitudeGuard", 0.5, 0.0, 1.0, "",
+                "attitudeGuard", float(getattr(model, "attitude_guard", 0.5)), 0.0, 1.0, "",
                 "the share of the hull's righting moment a command may lean on; 0 turns the guard off"),
             "bottomGuardM": Parameter(
                 "bottomGuardM", 0.5, 0.0, 5.0, "m",
@@ -91,6 +91,9 @@ class Helm:
         }
         self.guarded = 0
         self.grounded = 0
+        # What the last controller asked of a vehicle that is not moved by
+        # thrust, for the dive to apply and the console to show.
+        self.actuators: dict | None = None
         # What the guard actually cost, rather than how often it spoke. A dive
         # can be held back for its whole length and score two per cent with
         # nothing in the record saying the vehicle was never allowed to try —
@@ -365,6 +368,15 @@ class Helm:
         if chosen is not self.flying:
             self._hand_over(chosen, seen)
         asked: Command = chosen.observe(seen)
+        # A vehicle asked for in its own terms is handed over untouched. Not
+        # guarded, because the attitude guard defends a hull from the moment
+        # its own thrusters produce and a glider has none — and because what a
+        # guard would be protecting here is the vehicle's whole method: a
+        # glider flies at twenty to forty-five degrees of pitch on purpose, and
+        # a rule that holds lean under thirty would stop it flying at all.
+        self.actuators = asked.actuators
+        if asked.actuators is not None:
+            return np.zeros(len(self.allocator.matrix[0]) if len(self.allocator.matrix) else 0)
         if asked.thrusters is not None:
             return np.clip(asked.thrusters, -1.0, 1.0)
         wrench = asked.wrench if asked.wrench is not None else np.zeros(6)
