@@ -53,14 +53,29 @@ def platform():
 
 
 def combinations(doubts: dict):
-    """Every way the doubts could resolve, as (label, parameters)."""
+    """Every way the doubts could resolve, as (chosen, water, objective).
+
+    A doubt may change the water or it may change what was asked for, and both
+    belong here. The first version could only vary conditions, and that quietly
+    decided what kind of question this tool could answer: every scenario had
+    the same two hours to work in, so a mission that was merely slower was
+    indistinguishable from one that was impossible, and the only advice it
+    could ever give was "do not go". The useful answer was "allow twice as
+    long", and it could not be reached from here.
+
+    A doubt says so by putting an `objective` block in its value; everything
+    else is the water, as before.
+    """
     names = list(doubts)
     for picked in itertools.product(*[list(doubts[n]) for n in names]):
         chosen = dict(zip(names, picked))
-        water = {}
+        water, objective = {}, {}
         for dimension, which in chosen.items():
             said = doubts[dimension][which]
             for key, value in said.items():
+                if key == "objective":
+                    objective.update(value)
+                    continue
                 # Failures accumulate rather than replace: two things going
                 # wrong on one dive is the case worth flying, not the case to
                 # drop because two dimensions both wanted the same key.
@@ -70,7 +85,7 @@ def combinations(doubts: dict):
                     water.setdefault("fitted", {}).update(value)
                 else:
                     water[key] = value
-        yield chosen, water
+        yield chosen, water, objective
 
 
 def fly_them(mission: dict, at_once: int, again: bool):
@@ -91,7 +106,7 @@ def fly_them(mission: dict, at_once: int, again: bool):
                 already[dive["name"]] = dive["id"]
 
     asked, done = [], []
-    for i, (chosen, water) in enumerate(wanted, start=1):
+    for i, (chosen, water, changes) in enumerate(wanted, start=1):
         label = mission["name"] + " ~ " + " · ".join(f"{k}:{v}" for k, v in chosen.items())
         if label in already:
             continue
@@ -99,11 +114,12 @@ def fly_them(mission: dict, at_once: int, again: bool):
             time.sleep(10)
             asked = [one for one in asked if still_going(p, one)]
         parameters = {**base, **water}
+        objective = {**mission["objective"], **changes}
         conditions = p.call("POST", f"/api/v1/organisations/{p.org}/conditions", {
             "kind": "constructed", "name": label[:120], "parameters": parameters})
         dive = p.call("POST", f"/api/v1/organisations/{p.org}/dives", {
             "name": label, "cityVersionId": city, "vehicleVersionId": vehicle,
-            "conditionsId": conditions["id"], "objective": mission["objective"]})
+            "conditionsId": conditions["id"], "objective": objective})
         run = p.call("POST", f"/api/v1/dives/{dive['id']}/runs",
                      {"queueId": queue["id"], "mode": "batch", "runtimeVersion": runtime})
         asked.append({"dive": dive["id"], "run": run["id"], "chosen": chosen})
