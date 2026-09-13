@@ -210,16 +210,29 @@ def name_of(task: str, water: str, technology: str) -> str:
 
 
 def flown(platform: Platform) -> dict:
-    """What is already in the record, by the name the matrix gives it."""
-    already = {}
+    """What is already in the record, by the name the matrix gives it.
+
+    The newest dive under a name wins. A name is not unique — `--again` flies
+    a combination a second time and the record keeps both — and reading
+    whichever came back first meant reading whichever the listing happened to
+    put first. A fix was verified against the broken run it had just replaced,
+    numbers identical to three decimal places, and the fix looked like it had
+    done nothing.
+    """
+    already, when = {}, {}
     for dive in platform.call("GET", f"/api/v1/organisations/{platform.org}/dives")["dives"]:
-        if " · " not in dive["name"]:
+        name = dive["name"]
+        if " · " not in name:
+            continue
+        made = dive.get("createdAt") or ""
+        if name in when and made <= when[name]:
             continue
         runs = platform.call("GET", f"/api/v1/dives/{dive['id']}/runs")["runs"]
         for run in runs:
             if run["state"] in ("succeeded", "failed"):
-                already[dive["name"]] = {"dive": dive["id"], "run": run["id"],
-                                         "state": run["state"], "outcome": run.get("outcome") or {}}
+                already[name] = {"dive": dive["id"], "run": run["id"],
+                                 "state": run["state"], "outcome": run.get("outcome") or {}}
+                when[name] = made
                 break
     return already
 
