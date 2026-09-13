@@ -23,7 +23,7 @@ import math
 import numpy as np
 
 KINDS = ("hold-station", "waypoints", "transect", "survey", "reach", "search",
-         "treat", "inspect", "revisit", "dock", "wait", "mission", "return")
+         "treat", "outplant", "inspect", "revisit", "dock", "wait", "mission", "return")
 
 
 def wrap(angle: float) -> float:
@@ -43,15 +43,24 @@ class Task:
         self.effort = 0.0
         self.samples = 0
         self.done = False
+        self.believed: np.ndarray | None = None
 
     # ── what every task shares ───────────────────────────────────────────────
 
-    def step(self, t: float, position, heading: float, floor: float | None, commands) -> None:
+    def step(self, t: float, position, heading: float, floor: float | None, commands,
+             believed=None) -> None:
         if self.started_t is None:
             self.started_t = t
         self.t = t
         self.samples += 1
         self.effort += float(np.mean(np.abs(np.asarray(commands, dtype=float)))) if len(commands) else 0.0
+        # Where the vehicle thinks it is, for the few tasks that need to know.
+        # Kept on the task rather than added to every `judge` signature: a task
+        # is scored against the truth and that is the rule, but a task that
+        # models somebody *doing* something has to know when the vehicle
+        # believed it had arrived, because that is when the work happens. The
+        # gap between the two is then the finding rather than the error.
+        self.believed = None if believed is None else np.asarray(believed, dtype=float)
         if not self.done:
             self.judge(t - self.started_t, np.asarray(position, dtype=float), float(heading), floor)
 
@@ -755,6 +764,168 @@ class Treat(Task):
         return self.done and self.score() < 0.999
 
 
+class Outplant(Task):
+    """Plant corals where the plan said, and find out where they actually went.
+
+    The work KAUST is doing at Shushah Island is two million corals into the
+    seabed by 2030, a hundred hectares cut into grids, and every one of them is
+    meant to go somewhere in particular — nurseries are stocked by species and
+    genotype, and a restoration that cannot say where it put things is a
+    restoration nobody can come back and measure.
+
+    Which makes this the task that asks the platform's own question hardest.
+    The vehicle plants where it *believes* the mark is; the coral ends up where
+    the vehicle *actually* is. Nothing about the planting fails when navigation
+    is bad — the manipulator works perfectly, the coral goes in, the log says
+    done — and the colony is five metres from where the plan wanted it. On an
+    array you plant on the mark. On dead reckoning you plant a reef nobody can
+    find again, and the only way to know is to measure the truth against the
+    belief, which is the one thing a real vehicle cannot do and this can.
+
+    So the score is not how many were planted. It is how many were planted
+    where they were meant to go.
+    """
+
+    kind = "outplant"
+    name = "Outplant coral"
+
+    def __init__(self, objective, began_at, heading) -> None:
+        super().__init__(objective, began_at, heading)
+        # How close the vehicle has to believe it is before it plants, how low
+        # and how slow — a manipulator needs the vehicle still — and how long
+        # it has to stay there to get the coral in the ground.
+        self.place = float(objective.get("placeM", 0.5))
+        self.altitude = float(objective.get("altitudeM", 1.0))
+        self.band = float(objective.get("altitudeBandM", 0.5))
+        self.speed_limit = float(objective.get("speedMs", 0.2))
+        self.hold = float(objective.get("holdS", 5.0))
+        # How far from its mark a coral may land and still count. Wider than
+        # `placeM` on purpose: one is what the vehicle is trying to do, the
+        # other is what the programme will accept.
+        self.tolerance = float(objective.get("toleranceM", 1.0))
+        self.limit = float(objective.get("timeLimitS", 1800.0))
+
+        self.marks: list[np.ndarray] = []
+        for said in objective.get("positions", []) or []:
+            where = self.somewhere(said)
+            if where is not None:
+                self.marks.append(where)
+        cell = objective.get("cell")
+        if not self.marks and isinstance(cell, dict):
+            self.marks = self._grid(cell)
+        self.marks = self.marks[:400]
+
+        self.at = 0
+        self.planted_at: list[np.ndarray] = []       # where each one actually went
+        self.errors: list[float] = []                # and how far that was from its mark
+        self.since: float | None = None
+        self.last: np.ndarray | None = None
+        self.last_t: float | None = None
+        self.speed = 0.0
+        self.altitude_now: float | None = None
+
+    def _grid(self, cell: dict) -> list[np.ndarray]:
+        """Planting positions laid out over a cell, the way a grid is worked.
+
+        A restoration does not plant at scattered points; it works a cell in
+        rows at a stated spacing, because that is what can be checked off and
+        come back to.
+        """
+        width = float(cell.get("widthM", 10.0))
+        height = float(cell.get("heightM", 10.0))
+        spacing = max(0.25, float(cell.get("spacingM", 2.0)))
+        marks = []
+        rows = max(1, int(height // spacing) + 1)
+        columns = max(1, int(width // spacing) + 1)
+        for row in range(rows):
+            across = range(columns) if row % 2 == 0 else reversed(range(columns))
+            for column in across:
+                marks.append(self.out_from_start(column * spacing, row * spacing))
+        return marks
+
+    def judge(self, elapsed, position, heading, floor) -> None:
+        if self.last is not None and self.last_t is not None and elapsed > self.last_t:
+            self.speed = float(np.linalg.norm(position - self.last) / (elapsed - self.last_t))
+        self.last, self.last_t = position.copy(), elapsed
+        self.altitude_now = None if floor is None else float(position[2] - floor)
+
+        if self.at >= len(self.marks) or elapsed >= self.limit:
+            self.done = True
+            return
+
+        mark = self.marks[self.at]
+        # Against belief, because this is the vehicle deciding it has arrived.
+        # It has no other way to decide, and neither does a real one.
+        here = position if self.believed is None else self.believed
+        near = float(np.hypot(here[0] - mark[0], here[1] - mark[1])) <= self.place
+        low = (self.altitude_now is not None
+               and self.altitude_now <= self.altitude + self.band)
+        still = self.speed <= self.speed_limit
+        if not (near and low and still):
+            self.since = None
+            return
+        if self.since is None:
+            self.since = float(elapsed)
+        if elapsed - self.since < self.hold:
+            return
+        # In the ground. Where it is, is where the vehicle is — not where the
+        # vehicle thought it was, and not where the plan asked for.
+        self.planted_at.append(position[:2].copy())
+        self.errors.append(float(np.hypot(position[0] - mark[0], position[1] - mark[1])))
+        self.at += 1
+        self.since = None
+        if self.at >= len(self.marks):
+            self.done = True
+
+    def on_the_mark(self) -> int:
+        return int(sum(1 for e in self.errors if e <= self.tolerance))
+
+    def score(self) -> float:
+        if not self.marks:
+            return 0.0
+        return float(self.on_the_mark()) / float(len(self.marks))
+
+    def says(self) -> str:
+        if not self.marks:
+            return "nowhere to plant"
+        if not self.errors:
+            return f"0 of {len(self.marks)} planted"
+        return (f"{len(self.errors)} of {len(self.marks)} planted, "
+                f"{self.on_the_mark()} on the mark, "
+                f"{float(np.mean(self.errors)):.2f} m out on average")
+
+    def detail(self) -> dict:
+        return {
+            "planted": len(self.errors),
+            "of": len(self.marks),
+            "onTheMark": self.on_the_mark(),
+            "toleranceM": self.tolerance,
+            "placeM": self.place,
+            "meanErrorM": round(float(np.mean(self.errors)), 3) if self.errors else None,
+            "worstErrorM": round(float(max(self.errors)), 3) if self.errors else None,
+            # Where every coral actually went. The point of keeping it is that
+            # a restoration has to be able to go back and find what it planted,
+            # and this is the only record of the difference between the map and
+            # the reef.
+            "wentTo": [[round(float(p[0]), 2), round(float(p[1]), 2)] for p in self.planted_at],
+        }
+
+    def geometry(self) -> dict:
+        drawn = {"marks": [{"x": float(m[0]), "y": float(m[1]), "done": i < len(self.errors)}
+                           for i, m in enumerate(self.marks)]}
+        if self.planted_at:
+            drawn["planted"] = [{"x": float(p[0]), "y": float(p[1])} for p in self.planted_at]
+        return drawn
+
+    def goal(self) -> dict:
+        return {"kind": "visit",
+                "points": [[float(v) for v in m] for m in self.marks],
+                "radiusM": self.place, "holdS": self.hold, "altitudeM": self.altitude}
+
+    def failed(self) -> bool:
+        return self.done and self.score() < 0.999
+
+
 class Inspect(Task):
     """Go round a thing, keeping it in frame from a fixed distance.
 
@@ -1131,6 +1302,7 @@ class Unavailable(Task):
 
 
 TASKS = {"hold-station": HoldStation, "waypoints": Waypoints, "transect": Transect,
+         "outplant": Outplant,
          "survey": Survey, "return": Return, "reach": Reach, "search": Search,
          "treat": Treat, "inspect": Inspect, "revisit": Revisit, "dock": Dock,
          "wait": Wait}

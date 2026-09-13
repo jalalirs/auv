@@ -1503,7 +1503,8 @@ class Dive:
             if self.seabed is not None:
                 floor = self.seabed.under(float(self.position[0]), float(self.position[1]))
             self.task.step(self.simulated, self.position,
-                           float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0])), floor, self.commands)
+                           float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0])), floor, self.commands,
+                           believed=None if self.navigation is None else self.navigation.believed)
         if self.recorder is not None:
             self.recorder.step(self)
         # Every five seconds of simulated time. One a second put four hundred
