@@ -841,6 +841,7 @@ class Dive:
         self.current = np.array([speed * np.cos(angle), speed * np.sin(angle), 0.0])
         visibility = parameters.get("visibilityM")
         self.visibility_m = None if visibility in (None, "", 0) else float(visibility)
+        self.read_the_water(parameters)
         # What is deployed in this water to fix a position with, if anything.
         # The vehicle's instruments are the vehicle's; this is the water's, and
         # a dive is one crossed with the other.
@@ -893,12 +894,63 @@ class Dive:
     def sensors_are_out(self) -> bool:
         return self.simulated < self.sensors_out_until
 
+    def read_the_water(self, parameters: dict) -> None:
+        """How dense this water is, and what the depth gauge was set for.
+
+        Density belonged to the vehicle: it was an argument to the model's
+        constructor with a constant behind it, so a dive could not ask for
+        different water and Florida and the Red Sea were the same sea. It is
+        the water's property and it belongs here, beside the current.
+
+        Stated either way round. `salinityPsu` and `temperatureC` are what an
+        oceanographer has and what a CTD reads, and the equation of state turns
+        them into a density; `densityKgM3` is for when somebody has measured
+        the answer directly and would rather not be second-guessed. Water that
+        says nothing keeps the constant, so every dive already in the record
+        still means what it meant.
+        """
+        from hydrodynamics import DENSITY_SEAWATER, density_of
+
+        self.salinity_psu = parameters.get("salinityPsu")
+        self.temperature_c = parameters.get("temperatureC")
+        stated = parameters.get("densityKgM3")
+        if stated not in (None, ""):
+            self.density = float(stated)
+        elif self.salinity_psu not in (None, "") and self.temperature_c not in (None, ""):
+            self.salinity_psu = float(self.salinity_psu)
+            self.temperature_c = float(self.temperature_c)
+            self.density = density_of(self.salinity_psu, self.temperature_c)
+        else:
+            self.density = DENSITY_SEAWATER
+        # The water the vehicle is actually floating in. Buoyancy, the pressure
+        # the depth gauge feels, and everything downstream of both follow this
+        # rather than a constant compiled into the runtime.
+        if self.body is not None and getattr(self.body, "model", None) is not None:
+            self.body.model.density = self.density
+        # What the depth gauge was calibrated against. A pressure gauge is a
+        # density and a multiplication, so one set for ordinary seawater and
+        # flown in the Red Sea reads deep — by four tenths of a metre at a
+        # hundred, which is a navigation error and not a rounding one. Unstated
+        # means a gauge that happens to be right for the water it is in, which
+        # is the assumption every dive so far has quietly made.
+        calibrated = parameters.get("depthGaugeDensityKgM3")
+        self.depth_gauge_density = (self.density if calibrated in (None, "")
+                                    else float(calibrated))
+
     def conditions_said(self) -> dict:
         speed = float(np.hypot(self.current[0], self.current[1]))
         heading = (90.0 - np.degrees(np.arctan2(self.current[1], self.current[0]))) % 360.0 if speed > 1e-9 else 0.0
-        return {"currentMetresPerSecond": round(speed, 3), "currentHeadingDeg": round(float(heading), 1),
+        said = {"currentMetresPerSecond": round(speed, 3), "currentHeadingDeg": round(float(heading), 1),
                 "current": [round(float(v), 4) for v in self.current[:2]],
-                "visibilityM": self.visibility_m}
+                "visibilityM": self.visibility_m,
+                "densityKgM3": round(float(self.density), 3)}
+        if self.salinity_psu is not None:
+            said["salinityPsu"] = round(float(self.salinity_psu), 2)
+        if self.temperature_c is not None:
+            said["temperatureC"] = round(float(self.temperature_c), 2)
+        if abs(self.depth_gauge_density - self.density) > 1e-9:
+            said["depthGaugeDensityKgM3"] = round(float(self.depth_gauge_density), 3)
+        return said
 
     def begin_task(self, objective, again: bool = False) -> None:
         """Where the dive begins is where its task is measured from.
@@ -972,7 +1024,11 @@ class Dive:
         try:
             from navigation import Navigation
 
-            self.navigation = Navigation(suite={**self.navigation_suite(), **self.fitted},
+            # Pressure is the water's; what the gauge makes of it is the
+            # vehicle's. The ratio of the two is the error, and it is one the
+            # water can cause on its own.
+            gauge = {"depthGaugeScale": float(self.density) / float(self.depth_gauge_density)}
+            self.navigation = Navigation(suite={**self.navigation_suite(), **gauge, **self.fitted},
                                          aiding=self.aiding,
                                          began_at=self.position,
                                          seed=int(self.seed()))

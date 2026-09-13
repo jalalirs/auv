@@ -42,9 +42,46 @@ import numpy as np
 # Seawater at survey depth and temperature. Fresh water is 998, and the eight
 # per cent difference is more than the uncertainty in the drag coefficients, so
 # a tank test and an ocean dive are not interchangeable.
+#
+# Kept as the default for water that does not say what it is, so that a dive
+# briefed before conditions carried a salinity floats exactly as it used to.
+# Water that does say gets `density_of` instead.
 DENSITY_SEAWATER = 1025.0
 DENSITY_FRESHWATER = 998.0
 GRAVITY = 9.80665
+
+
+def density_of(salinity_psu: float, temperature_c: float) -> float:
+    """Seawater density at the surface, kg/m³, from salinity and temperature.
+
+    The UNESCO 1983 equation of state (EOS-80) at one atmosphere, which is the
+    published standard and is worth having verbatim rather than approximated:
+    it is right to a thousandth of a kilo per cubic metre against the check
+    values in the tables, and the whole reason this matters is a difference of
+    four.
+
+    Four is not a rounding error here. Looe Key in summer is 36 PSU at 29 °C,
+    which is 1022.8; the northern Red Sea is 40.6 PSU at 26 °C, which is
+    1027.3. The same hull is a quarter of a newton heavier in one than the
+    other, and a quarter of a newton is a fifth of what our BlueROV2 is out of
+    trim by in the first place. On a buoyancy glider, whose only propulsion is
+    displacing a few hundred cubic centimetres more or less than it weighs, the
+    same difference eats half the engine.
+
+    Pressure is deliberately not in this. A hull that is squeezed at depth
+    changes the other side of the same sum, and that belongs to the vehicle
+    rather than to the water.
+    """
+    s, t = float(salinity_psu), float(temperature_c)
+    if s < 0.0:
+        raise ValueError(f"salinity cannot be negative: {s}")
+    pure = (999.842594 + 6.793952e-2 * t - 9.095290e-3 * t ** 2
+            + 1.001685e-4 * t ** 3 - 1.120083e-6 * t ** 4 + 6.536332e-9 * t ** 5)
+    a = (8.24493e-1 - 4.0899e-3 * t + 7.6438e-5 * t ** 2
+         - 8.2467e-7 * t ** 3 + 5.3875e-9 * t ** 4)
+    b = -5.72466e-3 + 1.0227e-4 * t - 1.6546e-6 * t ** 2
+    c = 4.8314e-4
+    return pure + a * s + b * s ** 1.5 + c * s ** 2
 
 
 @dataclass

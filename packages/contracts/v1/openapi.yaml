@@ -3190,7 +3190,29 @@ components:
         name: { type: string }
         observedAt: { type: string, format: date-time, nullable: true }
         sources: { type: array, items: { type: object } }
-        parameters: { type: object }
+        parameters:
+          type: object
+          description: >
+            What the water is doing, left open because its shape belongs to the
+            runtime that reads it rather than to this contract. What the
+            simulation runtime understands today:
+            `currentMetresPerSecond` and `currentHeadingDeg`, the current as a
+            speed and the heading it flows towards;
+            `visibilityM`, how far the camera can see;
+            `salinityPsu` and `temperatureC`, which give the water its density
+            through the UNESCO equation of state — the northern Red Sea is
+            40.6 PSU at 26 °C and holds a hull up measurably better than the
+            36 PSU of a Florida reef;
+            `densityKgM3`, for water somebody has measured directly rather than
+            inferred;
+            `depthGaugeDensityKgM3`, the density the vehicle's pressure gauge
+            was calibrated against, so that a gauge set for the wrong sea reads
+            the wrong depth by the right amount;
+            `positioning`, what is deployed in this water to fix a position
+            with; `fitted`, which of the vehicle's own instruments are shipped
+            for this dive; and `failures`, things that go wrong on the clock.
+            Water that states none of it floats a vehicle exactly as every dive
+            in the record already did.
         orgId: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
