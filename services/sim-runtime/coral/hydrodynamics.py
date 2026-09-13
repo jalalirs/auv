@@ -51,7 +51,8 @@ DENSITY_FRESHWATER = 998.0
 GRAVITY = 9.80665
 
 
-def density_of(salinity_psu: float, temperature_c: float) -> float:
+def density_of(salinity_psu: float, temperature_c: float,
+               pressure_dbar: float = 0.0) -> float:
     """Seawater density at the surface, kg/m³, from salinity and temperature.
 
     The UNESCO 1983 equation of state (EOS-80) at one atmosphere, which is the
@@ -68,11 +69,13 @@ def density_of(salinity_psu: float, temperature_c: float) -> float:
     displacing a few hundred cubic centimetres more or less than it weighs, the
     same difference eats half the engine.
 
-    Pressure is deliberately not in this. A hull that is squeezed at depth
-    changes the other side of the same sum, and that belongs to the vehicle
-    rather than to the water.
+    Depth is the high-pressure half of the same equation, and it is not small:
+    water at a thousand metres is 0.415% denser than the same water at the
+    surface, which is four kilos a cubic metre — as much as the whole
+    difference between a Florida reef and the Red Sea. A glider working the
+    water column crosses that every dive.
     """
-    s, t = float(salinity_psu), float(temperature_c)
+    s, t, p = float(salinity_psu), float(temperature_c), float(pressure_dbar)
     if s < 0.0:
         raise ValueError(f"salinity cannot be negative: {s}")
     pure = (999.842594 + 6.793952e-2 * t - 9.095290e-3 * t ** 2
@@ -81,7 +84,24 @@ def density_of(salinity_psu: float, temperature_c: float) -> float:
          - 8.2467e-7 * t ** 3 + 5.3875e-9 * t ** 4)
     b = -5.72466e-3 + 1.0227e-4 * t - 1.6546e-6 * t ** 2
     c = 4.8314e-4
-    return pure + a * s + b * s ** 1.5 + c * s ** 2
+    surface = pure + a * s + b * s ** 1.5 + c * s ** 2
+    if p <= 0.0:
+        return surface
+    # The secant bulk modulus, in bars, which is why the pressure is divided by
+    # ten on the way in: this part of EOS-80 is written in bars and the rest of
+    # this platform counts depth in metres, and a decibar is near enough a
+    # metre of seawater to be the reason oceanographers use it.
+    bar = p / 10.0
+    kw = (19652.21 + 148.4206 * t - 2.327105 * t ** 2
+          + 1.360477e-2 * t ** 3 - 5.155288e-5 * t ** 4)
+    k0 = (kw + s * (54.6746 - 0.603459 * t + 1.09987e-2 * t ** 2 - 6.1670e-5 * t ** 3)
+          + s ** 1.5 * (7.944e-2 + 1.6483e-2 * t - 5.3009e-4 * t ** 2))
+    aw = 3.239908 + 1.43713e-3 * t + 1.16092e-4 * t ** 2 - 5.77905e-7 * t ** 3
+    aa = aw + s * (2.2838e-3 - 1.0981e-5 * t - 1.6078e-6 * t ** 2) + 1.91075e-4 * s ** 1.5
+    bw = 8.50935e-5 - 6.12293e-6 * t + 5.2787e-8 * t ** 2
+    bb = bw + s * (-9.9348e-7 + 2.0816e-8 * t + 9.1697e-10 * t ** 2)
+    k = k0 + aa * bar + bb * bar ** 2
+    return surface / (1.0 - bar / k)
 
 
 @dataclass
@@ -128,6 +148,17 @@ class Hydrodynamics:
     thrusters: list[Thruster] = field(default_factory=list)
     density: float = DENSITY_SEAWATER
 
+    # How the hull itself answers the water it is in. Both zero by default,
+    # which is a rigid hull of fixed volume — what every vehicle here was
+    # until now, and near enough true for an ROV whose whole working range is
+    # a hundred metres. It stops being true the moment something goes deep:
+    # at a thousand metres a hull squeezed at the same rate as seawater has
+    # lost half a per cent of its volume, and on a glider that is most of the
+    # buoyancy engine.
+    compressibility_per_dbar: float = 0.0
+    thermal_expansion_per_c: float = 0.0
+    reference_temperature_c: float = 20.0
+
     @classmethod
     def from_package(cls, path: str | pathlib.Path, density: float = DENSITY_SEAWATER
                      ) -> "Hydrodynamics":
@@ -139,6 +170,7 @@ class Hydrodynamics:
         """
         document = json.loads(pathlib.Path(path).read_text())
         units = document.get("thrusters", {})
+        hull = document.get("hull", {})
         tensor = np.array(document.get("inertiaTensor", [0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1]), dtype=float)
         inertia = np.abs(tensor.reshape(3, 3).diagonal()) if tensor.size == 9 else np.abs(tensor[:3])
         return cls(
@@ -162,6 +194,9 @@ class Hydrodynamics:
                 for unit in units.get("units", [])
             ],
             density=density,
+            compressibility_per_dbar=float(hull.get("compressibilityPerDbar", 0.0)),
+            thermal_expansion_per_c=float(hull.get("thermalExpansionPerC", 0.0)),
+            reference_temperature_c=float(hull.get("referenceTemperatureC", 20.0)),
         )
 
     def __post_init__(self) -> None:
@@ -185,10 +220,43 @@ class Hydrodynamics:
         """What the vehicle weighs in air."""
         return self.mass_kg * GRAVITY
 
+    def volume_at(self, depth_m: float = 0.0, temperature_c: float | None = None) -> float:
+        """The volume this hull actually has, down there and at that temperature.
+
+        Eriksen's flight model does not write V, it writes V(t, p, T), and on a
+        buoyancy glider the reason is that the difference flies it. A hull is
+        squeezed by the water above it and shrinks when the water is cold, and
+        both change how much seawater it displaces — which is the same sum the
+        buoyancy engine spends its whole range on.
+
+        Stated by the package or not at all. A vehicle that declares neither
+        coefficient has the volume it always had, at every depth, which is what
+        every dive in the record has assumed.
+        """
+        volume = self.displaced_volume_m3
+        if self.compressibility_per_dbar:
+            volume *= 1.0 - self.compressibility_per_dbar * max(0.0, float(depth_m))
+        if self.thermal_expansion_per_c and temperature_c is not None:
+            volume *= 1.0 + self.thermal_expansion_per_c * (
+                float(temperature_c) - self.reference_temperature_c)
+        return volume
+
     @property
     def buoyancy_n(self) -> float:
-        """What the water pushes back with when fully submerged."""
+        """What the water pushes back with when fully submerged, at the surface."""
         return self.density * GRAVITY * self.displaced_volume_m3
+
+    def buoyancy_n_at(self, depth_m: float = 0.0, temperature_c: float | None = None,
+                      density: float | None = None) -> float:
+        """What the water pushes back with, where the vehicle actually is.
+
+        Two things move and they move against each other: the water gets denser
+        with depth and the hull gets smaller. Whether a vehicle grows heavier or
+        lighter as it descends is which of the two wins, and that is a property
+        of how it was built rather than something a simulator gets to assume.
+        """
+        water = self.density if density is None else float(density)
+        return water * GRAVITY * self.volume_at(depth_m, temperature_c)
 
     @property
     def net_buoyancy_n(self) -> float:
@@ -231,7 +299,9 @@ class Body:
     def __init__(self, model: Hydrodynamics) -> None:
         self.model = model
 
-    def restoring(self, rotation: np.ndarray, submerged: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
+    def restoring(self, rotation: np.ndarray, submerged: float = 1.0,
+                  depth_m: float = 0.0, temperature_c: float | None = None,
+                  density: float | None = None) -> tuple[np.ndarray, np.ndarray]:
         """Weight and buoyancy, in the body frame.
 
         Both act along the world vertical whatever the vehicle's attitude, which
@@ -249,7 +319,8 @@ class Body:
         up_in_body = rotation.T @ np.array([0.0, 0.0, 1.0])
 
         weight = -self.model.weight_n * up_in_body
-        buoyancy = self.model.buoyancy_n * float(submerged) * up_in_body
+        buoyancy = (self.model.buoyancy_n_at(depth_m, temperature_c, density)
+                    * float(submerged) * up_in_body)
 
         moment = (np.cross(self.model.centre_of_gravity, weight)
                   + np.cross(self.model.centre_of_buoyancy, buoyancy))
@@ -301,7 +372,9 @@ class Body:
         return np.concatenate([force, moment]) * float(submerged)
 
     def step(self, rotation: np.ndarray, velocity: np.ndarray,
-             commands: np.ndarray, dt: float, submerged: float = 1.0) -> np.ndarray:
+             commands: np.ndarray, dt: float, submerged: float = 1.0,
+             depth_m: float = 0.0, temperature_c: float | None = None,
+             density: float | None = None) -> np.ndarray:
         """Everything the water and the thrusters do this step, as one wrench.
 
         `velocity` is the body-frame twist: linear then angular.
@@ -318,7 +391,7 @@ class Body:
         """
         del dt  # kept in the signature: a Coriolis term would need it.
 
-        force, moment = self.restoring(rotation, submerged)
+        force, moment = self.restoring(rotation, submerged, depth_m, temperature_c, density)
         wrench = np.concatenate([force, moment])
         wrench = wrench + self.damping(velocity, submerged)
         if len(self.model.thrusters) > 0:

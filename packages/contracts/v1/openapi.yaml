@@ -2888,7 +2888,35 @@ components:
         displacedVolumeM3:
           type: number
           exclusiveMinimum: 0
-          description: Buoyancy is computed from this, so a vehicle without it cannot float.
+          description: >
+            Buoyancy is computed from this, so a vehicle without it cannot
+            float. The volume the hull has at the surface, at its reference
+            temperature; see `hull` for how it answers depth and cold.
+        hull:
+          type: object
+          description: >
+            How the hull itself responds to the water around it. Both
+            coefficients default to zero, which is a rigid hull of fixed volume
+            — near enough true for a vehicle whose working range is a hundred
+            metres, and false for anything that profiles. At a thousand metres
+            a hull squeezed at the same rate as seawater has lost half a per
+            cent of its volume, which on a buoyancy glider is most of the
+            engine.
+          properties:
+            compressibilityPerDbar:
+              type: number
+              minimum: 0
+              description: >
+                Fractional volume lost per decibar of pressure. Seawater's own
+                is about 4e-6; whether a vehicle grows heavier or lighter as it
+                descends is whether this is above or below that.
+            thermalExpansionPerC:
+              type: number
+              minimum: 0
+              description: Fractional volume gained per degree above the reference temperature.
+            referenceTemperatureC:
+              type: number
+              description: The temperature at which displacedVolumeM3 is the volume.
         envelope:
           type: object
           description: >
@@ -3208,6 +3236,10 @@ components:
             `depthGaugeDensityKgM3`, the density the vehicle's pressure gauge
             was calibrated against, so that a gauge set for the wrong sea reads
             the wrong depth by the right amount;
+            `temperatureProfile`, depth and temperature pairs down the water
+            column, for water that is not all one temperature — the Red Sea
+            holds about 21.5 °C below its surface layer, and a hull that
+            shrinks when it is cold notices;
             `positioning`, what is deployed in this water to fix a position
             with; `fitted`, which of the vehicle's own instruments are shipped
             for this dive; and `failures`, things that go wrong on the clock.
