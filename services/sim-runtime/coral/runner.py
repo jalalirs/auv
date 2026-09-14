@@ -1965,7 +1965,13 @@ class Dive:
             # was following. A result without these is a number nobody can
             # attribute, which is what every dive in the record was until now.
             result["flownBy"] = self.helm.who_flew()
-            result["plannedBy"] = self.planned_by or None
+            # Who actually worked out the route. A controller that plans for
+            # itself says so, and is believed over what was recorded when the
+            # task was set — otherwise a dive flown on a model's plan is
+            # credited to the platform's own planner, which is the record
+            # being wrong about the only interesting thing in it.
+            planner = getattr(self.helm.flying, "planned_by", None)
+            result["plannedBy"] = planner or self.planned_by or None
             # What the slow loops did, when anything used one: how many
             # thoughts, how long they took, and how many failed. A controller
             # that scores well by thinking for four seconds a step is not

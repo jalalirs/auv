@@ -121,3 +121,32 @@ def test_what_the_thinking_cost_is_recorded_beside_the_score():
     assert said["asked"] == 1 and said["accepted"] == 1 and said["failed"] == 0
     assert said["tokensIn"] == 400 and said["tokensOut"] == 120
     assert said["secondsThinking"] >= 0.0
+
+
+def test_it_says_how_long_it_needs_and_is_believed():
+    """Twenty seconds was chosen before anything real had been asked.
+
+    The first dive flown by an actual model answered in twenty-five seconds on
+    average and thirty-five at worst, so five of its seven plans were thrown
+    away by a stopwatch rather than by anything wrong with them — and the dive
+    read as a controller that could not plan.
+    """
+    from controllers.thinking import Thinking
+
+    asking = a_controller()
+    assert asking.patience_s > 60.0, "a model over a network is not a millisecond"
+    assert Thinking(asking).patience == asking.patience_s
+
+    class Quick:
+        name = "quick"
+    assert Thinking(Quick()).patience == 20.0, "and the default still stands"
+
+
+def test_a_model_is_credited_with_its_own_plan():
+    """The dive records who flew it and who planned it, and a model's plan
+    flown by this was being recorded as the platform's trigonometry."""
+    asking = a_controller(CORAL_CITY_MODEL_URL="http://nowhere/chat/completions",
+                          CORAL_CITY_MODEL="minimax-m3")
+    assert "minimax-m3" in asking.planned_by
+    assert "platform" not in asking.planned_by
+    assert "no model" in a_controller().planned_by

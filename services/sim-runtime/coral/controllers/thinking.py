@@ -36,10 +36,20 @@ class Thinking:
 
     def __init__(self, controller, patience: float = 20.0) -> None:
         self.controller = controller
-        # How long a thought may take before it is abandoned. Generous,
-        # because the point is to allow slow thinking; a controller that wants
-        # a tighter budget can enforce its own.
-        self.patience = float(patience)
+        # How long a thought may take before it is abandoned, and the
+        # controller's own figure wins.
+        #
+        # Twenty seconds was called generous and was chosen before anything
+        # real had ever been asked a question. The first dive flown by an
+        # actual model answered in twenty-five seconds on average and
+        # thirty-five at worst, so five of its seven plans were thrown away by
+        # a stopwatch rather than by anything wrong with them — and the dive
+        # looked like a controller that could not plan.
+        #
+        # A controller knows what it is waiting for: one that calls a model
+        # over a network knows its own timeout, and one that does trigonometry
+        # knows it will be finished in a millisecond.
+        self.patience = float(getattr(controller, "patience_s", None) or patience)
         self._thread: threading.Thread | None = None
         self._done: list[tuple[float, float, object]] = []   # asked at, took, decided
         self._failed: list[tuple[float, str]] = []
