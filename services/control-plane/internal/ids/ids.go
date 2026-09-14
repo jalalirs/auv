@@ -29,6 +29,7 @@ const (
 	KindObject       Kind = "obj"
 	KindUploadGrant  Kind = "upl"
 	KindCity         Kind = "city"
+	KindLayout       Kind = "lay"
 	KindLayer        Kind = "layer"
 	KindVersion      Kind = "ver"
 	KindTarget       Kind = "tgt"
@@ -54,6 +55,7 @@ var kinds = map[Kind]struct{}{
 	KindOrganisation: {}, KindPrincipal: {}, KindCredential: {}, KindSession: {},
 	KindBinding: {}, KindDenial: {}, KindAuditEvent: {}, KindObject: {},
 	KindUploadGrant: {}, KindCity: {}, KindLayer: {}, KindVersion: {},
+	KindLayout: {},
 	KindTarget: {}, KindJob: {}, KindAttempt: {}, KindJobEvent: {},
 	KindAdmission: {}, KindRefusal: {}, KindSchedule: {},
 	KindVehicle: {}, KindQueue: {}, KindDevice: {}, KindStack: {},
