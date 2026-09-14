@@ -333,6 +333,7 @@ class Dive:
         from world import World
 
         self.world = World(brief.get("layout"))
+        self._struck: set[str] = set()   # said once each, not once a step
         self.world.version = str(brief.get("layoutVersionId") or "")
         # The battery the vehicle package declares. A vehicle that declares
         # none flies as everything did before: for as long as it is asked to.
@@ -1769,8 +1770,14 @@ class Dive:
             into = float(np.dot(through, out))
             if into < 0.0:
                 self.velocity[:3] = self.rotation.T @ (through - out * into)
-        self.say("struck", what=struck.kind, which=struck.id,
-                 at=[round(float(v), 2) for v in struck.at])
+        # Once per thing, not once per physics step. A vehicle held against a
+        # frame for four seconds struck it once; four hundred events saying so
+        # is a record nobody can read and a log nobody can ship.
+        if struck.id not in self._struck:
+            self._struck.add(struck.id)
+            self.say("struck", what=struck.kind, which=struck.id,
+                     is_=struck.spec.what,
+                     where=[round(float(v), 2) for v in allowed])
 
     def strike(self) -> None:
         """Stop the vehicle against ground it cannot ride over.
