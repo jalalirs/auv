@@ -3441,6 +3441,43 @@ components:
                 description: How deep the seabed was under it when it was drawn.
               radiusM: { type: number }
               heightM: { type: number }
+              ends:
+                type: array
+                description: >
+                  Both ends of something that spans between two points, each
+                  landed by its own rule — a mooring line goes from a block on
+                  the bottom to a buoy at the surface, so its two ends resolve
+                  differently. `x`/`y` on the thing itself are the middle of
+                  the run, so everything can be picked and listed the same way.
+                items:
+                  type: object
+                  properties:
+                    x: { type: number }
+                    y: { type: number }
+                    z: { type: number }
+                    groundM: { type: number }
+                  required: [x, y]
+              slack:
+                type: number
+                description: >
+                  How much longer the line is than the gap it spans, as a
+                  fraction. Zero is taut and straight. A line with slack in it
+                  hangs as a catenary, and the middle of a hundred-metre span
+                  with five per cent of slack is fourteen metres below the
+                  straight line between its ends — which is the part a vehicle
+                  flies into.
+              corners:
+                type: array
+                description: >
+                  The outline of a plot drawn on the chart. Not in the water:
+                  a boundary is a thing a task points at, not a thing to run
+                  into.
+                items:
+                  type: object
+                  properties:
+                    x: { type: number }
+                    y: { type: number }
+                  required: [x, y]
             required: [id, kind, x, y]
       required: [things]
     Dive:
