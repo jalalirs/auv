@@ -1128,7 +1128,15 @@ export interface paths {
                     "application/json": {
                         name: string;
                         summary?: string;
-                        cityVersionId: string;
+                        /** @description The place, pinned. Required, except when this dive is composed from a mission — that mission already names the place, and a caller who could name a different one while still calling it the same mission could produce two runs that are not comparable and look as though they are.
+                         *      */
+                        cityVersionId?: string;
+                        /** @description How the place is arranged. Taken from the mission when one is named.
+                         *      */
+                        layoutVersionId?: string;
+                        /** @description The plan of work to fly. Supplies the place, the arrangement and the stages; the caller supplies the vehicle, the water and who flies it.
+                         *      */
+                        missionVersionId?: string;
                         vehicleVersionId: string;
                         conditionsId: string;
                         autonomyStackId?: string;
@@ -3003,6 +3011,195 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cities/{cityId}/missions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What plans of work exist over this place */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    cityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Its plans of work. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            missions?: components["schemas"]["Mission"][];
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        /**
+         * Start a plan of work for this place
+         * @description Empty until a version of it is saved, exactly as a layout is: a mission is a name for a series of documents.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    cityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        slug: string;
+                        name: string;
+                        summary?: string;
+                        /** @default false */
+                        discoverable?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description The plan of work. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Mission"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/missions/{missionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One plan of work */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    missionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The plan of work. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Mission"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/missions/{missionId}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What has been saved of this plan of work */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    missionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Its versions, newest first. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            versions?: components["schemas"]["AssetVersion"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Save this plan of work */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    missionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        label?: string;
+                        notes?: string;
+                        document: components["schemas"]["MissionDocument"];
+                    };
+                };
+            };
+            responses: {
+                /** @description The saved version, unpublished. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AssetVersion"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cities/{cityId}/versions": {
         parameters: {
             query?: never;
@@ -4434,6 +4631,8 @@ export interface components {
          *      */
         Layout: {
             id: string;
+            /** @enum {string} */
+            kind?: "layout" | "mission";
             cityId: string;
             slug: string;
             name: string;
@@ -4444,6 +4643,41 @@ export interface components {
             createdBy: string;
             /** Format: date-time */
             retiredAt?: string | null;
+        };
+        /** @description A plan of work over a place: this place, arranged this way, these stages in this order. The thing a reef programme owns — "the September transects at Al Fahal" — which until now could only exist inside one dive's objective, where it died with that dive.
+         *     Kept so that it can be compared. Two people flying the same mission a month apart produce two runs that can be read against each other, because both pin the same three things: the place, the arrangement of it, and what was asked. A mission that did not pin its layout would be a plan whose transponders moved between flights, and the difference between the runs would be the array rather than the work.
+         *     Structurally identical to a layout — a named, versioned document belonging to a city — and served by the same routes with a different noun.
+         *      */
+        Mission: {
+            id: string;
+            /** @enum {string} */
+            kind?: "layout" | "mission";
+            cityId: string;
+            slug: string;
+            name: string;
+            summary?: string;
+            discoverable?: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            createdBy: string;
+            /** Format: date-time */
+            retiredAt?: string | null;
+        };
+        /** @description What a mission says: where, arranged how, and the work in order.
+         *     A dive composed from one takes the place and the arrangement from here rather than from whoever asked for the dive, because a caller who could change those while still calling it the same mission would be able to produce two runs that are not comparable and look as though they are. What the caller still supplies is the vehicle, the water, and who flies it — which is the whole point of flying a mission twice.
+         *      */
+        MissionDocument: {
+            describedBy?: string;
+            /** @description The place, pinned. Every dive from this mission is flown in it. */
+            cityVersionId?: string;
+            /** @description How that place is arranged, pinned. The stages point at things in it by name.
+             *      */
+            layoutVersionId?: string;
+            /** @description The work, in order — each an objective in its own right, as the `mission` task kind already sequences them. A stage that points at something not in the layout is refused before the dive flies.
+             *      */
+            stages: {
+                [key: string]: unknown;
+            }[];
         };
         /** @description What is in the water. Each thing carries its kind, where it is in the site's own metres, and the depth its landing rule resolved to **when it was drawn** — not when it is flown. A layout then means the same thing to the editor, the runtime and the record, and re-flying one in September gets the site as it was arranged in March.
          *      */
@@ -4497,6 +4731,12 @@ export interface components {
             autonomyStackId?: string | null;
             initialState?: Record<string, never>;
             objective?: Record<string, never>;
+            /** @description How the place was arranged, when it was flown in an arrangement of it. Absent for a dive over bare ground, which most are.
+             *      */
+            layoutVersionId?: string;
+            /** @description The plan of work this was composed from, when it was composed from one. A dive that names a mission version takes the place, the arrangement and the stages from it, and supplies only the vehicle, the water and who flies it — which is what makes two people's runs of one mission comparable.
+             *      */
+            missionVersionId?: string;
             /** Format: date-time */
             createdAt: string;
             createdBy: string;

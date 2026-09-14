@@ -800,11 +800,29 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [name, cityVersionId, vehicleVersionId, conditionsId]
+              required: [name, vehicleVersionId, conditionsId]
               properties:
                 name: { type: string }
                 summary: { type: string }
-                cityVersionId: { type: string }
+                cityVersionId:
+                  type: string
+                  description: >
+                    The place, pinned. Required, except when this dive is
+                    composed from a mission — that mission already names the
+                    place, and a caller who could name a different one while
+                    still calling it the same mission could produce two runs
+                    that are not comparable and look as though they are.
+                layoutVersionId:
+                  type: string
+                  description: >
+                    How the place is arranged. Taken from the mission when one
+                    is named.
+                missionVersionId:
+                  type: string
+                  description: >
+                    The plan of work to fly. Supplies the place, the
+                    arrangement and the stages; the caller supplies the
+                    vehicle, the water and who flies it.
                 vehicleVersionId: { type: string }
                 conditionsId: { type: string }
                 autonomyStackId: { type: string }
@@ -2050,6 +2068,127 @@ paths:
                 label: { type: string }
                 notes: { type: string }
                 document: { $ref: '#/components/schemas/LayoutDocument' }
+      responses:
+        '201':
+          description: The saved version, unpublished.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssetVersion' }
+        '400':
+          $ref: '#/components/responses/Invalid'
+  /api/v1/cities/{cityId}/missions:
+    get:
+      tags: [places]
+      summary: What plans of work exist over this place
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Its plans of work.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  missions:
+                    type: array
+                    items: { $ref: '#/components/schemas/Mission' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [places]
+      summary: Start a plan of work for this place
+      description: >
+        Empty until a version of it is saved, exactly as a layout is: a mission
+        is a name for a series of documents.
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [slug, name]
+              properties:
+                slug: { type: string }
+                name: { type: string }
+                summary: { type: string }
+                discoverable: { type: boolean, default: false }
+      responses:
+        '201':
+          description: The plan of work.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mission' }
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/missions/{missionId}:
+    get:
+      tags: [places]
+      summary: One plan of work
+      parameters:
+        - name: missionId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The plan of work.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mission' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/missions/{missionId}/versions:
+    get:
+      tags: [places]
+      summary: What has been saved of this plan of work
+      parameters:
+        - name: missionId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Its versions, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  versions:
+                    type: array
+                    items: { $ref: '#/components/schemas/AssetVersion' }
+    post:
+      tags: [places]
+      summary: Save this plan of work
+      parameters:
+        - name: missionId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [document]
+              properties:
+                label: { type: string }
+                notes: { type: string }
+                document: { $ref: '#/components/schemas/MissionDocument' }
       responses:
         '201':
           description: The saved version, unpublished.
@@ -3390,6 +3529,7 @@ components:
         array is repeatable only if the array is as fixed as the reef under it.
       properties:
         id: { type: string }
+        kind: { type: string, enum: [layout, mission] }
         cityId: { type: string }
         slug: { type: string }
         name: { type: string }
@@ -3399,6 +3539,65 @@ components:
         createdBy: { type: string }
         retiredAt: { type: string, format: date-time, nullable: true }
       required: [id, cityId, slug, name, createdAt, createdBy]
+    Mission:
+      type: object
+      description: >
+        A plan of work over a place: this place, arranged this way, these
+        stages in this order. The thing a reef programme owns — "the September
+        transects at Al Fahal" — which until now could only exist inside one
+        dive's objective, where it died with that dive.
+
+        Kept so that it can be compared. Two people flying the same mission a
+        month apart produce two runs that can be read against each other,
+        because both pin the same three things: the place, the arrangement of
+        it, and what was asked. A mission that did not pin its layout would be
+        a plan whose transponders moved between flights, and the difference
+        between the runs would be the array rather than the work.
+
+        Structurally identical to a layout — a named, versioned document
+        belonging to a city — and served by the same routes with a different
+        noun.
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [layout, mission] }
+        cityId: { type: string }
+        slug: { type: string }
+        name: { type: string }
+        summary: { type: string }
+        discoverable: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string }
+        retiredAt: { type: string, format: date-time, nullable: true }
+      required: [id, cityId, slug, name, createdAt, createdBy]
+    MissionDocument:
+      type: object
+      description: >
+        What a mission says: where, arranged how, and the work in order.
+
+        A dive composed from one takes the place and the arrangement from here
+        rather than from whoever asked for the dive, because a caller who could
+        change those while still calling it the same mission would be able to
+        produce two runs that are not comparable and look as though they are.
+        What the caller still supplies is the vehicle, the water, and who flies
+        it — which is the whole point of flying a mission twice.
+      properties:
+        describedBy: { type: string }
+        cityVersionId:
+          type: string
+          description: The place, pinned. Every dive from this mission is flown in it.
+        layoutVersionId:
+          type: string
+          description: >
+            How that place is arranged, pinned. The stages point at things in
+            it by name.
+        stages:
+          type: array
+          description: >
+            The work, in order — each an objective in its own right, as the
+            `mission` task kind already sequences them. A stage that points at
+            something not in the layout is refused before the dive flies.
+          items: { type: object, additionalProperties: true }
+      required: [stages]
     LayoutDocument:
       type: object
       description: >
@@ -3496,6 +3695,19 @@ components:
         autonomyStackId: { type: string, nullable: true }
         initialState: { type: object }
         objective: { type: object }
+        layoutVersionId:
+          type: string
+          description: >
+            How the place was arranged, when it was flown in an arrangement of
+            it. Absent for a dive over bare ground, which most are.
+        missionVersionId:
+          type: string
+          description: >
+            The plan of work this was composed from, when it was composed from
+            one. A dive that names a mission version takes the place, the
+            arrangement and the stages from it, and supplies only the vehicle,
+            the water and who flies it — which is what makes two people's runs
+            of one mission comparable.
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
       required: [id, orgId, name, cityVersionId, vehicleVersionId, conditionsId, createdAt, createdBy]
