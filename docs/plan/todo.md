@@ -2114,7 +2114,105 @@ and watch it back — without leaving the application or being told a tab is not
 yet.
 
 
+## 64. The SDK can only command a wrench
+
+A controller somebody writes is the product. Item 40 gave the platform a third
+form to be commanded in, and the SDK was never told: it exposes
+`Command(wrench=...)` and nothing else, so the vehicle class this whole phase
+was built around is closed to exactly the people whose controllers are supposed
+to be the point. A person can fly a Seaglider here only if they work for us.
+
+Somebody started on it and stopped. In the tank:
+
+    command = Command(wrench=asked) if asked.shape[0] == 6 \
+        and len(self.model.thrusters) != 6 else Command(wrench=asked)
+
+Both branches are the same expression. That is a note to self that never became
+anything, and it is sitting in the one file an outside developer reads first.
+
+What is owed is small: the third form on the SDK's `Command`, a tank that can
+carry a vehicle with no thrusters, and an example that flies one — a glider
+controller in thirty lines, which is roughly what `glide.py` is.
+
+**Done when:** somebody outside this repository can write a controller that
+flies a buoyancy glider, try it in the tank, and deploy it.
+
+
+## 65. More than one vehicle in the water
+
+Every dive here is one vehicle. A hundred hectares cut into operational grids
+is not one vehicle, and neither is a ship with an ROV down and a glider working
+the same water — which is what a day at sea actually looks like.
+
+Three separate things hide behind "multi-vehicle" and only the first is
+cheap:
+
+  **Several vehicles in one scene,** flown independently, scored separately.
+  Mostly scheduling and identity: two simulators on one place, two recordings,
+  one clock. It buys the picture of a working site and most of the demonstration.
+
+  **Vehicles that know about each other.** An ROV that must not foul the
+  glider's line, a USBL that can only track one target at a time, two vehicles
+  sharing an acoustic channel and stepping on each other — which is real and is
+  the reason acoustic positioning does not scale the way people assume.
+
+  **Vehicles that cooperate.** Splitting a cell between two ROVs, a surface
+  vehicle shadowing a submerged one to carry its fixes. This is a research
+  problem and should be named as one rather than slipped into a sprint.
+
+The first is worth doing when the queue can carry it (and see the note on
+capacity below); the third is worth writing down and not starting.
+
+**Done when:** two vehicles work the same site in one dive, each scored on its
+own job, and the record reads as two things that happened at once.
+
+
+## 66. What a mission costs
+
+A score says how well it went. Nobody buys a score. What a programme manager
+decides on is **how many ship days, how many dives, how many battery swaps,
+how many people** — and every one of those is already sitting in the record
+unasked for.
+
+A dive knows its energy to a hundredth of a watt-hour and the battery knows its
+capacity and reserve, so dives-per-charge is arithmetic. A mission over a cell
+knows how long it took, so cells-per-day is arithmetic. A sweep knows how many
+scenarios failed, and the fraction of days you would lose to weather is the
+same number read differently — which is the one that turns a rehearsal into a
+budget.
+
+Then the sweep's answer stops being "survives 23 of 50" and becomes "you will
+lose one day in three to current, so plan eleven days of ship time for seven
+days of work", which is a sentence somebody can take to whoever signs.
+
+**Done when:** a mission plan states what it will cost before it is flown, and
+a sweep states what the weather will cost on top.
+
+
 # The order to build it in
+
+**What this is, stated once.** There are two products latent in this list and
+they share nearly all their machinery: a *benchmark*, which fixes the water and
+varies the autonomy to find out which is better, and a *rehearsal*, which fixes
+the autonomy and varies the water to find out whether a mission survives
+Tuesday. Both run the same engine — a place, a vehicle, conditions, a mission,
+a batch of runs, a score — and differ only in which axis is held still and how
+the answer is read.
+
+The rehearsal is the product. It is what a reef programme with scarce ship days
+will pay for, it is what every item below is aimed at, and it is why the sweep
+gets a tab and the doubt list gets a screen. The benchmark is a *view* over the
+same runs and keeps its item (37), because the day somebody deploys a second
+controller it costs almost nothing to read the same record the other way round.
+
+Saying that once here is worth more than arguing it twice later.
+
+**One thing this list does not fix.** The box has two devices. A sweep of
+seventy-two scenarios took most of a day, and the rehearsal pitch is "run it
+overnight and read it in the morning", which is hundreds. That is an ops
+problem rather than a design one and it has no item, but it is the first thing
+that will be in the way: none of this is worth a screen if a sweep takes a week.
+
 
 The list above is what, and it is numbered in the order the items were thought
 of rather than the order they can be done. This is the order they can be done,
