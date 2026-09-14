@@ -29,6 +29,32 @@ was in the water, and the water is empty now.
 **Done:** a dive in the record whose plan a model wrote, and the item in
 `todo.md` says what came back.
 
+*Done (14 September).* MiniMax-M3 flew a survey over Al Fahal: `flownBy
+{"asking": 1.0}`, seven plans, no failures, 106.6 m flown, 15.5% of the cell.
+
+The grant did not work the first time and the reason was worth having. The
+worker set `Network: true` and the diver also set `Attach` to the dive's own
+network, and in `createRequest` those were written as alternatives — `if
+spec.Attach != "" { network = spec.Attach }` — so the grant silently did
+nothing. The container could not resolve a hostname and the controller sat
+there with nothing to ask. They are not alternatives: a dive that is granted a
+route out gets a **second** network added beside the sealed one, which is also
+the better security shape. The simulator is ours and may ask a model; the stack
+flying it is somebody else's code on our machine and still reaches nothing.
+
+Two things the first real model dive found, both fixed:
+
+  **Patience was twenty seconds and the model takes twenty-five.** Five of
+  seven plans were thrown away by a stopwatch chosen before anything real had
+  ever been asked a question, and the dive read as a controller that could not
+  plan. A controller now says how long it needs; `asking` says two minutes,
+  inside its own request timeout.
+
+  **The record credited the wrong planner.** `flownBy` said the model and
+  `plannedBy` said "the platform's planner", because `asking` never set it. A
+  controller that plans for itself is now believed over what was written when
+  the task was set.
+
 ## 2 · The reef stops looking wrong
 
 `tools/zonation.py`, `tools/make-site`, then republish Al Fahal.
@@ -45,6 +71,14 @@ modulated by the picture's own brightness so structure is kept and the cast is
 not.
 
 **Done:** frames pulled from a dive over the reef read as a reef.
+
+*Done (14 September).* The seabed was surfaced with the satellite photograph
+and came out at RGB 30, 77, 81 — light that had already been down through
+fifteen metres of water and back, attenuated a second time by the renderer.
+It is now 166, 157, 132: sand, rubble and pavement, classified from the two
+bands that survived and coloured by what each of them is, with the picture's
+own brightness kept as grain so the reef has metre-scale variation without its
+cast coming back. Published as Al Fahal v2.
 
 ## 3 · The application gets somewhere to put a tab
 
@@ -63,6 +97,13 @@ controller has flown, scored and cost rather than what has been uploaded.
 
 **Done:** no tab is grey without a reason beside it, and Autonomy answers a
 question somebody has.
+
+*Done (14 September), and smaller than planned.* The navigation was already a
+declared array — `PAGES` and `LATER` in `Deck.tsx` — so there was nothing to
+build, only something to use. Conditions and Recordings are gone, with the
+reason written where they were: water belongs to the thing it is water for, and
+a recording belongs to the dive that made it. Sweeps stays, greyed, with a
+description that now matches what step 16 will build. Typecheck clean.
 
 ## 4 · Assets stop being written out per kind
 
@@ -83,6 +124,18 @@ three-line calls that keep their callers working.
 **Done:** the existing contract tests pass untouched and the city and vehicle
 endpoints answer identically. A behaviour change here is a failure, not a
 feature.
+
+*Done (14 September), and narrower than planned.* Reading the code rather than
+the plan, the duplication was not what this step assumed. The **inserts and the
+scanners are genuinely per kind** — a layout is not a city and forcing them into
+one descriptor would have cost more than it saved. What was duplicated was
+exactly three things, written once per kind and identical in SQL modulo the
+table: read by id, read by slug, and list what a subject may see.
+
+So `catalogued[T]` carries those three and nothing else, and City and Vehicle
+keep their own inserts and their own columns. Six functions became six
+one-liners over one implementation. The check was the endpoints: six cities,
+two vehicles, by id, by slug, with versions, all answering as before.
 
 ## 5 · A layout is a thing the platform keeps
 
