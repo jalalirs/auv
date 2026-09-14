@@ -101,6 +101,13 @@ class Navigation:
         # a picture can show the vehicle leaving.
         if self.at is None and self.kind == "lbl" and began_at is not None:
             self.at = np.array(began_at, dtype=float)
+        # The transponders themselves, when somebody laid them out rather than
+        # asking for "an array, around here". An array is not a circle: it is
+        # four or five things on the seabed, and where a fix can be had is
+        # decided by how many of them the vehicle can hear. Empty unless a
+        # layout put some in the water, in which case they replace the circle.
+        self.transponders: list[np.ndarray] = []
+        self.hears_at_least = int(self.aiding.get("hearsAtLeast", 3))
         self.surface_fix_at = float(self.aiding.get("surfaceFixDepthM", 0.5))
         # How much of a fix to believe. A fix is not the truth either: it has
         # its own error, and steering at every one of them makes a vehicle
@@ -259,9 +266,23 @@ class Navigation:
         if self.kind == "lbl":
             # Inside the array or nothing: ranging to transponders you cannot
             # hear is not a degraded fix, it is no fix.
-            if self.at is not None and float(np.linalg.norm(self.at[:2] - position[:2])) > self.reach:
-                return
-            self._take(t, position, self.fix_accuracy, "an LBL fix from the array")
+            #
+            # When the array is a set of things somebody laid, "inside" means
+            # what it means at sea — enough of them in range to cut a position,
+            # which is three. That is not the same shape as a circle round a
+            # centre: at the edge of a real array you lose the far side first
+            # and the fixes stop before you have left the middle of anything.
+            if self.transponders:
+                heard = sum(1 for one in self.transponders
+                            if float(np.linalg.norm(one[:2] - position[:2])) <= self.reach)
+                if heard < self.hears_at_least:
+                    return
+                self._take(t, position, self.fix_accuracy,
+                           f"an LBL fix from {heard} transponders")
+            else:
+                if self.at is not None and float(np.linalg.norm(self.at[:2] - position[:2])) > self.reach:
+                    return
+                self._take(t, position, self.fix_accuracy, "an LBL fix from the array")
         elif self.kind == "beacon":
             # A transponder on the dock. It gives the range and bearing to
             # that one thing and nothing about the world, so what it corrects

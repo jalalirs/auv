@@ -111,3 +111,46 @@ def test_a_vehicle_that_was_being_fixed_all_along_says_nothing_about_the_water()
     truth[2] = -0.1
     nav.step(1201.0, truth, np.array([0.0, 0.0, 0.0]), level(), None, 1.0)
     assert nav.depth_averaged_current is None
+
+
+# ── an array is its transponders ─────────────────────────────────────────────
+
+def test_an_array_somebody_laid_is_heard_from_where_it_reaches():
+    """An array is not a circle round a point.
+
+    It is four or five things on the seabed, and whether a fix can be had is
+    decided by how many of them the vehicle can hear — three, to cut a
+    position. That is a different shape from a circle: at the edge of a real
+    array you lose the far side first, and the fixes stop before you have left
+    the middle of anything.
+    """
+    nav = Navigation(suite={"dvl": True},
+                     aiding={"kind": "lbl", "everyS": 1.0, "accuracyM": 0.5, "rangeM": 60.0},
+                     began_at=[0.0, 0.0, -14.0], seed=5)
+    # Four laid on a square of fifty metres.
+    nav.transponders = [np.array([0.0, 0.0, -14.0]), np.array([50.0, 0.0, -14.0]),
+                        np.array([50.0, -50.0, -14.0]), np.array([0.0, -50.0, -14.0])]
+
+    middle = np.array([25.0, -25.0, -12.0])
+    nav.last_fix_t = None
+    nav.maybe_fix(10.0, middle)
+    assert nav.fixes == 1, "in the middle it hears all four"
+    assert "transponders" in nav.last_fix_from
+
+    # Two hundred metres away it hears none of them, and a fix it cannot take
+    # is not a worse fix — it is no fix.
+    was = nav.fixes
+    nav.last_fix_t = None
+    nav.maybe_fix(20.0, np.array([260.0, -25.0, -12.0]))
+    assert nav.fixes == was, "out of range of every one of them"
+
+
+def test_hearing_two_of_them_is_not_a_position():
+    nav = Navigation(suite={"dvl": True},
+                     aiding={"kind": "lbl", "everyS": 1.0, "accuracyM": 0.5, "rangeM": 30.0},
+                     began_at=[0.0, 0.0, -14.0], seed=5)
+    nav.transponders = [np.array([0.0, 0.0, -14.0]), np.array([20.0, 0.0, -14.0]),
+                        np.array([200.0, 0.0, -14.0]), np.array([220.0, 0.0, -14.0])]
+    nav.last_fix_t = None
+    nav.maybe_fix(10.0, np.array([10.0, 0.0, -12.0]))
+    assert nav.fixes == 0, "two in range is a pair of ranges, not a fix"
