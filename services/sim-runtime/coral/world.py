@@ -57,6 +57,11 @@ class Thing:
         # Where it is. `z` is what the landing rule resolved to when it was
         # drawn — against that seabed, which is why a layout belongs to a place
         # and is wrong anywhere else.
+        # In the world's own frame — metres, origin at the middle of the site,
+        # +x east, +y north — which is what the document says it carries and
+        # what a vehicle's positions are in. No conversion here on purpose: a
+        # layout read in one frame and flown in another is a layout that looks
+        # right in the editor and is somewhere else in the water.
         z = said.get("z")
         if z is None:
             ground = said.get("groundM")

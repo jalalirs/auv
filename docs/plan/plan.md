@@ -202,6 +202,34 @@ everything after them is built on it.
 
 **Done:** a dive in the record names both a place and an arrangement of it.
 
+*Done (14 September).* A four-transponder array laid on a 300 m square round
+the reef Al Fahal says a dive begins at — each one resting on the bottom it was
+drawn over, 12.1 m to 16.1 m, because the ground under that square is not flat.
+One dive inside it, one 420 m outside it, both pinning
+`ver_01M2G3F6Z388WWH35ZCN8ZDFT3`. Inside: 72 fixes, `an LBL fix from 4
+transponders`, 0.26 m of drift. Outside: no fixes at all, 2.1 m of drift over
+89 m flown. The arrangement decides where the vehicle knows where it is, which
+is the whole claim.
+
+It was not the no-new-code step it says it is, and both reasons were the same
+mistake in two places — a frame nobody had written down.
+
+  **An array was a circle, not its transponders.** `navigation.py` modelled LBL
+  as one point with a radius, so a layout full of transponders changed nothing:
+  the vehicle got fixes from a circle round wherever it launched. An array's
+  reach is not a circle — at the edge you lose the far side first, and the
+  fixes stop before you have left the middle of anything. A fix now needs three
+  of the drawn transponders in range, which is what cutting a position takes.
+
+  **The editor and the water disagreed about which way north is.** The
+  heightfield runs south to north, which the site's own note says and the
+  runtime reads that way; the editor read it as an image with row zero at the
+  top, so every depth it resolved came from the mirrored latitude. It also drew
+  in metres from the south-west corner while everything else in a dive is
+  metres from the middle, so a thing drawn in the centre of the chart would have
+  been laid at the north-east corner of the site. Both are gone, and the
+  document now *says* its frame instead of leaving three readers to guess it.
+
 ## 9 · The rest of the palette
 
 `world.py`, the editor, and a landing rule each.

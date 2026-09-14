@@ -4449,6 +4449,9 @@ export interface components {
          *      */
         LayoutDocument: {
             describedBy?: string;
+            /** @description Which coordinates the numbers below are in, said rather than assumed: `metres, origin at the middle of the site, +x east, +y north`, the frame a vehicle's own positions are in. A layout is read by the editor, the runtime, a replay and one day a sonar, and a frame each of them has to guess is a frame three of them get wrong.
+             *      */
+            frame?: string;
             things: {
                 id: string;
                 /** @description What it is, which decides how it meets the bottom: a transponder or a mooring block sits on the ground, a ship or a buoy floats, a line runs between two points, a post stands up from the ground, a cell is a region drawn on the chart.
