@@ -257,7 +257,33 @@ func (r *Runtime) Create(ctx context.Context, spec Spec) (string, error) {
 	if err := json.NewDecoder(response).Decode(&created); err != nil {
 		return "", fmt.Errorf("reading the created container: %w", err)
 	}
+
+	// A second network, for work the platform admitted with that capability
+	// and only that work. A dive's own network is internal by design — the
+	// autonomy runs behind it and nothing it does reaches the world — and that
+	// stays true: what is granted here is a route out for *this* container,
+	// added beside the sealed one rather than replacing it.
+	//
+	// The distinction is the point. The simulator is ours; the stack flying it
+	// is somebody else's code on our machine. Giving the first one a way to
+	// ask a model is not giving the second one a way off the box.
+	if spec.Network && spec.Attach != "" {
+		if err := r.connect(ctx, "bridge", created.ID); err != nil {
+			return created.ID, fmt.Errorf("granting a route off the dive network: %w", err)
+		}
+	}
 	return created.ID, nil
+}
+
+// connect puts an existing container on a further network.
+func (r *Runtime) connect(ctx context.Context, network, container string) error {
+	response, err := r.do(ctx, http.MethodPost, "/networks/"+network+"/connect",
+		map[string]any{"Container": container})
+	if err != nil {
+		return err
+	}
+	response.Close()
+	return nil
 }
 
 // createRequest is what the runtime is asked for, separated from the asking so
@@ -288,6 +314,14 @@ func createRequest(spec Spec) map[string]any {
 
 	// Its own by default: shared memory is a way into another process, and
 	// only the two halves of one dive have any business in each other's.
+	//
+	// Attach wins over Network here, and they are not alternatives — a
+	// container that is attached to a dive's own network *and* granted a route
+	// off the machine gets the second one added afterwards, in Create, rather
+	// than instead of the first. Written as an either/or, the grant silently
+	// did nothing: a dive asked to be flown by a model was put on its own
+	// internal network, could not resolve a hostname, and the controller sat
+	// there with nothing to ask.
 	if spec.Attach != "" {
 		network = spec.Attach
 	}
