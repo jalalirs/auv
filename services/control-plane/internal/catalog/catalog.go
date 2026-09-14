@@ -15,6 +15,7 @@ package catalog
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -32,6 +33,7 @@ type AssetKind string
 const (
 	KindCity    AssetKind = "city"
 	KindVehicle AssetKind = "vehicle"
+	KindLayout  AssetKind = "layout"
 )
 
 // ParseAssetKind accepts the kinds the record accepts and refuses the rest.
@@ -41,8 +43,11 @@ func ParseAssetKind(value string) (AssetKind, error) {
 		return KindCity, nil
 	case KindVehicle:
 		return KindVehicle, nil
+	case KindLayout:
+		return KindLayout, nil
 	default:
-		return "", fmt.Errorf("%w: %q is not a city or a vehicle", domain.ErrInvalid, value)
+		return "", fmt.Errorf("%w: %q is not a kind of thing this catalogue holds",
+			domain.ErrInvalid, value)
 	}
 }
 
@@ -88,7 +93,13 @@ type Version struct {
 	Label       string                 `json:"label"`
 	Notes       string                 `json:"notes"`
 	Digest      domain.Digest          `json:"digest"`
-	Manifest    []domain.ManifestEntry `json:"manifest"`
+	Manifest    []domain.ManifestEntry `json:"manifest,omitempty"`
+	// What this version is, when it is not a package of files. A layout is a
+	// few kilobytes of JSON somebody edits and saves repeatedly, and putting
+	// that through an upload grant, a confirmation and an object would be the
+	// file machinery used for something that is not a file. A version holds
+	// one or the other and never both.
+	Document    json.RawMessage        `json:"document,omitempty"`
 	TotalBytes  int64                  `json:"totalBytes"`
 	RuntimeMin  string                 `json:"runtimeMin"`
 	PublishedAt *time.Time             `json:"publishedAt,omitempty"`
@@ -408,6 +419,108 @@ func (s *Store) Vehicles(ctx context.Context, scope Scope) ([]Vehicle, error) {
 	return vehicles.all(ctx, s.pool, scope)
 }
 
+// ── Layouts ──────────────────────────────────────────────────────────────────
+//
+// An arrangement of a place — where the array was laid, where the ship holds,
+// where the nursery frames are. Versioned and pinned like everything else,
+// because a mission flown over an array is repeatable only if the array is as
+// fixed as the reef under it.
+//
+// Belongs to a city and is meaningless without it: the depths its things sit
+// at were resolved against that seabed and are wrong against any other.
+
+// Layout is an arrangement somebody made of a place.
+type Layout struct {
+	ID           string     `json:"id"`
+	CityID       string     `json:"cityId"`
+	Slug         string     `json:"slug"`
+	Name         string     `json:"name"`
+	Summary      string     `json:"summary"`
+	Discoverable bool       `json:"discoverable"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	CreatedBy    string     `json:"createdBy"`
+	RetiredAt    *time.Time `json:"retiredAt,omitempty"`
+}
+
+// LayoutSpec describes one to make.
+type LayoutSpec struct {
+	CityID       string
+	Slug         string
+	Name         string
+	Summary      string
+	Discoverable bool
+	CreatedBy    string
+}
+
+func (s LayoutSpec) Validate() error {
+	if s.CityID == "" {
+		return fmt.Errorf("%w: a layout is an arrangement of somewhere", domain.ErrInvalid)
+	}
+	if s.Slug == "" || s.Name == "" {
+		return fmt.Errorf("%w: a layout has a handle and a name", domain.ErrInvalid)
+	}
+	return nil
+}
+
+const selectLayout = `
+	SELECT id, city_id, slug, name, summary, discoverable,
+	       created_at, created_by, retired_at
+	  FROM catalog.layout`
+
+func scanLayout(row interface{ Scan(...any) error }) (Layout, error) {
+	var one Layout
+	err := row.Scan(&one.ID, &one.CityID, &one.Slug, &one.Name, &one.Summary,
+		&one.Discoverable, &one.CreatedAt, &one.CreatedBy, &one.RetiredAt)
+	return one, err
+}
+
+var layouts = catalogued[Layout]{selectFrom: selectLayout, scan: scanLayout, plural: "layouts"}
+
+// CreateLayout records an arrangement of a place.
+func (s *Store) CreateLayout(ctx context.Context, conn db.Conn, spec LayoutSpec) (Layout, error) {
+	if err := spec.Validate(); err != nil {
+		return Layout{}, err
+	}
+	id := ids.New(ids.KindLayout)
+	_, err := conn.Exec(ctx, `
+		INSERT INTO catalog.layout (id, city_id, slug, name, summary, discoverable, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		id, spec.CityID, spec.Slug, spec.Name, spec.Summary, spec.Discoverable, spec.CreatedBy)
+	if err != nil {
+		if db.IsUniqueViolation(err) {
+			return Layout{}, fmt.Errorf("%w: this place already has a layout called %q",
+				domain.ErrInvalid, spec.Slug)
+		}
+		return Layout{}, fmt.Errorf("recording a layout: %w", err)
+	}
+	return scanLayout(conn.QueryRow(ctx, selectLayout+` WHERE id = $1`, id))
+}
+
+// Layout reads one arrangement.
+func (s *Store) Layout(ctx context.Context, id string) (Layout, error) {
+	return layouts.one(ctx, s.pool, "id", id)
+}
+
+// LayoutsOf lists the arrangements of one place. Scoped by the place rather
+// than by the subject: whoever may see a city may see how it has been laid out.
+func (s *Store) LayoutsOf(ctx context.Context, cityID string) ([]Layout, error) {
+	rows, err := s.pool.Query(ctx, selectLayout+`
+		WHERE city_id = $1 AND retired_at IS NULL ORDER BY name`, cityID)
+	if err != nil {
+		return nil, fmt.Errorf("listing the layouts of a place: %w", err)
+	}
+	defer rows.Close()
+	found := []Layout{}
+	for rows.Next() {
+		one, err := scanLayout(rows)
+		if err != nil {
+			return nil, err
+		}
+		found = append(found, one)
+	}
+	return found, rows.Err()
+}
+
 // ── Versions ─────────────────────────────────────────────────────────────────
 
 // VersionSpec describes a package to record.
@@ -426,15 +539,15 @@ type VersionSpec struct {
 
 const selectVersion = `
 	SELECT id, asset_kind, asset_id, ordinal, label, notes, digest, manifest,
-	       total_bytes, runtime_min, published_at, created_at, created_by
+	       document, total_bytes, runtime_min, published_at, created_at, created_by
 	FROM catalog.version`
 
 func scanVersion(row interface{ Scan(...any) error }) (Version, error) {
 	var version Version
 	var digest []byte
-	var manifest []byte
+	var manifest, document []byte
 	err := row.Scan(&version.ID, &version.AssetKind, &version.AssetID, &version.Ordinal,
-		&version.Label, &version.Notes, &digest, &manifest, &version.TotalBytes,
+		&version.Label, &version.Notes, &digest, &manifest, &document, &version.TotalBytes,
 		&version.RuntimeMin, &version.PublishedAt, &version.CreatedAt, &version.CreatedBy)
 	if err != nil {
 		return Version{}, err
@@ -442,10 +555,50 @@ func scanVersion(row interface{ Scan(...any) error }) (Version, error) {
 	if version.Digest, err = domain.DigestFromBytes(digest); err != nil {
 		return Version{}, fmt.Errorf("reading version %s: %w", version.ID, err)
 	}
-	if err := json.Unmarshal(manifest, &version.Manifest); err != nil {
-		return Version{}, fmt.Errorf("reading the manifest of version %s: %w", version.ID, err)
+	if len(manifest) > 0 {
+		if err := json.Unmarshal(manifest, &version.Manifest); err != nil {
+			return Version{}, fmt.Errorf("reading the manifest of version %s: %w",
+				version.ID, err)
+		}
+	}
+	if len(document) > 0 {
+		version.Document = json.RawMessage(document)
 	}
 	return version, nil
+}
+
+// CreateDocumentVersion records a version that is a document rather than a
+// package, unpublished like any other.
+//
+// The digest is over the document for the same reason a package's is over its
+// manifest: pinning one number pins every byte, and a caller cannot claim a
+// digest its content does not add up to.
+func (s *Store) CreateDocumentVersion(ctx context.Context, conn db.Conn,
+	spec VersionSpec, document json.RawMessage) (Version, error) {
+	if _, err := ParseAssetKind(string(spec.AssetKind)); err != nil {
+		return Version{}, err
+	}
+	if len(document) == 0 {
+		return Version{}, fmt.Errorf("%w: a document version has a document",
+			domain.ErrInvalid)
+	}
+	digest := sha256.Sum256(document)
+
+	id := ids.New(ids.KindVersion)
+	_, err := conn.Exec(ctx, `
+		INSERT INTO catalog.version
+		    (id, asset_kind, asset_id, ordinal, label, notes, digest, document,
+		     total_bytes, runtime_min, created_by)
+		VALUES ($1, $2::catalog.asset_kind, $3,
+		        (SELECT coalesce(max(ordinal), 0) + 1 FROM catalog.version
+		          WHERE asset_kind = $2::catalog.asset_kind AND asset_id = $3),
+		        $4, $5, $6, $7, $8, $9, $10)`,
+		id, string(spec.AssetKind), spec.AssetID, spec.Label, spec.Notes,
+		digest[:], []byte(document), int64(len(document)), spec.RuntimeMin, spec.CreatedBy)
+	if err != nil {
+		return Version{}, fmt.Errorf("recording a version: %w", err)
+	}
+	return scanVersion(conn.QueryRow(ctx, selectVersion+` WHERE id = $1`, id))
 }
 
 // CreateVersion records a new package for an asset, unpublished.
