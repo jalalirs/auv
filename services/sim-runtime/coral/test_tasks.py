@@ -269,3 +269,14 @@ def test_survey_coverage_comes_from_the_camera_footprint_when_a_camera_is_known(
     plain = task_for({"kind": "survey", "widthM": 10, "heightM": 3, "altitudeM": 2.0, "swathM": 0.5}, START, 0.0)
     walk(plain, 10, lambda t: START + np.array([t, -1.5, 0]), floor=-7.0)
     assert plain.score() < 0.5, plain.progress()
+
+
+def test_a_target_written_as_a_list_is_that_point():
+    """`[x, y, z]` is how the rest of the record writes a position.
+
+    It used to fall through to "twenty metres ahead of wherever you started",
+    which flew a different dive and said nothing about having done so.
+    """
+    reach = task_for({"kind": "reach", "target": [900.0, -1100.0, -9.0]},
+                     np.array([854.0, -1107.0, -6.0]), 0.0)
+    assert list(reach.target) == [900.0, -1100.0, -9.0]
