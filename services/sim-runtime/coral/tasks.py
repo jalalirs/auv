@@ -155,6 +155,12 @@ class Task:
         where this dive began, which is what a composer can say before the
         dive exists.
         """
+        # `[x, y, z]` is the same point written the way the rest of the record
+        # writes positions. Taken rather than ignored: a target written as a
+        # list used to fall through to the fallback, which flew a different
+        # dive and said nothing about it.
+        if isinstance(said, (list, tuple)) and len(said) == 3:
+            return np.asarray(said, dtype=float)
         if not isinstance(said, dict):
             return None if fallback is None else np.asarray(fallback, dtype=float)
         if said.get("x") is not None and said.get("y") is not None:
