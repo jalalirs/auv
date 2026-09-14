@@ -46,7 +46,7 @@ func (d *Dependencies) createLayout(w http.ResponseWriter, r *http.Request) {
 	}
 	subject, _ := subjectOf(r.Context())
 	var made catalog.Layout
-	err := d.Database.InTransaction(r.Context(), func(conn db.Conn) error {
+	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
 		var err error
 		made, err = d.Catalog.CreateLayout(r.Context(), conn, catalog.LayoutSpec{
 			CityID:       r.PathValue("cityId"),
@@ -99,7 +99,7 @@ func (d *Dependencies) saveLayout(w http.ResponseWriter, r *http.Request) {
 	}
 	subject, _ := subjectOf(r.Context())
 	var made catalog.Version
-	err := d.Database.InTransaction(r.Context(), func(conn db.Conn) error {
+	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
 		var err error
 		made, err = d.Catalog.CreateDocumentVersion(r.Context(), conn, catalog.VersionSpec{
 			AssetKind: catalog.KindLayout,
