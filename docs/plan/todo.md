@@ -1445,6 +1445,53 @@ ship, a nursery and a line across a real reef in a few minutes, saves it, and
 two people fly the same arranged site.
 
 
+## 53. Things in the water that move, and the tether that pulls back
+
+Once a site can be laid out (52) the things in it have to behave, and the
+cheapest correct model is not the obvious one. A lumped-mass dynamic cable is a
+month and it is the wrong month.
+
+What is actually true of a line in the sea:
+
+  **Waves die with depth, fast.** Water particle motion falls off as
+  e^(-2πz/λ), so a sixty-metre swell has moved four per cent as much at thirty
+  metres as it has at the top. Below half a wavelength there is effectively no
+  weather. A line in forty metres of water whips at its top and is still at its
+  bottom, and modelling the whole thing as either rigid or thrashing is wrong
+  at one end or the other.
+
+  **Wind never touches the line.** It moves what is holding it — a ship, a
+  buoy — and that travels down. A vessel yawing on its anchor drags a whole
+  catenary with it, which is the honest reason a transponder is not where it
+  was laid.
+
+  **Current is the one that matters, and it is not oscillation.** A line drags
+  downstream and takes a bow. A vertical mooring in half a knot is not
+  vertical, the displacement is metres, and it persists — which is exactly the
+  thing that makes an object *not where the chart says it is*, and therefore
+  exactly the `what-if` worth asking.
+
+  **A cable in current hums.** Vortex shedding, small amplitude, high
+  frequency. Worth knowing about; not worth simulating here.
+
+So: a quasi-static catenary that bows with the current, and surface-driven
+motion applied only in the top half-wavelength. Metres of displacement where
+metres matter, and no solver.
+
+**And the one that is not scenery at all.** A BlueROV2 is tethered and we do
+not model the tether. A hundred metres of it streaming in a current has far
+more area than the vehicle does, so the tether's drag is often the larger force
+— a small ROV working down-current is mostly fighting its own umbilical. That
+is not an obstacle to avoid, it is a term in the equation of motion, and it
+changes how every tethered dive in this record would have flown. It should be
+built before any of the rest of this, because it is the only part that is
+already wrong rather than merely absent.
+
+**Done when:** a mooring laid at a stated position is somewhere else in a
+current and the record says by how much; and a tethered vehicle with a hundred
+metres out flies measurably differently from one with ten.
+
+
 ## 50. Both cities look wrong
 
 Open. Al Fahal and Thuwal Deep are both built, both published, both flown, and
