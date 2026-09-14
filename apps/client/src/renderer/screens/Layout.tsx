@@ -41,6 +41,11 @@ const TOOLS: Record<string, { name: string; lands: "ground" | "float"; says: (d:
 
 const DESCRIBED_BY = "coral-city/layout/v1";
 
+// Said in the document rather than known by whoever reads it. A layout is read
+// by the editor, the runtime, a replay and one day a sonar, and a frame that
+// each of them has to guess is a frame three of them will get wrong.
+const FRAME = "metres, origin at the middle of the site, +x east, +y north";
+
 /** The seabed, read from the package's own heightfield. */
 interface Ground {
   rows: number;
@@ -63,16 +68,35 @@ async function groundOf(pkg: PlacePackage | undefined): Promise<Ground | undefin
   return { rows: field.rows, columns: field.columns, acrossM: across, depth };
 }
 
-/** How deep the ground is at a point, in site metres from the south-west. */
+/** How deep the ground is at a point, in the frame everything else uses.
+ *
+ * The one frame: metres, origin at the middle of the site, +x east, +y north —
+ * the same coordinates the vehicle's own positions are in, so a transponder
+ * drawn here and a vehicle flown there are talking about one place. The
+ * heightfield runs south to north then west to east, which the site's own note
+ * says and the runtime reads the same way; this is that sampling, in
+ * TypeScript.
+ */
 function groundAt(ground: Ground, x: number, y: number): number {
   const { rows, columns, acrossM, depth } = ground;
-  const fx = Math.min(columns - 1.001, Math.max(0, (x / acrossM) * (columns - 1)));
-  const fy = Math.min(rows - 1.001, Math.max(0, (y / acrossM) * (rows - 1)));
+  const fx = Math.min(columns - 1.001, Math.max(0, (x / acrossM + 0.5) * (columns - 1)));
+  const fy = Math.min(rows - 1.001, Math.max(0, (y / acrossM + 0.5) * (rows - 1)));
   const x0 = Math.floor(fx), y0 = Math.floor(fy);
   const tx = fx - x0, ty = fy - y0;
-  const at = (cx: number, cy: number) => depth[(rows - 1 - cy) * columns + cx] ?? 0;
+  const at = (cx: number, cy: number) => depth[cy * columns + cx] ?? 0;
   return at(x0, y0) * (1 - tx) * (1 - ty) + at(x0 + 1, y0) * tx * (1 - ty)
        + at(x0, y0 + 1) * (1 - tx) * ty + at(x0 + 1, y0 + 1) * tx * ty;
+}
+
+/** Where a pointer is, in that frame. Nothing when it is off the site. */
+function pointerAt(box: DOMRect, ground: Ground, clientX: number, clientY: number) {
+  const side = Math.min(box.width, box.height);
+  const padX = (box.width - side) / 2, padY = (box.height - side) / 2;
+  const half = ground.acrossM / 2;
+  const x = ((clientX - box.left - padX) / side) * ground.acrossM - half;
+  const y = (1 - (clientY - box.top - padY) / side) * ground.acrossM - half;
+  if (Math.abs(x) > half || Math.abs(y) > half) return undefined;
+  return { x, y };
 }
 
 export function LayoutEditor({ platform, pkg, layout, onBack }: {
@@ -107,11 +131,9 @@ export function LayoutEditor({ platform, pkg, layout, onBack }: {
   const place = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     const box = canvas.current?.getBoundingClientRect();
     if (!box || !ground) return;
-    const side = Math.min(box.width, box.height);
-    const padX = (box.width - side) / 2, padY = (box.height - side) / 2;
-    const x = ((event.clientX - box.left - padX) / side) * ground.acrossM;
-    const y = (1 - (event.clientY - box.top - padY) / side) * ground.acrossM;
-    if (x < 0 || y < 0 || x > ground.acrossM || y > ground.acrossM) return;
+    const where = pointerAt(box, ground, event.clientX, event.clientY);
+    if (!where) return;
+    const { x, y } = where;
 
     if (tool === undefined) {
       const near = things.find((t) => Math.hypot(t.x - x, t.y - y) < ground.acrossM / 60);
@@ -137,12 +159,8 @@ export function LayoutEditor({ platform, pkg, layout, onBack }: {
   const watch = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     const box = canvas.current?.getBoundingClientRect();
     if (!box || !ground) { setUnder(undefined); return; }
-    const side = Math.min(box.width, box.height);
-    const padX = (box.width - side) / 2, padY = (box.height - side) / 2;
-    const x = ((event.clientX - box.left - padX) / side) * ground.acrossM;
-    const y = (1 - (event.clientY - box.top - padY) / side) * ground.acrossM;
-    setUnder(x < 0 || y < 0 || x > ground.acrossM || y > ground.acrossM
-      ? undefined : groundAt(ground, x, y));
+    const where = pointerAt(box, ground, event.clientX, event.clientY);
+    setUnder(where === undefined ? undefined : groundAt(ground, where.x, where.y));
   }, [ground]);
 
   // The chart, drawn from the survey: pale in the shallows, deep blue off the
@@ -164,8 +182,8 @@ export function LayoutEditor({ platform, pkg, layout, onBack }: {
     const step = Math.max(1, Math.round(side / 260));
     for (let py = 0; py < side; py += step) {
       for (let px = 0; px < side; px += step) {
-        const deep = groundAt(ground, (px / side) * ground.acrossM,
-                              (1 - py / side) * ground.acrossM);
+        const deep = groundAt(ground, (px / side - 0.5) * ground.acrossM,
+                              (0.5 - py / side) * ground.acrossM);
         const t = Math.min(1, Math.max(0, deep / 30));
         const shade = deep < 0.2
           ? "rgb(216,201,168)"
@@ -175,8 +193,8 @@ export function LayoutEditor({ platform, pkg, layout, onBack }: {
       }
     }
 
-    const toX = (m: number) => padX + (m / ground.acrossM) * side;
-    const toY = (m: number) => padY + (1 - m / ground.acrossM) * side;
+    const toX = (m: number) => padX + (m / ground.acrossM + 0.5) * side;
+    const toY = (m: number) => padY + (0.5 - m / ground.acrossM) * side;
     for (const thing of things) {
       const on = thing.id === chosen;
       g.beginPath();
@@ -192,7 +210,7 @@ export function LayoutEditor({ platform, pkg, layout, onBack }: {
   const save = useCallback(async () => {
     setSaving("saving"); setTrouble("");
     try {
-      const document = { describedBy: DESCRIBED_BY, things } as unknown as LayoutDocument;
+      const document = { describedBy: DESCRIBED_BY, frame: FRAME, things } as unknown as LayoutDocument;
       const version = await platform.saveLayout(layout.id, document, `${things.length} things`);
       setSaving(`saved as version ${version.ordinal}`);
     } catch (thrown) {

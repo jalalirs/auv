@@ -3409,6 +3409,15 @@ components:
         September gets the site as it was arranged in March.
       properties:
         describedBy: { type: string }
+        frame:
+          type: string
+          description: >
+            Which coordinates the numbers below are in, said rather than
+            assumed: `metres, origin at the middle of the site, +x east, +y
+            north`, the frame a vehicle's own positions are in. A layout is
+            read by the editor, the runtime, a replay and one day a sonar, and
+            a frame each of them has to guess is a frame three of them get
+            wrong.
         things:
           type: array
           items:
