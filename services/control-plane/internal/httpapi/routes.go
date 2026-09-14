@@ -346,7 +346,7 @@ func (rt *Router) registerAll() {
 
 	// How a place has been arranged. Hung off the city, because that is what
 	// a layout is an arrangement of.
-	rt.registerLayouts()
+	rt.registerMadeOfAPlace()
 
 	// A path no route claims. It is registered on the multiplexer rather than
 	// as a Route because it grants nothing and performs no action; it only
