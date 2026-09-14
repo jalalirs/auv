@@ -19,6 +19,8 @@ export type City = Schemas["City"];
 export type Vehicle = Schemas["Vehicle"];
 export type AssetVersion = Schemas["AssetVersion"];
 export type Layout = Schemas["Layout"];
+export type Mission = Schemas["Mission"];
+export type MissionDocument = Schemas["MissionDocument"];
 export type LayoutDocument = Schemas["LayoutDocument"];
 export type Queue = Schemas["Queue"];
 export type Device = Schemas["Device"];
@@ -217,6 +219,40 @@ export class Platform {
   async saveLayout(id: string, document: LayoutDocument,
                    label = ""): Promise<AssetVersion> {
     return this.#request<AssetVersion>("POST", `/api/v1/layouts/${id}/versions`,
+      { label, document });
+  }
+
+  // ── what work is planned over a place ──────────────────────────────────────
+  //
+  // The same five calls with a different noun, because a mission is the same
+  // sort of thing: a named, versioned document belonging to a city. What it
+  // says is where, arranged how, and the work in order.
+
+  async missionsOf(city: string): Promise<Mission[]> {
+    const { missions } = await this.#request<{ missions: Mission[] }>(
+      "GET", `/api/v1/cities/${city}/missions`);
+    return missions;
+  }
+
+  async startMission(city: string, said: {
+    slug: string; name: string; summary?: string;
+  }): Promise<Mission> {
+    return this.#request<Mission>("POST", `/api/v1/cities/${city}/missions`, said);
+  }
+
+  async mission(id: string): Promise<Mission> {
+    return this.#request<Mission>("GET", `/api/v1/missions/${id}`);
+  }
+
+  async versionsOfMission(id: string): Promise<AssetVersion[]> {
+    const { versions } = await this.#request<{ versions: AssetVersion[] }>(
+      "GET", `/api/v1/missions/${id}/versions`);
+    return versions;
+  }
+
+  async saveMission(id: string, document: MissionDocument,
+                    label = ""): Promise<AssetVersion> {
+    return this.#request<AssetVersion>("POST", `/api/v1/missions/${id}/versions`,
       { label, document });
   }
 
