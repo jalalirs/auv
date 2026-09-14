@@ -2058,6 +2058,11 @@ class Dive:
                  **({} if self.navigation is None
                     else {"navigation": self.navigation.said(self.position, self.simulated)}),
                  **({} if self.battery is None else {"battery": self.battery.said()}),
+                 # What the dive was flown through. A run that names a layout
+                 # and then says nothing about what was in it leaves whoever
+                 # reads it to go and fetch the document — and a run whose
+                 # vehicle struck something ought to say so where the result is.
+                 **({} if not len(self.world) else {"world": self.world.described()}),
                  **({} if result is None else {"task": result}))
         if self.bridge is not None:
             # Whether anything actually flew it. A dive that ran with nobody at

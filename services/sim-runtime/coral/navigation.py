@@ -298,13 +298,19 @@ class Navigation:
             self._take(t, position, max(0.05, self.fix_accuracy * max(0.2, away / 10.0)),
                        "a beacon on the dock")
         elif self.kind == "usbl":
+            # The error is a share of slant range, so where the surface asset
+            # actually is decides how good the fix is. Straight overhead is the
+            # best case and never quite true: a ship holds station where the
+            # weather lets it, and one that has drifted ninety metres off makes
+            # every fix several times worse than the depth alone would suggest.
             if self.at is None:
-                slant = depth
+                slant, from_ = depth, "a USBL fix from straight overhead"
             else:
                 slant = float(np.linalg.norm(self.at - np.asarray(position, dtype=float)))
+                from_ = f"a USBL fix, {slant:.0f} m of slant range"
             if slant > self.reach:
                 return
-            self._take(t, position, max(0.3, slant * self.slant_share), "a USBL fix from the surface")
+            self._take(t, position, max(0.3, slant * self.slant_share), from_)
 
     def _take(self, t: float, position, accuracy: float, from_: str, trust: float | None = None) -> None:
         said = np.array([float(position[0]) + float(self._noise.normal(0.0, accuracy)),
