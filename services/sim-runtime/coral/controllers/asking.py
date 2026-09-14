@@ -75,6 +75,10 @@ class AskingController(Controller):
     kind = "builtin"
     says = "Asks a model for a plan, and keeps flying the last one while it waits."
     thinks_every = 60.0
+    # What a model actually takes, rather than what a stopwatch written before
+    # there was one assumed. Comfortably inside the request's own timeout: a
+    # thought abandoned here is one the network has not given up on either.
+    patience_s = 120.0
 
     def __init__(self, capability: np.ndarray, mass: np.ndarray, trim_n: float, dt: float,
                  camera_half_angle: float | None = None, envelope: dict | None = None) -> None:
@@ -205,6 +209,14 @@ class AskingController(Controller):
             usage = {"prompt_tokens": usage.get("input_tokens"),
                      "completion_tokens": usage.get("output_tokens")}
         return text or "", usage
+
+    # Who to credit when this flies. The dive records who planned a route as
+    # well as who flew it, and a model's plan flown by this was being recorded
+    # as the platform's own trigonometry — which is the record saying something
+    # that is not true about the one dive where it matters most.
+    @property
+    def planned_by(self) -> str:
+        return f"a model ({self.model})" if self.model else "asking, with no model"
 
     def on_thought(self, decided) -> None:
         if not decided:
