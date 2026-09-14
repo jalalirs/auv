@@ -228,15 +228,41 @@ func durationOf(claimed Claimed) float64 {
 	}
 	var objective map[string]any
 	if len(claimed.Objective) > 0 && json.Unmarshal(claimed.Objective, &objective) == nil && len(objective) > 0 {
-		if seconds, ok := objective["seconds"].(float64); ok && seconds > 0 {
-			return math.Min(anHour, seconds+5.0)
-		}
-		if limit, ok := objective["timeLimitS"].(float64); ok && limit > 0 {
-			return math.Min(anHour, limit)
-		}
-		return 300.0
+		return math.Min(anHour, longEnoughFor(objective))
 	}
 	return 10.0
+}
+
+// longEnoughFor is how long an objective needs in the water.
+//
+// A mission is the sum of its stages and not five minutes. Asking for a
+// three-stage round and getting a dive that stops part way through the first
+// stage is a run that reads as a vehicle that failed, and the only thing that
+// failed was arithmetic done before anybody knew what the dive was. Five
+// minutes remains the answer for a task that states no limit of its own,
+// because a task with no limit has to stop somewhere.
+func longEnoughFor(objective map[string]any) float64 {
+	if stages, ok := objective["stages"].([]any); ok && len(stages) > 0 {
+		total := 0.0
+		for _, one := range stages {
+			if said, ok := one.(map[string]any); ok {
+				total += longEnoughFor(said)
+			}
+		}
+		// Plus what the mission itself asks for, when it asks for less: a
+		// mission may be cut short on purpose, and saying so should work.
+		if limit, ok := objective["timeLimitS"].(float64); ok && limit > 0 {
+			return math.Min(limit, total)
+		}
+		return total
+	}
+	if seconds, ok := objective["seconds"].(float64); ok && seconds > 0 {
+		return seconds + 5.0
+	}
+	if limit, ok := objective["timeLimitS"].(float64); ok && limit > 0 {
+		return limit
+	}
+	return 300.0
 }
 
 // runtimeUser is the user the simulation runtime runs as, declared in its
