@@ -1440,9 +1440,17 @@ Then the structural half of `what-if` becomes possible for the first time —
 not "what if the current is half a knot" but "what if the mooring line is
 where the chart says it is, and what if it is not".
 
+A drawing tool is not a drawing until it can be edited. Select, move, delete,
+duplicate, nudge by a stated number of metres, undo, copy a whole layout to
+another part of the site, rename, group. A restoration lays out fifty nursery
+frames on a grid and moves the lot three metres left; a tool that can only add
+makes that fifty-one operations and a reason to use something else. The place
+where this is usually got wrong is duplication — a copied array has to come
+with new identities, not new references to the same transponder.
+
 **Done when:** somebody who has never opened a 3-D tool lays out an array, a
-ship, a nursery and a line across a real reef in a few minutes, saves it, and
-two people fly the same arranged site.
+ship, a nursery and a line across a real reef in a few minutes, moves half of
+it, duplicates the rest, saves it, and two people fly the same arranged site.
 
 
 ## 53. Things in the water that move, and the tether that pulls back
@@ -1490,6 +1498,53 @@ already wrong rather than merely absent.
 **Done when:** a mooring laid at a stated position is somewhere else in a
 current and the record says by how much; and a tethered vehicle with a hundred
 metres out flies measurably differently from one with ten.
+
+
+## 54. What a place can hold, and what it cannot
+
+The study map (52) is the same editor over Al Fahal and over Thuwal Deep, and
+it must not offer the same palette. A nursery frame in six hundred metres of
+open water is not a scenario, it is a mistake somebody will make on a Tuesday;
+a diver at that depth is not a hazard to model, it is a misunderstanding. And
+the other way: a profiling float in fifteen metres of reef has nowhere to go.
+
+So a place declares what it can hold, and both the editor and the runtime read
+that declaration — the editor to decide what to offer, the runtime to decide
+what to bother simulating.
+
+  **Al Fahal, nought to sixty metres.** Holds nursery frames, mooring blocks,
+  marker posts, settlement tiles, instrument packages standing on the bottom,
+  lines run between them, restoration cells drawn as polygons, transponders for
+  an array, a small boat, and divers. Simulates bottom work, a camera that can
+  see, a sonar with something to return off, a Doppler log that has a bottom to
+  lock to, silt raised by the vehicle's own thrusters, surge over the crest,
+  the tether, and things alive in the water. Does not hold a glider: it cannot
+  hover, it will not work above ten metres of altitude, and there is not enough
+  water under it.
+
+  **Thuwal Deep, five hundred to six hundred and forty metres.** Holds a ship
+  holding station, a surface buoy carrying a USBL, a deep mooring with
+  instruments hung at stated depths, a drifter, and the line of a section. No
+  divers, no bottom work, no nursery — the bottom is six hundred metres down
+  and nothing we operate goes there. Simulates the water column as the thing
+  that matters: temperature and salinity against depth, a current that is not
+  one vector but a different vector at every depth, surfacing for a satellite
+  fix, and shipping — this is one of the busiest lanes in the world and a
+  glider surfacing into it is a real way to lose one. It does not need a
+  camera at all, which is not a limitation of the site but a fact about it:
+  the first glider dive flown there recorded forty-three minutes of blank blue
+  water, correctly.
+
+Two things fall out of this that are worth having on their own. **A current
+that varies with depth** — ours is one vector for the whole column, which is
+fine over a reef in fifteen metres and wrong in six hundred, where the shear
+between layers is the science a glider is sent to measure. And **shipping**,
+which is the only hazard on that site and has no equivalent on the reef.
+
+**Done when:** the editor over a reef and the editor over open water offer
+different tools without anybody having configured that by hand, and a place
+that cannot hold a thing says so rather than accepting it and simulating
+nothing.
 
 
 ## 50. Both cities look wrong
