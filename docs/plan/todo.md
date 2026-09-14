@@ -1393,6 +1393,58 @@ that we can honestly describe, and the ones we cannot are named as such rather
 than quietly absent.
 
 
+## 52. The study map: a place somebody laid out themselves
+
+A place is bathymetry and coral, and both are read from a survey. That is the
+right foundation and it is not a site. What a dive actually happens in is a
+site somebody *arranged*: an array laid in a particular pattern, a ship holding
+station over there, a nursery frame here, a line running between those two
+points, a thing dropped on the bottom to be found again.
+
+None of that can be expressed today. Conditions vary the water and the
+vehicle's own fit — current, visibility, salinity, which instruments are
+shipped, what fails and when — and every one of those is a *parameter*. The
+world itself is fixed, so the questions that can be asked of it are fixed too,
+and that is the whole reason `what-if` sweeps numbers rather than situations.
+
+**It is a drawing problem and it does not need a 3-D editor.** Everything in
+the sea is placed on a bottom whose depth is already known at every point, so a
+plan view plus a depth readout is enough to place anything: the operator works
+in two dimensions and each tool resolves the third from the ground under it.
+Build a 3-D scene editor and the cost is a year and a modelling skill nobody
+running a reef programme has.
+
+So: the site's bathymetry drawn as a chart, depth under the cursor, a palette
+down one side, and every tool carrying its own rule for how it meets the
+bottom —
+
+  **sits on the ground** — a mooring block, a transponder, a nursery frame, a
+  crate: take the depth under the point and stand the thing on it.
+  **floats at the surface** — a ship, a buoy: z is zero and the thing has a
+  draught, and if it carries a USBL then the array's position follows it.
+  **runs between two points** — a line, a cable, a tether, the edge of a
+  net: drawn as a polyline on the chart and hung as a catenary between the
+  depths at its ends, which is what a rope in water does.
+  **stands up from the ground** — a column, a piling, a marker post: a base
+  depth and a height.
+  **a region** — a restoration cell, an exclusion zone, a work area: a polygon
+  on the chart, which is what a grid cell already is and is drawn by hand
+  rather than derived from a task.
+
+Saved as an overlay on the place, versioned and pinned the way everything else
+is, so two dives in the same laid-out site are comparable and a site somebody
+arranged in March can be flown again in September. The place package stays the
+survey; the study map is what was put in it.
+
+Then the structural half of `what-if` becomes possible for the first time —
+not "what if the current is half a knot" but "what if the mooring line is
+where the chart says it is, and what if it is not".
+
+**Done when:** somebody who has never opened a 3-D tool lays out an array, a
+ship, a nursery and a line across a real reef in a few minutes, saves it, and
+two people fly the same arranged site.
+
+
 ## 50. Both cities look wrong
 
 Open. Al Fahal and Thuwal Deep are both built, both published, both flown, and
