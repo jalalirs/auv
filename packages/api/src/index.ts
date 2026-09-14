@@ -18,6 +18,8 @@ export type Organisation = Schemas["Organisation"];
 export type City = Schemas["City"];
 export type Vehicle = Schemas["Vehicle"];
 export type AssetVersion = Schemas["AssetVersion"];
+export type Layout = Schemas["Layout"];
+export type LayoutDocument = Schemas["LayoutDocument"];
 export type Queue = Schemas["Queue"];
 export type Device = Schemas["Device"];
 export type AutonomyStack = Schemas["AutonomyStack"];
@@ -182,6 +184,40 @@ export class Platform {
     const { versions } = await this.#request<{ versions: AssetVersion[] }>(
       "GET", `/api/v1/cities/${city}/versions`);
     return versions;
+  }
+
+  // ── how a place has been laid out ──────────────────────────────────────────
+  //
+  // An arrangement belongs to its place and is asked for through it. Saving
+  // one records a version like any other: unpublished, because somebody saving
+  // a layout is part way through arranging a site.
+
+  async layoutsOf(city: string): Promise<Layout[]> {
+    const { layouts } = await this.#request<{ layouts: Layout[] }>(
+      "GET", `/api/v1/cities/${city}/layouts`);
+    return layouts;
+  }
+
+  async startLayout(city: string, said: {
+    slug: string; name: string; summary?: string;
+  }): Promise<Layout> {
+    return this.#request<Layout>("POST", `/api/v1/cities/${city}/layouts`, said);
+  }
+
+  async layout(id: string): Promise<Layout> {
+    return this.#request<Layout>("GET", `/api/v1/layouts/${id}`);
+  }
+
+  async versionsOfLayout(id: string): Promise<AssetVersion[]> {
+    const { versions } = await this.#request<{ versions: AssetVersion[] }>(
+      "GET", `/api/v1/layouts/${id}/versions`);
+    return versions;
+  }
+
+  async saveLayout(id: string, document: LayoutDocument,
+                   label = ""): Promise<AssetVersion> {
+    return this.#request<AssetVersion>("POST", `/api/v1/layouts/${id}/versions`,
+      { label, document });
   }
 
   async versionsOfVehicle(vehicle: string): Promise<AssetVersion[]> {

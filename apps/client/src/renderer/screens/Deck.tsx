@@ -18,6 +18,7 @@ import { readHeld, usePackages, type Held, type Packages } from "../platform/hel
 import { Autonomy } from "./Autonomy.js";
 import { Dive } from "./Dive.js";
 import { Fleet } from "./Fleet.js";
+import { LayingOut } from "./Layout.js";
 import { PlaceDetail } from "./PlaceDetail.js";
 import { Places } from "./Places.js";
 import { Profile } from "./Profile.js";
@@ -32,6 +33,9 @@ export type Where =
   | { page: "dive" }
   | { page: "places" }
   | { page: "place"; id: string }
+  // An arrangement of a place, opened from it. Not a tab of its own: a layout
+  // detached from the ground it was drawn on means nothing.
+  | { page: "layout"; place: string; layout: string }
   | { page: "fleet" }
   | { page: "vehicle"; id?: string; slug?: string }
   | { page: "autonomy" }
@@ -43,7 +47,8 @@ type Rail = Where["page"];
 
 const PAGES: { key: Rail; name: string; count?: (held: Held) => number; is: (where: Where) => boolean }[] = [
   { key: "dive", name: "Dive", is: (w) => w.page === "dive" },
-  { key: "places", name: "Places", count: (h) => h.places.length, is: (w) => w.page === "places" || w.page === "place" },
+  { key: "places", name: "Places", count: (h) => h.places.length,
+    is: (w) => w.page === "places" || w.page === "place" || w.page === "layout" },
   { key: "fleet", name: "Fleet", count: (h) => h.vehicles.length, is: (w) => w.page === "fleet" || w.page === "vehicle" },
   { key: "autonomy", name: "Autonomy", is: (w) => w.page === "autonomy" },
   { key: "runs", name: "Dives", count: (h) => h.runs.length, is: (w) => w.page === "runs" },
@@ -169,7 +174,13 @@ export function Deck({ platform, onDiving }: {
           <Places held={held} packages={packages} onOpen={(id) => setWhere({ page: "place", id })} />
         ) : where.page === "place" ? (
           <PlaceDetail held={held} packages={packages} id={where.id}
+                       platform={platform}
+                       onLayOut={(layout) => setWhere({ page: "layout", place: where.id, layout })}
                        onBack={() => setWhere({ page: "places" })} />
+        ) : where.page === "layout" ? (
+          <LayingOut platform={platform} packages={packages}
+                     place={where.place} layout={where.layout}
+                     onBack={() => setWhere({ page: "place", id: where.place })} />
         ) : where.page === "fleet" ? (
           <Fleet held={held} packages={packages}
                  onOpen={(of) => setWhere({ page: "vehicle", ...of })} />

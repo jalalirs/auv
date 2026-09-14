@@ -2806,6 +2806,203 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cities/{cityId}/layouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How this place has been laid out
+         * @description The arrangements somebody has made of it. Hung off the city rather than standing on their own, because that is what they are — an arrangement of somewhere, whose things sit at depths resolved against that seabed.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    cityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Its arrangements. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            layouts?: components["schemas"]["Layout"][];
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        /**
+         * Start an arrangement of this place
+         * @description Empty until a version of it is saved: a layout is a name for a series of documents, the way a city is a name for a series of packages.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    cityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        slug: string;
+                        name: string;
+                        summary?: string;
+                        /** @default false */
+                        discoverable?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description The arrangement. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Layout"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/layouts/{layoutId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One arrangement */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    layoutId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The arrangement. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Layout"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/layouts/{layoutId}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What has been saved of this arrangement */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    layoutId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Its versions, newest first. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            versions?: components["schemas"]["AssetVersion"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Save what the editor drew
+         * @description Unpublished, like a package, and for the same reason: somebody saving a layout is part way through arranging a site, and a half-arranged one that a dive could already pin would be worse than none.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    layoutId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        label?: string;
+                        notes?: string;
+                        document: components["schemas"]["LayoutDocument"];
+                    };
+                };
+            };
+            responses: {
+                /** @description The saved version, unpublished. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AssetVersion"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cities/{cityId}/versions": {
         parameters: {
             query?: never;
@@ -3993,8 +4190,20 @@ export interface components {
          *      */
         VehicleDynamics: {
             massKg: number;
-            /** @description Buoyancy is computed from this, so a vehicle without it cannot float. */
+            /** @description Buoyancy is computed from this, so a vehicle without it cannot float. The volume the hull has at the surface, at its reference temperature; see `hull` for how it answers depth and cold.
+             *      */
             displacedVolumeM3: number;
+            /** @description How the hull itself responds to the water around it. Both coefficients default to zero, which is a rigid hull of fixed volume — near enough true for a vehicle whose working range is a hundred metres, and false for anything that profiles. At a thousand metres a hull squeezed at the same rate as seawater has lost half a per cent of its volume, which on a buoyancy glider is most of the engine.
+             *      */
+            hull?: {
+                /** @description Fractional volume lost per decibar of pressure. Seawater's own is about 4e-6; whether a vehicle grows heavier or lighter as it descends is whether this is above or below that.
+                 *      */
+                compressibilityPerDbar?: number;
+                /** @description Fractional volume gained per degree above the reference temperature. */
+                thermalExpansionPerC?: number;
+                /** @description The temperature at which displacedVolumeM3 is the volume. */
+                referenceTemperatureC?: number;
+            };
             /** @description What this vehicle can be asked to do, as against how it behaves. A platform that cannot read a vehicle's limits cannot refuse a plan that exceeds them, which is how a request to dive to two hundred metres came back as a plan quietly rewritten into something legal, with nothing anywhere saying the depth had been dropped.
              *      */
             envelope?: {
@@ -4212,11 +4421,48 @@ export interface components {
             /** Format: date-time */
             observedAt?: string | null;
             sources?: Record<string, never>[];
+            /** @description What the water is doing, left open because its shape belongs to the runtime that reads it rather than to this contract. What the simulation runtime understands today: `currentMetresPerSecond` and `currentHeadingDeg`, the current as a speed and the heading it flows towards; `visibilityM`, how far the camera can see; `salinityPsu` and `temperatureC`, which give the water its density through the UNESCO equation of state — the northern Red Sea is 40.6 PSU at 26 °C and holds a hull up measurably better than the 36 PSU of a Florida reef; `densityKgM3`, for water somebody has measured directly rather than inferred; `depthGaugeDensityKgM3`, the density the vehicle's pressure gauge was calibrated against, so that a gauge set for the wrong sea reads the wrong depth by the right amount; `temperatureProfile`, depth and temperature pairs down the water column, for water that is not all one temperature — the Red Sea holds about 21.5 °C below its surface layer, and a hull that shrinks when it is cold notices; `positioning`, what is deployed in this water to fix a position with; `fitted`, which of the vehicle's own instruments are shipped for this dive; and `failures`, things that go wrong on the clock. Water that states none of it floats a vehicle exactly as every dive in the record already did.
+             *      */
             parameters?: Record<string, never>;
             orgId?: string | null;
             /** Format: date-time */
             createdAt: string;
             createdBy: string;
+        };
+        /** @description An arrangement somebody made of a place: where the array was laid, where the ship holds, where the nursery frames are. Belongs to a city and is meaningless without it — the depths its things sit at were resolved against that seabed and are wrong against any other.
+         *     Versioned and pinned like a package, because a mission flown over an array is repeatable only if the array is as fixed as the reef under it.
+         *      */
+        Layout: {
+            id: string;
+            cityId: string;
+            slug: string;
+            name: string;
+            summary?: string;
+            discoverable?: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            createdBy: string;
+            /** Format: date-time */
+            retiredAt?: string | null;
+        };
+        /** @description What is in the water. Each thing carries its kind, where it is in the site's own metres, and the depth its landing rule resolved to **when it was drawn** — not when it is flown. A layout then means the same thing to the editor, the runtime and the record, and re-flying one in September gets the site as it was arranged in March.
+         *      */
+        LayoutDocument: {
+            describedBy?: string;
+            things: {
+                id: string;
+                /** @description What it is, which decides how it meets the bottom: a transponder or a mooring block sits on the ground, a ship or a buoy floats, a line runs between two points, a post stands up from the ground, a cell is a region drawn on the chart.
+                 *      */
+                kind: string;
+                x: number;
+                y: number;
+                /** @description Where the landing rule put it, in site metres, z up. */
+                z?: number;
+                /** @description How deep the seabed was under it when it was drawn. */
+                groundM?: number;
+                radiusM?: number;
+                heightM?: number;
+            }[];
         };
         /** @description A definition, not an execution: a vehicle in a place, under conditions, flown by autonomy.
          *      */
@@ -4294,7 +4540,7 @@ export interface components {
         AssetVersion: {
             id: string;
             /** @enum {string} */
-            assetKind: "city" | "vehicle";
+            assetKind: "city" | "vehicle" | "layout";
             assetId: string;
             /** @description The nth publication of this asset. Ordinal, not semantic: nothing about the number promises compatibility.
              *      */
@@ -4302,6 +4548,7 @@ export interface components {
             label?: string;
             notes?: string;
             digest: string;
+            document?: components["schemas"]["LayoutDocument"];
             /** Format: int64 */
             totalBytes: number;
             /** @description The least runtime that may load this package. A vehicle authored against a newer sensor API must not be flown by an older simulator.
