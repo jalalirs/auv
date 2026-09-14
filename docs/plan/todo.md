@@ -1631,6 +1631,57 @@ drift is the measurement.
 notice, and an instrument that cannot work where the dive is says so.
 
 
+## 57. The map says where, the task says what counts
+
+A task carries two things that are currently one, and separating them is what
+makes a laid-out site (52) worth laying out.
+
+  **Where.** Which cell, which marks, which line, which thing. Geometry.
+  **What counts as done.** Planted within a tolerance, covered at an altitude
+  steady enough to reconstruct from, held for three hundred seconds, found.
+
+Today both are in the objective, and the geometry is written as offsets from
+wherever the dive happened to begin — `dx`, `dy`, a cell of a stated size. It
+has to be, because there is nowhere else for geometry to come from. Which is
+why nobody can say *plant at these thirty-five positions, on this reef*: the
+task invents its own positions relative to a start, and the start is not a
+place, it is an accident of where the vehicle was put.
+
+Once a site can be drawn, that inverts. The map holds the geometry and the
+things in it have identities; a task is a kind plus a reference to what was
+drawn. A nursery frame somebody placed is scenery, and the thing to inspect,
+and the thing to keep clear of, depending only on which task points at it.
+
+**Users compose missions; they do not write scoring rules.** A mission as an
+ordered sequence of stages already exists — survey, dock, charge, survey, each
+scored on its own line. Let anybody build those, over any geometry they drew.
+But a task *kind* is a mark scheme, and a platform where every user writes
+their own mark scheme has no comparable results in it at all, which is the one
+thing this is for. New kinds are ours to add, deliberately, and the reason to
+add one is that somebody's real job needs a rule we do not have — which is how
+outplanting and monitoring arrived.
+
+**A free dive is a mode, not an absence.** It half exists: a dive with no
+objective, flown by hand, scored on nothing. It reads as a degenerate case and
+it is not one. Opening a site somebody laid out and simply flying it is how
+anybody gets the feel of a place, it is the most convincing thing to put in
+front of a person in a room, and everything about it should still be recorded
+— the track, the video, the energy — so that a free dive can be replayed and
+argued about like any other.
+
+**The thing to get right.** A dive currently pins one versioned artefact for
+the world, the place's package. With a layout it pins two, and if the layout is
+not pinned as hard as the place is then two runs of "the same mission" are
+quietly not, and every comparison built on them is worthless. The layout is a
+version of the place or a version beside it — either is defensible — but it is
+versioned, digested and pinned, exactly like everything else.
+
+**Done when:** a task can be pointed at something somebody drew rather than at
+an offset from the vehicle's start, a mission can be assembled from stages over
+that geometry, a free dive can be flown in the same site and replayed, and a
+run names both the place and the layout it was flown in.
+
+
 ## 50. Both cities look wrong
 
 Open. Al Fahal and Thuwal Deep are both built, both published, both flown, and
