@@ -37,7 +37,7 @@ class Mission(Task):
     def stage(self) -> Task | None:
         return self.stages[self.at] if self.at < len(self.stages) else None
 
-    def step(self, t, position, heading, floor, commands) -> None:
+    def step(self, t, position, heading, floor, commands, believed=None) -> None:
         # The mission's own clock runs; the stage's clock starts when it does.
         if self.started_t is None:
             self.started_t = t
@@ -48,7 +48,10 @@ class Mission(Task):
         if stage is None or self.done:
             self.done = True
             return
-        stage.step(t, position, heading, floor, commands)
+        # Handed down rather than dropped: a stage that models somebody doing
+        # something needs to know when the vehicle *believed* it had arrived,
+        # and a mission is only a way of running stages.
+        stage.step(t, position, heading, floor, commands, believed=believed)
         if stage.done:
             self.finished.append(stage.result())
             if stage.failed():
