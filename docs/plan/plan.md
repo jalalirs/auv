@@ -1,271 +1,241 @@
 # The plan
 
-The list in `todo.md` is sixty-six items and it is a backlog: everything anybody
-noticed, in the order they noticed it. This is different. This is the subset
-that turns what exists into something a reef programme could use, in the order
-it can be built, with what "done" means for each part written down before it is
-started rather than after.
+The previous version of this file was a feature sequence with an engineering
+plan's name on it, and it had the fault that names one: work in its first stage
+would have been unpicked by its third. This one starts from the code.
 
-Most of the backlog is not in here. That is the point of a plan.
-
----
-
-## What is being built
-
-**A reef programme rehearses a mission before it spends ship time.**
-
-They open their reef. They lay out the site the way it will really be — the
-array where it will be laid, the ship where it will hold, the nursery frames
-where they are. They build the mission over it. They ask what could go wrong,
-and the answer comes back overnight as a sentence somebody can act on:
-
-> Survives 142 of 180. Every failure is current above 0.35 m/s from the
-> north-east. Flying the lanes north–south recovers 31 of them. Allow eleven
-> days of ship time for seven days of work.
-
-Everything below exists to make that paragraph true and to put it on a screen.
-
-## What is deliberately not in this plan
-
-Named, so that nobody has to wonder whether they were forgotten: more than one
-vehicle in the water (65), the rest of the fleet beyond publishing what already
-exists (51, 55), time of day and tide and season (61), export to other people's
-tools (60), ground finer than the survey (58), sensors beyond what is already
-declared (56, except the two the plan does need), the benchmark's own screen
-(37), and a glider beyond what it already does.
-
-All of them are real and none of them is load-bearing for the paragraph above.
-They go back on the list when it is true.
+Everything below was read before it was written. The findings are specific, the
+refactors come before the features that need them, and nothing is built twice.
 
 ---
 
-# Stage 1 — Make what exists trustworthy and worth looking at
+# Part I — What the code actually is
 
-Nothing here is new capability. It is the debt that will otherwise be paid at
-the worst moment, and it is four things that are already understood.
+## The catalogue is half generalised, and stopped
 
-### 1.1 A run says what computed it *(todo 59)*
+`internal/catalog` already treats a **version** as generic. `AssetKind`,
+`Version`, `CreateVersion`, `publishVersion`, `grantAsset` and `listVersionsOf`
+all take the kind as a parameter and do not care what it is. That half is
+finished and it is good.
 
-The record pins the place, the vehicle and the conditions by digest and nothing
-about the simulator. Physics changed six times in one day and every result from
-before became incomparable with every result after, silently.
+The **asset** half is not. `CreateCity`, `City`, `CityBySlug`, `Cities` exist,
+and beside them `CreateVehicle`, `Vehicle`, `VehicleBySlug`, `Vehicles`, the
+same shape written twice. In `httpapi/catalog.go` the same split: `grantAsset`,
+`createVersion`, `listVersionsOf` are generic; `listCities`, `createCity`,
+`readCity`, `grantCity`, `readCityGrants`, `revokeCityGrant` are per kind, and
+so are their six vehicle twins.
 
-- `contracts`: a run gains `runtime`, carrying the sim image digest and a
-  `physics` integer that the runtime itself declares.
-- `sim-runtime`: a single constant, bumped by hand when behaviour changes, and
-  written into the settled event. The number is not clever and does not need to
-  be: what matters is that it changes when the answer would.
-- `control-plane`: stored on the run, returned with it.
-- `tools/what-if` and any table of results: refuse to put two physics versions
-  in one comparison without saying so.
+Somebody generalised the hard half and left the boring half. That is fine for
+two kinds. **This plan adds three more** — layout, mission, sweep — and at two
+kinds the duplication is invisible, at five it is the shape of the codebase.
 
-**Done:** two runs from either side of a bump cannot be tabulated together in
-silence.
+## `Dive` in the runtime is a god class
 
-### 1.2 The reef stops looking wrong *(todo 50)*
+`sim-runtime/coral/runner.py` is 2,005 lines and `Dive` has **fifty-nine
+methods**. Reading them, the seams are already there and unmarked:
 
-The seabed is surfaced with a satellite photograph, which has already been
-through fifteen metres of water; the renderer attenuates it again and the ground
-goes black under lit coral. Taking the water out is done and is not enough —
-red is gone in four metres and there is nothing there to recover.
+  loading a USD scene and finding the water in it; the water's own properties;
+  the task and what it is scored against; navigation and what the vehicle
+  believes; the physics step, the ground, the surface; the recording and what
+  is said; energy; the ROS bridge; the coral; manual control.
 
-- `tools/zonation.py`: classify the bottom from the two bands that survived —
-  sand, rubble, pavement, coral — rather than only deriving how much coral.
-- `tools/make-site`: colour each class from a reference table, modulated by the
-  imagery's own brightness so the structure is kept and the cast is not.
-- Rebuild and republish Al Fahal; pull frames from a dive and compare.
+Every feature in Part III puts things in the water — objects, a tether, lines
+that move — and every one of them lands on this class. Adding them as they are
+makes it seventy methods and nobody will ever take them out again.
 
-**Done:** a frame from a reef dive reads as a reef.
+## `tasks.py` is one file with every task in it
 
-### 1.3 A model flies a dive *(todo 49)*
+1,693 lines. Adding "a task may point at something drawn on a layout" touches
+all of them, and the file is already the one nobody wants to open.
 
-Built, wired, never run, because the agent could not be redeployed while a sweep
-was in the water. The water is empty now.
+## `dive` in the control plane already holds most of what a sweep needs
 
-- `./tools/box up`, then a survey over Al Fahal with `flyWith: "asking"`.
-- Whatever comes back — a good plan, a refused one, or nothing — goes in the
-  record and in the item.
+`internal/dive` carries Stack, **Conditions**, Dive and Run. Conditions is
+already a stored, named, reusable resource — so removing its tab from the
+application removes a tab, not a model, which is the cheap direction.
 
-**Done:** the record contains a dive whose plan a model wrote.
+## The client has screens and no structure between them
 
-### 1.4 The application stops lying about itself *(todo 63, first half)*
-
-- Delete the Conditions and Recordings tabs. Conditions belong to a mission or
-  a sweep; a recording belongs to the dive that made it.
-- Leave Sweeps, but greyed, with a date — it becomes real in stage 4.
-- Rebuild Autonomy as what each controller has *done* rather than what has been
-  uploaded: flown, scored, cost, over which tasks. Deploying is a button on
-  that page, not its subject.
-
-**Done:** no tab is grey without a reason written next to it.
+Flat files under `screens/`, `Dive.tsx` at 432 lines composing a dive inline
+from six catalogues. There is no place for a new tab to be added that is not
+"another file in the folder", which is exactly how the three grey tabs happened.
 
 ---
 
-# Stage 2 — A place somebody arranged
+# Part II — The target, and the refactors that get there
 
-The largest stage and the one everything after depends on. Built as a thin
-vertical slice first: **one tool, all the way through**, then widen.
+Each refactor below is behaviour-preserving, testable on its own, and is done
+**before** the feature that needs it. None of them is optional and none of them
+is interesting on its own, which is why they have to be scheduled rather than
+hoped for.
 
-### 2.1 A layout is a thing the platform keeps
+## R1 · Finish the asset generalisation *(control plane)*
 
-Reuse what already works rather than inventing a second versioning system: a
-layout is a versioned asset belonging to a city, digested and pinned exactly
-like a package.
+**Why first:** three of the four features in Part III add an asset kind. Doing
+them on the current shape means writing the six-handler wrapper three more
+times and then unpicking eighteen functions later.
 
-- `contracts`: `Layout` — a city, a name, and a document of things. A dive
-  gains `layoutVersionId`, nullable.
-- `control-plane`: the same catalogue machinery cities and vehicles already
-  use, so pinning, granting and refusing-to-change-a-published-thing come free.
-- The document: each thing carries a kind, a position in site metres, and the
-  depth its landing rule resolved to — **resolved when it is drawn, not when it
-  is flown**, so a layout means the same thing whatever reads it.
+**What:** an asset becomes a descriptor rather than a copy —
 
-### 2.2 The runtime knows what is in the water
+    type Asset struct {
+        Kind      AssetKind        // city | vehicle | layout | mission | sweep
+        IDPrefix  ids.Kind
+        Owns      []AssetKind      // a layout belongs to a city
+        Extra     func() any       // what this kind carries beyond name and slug
+    }
 
-- `sim-runtime`: read the layout beside the place, draw its things in the
-  scene, and hold them as truth the way item 25 already holds a search target.
-- Collision against them, using the same two constraints `land()` uses for the
-  ground — this is the half of it that makes an obstacle an obstacle.
+`Store.CreateAsset/Asset/AssetBySlug/Assets` over the descriptor; the city and
+vehicle functions become three-line calls kept for their callers. In `httpapi`,
+`listAssets(kind)`, `createAsset(kind)`, `readAsset(kind)` and one route
+registration loop.
 
-### 2.3 The editor, one tool deep
+**How we know it worked:** the existing contract tests pass untouched, and the
+city and vehicle endpoints answer byte-identically. Nothing else changes.
 
-- The place page lists its layouts; one opens the editor.
-- The chart is the place's own heightfield, shaded by depth, with the depth
-  under the cursor.
-- **Transponders only**, to begin with: place, select, move, delete,
-  duplicate, save.
-- The mockup at `claude.ai/code/artifact/72da3414` is the design; the palette
-  grouped by how a thing meets the bottom is the part to keep.
+**Not in scope:** the dynamics endpoint, which is genuinely vehicle-only.
 
-### 2.4 Prove the chain
+## R2 · Break `Dive` into the things it is made of *(sim runtime)*
 
-Lay an array by hand, save it, fly a dive that pins it, and confirm the vehicle
-took its fixes from transponders that are where they were drawn.
+**Why before Part III:** objects, collision, a tether and things that move all
+land here. On the class as it stands they land as methods fifty-nine through
+seventy.
 
-**Done:** place → layout → dive → record holds, with one tool.
+**What:** the seams the method groups already show —
 
-### 2.5 Then widen
+  `scene.py`    — opening a place, its layers, the water level, where a dive
+                  begins. Owns USD; nothing else imports `pxr`.
+  `sea.py`      — the water: current, density, temperature, visibility, and
+                  what the conditions said. Already nearly separate.
+  `world.py`    — **new**: what is in the water besides the vehicle. Empty at
+                  first, and the home for everything in Part III.
+  `vehicle.py`  — the body, the step, the ground, the surface, energy.
+  `mission.py`  — the task, what it is scored against, the plan it was given.
+  `record.py`   — what is said, what is recorded, what the result is.
+  `runner.py`   — what is left: a `Dive` that owns those six and runs a loop.
 
-Each of these is an afternoon once 2.1 to 2.4 hold, and each is a landing rule
-and a glyph: mooring block, nursery frame, ship with USBL, marker buoy, mooring
-line, marker post, restoration cell. The line is the only one with real work in
-it, because it spans two points and hangs between them.
+**How we know it worked:** all 193 tests pass with no test changed. That is the
+whole check and it is a strong one — they cover physics, tasks, navigation,
+energy, surfacing and the glider.
 
----
+**Done in one pass, not gradually.** A half-split class is worse than either.
 
-# Stage 3 — A mission somebody keeps
+## R3 · Tasks become a package, and geometry becomes a reference *(sim runtime)*
 
-### 3.1 Geometry moves out of the task *(todo 57)*
+**Why here:** it is the same edit to every task, and doing it before missions
+exist means missions land on a task layer that already accepts references.
 
-Today a task carries its own geometry as offsets from wherever the vehicle
-happened to start, because there is nowhere else for geometry to live. Now
-there is.
+**What:** `tasks/` with a module per family, and one change to the base — a task
+may be given `{"over": "<thing in the layout>"}` where it now takes `dx`/`dy`.
+The existing forms keep working; every scoring rule is untouched.
 
-- `sim-runtime/tasks.py`: a task may name a thing in the layout instead of
-  giving `dx`/`dy` — `{"over": "cell-b7"}` rather than a width, a height and a
-  spacing. The existing forms keep working; nothing already written breaks.
-- The scoring rules do not change at all. This is where the work goes and it is
-  not where the risk is.
+**How we know:** existing task tests pass unchanged; new ones cover references.
 
-### 3.2 A mission is a resource
+## R4 · The application gets an information architecture *(client)*
 
-- `contracts`: `Mission` — a place, a layout, and an ordered list of stages,
-  each a task kind and what it is over. The `mission` task kind already
-  sequences stages; this gives it somewhere to live.
-- `control-plane`: create, list, version, pin.
-- A dive is composed *from* a mission rather than by rebuilding one.
+**Why before any new screen:** three tabs were added without one and all three
+were still grey weeks later.
 
-### 3.3 The Missions tab
-
-List, open, build over a layout, save. The dive page picks one instead of
-assembling an objective from nothing.
-
-**Done:** a mission written once is flown twice by two people and the two runs
-are comparable.
+**What:** a declared navigation — every tab a record of what it is, what it
+lists, and what it opens — so a new one is data and not another file in a
+folder. Then the deletions and the Autonomy rebuild are the first two things
+expressed in it rather than one-off edits.
 
 ---
 
-# Stage 4 — The rehearsal
+# Part III — What is built, on top of that
 
-The product. Most of the engine exists in `tools/what-if`; what it has never
-had is somewhere to live and a screen.
+The order is forced by the dependencies and each stage ends in something flown
+and looked at.
 
-### 4.1 A sweep is a resource
+## Stage A · Trust and appearance
 
-- `contracts`: `Sweep` — a mission, a doubt list, a threshold. A run gains the
-  sweep and the scenario it belongs to.
-- `control-plane`: submit the cross product as a batch, report progress.
-- The analysis moves out of the tool and into the platform, unchanged: ranked
-  by what *changes* the outcome, indifferent dimensions named once and not
-  ranked.
+Nothing new; everything already understood. **Depends on R1 for the migration,
+R4 for the deletions.**
 
-### 4.2 What it costs *(todo 66)*
+- **A1 A run says what computed it.** `runtime` on the run: the sim image
+  digest and a physics version the runtime declares. Done in the *same*
+  migration and the same contract change as the sweep fields in stage D, so the
+  run record is altered once — this is the specific thing the previous plan got
+  wrong.
+- **A2 The reef stops looking wrong.** Classify the bottom from the bands that
+  survived; colour from the class, not from the photograph. Republish, fly,
+  compare frames.
+- **A3 A model flies a dive.** One deploy, one dive, whatever it says.
+- **A4 Delete Conditions and Recordings; rebuild Autonomy as a comparison.**
+  The first thing built on R4.
 
-Every input is already in the record and nobody has asked it for anything.
+## Stage B · A place somebody arranged
 
-- Dives per charge, from energy against capacity and reserve.
-- Cells per day, from how long one took.
-- Days lost, from the share of scenarios that failed.
-- Reported as ship days and dives, not as a fraction.
+**Depends on R1 (layout is an asset kind), R2 (`world.py` is where its things
+live).**
 
-### 4.3 The Sweeps tab
+- **B1** `Layout` as an asset kind — no new CRUD, it is a descriptor.
+- **B2** The layout document: things with a kind, a position, and the depth
+  their landing rule resolved to **when drawn, not when flown**.
+- **B3** `world.py` reads it, draws it, holds it as truth, and collides with it
+  using the constraints `land()` already applies to the ground.
+- **B4** The editor, **transponders only**, on R4's navigation: place, select,
+  move, delete, duplicate, save.
+- **B5** Fly a dive that pins a layout and takes fixes from an array that is
+  where it was drawn. *This is the proof of the whole chain.*
+- **B6** Then the rest of the palette, one landing rule each.
 
-Define the doubts, watch it fly, read the answer. The answer is a paragraph and
-a small table, not a grid of numbers — the grid was tried and nobody could read
-it.
+## Stage C · A mission somebody keeps
 
-**Done:** somebody who has never opened a terminal lays out a site, builds a
-mission, sweeps it, and is told what to do about Tuesday.
+**Depends on R1, R3, and B.**
+
+- **C1** `Mission` as an asset kind: a place, a layout, ordered stages.
+- **C2** Stages name drawn geometry, which R3 already accepts.
+- **C3** The Missions tab; the dive page composes from a mission instead of
+  rebuilding one.
+
+## Stage D · The rehearsal
+
+**Depends on C. Uses the run fields already added in A1.**
+
+- **D1** `Sweep` as an asset kind: a mission, a doubt list, a threshold.
+- **D2** The cross product submitted as a batch; the analysis moved out of
+  `tools/what-if` unchanged.
+- **D3** What it costs — ship days, dives, battery swaps. Every input is
+  already in the record.
+- **D4** The Sweeps tab, which stops being grey.
+
+## Stage E · Doubts about the world
+
+**Depends on B3 for a world to doubt, R2 for somewhere to put it.**
+
+- **E1 The tether.** Drag as a term on the vehicle, with its surface end a
+  thing on the layout. The only item in the plan that is already *wrong*.
+- **E2** Lines bow with the current; the doubt list gains structural entries.
+- **E3** The sonar returns off what is there.
 
 ---
 
-# Stage 5 — Doubts that are about the world
+# Part IV — How this is kept honest
 
-Only now, because none of it can be asked before there is a world to doubt.
+**Nothing is touched twice, and here is where that was at risk.** The run
+record: altered once, in A1, carrying both provenance and the sweep fields that
+stage D needs. The navigation: declared once in R4 before any tab is added or
+removed. The asset CRUD: generalised in R1 before three kinds are added to it.
+Those three were the rework in the previous plan and they are the reason this
+one has a Part II.
 
-### 5.1 The tether *(todo 53, first part)*
+**A refactor that changes behaviour has failed.** R1 and R2 are checked by
+existing tests passing untouched — 193 of them, covering the parts that are
+hard to get right. If a test has to change, the refactor was a rewrite wearing
+a refactor's name, and it stops.
 
-Out of order in the backlog on purpose and pulled forward here for the same
-reason: it needs nothing above, and it is the only thing in the plan that is
-already **wrong** rather than absent. A hundred metres of tether streaming in a
-current has more area than the vehicle and is often the larger force; every
-tethered dive in the record flew without it.
+**Every stage ends in a dive.** Not a passing test — something flown and looked
+at. A stage that ends green and unflown is not done.
 
-- `hydrodynamics`: tether drag as a term on the vehicle, from length streamed,
-  the current, and where the surface end is.
-- The surface end is a thing on the layout — which is why it sits here and not
-  in stage 1.
+**The record is cleared when physics changes,** and after A1 the platform can
+say whether that was necessary rather than guessing.
 
-### 5.2 Things where the chart does not say
+**Two devices.** Stages D and E end in sweeps and a sweep of seventy-two
+scenarios takes most of a day on this box. That is the pacing constraint on the
+back half of the plan; the free lever is shorter missions, not more planning.
 
-- Lines bow with the current. Quasi-static catenary, no solver.
-- The doubt list gains structural entries: *the mooring is thirty metres from
-  where it was laid*, *the array has one transponder down*, *there is a net
-  where the chart says clear water*.
-
-### 5.3 The sonar becomes a sensor *(todo 56, first part)*
-
-Declared in the package since the beginning and returning nothing, because
-there has been nothing to return off. Now there is.
-
-**Done:** a sweep can ask what happens if the world is not as drawn, and answer.
-
----
-
-# How this is actually run
-
-**Vertically, never by layer.** Every stage above ends in something flown and
-looked at. A stage that ends in a passing test and nothing flown is not done.
-
-**The record is cleared before each stage that changes physics,** and the
-physics version (1.1) is what says whether that was necessary.
-
-**Two devices.** A sweep of seventy-two scenarios takes most of a day on this
-box, and stages 4 and 5 both end in sweeps. That is the pacing constraint on
-the whole plan and no amount of planning moves it — what moves it is more
-devices or shorter missions, and shorter missions is the one that is free.
-
-**What would make this plan wrong.** Somebody who dives looking at stage 1.2 and
-saying the reef still looks wrong; a layout that cannot be drawn in under five
-minutes in stage 2.3; a sweep in stage 4 whose answer nobody acts on. Each of
-those is worth stopping for, and none of them is discoverable from here.
+**What would show this plan is wrong:** somebody who dives saying A2 still
+looks wrong; a layout that cannot be drawn in five minutes at B4; a sweep at D4
+whose answer nobody acts on. None is discoverable from here, and each is worth
+stopping for.
