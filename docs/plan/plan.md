@@ -241,6 +241,48 @@ between them rather than sitting on one.
 
 **Done:** a site can be laid out the way it will really be.
 
+*Done (14 September).* Eight kinds: transponder, mooring block, nursery frame,
+marker post, buoy, ship, mooring line, restoration cell. Al Fahal's restoration
+plot laid with twelve of them — a 60 × 40 m cell, posts on its corners, three
+frames inside it, a mooring, and a ship holding station 90 m north — and flown
+three times. The record of every run now carries what it was flown through.
+
+Four things it settled, three of which were one class of mistake: a shape that
+was really three shapes wearing one set of fields.
+
+  **`Thing` became three.** Something standing at a point, something spanning
+  between two, and an area drawn on the chart. One class with flags would have
+  been one class needing a fourth flag next month; `Thing.of()` picks the shape
+  from the kind's landing rule and nothing outside the module asks which it
+  got.
+
+  **A ship's three metres were three metres of sky.** The vertical extent ran
+  upward from wherever a thing was landed, which is right for a post and
+  exactly wrong for a hull: a vehicle at two metres deep flew through the only
+  part of a ship that is in the sea. Surface things now hang down.
+
+  **A slack line is not where the straight line is.** A mooring line is the one
+  kind that is not anywhere — it is everywhere along a curve. Solved as a real
+  catenary rather than drawn as a chord: over a hundred metres, five per cent
+  of slack puts the middle 13.9 m below its ends, against 13.7 m from the
+  shallow-sag approximation, and the solver reproduces the asked arc length to
+  a centimetre. A vehicle flown at the chord's depth at mid-span meets nothing;
+  one flown 14 m lower meets the line.
+
+  **The ship carries the transceiver.** USBL took its fix from straight
+  overhead, which is the best case and never quite true. With a ship drawn, the
+  fix comes from where the ship is and its error is a share of *that* slant
+  range — 91 m from the vehicle rather than 12 m of depth — and the record says
+  how far it came.
+
+Two smaller ones the flying found: a `reach` target written as `[x, y, z]`,
+which is how every other position in the record is written, fell through to
+"twenty metres ahead of wherever you started" and flew a different dive without
+saying so; and a strike reported itself once per physics step, which is four
+hundred events for four seconds against a frame. Flown straight at a nursery
+frame, the vehicle is now stopped at its edge, says so once, goes round, and
+arrives with the detour visible in the score: directness 0.966 instead of 1.
+
 ## 10 · A task can point at something drawn
 
 `sim-runtime/coral/tasks.py` → `tasks/`, a module per family.
