@@ -35,6 +35,21 @@ class Task:
     # tested for by whoever builds it. "camera" for anything scored on what was
     # seen, "colonies" for anything scored on coral.
     wants: tuple[str, ...] = ()
+    # Whether failing this should stop a mission that is running it.
+    #
+    # True for anything the rest of the plan depends on having happened: a dock
+    # that missed, a reach that never arrived, a return that did not get home.
+    # The next stage assumes a vehicle somewhere it is not, and a mission that
+    # carries on regardless is a mission pretending.
+    #
+    # False for work scored on how much of it got done. A survey that covered
+    # eighty-five per cent of a plot in the time it was given did not fail to
+    # happen — it happened partly, which is the answer — and the frames still
+    # want inspecting afterwards. Without this every mission with a survey in
+    # it stopped at its first stage, because a lawnmower pattern over a
+    # rectangle does not reach the hundred per cent that "done and not
+    # complete" tests against.
+    stops_a_mission = True
     # Whether this asks the vehicle to stop. Most tasks do somewhere — arrive,
     # hold, work, dock — and a vehicle that cannot stop cannot be asked. A
     # glider is the reason the question exists: it does not hover badly, it

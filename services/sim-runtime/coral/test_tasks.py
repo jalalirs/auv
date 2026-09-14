@@ -308,3 +308,32 @@ def test_a_mission_takes_everything_a_task_takes():
     assert mission.elapsed() == 1.0
     # And it reaches the stage, which is the reason it is passed at all.
     assert mission.stage.believed is not None
+
+
+def test_a_partial_survey_does_not_end_the_round():
+    """A survey that covered part of a plot happened partly, which is the answer.
+
+    Every mission with a survey in it used to stop at its first stage: a
+    lawnmower pattern over a rectangle does not reach the hundred per cent that
+    "done and not complete" tests against, so a stage that covered 85% was
+    treated as a stage that had not happened, and the frames never got
+    inspected.
+    """
+    mission = task_for({"kind": "mission", "stages": [
+        {"kind": "survey", "widthM": 40.0, "heightM": 20.0, "timeLimitS": 1.0},
+        {"kind": "hold-station", "seconds": 5.0}]},
+        np.array([0.0, 0.0, -5.0]), 0.0)
+    survey = mission.stages[0]
+    for t in (0.0, 0.5, 1.5):
+        mission.step(t, np.array([0.0, 0.0, -5.0]), 0.0, -7.0, [0.0] * 6)
+    assert survey.done and survey.failed(), "it ran out of time short of the box"
+    assert not mission.stopped_early, "and the round carries on"
+    assert mission.stage is not None and mission.stage.kind == "hold-station"
+
+
+def test_a_dock_that_missed_does_end_it():
+    """Because the next stage assumes a vehicle somewhere it is not."""
+    from tasks.going import Dock
+    from tasks.covering import Survey
+    assert Dock.stops_a_mission is True
+    assert Survey.stops_a_mission is False
