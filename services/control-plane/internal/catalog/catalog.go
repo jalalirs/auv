@@ -34,6 +34,7 @@ const (
 	KindCity    AssetKind = "city"
 	KindVehicle AssetKind = "vehicle"
 	KindLayout  AssetKind = "layout"
+	KindMission AssetKind = "mission"
 )
 
 // ParseAssetKind accepts the kinds the record accepts and refuses the rest.
@@ -45,6 +46,8 @@ func ParseAssetKind(value string) (AssetKind, error) {
 		return KindVehicle, nil
 	case KindLayout:
 		return KindLayout, nil
+	case KindMission:
+		return KindMission, nil
 	default:
 		return "", fmt.Errorf("%w: %q is not a kind of thing this catalogue holds",
 			domain.ErrInvalid, value)
@@ -419,19 +422,31 @@ func (s *Store) Vehicles(ctx context.Context, scope Scope) ([]Vehicle, error) {
 	return vehicles.all(ctx, s.pool, scope)
 }
 
-// ── Layouts ──────────────────────────────────────────────────────────────────
+// ── What somebody makes about a place ────────────────────────────────────────
 //
-// An arrangement of a place — where the array was laid, where the ship holds,
-// where the nursery frames are. Versioned and pinned like everything else,
-// because a mission flown over an array is repeatable only if the array is as
-// fixed as the reef under it.
+// Two things so far, and they are the same thing: a **layout** is an
+// arrangement of a place — where the array was laid, where the ship holds,
+// where the nursery frames are — and a **mission** is a plan of work over one,
+// an ordered list of stages each pointing at something in that arrangement.
 //
-// Belongs to a city and is meaningless without it: the depths its things sit
-// at were resolved against that seabed and are wrong against any other.
+// Both are named, versioned documents that belong to a city, and both are
+// pinned for the same reason a package is: a mission flown over an array is
+// repeatable only if the array is as fixed as the reef under it. So they share
+// a table shape, a descriptor and every query, and differ only in what their
+// document says. Writing the second one out by hand would have been sixty
+// lines of the first with a word changed, and the third would have been sixty
+// more.
+//
+// Both are meaningless detached from their place: a layout's depths were
+// resolved against that seabed, and a mission's stages point at things drawn
+// on it.
 
-// Layout is an arrangement somebody made of a place.
-type Layout struct {
+// MadeOfAPlace is a named, versioned document belonging to a city. Its Kind
+// says which sort it is, so one shape serves the record, the API and the
+// client.
+type MadeOfAPlace struct {
 	ID           string     `json:"id"`
+	Kind         AssetKind  `json:"kind"`
 	CityID       string     `json:"cityId"`
 	Slug         string     `json:"slug"`
 	Name         string     `json:"name"`
@@ -442,8 +457,14 @@ type Layout struct {
 	RetiredAt    *time.Time `json:"retiredAt,omitempty"`
 }
 
-// LayoutSpec describes one to make.
-type LayoutSpec struct {
+// Layout is an arrangement somebody made of a place.
+type Layout = MadeOfAPlace
+
+// Mission is a plan of work over a place.
+type Mission = MadeOfAPlace
+
+// MadeOfAPlaceSpec describes one to make.
+type MadeOfAPlaceSpec struct {
 	CityID       string
 	Slug         string
 	Name         string
@@ -452,73 +473,128 @@ type LayoutSpec struct {
 	CreatedBy    string
 }
 
-func (s LayoutSpec) Validate() error {
+// LayoutSpec and MissionSpec name the same fields. Kept as names rather than
+// one, because a caller says which it is making and the compiler should read
+// the way the caller does.
+type LayoutSpec = MadeOfAPlaceSpec
+
+// MissionSpec describes a plan of work to make.
+type MissionSpec = MadeOfAPlaceSpec
+
+func validateMadeOfAPlace(s MadeOfAPlaceSpec, what string) error {
 	if s.CityID == "" {
-		return fmt.Errorf("%w: a layout is an arrangement of somewhere", domain.ErrInvalid)
+		return fmt.Errorf("%w: a %s is about somewhere", domain.ErrInvalid, what)
 	}
 	if s.Slug == "" || s.Name == "" {
-		return fmt.Errorf("%w: a layout has a handle and a name", domain.ErrInvalid)
+		return fmt.Errorf("%w: a %s has a handle and a name", domain.ErrInvalid, what)
 	}
 	return nil
 }
 
-const selectLayout = `
-	SELECT id, city_id, slug, name, summary, discoverable,
-	       created_at, created_by, retired_at
-	  FROM catalog.layout`
+// madeOfAPlace is the machinery a layout and a mission share.
+type madeOfAPlace struct {
+	table  string
+	kind   AssetKind
+	idKind ids.Kind
+	what   string
+}
 
-func scanLayout(row interface{ Scan(...any) error }) (Layout, error) {
-	var one Layout
+var (
+	layouts  = madeOfAPlace{table: "catalog.layout", kind: KindLayout, idKind: ids.KindLayout, what: "layout"}
+	missions = madeOfAPlace{table: "catalog.mission", kind: KindMission, idKind: ids.KindMission, what: "mission"}
+)
+
+func (m madeOfAPlace) selectFrom() string {
+	return `SELECT id, city_id, slug, name, summary, discoverable,
+	               created_at, created_by, retired_at
+	          FROM ` + m.table
+}
+
+func (m madeOfAPlace) scan(row interface{ Scan(...any) error }) (MadeOfAPlace, error) {
+	one := MadeOfAPlace{Kind: m.kind}
 	err := row.Scan(&one.ID, &one.CityID, &one.Slug, &one.Name, &one.Summary,
 		&one.Discoverable, &one.CreatedAt, &one.CreatedBy, &one.RetiredAt)
 	return one, err
 }
 
-var layouts = catalogued[Layout]{selectFrom: selectLayout, scan: scanLayout, plural: "layouts"}
-
-// CreateLayout records an arrangement of a place.
-func (s *Store) CreateLayout(ctx context.Context, conn db.Conn, spec LayoutSpec) (Layout, error) {
-	if err := spec.Validate(); err != nil {
-		return Layout{}, err
+func (m madeOfAPlace) create(ctx context.Context, conn db.Conn, spec MadeOfAPlaceSpec) (MadeOfAPlace, error) {
+	if err := validateMadeOfAPlace(spec, m.what); err != nil {
+		return MadeOfAPlace{}, err
 	}
-	id := ids.New(ids.KindLayout)
+	id := ids.New(m.idKind)
 	_, err := conn.Exec(ctx, `
-		INSERT INTO catalog.layout (id, city_id, slug, name, summary, discoverable, created_by)
+		INSERT INTO `+m.table+` (id, city_id, slug, name, summary, discoverable, created_by)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		id, spec.CityID, spec.Slug, spec.Name, spec.Summary, spec.Discoverable, spec.CreatedBy)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
-			return Layout{}, fmt.Errorf("%w: this place already has a layout called %q",
-				domain.ErrInvalid, spec.Slug)
+			return MadeOfAPlace{}, fmt.Errorf("%w: this place already has a %s called %q",
+				domain.ErrInvalid, m.what, spec.Slug)
 		}
-		return Layout{}, fmt.Errorf("recording a layout: %w", err)
+		return MadeOfAPlace{}, fmt.Errorf("recording a %s: %w", m.what, err)
 	}
-	return scanLayout(conn.QueryRow(ctx, selectLayout+` WHERE id = $1`, id))
+	return m.scan(conn.QueryRow(ctx, m.selectFrom()+` WHERE id = $1`, id))
 }
 
-// Layout reads one arrangement.
-func (s *Store) Layout(ctx context.Context, id string) (Layout, error) {
-	return layouts.one(ctx, s.pool, "id", id)
+func (m madeOfAPlace) one(ctx context.Context, pool *db.Pool, id string) (MadeOfAPlace, error) {
+	found, err := m.scan(pool.QueryRow(ctx, m.selectFrom()+` WHERE id = $1`, id))
+	if err != nil {
+		if db.IsNoRows(err) {
+			return MadeOfAPlace{}, fmt.Errorf("%w: no %s %q", domain.ErrNotFound, m.what, id)
+		}
+		return MadeOfAPlace{}, fmt.Errorf("reading a %s: %w", m.what, err)
+	}
+	return found, nil
 }
 
-// LayoutsOf lists the arrangements of one place. Scoped by the place rather
-// than by the subject: whoever may see a city may see how it has been laid out.
-func (s *Store) LayoutsOf(ctx context.Context, cityID string) ([]Layout, error) {
-	rows, err := s.pool.Query(ctx, selectLayout+`
+// ofCity lists what has been made of one place. Scoped by the place rather
+// than by the subject: whoever may see a city may see what has been made of it.
+func (m madeOfAPlace) ofCity(ctx context.Context, pool *db.Pool, cityID string) ([]MadeOfAPlace, error) {
+	rows, err := pool.Query(ctx, m.selectFrom()+`
 		WHERE city_id = $1 AND retired_at IS NULL ORDER BY name`, cityID)
 	if err != nil {
-		return nil, fmt.Errorf("listing the layouts of a place: %w", err)
+		return nil, fmt.Errorf("listing what has been made of a place: %w", err)
 	}
 	defer rows.Close()
-	found := []Layout{}
+	found := []MadeOfAPlace{}
 	for rows.Next() {
-		one, err := scanLayout(rows)
+		one, err := m.scan(rows)
 		if err != nil {
 			return nil, err
 		}
 		found = append(found, one)
 	}
 	return found, rows.Err()
+}
+
+// CreateLayout records an arrangement of a place.
+func (s *Store) CreateLayout(ctx context.Context, conn db.Conn, spec LayoutSpec) (Layout, error) {
+	return layouts.create(ctx, conn, spec)
+}
+
+// Layout reads one arrangement.
+func (s *Store) Layout(ctx context.Context, id string) (Layout, error) {
+	return layouts.one(ctx, s.pool, id)
+}
+
+// LayoutsOf lists the arrangements of one place.
+func (s *Store) LayoutsOf(ctx context.Context, cityID string) ([]Layout, error) {
+	return layouts.ofCity(ctx, s.pool, cityID)
+}
+
+// CreateMission records a plan of work over a place.
+func (s *Store) CreateMission(ctx context.Context, conn db.Conn, spec MissionSpec) (Mission, error) {
+	return missions.create(ctx, conn, spec)
+}
+
+// Mission reads one plan of work.
+func (s *Store) Mission(ctx context.Context, id string) (Mission, error) {
+	return missions.one(ctx, s.pool, id)
+}
+
+// MissionsOf lists the plans of work over one place.
+func (s *Store) MissionsOf(ctx context.Context, cityID string) ([]Mission, error) {
+	return missions.ofCity(ctx, s.pool, cityID)
 }
 
 // ── Versions ─────────────────────────────────────────────────────────────────

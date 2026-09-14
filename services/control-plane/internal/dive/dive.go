@@ -175,6 +175,13 @@ type Dive struct {
 	AutonomyStackID  *string         `json:"autonomyStackId,omitempty"`
 	InitialState     json.RawMessage `json:"initialState"`
 	Objective        json.RawMessage `json:"objective"`
+	// How the place was arranged, and what plan of work this came from.
+	// Both were held only in the row and not returned, which made a dive read
+	// back as though it had been flown over bare ground and asked for by hand.
+	// They are two thirds of what makes two runs comparable, so the record
+	// says them.
+	LayoutVersionID  string          `json:"layoutVersionId,omitempty"`
+	MissionVersionID string          `json:"missionVersionId,omitempty"`
 	CreatedAt        time.Time       `json:"createdAt"`
 	CreatedBy        string          `json:"createdBy"`
 }
@@ -188,6 +195,7 @@ type DiveSpec struct {
 	// as hard as the place is, because a mission flown over an array is only
 	// repeatable if the array is as fixed as the reef under it.
 	LayoutVersionID  string
+	MissionVersionID string
 	VehicleVersionID string
 	ConditionsID     string
 	AutonomyStackID  *string
@@ -471,6 +479,7 @@ func (c Conditions) Digest() (domain.Digest, error) {
 const selectDive = `
 	SELECT id, org_id, name, summary, city_version_id, vehicle_version_id,
 	       conditions_id, autonomy_stack_id, initial_state, objective,
+	       coalesce(layout_version_id, ''), coalesce(mission_version_id, ''),
 	       created_at, created_by
 	FROM dive.dive`
 
@@ -479,12 +488,65 @@ func scanDive(row interface{ Scan(...any) error }) (Dive, error) {
 	err := row.Scan(&plan.ID, &plan.OrgID, &plan.Name, &plan.Summary,
 		&plan.CityVersionID, &plan.VehicleVersionID, &plan.ConditionsID,
 		&plan.AutonomyStackID, &plan.InitialState, &plan.Objective,
+		&plan.LayoutVersionID, &plan.MissionVersionID,
 		&plan.CreatedAt, &plan.CreatedBy)
 	return plan, err
 }
 
+// aMission is what a mission version's document says: where, arranged how, and
+// what to do there. The three pins that make two runs comparable.
+type aMission struct {
+	CityVersionID   string            `json:"cityVersionId"`
+	LayoutVersionID string            `json:"layoutVersionId"`
+	Stages          []json.RawMessage `json:"stages"`
+}
+
+// composeFrom fills a dive in from the mission it was asked for.
+//
+// What the caller said wins: a dive that names its own vehicle, or overrides a
+// stage, is still that mission flown — the mission supplies the place, the
+// arrangement and the work, and the caller supplies who flies it and in what
+// water. What the caller must not be able to do is change the place or the
+// arrangement while still calling it the same mission, so those are taken from
+// the document whenever the document states them.
+func composeFrom(ctx context.Context, conn db.Conn, spec DiveSpec) (DiveSpec, error) {
+	var document []byte
+	err := conn.QueryRow(ctx, `
+		SELECT document FROM catalog.version
+		 WHERE id = $1 AND asset_kind = 'mission'`, spec.MissionVersionID).Scan(&document)
+	if err != nil {
+		return spec, fmt.Errorf("%w: no mission version %q", domain.ErrInvalid, spec.MissionVersionID)
+	}
+	var said aMission
+	if err := json.Unmarshal(document, &said); err != nil {
+		return spec, fmt.Errorf("%w: that mission's document cannot be read", domain.ErrInvalid)
+	}
+	if said.CityVersionID != "" {
+		spec.CityVersionID = said.CityVersionID
+	}
+	if said.LayoutVersionID != "" {
+		spec.LayoutVersionID = said.LayoutVersionID
+	}
+	if len(spec.Objective) == 0 || string(spec.Objective) == "{}" {
+		stages, err := json.Marshal(said.Stages)
+		if err != nil {
+			return spec, fmt.Errorf("%w: that mission's stages cannot be read", domain.ErrInvalid)
+		}
+		spec.Objective = json.RawMessage(`{"kind":"mission","stages":` + string(stages) + `}`)
+	}
+	return spec, nil
+}
+
 // CreateDive defines a dive.
 func (s *Store) CreateDive(ctx context.Context, conn db.Conn, spec DiveSpec) (Dive, error) {
+	// Composed before it is checked: a dive that names a mission is not
+	// missing the three things the mission supplies.
+	if spec.MissionVersionID != "" {
+		var err error
+		if spec, err = composeFrom(ctx, conn, spec); err != nil {
+			return Dive{}, err
+		}
+	}
 	if err := spec.Validate(); err != nil {
 		return Dive{}, err
 	}
@@ -521,12 +583,12 @@ func (s *Store) CreateDive(ctx context.Context, conn db.Conn, spec DiveSpec) (Di
 		INSERT INTO dive.dive
 		    (id, org_id, name, summary, city_version_id, vehicle_version_id,
 		     conditions_id, autonomy_stack_id, initial_state, objective,
-		     layout_version_id, created_by)
+		     layout_version_id, mission_version_id, created_by)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-		        nullif($11, ''), $12)`,
+		        nullif($11, ''), nullif($12, ''), $13)`,
 		id, spec.OrgID, spec.Name, spec.Summary, spec.CityVersionID,
 		spec.VehicleVersionID, spec.ConditionsID, spec.AutonomyStackID,
-		initial, objective, spec.LayoutVersionID, spec.CreatedBy)
+		initial, objective, spec.LayoutVersionID, spec.MissionVersionID, spec.CreatedBy)
 	if err != nil {
 		return Dive{}, fmt.Errorf("defining a dive: %w", err)
 	}

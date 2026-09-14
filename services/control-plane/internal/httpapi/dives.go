@@ -151,6 +151,7 @@ type createDiveRequest struct {
 	Summary          string          `json:"summary"`
 	CityVersionID    string          `json:"cityVersionId"`
 	LayoutVersionID  string          `json:"layoutVersionId"`
+	MissionVersionID string          `json:"missionVersionId"`
 	VehicleVersionID string          `json:"vehicleVersionId"`
 	ConditionsID     string          `json:"conditionsId"`
 	AutonomyStackID  *string         `json:"autonomyStackId,omitempty"`
@@ -180,6 +181,7 @@ func (d *Dependencies) createDive(w http.ResponseWriter, r *http.Request) {
 			Summary:          request.Summary,
 			CityVersionID:    request.CityVersionID,
 			LayoutVersionID:  request.LayoutVersionID,
+			MissionVersionID: request.MissionVersionID,
 			VehicleVersionID: request.VehicleVersionID,
 			ConditionsID:     request.ConditionsID,
 			AutonomyStackID:  request.AutonomyStackID,
