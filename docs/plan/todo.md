@@ -2040,6 +2040,87 @@ wrong with it. Cheap, and it cannot be done by us.
 fly in it, and what they said has been written down here.
 
 
+# The order to build it in
+
+The list above is what, and it is numbered in the order the items were thought
+of rather than the order they can be done. This is the order they can be done,
+and why each one has to wait for the one before it.
+
+Three things are true of the whole plan and worth saying once. **Nothing below
+has a user interface**, and everything built in Phase 5 is driven from a
+terminal by the person who wrote it — a rehearsal system a programme actually
+uses is a screen, and the screen is not optional work to be done afterwards.
+**A platform whose product is comparison cannot change its physics silently**,
+which is why 59 comes before the rest rather than after. And **none of it is
+evidence until somebody who dives says so** (62), which can be arranged at any
+point and gets later and more embarrassing the longer it is left.
+
+---
+
+## Now, because everything else quietly depends on them
+
+- [ ] **59 · a result knows what computed it.** Small, and every day without it
+      more results become unsafe to compare. Nothing else should land first.
+- [ ] **49 · a model actually flies a dive.** Built, wired, never run. One
+      deploy. Until it happens, "AI controller" is an assertion and the
+      benchmark has one contestant.
+- [ ] **50 · the map stops looking wrong.** Colour from what a thing *is*, not
+      from what it photographed as. The satellite cannot say what colour coral
+      is and it can say clearly where it is.
+
+## Then the foundation the rest of it stands on
+
+- [ ] **54 · one declaration and one refusal.** A thing says what it is for, a
+      thing says what it needs, a mismatch is refused before the dive. Exists
+      once already (42); generalise it rather than write it twice more.
+- [ ] **52 · the study map.** The 2-D editor: draw on real bathymetry, depth
+      under the cursor, a landing rule per tool, and the editing that makes it
+      a tool rather than a demo. *This is the largest single item in the list
+      and the one the most others are waiting on.*
+- [ ] **57 · the map says where, the task says what counts.** Needs 52 to
+      exist. Splits geometry from scoring, which is what lets a mission be
+      designed rather than parameterised.
+- [ ] **53 · the tether.** Out of order on purpose: it needs none of the above
+      and it is the only thing in this list that is already *wrong* rather than
+      merely missing. Every tethered dive in the record flew without the
+      largest drag force acting on it.
+
+## Then the things that become possible
+
+- [ ] **53 · the rest of it** — catenaries that bow with the current, motion in
+      the top half-wavelength, things that move.
+- [ ] **56 · the sonar,** which needs 52 to have put something in the water.
+- [ ] **56 · the CTD and the lights,** which need nothing and should not wait.
+- [ ] **58 · ground as fine as the work.** Once tasks are drawn on a map, the
+      map's resolution stops being a detail.
+- [ ] **55 · the rest of the fleet.** Publish the Heavy and the REMUS first —
+      packages, not physics. The Otter needs a sea state and waits for 53.
+- [ ] **61 · time of day, tide, season.**
+
+## Then the reason any of it was built
+
+- [ ] **the structural what-if.** Not "what if the current is half a knot" but
+      "what if the mooring is not where the chart says". Only possible after 52.
+- [ ] **60 · something comes out of it.** A deliverable a reef programme opens
+      in a tool it already has.
+- [ ] **46 · overlap,** the third thing a reconstruction needs.
+- [ ] **47 · census,** which wants coral to have a condition.
+- [ ] **48 · a dive flown from words,** end to end.
+- [ ] **37 · the benchmark,** which has been waiting for a second contestant
+      since Phase 4 and gets one from 49.
+
+## Running alongside, not after
+
+- [ ] **the interface.** Every item above has a screen it needs and none of
+      them have one: laying out a site, assembling a mission, reading a sweep,
+      watching a replay, exporting a result. Built as each item lands, or it
+      becomes a second project that never starts.
+- [ ] **45 · calibrated depths.** One free account and ICESat-2 makes Al Fahal
+      measured rather than plausible. Not ours to create.
+- [ ] **62 · somebody who dives says it is right.** At any point. The longer it
+      waits the more there is to be wrong about.
+
+
 ## What a dive is made of
 
 Six things, chosen separately, crossed at the moment somebody presses Dive.
