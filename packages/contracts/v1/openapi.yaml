@@ -1929,6 +1929,135 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v1/cities/{cityId}/layouts:
+    get:
+      tags: [places]
+      summary: How this place has been laid out
+      description: >
+        The arrangements somebody has made of it. Hung off the city rather than
+        standing on their own, because that is what they are — an arrangement
+        of somewhere, whose things sit at depths resolved against that seabed.
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Its arrangements.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  layouts:
+                    type: array
+                    items: { $ref: '#/components/schemas/Layout' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [places]
+      summary: Start an arrangement of this place
+      description: >
+        Empty until a version of it is saved: a layout is a name for a series
+        of documents, the way a city is a name for a series of packages.
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [slug, name]
+              properties:
+                slug: { type: string }
+                name: { type: string }
+                summary: { type: string }
+                discoverable: { type: boolean, default: false }
+      responses:
+        '201':
+          description: The arrangement.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Layout' }
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/layouts/{layoutId}:
+    get:
+      tags: [places]
+      summary: One arrangement
+      parameters:
+        - name: layoutId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The arrangement.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Layout' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/layouts/{layoutId}/versions:
+    get:
+      tags: [places]
+      summary: What has been saved of this arrangement
+      parameters:
+        - name: layoutId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Its versions, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  versions:
+                    type: array
+                    items: { $ref: '#/components/schemas/AssetVersion' }
+    post:
+      tags: [places]
+      summary: Save what the editor drew
+      description: >
+        Unpublished, like a package, and for the same reason: somebody saving a
+        layout is part way through arranging a site, and a half-arranged one
+        that a dive could already pin would be worse than none.
+      parameters:
+        - name: layoutId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [document]
+              properties:
+                label: { type: string }
+                notes: { type: string }
+                document: { $ref: '#/components/schemas/LayoutDocument' }
+      responses:
+        '201':
+          description: The saved version, unpublished.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssetVersion' }
+        '400':
+          $ref: '#/components/responses/Invalid'
   /api/v1/cities/{cityId}/versions:
     get:
       tags: [places]
@@ -3249,6 +3378,62 @@ components:
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
       required: [id, kind, name, createdAt, createdBy]
+    Layout:
+      type: object
+      description: >
+        An arrangement somebody made of a place: where the array was laid,
+        where the ship holds, where the nursery frames are. Belongs to a city
+        and is meaningless without it — the depths its things sit at were
+        resolved against that seabed and are wrong against any other.
+
+        Versioned and pinned like a package, because a mission flown over an
+        array is repeatable only if the array is as fixed as the reef under it.
+      properties:
+        id: { type: string }
+        cityId: { type: string }
+        slug: { type: string }
+        name: { type: string }
+        summary: { type: string }
+        discoverable: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string }
+        retiredAt: { type: string, format: date-time, nullable: true }
+      required: [id, cityId, slug, name, createdAt, createdBy]
+    LayoutDocument:
+      type: object
+      description: >
+        What is in the water. Each thing carries its kind, where it is in the
+        site's own metres, and the depth its landing rule resolved to **when it
+        was drawn** — not when it is flown. A layout then means the same thing
+        to the editor, the runtime and the record, and re-flying one in
+        September gets the site as it was arranged in March.
+      properties:
+        describedBy: { type: string }
+        things:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              kind:
+                type: string
+                description: >
+                  What it is, which decides how it meets the bottom: a
+                  transponder or a mooring block sits on the ground, a ship or
+                  a buoy floats, a line runs between two points, a post stands
+                  up from the ground, a cell is a region drawn on the chart.
+              x: { type: number }
+              y: { type: number }
+              z:
+                type: number
+                description: Where the landing rule put it, in site metres, z up.
+              groundM:
+                type: number
+                description: How deep the seabed was under it when it was drawn.
+              radiusM: { type: number }
+              heightM: { type: number }
+            required: [id, kind, x, y]
+      required: [things]
     Dive:
       type: object
       description: >
@@ -3335,7 +3520,7 @@ components:
         cache as append-only.
       properties:
         id: { type: string }
-        assetKind: { type: string, enum: [city, vehicle] }
+        assetKind: { type: string, enum: [city, vehicle, layout] }
         assetId: { type: string }
         ordinal:
           type: integer
@@ -3346,6 +3531,8 @@ components:
         label: { type: string }
         notes: { type: string }
         digest: { type: string }
+        document:
+          $ref: '#/components/schemas/LayoutDocument'
         totalBytes: { type: integer, format: int64 }
         runtimeMin:
           type: string

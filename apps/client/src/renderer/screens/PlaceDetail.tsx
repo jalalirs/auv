@@ -4,17 +4,33 @@
 // and by whom, where a dive begins and why — and what the sea there is doing
 // today. Every number here has a source on the page beside it.
 
+import { useEffect, useState } from "react";
+
+import type { Layout, Platform } from "@coral-city/api";
 import { useSea } from "../ocean/sea.js";
 import { whereIs } from "../platform/packages.js";
 import type { Held, Packages } from "./Deck.js";
 import { Credit, Empty, PageHead, Pill, Row, SeaPanel, ago, fixed, useLoadedPicture } from "./parts.js";
 
-export function PlaceDetail({ held, packages, id, onBack }: {
+export function PlaceDetail({ held, packages, id, platform, onLayOut, onBack }: {
   held: Held;
   packages: Packages;
   id: string;
+  platform: Platform;
+  onLayOut: (layout: string) => void;
   onBack: () => void;
 }): React.JSX.Element {
+  // How this place has been arranged. Listed here rather than under a tab of
+  // its own, because an arrangement of somewhere means nothing away from it.
+  const [layouts, setLayouts] = useState<Layout[]>([]);
+  const [naming, setNaming] = useState("");
+  useEffect(() => {
+    let stale = false;
+    void platform.layoutsOf(id)
+      .then((found) => { if (!stale) setLayouts(found); })
+      .catch(() => undefined);
+    return () => { stale = true; };
+  }, [platform, id]);
   const place = held.places.find((p) => p.id === id);
   const pkg = place === undefined ? undefined : packages.places.get(place.id);
   const site = pkg?.site;
@@ -71,6 +87,45 @@ export function PlaceDetail({ held, packages, id, onBack }: {
               <Row of="published" is={pkg.version.publishedAt ? ago(pkg.version.publishedAt) : "draft"} />
             </div>
           )}
+        </section>
+
+        <section>
+          <h2>Laid out</h2>
+          <p className="quiet">
+            How this place has been arranged: where an array was laid, where a
+            ship holds, where the nursery frames are. A dive pins an
+            arrangement the way it pins the reef, so a layout from March can be
+            flown again in September.
+          </p>
+          {layouts.length === 0
+            ? <p className="quiet">Nobody has arranged this place yet.</p>
+            : (
+              <div className="rows">
+                {layouts.map((one) => (
+                  <button key={one.id} type="button" className="row open"
+                          onClick={() => onLayOut(one.id)}>
+                    <span className="what">{one.name}</span>
+                    <span className="quiet">{one.summary}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          <form className="naming" onSubmit={(event) => {
+            event.preventDefault();
+            const name = naming.trim();
+            if (!name) return;
+            const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-+|-+$/g, "").slice(0, 62);
+            void platform.startLayout(id, { slug, name }).then((made) => {
+              setLayouts((was) => [...was, made]);
+              setNaming("");
+              onLayOut(made.id);
+            }).catch(() => undefined);
+          }}>
+            <input value={naming} onChange={(e) => setNaming(e.target.value)}
+                   placeholder="name a new arrangement" />
+            <button type="submit" disabled={!naming.trim()}>Lay one out</button>
+          </form>
         </section>
 
         <section>

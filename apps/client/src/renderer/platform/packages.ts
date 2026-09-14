@@ -37,6 +37,12 @@ export interface SiteRecord {
   beginAt?: number[];
   beginBecause?: string;
   reef?: { colonies?: number; source?: string; kinds?: Record<string, number> };
+  // The seabed as numbers rather than as a mesh: rows of depths, which is what
+  // anything wanting to ask how deep the ground is at a point needs. The USD
+  // beside it is for a renderer.
+  mesh?: {
+    heightfield?: { rows: number; columns: number; format?: string; file: string };
+  };
   layers?: Record<string, string>;
   picture?: string;
 }
