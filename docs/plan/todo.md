@@ -2040,6 +2040,80 @@ wrong with it. Cheap, and it cannot be done by us.
 fly in it, and what they said has been written down here.
 
 
+## 63. The application, given what it is now for
+
+The navigation was drawn for a platform that composed one dive at a time, and
+it shows: five live tabs, three greyed ones that have been "not yet" for weeks,
+and nowhere at all for a laid-out site, a saved mission or a sweep. Those three
+grey items are not a roadmap, they are a list of decisions nobody made.
+
+**Where the editor lives: inside a place.** A layout is not a top-level noun
+and should not get a tab. It is an arrangement *of somewhere* — an array laid
+on this reef, a nursery in this lagoon — and it means nothing detached from the
+ground it was drawn on. So a place opens to its own page, that page lists the
+layouts somebody has made of it, and one of them opens the editor. "Where do I
+lay out a site" then has the same answer as "where is the site": Places.
+
+That also settles saving and finding, which a tab would have made awkward. A
+layout is a named, versioned thing belonging to a place, listed under it with
+what is in it — eight transponders, a ship, two nursery frames — and pinned by
+a dive the way the place itself is. A dive's page names both: this reef, this
+arrangement of it.
+
+**What the tabs should be.**
+
+  **Dive** stays as the front door, and stops composing everything from
+  nothing. Today it builds a conditions document and an objective inline and
+  throws both away; it should assemble a dive out of things that already exist
+  — a place, a layout of it, a mission, a vehicle, an autonomy — and let any of
+  them be made on the spot.
+
+  **Places** stays, and gains the layouts. This is where 52 lands.
+
+  **Missions** is new, and is the thing that has been missing all along. A
+  mission is geometry drawn on a layout plus an ordered set of stages, saved
+  and reusable, which is what makes two runs comparable and what makes a
+  sweep possible. Right now a mission exists only as a JSON blob inside one
+  dive and dies with it.
+
+  **Sweeps** stops being grey. It is the rehearsal: a mission, a list of what
+  nobody can promise, and the answer — which things break it, and what fixes
+  the most of them. It already runs from a terminal and produces a report
+  somebody would actually read; it has no screen.
+
+  **Fleet** stays. It gains the kinds (55): what a vehicle *is* decides what it
+  can be asked, and that belongs on the page where you choose one.
+
+  **Autonomy** stays and needs rebuilding — see below.
+
+  **Dives** stays as the record.
+
+  **Conditions** goes. Water is either part of a mission or part of a sweep's
+  doubt list, and a tab for it invites somebody to curate a library of weather
+  nobody asked for.
+
+  **Recordings** goes. A recording is something a dive produced and belongs on
+  that dive, which is where anybody would look for it.
+
+**Autonomy is the page that is furthest from what it is for.** It is a deploy
+log: four rows of controllers, each with an empty grey pill where a picture is
+not, the name pushed to the right where nothing else is, and the SDK
+instructions at the bottom as the only thing on the page that tells you
+anything. It answers "what have I uploaded". Nobody has that question.
+
+The question is **which of these is better, and at what**, which is item 37 and
+has been waiting since Phase 4 for a second contestant. So the page is a
+comparison: each controller with what it has flown, what it scored, what it
+cost in energy and — for one that thinks — in seconds and tokens, over which
+tasks and in which water. Deploying one is a button on that page, not the
+subject of it.
+
+**Done when:** somebody can lay out a site, save it, build a mission over it,
+sweep that mission against a dozen doubts, read the answer, fly the best case
+and watch it back — without leaving the application or being told a tab is not
+yet.
+
+
 # The order to build it in
 
 The list above is what, and it is numbered in the order the items were thought
@@ -2111,10 +2185,14 @@ point and gets later and more embarrassing the longer it is left.
 
 ## Running alongside, not after
 
-- [ ] **the interface.** Every item above has a screen it needs and none of
-      them have one: laying out a site, assembling a mission, reading a sweep,
-      watching a replay, exporting a result. Built as each item lands, or it
-      becomes a second project that never starts.
+- [ ] **63 · the interface.** Every item above has a screen it needs and none
+      of them have one: laying out a site, assembling a mission, reading a
+      sweep, watching a replay, exporting a result. Built as each item lands,
+      or it becomes a second project that never starts. Two pieces of it can
+      be done immediately and are worth doing immediately — **delete the three
+      grey tabs**, which are three decisions nobody has made pretending to be
+      a roadmap, and **rebuild Autonomy as a comparison** rather than a deploy
+      log, which is 37 finally getting a screen.
 - [ ] **45 · calibrated depths.** One free account and ICESat-2 makes Al Fahal
       measured rather than plausible. Not ours to create.
 - [ ] **62 · somebody who dives says it is right.** At any point. The longer it
