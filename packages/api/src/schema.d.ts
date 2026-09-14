@@ -4465,6 +4465,23 @@ export interface components {
                 groundM?: number;
                 radiusM?: number;
                 heightM?: number;
+                /** @description Both ends of something that spans between two points, each landed by its own rule — a mooring line goes from a block on the bottom to a buoy at the surface, so its two ends resolve differently. `x`/`y` on the thing itself are the middle of the run, so everything can be picked and listed the same way.
+                 *      */
+                ends?: {
+                    x: number;
+                    y: number;
+                    z?: number;
+                    groundM?: number;
+                }[];
+                /** @description How much longer the line is than the gap it spans, as a fraction. Zero is taut and straight. A line with slack in it hangs as a catenary, and the middle of a hundred-metre span with five per cent of slack is fourteen metres below the straight line between its ends — which is the part a vehicle flies into.
+                 *      */
+                slack?: number;
+                /** @description The outline of a plot drawn on the chart. Not in the water: a boundary is a thing a task points at, not a thing to run into.
+                 *      */
+                corners?: {
+                    x: number;
+                    y: number;
+                }[];
             }[];
         };
         /** @description A definition, not an execution: a vehicle in a place, under conditions, flown by autonomy.

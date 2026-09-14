@@ -1185,6 +1185,19 @@ class Dive:
                 self.navigation.transponders = laid
                 self.say("array_laid", transponders=len(laid),
                          from_="the layout this dive was flown in")
+            # And the surface asset a USBL fix comes from. The default is a
+            # transceiver straight overhead, which is the best case and never
+            # quite true: a ship holds station where the weather lets it, and a
+            # fix whose error is a share of slant range is worse the further
+            # off to one side that is. When somebody drew the ship, the ship is
+            # where it is.
+            ships = self.world.of_kind("ship") + self.world.of_kind("buoy")
+            if ships and self.navigation.kind == "usbl":
+                self.navigation.at = ships[0].at
+                self.say("surface_asset",
+                         at=[round(float(v), 1) for v in ships[0].at],
+                         is_=ships[0].spec.what,
+                         from_="the layout this dive was flown in")
             self.say("navigating", **self.navigation.said(self.position, self.simulated))
         except Exception as exc:
             self.navigation = None
