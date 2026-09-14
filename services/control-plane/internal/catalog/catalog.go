@@ -181,6 +181,53 @@ type Store struct{ pool *db.Pool }
 // NewStore builds the catalogue store.
 func NewStore(pool *db.Pool) *Store { return &Store{pool: pool} }
 
+// ── Reading a catalogued thing ───────────────────────────────────────────────
+
+// A catalogue holds several kinds of thing — places and vehicles now, layouts
+// and missions after them — and they differ in exactly two ways: the columns
+// they are made of, and the statement that inserts one. Everything else is the
+// same three questions asked of a different table: this one by id, this one by
+// the name people use, and all of the ones a subject is allowed to know about.
+//
+// Those three were written out once per kind. That is invisible at two kinds
+// and it is the shape of the file at five, so they are written once here
+// instead. The insert and the scan stay per kind, because a layout genuinely
+// is not a city and pretending otherwise would cost more than it saves.
+type catalogued[T any] struct {
+	selectFrom string
+	scan       func(row interface{ Scan(...any) error }) (T, error)
+	plural     string
+}
+
+func (c catalogued[T]) one(ctx context.Context, pool *db.Pool, where string, arg any) (T, error) {
+	thing, err := c.scan(pool.QueryRow(ctx, c.selectFrom+" WHERE "+where+" = $1", arg))
+	return thing, db.Translate(err)
+}
+
+// all lists what a subject may learn of: everything, or what it has been bound
+// to, or what somebody made discoverable.
+func (c catalogued[T]) all(ctx context.Context, pool *db.Pool, scope Scope) ([]T, error) {
+	rows, err := pool.Query(ctx, c.selectFrom+`
+		WHERE retired_at IS NULL
+		  AND ($1::boolean OR id = ANY($2) OR ($3::boolean AND discoverable))
+		ORDER BY name`,
+		scope.All, scope.BoundIDs, scope.IncludeDiscoverable)
+	if err != nil {
+		return nil, fmt.Errorf("listing %s: %w", c.plural, err)
+	}
+	defer rows.Close()
+
+	found := []T{}
+	for rows.Next() {
+		one, err := c.scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		found = append(found, one)
+	}
+	return found, rows.Err()
+}
+
 // ── Cities ───────────────────────────────────────────────────────────────────
 
 // CitySpec describes a place to found.
@@ -268,39 +315,21 @@ func (s *Store) CreateCity(ctx context.Context, conn db.Conn, spec CitySpec) (Ci
 	return scanCity(conn.QueryRow(ctx, selectCity+` WHERE id = $1`, id))
 }
 
+var cities = catalogued[City]{selectFrom: selectCity, scan: scanCity, plural: "cities"}
+
 // City reads one place.
 func (s *Store) City(ctx context.Context, id string) (City, error) {
-	place, err := scanCity(s.pool.QueryRow(ctx, selectCity+` WHERE id = $1`, id))
-	return place, db.Translate(err)
+	return cities.one(ctx, s.pool, "id", id)
 }
 
 // CityBySlug reads one place by its stable name.
 func (s *Store) CityBySlug(ctx context.Context, slug string) (City, error) {
-	place, err := scanCity(s.pool.QueryRow(ctx, selectCity+` WHERE slug = $1`, slug))
-	return place, db.Translate(err)
+	return cities.one(ctx, s.pool, "slug", slug)
 }
 
 // Cities lists the places a subject may learn of.
 func (s *Store) Cities(ctx context.Context, scope Scope) ([]City, error) {
-	rows, err := s.pool.Query(ctx, selectCity+`
-		WHERE retired_at IS NULL
-		  AND ($1::boolean OR id = ANY($2) OR ($3::boolean AND discoverable))
-		ORDER BY name`,
-		scope.All, scope.BoundIDs, scope.IncludeDiscoverable)
-	if err != nil {
-		return nil, fmt.Errorf("listing cities: %w", err)
-	}
-	defer rows.Close()
-
-	places := []City{}
-	for rows.Next() {
-		place, err := scanCity(rows)
-		if err != nil {
-			return nil, err
-		}
-		places = append(places, place)
-	}
-	return places, rows.Err()
+	return cities.all(ctx, s.pool, scope)
 }
 
 // ── Vehicles ─────────────────────────────────────────────────────────────────
@@ -362,38 +391,21 @@ func (s *Store) CreateVehicle(ctx context.Context, conn db.Conn, spec VehicleSpe
 }
 
 // Vehicle reads one vehicle.
+var vehicles = catalogued[Vehicle]{selectFrom: selectVehicle, scan: scanVehicle, plural: "vehicles"}
+
+// Vehicle reads one craft.
 func (s *Store) Vehicle(ctx context.Context, id string) (Vehicle, error) {
-	craft, err := scanVehicle(s.pool.QueryRow(ctx, selectVehicle+` WHERE id = $1`, id))
-	return craft, db.Translate(err)
+	return vehicles.one(ctx, s.pool, "id", id)
 }
 
-// VehicleBySlug reads one vehicle by its stable name.
+// VehicleBySlug reads one craft by its stable name.
 func (s *Store) VehicleBySlug(ctx context.Context, slug string) (Vehicle, error) {
-	craft, err := scanVehicle(s.pool.QueryRow(ctx, selectVehicle+` WHERE slug = $1`, slug))
-	return craft, db.Translate(err)
+	return vehicles.one(ctx, s.pool, "slug", slug)
 }
 
-// Vehicles lists the vehicles a subject may learn of.
+// Vehicles lists the craft a subject may learn of.
 func (s *Store) Vehicles(ctx context.Context, scope Scope) ([]Vehicle, error) {
-	rows, err := s.pool.Query(ctx, selectVehicle+`
-		WHERE retired_at IS NULL
-		  AND ($1::boolean OR id = ANY($2) OR ($3::boolean AND discoverable))
-		ORDER BY name`,
-		scope.All, scope.BoundIDs, scope.IncludeDiscoverable)
-	if err != nil {
-		return nil, fmt.Errorf("listing vehicles: %w", err)
-	}
-	defer rows.Close()
-
-	craft := []Vehicle{}
-	for rows.Next() {
-		one, err := scanVehicle(rows)
-		if err != nil {
-			return nil, err
-		}
-		craft = append(craft, one)
-	}
-	return craft, rows.Err()
+	return vehicles.all(ctx, s.pool, scope)
 }
 
 // ── Versions ─────────────────────────────────────────────────────────────────
