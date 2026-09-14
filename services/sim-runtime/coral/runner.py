@@ -1176,6 +1176,15 @@ class Dive:
                                          aiding=self.aiding,
                                          began_at=self.position,
                                          seed=int(self.seed()))
+            # An array somebody laid out is the array. A layout that put
+            # transponders in the water replaces "a circle around roughly
+            # here" with the things themselves, and where a fix can be had
+            # follows from how many of them are in range.
+            laid = [one.at for one in self.world.of_kind("transponder")]
+            if laid and self.navigation.kind == "lbl":
+                self.navigation.transponders = laid
+                self.say("array_laid", transponders=len(laid),
+                         from_="the layout this dive was flown in")
             self.say("navigating", **self.navigation.said(self.position, self.simulated))
         except Exception as exc:
             self.navigation = None
