@@ -302,6 +302,38 @@ is nowhere else for geometry to live.
 **Done:** existing task tests pass unchanged; a task scores against a cell
 somebody drew.
 
+*Done (14 September).* 1,699 lines became a package of five, grouped by what
+the score means rather than by anything alphabetical: `going` is a position and
+a tolerance, `covering` is a fraction of something, `working` is a count of
+things, `mission` is several of those in sequence, and `base` is what they
+share. Every task file was moved whole — no rule was retyped, and the 33
+existing task tests passed unchanged before anything new was added.
+
+Two things went while the file was open, both the same shape of problem:
+
+  **`task_for` knew each task's constructor.** A chain of `if made is Survey`,
+  `if made is Monitor` — which is a chain the eighteenth task has to find and
+  add itself to. Each class now says `wants = ("camera",)` and the builder
+  hands over what was asked for.
+
+  **Subclasses swallowed what they did not understand.** Every `__init__`
+  forwards `**extra` to the base now, so a new thing the base needs — the
+  world, today; a scenario, at step 13 — reaches all seventeen tasks without
+  touching seventeen signatures.
+
+Then the step itself: `{"over": "cell-b7"}` anywhere a task takes a point, and
+a survey pointed at a plot takes the plot's own extent. Flown on Al Fahal's
+drawn cell, the survey ran the plot's 60 × 40 m rather than a box ahead of
+wherever the vehicle happened to be aimed, and the result names what it was
+pointed at. **No scoring rule changed** — what changed is where the geometry
+comes from.
+
+The part worth keeping is the failure. A dive pointed at `cell-b7` in a place
+where nobody drew a `cell-b7` is refused before it flies, and the refusal lists
+what *is* in the water. It would otherwise have fallen back to a box ahead of
+the vehicle and come back as a score of 0.2 — which reads as a controller that
+flew badly, and is the most expensive kind of wrong a simulator can be.
+
 ## 11 · A mission is a thing you keep
 
 `internal/catalog` (another descriptor), `internal/dive`, `packages/contracts`.
