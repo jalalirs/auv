@@ -538,13 +538,7 @@ func (m madeOfAPlace) create(ctx context.Context, conn db.Conn, spec MadeOfAPlac
 
 func (m madeOfAPlace) one(ctx context.Context, pool *db.Pool, id string) (MadeOfAPlace, error) {
 	found, err := m.scan(pool.QueryRow(ctx, m.selectFrom()+` WHERE id = $1`, id))
-	if err != nil {
-		if db.IsNoRows(err) {
-			return MadeOfAPlace{}, fmt.Errorf("%w: no %s %q", domain.ErrNotFound, m.what, id)
-		}
-		return MadeOfAPlace{}, fmt.Errorf("reading a %s: %w", m.what, err)
-	}
-	return found, nil
+	return found, db.Translate(err)
 }
 
 // ofCity lists what has been made of one place. Scoped by the place rather
