@@ -328,6 +328,12 @@ class Dive:
         self.current = np.zeros(3)
         self.visibility_m = None
         self.read_conditions(brief.get("conditions"))
+        # What somebody put in the water here. Empty when the dive was flown
+        # over bare ground, which most are and always will be.
+        from world import World
+
+        self.world = World(brief.get("layout"))
+        self.world.version = str(brief.get("layoutVersionId") or "")
         # The battery the vehicle package declares. A vehicle that declares
         # none flies as everything did before: for as long as it is asked to.
         try:
@@ -1674,6 +1680,7 @@ class Dive:
                 self.on_the_bottom = False
 
         self.strike()
+        self.keep_out_of_things()
 
         # There is no lid on the surface. There used to be, and it was never
         # reached, because it was only built for places that ship a water
@@ -1712,6 +1719,36 @@ class Dive:
         self.on_the_bottom = bool(facing[2] > 0.7)
         if facing[2] <= 0.7:
             self.against_the_ground = True
+
+    def keep_out_of_things(self) -> None:
+        """Stop the vehicle against what somebody put in the water.
+
+        The same rule as the ground, and deliberately the same shape: put it
+        back where it was allowed to be and take away the velocity that carried
+        it in. A mooring block is not a wall to slide along and not a spring to
+        bounce off — it is somewhere the vehicle cannot be, and a dive that
+        drove into one has a result that says so.
+        """
+        if not len(self.world):
+            return
+        going = self.rotation @ self.velocity[:3]
+        came_from = self.position - going * max(1e-3, self.dt)
+        allowed, struck = self.world.keep_out(self.position, came_from, self.half_width)
+        if struck is None:
+            return
+        moved = allowed - self.position
+        self.position = allowed
+        # Only the part of the motion that was going into it.
+        flat = np.array([moved[0], moved[1], 0.0])
+        reach = float(np.linalg.norm(flat))
+        if reach > 1e-9:
+            out = flat / reach
+            through = self.rotation @ self.velocity[:3]
+            into = float(np.dot(through, out))
+            if into < 0.0:
+                self.velocity[:3] = self.rotation.T @ (through - out * into)
+        self.say("struck", what=struck.kind, which=struck.id,
+                 at=[round(float(v), 2) for v in struck.at])
 
     def strike(self) -> None:
         """Stop the vehicle against ground it cannot ride over.
