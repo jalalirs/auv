@@ -184,6 +184,10 @@ type DiveSpec struct {
 	OrgID            string
 	Name             string
 	CityVersionID    string
+	// Which arrangement of that place, when the dive is flown in one. Pinned
+	// as hard as the place is, because a mission flown over an array is only
+	// repeatable if the array is as fixed as the reef under it.
+	LayoutVersionID  string
 	VehicleVersionID string
 	ConditionsID     string
 	AutonomyStackID  *string
@@ -516,11 +520,13 @@ func (s *Store) CreateDive(ctx context.Context, conn db.Conn, spec DiveSpec) (Di
 	_, err := conn.Exec(ctx, `
 		INSERT INTO dive.dive
 		    (id, org_id, name, summary, city_version_id, vehicle_version_id,
-		     conditions_id, autonomy_stack_id, initial_state, objective, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		     conditions_id, autonomy_stack_id, initial_state, objective,
+		     layout_version_id, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+		        nullif($11, ''), $12)`,
 		id, spec.OrgID, spec.Name, spec.Summary, spec.CityVersionID,
 		spec.VehicleVersionID, spec.ConditionsID, spec.AutonomyStackID,
-		initial, objective, spec.CreatedBy)
+		initial, objective, spec.LayoutVersionID, spec.CreatedBy)
 	if err != nil {
 		return Dive{}, fmt.Errorf("defining a dive: %w", err)
 	}
@@ -1029,6 +1035,13 @@ type Claimed struct {
 	InitialState     json.RawMessage `json:"initialState"`
 	Objective        json.RawMessage `json:"objective"`
 
+	// How the place was arranged, when the dive was flown in an arrangement of
+	// it. The document itself rather than a reference: it is a few kilobytes,
+	// the agent has no reason to go and fetch it, and carrying it here means a
+	// dive's world arrives with the dive.
+	LayoutVersionID string          `json:"layoutVersionId,omitempty"`
+	Layout          json.RawMessage `json:"layout,omitempty"`
+
 	AutonomyImage  string          `json:"autonomyImage,omitempty"`
 	AutonomyDigest string          `json:"autonomyDigest,omitempty"`
 	AutonomyGPU    bool            `json:"autonomyWantsGpu"`
@@ -1235,18 +1248,27 @@ func (s *Store) ClaimNext(ctx context.Context, conn db.Conn, targetName string,
 	var stackImage, stackDigest *string
 	var wantsGPU *bool
 	var subscribes, publishes []byte
+	var layoutVersion *string
+	var layout []byte
 	err = conn.QueryRow(ctx, `
 		SELECT d.city_version_id, d.vehicle_version_id, d.initial_state, d.objective,
+		       d.layout_version_id, l.document,
 		       s.image_repository, s.image_digest, s.wants_gpu, s.subscribes, s.publishes
 		  FROM dive.dive d
 		  JOIN dive.run r ON r.dive_id = d.id
+		  LEFT JOIN catalog.version l ON l.id = d.layout_version_id
 		  LEFT JOIN dive.autonomy_stack s ON s.id = d.autonomy_stack_id
 		 WHERE r.id = $1`, runID).
 		Scan(&claimed.CityVersionID, &claimed.VehicleVersionID,
 			&claimed.InitialState, &claimed.Objective,
+			&layoutVersion, &layout,
 			&stackImage, &stackDigest, &wantsGPU, &subscribes, &publishes)
 	if err != nil {
 		return Claimed{}, fmt.Errorf("reading what the run needs: %w", err)
+	}
+	if layoutVersion != nil {
+		claimed.LayoutVersionID = *layoutVersion
+		claimed.Layout = layout
 	}
 	if stackImage != nil {
 		claimed.AutonomyImage = *stackImage

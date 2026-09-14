@@ -46,6 +46,12 @@ type Claimed struct {
 	InitialState     json.RawMessage `json:"initialState"`
 	Objective        json.RawMessage `json:"objective"`
 
+	// How the place was arranged, when it was. Carried whole rather than as a
+	// reference: it is a few kilobytes and a dive's world should arrive with
+	// the dive rather than be fetched once it is already on a card.
+	LayoutVersionID string          `json:"layoutVersionId,omitempty"`
+	Layout          json.RawMessage `json:"layout,omitempty"`
+
 	AutonomyImage  string `json:"autonomyImage"`
 	AutonomyDigest string `json:"autonomyDigest"`
 	AutonomyGPU    bool   `json:"autonomyWantsGpu"`
@@ -381,6 +387,9 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		"cityPath":       "/dive/city",
 		"vehiclePath":    "/dive/vehicle",
 		"conditions":     claimed.Conditions,
+		// What is in the water besides the vehicle, and which version of it.
+		"layout":         claimed.Layout,
+		"layoutVersionId": claimed.LayoutVersionID,
 		"initialState":   claimed.InitialState,
 		"objective":      claimed.Objective,
 		"rosDomainId":    claimed.ROSDomainID,
