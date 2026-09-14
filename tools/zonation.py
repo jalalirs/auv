@@ -159,6 +159,82 @@ def _hard_from_picture(picture, shape):
     return np.clip((sand - brightness) / (sand - dark), 0.0, 1.0)
 
 
+# What the bottom between the colonies is made of, and what each of those
+# actually looks like at arm's length, white balanced. Not the coral: the
+# colonies are their own geometry with their own materials, so this is the
+# substrate they sit on — which is the part that was coming out black.
+#
+# Carbonate sand is very pale and slightly warm; rubble is a tan of broken
+# skeleton; pavement is rock under turf and algae, which is the darkest and the
+# only one with much green in it.
+SUBSTRATE = {
+    "sand":     (226, 214, 188),
+    "rubble":   (176, 162, 138),
+    "pavement": (126, 122, 100),
+}
+
+
+def substrate_colour(height, across: float, picture=None):
+    """The seabed's own colour, from what the ground is rather than from a
+    photograph of it.
+
+    A satellite picture of a reef is not an albedo map: the light in it has
+    been down through fifteen metres of water and back, and a renderer that
+    treats it as the bottom's own colour attenuates it a second time — the
+    ground goes black under coral that is lit, which is exactly what the first
+    reef dive looked like.
+
+    Taking the water back out is possible and is not enough. Red is gone in
+    four metres, so over a reef in fifteen the red band holds no bottom signal
+    at all and there is nothing there to recover. What the surviving bands do
+    say, clearly, is *where* things are: sand is the brightest thing on a reef
+    from above and pavement the darkest.
+
+    So the picture classifies and the class carries the colour. Brightness
+    inside a class still modulates it, because a reef is not three flat
+    colours and the picture knows about the metre-scale variation even where
+    it cannot say what colour it is.
+    """
+    ground = describe(height, across, picture=picture)
+    hard = ground["hard"]
+    rows, columns = hard.shape
+
+    # Three ways to be bottom, as weights that sum to one everywhere. Sand
+    # where nothing is hard, pavement where everything is, rubble between —
+    # which is what rubble actually is.
+    sand = np.clip(1.0 - hard * 1.6, 0.0, 1.0)
+    pavement = np.clip((hard - 0.45) / 0.4, 0.0, 1.0)
+    rubble = np.clip(1.0 - sand - pavement, 0.0, 1.0)
+    total = np.maximum(1e-6, sand + rubble + pavement)
+
+    colour = np.zeros((rows, columns, 3), dtype="float64")
+    for weight, kind in ((sand, "sand"), (rubble, "rubble"), (pavement, "pavement")):
+        for band in range(3):
+            colour[..., band] += (weight / total) * SUBSTRATE[kind][band]
+
+    if picture is not None:
+        seen = _hard_from_picture(picture, hard.shape)
+        if seen is not None:
+            # Keep the metre-scale variation the picture does know about,
+            # gently: a fifth either way, so a reef has grain without the
+            # picture's own cast coming back with it.
+            lit = np.asarray(picture, dtype="float64")
+            if lit.ndim == 3 and lit.shape[0] == 3:
+                lit = np.transpose(lit, (1, 2, 0))
+            if lit.shape[:2] != hard.shape:
+                r = (np.arange(rows) * lit.shape[0] // rows).clip(0, lit.shape[0]-1)
+                c = (np.arange(columns) * lit.shape[1] // columns).clip(0, lit.shape[1]-1)
+                lit = lit[np.ix_(r, c)]
+            grey = lit[..., :3].mean(axis=2)
+            wet = grey > 1.0
+            if wet.sum() > 50:
+                middle = np.median(grey[wet])
+                grain = np.clip(1.0 + 0.2 * (grey - middle) / max(1.0, middle), 0.8, 1.2)
+                colour *= grain[..., None]
+
+    return np.clip(colour, 0, 255).astype("uint8")
+
+
 def cover(ground: dict, rng, patchiness: float = 1.0):
     """How much of each square metre the coral should cover.
 
