@@ -1218,6 +1218,16 @@ wrong sea is wrong by the right amount.
 
 ---
 
+
+*Where it stands:* done (13 September). Salinity and temperature are
+conditions, density follows through the UNESCO equation of state verified
+against its published check values, and `densityKgM3` overrides both for water
+somebody measured. Looe Key is 1022.8 and the northern Red Sea 1027.3, which
+moves the BlueROV2's trim by a quarter. A depth gauge states what it was
+calibrated for and reads a fixed fraction wrong when that is not this sea.
+Water that says nothing keeps the old constant, so nothing already in the
+record moved.
+
 ## 39. A hull that is squeezed and chilled
 
 Volume is a constant in the package, and for a vehicle that works at five
@@ -1232,6 +1242,19 @@ expansion, and a dive to depth has to trim for the hull it will have down
 there rather than the one it had at the surface.
 
 ---
+
+
+*Where it stands:* done (13 September). The equation of state gained its
+high-pressure term, verified against the published values at a thousand bar:
+water at a thousand metres is 0.415% denser, four kilos a cubic metre, as much
+as the whole gap between the two sites. A package may state a compressibility
+and a thermal expansion, and whether a hull grows heavier or lighter as it
+descends is which of those two wins — which is tested, because it is the design
+problem of a glider rather than something a simulator may assume. Conditions
+carry a temperature profile down the column. No catalogued vehicle states the
+coefficients yet: the BlueROV2 works in a hundred metres where the effect is
+small, and inventing a number for it would be the same fault as the thruster
+position this phase began by fixing.
 
 ## 40. Propulsion that is not thrust
 
@@ -1250,6 +1273,14 @@ strangling a glider whose entire method is to fly at a steep angle.
 the same helm, and neither knows about the other's actuators.
 
 ---
+
+
+*Where it stands:* done (13 September). `Command` gained a third form and a
+package says what it is commanded in. The assumption turned out to be buried a
+layer below where anybody was looking: the allocator refused a thrusterless
+hull outright, with the message "a vehicle with no thrusters cannot be flown" —
+the platform's belief about what a vehicle is, written down. The attitude guard
+is the vehicle's now rather than the platform's.
 
 ## 41. The Seaglider
 
@@ -1277,6 +1308,15 @@ one.
 
 ---
 
+
+*Where it stands:* done (13 September) and flown. Eriksen's flight model
+from the paper, a pump with a rate, a battery on a screw thread. It glides at
+0.09 to 0.28 m/s on slopes of 2.1 to 3.5. A real dive in the Red Sea: an hour,
+2,131 m travelled, climbed from 520 m to 52 m, **zero thrust**, half a
+watt-hour, an endurance of 833 days. What the wings buy turned out not to be
+the forward motion — a slender hull slides like a sled whatever you do — but
+the exchange rate: more distance per metre of depth, at a lower speed.
+
 ## 42. Missions a glider can be given
 
 `hold-station` is impossible, `waypoints` is the wrong shape, and a survey
@@ -1292,6 +1332,16 @@ the tasks an ROV flies and the tasks a glider flies live in the same list
 without either pretending to be the other.
 
 ---
+
+
+*Where it stands:* done (13 September). `profile` and `section`, and a
+refusal: a task declares whether it needs the vehicle to stop, a vehicle
+declares whether it can, and a glider asked to hold station is told before the
+dive rather than falling out of the water column while the clock runs. Flying a
+real one found the other half of it — the platform put the glider on the seabed
+of a six-hundred-metre site and then asked it to profile the top three hundred,
+because the default start is the middle of the water and that is right only for
+something that can stop there.
 
 ## 43. Navigation by flight model, and the current as the answer
 
@@ -1312,6 +1362,14 @@ given.
 
 ---
 
+
+*Where it stands:* done (13 September). The physics gap closed with it: a
+vehicle without bottom lock now dead reckons on its speed *through the water*,
+so the current accumulates invisibly, which is the error no instrument fixes.
+On surfacing the gap between the reckoned position and the satellite fix,
+divided by the time down, is reported as the depth-averaged current. The real
+dive drifted 907 m in an hour and that number is the measurement.
+
 ## 44. Long missions, cheaply
 
 A glider dive cycle is hours and its endurance is months, against the twenty
@@ -1326,24 +1384,43 @@ does need pictures still gets them.
 
 ---
 
-## 45. Shushah Island
 
-Their site, from their survey. The Red Sea Decade Expedition published the
-OceanXplorer multibeam as GeoTIFFs on Zenodo — 2,863 lines over 49,418 km²,
-one grid at 40 m over the deep survey and six at 5 m in the shallows — and the
+## 45. A reef somebody surveyed
+
+Their site, from a survey. The Red Sea Decade Expedition published the
+OceanXplorer multibeam as GeoTIFFs on Zenodo — 2,863 lines over 49,418 km², one
+grid at 40 m over the deep survey and six at 5 m in the shallows — and the
 Allen Coral Atlas has benthic and geomorphic classes at 5 m over every reef
 shallower than fifteen metres. Between them that is bathymetry and habitat from
 the same kind of measured source Looe Key was built from, which is the standard
 this platform already holds itself to.
 
-The hundred hectares are divided into operational grids because that is how the
-restoration is actually run, and a grid cell is the natural unit of a
-monitoring mission.
+*Where it stands:* half done, and deliberately not the site this item named
+(13 September). Zenodo returned 504 from every route for the whole day, so the
+multibeam was unreachable and the Allen Coral Atlas wants an account. What was
+reachable was Sentinel-2 — ten metres, every reef on earth every five days, no
+account — and in water this clear the bottom is plainly in the picture. So
+**Al Fahal off Thuwal** is built and published instead: three kilometres square
+at 5.9 m samples from one scene with 0.00% cloud, shape from Stumpf's log-ratio,
+coral placed from the imagery rather than scattered, and both KAUST tasks flown
+over it at a hundred per cent. It is honest about itself — `surveyed: false`,
+with the method named — and `tools/get-reef` will do the same for any reef
+anywhere.
 
-**Done when:** a dive can be flown over Shushah Island, and every height and
-every colony in it traces back to a published survey.
+What is still owed, in order of what it buys:
 
----
+  **Calibrated depths.** Stumpf gives shape, not metres; the scale is currently
+  set against the reef's own geomorphology. ICESat-2's ATL24 is NASA's laser
+  measuring real depths along track, **fifty-seven granules cross this reef**,
+  and two of them would pin the constants properly. It needs a free Earthdata
+  account, which is a person's to create and not this platform's.
+
+  **Shushah itself,** when Zenodo is up or when there is a reason to ask KAUST
+  for their own survey of their own reef — which is the better demonstration
+  and the better conversation.
+
+  **Resolution that matches the work.** See 58: 5.9 m samples under a task that
+  scores to 0.6 m is the mismatch that matters most here.
 
 ## 46. A picture you could reconstruct from
 
@@ -1358,6 +1435,148 @@ possible.
 one of them could be turned into a model and the other could not.
 
 ---
+
+
+*Where it stands:* half done (13 September). The `monitor` task scores a grid
+cell on coverage that is *usable* — imaged from inside a tight altitude band
+and slowly enough not to smear — and reports separately how many steps were too
+high and how many too fast, so a cell that came back at forty per cent says
+which problem it had. What is missing is overlap between frames, which is the
+third thing a reconstruction needs and the only one of the three that is about
+the relationship between two photographs rather than about one.
+
+## 47. Tasks a reef programme actually sets
+
+The eleven tasks in the matrix are manoeuvres with a score attached — reach a
+point, cover a rectangle, hold a station. They are the right tasks for asking
+whether a controller can fly, and they are nobody's job. No reef programme has
+ever funded a dive to hold station for five minutes.
+
+What KAUST is actually doing at Shushah Island is a hundred hectares cut into
+operational grids, two million corals outplanted by 2030, in-situ nurseries
+making a hundred thousand a year, and the whole of it monitored by vehicles
+carrying cameras. So: **monitor a grid cell** to a standard a reconstruction
+can be built from, and come back with what is on it; **outplant** — visit a
+set of planting positions, place something at each, and log where it went;
+**census** — find the colonies in an area and say which are bleached; **tend a
+nursery** — visit every structure and image it.
+
+These are not harder than what is already here. They are the same geometry
+with the work put back in, and the difference is that somebody would pay for
+the answer. It also gives the model-driven controller and the model-driven
+planner something worth being asked, which neither has had.
+
+**Done when:** a dive can be given a job from the restoration's own vocabulary,
+and what it comes back with is a finding rather than a score.
+
+---
+
+
+*Where it stands:* two of the four, done and flown over a real reef
+(13 September). **`outplant`** — visit the planting positions of a cell, place
+a coral at each, and be scored on how many went where they were meant to rather
+than how many went in. A drifting vehicle plants every one of them, logs
+thirty-five of thirty-five, and gets none of them on the mark; that gap is the
+whole task. **`monitor`** — a cell covered to a standard something can be
+reconstructed from, with the colonies it imaged reported as the finding. Both
+scored 100% on Al Fahal with an array overhead.
+
+Still owed: **census**, which needs the coral to have a condition — colonies
+are geometry and colour with no health state, so "report the bleached ones",
+the actual reason anybody sends a vehicle, cannot be posed. And **nursery
+tending**, which wants the structures of 52 to exist first.
+
+## 48. A dive flown from words, end to end
+
+Drafting exists: the control plane asks a model for a plan document, checks it
+against the vehicle's envelope, and refuses what the hull cannot do. It has
+never flown. Nothing connects the plan a model wrote to a dive that runs, so
+the language layer is a demonstration of itself.
+
+Close it. Somebody types what they want, sees the plan it became, changes one
+thing about it, presses Dive, and watches the vehicle fly the document that
+came back. The same artefact all the way down — written by a model, read by a
+person, flown by a controller, kept with the run and replayable afterwards.
+
+**Done when:** a dive in the record has a plan nobody wrote by hand, and the
+words that produced it are stored beside it.
+
+---
+
+
+## 49. A controller that is a model
+
+`ponder` is the shape of a model-driven controller with the model left out:
+the fast loop flies whatever plan it holds, the slow loop thinks on its own
+clock and is charged in simulated seconds, a decision that fails leaves the
+last one flying. All of it built and tested around a `_decide` that returns
+the same route the platform's planner would.
+
+Put something in it. A model that is handed the goal, what the vehicle
+believes about itself, and — this is the part worth building for — what the
+camera is looking at, and that answers with a plan it has changed its mind
+about. A survey that sees bleaching and stops to look. A transect that finds
+the reef is not where the chart said.
+
+Then the benchmark has two contestants and item 37 finally means something:
+two controllers over the same hundred dives, and the difference attributable
+to something. Every dive in this record so far was flown by the same
+arrangement of PID loops.
+
+**Done when:** a model flies a dive it was not given a route for, and the
+record says what it decided, when, what it cost in tokens and seconds, and
+whether it did better than the loops.
+
+
+*Where it stands:* built, wired, and never once run (13 September). The
+`asking` controller is tested for the arrangement rather than for the model,
+which is the part that has to be right before anybody spends a token: prose is
+refused, a plan beyond the vehicle's envelope is refused with its reasons, an
+unreachable model leaves the last good plan flying, and the tokens and seconds
+land in the result beside the score. A dive may name it with `flyWith`, and the
+worker grants a network and passes the key to those dives and no others —
+everything an institution submits still runs with no route off its own network.
+
+It has not talked to a model. The agent could not be redeployed while a sweep
+was in the water, and until it does this is an assertion rather than a result.
+
+## 50. Both cities look wrong
+
+*Not the same as 45.* That one is whether the ground is real. This is whether
+it looks like anything. Al Fahal's shape is now defensible and its surface is
+not, and the two are fixed by different work.
+
+Open. Al Fahal and Thuwal Deep are both built, both published, both flown, and
+neither is fit to put in front of anybody.
+
+The reef renders as pale colonies floating over a dark floor. The cause is
+known and specific: the seabed is surfaced with a satellite photograph, and a
+satellite photograph has already been down through fifteen metres of water and
+back. Handed to a renderer as an albedo it gets attenuated a second time, so
+the ground goes black while the coral, which carries its own material, stays
+lit above it.
+
+Taking the water back out is done and is not the answer. Red is gone in four
+metres, so the red band of a picture of a reef in fifteen holds no bottom
+signal at all — there is nothing there to recover, and no exponent of the right
+shape recovers it. What survived is *structure*: where the sand is, where the
+coral is, where the rubble is. That is worth having and it is not colour.
+
+So the colour has to come from what a thing *is* rather than from what it
+photographed as. The imagery classifies the bottom; the class carries the
+colour, against real references, the way the coral prototypes already do. The
+zonation model already reads the picture to tell rock from sand — this is that
+same reading, carried through to the surface rather than stopping at how much
+coral to plant.
+
+The deep site is a separate problem and a smaller one: it is six hundred metres
+of open water and there is nothing in it to look at, which is true of the place
+and not a defect of the rendering. What it needs is not a better seabed but a
+reason to point a camera.
+
+**Done when:** somebody who dives reefs looks at a frame from Al Fahal and does
+not ask what is wrong with it.
+
 
 ## 51. The rest of the fleet
 
@@ -1394,6 +1613,10 @@ than quietly absent.
 
 
 ## 52. The study map: a place somebody laid out themselves
+
+*Builds on:* 25, which already lets a place carry objects at known positions
+and the tasks score against them. What is missing is not the idea of a thing in
+the water, it is any way to put one there without editing JSON.
 
 A place is bathymetry and coral, and both are read from a survey. That is the
 right foundation and it is not a site. What a dive actually happens in is a
@@ -1454,6 +1677,11 @@ it, duplicates the rest, saves it, and two people fly the same arranged site.
 
 
 ## 53. Things in the water that move, and the tether that pulls back
+
+*Not the same as 29.* That is the vehicle going wrong on a clock — a thruster
+dead at two minutes, sensors quiet for five seconds. This is the world moving
+whether or not anything has failed. A dive wants both and they are different
+machinery.
 
 Once a site can be laid out (52) the things in it have to behave, and the
 cheapest correct model is not the obvious one. A lumped-mass dynamic cable is a
@@ -1546,6 +1774,14 @@ different tools without anybody having configured that by hand, and a place
 that cannot hold a thing says so rather than accepting it and simulating
 nothing.
 
+*Overlaps, resolved:* this, 55 and the refusal already built in 42 are one
+mechanism written three times — a thing declares what it is for, a thing
+declares what it needs, and the mismatch is refused before the dive rather than
+discovered during it. It exists once already: a task says `needs_hover`, a
+vehicle says whether it can, and a glider asked to hold station is told. That
+is the pattern; a place's palette and a vehicle's kind are the same pattern
+over different nouns, and they should be **one declaration and one refusal**,
+not three. Build it once here and let 55 and 56 use it.
 
 ## 55. What a vehicle is, and therefore what it can be asked
 
@@ -1587,6 +1823,11 @@ holding attitude *is* the job, and it is a package rather than a physics model.
 vehicle is not says so before the dive, and the catalogue holds no package that
 no dive can ask for.
 
+*Overlaps, resolved:* the refusal half of this is 54's single mechanism — do
+not build a second one. What is left here is the work that is genuinely its
+own: publishing the Heavy and the REMUS, and modelling the Triton and the
+Otter. The Otter is the one that is not just a package, because a surface
+vehicle needs a sea state to live in and there is none (53).
 
 ## 56. Sensors that are more than declared
 
@@ -1630,8 +1871,16 @@ drift is the measurement.
 **Done when:** every instrument a package declares does something a dive can
 notice, and an instrument that cannot work where the dive is says so.
 
+*Depends on:* the sonar half cannot be built before 52 — a sonar needs
+something in the water to return off, and until a place can be laid out there
+is nothing. The CTD and the lights do not: both can be built now, and the CTD
+is the smaller and the more valuable, because the water already has a
+temperature and a salinity at every depth and a glider's entire product is
+reading them.
 
 ## 57. The map says where, the task says what counts
+
+*Depends on:* 52. Geometry has nowhere to live until a site can be drawn.
 
 A task carries two things that are currently one, and separating them is what
 makes a laid-out site (52) worth laying out.
@@ -1682,105 +1931,114 @@ that geometry, a free dive can be flown in the same site and replayed, and a
 run names both the place and the layout it was flown in.
 
 
-## 50. Both cities look wrong
+## 58. Ground as fine as the work is
 
-Open. Al Fahal and Thuwal Deep are both built, both published, both flown, and
-neither is fit to put in front of anybody.
+Al Fahal is five hundred and twelve samples over three kilometres: **5.9 metres
+between depth samples**. The outplanting flown over it scores position to a
+metre and holds altitude in a band of sixty centimetres, over a bottom that is
+straight-line interpolation across six metres of ground. Real reef relief at
+that scale is metres — spur and groove is exactly a structure of that size —
+so a controller is being scored to centimetres against a seabed that does not
+have the shape it would really have, and one that learned to fly here would
+meet a surface it had never seen.
 
-The reef renders as pale colonies floating over a dark floor. The cause is
-known and specific: the seabed is surfaced with a satellite photograph, and a
-satellite photograph has already been down through fifteen metres of water and
-back. Handed to a renderer as an albedo it gets attenuated a second time, so
-the ground goes black while the coral, which carries its own material, stays
-lit above it.
+The mismatch is between the *site* and the *task*, so either end can give.
+Finer ground where the work is: a site does not need six metres everywhere, it
+needs centimetres over the cell being planted and metres over the rest, which
+is a patch at a second resolution rather than a bigger grid. Or the tasks admit
+what they are standing on, and a tolerance finer than the ground refuses
+itself.
 
-Taking the water back out is done and is not the answer. Red is gone in four
-metres, so the red band of a picture of a reef in fifteen holds no bottom
-signal at all — there is nothing there to recover, and no exponent of the right
-shape recovers it. What survived is *structure*: where the sand is, where the
-coral is, where the rubble is. That is worth having and it is not colour.
+Both, probably. The first is what makes a close-up dive worth watching; the
+second is what stops a number being quoted that the ground cannot support.
 
-So the colour has to come from what a thing *is* rather than from what it
-photographed as. The imagery classifies the bottom; the class carries the
-colour, against real references, the way the coral prototypes already do. The
-zonation model already reads the picture to tell rock from sand — this is that
-same reading, carried through to the surface rather than stopping at how much
-coral to plant.
-
-The deep site is a separate problem and a smaller one: it is six hundred metres
-of open water and there is nothing in it to look at, which is true of the place
-and not a defect of the rendering. What it needs is not a better seabed but a
-reason to point a camera.
-
-**Done when:** somebody who dives reefs looks at a frame from Al Fahal and does
-not ask what is wrong with it.
+**Done when:** a task cannot ask for a tolerance the ground it is over cannot
+answer, and a cell somebody is planting can be carried at a resolution that
+makes the answer mean something.
 
 
-## 47. Tasks a reef programme actually sets
+## 59. A result knows what computed it
 
-The eleven tasks in the matrix are manoeuvres with a score attached — reach a
-point, cover a rectangle, hold a station. They are the right tasks for asking
-whether a controller can fly, and they are nobody's job. No reef programme has
-ever funded a dive to hold station for five minutes.
+A run pins its place, its vehicle and its conditions by digest, and nothing at
+all about the simulator that produced it. Today the thruster geometry moved,
+the depth loop was retuned, the attitude guard changed hands, dead reckoning
+stopped seeing through the water, and a working stop stopped counting as
+reached before the vehicle got there. Every one of those changes what a dive
+does. Every result from before is incomparable with every result after, and the
+record does not say so anywhere.
 
-What KAUST is actually doing at Shushah Island is a hundred hectares cut into
-operational grids, two million corals outplanted by 2030, in-situ nurseries
-making a hundred thousand a year, and the whole of it monitored by vehicles
-carrying cameras. So: **monitor a grid cell** to a standard a reconstruction
-can be built from, and come back with what is on it; **outplant** — visit a
-set of planting positions, place something at each, and log where it went;
-**census** — find the colonies in an area and say which are bleached; **tend a
-nursery** — visit every structure and image it.
+That is a quiet correctness hole in a platform whose product is comparison. It
+does not announce itself: the numbers still line up in a table, the grid still
+renders, and two rows that cannot be compared look exactly like two rows that
+can.
 
-These are not harder than what is already here. They are the same geometry
-with the work put back in, and the difference is that somebody would pay for
-the answer. It also gives the model-driven controller and the model-driven
-planner something worth being asked, which neither has had.
+A run should carry the runtime's own identity the way it carries everything
+else — the image digest at least, and better, a short statement of the physics
+that actually bears on a result. Then a comparison across a change can be
+refused, or flagged, rather than quietly made.
 
-**Done when:** a dive can be given a job from the restoration's own vocabulary,
-and what it comes back with is a finding rather than a score.
+**Done when:** two runs from either side of a physics change cannot be put in
+the same table without the platform saying so.
 
----
 
-## 48. A dive flown from words, end to end
+## 60. Something comes out of it
 
-Drafting exists: the control plane asks a model for a plan document, checks it
-against the vehicle's envelope, and refuses what the hull cannot do. It has
-never flown. Nothing connects the plan a model wrote to a dive that runs, so
-the language layer is a demonstration of itself.
+A monitoring programme's deliverable is data. Ours is a score and a video.
 
-Close it. Somebody types what they want, sees the plan it became, changes one
-thing about it, presses Dive, and watches the vehicle fly the document that
-came back. The same artefact all the way down — written by a model, read by a
-person, flown by a controller, kept with the run and replayable afterwards.
+Nobody can take *where the two million corals went* out of this and use it —
+the outplanting knows, to the centimetre, and it is a list inside a JSON
+document inside a run. The same for the colonies a monitoring pass imaged, the
+coverage map it built, and the profile a glider brought back, which does not
+exist at all yet because there is no CTD (56).
 
-**Done when:** a dive in the record has a plan nobody wrote by hand, and the
-words that produced it are stored beside it.
+The question is not "can it be exported", it is what a reef programme would
+actually open: positions and identities of what was planted, as something a GIS
+reads; a coverage map of a cell as a raster with a datum; a colony inventory
+with what was seen and when; a profile as the column against distance. Formats
+that already exist, because a deliverable in a format we invented is not a
+deliverable.
 
----
+**Done when:** somebody who does not have this platform can open what a dive
+produced, in a tool they already use, and do something with it.
 
-## 49. A controller that is a model
 
-`ponder` is the shape of a model-driven controller with the model left out:
-the fast loop flies whatever plan it holds, the slow loop thinks on its own
-clock and is charged in simulated seconds, a decision that fails leaves the
-last one flying. All of it built and tested around a `_decide` that returns
-the same route the platform's planner would.
+## 61. Time of day, tide, and season
 
-Put something in it. A model that is handed the goal, what the vehicle
-believes about itself, and — this is the part worth building for — what the
-camera is looking at, and that answers with a plan it has changed its mind
-about. A survey that sees bleaching and stops to look. A transect that finds
-the reef is not where the chart said.
+Light is a function of depth and nothing else — one exponential from the
+surface. There is no hour, no sun angle, no night. A night survey is routine
+work and cannot be posed at all, and there are no lamps to pose it with (56).
 
-Then the benchmark has two contestants and item 37 finally means something:
-two controllers over the same hundred dives, and the difference attributable
-to something. Every dive in this record so far was flown by the same
-arrangement of PID loops.
+There is no tide, so there is no reason the water over a reef flat is ever
+different, and on a shallow reef the tide is the difference between a working
+day and a lost one. And there is no season, which for a restoration is the
+strangest omission of the three: coral spawning is a **date**, KCRI's year is
+built around it, and a mission planned for the wrong week is a mission that
+missed the thing it was for.
 
-**Done when:** a model flies a dive it was not given a route for, and the
-record says what it decided, when, what it cost in tokens and seconds, and
-whether it did better than the loops.
+**Done when:** a dive can be planned for a date and an hour, and the answer is
+different for it.
+
+
+## 62. Somebody who dives says it is right
+
+Everything here is self-consistent. The equations are the published ones, the
+bathymetry is from a survey or honestly labelled as not, the vehicle's numbers
+come from its manufacturer, and every result agrees with every other result.
+None of that is evidence.
+
+The thruster position was wrong for weeks and nothing caught it, because
+nothing in a self-consistent system can. What caught it was flying a task that
+could not be done and asking why — and a person who has actually driven an ROV
+over a reef would have said "that doesn't handle like that" on the first
+afternoon.
+
+This is not a feature and it is the thing the platform's credibility rests on:
+one dive, watched by somebody who does the real thing, who is asked what is
+wrong with it. Cheap, and it cannot be done by us.
+
+**Done when:** somebody who has flown a vehicle in that water has watched this
+fly in it, and what they said has been written down here.
+
 
 ## What a dive is made of
 
