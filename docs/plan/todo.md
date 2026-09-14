@@ -1359,6 +1359,40 @@ one of them could be turned into a model and the other could not.
 
 ---
 
+## 50. Both cities look wrong
+
+Open. Al Fahal and Thuwal Deep are both built, both published, both flown, and
+neither is fit to put in front of anybody.
+
+The reef renders as pale colonies floating over a dark floor. The cause is
+known and specific: the seabed is surfaced with a satellite photograph, and a
+satellite photograph has already been down through fifteen metres of water and
+back. Handed to a renderer as an albedo it gets attenuated a second time, so
+the ground goes black while the coral, which carries its own material, stays
+lit above it.
+
+Taking the water back out is done and is not the answer. Red is gone in four
+metres, so the red band of a picture of a reef in fifteen holds no bottom
+signal at all — there is nothing there to recover, and no exponent of the right
+shape recovers it. What survived is *structure*: where the sand is, where the
+coral is, where the rubble is. That is worth having and it is not colour.
+
+So the colour has to come from what a thing *is* rather than from what it
+photographed as. The imagery classifies the bottom; the class carries the
+colour, against real references, the way the coral prototypes already do. The
+zonation model already reads the picture to tell rock from sand — this is that
+same reading, carried through to the surface rather than stopping at how much
+coral to plant.
+
+The deep site is a separate problem and a smaller one: it is six hundred metres
+of open water and there is nothing in it to look at, which is true of the place
+and not a defect of the rendering. What it needs is not a better seabed but a
+reason to point a camera.
+
+**Done when:** somebody who dives reefs looks at a frame from Al Fahal and does
+not ask what is wrong with it.
+
+
 ## 47. Tasks a reef programme actually sets
 
 The eleven tasks in the matrix are manoeuvres with a score attached — reach a
