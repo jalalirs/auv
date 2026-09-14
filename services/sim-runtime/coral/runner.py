@@ -1081,7 +1081,19 @@ class Dive:
         self.task = task_for(objective, self.began_at,
                              float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0])),
                              camera=self.camera(),
-                             colonies=self.colonies_here() if wants_coral else None)
+                             colonies=self.colonies_here() if wants_coral else None,
+                             world=self.world)
+        # Pointed at something that is not in the water. Refused rather than
+        # flown: a survey over "cell-b7" in a place where nobody drew cell-b7
+        # would otherwise fall back to a box ahead of the vehicle and come back
+        # as a mediocre score, which reads as a controller that flew badly.
+        if self.task is not None and getattr(self.task, "missing", ""):
+            self.say("task_refused", task=self.task.kind,
+                     why=(f"this dive is pointed at {self.task.missing}, which is not "
+                          "in the layout it was flown in"),
+                     instead=sorted({one.id for one in self.world.things}))
+            self.task = None
+            return
         # A task this vehicle has no way of doing is refused here rather than
         # flown badly. A glider asked to hold station does not hold it poorly;
         # it falls out of the water column while the clock runs, and the result
