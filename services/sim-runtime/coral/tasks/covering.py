@@ -23,6 +23,7 @@ class Survey(Task):
     describes; a fixed swath otherwise."""
 
     wants = ("camera",)
+    stops_a_mission = False
     kind = "survey"
     name = "Survey"
 
@@ -136,6 +137,7 @@ class Search(Task):
     """
 
     wants = ("camera",)
+    stops_a_mission = False
     kind = "search"
     name = "Find it"
 
@@ -252,6 +254,7 @@ class Profile(Task):
     place.
     """
 
+    stops_a_mission = False
     kind = "profile"
     name = "Profile the water column"
     needs_hover = False
@@ -315,6 +318,7 @@ class Section(Task):
     arrive, and where it ends up instead is the measurement.
     """
 
+    stops_a_mission = False
     kind = "section"
     name = "Fly a section"
     needs_hover = False

@@ -54,7 +54,7 @@ class Mission(Task):
         stage.step(t, position, heading, floor, commands, believed=believed)
         if stage.done:
             self.finished.append(stage.result())
-            if stage.failed():
+            if stage.failed() and stage.stops_a_mission:
                 self.stopped_early = True
                 self.done = True
                 return
