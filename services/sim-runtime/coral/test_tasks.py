@@ -280,3 +280,31 @@ def test_a_target_written_as_a_list_is_that_point():
     reach = task_for({"kind": "reach", "target": [900.0, -1100.0, -9.0]},
                      np.array([854.0, -1107.0, -6.0]), 0.0)
     assert list(reach.target) == [900.0, -1100.0, -9.0]
+
+
+def test_a_mission_takes_everything_a_task_takes():
+    """The runner steps every task the same way, missions included.
+
+    It did not: `Mission.step` was written without `believed` while the base
+    grew it, so every mission dive raised on its first step and came back as a
+    run that had flown for five minutes and scored nothing. The signature is
+    the contract, and this is the test that says so.
+    """
+    import inspect
+
+    from tasks.base import Task
+    from tasks.mission import Mission
+
+    base = inspect.signature(Task.step).parameters
+    said = inspect.signature(Mission.step).parameters
+    assert list(said) == list(base), "a mission is stepped like anything else"
+
+    mission = task_for({"kind": "mission", "stages": [
+        {"kind": "hold-station", "seconds": 5.0}]}, np.array([0.0, 0.0, -5.0]), 0.0)
+    mission.step(1.0, np.array([0.0, 0.0, -5.0]), 0.0, -10.0, [0.0] * 6,
+                 believed=np.array([0.2, 0.0, -5.0]))
+    mission.step(2.0, np.array([0.0, 0.0, -5.0]), 0.0, -10.0, [0.0] * 6,
+                 believed=np.array([0.2, 0.0, -5.0]))
+    assert mission.elapsed() == 1.0
+    # And it reaches the stage, which is the reason it is passed at all.
+    assert mission.stage.believed is not None
