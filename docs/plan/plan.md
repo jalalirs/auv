@@ -1,241 +1,343 @@
-# The plan
+# The plan, end to end
 
-The previous version of this file was a feature sequence with an engineering
-plan's name on it, and it had the fault that names one: work in its first stage
-would have been unpicked by its third. This one starts from the code.
+From the code as it is today to a platform a reef programme uses. One sequence.
+Restructuring appears where the work needs it and not as a phase of its own,
+because a refactor nobody is about to build on is a refactor nobody finishes.
 
-Everything below was read before it was written. The findings are specific, the
-refactors come before the features that need them, and nothing is built twice.
+Every step says what changes, which files, why it is in that position, and how
+we know it worked. Every step ends in something that runs.
 
----
+**The target, so every step below can be checked against it.** Somebody opens
+their reef, lays out the site the way it will really be, builds the mission over
+it, asks what could go wrong, and reads this in the morning:
 
-# Part I — What the code actually is
-
-## The catalogue is half generalised, and stopped
-
-`internal/catalog` already treats a **version** as generic. `AssetKind`,
-`Version`, `CreateVersion`, `publishVersion`, `grantAsset` and `listVersionsOf`
-all take the kind as a parameter and do not care what it is. That half is
-finished and it is good.
-
-The **asset** half is not. `CreateCity`, `City`, `CityBySlug`, `Cities` exist,
-and beside them `CreateVehicle`, `Vehicle`, `VehicleBySlug`, `Vehicles`, the
-same shape written twice. In `httpapi/catalog.go` the same split: `grantAsset`,
-`createVersion`, `listVersionsOf` are generic; `listCities`, `createCity`,
-`readCity`, `grantCity`, `readCityGrants`, `revokeCityGrant` are per kind, and
-so are their six vehicle twins.
-
-Somebody generalised the hard half and left the boring half. That is fine for
-two kinds. **This plan adds three more** — layout, mission, sweep — and at two
-kinds the duplication is invisible, at five it is the shape of the codebase.
-
-## `Dive` in the runtime is a god class
-
-`sim-runtime/coral/runner.py` is 2,005 lines and `Dive` has **fifty-nine
-methods**. Reading them, the seams are already there and unmarked:
-
-  loading a USD scene and finding the water in it; the water's own properties;
-  the task and what it is scored against; navigation and what the vehicle
-  believes; the physics step, the ground, the surface; the recording and what
-  is said; energy; the ROS bridge; the coral; manual control.
-
-Every feature in Part III puts things in the water — objects, a tether, lines
-that move — and every one of them lands on this class. Adding them as they are
-makes it seventy methods and nobody will ever take them out again.
-
-## `tasks.py` is one file with every task in it
-
-1,693 lines. Adding "a task may point at something drawn on a layout" touches
-all of them, and the file is already the one nobody wants to open.
-
-## `dive` in the control plane already holds most of what a sweep needs
-
-`internal/dive` carries Stack, **Conditions**, Dive and Run. Conditions is
-already a stored, named, reusable resource — so removing its tab from the
-application removes a tab, not a model, which is the cheap direction.
-
-## The client has screens and no structure between them
-
-Flat files under `screens/`, `Dive.tsx` at 432 lines composing a dive inline
-from six catalogues. There is no place for a new tab to be added that is not
-"another file in the folder", which is exactly how the three grey tabs happened.
+> Survives 142 of 180. Every failure is current above 0.35 m/s from the
+> north-east. Flying the lanes north–south recovers 31 of them. Allow eleven
+> days of ship time for seven days of work.
 
 ---
 
-# Part II — The target, and the refactors that get there
+## 1 · A model flies a dive
 
-Each refactor below is behaviour-preserving, testable on its own, and is done
-**before** the feature that needs it. None of them is optional and none of them
-is interesting on its own, which is why they have to be scheduled rather than
-hoped for.
+`./tools/box up`, then one survey over Al Fahal with `flyWith: "asking"`.
 
-## R1 · Finish the asset generalisation *(control plane)*
+First because it is one command and because until it happens the claim that this
+platform has an AI controller is an assertion. Built, wired, tested for the
+arrangement, never once run — the agent could not be redeployed while a sweep
+was in the water, and the water is empty now.
 
-**Why first:** three of the four features in Part III add an asset kind. Doing
-them on the current shape means writing the six-handler wrapper three more
-times and then unpicking eighteen functions later.
+**Done:** a dive in the record whose plan a model wrote, and the item in
+`todo.md` says what came back.
 
-**What:** an asset becomes a descriptor rather than a copy —
+## 2 · The reef stops looking wrong
 
-    type Asset struct {
-        Kind      AssetKind        // city | vehicle | layout | mission | sweep
-        IDPrefix  ids.Kind
-        Owns      []AssetKind      // a layout belongs to a city
-        Extra     func() any       // what this kind carries beyond name and slug
-    }
+`tools/zonation.py`, `tools/make-site`, then republish Al Fahal.
 
-`Store.CreateAsset/Asset/AssetBySlug/Assets` over the descriptor; the city and
-vehicle functions become three-line calls kept for their callers. In `httpapi`,
-`listAssets(kind)`, `createAsset(kind)`, `readAsset(kind)` and one route
-registration loop.
+Independent of everything else, visible immediately, and the thing anybody
+shown this platform reacts to first. The seabed is currently surfaced with a
+satellite photograph that has already been through fifteen metres of water; the
+renderer attenuates it again and the ground goes black under lit coral.
 
-**How we know it worked:** the existing contract tests pass untouched, and the
-city and vehicle endpoints answer byte-identically. Nothing else changes.
+Taking the water back out is done and is not enough — red is gone in four metres
+and there is nothing left to recover. So the two bands that survived classify
+the bottom (sand, rubble, pavement, coral) and the class carries the colour,
+modulated by the picture's own brightness so structure is kept and the cast is
+not.
 
-**Not in scope:** the dynamics endpoint, which is genuinely vehicle-only.
+**Done:** frames pulled from a dive over the reef read as a reef.
 
-## R2 · Break `Dive` into the things it is made of *(sim runtime)*
+## 3 · The application gets somewhere to put a tab
 
-**Why before Part III:** objects, collision, a tether and things that move all
-land here. On the class as it stands they land as methods fifty-nine through
-seventy.
+`apps/client/src/renderer/` — a declared navigation before any screen is added
+or removed.
 
-**What:** the seams the method groups already show —
+Here, not later, because the next four steps each add a screen and three tabs
+have already been added without this and sat grey for weeks. A tab becomes a
+record — what it is, what it lists, what it opens — so adding one is data rather
+than another file in a folder.
 
-  `scene.py`    — opening a place, its layers, the water level, where a dive
-                  begins. Owns USD; nothing else imports `pxr`.
-  `sea.py`      — the water: current, density, temperature, visibility, and
-                  what the conditions said. Already nearly separate.
-  `world.py`    — **new**: what is in the water besides the vehicle. Empty at
-                  first, and the home for everything in Part III.
-  `vehicle.py`  — the body, the step, the ground, the surface, energy.
-  `mission.py`  — the task, what it is scored against, the plan it was given.
-  `record.py`   — what is said, what is recorded, what the result is.
-  `runner.py`   — what is left: a `Dive` that owns those six and runs a loop.
+Then the two things that are already decided, expressed in it: **delete
+Conditions and Recordings** (water belongs to a mission or a sweep; a recording
+belongs to the dive that made it), and **rebuild Autonomy** as what each
+controller has flown, scored and cost rather than what has been uploaded.
 
-**How we know it worked:** all 193 tests pass with no test changed. That is the
-whole check and it is a strong one — they cover physics, tasks, navigation,
-energy, surfacing and the glider.
+**Done:** no tab is grey without a reason beside it, and Autonomy answers a
+question somebody has.
 
-**Done in one pass, not gradually.** A half-split class is worse than either.
+## 4 · Assets stop being written out per kind
 
-## R3 · Tasks become a package, and geometry becomes a reference *(sim runtime)*
+`internal/catalog/catalog.go`, `internal/httpapi/catalog.go`, `routes.go`.
 
-**Why here:** it is the same edit to every task, and doing it before missions
-exist means missions land on a task layer that already accepts references.
+Here because the next step adds an asset kind and two more follow it. The
+version half is already generic — `Version`, `CreateVersion`, `publishVersion`,
+`grantAsset`, `listVersionsOf` all take the kind and do not care. The asset half
+is not: `CreateCity/City/CityBySlug/Cities` with four identical vehicle twins,
+and six per-kind HTTP handlers each.
 
-**What:** `tasks/` with a module per family, and one change to the base — a task
-may be given `{"over": "<thing in the layout>"}` where it now takes `dx`/`dy`.
-The existing forms keep working; every scoring rule is untouched.
+At two kinds that duplication is invisible. At five it is the shape of the
+codebase, so it is finished now rather than copied three more times and unpicked
+later. An asset becomes a descriptor — its kind, its id prefix, what owns it,
+what it carries beyond a name — and the city and vehicle functions become
+three-line calls that keep their callers working.
 
-**How we know:** existing task tests pass unchanged; new ones cover references.
+**Done:** the existing contract tests pass untouched and the city and vehicle
+endpoints answer identically. A behaviour change here is a failure, not a
+feature.
 
-## R4 · The application gets an information architecture *(client)*
+## 5 · A layout is a thing the platform keeps
 
-**Why before any new screen:** three tabs were added without one and all three
-were still grey weeks later.
+`internal/catalog` (a descriptor, no new CRUD), `packages/contracts`,
+`internal/dive` for the dive's reference to one.
 
-**What:** a declared navigation — every tab a record of what it is, what it
-lists, and what it opens — so a new one is data and not another file in a
-folder. Then the deletions and the Autonomy rebuild are the first two things
-expressed in it rather than one-off edits.
+A layout is an arrangement *of a place*: versioned, digested and pinned exactly
+as a package is, because a mission flown over an array is only repeatable if the
+array is pinned as hard as the reef. A dive gains a nullable
+`layoutVersionId`.
+
+The document is a list of things, each with a kind, a position in site metres,
+and **the depth its landing rule resolved to at the moment it was drawn** — not
+at the moment it is flown. A layout then means the same thing to the editor, the
+runtime and the record, and re-flying one in September gets the site from March.
+
+**Done:** a layout can be created, published, pinned and read back, and a
+published one cannot be changed.
+
+## 6 · The runtime knows what is in the water
+
+`sim-runtime/coral/world.py` — new — and the smallest possible cut into
+`runner.py`.
+
+`Dive` is 2,005 lines and fifty-nine methods. It is not being split up here,
+because a refactor done in front of a feature that needs it is worth doing and
+one done on principle is worth arguing about. What comes out is exactly the part
+this step needs: **what is in the water besides the vehicle**. It reads the
+layout beside the place, draws its things, holds them as truth the way item 25
+already holds a search target, and collides with them using the same two
+constraints `land()` applies to the ground.
+
+Everything later in this plan that puts something in the sea lands in `world.py`
+rather than becoming methods sixty through seventy.
+
+**Done:** a dive over a place with a layout has the layout's things in it, and a
+vehicle driven at one stops.
+
+## 7 · The editor, one tool deep
+
+`apps/client/src/renderer/screens/` on step 3's navigation.
+
+A place opens to its own page, that page lists the layouts made of it, and one
+opens the editor. The editor is not a tab: a layout is an arrangement of
+somewhere and means nothing detached from the ground it was drawn on.
+
+**Transponders only.** The chart is the place's own heightfield shaded by depth,
+with the depth under the cursor; place, select, move, delete, duplicate, save.
+The design is the mockup already made — the palette grouped by *how a thing
+meets the bottom*, because that is the only part the editor has to resolve.
+
+One tool, because the chain matters more than the palette.
+
+**Done:** somebody lays an array by hand and saves it.
+
+## 8 · Fly what was drawn
+
+No new code. An array laid by hand in step 7, a dive that pins it, and the
+vehicle taking fixes from transponders that are where somebody put them.
+
+This is the proof of the whole chain — place, layout, dive, record — and it is a
+step rather than a check because if it does not hold, steps 5 to 7 are wrong and
+everything after them is built on it.
+
+**Done:** a dive in the record names both a place and an arrangement of it.
+
+## 9 · The rest of the palette
+
+`world.py`, the editor, and a landing rule each.
+
+Now that the chain holds, each of these is an afternoon: mooring block, nursery
+frame, ship with USBL, marker buoy, marker post, restoration cell. The mooring
+line is the only one with real work in it, because it spans two points and hangs
+between them rather than sitting on one.
+
+**Done:** a site can be laid out the way it will really be.
+
+## 10 · A task can point at something drawn
+
+`sim-runtime/coral/tasks.py` → `tasks/`, a module per family.
+
+Split here because this is the edit that touches every task, and doing both at
+once means opening the 1,693-line file once instead of twice.
+
+The change to the base is one thing: a task may be given `{"over": "cell-b7"}`
+where it now takes `dx` and `dy`. The existing forms keep working. **No scoring
+rule changes** — that is where the work is and it is deliberately not where the
+risk is.
+
+This is what makes a drawn site worth drawing: until now a task carries its own
+geometry as offsets from wherever the vehicle happened to start, because there
+is nowhere else for geometry to live.
+
+**Done:** existing task tests pass unchanged; a task scores against a cell
+somebody drew.
+
+## 11 · A mission is a thing you keep
+
+`internal/catalog` (another descriptor), `internal/dive`, `packages/contracts`.
+
+A mission is a place, a layout of it, and an ordered list of stages — each a
+task kind and what it is over. The `mission` task kind already sequences stages;
+this gives it somewhere to live other than inside one dive, where it currently
+dies.
+
+**Done:** a mission written once is flown twice by two people, and the two runs
+are comparable because both pin the same three things.
+
+## 12 · The Missions tab, and a dive composed from one
+
+`screens/Missions.tsx`, and `Dive.tsx` stops building an objective from nothing.
+
+The dive page currently assembles a conditions document and an objective inline
+and throws both away. It should pick things that exist and let any of them be
+made on the spot.
+
+**Done:** a dive is three choices and a button.
+
+## 13 · A run says what computed it, and which scenario it is
+
+`packages/contracts`, `internal/dive`, one migration, `sim-runtime`.
+
+Both fields at once, in one migration and one contract change, because the run
+record should be altered once. Provenance is needed now; the sweep's scenario
+reference is needed in the next step; splitting them means touching the same
+table twice for no reason.
+
+A run gains the sim image digest and a **physics version** the runtime declares
+— a plain integer, bumped by hand when behaviour changes. It does not need to be
+clever. It needs to change when the answer would.
+
+Today the physics changed six times in one day and every result from before
+became incomparable with every result after, silently, because the record pins
+the place, the vehicle and the conditions and nothing about the simulator.
+
+**Done:** two runs from either side of a bump cannot be put in one table without
+the platform saying so.
+
+## 14 · A sweep is a thing the platform runs
+
+`internal/dive`, `internal/exec`, and the analysis lifted out of
+`tools/what-if` unchanged.
+
+A sweep is a mission, a list of what nobody can promise, and a threshold. The
+cross product is submitted as a batch — the scheduler already does batches — and
+each run carries the scenario it belongs to, which step 13 added.
+
+The analysis moves across as it is: ranked by what **changes** the outcome
+rather than by what was present when things failed, and dimensions that made no
+difference named once and not ranked. That distinction is the difference between
+a report somebody acts on and a grid nobody reads, and it is already written.
+
+**Done:** a sweep runs from the platform and its answer is the same one the
+tool gives.
+
+## 15 · What it will cost
+
+`internal/dive`, and the sweep's report.
+
+Every input is already in the record and nobody has asked it for anything. A
+dive knows its energy to a hundredth of a watt-hour and the battery knows its
+capacity and reserve, so dives-per-charge is arithmetic. A mission knows how
+long it took, so cells-per-day is arithmetic. A sweep knows what fraction of
+scenarios failed, and that is the fraction of days lost to weather.
+
+This is what turns "survives 23 of 50" into a sentence somebody can take to
+whoever signs.
+
+**Done:** a mission states what it will cost before it is flown, and a sweep
+states what the weather will cost on top.
+
+## 16 · The Sweeps tab
+
+`screens/Sweeps.tsx`. Define the doubts, watch it fly, read the answer — a
+paragraph and a small table, because the grid was tried and nobody could read
+it.
+
+**Done:** somebody who has never opened a terminal lays out a site, builds a
+mission, sweeps it, and is told what to do about Tuesday. **This is the target
+at the top of this file, and at this point the plan has met it.**
+
+## 17 · The tether
+
+`sim-runtime/coral/hydrodynamics.py` and `world.py`.
+
+Everything after this is depth rather than reach. The tether comes first because
+it is the only thing in the plan that is already **wrong** rather than missing:
+a hundred metres of it streaming in a current has more area than the vehicle and
+is often the larger force, and every tethered dive in the record flew without
+it.
+
+It sits here rather than at the start because its surface end is a thing on the
+layout, which did not exist until step 5.
+
+**Done:** a vehicle with a hundred metres out flies measurably differently from
+one with ten.
+
+## 18 · Doubts about the world, not just the water
+
+`world.py`, and the sweep's doubt list.
+
+Lines bow with the current — a quasi-static catenary, no solver, because the
+displacement is metres and the metres are the point. Then the doubt list gains
+entries that are not numbers: *the mooring is thirty metres from where it was
+laid*, *the array has a transponder down*, *there is a net where the chart says
+clear water*.
+
+This is the half of the rehearsal that parameters cannot express, and it is
+what the whole of steps 5 to 9 was for.
+
+**Done:** a sweep can ask what happens if the world is not as drawn.
+
+## 19 · The sonar becomes a sensor
+
+`sim-runtime`, `world.py`.
+
+Declared in the BlueROV2's package since the beginning — a hundred and thirty
+degrees, half a metre to ten — and returning nothing, because there has been
+nothing in the world to return off. Now there is.
+
+**Done:** a controller can avoid something it has not been told about.
 
 ---
 
-# Part III — What is built, on top of that
+# How this is kept honest
 
-The order is forced by the dependencies and each stage ends in something flown
-and looked at.
+**Nothing is touched twice, and here is where that was at risk.** The run record
+is altered once, in step 13, carrying provenance and the sweep's scenario
+together. The navigation is declared once in step 3, before any tab is added or
+removed. The asset CRUD is generalised in step 4, before three kinds are added
+to it. Those three were the rework in the previous draft of this plan.
 
-## Stage A · Trust and appearance
+**Restructuring is always in front of the thing that needs it.** Step 4 because
+step 5 adds a kind. Step 6 because step 7 puts things in the water. Step 10
+because step 11 needs tasks that accept references. No step splits a file on
+principle, and `Dive`'s remaining fifty-odd methods stay where they are until
+something needs them moved.
 
-Nothing new; everything already understood. **Depends on R1 for the migration,
-R4 for the deletions.**
+**A restructuring step that changes behaviour has failed.** Steps 4, 6 and 10
+are checked by existing tests passing untouched — 193 of them, covering physics,
+tasks, navigation, energy, surfacing and the glider. A test that has to change
+means it was a rewrite wearing a refactor's name.
 
-- **A1 A run says what computed it.** `runtime` on the run: the sim image
-  digest and a physics version the runtime declares. Done in the *same*
-  migration and the same contract change as the sweep fields in stage D, so the
-  run record is altered once — this is the specific thing the previous plan got
-  wrong.
-- **A2 The reef stops looking wrong.** Classify the bottom from the bands that
-  survived; colour from the class, not from the photograph. Republish, fly,
-  compare frames.
-- **A3 A model flies a dive.** One deploy, one dive, whatever it says.
-- **A4 Delete Conditions and Recordings; rebuild Autonomy as a comparison.**
-  The first thing built on R4.
+**Every step ends in something that runs.** Not a passing test: something flown
+and looked at. Step 8 exists only to be that, at the point where the most could
+be silently wrong.
 
-## Stage B · A place somebody arranged
+**The record is cleared when physics changes.** After step 13 the platform can
+say whether that was necessary instead of guessing.
 
-**Depends on R1 (layout is an asset kind), R2 (`world.py` is where its things
-live).**
-
-- **B1** `Layout` as an asset kind — no new CRUD, it is a descriptor.
-- **B2** The layout document: things with a kind, a position, and the depth
-  their landing rule resolved to **when drawn, not when flown**.
-- **B3** `world.py` reads it, draws it, holds it as truth, and collides with it
-  using the constraints `land()` already applies to the ground.
-- **B4** The editor, **transponders only**, on R4's navigation: place, select,
-  move, delete, duplicate, save.
-- **B5** Fly a dive that pins a layout and takes fixes from an array that is
-  where it was drawn. *This is the proof of the whole chain.*
-- **B6** Then the rest of the palette, one landing rule each.
-
-## Stage C · A mission somebody keeps
-
-**Depends on R1, R3, and B.**
-
-- **C1** `Mission` as an asset kind: a place, a layout, ordered stages.
-- **C2** Stages name drawn geometry, which R3 already accepts.
-- **C3** The Missions tab; the dive page composes from a mission instead of
-  rebuilding one.
-
-## Stage D · The rehearsal
-
-**Depends on C. Uses the run fields already added in A1.**
-
-- **D1** `Sweep` as an asset kind: a mission, a doubt list, a threshold.
-- **D2** The cross product submitted as a batch; the analysis moved out of
-  `tools/what-if` unchanged.
-- **D3** What it costs — ship days, dives, battery swaps. Every input is
-  already in the record.
-- **D4** The Sweeps tab, which stops being grey.
-
-## Stage E · Doubts about the world
-
-**Depends on B3 for a world to doubt, R2 for somewhere to put it.**
-
-- **E1 The tether.** Drag as a term on the vehicle, with its surface end a
-  thing on the layout. The only item in the plan that is already *wrong*.
-- **E2** Lines bow with the current; the doubt list gains structural entries.
-- **E3** The sonar returns off what is there.
-
----
-
-# Part IV — How this is kept honest
-
-**Nothing is touched twice, and here is where that was at risk.** The run
-record: altered once, in A1, carrying both provenance and the sweep fields that
-stage D needs. The navigation: declared once in R4 before any tab is added or
-removed. The asset CRUD: generalised in R1 before three kinds are added to it.
-Those three were the rework in the previous plan and they are the reason this
-one has a Part II.
-
-**A refactor that changes behaviour has failed.** R1 and R2 are checked by
-existing tests passing untouched — 193 of them, covering the parts that are
-hard to get right. If a test has to change, the refactor was a rewrite wearing
-a refactor's name, and it stops.
-
-**Every stage ends in a dive.** Not a passing test — something flown and looked
-at. A stage that ends green and unflown is not done.
-
-**The record is cleared when physics changes,** and after A1 the platform can
-say whether that was necessary rather than guessing.
-
-**Two devices.** Stages D and E end in sweeps and a sweep of seventy-two
+**Two devices.** Steps 14 and 16 end in sweeps, and a sweep of seventy-two
 scenarios takes most of a day on this box. That is the pacing constraint on the
-back half of the plan; the free lever is shorter missions, not more planning.
+back half; the free lever is shorter missions, not more planning.
 
-**What would show this plan is wrong:** somebody who dives saying A2 still
-looks wrong; a layout that cannot be drawn in five minutes at B4; a sweep at D4
-whose answer nobody acts on. None is discoverable from here, and each is worth
-stopping for.
+**What would show this plan is wrong:** somebody who dives saying step 2 still
+looks wrong; a site that cannot be laid out in five minutes at step 7; a sweep
+at step 16 whose answer nobody acts on. None of the three is discoverable from
+here, and each is worth stopping for.
