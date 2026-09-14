@@ -344,6 +344,10 @@ func (rt *Router) registerAll() {
 		Summary: "check one output against what was declared", Action: policy.WorkLease,
 		Resource: atWork(), Handle: d.confirmWorkerUpload})
 
+	// How a place has been arranged. Hung off the city, because that is what
+	// a layout is an arrangement of.
+	rt.registerLayouts()
+
 	// A path no route claims. It is registered on the multiplexer rather than
 	// as a Route because it grants nothing and performs no action; it only
 	// reports absence in the same shape as every other failure.
