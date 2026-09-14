@@ -51,10 +51,18 @@ const PAGES: { key: Rail; name: string; count?: (held: Held) => number; is: (whe
 
 // Named here rather than left out, so the shape of the platform is visible
 // before the whole of it is built. Each says what it will be on its own page.
+//
+// Two came off this list by being decided rather than built. **Conditions**
+// was a library of weather, and water turned out to belong to the thing it is
+// water for — a mission states the sea it is flown in, and a sweep states the
+// seas it is doubted against, and neither wants a curated list of currents
+// somebody made once. **Recordings** was a list of what dives produced, and a
+// recording belongs to the dive that made it, which is where anybody looks.
+//
+// A tab that has been "not yet" for weeks is not a roadmap. It is a decision
+// nobody made, sitting where a person can see it.
 const LATER: { key: string; name: string; will: string }[] = [
-  { key: "conditions", name: "Conditions", will: "Currents, turbidity and light, observed or constructed, named on every dive." },
-  { key: "sweeps", name: "Sweeps", will: "The same dive across many conditions, with nobody watching, scored." },
-  { key: "recordings", name: "Recordings", will: "What a survey recorded, listed, fetched and replayed." },
+  { key: "sweeps", name: "Sweeps", will: "A mission against everything that could go wrong with it: which of them break it, and what fixes the most." },
 ];
 
 export function Deck({ platform, onDiving }: {

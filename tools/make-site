@@ -405,15 +405,24 @@ def main() -> int:
         # shape is right and the surface is somebody else's sand, repeating.
         # A ten-metre satellite pixel is coarse for a close-up, and it is the
         # actual colour of the actual coral in the actual place.
+        import numpy as np
         from PIL import Image
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+        import zonation
+
         into = where / "textures"
         into.mkdir(exist_ok=True)
         # Roughness and bumps still come from the stock seabed: at arm's length
-        # a reef has a grain that a ten-metre pixel cannot know about, and
-        # borrowing it is honest as long as the *colour* — the thing anybody
-        # would recognise the place by — is the reef's own.
+        # a reef has a grain a ten-metre pixel cannot know about, and borrowing
+        # it is honest as long as the ground's colour is the ground's own.
         fetch_texture(where, asked.texture)
-        Image.open(asked.photograph).convert("RGB").save(
+        seen = np.asarray(Image.open(asked.photograph).convert("RGB"), dtype="float64")
+        # Not the photograph. A picture of a reef taken through fifteen metres
+        # of water is not the reef's albedo, and handing it to a renderer as
+        # one gets it attenuated twice — the ground goes black under lit coral.
+        # The picture says where the sand and the pavement are; what colour
+        # those are is a property of what they are.
+        Image.fromarray(zonation.substrate_colour(height, asked.across, picture=seen)).save(
             into / "seabed_colour.jpg", quality=94)
         textured, asked.tile, photograph = True, asked.across, True
     elif asked.texture:
