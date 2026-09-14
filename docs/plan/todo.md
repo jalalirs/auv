@@ -1359,6 +1359,40 @@ one of them could be turned into a model and the other could not.
 
 ---
 
+## 51. The rest of the fleet
+
+Two vehicles are published and KAUST operates more than two. The catalogue also
+holds `bluerov2-heavy` and `remus-100` as files that were never published, so
+no dive can ask for either — a package nobody pinned is a package that does not
+exist.
+
+What is missing, and what it costs:
+
+  **Ocean Aero Triton.** The one they signed an agreement for. A hundred metres,
+  two knots submerged, wind and solar, ten days under and thirty on the surface.
+  A thruster vehicle, so it slots in beside the BlueROV2 and the work is a
+  package rather than a physics model. Worth having because its two knots is
+  the same speed as the water in our own matrix: a Triton in that current makes
+  no headway at all, and being able to show that is the point.
+
+  **Maritime Robotics Otter.** Sixty-five kilograms of catamaran, two Torqeedo
+  outboards, six knots, twenty hours. This is the interesting one, because it
+  is a *surface* vehicle and we have never had one. The surface itself is
+  already modelled — the submerged fraction, the buoyancy a hull loses as it
+  emerges — and nothing uses it. A vehicle that lives at the surface rather
+  than passing through it needs the sea state we do not have: a hull that
+  pitches in a swell, and a survey whose quality depends on it.
+
+  **The work-class ROVs on RV Thuwal.** Not modelled and not modellable yet:
+  the press releases name the capability and never the hull, and the models are
+  in the methods sections of papers behind the usual doors. Asking KAUST is the
+  short way and is ruled out for now.
+
+**Done when:** a dive can be flown by every vehicle KAUST actually operates
+that we can honestly describe, and the ones we cannot are named as such rather
+than quietly absent.
+
+
 ## 50. Both cities look wrong
 
 Open. Al Fahal and Thuwal Deep are both built, both published, both flown, and
