@@ -1547,6 +1547,90 @@ that cannot hold a thing says so rather than accepting it and simulating
 nothing.
 
 
+## 55. What a vehicle is, and therefore what it can be asked
+
+A vehicle is not a set of numbers, it is a *kind*, and the kind decides more
+than the numbers do. The platform already learned this once the hard way: a
+glider was offered the hold controller, which commands a wrench on a hull with
+nothing to produce one, and the answer was not a controller holding station
+badly — it was a controller doing nothing at all while the vehicle fell. Four
+kinds, and the differences between them are not tuning:
+
+  **Hovering.** BlueROV2, and its Heavy. Stops, holds a position, works close
+  to something. Tethered, so it has an umbilical that is the largest drag on
+  it and a hard limit on how far it goes. Two hours. This is the only kind that
+  can plant a coral or inspect a structure — the tasks that need the vehicle to
+  *stop* all need this kind, and that is already enforced by `needs_hover`.
+
+  **Flying, powered.** REMUS 100, sitting unpublished in the catalogue. One
+  propeller and fins: it cannot stop, cannot hold a depth without moving, and
+  cannot back up. What it can do is cover ground — eight hours of lawnmower at
+  a metre and a half a second, which is the survey workhorse of the industry
+  and a thing we cannot currently fly. Between the ROV and the glider in every
+  respect, and absent from all of it.
+
+  **Flying, unpowered.** The Seaglider. Months, a quarter of a metre a second,
+  and beaten by anything over 0.4 m/s. Built.
+
+  **Surface.** The Otter, and the Triton when it is up. Never submerged, or
+  submerged only sometimes, and the thing that makes it different is that it
+  lives where the weather is: a surface vehicle in a sea state is a vehicle
+  that pitches, and a survey flown from one is only as good as that.
+
+Two of the four are published. The Heavy is the one that would repay the least
+work: eight thrusters against six, four of them vertical, which makes it the
+only vehicle here with pitch and roll authority — six degrees of freedom where
+the standard hull has four. That is not a footnote for photogrammetry, where
+holding attitude *is* the job, and it is a package rather than a physics model.
+
+**Done when:** each kind is published and flying, a task that needs a kind the
+vehicle is not says so before the dive, and the catalogue holds no package that
+no dive can ask for.
+
+
+## 56. Sensors that are more than declared
+
+The BlueROV2's package names five instruments. Three of them do something.
+
+  **The camera** works: it renders, and its field of view is what a survey's
+  lanes are spaced by — the one place where getting a sensor's geometry wrong
+  cost a task forty per cent of its score.
+
+  **The Doppler log** works, and properly: a bottom-lock range, a scale error
+  drawn once per dive, noise. Losing it is the single worst thing that can
+  happen to an outplanting, and the sweep says so.
+
+  **The depth gauge** works, and since the water gained a density it can be
+  wrong in the interesting way: calibrated for the wrong sea it reads a fixed
+  fraction deep, which is a bias rather than noise.
+
+  **The imaging sonar is declared and nothing happens.** A hundred and thirty
+  degrees, half a metre to ten, and there is nothing in the world for it to
+  return off — no obstacle, no structure, no line, no bottom return. A forward
+  sonar that cannot be wrong is not a sensor, it is a line in a manifest. It
+  becomes real the moment 52 puts things in the water, and not before.
+
+  **The IMU is half there:** a heading bias it keeps all dive, and no rates, no
+  drift, no bias walk.
+
+And two that are missing outright. **A CTD** — the Seaglider's package declares
+one and it measures nothing, which is absurd on a vehicle whose entire product
+is temperature and salinity against depth. The water now has both, computed at
+every depth; an instrument to read them is a small piece of work and the
+difference between a glider mission and a glider-shaped trajectory. **Lights** —
+there are none, so every dive is lit by the sun and a night survey, which is
+routine work, cannot be posed.
+
+Sensors are also a question of place, the way vehicles are (54). A camera in
+six hundred metres sees nothing. A Doppler log needs a bottom within fifty
+metres, so over the deep site there is no bottom lock at all — which is not a
+detail, it is why the glider dive drifted nine hundred metres and why that
+drift is the measurement.
+
+**Done when:** every instrument a package declares does something a dive can
+notice, and an instrument that cannot work where the dive is says so.
+
+
 ## 50. Both cities look wrong
 
 Open. Al Fahal and Thuwal Deep are both built, both published, both flown, and
