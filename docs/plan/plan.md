@@ -346,6 +346,50 @@ dies.
 **Done:** a mission written once is flown twice by two people, and the two runs
 are comparable because both pin the same three things.
 
+*Done (14 September).* "Al Fahal, the September plot round" — survey the drawn
+plot, read the middle nursery frame, come home — written once and flown by two
+people who each supplied nothing but a name, a vehicle and the water. Both
+dives came back pinning the same place, the same arrangement and the same
+stages, and the difference between their results is the flying.
+
+A mission turned out to be a layout with a different document in it, so it is
+built that way: **one descriptor serves both.** `madeOfAPlace` in the store,
+one set of five handlers in the API, one `MadeOfAPlace` record with a `kind`.
+Writing the second out by hand would have been sixty lines of the first with a
+word changed, and the third would have been sixty more.
+
+Four things the flying found, and the first is the one that matters:
+
+  **Every mission dive had been silently scoring zero.** `Mission.step` was
+  written without `believed` while the base grew it, so the runner's call
+  raised on the first step of every mission ever flown. The record showed a run
+  that flew for five minutes, recorded nothing, and scored nothing — which
+  reads as a controller that did not fly. A signature is a contract, and there
+  is now a test that compares the two.
+
+  **A mission got five minutes.** The duration a dive is given fell through to
+  the default for a task with no stated limit, so a three-stage round asking
+  for thirteen minutes was cut off part way through its first stage. A mission
+  is the sum of its stages now, and may still be cut short on purpose.
+
+  **A partial survey ended the round.** A stage that fails stops a mission —
+  right for a dock that missed, because the next stage assumes a vehicle
+  somewhere it is not. Wrong for a survey: a lawnmower pattern over a rectangle
+  never reaches the hundred per cent that "done and not complete" tests
+  against, so *every* mission with a survey in it stopped at its first stage
+  and the frames never got inspected. A task now says whether failing it should
+  stop the plan.
+
+  **A dive did not say what it was flown in.** `layoutVersionId` was written to
+  the row and never read back, so a dive flown in an arrangement read back as
+  one flown over bare ground. Two thirds of what makes two runs comparable, and
+  the record did not say either of them.
+
+The round as written still runs out of time on its inspect stage — four of
+twelve sides on one flight, none on the other. That is the plan being tight
+rather than the platform being wrong, and saying so before a ship sails is what
+the thing is for.
+
 ## 12 · The Missions tab, and a dive composed from one
 
 `screens/Missions.tsx`, and `Dive.tsx` stops building an objective from nothing.
