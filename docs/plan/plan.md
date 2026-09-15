@@ -506,6 +506,47 @@ a report somebody acts on and a grid nobody reads, and it is already written.
 **Done:** a sweep runs from the platform and its answer is the same one the
 tool gives.
 
+*Done (15 September).* The outplant mission against three doubts — current,
+fix, trouble — asked for in one call as `swp_01M2HZ5G71ZRTD5AJT1GZCA7CR`, eight
+scenarios, flown as eight ordinary dives through the ordinary scheduler, each
+carrying the scenario it answers. The answer:
+
+> Survives 2 of 8 scenarios. **current** (changes the outcome by 50%): half
+> knot 0/4, still 2/4. **trouble** (changes the outcome by 50%): no log 0/4,
+> none 2/4. Made no difference: fix. The mission turns on current. At half
+> knot it fails 4 times out of 4. Nothing else in the doubt list rescues them:
+> if the current is half knot, do not go.
+
+The analysis did not get copied across — it **moved**, and `tools/what-if` is a
+client now. Two implementations of one piece of arithmetic are two answers
+waiting to disagree, so there is one; "the same answer as the tool" holds by
+construction rather than by vigilance. What is left in the tool is the file
+format, the asking and the printing.
+
+The move was checked rather than assumed: the old Python and the new Go were
+run over identical cases and two of three printed word for word the same. The
+third differed only where two doubts change the outcome by *exactly* as much as
+each other, and the old code's tie-break was whatever `sort(reverse=True)` did
+to the dimension names. That is a decided rule now.
+
+Two things the step forced, and the second is the interesting one:
+
+  **A doubt changes the plan rather than replacing it.** A sweep that doubts
+  how long the working day is says `timeLimitS` and means "the same mission,
+  with less time". It is laid over what the mission composed; without that a
+  scenario would have replaced the stages with a fragment.
+
+  **The dive limit counted work that was waiting.** `max_concurrent_dives`
+  counted queued runs, so a sweep was impossible by definition: eight dives
+  asked for at once against a limit of four, and six of them are *meant* to be
+  waiting. A queued run holds no machine. The limit counts what does now, and
+  the daily GPU-hours quota is what bounds the cost of a long queue — which is
+  the honest place for it.
+
+The findings also say what computed them (`physics: [1]`), so a sweep whose
+runs were not all computed by the same simulator is a table the answer itself
+refuses to be.
+
 ## 15 · What it will cost
 
 `internal/dive`, and the sweep's report.
