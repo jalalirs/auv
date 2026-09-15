@@ -20,6 +20,7 @@ import { Dive } from "./Dive.js";
 import { Fleet } from "./Fleet.js";
 import { LayingOut } from "./Layout.js";
 import { Missions, Planning } from "./Missions.js";
+import { Sweeps, Swept } from "./Sweeps.js";
 import { PlaceDetail } from "./PlaceDetail.js";
 import { Places } from "./Places.js";
 import { Profile } from "./Profile.js";
@@ -43,6 +44,9 @@ export type Where =
   // back to fly.
   | { page: "missions" }
   | { page: "mission"; id: string; place: string }
+  // The rehearsal: a plan against everything nobody can promise about it.
+  | { page: "sweeps" }
+  | { page: "sweep"; id: string }
   | { page: "fleet" }
   | { page: "vehicle"; id?: string; slug?: string }
   | { page: "autonomy" }
@@ -58,26 +62,25 @@ const PAGES: { key: Rail; name: string; count?: (held: Held) => number; is: (whe
     is: (w) => w.page === "places" || w.page === "place" || w.page === "layout" },
   { key: "missions", name: "Missions",
     is: (w) => w.page === "missions" || w.page === "mission" },
+  { key: "sweeps", name: "Sweeps",
+    is: (w) => w.page === "sweeps" || w.page === "sweep" },
   { key: "fleet", name: "Fleet", count: (h) => h.vehicles.length, is: (w) => w.page === "fleet" || w.page === "vehicle" },
   { key: "autonomy", name: "Autonomy", is: (w) => w.page === "autonomy" },
   { key: "runs", name: "Dives", count: (h) => h.runs.length, is: (w) => w.page === "runs" },
 ];
 
-// Named here rather than left out, so the shape of the platform is visible
-// before the whole of it is built. Each says what it will be on its own page.
+// Nothing is "not yet" any more, and the list is kept empty rather than
+// deleted because the discipline is the point: a tab that has been "not yet"
+// for weeks is not a roadmap, it is a decision nobody made sitting where a
+// person can see it.
 //
-// Two came off this list by being decided rather than built. **Conditions**
-// was a library of weather, and water turned out to belong to the thing it is
-// water for — a mission states the sea it is flown in, and a sweep states the
-// seas it is doubted against, and neither wants a curated list of currents
-// somebody made once. **Recordings** was a list of what dives produced, and a
-// recording belongs to the dive that made it, which is where anybody looks.
-//
-// A tab that has been "not yet" for weeks is not a roadmap. It is a decision
-// nobody made, sitting where a person can see it.
-const LATER: { key: string; name: string; will: string }[] = [
-  { key: "sweeps", name: "Sweeps", will: "A mission against everything that could go wrong with it: which of them break it, and what fixes the most." },
-];
+// Three came off it. **Conditions** was a library of weather, and water turned
+// out to belong to the thing it is water for — a mission states the sea it is
+// flown in, and a sweep states the seas it is doubted against, and neither
+// wants a curated list of currents somebody made once. **Recordings** was a
+// list of what dives produced, and a recording belongs to the dive that made
+// it, which is where anybody looks. **Sweeps** came off by being built.
+const LATER: { key: string; name: string; will: string }[] = [];
 
 export function Deck({ platform, onDiving }: {
   platform: Platform;
@@ -160,7 +163,7 @@ export function Deck({ platform, onDiving }: {
           </a>
         ))}
 
-        <h2>Not yet</h2>
+        {LATER.length === 0 ? null : <h2>Not yet</h2>}
         {LATER.map((one) => (
           <a key={one.key} className="later" title={one.will}>{one.name}</a>
         ))}
@@ -196,6 +199,12 @@ export function Deck({ platform, onDiving }: {
         ) : where.page === "mission" ? (
           <Planning platform={platform} held={held} mission={where.id} place={where.place}
                     onBack={() => setWhere({ page: "missions" })} />
+        ) : where.page === "sweeps" ? (
+          <Sweeps platform={platform} held={held} onChanged={read}
+                  onOpen={(id) => setWhere({ page: "sweep", id })} />
+        ) : where.page === "sweep" ? (
+          <Swept platform={platform} sweep={where.id}
+                 onBack={() => setWhere({ page: "sweeps" })} />
         ) : where.page === "fleet" ? (
           <Fleet held={held} packages={packages}
                  onOpen={(of) => setWhere({ page: "vehicle", ...of })} />
