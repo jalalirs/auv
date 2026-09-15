@@ -416,17 +416,31 @@ func TestADimensionDoesNotGetTheCreditForAnother(t *testing.T) {
 }
 
 // And when truly nothing is decided, it says so instead of picking one.
+// Every scenario straddles the threshold, so every verdict is which side more
+// of three coins landed on. One setting came out at two of three and the other
+// at one of three, which looks like a hundred per cent effect and is a coin.
+//
+// The first version of this test did not make the situation it tested: with
+// two runs a scenario that straddles is always one of two, which always fails,
+// so every setting failed equally and the dimension never reached the ranking
+// at all. It takes three runs for a marginal scenario to be able to come out
+// either way, which is the same reason three is the default.
 func TestWhenNothingIsDecidedItSaysSo(t *testing.T) {
 	runs := []Flown{}
-	for _, value := range []string{"as laid", "one down", "two down"} {
-		for _, score := range []float64{0.155, 0.149} {
+	add := func(value string, scores ...float64) {
+		for _, score := range scores {
 			runs = append(runs, Flown{Chosen: map[string]string{"the array": value},
 				State: "succeeded", Score: score, Survived: score >= 0.15})
 		}
 	}
+	add("as laid", 0.155, 0.152, 0.148)   // two of three: works, and marginal
+	add("one down", 0.151, 0.149, 0.147)  // one of three: fails, and marginal
 	found := What(runs, 0.15)
+	if found.Marginal != 2 {
+		t.Fatalf("both could have gone either way, counted %d", found.Marginal)
+	}
 	if !found.NothingDecided || found.TurnsOn != "" {
-		t.Fatalf("nothing is decided here: turnsOn=%q decided=%v",
-			found.TurnsOn, !found.NothingDecided)
+		t.Fatalf("nothing is decided here: turnsOn=%q nothingDecided=%v",
+			found.TurnsOn, found.NothingDecided)
 	}
 }
