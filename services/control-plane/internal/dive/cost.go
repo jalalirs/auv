@@ -146,9 +146,20 @@ func WhatItCosts(spent []Spent) Cost {
 	// And the weather. A job that works two times in eight needs four days of
 	// ship time for every day of work, which is the sentence somebody takes to
 	// whoever signs.
+	//
+	// With its assumption said out loud. A sweep is a cross product and not a
+	// forecast: it flies every combination once, so one in four surviving
+	// means one in four *of those combinations*, and turning that into days
+	// assumes they are equally likely. They are not — nobody thinks a dead
+	// Doppler log is as likely as a calm morning — and a sentence that hid
+	// that would be a sentence somebody quoted at a funder.
 	if out.Survives > 0 {
 		out.ShipDays = 1.0 / out.Survives
-		out.Says = fmt.Sprintf("Allow %s of ship time for every day of work.",
+		out.Says = fmt.Sprintf(
+			"%s of work in a working day, held back by %s. "+
+				"Allow %s of ship time for every day of work, if everything in "+
+				"the doubt list is equally likely.",
+			plural(out.PerDay, "run", "runs"), out.HeldBackBy,
 			plural(out.ShipDays, "day", "days"))
 	}
 	return out
@@ -178,9 +189,14 @@ func worst(of []float64) float64 {
 	return sorted[at]
 }
 
+// plural writes a number the way somebody would say it: whole when it is
+// whole, to one place when it is not, and singular at one.
 func plural(how float64, one, many string) string {
 	if math.Abs(how-1.0) < 0.05 {
-		return fmt.Sprintf("%.0f %s", how, one)
+		return "1 " + one
+	}
+	if math.Abs(how-math.Round(how)) < 0.05 {
+		return fmt.Sprintf("%.0f %s", math.Round(how), many)
 	}
 	return fmt.Sprintf("%.1f %s", how, many)
 }
