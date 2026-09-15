@@ -290,7 +290,7 @@ class Helm:
             self.prefer = name
             self.failsafe.stand_down()
             self._hand_over(self.controllers[name], seen)
-        elif name in ROUTE_FLYERS:
+        elif name in ROUTE_FLYERS and name in self.controllers:
             # Both of these fly the route the planner drew; which of them does
             # is the whole of the difference being measured. Asking for one and
             # silently getting the other made a comparison that could not
@@ -317,15 +317,19 @@ class Helm:
         switched between them mid-route should not find the other one holding
         an empty route.
         """
+        # Only the ones this vehicle has. A glider is flown by buoyancy and
+        # wings and its table holds neither of these, so a loop that assumed
+        # both were there stopped every glider dive on its first route.
         for name in ROUTE_FLYERS:
-            self.controllers[name].steer(route)
+            flyer = self.controllers.get(name)
+            if flyer is not None:
+                flyer.steer(route)
         self.flying_the_route = bool(route)
 
     def the_route_flyer(self) -> Controller:
         """Which of them has the route: the one asked for, or the ordinary one."""
-        if self.prefer in ROUTE_FLYERS:
-            return self.controllers[self.prefer]
-        return self.pursue
+        chosen = self.controllers.get(self.prefer) if self.prefer in ROUTE_FLYERS else None
+        return chosen if chosen is not None else self.pursue
 
     def deliberating(self) -> bool:
         """Whether anything here wants a slow clock.
