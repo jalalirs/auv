@@ -168,6 +168,20 @@ func (d *Dependencies) save(what madeOfAPlace) http.HandlerFunc {
 	}
 }
 
+// cost says what a plan of work takes, from the last time somebody flew it.
+//
+// From the record rather than from the arithmetic of its stages: a plan that
+// has never been in the water has no cost to state, and the platform says so
+// instead of guessing one.
+func (d *Dependencies) missionCost(w http.ResponseWriter, r *http.Request) {
+	found, err := d.Dives.WhatAMissionCosts(r.Context(), r.PathValue("missionId"))
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, found)
+}
+
 // registerMadeOfAPlace declares the five routes each of them needs.
 func (rt *Router) registerMadeOfAPlace() {
 	d := rt.deps
@@ -194,4 +208,9 @@ func (rt *Router) registerMadeOfAPlace() {
 			Summary: "save this " + noun, Action: policy.CityCreate,
 			Resource: atPlatform(), Handle: d.save(what)})
 	}
+	// And one only a plan of work has: what it costs.
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/missions/{missionId}/cost",
+		Summary: "what this plan of work takes, from the last time it was flown",
+		Action:  policy.PlatformReadCatalogue,
+		Resource: atPlatform(), Handle: d.missionCost})
 }
