@@ -168,3 +168,40 @@ def test_a_slack_bight_near_the_surface_pulls_much_less_than_a_taut_scope():
     working = float(np.linalg.norm(scope.pull(current)))
     assert working > 4 * loose, (
         f"the working scope pulled {working:.2f} N and the bight {loose:.2f} N")
+
+
+def test_a_vehicle_cannot_reach_past_its_cable():
+    """Flown, rather than asserted about a sphere.
+
+    The BlueROV2's package says it comes on a hundred metres of tether, and a
+    hundred metres of tether is a hard limit on where it can get to. This is
+    how the tether announced itself: a navigation test that had asked the
+    vehicle to reach a point a hundred and twenty metres away, and had done so
+    happily for months, stopped at a hundred and nought-point-three.
+    """
+    import pathlib as _pathlib
+    import sys as _sys
+
+    _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+    from hydrodynamics import Allocator, Body, Hydrodynamics
+    from runner import Dive
+
+    vehicle = _pathlib.Path(__file__).resolve().parents[3] / "catalog/vehicles/bluerov2"
+    model = Hydrodynamics.from_package(vehicle / "dynamics.json")
+    brief = {"durationSeconds": 900, "seed": 4, "vehiclePath": str(vehicle),
+             "initialState": {"positionM": [0, 0, -6], "tetherOutM": 40.0},
+             "conditions": {"kind": "constructed", "parameters": {}}}
+    dive = Dive(brief, Body(model), Allocator(model),
+                _pathlib.Path("nowhere.usda"), lambda kind, **said: None)
+    dive.floor = -12.0
+    dive.begin_task({"kind": "reach", "dx": 120.0, "dy": 0.0, "radiusM": 2.0,
+                     "timeLimitS": 900.0})
+    assert dive.tether is not None and dive.tether.out, "it should be on a cable"
+    for _ in range(int(600 / dive.dt)):
+        dive.step()
+        if dive.done:
+            break
+    far = float(np.linalg.norm(dive.position[:2] - np.array([0.0, 0.0])))
+    assert far <= 40.5, f"it got {far:.1f} m out on forty metres of cable"
+    assert far > 35.0, f"it only got {far:.1f} m out, so something else stopped it"
+    assert dive.tether.struck > 0, "and it should have said it reached the end"

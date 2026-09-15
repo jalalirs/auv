@@ -20,7 +20,16 @@ from runner import Dive  # noqa: E402
 VEHICLE = pathlib.Path(__file__).resolve().parents[3] / "catalog/vehicles/bluerov2"
 
 
-def a_dive(objective=None, positioning=None, fitted=None, seconds=600, seed=7):
+def a_dive(objective=None, positioning=None, fitted=None, seconds=600, seed=7,
+           tether_m=0.0):
+    """A dive for testing navigation, with no cable on it unless asked.
+
+    No cable on purpose: the BlueROV2's package says it comes on a hundred
+    metres of tether, and a hundred metres of tether is a hard limit on how far
+    it can go. That is true and it belongs in the tether's own tests — here it
+    would turn every question about dead reckoning into a question about scope,
+    which is how a test stops testing what it is named after.
+    """
     model = Hydrodynamics.from_package(VEHICLE / "dynamics.json")
     parameters = {}
     if positioning is not None:
@@ -28,7 +37,7 @@ def a_dive(objective=None, positioning=None, fitted=None, seconds=600, seed=7):
     if fitted is not None:
         parameters["fitted"] = fitted
     brief = {"durationSeconds": seconds, "seed": seed, "vehiclePath": str(VEHICLE),
-             "initialState": {"positionM": [0, 0, -6]},
+             "initialState": {"positionM": [0, 0, -6], "tetherOutM": tether_m},
              "conditions": {"kind": "constructed", "parameters": parameters}}
     dive = Dive(brief, Body(model), Allocator(model), pathlib.Path("nowhere.usda"),
                 lambda kind, **said: None)
