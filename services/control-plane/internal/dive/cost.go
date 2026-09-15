@@ -163,8 +163,11 @@ func WhatItCosts(spent []Spent, doubted bool) Cost {
 	// assumes they are equally likely. They are not — nobody thinks a dead
 	// Doppler log is as likely as a calm morning — and a sentence that hid
 	// that would be a sentence somebody quoted at a funder.
+	// Whole runs in the sentence: you cannot do four tenths of a dive before
+	// the light goes. The exact figure stays in the field for whoever is doing
+	// their own arithmetic with it.
 	out.Says = fmt.Sprintf("%s of work in a working day, held back by %s.",
-		plural(out.PerDay, "run", "runs"), out.HeldBackBy)
+		plural(math.Floor(out.PerDay), "run", "runs"), out.HeldBackBy)
 	if doubted && out.Survives > 0 {
 		out.ShipDays = 1.0 / out.Survives
 		out.Says += fmt.Sprintf(
