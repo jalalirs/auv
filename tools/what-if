@@ -163,11 +163,20 @@ def say(found: dict) -> None:
         print("Nothing in the doubt list breaks it.")
         return
 
+    if found.get("marginal"):
+        print(f"{found['marginal']} of the scenarios could have gone either way — some of "
+              "their runs did\nthe job and some did not. What counts as done is sitting "
+              "inside the spread.\n")
+
     for one in found["matters"]:
-        print(f"{one['name']}  (changes the outcome by {one['changes']:.0%})")
+        print(f"{one['name']}  (changes the outcome by {one['changes']:.0%}"
+              + (", on coin flips" if one.get("onACoinFlip") else "") + ")")
         for rate in one["rates"]:
             bar = "█" * int(round(rate["failedShare"] * BAR)) or "·"
             print(f"    {rate['value']:<16} {rate['survived']:2d}/{rate['of']:<2d} survive   {bar}")
+        if one.get("onACoinFlip"):
+            print("    Every scenario this separates is one that could have gone either way,\n"
+                  "    so the difference is where the coins landed and not what the setting did.")
         print()
 
     if found["madeNoDifference"]:
@@ -177,6 +186,14 @@ def say(found: dict) -> None:
         print("Nothing in the doubt list explains the failures on its own.")
         return
 
+    turns = next((one for one in found["matters"] if one["name"] == found["turnsOn"]), None)
+    if turns is not None and turns.get("onACoinFlip"):
+        print("Nothing in the doubt list is decided. Every difference rests on scenarios\n"
+              "that could have gone either way: either move what counts as done off the\n"
+              "spread, or fly each scenario more times, or doubt something this mission\n"
+              "is actually sensitive to.")
+        return
+
     failed, of = found["failsOf"]
     print(f"The mission turns on {found['turnsOn']}. At {found['at']} it fails "
           f"{failed} times out of {of}.")
@@ -184,8 +201,10 @@ def say(found: dict) -> None:
         saved, tried = found["rescueOf"]
         print(f"Setting {found['rescue']} saves {saved} of those {tried}.")
     elif found.get("noRescue"):
+        # No article: a dimension is named by whoever wrote the doubt list, and
+        # half of them come with one already — "if the the array is as laid".
         print("Nothing else in the doubt list rescues them: "
-              f"if the {found['turnsOn']} is {found['at']}, do not go.")
+              f"if {found['turnsOn']} is {found['at']}, do not go.")
 
     if found.get("heldBack"):
         print(f"\n{found['heldBack']} of the failures were the vehicle held back by its "
