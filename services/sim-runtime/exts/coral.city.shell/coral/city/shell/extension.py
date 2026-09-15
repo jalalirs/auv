@@ -234,7 +234,8 @@ class CoralCityShell(omni.ext.IExt):
                 # the look plan is a judgement about an image, and two paths
                 # flown over two places are not an argument about anything.
                 self.tour = Stills(dive.across_metres(), floor_at, self._say,
-                                   begin=dive.position)
+                                   begin=dive.position,
+                                   water_level=dive.water_level)
             else:
                 self.tour = Tour(dive.across_metres(), floor_at, self._say,
                                  begin=dive.position)
