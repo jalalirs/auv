@@ -81,7 +81,20 @@ def mission_version(p, m, said: dict) -> str:
     document = {"describedBy": "coral-city/mission/v1",
                 "cityVersionId": city,
                 "stages": said.get("stages") or [said["objective"]]}
-    if said.get("layoutVersionId"):
+    # How the place was laid out, by the name somebody gave the arrangement.
+    #
+    # Named the way everything else in one of these files is named — `place`
+    # and `vehicle` are slugs, so `layout` is too. A version id pasted into a
+    # file is a file that goes stale the next time somebody moves a frame, and
+    # a mission that points at `nursery-frame-854--1099` with no layout behind
+    # it points at nothing at all.
+    if said.get("layout"):
+        arrangement = next(
+            one for one in p.call("GET", f"/api/v1/cities/{where['id']}/layouts")["layouts"]
+            if one["slug"] == said["layout"])
+        newest = p.call("GET", f"/api/v1/layouts/{arrangement['id']}/versions")["versions"][0]
+        document["layoutVersionId"] = newest["id"]
+    elif said.get("layoutVersionId"):
         document["layoutVersionId"] = said["layoutVersionId"]
     saved = p.call("POST", f"/api/v1/missions/{mission['id']}/versions",
                    {"label": "as the mission file says", "document": document})

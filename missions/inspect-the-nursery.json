@@ -1,0 +1,51 @@
+{
+  "name": "inspect the nursery",
+  "note": "A circuit of the middle nursery frame at Al Fahal, inside the marked plot. It exists to be the whole platform in one question: a site somebody laid out, a stage that points at what was drawn by the name it was drawn under, and doubts about both the water and the world \u2014 half a knot of current, and the mooring block thirty metres from where the chart says it was dropped, which drags its riser across the ground the vehicle has to work over. The answer says which of the two the day turns on.",
+  "place": "al-fahal",
+  "layout": "al-fahal-restoration",
+  "vehicle": "bluerov2",
+  "good": 0.7,
+  "repeats": 2,
+  "water": {
+    "salinityPsu": 40.6,
+    "temperatureC": 29.0,
+    "positioning": {
+      "kind": "usbl",
+      "everyS": 5,
+      "accuracyM": 1.5,
+      "rangeM": 500
+    }
+  },
+  "objective": {
+    "kind": "inspect",
+    "over": "nursery-frame-854--1099",
+    "radiusM": 5.0,
+    "bandM": 2.5,
+    "timeLimitS": 900.0
+  },
+  "doubts": {
+    "current": {
+      "still": {
+        "currentMetresPerSecond": 0.0,
+        "currentHeadingDeg": 0
+      },
+      "half knot": {
+        "currentMetresPerSecond": 0.26,
+        "currentHeadingDeg": 90
+      }
+    },
+    "the mooring": {
+      "where it was laid": {},
+      "thirty metres off": {
+        "world": {
+          "move": {
+            "mooring-block-909--1107": {
+              "dx": -30,
+              "dy": 8
+            }
+          }
+        }
+      }
+    }
+  }
+}
