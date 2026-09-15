@@ -253,3 +253,61 @@ func TestOneRunEachIsUnchanged(t *testing.T) {
 		t.Fatalf("it still turns on the current: %q at %q", found.TurnsOn, found.At)
 	}
 }
+
+// A doubt may be about the world rather than the water.
+//
+// A sweep could already ask what half a knot does, because half a knot is a
+// number. It could not ask *the mooring is thirty metres from where it was
+// laid*, or *the array has a transponder down* — and those are the things that
+// actually go wrong, because they are the things nobody measured.
+func TestADoubtMayChangeTheWorld(t *testing.T) {
+	got, err := Combinations(map[string]json.RawMessage{
+		"the array": json.RawMessage(`{
+			"as laid":   {},
+			"one down":  {"world": {"remove": ["transponder-2"]}},
+			"two down":  {"world": {"remove": ["transponder-2", "transponder-3"]}}}`),
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("three ways the array could be, got %d", len(got))
+	}
+	for _, one := range got {
+		if len(one.Water) != 0 || len(one.Objective) != 0 {
+			t.Errorf("%s put a change to the world in the water", one.Label())
+		}
+	}
+	// "as laid" changes nothing, and the two others take things away.
+	counted := map[string]int{}
+	for _, one := range got {
+		var gone []string
+		_ = json.Unmarshal(one.World["remove"], &gone)
+		counted[one.Chosen["the array"]] = len(gone)
+	}
+	if counted["as laid"] != 0 || counted["one down"] != 1 || counted["two down"] != 2 {
+		t.Fatalf("the array came out as %v", counted)
+	}
+}
+
+// And two doubts about the world accumulate, the way two failures do.
+func TestWorldDoubtsAccumulate(t *testing.T) {
+	got, err := Combinations(map[string]json.RawMessage{
+		"the array":   json.RawMessage(`{"one down": {"world": {"remove": ["t2"]}}}`),
+		"the mooring": json.RawMessage(`{"adrift": {"world": {"remove": ["block"],
+		                                 "move": {"buoy": {"dx": 30}}}}}`),
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gone []string
+	_ = json.Unmarshal(got[0].World["remove"], &gone)
+	if len(gone) != 2 {
+		t.Fatalf("both things should be gone, got %v", gone)
+	}
+	var moved map[string]any
+	_ = json.Unmarshal(got[0].World["move"], &moved)
+	if _, ok := moved["buoy"]; !ok {
+		t.Fatalf("and the buoy should have moved: %v", moved)
+	}
+}
