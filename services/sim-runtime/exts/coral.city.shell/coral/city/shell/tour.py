@@ -468,7 +468,8 @@ STILL_SETTLE = 10
 class Stills:
     """The same four views of every place, held still, for comparing."""
 
-    def __init__(self, across: float, floor_at, say, begin=None) -> None:
+    def __init__(self, across: float, floor_at, say, begin=None,
+                 water_level: float | None = None) -> None:
         self.across = across
         self.floor_at = floor_at
         self.say = say
@@ -477,6 +478,13 @@ class Stills:
         self.waiting = False
         self.tidied = False
         self.anchor = (float(begin[0]), float(begin[1])) if begin is not None else (0.0, 0.0)
+        # Where the top of the water is, because a view is measured up from the
+        # bottom and the bottom is not always deep enough to hold it. Twelve
+        # metres over a nine-metre reef puts the camera three metres into the
+        # air, looking down at a surface that from that side is opaque — which
+        # came back as a flat green rectangle and was read as the water being
+        # too thick. It was the sky.
+        self.water_level = 0.0 if water_level is None else float(water_level)
         self.placed_for = None
         self.say("stills_begin", views=[name for name, _ in VIEWS],
                  anchor=[round(v, 1) for v in self.anchor],
@@ -506,10 +514,19 @@ class Stills:
         settings.set("/persistent/app/viewport/displayOptions", 0)
         self.tidied = True
 
+    # How far under the surface a camera must stay. Half a metre, because at
+    # less than that the lens is in the chop and looking at nothing.
+    UNDER = 0.5
+
     def _height(self, x: float, y: float, above: float) -> float:
-        """A height above the bottom here, which is what every view asks for."""
-        floor = self.floor_at(x, y)
-        return (0.0 if floor is None else float(floor)) + above
+        """A height above the bottom here, kept under the water.
+
+        A view says how far off the bottom it wants to be; the water says how
+        far off the bottom there is. In shallow water the water wins, and the
+        view says so rather than quietly going outside.
+        """
+        floor = 0.0 if (got := self.floor_at(x, y)) is None else float(got)
+        return min(floor + above, self.water_level - self.UNDER)
 
     def place(self, stage, viewport) -> None:
         from pxr import Gf, UsdGeom
