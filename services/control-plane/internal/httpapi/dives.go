@@ -28,11 +28,6 @@ type registerStackRequest struct {
 	WantsGPU        bool            `json:"wantsGpu"`
 	// What it needs beside the simulator: gpu, gpuMemoryBytes, cpu, memoryBytes.
 	Needs json.RawMessage `json:"needs,omitempty"`
-	// Which question this run answers, when it is one of many. A sweep asks
-	// one mission against a list of doubts and every run in it is the same
-	// mission under one of them; without this they are a hundred unrelated
-	// dives that happen to share a name.
-	Scenario json.RawMessage `json:"scenario,omitempty"`
 }
 
 // registerStack records autonomy somebody brought.
@@ -241,6 +236,11 @@ type requestRunRequest struct {
 	// What the dive needs, over what the platform assembles from its parts:
 	// {simulator: {gpuMemoryBytes, cpu, memoryBytes}, controller: {…}}.
 	Needs json.RawMessage `json:"needs,omitempty"`
+	// Which question this run answers, when it is one of many. A sweep asks
+	// one mission against a list of doubts and every run in it is the same
+	// mission under one of them; without this they are a hundred unrelated
+	// dives that happen to share a name.
+	Scenario json.RawMessage `json:"scenario,omitempty"`
 }
 
 // requestRun asks for a dive to be executed.
