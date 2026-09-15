@@ -396,13 +396,18 @@ type ScenarioFlown struct {
 
 // gather turns runs into scenarios, keeping the order they were first seen.
 func gather(flown []Flown) []ScenarioFlown {
+	// Keyed on what was chosen rather than on the label a run happens to
+	// carry: the settings *are* the scenario and the label is a rendering of
+	// them, so grouping by the rendering would put every run of a sweep in one
+	// bucket the first time somebody forgot to fill it in.
 	order := []string{}
 	at := map[string][]Flown{}
 	for _, one := range flown {
-		if _, seen := at[one.Label]; !seen {
-			order = append(order, one.Label)
+		key := Scenario{Chosen: one.Chosen}.Label()
+		if _, seen := at[key]; !seen {
+			order = append(order, key)
 		}
-		at[one.Label] = append(at[one.Label], one)
+		at[key] = append(at[key], one)
 	}
 	out := make([]ScenarioFlown, 0, len(order))
 	for _, label := range order {

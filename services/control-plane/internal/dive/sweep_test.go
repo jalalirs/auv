@@ -180,3 +180,72 @@ func TestAFailedRunDidNotSurvive(t *testing.T) {
 		t.Fatal("a run that failed did not survive on a score it never finished")
 	}
 }
+
+// A scenario is a sample, not a run.
+//
+// With one run either side of a setting an unlucky seed *is* fifty per cent.
+// The sweep that proved it had the same water and twice the allowance score
+// 0.971 and then 0.429 — nothing about the allowance caused that; the vehicle
+// was dead reckoning for forty minutes and one seed drifted where the other
+// did not. Flown three times, that scenario works twice in three and the
+// dimension it was blamed on disappears.
+func TestAScenarioIsASample(t *testing.T) {
+	runs := []Flown{}
+	add := func(chosen map[string]string, scores ...float64) {
+		for _, score := range scores {
+			runs = append(runs, Flown{Chosen: chosen, State: "succeeded",
+				Score: score, Survived: score >= 0.8})
+		}
+	}
+	// Still water works, whatever the allowance — but one run of it was
+	// unlucky, in the way the real sweep was.
+	add(map[string]string{"current": "still", "how long": "a shift"}, 0.97, 0.95, 0.96)
+	add(map[string]string{"current": "still", "how long": "two shifts"}, 0.43, 0.95, 0.96)
+	// Half a knot does not work, whatever the allowance.
+	add(map[string]string{"current": "half knot", "how long": "a shift"}, 0.06, 0.07, 0.05)
+	add(map[string]string{"current": "half knot", "how long": "two shifts"}, 0.06, 0.05, 0.07)
+
+	found := What(runs, 0.8)
+	if found.Flown != 4 || found.FlownRuns != 12 {
+		t.Fatalf("four scenarios of three runs, got %d of %d", found.Flown, found.FlownRuns)
+	}
+	if found.Survived != 2 {
+		t.Fatalf("both still-water scenarios work, got %d", found.Survived)
+	}
+	if len(found.Matters) != 1 || found.Matters[0].Name != "current" {
+		t.Fatalf("only the current matters, got %v", found.Matters)
+	}
+	if len(found.MadeNoDifference) != 1 || found.MadeNoDifference[0] != "how long" {
+		t.Fatalf("the allowance made no difference and should say so, got %v",
+			found.MadeNoDifference)
+	}
+	// And the unlucky run is still visible, because a scenario that worked
+	// twice in three is a different thing from one that worked three times.
+	var marginal *ScenarioFlown
+	for i, one := range found.Scenarios_ {
+		if one.Chosen["how long"] == "two shifts" && one.Chosen["current"] == "still" {
+			marginal = &found.Scenarios_[i]
+		}
+	}
+	if marginal == nil || marginal.Survived != 2 || marginal.Runs != 3 {
+		t.Fatalf("the marginal scenario should say it worked twice in three: %+v", marginal)
+	}
+	if marginal.Worst > 0.5 || marginal.Best < 0.9 {
+		t.Fatalf("and keep its spread: %+v", marginal)
+	}
+}
+
+// One run each is what every sweep flown before this did, and it still works.
+func TestOneRunEachIsUnchanged(t *testing.T) {
+	runs := []Flown{
+		{Chosen: map[string]string{"current": "still"}, State: "succeeded", Score: 0.95, Survived: true},
+		{Chosen: map[string]string{"current": "one knot"}, State: "succeeded", Score: 0.2},
+	}
+	found := What(runs, 0.8)
+	if found.Flown != 2 || found.Survived != 1 {
+		t.Fatalf("one of two, got %d of %d", found.Survived, found.Flown)
+	}
+	if found.TurnsOn != "current" || found.At != "one knot" {
+		t.Fatalf("it still turns on the current: %q at %q", found.TurnsOn, found.At)
+	}
+}
