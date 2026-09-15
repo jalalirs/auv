@@ -14,8 +14,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AssetVersion, Cost, Findings, Mission, Platform, Sweep } from "@coral-city/api";
 
 import { DOUBTS, doubtsFrom, scenariosIn } from "../catalog/doubts.js";
+import { newestOf } from "../platform/packages.js";
 import type { Held } from "./Deck.js";
-import { Empty, PageHead, Pill, ago } from "./parts.js";
+import { Empty, PageHead, Pill, Row, ago } from "./parts.js";
 
 /** How long a sweep will take, when the mission has been flown before. */
 function willTake(cost: Cost | undefined, scenarios: number, machines: number): string | undefined {
@@ -93,11 +94,19 @@ export function Sweeps({ platform, held, onOpen, onChanged }: {
     if (held.institution === undefined || chosen === undefined || queue === undefined) return;
     setAsking(true); setTrouble("");
     try {
+      // The published version, not the vehicle: a sweep pins bytes, the way a
+      // dive does, so that ninety runs are ninety runs of one vehicle even if
+      // somebody publishes a newer one while they fly.
+      const published = newestOf(await platform.versionsOfVehicle(vehicle));
+      if (published === undefined) {
+        setTrouble("That vehicle has no published package yet.");
+        return;
+      }
       const made = await platform.startSweep(held.institution.id, {
         name: `${chosen.mission.name} ~ ${new Date().toLocaleDateString(undefined,
           { day: "numeric", month: "long" })}`,
         missionVersionId: chosen.version.id,
-        vehicleVersionId: vehicle,
+        vehicleVersionId: published.id,
         doubts: doubtsFrom(picked) as never,
         queueId: queue.id,
         runtimeVersion: queue.runtimes?.[0] ?? "",
@@ -320,11 +329,11 @@ function Answer({ found, flying }: { found: Findings; flying: number }): React.J
               </div>
               {(one.rates ?? []).map((rate) => (
                 <div className="rate" key={rate.value}>
-                  <span className="value">{rate.value}</span>
-                  <span className="bar">
+                  <span className="setting-name">{rate.value}</span>
+                  <span className="share">
                     <span style={{ width: `${(1 - (rate.failedShare ?? 0)) * 100}%` }} />
                   </span>
-                  <span className="count">{rate.survived}/{rate.of}</span>
+                  <span className="tally">{rate.survived}/{rate.of}</span>
                 </div>
               ))}
             </div>
@@ -365,18 +374,15 @@ function Costs({ cost }: { cost: Cost | undefined }): React.JSX.Element {
   return (
     <>
       <div className="kvs">
-        <div className="row"><span>a run</span>
-          <strong>{(cost.energyWh ?? 0).toFixed(1)} Wh · {((cost.hours ?? 0) * 60).toFixed(0)} min</strong>
-          <em>priced on the {cost.survived} that did the job — the failures are the cheap ones</em></div>
-        <div className="row"><span>at the ninetieth percentile</span>
-          <strong>{(cost.worstEnergyWh ?? 0).toFixed(1)} Wh · {((cost.worstHours ?? 0) * 60).toFixed(0)} min</strong>
-          <em>what to size a plan by; the single worst dive is one bad seed</em></div>
-        <div className="row"><span>on a charge</span>
-          <strong>{Math.floor(cost.perCharge ?? 0)}</strong>
-          <em>{(cost.usableWh ?? 0).toFixed(0)} usable Wh — {(cost.capacityWh ?? 0).toFixed(0)} less a {((cost.reserveFraction ?? 0) * 100).toFixed(0)}% reserve, which is not yours</em></div>
-        <div className="row"><span>in a working day</span>
-          <strong>{Math.floor(cost.perDay ?? 0)}</strong>
-          <em>held back by {cost.heldBackBy} — {(cost.workingDayHours ?? 8)} hours</em></div>
+        <Row of="a run" is={`${(cost.energyWh ?? 0).toFixed(1)} Wh · ${((cost.hours ?? 0) * 60).toFixed(0)} min`}
+             note={`Priced on the ${cost.survived} that did the job — the failures are the cheap ones.`} />
+        <Row of="at the ninetieth percentile"
+             is={`${(cost.worstEnergyWh ?? 0).toFixed(1)} Wh · ${((cost.worstHours ?? 0) * 60).toFixed(0)} min`}
+             note="What to size a plan by. The single worst dive anybody flew is one bad seed; the mean runs out one day in two." />
+        <Row of="on a charge" is={`${Math.floor(cost.perCharge ?? 0)} runs`}
+             note={`${(cost.usableWh ?? 0).toFixed(0)} usable Wh — ${(cost.capacityWh ?? 0).toFixed(0)} less a ${((cost.reserveFraction ?? 0) * 100).toFixed(0)}% reserve, which is not yours.`} />
+        <Row of="in a working day" is={`${Math.floor(cost.perDay ?? 0)} runs`}
+             note={`Held back by ${cost.heldBackBy}. A working day is ${cost.workingDayHours ?? 8} hours.`} />
       </div>
       {cost.says ? <p className="lead">{cost.says}</p> : null}
     </>

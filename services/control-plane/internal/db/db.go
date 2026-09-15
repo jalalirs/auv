@@ -132,6 +132,14 @@ func IsCheckViolation(err error) bool {
 	return errors.As(err, &pgErr) && (pgErr.Code == "23514" || pgErr.Code == "23502")
 }
 
+// IsForeignKeyViolation reports whether an error is the database refusing a
+// reference to something that is not there — which is a caller naming a thing
+// that does not exist, and belongs to them rather than to us.
+func IsForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
+}
+
 // RaisedMessage returns the message from a rule the database enforced with a
 // trigger, so that an immutability refusal reaches the caller in the words the
 // schema used. The second result reports whether the error was such a refusal.
