@@ -22,7 +22,7 @@ def hanging(length: float, out: float = 40.0, current=(0.0, 0.0, 0.0)) -> Tether
     surface = np.array([0.0, 0.0, 0.0])
     vehicle = np.array([0.0, 0.0, -out])
     one.start(surface, vehicle)
-    one.settle(vehicle, np.asarray(current), passes=200)
+    one.settle(vehicle, np.asarray(current), passes=3000)
     return one
 
 
@@ -46,18 +46,18 @@ def hull_drag(speed: float) -> float:
     return BLUEROV2_LINEAR * speed + BLUEROV2_QUADRATIC * speed * speed
 
 
-def test_a_hundred_metres_in_a_current_is_the_larger_force():
+def test_a_working_scope_in_a_current_is_the_larger_force():
     """The case it was wrong about, which is every working day.
 
     A BlueROV2 at a quarter of a knot costs about two newtons to push through
-    the water. A hundred metres of cable in the same water is a different order
-    of thing — an 8 mm tether has more than ten times the frontal area of the
-    vehicle on the end of it — and a pilot who has flown one knows it.
+    the water. The cable it is on costs several times that — an 8 mm tether has
+    more than ten times the frontal area of the vehicle hanging off it — and a
+    pilot who has flown one knows it.
     """
     speed = 0.26
     current = np.array([speed, 0.0, 0.0])
-    hundred = hanging(110.0, out=100.0, current=current)
-    cable = float(np.linalg.norm(hundred.pull(current)))
+    working = hanging(55.0, out=50.0, current=current)
+    cable = float(np.linalg.norm(working.pull(current)))
     hull = hull_drag(speed)
     assert cable > 2.0 * hull, (
         f"the cable pulled {cable:.1f} N and the hull costs {hull:.1f} N to push: "
@@ -68,9 +68,9 @@ def test_a_short_tether_is_a_much_smaller_thing():
     """Which is why "how much is out" is a question worth asking."""
     current = np.array([0.26, 0.0, 0.0])
     ten = float(np.linalg.norm(hanging(12.0, out=10.0, current=current).pull(current)))
-    hundred = float(np.linalg.norm(hanging(110.0, out=100.0, current=current).pull(current)))
-    assert hundred > 4.0 * ten, (
-        f"a hundred metres pulled {hundred:.1f} N and ten pulled {ten:.1f} N")
+    fifty = float(np.linalg.norm(hanging(55.0, out=50.0, current=current).pull(current)))
+    assert fifty > 4.0 * ten, (
+        f"fifty metres pulled {fifty:.1f} N and ten pulled {ten:.1f} N")
 
 
 def test_the_cable_leans_downstream():
@@ -127,3 +127,44 @@ def test_no_cable_is_no_force():
     where = np.array([500.0, 0.0, -10.0])
     allowed, held = one.keep_in(where, where)
     assert not held and np.array_equal(allowed, where)
+
+
+def test_the_pull_does_not_depend_on_how_long_you_relaxed_it():
+    """The bug that made the first version of this useless.
+
+    Taking the whole cable's equilibrium — two end tensions, three equations —
+    is ill-posed exactly where it matters. A cable that streams out and comes
+    back has both ends pulling along nearly the same line, the two unknowns
+    stop being independent, and the split between them swings on rounding: the
+    same cable answered 6 N, then 10, then 13 as it was relaxed further, while
+    the shape itself had stopped moving. Solved node by node it is the same
+    answer twice.
+    """
+    current = np.array([0.26, 0.0, 0.0])
+    for out, length in ((6.3, 100.0), (50.0, 55.0), (50.0, 110.0)):
+        settled = []
+        for passes in (2000, 8000):
+            one = Tether({"lengthM": length})
+            vehicle = np.array([0.0, 0.0, -out])
+            one.start(np.zeros(3), vehicle, current)
+            one.settle(vehicle, current, passes=passes)
+            settled.append(float(np.linalg.norm(one.pull(current))))
+        assert abs(settled[0] - settled[1]) < 0.1 * max(0.5, settled[1]), (
+            f"{length} m to {out} m down gave {settled[0]:.2f} N then {settled[1]:.2f} N")
+
+
+def test_a_slack_bight_near_the_surface_pulls_much_less_than_a_taut_scope():
+    """Which is why "how much is out" is not the same question as "how long".
+
+    A hundred metres paid out to a vehicle six metres down is ninety metres of
+    cable streaming downstream in a bight, and a bight pulls on the end that is
+    holding it up rather than on the one on the bottom. Fifty-five metres to a
+    vehicle fifty metres down is the same cable doing the job it is for.
+    """
+    current = np.array([0.26, 0.0, 0.0])
+    bight = hanging(100.0, out=6.3, current=current)
+    scope = hanging(55.0, out=50.0, current=current)
+    loose = float(np.linalg.norm(bight.pull(current)))
+    working = float(np.linalg.norm(scope.pull(current)))
+    assert working > 4 * loose, (
+        f"the working scope pulled {working:.2f} N and the bight {loose:.2f} N")

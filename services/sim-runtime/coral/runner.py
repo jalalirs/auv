@@ -1289,9 +1289,13 @@ class Dive:
 
         self.tether = Tether(said)
         self.tether.start(surface, self.position)
-        # Settled properly once, so the dive does not open with a cable in a
-        # straight line pulling on nothing.
-        self.tether.settle(self.position, self.current, passes=120)
+        # Settled properly once, so the dive does not open with a cable that
+        # has not found its shape yet. Three thousand passes of twenty nodes is
+        # nothing to do once and is the difference between a cable that reports
+        # four newtons and the same cable reporting seven: during the dive the
+        # shape is carried and a few passes a step keep it, but the first
+        # second of the record should not be the only wrong part of it.
+        self.tether.settle(self.position, self.current, passes=3000)
         self.say("tether_out", lengthM=round(self.tether.length_m, 1),
                  diameterM=self.tether.diameter_m,
                  from_=[round(float(v), 1) for v in surface], where=where)
