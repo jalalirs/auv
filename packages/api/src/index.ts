@@ -21,6 +21,9 @@ export type AssetVersion = Schemas["AssetVersion"];
 export type Layout = Schemas["Layout"];
 export type Mission = Schemas["Mission"];
 export type MissionDocument = Schemas["MissionDocument"];
+export type Sweep = Schemas["Sweep"];
+export type Findings = Schemas["Findings"];
+export type Doubts = Schemas["Doubts"];
 export type LayoutDocument = Schemas["LayoutDocument"];
 export type Queue = Schemas["Queue"];
 export type Device = Schemas["Device"];
@@ -248,6 +251,38 @@ export class Platform {
     const { versions } = await this.#request<{ versions: AssetVersion[] }>(
       "GET", `/api/v1/missions/${id}/versions`);
     return versions;
+  }
+
+  // ── a mission against everything that could go wrong with it ──────────────
+
+  async sweepsOf(organisation: string): Promise<Sweep[]> {
+    const { sweeps } = await this.#request<{ sweeps: Sweep[] }>(
+      "GET", `/api/v1/organisations/${organisation}/sweeps`);
+    return sweeps;
+  }
+
+  async sweep(id: string): Promise<Sweep> {
+    return this.#request<Sweep>("GET", `/api/v1/sweeps/${id}`);
+  }
+
+  /** What breaks this mission, and what would fix it. Read from the runs, so
+   *  a sweep half flown gives the answer so far. */
+  async findings(id: string): Promise<Findings> {
+    return this.#request<Findings>("GET", `/api/v1/sweeps/${id}/findings`);
+  }
+
+  async startSweep(organisation: string, said: {
+    name: string;
+    missionVersionId: string;
+    vehicleVersionId: string;
+    water?: Record<string, unknown>;
+    doubts: Doubts;
+    good?: number;
+    queueId: string;
+    runtimeVersion: string;
+  }): Promise<Sweep> {
+    return this.#request<Sweep>("POST",
+      `/api/v1/organisations/${organisation}/sweeps`, said);
   }
 
   async saveMission(id: string, document: MissionDocument,
