@@ -1410,3 +1410,59 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
   border-left: 2px solid var(--vehicle);
   padding-left: 10px;
 }
+
+/* Asking for a sweep, and reading one.
+ *
+ * The doubts are a palette of toggles rather than a form, because what
+ * somebody is doing is ticking the things they cannot promise — and the count
+ * of scenarios under it is the number that makes them think twice.
+ */
+.sweeping { display: flex; flex-direction: column; gap: 14px; }
+.sweeping .of { display: flex; gap: 12px; flex-wrap: wrap; }
+.sweeping .of label { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 220px; }
+.sweeping .of span {
+  font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
+}
+.sweeping select {
+  background: var(--deep); border: 1px solid var(--edge); color: var(--plain);
+  border-radius: 8px; padding: 8px 10px; font: inherit;
+}
+.sweeping select:focus { outline: none; border-color: var(--edge-lit); }
+
+.doubts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.doubt {
+  background: var(--shelf); border: 1px solid var(--edge); border-radius: 10px;
+  padding: 11px 12px; display: flex; flex-direction: column; gap: 6px;
+}
+.doubt.on { border-color: var(--edge-lit); }
+.doubt small { color: var(--faint); font-size: 11.5px; line-height: 1.45; }
+.doubt .settings { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
+.doubt .setting {
+  background: transparent; border: 1px solid var(--edge); color: var(--dim);
+  border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer;
+}
+.doubt .setting:hover { border-color: var(--edge-lit); color: var(--plain); }
+.doubt .setting.on { background: var(--raised); border-color: var(--vehicle); color: var(--plain); }
+
+.sweeping .acts { display: flex; align-items: center; gap: 14px; justify-content: space-between; }
+.sweeping .acts .quiet { font-size: 12.5px; }
+
+/* The answer: a paragraph, then one small table per doubt that matters. */
+.lead { font-size: 14.5px; line-height: 1.6; margin: 10px 0; color: var(--plain); }
+.doubt-rates { margin: 14px 0; }
+.doubt-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.doubt-head .quiet { font-size: 11.5px; }
+.doubt-rates .rate {
+  display: grid; grid-template-columns: 150px 1fr 56px; align-items: center; gap: 10px;
+  padding: 2px 0; font-size: 12.5px;
+}
+.doubt-rates .rate .value { color: var(--faint); }
+.doubt-rates .rate .bar {
+  height: 8px; background: var(--deep); border-radius: 4px; overflow: hidden;
+  border: 1px solid var(--edge);
+}
+.doubt-rates .rate .bar > span { display: block; height: 100%; background: var(--good, #4fb286); }
+.doubt-rates .rate .count {
+  font-family: ui-monospace, monospace; font-size: 11.5px; color: var(--dim);
+  font-variant-numeric: tabular-nums; text-align: right;
+}
