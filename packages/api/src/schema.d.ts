@@ -3307,6 +3307,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/missions/{missionId}/cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What this plan of work takes
+         * @description From the last time somebody flew it, which is the only honest source: a plan that has never been in the water has no cost to state, and the platform says so rather than guessing one from the arithmetic of its stages.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    missionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What it costs. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Cost"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/missions/{missionId}/versions": {
         parameters: {
             query?: never;
@@ -4924,9 +4967,44 @@ export interface components {
             /** @description What computed them. A sweep whose runs were not all computed by the same simulator is a table that should not be one.
              *      */
             physics?: number[];
+            cost?: components["schemas"]["Cost"];
             runs?: {
                 [key: string]: unknown;
             }[];
+        };
+        /** @description What a piece of work takes, and what the weather costs on top. Every input has been in the record for weeks: a dive knows its energy to a hundredth of a watt-hour, the battery knows its capacity and the reserve it keeps back, and a dive knows how long it took.
+         *     Two rules, because the arithmetic is easy and being wrong about it is expensive. **Cost is measured on what worked** — averaging a dive abandoned at eight minutes with one that ran its full forty gives a number that is neither, and it flatters, because the failures are the cheap ones. **The reserve is not yours** — usable energy is capacity less the reserve, and a plan that spends into it surfaces a vehicle on a beach.
+         *      */
+        Cost: {
+            runs?: number;
+            survived?: number;
+            /** @description What one run of it costs, averaged over the runs that did the job. */
+            energyWh?: number;
+            /** @description The ninetieth percentile, not the single worst dive anybody ever flew — a plan sized by that is a plan sized by one bad seed, and a plan sized by the mean runs out of battery one day in two.
+             *      */
+            worstEnergyWh?: number;
+            hours?: number;
+            worstHours?: number;
+            capacityWh?: number;
+            reserveFraction?: number;
+            usableWh?: number;
+            /** @description How many of these fit on one charge. */
+            perCharge?: number;
+            /** @description How long a day of ship time is. Stated rather than derived, so that whoever disagrees can see what they are disagreeing with.
+             *      */
+            workingDayHours?: number;
+            perDay?: number;
+            /** @description Which cap binds — the battery or the clock. Saying which is the whole use of the number: a job held back by the battery is fixed by a second battery, and a job held back by the clock is not.
+             *      */
+            heldBackBy?: string;
+            survives?: number;
+            shipDaysPerWorkingDay?: number;
+            /** @description The sentence somebody takes to whoever signs the ship time, with its assumption said out loud. A sweep is a cross product and not a forecast: one in four surviving means one in four *of those combinations*, and turning that into days assumes they are equally likely. They are not, and a sentence that hid that would be a sentence somebody quoted at a funder.
+             *      */
+            says?: string;
+            /** @description Nothing did the job, so there is nothing to price — said, rather than answered with the cost of the failures.
+             *      */
+            notEnough?: boolean;
         };
         /** @description What is in the water. Each thing carries its kind, where it is in the site's own metres, and the depth its landing rule resolved to **when it was drawn** — not when it is flown. A layout then means the same thing to the editor, the runtime and the record, and re-flying one in September gets the site as it was arranged in March.
          *      */

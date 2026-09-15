@@ -717,7 +717,7 @@ func (s *Store) Findings(ctx context.Context, id string) (Findings, error) {
 	}
 	found := What(flown, one.Good)
 	found.Scenarios, found.Flying = one.Scenarios, one.Flying
-	found.Cost = WhatItCosts(spent)
+	found.Cost = WhatItCosts(spent, true)
 	return found, nil
 }
 
