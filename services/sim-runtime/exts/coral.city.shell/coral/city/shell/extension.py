@@ -29,7 +29,7 @@ import omni.usd
 
 from .controls import Controls
 from .hud import Hud
-from .tour import Ladder, Tour
+from .tour import Ladder, Stills, Tour
 
 # Where the runtime keeps the dive: the physics, the boundary, and the loader
 # the headless runner uses too.
@@ -227,10 +227,17 @@ class CoralCityShell(omni.ext.IExt):
                     return dive.seabed.under(float(x), float(y))
                 return dive.floor
 
-            self.tour = (Ladder(floor_at, self._say)
-                         if self._touring == "ladder"
-                         else Tour(dive.across_metres(), floor_at, self._say,
-                                   begin=dive.position))
+            if self._touring == "ladder":
+                self.tour = Ladder(floor_at, self._say)
+            elif self._touring == "stills":
+                # The same four views of every place, held still. Everything in
+                # the look plan is a judgement about an image, and two paths
+                # flown over two places are not an argument about anything.
+                self.tour = Stills(dive.across_metres(), floor_at, self._say,
+                                   begin=dive.position)
+            else:
+                self.tour = Tour(dive.across_metres(), floor_at, self._say,
+                                 begin=dive.position)
             self._say("tour_begins", frames=self.tour.frames,
                       acrossM=dive.across_metres(),
                       floorAtMiddleM=floor_at(0.0, 0.0))

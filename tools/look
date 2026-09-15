@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# The same four views of every place, for comparing one week against the next.
+#
+# Every judgement in docs/plan/r2.md's first phase is a judgement about an
+# image, and a judgement made against memory is not a judgement. `fly-over`
+# flies a path and hands back whatever it passed: two runs of it are not
+# comparable, and neither is a before and an after.
+#
+# So this holds the camera still, at four named viewpoints, in every place, and
+# writes what made each frame beside it. What differs between two sheets is
+# what somebody changed.
+#
+# Runs on the box, where the GPUs are.
+#
+#   tools/look                       # the five real places
+#   tools/look al-fahal looe-key     # or the ones named
+#
+# Frames land in ~/coral-city/work/looks/<place>/ and the sheet beside them.
+
+set -euo pipefail
+
+PLACES=("$@")
+[ ${#PLACES[@]} -eq 0 ] && PLACES=(al-fahal looe-key kaneohe red-sea thuwal-deep)
+
+CITY="${HOME}/coral-city"
+work="${CITY}/work"
+looks="${work}/looks"
+here="${work}/look"
+image="127.0.0.1:18081/sim-runtime:r1"
+
+mkdir -p "${looks}"
+
+one_place() {
+    local place="$1"
+    local city vehicle
+    city="$("$(dirname "$0")/newest-place" "${place}")"
+    [ -n "${city}" ] || { echo "  no published place called '${place}'" >&2; return 1; }
+
+    vehicle=""
+    for d in "${work}"/packages/*/; do
+        [ -f "${d}/dynamics.json" ] && vehicle="${d%/}"
+    done
+    [ -n "${vehicle}" ] || { echo "  no vehicle package to open the scene with" >&2; return 1; }
+
+    rm -rf "${here}"; mkdir -p "${here}/frames"; chmod -R 777 "${here}"
+    cat > "${here}/dive.json" <<JSON
+{"cityPath": "/dive/city", "vehiclePath": "/dive/vehicle",
+ "durationSeconds": 600, "autonomy": false}
+JSON
+    chmod 666 "${here}/dive.json"
+
+    docker rm -f coral-look >/dev/null 2>&1 || true
+    docker run -d --name coral-look --gpus '"device=0"' \
+        -e ACCEPT_EULA=Y -e PRIVACY_CONSENT=Y -e ROS_LOG_DIR=/tmp/ros \
+        -e CORAL_CITY_SEED=1 \
+        -e CORAL_CITY_BRIEF=/dive/dive.json \
+        -e CORAL_CITY_TOUR=stills \
+        -e CORAL_CITY_TOUR_INTO=/dive/frames \
+        -v "${here}:/dive:rw" \
+        -v "${city}:/dive/city:ro" \
+        -v "${vehicle}:/dive/vehicle:ro" \
+        --entrypoint /isaac-sim/kit/kit \
+        "${image}" /isaac-sim/apps/coral_city.kit --no-window >/dev/null
+
+    # Opening the scene takes minutes; four stills after that take seconds.
+    local n=0
+    for _ in $(seq 1 90); do
+        sleep 10
+        n="$(find "${here}/frames" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
+        printf '\r  %s frames' "${n}"
+        docker logs coral-look 2>&1 | grep -q '"event": "tour_done"' && break
+        docker logs coral-look 2>&1 | grep -qE '"event": "(tour_failed|failed)"' && break
+        docker ps --format '{{.Names}}' | grep -q '^coral-look$' || break
+    done
+    printf '\n'
+
+    docker logs coral-look > "${here}/look.log" 2>&1 || true
+    docker logs coral-look 2>&1 | grep -E '"event": "(stills_|place_open|water_drawn|failed)' \
+        | tail -4 | sed 's/^/    /' || true
+    docker rm -f coral-look >/dev/null 2>&1 || true
+
+    n="$(find "${here}/frames" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
+    [ "${n}" -gt 0 ] || { echo "  ${place} produced nothing to look at" >&2; return 1; }
+    docker run --rm -u 0 -v "${here}/frames:/w" --entrypoint chmod "${image}" -R a+r /w
+
+    # What made these frames, beside them — so a sheet can say what it is a
+    # sheet of, and two of them can be told apart a month later.
+    rm -rf "${looks:?}/${place}"; mkdir -p "${looks}/${place}"
+    cp "${here}"/frames/*.png "${looks}/${place}/"
+    cp "${here}/look.log" "${looks}/${place}/look.log" 2>/dev/null || true
+    {
+        printf '{"place": "%s", "package": "%s", "at": "%s",\n' \
+            "${place}" "$(basename "${city}")" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf ' "runtime": "%s", "commit": "%s"}\n' \
+            "${image}" "$(git -C "$(dirname "$0")/.." rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    } > "${looks}/${place}/made.json"
+    echo "  ${n} frames → ${looks}/${place}"
+}
+
+for place in "${PLACES[@]}"; do
+    echo "=== ${place}"
+    one_place "${place}" || true
+done
+
+echo
+echo "Sheets in ${looks}. Pull them with:"
+echo "  scp -r <box>:${looks} ."
