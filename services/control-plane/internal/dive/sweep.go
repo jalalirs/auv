@@ -567,11 +567,11 @@ func (s *Store) askForScenario(ctx context.Context, conn db.Conn, spec SweepSpec
 		MissionVersionID: spec.MissionVersionID,
 		VehicleVersionID: spec.VehicleVersionID,
 		ConditionsID:     conditions.ID,
-		// What the mission asks for, with whatever this scenario changed about
-		// it. Empty for most scenarios, in which case the mission's own stages
-		// are used whole.
-		Objective: overlaid(objective),
-		CreatedBy: spec.CreatedBy,
+		// What this scenario changed about what was asked for, laid over the
+		// mission rather than replacing it. Empty for most scenarios, in which
+		// case the mission's own stages are flown whole.
+		ObjectiveOverlay: overlaid(objective),
+		CreatedBy:        spec.CreatedBy,
 	})
 	if err != nil {
 		return err

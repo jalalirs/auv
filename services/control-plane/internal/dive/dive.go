@@ -196,6 +196,11 @@ type DiveSpec struct {
 	// repeatable if the array is as fixed as the reef under it.
 	LayoutVersionID  string
 	MissionVersionID string
+	// What a scenario changed about what was asked for, laid over whatever the
+	// mission says. Merged at the top level rather than replacing: a sweep that
+	// doubts how long the day is says `timeLimitS` and means "the same plan,
+	// with less time", not "this plan and nothing else".
+	ObjectiveOverlay json.RawMessage
 	VehicleVersionID string
 	ConditionsID     string
 	AutonomyStackID  *string
@@ -557,6 +562,32 @@ func composeFrom(ctx context.Context, conn db.Conn, spec DiveSpec) (DiveSpec, er
 	return spec, nil
 }
 
+// layOver merges what a scenario changed onto what was asked for.
+//
+// Top level and shallow, which is the whole of what a doubt needs to say: a
+// sweep that doubts how long the working day is says `timeLimitS` and means
+// "the same plan, with less time". A doubt that wanted to rewrite the stages
+// would say `stages`, and does.
+func layOver(objective, overlay json.RawMessage) (json.RawMessage, error) {
+	if len(overlay) == 0 || string(overlay) == "{}" || string(overlay) == "null" {
+		return objective, nil
+	}
+	asked := map[string]json.RawMessage{}
+	if len(objective) > 0 && string(objective) != "null" {
+		if err := json.Unmarshal(objective, &asked); err != nil {
+			return nil, fmt.Errorf("%w: what was asked for cannot be read", domain.ErrInvalid)
+		}
+	}
+	var changes map[string]json.RawMessage
+	if err := json.Unmarshal(overlay, &changes); err != nil {
+		return nil, fmt.Errorf("%w: what this scenario changes cannot be read", domain.ErrInvalid)
+	}
+	for key, value := range changes {
+		asked[key] = value
+	}
+	return json.Marshal(asked)
+}
+
 // CreateDive defines a dive.
 func (s *Store) CreateDive(ctx context.Context, conn db.Conn, spec DiveSpec) (Dive, error) {
 	// Composed before it is checked: a dive that names a mission is not
@@ -569,6 +600,15 @@ func (s *Store) CreateDive(ctx context.Context, conn db.Conn, spec DiveSpec) (Di
 	}
 	if err := spec.Validate(); err != nil {
 		return Dive{}, err
+	}
+	// What a scenario changed, laid over what the mission asked for. After
+	// composition, because a doubt is about the plan and not instead of it.
+	{
+		laid, err := layOver(spec.Objective, spec.ObjectiveOverlay)
+		if err != nil {
+			return Dive{}, err
+		}
+		spec.Objective = laid
 	}
 	initial, objective := spec.InitialState, spec.Objective
 	if len(initial) == 0 {
