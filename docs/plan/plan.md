@@ -863,6 +863,53 @@ nothing in the world to return off. Now there is.
 
 **Done:** a controller can avoid something it has not been told about.
 
+*Done (15 September).* The same route along the row of three nursery frames at
+Al Fahal, at their own height, flown twice. Nothing in either objective
+mentions them — the controller is told to get to a point.
+
+    pursue   struck 3: nursery-frame-836, nursery-frame-854, nursery-frame-872
+             arrived, directness 1.00, score 1
+    wary     struck 0
+             5.1 m short, directness 0.99, score 0.46
+
+The planner flies the route it was given and drives through all three, and the
+task does not care: a route is a list of points and a point is not a warning.
+The same controller with the sonar switched on hits nothing.
+
+It returns **ranges, not an image**: sixty-four beams at five hertz against
+anything in the water and the seabed, with noise and dropouts. Rendering the
+picture is a rendering problem and belongs to the application that has a
+renderer; the ranges are the physics, and they are what makes avoidance true
+rather than decorative.
+
+Three corrections on the way, each a misconception rather than a slip:
+
+  **A beam is a cone, not a line.** Cast as rays it walked past a five-
+  millimetre mooring riser nine times in ten, because two beams are eighteen
+  centimetres apart at five metres. Beams widen with range now.
+
+  **Steering away from the nearest return cannot avoid anything dead ahead.**
+  A target ahead is symmetric, so the closest beam flips between the two either
+  side of centre as the noise moves: the vehicle was told left, then right,
+  then left, and drove into the thing while chattering. It finds the widest run
+  of clear beams now, steers at the middle of it, and commits to the side it
+  picked.
+
+  **Turning the nose does nothing on a vectored hull.** It moves sideways as
+  happily as forwards, so pointing away while still asking for the route's
+  velocity crabbed it into the frame with its head turned politely away. What
+  has to change is the direction it *travels*.
+
+And one thing found that had nothing to do with sonar: **asking for a
+controller by name and silently getting a different one.** `engage("wary")`
+returned success and then handed the route to `pursue`, which is a comparison
+that cannot differ — worse than no comparison at all.
+
+The trade-off is in the record and is not hidden: avoiding cost the wary one
+its target. It finished five metres short, having spent a third of the dive
+holding while it worked its way round. A plan that expects a vehicle to avoid
+things has to allow it the time to, and now there is a number for how much.
+
 ---
 
 # How this is kept honest
