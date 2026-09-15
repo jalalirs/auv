@@ -3870,6 +3870,13 @@ components:
           type: integer
           description: >
             How many scenarios work — more than half their runs did the job.
+        marginal:
+          type: integer
+          description: >
+            How many could have gone either way: some of their runs did the job
+            and some did not. Many of these means what counts as done is
+            sitting inside the spread, and the answer says so rather than
+            ranking it.
         repeats: { type: integer }
         good: { type: number }
         matters:
@@ -3881,6 +3888,14 @@ components:
               changes:
                 type: number
                 description: The gap between this doubt's best setting and its worst.
+              onACoinFlip:
+                type: boolean
+                description: >
+                  Whether that gap rests entirely on scenarios that could have
+                  gone either way. Judged in pairs, holding every other doubt
+                  equal — otherwise a doubt takes the credit for what another
+                  one decided. A doubt ranked on coin flips is never what the
+                  answer says the mission turns on.
               rates:
                 type: array
                 items:
@@ -3908,6 +3923,13 @@ components:
         noRescue:
           type: boolean
           description: Nothing else in the doubt list recovers it. Do not go.
+        nothingDecided:
+          type: boolean
+          description: >
+            Every doubt separates only scenarios that could have gone either
+            way, so there is no sentence to give. Either what counts as done is
+            sitting in the noise, or this mission is not sensitive to anything
+            it was doubted against.
         heldBack:
           type: integer
           description: >

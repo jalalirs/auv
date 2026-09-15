@@ -4958,8 +4958,10 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
-        /** @description What nobody can promise: a dimension per key, a setting per value, and what each setting does. Everything in a setting is a change to the water, except `objective`, which changes what was *asked for* — and that exception carries its weight. Without it every scenario has the same working day, so a mission that is merely slower is indistinguishable from one that is impossible, and the only advice the answer can ever give is "do not go". The useful answer is "allow twice as long".
-         *     `failures` and `fitted` accumulate rather than replace, because two things going wrong on one dive is the case worth flying.
+        /** @description What nobody can promise: a dimension per key, a setting per value, and what each setting does.
+         *     Everything in a setting is a change to the water, except two keys. `objective` changes what was *asked for*, and without it every scenario has the same working day — so a mission that is merely slower is indistinguishable from one that is impossible, and the only advice the answer can ever give is "do not go" rather than "allow twice as long".
+         *     `world` changes the place itself: `{"move": {"block-7": {"dx": 30}}, "remove": ["transponder-2"], "add": [{"kind": "net", …}]}`. This is the half of a rehearsal that parameters cannot express. A sweep can always ask what half a knot does, because half a knot is a number; the things that actually go wrong are the ones nobody measured — the mooring thirty metres from where it was laid, the transponder that did not come up, the net where the chart says clear water.
+         *     `failures`, `fitted` and every verb of `world` accumulate rather than replace, because two things going wrong on one dive is the case worth flying.
          *      */
         Doubts: {
             [key: string]: {
@@ -5005,12 +5007,18 @@ export interface components {
             /** @description How many scenarios work — more than half their runs did the job.
              *      */
             survived: number;
+            /** @description How many could have gone either way: some of their runs did the job and some did not. Many of these means what counts as done is sitting inside the spread, and the answer says so rather than ranking it.
+             *      */
+            marginal?: number;
             repeats?: number;
             good: number;
             matters: {
                 name?: string;
                 /** @description The gap between this doubt's best setting and its worst. */
                 changes?: number;
+                /** @description Whether that gap rests entirely on scenarios that could have gone either way. Judged in pairs, holding every other doubt equal — otherwise a doubt takes the credit for what another one decided. A doubt ranked on coin flips is never what the answer says the mission turns on.
+                 *      */
+                onACoinFlip?: boolean;
                 rates?: {
                     value?: string;
                     survived?: number;
@@ -5028,6 +5036,9 @@ export interface components {
             rescueOf?: number[];
             /** @description Nothing else in the doubt list recovers it. Do not go. */
             noRescue?: boolean;
+            /** @description Every doubt separates only scenarios that could have gone either way, so there is no sentence to give. Either what counts as done is sitting in the noise, or this mission is not sensitive to anything it was doubted against.
+             *      */
+            nothingDecided?: boolean;
             /** @description Failures that were the vehicle held back by its own hull rather than by the plan. A better plan will not fix those.
              *      */
             heldBack?: number;
