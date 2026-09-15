@@ -339,6 +339,15 @@ func (c *Client) DiveStarted(ctx context.Context, runID string) error {
 	return err
 }
 
+// DiveComputed reports what actually ran a dive: the image, and the physics the
+// runtime declared.
+func (c *Client) DiveComputed(ctx context.Context, runID, simImageDigest string,
+	physicsVersion int) error {
+	_, err := c.call(ctx, http.MethodPost, "/api/v1/runs/"+runID+"/computed",
+		map[string]any{"simImageDigest": simImageDigest, "physicsVersion": physicsVersion}, nil)
+	return err
+}
+
 // ErrRunIsOver is the platform saying this dive is no longer in progress.
 //
 // Distinct from failing to reach the platform, and the distinction is the whole

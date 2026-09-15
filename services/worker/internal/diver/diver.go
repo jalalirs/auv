@@ -107,6 +107,9 @@ type Platform interface {
 	Started(ctx context.Context, runID string) error
 	Renew(ctx context.Context, runID string) error
 	Record(ctx context.Context, runID, kind string, simulated *float64, detail any) error
+	// Computed says what actually ran this: the image, and the physics the
+	// runtime declared. Reported once per run, when the runtime says so.
+	Computed(ctx context.Context, runID, simImageDigest string, physicsVersion int) error
 	Finish(ctx context.Context, runID, state string, outcome any, failure string) error
 	// Keep puts one file of the run's recording in storage and names it.
 	Keep(ctx context.Context, runID, path, localPath, mediaType string) error
@@ -117,6 +120,7 @@ type Runtime interface {
 	Create(ctx context.Context, spec container.Spec) (string, error)
 	Pull(ctx context.Context, image string) error
 	Present(ctx context.Context, image string) error
+	Digest(ctx context.Context, image string) (string, error)
 	Start(ctx context.Context, id string) error
 	Wait(ctx context.Context, id string) (int, error)
 	Stop(ctx context.Context, id string, grace time.Duration) error
@@ -810,6 +814,9 @@ var ErrNothingToDo = errors.New("nothing to run")
 func (d *Diver) keep(ctx context.Context, runID, output string, relayed *relay, log *slog.Logger) map[string]any {
 	summary := map[string]any{}
 	kept := 0
+	// Said once. The relay may already have reported it, in which case that
+	// line is one it has marked and this loop skips before reaching here.
+	computed := false
 
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
@@ -841,6 +848,7 @@ func (d *Diver) keep(ctx context.Context, runID, output string, relayed *relay, 
 			}
 			continue
 		}
+		d.whatComputedIt(ctx, runID, kind, reported, &computed)
 		if err := d.platform.Record(ctx, runID, kind, simulated, reported); err != nil {
 			log.Warn("could not record what the simulator said", "kind", kind, "error", err)
 			continue
@@ -1122,6 +1130,7 @@ func (r *relay) mark(line string) {
 // dive, are left for the end; everything else — the scene opening, the task
 // set, a photograph — is what somebody waiting wants to see now.
 func (d *Diver) relayEvents(ctx context.Context, runID, simID string, relayed *relay, log *slog.Logger) {
+	computed := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -1150,6 +1159,7 @@ func (d *Diver) relayEvents(ctx context.Context, runID, simID string, relayed *r
 			if at, ok := reported["t"].(float64); ok {
 				simulated = &at
 			}
+			d.whatComputedIt(ctx, runID, kind, reported, &computed)
 			if err := d.platform.Record(ctx, runID, kind, simulated, reported); err != nil {
 				log.Warn("could not relay what the simulator said", "kind", kind, "error", err)
 				continue
@@ -1159,6 +1169,37 @@ func (d *Diver) relayEvents(ctx context.Context, runID, simID string, relayed *r
 	}
 }
 
+
+// whatComputedIt reports what actually ran a dive, once, when the runtime says
+// which physics it is.
+//
+// Called from both the live relay and the drain, because which of them sees
+// the runtime's first line depends on whether anybody was watching. The image
+// digest is asked for here rather than threaded through: it is one call to the
+// daemon, once per run, and threading it would have put an argument nobody
+// reads through four signatures.
+//
+// A failure here is logged and dropped. A run whose provenance could not be
+// recorded is still a run, and losing the dive over it would be worse than
+// having to notice later that the record does not say.
+func (d *Diver) whatComputedIt(ctx context.Context, runID, kind string,
+	reported map[string]any, said *bool) {
+	if *said || kind != "physics" {
+		return
+	}
+	version, ok := reported["version"].(float64)
+	if !ok {
+		return
+	}
+	*said = true
+	digest, err := d.runtime.Digest(ctx, d.simImage)
+	if err != nil {
+		d.logger.Warn("could not ask what the runtime image is", "error", err)
+	}
+	if err := d.platform.Computed(ctx, runID, digest, int(version)); err != nil {
+		d.logger.Warn("could not record what computed this run", "error", err)
+	}
+}
 
 // ── Handing over ─────────────────────────────────────────────────────────────
 
