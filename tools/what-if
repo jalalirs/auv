@@ -10,15 +10,19 @@ So: a mission, and a list of the things nobody is sure about — how hard the
 current will be running and from where, whether the water will still be clear
 after the weather, whether the array gets laid, whether a thruster gives out an
 hour in. Each of those is a dimension, every combination is a dive, and the
-whole cross product is flown overnight through the ordinary platform.
-
-What comes back is not a grid of numbers. A grid of numbers is what the matrix
-already produced and nobody could read. What comes back is which combinations
-failed, what they had in common, and the one change that saves the most of
-them — which is the sentence a dive plan actually turns on.
+whole cross product is flown overnight.
 
     tools/what-if missions/outplant-b7.json
-    tools/what-if missions/outplant-b7.json --show          (read the last run)
+    tools/what-if missions/outplant-b7.json --show     (read the last one)
+
+**This is a client now.** The sweep belongs to the platform: it expands the
+cross product, asks for the dives, keeps which scenario each run answers, and
+works out what the answers mean. That was written here first and moved, because
+two implementations of one piece of arithmetic are two answers waiting to
+disagree — and because a sweep that only a terminal could run was a sweep
+nobody could look at, share, resume, or put on a screen.
+
+What is left here is the file format, the asking, and the printing.
 
 The mission file names the place, the vehicle, the objective, the water that is
 not in doubt, and the doubts:
@@ -37,7 +41,6 @@ not in doubt, and the doubts:
 from __future__ import annotations
 
 import argparse
-import itertools
 import json
 import pathlib
 import sys
@@ -52,211 +55,151 @@ def platform():
     return SourceFileLoader("matrix", str(HERE / "matrix")).load_module()
 
 
-def combinations(doubts: dict):
-    """Every way the doubts could resolve, as (chosen, water, objective).
+def slug_of(name: str) -> str:
+    made = "".join(c if c.isalnum() else "-" for c in name.lower()).strip("-")
+    while "--" in made:
+        made = made.replace("--", "-")
+    return made[:62] or "a-mission"
 
-    A doubt may change the water or it may change what was asked for, and both
-    belong here. The first version could only vary conditions, and that quietly
-    decided what kind of question this tool could answer: every scenario had
-    the same two hours to work in, so a mission that was merely slower was
-    indistinguishable from one that was impossible, and the only advice it
-    could ever give was "do not go". The useful answer was "allow twice as
-    long", and it could not be reached from here.
 
-    A doubt says so by putting an `objective` block in its value; everything
-    else is the water, as before.
+def mission_version(p, m, said: dict) -> str:
+    """The plan of work, kept on the platform, so a sweep can doubt it.
+
+    A sweep doubts a *mission* and not a dive, because the whole point is that
+    one plan is flown many ways — and a plan that was not kept could not be
+    flown twice by two people, let alone ninety times by a machine.
     """
-    names = list(doubts)
-    for picked in itertools.product(*[list(doubts[n]) for n in names]):
-        chosen = dict(zip(names, picked))
-        water, objective = {}, {}
-        for dimension, which in chosen.items():
-            said = doubts[dimension][which]
-            for key, value in said.items():
-                if key == "objective":
-                    objective.update(value)
-                    continue
-                # Failures accumulate rather than replace: two things going
-                # wrong on one dive is the case worth flying, not the case to
-                # drop because two dimensions both wanted the same key.
-                if key == "failures":
-                    water.setdefault("failures", []).extend(value)
-                elif key == "fitted":
-                    water.setdefault("fitted", {}).update(value)
-                else:
-                    water[key] = value
-        yield chosen, water, objective
+    city = m.newest_version(p, "cities", said["place"])
+    where = next(one for one in p.call("GET", "/api/v1/cities")["cities"]
+                 if one["slug"] == said["place"])
+    slug = slug_of(said["name"])
+    found = [one for one in p.call("GET", f"/api/v1/cities/{where['id']}/missions")["missions"]
+             if one["slug"] == slug]
+    mission = found[0] if found else p.call(
+        "POST", f"/api/v1/cities/{where['id']}/missions",
+        {"slug": slug, "name": said["name"], "summary": said.get("note", "")})
+    document = {"describedBy": "coral-city/mission/v1",
+                "cityVersionId": city,
+                "stages": said.get("stages") or [said["objective"]]}
+    if said.get("layoutVersionId"):
+        document["layoutVersionId"] = said["layoutVersionId"]
+    saved = p.call("POST", f"/api/v1/missions/{mission['id']}/versions",
+                   {"label": "as the mission file says", "document": document})
+    return saved["id"]
 
 
-def fly_them(mission: dict, at_once: int, again: bool):
+def start(said: dict, name: str):
     m = platform()
     p = m.Platform()
-    city = m.newest_version(p, "cities", mission["place"])
-    vehicle = m.newest_version(p, "vehicles", mission["vehicle"])
     queue = p.call("GET", "/api/v1/queues")["queues"][0]
-    runtime = queue["runtimes"][0]
-    base = dict(mission.get("water") or {})
-    wanted = list(combinations(mission["doubts"]))
-    print(f"{len(wanted)} scenarios", flush=True)
-
-    already = {}
-    if not again:
-        for dive in p.call("GET", f"/api/v1/organisations/{p.org}/dives")["dives"]:
-            if dive["name"].startswith(mission["name"] + " ~ "):
-                already[dive["name"]] = dive["id"]
-
-    asked, done = [], []
-    for i, (chosen, water, changes) in enumerate(wanted, start=1):
-        label = mission["name"] + " ~ " + " · ".join(f"{k}:{v}" for k, v in chosen.items())
-        if label in already:
-            continue
-        while len(asked) >= at_once:
-            time.sleep(10)
-            asked = [one for one in asked if still_going(p, one)]
-        parameters = {**base, **water}
-        objective = {**mission["objective"], **changes}
-        conditions = p.call("POST", f"/api/v1/organisations/{p.org}/conditions", {
-            "kind": "constructed", "name": label[:120], "parameters": parameters})
-        dive = p.call("POST", f"/api/v1/organisations/{p.org}/dives", {
-            "name": label, "cityVersionId": city, "vehicleVersionId": vehicle,
-            "conditionsId": conditions["id"], "objective": objective})
-        run = p.call("POST", f"/api/v1/dives/{dive['id']}/runs",
-                     {"queueId": queue["id"], "mode": "batch", "runtimeVersion": runtime})
-        asked.append({"dive": dive["id"], "run": run["id"], "chosen": chosen})
-        done.append(label)
-        print(f"  [{i}/{len(wanted)}] {label}", flush=True)
-    while asked:
-        time.sleep(15)
-        asked = [one for one in asked if still_going(p, one)]
-    return read_them(mission)
+    sweep = p.call("POST", f"/api/v1/organisations/{p.org}/sweeps", {
+        "name": name,
+        "missionVersionId": mission_version(p, m, said),
+        "vehicleVersionId": m.newest_version(p, "vehicles", said["vehicle"]),
+        "water": said.get("water") or {},
+        "doubts": said["doubts"],
+        "good": float(said.get("good", 0.8)),
+        "queueId": queue["id"], "runtimeVersion": queue["runtimes"][0]})
+    print(f"{sweep['scenarios']} scenarios, asked for as {sweep['id']}", flush=True)
+    return p, sweep["id"]
 
 
-def still_going(p, one) -> bool:
-    runs = p.call("GET", f"/api/v1/dives/{one['dive']}/runs")["runs"]
-    state = next((r["state"] for r in runs if r["id"] == one["run"]), "gone")
-    return state in ("queued", "preparing", "running")
+def newest(p, name: str):
+    """The last sweep of this mission, for --show."""
+    for one in p.call("GET", f"/api/v1/organisations/{p.org}/sweeps")["sweeps"]:
+        if one["name"].startswith(name):
+            return one["id"]
+    return None
 
 
-def read_them(mission: dict):
-    """Every scenario that has been flown, with how it went."""
-    m = platform()
-    p = m.Platform()
-    prefix = mission["name"] + " ~ "
-    out = []
-    for dive in p.call("GET", f"/api/v1/organisations/{p.org}/dives")["dives"]:
-        if not dive["name"].startswith(prefix):
-            continue
-        runs = p.call("GET", f"/api/v1/dives/{dive['id']}/runs")["runs"]
-        run = next((r for r in runs if r["state"] in ("succeeded", "failed")), None)
-        if run is None:
-            continue
-        outcome = run.get("outcome") or {}
-        task = outcome.get("task") or {}
-        chosen = {}
-        for part in dive["name"][len(prefix):].split(" · "):
-            if ":" in part:
-                key, value = part.split(":", 1)
-                chosen[key] = value
-        out.append({"chosen": chosen, "score": float(task.get("score") or 0.0),
-                    "ended": outcome.get("ended"), "says": task.get("says"),
-                    "heldBack": bool(task.get("heldBack")),
-                    "driftM": (outcome.get("navigation") or {}).get("driftM")})
-    return out
+def wait_for(p, sweep: str) -> None:
+    was = None
+    while True:
+        one = p.call("GET", f"/api/v1/sweeps/{sweep}")
+        at = (one["flown"], one["scenarios"])
+        if at != was:
+            print(f"  {at[0]}/{at[1]} flown, {one['flying']} in the water", flush=True)
+            was = at
+        if one["flying"] == 0 and one["flown"] >= one["scenarios"]:
+            return
+        time.sleep(20)
 
 
-def what_it_means(flown: list, good: float) -> None:
-    """The point of the whole thing: what breaks it, and what would fix it.
+BAR = 20
 
-    Ranked by how much a thing *changes* the outcome, not by how often it is
-    present when the mission fails. Those are different and the second one is
-    misleading: in a sweep where the current is what kills you, half the
-    failures also happen to be in murky water and half in clear, and listing
-    both at fifty per cent invites somebody to go and worry about visibility.
-    A dimension whose settings all fail equally is telling you it does not
-    matter, and it should be said once, quietly, and not ranked.
+
+def say(found: dict) -> None:
+    """The point of the whole thing, printed.
+
+    The arithmetic is the platform's; this is the reading of it. Ranked by how
+    much a thing *changes* the outcome rather than by how often it was present
+    when the mission failed, because those are different and the second one is
+    misleading — and a dimension that made no difference is said once, quietly,
+    and not ranked.
     """
-    if not flown:
+    if found["flown"] == 0:
         print("nothing flown yet")
         return
-    survived = [f for f in flown if f["score"] >= good]
-    failed = [f for f in flown if f["score"] < good]
-    print(f"\nSurvives {len(survived)} of {len(flown)} scenarios "
-          f"(a mission counts as done at {good:.0%}).\n")
-    if not failed:
+    print(f"\nSurvives {found['survived']} of {found['flown']} scenarios "
+          f"(a mission counts as done at {found['good']:.0%}).\n")
+    if len(found.get("physics") or []) > 1:
+        print("These were not all computed by the same simulator — physics "
+              + " and ".join(str(v) for v in found["physics"])
+              + ". A change to the physics changes the answer, so this table is\n"
+                "not one table.\n")
+    if found["survived"] == found["flown"]:
         print("Nothing in the doubt list breaks it.")
         return
 
-    dimensions = sorted({k for f in flown for k in f["chosen"]})
-    matters, indifferent = [], []
-    for dimension in dimensions:
-        rates = []
-        for value in sorted({f["chosen"].get(dimension) for f in flown}):
-            here = [f for f in flown if f["chosen"].get(dimension) == value]
-            if not here:
-                continue
-            bad = [f for f in here if f["score"] < good]
-            rates.append((len(bad) / len(here), len(bad), len(here), value))
-        if not rates:
-            continue
-        spread = max(r[0] for r in rates) - min(r[0] for r in rates)
-        (matters if spread >= 0.15 else indifferent).append((spread, dimension, sorted(rates, reverse=True)))
-    matters.sort(reverse=True)
-
-    for spread, dimension, rates in matters:
-        print(f"{dimension}  (changes the outcome by {spread:.0%})")
-        for share, bad, total, value in rates:
-            bar = "█" * int(round(share * 20)) or "·"
-            print(f"    {str(value):<16} {total - bad:2d}/{total:<2d} survive   {bar}")
+    for one in found["matters"]:
+        print(f"{one['name']}  (changes the outcome by {one['changes']:.0%})")
+        for rate in one["rates"]:
+            bar = "█" * int(round(rate["failedShare"] * BAR)) or "·"
+            print(f"    {rate['value']:<16} {rate['survived']:2d}/{rate['of']:<2d} survive   {bar}")
         print()
 
-    if indifferent:
-        print("Made no difference: " + ", ".join(d for _, d, _ in indifferent) + ".\n")
+    if found["madeNoDifference"]:
+        print("Made no difference: " + ", ".join(found["madeNoDifference"]) + ".\n")
 
-    if not matters:
+    if not found["matters"]:
         print("Nothing in the doubt list explains the failures on its own.")
         return
 
-    # The worst single setting, and whether anything else recovers it.
-    _, dimension, rates = matters[0]
-    share, bad, total, value = rates[0]
-    print(f"The mission turns on {dimension}. At {value} it fails "
-          f"{bad} times out of {total}.")
-
-    doomed = [f for f in flown if f["chosen"].get(dimension) == value]
-    rescue = []
-    for other in dimensions:
-        if other == dimension:
-            continue
-        for setting in sorted({f["chosen"].get(other) for f in doomed}):
-            with_it = [f for f in doomed if f["chosen"].get(other) == setting]
-            saved = [f for f in with_it if f["score"] >= good]
-            if with_it:
-                rescue.append((len(saved) / len(with_it), len(saved), len(with_it), other, setting))
-    rescue.sort(reverse=True)
-    if rescue and rescue[0][1] > 0:
-        _, saved, of, other, setting = rescue[0]
-        print(f"Setting {other} to {setting} saves {saved} of those {of}.")
-    else:
+    failed, of = found["failsOf"]
+    print(f"The mission turns on {found['turnsOn']}. At {found['at']} it fails "
+          f"{failed} times out of {of}.")
+    if found.get("rescue"):
+        saved, tried = found["rescueOf"]
+        print(f"Setting {found['rescue']} saves {saved} of those {tried}.")
+    elif found.get("noRescue"):
         print("Nothing else in the doubt list rescues them: "
-              f"if the {dimension} is {value}, do not go.")
+              f"if the {found['turnsOn']} is {found['at']}, do not go.")
 
-    guarded = [f for f in failed if f["heldBack"]]
-    if guarded:
-        print(f"\n{len(guarded)} of the failures were the vehicle held back by its "
-              f"own hull rather than by the plan — a better plan will not fix those.")
+    if found.get("heldBack"):
+        print(f"\n{found['heldBack']} of the failures were the vehicle held back by its "
+              "own hull rather than by the plan — a better plan will not fix those.")
 
 
 def main() -> int:
     parse = argparse.ArgumentParser(description="fly a mission against what could go wrong")
     parse.add_argument("mission")
     parse.add_argument("--show", action="store_true", help="read what has already been flown")
-    parse.add_argument("--again", action="store_true", help="re-fly scenarios already in the record")
-    parse.add_argument("--at-once", type=int, default=4)
+    parse.add_argument("--sweep", help="a sweep to read by identifier")
     asked = parse.parse_args()
 
-    mission = json.loads(pathlib.Path(asked.mission).read_text())
-    flown = read_them(mission) if asked.show else fly_them(mission, asked.at_once, asked.again)
-    what_it_means(flown, float(mission.get("good", 0.8)))
+    said = json.loads(pathlib.Path(asked.mission).read_text())
+    if asked.sweep:
+        p, sweep = platform().Platform(), asked.sweep
+    elif asked.show:
+        p = platform().Platform()
+        sweep = newest(p, said["name"])
+        if sweep is None:
+            print(f"nothing swept for {said['name']} yet")
+            return 1
+    else:
+        p, sweep = start(said, said["name"] + " ~ " + time.strftime("%d %B, %H:%M"))
+        wait_for(p, sweep)
+    say(p.call("GET", f"/api/v1/sweeps/{sweep}/findings"))
     return 0
 
 

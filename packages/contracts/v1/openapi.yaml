@@ -2083,6 +2083,119 @@ paths:
               schema: { $ref: '#/components/schemas/AssetVersion' }
         '400':
           $ref: '#/components/responses/Invalid'
+  /api/v1/organisations/{orgId}/sweeps:
+    get:
+      tags: [dives]
+      summary: What this institution has swept
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Its sweeps, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sweeps:
+                    type: array
+                    items: { $ref: '#/components/schemas/Sweep' }
+    post:
+      tags: [dives]
+      summary: Fly a mission against everything that could go wrong with it
+      description: >
+        The cross product of the doubts is submitted as a batch of ordinary
+        dives, each carrying the scenario it answers. A dive that works is not
+        the question: ship time is the scarce thing and weather windows close,
+        so what a plan turns on is *what breaks it*, and there is no way to
+        find that out except by going and finding out — here, overnight,
+        instead of there, in March.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, missionVersionId, vehicleVersionId, doubts, queueId, runtimeVersion]
+              properties:
+                name: { type: string }
+                missionVersionId:
+                  type: string
+                  description: >
+                    The work being doubted. A mission rather than a dive: the
+                    whole point is that one plan is flown many ways.
+                vehicleVersionId: { type: string }
+                water:
+                  type: object
+                  additionalProperties: true
+                  description: The water that is *not* in doubt. The doubts work on top of it.
+                doubts: { $ref: '#/components/schemas/Doubts' }
+                good:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+                  default: 0.8
+                  description: What counts as having done the job.
+                queueId: { type: string }
+                runtimeVersion: { type: string }
+      responses:
+        '201':
+          description: The sweep, with every scenario in it asked for.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Sweep' }
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/Refused'
+  /api/v1/sweeps/{sweepId}:
+    get:
+      tags: [dives]
+      summary: One sweep
+      parameters:
+        - name: sweepId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The sweep, and how far along it is.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Sweep' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/sweeps/{sweepId}/findings:
+    get:
+      tags: [dives]
+      summary: What breaks this mission, and what would fix it
+      description: >
+        Read from the runs rather than stored, so a sweep half flown gives the
+        answer so far — which is worth having at two in the morning.
+      parameters:
+        - name: sweepId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The answer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Findings' }
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/cities/{cityId}/missions:
     get:
       tags: [places]
@@ -3605,6 +3718,118 @@ components:
             something not in the layout is refused before the dive flies.
           items: { type: object, additionalProperties: true }
       required: [stages]
+    Doubts:
+      type: object
+      description: >
+        What nobody can promise: a dimension per key, a setting per value, and
+        what each setting does. Everything in a setting is a change to the
+        water, except `objective`, which changes what was *asked for* — and
+        that exception carries its weight. Without it every scenario has the
+        same working day, so a mission that is merely slower is
+        indistinguishable from one that is impossible, and the only advice the
+        answer can ever give is "do not go". The useful answer is "allow twice
+        as long".
+
+        `failures` and `fitted` accumulate rather than replace, because two
+        things going wrong on one dive is the case worth flying.
+      additionalProperties:
+        type: object
+        additionalProperties:
+          type: object
+          additionalProperties: true
+    Sweep:
+      type: object
+      description: >
+        One mission, flown against everything nobody can promise about it.
+      properties:
+        id: { type: string }
+        orgId: { type: string }
+        missionVersionId: { type: string }
+        vehicleVersionId: { type: string }
+        water: { type: object, additionalProperties: true }
+        name: { type: string }
+        doubts: { $ref: '#/components/schemas/Doubts' }
+        good: { type: number }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string }
+        scenarios:
+          type: integer
+          description: How many ways the doubts could resolve — one dive each.
+        flown: { type: integer }
+        flying: { type: integer }
+      required: [id, orgId, missionVersionId, name, doubts, good, createdAt, createdBy]
+    Findings:
+      type: object
+      description: >
+        What the sweep is for: which combinations failed, what they had in
+        common, and the one change that saves the most of them.
+
+        Ranked by how much each doubt **changes** the outcome, not by how often
+        it was present when the mission failed. Those are different and the
+        second is misleading: in a sweep where the current is what kills you,
+        half the failures also happen to be in murky water and half in clear,
+        and listing both at fifty per cent invites somebody to go and worry
+        about visibility. A dimension whose settings all fail equally is
+        telling you it does not matter, and it is said once and not ranked.
+      properties:
+        scenarios: { type: integer }
+        flown: { type: integer }
+        flying: { type: integer }
+        survived: { type: integer }
+        good: { type: number }
+        matters:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              changes:
+                type: number
+                description: The gap between this doubt's best setting and its worst.
+              rates:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    value: { type: string }
+                    survived: { type: integer }
+                    of: { type: integer }
+                    failedShare: { type: number }
+        madeNoDifference:
+          type: array
+          items: { type: string }
+        turnsOn: { type: string }
+        at: { type: string }
+        failsOf:
+          type: array
+          items: { type: integer }
+          description: How many of how many failed at that setting.
+        rescue:
+          type: string
+          description: The one change that saves the most of them, if there is one.
+        rescueOf:
+          type: array
+          items: { type: integer }
+        noRescue:
+          type: boolean
+          description: Nothing else in the doubt list recovers it. Do not go.
+        heldBack:
+          type: integer
+          description: >
+            Failures that were the vehicle held back by its own hull rather
+            than by the plan. A better plan will not fix those.
+        physics:
+          type: array
+          items: { type: integer }
+          description: >
+            What computed them. A sweep whose runs were not all computed by the
+            same simulator is a table that should not be one.
+        runs:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required: [scenarios, flown, survived, good, matters, madeNoDifference]
     LayoutDocument:
       type: object
       description: >

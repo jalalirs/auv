@@ -3016,6 +3016,179 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organisations/{orgId}/sweeps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What this institution has swept */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    orgId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Its sweeps, newest first. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            sweeps?: components["schemas"]["Sweep"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Fly a mission against everything that could go wrong with it
+         * @description The cross product of the doubts is submitted as a batch of ordinary dives, each carrying the scenario it answers. A dive that works is not the question: ship time is the scarce thing and weather windows close, so what a plan turns on is *what breaks it*, and there is no way to find that out except by going and finding out — here, overnight, instead of there, in March.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    orgId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        /** @description The work being doubted. A mission rather than a dive: the whole point is that one plan is flown many ways.
+                         *      */
+                        missionVersionId: string;
+                        vehicleVersionId: string;
+                        /** @description The water that is *not* in doubt. The doubts work on top of it. */
+                        water?: {
+                            [key: string]: unknown;
+                        };
+                        doubts: components["schemas"]["Doubts"];
+                        /**
+                         * @description What counts as having done the job.
+                         * @default 0.8
+                         */
+                        good?: number;
+                        queueId: string;
+                        runtimeVersion: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description The sweep, with every scenario in it asked for. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Sweep"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+                429: components["responses"]["Refused"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sweeps/{sweepId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One sweep */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    sweepId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The sweep, and how far along it is. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Sweep"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sweeps/{sweepId}/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What breaks this mission, and what would fix it
+         * @description Read from the runs rather than stored, so a sweep half flown gives the answer so far — which is worth having at two in the morning.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    sweepId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The answer. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Findings"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cities/{cityId}/missions": {
         parameters: {
             query?: never;
@@ -4681,6 +4854,77 @@ export interface components {
             /** @description The work, in order — each an objective in its own right, as the `mission` task kind already sequences them. A stage that points at something not in the layout is refused before the dive flies.
              *      */
             stages: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** @description What nobody can promise: a dimension per key, a setting per value, and what each setting does. Everything in a setting is a change to the water, except `objective`, which changes what was *asked for* — and that exception carries its weight. Without it every scenario has the same working day, so a mission that is merely slower is indistinguishable from one that is impossible, and the only advice the answer can ever give is "do not go". The useful answer is "allow twice as long".
+         *     `failures` and `fitted` accumulate rather than replace, because two things going wrong on one dive is the case worth flying.
+         *      */
+        Doubts: {
+            [key: string]: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        /** @description One mission, flown against everything nobody can promise about it.
+         *      */
+        Sweep: {
+            id: string;
+            orgId: string;
+            missionVersionId: string;
+            vehicleVersionId?: string;
+            water?: {
+                [key: string]: unknown;
+            };
+            name: string;
+            doubts: components["schemas"]["Doubts"];
+            good: number;
+            /** Format: date-time */
+            createdAt: string;
+            createdBy: string;
+            /** @description How many ways the doubts could resolve — one dive each. */
+            scenarios?: number;
+            flown?: number;
+            flying?: number;
+        };
+        /** @description What the sweep is for: which combinations failed, what they had in common, and the one change that saves the most of them.
+         *     Ranked by how much each doubt **changes** the outcome, not by how often it was present when the mission failed. Those are different and the second is misleading: in a sweep where the current is what kills you, half the failures also happen to be in murky water and half in clear, and listing both at fifty per cent invites somebody to go and worry about visibility. A dimension whose settings all fail equally is telling you it does not matter, and it is said once and not ranked.
+         *      */
+        Findings: {
+            scenarios: number;
+            flown: number;
+            flying?: number;
+            survived: number;
+            good: number;
+            matters: {
+                name?: string;
+                /** @description The gap between this doubt's best setting and its worst. */
+                changes?: number;
+                rates?: {
+                    value?: string;
+                    survived?: number;
+                    of?: number;
+                    failedShare?: number;
+                }[];
+            }[];
+            madeNoDifference: string[];
+            turnsOn?: string;
+            at?: string;
+            /** @description How many of how many failed at that setting. */
+            failsOf?: number[];
+            /** @description The one change that saves the most of them, if there is one. */
+            rescue?: string;
+            rescueOf?: number[];
+            /** @description Nothing else in the doubt list recovers it. Do not go. */
+            noRescue?: boolean;
+            /** @description Failures that were the vehicle held back by its own hull rather than by the plan. A better plan will not fix those.
+             *      */
+            heldBack?: number;
+            /** @description What computed them. A sweep whose runs were not all computed by the same simulator is a table that should not be one.
+             *      */
+            physics?: number[];
+            runs?: {
                 [key: string]: unknown;
             }[];
         };
