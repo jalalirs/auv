@@ -417,3 +417,117 @@ class Ladder:
         moving.AddTransformOp().Set(look)
         if str(viewport.camera_path) != camera_path:
             viewport.camera_path = camera_path
+
+
+# ── the same four frames, everywhere ─────────────────────────────────────────
+#
+# Every judgement in the look plan is a judgement about an image, and a
+# judgement made against memory is not a judgement. The tour flies a path and
+# hands back whatever it passed: two runs are not comparable, and neither is a
+# before and an after.
+#
+# So: named viewpoints, the same in every place, held still. What changes
+# between two sheets is what somebody changed.
+
+# Where to stand, relative to where the place says a dive begins. Each is a
+# question somebody actually asks about a reef.
+VIEWS = (
+    # What a vehicle sees doing the work: three metres up, looking along.
+    ("at-work", dict(from_anchor=(-14.0, 0.0), above=3.0,
+                     at=(10.0, 0.0), at_above=2.0,
+                     says="at the work site, three metres up, looking along")),
+    # On the bottom, looking horizontally — the view that shows whether the
+    # water has any depth to it and whether the coral has any form.
+    ("on-the-bottom", dict(from_anchor=(-8.0, -3.0), above=0.8,
+                           at=(14.0, 2.0), at_above=1.0,
+                           says="a metre off the bottom, looking along it")),
+    # From mid-water looking down, which is how cover is judged.
+    ("looking-down", dict(from_anchor=(0.0, 0.0), above=12.0,
+                          at=(0.01, 0.0), at_above=0.0,
+                          says="twelve metres up, looking straight down")),
+    # And out into open water, which is where the visibility lives and where
+    # a water model is either right or obviously wrong.
+    ("into-the-blue", dict(from_anchor=(0.0, 0.0), above=6.0,
+                           at=(60.0, 0.0), at_above=5.0,
+                           says="six metres up, looking out into open water")),
+)
+# Frames to let Kit settle before one is kept. The same reason the ladder
+# waits: moving a camera on a scene this size is not instant.
+STILL_SETTLE = 10
+
+
+class Stills:
+    """The same four views of every place, held still, for comparing."""
+
+    def __init__(self, across: float, floor_at, say, begin=None) -> None:
+        self.across = across
+        self.floor_at = floor_at
+        self.say = say
+        self.frames = len(VIEWS) * STILL_SETTLE
+        self.taken = 0
+        self.waiting = False
+        self.tidied = False
+        self.anchor = (float(begin[0]), float(begin[1])) if begin is not None else (0.0, 0.0)
+        self.placed_for = None
+        self.say("stills_begin", views=[name for name, _ in VIEWS],
+                 anchor=[round(v, 1) for v in self.anchor],
+                 floorAtAnchorM=round(float(self.floor_at(*self.anchor) or 0.0), 1))
+
+    @property
+    def done(self) -> bool:
+        return self.taken >= self.frames
+
+    @property
+    def view(self):
+        return VIEWS[min(self.taken // STILL_SETTLE, len(VIEWS) - 1)]
+
+    def name(self) -> str:
+        return self.view[0]
+
+    def keep(self) -> bool:
+        """Only the last frame of each view; the rest are Kit catching up."""
+        return self.taken % STILL_SETTLE == STILL_SETTLE - 1
+
+    def _tidy(self) -> None:
+        import carb
+
+        settings = carb.settings.get_settings()
+        settings.set("/app/viewport/grid/enabled", False)
+        settings.set("/app/viewport/show/axis", False)
+        settings.set("/persistent/app/viewport/displayOptions", 0)
+        self.tidied = True
+
+    def _height(self, x: float, y: float, above: float) -> float:
+        """A height above the bottom here, which is what every view asks for."""
+        floor = self.floor_at(x, y)
+        return (0.0 if floor is None else float(floor)) + above
+
+    def place(self, stage, viewport) -> None:
+        from pxr import Gf, UsdGeom
+
+        if not self.tidied:
+            self._tidy()
+        name, how = self.view
+        if name != self.placed_for:
+            self.placed_for = name
+            self.say("stills_view", at=name, says=how["says"], atFrame=self.taken)
+
+        ex, ey = (self.anchor[0] + how["from_anchor"][0],
+                  self.anchor[1] + how["from_anchor"][1])
+        tx, ty = self.anchor[0] + how["at"][0], self.anchor[1] + how["at"][1]
+        eye = (ex, ey, self._height(ex, ey, how["above"]))
+        target = (tx, ty, self._height(tx, ty, how["at_above"]))
+
+        camera_path = "/World/LookCamera"
+        camera = UsdGeom.Camera.Define(stage, camera_path)
+        # Twenty-four millimetres, which is about what a vehicle's camera is —
+        # wide, because everything underwater is close.
+        camera.CreateFocalLengthAttr(24.0)
+        camera.CreateClippingRangeAttr(Gf.Vec2f(0.05, 12000.0))
+        look = Gf.Matrix4d().SetLookAt(
+            Gf.Vec3d(*eye), Gf.Vec3d(*target), Gf.Vec3d(0, 0, 1)).GetInverse()
+        moving = UsdGeom.Xformable(camera.GetPrim())
+        moving.ClearXformOpOrder()
+        moving.AddTransformOp().Set(look)
+        if str(viewport.camera_path) != camera_path:
+            viewport.camera_path = camera_path
