@@ -23,6 +23,28 @@ import numpy as np
 # diverging. 200 Hz is comfortably above the vehicle's dynamics and cheap.
 PHYSICS_HZ = 200.0
 
+# What computed this, as a number that changes when the answer would.
+#
+# The record pins the place, the vehicle, the water and the seed, and pinned
+# none of that mattered while the simulator itself was moving under it: the
+# physics changed six times in one day and every result from before became
+# incomparable with every result after, silently. A runtime version tag does
+# not help — the tag stayed `r1` through all six.
+#
+# So: a plain integer, bumped by hand, here, whenever a change would move a
+# number somebody might put in a table. It does not need to be clever. It
+# needs to change when the answer would. Say what changed in the list below so
+# that two versions can be told apart by somebody reading the record rather
+# than by reading the diff.
+#
+#   1  where this began: thruster geometry, the depth loop, the EOS-80 water,
+#      the glider's flight model, navigation from a laid array, a world with
+#      things in it to run into.
+PHYSICS = 1
+PHYSICS_IS = ("thruster geometry at the centre of gravity, EOS-80 water, "
+              "Eriksen flight for a glider, LBL from the transponders that "
+              "were laid, and a world a vehicle can run into")
+
 
 def find_hull(root: pathlib.Path) -> pathlib.Path | None:
     """The vehicle's own geometry, if the package carries any.
