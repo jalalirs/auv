@@ -19,6 +19,10 @@
 
 set -euo pipefail
 
+# Which of Jerlov's waters. One name, and every number in the medium comes
+# off it: I is the clearest open ocean, 9C a turbid harbour.
+WATER="${WATER:-1C}"
+
 PLACES=("$@")
 [ ${#PLACES[@]} -eq 0 ] && PLACES=(al-fahal looe-key kaneohe red-sea thuwal-deep)
 
@@ -43,9 +47,14 @@ one_place() {
     [ -n "${vehicle}" ] || { echo "  no vehicle package to open the scene with" >&2; return 1; }
 
     rm -rf "${here}"; mkdir -p "${here}/frames"; chmod -R 777 "${here}"
+    # Which water to look through. A place has no opinion of its own yet, so
+    # this is how one is tried: the same reef through clear ocean and through a
+    # turbid bay is the comparison the water types exist to make.
     cat > "${here}/dive.json" <<JSON
 {"cityPath": "/dive/city", "vehiclePath": "/dive/vehicle",
- "durationSeconds": 600, "autonomy": false}
+ "durationSeconds": 600, "autonomy": false,
+ "conditions": {"kind": "constructed",
+                "parameters": {"waterType": "${WATER:-1C}"}}}
 JSON
     chmod 666 "${here}/dive.json"
 
@@ -85,16 +94,16 @@ JSON
 
     # What made these frames, beside them — so a sheet can say what it is a
     # sheet of, and two of them can be told apart a month later.
-    rm -rf "${looks:?}/${place}"; mkdir -p "${looks}/${place}"
-    cp "${here}"/frames/*.png "${looks}/${place}/"
-    cp "${here}/look.log" "${looks}/${place}/look.log" 2>/dev/null || true
+    rm -rf "${looks:?}/${place}-${WATER}"; mkdir -p "${looks}/${place}-${WATER}"
+    cp "${here}"/frames/*.png "${looks}/${place}-${WATER}/"
+    cp "${here}/look.log" "${looks}/${place}-${WATER}/look.log" 2>/dev/null || true
     {
         printf '{"place": "%s", "package": "%s", "at": "%s",\n' \
             "${place}" "$(basename "${city}")" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         printf ' "runtime": "%s", "commit": "%s"}\n' \
             "${image}" "$(git -C "$(dirname "$0")/.." rev-parse --short HEAD 2>/dev/null || echo unknown)"
-    } > "${looks}/${place}/made.json"
-    echo "  ${n} frames → ${looks}/${place}"
+    } > "${looks}/${place}-${WATER}/made.json"
+    echo "  ${n} frames → ${looks}/${place}-${WATER}"
 }
 
 for place in "${PLACES[@]}"; do
