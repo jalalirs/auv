@@ -44,10 +44,7 @@ from __future__ import annotations
 
 import numpy as np
 
-# Seawater, for the cable's own drag. The vehicle's own density is read from
-# its water; the difference over the working range is under half a per cent and
-# the cable's drag coefficient is not known to better than ten.
-DENSITY = 1025.0
+import cable
 
 # How many pieces the cable is cut into. Twenty over a hundred metres is five
 # metres a node, which resolves the lean without making the relaxation the most
@@ -90,171 +87,44 @@ class Tether:
         return self.length_m / (NODES - 1)
 
     def start(self, surface_at, vehicle_at, current=None) -> None:
-        """Lay the cable out between its two ends, with its slack in it.
-
-        Not straight. A straight line is the one shape a slack cable cannot
-        be — the segments are longer than the gap, so every one of them is in
-        compression, which a cable cannot carry — and a relaxation started
-        there has nothing to tell it which way to bulge. It gets there
-        eventually from rounding, and "eventually" turned out to be hundreds of
-        passes: a hundred metres of cable to a vehicle six metres down settled
-        into a straight line with the slack nowhere, reported no tension at
-        all, and made the dive look as though the cable were not there. Which
-        is the exact bug this whole file exists to fix.
-
-        So the slack goes in at the start, as the parabola a span of this much
-        cable makes, leaning the way the water is going — because a near-
-        neutral tether is pushed far harder than it is pulled down.
-        """
+        """Lay the cable out between its two ends, with its slack in it."""
         self.at = np.asarray(surface_at, dtype=float)
-        vehicle_at = np.asarray(vehicle_at, dtype=float)
-        walk = np.linspace(0.0, 1.0, NODES)[:, None]
-        self.shape = self.at[None, :] * (1 - walk) + vehicle_at[None, :] * walk
-
-        span = float(np.linalg.norm(vehicle_at - self.at))
-        if span < 1e-6 or self.length_m <= span:
-            return
-        # A parabola of span `d` and sag `s` is about d(1 + 8s²/3d²) long, so
-        # the sag this much cable wants is that, inverted.
-        sag = span * np.sqrt(3.0 * (self.length_m / span - 1.0) / 8.0)
-        way = np.array([0.0, 0.0, -1.0])
-        if current is not None:
-            flow = np.asarray(current, dtype=float)
-            speed = float(np.linalg.norm(flow))
-            if speed > 1e-3:
-                way = flow / speed
-        bulge = (4.0 * walk * (1.0 - walk)) * sag
-        self.shape[1:-1] += (bulge * way[None, :])[1:-1]
+        self.shape = cable.lay_out(self.at, vehicle_at, self.length_m, NODES, current)
 
     def settle(self, vehicle_at, current, passes: int = PASSES) -> None:
-        """Put the cable where the water leaves it, with both ends pinned."""
+        """Put the cable where the water leaves it, with both ends pinned.
+
+        A solve from nothing sweeps the length constraint along the whole
+        chain; the per-step correction to an already-settled shape does not
+        need to and cannot afford to at two hundred hertz.
+        """
         vehicle_at = np.asarray(vehicle_at, dtype=float)
+        cold = self.shape is None or passes > PASSES
         if self.shape is None:
             self.start(self.at, vehicle_at, current)
         assert self.shape is not None
-        self.shape[0] = self.at
-        self.shape[-1] = vehicle_at
-        segment = self.segment_m()
-        load = self.load(current)
-
-        for _ in range(passes):
-            # Where the forces want each node to go. A displacement rather than
-            # an acceleration: this is a relaxation towards equilibrium and not
-            # an integration through time, and giving the cable inertia it does
-            # not need is how a quasi-static solver starts ringing.
-            #
-            # Scaled by the segment length so that the step is a fraction of a
-            # segment whatever the cable's size: the tension that will resist
-            # it is not known until the shape is, and this only has to get the
-            # direction right for the constraint pass to do the rest.
-            step = load * (segment * 0.02)
-            self.shape[1:-1] += step[1:-1]
-            self.relax(segment)
-
-        self.shape[0] = self.at
-        self.shape[-1] = vehicle_at
+        cable.settle(self.shape, self.at, vehicle_at, self.length_m, current,
+                     self.diameter_m, self.weight_n_per_m, passes, self.drag_normal,
+                     sweeps=(NODES - 1) if cold else None)
 
     def load(self, current) -> np.ndarray:
-        """The force on each node: its weight in water, and its drag.
-
-        Drag on the component of the water's motion *across* the cable. A cable
-        edge-on to the flow is not being pushed, and it is this that makes a
-        tether lean downstream rather than balloon.
-        """
         assert self.shape is not None
-        current = np.asarray(current, dtype=float)
-        segment = self.segment_m()
-        # Which way each node's piece of cable runs.
-        along = np.zeros_like(self.shape)
-        along[1:-1] = self.shape[2:] - self.shape[:-2]
-        along[0] = self.shape[1] - self.shape[0]
-        along[-1] = self.shape[-1] - self.shape[-2]
-        length = np.linalg.norm(along, axis=1, keepdims=True)
-        along = np.divide(along, np.where(length < 1e-9, 1.0, length))
-
-        flow = np.tile(current, (len(self.shape), 1))
-        across = flow - along * np.sum(flow * along, axis=1, keepdims=True)
-        speed = np.linalg.norm(across, axis=1, keepdims=True)
-        area = self.diameter_m * segment
-        drag = 0.5 * DENSITY * self.drag_normal * area * speed * across
-
-        weight = np.zeros_like(self.shape)
-        weight[:, 2] = -self.weight_n_per_m * segment
-        return drag + weight
-
-    def relax(self, segment: float) -> None:
-        """Pull the nodes back to a segment apart, ends held.
-
-        Position-based rather than elastic: a working tether stretches under a
-        per cent at the loads it sees, and a stiff spring at two hundred hertz
-        is a spring that explodes. What this cannot model is a shock load, and
-        a shock load is the taut case, which is handled as a limit instead.
-        """
-        assert self.shape is not None
-        for _ in range(2):
-            for i in range(len(self.shape) - 1):
-                a, b = self.shape[i], self.shape[i + 1]
-                apart = b - a
-                length = float(np.linalg.norm(apart))
-                if length < 1e-9:
-                    continue
-                correct = (length - segment) / length * apart
-                # The ends do not move; an interior node takes half each.
-                first = 0.0 if i == 0 else 0.5
-                second = 0.0 if i + 1 == len(self.shape) - 1 else 0.5
-                share = first + second
-                if share <= 0.0:
-                    continue
-                self.shape[i] = a + correct * (first / share)
-                self.shape[i + 1] = b - correct * (second / share)
+        return cable.load_on(self.shape, current, self.segment_m(),
+                             self.diameter_m, self.weight_n_per_m, self.drag_normal)
 
     def pull(self, current) -> np.ndarray:
         """What the cable does to the vehicle, in the world frame.
 
-        From the tension in every segment rather than from the two ends. At
-        equilibrium each node balances the pull of the segment above it, the
-        pull of the segment below it, and what the water and its own weight do
-        to it:
-
-            T_i·û_i − T_{i−1}·û_{i−1} + f_i = 0
-
-        which is three equations a node in however many segments there are —
-        heavily overdetermined, solved as a least squares, and the tension at
-        the vehicle is the last of them.
-
-        The obvious cheaper thing is to take the whole cable's equilibrium
-        instead: two end tensions, three equations, done. That was the first
-        version and it is *ill-posed exactly where it matters*. A cable that
-        streams out and comes back has both ends pulling along nearly the same
-        line, the two unknowns stop being independent, and the split between
-        them swings on rounding — the same cable answered 6 N, then 10, then 13
-        as the shape was relaxed further, while the shape itself had stopped
-        moving. Solving every node instead is a twenty-unknown least squares
-        once a step, which costs nothing and is the same answer twice.
+        From the tension in every segment rather than from the two ends — see
+        `cable.tension_along`, which says why the cheaper way is wrong.
         """
         if self.shape is None or not self.out:
             self.tension_n = 0.0
             return np.zeros(3)
-        load = self.load(current)
-        segments = self.shape[1:] - self.shape[:-1]
-        length = np.linalg.norm(segments, axis=1, keepdims=True)
-        if float(length.min()) < 1e-9:
+        tensions, along = cable.tension_along(self.shape, self.load(current))
+        if tensions is None:
             self.tension_n = 0.0
             return np.zeros(3)
-        along = segments / length            # û for each segment, pointing down the cable
-
-        # One row per node per axis; one column per segment.
-        nodes = len(self.shape) - 2          # the interior ones, which are free
-        rows = np.zeros((nodes * 3, len(along)))
-        answer = np.zeros(nodes * 3)
-        for i in range(nodes):
-            node = i + 1
-            for axis in range(3):
-                rows[i * 3 + axis, node] = along[node][axis]
-                rows[i * 3 + axis, node - 1] = -along[node - 1][axis]
-                answer[i * 3 + axis] = -load[node][axis]
-        tensions, *_ = np.linalg.lstsq(rows, answer, rcond=None)
-
         # A cable can only pull. A negative answer is the solve saying this
         # segment wants to push, which means it has gone slack there.
         tension = float(max(0.0, tensions[-1]))

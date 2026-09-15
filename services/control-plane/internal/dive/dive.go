@@ -182,6 +182,7 @@ type Dive struct {
 	// says them.
 	LayoutVersionID  string          `json:"layoutVersionId,omitempty"`
 	MissionVersionID string          `json:"missionVersionId,omitempty"`
+	LayoutChanges    json.RawMessage `json:"layoutChanges,omitempty"`
 	CreatedAt        time.Time       `json:"createdAt"`
 	CreatedBy        string          `json:"createdBy"`
 }
@@ -201,6 +202,11 @@ type DiveSpec struct {
 	// doubts how long the day is says `timeLimitS` and means "the same plan,
 	// with less time", not "this plan and nothing else".
 	ObjectiveOverlay json.RawMessage
+	// What a scenario changed about the world: things moved from where they
+	// were laid, things missing, things nobody drew. Carried with the dive
+	// rather than folded into the layout, because the layout is what somebody
+	// drew and this is what happened to it.
+	LayoutChanges json.RawMessage
 	VehicleVersionID string
 	ConditionsID     string
 	AutonomyStackID  *string
@@ -505,7 +511,7 @@ const selectDive = `
 	SELECT id, org_id, name, summary, city_version_id, vehicle_version_id,
 	       conditions_id, autonomy_stack_id, initial_state, objective,
 	       coalesce(layout_version_id, ''), coalesce(mission_version_id, ''),
-	       created_at, created_by
+	       layout_changes, created_at, created_by
 	FROM dive.dive`
 
 func scanDive(row interface{ Scan(...any) error }) (Dive, error) {
@@ -513,7 +519,7 @@ func scanDive(row interface{ Scan(...any) error }) (Dive, error) {
 	err := row.Scan(&plan.ID, &plan.OrgID, &plan.Name, &plan.Summary,
 		&plan.CityVersionID, &plan.VehicleVersionID, &plan.ConditionsID,
 		&plan.AutonomyStackID, &plan.InitialState, &plan.Objective,
-		&plan.LayoutVersionID, &plan.MissionVersionID,
+		&plan.LayoutVersionID, &plan.MissionVersionID, &plan.LayoutChanges,
 		&plan.CreatedAt, &plan.CreatedBy)
 	return plan, err
 }
@@ -643,12 +649,13 @@ func (s *Store) CreateDive(ctx context.Context, conn db.Conn, spec DiveSpec) (Di
 		INSERT INTO dive.dive
 		    (id, org_id, name, summary, city_version_id, vehicle_version_id,
 		     conditions_id, autonomy_stack_id, initial_state, objective,
-		     layout_version_id, mission_version_id, created_by)
+		     layout_version_id, mission_version_id, layout_changes, created_by)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-		        nullif($11, ''), nullif($12, ''), $13)`,
+		        nullif($11, ''), nullif($12, ''), $14, $13)`,
 		id, spec.OrgID, spec.Name, spec.Summary, spec.CityVersionID,
 		spec.VehicleVersionID, spec.ConditionsID, spec.AutonomyStackID,
-		initial, objective, spec.LayoutVersionID, spec.MissionVersionID, spec.CreatedBy)
+		initial, objective, spec.LayoutVersionID, spec.MissionVersionID, spec.CreatedBy,
+		nullJSON(spec.LayoutChanges))
 	if err != nil {
 		return Dive{}, fmt.Errorf("defining a dive: %w", err)
 	}
@@ -1185,6 +1192,9 @@ type Claimed struct {
 	// dive's world arrives with the dive.
 	LayoutVersionID string          `json:"layoutVersionId,omitempty"`
 	Layout          json.RawMessage `json:"layout,omitempty"`
+	// And what this scenario changed about it. A layout is what somebody drew;
+	// this is what happened to it.
+	LayoutChanges json.RawMessage `json:"layoutChanges,omitempty"`
 
 	AutonomyImage  string          `json:"autonomyImage,omitempty"`
 	AutonomyDigest string          `json:"autonomyDigest,omitempty"`
@@ -1396,7 +1406,7 @@ func (s *Store) ClaimNext(ctx context.Context, conn db.Conn, targetName string,
 	var layout []byte
 	err = conn.QueryRow(ctx, `
 		SELECT d.city_version_id, d.vehicle_version_id, d.initial_state, d.objective,
-		       d.layout_version_id, l.document,
+		       d.layout_version_id, l.document, d.layout_changes,
 		       s.image_repository, s.image_digest, s.wants_gpu, s.subscribes, s.publishes
 		  FROM dive.dive d
 		  JOIN dive.run r ON r.dive_id = d.id
@@ -1405,7 +1415,7 @@ func (s *Store) ClaimNext(ctx context.Context, conn db.Conn, targetName string,
 		 WHERE r.id = $1`, runID).
 		Scan(&claimed.CityVersionID, &claimed.VehicleVersionID,
 			&claimed.InitialState, &claimed.Objective,
-			&layoutVersion, &layout,
+			&layoutVersion, &layout, &claimed.LayoutChanges,
 			&stackImage, &stackDigest, &wantsGPU, &subscribes, &publishes)
 	if err != nil {
 		return Claimed{}, fmt.Errorf("reading what the run needs: %w", err)

@@ -368,6 +368,11 @@ class Dive:
         # them is the vehicle.
         self.tether = None
         self.world.version = str(brief.get("layoutVersionId") or "")
+        # And the world not being as drawn, which is a scenario's business
+        # rather than a layout's: the mooring thirty metres from where it was
+        # laid, a transponder down, a net where the chart says clear water.
+        for one in self.world.not_as_drawn(brief.get("layoutChanges")):
+            self.say("not_as_drawn", what=one)
         # The battery the vehicle package declares. A vehicle that declares
         # none flies as everything did before: for as long as it is asked to.
         try:
@@ -1227,6 +1232,16 @@ class Dive:
             # transponders in the water replaces "a circle around roughly
             # here" with the things themselves, and where a fix can be had
             # follows from how many of them are in range.
+            # Where the lines actually are, in this water. A line drawn on a
+            # chart is where somebody put its two ends; a current moves it by
+            # metres, and a vehicle flying under the chart's line meets
+            # something else entirely.
+            self.world.in_this_water(self.current)
+            for one in self.world.of_kind("mooring-line"):
+                if getattr(one, "leaned_by", 0.0) > 0.5:
+                    self.say("a_line_leaned", which=one.id,
+                             byM=round(one.leaned_by, 1),
+                             lowestM=round(-min(float(p[2]) for p in one.curve), 1))
             laid = [one.at for one in self.world.of_kind("transponder")]
             if laid and self.navigation.kind == "lbl":
                 self.navigation.transponders = laid
