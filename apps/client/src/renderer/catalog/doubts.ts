@@ -17,7 +17,18 @@ export interface Setting {
   key: string;
   /** What it says on the row. */
   name: string;
-  /** What it does — to the water, or (under `objective`) to what was asked. */
+  /**
+   * What it does. Everything is a change to the water, except two keys:
+   * `objective` changes what was *asked for*, and `world` changes the place
+   * itself — a thing moved from where it was laid, a thing missing, a thing
+   * nobody drew.
+   *
+   * The second of those is the half of a rehearsal that parameters cannot
+   * express. A sweep can always ask what half a knot does, because half a
+   * knot is a number. The things that actually go wrong are the ones nobody
+   * measured: the mooring thirty metres off, the transponder that did not come
+   * up, the net where the chart says clear water.
+   */
   does: Record<string, unknown>;
 }
 
@@ -64,6 +75,24 @@ export const DOUBTS: Doubt[] = [
       { key: "none", name: "Nothing does", does: {} },
       { key: "thruster", name: "A thruster, an hour in", does: { failures: [{ kind: "thruster", which: 2, atS: 3600 }] } },
       { key: "no log", name: "No Doppler log", does: { fitted: { dvl: false } } },
+    ],
+  },
+  {
+    key: "the array", name: "The array, as laid",
+    says: "Transponders get laid by people in boats, and one of them not coming up is the ordinary Tuesday — not the disaster.",
+    settings: [
+      { key: "as laid", name: "All of it", does: {} },
+      { key: "one down", name: "One down", does: { world: { remove: ["transponder-2"] } } },
+      { key: "two down", name: "Two down", does: { world: { remove: ["transponder-2", "transponder-3"] } } },
+    ],
+  },
+  {
+    key: "the mooring", name: "The mooring, where it was laid",
+    says: "A block goes over the side from a boat holding station in a current. Where it lands is not where it was dropped.",
+    settings: [
+      { key: "as drawn", name: "Where the chart says", does: {} },
+      { key: "ten metres off", name: "Ten metres off", does: { world: { move: { "mooring-block": { dx: 10, dy: 0 } } } } },
+      { key: "thirty metres off", name: "Thirty metres off", does: { world: { move: { "mooring-block": { dx: 30, dy: 0 } } } } },
     ],
   },
   {
