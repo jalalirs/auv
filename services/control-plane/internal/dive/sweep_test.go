@@ -369,3 +369,40 @@ func TestARealDifferenceIsNotACoinFlip(t *testing.T) {
 		t.Fatalf("the current decides it: %+v", found.Matters)
 	}
 }
+
+// A dimension does not get the credit for what another one decided.
+//
+// Asking merely whether any two firmly-decided scenarios disagree is not
+// enough: they will, because some *other* doubt decided them. The question is
+// whether changing this one thing changes the answer while the rest of the
+// world stays where it was.
+func TestADimensionDoesNotGetTheCreditForAnother(t *testing.T) {
+	runs := []Flown{}
+	add := func(array, current string, scores ...float64) {
+		for _, score := range scores {
+			runs = append(runs, Flown{
+				Chosen: map[string]string{"the array": array, "the current": current},
+				State:  "succeeded", Score: score, Survived: score >= 0.15})
+		}
+	}
+	// The numbers the array sweep came back with: the current decides it, the
+	// array does nothing, and two scenarios straddle the threshold.
+	add("as laid", "still", 0.155, 0.149)
+	add("one down", "still", 0.151, 0.148)
+	add("two down", "still", 0.164, 0.152)
+	add("as laid", "half knot", 0.011, 0.010)
+	add("one down", "half knot", 0.011, 0.010)
+	add("two down", "half knot", 0.010, 0.010)
+
+	found := What(runs, 0.15)
+	at := map[string]Dimension{}
+	for _, one := range found.Matters {
+		at[one.Name] = one
+	}
+	if array, ok := at["the array"]; !ok || !array.OnACoinFlip {
+		t.Errorf("the array decided nothing and should say so: %+v", array)
+	}
+	if current, ok := at["the current"]; !ok || current.OnACoinFlip {
+		t.Errorf("the current really does decide it: %+v", current)
+	}
+}

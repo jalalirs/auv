@@ -607,40 +607,38 @@ func What(flown []Flown, good float64) Findings {
 // about a transponder that does not matter. Which is the most expensive
 // mistake this can make, so it is said out loud.
 func onACoinFlip(flown []ScenarioFlown, dimension string) bool {
-	decided := false
+	// Paired, holding everything else equal. Asking merely whether any two
+	// firmly-decided scenarios disagree is not enough — they will, because
+	// *some other* doubt decided them, and the dimension gets the credit. The
+	// question is whether changing this one thing changes the answer while the
+	// rest of the world stays where it was.
+	groups := map[string][]ScenarioFlown{}
 	for _, one := range flown {
 		if _, said := one.Chosen[dimension]; !said {
 			continue
 		}
-		if !one.Marginal {
-			decided = true
+		rest := make([]string, 0, len(one.Chosen))
+		for name, value := range one.Chosen {
+			if name != dimension {
+				rest = append(rest, name+":"+value)
+			}
+		}
+		sort.Strings(rest)
+		key := strings.Join(rest, " · ")
+		groups[key] = append(groups[key], one)
+	}
+	for _, group := range groups {
+		seen := map[bool]bool{}
+		for _, one := range group {
+			if !one.Marginal {
+				seen[one.Works] = true
+			}
+		}
+		if len(seen) > 1 {
+			return false // this dimension decided something on its own
 		}
 	}
-	if !decided {
-		return true
-	}
-	// Decided scenarios exist; the question is whether they differ. Group the
-	// firmly-decided ones by setting and see if any two settings disagree.
-	works := map[string]map[bool]bool{}
-	for _, one := range flown {
-		value, said := one.Chosen[dimension]
-		if !said || one.Marginal {
-			continue
-		}
-		if works[value] == nil {
-			works[value] = map[bool]bool{}
-		}
-		works[value][one.Works] = true
-	}
-	seen := map[bool]bool{}
-	for _, at := range works {
-		for outcome := range at {
-			seen[outcome] = true
-		}
-	}
-	// If every firmly-decided scenario went the same way whatever the setting,
-	// nothing about this dimension has been decided by anything but the flips.
-	return len(seen) < 2
+	return true
 }
 
 // ratesOf is how each setting of one dimension fared, worst first. Counted in
