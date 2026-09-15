@@ -2,6 +2,7 @@ package dive
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -22,7 +23,7 @@ func TestPricedOnWhatWorked(t *testing.T) {
 		spent = append(spent, Spent{EnergyWh: 20, Seconds: 2400,
 			CapacityWh: 266.4, Reserve: 0.1, Survived: false})
 	}
-	got := WhatItCosts(spent)
+	got := WhatItCosts(spent, true)
 	if math.Abs(got.EnergyWh-6) > 0.01 {
 		t.Errorf("a day's work costs what a day's work costs, got %.2f Wh", got.EnergyWh)
 	}
@@ -41,7 +42,7 @@ func TestPricedOnWhatWorked(t *testing.T) {
 // The reserve is not yours.
 func TestTheReserveIsNotSpendable(t *testing.T) {
 	got := WhatItCosts([]Spent{{EnergyWh: 24, Seconds: 600,
-		CapacityWh: 100, Reserve: 0.1, Survived: true}})
+		CapacityWh: 100, Reserve: 0.1, Survived: true}}, true)
 	if math.Abs(got.UsableWh-90) > 1e-9 {
 		t.Fatalf("ninety of a hundred is spendable, got %.1f", got.UsableWh)
 	}
@@ -55,7 +56,7 @@ func TestTheReserveIsNotSpendable(t *testing.T) {
 func TestWhatHoldsTheDayBack(t *testing.T) {
 	// Short and thirsty: the battery runs out before the day does.
 	thirsty := WhatItCosts([]Spent{{EnergyWh: 50, Seconds: 600,
-		CapacityWh: 200, Reserve: 0.0, Survived: true}})
+		CapacityWh: 200, Reserve: 0.0, Survived: true}}, true)
 	if thirsty.HeldBackBy != "the battery" {
 		t.Errorf("four on a charge against forty-eight in a day: %q", thirsty.HeldBackBy)
 	}
@@ -64,7 +65,7 @@ func TestWhatHoldsTheDayBack(t *testing.T) {
 	}
 	// Long and frugal: the day runs out first.
 	slow := WhatItCosts([]Spent{{EnergyWh: 5, Seconds: 7200,
-		CapacityWh: 200, Reserve: 0.0, Survived: true}})
+		CapacityWh: 200, Reserve: 0.0, Survived: true}}, true)
 	if slow.HeldBackBy != "the clock" {
 		t.Errorf("four in a day against forty on a charge: %q", slow.HeldBackBy)
 	}
@@ -77,7 +78,7 @@ func TestWhatHoldsTheDayBack(t *testing.T) {
 // with the cost of the failures.
 func TestNothingWorkedIsSaid(t *testing.T) {
 	got := WhatItCosts([]Spent{{EnergyWh: 20, Seconds: 2400,
-		CapacityWh: 266.4, Reserve: 0.1, Survived: false}})
+		CapacityWh: 266.4, Reserve: 0.1, Survived: false}}, true)
 	if !got.NotEnough || got.EnergyWh != 0 || got.Says != "" {
 		t.Fatalf("it priced a job nothing did: %+v", got)
 	}
@@ -105,8 +106,32 @@ func TestWorstIsNotTheOneBadSeed(t *testing.T) {
 	}
 	spent = append(spent, Spent{EnergyWh: 90, Seconds: 600,
 		CapacityWh: 100, Reserve: 0, Survived: true})
-	got := WhatItCosts(spent)
+	got := WhatItCosts(spent, true)
 	if got.WorstEnergyWh > 11 {
 		t.Fatalf("one bad seed set the size of the plan: %.1f Wh", got.WorstEnergyWh)
+	}
+}
+
+// Only a sweep can turn a survival rate into days of ship time.
+//
+// A sweep flies a stated list of doubts once each, so the share that survived
+// is a statement about that list. A mission's own past runs are whatever
+// happened to be flown, which is not a sample of anything — and dividing by it
+// would produce a number that looks like a forecast.
+func TestOnlyASweepSpeaksOfShipDays(t *testing.T) {
+	spent := []Spent{
+		{EnergyWh: 6, Seconds: 780, CapacityWh: 266.4, Reserve: 0.1, Survived: true},
+		{EnergyWh: 20, Seconds: 2400, CapacityWh: 266.4, Reserve: 0.1, Survived: false},
+	}
+	swept := WhatItCosts(spent, true)
+	if swept.ShipDays == 0 || !strings.Contains(swept.Says, "ship time") {
+		t.Errorf("a sweep should say what the weather costs: %q", swept.Says)
+	}
+	history := WhatItCosts(spent, false)
+	if history.ShipDays != 0 || strings.Contains(history.Says, "ship time") {
+		t.Errorf("a mission's history is not a forecast: %q", history.Says)
+	}
+	if !strings.Contains(history.Says, "working day") {
+		t.Errorf("but it still says what a day of it holds: %q", history.Says)
 	}
 }

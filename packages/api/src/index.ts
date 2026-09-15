@@ -23,6 +23,7 @@ export type Mission = Schemas["Mission"];
 export type MissionDocument = Schemas["MissionDocument"];
 export type Sweep = Schemas["Sweep"];
 export type Findings = Schemas["Findings"];
+export type Cost = Schemas["Cost"];
 export type Doubts = Schemas["Doubts"];
 export type LayoutDocument = Schemas["LayoutDocument"];
 export type Queue = Schemas["Queue"];
@@ -283,6 +284,11 @@ export class Platform {
   }): Promise<Sweep> {
     return this.#request<Sweep>("POST",
       `/api/v1/organisations/${organisation}/sweeps`, said);
+  }
+
+  /** What a plan of work takes, from the last time somebody flew it. */
+  async missionCost(id: string): Promise<Cost> {
+    return this.#request<Cost>("GET", `/api/v1/missions/${id}/cost`);
   }
 
   async saveMission(id: string, document: MissionDocument,

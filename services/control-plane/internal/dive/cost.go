@@ -79,14 +79,24 @@ type Cost struct {
 
 	// What the weather costs on top: the share of attempts that did the job,
 	// and how many days of ship time a day of work therefore takes.
-	Survives   float64 `json:"survives"`
-	ShipDays   float64 `json:"shipDaysPerWorkingDay"`
-	Says       string  `json:"says,omitempty"`
-	NotEnough  bool    `json:"notEnough"`
+	//
+	// Only a sweep can say that. A sweep flies a stated list of doubts once
+	// each, so the share that survived is a statement about *that list*; a
+	// mission's own past runs are whatever happened to be flown, which is not
+	// a sample of anything and must not be turned into days.
+	Survives  float64 `json:"survives"`
+	ShipDays  float64 `json:"shipDaysPerWorkingDay,omitempty"`
+	Says      string  `json:"says,omitempty"`
+	NotEnough bool    `json:"notEnough"`
 }
 
 // WhatItCosts reads a set of runs and says what the work takes.
-func WhatItCosts(spent []Spent) Cost {
+//
+// `doubted` says whether the runs are a sweep's stated list of doubts, flown
+// once each, or merely what happened to be flown. Only the first can be turned
+// into days of ship time: a mission's own history is not a sample of anything,
+// and dividing by it would produce a number that looks like a forecast.
+func WhatItCosts(spent []Spent, doubted bool) Cost {
 	out := Cost{Runs: len(spent), WorkingDayHours: AWorkingDay}
 	worked := []Spent{}
 	for _, one := range spent {
@@ -153,13 +163,13 @@ func WhatItCosts(spent []Spent) Cost {
 	// assumes they are equally likely. They are not — nobody thinks a dead
 	// Doppler log is as likely as a calm morning — and a sentence that hid
 	// that would be a sentence somebody quoted at a funder.
-	if out.Survives > 0 {
+	out.Says = fmt.Sprintf("%s of work in a working day, held back by %s.",
+		plural(out.PerDay, "run", "runs"), out.HeldBackBy)
+	if doubted && out.Survives > 0 {
 		out.ShipDays = 1.0 / out.Survives
-		out.Says = fmt.Sprintf(
-			"%s of work in a working day, held back by %s. "+
-				"Allow %s of ship time for every day of work, if everything in "+
+		out.Says += fmt.Sprintf(
+			" Allow %s of ship time for every day of work, if everything in "+
 				"the doubt list is equally likely.",
-			plural(out.PerDay, "run", "runs"), out.HeldBackBy,
 			plural(out.ShipDays, "day", "days"))
 	}
 	return out
@@ -236,7 +246,9 @@ func (s *Store) WhatAMissionCosts(ctx context.Context, missionID string) (Cost, 
 	if err := rows.Err(); err != nil {
 		return Cost{}, err
 	}
-	return WhatItCosts(spent), nil
+	// Not doubted: these are whatever has been flown, not a stated list flown
+	// once each, so they say what a run costs and nothing about the weather.
+	return WhatItCosts(spent, false), nil
 }
 
 // didTheJob is whether a run's task ran to its end without failing.

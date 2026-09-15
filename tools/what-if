@@ -179,6 +179,18 @@ def say(found: dict) -> None:
         print(f"\n{found['heldBack']} of the failures were the vehicle held back by its "
               "own hull rather than by the plan — a better plan will not fix those.")
 
+    cost = found.get("cost") or {}
+    if cost.get("notEnough"):
+        print("\nNothing did the job, so there is nothing to price.")
+    elif cost.get("says"):
+        print(f"\nWhat it costs, priced on the {cost['survived']} that did the job:")
+        print(f"    {cost['energyWh']:.1f} Wh a run "
+              f"({cost['worstEnergyWh']:.1f} at the ninetieth percentile), "
+              f"{cost['hours'] * 60:.0f} minutes in the water.")
+        print(f"    {cost['perCharge']:.0f} on a charge of {cost['usableWh']:.0f} usable Wh "
+              f"({cost['capacityWh']:.0f} less a {cost['reserveFraction']:.0%} reserve).")
+        print(f"\n{cost['says']}")
+
 
 def main() -> int:
     parse = argparse.ArgumentParser(description="fly a mission against what could go wrong")
