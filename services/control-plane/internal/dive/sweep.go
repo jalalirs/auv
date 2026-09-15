@@ -535,6 +535,14 @@ func (s *Store) CreateSweep(ctx context.Context, conn db.Conn, spec SweepSpec) (
 		id, spec.OrgID, spec.MissionVersionID, spec.VehicleVersionID,
 		nullJSON(spec.Water), spec.Name, []byte(spec.Doubts), spec.Good,
 		spec.CreatedBy); err != nil {
+		if db.IsForeignKeyViolation(err) {
+			// A caller naming something that is not there. Theirs to fix, and
+			// theirs to be told about: the versions are the easy ones to get
+			// wrong, because a vehicle and a version of it look alike.
+			return Sweep{}, fmt.Errorf(
+				"%w: a sweep names a published *version* of a mission and of a "+
+					"vehicle, and one of those does not exist", domain.ErrInvalid)
+		}
 		return Sweep{}, fmt.Errorf("recording a sweep: %w", err)
 	}
 
