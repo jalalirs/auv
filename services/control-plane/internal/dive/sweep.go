@@ -399,9 +399,16 @@ func What(flown []Flown, good float64) Findings {
 			out.MadeNoDifference = append(out.MadeNoDifference, name)
 		}
 	}
-	// Worst first: the thing to read is the thing that changes most.
+	// Worst first: the thing to read is the thing that changes most. Ties by
+	// name, so that two doubts which change the outcome by exactly as much as
+	// each other come out in the same order every time — and so that the same
+	// sweep read twice reads the same, which matters more than which of two
+	// equal answers is on top.
 	sort.SliceStable(out.Matters, func(a, b int) bool {
-		return out.Matters[a].Changes > out.Matters[b].Changes
+		if out.Matters[a].Changes != out.Matters[b].Changes {
+			return out.Matters[a].Changes > out.Matters[b].Changes
+		}
+		return out.Matters[a].Name < out.Matters[b].Name
 	})
 	if len(out.Matters) == 0 || out.Survived == len(flown) {
 		return out
