@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -503,14 +504,30 @@ func (r *Runtime) Stop(ctx context.Context, id string, grace time.Duration) erro
 // Logs reports the last of what a container wrote, which is what a person
 // reads first when work fails.
 func (r *Runtime) Logs(ctx context.Context, id string, lines int) (string, error) {
+	// Fewer than one means all of it, which is what reading a finished
+	// container's output should have meant from the start: the last four
+	// hundred lines is what somebody watching wants, and it is not what the
+	// record wants. Isaac Sim says several hundred lines on the way up, so a
+	// four-hundred-line window had already swallowed everything the runtime
+	// declared about itself before the scene opened — the brief, the seed, and
+	// what physics computed it — on every dive ever flown.
+	tail := strconv.Itoa(lines)
+	if lines <= 0 {
+		tail = "all"
+	}
 	response, err := r.do(ctx, http.MethodGet,
-		fmt.Sprintf("/containers/%s/logs?stdout=1&stderr=1&tail=%d", id, lines), nil)
+		fmt.Sprintf("/containers/%s/logs?stdout=1&stderr=1&tail=%s", id, tail), nil)
 	if err != nil {
 		return "", err
 	}
 	defer response.Close()
 
-	raw, err := io.ReadAll(io.LimitReader(response, 1<<20))
+	// Generous rather than tight: at about two hundred bytes a line this is
+	// forty thousand lines, and a dive that says more than that has a problem
+	// of its own. Truncation takes the end, which is where the result is, so
+	// the limit is set where it will not be reached rather than where it is
+	// merely unlikely to be.
+	raw, err := io.ReadAll(io.LimitReader(response, 8<<20))
 	if err != nil {
 		return "", fmt.Errorf("reading container output: %w", err)
 	}

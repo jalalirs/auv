@@ -737,7 +737,9 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		ctx = stopping
 		code = 0
 	}
-	output, _ := d.runtime.Logs(ctx, simID, 400)
+	// All of it, not the last four hundred lines: this is the record, and the
+	// record was losing everything the runtime said before its scene opened.
+	output, _ := d.runtime.Logs(ctx, simID, 0)
 	result := container.Result{ExitCode: code, Logs: output}
 
 	// What the simulator said, kept as run events. Without this the trajectory
@@ -1288,7 +1290,7 @@ func (d *Diver) resume(ctx context.Context, kept handles) error {
 		ctx = stopping
 		code = 0
 	}
-	output, _ := d.runtime.Logs(ctx, kept.Simulator, 400)
+	output, _ := d.runtime.Logs(ctx, kept.Simulator, 0)
 	summary := d.keep(ctx, claimed.Run.ID, output, relayed, log)
 	if files := d.keepRecording(ctx, claimed.Run.ID, filepath.Join(kept.BriefDir, "recording"), log); files > 0 {
 		summary["recording"] = map[string]any{"files": files}
