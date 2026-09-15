@@ -2183,6 +2183,18 @@ paths:
                   maximum: 1
                   default: 0.8
                   description: What counts as having done the job.
+                repeats:
+                  type: integer
+                  minimum: 1
+                  maximum: 25
+                  default: 3
+                  description: >
+                    How many times each scenario is flown. A scenario is a
+                    sample and not a run: with one run either side of a
+                    setting, one unlucky seed *is* fifty per cent, and the
+                    answer reports it as a dimension that changes everything.
+                    A scenario survives when more than half its runs did, and
+                    its score is the median of them.
                 queueId: { type: string }
                 runtimeVersion: { type: string }
       responses:
@@ -3810,11 +3822,14 @@ components:
         name: { type: string }
         doubts: { $ref: '#/components/schemas/Doubts' }
         good: { type: number }
+        repeats:
+          type: integer
+          description: How many times each scenario is flown.
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
         scenarios:
           type: integer
-          description: How many ways the doubts could resolve — one dive each.
+          description: How many runs this sweep is — the ways the doubts resolve, times the repeats.
         flown: { type: integer }
         flying: { type: integer }
       required: [id, orgId, missionVersionId, name, doubts, good, createdAt, createdBy]
@@ -3832,10 +3847,21 @@ components:
         about visibility. A dimension whose settings all fail equally is
         telling you it does not matter, and it is said once and not ranked.
       properties:
-        scenarios: { type: integer }
-        flown: { type: integer }
+        scenarios:
+          type: integer
+          description: How many distinct questions were asked.
+        flown:
+          type: integer
+          description: How many of them have an answer.
+        flownRuns:
+          type: integer
+          description: How many runs that is, across all the repeats.
         flying: { type: integer }
-        survived: { type: integer }
+        survived:
+          type: integer
+          description: >
+            How many scenarios work — more than half their runs did the job.
+        repeats: { type: integer }
         good: { type: number }
         matters:
           type: array
@@ -3885,6 +3911,16 @@ components:
             What computed them. A sweep whose runs were not all computed by the
             same simulator is a table that should not be one.
         cost: { $ref: '#/components/schemas/Cost' }
+        scenariosFlown:
+          type: array
+          description: >
+            Every question asked, with how it went across every run of it. A
+            scenario that worked twice in three is a different thing from one
+            that worked three times in three, and somebody planning ship time
+            should be able to see which they have.
+          items:
+            type: object
+            additionalProperties: true
         runs:
           type: array
           items:

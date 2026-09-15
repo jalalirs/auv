@@ -279,6 +279,7 @@ export class Platform {
     water?: Record<string, unknown>;
     doubts: Doubts;
     good?: number;
+    repeats?: number;
     queueId: string;
     runtimeVersion: string;
   }): Promise<Sweep> {
