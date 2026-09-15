@@ -356,6 +356,10 @@ class Dive:
 
         self.world = World(brief.get("layout"))
         self._struck: set[str] = set()   # said once each, not once a step
+        # The cable, if this vehicle is on one. Set up once the vehicle has
+        # been placed, because a tether is a line between two points and one of
+        # them is the vehicle.
+        self.tether = None
         self.world.version = str(brief.get("layoutVersionId") or "")
         # The battery the vehicle package declares. A vehicle that declares
         # none flies as everything did before: for as long as it is asked to.
@@ -1097,6 +1101,7 @@ class Dive:
             self.began_at = self.position.copy()
             self.began_rotation = self.rotation.copy()
             self.begin_navigating()
+            self.run_out_the_tether()
             self.began_with_wh = (0.0 if self.battery is None else self.battery.remaining_wh)
         # Every task that is about the coral rather than about the ground.
         wants_coral = any(_mentions(objective, kind) for kind in ("treat", "monitor"))
@@ -1237,6 +1242,59 @@ class Dive:
         except Exception as exc:
             self.navigation = None
             self.say("navigation_unavailable", why=str(exc)[:160])
+
+    def run_out_the_tether(self) -> None:
+        """Put the cable in the water, if this vehicle is on one.
+
+        Three things have to agree for there to be a tether: the vehicle says
+        it is tethered, the dive says how much is out, and something is at the
+        surface for the dry end to be tied to. The last is the reason this
+        waited for a layout — a cable with no surface end is a cable running to
+        nowhere, and the force it puts on the vehicle depends entirely on where
+        that nowhere is.
+
+        A dive with no ship and no buoy drawn gets one directly overhead, which
+        is the best case and is said plainly rather than assumed quietly.
+        """
+        import json
+
+        from tether import Tether
+
+        said = {}
+        try:
+            described = json.loads((pathlib.Path(self.brief.get("vehiclePath", "/dive/vehicle"))
+                                    / "dynamics.json").read_text())
+            said = dict(described.get("tether") or {})
+        except Exception:
+            said = {}
+        # What the dive asked for, over what the vehicle ships with: how much
+        # cable is out is a decision somebody makes on the day.
+        asked = (self.brief.get("initialState") or {}).get("tetherOutM")
+        if asked is None:
+            asked = (self.objective or {}).get("tetherOutM") if isinstance(self.objective, dict) else None
+        if asked is not None:
+            said["lengthM"] = float(asked)
+        if not said or float(said.get("lengthM", 0.0)) <= 0.0:
+            return
+
+        floating = self.world.of_kind("ship") + self.world.of_kind("buoy")
+        if floating:
+            surface = np.array(floating[0].at, dtype=float)
+            where = f"the {floating[0].kind} this dive was laid out with"
+        else:
+            top = 0.0 if self.water_level is None else float(self.water_level)
+            surface = np.array([self.position[0], self.position[1], top])
+            where = ("nothing was drawn at the surface, so the cable runs "
+                     "straight up — which is the best case and rarely the day")
+
+        self.tether = Tether(said)
+        self.tether.start(surface, self.position)
+        # Settled properly once, so the dive does not open with a cable in a
+        # straight line pulling on nothing.
+        self.tether.settle(self.position, self.current, passes=120)
+        self.say("tether_out", lengthM=round(self.tether.length_m, 1),
+                 diameterM=self.tether.diameter_m,
+                 from_=[round(float(v), 1) for v in surface], where=where)
 
     def navigation_suite(self) -> dict:
         """What this vehicle has to navigate with, from its own package.
@@ -1627,6 +1685,14 @@ class Dive:
         wrench = self.body.step(self.rotation, through_water, self.commands, self.dt, submerged,
                                 depth_m=here, temperature_c=self.temperature_at(here),
                                 density=self.density_at(here))
+        # And the cable, if there is one out. In the world frame — a tether
+        # does not know which way the vehicle is pointing — so it is turned
+        # into the body before it joins the rest.
+        if self.tether is not None and self.tether.out:
+            self.tether.settle(self.position, self.current)
+            pulled = self.tether.pull(self.current)
+            wrench[:3] = wrench[:3] + self.rotation.T @ pulled
+
         effective = self.effective if submerged >= 1.0 else self.body.effective_mass(submerged)
 
         # Semi-implicit Euler at a fixed step. Not because it is the best
@@ -1738,6 +1804,7 @@ class Dive:
 
         self.strike()
         self.keep_out_of_things()
+        self.stay_on_the_cable()
 
         # There is no lid on the surface. There used to be, and it was never
         # reached, because it was only built for places that ship a water
@@ -1776,6 +1843,35 @@ class Dive:
         self.on_the_bottom = bool(facing[2] > 0.7)
         if facing[2] <= 0.7:
             self.against_the_ground = True
+
+    def stay_on_the_cable(self) -> None:
+        """A vehicle cannot go further out than there is cable.
+
+        The taut case, which the cable's own relaxation cannot carry: put it
+        back where the tether allows, and take away the part of its motion that
+        was carrying it further out. The same two constraints the ground and a
+        mooring block apply, for the same reason.
+        """
+        if self.tether is None or not self.tether.out:
+            return
+        came_from = self.position - (self.rotation @ self.velocity[:3]) * max(1e-3, self.dt)
+        allowed, held = self.tether.keep_in(self.position, came_from)
+        if not held:
+            return
+        self.position = allowed
+        out = allowed - self.tether.at
+        far = float(np.linalg.norm(out))
+        if far < 1e-9:
+            return
+        out = out / far
+        through = self.rotation @ self.velocity[:3]
+        away = float(np.dot(through, out))
+        if away > 0.0:
+            self.velocity[:3] = self.rotation.T @ (through - out * away)
+        if self.tether.struck == 1:
+            self.say("tether_taut", lengthM=round(self.tether.length_m, 1),
+                     from_=[round(float(v), 1) for v in self.tether.at],
+                     why="a vehicle cannot go further out than there is cable")
 
     def keep_out_of_things(self) -> None:
         """Stop the vehicle against what somebody put in the water.
@@ -2104,6 +2200,12 @@ class Dive:
                  # reads it to go and fetch the document — and a run whose
                  # vehicle struck something ought to say so where the result is.
                  **({} if not len(self.world) else {"world": self.world.described()}),
+                 # What the cable did, on a dive that had one. A hundred metres
+                 # of it is usually the largest force on the vehicle, and a
+                 # record that did not say so would be a record of a different
+                 # dive.
+                 **({} if self.tether is None or not self.tether.out
+                    else {"tether": self.tether.said()}),
                  **({} if result is None else {"task": result}))
         if self.bridge is not None:
             # Whether anything actually flew it. A dive that ran with nobody at
