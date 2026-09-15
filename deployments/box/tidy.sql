@@ -9,13 +9,13 @@ BEGIN;
 SET LOCAL session_replication_role = replica;   -- the record's own guards stand aside for the broom
 
 CREATE TEMP TABLE litter_city AS
-    SELECT id FROM catalog.city WHERE slug ~ '^(tank|probe-city|nodatum|sneak)-';
+    SELECT id FROM catalog.city WHERE slug ~ '^(tank|probe|probe-city|nodatum|sneak)-';
 CREATE TEMP TABLE litter_vehicle AS
-    SELECT id FROM catalog.vehicle WHERE slug ~ '^rov-[0-9]+$';
+    SELECT id FROM catalog.vehicle WHERE slug ~ '^(rov|probev|apit)-[0-9]+$';
 CREATE TEMP TABLE litter_queue AS
     SELECT id FROM compute.queue WHERE slug ~ '^(box|brief)-[0-9]+$';
 CREATE TEMP TABLE litter_org AS
-    SELECT id FROM identity.organisation WHERE slug ~ '^other-[0-9]+$';
+    SELECT id FROM identity.organisation WHERE slug ~ '^(other|probeo|probeorg|apito)-[0-9]+$';
 CREATE TEMP TABLE litter_stack AS
     SELECT id FROM dive.autonomy_stack
      WHERE org_id IN (SELECT id FROM litter_org)
