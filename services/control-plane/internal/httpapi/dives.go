@@ -28,6 +28,11 @@ type registerStackRequest struct {
 	WantsGPU        bool            `json:"wantsGpu"`
 	// What it needs beside the simulator: gpu, gpuMemoryBytes, cpu, memoryBytes.
 	Needs json.RawMessage `json:"needs,omitempty"`
+	// Which question this run answers, when it is one of many. A sweep asks
+	// one mission against a list of doubts and every run in it is the same
+	// mission under one of them; without this they are a hundred unrelated
+	// dives that happen to share a name.
+	Scenario json.RawMessage `json:"scenario,omitempty"`
 }
 
 // registerStack records autonomy somebody brought.
@@ -283,6 +288,7 @@ func (d *Dependencies) requestRun(w http.ResponseWriter, r *http.Request) {
 			GPUShare:       share,
 			RequestedBy:    principal.ID,
 			Needs:          request.Needs,
+			Scenario:       request.Scenario,
 		})
 		if err != nil {
 			return err
@@ -438,6 +444,33 @@ func (d *Dependencies) runStarted(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		return d.Dives.Record(r.Context(), conn, runID, "started", nil, nil)
+	}); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type computedRequest struct {
+	SimImageDigest string `json:"simImageDigest"`
+	PhysicsVersion int    `json:"physicsVersion"`
+}
+
+// runComputed records what actually ran this.
+//
+// Reported by the agent once the runtime has said which physics it is, rather
+// than assumed from the runtime version tag — the tag stayed `r1` through six
+// changes to the physics in one day, and every result from before became
+// incomparable with every result after without the record saying a word.
+func (d *Dependencies) runComputed(w http.ResponseWriter, r *http.Request) {
+	var request computedRequest
+	if err := readJSON(r, &request); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	if err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		return d.Dives.Computed(r.Context(), conn, r.PathValue("runId"),
+			request.SimImageDigest, request.PhysicsVersion)
 	}); err != nil {
 		writeError(w, r, err)
 		return

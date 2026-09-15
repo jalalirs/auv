@@ -292,6 +292,25 @@ type Run struct {
 	// comparing across versions has to be refused rather than done quietly.
 	RuntimeVersion string `json:"runtimeVersion"`
 
+	// What actually computed it. The digest says exactly what ran, which is
+	// what a reproduction needs; the physics version says whether the answer
+	// would have been the same, which is what a table needs. A runtime rebuilt
+	// on a new base image has a different digest and the same physics, and
+	// refusing to compare those would make the platform useless by being right
+	// too often.
+	//
+	// Both are empty until the runtime says so, which it does before it opens
+	// anything — so a run that failed while loading a scene still says what it
+	// would have been computed by.
+	SimImageDigest string `json:"simImageDigest,omitempty"`
+	PhysicsVersion *int   `json:"physicsVersion,omitempty"`
+
+	// Which question this run is an answer to, when it is one of many. A sweep
+	// asks one mission against a list of doubts and every run in it is the
+	// same mission under one of them; without this they are a hundred
+	// unrelated dives that happen to share a name.
+	Scenario json.RawMessage `json:"scenario,omitempty"`
+
 	DeviceID *string `json:"deviceId,omitempty"`
 	GPUShare float64 `json:"gpuShare"`
 
@@ -644,11 +663,18 @@ type RunSpec struct {
 	// What the request says the dive needs, over what the platform would
 	// assemble from its parts. Optional.
 	Needs json.RawMessage
+
+	// Which question this run answers, when it is one of many. Optional, and
+	// opaque to the platform: a doubt is whatever somebody could not promise,
+	// and the platform should not hold a list of the weather it is allowed to
+	// worry about.
+	Scenario json.RawMessage
 }
 
 const selectRun = `
 	SELECT id, dive_id, queue_id, mode, state, city_digest, vehicle_digest,
-	       conditions_digest, autonomy_digest, seed, runtime_version, device_id,
+	       conditions_digest, autonomy_digest, seed, runtime_version,
+	       coalesce(sim_image_digest, ''), physics_version, scenario, device_id,
 	       gpu_share, requested_at, requested_by, started_at, ended_at,
 	       lease_expires_at, outcome, failure_reason, needs
 	FROM dive.run`
@@ -658,7 +684,8 @@ func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 	var city, vehicle, conditions, needs []byte
 	err := row.Scan(&run.ID, &run.DiveID, &run.QueueID, &run.Mode, &run.State,
 		&city, &vehicle, &conditions, &run.AutonomyDigest, &run.Seed,
-		&run.RuntimeVersion, &run.DeviceID, &run.GPUShare, &run.RequestedAt,
+		&run.RuntimeVersion, &run.SimImageDigest, &run.PhysicsVersion, &run.Scenario,
+		&run.DeviceID, &run.GPUShare, &run.RequestedAt,
 		&run.RequestedBy, &run.StartedAt, &run.EndedAt, &run.LeaseExpiresAt,
 		&run.Outcome, &run.FailureReason, &needs)
 	if err != nil {
@@ -769,11 +796,11 @@ func (s *Store) RequestRun(ctx context.Context, conn db.Conn, spec RunSpec) (Run
 	_, err = conn.Exec(ctx, `
 		INSERT INTO dive.run
 		    (id, dive_id, queue_id, mode, city_digest, vehicle_digest,
-		     conditions_digest, autonomy_digest, seed, runtime_version,
+		     conditions_digest, autonomy_digest, seed, runtime_version, scenario,
 		     gpu_share, requested_by, needs)
 		SELECT $1, d.id, $2, $3::dive.run_mode,
 		       city.digest, vehicle.digest, $4, stack.image_digest,
-		       $5, $6, $7, $8, $10
+		       $5, $6, $11, $7, $8, $10
 		  FROM dive.dive d
 		  JOIN catalog.version city ON city.id = d.city_version_id
 		  JOIN catalog.version vehicle ON vehicle.id = d.vehicle_version_id
@@ -782,7 +809,7 @@ func (s *Store) RequestRun(ctx context.Context, conn db.Conn, spec RunSpec) (Run
 		   AND city.published_at IS NOT NULL
 		   AND vehicle.published_at IS NOT NULL`,
 		id, spec.QueueID, string(spec.Mode), conditionsDigest[:], seed, spec.RuntimeVersion,
-		share, spec.RequestedBy, spec.DiveID, encodedNeeds)
+		share, spec.RequestedBy, spec.DiveID, encodedNeeds, nullJSON(spec.Scenario))
 	if err != nil {
 		return Run{}, fmt.Errorf("requesting a run: %w", err)
 	}
@@ -1364,6 +1391,36 @@ func (s *Store) Started(ctx context.Context, conn db.Conn, runID string) error {
 	}
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("%w: this run is not preparing, so it cannot start", domain.ErrInvalid)
+	}
+	return nil
+}
+
+// nullJSON keeps an absent document absent rather than storing "null".
+//
+// A jsonb column holding the four characters `null` is not empty: it reads
+// back as a document that says nothing, and every query that asks "is there a
+// scenario" has to know the difference. There is no reason for anybody outside
+// here to know it.
+func nullJSON(said json.RawMessage) any {
+	if len(said) == 0 || string(said) == "null" {
+		return nil
+	}
+	return []byte(said)
+}
+
+// Computed records what actually ran this: the image, and the physics.
+//
+// Said by the agent once the runtime has declared itself, which it does before
+// it opens anything — so a run that failed while loading a scene still says
+// what it would have been computed by, and that is exactly the run somebody is
+// trying to compare against a working one.
+func (s *Store) Computed(ctx context.Context, conn db.Conn, runID, digest string, physics int) error {
+	_, err := conn.Exec(ctx, `
+		UPDATE dive.run
+		   SET sim_image_digest = nullif($2, ''), physics_version = $3
+		 WHERE id = $1`, runID, digest, physics)
+	if err != nil {
+		return fmt.Errorf("recording what computed a run: %w", err)
 	}
 	return nil
 }

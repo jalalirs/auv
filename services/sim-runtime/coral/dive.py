@@ -109,6 +109,13 @@ def main() -> int:
     seed = int(brief.get("seed", 0))
     seed_everything(seed)
 
+    # What computed this. Said before anything is prepared, so that a run which
+    # fails while opening a scene still says what it would have been computed
+    # by — which is exactly the run somebody is trying to compare.
+    from runner import PHYSICS, PHYSICS_IS
+
+    say("physics", version=PHYSICS, is_=PHYSICS_IS)
+
     say("brief", runId=brief.get("runId"), seed=seed,
         mode=brief.get("mode"), rosDomain=brief.get("rosDomainId"))
 
