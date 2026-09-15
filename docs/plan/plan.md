@@ -666,6 +666,35 @@ Two things the browser found that no test would have:
   pins the published version the way the dive composer does, and a caller
   naming something that is not there is now told so.
 
+**And the sweep asked for from the screen caught a defect in the sweep.** It
+came back saying that giving the mission *twice as long* broke it — "two
+shifts" 0 of 2, "a shift" 1 of 2 — which is nonsense, and the scores said why:
+the same water and twice the allowance scored 0.971 and then 0.429. Nothing
+about the allowance caused that. The vehicle was dead reckoning for forty
+minutes and one seed drifted where the other did not. **With one run either
+side of a setting, one unlucky seed *is* fifty per cent**, and the answer
+reported it as a dimension that changes everything — which is the most
+expensive kind of wrong a rehearsal can be, because it sends somebody to worry
+about the wrong thing.
+
+So a scenario is a sample and not a run. A sweep flies each one three times by
+default; it survives when more than half its runs did, its score is the median,
+and the spread is kept — "2 of 3 runs did the job, 43% to 96%" is a different
+thing from three out of three, and whoever is planning ship time should see
+which they have. One repeat behaves exactly as before.
+
+The same four scenarios, flown three times each, reverse the finding and make
+it useful:
+
+    current:still · how long:a shift        1.000, 0.743, 0.600   1 of 3
+    current:still · how long:two shifts     1.000, 1.000, 1.000   3 of 3
+    current:half knot · either              0.057 every time      0 of 3
+
+One shift is not enough time to finish the cell reliably; two shifts finishes
+it every time; and in half a knot of current nothing finishes it at all. That
+is the answer the doubt was invented for — "allow twice as long" rather than
+"do not go" — and the single-run sweep had it backwards by luck.
+
 **The target at the top of this file is met.** Lay out a site on its chart,
 plan the work over it pointing at what was drawn, ask what breaks it, and read:
 *survives 2 of 8; it turns on the current; at half a knot it fails four times
