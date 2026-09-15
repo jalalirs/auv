@@ -106,8 +106,13 @@ def start(said: dict, name: str):
 
 def newest(p, name: str):
     """The last sweep of this mission, for --show."""
+    # Case-insensitively: a sweep asked for from the application is named from
+    # the mission's own name — "Outplant B7 ~ 15 September" — and one asked for
+    # here is named from the mission *file*, which spells it "outplant B7".
+    # Matching exactly found the older sweep and said nothing about it.
+    wanted = name.lower()
     for one in p.call("GET", f"/api/v1/organisations/{p.org}/sweeps")["sweeps"]:
-        if one["name"].startswith(name):
+        if one["name"].lower().startswith(wanted):
             return one["id"]
     return None
 

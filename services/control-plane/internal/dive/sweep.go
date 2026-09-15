@@ -46,7 +46,12 @@ type Sweep struct {
 	Name             string          `json:"name"`
 	Doubts           json.RawMessage `json:"doubts"`
 	Good             float64         `json:"good"`
-	CreatedAt        time.Time       `json:"createdAt"`
+	// How many times each scenario is flown. A scenario is a sample and not a
+	// run: with one run either side of a setting, one unlucky seed *is* fifty
+	// per cent, and the answer reports it as a dimension that changes
+	// everything.
+	Repeats   int       `json:"repeats"`
+	CreatedAt time.Time `json:"createdAt"`
 	CreatedBy        string          `json:"createdBy"`
 
 	// How it is going, counted from its runs rather than kept on the row: a
@@ -65,6 +70,7 @@ type SweepSpec struct {
 	Name             string
 	Doubts           json.RawMessage
 	Good             float64
+	Repeats          int
 	QueueID          string
 	RuntimeVersion   string
 	CreatedBy        string
@@ -85,6 +91,10 @@ func (s SweepSpec) Validate() error {
 	}
 	if s.Good <= 0 || s.Good > 1 {
 		return fmt.Errorf("%w: what counts as done is a fraction of one", domain.ErrInvalid)
+	}
+	if s.Repeats < 1 || s.Repeats > 25 {
+		return fmt.Errorf("%w: a scenario is flown between one and twenty-five times",
+			domain.ErrInvalid)
 	}
 	return nil
 }
@@ -275,7 +285,7 @@ func keysInOrder(raw json.RawMessage) ([]string, error) {
 
 // ── the answer ───────────────────────────────────────────────────────────────
 
-// Flown is one scenario and how it went.
+// Flown is one run of one scenario, and how it went.
 type Flown struct {
 	RunID     string            `json:"runId"`
 	DiveID    string            `json:"diveId"`
@@ -313,8 +323,10 @@ type Dimension struct {
 type Findings struct {
 	Scenarios int     `json:"scenarios"`
 	Flown     int     `json:"flown"`
+	FlownRuns int     `json:"flownRuns"`
 	Flying    int     `json:"flying"`
 	Survived  int     `json:"survived"`
+	Repeats   int     `json:"repeats"`
 	Good      float64 `json:"good"`
 
 	// Ranked by how much each *changes* the outcome, not by how often it was
@@ -344,7 +356,10 @@ type Findings struct {
 	// and the failures are the cheap ones.
 	Cost Cost `json:"cost"`
 
-	Runs []Flown `json:"runs"`
+	// Every question asked, with how many times it was asked and how it went.
+	// This is what the answer above is about; the runs are underneath it.
+	Scenarios_ []ScenarioFlown `json:"scenariosFlown"`
+	Runs       []Flown         `json:"runs"`
 }
 
 // MATTERS is the gap, between a dimension's best setting and its worst, at
@@ -353,30 +368,109 @@ type Findings struct {
 // seeds were drawn as which setting was flown.
 const MATTERS = 0.15
 
+// Scenario is how a scenario went across every run of it.
+//
+// A scenario is a sample and not a run. With one run either side of a setting
+// an unlucky seed *is* fifty per cent, and the answer reports it as a
+// dimension that changes everything: the sweep that proved this had the same
+// water and twice the allowance score 0.971 and then 0.429, because the
+// vehicle was dead reckoning for forty minutes and one seed drifted where the
+// other did not.
+//
+// So: it survives when more than half its runs did, and its score is the
+// median of them. The spread is kept, because a scenario that worked twice in
+// three is a different thing from one that worked three times in three, and
+// somebody planning ship time should be able to see which they have.
+type ScenarioFlown struct {
+	Label    string            `json:"label"`
+	Chosen   map[string]string `json:"chosen"`
+	Runs     int               `json:"runs"`
+	Survived int               `json:"survivedRuns"`
+	Works    bool              `json:"survived"`
+	Score    float64           `json:"score"`
+	Worst    float64           `json:"worst"`
+	Best     float64           `json:"best"`
+	Says     string            `json:"says,omitempty"`
+	HeldBack bool              `json:"heldBack"`
+}
+
+// gather turns runs into scenarios, keeping the order they were first seen.
+func gather(flown []Flown) []ScenarioFlown {
+	order := []string{}
+	at := map[string][]Flown{}
+	for _, one := range flown {
+		if _, seen := at[one.Label]; !seen {
+			order = append(order, one.Label)
+		}
+		at[one.Label] = append(at[one.Label], one)
+	}
+	out := make([]ScenarioFlown, 0, len(order))
+	for _, label := range order {
+		runs := at[label]
+		scores := make([]float64, 0, len(runs))
+		one := ScenarioFlown{Label: label, Chosen: runs[0].Chosen, Runs: len(runs)}
+		for _, run := range runs {
+			scores = append(scores, run.Score)
+			if run.Survived {
+				one.Survived++
+			}
+			if run.HeldBack {
+				one.HeldBack = true
+			}
+			if one.Says == "" {
+				one.Says = run.Says
+			}
+		}
+		sort.Float64s(scores)
+		one.Worst, one.Best = scores[0], scores[len(scores)-1]
+		one.Score = median(scores)
+		// More than half. At one run this is that run, which is what every
+		// sweep flown before this did.
+		one.Works = one.Survived*2 > len(runs)
+		out = append(out, one)
+	}
+	return out
+}
+
+func median(sorted []float64) float64 {
+	n := len(sorted)
+	if n%2 == 1 {
+		return sorted[n/2]
+	}
+	return (sorted[n/2-1] + sorted[n/2]) / 2.0
+}
+
 // What is the answer: what breaks the mission, and what would fix it.
 func What(flown []Flown, good float64) Findings {
-	out := Findings{Good: good, Flown: len(flown), Matters: []Dimension{},
-		MadeNoDifference: []string{}, Runs: flown, Physics: []int{}}
+	// Every question asked, each with every time it was asked. What is judged
+	// from here on is the scenario, because that is what a doubt resolves to;
+	// the runs are how confidently it is known.
+	scenarios := gather(flown)
+	out := Findings{Good: good, Flown: len(scenarios), FlownRuns: len(flown),
+		Matters: []Dimension{}, MadeNoDifference: []string{},
+		Scenarios_: scenarios, Runs: flown, Physics: []int{}}
 	seen := map[int]bool{}
-	for _, one := range flown {
-		if one.Survived {
+	for _, one := range scenarios {
+		if one.Works {
 			out.Survived++
 		}
-		if one.HeldBack && !one.Survived {
+		if one.HeldBack && !one.Works {
 			out.HeldBack++
 		}
+	}
+	for _, one := range flown {
 		if one.PhysicsAt != nil && !seen[*one.PhysicsAt] {
 			seen[*one.PhysicsAt] = true
 			out.Physics = append(out.Physics, *one.PhysicsAt)
 		}
 	}
 	sort.Ints(out.Physics)
-	if len(flown) == 0 {
+	if len(scenarios) == 0 {
 		return out
 	}
 
 	names := map[string]bool{}
-	for _, one := range flown {
+	for _, one := range scenarios {
 		for name := range one.Chosen {
 			names[name] = true
 		}
@@ -388,7 +482,7 @@ func What(flown []Flown, good float64) Findings {
 	sort.Strings(dimensions)
 
 	for _, name := range dimensions {
-		rates := ratesOf(flown, name)
+		rates := ratesOf(scenarios, name)
 		if len(rates) == 0 {
 			continue
 		}
@@ -415,7 +509,7 @@ func What(flown []Flown, good float64) Findings {
 		}
 		return out.Matters[a].Name < out.Matters[b].Name
 	})
-	if len(out.Matters) == 0 || out.Survived == len(flown) {
+	if len(out.Matters) == 0 || out.Survived == len(scenarios) {
 		return out
 	}
 
@@ -425,8 +519,8 @@ func What(flown []Flown, good float64) Findings {
 	out.TurnsOn, out.At = turns.Name, at.Value
 	out.FailsOf = [2]int{at.Of - at.Survived, at.Of}
 
-	doomed := []Flown{}
-	for _, one := range flown {
+	doomed := []ScenarioFlown{}
+	for _, one := range scenarios {
 		if one.Chosen[turns.Name] == at.Value {
 			doomed = append(doomed, one)
 		}
@@ -454,8 +548,10 @@ func What(flown []Flown, good float64) Findings {
 	return out
 }
 
-// ratesOf is how each setting of one dimension fared, worst first.
-func ratesOf(flown []Flown, dimension string) []Rate {
+// ratesOf is how each setting of one dimension fared, worst first. Counted in
+// scenarios rather than runs: the question is how many of the situations this
+// setting appears in still work.
+func ratesOf(flown []ScenarioFlown, dimension string) []Rate {
 	order := []string{}
 	at := map[string]*Rate{}
 	for _, one := range flown {
@@ -468,7 +564,7 @@ func ratesOf(flown []Flown, dimension string) []Rate {
 			order = append(order, value)
 		}
 		at[value].Of++
-		if one.Survived {
+		if one.Works {
 			at[value].Survived++
 		}
 	}
@@ -493,13 +589,14 @@ func ratesOf(flown []Flown, dimension string) []Rate {
 
 const selectSweep = `
 	SELECT id, org_id, mission_version_id, vehicle_version_id, water, name,
-	       doubts, good, created_at, created_by
+	       doubts, good, repeats, created_at, created_by
 	  FROM dive.sweep`
 
 func scanSweep(row interface{ Scan(...any) error }) (Sweep, error) {
 	var one Sweep
 	err := row.Scan(&one.ID, &one.OrgID, &one.MissionVersionID, &one.VehicleVersionID,
-		&one.Water, &one.Name, &one.Doubts, &one.Good, &one.CreatedAt, &one.CreatedBy)
+		&one.Water, &one.Name, &one.Doubts, &one.Good, &one.Repeats,
+		&one.CreatedAt, &one.CreatedBy)
 	return one, err
 }
 
@@ -530,11 +627,11 @@ func (s *Store) CreateSweep(ctx context.Context, conn db.Conn, spec SweepSpec) (
 	id := ids.New(ids.KindSweep)
 	if _, err := conn.Exec(ctx, `
 		INSERT INTO dive.sweep (id, org_id, mission_version_id, vehicle_version_id,
-		                        water, name, doubts, good, created_by)
-		VALUES ($1, $2, $3, $4, coalesce($5, '{}'::jsonb), $6, $7, $8, $9)`,
+		                        water, name, doubts, good, repeats, created_by)
+		VALUES ($1, $2, $3, $4, coalesce($5, '{}'::jsonb), $6, $7, $8, $9, $10)`,
 		id, spec.OrgID, spec.MissionVersionID, spec.VehicleVersionID,
 		nullJSON(spec.Water), spec.Name, []byte(spec.Doubts), spec.Good,
-		spec.CreatedBy); err != nil {
+		spec.Repeats, spec.CreatedBy); err != nil {
 		if db.IsForeignKeyViolation(err) {
 			// A caller naming something that is not there. Theirs to fix, and
 			// theirs to be told about: the versions are the easy ones to get
@@ -555,7 +652,7 @@ func (s *Store) CreateSweep(ctx context.Context, conn db.Conn, spec SweepSpec) (
 	if err != nil {
 		return Sweep{}, fmt.Errorf("reading back a sweep: %w", err)
 	}
-	made.Scenarios = len(scenarios)
+	made.Scenarios = len(scenarios) * spec.Repeats
 	return made, nil
 }
 
@@ -600,16 +697,21 @@ func (s *Store) askForScenario(ctx context.Context, conn db.Conn, spec SweepSpec
 	if err != nil {
 		return fmt.Errorf("encoding which scenario %q is: %w", label, err)
 	}
-	if _, err := s.RequestRun(ctx, conn, RunSpec{
-		DiveID:         made.ID,
-		QueueID:        spec.QueueID,
-		Mode:           Batch,
-		RuntimeVersion: spec.RuntimeVersion,
-		RequestedBy:    spec.CreatedBy,
-		Scenario:       chosen,
-		SweepID:        sweepID,
-	}); err != nil {
-		return fmt.Errorf("asking for %q: %w", label, err)
+	// One dive, flown as many times as the sweep asks. Runs of one dive rather
+	// than one run of many dives, because they are the same question asked
+	// again — and each draws its own seed, which is the whole point.
+	for i := 0; i < spec.Repeats; i++ {
+		if _, err := s.RequestRun(ctx, conn, RunSpec{
+			DiveID:         made.ID,
+			QueueID:        spec.QueueID,
+			Mode:           Batch,
+			RuntimeVersion: spec.RuntimeVersion,
+			RequestedBy:    spec.CreatedBy,
+			Scenario:       chosen,
+			SweepID:        sweepID,
+		}); err != nil {
+			return fmt.Errorf("asking for %q: %w", label, err)
+		}
 	}
 	return nil
 }
@@ -724,7 +826,10 @@ func (s *Store) Findings(ctx context.Context, id string) (Findings, error) {
 		return Findings{}, err
 	}
 	found := What(flown, one.Good)
-	found.Scenarios, found.Flying = one.Scenarios, one.Flying
+	// How many distinct questions were asked, against how many runs that is.
+	found.Scenarios = one.Scenarios / max(1, one.Repeats)
+	found.Flying = one.Flying
+	found.Repeats = one.Repeats
 	found.Cost = WhatItCosts(spent, true)
 	return found, nil
 }
