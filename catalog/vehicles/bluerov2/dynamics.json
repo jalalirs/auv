@@ -147,6 +147,13 @@
       }
     ]
   },
+  "tether": {
+    "_": "The Fathom Slim tether Blue Robotics ships with it: 7.6 mm, and made very slightly buoyant in seawater on purpose — a tether that is not spends the dive dragging the vehicle down.",
+    "diameterM": 0.0076,
+    "lengthM": 100.0,
+    "weightNPerM": -0.02,
+    "dragNormal": 1.2
+  },
   "sensors": [
     {
       "kind": "underwater_camera",

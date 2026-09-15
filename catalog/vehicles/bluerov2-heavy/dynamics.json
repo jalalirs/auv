@@ -38,6 +38,13 @@
     ]
   },
 
+  "tether": {
+    "_": "The same Fathom Slim cable: 7.6 mm, made very slightly buoyant in seawater on purpose — one that is not spends the dive dragging the vehicle down. A heavier vehicle does not get a heavier tether; it gets the same one and minds it less.",
+    "diameterM": 0.0076,
+    "lengthM": 100.0,
+    "weightNPerM": -0.02,
+    "dragNormal": 1.2
+  },
   "sensors": [
     { "kind": "underwater_camera", "name": "forward",
       "position": [0.30, 0, 0.10], "orientation": [0, 0, 0],
