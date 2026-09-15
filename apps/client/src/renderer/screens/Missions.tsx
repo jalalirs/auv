@@ -246,6 +246,17 @@ export function Planning({ platform, held, mission, place, onBack }: {
 
       <section className="planning">
         <div className="tools">
+          <h3>Over which arrangement</h3>
+          <select value={layout} onChange={(e) => setLayout(e.target.value)}>
+            <option value="">none — bare ground</option>
+            {layouts.map((one) => (
+              <option key={one.id} value={one.id} disabled={!versions.has(one.id)}>
+                {one.name}{versions.has(one.id) ? "" : " (nothing saved)"}
+              </option>
+            ))}
+          </select>
+          <p className="quiet">Pinned, not followed: September gets the site as
+            it was in March.</p>
           <h3>Add a stage</h3>
           {STAGES.map((one) => (
             <button key={one.key} type="button" className="tool"
@@ -258,20 +269,6 @@ export function Planning({ platform, held, mission, place, onBack }: {
               {one.name}
             </button>
           ))}
-          <h3>Over which arrangement</h3>
-          <select value={layout} onChange={(e) => setLayout(e.target.value)}>
-            <option value="">none — bare ground</option>
-            {layouts.map((one) => (
-              <option key={one.id} value={one.id} disabled={!versions.has(one.id)}>
-                {one.name}{versions.has(one.id) ? "" : " (nothing saved)"}
-              </option>
-            ))}
-          </select>
-          <p className="quiet">
-            The arrangement is pinned, not followed. A plan flown in September
-            gets the site as it was arranged in March, which is the only way
-            two rounds a season apart mean anything against each other.
-          </p>
         </div>
 
         <div className="order">

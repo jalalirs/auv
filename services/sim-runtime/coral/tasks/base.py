@@ -209,6 +209,15 @@ class Task:
         if isinstance(said, (list, tuple)) and len(said) == 3:
             return np.asarray(said, dtype=float)
         if not isinstance(said, dict):
+            # No point was given, but the task was pointed at something. That
+            # is the point: "inspect, over frame-3" names a place as plainly as
+            # a pair of coordinates, and it is the same sentence whichever task
+            # it is said about. Written here rather than in each task, because
+            # it was in two of them and missing from the rest — so a stage a
+            # person wrote the same way in an editor meant one thing for a
+            # reach and nothing at all for an inspect.
+            if self.over is not None:
+                return self.middle_of(self.over)
             return None if fallback is None else np.asarray(fallback, dtype=float)
         if said.get("over") is not None:
             thing = None if self.world is None else self.world.by_id(str(said["over"]))
