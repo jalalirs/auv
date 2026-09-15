@@ -115,9 +115,13 @@ func TestRankedByWhatChangesTheOutcome(t *testing.T) {
 			}
 		}
 	}
+	// Four scenarios, flown twice each: two of the four work. Counted in
+	// scenarios rather than runs, because a scenario is what a doubt resolves
+	// to and the runs are how confidently it is known.
 	found := What(runs, 0.8)
-	if found.Survived != 4 || found.Flown != 8 {
-		t.Fatalf("four of eight should survive, got %d of %d", found.Survived, found.Flown)
+	if found.Survived != 2 || found.Flown != 4 || found.FlownRuns != 8 {
+		t.Fatalf("two of four scenarios over eight runs, got %d of %d over %d",
+			found.Survived, found.Flown, found.FlownRuns)
 	}
 	if len(found.Matters) != 1 || found.Matters[0].Name != "current" {
 		t.Fatalf("the current is what matters, got %v", found.Matters)
@@ -129,8 +133,8 @@ func TestRankedByWhatChangesTheOutcome(t *testing.T) {
 	if found.TurnsOn != "current" || found.At != "one knot" {
 		t.Fatalf("it turns on the current at one knot, got %q at %q", found.TurnsOn, found.At)
 	}
-	if found.FailsOf != [2]int{4, 4} {
-		t.Fatalf("all four at one knot fail, got %v", found.FailsOf)
+	if found.FailsOf != [2]int{2, 2} {
+		t.Fatalf("both scenarios at one knot fail, got %v", found.FailsOf)
 	}
 	if !found.NoRescue {
 		t.Fatalf("nothing rescues it, so it should say so: %+v", found)
