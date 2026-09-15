@@ -310,6 +310,7 @@ type Run struct {
 	// same mission under one of them; without this they are a hundred
 	// unrelated dives that happen to share a name.
 	Scenario json.RawMessage `json:"scenario,omitempty"`
+	SweepID  string          `json:"sweepId,omitempty"`
 
 	DeviceID *string `json:"deviceId,omitempty"`
 	GPUShare float64 `json:"gpuShare"`
@@ -669,12 +670,16 @@ type RunSpec struct {
 	// and the platform should not hold a list of the weather it is allowed to
 	// worry about.
 	Scenario json.RawMessage
+	// The sweep it belongs to, when it is part of one. The scenario says which
+	// question; this says which set of questions.
+	SweepID string
 }
 
 const selectRun = `
 	SELECT id, dive_id, queue_id, mode, state, city_digest, vehicle_digest,
 	       conditions_digest, autonomy_digest, seed, runtime_version,
-	       coalesce(sim_image_digest, ''), physics_version, scenario, device_id,
+	       coalesce(sim_image_digest, ''), physics_version, scenario,
+	       coalesce(sweep_id, ''), device_id,
 	       gpu_share, requested_at, requested_by, started_at, ended_at,
 	       lease_expires_at, outcome, failure_reason, needs
 	FROM dive.run`
@@ -685,7 +690,7 @@ func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 	err := row.Scan(&run.ID, &run.DiveID, &run.QueueID, &run.Mode, &run.State,
 		&city, &vehicle, &conditions, &run.AutonomyDigest, &run.Seed,
 		&run.RuntimeVersion, &run.SimImageDigest, &run.PhysicsVersion, &run.Scenario,
-		&run.DeviceID, &run.GPUShare, &run.RequestedAt,
+		&run.SweepID, &run.DeviceID, &run.GPUShare, &run.RequestedAt,
 		&run.RequestedBy, &run.StartedAt, &run.EndedAt, &run.LeaseExpiresAt,
 		&run.Outcome, &run.FailureReason, &needs)
 	if err != nil {
@@ -797,10 +802,10 @@ func (s *Store) RequestRun(ctx context.Context, conn db.Conn, spec RunSpec) (Run
 		INSERT INTO dive.run
 		    (id, dive_id, queue_id, mode, city_digest, vehicle_digest,
 		     conditions_digest, autonomy_digest, seed, runtime_version, scenario,
-		     gpu_share, requested_by, needs)
+		     sweep_id, gpu_share, requested_by, needs)
 		SELECT $1, d.id, $2, $3::dive.run_mode,
 		       city.digest, vehicle.digest, $4, stack.image_digest,
-		       $5, $6, $11, $7, $8, $10
+		       $5, $6, $11, nullif($12, ''), $7, $8, $10
 		  FROM dive.dive d
 		  JOIN catalog.version city ON city.id = d.city_version_id
 		  JOIN catalog.version vehicle ON vehicle.id = d.vehicle_version_id
@@ -809,7 +814,8 @@ func (s *Store) RequestRun(ctx context.Context, conn db.Conn, spec RunSpec) (Run
 		   AND city.published_at IS NOT NULL
 		   AND vehicle.published_at IS NOT NULL`,
 		id, spec.QueueID, string(spec.Mode), conditionsDigest[:], seed, spec.RuntimeVersion,
-		share, spec.RequestedBy, spec.DiveID, encodedNeeds, nullJSON(spec.Scenario))
+		share, spec.RequestedBy, spec.DiveID, encodedNeeds, nullJSON(spec.Scenario),
+		spec.SweepID)
 	if err != nil {
 		return Run{}, fmt.Errorf("requesting a run: %w", err)
 	}
