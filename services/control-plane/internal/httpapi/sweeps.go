@@ -116,18 +116,21 @@ func (d *Dependencies) sweepFindings(w http.ResponseWriter, r *http.Request) {
 // registerSweeps declares the routes a sweep needs.
 func (rt *Router) registerSweeps() {
 	d := rt.deps
+	// Defining it is defining dives, which is what it is; asking for a queue
+	// is checked inside the handler, because a sweep holds a machine as many
+	// times over as it has scenarios and that is the part that costs.
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/sweeps",
 		Summary: "fly a mission against everything that could go wrong with it",
-		Action:  policy.RunRequest,
+		Action:  policy.DiveWrite,
 		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.createSweep})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations/{orgId}/sweeps",
 		Summary: "what has been swept", Action: policy.DiveRead,
 		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.listSweeps})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/sweeps/{sweepId}",
-		Summary: "one sweep", Action: policy.DiveRead,
+		Summary: "one sweep", Action: policy.PlatformReadCatalogue,
 		Resource: atPlatform(), Handle: d.readSweep})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/sweeps/{sweepId}/findings",
 		Summary: "what breaks this mission, and what would fix it",
-		Action:  policy.DiveRead,
+		Action:  policy.PlatformReadCatalogue,
 		Resource: atPlatform(), Handle: d.sweepFindings})
 }
