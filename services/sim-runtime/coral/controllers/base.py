@@ -33,6 +33,28 @@ class Observation:
     floor: float | None           # the seabed's height under the vehicle, world z
     on_the_bottom: bool
 
+    # What the sonar last saw, when the vehicle carries one and something came
+    # back. `{"rangeM":, "bearingRad":, "beam":}` for the nearest return, where
+    # the bearing is off the nose and positive to starboard — so turning away
+    # from it is a sign.
+    #
+    # This is the one thing a controller learns that nobody told it. Everything
+    # else it is handed comes from the dive: where it is, what it is for, what
+    # the plan was. A thing in the water that is not in the plan is only ever
+    # going to arrive this way.
+    seen: dict | None = None
+
+    # The whole fan: `{"bearingsRad": [...], "rangesM": [...]}`, where a range
+    # is NaN for a beam that came back with nothing. The nearest return above
+    # is the convenience; this is the instrument.
+    #
+    # A controller steering on the nearest return alone cannot avoid anything
+    # dead ahead: the closest beam flips between the two either side of centre
+    # as the noise moves, the vehicle is told to turn first one way and then
+    # the other, and it drives straight into the thing while chattering. What
+    # it needs is where the *gap* is, which is a question about the fan.
+    sonar: dict | None = None
+
     @property
     def depth(self) -> float:
         return float(-self.position[2])

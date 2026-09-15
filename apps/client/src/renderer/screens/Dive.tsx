@@ -66,6 +66,9 @@ const ASKING_LOOKS_LIKE =
 const BUILT_IN: { key: string; name: string; says: string }[] = [
   { key: "pursue", name: "The platform's planner",
     says: "Works out a route for the task and flies it. The floor a written controller has to beat." },
+  { key: "wary", name: "The planner, with its eyes open",
+    says: "The same route, flown with the sonar on: it steers round what it sees "
+        + "and nothing told it about. The comparison that says whether a sonar earns its place." },
   { key: "ponder", name: "The one that thinks",
     says: "Given the goal rather than a route, it decides for itself — on a slow loop, "
         + "the way a controller with a model in it would." },

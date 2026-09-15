@@ -24,6 +24,12 @@ from .pursue import PursueController
 from .thinking import Thinking
 
 
+# The controllers that fly a route the planner drew. They are the same
+# controller with the sonar off and on, and which of them is flying is a choice
+# somebody makes rather than a mode.
+ROUTE_FLYERS = ("pursue", "wary")
+
+
 class Helm:
     def __init__(self, allocator, dt: float, bridge=None) -> None:
         self.allocator = allocator
@@ -36,6 +42,14 @@ class Helm:
         # The platform's own answer to a route, so a task can be flown by
         # somebody who has not written a controller.
         self.pursue = PursueController(self.capability, model.effective_mass(), -model.net_buoyancy_n, dt)
+        # And the same controller with the sonar switched on. Not a mode of the
+        # planner: a controller somebody chooses, so that the difference
+        # between flying a route blind and flying it with eyes is one row in a
+        # comparison rather than a flag nobody finds.
+        from .wary import WaryController
+
+        self.wary = WaryController(self.capability, model.effective_mass(),
+                                   -model.net_buoyancy_n, dt)
         # And one that is handed the goal instead of a route and works out its
         # own way of doing it, on a clock slow enough for something real to be
         # doing the working out. Nobody flies with it unless it is asked for.
@@ -53,7 +67,8 @@ class Helm:
         self.stack = None if bridge is None else StackController(bridge)
         self.controllers: dict[str, Controller] = {
             "hold": self.hold, "manual": self.manual, "pursue": self.pursue,
-            "ponder": self.ponder, "asking": self.asking, "failsafe": self.failsafe,
+            "wary": self.wary, "ponder": self.ponder, "asking": self.asking,
+            "failsafe": self.failsafe,
         }
         # A vehicle with no thrusters gets the controller that can fly it, and
         # loses the ones that cannot. A hold that commands a wrench on a hull
@@ -275,6 +290,13 @@ class Helm:
             self.prefer = name
             self.failsafe.stand_down()
             self._hand_over(self.controllers[name], seen)
+        elif name in ROUTE_FLYERS:
+            # Both of these fly the route the planner drew; which of them does
+            # is the whole of the difference being measured. Asking for one and
+            # silently getting the other made a comparison that could not
+            # differ, which is worse than no comparison at all.
+            self.prefer = name
+            self.failsafe.stand_down()
         else:
             self.prefer = None
             if self.stack is not None and self.stack.talking(seen.t):
@@ -284,14 +306,26 @@ class Helm:
     # ── the decision ─────────────────────────────────────────────────────────
 
     def fly(self, route) -> None:
-        """Give the platform's own controller a route, and the vehicle with it.
+        """Give the platform's own controllers a route, and the vehicle with it.
 
-        A dive with something to do is flown by this unless somebody takes it:
-        a hand at the keys wins, and a stack that is talking wins, because both
-        are somebody saying they would rather fly it themselves.
+        A dive with something to do is flown by one of these unless somebody
+        takes it: a hand at the keys wins, and a stack that is talking wins,
+        because both are somebody saying they would rather fly it themselves.
+
+        Both route-flyers are steered, not just the one that will fly it: they
+        are the same controller with the sonar off and on, and a dive that
+        switched between them mid-route should not find the other one holding
+        an empty route.
         """
-        self.pursue.steer(route)
+        for name in ROUTE_FLYERS:
+            self.controllers[name].steer(route)
         self.flying_the_route = bool(route)
+
+    def the_route_flyer(self) -> Controller:
+        """Which of them has the route: the one asked for, or the ordinary one."""
+        if self.prefer in ROUTE_FLYERS:
+            return self.controllers[self.prefer]
+        return self.pursue
 
     def deliberating(self) -> bool:
         """Whether anything here wants a slow clock.
@@ -348,8 +382,9 @@ class Helm:
         # old place for the rest of the dive believing it had arrived.
         if self.glide is not None:
             return self.glide
-        if self.flying_the_route and (not self.pursue.holding or self.pursue.wants_back(seen)):
-            return self.pursue
+        flyer = self.the_route_flyer()
+        if self.flying_the_route and (not flyer.holding or flyer.wants_back(seen)):
+            return flyer
         return self.hold
 
     def _hand_over(self, to: Controller, seen: Observation) -> None:
