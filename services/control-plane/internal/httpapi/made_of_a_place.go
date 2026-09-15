@@ -174,6 +174,19 @@ func (d *Dependencies) save(what madeOfAPlace) http.HandlerFunc {
 // has never been in the water has no cost to state, and the platform says so
 // instead of guessing one.
 func (d *Dependencies) missionCost(w http.ResponseWriter, r *http.Request) {
+	// That the plan exists is asked first, and separately.
+	//
+	// What this costs is read from the runs flown against it, and a plan
+	// nobody has flown has none — which is exactly what a plan that does not
+	// exist has. So without this the platform answered for anything: a
+	// deleted mission, a typo, the word "banana", all of them came back two
+	// hundred with a working day of eight hours and nothing in it. A cost is
+	// a statement about a thing, and the first duty of a statement about a
+	// thing is that the thing is there.
+	if _, err := d.Catalog.Mission(r.Context(), r.PathValue("missionId")); err != nil {
+		writeError(w, r, err)
+		return
+	}
 	found, err := d.Dives.WhatAMissionCosts(r.Context(), r.PathValue("missionId"))
 	if err != nil {
 		writeError(w, r, err)

@@ -232,7 +232,7 @@ export function Sweeps({ platform, held, onOpen, onChanged }: {
                       onClick={() => onOpen(one.id)}>
                 <span className="what">{one.name}</span>
                 <span className="quiet">
-                  {one.flown ?? 0} of {one.scenarios ?? 0} flown
+                  {one.flown ?? 0} of {one.runs ?? 0} flown
                   {one.flying ? ` · ${one.flying} in the water` : ""} · {ago(one.createdAt)}
                 </span>
               </button>
@@ -277,7 +277,7 @@ export function Swept({ platform, sweep, onBack }: {
     <>
       <PageHead title={one?.name ?? "A sweep"}
                 says={one === undefined ? "" :
-                  `${one.flown ?? 0} of ${one.scenarios ?? 0} flown${flying ? `, ${flying} in the water` : ""}`}
+                  `${one.flown ?? 0} of ${one.runs ?? 0} flown${flying ? `, ${flying} in the water` : ""}`}
                 back="Sweeps" onBack={onBack}
                 aside={<Pill kind={flying > 0 ? "busy" : "good"}>
                   {flying > 0 ? "flying" : "done"}
