@@ -1164,6 +1164,44 @@ paths:
           description: Recorded.
         '400':
           $ref: '#/components/responses/Invalid'
+  /api/v1/runs/{runId}/computed:
+    post:
+      tags: [work]
+      summary: What actually ran this — the image, and the physics
+      description: >
+        Reported by the agent once the runtime has declared which physics it
+        is, rather than assumed from the runtime version tag: the physics
+        changed six times in one day and the tag stayed `r1` through all six,
+        so every result from before became incomparable with every result
+        after without the record saying a word.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: The run.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [physicsVersion]
+              properties:
+                simImageDigest:
+                  type: string
+                  description: Exactly what ran, which is what a reproduction needs.
+                physicsVersion:
+                  type: integer
+                  description: >
+                    Whether the answer would have been the same, which is what
+                    a table needs.
+      responses:
+        '204':
+          description: Recorded.
+        '400':
+          $ref: '#/components/responses/Invalid'
   /api/v1/runs/{runId}/renew:
     post:
       tags: [work]
