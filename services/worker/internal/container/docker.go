@@ -202,6 +202,35 @@ func (r *Runtime) Present(ctx context.Context, image string) error {
 	return response.Close()
 }
 
+// Digest is the content identity of an image on this host.
+//
+// What actually ran, as against what was asked for by name. A tag is a name
+// somebody can move; this is the thing itself, and it is what a reproduction
+// needs.
+func (r *Runtime) Digest(ctx context.Context, image string) (string, error) {
+	response, err := r.do(ctx, http.MethodGet, "/images/"+url.PathEscape(image)+"/json", nil)
+	if err != nil {
+		return "", fmt.Errorf("asking what image %s is: %w", image, err)
+	}
+	defer response.Close()
+	var said struct {
+		ID          string   `json:"Id"`
+		RepoDigests []string `json:"RepoDigests"`
+	}
+	if err := json.NewDecoder(response).Decode(&said); err != nil {
+		return "", fmt.Errorf("reading what image %s is: %w", image, err)
+	}
+	// The registry digest where the image came from one, which is the identity
+	// another host could fetch by. The local id otherwise — an image built here
+	// and never pushed still has an identity, and saying nothing would be worse.
+	for _, one := range said.RepoDigests {
+		if at := strings.LastIndex(one, "@"); at >= 0 {
+			return one[at+1:], nil
+		}
+	}
+	return said.ID, nil
+}
+
 // Pull fetches an image. The reference is pinned by digest, so what is fetched
 // is what the job's provenance names.
 func (r *Runtime) Pull(ctx context.Context, image string) error {

@@ -194,6 +194,11 @@ func (p *platform) Started(ctx context.Context, runID string) error {
 	return p.client.DiveStarted(ctx, runID)
 }
 
+func (p *platform) Computed(ctx context.Context, runID, simImageDigest string,
+	physicsVersion int) error {
+	return p.client.DiveComputed(ctx, runID, simImageDigest, physicsVersion)
+}
+
 func (p *platform) Renew(ctx context.Context, runID string) error {
 	return p.client.RenewDive(ctx, runID)
 }
