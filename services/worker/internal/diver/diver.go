@@ -747,6 +747,7 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	// that ran and left no record of what happened is a dive nobody can learn
 	// anything from, which is most of the point of running it.
 	stopRelay()
+	d.whatComputedIt(ctx, claimed.Run.ID, briefDir, log)
 	summary := d.keep(ctx, claimed.Run.ID, result.Logs, relayed, log)
 	if files := d.keepRecording(ctx, claimed.Run.ID, filepath.Join(briefDir, "recording"), log); files > 0 {
 		summary["recording"] = map[string]any{"files": files}
@@ -816,9 +817,6 @@ var ErrNothingToDo = errors.New("nothing to run")
 func (d *Diver) keep(ctx context.Context, runID, output string, relayed *relay, log *slog.Logger) map[string]any {
 	summary := map[string]any{}
 	kept := 0
-	// Said once. The relay may already have reported it, in which case that
-	// line is one it has marked and this loop skips before reaching here.
-	computed := false
 
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
@@ -850,7 +848,6 @@ func (d *Diver) keep(ctx context.Context, runID, output string, relayed *relay, 
 			}
 			continue
 		}
-		d.whatComputedIt(ctx, runID, kind, reported, &computed)
 		if err := d.platform.Record(ctx, runID, kind, simulated, reported); err != nil {
 			log.Warn("could not record what the simulator said", "kind", kind, "error", err)
 			continue
@@ -1132,7 +1129,6 @@ func (r *relay) mark(line string) {
 // dive, are left for the end; everything else — the scene opening, the task
 // set, a photograph — is what somebody waiting wants to see now.
 func (d *Diver) relayEvents(ctx context.Context, runID, simID string, relayed *relay, log *slog.Logger) {
-	computed := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -1161,7 +1157,6 @@ func (d *Diver) relayEvents(ctx context.Context, runID, simID string, relayed *r
 			if at, ok := reported["t"].(float64); ok {
 				simulated = &at
 			}
-			d.whatComputedIt(ctx, runID, kind, reported, &computed)
 			if err := d.platform.Record(ctx, runID, kind, simulated, reported); err != nil {
 				log.Warn("could not relay what the simulator said", "kind", kind, "error", err)
 				continue
@@ -1184,22 +1179,27 @@ func (d *Diver) relayEvents(ctx context.Context, runID, simID string, relayed *r
 // A failure here is logged and dropped. A run whose provenance could not be
 // recorded is still a run, and losing the dive over it would be worse than
 // having to notice later that the record does not say.
-func (d *Diver) whatComputedIt(ctx context.Context, runID, kind string,
-	reported map[string]any, said *bool) {
-	if *said || kind != "physics" {
+func (d *Diver) whatComputedIt(ctx context.Context, runID, briefDir string, log *slog.Logger) {
+	said, err := os.ReadFile(filepath.Join(briefDir, "computed.json"))
+	if err != nil {
+		// A runtime old enough not to write it, or one that died before it
+		// could. Not a failure of the dive, and the record simply does not say.
+		log.Info("the runtime did not say what computed this", "error", err)
 		return
 	}
-	version, ok := reported["version"].(float64)
-	if !ok {
+	var what struct {
+		PhysicsVersion int `json:"physicsVersion"`
+	}
+	if err := json.Unmarshal(said, &what); err != nil || what.PhysicsVersion == 0 {
+		log.Warn("could not read what the runtime said computed this", "error", err)
 		return
 	}
-	*said = true
 	digest, err := d.runtime.Digest(ctx, d.simImage)
 	if err != nil {
-		d.logger.Warn("could not ask what the runtime image is", "error", err)
+		log.Warn("could not ask what the runtime image is", "error", err)
 	}
-	if err := d.platform.Computed(ctx, runID, digest, int(version)); err != nil {
-		d.logger.Warn("could not record what computed this run", "error", err)
+	if err := d.platform.Computed(ctx, runID, digest, what.PhysicsVersion); err != nil {
+		log.Warn("could not record what computed this run", "error", err)
 	}
 }
 
@@ -1291,6 +1291,7 @@ func (d *Diver) resume(ctx context.Context, kept handles) error {
 		code = 0
 	}
 	output, _ := d.runtime.Logs(ctx, kept.Simulator, 0)
+	d.whatComputedIt(ctx, claimed.Run.ID, kept.BriefDir, log)
 	summary := d.keep(ctx, claimed.Run.ID, output, relayed, log)
 	if files := d.keepRecording(ctx, claimed.Run.ID, filepath.Join(kept.BriefDir, "recording"), log); files > 0 {
 		summary["recording"] = map[string]any{"files": files}

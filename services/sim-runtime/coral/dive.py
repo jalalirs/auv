@@ -109,12 +109,24 @@ def main() -> int:
     seed = int(brief.get("seed", 0))
     seed_everything(seed)
 
-    # What computed this. Said before anything is prepared, so that a run which
-    # fails while opening a scene still says what it would have been computed
-    # by — which is exactly the run somebody is trying to compare.
+    # What computed this, written beside the brief and said aloud.
+    #
+    # Both, because they are for different readers. The file is for the agent,
+    # which has to put it on the run record: a file is there whether or not
+    # anything was watching, whatever a log driver is doing, and however much
+    # Isaac Sim said on the way up — and the whole point of this number is that
+    # it must be on the record of a run that failed before its scene opened,
+    # which is exactly the run somebody is trying to compare. The event is for
+    # a person reading the record afterwards.
     from runner import PHYSICS, PHYSICS_IS
 
     say("physics", version=PHYSICS, is_=PHYSICS_IS)
+    try:
+        beside = pathlib.Path(os.environ.get("CORAL_CITY_BRIEF", "/dive/dive.json")).parent
+        (beside / "computed.json").write_text(json.dumps(
+            {"physicsVersion": PHYSICS, "is": PHYSICS_IS}))
+    except OSError as trouble:
+        say("could_not_say_what_computed_it", why=str(trouble)[:160])
 
     say("brief", runId=brief.get("runId"), seed=seed,
         mode=brief.get("mode"), rosDomain=brief.get("rosDomainId"))
