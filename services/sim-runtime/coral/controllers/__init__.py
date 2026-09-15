@@ -9,9 +9,10 @@ from .manual import ManualController
 from . import plan
 from .ponder import PonderController
 from .pursue import PursueController
+from .wary import WaryController
 
 __all__ = ["Command", "Controller", "Failsafe", "Helm", "HoldController",
            "ManualController", "Observation", "Parameter", "PursueController",
     "plan",
     "PonderController",
-           "StackController"]
+           "StackController", "WaryController"]

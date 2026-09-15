@@ -367,6 +367,9 @@ class Dive:
         # been placed, because a tether is a line between two points and one of
         # them is the vehicle.
         self.tether = None
+        # The sonar, if the vehicle carries one. Built once the packages are
+        # read, because it is described by the vehicle's own package.
+        self.sonar = None
         self.world.version = str(brief.get("layoutVersionId") or "")
         # And the world not being as drawn, which is a scenario's business
         # rather than a layout's: the mooring thirty metres from where it was
@@ -1113,6 +1116,7 @@ class Dive:
             self.began_at = self.position.copy()
             self.began_rotation = self.rotation.copy()
             self.begin_navigating()
+            self.switch_on_the_sonar()
             self.run_out_the_tether()
             self.began_with_wh = (0.0 if self.battery is None else self.battery.remaining_wh)
         # Every task that is about the coral rather than about the ground.
@@ -1264,6 +1268,30 @@ class Dive:
         except Exception as exc:
             self.navigation = None
             self.say("navigation_unavailable", why=str(exc)[:160])
+
+    def switch_on_the_sonar(self) -> None:
+        """Give the vehicle its sonar, if its package says it has one.
+
+        Declared in the BlueROV2's package since the beginning and returning
+        nothing this whole time, because there was nothing in the world to
+        return off. There is now — and what it is *for* is the one thing a
+        controller learns that nobody told it.
+        """
+        import json
+
+        from sonar import Sonar
+
+        try:
+            described = json.loads((pathlib.Path(self.brief.get("vehiclePath", "/dive/vehicle"))
+                                    / "dynamics.json").read_text())
+            said = next((one for one in described.get("sensors", [])
+                         if one.get("kind") == "imaging_sonar"), None)
+        except Exception:
+            said = None
+        if said is None:
+            return
+        self.sonar = Sonar(said, seed=int(self.brief.get("seed", 0)))
+        self.say("sonar_on", **self.sonar.said())
 
     def run_out_the_tether(self) -> None:
         """Put the cable in the water, if this vehicle is on one.
@@ -1649,14 +1677,18 @@ class Dive:
             floor = self.seabed.under(float(self.position[0]), float(self.position[1]))
         if self.navigation is None:
             return Observation(t=self.simulated, position=self.position, velocity=self.velocity,
-                               rotation=self.rotation, floor=floor, on_the_bottom=self.on_the_bottom)
+                               rotation=self.rotation, floor=floor, on_the_bottom=self.on_the_bottom,
+                               seen=None if self.sonar is None else self.sonar.nearest(),
+                               sonar=None if self.sonar is None else self.sonar.fan())
         believed_floor = None if floor is None else floor + (self.navigation.believed[2] - float(self.position[2]))
         return Observation(t=self.simulated,
                            position=self.navigation.believed.copy(),
                            velocity=self.velocity,
                            rotation=self.navigation.believed_rotation(self.rotation),
                            floor=believed_floor,
-                           on_the_bottom=self.on_the_bottom)
+                           on_the_bottom=self.on_the_bottom,
+                           seen=None if self.sonar is None else self.sonar.nearest(),
+                           sonar=None if self.sonar is None else self.sonar.fan())
 
     def step(self) -> None:
         """One step of physics. Everything else is somebody else's schedule."""
@@ -1674,6 +1706,11 @@ class Dive:
             self.navigation.current = self.current
             self.navigation.step(self.simulated, self.position, self.velocity,
                                  self.rotation, floor, self.dt)
+        # The sonar pings at its own rate, before anything is asked of the
+        # controller: what it commands on is what the instrument last said.
+        if self.sonar is not None and self.sonar.due(self.simulated):
+            self.sonar.ping(self.simulated, self.position, self.rotation,
+                            self.world, self.seabed)
         self.commands = self.helm.command(self.observation())
         # A vehicle that is not moved by thrust is moved by this: the pump and
         # the sliding mass get a step towards whatever the controller asked
@@ -2226,6 +2263,7 @@ class Dive:
                  # reads it to go and fetch the document — and a run whose
                  # vehicle struck something ought to say so where the result is.
                  **({} if not len(self.world) else {"world": self.world.described()}),
+                 **({} if self.sonar is None else {"sonar": self.sonar.said()}),
                  # What the cable did, on a dive that had one. A hundred metres
                  # of it is usually the largest force on the vehicle, and a
                  # record that did not say so would be a record of a different
