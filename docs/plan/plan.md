@@ -563,6 +563,57 @@ whoever signs.
 **Done:** a mission states what it will cost before it is flown, and a sweep
 states what the weather will cost on top.
 
+*Done (15 September).* The outplant sweep, read back:
+
+> What it costs, priced on the 2 that did the job:
+>     6.1 Wh a run (6.3 at the ninetieth percentile), 13 minutes in the water.
+>     40 on a charge of 240 usable Wh (266 less a 10% reserve).
+>
+> 37 runs of work in a working day, held back by the clock. Allow 4 days of
+> ship time for every day of work, if everything in the doubt list is equally
+> likely.
+
+Every input had been in the record for weeks. What the step is really about is
+four decisions about how to read them, and each one is a way of being wrong
+that costs somebody money:
+
+  **Cost is measured on what worked.** The survivors of that sweep cost 6 Wh
+  and thirteen minutes; the failures burned the full forty. Averaging all eight
+  would have priced a thirteen-minute job at half an hour, and it flatters in
+  the other direction too — the failures are the cheap ones.
+
+  **The reserve is not yours.** Usable energy is capacity less the reserve the
+  battery is required to keep. A plan that spends into it surfaces a vehicle on
+  a beach.
+
+  **Which cap binds decides what to buy.** The clock and the charge each limit
+  the day, and the answer says which is smaller: a job held back by the battery
+  is fixed by a second battery, and a job held back by the clock is not.
+
+  **Only a sweep may speak of ship days.** A sweep flies a stated list of
+  doubts once each, so the share that survived is a statement about that list.
+  A mission's own past runs are whatever happened to get flown, which is not a
+  sample of anything — so a mission priced on its history says what a working
+  day holds and stops. And even the sweep's sentence carries its assumption out
+  loud: one in four surviving is one in four *of those combinations*, and
+  turning that into days assumes they are equally likely. Nobody thinks a dead
+  Doppler log is as likely as a calm morning, and a sentence that hid that
+  would be a sentence somebody quoted at a funder.
+
+The worst case is the ninetieth percentile rather than the maximum, because a
+plan sized by the single worst dive anybody ever flew is a plan sized by one
+bad seed — and one sized by the mean runs out of battery one day in two.
+
+Asked of the two missions on the platform, it answers one and refuses the
+other: *"Al Fahal, the September plot round: nothing to price yet — 12 runs, 0
+did the job."* That plan runs out of time on its inspect stage, which step 11
+already found and said. A platform that priced it anyway would be inventing the
+number that matters most.
+
+Running the Go tests properly also caught something from step 13: the contract
+test has a rule that every served route is described, and `POST
+/api/v1/runs/{runId}/computed` was not. It is now.
+
 ## 16 · The Sweeps tab
 
 `screens/Sweeps.tsx`. Define the doubts, watch it fly, read the answer — a
