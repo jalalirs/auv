@@ -2229,72 +2229,119 @@ point and gets later and more embarrassing the longer it is left.
 
 ---
 
-## Now, because everything else quietly depends on them
+## Where this is now
 
-- [ ] **59 · a result knows what computed it.** Small, and every day without it
-      more results become unsafe to compare. Nothing else should land first.
-- [ ] **49 · a model actually flies a dive.** Built, wired, never run. One
-      deploy. Until it happens, "AI controller" is an assertion and the
-      benchmark has one contestant.
-- [ ] **50 · the map stops looking wrong.** Colour from what a thing *is*, not
-      from what it photographed as. The satellite cannot say what colour coral
-      is and it can say clearly where it is.
+Nineteen steps of `plan.md` are flown and in the record, and between them they
+closed most of this list. What that bought, in one sentence: somebody opens the
+application, lays out a site on its own chart, writes a plan of work pointing at
+the things they drew, ticks what nobody can promise, presses one button, and is
+told in the morning what breaks it, what fixes the most of it, and how many days
+of ship time it costs. Without a terminal.
 
-## Then the foundation the rest of it stands on
+**Closed by the plan.** 49 (a model flies a dive), 50 (the map stops looking
+wrong), 52 (the study map — the editor, the palette, the landing rules), 53 (the
+tether, and lines that bow), 56 (the sonar; the CTD and the lights are not),
+57 (the map says where, the task says what counts), 59 (a result knows what
+computed it), 66 (what a mission costs), the structural what-if, and the parts
+of 63 that are tabs — Missions and Sweeps exist, the grey ones are gone, and
+nothing in the rail says "not yet".
 
+**What that leaves** is below, and it is shorter and better-shaped than it was.
+Three of the four things at the top are not new work at all: they are the
+platform being usable by somebody who is not us.
+
+
+## Now, because the platform is finished and unproven
+
+- [ ] **62 · somebody who dives says it is right.** Everything here has been
+      checked against itself. The physics agrees with the papers it was taken
+      from, the tasks agree with the tests, and not one person who has flown an
+      ROV on a reef has looked at any of it. It is the only item on this list
+      that can invalidate the others, it costs nothing but somebody's
+      afternoon, and it gets more expensive to do every week. **Not ours to
+      arrange.**
+- [ ] **60 · something comes out of it.** The answer to a sweep is a screen and
+      a terminal. A reef programme needs the thing they take to whoever signs:
+      the sentence, the table, the scenarios, as a file that opens in something
+      they already have. The arithmetic is done — step 15 produces the sentence
+      — and nothing exports it. This is the gap between a demonstration and a
+      tool.
+- [ ] **64 · the SDK can only command a wrench.** Still two identical branches
+      in `tank.py`, exactly as described below. A person outside can fly a
+      BlueROV2 and cannot fly a Seaglider, which means the vehicle this whole
+      phase was built around is closed to the people whose controllers are
+      supposed to be the point.
+- [ ] **the sonar does not reach a deployed controller.** `/sonar/image` is in
+      the BlueROV2's topic contract and nothing publishes it: the bridge
+      carries the camera, the IMU, the log and the depth, and stops. So `wary`
+      can avoid things and somebody else's controller cannot, which is the
+      wrong way round — ours is the reference, theirs is the product. A fan of
+      ranges is a `LaserScan` and the message already exists.
+
+
+## Then the benchmark, which finally has contestants
+
+- [ ] **37 · the benchmark and the leaderboard.** It has waited since Phase 4
+      for a second contestant and now has four — the planner, the planner with
+      its eyes open, the one that thinks, and the one that asks a model — plus
+      the first comparison anybody would actually argue about: `wary` hits
+      nothing and arrives five metres short, `pursue` arrives exactly and
+      ploughs through three nursery frames. Which is better is a real question
+      and the platform cannot yet answer it.
+- [ ] **63 · Autonomy, rebuilt as a comparison.** The one screen the plan did
+      not touch. It is still a deploy log answering "what have I uploaded",
+      which nobody asks. It should be 37's screen: each controller with what it
+      has flown, what it scored, what it cost in energy and — for one that
+      thinks — in seconds and tokens, over which tasks and in which water.
+- [ ] **a controller that avoids *and* arrives.** `wary` trades its target for
+      not hitting things and the record says so. The next one plans round
+      rather than leaning away, and remembers what it saw — this one judges
+      every ping on its own, so a vehicle that has passed something and turned
+      back meets it again as a surprise.
+
+
+## Then the fleet, which is mostly packaging
+
+- [ ] **55 · the rest of the fleet.** The Heavy and the REMUS are packages, not
+      physics, and both are written. KAUST runs several vehicles and a
+      catalogue with two in it does not look like a fleet. The Otter needs a
+      sea state and waits.
 - [ ] **54 · one declaration and one refusal.** A thing says what it is for, a
-      thing says what it needs, a mismatch is refused before the dive. Exists
-      once already (42); generalise it rather than write it twice more.
-- [ ] **52 · the study map.** The 2-D editor: draw on real bathymetry, depth
-      under the cursor, a landing rule per tool, and the editing that makes it
-      a tool rather than a demo. *This is the largest single item in the list
-      and the one the most others are waiting on.*
-- [ ] **57 · the map says where, the task says what counts.** Needs 52 to
-      exist. Splits geometry from scoring, which is what lets a mission be
-      designed rather than parameterised.
-- [ ] **53 · the tether.** Out of order on purpose: it needs none of the above
-      and it is the only thing in this list that is already *wrong* rather than
-      merely missing. Every tethered dive in the record flew without the
-      largest drag force acting on it.
+      thing says what it needs, a mismatch is refused before the dive claims a
+      machine. It exists three times now — the vehicle contract, the glider's
+      `needs_hover`, the task pointed at something not in the water — and the
+      fourth should not be written by hand.
+- [ ] **56 · the CTD and the lights.** They need nothing and have been waiting
+      the whole time. A CTD makes the EOS-80 water visible to a controller
+      instead of only to the physics.
+- [ ] **65 · more than one vehicle in the water.** A ship, an ROV and a diver
+      is what a working day looks like.
 
-## Then the things that become possible
 
-- [ ] **53 · the rest of it** — catenaries that bow with the current, motion in
-      the top half-wavelength, things that move.
-- [ ] **56 · the sonar,** which needs 52 to have put something in the water.
-- [ ] **56 · the CTD and the lights,** which need nothing and should not wait.
-- [ ] **58 · ground as fine as the work.** Once tasks are drawn on a map, the
-      map's resolution stops being a detail.
-- [ ] **55 · the rest of the fleet.** Publish the Heavy and the REMUS first —
-      packages, not physics. The Otter needs a sea state and waits for 53.
-- [ ] **61 · time of day, tide, season.**
+## Then the things that need the above
 
-## Then the reason any of it was built
-
-- [ ] **the structural what-if.** Not "what if the current is half a knot" but
-      "what if the mooring is not where the chart says". Only possible after 52.
-- [ ] **60 · something comes out of it.** A deliverable a reef programme opens
-      in a tool it already has.
+- [ ] **58 · ground as fine as the work.** Now that a task is drawn on a map,
+      the map's resolution has stopped being a detail: a five-metre sample is
+      coarser than a nursery frame.
+- [ ] **61 · time of day, tide, and season.**
 - [ ] **46 · overlap,** the third thing a reconstruction needs.
 - [ ] **47 · census,** which wants coral to have a condition.
 - [ ] **48 · a dive flown from words,** end to end.
-- [ ] **37 · the benchmark,** which has been waiting for a second contestant
-      since Phase 4 and gets one from 49.
 
-## Running alongside, not after
 
-- [ ] **63 · the interface.** Every item above has a screen it needs and none
-      of them have one: laying out a site, assembling a mission, reading a
-      sweep, watching a replay, exporting a result. Built as each item lands,
-      or it becomes a second project that never starts. Two pieces of it can
-      be done immediately and are worth doing immediately — **delete the three
-      grey tabs**, which are three decisions nobody has made pretending to be
-      a roadmap, and **rebuild Autonomy as a comparison** rather than a deploy
-      log, which is 37 finally getting a screen.
-- [ ] **45 · calibrated depths.** One free account and ICESat-2 makes Al Fahal
-      measured rather than plausible. Not ours to create.
-- [ ] **62 · somebody who dives says it is right.** At any point. The longer it
-      waits the more there is to be wrong about.
+## Small and true, found while building the plan
+
+- [ ] **a strike is counted once per step.** `World.struck` increments every
+      physics step a vehicle is inside something, so one graze of one nursery
+      frame reads as 4,982 strikes. The tether's counter was fixed the same
+      way and the world's was not.
+- [ ] **the record loses what a dive said before its scene opened — on a
+      replay.** The drain reads the whole log now, but the *live* relay still
+      asks for the last four hundred lines, so anybody watching misses the
+      first events. Harmless and untidy.
+- [ ] **45 · calibrated depths.** One free NASA Earthdata account and ICESat-2
+      ATL24 makes Al Fahal measured rather than plausible — fifty-seven
+      granules cross it. **Not ours to create.**
 
 
 ## What a dive is made of
