@@ -356,6 +356,10 @@ class Dive:
         # so a vehicle doing nothing in a current is carried by it.
         self.current = np.zeros(3)
         self.visibility_m = None
+        # Which of Jerlov's waters this is. Named by the conditions, because
+        # "clear Red Sea" and "the Keys in August" are selections a person
+        # makes and not numbers they should have to supply.
+        self.water_type = None
         self.read_conditions(brief.get("conditions"))
         # What somebody put in the water here. Empty when the dive was flown
         # over bare ground, which most are and always will be.
@@ -549,7 +553,8 @@ class Dive:
                        water_level=0.0,
                        across=float(extent[0]) if extent else 1000.0,
                        working_depth=abs(float(self.position[2])),
-                       visibility_m=self.visibility_m)
+                       visibility_m=self.visibility_m,
+                       water_type=self.water_type)
             self.water = water
 
         # A body of the vehicle's actual mass, at the vehicle's actual place.
@@ -905,6 +910,8 @@ class Dive:
         self.current = np.array([speed * np.cos(angle), speed * np.sin(angle), 0.0])
         visibility = parameters.get("visibilityM")
         self.visibility_m = None if visibility in (None, "", 0) else float(visibility)
+        named = parameters.get("waterType") or parameters.get("jerlov")
+        self.water_type = None if named in (None, "") else str(named)
         self.read_the_water(parameters)
         # What is deployed in this water to fix a position with, if anything.
         # The vehicle's instruments are the vehicle's; this is the water's, and
@@ -1091,6 +1098,7 @@ class Dive:
         said = {"currentMetresPerSecond": round(speed, 3), "currentHeadingDeg": round(float(heading), 1),
                 "current": [round(float(v), 4) for v in self.current[:2]],
                 "visibilityM": self.visibility_m,
+                **({} if self.water_type is None else {"waterType": self.water_type}),
                 "densityKgM3": round(float(self.density), 3)}
         if self.salinity_psu is not None:
             said["salinityPsu"] = round(float(self.salinity_psu), 2)

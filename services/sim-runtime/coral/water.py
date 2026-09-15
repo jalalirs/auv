@@ -20,31 +20,80 @@ coefficients here are for clear coastal water, which is what a reef in a bay is.
 
 from __future__ import annotations
 
-# How far light of each colour travels before it is dimmed to 1/e, in metres.
+# Jerlov's types, as attenuation lengths in metres: how far light of each
+# colour travels before it is dimmed to 1/e.
 #
-# Clear coastal water, roughly Jerlov type 1C. Red is gone in four metres, which
-# is the single most visible fact about being underwater and the one a grey fog
-# gets wrong.
-ATTENUATION_METRES = (4.0, 17.0, 26.0)
-
-# What colour the water itself glows, from everything scattering light back.
-# Not the same as what it absorbs: the sea is blue-green because that is what is
-# left, and it is bright because the whole volume is scattering.
+# The shorthand the whole field uses. I is the clearest open ocean, III the
+# murkiest oceanic; 1C through 9C are increasingly turbid coastal water. A reef
+# in a bay is coastal; the Red Sea off a fringing reef is close to oceanic.
 #
-# Deeper and more saturated than the first version. A photograph of this reef
-# has warm coral against a strong blue; a paler scatter colour gives the same
-# geometry against a grey-cyan wash, and the coral picks the wash up too.
-SCATTER = (0.012, 0.10, 0.31)
+# These are the water, and until now only one third of them reached the
+# picture: the renderer's fog takes a single distance, so the green length was
+# used for how dark it gets with depth and red and blue were computed and
+# thrown away. Which is the whole reason a red vehicle at fifteen metres came
+# out the same colour as a blue one.
+JERLOV = {
+    "I":   (8.0, 40.0, 50.0),    # clearest open ocean
+    "IA":  (7.0, 32.0, 40.0),
+    "IB":  (6.5, 27.0, 33.0),
+    "II":  (5.5, 23.0, 24.0),
+    "III": (5.0, 19.0, 16.0),    # murkiest oceanic: blue dies before green
+    "1C":  (4.0, 17.0, 13.0),    # clear coastal
+    "3C":  (3.5, 12.0, 8.0),
+    "5C":  (3.0, 8.5, 5.0),
+    "7C":  (2.5, 6.0, 3.2),
+    "9C":  (2.0, 4.0, 2.0),      # turbid harbour: everything dies together
+}
+# What a place is flown in unless its conditions say otherwise.
+DEFAULT_TYPE = "1C"
+
+# The two facts that make the far half of a frame the colour it is.
+#
+# Light that never reaches the camera directly is what the medium scattered
+# into the line of sight, and at any distance past a few attenuation lengths
+# that veiling light *is* the picture. Its colour is not what the water
+# absorbs — it is what survives, which is the reciprocal of the attenuation,
+# normalised. So it is derived here rather than picked: a number picked by eye
+# is a number that has to be re-picked for every water type, and there are ten.
+#
+# How much of the light that goes into the medium comes back rather than being
+# absorbed. Seawater's single-scattering albedo is low — most of what is lost
+# is lost, not redirected — and this is what stops the distance being a bright
+# white wall. The first attempt at this filled forty metres with white haze.
+SCATTERING_ALBEDO = 0.28
 
 
-def is_it_deep(depth: float) -> float:
+def water_of(kind: str | None = None):
+    """The attenuation lengths of a named water type."""
+    return JERLOV.get(str(kind or DEFAULT_TYPE).upper().replace(" ", ""),
+                      JERLOV[DEFAULT_TYPE])
+
+
+def veiling_colour(lengths) -> tuple:
+    """The colour the distance goes, for a water of these lengths.
+
+    What survives, normalised to the channel that survives most. Clear ocean
+    comes out blue because blue survives; turbid harbour comes out green-brown
+    because by then blue does not.
+    """
+    most = max(lengths)
+    return tuple(round(float(one) / most, 4) for one in lengths)
+
+
+# Kept as the name the rest of this file used before water types existed.
+ATTENUATION_METRES = water_of(DEFAULT_TYPE)
+SCATTER = veiling_colour(ATTENUATION_METRES)
+
+
+def is_it_deep(depth: float, lengths=None) -> float:
     """How much daylight is left at a depth, as a fraction of the surface."""
-    return max(0.02, 2.718 ** (-depth / ATTENUATION_METRES[1]))
+    lengths = lengths or ATTENUATION_METRES
+    return max(0.02, 2.718 ** (-depth / lengths[1]))
 
 
 def make(stage, say, floor: float, water_level: float = 0.0,
          across: float = 1000.0, working_depth: float = 10.0,
-         visibility_m: float | None = None) -> None:
+         visibility_m: float | None = None, water_type: str | None = None) -> None:
     """Put water over a place, and light it from above.
 
     Four things, in the order they matter: the fog that is the water itself, the
@@ -58,7 +107,14 @@ def make(stage, say, floor: float, water_level: float = 0.0,
 
     # How much daylight is left where this dive is happening. Wanted by both the
     # lights and the camera, so it is worked out once.
-    left = is_it_deep(max(0.0, working_depth))
+    # Which water this is. Named by the conditions, or clear coastal, and every
+    # number below comes off it rather than out of this file.
+    lengths = water_of(water_type)
+    veiling = veiling_colour(lengths)
+    left = is_it_deep(max(0.0, working_depth), lengths)
+    say("water_is", type=str(water_type or DEFAULT_TYPE),
+        attenuationM=list(lengths), veiling=list(veiling),
+        daylightLeft=round(left, 3))
 
     # ── the camera ───────────────────────────────────────────────────────────
     #
@@ -98,33 +154,44 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # used for the thing it is actually a good model of: a participating medium
     # that absorbs and scatters over distance.
     settings.set("/rtx/fog/enabled", True)
-    settings.set("/rtx/fog/fogColor", list(SCATTER))
+    settings.set("/rtx/fog/fogColor", list(veiling))
     # The fog is added to everything the camera sees, so its strength is how
     # much of the picture is water rather than reef, and where it starts is how
     # close a thing has to be to keep its own colour.
     #
-    # This began at 1.35 starting three metres from the lens, which put four
-    # fifths of a close-up colony under water: the reef came out the colour of
-    # marzipan and no exposure fixed it, because darkening the picture darkens
-    # the wash by exactly as much. Measured at twelve metres on the fore reef,
-    # the near reef was still rendering (0.10, 0.17, 0.28) — blue over red — at
-    # 0.95 starting at eight metres. A photograph of this reef holds its colour
-    # out to about ten metres and goes blue behind that, so that is where the
-    # haze starts.
-    settings.set("/rtx/fog/fogColorIntensity", 0.55)
-    # Visibility, near enough. Twenty metres is a good day on a reef; a diver
-    # calls thirty exceptional and five a bad one.
-    # The conditions may say otherwise: the fog scales with the visibility
-    # asked for, seventeen metres being what the numbers below were tuned to.
-    scale = 1.0 if not visibility_m else max(0.15, float(visibility_m) / 17.0)
-    settings.set("/rtx/fog/fogDistance", 30.0 * scale)
+    # How bright the veiling light gets. Not picked: it is how much of what
+    # the medium takes is scattered back rather than absorbed, times how much
+    # daylight is down here at all. A reef at thirty metres has a dimmer
+    # distance than the same reef at five, and it should.
+    #
+    # It was 0.55, measured off an exposure ladder — which was honest, and was
+    # one number standing in for two facts that move independently.
+    settings.set("/rtx/fog/fogColorIntensity",
+                 float(min(1.0, SCATTERING_ALBEDO * (0.4 + 0.6 * left))))
+    # The distance is the water's own attenuation length, for green.
+    #
+    # Green because it is most of what the eye reads as brightness, and green
+    # because it is the middle of three lengths the fog can only take one of.
+    # That is the approximation in this file and it is worth naming: red really
+    # does die four times faster than green and the fog cannot say so, so a red
+    # thing at ten metres is still too red. Putting that right needs a medium
+    # the renderer does not have, or the frame's own depth, which the capture
+    # does not hand back.
+    #
+    # It was thirty metres, which is not this water: looking straight down at a
+    # reef from twelve metres — an ordinary survey altitude — came back as an
+    # empty blue rectangle. A fog tuned by eye on one horizontal view is tuned
+    # for that view.
+    scale = 1.0 if not visibility_m else max(0.15, float(visibility_m) / lengths[1])
+    settings.set("/rtx/fog/fogDistance", float(lengths[1] * scale))
     settings.set("/rtx/fog/fogDensity", 1.0)
     settings.set("/rtx/fog/fogHeightDensity", 1.0)
-    # Fog that begins at the lens greys out the thing you came to look at.
-    # Water does haze at half a metre, but not enough to matter, and starting
-    # further out keeps the colour of what is close while still burying the
-    # distance.
-    settings.set("/rtx/fog/fogStartDistance", 11.0 * scale)
+    # Water starts at the lens, because it does. It was eleven metres, to keep
+    # close things their own colour — which is a real problem solved in the
+    # wrong place: what greyed out a close colony was a veiling intensity above
+    # one, not haze at half a metre. At this water's length a thing a metre
+    # away is six per cent hazed, which is what a photograph shows.
+    settings.set("/rtx/fog/fogStartDistance", 0.0)
 
     # ── the sun ──────────────────────────────────────────────────────────────
     #
