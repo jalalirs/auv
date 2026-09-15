@@ -448,6 +448,47 @@ the place, the vehicle and the conditions and nothing about the simulator.
 **Done:** two runs from either side of a bump cannot be put in one table without
 the platform saying so.
 
+*Done (15 September).* A run now carries three things it did not: the image
+digest that actually computed it, a physics version the runtime declares, and
+the scenario it is an answer to. One migration, as planned.
+
+The two provenance fields answer two different questions and are kept apart for
+that reason. The digest says *exactly* what ran, which is what a reproduction
+needs. The version says whether the answer would have been the same, which is
+what a table needs — a runtime rebuilt on a new base image has a different
+digest and the same physics, and refusing to compare those would make the
+platform useless by being right too often.
+
+The Dives page keeps runs apart by it. A trial is grouped by the dive, the
+controller *and* what computed it, so a controller "improved" on Tuesday is no
+longer compared against itself across a physics change with the simulator
+taking the credit; and any table that spans two says so in the vehicle colour
+above the numbers. Shown against one dive flown twice today, once before the
+declaration existed and once after: *"These runs were not all computed by the
+same simulator — runs that did not say and physics 1."*
+
+Getting the number onto the record took four attempts and every one of them
+found something:
+
+  **The record loses the first lines of every dive.** `brief` has been said
+  since the beginning and has never once been recorded. Isaac Sim writes
+  several hundred lines on the way up, and both readers of the simulator's
+  output asked for the last four hundred — a window that is right for somebody
+  watching and wrong for the record. The drain now reads all of it.
+
+  **There are two ways into a dive and only one of them is `main`.** Any dive
+  with a task, and any dive somebody is watching, is started as a Kit
+  application against `coral_city.kit` and never runs `dive.main` at all. A
+  declaration made there was made on the path almost nothing takes. It is made
+  in `prepare` now, which is where both ways in meet, and still before anything
+  is opened — so a run that fails while loading a scene says what it would have
+  been computed by, which is exactly the run somebody is trying to compare.
+
+  **Said aloud is not the same as written down.** The physics is now written
+  beside the brief as well as said, because the file is for the agent and the
+  event is for a person: a file is there whatever a log driver is doing and
+  however much the simulator said on the way up.
+
 ## 14 · A sweep is a thing the platform runs
 
 `internal/dive`, `internal/exec`, and the analysis lifted out of
