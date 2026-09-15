@@ -23,6 +23,7 @@ type createSweepRequest struct {
 	Water            json.RawMessage `json:"water,omitempty"`
 	Doubts           json.RawMessage `json:"doubts"`
 	Good             *float64        `json:"good,omitempty"`
+	Repeats          *int            `json:"repeats,omitempty"`
 	QueueID          string          `json:"queueId"`
 	RuntimeVersion   string          `json:"runtimeVersion"`
 }
@@ -47,6 +48,12 @@ func (d *Dependencies) createSweep(w http.ResponseWriter, r *http.Request) {
 	if request.Good != nil {
 		good = *request.Good
 	}
+	// Three by default: enough that one unlucky seed cannot carry a dimension
+	// on its own, and cheap enough that nobody thinks twice about it.
+	repeats := 3
+	if request.Repeats != nil {
+		repeats = *request.Repeats
+	}
 	var made dive.Sweep
 	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
 		var err error
@@ -58,6 +65,7 @@ func (d *Dependencies) createSweep(w http.ResponseWriter, r *http.Request) {
 			Name:             request.Name,
 			Doubts:           request.Doubts,
 			Good:             good,
+			Repeats:          repeats,
 			QueueID:          request.QueueID,
 			RuntimeVersion:   request.RuntimeVersion,
 			CreatedBy:        principal.ID,

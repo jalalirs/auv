@@ -99,6 +99,9 @@ def start(said: dict, name: str):
         "water": said.get("water") or {},
         "doubts": said["doubts"],
         "good": float(said.get("good", 0.8)),
+        # A scenario is a sample, not a run: with one run either side of a
+        # setting, one unlucky seed is fifty per cent.
+        "repeats": int(said.get("repeats", 3)),
         "queueId": queue["id"], "runtimeVersion": queue["runtimes"][0]})
     print(f"{sweep['scenarios']} scenarios, asked for as {sweep['id']}", flush=True)
     return p, sweep["id"]
@@ -145,8 +148,12 @@ def say(found: dict) -> None:
     if found["flown"] == 0:
         print("nothing flown yet")
         return
-    print(f"\nSurvives {found['survived']} of {found['flown']} scenarios "
-          f"(a mission counts as done at {found['good']:.0%}).\n")
+    each = found.get("repeats") or 1
+    print(f"\nSurvives {found['survived']} of {found['flown']} scenarios"
+          + (f", each flown {each} times" if each > 1 else "")
+          + f" (a mission counts as done at {found['good']:.0%}"
+          + (", and a scenario when more than half its runs did" if each > 1 else "")
+          + ").\n")
     if len(found.get("physics") or []) > 1:
         print("These were not all computed by the same simulator — physics "
               + " and ".join(str(v) for v in found["physics"])

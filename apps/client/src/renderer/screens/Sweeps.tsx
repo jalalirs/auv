@@ -41,6 +41,8 @@ export function Sweeps({ platform, held, onOpen, onChanged }: {
   const [picked, setPicked] = useState<Record<string, string[]>>({
     current: ["still", "half knot"], fix: ["array", "nothing"],
   });
+  // Three: enough that one unlucky seed cannot carry a dimension on its own.
+  const [repeats, setRepeats] = useState(3);
   const [cost, setCost] = useState<Cost | undefined>();
   const [asking, setAsking] = useState(false);
   const [trouble, setTrouble] = useState("");
@@ -87,7 +89,7 @@ export function Sweeps({ platform, held, onOpen, onChanged }: {
 
   const scenarios = useMemo(() => scenariosIn(picked), [picked]);
   const chosen = missions.find((one) => one.mission.id === mission);
-  const takes = willTake(cost, scenarios, held.queues[0]?.devices ?? 1);
+  const takes = willTake(cost, scenarios * repeats, held.queues[0]?.devices ?? 1);
 
   async function go(): Promise<void> {
     const queue = held.queues[0];
@@ -108,6 +110,7 @@ export function Sweeps({ platform, held, onOpen, onChanged }: {
         missionVersionId: chosen.version.id,
         vehicleVersionId: published.id,
         doubts: doubtsFrom(picked) as never,
+        repeats,
         queueId: queue.id,
         runtimeVersion: queue.runtimes?.[0] ?? "",
       });
@@ -154,6 +157,16 @@ export function Sweeps({ platform, held, onOpen, onChanged }: {
                   ))}
                 </select>
               </label>
+              <label>
+                <span>Each scenario, how many times</span>
+                <select value={repeats} onChange={(e) => setRepeats(Number(e.target.value))}>
+                  {[1, 3, 5, 10].map((one) => (
+                    <option key={one} value={one}>
+                      {one === 1 ? "once — a coin flip looks like a finding" : `${one} times`}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
             <div className="doubts">
@@ -190,7 +203,7 @@ export function Sweeps({ platform, held, onOpen, onChanged }: {
             <div className="acts">
               <span className="quiet">
                 {scenarios === 0 ? "Nothing is in doubt yet."
-                  : `${scenarios} scenarios, one dive each${takes ? ` · about ${takes}` : ""}.`}
+                  : `${scenarios} scenarios × ${repeats} = ${scenarios * repeats} runs${takes ? ` · about ${takes}` : ""}.`}
                 {cost === undefined || cost.notEnough
                   ? scenarios > 0 ? " This plan has not been flown before, so how long it will take is not known." : ""
                   : ""}
@@ -306,8 +319,12 @@ function Answer({ found, flying }: { found: Findings; flying: number }): React.J
     <>
       <p className="lead">
         Survives <b>{found.survived}</b> of <b>{found.flown}</b> scenarios
-        {flying > 0 ? ` so far, with ${flying} still in the water` : ""}
-        {" "}(a mission counts as done at {(found.good * 100).toFixed(0)}%).
+        {(found.repeats ?? 1) > 1
+          ? `, each flown ${found.repeats} times`
+          : ""}
+        {flying > 0 ? `, with ${flying} still in the water` : ""}
+        {" "}(a mission counts as done at {(found.good * 100).toFixed(0)}%
+        {(found.repeats ?? 1) > 1 ? ", and a scenario when more than half its runs did" : ""}).
       </p>
       {(found.physics ?? []).length > 1 ? (
         <p className="aside warn">
@@ -391,18 +408,25 @@ function Costs({ cost }: { cost: Cost | undefined }): React.JSX.Element {
 
 /** Every scenario and how it went, for whoever wants the rows. */
 function Scenarios({ found }: { found: Findings }): React.JSX.Element {
-  const runs = (found.runs ?? []) as {
-    runId: string; label: string; score: number; survived: boolean; says?: string;
+  const flown = (found.scenariosFlown ?? []) as {
+    label: string; score: number; survived: boolean; says?: string;
+    runs: number; survivedRuns: number; worst: number; best: number;
   }[];
   return (
     <div className="ledger runs">
-      {runs.map((one) => (
-        <div className="row" key={one.runId}>
+      {flown.map((one) => (
+        <div className="row" key={one.label}>
           <div className="who">
             <strong>{one.label}</strong>
-            <span className="when">{one.says ?? ""}</span>
+            <span className="when">
+              {one.runs > 1
+                ? `${one.survivedRuns} of ${one.runs} runs did the job · ${((one.worst ?? 0) * 100).toFixed(0)}% to ${((one.best ?? 0) * 100).toFixed(0)}%`
+                : (one.says ?? "")}
+            </span>
           </div>
-          <span className="result"><b>{((one.score ?? 0) * 100).toFixed(0)}%</b></span>
+          <span className="result" title={one.runs > 1 ? "the median of its runs" : ""}>
+            <b>{((one.score ?? 0) * 100).toFixed(0)}%</b>
+          </span>
           <Pill kind={one.survived ? "good" : "bad"}>{one.survived ? "survives" : "fails"}</Pill>
         </div>
       ))}

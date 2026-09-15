@@ -1645,6 +1645,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{runId}/computed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What actually ran this — the image, and the physics
+         * @description Reported by the agent once the runtime has declared which physics it is, rather than assumed from the runtime version tag: the physics changed six times in one day and the tag stayed `r1` through all six, so every result from before became incomparable with every result after without the record saying a word.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The run. */
+                    runId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Exactly what ran, which is what a reproduction needs. */
+                        simImageDigest?: string;
+                        /** @description Whether the answer would have been the same, which is what a table needs.
+                         *      */
+                        physicsVersion: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Recorded. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["Invalid"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/runs/{runId}/renew": {
         parameters: {
             query?: never;
@@ -3081,6 +3133,12 @@ export interface paths {
                          * @default 0.8
                          */
                         good?: number;
+                        /**
+                         * @description How many times each scenario is flown. A scenario is a sample and not a run: with one run either side of a setting, one unlucky seed *is* fifty per cent, and the answer reports it as a dimension that changes everything. A scenario survives when more than half its runs did, and its score is the median of them.
+                         *
+                         * @default 3
+                         */
+                        repeats?: number;
                         queueId: string;
                         runtimeVersion: string;
                     };
@@ -4923,10 +4981,12 @@ export interface components {
             name: string;
             doubts: components["schemas"]["Doubts"];
             good: number;
+            /** @description How many times each scenario is flown. */
+            repeats?: number;
             /** Format: date-time */
             createdAt: string;
             createdBy: string;
-            /** @description How many ways the doubts could resolve — one dive each. */
+            /** @description How many runs this sweep is — the ways the doubts resolve, times the repeats. */
             scenarios?: number;
             flown?: number;
             flying?: number;
@@ -4935,10 +4995,17 @@ export interface components {
          *     Ranked by how much each doubt **changes** the outcome, not by how often it was present when the mission failed. Those are different and the second is misleading: in a sweep where the current is what kills you, half the failures also happen to be in murky water and half in clear, and listing both at fifty per cent invites somebody to go and worry about visibility. A dimension whose settings all fail equally is telling you it does not matter, and it is said once and not ranked.
          *      */
         Findings: {
+            /** @description How many distinct questions were asked. */
             scenarios: number;
+            /** @description How many of them have an answer. */
             flown: number;
+            /** @description How many runs that is, across all the repeats. */
+            flownRuns?: number;
             flying?: number;
+            /** @description How many scenarios work — more than half their runs did the job.
+             *      */
             survived: number;
+            repeats?: number;
             good: number;
             matters: {
                 name?: string;
@@ -4968,6 +5035,11 @@ export interface components {
              *      */
             physics?: number[];
             cost?: components["schemas"]["Cost"];
+            /** @description Every question asked, with how it went across every run of it. A scenario that worked twice in three is a different thing from one that worked three times in three, and somebody planning ship time should be able to see which they have.
+             *      */
+            scenariosFlown?: {
+                [key: string]: unknown;
+            }[];
             runs?: {
                 [key: string]: unknown;
             }[];
