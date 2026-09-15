@@ -334,6 +334,14 @@ function Answer({ found, flying }: { found: Findings; flying: number }): React.J
         </p>
       ) : null}
 
+      {found.marginal ? (
+        <p className="aside warn">
+          {found.marginal} of the scenarios could have gone either way — some of
+          their runs did the job and some did not. What counts as done is
+          sitting inside the spread.
+        </p>
+      ) : null}
+
       {found.survived === found.flown ? (
         <p className="lead">Nothing in the doubt list breaks it.</p>
       ) : (
@@ -342,8 +350,18 @@ function Answer({ found, flying }: { found: Findings; flying: number }): React.J
             <div className="doubt-rates" key={one.name}>
               <div className="doubt-head">
                 <strong>{one.name}</strong>
-                <span className="quiet">changes the outcome by {((one.changes ?? 0) * 100).toFixed(0)}%</span>
+                <span className="quiet">
+                  changes the outcome by {((one.changes ?? 0) * 100).toFixed(0)}%
+                  {one.onACoinFlip ? ", on coin flips" : ""}
+                </span>
               </div>
+              {one.onACoinFlip ? (
+                <p className="aside warn">
+                  Every scenario this separates is one that could have gone
+                  either way, so the difference is where the coins landed and
+                  not what the setting did.
+                </p>
+              ) : null}
               {(one.rates ?? []).map((rate) => (
                 <div className="rate" key={rate.value}>
                   <span className="setting-name">{rate.value}</span>
@@ -358,7 +376,14 @@ function Answer({ found, flying }: { found: Findings; flying: number }): React.J
           {(found.madeNoDifference ?? []).length > 0 ? (
             <p className="aside">Made no difference: {(found.madeNoDifference ?? []).join(", ")}.</p>
           ) : null}
-          {found.turnsOn ? (
+          {found.nothingDecided ? (
+            <p className="lead">
+              Nothing in the doubt list is decided. Every difference rests on
+              scenarios that could have gone either way: either move what counts
+              as done off the spread, or fly each scenario more times, or doubt
+              something this mission is actually sensitive to.
+            </p>
+          ) : found.turnsOn ? (
             <p className="lead">
               The mission turns on <b>{found.turnsOn}</b>. At <b>{found.at}</b> it
               fails {failed[0]} times out of {failed[1]}.
@@ -411,6 +436,7 @@ function Scenarios({ found }: { found: Findings }): React.JSX.Element {
   const flown = (found.scenariosFlown ?? []) as {
     label: string; score: number; survived: boolean; says?: string;
     runs: number; survivedRuns: number; worst: number; best: number;
+    marginal?: boolean;
   }[];
   return (
     <div className="ledger runs">
@@ -420,7 +446,7 @@ function Scenarios({ found }: { found: Findings }): React.JSX.Element {
             <strong>{one.label}</strong>
             <span className="when">
               {one.runs > 1
-                ? `${one.survivedRuns} of ${one.runs} runs did the job · ${((one.worst ?? 0) * 100).toFixed(0)}% to ${((one.best ?? 0) * 100).toFixed(0)}%`
+                ? `${one.survivedRuns} of ${one.runs} runs did the job · ${((one.worst ?? 0) * 100).toFixed(0)}% to ${((one.best ?? 0) * 100).toFixed(0)}%${one.marginal ? " — could have gone either way" : ""}`
                 : (one.says ?? "")}
             </span>
           </div>

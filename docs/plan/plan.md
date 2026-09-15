@@ -783,6 +783,76 @@ what the whole of steps 5 to 9 was for.
 
 **Done:** a sweep can ask what happens if the world is not as drawn.
 
+*Done (15 September).* Both halves.
+
+**Lines bow with the current.** A hundred-metre mooring line with ten per cent
+of slack, between two blocks twenty metres down:
+
+    still water   hangs to 40 m, nothing across it
+    half a knot   hangs to 22 m, pushed 22 m sideways — the deepest point
+                  moved 28 m
+
+Metres, not centimetres. A vehicle flying under the chart's line meets nothing,
+and what it *would* meet is somewhere the chart does not mention.
+
+The relaxation was lifted out of `tether.py` into `cable.py`, so an umbilical
+and a mooring line are one piece of code — and sharing it immediately found two
+things the tether had been getting away with:
+
+  **The length constraint could not keep up with the water.** A position-based
+  chain needs sweeping as many times as it is long, because a correction
+  travels one node a sweep. Two sweeps is plenty for the tether's twenty nodes
+  and nowhere near enough for a hundred: a line stretched to 135 m of arc on a
+  span with ten metres of slack in it, which is not a cable, it is a cable
+  being stretched by its own solver.
+
+  **The load step must not depend on the size of the force.** It did, so a
+  strong current pushed further per pass than the constraint could pull back.
+
+One result worth keeping: **a weightless line takes the same shape whatever the
+speed.** Scaling the drag scales every tension equally and leaves the curve
+alone. It looks like a bug until it is thought about, so it has a test with the
+reasoning in it. A line with weight leans further the faster the water goes,
+because there the speed is changing the ratio of two different forces.
+
+**Doubts that are not numbers.** `World.not_as_drawn` takes three verbs — move,
+remove, add — threaded from a sweep's doubt list through the dive to the
+runtime, with the record saying what was done to the world. The layout itself is
+untouched: a scenario that edited the pinned drawing would make the pin
+worthless, so this is carried on the dive as *what happened to it*.
+
+Flown: a survey on LBL inside the four-transponder array, doubted against one
+transponder down, two down, and half a knot. The record says `not_as_drawn
+{"took away 1: transponder-2"}` and then `array_laid {transponders: 3}`.
+
+**And that sweep found the third thing wrong with the answer.** It came back
+saying the array changed the outcome by fifty per cent — the biggest effect in
+the sweep — which is nonsense: a time-limited survey covers about the same
+ground however well it knows where it is, and all six scenarios scored within
+half a per cent of each other. What had happened is that the threshold was
+sitting on top of them, so two scenarios landed on opposite sides of it and the
+dimension scored a clean fifty per cent for the coins.
+
+So a scenario whose runs straddle the threshold is **marginal**, and a doubt
+whose whole effect rests on marginal scenarios is **on coin flips** — judged in
+pairs, holding every other doubt equal, because the first version asked merely
+whether any two decided scenarios disagreed and they always do: the *other*
+doubt decided them and this one took the credit. A doubt on coin flips can
+never be what the mission turns on, and when every doubt is, the answer says
+there is nothing to say instead of picking one:
+
+    the current  (changes the outcome by 33%)
+    the array    (changes the outcome by 50%, on coin flips)
+        Every scenario this separates is one that could have gone either way,
+        so the difference is where the coins landed and not what the setting did.
+
+    The mission turns on the current. At half knot it fails 3 times out of 3.
+
+That is three separate ways this answer has now been caught reporting noise as a
+finding — one run per scenario, a threshold in the spread, and a doubt taking
+credit for another's work. All three were found by flying something real and
+reading the answer rather than by trusting it.
+
 ## 19 · The sonar becomes a sensor
 
 `sim-runtime`, `world.py`.
