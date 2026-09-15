@@ -40,10 +40,17 @@ PHYSICS_HZ = 200.0
 #   1  where this began: thruster geometry, the depth loop, the EOS-80 water,
 #      the glider's flight model, navigation from a laid array, a world with
 #      things in it to run into.
-PHYSICS = 1
+#   2  the tether. Every tethered dive before this flew as though the umbilical
+#      were not there, and a working scope in half a knot pulls three times
+#      what the hull's own drag costs — so no result from either side of this
+#      line belongs in a table with the other. It also puts a hard limit on
+#      reach: a vehicle on a hundred metres of cable cannot get to a point a
+#      hundred and twenty metres away, which it could the day before.
+PHYSICS = 2
 PHYSICS_IS = ("thruster geometry at the centre of gravity, EOS-80 water, "
               "Eriksen flight for a glider, LBL from the transponders that "
-              "were laid, and a world a vehicle can run into")
+              "were laid, a world a vehicle can run into, and the cable it "
+              "is on")
 
 
 def find_hull(root: pathlib.Path) -> pathlib.Path | None:
