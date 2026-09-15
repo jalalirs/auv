@@ -87,3 +87,28 @@ def test_a_task_that_points_at_nothing_is_unchanged():
     assert (plain.width, plain.height) == (20.0, 10.0)
     assert list(plain.began_at) == [5.0, 5.0, -6.0]
     assert "over" not in plain.result()
+
+
+def test_any_task_pointed_at_a_thing_aims_at_it():
+    """"Inspect, over frame-3" names a place as plainly as a pair of numbers.
+
+    It used to depend on the task: a reach fell back to the objective itself
+    and found `over` there, an inspect asked only for `target` and found
+    nothing — so a stage a person wrote the same way in an editor meant one
+    thing for one task and nothing at all for the next.
+    """
+    world = a_site()
+    where = [105.0, 60.0, -8.0]
+    for kind in ("reach", "inspect", "revisit", "dock"):
+        pointed = task_for({"kind": kind, "over": "frame-3"},
+                           np.array([0.0, 0.0, -6.0]), 0.0, world=world)
+        if pointed is None or not hasattr(pointed, "target"):
+            continue
+        assert list(pointed.target) == where, f"{kind} did not aim at what it was pointed at"
+
+
+def test_pointing_a_survey_at_a_plot_still_takes_the_plot_not_its_middle():
+    """The one that is not a point: a survey over a plot covers the plot."""
+    survey = task_for({"kind": "survey", "over": "cell-b7"},
+                      np.array([0.0, 0.0, -6.0]), 0.0, world=a_site())
+    assert (survey.width, survey.height) == (60.0, 40.0)

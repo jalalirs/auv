@@ -400,6 +400,34 @@ made on the spot.
 
 **Done:** a dive is three choices and a button.
 
+*Done (15 September).* Missions is a tab, and it is the only new one: a layout
+stays filed under its place, because an arrangement *of* somewhere means
+nothing away from it, while a plan of work is the unit of work itself — the
+thing somebody comes in to write and comes back to fly.
+
+Writing one is three columns, like the editor and for the same reason: the
+arrangement and the palette on the left, the plan in order in the middle, and
+what the selected stage is over on the right. The things a stage can point at
+come from the arrangement's own document, by name — `cell-a ·
+restoration-cell`, `nursery-frame-854--1099 · nursery-frame`, `riser ·
+mooring-line` — so nothing can be pointed at that is not in the water.
+
+The composer now leads with **Flying**: what plan of work, or nothing planned.
+Choose one and Where and For disappear, because the plan says both — and the
+place it names appears in the hero with its own depth, its reef and today's
+sea, so a dive whose destination was implicit is still a dive somebody can
+check before pressing the button. What is left is the plan, the vehicle, the
+water, who flies it and how it knows where it is.
+
+One thing the screen found, which nothing else would have:
+
+  **Pointing at a thing worked for some tasks and not others.** A reach fell
+  back to the objective itself and found `over` there; an inspect asked only
+  for `target` and found nothing. So a stage written the same way in the
+  editor aimed at a nursery frame for one kind of work and at "ten metres
+  ahead of wherever you started" for the next — quietly, with a score to
+  match. `over` now resolves in the base, where every task reads it.
+
 ## 13 · A run says what computed it, and which scenario it is
 
 `packages/contracts`, `internal/dive`, one migration, `sim-runtime`.
