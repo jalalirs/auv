@@ -13,6 +13,28 @@
 
 set -euo pipefail
 
+# Brace expansion off, because every body this script sends is JSON.
+#
+# The system bash on a Mac is 3.2, and inside a command substitution it loses
+# track of the quoting: a body written there as
+#
+#     "$(status "$TOKEN" POST /path "{\"a\":\"1\",\"b\":\"2\"}")"
+#
+# is brace-expanded at the commas, so what goes out is `"a":"1"` — braces
+# stripped, one field, three separate requests — and the platform correctly
+# refuses all of it with a 400.
+#
+# That is worse than a script that fails, because of what it did next: the
+# grant checks *passed* on a stale status while the checks that depend on the
+# grant failed, so for as long as this ran on a Mac it reported thirteen
+# failures the platform did not have and two passes it had not earned. A
+# checking script that lies in both directions is the worst thing in the
+# repository, and it hid behind a shell that only misbehaves on one operating
+# system.
+#
+# Nothing here wants brace expansion for anything, so it goes off.
+set +B
+
 API="${CORAL_CITY_API:-http://localhost:18080}"
 ADMIN_EMAIL="${CORAL_CITY_ADMIN_EMAIL:-admin@coral.local}"
 ADMIN_SECRET="${CORAL_CITY_ADMIN_SECRET:-development-secret}"
@@ -393,6 +415,102 @@ check "asking for the same seed gives the same run" "$AGAIN" "$SEED"
 
 check "somebody outside the institution cannot see the dive" \
     "$(status "$ADMIN" GET "/api/v1/dives/$DIVE")" "200"
+
+# ---------------------------------------------------------------------------
+# Everything above is the platform as a catalogue: who may see what, and what
+# may be pinned. What follows is the platform as the thing it is for — a site
+# laid out, work planned over it, and the question asked of what nobody is
+# sure about. None of it was covered here while it was being built, which is
+# how thirteen false failures went unnoticed for a fortnight.
+step "A site is laid out"
+
+LAYOUT=$(api "$ADMIN" POST "/api/v1/cities/$CITY/layouts" \
+    "{\"slug\":\"array-$RUN\",\"name\":\"An array and a nursery\"}" | json "['id']")
+[ -n "$LAYOUT" ] && pass "an arrangement is started" || fail "could not start an arrangement"
+
+# Four transponders, a frame and the line that moors it: enough kinds that a
+# reader can tell this is the real palette and not one shape repeated.
+DRAWING='{"describedBy":"coral-city/layout/v1","things":[
+  {"id":"transponder-1","kind":"transponder","x":-40,"y":-40,"z":-18},
+  {"id":"transponder-2","kind":"transponder","x":40,"y":-40,"z":-18},
+  {"id":"transponder-3","kind":"transponder","x":40,"y":40,"z":-18},
+  {"id":"transponder-4","kind":"transponder","x":-40,"y":40,"z":-18},
+  {"id":"frame-1","kind":"nursery-frame","x":0,"y":0,"z":-17},
+  {"id":"riser-1","kind":"mooring-line","radiusM":0.05,
+   "ends":[{"x":0,"y":0,"z":-17},{"x":0,"y":0,"z":-2}]}]}'
+SAVED=$(api "$ADMIN" POST "/api/v1/layouts/$LAYOUT/versions" \
+    "{\"label\":\"as drawn\",\"document\":$DRAWING}" | json "['id']")
+[ -n "$SAVED" ] && pass "what was drawn is saved" || fail "could not save the drawing"
+
+check "the arrangement is listed under its place, not on its own" \
+    "$(api "$ADMIN" GET "/api/v1/cities/$CITY/layouts" | holds layouts "$LAYOUT")" "$LAYOUT"
+check "and what was saved can be read back" \
+    "$(api "$ADMIN" GET "/api/v1/layouts/$LAYOUT/versions" | json "['versions'][0]['id']")" "$SAVED"
+check "the things are still in it, all six" \
+    "$(api "$ADMIN" GET "/api/v1/layouts/$LAYOUT/versions" \
+        | json "['versions'][0]['document']['things']" | python3 -c \
+        "import sys;print(sys.stdin.read().count(chr(39)+'kind'+chr(39)))")" "6"
+
+# ---------------------------------------------------------------------------
+step "A plan of work over what was drawn"
+
+MISSION=$(api "$ADMIN" POST "/api/v1/cities/$CITY/missions" \
+    "{\"slug\":\"visit-$RUN\",\"name\":\"Visit the frame\"}" | json "['id']")
+[ -n "$MISSION" ] && pass "a plan of work is started" || fail "could not start a plan of work"
+
+# A stage that points at something drawn, by the name it was drawn under. This
+# is the line that makes a mission a plan rather than a list of coordinates.
+PLAN="{\"describedBy\":\"coral-city/mission/v1\",\"cityVersionId\":\"$CITY_VERSION\",
+       \"layoutVersionId\":\"$SAVED\",
+       \"stages\":[{\"kind\":\"reach\",\"at\":{\"thing\":\"frame-1\"},
+                  \"radiusM\":2,\"timeLimitS\":300}]}"
+PLANNED=$(api "$ADMIN" POST "/api/v1/missions/$MISSION/versions" \
+    "{\"label\":\"visit it\",\"document\":$PLAN}" | json "['id']")
+[ -n "$PLANNED" ] && pass "a stage points at something drawn, by name" \
+    || fail "could not plan work against the drawing"
+
+check "the plan is listed under its place" \
+    "$(api "$ADMIN" GET "/api/v1/cities/$CITY/missions" | holds missions "$MISSION")" "$MISSION"
+check "a plan nobody has flown says so rather than guessing a cost" \
+    "$(api "$ADMIN" GET "/api/v1/missions/$MISSION/cost" | json "['runs']")" "0"
+# The platform answered this for anything at all until the end-to-end check
+# asked it: a cost is read from the runs flown against a plan, a plan nobody
+# has flown has none, and so does a plan that was never there.
+check "and a plan that does not exist is refused rather than costed" \
+    "$(status "$ADMIN" GET "/api/v1/missions/miss_00000000000000000000000000/cost")" "404"
+
+# ---------------------------------------------------------------------------
+step "Asking what breaks it"
+
+# Two doubts of two settings each, flown twice: eight dives. The arithmetic is
+# checked here because it is the one number a person plans a night around, and
+# because a sweep that quietly flew four would look exactly the same.
+DOUBTS="{\"name\":\"what breaks the visit\",
+         \"missionVersionId\":\"$PLANNED\",
+         \"vehicleVersionId\":\"$VEHICLE_VERSION\",
+         \"doubts\":{
+           \"current\":{\"still\":{\"currentMetresPerSecond\":0.0},
+                       \"half knot\":{\"currentMetresPerSecond\":0.26}},
+           \"the array\":{\"as laid\":{},
+                        \"one down\":{\"notAsDrawn\":[{\"take\":\"transponder-2\"}]}}},
+         \"good\":0.8,\"repeats\":2,
+         \"queueId\":\"$QUEUE\",\"runtimeVersion\":\"isaac-6.0.1+oceansim\"}"
+SWEEP=$(api "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/sweeps" "$DOUBTS")
+SWEEP_ID=$(printf '%s' "$SWEEP" | json "['id']")
+[ -n "$SWEEP_ID" ] && pass "the sweep is asked for" || fail "could not ask for a sweep: $SWEEP"
+
+check "two doubts of two settings is four scenarios" \
+    "$(printf '%s' "$SWEEP" | json "['scenarios']")" "4"
+check "and a scenario is a sample, so four flown twice over is eight runs" \
+    "$(printf '%s' "$SWEEP" | json "['runs']")" "8"
+check "and it still says four when read back, not eight" \
+    "$(api "$GUEST" GET "/api/v1/sweeps/$SWEEP_ID" | json "['scenarios']")" "4"
+check "it is listed for the institution that asked" \
+    "$(api "$GUEST" GET "/api/v1/organisations/$OTHER_ORG/sweeps" | holds sweeps "$SWEEP_ID")" "$SWEEP_ID"
+check "somebody outside the institution cannot see the question it asked" \
+    "$(status "$ADMIN" GET "/api/v1/sweeps/$SWEEP_ID")" "200"
+check "a sweep nothing has flown says nothing rather than ranking noise" \
+    "$(status "$GUEST" GET "/api/v1/sweeps/$SWEEP_ID/findings")" "200"
 
 # ---------------------------------------------------------------------------
 step "Work"

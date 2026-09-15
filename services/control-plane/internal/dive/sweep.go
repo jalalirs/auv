@@ -56,7 +56,17 @@ type Sweep struct {
 
 	// How it is going, counted from its runs rather than kept on the row: a
 	// state that had to be maintained would be a state that could be wrong.
+	// How many distinct questions this sweep asks, and how many dives that
+	// is once each is flown more than once.
+	//
+	// These were one field called `scenarios` holding the run count, so a
+	// sweep of four scenarios flown twice told everybody who asked that it
+	// had eight — and `tools/what-if` printed "8 scenarios" to the person who
+	// had just chosen four. A scenario is a question and a run is an attempt
+	// at it; a field that means one and is named the other is a field that
+	// will be read wrong.
 	Scenarios int `json:"scenarios"`
+	Runs      int `json:"runs"`
 	Flown     int `json:"flown"`
 	Flying    int `json:"flying"`
 }
@@ -766,7 +776,8 @@ func (s *Store) CreateSweep(ctx context.Context, conn db.Conn, spec SweepSpec) (
 	if err != nil {
 		return Sweep{}, fmt.Errorf("reading back a sweep: %w", err)
 	}
-	made.Scenarios = len(scenarios) * spec.Repeats
+	made.Scenarios = len(scenarios)
+	made.Runs = len(scenarios) * spec.Repeats
 	return made, nil
 }
 
@@ -898,10 +909,13 @@ func (s *Store) countSweep(ctx context.Context, one *Sweep) error {
 		       count(*) FILTER (WHERE state IN ('succeeded', 'failed', 'cancelled', 'expired')),
 		       count(*) FILTER (WHERE state IN ('queued', 'preparing', 'running'))
 		  FROM dive.run WHERE sweep_id = $1`, one.ID).
-		Scan(&one.Scenarios, &one.Flown, &one.Flying)
+		Scan(&one.Runs, &one.Flown, &one.Flying)
 	if err != nil {
 		return fmt.Errorf("counting a sweep's runs: %w", err)
 	}
+	// The runs are what the record holds; the questions are what somebody
+	// asked, and are that divided by how many times each was flown.
+	one.Scenarios = one.Runs / max(1, one.Repeats)
 	return nil
 }
 
@@ -947,7 +961,7 @@ func (s *Store) Findings(ctx context.Context, id string) (Findings, error) {
 	}
 	found := What(flown, one.Good)
 	// How many distinct questions were asked, against how many runs that is.
-	found.Scenarios = one.Scenarios / max(1, one.Repeats)
+	found.Scenarios = one.Scenarios
 	found.Flying = one.Flying
 	found.Repeats = one.Repeats
 	found.Cost = WhatItCosts(spent, true)

@@ -2327,7 +2327,9 @@ paths:
         From the last time somebody flew it, which is the only honest source: a
         plan that has never been in the water has no cost to state, and the
         platform says so rather than guessing one from the arithmetic of its
-        stages.
+        stages. Unflown, it answers with `runs: 0` and nothing else filled in;
+        a plan that does not exist is refused, because a cost is a statement
+        about a thing and the thing has to be there.
       parameters:
         - name: missionId
           in: path
@@ -3837,6 +3839,11 @@ components:
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
         scenarios:
+          type: integer
+          description: >
+            How many distinct questions this sweep asks — the cross product of
+            its doubts.
+        runs:
           type: integer
           description: How many runs this sweep is — the ways the doubts resolve, times the repeats.
         flown: { type: integer }

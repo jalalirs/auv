@@ -103,7 +103,8 @@ def start(said: dict, name: str):
         # setting, one unlucky seed is fifty per cent.
         "repeats": int(said.get("repeats", 3)),
         "queueId": queue["id"], "runtimeVersion": queue["runtimes"][0]})
-    print(f"{sweep['scenarios']} scenarios, asked for as {sweep['id']}", flush=True)
+    print(f"{sweep['scenarios']} scenarios, {sweep['runs']} dives, "
+          f"asked for as {sweep['id']}", flush=True)
     return p, sweep["id"]
 
 

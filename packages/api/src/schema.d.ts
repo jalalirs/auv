@@ -3374,7 +3374,7 @@ export interface paths {
         };
         /**
          * What this plan of work takes
-         * @description From the last time somebody flew it, which is the only honest source: a plan that has never been in the water has no cost to state, and the platform says so rather than guessing one from the arithmetic of its stages.
+         * @description From the last time somebody flew it, which is the only honest source: a plan that has never been in the water has no cost to state, and the platform says so rather than guessing one from the arithmetic of its stages. Unflown, it answers with `runs: 0` and nothing else filled in; a plan that does not exist is refused, because a cost is a statement about a thing and the thing has to be there.
          *
          */
         get: {
@@ -4988,8 +4988,11 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
             createdBy: string;
-            /** @description How many runs this sweep is — the ways the doubts resolve, times the repeats. */
+            /** @description How many distinct questions this sweep asks — the cross product of its doubts.
+             *      */
             scenarios?: number;
+            /** @description How many runs this sweep is — the ways the doubts resolve, times the repeats. */
+            runs?: number;
             flown?: number;
             flying?: number;
         };
