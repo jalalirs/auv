@@ -19,6 +19,7 @@ import { Autonomy } from "./Autonomy.js";
 import { Dive } from "./Dive.js";
 import { Fleet } from "./Fleet.js";
 import { LayingOut } from "./Layout.js";
+import { Missions, Planning } from "./Missions.js";
 import { PlaceDetail } from "./PlaceDetail.js";
 import { Places } from "./Places.js";
 import { Profile } from "./Profile.js";
@@ -36,6 +37,12 @@ export type Where =
   // An arrangement of a place, opened from it. Not a tab of its own: a layout
   // detached from the ground it was drawn on means nothing.
   | { page: "layout"; place: string; layout: string }
+  // A plan of work. Unlike a layout this is a top-level noun: an arrangement
+  // is *of* somewhere and means nothing away from it, while a plan of work is
+  // the unit of work itself — the thing somebody comes in to write and comes
+  // back to fly.
+  | { page: "missions" }
+  | { page: "mission"; id: string; place: string }
   | { page: "fleet" }
   | { page: "vehicle"; id?: string; slug?: string }
   | { page: "autonomy" }
@@ -49,6 +56,8 @@ const PAGES: { key: Rail; name: string; count?: (held: Held) => number; is: (whe
   { key: "dive", name: "Dive", is: (w) => w.page === "dive" },
   { key: "places", name: "Places", count: (h) => h.places.length,
     is: (w) => w.page === "places" || w.page === "place" || w.page === "layout" },
+  { key: "missions", name: "Missions",
+    is: (w) => w.page === "missions" || w.page === "mission" },
   { key: "fleet", name: "Fleet", count: (h) => h.vehicles.length, is: (w) => w.page === "fleet" || w.page === "vehicle" },
   { key: "autonomy", name: "Autonomy", is: (w) => w.page === "autonomy" },
   { key: "runs", name: "Dives", count: (h) => h.runs.length, is: (w) => w.page === "runs" },
@@ -181,6 +190,12 @@ export function Deck({ platform, onDiving }: {
           <LayingOut platform={platform} packages={packages}
                      place={where.place} layout={where.layout}
                      onBack={() => setWhere({ page: "place", id: where.place })} />
+        ) : where.page === "missions" ? (
+          <Missions platform={platform} held={held}
+                    onOpen={(id, place) => setWhere({ page: "mission", id, place })} />
+        ) : where.page === "mission" ? (
+          <Planning platform={platform} held={held} mission={where.id} place={where.place}
+                    onBack={() => setWhere({ page: "missions" })} />
         ) : where.page === "fleet" ? (
           <Fleet held={held} packages={packages}
                  onOpen={(of) => setWhere({ page: "vehicle", ...of })} />

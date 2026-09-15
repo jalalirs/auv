@@ -329,7 +329,16 @@ export class Platform {
 
   defineDive(organisation: string, dive: {
     name: string;
-    cityVersionId: string;
+    /** The place, pinned. Comes from the mission when one is named. */
+    cityVersionId?: string;
+    /** How the place is arranged. Comes from the mission when one is named. */
+    layoutVersionId?: string;
+    /**
+     * The plan of work to fly. Supplies the place, the arrangement and the
+     * stages; what is still said here is the vehicle, the water and who flies
+     * it — which is what makes two people's runs of one mission comparable.
+     */
+    missionVersionId?: string;
     vehicleVersionId: string;
     conditionsId?: string;
     autonomyStackId?: string;
