@@ -155,6 +155,19 @@ runtime and the record, and re-flying one in September gets the site from March.
 **Done:** a layout can be created, published, pinned and read back, and a
 published one cannot be changed.
 
+*Done (14 September).* `catalog.layout`, and a version that may be a document
+instead of a manifest — `CHECK ((manifest IS NOT NULL) <> (document IS NOT
+NULL))`, so a version is one or the other and never neither. A city's version
+is thirty megabytes of mesh and wants object storage; a layout is a few
+kilobytes of JSON somebody saves twenty times an afternoon, and sending that
+through an upload grant, a confirmation and an object would be the file
+machinery used for something that is not a file.
+
+The five queries a layout needs came out of step 4's generic descriptor without
+a line of their own, which is what that step was for. A dive gained a nullable
+`layout_version_id`. Checked by step 8 rather than here: it is machinery until
+something is flown in it.
+
 ## 6 · The runtime knows what is in the water
 
 `sim-runtime/coral/world.py` — new — and the smallest possible cut into
@@ -174,6 +187,15 @@ rather than becoming methods sixty through seventy.
 **Done:** a dive over a place with a layout has the layout's things in it, and a
 vehicle driven at one stops.
 
+*Done (14 September).* `world.py` — `Thing` and `World`, and the smallest cut
+into the runtime that lets a dive have things in it: `keep_out` puts a vehicle
+back where it was allowed to be and takes away the velocity that carried it
+out, which is the same two constraints the ground already applied.
+
+It goes back *the way it came* rather than to the nearest face. Pushing to the
+nearest face slides a vehicle round an obstacle it drove straight at, which is
+a vehicle passing through something slowly.
+
 ## 7 · The editor, one tool deep
 
 `apps/client/src/renderer/screens/` on step 3's navigation.
@@ -190,6 +212,15 @@ meets the bottom*, because that is the only part the editor has to resolve.
 One tool, because the chain matters more than the palette.
 
 **Done:** somebody lays an array by hand and saves it.
+
+*Done (14 September).* One tool deep — a transponder — because the editor's
+whole argument is that each further tool is a landing rule and a glyph once the
+chain holds. The chart is drawn from the place's own heightfield, the depth
+under the cursor is read from it, and what a thing resolves to is decided *when
+it is drawn* rather than when it is flown.
+
+Checked by step 8, which is where both of the frames it was drawing in turned
+out to be wrong.
 
 ## 8 · Fly what was drawn
 
@@ -240,6 +271,14 @@ line is the only one with real work in it, because it spans two points and hangs
 between them rather than sitting on one.
 
 **Done:** a site can be laid out the way it will really be.
+
+*Done (14 September).* One tool deep — a transponder — because the editor's
+whole argument is that each further tool is a landing rule and a glyph once the
+chain holds. The chart is drawn from the place's own heightfield, the depth
+under the cursor is read from it, and what a thing resolves to is decided *when
+it is drawn* rather than when it is flown.
+
+Checked by step 8, which is where both of its frames turned out to be wrong.
 
 *Done (14 September).* Eight kinds: transponder, mooring block, nursery frame,
 marker post, buoy, ship, mooring line, restoration cell. Al Fahal's restoration
