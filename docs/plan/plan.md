@@ -718,6 +718,56 @@ layout, which did not exist until step 5.
 **Done:** a vehicle with a hundred metres out flies measurably differently from
 one with ten.
 
+*Done (15 September).* Hold station at 45 m in half a knot, same place, same
+water, twice:
+
+    12 m of cable   the cable goes taut, the vehicle is hauled up to 7.6 m,
+                    9.3 m off station, scores 0, and burns 53 Wh in four
+                    minutes fighting its own umbilical
+    55 m of cable   it gets there, holds 0.31 m off station for the whole
+                    four minutes, scores 1.0, spends 2.9 Wh — with the cable
+                    pulling 5.8 N on it the entire time
+
+Eighteen times the energy and nought against one. The 5.8 N is the part that
+was missing from every tethered dive in this record: a BlueROV2 at a quarter of
+a knot costs 2.3 N to push through the water, so its own cable is three times
+the force the hull is.
+
+The model is quasi-static — nodes relaxed to equilibrium each step under their
+own weight and cross-flow drag, both ends pinned, the dry end at whatever the
+layout put at the surface. Three things went wrong on the way and all three
+were found by checking rather than by assuming:
+
+  **A sign error** put both end tensions negative, so the cable pulled nothing.
+
+  **A straight starting shape is the one shape a slack cable cannot be.** Every
+  segment in compression, and nothing to tell the relaxation which way to
+  bulge. A hundred metres of cable to a vehicle six metres down settled into a
+  straight line with the slack nowhere and reported no tension at all — which
+  is the exact bug this file exists to fix, reproduced inside the fix. The
+  slack goes in at the start now, as the parabola that much cable makes,
+  leaning the way the water is going.
+
+  **Taking the whole cable's equilibrium was ill-posed exactly where it
+  matters.** Two end tensions and three equations is fine until the cable
+  streams out and comes back, when both ends pull along nearly the same line,
+  the unknowns stop being independent, and the split swings on rounding: the
+  same cable answered 6 N, then 10, then 13 as it was relaxed further *while
+  the shape had stopped moving*. It solves the tension at every node now — a
+  twenty-unknown least squares once a step — and gives the same answer twice.
+  There is a test that says so, because that is the failure that would have
+  come back.
+
+Then the tether announced itself where nobody asked it to. A navigation test
+that had asked a BlueROV2 to reach a point 120 m away, and had done so happily
+for months, stopped at 100.3 m — because the vehicle's package now says it
+comes on a hundred metres of cable, and a hundred metres of cable is a hard
+limit on where it can get to. That test is about dead reckoning and now flies
+without a cable; the limit has a test of its own, which is where it belongs.
+
+**This is physics 2.** No result from either side of it belongs in a table with
+the other, and the platform now refuses to put them in one.
+
 ## 18 · Doubts about the world, not just the water
 
 `world.py`, and the sweep's doubt list.
