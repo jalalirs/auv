@@ -1401,3 +1401,12 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
   .laying-out { grid-template-columns: 1fr; }
   .laying-out .chart { height: 56vh; }
 }
+
+/* Said where runs are put in a table that should not hold all of them.
+ * The vehicle colour, because on a page of blues it is the one thing that
+ * means "look at this before you read the number". */
+.aside.warn {
+  color: var(--vehicle);
+  border-left: 2px solid var(--vehicle);
+  padding-left: 10px;
+}

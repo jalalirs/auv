@@ -1273,6 +1273,11 @@ export interface paths {
                         /** @default 1 */
                         gpuShare?: number;
                         needs?: components["schemas"]["Needs"];
+                        /** @description Which question this run answers, when it is one of many. Kept on the run so that the runs of a sweep are a sweep and not a hundred unrelated dives that happen to share a name.
+                         *      */
+                        scenario?: {
+                            [key: string]: unknown;
+                        };
                     };
                 };
             };
@@ -4762,6 +4767,18 @@ export interface components {
              */
             seed: number;
             runtimeVersion: string;
+            /** @description What actually computed it. The digest says exactly what ran, which is what a reproduction needs.
+             *      */
+            simImageDigest?: string;
+            /** @description Whether the answer would have been the same. A plain integer the runtime declares, bumped by hand when a change would move a number somebody might put in a table.
+             *     It exists because the runtime version tag does not do this job: the physics changed six times in one day and the tag stayed `r1` through all six, so every result from before became incomparable with every result after without the record saying a word. Absent on a run flown before the runtime declared one.
+             *      */
+            physicsVersion?: number;
+            /** @description Which question this run is an answer to, when it is one of many. A sweep asks one mission against a list of doubts — current from the north-east at half a knot, no Doppler log, murky water — and every run in it is the same mission under one of them. Free-form on purpose: a doubt is whatever somebody could not promise.
+             *      */
+            scenario?: {
+                [key: string]: unknown;
+            };
             deviceId?: string | null;
             gpuShare: number;
             needs?: components["schemas"]["Needs"];

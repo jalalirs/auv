@@ -9,6 +9,48 @@ import { Empty, PageHead, Pill, ago } from "./parts.js";
 
 const LIVE = new Set(["queued", "preparing", "running"]);
 
+/** What computed a run, as the thing a table may not mix.
+ *
+ * The digest says exactly what ran and the physics version says whether the
+ * answer would have been the same, and it is the second one that decides
+ * whether two runs belong in one table. A runtime rebuilt on a new base image
+ * has a different digest and the same physics, and refusing to compare those
+ * would make this useless by being right too often.
+ *
+ * A run flown before the runtime declared one answers 0, which groups all of
+ * them together as "we do not know" — honestly, and apart from the ones we do.
+ */
+function physicsOf(one: Held["runs"][number]): number {
+  return one.run.physicsVersion ?? 0;
+}
+
+/** How many different physics a set of runs was computed by. */
+function spans(runs: Held["runs"]): number[] {
+  return [...new Set(runs.map(physicsOf))].sort((a, b) => a - b);
+}
+
+/** Said wherever runs are put in a table together.
+ *
+ * The platform pins the place, the vehicle, the water and the seed, and pinned
+ * none of that mattered while the simulator itself was moving under it. Two
+ * runs from either side of a change to the physics are two answers to two
+ * different questions, and a mean taken across them is a number that looks
+ * like a measurement and is not one.
+ */
+function NotOneTable({ runs, of }: { runs: Held["runs"]; of: string }): React.JSX.Element | null {
+  const versions = spans(runs);
+  if (versions.length < 2) return null;
+  const said = versions.map((v) => (v === 0 ? "runs that did not say" : `physics ${v}`));
+  return (
+    <p className="aside warn">
+      These {of} were not all computed by the same simulator — {said.join(" and ")}.
+      A change to the physics changes the answer, so they are kept apart rather
+      than averaged: two runs either side of one are two answers to two
+      different questions.
+    </p>
+  );
+}
+
 export function Runs({ platform, held, onChanged, onReplay }: {
   platform: Platform;
   held: Held;
@@ -109,6 +151,7 @@ export function Runs({ platform, held, onChanged, onReplay }: {
 
       <section>
         <h2>Trials</h2>
+        <NotOneTable runs={held.runs} of="dives" />
         <p className="aside">
           One run of one seed is an anecdote. The same dive flown more than once is a
           number with a spread on it, which is the only honest way to say one controller
@@ -165,7 +208,10 @@ function Trials({ runs }: { runs: Held["runs"] }): React.JSX.Element {
     const outcome = one.run.outcome as Record<string, unknown> | undefined;
     const task = outcome?.["task"] as { score?: number } | undefined;
     if (typeof task?.score !== "number") continue;
-    const key = `${one.dive}|${one.flownBy}`;
+    // What computed it is part of what was being tested. Without this a
+    // controller that was "improved" on Tuesday is compared against itself
+    // across a physics change, and the improvement is the simulator.
+    const key = `${one.dive}|${one.flownBy}|${physicsOf(one)}`;
     groups.set(key, [...(groups.get(key) ?? []), one]);
   }
   const trials = [...groups.values()].filter((g) => g.length > 1)
@@ -208,7 +254,10 @@ function Trial({ group }: { group: Held["runs"] }): React.JSX.Element {
         <strong>{group[0]!.name}</strong>
         <span className="mean">{(mean * 100).toFixed(0)}%</span>
         <span className="spread">± {(spread * 100).toFixed(0)} · worst {(worst * 100).toFixed(0)}% · best {(best * 100).toFixed(0)}%</span>
-        <span className="runs">{counted.length} runs by {group[0]!.flownBy}</span>
+        <span className="runs">
+          {counted.length} runs by {group[0]!.flownBy}
+          {physicsOf(group[0]!) === 0 ? "" : ` · physics ${physicsOf(group[0]!)}`}
+        </span>
       </div>
       <div className="spread-bar" title="the band is one standard deviation either side of the mean">
         <span className="band" style={{ left: `${Math.max(0, (mean - spread) * 100)}%`,
@@ -243,6 +292,7 @@ function Compared({ runs }: { runs: Held["runs"] }): React.JSX.Element {
       {groups.map((group) => (
         <div className="group" key={group[0]!.dive}>
           <strong>{group[0]!.name}</strong>
+          <NotOneTable runs={group} of="runs" />
           <ul>
             {group.map(({ run, flownBy }) => {
               const task = (run.outcome as Record<string, unknown>)["task"] as { score: number; seconds?: number; thrusterEffort?: number };
@@ -250,7 +300,9 @@ function Compared({ runs }: { runs: Held["runs"] }): React.JSX.Element {
                 <li key={run.id}>
                   <span className="score-bar"><span style={{ width: `${Math.round(task.score * 100)}%` }} /></span>
                   <b>{(task.score * 100).toFixed(0)}%</b>
-                  <em>{flownBy} · seed {String(run.seed).slice(0, 6)} · effort {task.thrusterEffort?.toFixed(3) ?? "—"} · {ago(run.requestedAt)}</em>
+                  <em>{flownBy} · seed {String(run.seed).slice(0, 6)}
+                    {run.physicsVersion === undefined ? "" : ` · physics ${run.physicsVersion}`}
+                    {" "}· effort {task.thrusterEffort?.toFixed(3) ?? "—"} · {ago(run.requestedAt)}</em>
                 </li>
               );
             })}
