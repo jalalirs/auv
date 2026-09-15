@@ -311,3 +311,56 @@ func TestWorldDoubtsAccumulate(t *testing.T) {
 		t.Fatalf("and the buoy should have moved: %v", moved)
 	}
 }
+
+// A threshold sitting inside the spread turns noise into a fifty per cent
+// effect, and the answer says so rather than ranking it.
+//
+// The sweep that proved this asked whether an LBL array with a transponder
+// missing breaks a survey. It does not — a time-limited survey covers about
+// the same ground however well it knows where it is — so all six scenarios
+// scored within half a per cent of each other, and the threshold happened to
+// sit on top of them. The answer came back "the array changes the outcome by
+// fifty per cent", which would have sent somebody to worry about a transponder
+// that does not matter.
+func TestADimensionDecidedByCoinFlipsSaysSo(t *testing.T) {
+	runs := []Flown{}
+	add := func(value string, scores ...float64) {
+		for _, score := range scores {
+			runs = append(runs, Flown{Chosen: map[string]string{"the array": value},
+				State: "succeeded", Score: score, Survived: score >= 0.15})
+		}
+	}
+	// Every scenario straddles the threshold; nothing is decided by anything.
+	add("as laid", 0.155, 0.149)
+	add("one down", 0.151, 0.148)
+	add("two down", 0.164, 0.152)
+	found := What(runs, 0.15)
+	if found.Marginal != 3 {
+		t.Fatalf("all three could have gone either way, counted %d", found.Marginal)
+	}
+	for _, one := range found.Matters {
+		if !one.OnACoinFlip {
+			t.Errorf("%q was ranked on the flips and did not say so", one.Name)
+		}
+	}
+}
+
+// And a dimension that really decides it is not flagged.
+func TestARealDifferenceIsNotACoinFlip(t *testing.T) {
+	runs := []Flown{}
+	add := func(value string, scores ...float64) {
+		for _, score := range scores {
+			runs = append(runs, Flown{Chosen: map[string]string{"current": value},
+				State: "succeeded", Score: score, Survived: score >= 0.8})
+		}
+	}
+	add("still", 0.97, 0.96, 0.98)
+	add("one knot", 0.05, 0.06, 0.04)
+	found := What(runs, 0.8)
+	if found.Marginal != 0 {
+		t.Fatalf("nothing was marginal, counted %d", found.Marginal)
+	}
+	if len(found.Matters) != 1 || found.Matters[0].OnACoinFlip {
+		t.Fatalf("the current decides it: %+v", found.Matters)
+	}
+}
