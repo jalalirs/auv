@@ -238,8 +238,12 @@ class Tether:
         if far <= self.length_m:
             self.taut = False
             return position, False
+        # Counted on going taut rather than on every step held there. A vehicle
+        # leaning on its cable for four seconds hit the end of it once, and
+        # eight hundred of anything is a number nobody reads.
+        if not self.taut:
+            self.struck += 1
         self.taut = True
-        self.struck += 1
         del was
         return self.at + away / far * self.length_m, True
 
@@ -249,6 +253,6 @@ class Tether:
                 "diameterM": self.diameter_m,
                 "tensionN": round(self.tension_n, 2),
                 "taut": self.taut,
-                "heldBack": self.struck,
+                "timesHeldBack": self.struck,
                 "deepestM": deepest,
                 "from_": [round(float(v), 1) for v in self.at]}
