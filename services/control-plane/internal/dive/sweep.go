@@ -339,6 +339,11 @@ type Findings struct {
 	// same rule the record keeps everywhere else.
 	Physics []int `json:"physics"`
 
+	// What the work costs, and what the weather costs on top. Priced on the
+	// scenarios that did the job: a day's work is the cost of a day's work,
+	// and the failures are the cheap ones.
+	Cost Cost `json:"cost"`
+
 	Runs []Flown `json:"runs"`
 }
 
@@ -689,6 +694,7 @@ func (s *Store) Findings(ctx context.Context, id string) (Findings, error) {
 	defer rows.Close()
 
 	flown := []Flown{}
+	spent := []Spent{}
 	for rows.Next() {
 		var got Flown
 		var chosen, outcome []byte
@@ -701,6 +707,9 @@ func (s *Store) Findings(ctx context.Context, id string) (Findings, error) {
 		}
 		got.Label = Scenario{Chosen: got.Chosen}.Label()
 		readOutcome(outcome, &got, one.Good)
+		if cost, ok := SpentOn(outcome, got.Survived); ok {
+			spent = append(spent, cost)
+		}
 		flown = append(flown, got)
 	}
 	if err := rows.Err(); err != nil {
@@ -708,6 +717,7 @@ func (s *Store) Findings(ctx context.Context, id string) (Findings, error) {
 	}
 	found := What(flown, one.Good)
 	found.Scenarios, found.Flying = one.Scenarios, one.Flying
+	found.Cost = WhatItCosts(spent)
 	return found, nil
 }
 
