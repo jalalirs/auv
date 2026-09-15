@@ -378,6 +378,11 @@ type Findings struct {
 	Rescue    string `json:"rescue,omitempty"`
 	RescueOf  [2]int `json:"rescueOf,omitempty"`
 	NoRescue  bool   `json:"noRescue"`
+	// Every doubt separates only scenarios that could have gone either way, so
+	// there is nothing to say about which of them matters. Either what counts
+	// as done is sitting in the noise, or this mission is not sensitive to
+	// anything it was doubted against.
+	NothingDecided bool `json:"nothingDecided"`
 	HeldBack  int    `json:"heldBack"`
 	// What computed them. A sweep whose runs were not all computed by the same
 	// simulator is a table that should not be one, and saying so here is the
@@ -547,18 +552,34 @@ func What(flown []Flown, good float64) Findings {
 			out.MadeNoDifference = append(out.MadeNoDifference, name)
 		}
 	}
-	// Worst first: the thing to read is the thing that changes most. Ties by
-	// name, so that two doubts which change the outcome by exactly as much as
-	// each other come out in the same order every time — and so that the same
-	// sweep read twice reads the same, which matters more than which of two
-	// equal answers is on top.
+	// Decided first, then worst first, then by name.
+	//
+	// The order matters more than it looks: whatever is on top is what the
+	// answer says the mission turns on. Ranking by size alone put a doubt that
+	// decided nothing above one that decided everything, because the one that
+	// decided nothing had two scenarios land on either side of the threshold
+	// and scored a clean fifty per cent for it.
+	//
+	// Ties by name, so the same sweep read twice reads the same — which
+	// matters more than which of two equal answers is on top.
 	sort.SliceStable(out.Matters, func(a, b int) bool {
+		if out.Matters[a].OnACoinFlip != out.Matters[b].OnACoinFlip {
+			return !out.Matters[a].OnACoinFlip
+		}
 		if out.Matters[a].Changes != out.Matters[b].Changes {
 			return out.Matters[a].Changes > out.Matters[b].Changes
 		}
 		return out.Matters[a].Name < out.Matters[b].Name
 	})
 	if len(out.Matters) == 0 || out.Survived == len(scenarios) {
+		return out
+	}
+	if out.Matters[0].OnACoinFlip {
+		// Every doubt in the list separates only scenarios that could have
+		// gone either way. There is no sentence to give: what there is instead
+		// is a sweep whose threshold is in the noise, or whose mission is not
+		// sensitive to anything it was doubted against.
+		out.NothingDecided = true
 		return out
 	}
 
