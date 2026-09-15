@@ -157,6 +157,14 @@ class Thing:
     def push_out(self, position, was, half_width: float):
         return position
 
+    def shift(self, by) -> None:
+        """Put it somewhere other than where it was drawn.
+
+        Every shape knows how, because a thing that could not be moved would be
+        a thing a rehearsal could not doubt — and "it is not where you laid it"
+        is the most ordinary doubt there is about anything on a seabed.
+        """
+
     def described(self) -> dict:
         return {"id": self.id, "kind": self.kind, "is": self.spec.what}
 
@@ -196,6 +204,12 @@ class Standing(Thing):
         else:
             self.low, self.high = self.at[2], self.at[2] + self.height
 
+    def shift(self, by) -> None:
+        by = np.asarray(by, dtype=float)
+        self.at = self.at + by
+        self.low += float(by[2])
+        self.high += float(by[2])
+
     def near(self, position, margin: float = 0.0) -> bool:
         flat = float(np.hypot(position[0] - self.at[0], position[1] - self.at[1]))
         if flat > self.radius + margin:
@@ -234,7 +248,7 @@ class Spanning(Thing):
     middle of the span meets it lower than the map says it is.
     """
 
-    __slots__ = ("a", "b", "radius", "curve", "slack")
+    __slots__ = ("a", "b", "radius", "curve", "slack", "weight_n_per_m", "leaned_by")
 
     def __init__(self, said: dict) -> None:
         super().__init__(said)
@@ -245,7 +259,46 @@ class Spanning(Thing):
         self.b = self._end(second)
         self.slack = float(said.get("slack", 0.0))
         self.radius = float(said.get("radiusM", self.spec.radius))
+        # What it weighs in water, per metre. A mooring riser is made to hold a
+        # buoy up and is buoyant; a working line is near neutral. Positive is
+        # down, as it is for a tether.
+        self.weight_n_per_m = float(said.get("weightNPerM", 0.0))
+        self.leaned_by = 0.0
         self.curve = _catenary(self.a, self.b, self.slack)
+
+    def lean(self, current, passes: int = 2500, nodes: int = 24) -> None:
+        """Put the line where the water leaves it.
+
+        A line drawn on a chart is where somebody put its two ends. Where it
+        actually *is* is somewhere else, and by metres rather than centimetres:
+        a hundred-metre span with ten per cent of slack hangs fourteen metres
+        below the straight line between its ends in still water, and half a
+        knot across it moves it again. A vehicle flying the chart's line meets
+        neither.
+
+        Still water leaves the catenary alone, which is what it already was.
+        """
+        flow = np.asarray(current, dtype=float)
+        if float(np.linalg.norm(flow)) < 1e-3:
+            self.leaned_by = 0.0
+            return
+        import cable
+
+        straight = float(np.linalg.norm(self.b - self.a))
+        length = straight * (1.0 + max(0.0, self.slack))
+        if straight < 1e-6 or length <= straight:
+            self.leaned_by = 0.0
+            return
+        was = _catenary(self.a, self.b, self.slack, step=straight / (nodes - 1))
+        was = np.array(was[:nodes], dtype=float)
+        shape = cable.lay_out(self.a, self.b, length, nodes, flow)
+        # Swept as many times as it is long: this is a solve from nothing, and
+        # a chain is only inextensible when the constraint can reach along it.
+        cable.settle(shape, self.a, self.b, length, flow,
+                     2.0 * self.radius, self.weight_n_per_m, passes,
+                     sweeps=nodes - 1)
+        self.curve = [np.array(one) for one in shape]
+        self.leaned_by = float(np.max(np.linalg.norm(shape - was, axis=1)))
 
     @staticmethod
     def _end(said: dict) -> np.ndarray:
@@ -255,6 +308,12 @@ class Spanning(Thing):
             z = -float(ground) if ground is not None else 0.0
         return np.array([float(said.get("x", 0.0)), float(said.get("y", 0.0)),
                          float(z)], dtype=float)
+
+    def shift(self, by) -> None:
+        by = np.asarray(by, dtype=float)
+        self.a = self.a + by
+        self.b = self.b + by
+        self.curve = [one + by for one in self.curve]
 
     def _nearest(self, position):
         """The closest point on the line, and how far off it is."""
@@ -289,6 +348,7 @@ class Spanning(Thing):
                      "to": [round(float(v), 2) for v in self.b],
                      "slack": round(self.slack, 3),
                      "lowestM": round(-deepest, 2),
+                     "leanedByM": round(self.leaned_by, 2),
                      "radiusM": round(self.radius, 3)})
         return said
 
@@ -307,6 +367,10 @@ class Region(Thing):
         super().__init__(said)
         self.corners = [np.array([float(c.get("x", 0.0)), float(c.get("y", 0.0))])
                         for c in (said.get("corners") or [])]
+
+    def shift(self, by) -> None:
+        by = np.asarray(by, dtype=float)[:2]
+        self.corners = [one + by for one in self.corners]
 
     def contains(self, position) -> bool:
         """Whether a point is inside, by the crossing rule. Depth is not asked:
@@ -345,6 +409,7 @@ class World:
         self.things: list[Thing] = []
         self.version = ""
         self.struck = 0
+        self.changed: list[str] = []
         if isinstance(document, dict):
             for said in document.get("things") or []:
                 if isinstance(said, dict):
@@ -352,6 +417,71 @@ class World:
 
     def __len__(self) -> int:
         return len(self.things)
+
+    def not_as_drawn(self, changes: dict | None) -> list[str]:
+        """Put the world somewhere other than where the chart says.
+
+        This is the half of a rehearsal that parameters cannot express. A sweep
+        can already ask what half a knot does, because half a knot is a number.
+        It could not ask *the mooring is thirty metres from where it was laid*,
+        or *the array has a transponder down*, or *there is a net where the
+        chart says clear water* — and those are the things that actually go
+        wrong, because they are the things nobody measured.
+
+        Three verbs, which is all it needs:
+
+            {"move":   {"mooring-block-909--1107": {"dx": 30, "dy": 0}},
+             "remove": ["transponder-3"],
+             "add":    [{"id": "net", "kind": "net", "x": 900, "y": -1100,
+                         "groundM": 14}]}
+
+        Answers what it did, for the record — because a run whose world was
+        changed and does not say so is a run nobody can read.
+        """
+        if not isinstance(changes, dict) or not changes:
+            return []
+        said: list[str] = []
+
+        gone = set(str(one) for one in (changes.get("remove") or []))
+        if gone:
+            kept = [one for one in self.things if one.id not in gone]
+            missing = gone - {one.id for one in self.things}
+            if len(kept) != len(self.things):
+                said.append(f"took away {len(self.things) - len(kept)}: "
+                            + ", ".join(sorted(gone - missing)))
+            for one in sorted(missing):
+                said.append(f"could not take away {one}: it is not in the water")
+            self.things = kept
+
+        for which, by in (changes.get("move") or {}).items():
+            one = self.by_id(str(which))
+            if one is None:
+                said.append(f"could not move {which}: it is not in the water")
+                continue
+            shift = np.array([float(by.get("dx", 0.0)), float(by.get("dy", 0.0)),
+                              float(by.get("dz", 0.0))])
+            one.shift(shift)
+            far = float(np.linalg.norm(shift))
+            said.append(f"moved {which} by {far:.0f} m")
+
+        for one in (changes.get("add") or []):
+            if isinstance(one, dict):
+                self.things.append(Thing.of(one))
+                said.append(f"put {one.get('kind', 'something')} "
+                            f"{one.get('id', '')} in the water")
+        self.changed = said
+        return said
+
+    def in_this_water(self, current) -> None:
+        """Tell the world what the water is doing.
+
+        Only the things that bend care, which is the lines. Called once the
+        dive knows its conditions, because a line's shape is a fact about the
+        water and not about the chart it was drawn on.
+        """
+        for one in self.things:
+            if isinstance(one, Spanning):
+                one.lean(current)
 
     def of_kind(self, kind: str) -> list[Thing]:
         return [one for one in self.things if one.kind == kind]
@@ -393,4 +523,8 @@ class World:
         return {"things": len(self.things), "of": counted,
                 "struck": self.struck,
                 "layoutVersion": self.version or None,
+                # What was done to it that the layout does not say. A run whose
+                # world was changed and does not say so is a run nobody can
+                # read.
+                "notAsDrawn": self.changed or None,
                 "each": [one.described() for one in self.things[:40]]}

@@ -119,6 +119,12 @@ type Scenario struct {
 	// The water it is flown in, and what is asked of it.
 	Water     map[string]json.RawMessage
 	Objective map[string]json.RawMessage
+	// And the world not being as drawn — the half of a rehearsal that
+	// parameters cannot express. A sweep could already ask what half a knot
+	// does, because half a knot is a number. It could not ask *the mooring is
+	// thirty metres from where it was laid*, and those are the things that
+	// actually go wrong, because they are the things nobody measured.
+	World map[string]json.RawMessage
 }
 
 // Label is how a scenario reads to a person: "current:half a knot · fix:none".
@@ -172,6 +178,7 @@ func Combinations(doubts map[string]json.RawMessage, base map[string]json.RawMes
 			Chosen:    map[string]string{},
 			Water:     map[string]json.RawMessage{},
 			Objective: map[string]json.RawMessage{},
+			World:     map[string]json.RawMessage{},
 		}
 		for key, value := range base {
 			one.Water[key] = value
@@ -209,6 +216,21 @@ func apply(said Setting, into *Scenario) {
 			if json.Unmarshal(value, &changes) == nil {
 				for name, one := range changes {
 					into.Objective[name] = one
+				}
+			}
+		case "world":
+			// Merged verb by verb, and each verb accumulates: two doubts that
+			// both take something away take both things away, which is the
+			// case worth flying rather than the one to drop.
+			var changes map[string]json.RawMessage
+			if json.Unmarshal(value, &changes) == nil {
+				for name, one := range changes {
+					switch name {
+					case "remove", "add":
+						into.World[name] = mergeArrays(into.World[name], one)
+					default:
+						into.World[name] = mergeObjects(into.World[name], one)
+					}
 				}
 			}
 		case "failures":
@@ -683,6 +705,10 @@ func (s *Store) askForScenario(ctx context.Context, conn db.Conn, spec SweepSpec
 	if err != nil {
 		return fmt.Errorf("encoding what is asked of %q: %w", label, err)
 	}
+	changed, err := json.Marshal(one.World)
+	if err != nil {
+		return fmt.Errorf("encoding what is not as drawn in %q: %w", label, err)
+	}
 	made, err := s.CreateDive(ctx, conn, DiveSpec{
 		OrgID:            spec.OrgID,
 		Name:             cut(spec.Name+" ~ "+label, 200),
@@ -693,7 +719,9 @@ func (s *Store) askForScenario(ctx context.Context, conn db.Conn, spec SweepSpec
 		// mission rather than replacing it. Empty for most scenarios, in which
 		// case the mission's own stages are flown whole.
 		ObjectiveOverlay: overlaid(objective),
-		CreatedBy:        spec.CreatedBy,
+		// What this scenario changed about the world it is flown in.
+		LayoutChanges: overlaid(changed),
+		CreatedBy:     spec.CreatedBy,
 	})
 	if err != nil {
 		return err

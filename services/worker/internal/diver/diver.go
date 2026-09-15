@@ -51,6 +51,8 @@ type Claimed struct {
 	// the dive rather than be fetched once it is already on a card.
 	LayoutVersionID string          `json:"layoutVersionId,omitempty"`
 	Layout          json.RawMessage `json:"layout,omitempty"`
+	// What a scenario changed about the world it is flown in.
+	LayoutChanges json.RawMessage `json:"layoutChanges,omitempty"`
 
 	AutonomyImage  string `json:"autonomyImage"`
 	AutonomyDigest string `json:"autonomyDigest"`
@@ -420,6 +422,7 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		// What is in the water besides the vehicle, and which version of it.
 		"layout":         claimed.Layout,
 		"layoutVersionId": claimed.LayoutVersionID,
+		"layoutChanges":   claimed.LayoutChanges,
 		"initialState":   claimed.InitialState,
 		"objective":      claimed.Objective,
 		"rosDomainId":    claimed.ROSDomainID,
