@@ -182,8 +182,15 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # reef from twelve metres — an ordinary survey altitude — came back as an
     # empty blue rectangle. A fog tuned by eye on one horizontal view is tuned
     # for that view.
+    # Three attenuation lengths, not one.
+    #
+    # The renderer's fog runs to full strength over its distance rather than
+    # e-folding across it, so handing it one attenuation length hazes the
+    # foreground — a colony a metre away came back under a green wash, which is
+    # not what a metre of water does. Three lengths is where an exponential has
+    # taken about ninety-five per cent, and it puts the near field back.
     scale = 1.0 if not visibility_m else max(0.15, float(visibility_m) / lengths[1])
-    settings.set("/rtx/fog/fogDistance", float(lengths[1] * scale))
+    settings.set("/rtx/fog/fogDistance", float(3.0 * lengths[1] * scale))
     settings.set("/rtx/fog/fogDensity", 1.0)
     settings.set("/rtx/fog/fogHeightDensity", 1.0)
     # Water starts at the lens, because it does. It was eleven metres, to keep

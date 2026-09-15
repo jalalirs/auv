@@ -264,8 +264,17 @@ class Tour:
         camera.CreateFocalLengthAttr(18.0)
         camera.CreateClippingRangeAttr(Gf.Vec2f(0.1, 12000.0))
 
+        # Which way is up for this view. Straight down with up as z is a
+        # degenerate basis and SetLookAt hands back nonsense for it: the
+        # looking-down frame came back an empty rectangle and was read as the
+        # water being too thick, which it was not. When the view is within a
+        # few degrees of vertical, north does the job instead.
+        way = (target[0] - eye[0], target[1] - eye[1], target[2] - eye[2])
+        flat = math.hypot(way[0], way[1])
+        up = Gf.Vec3d(1, 0, 0) if flat < 0.05 * abs(way[2]) else Gf.Vec3d(0, 0, 1)
+
         look = Gf.Matrix4d().SetLookAt(
-            Gf.Vec3d(*eye), Gf.Vec3d(*target), Gf.Vec3d(0, 0, 1)).GetInverse()
+            Gf.Vec3d(*eye), Gf.Vec3d(*target), up).GetInverse()
         moving = UsdGeom.Xformable(camera.GetPrim())
         moving.ClearXformOpOrder()
         moving.AddTransformOp().Set(look)
