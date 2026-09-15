@@ -624,6 +624,55 @@ it.
 mission, sweeps it, and is told what to do about Tuesday. **This is the target
 at the top of this file, and at this point the plan has met it.**
 
+*Done (15 September).* Driven in a browser rather than asserted: Sweeps is a
+tab, the doubts are a palette of toggles, and pressing **Sweep it** put four
+scenarios of Outplant B7 in the water and opened straight onto *"0 of 4 flown,
+4 in the water — nothing has come back yet. The answer appears as the scenarios
+land."*
+
+Reading one is a paragraph and a small table, because the grid was tried and
+nobody could read it: the doubts that changed the outcome, one bar each, the
+ones that made no difference in a line, and the sentence the plan turns on.
+Then what it costs, then every scenario for whoever wants the rows.
+
+Two decisions worth naming:
+
+  **The palette is the client's, not the platform's.** The API takes any doubt
+  at all — a dimension is a name and a list of settings, and a setting is
+  whatever it does to the water or to what was asked. That is right: a doubt is
+  whatever somebody could not promise, and a platform holding a list of the
+  weather it is *allowed* to worry about would be telling reef programmes what
+  to be uncertain about. `catalog/doubts.ts` is the five common ones, the way
+  `tasks.ts` is the common objectives.
+
+  **One setting is a decision, not a doubt.** A dimension with a single
+  setting is dropped from the cross product and the card says why. It is the
+  difference between "the current might be still or half a knot" and "the
+  current will be still", and a person ticking one thing means the second.
+
+And the step before it pays here: before somebody asks for eight dives the page
+says *"8 scenarios, one dive each · about 51 minutes of machine time"*, from
+what that plan cost the last time it was flown — or says plainly that it has
+never been flown and so nobody knows.
+
+Two things the browser found that no test would have:
+
+  **A class name collided.** The rate bars were `.bar`, which is also the
+  console's top bar, and it carries a `grid-area` — so every bar was quietly
+  thrown out of its own grid and rendered as a stub in the margin. Renamed.
+
+  **The client sent a vehicle where the API wanted a version of one**, and the
+  platform answered a foreign-key violation with a 500. Both fixed: the client
+  pins the published version the way the dive composer does, and a caller
+  naming something that is not there is now told so.
+
+**The target at the top of this file is met.** Lay out a site on its chart,
+plan the work over it pointing at what was drawn, ask what breaks it, and read:
+*survives 2 of 8; it turns on the current; at half a knot it fails four times
+out of four; nothing rescues it; allow four days of ship time for every day of
+work.* Without leaving the application, and without being told a tab is not
+yet — there are none left.
+
 ## 17 · The tether
 
 `sim-runtime/coral/hydrodynamics.py` and `world.py`.
