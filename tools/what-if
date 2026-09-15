@@ -186,8 +186,7 @@ def say(found: dict) -> None:
         print("Nothing in the doubt list explains the failures on its own.")
         return
 
-    turns = next((one for one in found["matters"] if one["name"] == found["turnsOn"]), None)
-    if turns is not None and turns.get("onACoinFlip"):
+    if found.get("nothingDecided"):
         print("Nothing in the doubt list is decided. Every difference rests on scenarios\n"
               "that could have gone either way: either move what counts as done off the\n"
               "spread, or fly each scenario more times, or doubt something this mission\n"

@@ -405,4 +405,28 @@ func TestADimensionDoesNotGetTheCreditForAnother(t *testing.T) {
 	if current, ok := at["the current"]; !ok || current.OnACoinFlip {
 		t.Errorf("the current really does decide it: %+v", current)
 	}
+	// And the one that decided something is what the mission turns on, even
+	// though the one that decided nothing scored a bigger number.
+	if found.TurnsOn != "the current" {
+		t.Errorf("it should turn on the current, not %q", found.TurnsOn)
+	}
+	if found.NothingDecided {
+		t.Error("something was decided")
+	}
+}
+
+// And when truly nothing is decided, it says so instead of picking one.
+func TestWhenNothingIsDecidedItSaysSo(t *testing.T) {
+	runs := []Flown{}
+	for _, value := range []string{"as laid", "one down", "two down"} {
+		for _, score := range []float64{0.155, 0.149} {
+			runs = append(runs, Flown{Chosen: map[string]string{"the array": value},
+				State: "succeeded", Score: score, Survived: score >= 0.15})
+		}
+	}
+	found := What(runs, 0.15)
+	if !found.NothingDecided || found.TurnsOn != "" {
+		t.Fatalf("nothing is decided here: turnsOn=%q decided=%v",
+			found.TurnsOn, !found.NothingDecided)
+	}
 }
