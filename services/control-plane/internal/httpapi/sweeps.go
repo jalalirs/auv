@@ -119,10 +119,10 @@ func (rt *Router) registerSweeps() {
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/sweeps",
 		Summary: "fly a mission against everything that could go wrong with it",
 		Action:  policy.RunRequest,
-		Resource: fromPath(policy.ResourceOrganisation, "orgId"), Handle: d.createSweep})
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.createSweep})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations/{orgId}/sweeps",
 		Summary: "what has been swept", Action: policy.DiveRead,
-		Resource: fromPath(policy.ResourceOrganisation, "orgId"), Handle: d.listSweeps})
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.listSweeps})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/sweeps/{sweepId}",
 		Summary: "one sweep", Action: policy.DiveRead,
 		Resource: atPlatform(), Handle: d.readSweep})
