@@ -339,6 +339,12 @@ type Dimension struct {
 	// does not matter.
 	Changes float64 `json:"changes"`
 	Rates   []Rate  `json:"rates"`
+	// Whether the difference rests on scenarios that could have gone either
+	// way. A threshold sitting inside the spread turns noise into a fifty per
+	// cent effect, and a rehearsal that reported that would send somebody to
+	// worry about the wrong thing — which is the most expensive mistake it can
+	// make.
+	OnACoinFlip bool `json:"onACoinFlip"`
 }
 
 // Findings is what the sweep is for.
@@ -348,7 +354,12 @@ type Findings struct {
 	FlownRuns int     `json:"flownRuns"`
 	Flying    int     `json:"flying"`
 	Survived  int     `json:"survived"`
-	Repeats   int     `json:"repeats"`
+	// How many scenarios could have gone either way: some of their runs did
+	// the job and some did not. A sweep with many of these is a sweep whose
+	// threshold is sitting in the noise, and the answer says so rather than
+	// ranking it.
+	Marginal int `json:"marginal"`
+	Repeats  int `json:"repeats"`
 	Good      float64 `json:"good"`
 
 	// Ranked by how much each *changes* the outcome, not by how often it was
@@ -409,6 +420,10 @@ type ScenarioFlown struct {
 	Runs     int               `json:"runs"`
 	Survived int               `json:"survivedRuns"`
 	Works    bool              `json:"survived"`
+	// Some of its runs did the job and some did not, so whether it "survives"
+	// is a coin flip rather than an answer. Which is worth knowing before
+	// anybody ranks a doubt on it.
+	Marginal bool `json:"marginal"`
 	Score    float64           `json:"score"`
 	Worst    float64           `json:"worst"`
 	Best     float64           `json:"best"`
@@ -454,6 +469,7 @@ func gather(flown []Flown) []ScenarioFlown {
 		// More than half. At one run this is that run, which is what every
 		// sweep flown before this did.
 		one.Works = one.Survived*2 > len(runs)
+		one.Marginal = one.Survived > 0 && one.Survived < len(runs)
 		out = append(out, one)
 	}
 	return out
@@ -480,6 +496,9 @@ func What(flown []Flown, good float64) Findings {
 	for _, one := range scenarios {
 		if one.Works {
 			out.Survived++
+		}
+		if one.Marginal {
+			out.Marginal++
 		}
 		if one.HeldBack && !one.Works {
 			out.HeldBack++
@@ -520,7 +539,10 @@ func What(flown []Flown, good float64) Findings {
 		}
 		changes := worst - best
 		if changes >= MATTERS {
-			out.Matters = append(out.Matters, Dimension{Name: name, Changes: changes, Rates: rates})
+			out.Matters = append(out.Matters, Dimension{
+				Name: name, Changes: changes, Rates: rates,
+				OnACoinFlip: onACoinFlip(scenarios, name),
+			})
 		} else {
 			out.MadeNoDifference = append(out.MadeNoDifference, name)
 		}
@@ -573,6 +595,52 @@ func What(flown []Flown, good float64) Findings {
 		out.NoRescue = true
 	}
 	return out
+}
+
+// onACoinFlip is whether a dimension's apparent effect rests entirely on
+// scenarios that could have gone either way.
+//
+// Every doubt is ranked by the gap between its best setting and its worst. If
+// every scenario on either side of that gap is one whose runs straddled the
+// threshold, the gap is where the coins landed and not what the setting did —
+// and a rehearsal that reported it as a finding would send somebody to worry
+// about a transponder that does not matter. Which is the most expensive
+// mistake this can make, so it is said out loud.
+func onACoinFlip(flown []ScenarioFlown, dimension string) bool {
+	decided := false
+	for _, one := range flown {
+		if _, said := one.Chosen[dimension]; !said {
+			continue
+		}
+		if !one.Marginal {
+			decided = true
+		}
+	}
+	if !decided {
+		return true
+	}
+	// Decided scenarios exist; the question is whether they differ. Group the
+	// firmly-decided ones by setting and see if any two settings disagree.
+	works := map[string]map[bool]bool{}
+	for _, one := range flown {
+		value, said := one.Chosen[dimension]
+		if !said || one.Marginal {
+			continue
+		}
+		if works[value] == nil {
+			works[value] = map[bool]bool{}
+		}
+		works[value][one.Works] = true
+	}
+	seen := map[bool]bool{}
+	for _, at := range works {
+		for outcome := range at {
+			seen[outcome] = true
+		}
+	}
+	// If every firmly-decided scenario went the same way whatever the setting,
+	// nothing about this dimension has been decided by anything but the flips.
+	return len(seen) < 2
 }
 
 // ratesOf is how each setting of one dimension fared, worst first. Counted in
