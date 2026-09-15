@@ -1305,6 +1305,82 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 .laying-out .listing .save { margin-top: 6px; }
 .laying-out .trouble { color: var(--vehicle); font-size: 12.5px; }
 
+/* Writing a plan of work.
+ *
+ * The same three columns as the editor and for the same reason: a palette to
+ * add from, the thing itself in the middle, and what the selected part of it
+ * says on the right. The middle column is an ordered list rather than a chart,
+ * because a plan's whole content is order.
+ */
+.planning {
+  display: grid; grid-template-columns: 176px 1fr 232px;
+  gap: 1px; background: var(--edge);
+  border: 1px solid var(--edge); border-radius: 10px; overflow: hidden;
+  min-height: 460px;
+}
+.planning > * { background: var(--shelf); padding: 12px; }
+.planning h3 {
+  font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--dim); margin: 14px 0 8px; font-weight: 500;
+}
+.planning h3:first-child { margin-top: 0; }
+.planning .tool {
+  display: block; width: 100%; text-align: left; margin-bottom: 4px;
+  background: transparent; border: 1px solid transparent; color: var(--plain);
+  padding: 6px 8px; border-radius: 6px; font: inherit; cursor: pointer;
+}
+.planning .tool:hover { background: var(--raised); }
+.planning select {
+  width: 100%; background: var(--deep); border: 1px solid var(--edge);
+  color: var(--plain); border-radius: 8px; padding: 7px 9px; font: inherit;
+}
+.planning select:focus { outline: none; border-color: var(--edge-lit); }
+
+.planning .order { display: flex; flex-direction: column; gap: 4px; }
+.planning .stage {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 8px; cursor: pointer;
+  border: 1px solid transparent; background: var(--raised);
+}
+.planning .stage:hover { border-color: var(--edge-lit); }
+.planning .stage.on { border-color: var(--vehicle); }
+.planning .stage .mark { width: 34px; height: 34px; flex: 0 0 34px; opacity: .85; }
+.planning .stage .mark svg { width: 100%; height: 100%; }
+.planning .stage .what { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.planning .stage .what small { color: var(--faint); font-size: 11.5px; }
+.planning .stage .ordinal {
+  margin-left: auto; font-family: ui-monospace, monospace; font-size: 11px;
+  color: var(--dim); font-variant-numeric: tabular-nums;
+}
+
+.planning .detail { display: flex; flex-direction: column; }
+.planning .number { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.planning .number span { font-size: 12.5px; color: var(--faint); flex: 1; }
+.planning .number em {
+  font-style: normal; font-size: 11px; color: var(--dim); width: 14px;
+}
+.planning .number input {
+  width: 74px; background: var(--deep); border: 1px solid var(--edge);
+  color: var(--plain); border-radius: 6px; padding: 4px 7px; font: inherit;
+  font-family: ui-monospace, monospace; font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.planning .number input:focus { outline: none; border-color: var(--edge-lit); }
+.planning .acts { display: flex; gap: 6px; margin-top: 8px; }
+.planning .acts button { flex: 1; font-size: 12px; padding: 5px; }
+.planning .save { margin-top: auto; }
+.planning .trouble { color: var(--vehicle); font-size: 12.5px; }
+
+@media (max-width: 900px) {
+  .planning { grid-template-columns: 1fr; }
+}
+
+/* Naming a plan of work: a place to put it, and a name. */
+.naming select {
+  background: var(--deep); border: 1px solid var(--edge);
+  color: var(--plain); border-radius: 8px; padding: 7px 10px; font: inherit;
+}
+
 /* An arrangement, listed under the place it is of. */
 .naming { display: flex; gap: 6px; margin-top: 10px; }
 .naming input {

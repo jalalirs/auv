@@ -8,9 +8,9 @@
 // there, or the only one if there is only one. Nothing else is on this page;
 // what became of earlier dives is the Dives page's business.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import type { Platform } from "@coral-city/api";
+import type { AssetVersion, Mission, Platform } from "@coral-city/api";
 
 import { POSITIONING, type Positioning } from "../catalog/positioning.js";
 import { PILOTED, TASKS, type Task, WATERS, type Water } from "../catalog/tasks.js";
@@ -32,6 +32,20 @@ const WHY = "coral-city.task";
 const WHO = "coral-city.controller";
 const HOW = "coral-city.water";
 const KNOWS = "coral-city.positioning";
+const PLAN = "coral-city.mission";
+
+/** Standing for "no plan", so the row has something chosen rather than nothing. */
+const NO_PLAN = "none";
+
+/** How long a plan of work asks for, which is how long the dive will get. */
+function minutesOf(stages: { timeLimitS?: number; seconds?: number }[]): string {
+  const total = stages.reduce((all, one) =>
+    all + Number(one.timeLimitS ?? one.seconds ?? 300), 0);
+  return total < 90 ? `${Math.round(total)} s` : `${Math.round(total / 60)} min`;
+}
+
+/** A plan of work that can actually be flown: one with something saved. */
+interface Flyable { mission: Mission; version: AssetVersion; place: string }
 
 /** The controller a person is: keys, with the hold beneath them. */
 const MANUAL = "manual";
@@ -134,6 +148,35 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
   const [asking, setAsking] = useState(false);
   const [refusal, setRefusal] = useState("");
 
+  // The plans of work there are to fly. A dive composed from one is three
+  // choices and a button: what to do, what in, and what the sea is doing.
+  // Everything else — where, how it is arranged, the stages and what each
+  // points at — comes from the plan, which is the whole reason for keeping
+  // one: two people who chose different places did not fly the same mission.
+  const [plans, setPlans] = useState<Flyable[]>([]);
+  const [plan, setPlan] = useState<string | undefined>(() => localStorage.getItem(PLAN) ?? undefined);
+  useEffect(() => {
+    let stale = false;
+    void (async () => {
+      const found: Flyable[] = [];
+      for (const where of held.places) {
+        for (const mission of await platform.missionsOf(where.id).catch((): Mission[] => [])) {
+          const saved = await platform.versionsOfMission(mission.id).catch((): AssetVersion[] => []);
+          if (saved[0] !== undefined) found.push({ mission, version: saved[0], place: where.id });
+        }
+      }
+      if (!stale) setPlans(found);
+    })();
+    return () => { stale = true; };
+  }, [platform, held.places]);
+  const chosenPlan = plans.find((one) => one.mission.id === plan);
+  // A plan names its own place, so choosing one chooses where. Shown rather
+  // than hidden: the picture and the sea on this page are of somewhere, and a
+  // dive whose destination was implicit would be a dive nobody could check.
+  useEffect(() => {
+    if (chosenPlan !== undefined && chosenPlan.place !== place) setPlace(chosenPlan.place);
+  }, [chosenPlan, place]);
+
   const chosenPlace = held.places.find((p) => p.id === place);
   const chosenVehicle = held.vehicles.find((v) => v.id === vehicle);
   const placePackage = chosenPlace === undefined ? undefined : packages.places.get(chosenPlace.id);
@@ -176,7 +219,21 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
 
       // What the dive is for goes with it, and the runtime judges it as the
       // dive runs; the name says so too, for anyone reading the record.
-      const defined = await platform.defineDive(held.institution.id, {
+      // Composed from a plan of work, or assembled here. The first names the
+      // plan and nothing else about where or what for: the place, the
+      // arrangement and the stages are the plan's, and a caller who could
+      // change them while still calling it the same mission could produce two
+      // runs that are not comparable and look as though they are.
+      const defined = chosenPlan !== undefined
+        ? await platform.defineDive(held.institution.id, {
+            name: `${chosenPlan.mission.name} · ${chosenVehicle.name}`,
+            missionVersionId: chosenPlan.version.id,
+            vehicleVersionId: oneVehicle.id,
+            conditionsId: conditions.id,
+            autonomyStackId: chosenStack?.id,
+            ...(builtIn === undefined ? {} : { objective: { controller: builtIn } }),
+          })
+        : await platform.defineDive(held.institution.id, {
         name: `${task.key === "piloted" ? "" : task.name + ": "}${chosenVehicle.name} in ${chosenPlace.name}`,
         cityVersionId: onePlace.id,
         vehicleVersionId: oneVehicle.id,
@@ -248,6 +305,21 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
     // The shape of the thing it asks for, drawn: a task has a pattern, not a face.
     art: <TaskArt kind={(one.objective?.["kind"] as string) ?? one.key} />,
   }));
+  const missions: Choice[] = [
+    { key: NO_PLAN, name: "Nothing planned",
+      says: "Choose a place and a task below, the way a one-off dive is put together.",
+      art: <TaskArt kind="reach" /> },
+    ...plans.map(({ mission, version, place: where }) => {
+      const stages = ((version.document as { stages?: { kind: string }[] } | undefined)?.stages) ?? [];
+      return {
+        key: mission.id, name: mission.name,
+        group: held.places.find((p) => p.id === where)?.name ?? "somewhere",
+        says: stages.length === 0 ? "nothing in it yet"
+          : `${stages.length} stages · ${stages.map((s) => s.kind).join(", ")}`,
+        art: <TaskArt kind={stages[0]?.kind ?? "mission"} />,
+      };
+    }),
+  ];
   const positions: Choice[] = POSITIONING.map((one) => ({
     key: one.key, name: one.name, says: `${one.says} ${one.expect}`,
     art: <PositioningArt kind={one.key} />,
@@ -282,6 +354,9 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
       };
     }),
   ];
+
+  const planStages: { kind: string; over?: string; timeLimitS?: number; seconds?: number }[] =
+    ((chosenPlan?.version.document as { stages?: { kind: string; over?: string }[] } | undefined)?.stages) ?? [];
 
   // ── what the chosen place says about itself ──────────────────────────────
   const site = placePackage?.site;
@@ -318,6 +393,12 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
                   <Fact of="begins" is={`${(-site.beginAt[2]!).toFixed(1)} m down`} note={site.beginBecause} />
                 )}
                 {site?.reef?.colonies ? <Fact of="reef" is={`${site.reef.colonies.toLocaleString()} colonies`} note={site.reef.source} /> : null}
+                {chosenPlan === undefined ? null : (
+                  <Fact of="the plan"
+                        is={`${planStages.length} stages · ${minutesOf(planStages)}`}
+                        note={planStages.map((s, at) =>
+                          `${at + 1}. ${s.kind}${s.over ? ` over ${s.over}` : ""}`).join("  ")} />
+                )}
                 <Fact of="machines" is={`${free} free of ${devices}`} />
               </div>
             </div>
@@ -374,9 +455,20 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
         </div>
 
         <div className="plan">
-          <Line label="Where" choices={places} chosen={place}
-                onChoose={(key) => { setPlace(key); localStorage.setItem(WHERE, key); }}
-                onOpen={(key) => onOpen({ page: "place", id: key })} />
+          <Line label="Flying" choices={missions} chosen={plan ?? NO_PLAN}
+                onChoose={(key) => {
+                  if (key === NO_PLAN) { setPlan(undefined); localStorage.removeItem(PLAN); }
+                  else { setPlan(key); localStorage.setItem(PLAN, key); }
+                }}
+                onOpen={chosenPlan === undefined ? undefined : () => onOpen({ page: "mission", id: chosenPlan.mission.id, place: chosenPlan.place })}
+                hint={chosenPlan === undefined
+                  ? <>A plan of work says where, how the place is arranged, and what to do in order. Without one, choose a place and a task yourself.</>
+                  : <>Where, how it is arranged and what to do all come from this plan — so somebody else flying it is flying the same thing.</>} />
+          {chosenPlan !== undefined ? null : (
+            <Line label="Where" choices={places} chosen={place}
+                  onChoose={(key) => { setPlace(key); localStorage.setItem(WHERE, key); }}
+                  onOpen={(key) => onOpen({ page: "place", id: key })} />
+          )}
           <Line label="In" choices={vehicles} chosen={vehicle}
                 onChoose={(key) => { setVehicle(key); localStorage.setItem(WHAT, key); }}
                 onOpen={(key) => onOpen({ page: "vehicle", id: key })} />
@@ -390,9 +482,14 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
           <Line label="Knows where it is by" choices={positions} chosen={knows.key}
                 onChoose={(key) => { setKnows(POSITIONING.find((p) => p.key === key)!); localStorage.setItem(KNOWS, key); }}
                 hint={<>There is no GPS underwater. What it believes about its own position is what it flies on, and the task is scored on where it actually is.</>} />
-          <Line label="For" choices={tasks} chosen={task.key}
-                onChoose={(key) => { const t = [PILOTED, ...TASKS].find((x) => x.key === key)!; setTask(t); localStorage.setItem(WHY, key); }}
-                hint={task.judgedOn.length > 0 ? <>The score is on the dive when it ends.</> : undefined} />
+          {/* What for is the plan's, when there is one. Hidden rather than
+              shown greyed: a row that cannot be chosen is a row people try to
+              choose. */}
+          {chosenPlan !== undefined ? null : (
+            <Line label="For" choices={tasks} chosen={task.key}
+                  onChoose={(key) => { const t = [PILOTED, ...TASKS].find((x) => x.key === key)!; setTask(t); localStorage.setItem(WHY, key); }}
+                  hint={task.judgedOn.length > 0 ? <>The score is on the dive when it ends.</> : undefined} />
+          )}
         </div>
       </section>
     </>
