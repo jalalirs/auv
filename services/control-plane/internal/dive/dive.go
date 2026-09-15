@@ -911,10 +911,19 @@ func (s *Store) consider(ctx context.Context, conn db.Conn, spec RunSpec, orgID 
 		}
 		return nil, fmt.Errorf("reading the quota: %w", err)
 	}
+	// What the institution has *holding a machine*, which is what the limit is
+	// about. A queued run holds nothing: the queue exists so that work can
+	// wait, and counting waiting work against a limit of four made a sweep
+	// impossible by definition — a sweep is ninety dives asked for at once, and
+	// eighty-six of them are meant to be waiting.
+	//
+	// What bounds the cost of a long queue is the daily GPU-hours quota below,
+	// which is the honest place for it. If a limit on how much may *wait* is
+	// ever wanted, it is a queue depth and a different number.
 	var inFlight int
 	var hoursToday float64
 	err = conn.QueryRow(ctx, `
-		SELECT count(*) FILTER (WHERE r.state IN ('queued', 'preparing', 'running')),
+		SELECT count(*) FILTER (WHERE r.state IN ('preparing', 'running')),
 		       coalesce(sum(
 		           greatest(1, (SELECT count(DISTINCT device_id) FROM dive.hold h WHERE h.run_id = r.id))
 		           * extract(epoch FROM (coalesce(r.ended_at, now()) - coalesce(r.started_at, r.requested_at))) / 3600.0
