@@ -330,13 +330,18 @@ func TestADimensionDecidedByCoinFlipsSaysSo(t *testing.T) {
 				State: "succeeded", Score: score, Survived: score >= 0.15})
 		}
 	}
-	// Every scenario straddles the threshold; nothing is decided by anything.
+	// The numbers that sweep actually came back with. Two of the three
+	// straddle the threshold outright; the third clears it by a hair, which is
+	// the same coin landing the same way twice.
 	add("as laid", 0.155, 0.149)
 	add("one down", 0.151, 0.148)
 	add("two down", 0.164, 0.152)
 	found := What(runs, 0.15)
-	if found.Marginal != 3 {
-		t.Fatalf("all three could have gone either way, counted %d", found.Marginal)
+	if found.Marginal != 2 {
+		t.Fatalf("two of the three could have gone either way, counted %d", found.Marginal)
+	}
+	if found.Survived != 1 {
+		t.Fatalf("only the one that cleared it twice survives, got %d", found.Survived)
 	}
 	for _, one := range found.Matters {
 		if !one.OnACoinFlip {
