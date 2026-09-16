@@ -83,6 +83,7 @@ JSON
         -e CORAL_CITY_LAMP_CONE="${LAMP_CONE:-1}" \
         -e CORAL_CITY_TEST_LAMP="${TEST_LAMP:-}" \
         -e CORAL_CITY_LAMP_SIZE="${LAMP_SIZE:-0.08}" \
+        -e CORAL_CITY_TWIN="${TWIN:-}" \
         -e CORAL_CITY_LAMP_INTENSITY="${LAMP_INTENSITY:-}" \
         -e CORAL_CITY_TOUR_INTO=/dive/frames \
         -v "${here}:/dive:rw" \

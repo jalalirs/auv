@@ -343,6 +343,32 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     moving = UsdGeom.Xformable(caustics.GetPrim())
     moving.AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, water_level - 0.5))
 
+    # A second light, built here beside the caustics that work, because every
+    # difference between them has now been ruled out one at a time: type, size,
+    # brightness, cone, parenting, the scope above it. What is left is *where
+    # in the code it is made*, which should not matter and is the only thing
+    # not yet tested. CORAL_CITY_TWIN steps it from an exact copy of the
+    # caustics towards a lamp, one attribute at a time.
+    twin = os.environ.get("CORAL_CITY_TWIN")
+    if twin:
+        step = int(twin)
+        second = UsdLux.RectLight.Define(stage, "/World/CausticsTwin")
+        # 1: an exact copy, twenty metres along.
+        wide = 90.0 if step < 2 else 0.08
+        second.CreateWidthAttr(wide)
+        second.CreateHeightAttr(wide)
+        second.CreateIntensityAttr(5200.0 * left if step < 3 else 200000.0)
+        second.CreateColorAttr(Gf.Vec3f(1.0, 0.97, 0.90))
+        second.CreateNormalizeAttr(False)
+        if step < 4:
+            second.GetPrim().CreateAttribute(
+                "inputs:texture:file", Sdf.ValueTypeNames.Asset).Set(
+                    "/isaac-sim/coral/caustics.png")
+        UsdGeom.Xformable(second.GetPrim()).AddTranslateOp().Set(
+            Gf.Vec3d(20.0, 0.0, water_level - 0.5))
+        say("twin", step=step, acrossM=wide,
+            textured=step < 4)
+
     # Read back, not assumed. A carb setting that does not exist accepts a
     # value silently and changes nothing, so every number below could have been
     # doing exactly nothing for as long as it has been here — and the way that
