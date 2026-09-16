@@ -235,6 +235,22 @@ def _triples(values) -> str:
     return ", ".join("(%.4g, %.4g, %.4g)" % (a, b, c) for a, b, c in values)
 
 
+# How much of its own colour a colony emits.
+#
+# `UsdPreviewSurface` has no subsurface term, and coral is translucent tissue
+# over a white aragonite skeleton: light goes in, scatters, and leaves nearby,
+# which is why a living colony looks lit from inside and a dead one looks like
+# a stone. A few per cent of its own colour, emitted, stands in for that. It is
+# a cheat and it is the honest one — the alternative is an MDL material, and
+# until there is one this is the difference between a colony and a painted rock.
+TISSUE_GLOW = 0.055
+
+# Wet, not chalk. Roughness 0.82 is a dry bone; tissue under water is nearer a
+# half, and the highlight that comes with it is most of what says "under water"
+# rather than "on a shelf".
+WET = 0.52
+
+
 def _skins(colours) -> str:
     """A material per prototype.
 
@@ -251,10 +267,14 @@ def _skins(colours) -> str:
             '            def Shader "Surface"\n            {\n'
             '                uniform token info:id = "UsdPreviewSurface"\n'
             "                color3f inputs:diffuseColor = (%.3g, %.3g, %.3g)\n"
-            "                float inputs:roughness = 0.82\n"
+            "                color3f inputs:emissiveColor = (%.4g, %.4g, %.4g)\n"
+            "                float inputs:roughness = %.3g\n"
             "                float inputs:metallic = 0\n"
             "                token outputs:surface\n"
-            "            }\n        }\n" % (i, i, colour[0], colour[1], colour[2]))
+            "            }\n        }\n" % (
+                i, i, colour[0], colour[1], colour[2],
+                colour[0] * TISSUE_GLOW, colour[1] * TISSUE_GLOW,
+                colour[2] * TISSUE_GLOW, WET))
     return '    def Scope "Skins"\n    {\n%s    }\n' % "".join(skins)
 
 
@@ -268,7 +288,9 @@ def _instancer(prototypes, colours, x, y, z, which, scale, turn) -> str:
             '\n        def Mesh "Coral_%d" (\n'
             '            prepend apiSchemas = ["MaterialBindingAPI"]\n'
             "        )\n        {\n"
-            '            uniform token subdivisionScheme = "none"\n'
+            # Smoothed. The prototypes are low-poly on purpose and the facets
+            # show on anything domed; subdividing costs nothing at render time.
+            '            uniform token subdivisionScheme = "catmullClark"\n'
             "            int[] faceVertexCounts = [%s]\n"
             "            int[] faceVertexIndices = [%s]\n"
             "            point3f[] points = [%s]\n"
