@@ -385,6 +385,7 @@ class Dive:
         try:
             from energy import Battery
             self.battery = Battery.of(pathlib.Path(brief.get("vehiclePath", "/dive/vehicle")))
+
             charge = brief.get("batteryCharge")
             if self.battery is not None and charge is not None:
                 self.battery.remaining_wh = self.battery.capacity_wh * float(charge)
@@ -572,6 +573,8 @@ class Dive:
         self.placement = xform.AddTransformOp()
         self._Gf = Gf
         self.placement.Set(self.pose())
+
+        self.switch_on_the_lamps(stage)
 
         if drawn:
             # The hull hangs under our own transform rather than being it, so
@@ -1276,6 +1279,88 @@ class Dive:
         except Exception as exc:
             self.navigation = None
             self.say("navigation_unavailable", why=str(exc)[:160])
+
+    def switch_on_the_lamps(self, stage) -> None:
+        """Hang the vehicle's own lights on it, as its package describes them.
+
+        Nothing on this platform has ever carried a light. Every dive has been
+        lit by the sun, which is true down to about thirty metres and is a lie
+        everywhere else: at six hundred there is no sun at all, and the deep
+        site rendered black in every frame because that is what it is.
+
+        The lamps hang under the vehicle's transform, so they go where it goes
+        and point where it points without anybody moving them. They also cost
+        what they cost — a Lumen is fifteen watts, two of them is thirty, and
+        on a vehicle whose whole hotel load is twenty-five that is a number a
+        dive plan has to know.
+        """
+        import json
+
+        from pxr import Gf, Sdf, UsdGeom, UsdLux
+
+        self.lamps = []
+        self.lamp_watts = 0.0
+        try:
+            described = json.loads((pathlib.Path(self.brief.get("vehiclePath", "/dive/vehicle"))
+                                    / "dynamics.json").read_text())
+            fitted = ((described.get("lights") or {}).get("fitted")) or []
+        except Exception:
+            fitted = []
+        if not fitted:
+            return
+        # A dive may unship them, the same way it can unship a Doppler log.
+        # Lights off is a real choice: it is half an hour of battery.
+        if getattr(self, "fitted", {}).get("lights") is False:
+            self.say("lamps_off", why="this dive is not carrying them")
+            return
+
+        for one in fitted:
+            name = str(one.get("name", "lamp"))
+            at = [float(v) for v in (one.get("position") or [0.0, 0.0, 0.0])]
+            aim = [float(v) for v in (one.get("aim") or [1.0, 0.0, 0.0])]
+            watts = float(one.get("watts", 0.0))
+            light = UsdLux.SphereLight.Define(
+                stage, f"{self.vehicle_path}/Lamps/{name}")
+            # A subsea lamp is a small bright source behind a dome, not a
+            # point: the shadow it throws has a soft edge and that edge is
+            # most of what makes a lit frame look lit rather than traced.
+            light.CreateRadiusAttr(0.035)
+            light.CreateIntensityAttr(float(one.get("lumens", 1500.0)) * 6.0)
+            light.CreateColorAttr(Gf.Vec3f(1.0, 0.98, 0.95))
+            light.CreateNormalizeAttr(True)
+            # Cone, so it is a lamp rather than a bulb hanging in the water.
+            shaping = UsdLux.ShapingAPI.Apply(light.GetPrim())
+            shaping.CreateShapingConeAngleAttr(float(one.get("coneDeg", 120.0)) / 2.0)
+            shaping.CreateShapingConeSoftnessAttr(0.45)
+
+            moving = UsdGeom.Xformable(light.GetPrim())
+            moving.ClearXformOpOrder()
+            moving.AddTranslateOp().Set(self._Gf.Vec3d(
+                *[v * self.units_per_metre for v in
+                  (at if self.up_axis != "Y" else [at[0], at[2], -at[1]])]))
+            # Aimed by pointing its own -Z down the aim vector.
+            towards = np.array(aim, dtype=float)
+            if np.linalg.norm(towards) > 1e-9:
+                towards = towards / np.linalg.norm(towards)
+                pitch = math.degrees(math.asin(max(-1.0, min(1.0, -towards[2]))))
+                yaw = math.degrees(math.atan2(towards[1], towards[0]))
+                moving.AddRotateXYZOp().Set(Gf.Vec3f(0.0, 90.0 - pitch, yaw))
+            self.lamps.append(name)
+            self.lamp_watts += watts
+
+        # And they are part of the hotel load while they are on. Two Lumens is
+        # thirty watts against a hotel load of twenty-five, so a vehicle with
+        # its lights on draws more than twice what one with them off draws
+        # before it has moved at all. A dive that did not count them would
+        # promise an endurance nobody gets.
+        if self.battery is not None and self.lamp_watts:
+            self.battery.hotel_w += float(self.lamp_watts)
+
+        self.say("lamps_on", lamps=self.lamps,
+                 watts=round(self.lamp_watts, 1),
+                 lumens=sum(float(one.get("lumens", 0.0)) for one in fitted),
+                 hotelNowW=None if self.battery is None
+                 else round(self.battery.hotel_w, 1))
 
     def switch_on_the_sonar(self) -> None:
         """Give the vehicle its sonar, if its package says it has one.

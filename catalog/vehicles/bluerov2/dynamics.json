@@ -148,7 +148,7 @@
     ]
   },
   "tether": {
-    "_": "The Fathom Slim tether Blue Robotics ships with it: 7.6 mm, and made very slightly buoyant in seawater on purpose — a tether that is not spends the dive dragging the vehicle down.",
+    "_": "The Fathom Slim tether Blue Robotics ships with it: 7.6 mm, and made very slightly buoyant in seawater on purpose \u2014 a tether that is not spends the dive dragging the vehicle down.",
     "diameterM": 0.0076,
     "lengthM": 100.0,
     "weightNPerM": -0.02,
@@ -269,5 +269,46 @@
     "thrusterMaxW": 350.0,
     "powerExponent": 1.5,
     "reserveFraction": 0.1
+  },
+  "lights": {
+    "note": "Blue Robotics Lumen Subsea Lights, which is what a BlueROV2 carries. 1500 lumens each at 15 W, a 135 degree beam in water, mounted either side of the camera and aimed where it looks. Two is the stock fit; the Heavy takes four.",
+    "fitted": [
+      {
+        "name": "port",
+        "kind": "lumen",
+        "position": [
+          0.22,
+          -0.16,
+          0.08
+        ],
+        "aim": [
+          1.0,
+          0.0,
+          -0.15
+        ],
+        "lumens": 1500.0,
+        "watts": 15.0,
+        "coneDeg": 135.0,
+        "colourK": 6000
+      },
+      {
+        "name": "starboard",
+        "kind": "lumen",
+        "position": [
+          0.22,
+          0.16,
+          0.08
+        ],
+        "aim": [
+          1.0,
+          0.0,
+          -0.15
+        ],
+        "lumens": 1500.0,
+        "watts": 15.0,
+        "coneDeg": 135.0,
+        "colourK": 6000
+      }
+    ]
   }
 }
