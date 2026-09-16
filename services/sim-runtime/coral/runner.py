@@ -1388,6 +1388,28 @@ class Dive:
         self.say("lamps_at", where=where,
                  vehicleAt=[round(float(v), 2) for v in self.position])
 
+        # The same light again, at the same place, hung at world level instead
+        # of on the vehicle. The vehicle's lamps are created, positioned and
+        # switched on and no frame gets brighter; either the renderer does not
+        # light from a local source here, or something about hanging one under
+        # the vehicle stops it. One of those is a five-minute fix and this says
+        # which.
+        if os.environ.get("CORAL_CITY_TEST_LAMP"):
+            probe = UsdLux.SphereLight.Define(stage, "/World/TestLamp")
+            probe.CreateRadiusAttr(0.2)
+            probe.CreateIntensityAttr(float(os.environ["CORAL_CITY_TEST_LAMP"]))
+            probe.CreateColorAttr(Gf.Vec3f(1.0, 0.35, 0.35))
+            probe.CreateNormalizeAttr(False)
+            UsdGeom.Xformable(probe.GetPrim()).AddTranslateOp().Set(
+                self.drawn_at([float(self.position[0]) + 0.4,
+                               float(self.position[1]),
+                               float(self.position[2]) + 0.3]))
+            self.say("test_lamp",
+                     at=[round(float(self.position[0]) + 0.4, 2),
+                         round(float(self.position[1]), 2),
+                         round(float(self.position[2]) + 0.3, 2)],
+                     intensity=float(os.environ["CORAL_CITY_TEST_LAMP"]))
+
         self.say("lamps_on", lamps=self.lamps,
                  watts=round(self.lamp_watts, 1),
                  lumens=sum(float(one.get("lumens", 0.0)) for one in fitted),

@@ -330,21 +330,6 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     moving = UsdGeom.Xformable(caustics.GetPrim())
     moving.AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, water_level - 0.5))
 
-    # A lamp at world level, to find out whether this renderer lights from a
-    # local source at all. The vehicle's own lamps are created, positioned and
-    # switched on, and nothing in any frame gets brighter; the two things that
-    # could be are the light or the parenting, and this separates them.
-    if os.environ.get("CORAL_CITY_TEST_LAMP"):
-        probe = UsdLux.SphereLight.Define(stage, "/World/TestLamp")
-        probe.CreateRadiusAttr(0.2)
-        probe.CreateIntensityAttr(float(os.environ["CORAL_CITY_TEST_LAMP"]))
-        probe.CreateColorAttr(Gf.Vec3f(1.0, 0.4, 0.4))
-        probe.CreateNormalizeAttr(False)
-        UsdGeom.Xformable(probe.GetPrim()).AddTranslateOp().Set(
-            Gf.Vec3d(0.0, 0.0, floor + 2.0))
-        say("test_lamp", at=[0.0, 0.0, round(floor + 2.0, 2)],
-            intensity=float(os.environ["CORAL_CITY_TEST_LAMP"]))
-
     # Read back, not assumed. A carb setting that does not exist accepts a
     # value silently and changes nothing, so every number below could have been
     # doing exactly nothing for as long as it has been here — and the way that
