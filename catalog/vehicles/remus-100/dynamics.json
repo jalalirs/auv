@@ -124,6 +124,17 @@
       ],
       "horizontalFovDeg": 1,
       "verticalFovDeg": 50
+    },
+    {
+      "kind": "ctd",
+      "name": "ctd",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "everyS": 1.0,
+      "note": "Conductivity, temperature and depth. The instrument every oceanographic vehicle carries and the reason a glider section is worth flying."
     }
   ],
   "topicContract": {
@@ -143,6 +154,10 @@
       {
         "topic": "/tf",
         "type": "tf2_msgs/msg/TFMessage"
+      },
+      {
+        "topic": "/ctd",
+        "type": "sensor_msgs/msg/FluidPressure"
       }
     ],
     "subscribes": [

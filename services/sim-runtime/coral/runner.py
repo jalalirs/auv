@@ -431,6 +431,10 @@ class Dive:
         self.sonar = None
         # The thin pipe to the surface, if the vehicle carries one.
         self.modem = None
+        # And the instrument that reads the water it is flying in.
+        self.ctd = None
+        self.profile = []
+        self.ctd_last_t = None
         self.world.version = str(brief.get("layoutVersionId") or "")
         # And the world not being as drawn, which is a scenario's business
         # rather than a layout's: the mooring thirty metres from where it was
@@ -1251,6 +1255,7 @@ class Dive:
             self.began_at = self.position.copy()
             self.began_rotation = self.rotation.copy()
             self.begin_navigating()
+            self.switch_on_the_ctd()
             self.switch_on_the_modem()
             self.switch_on_the_sonar()
             self.run_out_the_tether()
@@ -1595,6 +1600,64 @@ class Dive:
             spin.Set(float(math.degrees(math.atan2(towards[1], towards[0]))))
             tip.Set(float(90.0 + math.degrees(
                 math.asin(max(-1.0, min(1.0, towards[2]))))))
+
+    def switch_on_the_ctd(self) -> None:
+        """Give the vehicle a CTD, if its package says it carries one.
+
+        Conductivity, temperature and depth: the instrument every oceanographic
+        vehicle in the world carries, and the reason a glider section is worth
+        flying at all. The platform has modelled the water properly since the
+        beginning — EOS-80 density from salinity and temperature, a profile
+        with depth, compression under pressure — and every bit of it was
+        visible only to the physics. A controller could not read the water it
+        was flying in, and a mission could not bring a profile home.
+
+        It needs nothing that is not already here, which is why it has been
+        waiting so long: the numbers exist, and this hands them to whoever is
+        flying and to whoever reads the record afterwards.
+        """
+        import json
+
+        try:
+            described = json.loads((pathlib.Path(self.brief.get("vehiclePath", "/dive/vehicle"))
+                                    / "dynamics.json").read_text())
+            said = next((one for one in described.get("sensors", [])
+                         if one.get("kind") == "ctd"), None)
+        except Exception:
+            said = None
+        if said is None or self.fitted.get("ctd") is False:
+            return
+        self.ctd = {"everyS": float(said.get("everyS", 1.0)),
+                    "name": str(said.get("name", "ctd"))}
+        self.profile: list[dict] = []
+        self.ctd_last_t = None
+        self.say("ctd_on", **self.ctd)
+
+    def read_the_ctd(self) -> None:
+        """Take a cast, at the instrument's own rate.
+
+        Kept as a profile rather than only published, because the profile *is*
+        the deliverable: a section flown by a glider comes home as the column
+        against distance, and a monitoring dive that measured the water it
+        worked in can say what the water was.
+        """
+        if self.ctd is None:
+            return
+        if self.ctd_last_t is not None and \
+                (self.simulated - self.ctd_last_t) < self.ctd["everyS"]:
+            return
+        self.ctd_last_t = self.simulated
+        depth = max(0.0, float(-self.position[2]))
+        self.profile.append({
+            "t": round(self.simulated, 2),
+            "depthM": round(depth, 3),
+            "temperatureC": None if self.temperature_at(depth) is None
+            else round(float(self.temperature_at(depth)), 3),
+            "salinityPsu": None if self.salinity_psu in (None, "")
+            else round(float(self.salinity_psu), 3),
+            "densityKgM3": round(float(self.density_at(depth)), 3),
+            "atM": [round(float(self.position[0]), 1), round(float(self.position[1]), 1)],
+        })
 
     def switch_on_the_modem(self) -> None:
         """Give the vehicle its acoustic link, as its package describes it.
@@ -2066,9 +2129,18 @@ class Dive:
                                  self.rotation, floor, self.dt)
         # The sonar pings at its own rate, before anything is asked of the
         # controller: what it commands on is what the instrument last said.
+        self.read_the_ctd()
         if self.sonar is not None and self.sonar.due(self.simulated):
             self.sonar.ping(self.simulated, self.position, self.rotation,
                             self.world, self.seabed)
+            # And out to whoever is flying, which until now was only ours.
+            # A vehicle whose sonar our own controller can read and a
+            # customer's cannot is the wrong way round: ours is the reference
+            # and theirs is the product.
+            if self.bridge is not None:
+                fan = self.sonar.fan()
+                self.bridge.publish_sonar(fan["bearingsRad"], fan["rangesM"],
+                                          self.sonar.near, self.sonar.far)
         self.commands = self.helm.command(self.observation())
         # A vehicle that is not moved by thrust is moved by this: the pump and
         # the sliding mass get a step towards whatever the controller asked
@@ -2651,6 +2723,13 @@ class Dive:
                  # controller that phones home is judged on a channel that
                  # drops things, or it is not being judged.
                  **({} if self.modem is None else {"modem": self.modem.said()}),
+                 # The column, which is what a section is for. Kept whole
+                 # rather than summarised: a profile somebody reduced to a mean
+                 # is a profile nobody can plot.
+                 **({} if not self.profile else {
+                     "profile": {"casts": len(self.profile),
+                                 "deepestM": round(max(one["depthM"] for one in self.profile), 2),
+                                 "readings": self.profile}}),
                  # What the cable did, on a dive that had one. A hundred metres
                  # of it is usually the largest force on the vehicle, and a
                  # record that did not say so would be a record of a different
