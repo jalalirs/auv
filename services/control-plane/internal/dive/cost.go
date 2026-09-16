@@ -199,6 +199,14 @@ func WhatItCosts(spent []Spent, doubted bool) Cost {
 	// their own arithmetic with it.
 	out.Says = fmt.Sprintf("%s of work in a working day, held back by %s.",
 		plural(math.Floor(out.PerDay), "run", "runs"), out.HeldBackBy)
+	// And say so when most of a dive is not the work. Somebody reading "twelve
+	// runs a day" cannot tell whether the answer is a faster vehicle or a ship
+	// moored closer, and those are different purchases.
+	if out.WorkingShare > 0 && out.WorkingShare < 0.7 {
+		out.Says += fmt.Sprintf(
+			" Only %.0f%% of a dive is the work; the rest is getting there and back.",
+			out.WorkingShare*100)
+	}
 	if doubted && out.Survives > 0 {
 		out.ShipDays = 1.0 / out.Survives
 		out.Says += fmt.Sprintf(
