@@ -50,6 +50,10 @@ JERLOV = {
 # What a place is flown in unless its conditions say otherwise.
 DEFAULT_TYPE = "1C"
 
+# Stamped so a frame can be traced to the code that made it. Bumped by hand
+# whenever this file changes in a way a picture should show.
+BUILD = "water-8"
+
 # The two facts that make the far half of a frame the colour it is.
 #
 # Light that never reaches the camera directly is what the medium scattered
@@ -128,6 +132,13 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     from pxr import Gf, Sdf, UsdGeom, UsdLux
 
     settings = carb.settings.get_settings()
+
+    # Said first, and said loudly, because this file has been edited and
+    # rebuilt a dozen times against a picture that never changed, and twice the
+    # reason turned out to be that the code under test was not the code that
+    # ran. Nothing below is worth reading if this line is not in the log.
+    say("water_begins", build=BUILD, twin=os.environ.get("CORAL_CITY_TWIN") or None,
+        lampSize=os.environ.get("CORAL_CITY_LAMP_SIZE") or None)
 
     # How much daylight is left where this dive is happening. Wanted by both the
     # lights and the camera, so it is worked out once.
