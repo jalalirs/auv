@@ -529,6 +529,7 @@ func scanDive(row interface{ Scan(...any) error }) (Dive, error) {
 type aMission struct {
 	CityVersionID   string            `json:"cityVersionId"`
 	LayoutVersionID string            `json:"layoutVersionId"`
+	Launch          json.RawMessage   `json:"launch,omitempty"`
 	Stages          []json.RawMessage `json:"stages"`
 }
 
@@ -557,6 +558,18 @@ func composeFrom(ctx context.Context, conn db.Conn, spec DiveSpec) (DiveSpec, er
 	}
 	if said.LayoutVersionID != "" {
 		spec.LayoutVersionID = said.LayoutVersionID
+	}
+	// Where it goes in. Part of the plan of work and not of the dive, because
+	// a mission flown from a ship and the same mission flown from a dock are
+	// two different pieces of work: they cost different transits and their
+	// navigation is zeroed in different places.
+	//
+	// The caller can still say where to begin — a dive that already carries an
+	// initial state is a dive somebody positioned on purpose, and that wins.
+	if len(said.Launch) > 0 && string(said.Launch) != "null" &&
+		(len(spec.InitialState) == 0 || string(spec.InitialState) == "{}" ||
+			string(spec.InitialState) == "null") {
+		spec.InitialState = json.RawMessage(`{"launch":` + string(said.Launch) + `}`)
 	}
 	if len(spec.Objective) == 0 || string(spec.Objective) == "{}" {
 		stages, err := json.Marshal(said.Stages)
