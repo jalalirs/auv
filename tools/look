@@ -87,7 +87,7 @@ JSON
         -e CORAL_CITY_SEED=1 \
         -e CORAL_CITY_BRIEF=/dive/dive.json \
         -e CORAL_CITY_TOUR=stills \
-        -e CORAL_CITY_LAMP_CONE="${LAMP_CONE:-1}" \
+        -e CORAL_CITY_LAMP_CONE="${LAMP_CONE:-0}" \
         -e CORAL_CITY_TEST_LAMP="${TEST_LAMP:-}" \
         -e CORAL_CITY_LAMP_SIZE="${LAMP_SIZE:-0.08}" \
         -e CORAL_CITY_TWIN="${TWIN:-}" \
