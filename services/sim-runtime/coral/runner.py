@@ -1310,6 +1310,8 @@ class Dive:
 
         self.lamps = []
         self.lamp_watts = 0.0
+        self.lamp_places = {}
+        self.lamp_rig = {}
         try:
             described = json.loads((pathlib.Path(self.brief.get("vehiclePath", "/dive/vehicle"))
                                     / "dynamics.json").read_text())
@@ -1340,8 +1342,7 @@ class Dive:
             # Small, because a subsea lamp is a bright source behind a dome and
             # the shadow it throws has a soft edge, which is most of what makes
             # a lit frame look lit rather than traced.
-            light = UsdLux.RectLight.Define(
-                stage, f"{self.vehicle_path}/Lamps/{name}")
+            light = UsdLux.RectLight.Define(stage, f"/World/Lamps/{name}")
             light.CreateWidthAttr(0.08)
             light.CreateHeightAttr(0.08)
             light.CreateIntensityAttr(float(one.get("lumens", 1500.0)) * LAMP_SCALE)
@@ -1356,22 +1357,23 @@ class Dive:
                 shaping.CreateShapingConeAngleAttr(float(one.get("coneDeg", 120.0)) / 2.0)
                 shaping.CreateShapingConeSoftnessAttr(0.45)
 
+            # At world level, and moved every step, which is how the caustics
+            # have always worked and is the only way a light works here.
+            #
+            # Hung under the vehicle's own transform — which is the obvious
+            # place for a thing bolted to a vehicle — the light is created,
+            # sits at exactly the right world position, and emits nothing at
+            # any brightness between a hundred thousand and ten billion. The
+            # caustics, a rect light of the same kind at world level, change
+            # the frame from 71 to 207 across the same test. So: world level,
+            # and the pose is applied here rather than inherited.
             moving = UsdGeom.Xformable(light.GetPrim())
             moving.ClearXformOpOrder()
-            moving.AddTranslateOp().Set(self._Gf.Vec3d(
-                *[v * self.units_per_metre for v in
-                  (at if self.up_axis != "Y" else [at[0], at[2], -at[1]])]))
-            # Aimed by pointing its own -Z down the aim vector.
-            towards = np.array(aim, dtype=float)
-            if np.linalg.norm(towards) > 1e-9:
-                towards = towards / np.linalg.norm(towards)
-                # A rect light faces its own -Z, which is straight down when
-                # nothing is rotated. So: tip it up to the horizon, then swing
-                # it round to the aim, then tip it by the aim's own slope.
-                pitch = math.degrees(math.asin(max(-1.0, min(1.0, towards[2]))))
-                yaw = math.degrees(math.atan2(towards[1], towards[0]))
-                moving.AddRotateZOp().Set(float(yaw))
-                moving.AddRotateYOp().Set(float(90.0 + pitch))
+            self.lamp_places[name] = (moving.AddTranslateOp(),
+                                      moving.AddRotateZOp(),
+                                      moving.AddRotateYOp())
+            self.lamp_rig[name] = (at, [float(v) for v in aim])
+            self.aim_the_lamps()
             self.lamps.append(name)
             self.lamp_watts += watts
 
@@ -1389,7 +1391,7 @@ class Dive:
         # that is simply dark.
         where = []
         for name in self.lamps:
-            prim = stage.GetPrimAtPath(f"{self.vehicle_path}/Lamps/{name}")
+            prim = stage.GetPrimAtPath(f"/World/Lamps/{name}")
             if prim:
                 box = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(
                     Usd.TimeCode.Default())
@@ -1429,6 +1431,29 @@ class Dive:
                  lumens=sum(float(one.get("lumens", 0.0)) for one in fitted),
                  hotelNowW=None if self.battery is None
                  else round(self.battery.hotel_w, 1))
+
+    def aim_the_lamps(self) -> None:
+        """Put each lamp where the vehicle carries it, pointing where it points.
+
+        Called every step, because the lights are at world level and nothing
+        else moves them.
+        """
+        if not self.lamp_places:
+            return
+        R = np.asarray(self.rotation, dtype=float)
+        for name, (place, spin, tip) in self.lamp_places.items():
+            at, aim = self.lamp_rig[name]
+            world = np.asarray(self.position, dtype=float) + R @ np.asarray(at, dtype=float)
+            place.Set(self.drawn_at(world))
+            towards = R @ np.asarray(aim, dtype=float)
+            if np.linalg.norm(towards) < 1e-9:
+                continue
+            towards = towards / np.linalg.norm(towards)
+            # A rect light faces its own -Z, straight down with no rotation.
+            # Swing it to the bearing, then tip it up to the aim's own slope.
+            spin.Set(float(math.degrees(math.atan2(towards[1], towards[0]))))
+            tip.Set(float(90.0 + math.degrees(
+                math.asin(max(-1.0, min(1.0, towards[2]))))))
 
     def switch_on_the_sonar(self) -> None:
         """Give the vehicle its sonar, if its package says it has one.
@@ -2257,6 +2282,9 @@ class Dive:
         computes the same trajectory without ever doing this, and it must.
         """
         self.placement.Set(self.pose())
+        # The lamps are bolted to the vehicle but live at world level, so this
+        # is what carries them along.
+        self.aim_the_lamps()
 
     def state(self) -> dict:
         return {
