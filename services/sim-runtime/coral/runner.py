@@ -1255,6 +1255,7 @@ class Dive:
             self.began_at = self.position.copy()
             self.began_rotation = self.rotation.copy()
             self.begin_navigating()
+            self.add_up_what_it_carries()
             self.switch_on_the_ctd()
             self.switch_on_the_modem()
             self.switch_on_the_sonar()
@@ -1600,6 +1601,83 @@ class Dive:
             spin.Set(float(math.degrees(math.atan2(towards[1], towards[0]))))
             tip.Set(float(90.0 + math.degrees(
                 math.asin(max(-1.0, min(1.0, towards[2]))))))
+
+    def add_up_what_it_carries(self) -> None:
+        """Every fitted instrument draws, and the sum is what the battery pays.
+
+        The hotel load used to be one number standing for the electronics, the
+        sensors and the lights together — so a dive that unshipped a Doppler
+        log or flew with the lamps off lasted exactly as long as one that did
+        not. That made `fitted` a label rather than a choice, and made the
+        endurance in every cost estimate the endurance of a fully laden
+        vehicle whatever anybody chose.
+
+        Each instrument states its own draw now. So does the computer, which
+        until today was not modelled at all: a controller needing a hundred
+        watts of GPU to think ran here for free and could not run at sea.
+        """
+        import json
+
+        if self.battery is None:
+            return
+        try:
+            described = json.loads((pathlib.Path(self.brief.get("vehiclePath", "/dive/vehicle"))
+                                    / "dynamics.json").read_text())
+        except Exception:
+            return
+
+        carried, watts = [], 0.0
+        for one in described.get("sensors", []):
+            kind = str(one.get("kind", ""))
+            # A dive may unship what the vehicle has. The same hull without its
+            # Doppler log is a different problem and should not need a second
+            # vehicle in the catalogue.
+            if self.fitted.get(kind) is False or self.fitted.get(one.get("name")) is False:
+                continue
+            draw = float(one.get("watts", 0.0))
+            if draw <= 0.0:
+                continue
+            carried.append({"what": one.get("name") or kind, "watts": draw})
+            watts += draw
+
+        # And the computer it thinks with.
+        machine = described.get("computer")
+        if isinstance(machine, dict) and self.fitted.get("computer") is not False:
+            draw = float(machine.get("watts", 0.0))
+            if draw > 0.0:
+                carried.append({"what": machine.get("kind", "computer"), "watts": draw})
+                watts += draw
+
+        # And whether the thing flying it could actually run on this hull.
+        #
+        # A stack declares what it needs of a machine, and until now that was
+        # checked against the *simulation host* — a datacentre box with an
+        # A100 in it. Nothing checked it against the computer the vehicle
+        # carries. So a controller that wants a hundred tera-operations to
+        # think ran here at full speed and was physically impossible at sea,
+        # and the dive that proved it worked proved nothing.
+        needs = (self.brief.get("autonomyNeeds") or {})
+        if isinstance(machine, dict) and needs:
+            wanted = float(needs.get("tops", 0.0) or 0.0)
+            has = float(machine.get("tops", 0.0) or 0.0)
+            if wanted > has:
+                self.say("beyond_the_hull",
+                         wanted=wanted, carries=has,
+                         computer=machine.get("kind"),
+                         why=("this controller needs more of a machine than "
+                              "this vehicle carries; it would not run at sea"))
+            wantedRam = float(needs.get("ramGb", 0.0) or 0.0)
+            if wantedRam > float(machine.get("ramGb", 0.0) or 0.0):
+                self.say("beyond_the_hull", wantedRamGb=wantedRam,
+                         carriesRamGb=machine.get("ramGb"),
+                         computer=machine.get("kind"))
+
+        if not carried:
+            return
+        self.battery.hotel_w += watts
+        self.say("carrying", draws=carried,
+                 instrumentsW=round(watts, 2),
+                 hotelNowW=round(self.battery.hotel_w, 2))
 
     def switch_on_the_ctd(self) -> None:
         """Give the vehicle a CTD, if its package says it carries one.
