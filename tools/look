@@ -130,13 +130,21 @@ JSON
         | tail -4 | sed 's/^/    /' || true
     docker rm -f coral-look >/dev/null 2>&1 || true
 
+    local as="$(basename "${place}")-${WATER}"
     n="$(find "${here}/frames" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
-    [ "${n}" -gt 0 ] || { echo "  ${place} produced nothing to look at" >&2; return 1; }
+    if [ "${n}" -eq 0 ]; then
+        # And take the last run's frames away with it. Leaving them is how a
+        # failed run gets compared as though it had succeeded: the pictures are
+        # there, they are just from an hour ago.
+        echo "  ${place} produced nothing to look at — clearing the old frames" >&2
+        rm -rf "${looks:?}/${as}"
+        docker logs coral-look 2>&1 | grep -iE 'could not open|Traceback' | head -3 | sed 's/^/    /' >&2
+        return 1
+    fi
     docker run --rm -u 0 -v "${here}/frames:/w" --entrypoint chmod "${image}" -R a+r /w
 
     # What made these frames, beside them — so a sheet can say what it is a
     # sheet of, and two of them can be told apart a month later.
-    local as="$(basename "${place}")-${WATER}"
     rm -rf "${looks:?}/${as}"; mkdir -p "${looks}/${as}"
     cp "${here}"/frames/*.png "${looks}/${as}/"
     cp "${here}/look.log" "${looks}/${as}/look.log" 2>/dev/null || true
