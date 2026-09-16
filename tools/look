@@ -62,6 +62,13 @@ one_place() {
     fi
     [ -n "${vehicle}" ] || { echo "  no vehicle package to open the scene with" >&2; return 1; }
 
+    # Pulled, not assumed. `fly-over` has always done this and this did not,
+    # which is how an afternoon went: every build was pushed to the registry
+    # and every run used whatever image happened to be sitting on the box, so
+    # the code under test and the code that ran were different for hours.
+    docker pull -q "${image}" >/dev/null 2>&1 \
+        || { echo "  the registry has no ${image}" >&2; return 1; }
+
     rm -rf "${here}"; mkdir -p "${here}/frames"; chmod -R 777 "${here}"
     # Which water to look through. A place has no opinion of its own yet, so
     # this is how one is tried: the same reef through clear ocean and through a
