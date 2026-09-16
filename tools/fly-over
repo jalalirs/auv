@@ -79,6 +79,7 @@ docker run -d --name coral-tour --gpus '"device=0"' \
     -e CORAL_CITY_SEED=1 \
     -e CORAL_CITY_BRIEF=/dive/dive.json \
     -e CORAL_CITY_TOUR="${how}" \
+    -e CORAL_CITY_TWIN="${TWIN:-}" \
     -e CORAL_CITY_TOUR_INTO=/dive/frames \
     -v "${here}:/dive:rw" \
     -v "${city}:/dive/city:ro" \

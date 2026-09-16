@@ -305,19 +305,21 @@ class Tour:
 # "fog" and "aperture" are read here; anything beginning with a slash is set on
 # carb directly; a light name sets that light's intensity.
 LOOKS = (
-    ("as-is", {}),
-    # How much of the light should come from everywhere at once. Too much and
-    # the reef has no shape and no colour; none at all and every shadow is
-    # black, which underwater is also wrong.
-    ("dome-20", {"/World/Water": 20.0}),
-    ("dome-40", {"/World/Water": 40.0}),
-    ("dome-80", {"/World/Water": 80.0}),
-    ("dome-150", {"/World/Water": 150.0}),
-    # And the sun against it, since they trade.
-    ("sun-2200", {"/World/Sun": 2200.0}),
-    ("sun-2200-dome-40", {"/World/Sun": 2200.0, "/World/Water": 40.0}),
-    ("sun-3000-dome-20", {"/World/Sun": 3000.0, "/World/Water": 20.0}),
+    # Does this renderer draw more than one local light?
+    #
+    # The caustics are a rect light and they work: off, on and up takes the
+    # frame from 71 to 99 to 207. A second rect light at the same place, built
+    # in the same function, an exact copy of the first, changes nothing at all.
+    # If turning the first one off makes the second one appear, that is the
+    # whole answer and the lamps need a different home.
+    ("both", {}),
+    ("caustics-off-twin-on", {"/World/Caustics": 0.0,
+                              "/World/CausticsTwin": 5200.0}),
+    ("caustics-on-twin-off", {"/World/Caustics": 5200.0,
+                              "/World/CausticsTwin": 0.0}),
+    ("both-off", {"/World/Caustics": 0.0, "/World/CausticsTwin": 0.0}),
 )
+
 
 
 
