@@ -186,10 +186,24 @@ function recorded(run: { artefacts?: number; outcome?: Record<string, unknown> }
 /** What the dive achieved, when it was for something. */
 function Result({ outcome }: { outcome: Record<string, unknown> | undefined }): React.JSX.Element {
   const task = outcome?.["task"] as { name?: string; score?: number; seconds?: number; done?: boolean } | undefined;
+  // How far out the vehicle was when it came up. The task's score says whether
+  // it did the job; this says whether it knew where it was doing it, and the
+  // two are different dives going wrong.
+  const fix = outcome?.["closingFix"] as
+    { errorM?: number; atSurface?: boolean; shareOfDistance?: number | null } | undefined;
   if (task === undefined || typeof task.score !== "number") return <span className="result" />;
   return (
     <span className="result" title={task.done ? "the task ran to its end" : "the dive ended before the task did"}>
       {task.name}: <b>{(task.score * 100).toFixed(0)}%</b>
+      {typeof fix?.errorM === "number" ? (
+        <span className="quiet" title={fix.atSurface
+          ? "where it thought it was against where it was, at the surface — the fix a real dive closes on"
+          : "it did not surface, so this is the error at the end rather than a closing fix"}>
+          {" · "}{fix.atSurface ? "" : "~"}{fix.errorM.toFixed(1)} m out
+          {typeof fix.shareOfDistance === "number"
+            ? ` (${(fix.shareOfDistance * 100).toFixed(1)}% of the way run)` : ""}
+        </span>
+      ) : null}
     </span>
   );
 }

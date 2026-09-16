@@ -336,6 +336,31 @@ class Navigation:
         """How far its idea of where it is has come from where it is."""
         return float(np.linalg.norm(self.believed[:2] - np.asarray(position, dtype=float)[:2]))
 
+    def closing_fix(self, position, at_surface: bool) -> dict:
+        """The number the whole industry judges a dive's navigation by.
+
+        A vehicle surfaces, takes a GPS fix, and the distance between that fix
+        and where it thought it was is the dive's navigation error. Everything
+        underwater is dead reckoned from the fix taken going in, so this one
+        number is the whole of what the reckoning cost.
+
+        It is free here, because the simulator knows both — and it was not
+        being recorded. The drift at the end of a dive was, buried among a
+        dozen other fields, and drift wherever the vehicle happened to stop is
+        not the same statement: a fix only exists at the surface, so a dive
+        that ended on the bottom has an error and does not have a closing fix.
+        """
+        return {"errorM": round(self.drift(position), 3),
+                "atSurface": bool(at_surface),
+                "overM": round(self.travelled, 1),
+                # What the industry quotes: error as a share of distance run.
+                # A hundred metres out after ten kilometres is a good day; the
+                # same hundred after two hundred metres is a broken compass.
+                "shareOfDistance": None if self.travelled < 1.0
+                else round(self.drift(position) / self.travelled, 5),
+                "fixes": self.fixes,
+                "aiding": self.kind}
+
     def said(self, position, t: float) -> dict:
         return {"believed": [round(float(v), 3) for v in self.believed],
                 "trust": self.trust,
