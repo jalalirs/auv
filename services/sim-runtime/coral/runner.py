@@ -301,7 +301,7 @@ def find_scene(root: pathlib.Path) -> pathlib.Path | None:
 # metered eight times more sensitively than the shallow one and a lamp correct
 # in one is wrong in the other. When the camera meters properly this becomes a
 # real photometric conversion and stops being a compromise.
-LAMP_SCALE = 350_000.0
+LAMP_SCALE = 70_000.0
 
 
 def asked_for(name: str, fallback=None):
