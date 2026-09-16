@@ -1329,15 +1329,24 @@ class Dive:
             at = [float(v) for v in (one.get("position") or [0.0, 0.0, 0.0])]
             aim = [float(v) for v in (one.get("aim") or [1.0, 0.0, 0.0])]
             watts = float(one.get("watts", 0.0))
-            light = UsdLux.SphereLight.Define(
+            # A rectangle rather than a sphere, and not for looks.
+            #
+            # A sphere light here renders nothing at all: created, placed
+            # correctly, switched on at sixty times a sensible brightness, and
+            # not one pixel changes. A rectangle at the same place lights the
+            # scene, which is how the caustics have always worked. Whatever the
+            # reason, this is the light this renderer has.
+            #
+            # Small, because a subsea lamp is a bright source behind a dome and
+            # the shadow it throws has a soft edge, which is most of what makes
+            # a lit frame look lit rather than traced.
+            light = UsdLux.RectLight.Define(
                 stage, f"{self.vehicle_path}/Lamps/{name}")
-            # A subsea lamp is a small bright source behind a dome, not a
-            # point: the shadow it throws has a soft edge and that edge is
-            # most of what makes a lit frame look lit rather than traced.
-            light.CreateRadiusAttr(0.035)
+            light.CreateWidthAttr(0.08)
+            light.CreateHeightAttr(0.08)
             light.CreateIntensityAttr(float(one.get("lumens", 1500.0)) * LAMP_SCALE)
             light.CreateColorAttr(Gf.Vec3f(1.0, 0.98, 0.95))
-            light.CreateNormalizeAttr(True)
+            light.CreateNormalizeAttr(False)
             # Cone, so it is a lamp rather than a bulb hanging in the water.
             # Off by default while the aiming is being worked out: a cone
             # pointed wrongly is indistinguishable from a light that does not
@@ -1356,9 +1365,13 @@ class Dive:
             towards = np.array(aim, dtype=float)
             if np.linalg.norm(towards) > 1e-9:
                 towards = towards / np.linalg.norm(towards)
-                pitch = math.degrees(math.asin(max(-1.0, min(1.0, -towards[2]))))
+                # A rect light faces its own -Z, which is straight down when
+                # nothing is rotated. So: tip it up to the horizon, then swing
+                # it round to the aim, then tip it by the aim's own slope.
+                pitch = math.degrees(math.asin(max(-1.0, min(1.0, towards[2]))))
                 yaw = math.degrees(math.atan2(towards[1], towards[0]))
-                moving.AddRotateXYZOp().Set(Gf.Vec3f(0.0, 90.0 - pitch, yaw))
+                moving.AddRotateZOp().Set(float(yaw))
+                moving.AddRotateYOp().Set(float(90.0 + pitch))
             self.lamps.append(name)
             self.lamp_watts += watts
 
@@ -1395,8 +1408,9 @@ class Dive:
         # the vehicle stops it. One of those is a five-minute fix and this says
         # which.
         if os.environ.get("CORAL_CITY_TEST_LAMP"):
-            probe = UsdLux.SphereLight.Define(stage, "/World/TestLamp")
-            probe.CreateRadiusAttr(0.2)
+            probe = UsdLux.RectLight.Define(stage, "/World/TestLamp")
+            probe.CreateWidthAttr(0.3)
+            probe.CreateHeightAttr(0.3)
             probe.CreateIntensityAttr(float(os.environ["CORAL_CITY_TEST_LAMP"]))
             probe.CreateColorAttr(Gf.Vec3f(1.0, 0.35, 0.35))
             probe.CreateNormalizeAttr(False)
