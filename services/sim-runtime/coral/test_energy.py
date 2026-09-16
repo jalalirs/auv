@@ -63,7 +63,15 @@ def test_a_dock_puts_it_back():
 
 
 def test_a_flat_battery_stops_the_dive_and_the_thrusters():
-    dive = a_dive(seconds=600, charge=0.0006)     # a few seconds of hotel load
+    # A few seconds of the hotel load, worked out from the hotel load rather
+    # than written down as a fraction. It was 0.0006, which was a few seconds
+    # when the hotel load was one lumped twenty-five watts and became a minute
+    # and a half when the instruments were itemised out of it — so the test
+    # started failing for a reason that had nothing to do with what it checks.
+    spare = a_dive(seconds=1)
+    seconds_wanted = 4.0
+    charge = (spare.battery.hotel_w * seconds_wanted / 3600.0) / spare.battery.capacity_wh
+    dive = a_dive(seconds=600, charge=charge)
     assert dive.battery is not None
     for _ in range(int(60 / dive.dt)):
         dive.step()
