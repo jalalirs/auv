@@ -31,6 +31,8 @@ type Stage = Record<string, unknown> & { kind: string; over?: string };
 interface Plan {
   cityVersionId?: string;
   layoutVersionId?: string;
+  /** Where the vehicle goes in, and therefore where its navigation is zeroed. */
+  launch?: { from?: string; depthM?: number };
   stages: Stage[];
 }
 
@@ -158,6 +160,10 @@ export function Planning({ platform, held, mission, place, onBack }: {
   // The newest saved version of each arrangement, and what is drawn in it.
   const [versions, setVersions] = useState<Map<string, AssetVersion>>(new Map());
   const [cityVersion, setCityVersion] = useState<string>("");
+  // Where it goes in. A plan of work starts somewhere — a ship stands off and
+  // puts it over the side, or it leaves a dock — and until this the place chose
+  // the spot by coral cover, so no mission could say where its day began.
+  const [launchFrom, setLaunchFrom] = useState<string>("");
   const [layout, setLayout] = useState<string>("");
   const [stages, setStages] = useState<Stage[]>([]);
   const [chosen, setChosen] = useState(0);
@@ -200,6 +206,7 @@ export function Planning({ platform, held, mission, place, onBack }: {
       const document = saved[0]?.document as Plan | undefined;
       if (stale || document === undefined) return;
       setStages(document.stages ?? []);
+      setLaunchFrom(document.launch?.from ?? "");
       const was = layouts.find((one) => versions.get(one.id)?.id === document.layoutVersionId);
       if (was !== undefined) setLayout(was.id);
     }).catch(() => undefined);
@@ -221,6 +228,7 @@ export function Planning({ platform, held, mission, place, onBack }: {
         describedBy: "coral-city/mission/v1",
         cityVersionId: cityVersion,
         layoutVersionId: pinned?.id ?? "",
+        ...(launchFrom ? { launch: { from: launchFrom } } : {}),
         stages,
       } as never, `${stages.length} stages`);
       setSaving(`saved as version ${version.ordinal}`);
@@ -228,7 +236,7 @@ export function Planning({ platform, held, mission, place, onBack }: {
       setSaving("");
       setTrouble(thrown instanceof Error ? thrown.message : "it would not save");
     }
-  }, [platform, mission, cityVersion, versions, layout, stages]);
+  }, [platform, mission, cityVersion, versions, layout, stages, launchFrom]);
 
   if (missing) {
     return <Empty title="Not a plan you have">It may have been withdrawn, or you were never granted it.</Empty>;
@@ -257,6 +265,20 @@ export function Planning({ platform, held, mission, place, onBack }: {
           </select>
           <p className="quiet">Pinned, not followed: September gets the site as
             it was in March.</p>
+
+          <h3>Where it goes in</h3>
+          <select value={launchFrom} onChange={(e) => setLaunchFrom(e.target.value)}>
+            <option value="">wherever the place says</option>
+            {drawn.filter((one) => one.kind === "ship" || one.kind === "buoy"
+                          || one.kind === "marker-post" || one.kind === "mooring-block")
+                  .map((one) => (
+              <option key={one.id} value={one.id}>{one.id}</option>
+            ))}
+          </select>
+          <p className="quiet">The navigation is zeroed here, so this is where
+            the dive&rsquo;s position error starts — and the transit out to the
+            work and back is time and battery the day has to pay for.</p>
+
           <h3>Add a stage</h3>
           {STAGES.map((one) => (
             <button key={one.key} type="button" className="tool"
