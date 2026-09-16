@@ -1884,6 +1884,10 @@ class Dive:
         if said is not None and self.task is not None:
             home = self.task.somewhere(said)
         self.helm.watch_the_battery(self.battery, home)
+        # And what it can say, and how slowly. A controller that phones home
+        # has to be judged on the channel it would actually have.
+        if self.modem is not None:
+            self.helm.carries_a_link(self.modem)
 
     def hello(self) -> dict:
         """What somebody arriving at the console needs once: the site as a

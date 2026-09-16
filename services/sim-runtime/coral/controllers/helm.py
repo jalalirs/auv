@@ -363,6 +363,19 @@ class Helm:
     def watch_the_battery(self, battery, dock=None) -> None:
         self.failsafe.watch(battery, dock)
 
+    def carries_a_link(self, link) -> None:
+        """Tell whoever wants it that the vehicle has an acoustic modem.
+
+        Only one controller currently does: the one that asks a model what to
+        do. On a tethered ROV that question goes up a copper wire and costs
+        nothing; on an untethered vehicle at depth it goes through a few
+        kilobits a second of sound, and whether a controller can work that way
+        at all is one of the more interesting things this platform can answer.
+        """
+        for controller in self.controllers.values():
+            if hasattr(controller, "over_the_link"):
+                controller.over_the_link(link)
+
     def _choose(self, seen: Observation) -> Controller:
         # Above everything, including a hand on the keys: there is no time to
         # ask, and what is being prevented is a vehicle that never comes back.

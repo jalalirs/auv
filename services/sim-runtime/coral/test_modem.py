@@ -76,3 +76,58 @@ def test_the_same_seed_loses_the_same_messages():
         two = b.send(step * 10.0, 64, 900.0)
         assert (one is None) == (two is None)
     assert a.lost > 0, "half a share of loss should lose something"
+
+
+# ── and what it does to a controller that phones home ────────────────────────
+
+def a_controller():
+    import numpy as np
+    from controllers.asking import AskingController
+
+    return AskingController(np.ones(6) * 50.0, np.ones(6), 0.0, 0.05)
+
+
+class Seen:
+    """Just the two things the link cares about: how deep, and when."""
+
+    def __init__(self, depth, t):
+        self.depth = depth
+        self.t = t
+
+
+def test_a_question_is_refused_while_the_channel_is_still_carrying_one():
+    """A modem carries one thing at a time and a controller cannot talk over
+    itself. This is the constraint that decides whether phoning home is a
+    design anybody can deploy."""
+    one = a_controller()
+    one.over_the_link(Modem({"bitsPerSecond": 2400.0, "lossShare": 0.0}, seed=1))
+    assert one._through_the_water("x" * 400, Seen(300.0, 0.0)) is None
+    stopped = one._through_the_water("x" * 400, Seen(300.0, 0.1))
+    assert stopped is not None and "still carrying" in stopped
+    assert one.over_budget == 1
+
+
+def test_beyond_the_modem_the_question_does_not_arrive():
+    one = a_controller()
+    one.over_the_link(Modem({"rangeM": 200.0}, seed=1))
+    stopped = one._through_the_water("x" * 200, Seen(900.0, 0.0))
+    assert stopped is not None and "did not arrive" in stopped
+    assert one.lost_messages == 1
+
+
+def test_the_water_costs_time_and_is_counted_apart_from_the_model():
+    """A controller slow because the model is slow and one slow because it is a
+    kilometre down are two different findings, and a result that could not tell
+    them apart would send somebody to optimise the wrong thing."""
+    one = a_controller()
+    one.over_the_link(Modem({"bitsPerSecond": 2400.0, "lossShare": 0.0}, seed=1))
+    assert one._through_the_water("x" * 400, Seen(1500.0, 0.0)) is None
+    assert one.link_seconds > 2.0, one.link_seconds
+    assert "link" in one.said()
+
+
+def test_a_vehicle_with_no_modem_is_the_controller_it_always_was():
+    """A tethered ROV asks up a copper wire and it costs nothing."""
+    one = a_controller()
+    assert one._through_the_water("x" * 400, Seen(30.0, 0.0)) is None
+    assert "link" not in one.said()
