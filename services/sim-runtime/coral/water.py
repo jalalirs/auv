@@ -52,7 +52,7 @@ DEFAULT_TYPE = "1C"
 
 # Stamped so a frame can be traced to the code that made it. Bumped by hand
 # whenever this file changes in a way a picture should show.
-BUILD = "water-11"
+BUILD = "water-12"
 
 # The two facts that make the far half of a frame the colour it is.
 #
@@ -380,7 +380,16 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     caustics = UsdLux.RectLight.Define(stage, "/World/Caustics")
     caustics.CreateWidthAttr(90.0)
     caustics.CreateHeightAttr(90.0)
-    caustics.CreateIntensityAttr(5200.0 * left)
+    # A modulation of sunlight, not a second sun.
+    #
+    # At 5200 this was adding twenty-five points of brightness to the whole
+    # frame and burning a white pool into the near ground of every shallow
+    # site — a tenth to a fifth of those frames were clipped, and it read as
+    # the lamps being too strong when the lamps had nothing to do with it.
+    # Caustics are the sun's own light concentrated and thinned by the surface;
+    # they can be brighter than the sun in the bright parts and they cannot be
+    # five times it everywhere.
+    caustics.CreateIntensityAttr(1400.0 * left)
     caustics.CreateColorAttr(Gf.Vec3f(1.0, 0.97, 0.90))
     caustics.CreateNormalizeAttr(False)
     caustics.GetPrim().CreateAttribute(
@@ -555,7 +564,7 @@ def light_for(stage, depth: float) -> None:
     # to fill every shadow, which is a scene with no direction in it — and a
     # reef with no shadows on it has no shape.
     for path, base in (("/World/Sun", 1500.0), ("/World/Water", DOME_SHARE),
-                       ("/World/Caustics", 1600.0)):
+                       ("/World/Caustics", 1400.0)):
         prim = stage.GetPrimAtPath(path)
         if prim:
             attribute = prim.GetAttribute("inputs:intensity")
