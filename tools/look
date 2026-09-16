@@ -48,10 +48,18 @@ one_place() {
     fi
     [ -n "${city}" ] || { echo "  no published place called '${place}'" >&2; return 1; }
 
-    vehicle=""
-    for d in "${work}"/packages/*/; do
-        [ -f "${d}/dynamics.json" ] && vehicle="${d%/}"
-    done
+    # A vehicle package, the same way a place can be one: a directory to try
+    # before it is published. VEHICLE=./catalog/vehicles/bluerov2 is how a
+    # change to what a vehicle carries gets looked at.
+    vehicle="${VEHICLE:-}"
+    if [ -n "${vehicle}" ]; then
+        [ -f "${vehicle}/dynamics.json" ] || { echo "  ${vehicle} has no dynamics.json" >&2; return 1; }
+        vehicle="$(cd "${vehicle}" && pwd)"
+    else
+        for d in "${work}"/packages/*/; do
+            [ -f "${d}/dynamics.json" ] && vehicle="${d%/}"
+        done
+    fi
     [ -n "${vehicle}" ] || { echo "  no vehicle package to open the scene with" >&2; return 1; }
 
     rm -rf "${here}"; mkdir -p "${here}/frames"; chmod -R 777 "${here}"
