@@ -364,8 +364,12 @@ def make(stage, say, floor: float, water_level: float = 0.0,
             second.GetPrim().CreateAttribute(
                 "inputs:texture:file", Sdf.ValueTypeNames.Asset).Set(
                     "/isaac-sim/coral/caustics.png")
+        # Follows the vehicle, like the caustics. The first version of this
+        # test put it at twenty metres from the world origin, which at this
+        # site is fourteen hundred metres from the reef — so four steps of the
+        # bisect came back identical because none of them was in the picture.
         UsdGeom.Xformable(second.GetPrim()).AddTranslateOp().Set(
-            Gf.Vec3d(20.0, 0.0, water_level - 0.5))
+            Gf.Vec3d(0.0, 0.0, water_level - 0.5))
         say("twin", step=step, acrossM=wide,
             textured=step < 4)
 
@@ -542,6 +546,13 @@ def drift(stage, seconds: float, follow=None) -> None:
             _wave_mesh(mesh, level, seconds, centre=(x, y))
             drift._rebuilt_at = (x, y)
             drift._rebuilt_t = seconds
+
+    twin = stage.GetPrimAtPath("/World/CausticsTwin")
+    if twin:
+        for op in UsdGeom.Xformable(twin).GetOrderedXformOps():
+            if op.GetOpType() == UsdGeom.XformOp.TypeTranslate:
+                op.Set(Gf.Vec3d(x + 3.0, y, op.Get()[2]))
+                break
 
     light = stage.GetPrimAtPath("/World/Caustics")
     if not light:
