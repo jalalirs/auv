@@ -1351,9 +1351,12 @@ class Dive:
             # the shadow it throws has a soft edge, which is most of what makes
             # a lit frame look lit rather than traced.
             light = UsdLux.RectLight.Define(stage, f"/World/Lamps/{name}")
-            light.CreateWidthAttr(0.08)
-            light.CreateHeightAttr(0.08)
-            light.CreateIntensityAttr(float(one.get("lumens", 1500.0)) * LAMP_SCALE)
+            across = float(os.environ.get("CORAL_CITY_LAMP_SIZE", 0.08))
+            light.CreateWidthAttr(across)
+            light.CreateHeightAttr(across)
+            light.CreateIntensityAttr(float(os.environ.get(
+                "CORAL_CITY_LAMP_INTENSITY",
+                float(one.get("lumens", 1500.0)) * LAMP_SCALE)))
             light.CreateColorAttr(Gf.Vec3f(1.0, 0.98, 0.95))
             light.CreateNormalizeAttr(False)
             # Cone, so it is a lamp rather than a bulb hanging in the water.
@@ -1408,6 +1411,10 @@ class Dive:
                               for i in range(3)])
             else:
                 where.append(None)
+        self.say("lamps_made",
+                 acrossM=float(os.environ.get("CORAL_CITY_LAMP_SIZE", 0.08)),
+                 intensity=float(os.environ.get(
+                     "CORAL_CITY_LAMP_INTENSITY", 1500.0 * LAMP_SCALE)))
         self.say("lamps_at", where=where,
                  vehicleAt=[round(float(v), 2) for v in self.position])
 
