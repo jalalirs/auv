@@ -52,7 +52,7 @@ DEFAULT_TYPE = "1C"
 
 # Stamped so a frame can be traced to the code that made it. Bumped by hand
 # whenever this file changes in a way a picture should show.
-BUILD = "water-10"
+BUILD = "water-11"
 
 # The two facts that make the far half of a frame the colour it is.
 #
@@ -183,8 +183,16 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # keeps both: the reef is exposed where the vehicle is working, and moving
     # deeper than that still gets visibly darker, because the lights keep
     # tracking depth while the exposure stays where it was set.
+    # Metered off the depth, which is a formula and not a light meter.
+    #
+    # A tenth of the shallow reef was blowing to white while the deep site was
+    # a stop under. Both move the same way: a little less sensitivity at the
+    # top of the column, a lot more allowed at the bottom of it. This is still
+    # a formula and it is still the reason a lamp correct at six hundred metres
+    # is wrong at six; metering off what is actually in the frame is the fix
+    # and is its own piece of work.
     settings.set("/rtx/post/tonemap/iso",
-                 float(min(2000.0, 200.0 / max(left, 0.05))))
+                 float(min(4000.0, 140.0 / max(left, 0.05))))
 
     # ── the water ────────────────────────────────────────────────────────────
     #
