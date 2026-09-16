@@ -292,7 +292,16 @@ def find_scene(root: pathlib.Path) -> pathlib.Path | None:
 # nothing. This is the number that makes their totals match. It is a unit
 # conversion and nothing else; the fifteen watts and fifteen hundred lumens in
 # the vehicle's package are the real quantities.
-LAMP_SCALE = 2_000_000.0
+#
+# Set at six hundred metres, where the lamps are the only light there is, and
+# then brought down because at six metres in daylight they burned the near
+# ground to white. That they need one number for both is the camera's fault
+# rather than the lamp's: the exposure is computed from depth by a formula
+# instead of from what is actually in front of the lens, so the deep frame is
+# metered eight times more sensitively than the shallow one and a lamp correct
+# in one is wrong in the other. When the camera meters properly this becomes a
+# real photometric conversion and stops being a compromise.
+LAMP_SCALE = 350_000.0
 
 
 def asked_for(name: str, fallback=None):
