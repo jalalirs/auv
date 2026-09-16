@@ -429,6 +429,8 @@ class Dive:
         # The sonar, if the vehicle carries one. Built once the packages are
         # read, because it is described by the vehicle's own package.
         self.sonar = None
+        # The thin pipe to the surface, if the vehicle carries one.
+        self.modem = None
         self.world.version = str(brief.get("layoutVersionId") or "")
         # And the world not being as drawn, which is a scenario's business
         # rather than a layout's: the mooring thirty metres from where it was
@@ -1249,6 +1251,7 @@ class Dive:
             self.began_at = self.position.copy()
             self.began_rotation = self.rotation.copy()
             self.begin_navigating()
+            self.switch_on_the_modem()
             self.switch_on_the_sonar()
             self.run_out_the_tether()
             self.began_with_wh = (0.0 if self.battery is None else self.battery.remaining_wh)
@@ -1592,6 +1595,33 @@ class Dive:
             spin.Set(float(math.degrees(math.atan2(towards[1], towards[0]))))
             tip.Set(float(90.0 + math.degrees(
                 math.asin(max(-1.0, min(1.0, towards[2]))))))
+
+    def switch_on_the_modem(self) -> None:
+        """Give the vehicle its acoustic link, as its package describes it.
+
+        A vehicle with no modem declared gets none, and a glider declares a
+        link of zero range on purpose: it talks by satellite when it surfaces
+        and not at all when it is down, which is the whole reason its decisions
+        are made in hours.
+        """
+        import json
+
+        from modem import Modem
+
+        self.modem = None
+        try:
+            described = json.loads((pathlib.Path(self.brief.get("vehiclePath", "/dive/vehicle"))
+                                    / "dynamics.json").read_text())
+            said = described.get("modem")
+        except Exception:
+            said = None
+        if not said or float(said.get("rangeM", 0.0)) <= 0.0:
+            return
+        if self.fitted.get("modem") is False:
+            self.say("modem_off", why="this dive is not carrying one")
+            return
+        self.modem = Modem(said, seed=int(self.brief.get("seed", 0)))
+        self.say("modem_on", **self.modem.said())
 
     def switch_on_the_sonar(self) -> None:
         """Give the vehicle its sonar, if its package says it has one.
@@ -2613,6 +2643,10 @@ class Dive:
                  # vehicle struck something ought to say so where the result is.
                  **({} if not len(self.world) else {"world": self.world.described()}),
                  **({} if self.sonar is None else {"sonar": self.sonar.said()}),
+                 # What the vehicle managed to say, and what went missing. A
+                 # controller that phones home is judged on a channel that
+                 # drops things, or it is not being judged.
+                 **({} if self.modem is None else {"modem": self.modem.said()}),
                  # What the cable did, on a dive that had one. A hundred metres
                  # of it is usually the largest force on the vehicle, and a
                  # record that did not say so would be a record of a different
