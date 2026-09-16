@@ -410,6 +410,11 @@ class Dive:
         # "clear Red Sea" and "the Keys in August" are selections a person
         # makes and not numbers they should have to supply.
         self.water_type = None
+        # And what the sea on top of it is doing. The two numbers a wave buoy
+        # reports, which is what an observed condition carries.
+        self.sea_height_m = None
+        self.sea_period_s = None
+        self.sea_heading_deg = None
         self.read_conditions(brief.get("conditions"))
         # What somebody put in the water here. Empty when the dive was flown
         # over bare ground, which most are and always will be.
@@ -616,7 +621,11 @@ class Dive:
                        across=float(extent[0]) if extent else 1000.0,
                        working_depth=abs(float(self.position[2])),
                        visibility_m=self.visibility_m,
-                       water_type=self.water_type)
+                       water_type=self.water_type,
+                       significant_height_m=self.sea_height_m,
+                       wave_period_s=self.sea_period_s,
+                       wave_heading_deg=self.sea_heading_deg,
+                       seed=int(self.brief.get("seed", 0)))
             self.water = water
 
         # A body of the vehicle's actual mass, at the vehicle's actual place.
@@ -1017,6 +1026,14 @@ class Dive:
         self.visibility_m = None if visibility in (None, "", 0) else float(visibility)
         named = parameters.get("waterType") or parameters.get("jerlov")
         self.water_type = None if named in (None, "") else str(named)
+
+        def number(key):
+            got = parameters.get(key)
+            return None if got in (None, "") else float(got)
+
+        self.sea_height_m = number("significantWaveHeightM")
+        self.sea_period_s = number("waveMeanPeriodS") or number("wavePeakPeriodS")
+        self.sea_heading_deg = number("waveHeadingDeg")
         self.read_the_water(parameters)
         # What is deployed in this water to fix a position with, if anything.
         # The vehicle's instruments are the vehicle's; this is the water's, and
@@ -1204,6 +1221,9 @@ class Dive:
                 "current": [round(float(v), 4) for v in self.current[:2]],
                 "visibilityM": self.visibility_m,
                 **({} if self.water_type is None else {"waterType": self.water_type}),
+                **({} if self.sea_height_m is None
+                   else {"significantWaveHeightM": self.sea_height_m,
+                         "waveMeanPeriodS": self.sea_period_s}),
                 "densityKgM3": round(float(self.density), 3)}
         if self.salinity_psu is not None:
             said["salinityPsu"] = round(float(self.salinity_psu), 2)
@@ -2042,9 +2062,17 @@ class Dive:
                 self.commands = np.zeros_like(self.commands)
 
         # Drag is on the motion through the water. The current, in the body
-        # frame, is taken off the ground velocity before the water sees it.
+        # frame, is taken off the ground velocity before the water sees it —
+        # and so is the orbital motion of the waves, which is the half of a sea
+        # state that acts on a vehicle rather than on a picture.
+        #
+        # It dies as exp(-kz), so it is real in the top half-wavelength and
+        # gone below that. That is why shallow work stops when the weather
+        # comes up and why a dive at forty metres does not care, and until now
+        # a vehicle at one metre in a two-metre sea felt exactly what one at
+        # sixty felt, which was nothing.
         through_water = self.velocity.copy()
-        through_water[:3] -= self.rotation.T @ self.current
+        through_water[:3] -= self.rotation.T @ (self.current + self.orbital())
         # Where the vehicle is, handed to the physics: the water it is actually
         # floating in and the hull it actually has down there, rather than the
         # ones it had at the surface.
@@ -2386,6 +2414,14 @@ class Dive:
         if corner is None:
             return 1000.0
         return max(float(far[0] - corner[0]), float(far[1] - corner[1]))
+
+    def orbital(self):
+        """The water's own motion under the waves, where the vehicle is."""
+        if self.water is None or not hasattr(self.water, "orbital_here"):
+            return np.zeros(3)
+        return self.water.orbital_here(
+            float(self.position[0]), float(self.position[1]),
+            max(0.0, float(-self.position[2])), self.simulated)
 
     def stir(self) -> None:
         """Move the water. Still caustics are a painted floor."""

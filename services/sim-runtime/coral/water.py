@@ -52,7 +52,7 @@ DEFAULT_TYPE = "1C"
 
 # Stamped so a frame can be traced to the code that made it. Bumped by hand
 # whenever this file changes in a way a picture should show.
-BUILD = "water-13"
+BUILD = "water-14"
 
 # The two facts that make the far half of a frame the colour it is.
 #
@@ -124,7 +124,10 @@ def is_it_deep(depth: float, lengths=None) -> float:
 
 def make(stage, say, floor: float, water_level: float = 0.0,
          across: float = 1000.0, working_depth: float = 10.0,
-         visibility_m: float | None = None, water_type: str | None = None) -> None:
+         visibility_m: float | None = None, water_type: str | None = None,
+         significant_height_m: float | None = None,
+         wave_period_s: float | None = None,
+         wave_heading_deg: float | None = None, seed: int = 0) -> None:
     """Put water over a place, and light it from above.
 
     Four things, in the order they matter: the fog that is the water itself, the
@@ -147,6 +150,18 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # lights and the camera, so it is worked out once.
     # Which water this is. Named by the conditions, or clear coastal, and every
     # number below comes off it rather than out of this file.
+    # The sea, from what was measured or from a quiet day.
+    global _SEA
+    from sea_state import SeaState
+
+    _SEA = SeaState(
+        CALM_HEIGHT_M if significant_height_m is None else float(significant_height_m),
+        CALM_PERIOD_S if wave_period_s is None else float(wave_period_s),
+        0.0 if wave_heading_deg is None else float(wave_heading_deg),
+        seed=int(seed))
+    say("sea_is", **_SEA.said(),
+        measured=significant_height_m is not None)
+
     lengths = water_of(water_type)
     veiling = veiling_colour(lengths)
     left = is_it_deep(max(0.0, working_depth), lengths)
@@ -464,32 +479,37 @@ def make(stage, say, floor: float, water_level: float = 0.0,
 SURFACE_ACROSS = 200.0
 SURFACE_CELL = 0.7
 
-# A crude directional sea: four trains, each with a length, a height, and a way
-# it is going. Real spectra are the next step and this is not one; what it has
-# to do is stop every square metre of the surface facing the same way.
-WAVES = (
-    # wavelength m, height m, heading rad
-    (14.0, 0.22, 0.0),
-    (9.0, 0.13, 1.1),
-    (5.5, 0.07, 2.4),
-    (2.7, 0.03, 4.0),
-)
+# The sea this place is having, set when the water is made and used by every
+# vertex of the surface after that.
+#
+# It was four wave trains somebody chose: fixed lengths, fixed heights, the
+# same sea every day, and no way to tell it that today is half a metre and
+# Thursday is two. It is a JONSWAP spectrum now, driven by the significant
+# height and period a wave buoy reports — which is what `asMeasured` takes off
+# a Sofar Spotter and records as observed conditions.
+_SEA = None
+# A quiet day on a reef, for a dive that says nothing about the weather.
+CALM_HEIGHT_M = 0.4
+CALM_PERIOD_S = 6.0
 
 
 def surface_height(x: float, y: float, seconds: float = 0.0) -> float:
-    """How high the water stands above its mean level at a point.
+    """How high the water stands above its mean level at a point."""
+    return 0.0 if _SEA is None else _SEA.height_at(x, y, seconds)
 
-    Deep-water waves, so the speed of each train is set by its own length:
-    c = sqrt(g L / 2pi). A sea where every train moves at the same speed is a
-    sea that does not disperse, and it reads as a moving texture.
+
+def orbital_here(x: float, y: float, depth: float, seconds: float = 0.0):
+    """What the water itself is doing at a depth, under this sea.
+
+    The half of a sea state that acts on a vehicle. Zero when the surface is
+    only being drawn and nothing has set a sea, so a dive that says nothing
+    about the weather is the dive it always was.
     """
-    total = 0.0
-    for length, height, heading in WAVES:
-        k = 2.0 * math.pi / length
-        speed = math.sqrt(9.81 / k)
-        phase = k * (x * math.cos(heading) + y * math.sin(heading)) - k * speed * seconds
-        total += height * math.sin(phase)
-    return total
+    import numpy as _np
+
+    if _SEA is None or _SEA.flat:
+        return _np.zeros(3)
+    return _SEA.orbital_at(x, y, depth, seconds)
 
 
 def _wave_mesh(surface, water_level: float, seconds: float = 0.0,
