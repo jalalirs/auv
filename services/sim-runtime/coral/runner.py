@@ -1350,7 +1350,15 @@ class Dive:
             # Small, because a subsea lamp is a bright source behind a dome and
             # the shadow it throws has a soft edge, which is most of what makes
             # a lit frame look lit rather than traced.
-            light = UsdLux.RectLight.Define(stage, f"/World/Lamps/{name}")
+            # A direct child of /World, with no scope between.
+            #
+            # Under /World/Lamps/<name> the light renders nothing at all, at
+            # any size or brightness, while the caustics — a rect light at
+            # /World/Caustics — light the scene from 71 to 207. The only thing
+            # left between them was the implicitly created scope in the middle,
+            # which is a typeless prim this renderer's traversal apparently
+            # does not go through.
+            light = UsdLux.RectLight.Define(stage, f"/World/Lamp_{name}")
             across = float(os.environ.get("CORAL_CITY_LAMP_SIZE", 0.08))
             light.CreateWidthAttr(across)
             light.CreateHeightAttr(across)
@@ -1402,7 +1410,7 @@ class Dive:
         # that is simply dark.
         where = []
         for name in self.lamps:
-            prim = stage.GetPrimAtPath(f"/World/Lamps/{name}")
+            prim = stage.GetPrimAtPath(f"/World/Lamp_{name}")
             if prim:
                 box = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(
                     Usd.TimeCode.Default())
