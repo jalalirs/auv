@@ -64,6 +64,11 @@ DEFAULT_TYPE = "1C"
 # white wall. The first attempt at this filled forty metres with white haze.
 SCATTERING_ALBEDO = 0.28
 
+# How much veiling light there is at all, before depth dims it. Read off the
+# same ladder: at 0.28 the whole frame went the colour of the water, at 0.05
+# there was no water in the picture.
+VEIL_STRENGTH = 0.12
+
 
 def water_of(kind: str | None = None):
     """The attenuation lengths of a named water type."""
@@ -71,15 +76,31 @@ def water_of(kind: str | None = None):
                       JERLOV[DEFAULT_TYPE])
 
 
+# How far the veil is pulled back towards grey, and how bright it is allowed
+# to get. Light that reaches the camera from the side has been scattered many
+# times over, and every bounce mixes the channels: a veil left at the raw ratio
+# is fully saturated in whichever channel survives best, and a reef behind it
+# looks like a reef behind coloured glass rather than a reef in water.
+#
+# Both read off a ladder: eleven frames of one view, stepping the veil. At full
+# saturation the corals lost their own colour entirely; at these the reds and
+# oranges come through and the distance still goes the colour of the sea.
+VEIL_TOWARDS_GREY = 0.35
+VEIL_BRIGHTNESS = 0.62
+
+
 def veiling_colour(lengths) -> tuple:
     """The colour the distance goes, for a water of these lengths.
 
-    What survives, normalised to the channel that survives most. Clear ocean
-    comes out blue because blue survives; turbid harbour comes out green-brown
+    What survives, then mixed back towards grey and dimmed. Clear ocean comes
+    out blue because blue survives; turbid harbour comes out green-brown
     because by then blue does not.
     """
     most = max(lengths)
-    return tuple(round(float(one) / most, 4) for one in lengths)
+    ratio = [float(one) / most for one in lengths]
+    grey = sum(ratio) / 3.0
+    mixed = [one + (grey - one) * VEIL_TOWARDS_GREY for one in ratio]
+    return tuple(round(one * VEIL_BRIGHTNESS, 4) for one in mixed)
 
 
 # Kept as the name the rest of this file used before water types existed.
@@ -169,7 +190,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # It was 0.55, measured off an exposure ladder — which was honest, and was
     # one number standing in for two facts that move independently.
     settings.set("/rtx/fog/fogColorIntensity",
-                 float(min(1.0, SCATTERING_ALBEDO * (0.4 + 0.6 * left))))
+                 float(min(1.0, VEIL_STRENGTH * (0.4 + 0.6 * left))))
     # The distance is the water's own attenuation length, for green.
     #
     # Green because it is most of what the eye reads as brightness, and green
