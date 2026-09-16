@@ -4019,6 +4019,23 @@ components:
       properties:
         runs: { type: integer }
         survived: { type: integer }
+        diveEnergyWh:
+          type: number
+          description: >
+            What the whole dive takes, work and getting there and back. Always
+            at least the work's own figure, and usually more.
+        diveHours:
+          type: number
+          description: >
+            How long the whole dive takes, descent and both transits included.
+            This is what a working day is divided by: a survey that works for
+            twelve minutes inside a twenty-minute dive is twenty-four a day,
+            not forty.
+        workingShare:
+          type: number
+          description: >
+            How much of a dive is the work. A survey that spends half its time
+            swimming to the site is telling somebody to move the ship.
         energyWh:
           type: number
           description: What one run of it costs, averaged over the runs that did the job.

@@ -416,15 +416,20 @@ function Costs({ cost }: { cost: Cost | undefined }): React.JSX.Element {
   return (
     <>
       <div className="kvs">
-        <Row of="a run" is={`${(cost.energyWh ?? 0).toFixed(1)} Wh · ${((cost.hours ?? 0) * 60).toFixed(0)} min`}
+        <Row of="the work" is={`${(cost.energyWh ?? 0).toFixed(1)} Wh · ${((cost.hours ?? 0) * 60).toFixed(0)} min`}
              note={`Priced on the ${cost.survived} that did the job — the failures are the cheap ones.`} />
+        <Row of="the whole dive"
+             is={`${(cost.diveEnergyWh ?? 0).toFixed(1)} Wh · ${((cost.diveHours ?? 0) * 60).toFixed(0)} min`}
+             note={cost.workingShare
+               ? `Descent and both transits included. ${Math.round((cost.workingShare ?? 0) * 100)}% of it is the work.`
+               : "Descent and both transits included."} />
         <Row of="at the ninetieth percentile"
              is={`${(cost.worstEnergyWh ?? 0).toFixed(1)} Wh · ${((cost.worstHours ?? 0) * 60).toFixed(0)} min`}
              note="What to size a plan by. The single worst dive anybody flew is one bad seed; the mean runs out one day in two." />
         <Row of="on a charge" is={`${Math.floor(cost.perCharge ?? 0)} runs`}
              note={`${(cost.usableWh ?? 0).toFixed(0)} usable Wh — ${(cost.capacityWh ?? 0).toFixed(0)} less a ${((cost.reserveFraction ?? 0) * 100).toFixed(0)}% reserve, which is not yours.`} />
         <Row of="in a working day" is={`${Math.floor(cost.perDay ?? 0)} runs`}
-             note={`Held back by ${cost.heldBackBy}. A working day is ${cost.workingDayHours ?? 8} hours.`} />
+             note={`Held back by ${cost.heldBackBy}. A working day is ${cost.workingDayHours ?? 8} hours, and it pays for the whole dive rather than the work.`} />
       </div>
       {cost.says ? <p className="lead">{cost.says}</p> : null}
     </>

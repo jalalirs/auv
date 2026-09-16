@@ -4952,6 +4952,20 @@ export interface components {
             /** @description How that place is arranged, pinned. The stages point at things in it by name.
              *      */
             layoutVersionId?: string;
+            /** @description Where the vehicle goes in, and therefore where its navigation is zeroed.
+             *     A plan of work starts somewhere: a ship stands off and puts it over the side, or it leaves a dock. Without this the *place* chose — by coral cover, from a number its own survey later disproved — so no mission could say "we launch from the ship" even with a ship drawn on the layout.
+             *     It matters for more than tidiness. Everything after the launch is dead reckoned from the fix taken there, so that point is the origin of the whole dive's position error; and the transit out to the work and back is energy and clock that a cost worked out from the work alone does not count.
+             *     `from` names something in the layout — a ship, a dock, a point — or `at` gives site metres directly. `depthM` is where it starts once it is in the water, which for a surface launch is the surface.
+             *      */
+            launch?: {
+                /** @description The id of something in the layout to launch from. */
+                from?: string;
+                /** @description Site metres, when nothing drawn is the right answer. */
+                at?: number[];
+                /** @description How deep it is when the dive begins. Omitted means the surface, which is where a vehicle put over the side actually is.
+                 *      */
+                depthM?: number;
+            };
             /** @description The work, in order — each an objective in its own right, as the `mission` task kind already sequences them. A stage that points at something not in the layout is refused before the dive flies.
              *      */
             stages: {
@@ -5064,6 +5078,15 @@ export interface components {
         Cost: {
             runs?: number;
             survived?: number;
+            /** @description What the whole dive takes, work and getting there and back. Always at least the work's own figure, and usually more.
+             *      */
+            diveEnergyWh?: number;
+            /** @description How long the whole dive takes, descent and both transits included. This is what a working day is divided by: a survey that works for twelve minutes inside a twenty-minute dive is twenty-four a day, not forty.
+             *      */
+            diveHours?: number;
+            /** @description How much of a dive is the work. A survey that spends half its time swimming to the site is telling somebody to move the ship.
+             *      */
+            workingShare?: number;
             /** @description What one run of it costs, averaged over the runs that did the job. */
             energyWh?: number;
             /** @description The ninetieth percentile, not the single worst dive anybody ever flew — a plan sized by that is a plan sized by one bad seed, and a plan sized by the mean runs out of battery one day in two.
