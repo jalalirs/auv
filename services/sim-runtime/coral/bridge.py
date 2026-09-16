@@ -58,7 +58,7 @@ class Bridge:
 
         import rclpy
         from geometry_msgs.msg import Twist, TwistWithCovarianceStamped
-        from sensor_msgs.msg import FluidPressure, Image, Imu
+        from sensor_msgs.msg import FluidPressure, Image, Imu, LaserScan
         from std_msgs.msg import Float64MultiArray
 
         self._rclpy = rclpy
@@ -91,6 +91,21 @@ class Bridge:
         # against a camera receives what a camera on the hull would give it.
         self.camera = self.node.create_publisher(Image, "/camera/image_raw", 2)
         self._Image = Image
+
+        # The sonar, as a fan of ranges.
+        #
+        # This is the one that was the wrong way round. The vehicle grew a
+        # forward-looking sonar and our own controller could avoid things with
+        # it, while a stack somebody else deployed could not, because nothing
+        # published it — ours is the reference and theirs is the product.
+        #
+        # A `LaserScan` rather than an image: what a collision avoider acts on
+        # is the range in each direction, the message for that already exists,
+        # and every stack in the world already knows how to read one. Drawing
+        # the fan as a picture is a rendering problem and belongs to whoever
+        # has a renderer.
+        self.sonar = self.node.create_publisher(LaserScan, "/sonar/scan", 5)
+        self._LaserScan = LaserScan
 
         # What it acts on. Two ways of saying the same thing: per-thruster for
         # a stack that would rather allocate thrust itself, and a body wrench
@@ -190,6 +205,34 @@ class Bridge:
         except Exception:
             pass
 
+    def publish_sonar(self, bearings, ranges, near: float, far: float) -> None:
+        """One sweep of the fan, as the message a collision avoider expects.
+
+        A beam that came back with nothing is published as infinity, which is
+        what `LaserScan` means by "nothing there" — not as the maximum range,
+        which would tell a stack there is a wall at ten metres all round.
+        """
+        try:
+            import math
+
+            message = self._LaserScan()
+            message.header.stamp = self.node.get_clock().now().to_msg()
+            message.header.frame_id = "sonar"
+            message.angle_min = float(bearings[0])
+            message.angle_max = float(bearings[-1])
+            message.angle_increment = float(
+                (bearings[-1] - bearings[0]) / max(1, len(bearings) - 1))
+            message.time_increment = 0.0
+            message.scan_time = 0.2
+            message.range_min = float(near)
+            message.range_max = float(far)
+            message.ranges = [float(one) if one == one else math.inf for one in ranges]
+            self.sonar.publish(message)
+            with self._lock:
+                self._crossed["/sonar/scan"] = self._crossed.get("/sonar/scan", 0) + 1
+        except Exception:
+            pass
+
     def topics(self) -> list[dict]:
         """What this vehicle carries, and how much has crossed each.
 
@@ -214,6 +257,7 @@ class Bridge:
                 ("/imu/data", "sensor_msgs/msg/Imu", "from"),
                 ("/dvl/twist", "geometry_msgs/msg/TwistWithCovarianceStamped", "from"),
                 ("/camera/image_raw", "sensor_msgs/msg/Image", "from"),
+                ("/sonar/scan", "sensor_msgs/msg/LaserScan", "from"),
                 ("/thruster_cmd", "std_msgs/msg/Float64MultiArray", "to"),
                 ("/cmd_vel", "geometry_msgs/msg/Twist", "to"),
             )
