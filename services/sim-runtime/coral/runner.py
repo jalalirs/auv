@@ -273,6 +273,15 @@ def find_scene(root: pathlib.Path) -> pathlib.Path | None:
     return candidates[0]
 
 
+# What a lumen is worth to the renderer.
+#
+# A subsea lamp is rated in lumens and USD wants an intensity, and there is no
+# clean conversion: it depends on the light's area, whether it is normalised,
+# and what the camera is exposed for. Read off a ladder rather than derived,
+# and named so the next person knows it was measured and not calculated.
+LAMP_SCALE = 40.0
+
+
 class Dive:
     """A vehicle, in a place, being integrated.
 
@@ -1325,7 +1334,7 @@ class Dive:
             # point: the shadow it throws has a soft edge and that edge is
             # most of what makes a lit frame look lit rather than traced.
             light.CreateRadiusAttr(0.035)
-            light.CreateIntensityAttr(float(one.get("lumens", 1500.0)) * 6.0)
+            light.CreateIntensityAttr(float(one.get("lumens", 1500.0)) * LAMP_SCALE)
             light.CreateColorAttr(Gf.Vec3f(1.0, 0.98, 0.95))
             light.CreateNormalizeAttr(True)
             # Cone, so it is a lamp rather than a bulb hanging in the water.

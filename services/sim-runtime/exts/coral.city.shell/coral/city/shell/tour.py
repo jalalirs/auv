@@ -305,27 +305,26 @@ class Tour:
 # "fog" and "aperture" are read here; anything beginning with a slash is set on
 # carb directly; a light name sets that light's intensity.
 LOOKS = (
-    ("as-is", {}),
-    # How much veiling light. The whole frame goes the colour of the water at
-    # the strength this sets, so it is the difference between a reef in water
-    # and a reef behind a sheet of coloured glass.
-    ("veil-05", {"/rtx/fog/fogColorIntensity": 0.05}),
-    ("veil-10", {"/rtx/fog/fogColorIntensity": 0.10}),
-    ("veil-15", {"/rtx/fog/fogColorIntensity": 0.15}),
-    ("veil-35", {"/rtx/fog/fogColorIntensity": 0.35}),
-    # And how far it takes to get there.
-    ("far-8", {"/rtx/fog/fogDistance": 8.0}),
-    ("far-35", {"/rtx/fog/fogDistance": 35.0}),
-    ("far-70", {"/rtx/fog/fogDistance": 70.0}),
-    # A veil that is less of a hue and more of a haze. The derived colour is
-    # normalised to its strongest channel, which makes it fully saturated, and
-    # multiple scattering in real water does not leave it that way.
-    ("veil-pale", {"/rtx/fog/fogColor": [0.45, 0.72, 0.78]}),
-    ("veil-pale-10", {"/rtx/fog/fogColor": [0.45, 0.72, 0.78],
-                      "/rtx/fog/fogColorIntensity": 0.10}),
-    ("veil-blue-10", {"/rtx/fog/fogColor": [0.18, 0.45, 0.62],
-                      "/rtx/fog/fogColorIntensity": 0.10}),
+    ("lamps-as-is", {}),
+    # A lamp is rated in lumens and the renderer wants an intensity, and there
+    # is no clean conversion between them. So: step it.
+    ("lamp-x4", {"/World/Vehicle/Lamps/port": 240000.0,
+                 "/World/Vehicle/Lamps/starboard": 240000.0}),
+    ("lamp-x16", {"/World/Vehicle/Lamps/port": 960000.0,
+                  "/World/Vehicle/Lamps/starboard": 960000.0}),
+    ("lamp-x64", {"/World/Vehicle/Lamps/port": 3840000.0,
+                  "/World/Vehicle/Lamps/starboard": 3840000.0}),
+    # And with the sun out of the way, so what is left is only the lamps.
+    ("lamp-x16-no-sun", {"/World/Vehicle/Lamps/port": 960000.0,
+                         "/World/Vehicle/Lamps/starboard": 960000.0,
+                         "/World/Sun": 0.0, "/World/Water": 0.0,
+                         "/World/Caustics": 0.0}),
+    ("lamp-x64-no-sun", {"/World/Vehicle/Lamps/port": 3840000.0,
+                         "/World/Vehicle/Lamps/starboard": 3840000.0,
+                         "/World/Sun": 0.0, "/World/Water": 0.0,
+                         "/World/Caustics": 0.0}),
 )
+
 # Frames to wait before keeping one. Changing a render setting rebuilds the
 # pipeline, which takes a while on a scene this size — so a setting is applied
 # once when the rung changes and never again, and the wait is for the rebuild.
