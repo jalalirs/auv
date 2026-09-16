@@ -52,7 +52,7 @@ DEFAULT_TYPE = "1C"
 
 # Stamped so a frame can be traced to the code that made it. Bumped by hand
 # whenever this file changes in a way a picture should show.
-BUILD = "water-12"
+BUILD = "water-13"
 
 # The two facts that make the far half of a frame the colour it is.
 #
@@ -192,7 +192,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # is wrong at six; metering off what is actually in the frame is the fix
     # and is its own piece of work.
     settings.set("/rtx/post/tonemap/iso",
-                 float(min(4000.0, 140.0 / max(left, 0.05))))
+                 float(min(9000.0, 140.0 / max(left, 0.05))))
 
     # ── the water ────────────────────────────────────────────────────────────
     #
