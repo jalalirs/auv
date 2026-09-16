@@ -8,12 +8,13 @@
 // there, or the only one if there is only one. Nothing else is on this page;
 // what became of earlier dives is the Dives page's business.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { AssetVersion, Mission, Platform } from "@coral-city/api";
 
 import { POSITIONING, type Positioning } from "../catalog/positioning.js";
 import { PILOTED, TASKS, type Task, WATERS, type Water } from "../catalog/tasks.js";
+import { asMeasured } from "../ocean/asMeasured.js";
 import { alertKind, leadTemperature, useSea } from "../ocean/sea.js";
 import { Line } from "../parts/Line.js";
 import { ControllerArt } from "../parts/ControllerArt.js";
@@ -24,6 +25,7 @@ import { WaterArt } from "../parts/WaterArt.js";
 import type { Choice } from "../parts/Picker.js";
 import { newestOf, whereIs } from "../platform/packages.js";
 import type { Held, Packages, Where } from "./Deck.js";
+import { ago } from "../parts/common.js";
 import { Card, Credit, Fact, Pill, SeaPill, useLoadedPicture } from "./parts.js";
 
 const WHERE = "coral-city.place";
@@ -49,6 +51,9 @@ interface Flyable { mission: Mission; version: AssetVersion; place: string }
 
 /** The controller a person is: keys, with the hold beneath them. */
 const MANUAL = "manual";
+// The water that was measured rather than chosen. Its own key, because it is
+// not one of the composed ones and must not be stored as if it were.
+const MEASURED = "as-measured";
 
 /** What asking looks like, so the box does not have to be guessed at. */
 const ASKING_LOOKS_LIKE =
@@ -214,11 +219,23 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
       // is deployed in it to navigate by. One document, because a run has to
       // pin both — a survey flown on dead reckoning and the same survey inside
       // an array are two different results and must not look like one.
-      const conditions = await platform.defineConditions(held.institution.id, {
-        kind: "constructed",
-        name: `${water.name} · ${knows.name}`,
-        parameters: { ...water.parameters, ...knows.parameters },
-      });
+      // Measured water is recorded as measured: with the instant it was taken
+      // and who took it, which is what makes it observed rather than composed.
+      // The platform refuses one that names no instant, and that refusal is
+      // the most important thing it says about any result flown in it.
+      const conditions = useMeasured && measured !== undefined
+        ? await platform.defineConditions(held.institution.id, {
+            kind: "observed",
+            name: `${measured.name} · ${knows.name}`,
+            observedAt: measured.observedAt,
+            sources: measured.sources,
+            parameters: { ...measured.parameters, ...knows.parameters },
+          })
+        : await platform.defineConditions(held.institution.id, {
+            kind: "constructed",
+            name: `${water.name} · ${knows.name}`,
+            parameters: { ...water.parameters, ...knows.parameters },
+          });
 
       // What the dive is for goes with it, and the runtime judges it as the
       // dive runs; the name says so too, for anyone reading the record.
@@ -327,13 +344,34 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
     key: one.key, name: one.name, says: `${one.says} ${one.expect}`,
     art: <PositioningArt kind={one.key} />,
   }));
-  const waters: Choice[] = WATERS.map((one) => ({
-    key: one.key, name: one.name, says: one.says,
-    // The water's own two numbers, drawn: where it runs and how far you see.
-    art: <WaterArt speedMs={one.parameters.currentMetresPerSecond}
-                   headingDeg={one.parameters.currentHeadingDeg}
-                   visibilityM={one.parameters.visibilityM} />,
-  }));
+  // The sea as somebody measured it, when somebody did.
+  //
+  // Offered first, because water that was measured beats water that was chosen
+  // whenever it exists — and it has never been offered at all: the platform
+  // has always distinguished observed water from composed water, refused each
+  // for claiming what the other claims, and had nothing that ever made an
+  // observed one.
+  const measured = useMemo(
+    () => (sea.at === "known" ? asMeasured(sea.record) : undefined), [sea]);
+  const useMeasured = water.key === MEASURED;
+  const waters: Choice[] = [
+    ...(measured === undefined ? [] : [{
+      key: MEASURED,
+      name: "As the sea is now",
+      says: `${(measured.parameters["temperatureC"] as number).toFixed(1)} °C, `
+        + `measured ${ago(measured.observedAt)}. `
+        + `${measured.sources.length} reading${measured.sources.length === 1 ? "" : "s"}. `
+        + "Nothing here measures the current, so that stays as chosen.",
+      art: <WaterArt visibilityM={undefined} />,
+    } as Choice]),
+    ...WATERS.map((one) => ({
+      key: one.key, name: one.name, says: one.says,
+      // The water's own two numbers, drawn: where it runs and how far you see.
+      art: <WaterArt speedMs={one.parameters.currentMetresPerSecond}
+                     headingDeg={one.parameters.currentHeadingDeg}
+                     visibilityM={one.parameters.visibilityM} />,
+    })),
+  ];
   // One row per controller, its newest build chosen; earlier builds stay on
   // the dives that pinned them and in the count.
   const controllers: Choice[] = [
