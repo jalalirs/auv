@@ -1468,3 +1468,34 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
   font-family: ui-monospace, monospace; font-size: 11.5px; color: var(--dim);
   font-variant-numeric: tabular-nums; text-align: right;
 }
+
+
+/* ── what the vehicle is carrying ──────────────────────────────────────────
+ *
+ * Instruments a dive can leave behind, with what each draws. Laid out as the
+ * other choice rows are, so it reads as one more thing chosen rather than a
+ * panel bolted on.
+ */
+.line.fit { grid-template-columns: 88px minmax(0, 1fr); align-items: start; row-gap: 6px; }
+.line.fit .label { font-size: 11px; font-weight: 600; letter-spacing: 0.09em;
+                   text-transform: uppercase; color: var(--dim); padding-left: 4px;
+                   padding-top: 7px; }
+.line.fit .fitted { display: flex; flex-wrap: wrap; gap: 6px; }
+.line.fit .quiet, .line.fit .why { grid-column: 2; margin: 0; font-size: 12px; }
+.line.fit .why { color: var(--warn, #e8b44a); }
+
+.instrument { display: inline-flex; align-items: baseline; gap: 7px;
+              padding: 5px 10px; border-radius: 7px; font-size: 12px;
+              border: 1px solid rgba(255, 255, 255, 0.12);
+              background: rgba(255, 255, 255, 0.03); color: var(--dim);
+              cursor: pointer; }
+.instrument:hover { border-color: rgba(255, 255, 255, 0.24); }
+/* Fitted is the ordinary state and reads as one; left behind is dimmed and
+ * struck, because a thing you are not taking should look like a thing you are
+ * not taking. */
+.instrument.on { color: var(--ink); border-color: rgba(255, 255, 255, 0.28);
+                 background: rgba(255, 255, 255, 0.07); }
+.instrument:not(.on):not(.fixed) { text-decoration: line-through; opacity: 0.55; }
+/* The computer is not a choice: the hull has one and that is that. */
+.instrument.fixed { cursor: default; opacity: 0.8; }
+.instrument .watts { font-variant-numeric: tabular-nums; font-size: 11px; color: var(--dim); }

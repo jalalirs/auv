@@ -4697,7 +4697,33 @@ export interface components {
             quadraticDamping: Record<string, never>;
             /** @description Position, orientation, thrust curve and saturation per thruster. */
             thrusters: Record<string, never>[];
+            /** @description What the hull carries. Each states its kind, where it sits, and **what it draws** — an imaging sonar is eighteen watts and is most of a small vehicle's load when it is on, a pumped CTD is a third of one, which is why a glider can carry one for six months.
+             *     The draw is not decoration. A dive says which of these are fitted, and until each stated its own cost that choice changed the endurance by nothing at all.
+             *      */
             sensors: Record<string, never>[];
+            /** @description The battery, and what the vehicle draws before it moves.
+             *     `hotelW` is the **base electronics only** — the flight controller and its housekeeping. It used to be a single figure standing for the electronics, the instruments and the lights together, which made unshipping any of them free.
+             *      */
+            power?: Record<string, never>;
+            /** @description What the vehicle thinks with: its kind, its draw, its memory, and how many tera-operations a second it can do.
+             *     A stack declares what it needs of a machine, and that was being checked against the host running the simulation — a datacentre box. Nothing compared it to the computer on the hull, so a controller wanting a hundred TOPS ran here at full speed and could not run at sea, and the dive that proved it worked proved nothing.
+             *      */
+            computer?: {
+                kind?: string;
+                watts?: number;
+                tops?: number;
+                ramGb?: number;
+            };
+            /** @description The acoustic link, if it has one. A few kilobits a second and two thirds of a second per kilometre each way; a glider declares a range of zero, because it talks by satellite when it surfaces and not at all when it is down.
+             *      */
+            modem?: {
+                bitsPerSecond?: number;
+                rangeM?: number;
+                lossShare?: number;
+            };
+            /** @description The lamps, and what they cost. Two Blue Robotics Lumens are thirty watts against a base of six, so a vehicle with its lights on draws several times what one with them off draws before it has moved.
+             *      */
+            lights?: Record<string, never>;
             /** @description What this vehicle publishes and subscribes to, so that a stack expecting a sonar on a vehicle carrying none is refused at admission rather than discovering it mid-dive.
              *      */
             topicContract: Record<string, never>;
@@ -5225,7 +5251,12 @@ export interface components {
             endedAt?: string | null;
             /** Format: date-time */
             leaseExpiresAt?: string | null;
-            outcome?: Record<string, never>;
+            /** @description What the dive said about itself when it settled: the task's score, the battery, the navigation, what it struck, what its sonar saw.
+             *     One field in it is worth naming here because it is the number a dive is judged on and it is easy to miss. `closingFix` is how far out the vehicle was when it came up — the distance between where it thought it was and where it was, with `atSurface` saying whether a fix was actually possible, and `shareOfDistance` giving it against the distance run. A hundred metres out after ten kilometres is a good day; the same hundred after two hundred metres is a broken compass, and the error alone cannot tell those apart.
+             *      */
+            outcome?: {
+                [key: string]: unknown;
+            };
             failureReason?: string | null;
         };
         /** @description Something a dive is flown in. Published and granted by the platform; what a person brings is autonomy, not a hull.

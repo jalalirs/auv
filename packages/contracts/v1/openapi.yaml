@@ -3419,7 +3419,58 @@ components:
           description: Position, orientation, thrust curve and saturation per thruster.
         sensors:
           type: array
+          description: >
+            What the hull carries. Each states its kind, where it sits, and
+            **what it draws** — an imaging sonar is eighteen watts and is most
+            of a small vehicle's load when it is on, a pumped CTD is a third of
+            one, which is why a glider can carry one for six months.
+
+            The draw is not decoration. A dive says which of these are fitted,
+            and until each stated its own cost that choice changed the
+            endurance by nothing at all.
           items: { type: object }
+        power:
+          type: object
+          description: >
+            The battery, and what the vehicle draws before it moves.
+
+            `hotelW` is the **base electronics only** — the flight controller
+            and its housekeeping. It used to be a single figure standing for
+            the electronics, the instruments and the lights together, which
+            made unshipping any of them free.
+        computer:
+          type: object
+          description: >
+            What the vehicle thinks with: its kind, its draw, its memory, and
+            how many tera-operations a second it can do.
+
+            A stack declares what it needs of a machine, and that was being
+            checked against the host running the simulation — a datacentre box.
+            Nothing compared it to the computer on the hull, so a controller
+            wanting a hundred TOPS ran here at full speed and could not run at
+            sea, and the dive that proved it worked proved nothing.
+          properties:
+            kind: { type: string }
+            watts: { type: number }
+            tops: { type: number }
+            ramGb: { type: number }
+        modem:
+          type: object
+          description: >
+            The acoustic link, if it has one. A few kilobits a second and two
+            thirds of a second per kilometre each way; a glider declares a
+            range of zero, because it talks by satellite when it surfaces and
+            not at all when it is down.
+          properties:
+            bitsPerSecond: { type: number }
+            rangeM: { type: number }
+            lossShare: { type: number }
+        lights:
+          type: object
+          description: >
+            The lamps, and what they cost. Two Blue Robotics Lumens are thirty
+            watts against a base of six, so a vehicle with its lights on draws
+            several times what one with them off draws before it has moved.
         topicContract:
           type: object
           description: >
