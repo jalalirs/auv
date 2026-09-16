@@ -94,7 +94,7 @@ JSON
 
     # Opening the scene takes minutes; four stills after that take seconds.
     local n=0
-    for _ in $(seq 1 90); do
+    for _ in $(seq 1 150); do
         sleep 10
         n="$(find "${here}/frames" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
         printf '\r  %s frames' "${n}"
@@ -104,7 +104,21 @@ JSON
     done
     printf '\n'
 
+    # Did it actually finish, or did the wait give up while it was still
+    # going? This is not a detail: a run that is still open leaves the previous
+    # run's log in place, and every conclusion drawn from it is a conclusion
+    # about code that is not the code being tested. That happened for most of
+    # an afternoon.
+    if docker ps --format '{{.Names}}' | grep -q '^coral-look$'; then
+        echo "  STILL RUNNING after the wait — this log is not this run" >&2
+        docker rm -f coral-look >/dev/null 2>&1 || true
+        return 1
+    fi
     docker logs coral-look > "${here}/look.log" 2>&1 || true
+    # And it has to be the build we just made.
+    if ! grep -q '"event": "water_begins"' "${here}/look.log"; then
+        echo "  no water_begins in the log — the image is not the one just built" >&2
+    fi
     docker logs coral-look 2>&1 | grep -E '"event": "(stills_|place_open|water_drawn|failed)' \
         | tail -4 | sed 's/^/    /' || true
     docker rm -f coral-look >/dev/null 2>&1 || true
