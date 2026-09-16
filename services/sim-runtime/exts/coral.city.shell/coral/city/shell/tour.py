@@ -475,6 +475,12 @@ VIEWS = (
     ("into-the-blue", dict(from_anchor=(0.0, 0.0), above=6.0,
                            at=(60.0, 0.0), at_above=5.0,
                            says="six metres up, looking out into open water")),
+    # Where the pilot sits: just behind the vehicle, low, looking where it
+    # looks. The only view that shows what the lamps do, because the lamps are
+    # on the vehicle and a camera fourteen metres away sees their edge.
+    ("by-the-lamps", dict(from_anchor=(-1.2, 0.0), above=1.4,
+                          at=(9.0, 0.0), at_above=0.6,
+                          says="just behind the vehicle, where its lamps point")),
 )
 # Frames to let Kit settle before one is kept. The same reason the ladder
 # waits: moving a camera on a scene this size is not instant.
