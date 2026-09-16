@@ -125,9 +125,8 @@ JSON
     if ! grep -q '"event": "water_begins"' "${here}/look.log"; then
         echo "  no water_begins in the log — the image is not the one just built" >&2
     fi
-    docker logs coral-look 2>&1 | grep -E '"event": "(stills_|place_open|water_drawn|failed)' \
+    grep -E '"event": "(stills_|place_open|water_is|failed)' "${here}/look.log" \
         | tail -4 | sed 's/^/    /' || true
-    docker rm -f coral-look >/dev/null 2>&1 || true
 
     local as="$(basename "${place}")-${WATER}"
     n="$(find "${here}/frames" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
