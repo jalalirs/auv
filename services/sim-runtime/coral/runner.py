@@ -2564,6 +2564,12 @@ class Dive:
                  attempts=self.attempts,
                  **({} if self.navigation is None
                     else {"navigation": self.navigation.said(self.position, self.simulated)}),
+                 # And the one number a dive is judged on, said on its own line
+                 # rather than left among a dozen others: how far out the
+                 # vehicle was when it came up.
+                 **({} if self.navigation is None
+                    else {"closingFix": self.navigation.closing_fix(
+                        self.position, self.submerged() < 1.0)}),
                  **({} if self.battery is None else {"battery": self.battery.said()}),
                  # What the dive was flown through. A run that names a layout
                  # and then says nothing about what was in it leaves whoever

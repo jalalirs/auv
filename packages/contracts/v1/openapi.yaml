@@ -4258,7 +4258,21 @@ components:
         startedAt: { type: string, format: date-time, nullable: true }
         endedAt: { type: string, format: date-time, nullable: true }
         leaseExpiresAt: { type: string, format: date-time, nullable: true }
-        outcome: { type: object }
+        outcome:
+          type: object
+          description: >
+            What the dive said about itself when it settled: the task's score,
+            the battery, the navigation, what it struck, what its sonar saw.
+
+            One field in it is worth naming here because it is the number a
+            dive is judged on and it is easy to miss. `closingFix` is how far
+            out the vehicle was when it came up — the distance between where it
+            thought it was and where it was, with `atSurface` saying whether a
+            fix was actually possible, and `shareOfDistance` giving it against
+            the distance run. A hundred metres out after ten kilometres is a
+            good day; the same hundred after two hundred metres is a broken
+            compass, and the error alone cannot tell those apart.
+          additionalProperties: true
         failureReason: { type: string, nullable: true }
       required: [id, diveId, queueId, mode, state, cityDigest, vehicleDigest,
                  conditionsDigest, seed, runtimeVersion, gpuShare, requestedAt, requestedBy]
