@@ -310,5 +310,11 @@
         "colourK": 6000
       }
     ]
+  },
+  "modem": {
+    "note": "An acoustic modem, because underwater there is no radio. These are a WHOI micro-modem class link at a few hundred metres: a couple of kilobits a second, two thirds of a second per kilometre each way, and packets that go missing when the range is long. It is what shapes autonomy more than anything else on this list \u2014 a vehicle that could ask the ship whenever it was unsure would be a different vehicle from the ones anybody builds.",
+    "bitsPerSecond": 2400.0,
+    "rangeM": 2000.0,
+    "lossShare": 0.08
   }
 }

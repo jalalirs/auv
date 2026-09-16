@@ -357,5 +357,11 @@
         "colourK": 6000
       }
     ]
+  },
+  "modem": {
+    "note": "The same micro-modem class link as the BlueROV2.",
+    "bitsPerSecond": 2400.0,
+    "rangeM": 2000.0,
+    "lossShare": 0.08
   }
 }
