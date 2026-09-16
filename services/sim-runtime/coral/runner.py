@@ -1390,11 +1390,22 @@ class Dive:
                 float(one.get("lumens", 1500.0)) * LAMP_SCALE))
             light.CreateColorAttr(Gf.Vec3f(1.0, 0.98, 0.95))
             light.CreateNormalizeAttr(False)
-            # Cone, so it is a lamp rather than a bulb hanging in the water.
-            # Off by default while the aiming is being worked out: a cone
-            # pointed wrongly is indistinguishable from a light that does not
-            # work, and one of those is a five-minute fix.
-            if os.environ.get("CORAL_CITY_LAMP_CONE", "1") != "0":
+            # No shaping cone.
+            #
+            # This is what stopped the lamps working, and it cost most of a
+            # day. A rect light emits from one face already, so the cone was
+            # belt and braces on top of a direction the light had anyway — and
+            # with it applied the lamps emitted nothing at all, at any size and
+            # any brightness, while an identical light beside them lit the
+            # scene. Off, the deep site goes from a mean of 26 to 40 and from a
+            # peak of 44 to 137.
+            #
+            # The declared beam angle is still in the vehicle's package and is
+            # still the truth about the lamp. When there is a way to apply it
+            # that this renderer honours, it goes back — behind this switch, so
+            # that the next person can tell in one run whether it is the cone
+            # again.
+            if os.environ.get("CORAL_CITY_LAMP_CONE", "0") == "1":
                 shaping = UsdLux.ShapingAPI.Apply(light.GetPrim())
                 shaping.CreateShapingConeAngleAttr(float(one.get("coneDeg", 120.0)) / 2.0)
                 shaping.CreateShapingConeSoftnessAttr(0.45)
