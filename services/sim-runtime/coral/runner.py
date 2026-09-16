@@ -446,6 +446,10 @@ class Dive:
         try:
             from energy import Battery
             self.battery = Battery.of(pathlib.Path(brief.get("vehiclePath", "/dive/vehicle")))
+            # What it carries draws whether or not it has been given anything
+            # to do. This was under `begin_task` at first, so a dive with no
+            # task carried nothing and drew nothing, which is not a vehicle.
+            self.add_up_what_it_carries()
 
             charge = brief.get("batteryCharge")
             if self.battery is not None and charge is not None:
@@ -1255,7 +1259,6 @@ class Dive:
             self.began_at = self.position.copy()
             self.began_rotation = self.rotation.copy()
             self.begin_navigating()
-            self.add_up_what_it_carries()
             self.switch_on_the_ctd()
             self.switch_on_the_modem()
             self.switch_on_the_sonar()
