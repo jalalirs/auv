@@ -177,6 +177,19 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # The renderer's global fog, which is a general atmospheric effect being
     # used for the thing it is actually a good model of: a participating medium
     # that absorbs and scatters over distance.
+    # Local lights, which this renderer does not draw until it is told to.
+    #
+    # The sun and the dome have always worked, because they are infinite
+    # lights and the direct-lighting pass handles those. A lamp on a vehicle is
+    # neither: it is an analytic light with a position, and RTX leaves those to
+    # the sampled-lighting pass, which is off by default. The way that presents
+    # is a light that is created, placed correctly and switched on, and changes
+    # nothing at any brightness — which is how a whole afternoon goes.
+    settings.set("/rtx/directLighting/sampledLighting/enabled", True)
+    settings.set("/rtx/directLighting/sampledLighting/autoEnable", False)
+    settings.set("/rtx/directLighting/sampledLighting/samplesPerSurface", 4)
+    settings.set("/rtx/directLighting/sampledLighting/maxLightCount", 32)
+
     settings.set("/rtx/fog/enabled", True)
     settings.set("/rtx/fog/fogColor", list(veiling))
     # The fog is added to everything the camera sees, so its strength is how
@@ -335,6 +348,10 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # doing exactly nothing for as long as it has been here — and the way that
     # presents is a scene that looks vaguely underwater because of the light
     # while every adjustment to the fog does not move the picture at all.
+    lit = {name: settings.get("/rtx/directLighting/sampledLighting/" + name)
+           for name in ("enabled", "autoEnable", "samplesPerSurface", "maxLightCount")}
+    say("sampled_lighting", **{k: v for k, v in lit.items()})
+
     applied = {name: settings.get("/rtx/fog/" + name)
                for name in ("enabled", "fogDistance", "fogStartDistance",
                             "fogColorIntensity", "fogHeight", "fogHeightDensity")}
