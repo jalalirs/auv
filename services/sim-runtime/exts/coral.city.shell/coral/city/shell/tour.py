@@ -305,25 +305,20 @@ class Tour:
 # "fog" and "aperture" are read here; anything beginning with a slash is set on
 # carb directly; a light name sets that light's intensity.
 LOOKS = (
-    ("lamps-as-is", {}),
-    # A lamp is rated in lumens and the renderer wants an intensity, and there
-    # is no clean conversion between them. So: step it.
-    ("lamp-x4", {"/World/Vehicle/Lamps/port": 240000.0,
-                 "/World/Vehicle/Lamps/starboard": 240000.0}),
-    ("lamp-x16", {"/World/Vehicle/Lamps/port": 960000.0,
-                  "/World/Vehicle/Lamps/starboard": 960000.0}),
-    ("lamp-x64", {"/World/Vehicle/Lamps/port": 3840000.0,
-                  "/World/Vehicle/Lamps/starboard": 3840000.0}),
-    # And with the sun out of the way, so what is left is only the lamps.
-    ("lamp-x16-no-sun", {"/World/Vehicle/Lamps/port": 960000.0,
-                         "/World/Vehicle/Lamps/starboard": 960000.0,
-                         "/World/Sun": 0.0, "/World/Water": 0.0,
-                         "/World/Caustics": 0.0}),
-    ("lamp-x64-no-sun", {"/World/Vehicle/Lamps/port": 3840000.0,
-                         "/World/Vehicle/Lamps/starboard": 3840000.0,
-                         "/World/Sun": 0.0, "/World/Water": 0.0,
-                         "/World/Caustics": 0.0}),
+    ("lamp-1e5", {"/World/Vehicle/Lamps/port": 1e5,
+                  "/World/Vehicle/Lamps/starboard": 1e5}),
+    ("lamp-1e6", {"/World/Vehicle/Lamps/port": 1e6,
+                  "/World/Vehicle/Lamps/starboard": 1e6}),
+    ("lamp-1e7", {"/World/Vehicle/Lamps/port": 1e7,
+                  "/World/Vehicle/Lamps/starboard": 1e7}),
+    ("lamp-1e8", {"/World/Vehicle/Lamps/port": 1e8,
+                  "/World/Vehicle/Lamps/starboard": 1e8}),
+    ("lamp-1e9", {"/World/Vehicle/Lamps/port": 1e9,
+                  "/World/Vehicle/Lamps/starboard": 1e9}),
+    ("lamp-1e10", {"/World/Vehicle/Lamps/port": 1e10,
+                   "/World/Vehicle/Lamps/starboard": 1e10}),
 )
+
 
 # Frames to wait before keeping one. Changing a render setting rebuilds the
 # pipeline, which takes a while on a scene this size — so a setting is applied
@@ -427,8 +422,8 @@ class Ladder:
         ax, ay = self.anchor
         floor = self.floor_at(ax, ay)
         floor = -20.0 if floor is None else float(floor)
-        eye = (ax, ay - 14.0, floor + 2.6)
-        target = (ax, ay + 4.0, floor + 1.2)
+        eye = (ax - 1.2, ay, floor + 1.4)
+        target = (ax + 9.0, ay, floor + 0.6)
 
         camera_path = "/World/TourCamera"
         camera = UsdGeom.Camera.Define(stage, camera_path)
