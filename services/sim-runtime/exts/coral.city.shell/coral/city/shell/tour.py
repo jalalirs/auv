@@ -305,17 +305,20 @@ class Tour:
 # "fog" and "aperture" are read here; anything beginning with a slash is set on
 # carb directly; a light name sets that light's intensity.
 LOOKS = (
-    # Does any local light work here at all? The caustics are a rect light and
-    # have been in every frame since they were written; if turning them off
-    # changes nothing then they never lit anything either, and the answer is
-    # that this renderer draws the sun and the dome and nothing else.
-    ("caustics-on", {"/World/Caustics": 5200.0}),
-    ("caustics-off", {"/World/Caustics": 0.0}),
-    ("caustics-huge", {"/World/Caustics": 500000.0}),
-    ("sun-off", {"/World/Sun": 0.0}),
-    ("dome-off", {"/World/Water": 0.0}),
-    ("sun-and-dome-off", {"/World/Sun": 0.0, "/World/Water": 0.0}),
+    ("as-is", {}),
+    # How much of the light should come from everywhere at once. Too much and
+    # the reef has no shape and no colour; none at all and every shadow is
+    # black, which underwater is also wrong.
+    ("dome-20", {"/World/Water": 20.0}),
+    ("dome-40", {"/World/Water": 40.0}),
+    ("dome-80", {"/World/Water": 80.0}),
+    ("dome-150", {"/World/Water": 150.0}),
+    # And the sun against it, since they trade.
+    ("sun-2200", {"/World/Sun": 2200.0}),
+    ("sun-2200-dome-40", {"/World/Sun": 2200.0, "/World/Water": 40.0}),
+    ("sun-3000-dome-20", {"/World/Sun": 3000.0, "/World/Water": 20.0}),
 )
+
 
 
 
