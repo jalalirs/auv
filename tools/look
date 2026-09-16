@@ -29,14 +29,22 @@ PLACES=("$@")
 CITY="${HOME}/coral-city"
 work="${CITY}/work"
 looks="${work}/looks"
-here="${work}/look"
+# One working directory per place, not one shared by all of them.
+#
+# Shared, a run that fails part way leaves its frames behind and the next place
+# copies them out under its own name — which is how a six-hundred-metre site
+# came back as a pink shallow reef, with a record beside it saying it was the
+# deep one. Every guard in this file was about stale *builds*; this is stale
+# *places*, and it is worse, because the picture looks fine.
+here_for() { printf '%s/look-%s' "${work}" "$(basename "$1" | tr -c 'A-Za-z0-9._-' '-')"; }
 image="127.0.0.1:18081/sim-runtime:r1"
 
 mkdir -p "${looks}"
 
 one_place() {
     local place="$1"
-    local city vehicle
+    local city vehicle here
+    here="$(here_for "${place}")"
     # A place, or a directory somebody is trying something in. The second is
     # how a change to a package is judged before it is published: a package is
     # immutable once it is, and looking at a change after publishing it is
