@@ -121,9 +121,19 @@ JSON
     docker logs coral-look > "${here}/look.log" 2>&1 || true
     docker rm -f coral-look >/dev/null 2>&1 || true
     [ -n "${finished}" ] || echo "  the tour did not report finishing" >&2
-    # And it has to be the build we just made.
-    if ! grep -q '"event": "water_begins"' "${here}/look.log"; then
-        echo "  no water_begins in the log — the image is not the one just built" >&2
+    # And it has to be the build the working tree has, not whatever the box
+    # happened to be running. A warning is not enough here: a stale image looks
+    # exactly like a change that did nothing, and the whole point of this tool
+    # is telling those two apart.
+    local wanted said
+    wanted="$(grep -o 'BUILD = "[^"]*"' "$(dirname "$0")/../services/sim-runtime/coral/water.py" \
+              | head -1 | cut -d'"' -f2)"
+    said="$(grep -o '"build": "[^"]*"' "${here}/look.log" | head -1 | cut -d'"' -f4)"
+    if [ -n "${wanted}" ] && [ "${said}" != "${wanted}" ]; then
+        echo "  STALE: the log says build '${said}', the tree says '${wanted}'" >&2
+        echo "  (build and push the image before looking)" >&2
+        rm -rf "${looks:?}/$(basename "${place}")-${WATER}"
+        return 1
     fi
     grep -E '"event": "(stills_|place_open|water_is|failed)' "${here}/look.log" \
         | tail -4 | sed 's/^/    /' || true
