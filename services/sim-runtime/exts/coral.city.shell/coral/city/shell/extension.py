@@ -228,7 +228,7 @@ class CoralCityShell(omni.ext.IExt):
                 return dive.floor
 
             if self._touring == "ladder":
-                self.tour = Ladder(floor_at, self._say)
+                self.tour = Ladder(floor_at, self._say, begin=dive.position)
             elif self._touring == "stills":
                 # The same four views of every place, held still. Everything in
                 # the look plan is a judgement about an image, and two paths

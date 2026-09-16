@@ -306,14 +306,23 @@ class Tour:
 # carb directly; a light name sets that light's intensity.
 LOOKS = (
     ("as-is", {}),
-    ("dome-60", {"/World/Water": 60.0}),
-    ("dome-20", {"/World/Water": 20.0}),
-    ("fog-half", {"/rtx/fog/fogColorIntensity": 0.45}),
-    ("fog-off", {"/rtx/fog/enabled": False}),
-    ("dome-20-fog-half", {"/World/Water": 20.0,
-                          "/rtx/fog/fogColorIntensity": 0.45}),
-    ("dome-20-fog-off", {"/World/Water": 20.0, "/rtx/fog/enabled": False}),
-    ("dome-20-sun-2400", {"/World/Water": 20.0, "/World/Sun": 2400.0}),
+    # Is the near ground white because there is too much light on it, or
+    # because the camera is open too wide? Two stops of aperture answers it.
+    ("stop-down-1", {"/rtx/post/tonemap/fNumber": 6.3}),
+    ("stop-down-2", {"/rtx/post/tonemap/fNumber": 9.0}),
+    # A dome light comes from every direction at once, so a scene it dominates
+    # has no shading in it anywhere. Every frame so far has been flat.
+    ("dome-off", {"/World/Water": 0.0}),
+    ("dome-30", {"/World/Water": 30.0}),
+    # And the caustics, which are additive and were once three times the sun.
+    ("caustics-off", {"/World/Caustics": 0.0}),
+    # If the flatness is the fill rather than the exposure, this is the frame
+    # that shows it: one light, from one direction, and nothing else.
+    ("sun-only", {"/World/Water": 0.0, "/World/Caustics": 0.0}),
+    ("sun-only-stopped", {"/World/Water": 0.0, "/World/Caustics": 0.0,
+                          "/rtx/post/tonemap/fNumber": 6.3}),
+    ("dome-30-stopped", {"/World/Water": 30.0,
+                         "/rtx/post/tonemap/fNumber": 6.3}),
 )
 # Frames to wait before keeping one. Changing a render setting rebuilds the
 # pipeline, which takes a while on a scene this size — so a setting is applied
@@ -324,9 +333,13 @@ SETTLE = 8
 class Ladder:
     """The same view of the same reef, under each look worth trying."""
 
-    def __init__(self, floor_at, say) -> None:
+    def __init__(self, floor_at, say, begin=None) -> None:
         self.floor_at = floor_at
         self.say = say
+        # Where the reef is. It used to stand at the middle of the site and
+        # look north, which at Al Fahal is eight hundred metres of sand: every
+        # rung of a light ladder was a picture of the wrong place.
+        self.anchor = (float(begin[0]), float(begin[1])) if begin is not None else (0.0, 0.0)
         self.frames = len(LOOKS) * SETTLE
         self.taken = 0
         self.waiting = False
@@ -410,10 +423,11 @@ class Ladder:
         # A low pass over the reef, standing still. Two and a half metres up and
         # looking slightly down, which is where a vehicle works and so is the
         # view any of this has to be right for.
-        floor = self.floor_at(0.0, 0.0)
+        ax, ay = self.anchor
+        floor = self.floor_at(ax, ay)
         floor = -20.0 if floor is None else float(floor)
-        eye = (0.0, -14.0, floor + 2.6)
-        target = (0.0, 4.0, floor + 1.2)
+        eye = (ax, ay - 14.0, floor + 2.6)
+        target = (ax, ay + 4.0, floor + 1.2)
 
         camera_path = "/World/TourCamera"
         camera = UsdGeom.Camera.Define(stage, camera_path)
