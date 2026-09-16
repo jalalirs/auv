@@ -37,7 +37,15 @@ mkdir -p "${looks}"
 one_place() {
     local place="$1"
     local city vehicle
-    city="$("$(dirname "$0")/newest-place" "${place}")"
+    # A place, or a directory somebody is trying something in. The second is
+    # how a change to a package is judged before it is published: a package is
+    # immutable once it is, and looking at a change after publishing it is
+    # looking at it too late.
+    if [ -d "${place}" ] && [ -f "${place}/site.json" ]; then
+        city="${place}"
+    else
+        city="$("$(dirname "$0")/newest-place" "${place}")"
+    fi
     [ -n "${city}" ] || { echo "  no published place called '${place}'" >&2; return 1; }
 
     vehicle=""
@@ -94,16 +102,17 @@ JSON
 
     # What made these frames, beside them — so a sheet can say what it is a
     # sheet of, and two of them can be told apart a month later.
-    rm -rf "${looks:?}/${place}-${WATER}"; mkdir -p "${looks}/${place}-${WATER}"
-    cp "${here}"/frames/*.png "${looks}/${place}-${WATER}/"
-    cp "${here}/look.log" "${looks}/${place}-${WATER}/look.log" 2>/dev/null || true
+    local as="$(basename "${place}")-${WATER}"
+    rm -rf "${looks:?}/${as}"; mkdir -p "${looks}/${as}"
+    cp "${here}"/frames/*.png "${looks}/${as}/"
+    cp "${here}/look.log" "${looks}/${as}/look.log" 2>/dev/null || true
     {
         printf '{"place": "%s", "package": "%s", "at": "%s",\n' \
             "${place}" "$(basename "${city}")" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         printf ' "runtime": "%s", "commit": "%s"}\n' \
             "${image}" "$(git -C "$(dirname "$0")/.." rev-parse --short HEAD 2>/dev/null || echo unknown)"
-    } > "${looks}/${place}-${WATER}/made.json"
-    echo "  ${n} frames → ${looks}/${place}-${WATER}"
+    } > "${looks}/${as}/made.json"
+    echo "  ${n} frames → ${looks}/${as}"
 }
 
 for place in "${PLACES[@]}"; do
