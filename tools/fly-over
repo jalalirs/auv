@@ -41,10 +41,14 @@ else
 city="$("$(dirname "$0")/newest-place" "${place}")"
 [ -n "${city}" ] || { echo "no published place called '${place:-anything}'" >&2; exit 1; }
 
-vehicle=""
-for d in "${work}"/packages/*/; do
-    [ -f "${d}/dynamics.json" ] && vehicle="${d%/}"
-done
+vehicle="${VEHICLE:-}"
+if [ -n "${vehicle}" ]; then
+    vehicle="$(cd "${vehicle}" && pwd)"
+else
+    for d in "${work}"/packages/*/; do
+        [ -f "${d}/dynamics.json" ] && vehicle="${d%/}"
+    done
+fi
 [ -n "${vehicle}" ] || { echo "no vehicle package to open the scene with" >&2; exit 1; }
 
 # Named, and pulled. Picking whatever local image matched "sim-runtime" once
