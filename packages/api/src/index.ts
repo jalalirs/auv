@@ -343,6 +343,9 @@ export class Platform {
     kind: "observed" | "constructed";
     name: string;
     observedAt?: string;
+    /** Who measured it, and when. Required in practice for observed water:
+     *  a reading with no provenance is a number somebody typed. */
+    sources?: Record<string, unknown>[];
     parameters?: Record<string, unknown>;
   }): Promise<Conditions> {
     return this.#request("POST", `/api/v1/organisations/${organisation}/conditions`, conditions);
