@@ -52,7 +52,7 @@ DEFAULT_TYPE = "1C"
 
 # Stamped so a frame can be traced to the code that made it. Bumped by hand
 # whenever this file changes in a way a picture should show.
-BUILD = "water-9"
+BUILD = "water-10"
 
 # The two facts that make the far half of a frame the colour it is.
 #
@@ -199,6 +199,18 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # the sampled-lighting pass, which is off by default. The way that presents
     # is a light that is created, placed correctly and switched on, and changes
     # nothing at any brightness — which is how a whole afternoon goes.
+    # Sharpen the ground when it is looked along.
+    #
+    # A seabed viewed at a grazing angle has an enormous screen-space
+    # derivative, so the renderer picks a mip level that has averaged the
+    # texture away and the bottom of every frame is a smooth slab. It is not
+    # the texture: the map was replaced with pure red and the whole floor went
+    # red, and replaced with strong metre-scale grain and the floor stayed
+    # smooth. Anisotropic filtering is what a grazing view needs.
+    settings.set("/rtx/hydra/TBNFrameMode", 1)
+    settings.set("/rtx/materialDb/anisotropyLevel", 16)
+    settings.set("/rtx/texturestreaming/maxAnisotropy", 16)
+
     settings.set("/rtx/directLighting/sampledLighting/enabled", True)
     settings.set("/rtx/directLighting/sampledLighting/autoEnable", False)
     settings.set("/rtx/directLighting/sampledLighting/samplesPerSurface", 4)
