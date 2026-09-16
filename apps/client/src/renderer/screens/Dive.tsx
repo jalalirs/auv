@@ -518,8 +518,24 @@ export function PlaceCard({ place, packages, chosen, onChoose, onOpen }: {
   const pkg = packages.places.get(place.id);
   const sea = useSea(whereIs(place.extent, pkg?.site));
   const site = pkg?.site;
+  // Surveyed, derived, or composed — three things, and the package only says
+  // two. `surveyed` is a boolean, so Al Fahal, which is a real reef at a real
+  // longitude whose depths were inferred from a satellite, was labelled the
+  // same as a morphology somebody drew from a general idea of a reef. Both
+  // came up "constructed", which reads as invented and is wrong about one of
+  // them.
+  //
+  // What separates them is already here: a place that exists has an extent.
+  // Zero on every side means nobody could say where it is, which is the
+  // honest mark of a composed place.
+  const somewhere = place.extent !== undefined
+    && (place.extent.west !== 0 || place.extent.east !== 0
+        || place.extent.north !== 0 || place.extent.south !== 0);
+  const standing = site?.from?.surveyed === true ? "surveyed"
+    : site?.from?.surveyed === false ? (somewhere ? "derived depths" : "composed")
+    : place.slug;
   const specs = [
-    site?.from?.surveyed === true ? "surveyed" : site?.from?.surveyed === false ? "constructed" : place.slug,
+    standing,
     site?.deepestM === undefined ? `datum: ${place.verticalDatum}` : `to ${site.deepestM.toFixed(0)} m`,
     site?.reef?.colonies ? `${site.reef.colonies.toLocaleString()} colonies` : "",
   ].filter(Boolean);
