@@ -81,6 +81,7 @@ JSON
         -e CORAL_CITY_BRIEF=/dive/dive.json \
         -e CORAL_CITY_TOUR=stills \
         -e CORAL_CITY_LAMP_CONE="${LAMP_CONE:-1}" \
+        -e CORAL_CITY_TEST_LAMP="${TEST_LAMP:-}" \
         -e CORAL_CITY_TOUR_INTO=/dive/frames \
         -v "${here}:/dive:rw" \
         -v "${city}:/dive/city:ro" \
