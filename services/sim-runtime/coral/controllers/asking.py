@@ -100,6 +100,11 @@ class AskingController(Controller):
         # controller that thinks for a second a step is a different proposition
         # from one that does not, whatever it scores.
         self.asked = 0
+        # The acoustic link, if the vehicle carries one, and what it cost.
+        self.link = None
+        self.lost_messages = 0
+        self.over_budget = 0
+        self.link_seconds = 0.0
         self.accepted = 0
         self.refused: list[str] = []
         self.failures = 0
@@ -138,6 +143,45 @@ class AskingController(Controller):
             return None
         return self._ask(goal, seen)
 
+    def over_the_link(self, link) -> None:
+        """The acoustic modem this vehicle carries, if it carries one."""
+        self.link = link
+
+    def _through_the_water(self, question: str, seen: Observation) -> str | None:
+        """What asking costs when the answer has to come down a wire of sound.
+
+        A question and a plan are a few hundred bytes each, which is seconds at
+        a couple of kilobits — and the range to whoever is listening is the
+        depth, because the ship is overhead. Both ways, plus the loss, plus a
+        channel that will not take a second question while the first is still
+        in the water.
+
+        Returns why it did not get through, or None if it did. Nothing here
+        delays the answer itself: the model's own latency is already measured
+        on the wall clock, and what this adds is the part that is the ocean's.
+        """
+        link = getattr(self, "link", None)
+        if link is None:
+            return None
+        # Whoever is listening is at the surface, so the range is the depth.
+        metres = max(1.0, float(seen.depth))
+        size = len(question.encode("utf-8"))
+        t = float(seen.t)
+        if link.busy(t):
+            self.over_budget += 1
+            return "the channel was still carrying the last question"
+        if link.send(t, size, metres) is None:
+            self.lost_messages += 1
+            return f"the question did not arrive: {size} bytes over {metres:.0f} m"
+        # And the answer has to come back, which is the same water again.
+        answer_bytes = 600
+        back = link.send(t + link.carries(size, metres), answer_bytes, metres)
+        if back is None:
+            self.lost_messages += 1
+            return "the question arrived and the answer did not"
+        self.link_seconds += (back - t)
+        return None
+
     def _ask(self, goal: dict, seen: Observation):
         believed = np.asarray(seen.position, dtype=float)
         asking = {
@@ -151,10 +195,19 @@ class AskingController(Controller):
             },
             "elapsedS": round(float(seen.t), 1),
         }
+        question = json.dumps(asking)
+        # Through the water first. A controller that phones home is judged on
+        # the channel it would actually have, or it is not being judged.
+        stopped = self._through_the_water(question, seen)
+        if stopped is not None:
+            self.failures += 1
+            self.refused.append(stopped)
+            return None
+
         began = time.monotonic()
         self.asked += 1
         try:
-            answer, usage = self._call(json.dumps(asking))
+            answer, usage = self._call(question)
         except Exception as trouble:
             self.failures += 1
             self.refused.append(f"the model could not be reached: {str(trouble)[:120]}")
@@ -240,6 +293,15 @@ class AskingController(Controller):
             # were bad, and the difference should not have to be inferred.
             "couldNot": self.refused[:8],
             "configured": bool(self.url and self.model),
+            # And what the water cost, separately from what the model cost. A
+            # controller that is slow because the model is slow and one that is
+            # slow because it is a kilometre down are two different findings.
+            **({} if self.link is None else {
+                "link": {
+                    "lost": self.lost_messages,
+                    "whileBusy": self.over_budget,
+                    "secondsInTheWater": round(self.link_seconds, 2),
+                }}),
         }
 
     def status(self) -> dict:
