@@ -291,6 +291,25 @@ def find_scene(root: pathlib.Path) -> pathlib.Path | None:
 LAMP_SCALE = 90000.0
 
 
+def asked_for(name: str, fallback=None):
+    """A number from the environment, where unset and empty mean the same.
+
+    Docker passes an unset variable through as an empty string, so
+    `os.environ.get(name, default)` hands back `""` rather than the default and
+    `float("")` raises. That exception happened inside opening a dive, so the
+    dive failed, no frames were written, and the previous run's frames and log
+    were left sitting where the next comparison would read them. Several hours
+    of "this change did nothing" were that.
+    """
+    said = os.environ.get(name, "")
+    if said is None or said == "":
+        return fallback
+    try:
+        return float(said)
+    except ValueError:
+        return fallback
+
+
 class Dive:
     """A vehicle, in a place, being integrated.
 
@@ -1359,12 +1378,12 @@ class Dive:
             # which is a typeless prim this renderer's traversal apparently
             # does not go through.
             light = UsdLux.RectLight.Define(stage, f"/World/Lamp_{name}")
-            across = float(os.environ.get("CORAL_CITY_LAMP_SIZE", 0.08))
+            across = asked_for("CORAL_CITY_LAMP_SIZE", 0.08)
             light.CreateWidthAttr(across)
             light.CreateHeightAttr(across)
-            light.CreateIntensityAttr(float(os.environ.get(
+            light.CreateIntensityAttr(asked_for(
                 "CORAL_CITY_LAMP_INTENSITY",
-                float(one.get("lumens", 1500.0)) * LAMP_SCALE)))
+                float(one.get("lumens", 1500.0)) * LAMP_SCALE))
             light.CreateColorAttr(Gf.Vec3f(1.0, 0.98, 0.95))
             light.CreateNormalizeAttr(False)
             # Cone, so it is a lamp rather than a bulb hanging in the water.
@@ -1420,9 +1439,9 @@ class Dive:
             else:
                 where.append(None)
         self.say("lamps_made",
-                 acrossM=float(os.environ.get("CORAL_CITY_LAMP_SIZE", 0.08)),
-                 intensity=float(os.environ.get(
-                     "CORAL_CITY_LAMP_INTENSITY", 1500.0 * LAMP_SCALE)))
+                 acrossM=asked_for("CORAL_CITY_LAMP_SIZE", 0.08),
+                 intensity=asked_for("CORAL_CITY_LAMP_INTENSITY",
+                                     1500.0 * LAMP_SCALE))
         self.say("lamps_at", where=where,
                  vehicleAt=[round(float(v), 2) for v in self.position])
 
@@ -1432,11 +1451,11 @@ class Dive:
         # light from a local source here, or something about hanging one under
         # the vehicle stops it. One of those is a five-minute fix and this says
         # which.
-        if os.environ.get("CORAL_CITY_TEST_LAMP"):
+        if asked_for("CORAL_CITY_TEST_LAMP") is not None:
             probe = UsdLux.RectLight.Define(stage, "/World/TestLamp")
             probe.CreateWidthAttr(0.3)
             probe.CreateHeightAttr(0.3)
-            probe.CreateIntensityAttr(float(os.environ["CORAL_CITY_TEST_LAMP"]))
+            probe.CreateIntensityAttr(asked_for("CORAL_CITY_TEST_LAMP", 0.0))
             probe.CreateColorAttr(Gf.Vec3f(1.0, 0.35, 0.35))
             probe.CreateNormalizeAttr(False)
             UsdGeom.Xformable(probe.GetPrim()).AddTranslateOp().Set(
@@ -1447,7 +1466,7 @@ class Dive:
                      at=[round(float(self.position[0]) + 0.4, 2),
                          round(float(self.position[1]), 2),
                          round(float(self.position[2]) + 0.3, 2)],
-                     intensity=float(os.environ["CORAL_CITY_TEST_LAMP"]))
+                     intensity=asked_for("CORAL_CITY_TEST_LAMP", 0.0))
 
         self.say("lamps_on", lamps=self.lamps,
                  watts=round(self.lamp_watts, 1),
