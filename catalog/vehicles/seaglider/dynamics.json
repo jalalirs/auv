@@ -104,7 +104,9 @@
         0,
         0,
         0
-      ]
+      ],
+      "watts": 0.35,
+      "wattsNote": "a pumped SBE 49, which is why gliders can carry one"
     },
     {
       "kind": "imu",
@@ -113,7 +115,9 @@
         0,
         0,
         0
-      ]
+      ],
+      "watts": 0.5,
+      "wattsNote": "a MEMS unit; a fibre-optic gyro is ten times this"
     },
     {
       "kind": "barometer",
@@ -122,7 +126,9 @@
         0,
         0,
         0
-      ]
+      ],
+      "watts": 0.1,
+      "wattsNote": "a pressure sensor, which costs nothing"
     }
   ],
   "topicContract": {
@@ -153,15 +159,23 @@
     "note": "Primary lithium, and almost nothing drawn: a glider spends energy on the pump and on talking, and nothing at all on going forward. Ten months is what that buys.",
     "capacityWh": 10000.0,
     "nominalVoltage": 24.0,
-    "hotelW": 0.5,
+    "hotelW": 0.25,
     "thrusterMaxW": 12.0,
     "powerExponent": 1.0,
-    "reserveFraction": 0.1
+    "reserveFraction": 0.1,
+    "hotelNote": "The base electronics and nothing else: a low-power board asleep between casts, which is the whole reason a glider lasts months. It was a single lumped figure that stood for the electronics, the sensors and the lights together \u2014 which meant unfitting a Doppler log or switching the lamps off changed the endurance by exactly nothing. Each instrument states its own draw now and they are added to this, so a dive that carries less lasts longer, which is the whole reason to be able to choose."
   },
   "modem": {
     "note": "None. A glider talks by satellite when it surfaces and not at all when it is down, which is why its decisions are made in hours.",
     "bitsPerSecond": 0.0,
     "rangeM": 0.0,
     "lossShare": 1.0
+  },
+  "computer": {
+    "kind": "low-power-board",
+    "watts": 0.15,
+    "tops": 0.0,
+    "ramGb": 0,
+    "note": "Asleep between casts. A glider's whole endurance argument is that it thinks slowly and rarely, and a hundred milliwatts over six months is more energy than any single dive spends."
   }
 }
