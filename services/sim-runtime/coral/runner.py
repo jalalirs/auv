@@ -280,15 +280,19 @@ def find_scene(root: pathlib.Path) -> pathlib.Path | None:
 # clean conversion: it depends on the light's area, whether it is normalised,
 # and what the camera is exposed for. Read off a ladder rather than derived,
 # and named so the next person knows it was measured and not calculated.
-# A rect light's intensity is radiance, so what it delivers is intensity times
-# its area — and a lamp is eight centimetres across while the caustic sheet is
-# ninety metres. The caustics at 5200 and the lamp at 40 per lumen differ by a
-# factor of two thousand in what actually arrives, which is the difference
-# between a lit seabed and a black frame.
+# Lumens to whatever the renderer means by intensity.
 #
-# 1500 lumens at this scale over 0.0064 square metres comes out about the same
-# total as the caustic sheet, which is a lit reef.
-LAMP_SCALE = 90000.0
+# A rect light with normalize off emits radiance, so what arrives is intensity
+# times area — and a lamp is eight centimetres across while the caustic sheet
+# it was measured against is ninety metres. Eight thousand times less area.
+#
+# Measured rather than derived: two rect lights of the same kind were put at
+# the same place, one at ninety metres and 5200 and one at the lamp's size and
+# brightness, and the first moved the frame by twenty points and the second by
+# nothing. This is the number that makes their totals match. It is a unit
+# conversion and nothing else; the fifteen watts and fifteen hundred lumens in
+# the vehicle's package are the real quantities.
+LAMP_SCALE = 2_000_000.0
 
 
 def asked_for(name: str, fallback=None):
