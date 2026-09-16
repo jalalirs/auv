@@ -194,7 +194,18 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     scale = 1.0 if not visibility_m else max(0.15, float(visibility_m) / lengths[1])
     settings.set("/rtx/fog/fogDistance", float(lengths[1] * scale))
     settings.set("/rtx/fog/fogDensity", 1.0)
-    settings.set("/rtx/fog/fogHeightDensity", 1.0)
+    # Fog everywhere in the water, not only near the bottom.
+    #
+    # The renderer's fog thins with height above a plane, which is right for
+    # ground mist and wrong for the sea: it left a hard line across every frame
+    # where the fog stopped and the underside of the surface came through
+    # unveiled. The plane goes above the water and the falloff goes off, so the
+    # whole column is the same medium, which is what water is.
+    settings.set("/rtx/fog/fogHeightDensity", 0.0)
+    settings.set("/rtx/fog/fogHeight", float(water_level + 50.0))
+    settings.set("/rtx/fog/fogHeightFalloff", 0.0)
+    settings.set("/rtx/fog/heightBasedFog", False)
+    settings.set("/rtx/fog/fogUseHeight", False)
     # Water starts at the lens, because it does. It was eleven metres, to keep
     # close things their own colour — which is a real problem solved in the
     # wrong place: what greyed out a close colony was a veiling intensity above
@@ -301,7 +312,8 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # while every adjustment to the fog does not move the picture at all.
     applied = {name: settings.get("/rtx/fog/" + name)
                for name in ("enabled", "fogDistance", "fogStartDistance",
-                            "fogColorIntensity")}
+                            "fogColorIntensity", "fogHeight", "fogHeightDensity",
+                            "fogHeightFalloff", "heightBasedFog", "fogUseHeight")}
 
     say("water_made",
         fogApplied=applied,
