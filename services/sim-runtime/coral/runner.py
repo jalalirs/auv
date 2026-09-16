@@ -14,6 +14,7 @@ what they do between calls.
 from __future__ import annotations
 
 import math
+import os
 import pathlib
 
 import numpy as np
@@ -1338,9 +1339,13 @@ class Dive:
             light.CreateColorAttr(Gf.Vec3f(1.0, 0.98, 0.95))
             light.CreateNormalizeAttr(True)
             # Cone, so it is a lamp rather than a bulb hanging in the water.
-            shaping = UsdLux.ShapingAPI.Apply(light.GetPrim())
-            shaping.CreateShapingConeAngleAttr(float(one.get("coneDeg", 120.0)) / 2.0)
-            shaping.CreateShapingConeSoftnessAttr(0.45)
+            # Off by default while the aiming is being worked out: a cone
+            # pointed wrongly is indistinguishable from a light that does not
+            # work, and one of those is a five-minute fix.
+            if os.environ.get("CORAL_CITY_LAMP_CONE", "1") != "0":
+                shaping = UsdLux.ShapingAPI.Apply(light.GetPrim())
+                shaping.CreateShapingConeAngleAttr(float(one.get("coneDeg", 120.0)) / 2.0)
+                shaping.CreateShapingConeSoftnessAttr(0.45)
 
             moving = UsdGeom.Xformable(light.GetPrim())
             moving.ClearXformOpOrder()
