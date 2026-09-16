@@ -280,7 +280,15 @@ def find_scene(root: pathlib.Path) -> pathlib.Path | None:
 # clean conversion: it depends on the light's area, whether it is normalised,
 # and what the camera is exposed for. Read off a ladder rather than derived,
 # and named so the next person knows it was measured and not calculated.
-LAMP_SCALE = 40.0
+# A rect light's intensity is radiance, so what it delivers is intensity times
+# its area — and a lamp is eight centimetres across while the caustic sheet is
+# ninety metres. The caustics at 5200 and the lamp at 40 per lumen differ by a
+# factor of two thousand in what actually arrives, which is the difference
+# between a lit seabed and a black frame.
+#
+# 1500 lumens at this scale over 0.0064 square metres comes out about the same
+# total as the caustic sheet, which is a lit reef.
+LAMP_SCALE = 90000.0
 
 
 class Dive:
