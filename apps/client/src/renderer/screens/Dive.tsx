@@ -14,6 +14,8 @@ import type { AssetVersion, Mission, Platform } from "@coral-city/api";
 
 import { POSITIONING, type Positioning } from "../catalog/positioning.js";
 import { PILOTED, TASKS, type Task, WATERS, type Water } from "../catalog/tasks.js";
+import { INSTRUMENTS, beyondTheHull, drawOf, hoursAtRest,
+         type Carried, type Machine } from "../catalog/fit.js";
 import { asMeasured } from "../ocean/asMeasured.js";
 import { alertKind, leadTemperature, useSea } from "../ocean/sea.js";
 import { Line } from "../parts/Line.js";
@@ -54,6 +56,13 @@ const MANUAL = "manual";
 // The water that was measured rather than chosen. Its own key, because it is
 // not one of the composed ones and must not be stored as if it were.
 const MEASURED = "as-measured";
+
+/** What a dive is leaving behind, in the shape the runtime reads. */
+function unfitted(off: Set<string>): Record<string, boolean> {
+  const said: Record<string, boolean> = {};
+  for (const kind of off) said[kind] = false;
+  return said;
+}
 
 /** What asking looks like, so the box does not have to be guessed at. */
 const ASKING_LOOKS_LIKE =
@@ -229,12 +238,14 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
             name: `${measured.name} · ${knows.name}`,
             observedAt: measured.observedAt,
             sources: measured.sources,
-            parameters: { ...measured.parameters, ...knows.parameters },
+            parameters: { ...measured.parameters, ...knows.parameters,
+                          ...(off.size ? { fitted: unfitted(off) } : {}) },
           })
         : await platform.defineConditions(held.institution.id, {
             kind: "constructed",
             name: `${water.name} · ${knows.name}`,
-            parameters: { ...water.parameters, ...knows.parameters },
+            parameters: { ...water.parameters, ...knows.parameters,
+                          ...(off.size ? { fitted: unfitted(off) } : {}) },
           });
 
       // What the dive is for goes with it, and the runtime judges it as the
@@ -353,6 +364,25 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
   // observed one.
   const measured = useMemo(
     () => (sea.at === "known" ? asMeasured(sea.record) : undefined), [sea]);
+
+  // What the hull carries, and what of it this dive is taking.
+  //
+  // A vehicle package says what the hull has; a dive says what is fitted, and
+  // those are not the same question — the same hull without its Doppler log is
+  // a different problem and should not need a second vehicle in the
+  // catalogue. The runtime has read `fitted` for a while and there has never
+  // been anywhere to say it.
+  const carried = ((vehiclePackage?.dynamics as { sensors?: Carried[] } | undefined)
+    ?.sensors ?? []) as Carried[];
+  const machine = (vehiclePackage?.dynamics as { computer?: Machine } | undefined)?.computer;
+  const power = (vehiclePackage?.dynamics as
+    { power?: { hotelW?: number; capacityWh?: number; reserveFraction?: number } } | undefined)?.power;
+  const [off, setOff] = useState<Set<string>>(new Set());
+  const laden = drawOf(carried, machine, power?.hotelW ?? 0, new Set());
+  const draw = drawOf(carried, machine, power?.hotelW ?? 0, off);
+  const usable = (power?.capacityWh ?? 0) * (1 - (power?.reserveFraction ?? 0));
+  const tooMuch = beyondTheHull(machine, chosenStack?.needs as
+    { tops?: number; ramGb?: number } | undefined);
   const useMeasured = water.key === MEASURED;
   const waters: Choice[] = [
     ...(measured === undefined ? [] : [{
@@ -518,6 +548,46 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
                 onOpen={chosenStack === undefined ? undefined : () => onOpen({ page: "autonomy" })}
                 hint={chosenStack === undefined ? undefined
                   : <>Your stack flies from the start; the keys still win while they are held.</>} />
+          {carried.length === 0 ? null : (
+            <div className="line fit">
+              <span className="label">Carrying</span>
+              <div className="fitted">
+                {carried.map((one) => {
+                  const known = INSTRUMENTS[one.kind];
+                  const on = !off.has(one.kind);
+                  return (
+                    <button key={one.kind} type="button"
+                            className={on ? "instrument on" : "instrument"}
+                            aria-pressed={on}
+                            title={`${known?.why ?? ""} ${one.wattsNote ?? ""}`.trim()}
+                            onClick={() => setOff((was) => {
+                              const next = new Set(was);
+                              if (on) next.add(one.kind); else next.delete(one.kind);
+                              return next;
+                            })}>
+                      {known?.name ?? one.kind}
+                      <span className="watts">{(one.watts ?? 0).toFixed(1)} W</span>
+                    </button>
+                  );
+                })}
+                {machine === undefined ? null : (
+                  <span className="instrument fixed" title={machine.note}>
+                    {machine.kind}
+                    <span className="watts">{(machine.watts ?? 0).toFixed(1)} W</span>
+                  </span>
+                )}
+              </div>
+              <p className="quiet">
+                {draw.toFixed(1)} W before it moves
+                {usable > 0 ? ` · about ${hoursAtRest(usable, draw).toFixed(1)} h of it at rest` : ""}
+                {draw < laden ? ` · ${(laden - draw).toFixed(1)} W lighter than fully fitted` : ""}.
+                {" "}Leaving something behind buys endurance; it also takes away what it does.
+              </p>
+              {tooMuch === undefined ? null : (
+                <p className="why">{tooMuch}</p>
+              )}
+            </div>
+          )}
           <Line label="Water" choices={waters} chosen={water.key}
                 onChoose={(key) => { setWater(WATERS.find((w) => w.key === key)!); localStorage.setItem(HOW, key); }} />
           <Line label="Knows where it is by" choices={positions} chosen={knows.key}
