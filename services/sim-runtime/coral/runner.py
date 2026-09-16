@@ -1305,7 +1305,7 @@ class Dive:
         """
         import json
 
-        from pxr import Gf, Sdf, UsdGeom, UsdLux
+        from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux
 
         self.lamps = []
         self.lamp_watts = 0.0
@@ -1364,6 +1364,24 @@ class Dive:
         # promise an endurance nobody gets.
         if self.battery is not None and self.lamp_watts:
             self.battery.hotel_w += float(self.lamp_watts)
+
+        # Where they actually ended up, not where they were asked to go. A
+        # light hung under a transform that is not what you think it is lights
+        # somewhere nobody is looking, and the way that presents is a scene
+        # that is simply dark.
+        where = []
+        for name in self.lamps:
+            prim = stage.GetPrimAtPath(f"{self.vehicle_path}/Lamps/{name}")
+            if prim:
+                box = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(
+                    Usd.TimeCode.Default())
+                at = box.ExtractTranslation()
+                where.append([round(float(at[i]) / self.units_per_metre, 2)
+                              for i in range(3)])
+            else:
+                where.append(None)
+        self.say("lamps_at", where=where,
+                 vehicleAt=[round(float(v), 2) for v in self.position])
 
         self.say("lamps_on", lamps=self.lamps,
                  watts=round(self.lamp_watts, 1),
