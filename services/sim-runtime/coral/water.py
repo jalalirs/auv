@@ -52,7 +52,7 @@ DEFAULT_TYPE = "1C"
 
 # Stamped so a frame can be traced to the code that made it. Bumped by hand
 # whenever this file changes in a way a picture should show.
-BUILD = "water-8"
+BUILD = "water-9"
 
 # The two facts that make the far half of a frame the colour it is.
 #
@@ -73,6 +73,9 @@ SCATTERING_ALBEDO = 0.28
 # same ladder: at 0.28 the whole frame went the colour of the water, at 0.05
 # there was no water in the picture.
 VEIL_STRENGTH = 0.12
+
+# How bright the water's own glow is as a fill light. Read off a ladder.
+DOME_SHARE = 55.0
 
 
 def water_of(kind: str | None = None):
@@ -294,14 +297,29 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # black. Underwater there is no such thing as an unlit surface: the medium
     # itself glows in every direction.
     sky = UsdLux.DomeLight.Define(stage, "/World/Water")
-    sky.CreateIntensityAttr(150.0 * left)
+    # A quarter of every frame was this light.
+    #
+    # Measured: turning it off took the picture from 99 to 74. A dome light
+    # arrives from every direction at once, so whatever share of the light it
+    # carries is a share with no shape in it — and worse, it was blue-grey
+    # against a reef that is mustard and ochre, so it lifted the blue channel
+    # of every colony and every one of them came out pale. The palette was
+    # never wrong; it was being washed.
+    #
+    # Water really does glow in every direction and this is not zero. But it is
+    # a fill, and a fill is not a quarter of the light.
+    sky.CreateIntensityAttr(DOME_SHARE * left)
     # Coloured, but not so coloured that it becomes the illuminant. This was
     # (0.05, 0.38, 0.72) — almost pure blue — and at that saturation it was not
     # a fill light, it was the light: everything not in direct sun was rendered
     # in blue, and since most of a reef is not in direct sun, the reef was blue.
     # Measured, the brightest coral in the frame came out (0.14, 0.17, 0.18)
     # against a mustard albedo of (0.72, 0.58, 0.22).
-    sky.CreateColorAttr(Gf.Vec3f(0.52, 0.68, 0.84))
+    # And the colour of the water it is in, rather than a blue-grey chosen
+    # separately. The medium and its glow are the same thing, so they take the
+    # same number: a turbid green bay now fills green and a clear ocean fills
+    # blue, without anybody picking either.
+    sky.CreateColorAttr(Gf.Vec3f(*[min(1.0, one * 1.35) for one in veiling]))
 
     # ── the surface, from below ──────────────────────────────────────────────
     #
@@ -516,7 +534,7 @@ def light_for(stage, depth: float) -> None:
     # had the caustics three and a half times the sun and a dome bright enough
     # to fill every shadow, which is a scene with no direction in it — and a
     # reef with no shadows on it has no shape.
-    for path, base in (("/World/Sun", 1500.0), ("/World/Water", 150.0),
+    for path, base in (("/World/Sun", 1500.0), ("/World/Water", DOME_SHARE),
                        ("/World/Caustics", 1600.0)):
         prim = stage.GetPrimAtPath(path)
         if prim:
