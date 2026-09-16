@@ -135,3 +135,52 @@ func TestOnlyASweepSpeaksOfShipDays(t *testing.T) {
 		t.Errorf("but it still says what a day of it holds: %q", history.Says)
 	}
 }
+
+// A day pays for the transit, not only for the work.
+//
+// The cost said "fifty-three runs a day" from the work's own clock, which for
+// a survey that works for twelve minutes and swims for eight is a fifth more
+// runs than anybody gets. Ship time is the scarce thing this platform exists
+// to plan, so a number that is optimistic by a fifth is a number that puts a
+// programme a day over.
+func TestADayPaysForGettingThereAndBack(t *testing.T) {
+	// Twelve minutes of work inside a twenty-minute dive, twice.
+	spent := []Spent{
+		{Survived: true, Seconds: 720, EnergyWh: 6.0,
+			DiveSeconds: 1200, DiveEnergyWh: 9.5,
+			CapacityWh: 266.4, Reserve: 0.1},
+		{Survived: true, Seconds: 720, EnergyWh: 6.0,
+			DiveSeconds: 1200, DiveEnergyWh: 9.5,
+			CapacityWh: 266.4, Reserve: 0.1},
+	}
+	cost := WhatItCosts(spent, false)
+
+	// The work is still priced as the work.
+	if math.Abs(cost.Hours-0.2) > 0.001 || math.Abs(cost.EnergyWh-6.0) > 0.001 {
+		t.Fatalf("the work should still cost what the work costs: %.3f h, %.2f Wh",
+			cost.Hours, cost.EnergyWh)
+	}
+	// And the dive is longer than the work, which is the whole point.
+	if math.Abs(cost.DiveHours-(1200.0/3600.0)) > 0.001 {
+		t.Fatalf("the dive is twenty minutes, got %.3f h", cost.DiveHours)
+	}
+	if math.Abs(cost.WorkingShare-0.6) > 0.01 {
+		t.Fatalf("three fifths of this dive is work, got %.2f", cost.WorkingShare)
+	}
+	// A day divided by the dive, not by the work: twenty-four, not forty.
+	if cost.PerDay < 23.0 || cost.PerDay > 25.0 {
+		t.Fatalf("eight hours of twenty-minute dives is about twenty-four, got %.1f",
+			cost.PerDay)
+	}
+}
+
+// And a run that says nothing about the whole dive is not punished for it.
+func TestTheWorkStandsInWhenNothingElseIsKnown(t *testing.T) {
+	cost := WhatItCosts([]Spent{
+		{Survived: true, Seconds: 600, EnergyWh: 5.0, CapacityWh: 266.4, Reserve: 0.1},
+	}, false)
+	if math.Abs(cost.DiveHours-cost.Hours) > 0.0001 {
+		t.Fatalf("with nothing else known the dive is the work: %.3f vs %.3f",
+			cost.DiveHours, cost.Hours)
+	}
+}

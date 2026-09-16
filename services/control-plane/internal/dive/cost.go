@@ -42,11 +42,17 @@ const AWorkingDay = 8.0
 
 // Spent is what one run cost.
 type Spent struct {
-	EnergyWh   float64
-	Seconds    float64
-	CapacityWh float64
-	Reserve    float64
-	Survived   bool
+	// The work: what the task itself took. This is what a piece of work costs.
+	EnergyWh float64
+	Seconds  float64
+	// The dive: everything from going in the water to coming back out, the
+	// descent and the transit either way included. This is what a day pays
+	// for, and it is always the larger of the two.
+	DiveEnergyWh float64
+	DiveSeconds  float64
+	CapacityWh   float64
+	Reserve      float64
+	Survived     bool
 }
 
 // Cost is what a piece of work takes, and what the weather adds.
@@ -54,6 +60,14 @@ type Cost struct {
 	// How many runs this was read from, and how many of them did the job.
 	Runs     int `json:"runs"`
 	Survived int `json:"survived"`
+
+	// What the whole dive takes, work and getting there and back. This is what
+	// a working day is divided by; the figures below are the work alone.
+	DiveEnergyWh float64 `json:"diveEnergyWh"`
+	DiveHours    float64 `json:"diveHours"`
+	// How much of a dive is the work. A survey that spends half its time
+	// swimming to the site is telling you to move the ship.
+	WorkingShare float64 `json:"workingShare"`
 
 	// What one run of it costs. Measured on the runs that did the job: a dive
 	// abandoned at eight minutes is cheap and is not what a day's work costs.
@@ -118,9 +132,13 @@ func WhatItCosts(spent []Spent, doubted bool) Cost {
 
 	energies := make([]float64, 0, len(worked))
 	hours := make([]float64, 0, len(worked))
+	diveEnergies := make([]float64, 0, len(worked))
+	diveHours := make([]float64, 0, len(worked))
 	for _, one := range worked {
 		energies = append(energies, one.EnergyWh)
 		hours = append(hours, one.Seconds/3600.0)
+		diveEnergies = append(diveEnergies, math.Max(one.DiveEnergyWh, one.EnergyWh))
+		diveHours = append(diveHours, math.Max(one.DiveSeconds, one.Seconds)/3600.0)
 		out.CapacityWh = math.Max(out.CapacityWh, one.CapacityWh)
 		out.ReserveFraction = math.Max(out.ReserveFraction, one.Reserve)
 	}
@@ -128,16 +146,29 @@ func WhatItCosts(spent []Spent, doubted bool) Cost {
 	out.WorstEnergyWh = worst(energies)
 	out.Hours = mean(hours)
 	out.WorstHours = worst(hours)
+	out.DiveEnergyWh = mean(diveEnergies)
+	out.DiveHours = mean(diveHours)
+	if out.DiveHours > 0 {
+		out.WorkingShare = out.Hours / out.DiveHours
+	}
 
 	out.UsableWh = out.CapacityWh * (1.0 - out.ReserveFraction)
-	if out.EnergyWh > 0 && out.UsableWh > 0 {
-		out.PerCharge = out.UsableWh / out.EnergyWh
+	// Per charge and per day are both about the whole dive, not the work.
+	//
+	// They were about the work, and said so in a comment: the task's own
+	// figure is "the energy of the work, which is what is being priced". True
+	// for what a piece of work costs, and wrong for how many of them fit in a
+	// day — because the vehicle spends the descent and both transits switched
+	// on and moving, and the day pays for all of it. A survey that works for
+	// twelve minutes and swims for eight is not twenty a day, it is twelve.
+	if out.DiveEnergyWh > 0 && out.UsableWh > 0 {
+		out.PerCharge = out.UsableWh / out.DiveEnergyWh
 	}
 	// The clock and the battery each cap the day; the smaller cap is the one
 	// that binds, and which of the two it is decides what to buy.
 	byClock := math.Inf(1)
-	if out.Hours > 0 {
-		byClock = AWorkingDay / out.Hours
+	if out.DiveHours > 0 {
+		byClock = AWorkingDay / out.DiveHours
 	}
 	byCharge := math.Inf(1)
 	if out.PerCharge > 0 {
@@ -289,7 +320,15 @@ func SpentOn(outcome []byte, survived bool) (Spent, bool) {
 	if err := json.Unmarshal(outcome, &said); err != nil {
 		return Spent{}, false
 	}
-	one := Spent{Survived: survived, Seconds: said.Seconds}
+	// Two clocks, and the difference between them is the answer to a question
+	// nobody was asking the right way.
+	//
+	// The dive's own seconds are everything from going in the water to coming
+	// back out: the descent, the transit to the work, the work, the transit
+	// home. The task's seconds are the work alone. Pricing the work by the
+	// work is right; working out how many fit in a day by the work alone is
+	// not, because the day pays for the transit too.
+	one := Spent{Survived: survived, Seconds: said.Seconds, DiveSeconds: said.Seconds}
 	if said.Task != nil && said.Task.Seconds != nil && *said.Task.Seconds > 0 {
 		one.Seconds = *said.Task.Seconds
 	}
@@ -301,6 +340,9 @@ func SpentOn(outcome []byte, survived bool) (Spent, bool) {
 	// The task's own figure where it has one: it is the energy of the *work*,
 	// which is what is being priced, rather than of everything the vehicle did
 	// while it happened to be switched on.
+	if said.Battery != nil {
+		one.DiveEnergyWh = said.Battery.SpentWh
+	}
 	if said.Task != nil && said.Task.EnergyWh != nil {
 		one.EnergyWh = *said.Task.EnergyWh
 	}
