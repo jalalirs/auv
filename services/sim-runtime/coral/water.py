@@ -20,6 +20,8 @@ coefficients here are for clear coastal water, which is what a reef in a bay is.
 
 from __future__ import annotations
 
+import math
+
 # Jerlov's types, as attenuation lengths in metres: how far light of each
 # colour travels before it is dimmed to 1/e.
 #
@@ -248,15 +250,9 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # A transmissive surface with water's index of refraction produces that for
     # free, which is worth far more than painting it on.
     surface = UsdGeom.Mesh.Define(stage, "/World/Surface")
-    half = across / 2 * 1.5
-    surface.CreatePointsAttr([
-        Gf.Vec3f(-half, -half, water_level), Gf.Vec3f(half, -half, water_level),
-        Gf.Vec3f(half, half, water_level), Gf.Vec3f(-half, half, water_level)])
-    surface.CreateFaceVertexCountsAttr([4])
-    surface.CreateFaceVertexIndicesAttr([0, 1, 2, 3])
-    surface.CreateNormalsAttr([Gf.Vec3f(0, 0, -1)] * 4)
-    surface.CreateExtentAttr([Gf.Vec3f(-half, -half, water_level - 0.01),
-                              Gf.Vec3f(half, half, water_level + 0.01)])
+    _wave_mesh(surface, water_level)
+    # Where the mean level is, for the rebuilds that follow the vehicle.
+    drift._level = float(water_level)
     surface.CreateDoubleSidedAttr(True)
 
     # And it casts no shadow. It is a sheet of glass the size of the site
@@ -312,6 +308,80 @@ def make(stage, say, floor: float, water_level: float = 0.0,
         visibilityM=round(17.0 * scale, 1), surfaceAtM=water_level,
         daylightLeft=round(left, 3), atDepthM=round(working_depth, 1),
         absorbsInM=list(ATTENUATION_METRES))
+
+
+# How big a patch of surface to draw, and how fine.
+#
+# It was one flat quad four and a half kilometres across, which is a sheet of
+# glass: every part of it reflects the same way, so looking up gave a bright
+# ceiling with hard edges rather than water. Water looks like water because it
+# is not flat.
+#
+# A patch rather than the whole site, because the fog takes everything past a
+# couple of attenuation lengths and there is no point shading what nobody can
+# see. Two hundred metres is far beyond visibility in any of Jerlov's waters.
+SURFACE_ACROSS = 200.0
+SURFACE_CELL = 0.7
+
+# A crude directional sea: four trains, each with a length, a height, and a way
+# it is going. Real spectra are the next step and this is not one; what it has
+# to do is stop every square metre of the surface facing the same way.
+WAVES = (
+    # wavelength m, height m, heading rad
+    (14.0, 0.22, 0.0),
+    (9.0, 0.13, 1.1),
+    (5.5, 0.07, 2.4),
+    (2.7, 0.03, 4.0),
+)
+
+
+def surface_height(x: float, y: float, seconds: float = 0.0) -> float:
+    """How high the water stands above its mean level at a point.
+
+    Deep-water waves, so the speed of each train is set by its own length:
+    c = sqrt(g L / 2pi). A sea where every train moves at the same speed is a
+    sea that does not disperse, and it reads as a moving texture.
+    """
+    total = 0.0
+    for length, height, heading in WAVES:
+        k = 2.0 * math.pi / length
+        speed = math.sqrt(9.81 / k)
+        phase = k * (x * math.cos(heading) + y * math.sin(heading)) - k * speed * seconds
+        total += height * math.sin(phase)
+    return total
+
+
+def _wave_mesh(surface, water_level: float, seconds: float = 0.0,
+               centre=(0.0, 0.0)) -> None:
+    """Build the patch of sea, displaced by the waves on it."""
+    from pxr import Gf, Vt
+
+    n = int(SURFACE_ACROSS / SURFACE_CELL)
+    half = SURFACE_ACROSS / 2.0
+    cx, cy = float(centre[0]), float(centre[1])
+
+    points, counts, indices = [], [], []
+    for j in range(n + 1):
+        for i in range(n + 1):
+            x = cx - half + i * SURFACE_CELL
+            y = cy - half + j * SURFACE_CELL
+            points.append(Gf.Vec3f(x, y, water_level + surface_height(x, y, seconds)))
+    for j in range(n):
+        for i in range(n):
+            a = j * (n + 1) + i
+            counts.append(4)
+            indices.extend([a, a + 1, a + n + 2, a + n + 1])
+
+    surface.CreatePointsAttr(Vt.Vec3fArray(points))
+    surface.CreateFaceVertexCountsAttr(Vt.IntArray(counts))
+    surface.CreateFaceVertexIndicesAttr(Vt.IntArray(indices))
+    # No authored normals. The renderer works them out from the displaced
+    # geometry, which is the whole point: a normal per square metre is what
+    # makes the underside of a sea look like a sea.
+    surface.CreateExtentAttr([
+        Gf.Vec3f(cx - half, cy - half, water_level - 1.0),
+        Gf.Vec3f(cx + half, cy + half, water_level + 1.0)])
+    surface.SetNormalsInterpolation("faceVarying")
 
 
 def _water_material(stage, surface) -> None:
@@ -371,10 +441,32 @@ def drift(stage, seconds: float, follow=None) -> None:
 
     from pxr import Gf, UsdGeom
 
+    x, y = (follow[0], follow[1]) if follow is not None else (0.0, 0.0)
+
+    # The sea moves, and the patch of it that is drawn stays over the vehicle.
+    # Rebuilt rather than translated, because the waves have to travel through
+    # the patch and not with it — a sea that slides along under a vehicle is a
+    # painted ceiling that happens to be moving.
+    #
+    # Only when the vehicle has gone far enough to matter, because eighty
+    # thousand points is not free and a tenth of a metre of drift is not worth
+    # them.
+    sea = stage.GetPrimAtPath("/World/Surface")
+    if sea:
+        from pxr import UsdGeom as _UsdGeom
+
+        mesh = _UsdGeom.Mesh(sea)
+        was = getattr(drift, "_rebuilt_at", None)
+        moved = was is None or math.hypot(x - was[0], y - was[1]) > SURFACE_CELL * 4
+        if moved or seconds - (getattr(drift, "_rebuilt_t", -99.0)) > 0.25:
+            level = getattr(drift, "_level", 0.0)
+            _wave_mesh(mesh, level, seconds, centre=(x, y))
+            drift._rebuilt_at = (x, y)
+            drift._rebuilt_t = seconds
+
     light = stage.GetPrimAtPath("/World/Caustics")
     if not light:
         return
-    x, y = (follow[0], follow[1]) if follow is not None else (0.0, 0.0)
     # A slow wander, the way a swell moves a caustic net across a bottom.
     x += 5.0 * math.sin(seconds * 0.06)
     y += 4.0 * math.cos(seconds * 0.043)
