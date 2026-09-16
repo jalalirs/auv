@@ -541,6 +541,17 @@ class Dive:
         # to fall cannot be compared with another that also started nowhere in
         # particular — and in this tank the origin is at one end.
         asked = (self.brief.get("initialState") or {}).get("positionM")
+
+        # Where the plan of work says the vehicle goes in.
+        #
+        # This is the first thing a real dive has and the last thing this one
+        # got. Without it the *place* chose the spot, by coral cover, out of a
+        # number its own survey later disproved — so a mission could not say
+        # "we launch from the ship" with a ship drawn on the layout, and the
+        # transit out to the work and back was neither flown nor counted.
+        if asked is None:
+            asked = self.launch_from((self.brief.get("initialState") or {}).get("launch"))
+
         if asked is None:
             # What the place says, if it says anything. The middle of a site is
             # only the right answer when the site is uniform, and a reef is the
@@ -702,6 +713,47 @@ class Dive:
         self.say("vehicle_placed",
                  position=[round(float(x), 3) for x in self.position])
         return True
+
+    def launch_from(self, said):
+        """Where a mission's launch point puts the vehicle, or nothing.
+
+        `from` names something drawn — a ship, a dock, a marker. `at` gives
+        site metres when nothing drawn is the right answer. Depth is the
+        surface unless it says otherwise, because a vehicle put over the side
+        starts at the surface and everything after that is the dive.
+        """
+        if not isinstance(said, dict) or not said:
+            return None
+        where = None
+        named = said.get("from")
+        if named:
+            thing = self.world.by_id(str(named)) if self.world is not None else None
+            if thing is None:
+                self.say("launch_missing", wanted=str(named),
+                         why="nothing drawn under that name; the place will choose")
+                return None
+            at = np.asarray(thing.at, dtype=float)
+            where = [float(at[0]), float(at[1]), float(at[2])]
+        elif said.get("at"):
+            given = [float(v) for v in said["at"]]
+            where = given if len(given) == 3 else [given[0], given[1], 0.0]
+        if where is None:
+            return None
+
+        top = 0.0 if self.water_level is None else float(self.water_level)
+        depth = said.get("depthM")
+        where[2] = (top - self.half_height - 0.2) if depth is None else (top - float(depth))
+        # Never through the bottom: a ship moored in four metres does not
+        # launch a vehicle into the sand.
+        floor = self.floor
+        if self.seabed is not None:
+            floor = self.seabed.under(where[0], where[1])
+        if floor is not None:
+            where[2] = max(where[2], float(floor) + self.half_height + 0.3)
+        self.say("launched_from",
+                 what=str(named) if named else "a point",
+                 at=[round(v, 2) for v in where])
+        return where
 
     def _site_says(self):
         """Where this place says a dive should begin, if it says."""

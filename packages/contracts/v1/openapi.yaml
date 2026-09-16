@@ -3784,6 +3784,42 @@ components:
           description: >
             How that place is arranged, pinned. The stages point at things in
             it by name.
+        launch:
+          type: object
+          description: >
+            Where the vehicle goes in, and therefore where its navigation is
+            zeroed.
+
+            A plan of work starts somewhere: a ship stands off and puts it over
+            the side, or it leaves a dock. Without this the *place* chose —
+            by coral cover, from a number its own survey later disproved — so
+            no mission could say "we launch from the ship" even with a ship
+            drawn on the layout.
+
+            It matters for more than tidiness. Everything after the launch is
+            dead reckoned from the fix taken there, so that point is the origin
+            of the whole dive's position error; and the transit out to the work
+            and back is energy and clock that a cost worked out from the work
+            alone does not count.
+
+            `from` names something in the layout — a ship, a dock, a point —
+            or `at` gives site metres directly. `depthM` is where it starts
+            once it is in the water, which for a surface launch is the surface.
+          properties:
+            from:
+              type: string
+              description: The id of something in the layout to launch from.
+            at:
+              type: array
+              items: { type: number }
+              minItems: 2
+              maxItems: 3
+              description: Site metres, when nothing drawn is the right answer.
+            depthM:
+              type: number
+              description: >
+                How deep it is when the dive begins. Omitted means the surface,
+                which is where a vehicle put over the side actually is.
         stages:
           type: array
           description: >
