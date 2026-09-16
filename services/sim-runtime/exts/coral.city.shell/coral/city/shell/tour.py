@@ -465,7 +465,7 @@ VIEWS = (
     # From mid-water looking down, which is how cover is judged.
     ("looking-down", dict(from_anchor=(0.0, 0.0), above=12.0,
                           at=(0.01, 0.0), at_above=0.0,
-                          says="twelve metres up, looking straight down")),
+                          says="as high as the water allows, looking down")),
     # And out into open water, which is where the visibility lives and where
     # a water model is either right or obviously wrong.
     ("into-the-blue", dict(from_anchor=(0.0, 0.0), above=6.0,
@@ -532,9 +532,14 @@ class Stills:
         settings.set("/persistent/app/viewport/displayOptions", 0)
         self.tidied = True
 
-    # How far under the surface a camera must stay. Half a metre, because at
-    # less than that the lens is in the chop and looking at nothing.
-    UNDER = 0.5
+    # How far under the surface a camera must stay.
+    #
+    # Three metres, not half of one. The sea now has waves on it that reach
+    # nearly half a metre, so a camera half a metre down sits among the troughs
+    # and photographs the underside of the surface: the looking-down frame came
+    # back as a smooth gradient and was read as the water being too thick,
+    # twice. Three metres is clear of any sea this models.
+    UNDER = 3.0
 
     def _height(self, x: float, y: float, above: float) -> float:
         """A height above the bottom here, kept under the water.
