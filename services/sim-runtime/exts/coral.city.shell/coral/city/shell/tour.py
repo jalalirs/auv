@@ -305,19 +305,18 @@ class Tour:
 # "fog" and "aperture" are read here; anything beginning with a slash is set on
 # carb directly; a light name sets that light's intensity.
 LOOKS = (
-    ("lamp-1e5", {"/World/Vehicle/Lamps/port": 1e5,
-                  "/World/Vehicle/Lamps/starboard": 1e5}),
-    ("lamp-1e6", {"/World/Vehicle/Lamps/port": 1e6,
-                  "/World/Vehicle/Lamps/starboard": 1e6}),
-    ("lamp-1e7", {"/World/Vehicle/Lamps/port": 1e7,
-                  "/World/Vehicle/Lamps/starboard": 1e7}),
-    ("lamp-1e8", {"/World/Vehicle/Lamps/port": 1e8,
-                  "/World/Vehicle/Lamps/starboard": 1e8}),
-    ("lamp-1e9", {"/World/Vehicle/Lamps/port": 1e9,
-                  "/World/Vehicle/Lamps/starboard": 1e9}),
-    ("lamp-1e10", {"/World/Vehicle/Lamps/port": 1e10,
-                   "/World/Vehicle/Lamps/starboard": 1e10}),
+    # Does any local light work here at all? The caustics are a rect light and
+    # have been in every frame since they were written; if turning them off
+    # changes nothing then they never lit anything either, and the answer is
+    # that this renderer draws the sun and the dome and nothing else.
+    ("caustics-on", {"/World/Caustics": 5200.0}),
+    ("caustics-off", {"/World/Caustics": 0.0}),
+    ("caustics-huge", {"/World/Caustics": 500000.0}),
+    ("sun-off", {"/World/Sun": 0.0}),
+    ("dome-off", {"/World/Water": 0.0}),
+    ("sun-and-dome-off", {"/World/Sun": 0.0, "/World/Water": 0.0}),
 )
+
 
 
 # Frames to wait before keeping one. Changing a render setting rebuilds the
