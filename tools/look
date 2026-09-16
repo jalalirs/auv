@@ -101,27 +101,26 @@ JSON
 
     # Opening the scene takes minutes; four stills after that take seconds.
     local n=0
+    # Kit does not exit when the tour is done, so finishing is something the
+    # log says rather than something the container does.
+    local finished=""
     for _ in $(seq 1 150); do
         sleep 10
         n="$(find "${here}/frames" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
         printf '\r  %s frames' "${n}"
-        docker logs coral-look 2>&1 | grep -q '"event": "tour_done"' && break
+        docker logs coral-look 2>&1 | grep -q '"event": "tour_done"' && { finished=1; break; }
         docker logs coral-look 2>&1 | grep -qE '"event": "(tour_failed|failed)"' && break
         docker ps --format '{{.Names}}' | grep -q '^coral-look$' || break
     done
     printf '\n'
 
-    # Did it actually finish, or did the wait give up while it was still
-    # going? This is not a detail: a run that is still open leaves the previous
-    # run's log in place, and every conclusion drawn from it is a conclusion
-    # about code that is not the code being tested. That happened for most of
-    # an afternoon.
-    if docker ps --format '{{.Names}}' | grep -q '^coral-look$'; then
-        echo "  STILL RUNNING after the wait — this log is not this run" >&2
-        docker rm -f coral-look >/dev/null 2>&1 || true
-        return 1
-    fi
+    # The log is taken while the container is still there, and the container is
+    # stopped here rather than left to time out. Reading it after it is gone is
+    # how the previous run's log gets read as though it were this one, which is
+    # a whole afternoon of conclusions about code that never ran.
     docker logs coral-look > "${here}/look.log" 2>&1 || true
+    docker rm -f coral-look >/dev/null 2>&1 || true
+    [ -n "${finished}" ] || echo "  the tour did not report finishing" >&2
     # And it has to be the build we just made.
     if ! grep -q '"event": "water_begins"' "${here}/look.log"; then
         echo "  no water_begins in the log — the image is not the one just built" >&2
@@ -138,7 +137,7 @@ JSON
         # there, they are just from an hour ago.
         echo "  ${place} produced nothing to look at — clearing the old frames" >&2
         rm -rf "${looks:?}/${as}"
-        docker logs coral-look 2>&1 | grep -iE 'could not open|Traceback' | head -3 | sed 's/^/    /' >&2
+        grep -iE 'could not open|Traceback' "${here}/look.log" | head -3 | sed 's/^/    /' >&2
         return 1
     fi
     docker run --rm -u 0 -v "${here}/frames:/w" --entrypoint chmod "${image}" -R a+r /w
