@@ -154,7 +154,14 @@ JSON
     # What made these frames, beside them — so a sheet can say what it is a
     # sheet of, and two of them can be told apart a month later.
     rm -rf "${looks:?}/${as}"; mkdir -p "${looks}/${as}"
-    cp "${here}"/frames/*.png "${looks}/${as}/"
+    # If the frames do not arrive, nothing else should either. A directory
+    # holding a record of what made it and no pictures is worse than an empty
+    # one: it reads as a run that happened.
+    if ! cp "${here}"/frames/*.png "${looks}/${as}/"; then
+        echo "  the frames could not be kept" >&2
+        rm -rf "${looks:?}/${as}"
+        return 1
+    fi
     cp "${here}/look.log" "${looks}/${as}/look.log" 2>/dev/null || true
     {
         printf '{"place": "%s", "package": "%s", "at": "%s",\n' \
