@@ -63,8 +63,21 @@ def test_highlights_win_over_the_middle():
 def test_a_frame_under_the_ceiling_is_not_pushed_up_to_it():
     """A highlight guard is a limit, not a target. Otherwise a dark frame with
     nothing bright in it gets driven to the ceiling by the guard itself."""
-    got = metering.next_iso(200.0, middle=0.46, bright=0.50)
+    got = metering.next_iso(200.0, middle=metering.AIM, bright=0.50)
     assert abs(got - 200.0) < 1.0, got
+
+
+def test_the_guard_applies_before_the_highlights_are_gone():
+    """It only applied once the frame was already clipping, which is not a
+    guard. A sheet whose bright end read 0.78 was judged to have headroom, the
+    exposure was raised for the mid-tones, and every view came back with its
+    top half-percent at pure white."""
+    headroom = metering.next_iso(200.0, middle=0.34, bright=0.78)
+    unlimited = 200.0 * math.exp(
+        metering.DAMPING * math.log(metering.AIM / 0.34))
+    assert headroom < unlimited, (headroom, unlimited)
+    # And not below what the highlights themselves allow.
+    assert headroom > 200.0
 
 
 def test_it_stays_inside_what_a_camera_can_do():
