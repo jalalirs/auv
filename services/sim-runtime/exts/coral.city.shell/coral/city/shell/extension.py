@@ -121,6 +121,14 @@ class CoralCityShell(omni.ext.IExt):
         self._sent_at = 0.0
         self._capturing = False
         self._asked_at = 0.0
+        # The light meter. It runs for the first few frames of a run and then
+        # stops, which is the whole point: a camera that kept metering would be
+        # the renderer's automatic exposure again, and a dive is a measurement
+        # of how much light there is down there.
+        self._meter = None
+        self._metering = False
+        self._metered_at = 0.0
+        self._first_frame_at = None
         self._aim = None
         self._basis = None
         self._eye = None
@@ -480,6 +488,12 @@ class CoralCityShell(omni.ext.IExt):
                 except Exception as exc:
                     carb.log_warn(f"Coral City could not quit: {exc}")
             return
+
+        # Before anything else, and only at the start: expose for what is
+        # actually in the frame. The exposure that got here was computed from
+        # depth, which is a formula and not a light meter, and is why a lamp
+        # correct at six hundred metres blows the picture out at six.
+        self._meter_the_frame()
 
         if self.tour is not None:
             self._fly_the_tour(dive)
@@ -857,6 +871,72 @@ class CoralCityShell(omni.ext.IExt):
             if not self._complained:
                 self._complained = True
                 carb.log_warn(f"Coral City could not record a frame: {exc}")
+
+    # ── the light meter ──────────────────────────────────────────────────────
+
+    # How long to let the renderer settle before believing what it draws. Kit
+    # spends the first second or two of a run with the scene half loaded and
+    # nothing lit, and a camera metered off that opens all the way and stays.
+    SETTLE_BEFORE_METERING = 2.5
+
+    def _meter_the_frame(self) -> None:
+        """Set the exposure from the picture, a few times, and then leave it."""
+        if self._meter is not None and self._meter.done:
+            return
+        if self._metering and time.monotonic() - self._metered_at < 2.0:
+            return
+        # Its own clock, not the run's: `began` is when somebody took the
+        # controls, and a dive waiting for a pilot would never meter.
+        if self._first_frame_at is None:
+            self._first_frame_at = time.monotonic()
+        if time.monotonic() - self._first_frame_at < self.SETTLE_BEFORE_METERING:
+            return
+        try:
+            import carb
+            from omni.kit.viewport.utility import get_active_viewport
+            from omni.kit.widget.viewport.capture import ByteCapture
+
+            if self._meter is None:
+                from coral import metering
+                now = carb.settings.get_settings().get("/rtx/post/tonemap/iso")
+                self._meter = metering.Meter(float(now or 800.0))
+            viewport = get_active_viewport()
+            if viewport is None:
+                return
+            self._metering = True
+            self._metered_at = time.monotonic()
+            viewport.schedule_capture(ByteCapture(self._metered))
+        except Exception as exc:
+            # A dive that cannot meter keeps the exposure it was given. That is
+            # the old behaviour and it is not a reason to fail.
+            self._metering = False
+            if self._meter is not None:
+                self._meter.done = True
+                self._meter.why = f"could not read the frame: {exc}"[:120]
+            self._say("metering_unavailable", why=str(exc)[:200])
+
+    def _metered(self, buffer, size, wide, tall, fmt=None) -> None:
+        """A frame came back. Read it, and move the camera if it needs moving."""
+        self._metering = False
+        try:
+            import carb
+            import numpy as np
+
+            frame = np.frombuffer(bytes_of(buffer, size), dtype=np.uint8)
+            frame = frame.reshape(tall, wide, 4)
+            # The middle of the picture at a quarter size. A light meter does
+            # not need every pixel and this runs inside somebody else's
+            # callback, which is not the place to be slow.
+            wanted = self._meter.read(frame[::4, ::4])
+            if wanted is not None:
+                carb.settings.get_settings().set("/rtx/post/tonemap/iso", float(wanted))
+            if self._meter.done:
+                self._say("metered", **self._meter.report())
+        except Exception as exc:
+            if self._meter is not None:
+                self._meter.done = True
+                self._meter.why = f"could not read the frame: {exc}"[:120]
+            self._say("metering_unavailable", why=str(exc)[:200])
 
     def _photograph(self, at: float) -> None:
         """Write out what the dive looks like.
