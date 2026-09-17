@@ -45,6 +45,23 @@ SHADES = (0.72, 1.0, 1.28)
 KINDS = ("low", "stony", "head", "fan", "plume")
 
 
+# Which of these kinds is confidently a stony coral, and so can be drawn from a
+# scan of one. "low" is not on this list on purpose: tools/benthos calls a low
+# grey lump "low" precisely because it cannot tell rock from Siderastrea, and
+# drawing 58,000 uncertain lumps as a named coral would be asserting an
+# identification the survey did not make.
+FROM_A_SCAN = {"stony": "massive", "head": "massive"}
+
+
+def _normalised(points, faces, np):
+    """A scale of (w/2, w/2, h) gives a colony w across and h tall."""
+    span = max(float(np.ptp(points[:, 0])), float(np.ptp(points[:, 1])), 1e-3)
+    tall = max(float(np.ptp(points[:, 2])), 1e-3)
+    points = points / np.array([span / 2, span / 2, tall])
+    points = points - np.array([points[:, 0].mean(), points[:, 1].mean(), points[:, 2].min()])
+    return points, faces
+
+
 def grow(kind: str, rng):
     """One prototype of a kind, one metre tall, sitting on z = 0."""
     import numpy as np
@@ -59,12 +76,27 @@ def grow(kind: str, rng):
         points, faces = coral.fan(rng, height=1.0)
     else:
         points, faces = coral.plume(rng, height=1.0)
-    # Normalised so that a scale of (w/2, w/2, h) gives a colony w across and h tall.
-    span = max(float(np.ptp(points[:, 0])), float(np.ptp(points[:, 1])), 1e-3)
-    tall = max(float(np.ptp(points[:, 2])), 1e-3)
-    points = points / np.array([span / 2, span / 2, tall])
-    points[:, 2] -= points[:, 2].min()
-    return points, faces
+    return _normalised(points, faces, np)
+
+
+def from_a_scan(kind: str, ref: pathlib.Path):
+    """The same prototype, taken off a museum scan instead of grown.
+
+    Returns None where nobody has scanned this growth form, which is most of
+    them. A scan carries corallites and growth banding that no amount of noise
+    on a blob produces; that is the whole difference between a colony and a
+    painted stone, and it only shows once the water is out of the way.
+    """
+    import numpy as np
+
+    import scanned
+
+    have = scanned.found_in(ref)
+    form = FROM_A_SCAN.get(kind)
+    if form is None or form not in have:
+        return None
+    points, faces = scanned.as_a_colony(have[form], 1.0)
+    return _normalised(points, faces, np)
 
 
 def main() -> int:
@@ -91,14 +123,31 @@ def main() -> int:
     rng = np.random.default_rng(asked.seed)
     print(f"{site['name']}: {len(colonies):,} surveyed colonies")
 
-    # ── prototypes: kind × shade ─────────────────────────────────────────────
-    prototypes, colours, index = [], [], {}
+    # ── prototypes: kind × shade × form ──────────────────────────────────────
+    # Every prototype gets its own draw. The first version grew one shape per
+    # kind and reused it across the three shades, so fifteen prototypes were
+    # five shapes in three colours, and 58,000 instances of one lump is what a
+    # field of painted stones looks like.
+    #
+    # Where a growth form has been scanned, both the scan and a grown shape are
+    # kept and a colony picks between them. One specimen is one colony somebody
+    # collected; a reef is variation, and sixty thousand copies of a museum
+    # piece would be as wrong as sixty thousand blobs, in a way that is harder
+    # to notice.
+    prototypes, colours, index, scans = [], [], {}, 0
     for kind in KINDS:
-        points, faces = grow(kind, rng)
+        scan = from_a_scan(kind, ref)
         for s, shade in enumerate(SHADES):
-            index[(kind, s)] = len(prototypes)
-            prototypes.append((points, faces))
-            colours.append(tuple(min(1.0, c * shade) for c in HUE[kind]))
+            forms = [grow(kind, rng)] + ([scan] if scan is not None else [])
+            index[(kind, s)] = []
+            for form in forms:
+                index[(kind, s)].append(len(prototypes))
+                prototypes.append(form)
+                colours.append(tuple(min(1.0, c * shade) for c in HUE[kind]))
+            scans += scan is not None
+    print(f"  prototypes: {len(prototypes)} over {len(KINDS)} kinds, "
+          f"{scans} of them from scans ({', '.join(sorted(FROM_A_SCAN)) or 'none'})"
+          if scans else f"  prototypes: {len(prototypes)}, none from scans")
 
     # ── every colony: which prototype, where, how big ────────────────────────
     kinds = np.array([c["kind"] for c in colonies])
@@ -107,7 +156,15 @@ def main() -> int:
     lum = np.array([np.mean(c["colour"]) if c.get("colour") else 0.5 for c in colonies])
     reference = float(np.median(lum[lum > 0])) if (lum > 0).any() else 0.5
     shade = np.clip(np.round((lum / max(reference, 1e-3) - 0.72) / 0.28), 0, 2).astype(int)
-    which = np.array([index[(k, s)] for k, s in zip(drawn, shade)])
+    # Which prototypes are the scan: the second form of any kind that has one.
+    from_scans = np.array([choices[1] for choices in index.values() if len(choices) > 1],
+                          dtype=int)
+    # Which of the forms available for that kind and shade, chosen per colony so
+    # that shape does not correlate with brightness.
+    pick = rng.random(len(colonies))
+    which = np.array([choices[min(len(choices) - 1, int(p * len(choices)))]
+                      for choices, p in
+                      ((index[(k, s)], p) for k, s, p in zip(drawn, shade, pick))])
 
     d = np.array([c["diameterM"] for c in colonies]); h = np.array([c["heightM"] for c in colonies])
     standing = np.isin(drawn, ("fan", "plume"))
@@ -133,6 +190,11 @@ def main() -> int:
         "source": listed.get("source"), "method": listed.get("method"),
         "colonies": len(colonies), "prototypes": len(prototypes),
         "kinds": {k: int((drawn == k).sum()) for k in KINDS},
+        # What the colonies are made of, so a place's page can say it rather
+        # than leaving a reader to assume every shape here was invented.
+        "fromScans": {"prototypes": int(scans),
+                      "colonies": int(np.isin(which, from_scans).sum()),
+                      "forms": sorted(set(FROM_A_SCAN.values())) if scans else []},
         "beginAt": begin,
     }
     site["beginAt"] = begin["at"]

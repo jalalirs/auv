@@ -27,12 +27,19 @@ import pathlib
 import numpy as np
 
 import coral
+import scanned
 import zonation
 
 
 def plant(where: pathlib.Path, height, across: float, seed: int,
-          how_many: int, picture=None) -> dict:
-    """Grow a reef onto a seabed, and write it beside it."""
+          how_many: int, picture=None, reference: pathlib.Path | None = None) -> dict:
+    """Grow a reef onto a seabed, and write it beside it.
+
+    `reference` is a place's fetched corpus. Where it holds a scan of a colony
+    of some growth form, that scan is used for that form instead of a grown
+    shape. Museum specimens are dry skeletons, so they give the form, and the
+    colour still comes from photographs of the reef itself.
+    """
     rng = np.random.default_rng(seed)
     rows, columns = height.shape
     depth = -height
@@ -82,11 +89,26 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
 
     kinds = sorted({kind for _, weights, _ in zonation.BANDS for kind in weights})
     variants = 6
+
+    # Which growth forms somebody has scanned. A scan carries the corallite
+    # structure and the growth banding that no amount of noise on a blob
+    # produces, and it is the difference between a colony and a painted stone.
+    scans = scanned.found_in(reference) if reference is not None else {}
+    # Half the variants of a scanned form are the scan at different sizes and
+    # half are grown, because one specimen is one colony that happened to be
+    # collected and a reef is variation. A field of sixty identical boulders
+    # is as wrong as a field of sixty blobs, in a way that is harder to spot.
+    from_a_scan = 0
+
     prototypes, colours = [], []
     for kind in kinds:
-        for _ in range(variants):
-            prototypes.append(
-                coral.grow_one(kind, rng, sizes[kind] * rng.uniform(0.7, 1.4)))
+        for at in range(variants):
+            size = sizes[kind] * rng.uniform(0.7, 1.4)
+            if kind in scans and at % 2 == 0:
+                prototypes.append(scanned.as_a_colony(scans[kind], size))
+                from_a_scan += 1
+            else:
+                prototypes.append(coral.grow_one(kind, rng, size))
             colours.append(coral.a_colour(rng, kind))
 
     footprint = np.zeros(len(prototypes))
@@ -206,6 +228,11 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     asked_for = float(np.average(want, weights=want > 0.02)) if (want > 0.02).any() else 0.0
     begin = zonation.best_ground(ground, want, across)
     return {"colonies": int(how_many), "prototypes": len(prototypes),
+            # How many of the shapes came from a scan rather than a grower,
+            # so a place's page can say what its coral is made of and nobody
+            # has to take a render's word for it.
+            "fromScans": from_a_scan,
+            "scannedForms": sorted(scans),
             "coverAskedFor": round(asked_for, 3),
             "beginAt": begin,
             "points": int(sum(len(p) for p, _ in prototypes)),
