@@ -219,6 +219,8 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     settings.set("/rtx/post/tonemap/iso", float(iso))
     say("camera_is", iso=round(float(iso), 1), fNumber=4.5, shutter=1 / 60.0,
         pinned=asked_for("CORAL_CITY_ISO") is not None)
+    if os.environ.get("CORAL_CITY_SETTINGS") == "1":
+        _say_what_the_renderer_has(settings, say)
 
     # ── the water ────────────────────────────────────────────────────────────
     #
@@ -667,3 +669,31 @@ def drift(stage, seconds: float, follow=None) -> None:
         if op.GetOpType() == UsdGeom.XformOp.TypeTranslate:
             op.Set(Gf.Vec3d(x, y, op.Get()[2]))
             return
+
+
+def _say_what_the_renderer_has(settings, say, under: str = "/rtx/post") -> None:
+    """Every setting the renderer actually has under a branch, and its value.
+
+    Because a knob that does not exist takes a setting silently. The exposure
+    was written to `/rtx/post/tonemap/iso` for weeks; a thirty-two fold change
+    in it moved the picture by a thousandth of a stop, which is to say it was
+    never connected to anything, and every argument about the lamps was an
+    argument against a control that did nothing.
+
+    CORAL_CITY_SETTINGS=1 and read the log. It is cheap and it is the only way
+    to tell a setting that is ignored from a setting that is wrong.
+    """
+    def walk(branch: str, depth: int = 0):
+        if depth > 3:
+            return
+        try:
+            here = settings.get(branch)
+        except Exception:
+            return
+        if isinstance(here, dict):
+            for key in sorted(here):
+                walk(f"{branch}/{key}", depth + 1)
+        else:
+            say("renderer_setting", at=branch, value=here)
+
+    walk(under)
