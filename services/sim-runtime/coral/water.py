@@ -684,7 +684,7 @@ def _say_what_the_renderer_has(settings, say, under: str = "/rtx/post") -> None:
     to tell a setting that is ignored from a setting that is wrong.
     """
     def walk(branch: str, depth: int = 0):
-        if depth > 3:
+        if depth > 4:
             return
         try:
             here = settings.get(branch)
