@@ -54,11 +54,21 @@ FROM_A_SCAN = {"stony": "massive", "head": "massive"}
 
 
 def _normalised(points, faces, np):
-    """A scale of (w/2, w/2, h) gives a colony w across and h tall."""
-    span = max(float(np.ptp(points[:, 0])), float(np.ptp(points[:, 1])), 1e-3)
-    tall = max(float(np.ptp(points[:, 2])), 1e-3)
+    """A scale of (w/2, w/2, h) gives a colony w across and h tall.
+
+    Measured on what is above z = 0, and what is below z = 0 is kept. A grown
+    prototype has nothing below; a scan has its buried base there, and dividing
+    by the full span would shrink the colony by however much of the specimen is
+    under the sand.
+    """
+    showing = points[:, 2] >= 0.0
+    if showing.sum() < 3:
+        showing = np.ones(len(points), dtype=bool)
+    up = points[showing]
+    span = max(float(np.ptp(up[:, 0])), float(np.ptp(up[:, 1])), 1e-3)
+    tall = max(float(up[:, 2].max()), 1e-3)
     points = points / np.array([span / 2, span / 2, tall])
-    points = points - np.array([points[:, 0].mean(), points[:, 1].mean(), points[:, 2].min()])
+    points = points - np.array([points[showing, 0].mean(), points[showing, 1].mean(), 0.0])
     return points, faces
 
 
@@ -76,6 +86,7 @@ def grow(kind: str, rng):
         points, faces = coral.fan(rng, height=1.0)
     else:
         points, faces = coral.plume(rng, height=1.0)
+    points[:, 2] -= points[:, 2].min()
     return _normalised(points, faces, np)
 
 
