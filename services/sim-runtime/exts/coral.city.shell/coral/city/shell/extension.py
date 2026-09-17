@@ -883,6 +883,8 @@ class CoralCityShell(omni.ext.IExt):
         """Set the exposure from the picture, a few times, and then leave it."""
         if self._meter is not None and self._meter.done:
             return
+        if os.environ.get("CORAL_CITY_METER", "1") == "0":
+            return
         if self._metering and time.monotonic() - self._metered_at < 2.0:
             return
         # Its own clock, not the run's: `began` is when somebody took the

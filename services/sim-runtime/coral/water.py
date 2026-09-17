@@ -211,8 +211,14 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # round instead of three. The reason it could not stay the answer is that
     # a formula over depth knows nothing about the lamps, which is why a lamp
     # correct at six hundred metres blew the frame out at six.
-    settings.set("/rtx/post/tonemap/iso",
-                 float(min(9000.0, 140.0 / max(left, 0.05))))
+    #
+    # CORAL_CITY_ISO pins it, which is how a question about the exposure gets
+    # answered in one run instead of an afternoon of "that change did nothing".
+    from coral.runner import asked_for
+    iso = asked_for("CORAL_CITY_ISO", min(9000.0, 140.0 / max(left, 0.05)))
+    settings.set("/rtx/post/tonemap/iso", float(iso))
+    say("camera_is", iso=round(float(iso), 1), fNumber=4.5, shutter=1 / 60.0,
+        pinned=asked_for("CORAL_CITY_ISO") is not None)
 
     # ── the water ────────────────────────────────────────────────────────────
     #
