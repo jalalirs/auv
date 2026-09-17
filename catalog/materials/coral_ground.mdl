@@ -1,0 +1,145 @@
+/*
+ * The seabed of a place that has a record.
+ *
+ * Two scales at once, which is the whole reason this file exists: no material
+ * in OpenUSD can multiply a map of one particular seabed by a tiled photograph
+ * of a real surface, and a seabed needs both.
+ *
+ *   The low frequency is the place. tools/ground builds it from a reference
+ *   directory: the survey's orthomosaic where somebody flew one, and habitat
+ *   class laid down from the satellite's pattern everywhere else. Over a
+ *   kilometre at 4096 pixels it is 24 cm a texel, so on its own it is a smear
+ *   the moment a vehicle is near the bottom.
+ *
+ *   The high frequency is a tiled photograph of sand or rock, repeating every
+ *   few metres. On its own it is the same few metres of somebody else's beach
+ *   over the whole reef.
+ *
+ * Multiplied, with the detail divided through by its own average, the detail
+ * contributes variation and no colour of its own, and the site map contributes
+ * colour and no detail. Neither one pretends to be the other. The average is
+ * passed in because it is a property of the texture, computed once where the
+ * place is built rather than guessed at here.
+ *
+ * Licence: the same as the platform. The textures it reads are CC0.
+ */
+
+mdl 1.7;
+
+import ::anno::*;
+import ::base::*;
+import ::df::*;
+import ::math::*;
+import ::state::*;
+import ::tex::*;
+
+export material coral_ground(
+    uniform texture_2d site_colour = texture_2d()
+    [[
+        anno::display_name("Colour of this seabed"),
+        anno::description("From tools/ground: the orthomosaic where there is "
+                          "one, habitat class elsewhere. Laid once over the "
+                          "whole site."),
+        anno::in_group("Ground")
+    ]],
+    uniform texture_2d detail_colour = texture_2d()
+    [[
+        anno::display_name("Grain"),
+        anno::description("A tiled photograph of a real surface. Divided "
+                          "through by its own average, so it carries variation "
+                          "and not colour."),
+        anno::in_group("Grain")
+    ]],
+    uniform texture_2d detail_normal = texture_2d()
+    [[ anno::display_name("Grain relief"), anno::in_group("Grain") ]],
+    uniform texture_2d detail_rough = texture_2d()
+    [[ anno::display_name("Grain roughness"), anno::in_group("Grain") ]],
+    uniform float repeats = 100.0
+    [[
+        anno::display_name("Repeats across the site"),
+        anno::description("Site metres divided by tile metres. Ten metres a "
+                          "repeat over a kilometre is a hundred."),
+        anno::in_group("Grain")
+    ]],
+    uniform color detail_average = color(0.5)
+    [[
+        anno::display_name("Average of the grain"),
+        anno::description("Measured off the texture where the place is built. "
+                          "Dividing by it is what stops the grain tinting the "
+                          "seabed towards whatever beach it was photographed on."),
+        anno::in_group("Grain")
+    ]],
+    uniform float grain = 1.0
+    [[
+        anno::display_name("How much grain"),
+        anno::description("Nought is the site map alone, one is full contrast."),
+        anno::in_group("Grain")
+    ]],
+    uniform float relief = 1.0
+    [[ anno::display_name("How much relief"), anno::in_group("Grain") ]],
+    uniform float lift = 1.0
+    [[
+        anno::display_name("Lift"),
+        anno::description("The site map is already dehazed; this is the last "
+                          "small correction, and it should stay small."),
+        anno::in_group("Ground")
+    ]],
+    uniform float smoothest = 0.55
+    [[ anno::display_name("Roughness, wettest"), anno::in_group("Ground") ]],
+    uniform float roughest = 0.95
+    [[ anno::display_name("Roughness, driest"), anno::in_group("Ground") ]]
+)
+[[
+    anno::display_name("Coral City seabed"),
+    anno::description("A site colour map at low frequency, a tiled surface at "
+                      "high frequency, and neither pretending to be the other.")
+]]
+= let {
+    base::texture_coordinate_info here = base::coordinate_source(
+        coordinate_system: base::texture_coordinate_uvw, texture_space: 0);
+
+    // The site map goes on once, so it is clamped: a seabed that wrapped
+    // would put the reef back on at the far edge of the site.
+    base::texture_coordinate_info wide = here;
+    base::texture_coordinate_info fine = base::texture_coordinate_info(
+        position: here.position * repeats,
+        tangent_u: here.tangent_u,
+        tangent_v: here.tangent_v);
+
+    color low = base::file_texture(
+        texture: site_colour, uvw: wide,
+        wrap_u: tex::wrap_clamp, wrap_v: tex::wrap_clamp).tint;
+
+    color high = base::file_texture(
+        texture: detail_colour, uvw: fine,
+        wrap_u: tex::wrap_repeat, wrap_v: tex::wrap_repeat).tint;
+
+    // Variation about one, not colour. Faded towards one by `grain`, so that
+    // turning the grain down leaves the site's own colour rather than turning
+    // the seabed black.
+    color variation = math::lerp(color(1.0), high / detail_average, grain);
+    color albedo = math::saturate(low * lift * variation);
+
+    float wet = base::file_texture(
+        texture: detail_rough, uvw: fine,
+        wrap_u: tex::wrap_repeat, wrap_v: tex::wrap_repeat,
+        mono_source: base::mono_average).mono;
+    float rough = math::lerp(smoothest, roughest, wet);
+
+    float3 bumped = base::tangent_space_normal_texture(
+        texture: detail_normal, factor: relief, uvw: fine,
+        flip_tangent_v: true);
+} in material(
+    surface: material_surface(
+        // Wet rock under water: a weak specular over a diffuse base. Not a
+        // mirror, and not chalk either, which is what a seabed with no
+        // specular at all reads as.
+        scattering: df::weighted_layer(
+            weight: 0.05,
+            normal: bumped,
+            layer: df::microfacet_ggx_smith_bsdf(
+                roughness_u: rough * rough, roughness_v: rough * rough),
+            base: df::diffuse_reflection_bsdf(tint: albedo, roughness: 0.0))
+    ),
+    geometry: material_geometry(normal: bumped)
+);

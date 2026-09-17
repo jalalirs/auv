@@ -26,6 +26,7 @@ import argparse
 import json
 import math
 import pathlib
+import shutil
 import sys
 
 # What a degree is worth, in metres, at a given latitude. Good to a fraction of
@@ -183,27 +184,28 @@ GROUND_MATERIAL = """
             def Shader "Surface"
             {
                 uniform token info:implementationSource = "sourceAsset"
-                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
-                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                uniform asset info:mdl:sourceAsset = @coral_ground.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "coral_ground"
 
-                asset inputs:diffuse_texture = @textures/site_colour.jpg@
-                color3f inputs:diffuse_tint = (%(tint)s)
-                float inputs:albedo_brightness = %(brightness).3f
+                asset inputs:site_colour = @textures/site_colour.jpg@
+                asset inputs:detail_colour = @textures/seabed_colour.jpg@
+                asset inputs:detail_normal = @textures/seabed_normal.jpg@
+                asset inputs:detail_rough = @textures/seabed_rough.jpg@
 
-                # Relief, tiled. %(tile).0f metres a repeat: the eye finds a
+                # %(tile).0f metres a repeat over %(across).0f. The eye finds a
                 # period long before it stops seeing the grain, and once it has
                 # found one that is all it sees.
-                asset inputs:detail_normalmap_texture = @textures/seabed_normal.jpg@
-                float2 inputs:detail_texture_scale = (%(repeats).3f, %(repeats).3f)
-                float inputs:detail_bump_factor = %(relief).2f
-
-                # Wet rock and carbonate sand. Not a mirror, not chalk.
-                float inputs:reflection_roughness_constant = 0.82
-                float inputs:specular_level = 0.35
-                float inputs:metallic_constant = 0
+                float inputs:repeats = %(repeats).4f
+                color3f inputs:detail_average = (%(average)s)
+                float inputs:grain = %(grain).2f
+                float inputs:relief = %(relief).2f
+                float inputs:lift = %(lift).3f
                 token outputs:out
             }
 
+            # For anything that cannot read MDL. It gets the site's own colour
+            # and none of the grain, which is the right half to keep: a place
+            # should be openable without this platform's renderer.
             def Shader "Fallback"
             {
                 uniform token info:id = "UsdPreviewSurface"
@@ -276,7 +278,7 @@ def fetch_texture(where: pathlib.Path, name: str) -> bool:
 
 def write_usd(where: pathlib.Path, name: str, height, across: float,
               tile: float, texture: str | None, photograph: bool = False,
-              ground: bool = False) -> dict:
+              ground: str | None = None) -> dict:
     """The seabed, as a mesh, in a USD anybody can open."""
     import numpy as np
 
@@ -317,7 +319,7 @@ def write_usd(where: pathlib.Path, name: str, height, across: float,
     # goes on once, and it does its own tiling of the detail on top. Doing the
     # tiling here and the site map in the shader would work equally well until
     # somebody changed the tile size and moved the reef.
-    if ground:
+    if ground is not None:
         u = (grid_x / across + 0.5).reshape(-1).astype("float32")
         v = (grid_y / across + 0.5).reshape(-1).astype("float32")
     else:
@@ -341,18 +343,18 @@ def write_usd(where: pathlib.Path, name: str, height, across: float,
         return ", ".join(f"({a:.5g}, {b:.5g})" for a, b in zip(us, vs))
 
     lowest, highest = float(height.min()), float(height.max())
-    if ground:
+    if ground is not None:
         # A reef photographed through ten metres of water comes back flat and
         # blue-grey; tools/ground has already taken the water out of the
         # orthomosaic, so this only lifts it, and gently.
         material = GROUND_MATERIAL % {
-            "tint": "1.0, 0.99, 0.96", "brightness": 1.15,
-            "tile": tile, "repeats": across / max(tile, 1e-6), "relief": 1.0}
+            "tile": tile, "across": across, "repeats": across / max(tile, 1e-6),
+            "average": ground, "grain": 0.85, "relief": 1.0, "lift": 1.05}
     elif texture:
         material = SEABED_MATERIAL
     else:
         material = UNTEXTURED_MATERIAL
-    if photograph and not ground:
+    if photograph and ground is None:
         # The sand correction exists because a dry beach photographed in
         # sunlight is the brightest thing in any scene. This is a reef
         # photographed through twenty metres of water, which is the opposite
@@ -541,12 +543,15 @@ def main() -> int:
     # orthomosaic where there is one, and habitat class laid down from the
     # satellite's pattern everywhere else. It has existed for Looe Key since
     # the second of September and nothing has ever drawn it.
-    ground = False
+    ground = None
     if asked.ground:
+        import numpy as np
         from PIL import Image
         into = where / "textures"
         into.mkdir(exist_ok=True)
-        fetch_texture(where, asked.texture)
+        if not fetch_texture(where, asked.texture):
+            raise SystemExit(f"the ground needs {asked.texture}'s maps and they "
+                             f"did not arrive")
         colour = pathlib.Path(asked.ground).expanduser()
         if colour.is_dir():
             colour = colour / "colour_4096.png"
@@ -558,9 +563,25 @@ def main() -> int:
         # is a mile from where the survey put it.
         Image.open(colour).convert("RGB").transpose(
             Image.FLIP_TOP_BOTTOM).save(into / "site_colour.jpg", quality=95)
-        ground = True
-        print(f"  ground: {colour.name} as the site colour, "
-              f"{asked.texture} relief every {asked.tile:.0f} m")
+
+        # What the grain's own colour is, so the material can divide it out.
+        # Measured, because it is a property of this particular photograph:
+        # coast_sand_03 is a warm pale beach and left in it would tint a
+        # Caribbean pavement towards Normandy. sRGB to linear first, because
+        # that is the space the renderer will be multiplying in.
+        grain = np.asarray(Image.open(into / "seabed_colour.jpg").convert("RGB"),
+                           dtype="float64") / 255.0
+        linear = np.where(grain <= 0.04045, grain / 12.92,
+                          ((grain + 0.055) / 1.055) ** 2.4)
+        average = linear.reshape(-1, 3).mean(axis=0)
+        ground = ", ".join(f"{c:.4f}" for c in average)
+
+        # The material lives with the place, not in this checkout: a published
+        # package has to carry everything it is drawn from.
+        mdl = pathlib.Path(__file__).resolve().parent.parent / "catalog" / "materials" / "coral_ground.mdl"
+        shutil.copy(mdl, where / "coral_ground.mdl")
+        print(f"  ground: {colour.name} as the site colour, {asked.texture} "
+              f"grain every {asked.tile:.0f} m (average {ground})")
 
     made = write_usd(where, asked.name, height, asked.across, asked.tile,
                      asked.texture if textured else None, photograph=photograph,
