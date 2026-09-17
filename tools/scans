@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""Fetch coral scans from the Smithsonian, by growth form.
+
+The Smithsonian has photogrammetry of its coral type specimens, published CC0,
+scale in metres, no account needed to download. This finds them and puts them
+where a place's reference can see them.
+
+    tools/scans ~/coral-city/reference/looe-key
+    tools/scans ~/coral-city/reference/looe-key --only branching --dry-run
+
+Searching needs a key for api.data.gov. DEMO_KEY works and is rate limited to
+about thirty requests an hour, which is enough because each growth form is one
+request and the answers are cached; set SI_API_KEY if you have your own. The
+downloads themselves come off 3d-api.si.edu and need no key at all.
+
+What it takes: the low resolution glb, around a hundred thousand triangles with
+UVs and normals, which is what tools/scanned.py reads. Not the draco variant
+(this platform has no draco decoder) and not the full resolution obj, which for
+one specimen is 833 MB.
+
+These are dry skeletons. They give form, and they give no colour at all: a
+bleached museum piece is the shape of a coral and the colour of a bone. The
+colour comes from each place's own photographs, which is a per-place question.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import re
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+SEARCH = "https://api.si.edu/openaccess/api/v1.0/search"
+
+# Which genera to look for, and what a colony of each one is shaped like. These
+# are the growth forms tools/scanned.py knows and tools/reef.py grows, and the
+# genera are the ones that build Caribbean and Red Sea reefs.
+#
+# A growth form is a shape, not a species: a reef drawn from these is saying
+# "there was a mounding coral here", which is what a photogrammetric survey can
+# actually tell you, and not "there was an Orbicella coronata here", which it
+# cannot.
+WANTED = {
+    "massive": ["orbicella", "montastraea", "porites"],
+    "brain": ["diploria", "pseudodiploria", "colpophyllia", "siderastrea"],
+    "branching": ["acropora", "pocillopora", "stylophora"],
+    "table": ["agaricia", "turbinaria"],
+    "encrusting": ["millepora"],
+    "fan": ["gorgonia"],
+    "plume": ["pseudopterogorgia", "antillogorgia", "eunicea"],
+}
+
+# How many of each form to keep. More than one, because a single specimen is a
+# single colony that happened to be collected, and a field of sixty identical
+# boulders is as wrong as a field of sixty blobs. Not many more, because each
+# one is a prototype the renderer holds in memory for every place at once.
+HOW_MANY = 3
+
+
+def ask(what: str, key: str, rows: int = 1000, start: int = 0, patience: int = 8):
+    """One search, waiting out the rate limit rather than falling over it."""
+    url = SEARCH + "?" + urllib.parse.urlencode(
+        {"q": what, "api_key": key, "rows": rows, "start": start})
+    for attempt in range(patience):
+        try:
+            with urllib.request.urlopen(url, timeout=90) as answer:
+                return json.load(answer)["response"]
+        except urllib.error.HTTPError as bad:
+            if bad.code not in (429, 503) or attempt == patience - 1:
+                raise
+            # The demo key allows about thirty requests an hour and fifty a
+            # day, and it does not say when the window resets. Backing off in
+            # quarter hours is the only thing that gets through it; anything
+            # shorter just spends the next window's budget on retries.
+            wait = min(900, 120 * (attempt + 1))
+            print(f"    rate limited, waiting {wait}s", flush=True)
+            time.sleep(wait)
+    raise SystemExit("the search kept refusing")
+
+
+def scans_in(row: dict):
+    """The CC0 3D packages on one record, with the file this platform reads."""
+    media = (row.get("content", {}).get("descriptiveNonRepeating", {})
+             .get("online_media", {}).get("media", []))
+    for one in media:
+        if one.get("type") != "3d_voyager":
+            continue
+        if one.get("usage", {}).get("access") != "CC0":
+            continue
+        for thing in one.get("resources", []):
+            says = thing.get("attributes", [{}])[0]
+            # Plain glb, low resolution, metres. The draco variant is smaller
+            # and this platform cannot decode it; the full resolution obj is
+            # most of a gigabyte for one colony.
+            if (thing.get("category") == "Low Resolution"
+                    and says.get("MODEL_FILE_TYPE") == "glb"
+                    and says.get("UNITS") == "m"):
+                size = 0
+                for attribute in thing.get("attributes", []):
+                    size = attribute.get("FILE_SIZE", size)
+                yield {"url": thing["url"], "filename": thing["filename"],
+                       "bytes": size, "voyager": one.get("content"),
+                       "package": one.get("voyagerId")}
+                break
+
+
+def a_name(form: str, genus: str, title: str, filename: str) -> str:
+    """What to call the file, so that tools/scanned.py can tell what it is.
+
+    The genus is in the name on purpose. scanned.py reads growth form off the
+    filename, and a file called `model_4.glb` is a specimen nobody can identify
+    and so nobody should be planting on a reef as though they could.
+    """
+    catalogue = re.match(r"([A-Za-z]+_?\d+[a-z]?)", filename)
+    stem = (catalogue.group(1) if catalogue else filename.split("-")[0]).lower()
+    words = re.sub(r"[^a-z ]", " ", title.lower()).split()
+    species = next((w for w in words if w not in (genus, "and", "the")
+                    and len(w) > 3 and w != form), "")
+    return "_".join(x for x in (stem, genus, species) if x) + ".glb"
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(description="fetch coral scans by growth form")
+    parse.add_argument("reference", help="a place's reference directory")
+    parse.add_argument("--only", action="append",
+                       help="just this growth form; repeatable")
+    parse.add_argument("--how-many", type=int, default=HOW_MANY,
+                       help="specimens to keep per growth form")
+    parse.add_argument("--api-key", default=None,
+                       help="api.data.gov key; SI_API_KEY, else DEMO_KEY")
+    parse.add_argument("--dry-run", action="store_true",
+                       help="say what would be fetched and fetch nothing")
+    asked = parse.parse_args()
+
+    import os
+    key = asked.api_key or os.environ.get("SI_API_KEY") or "DEMO_KEY"
+    where = pathlib.Path(asked.reference).expanduser()
+    assets = where / "assets"
+    forms = asked.only or list(WANTED)
+
+    # Searches are cached. The demo key allows thirty an hour, and a rerun to
+    # fetch one more specimen should not spend the budget asking the same
+    # questions again.
+    cache = where / "scans-search.json"
+    seen = json.loads(cache.read_text()) if cache.is_file() else {}
+
+    record = {}
+    kept_file = where / "scans.json"
+    if kept_file.is_file():
+        record = json.loads(kept_file.read_text()).get("specimens", {})
+
+    for form in forms:
+        if form not in WANTED:
+            print(f"{form}: nobody has said what shape that is", file=sys.stderr)
+            continue
+        have = [n for n, d in record.items() if d.get("form") == form
+                and (assets / n).is_file()]
+        if len(have) >= asked.how_many:
+            print(f"{form}: {len(have)} already here")
+            continue
+
+        found = []
+        for genus in WANTED[form]:
+            question = f"{genus} AND online_visual_material:true"
+            if question in seen:
+                rows = seen[question]
+            else:
+                answer = ask(question, key)
+                rows = [{"title": r["title"], "id": r["id"],
+                         "scans": list(scans_in(r))} for r in answer.get("rows", [])]
+                rows = [r for r in rows if r["scans"]]
+                seen[question] = rows
+                cache.write_text(json.dumps(seen))
+                time.sleep(2)
+            for row in rows:
+                found.append((genus, row))
+
+        print(f"{form}: {len(found)} scans over {len(WANTED[form])} genera")
+        # Smallest first. These are all around a hundred thousand triangles;
+        # the size difference is texture resolution, and the geometry is what
+        # is wanted here.
+        found.sort(key=lambda gr: gr[1]["scans"][0]["bytes"])
+        taken = 0
+        for genus, row in found:
+            if len(have) + taken >= asked.how_many:
+                break
+            scan = row["scans"][0]
+            name = a_name(form, genus, row["title"], scan["filename"])
+            if name in record and (assets / name).is_file():
+                continue
+            print(f"    {name}  {scan['bytes'] / 1e6:.1f} MB  {row['title']}")
+            if asked.dry_run:
+                taken += 1
+                continue
+            assets.mkdir(parents=True, exist_ok=True)
+            try:
+                with urllib.request.urlopen(scan["url"], timeout=300) as answer:
+                    (assets / name).write_bytes(answer.read())
+            except (urllib.error.URLError, TimeoutError) as bad:
+                print(f"      could not fetch it: {bad}", file=sys.stderr)
+                continue
+            record[name] = {"form": form, "genus": genus, "title": row["title"],
+                            "edan": row["id"], "package": scan["package"],
+                            "url": scan["url"], "voyager": scan["voyager"],
+                            "licence": "CC0", "bytes": scan["bytes"],
+                            "source": "Smithsonian Open Access 3D"}
+            taken += 1
+
+    if not asked.dry_run:
+        kept_file.write_text(json.dumps(
+            {"source": "Smithsonian Open Access, https://3d.si.edu",
+             "licence": "CC0, no rights reserved",
+             "note": "dry skeletons: they give form, not colour",
+             "specimens": record}, indent=1))
+        print(f"\n{len(record)} specimens in {assets}")
+        print(f"recorded in {kept_file}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -68,12 +68,16 @@ def test_the_museum_pedestal_goes_under_the_seabed():
     tall = float(points[:, 2].max())
     assert buried > 0.1 * tall, "the base should be under the ground"
     assert buried < tall, "and most of the colony should be above it"
-    # What is left standing is a dome, not a cylinder: it narrows towards
-    # the top.
+    # What is left standing is a dome, not a cylinder: it narrows towards the
+    # top. A mounding coral is a broad dome, so this asks about the crown and
+    # not the shoulder, which on this specimen is still nearly full width.
     showing = points[points[:, 2] >= 0.0]
-    middle = showing[:, 2] > 0.6 * tall
+    crown = showing[:, 2] > 0.8 * tall
     near = np.hypot(showing[:, 0], showing[:, 1])
-    assert near[middle].max() < 0.8 * near.max()
+    assert near[crown].max() < 0.8 * near.max()
+    # And no flange: the widest part is not a lip sitting on the seabed.
+    at_the_foot = showing[:, 2] < 0.1 * tall
+    assert near[at_the_foot].max() < 1.05 * near[~at_the_foot & ~crown].max()
 
 
 @have_it
