@@ -439,8 +439,12 @@ def main() -> int:
             from PIL import Image
             seen_from_above = np.asarray(
                 Image.open(asked.photograph).convert("RGB"), dtype="float64")
+        # A place's own corpus, if it has one. Where it holds a scan of a
+        # colony, the reef stands scans rather than grown shapes.
+        corpus = pathlib.Path.home() / "coral-city" / "reference" / asked.name
         reef = grow_reef.plant(where, height, asked.across, asked.seed, asked.coral,
-                               picture=seen_from_above)
+                               picture=seen_from_above,
+                               reference=corpus if corpus.is_dir() else None)
 
     import numpy as np
     depth = -height
