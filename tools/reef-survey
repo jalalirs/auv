@@ -32,14 +32,30 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-# Hues from the Looe Key photographs (see docs/plan/looe-key-reality.md): the
-# same palette tools/flyover_corals.py stands on the Blender ground.
+# What these things reflect, with the hue from the Looe Key photographs (see
+# docs/plan/looe-key-reality.md) and the level from what the material is.
+#
+# Not the pixel values off the photographs. A picture of a reef taken through
+# ten metres of water is not the reef's albedo, and handing one to a renderer
+# as if it were gets it lit twice: the photograph already contains the light
+# that fell on the reef, and then the renderer shines a sun on it.
+# tools/make-site says exactly this about the ground and fixed it there in
+# September. The coral kept the raw numbers, so a reef 70% covered in
+# turf-grown rock at a claimed 0.36 reflectance rendered as a field of white
+# pebbles scattered on a correctly-coloured seabed.
+#
+# Levels are what these surfaces actually reflect in the blue-green:
+#   rock and pavement under turf algae   0.10 - 0.18, and it is most of a reef
+#   mustard Orbicella, Porites           0.25 - 0.40
+#   brain corals                         0.25 - 0.35
+#   purple sea fans                      0.10 - 0.20, they are dark and thin
+#   tan sea plumes                       0.20 - 0.30
 HUE = {
-    "low": (0.36, 0.35, 0.27),
-    "stony": (0.72, 0.58, 0.22),
-    "head": (0.66, 0.52, 0.24),
-    "fan": (0.46, 0.30, 0.50),
-    "plume": (0.62, 0.50, 0.28),
+    "low": (0.17, 0.165, 0.13),
+    "stony": (0.38, 0.30, 0.12),
+    "head": (0.34, 0.27, 0.13),
+    "fan": (0.19, 0.12, 0.21),
+    "plume": (0.28, 0.23, 0.13),
 }
 SHADES = (0.72, 1.0, 1.28)
 KINDS = ("low", "stony", "head", "fan", "plume")
