@@ -69,11 +69,23 @@ export material coral_tissue(
                           "Between them is what a bleaching looks like."),
         anno::in_group("Tissue")
     ]],
-    uniform float through = 0.30
+    uniform float through = 0.0
     [[
-        anno::display_name("How much light passes"),
+        anno::display_name("How much light passes right through"),
         anno::description("What makes a branch tip and the edge of a plate "
-                          "glow when the light is behind them."),
+                          "glow when the light is behind them. Nought for a "
+                          "boulder, which passes no light at all: on a closed "
+                          "solid this is energy going in and not coming back, "
+                          "so a massive coral given it just goes dark."),
+        anno::in_group("Tissue")
+    ]],
+    uniform float scatter = 0.35
+    [[
+        anno::display_name("How much the skeleton lifts the colour"),
+        anno::description("Light scattering in the white aragonite under the "
+                          "tissue and leaving through the colour again. This "
+                          "is the subsurface term, and it brightens without "
+                          "desaturating."),
         anno::in_group("Tissue")
     ]],
 
@@ -107,8 +119,15 @@ export material coral_tissue(
                           "a corallite is however big the colony is."),
         anno::in_group("Corallites")
     ]],
-    uniform float relief = 1.0
-    [[ anno::display_name("How much relief"), anno::in_group("Corallites") ]],
+    uniform float relief = 2.5
+    [[
+        anno::display_name("How much relief"),
+        anno::description("More than one. The map holds the true gradient of a "
+                          "0.75 mm cup across 2.6 mm, which is a shallow slope, "
+                          "and a shallow slope under water two metres away is "
+                          "nothing at all."),
+        anno::in_group("Corallites")
+    ]],
 
     uniform float wet = 0.42
     [[
@@ -136,11 +155,22 @@ export material coral_tissue(
     float3 bumped = base::tangent_space_normal_texture(
         texture: corallites, factor: relief, uvw: here, flip_tangent_v: true);
 
-    // What comes back out. Light that goes into the tissue scatters in the
-    // white skeleton and leaves through the colour, so the colour it leaves
-    // with is between the two and never darker than the tissue alone.
-    color under = math::lerp(aragonite, tissue * aragonite * 1.6,
-                             math::saturate(alive));
+    // What comes back out.
+    //
+    // Light enters the tissue, scatters in the white aragonite about a
+    // millimetre down, and leaves through the colour again. That brightens
+    // what comes back; it does not wash it towards white. The first version
+    // mixed the skeleton's colour in directly and an olive colony rendered as
+    // a pale grey pebble — which is the bleached one, and is exactly the thing
+    // this material exists to stop.
+    //
+    // A boulder coral is not translucent at the scale of a boulder. This is
+    // scattering under a millimetre of tissue, not light through a head.
+    color lit_from_under = tissue * math::lerp(
+        color(1.0), aragonite * 2.2, math::saturate(scatter));
+    // And as the tissue goes, so does the colour: `alive` at nought is the
+    // same skeleton with nothing on it, which is what a bleached colony is.
+    color under = math::lerp(aragonite, lit_from_under, math::saturate(alive));
 } in material(
     surface: material_surface(
         // Wet, so there is a sheen on it, and more of one at a grazing angle:
@@ -148,7 +178,9 @@ export material coral_tissue(
         // the tops of the colonies.
         scattering: df::custom_curve_layer(
             normal_reflectivity: 0.02,
-            grazing_reflectivity: 0.30,
+            // Gently. At 0.30 a small dome seen from above is mostly grazing
+            // angle and the sheen alone washed the colour out.
+            grazing_reflectivity: 0.12,
             layer: df::microfacet_ggx_smith_bsdf(
                 roughness_u: wet * wet, roughness_v: wet * wet),
             // Some of the light passes through rather than bouncing off,
