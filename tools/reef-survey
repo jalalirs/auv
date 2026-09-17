@@ -50,7 +50,7 @@ KINDS = ("low", "stony", "head", "fan", "plume")
 # grey lump "low" precisely because it cannot tell rock from Siderastrea, and
 # drawing 58,000 uncertain lumps as a named coral would be asserting an
 # identification the survey did not make.
-FROM_A_SCAN = {"stony": "massive", "head": "massive"}
+FROM_A_SCAN = {"stony": "massive", "head": "brain"}
 
 
 def _normalised(points, faces, np):
@@ -90,23 +90,27 @@ def grow(kind: str, rng):
     return _normalised(points, faces, np)
 
 
-def from_a_scan(kind: str, ref: pathlib.Path):
+def from_a_scan(kind: str, ref: pathlib.Path, which: int = 0):
     """The same prototype, taken off a museum scan instead of grown.
 
-    Returns None where nobody has scanned this growth form, which is most of
-    them. A scan carries corallites and growth banding that no amount of noise
-    on a blob produces; that is the whole difference between a colony and a
-    painted stone, and it only shows once the water is out of the way.
+    Returns None where nobody has scanned this growth form, which is still true
+    of the gorgonians: the Smithsonian has no CC0 3D scan of a sea fan or a sea
+    plume, and those are the silhouette of this reef.
+
+    `which` picks among the specimens of that form, so a reef stands several
+    different colonies rather than several copies of one. A scan carries
+    corallites and growth banding that no amount of noise on a blob produces;
+    that is the whole difference between a colony and a painted stone, and it
+    only shows once the water is out of the way.
     """
     import numpy as np
 
     import scanned
 
-    have = scanned.found_in(ref)
-    form = FROM_A_SCAN.get(kind)
-    if form is None or form not in have:
+    have = scanned.found_in(ref).get(FROM_A_SCAN.get(kind) or "", [])
+    if not have:
         return None
-    points, faces = scanned.as_a_colony(have[form], 1.0)
+    points, faces = scanned.as_a_colony(have[which % len(have)], 1.0)
     return _normalised(points, faces, np)
 
 
@@ -148,8 +152,10 @@ def main() -> int:
     prototypes, colours, index, scans = [], [], {}, 0
     kind_of = []
     for kind in KINDS:
-        scan = from_a_scan(kind, ref)
         for s, shade in enumerate(SHADES):
+            # A different specimen for each shade, so the scans on a reef are
+            # several colonies and not several copies of one.
+            scan = from_a_scan(kind, ref, which=s)
             shapes = [grow(kind, rng)] + ([scan] if scan is not None else [])
             index[(kind, s)] = []
             for shape in shapes:

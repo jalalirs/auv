@@ -94,18 +94,21 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # structure and the growth banding that no amount of noise on a blob
     # produces, and it is the difference between a colony and a painted stone.
     scans = scanned.found_in(reference) if reference is not None else {}
-    # Half the variants of a scanned form are the scan at different sizes and
-    # half are grown, because one specimen is one colony that happened to be
-    # collected and a reef is variation. A field of sixty identical boulders
-    # is as wrong as a field of sixty blobs, in a way that is harder to spot.
+    # Two variants in three of a scanned form are scans, and each is a
+    # different specimen; the rest are grown. One specimen is one colony that
+    # happened to be collected, and a field of sixty identical boulders is as
+    # wrong as a field of sixty blobs in a way that is harder to spot. The
+    # grown ones stay because no museum has scanned the long tail.
     from_a_scan = 0
 
     prototypes, colours = [], []
     for kind in kinds:
+        here = scans.get(kind, [])
         for at in range(variants):
             size = sizes[kind] * rng.uniform(0.7, 1.4)
-            if kind in scans and at % 2 == 0:
-                prototypes.append(scanned.as_a_colony(scans[kind], size))
+            if here and at % 3 != 2:
+                prototypes.append(
+                    scanned.as_a_colony(here[from_a_scan % len(here)], size))
                 from_a_scan += 1
             else:
                 prototypes.append(coral.grow_one(kind, rng, size))
