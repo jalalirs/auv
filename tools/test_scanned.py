@@ -17,9 +17,16 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import scanned  # noqa: E402
 
 REFERENCE = pathlib.Path.home() / "coral-city" / "reference" / "looe-key"
-SPECIMEN = REFERENCE / "assets" / "usnm_58_orbicella_coronata.glb"
+
+# Found the way the code finds it, not by a filename spelled out here. The
+# specimen was called `usnm_58_orbicella_coronata.glb` until tools/scans
+# started naming files from the museum's own title, and six tests quietly
+# skipped rather than failing, which is the worse of the two.
+_MASSIVE = scanned.found_in(REFERENCE).get("massive") or []
+SPECIMEN = _MASSIVE[0] if _MASSIVE else REFERENCE / "assets" / "nothing.glb"
 have_it = pytest.mark.skipif(not SPECIMEN.exists(),
-                             reason="the Smithsonian scan is not fetched here")
+                             reason="no Smithsonian scan is fetched here; "
+                                    "tools/scans fetches them")
 
 
 @have_it
@@ -96,7 +103,18 @@ def test_a_scan_is_named_by_what_it_is():
     """A specimen nobody can identify is a specimen nobody should be placing on
     a reef as though they could."""
     found = scanned.found_in(REFERENCE)
-    assert found.get("massive") == SPECIMEN, found
+    assert SPECIMEN in found["massive"], found
+
+
+@have_it
+def test_a_growth_form_can_have_several_specimens():
+    """Three different Acropora on a reef, not three copies of one. Three
+    copies of one museum piece is worse than a blob, because it reads as
+    variation."""
+    found = scanned.found_in(REFERENCE)
+    assert any(len(paths) > 1 for paths in found.values()), found
+    for form, paths in found.items():
+        assert len(set(paths)) == len(paths), f"{form} lists a specimen twice"
 
 
 def test_a_place_with_no_corpus_gets_no_scans():
