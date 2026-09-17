@@ -130,6 +130,8 @@ class CoralCityShell(omni.ext.IExt):
         self._metered_at = 0.0
         self._first_frame_at = None
         self._said_settings = False
+        self._meter_asked = 0
+        self._meter_read = 0
         self._aim = None
         self._basis = None
         self._eye = None
@@ -924,7 +926,8 @@ class CoralCityShell(omni.ext.IExt):
                 and time.monotonic() - self._first_frame_at > 40.0
                 and self._meter is not None):
             self._meter.done = True
-            self._meter.why = "gave up waiting for a frame"
+            self._meter.why = ("gave up waiting for a frame: asked %d, read %d"
+                               % (self._meter_asked, self._meter_read))
             self._say("metered", **self._meter.report())
             return
         # Its own clock, not the run's: `began` is when somebody took the
@@ -947,6 +950,7 @@ class CoralCityShell(omni.ext.IExt):
                 return
             self._metering = True
             self._metered_at = time.monotonic()
+            self._meter_asked += 1
             viewport.schedule_capture(ByteCapture(self._metered))
         except Exception as exc:
             # A dive that cannot meter keeps the exposure it was given. That is
@@ -960,6 +964,7 @@ class CoralCityShell(omni.ext.IExt):
     def _metered(self, buffer, size, wide, tall, fmt=None) -> None:
         """A frame came back. Read it, and move the camera if it needs moving."""
         self._metering = False
+        self._meter_read += 1
         try:
             import carb
             import numpy as np
