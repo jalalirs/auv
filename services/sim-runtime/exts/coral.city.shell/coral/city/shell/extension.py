@@ -133,6 +133,7 @@ class CoralCityShell(omni.ext.IExt):
         self._meter_asked = 0
         self._meter_read = 0
         self._meter_passes = 0
+        self._asked_on_pass = 0
         self._meter_saw = ""
         self._aim = None
         self._basis = None
@@ -901,7 +902,17 @@ class CoralCityShell(omni.ext.IExt):
     # and two hundred on another, and forty seconds to finish was not one round
     # of metering. The meter now counts what it has actually seen.
     SETTLE_PASSES = 3
-    MOST_PASSES = 20
+    MOST_PASSES = 60
+    # Updates between asking for a frame and reading it. Two, because the
+    # capture is written on a later one and a half-written PNG is a frame with
+    # nothing in it, which a meter reads as darkness and answers by opening the
+    # camera all the way.
+    #
+    # Counted, not timed. A tenth of a second was the wait and it worked out to
+    # fifteen passes: while the tour is held for the meter the updates cost
+    # almost nothing, so they arrive faster than the clock and the whole budget
+    # went on waiting for a frame that was already there.
+    PASSES_TO_DEVELOP = 2
 
     def _meter_the_frame(self) -> None:
         """Set the exposure from the picture, a few times, and then leave it.
@@ -973,10 +984,10 @@ class CoralCityShell(omni.ext.IExt):
                 shot.parent.mkdir(parents=True, exist_ok=True)
                 capture_viewport_to_file(viewport, str(shot))
                 self._metering = True
-                self._metered_at = now
+                self._asked_on_pass = self._meter_passes
                 self._meter_asked += 1
                 return
-            if now - self._metered_at < 0.2:
+            if self._meter_passes - self._asked_on_pass < self.PASSES_TO_DEVELOP:
                 return
             self._metering = False
             self._meter_saw = ("%d bytes" % shot.stat().st_size) if shot.exists() else "no file"
