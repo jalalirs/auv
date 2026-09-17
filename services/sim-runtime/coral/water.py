@@ -180,9 +180,22 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     #
     # It is also why tuning the lights was a fight: every change was being
     # partly undone by the renderer trying to be helpful.
+    #
+    # The names here are the renderer's own, and three of them were not.
+    # `/rtx/post/tonemap/iso` and `/rtx/post/tonemap/cameraShutter` do not
+    # exist: carb takes any key you give it, so writing to them created two
+    # settings nothing reads. A thirty-two fold change in "iso" moved the
+    # picture by a thousandth of a stop, which is how this was finally caught,
+    # and it means every argument about the lamps for the last fortnight was an
+    # argument against a control that was not connected.
+    #
+    # The real ones are `filmIso` and `exposureTime`, and
+    # CORAL_CITY_SETTINGS=1 prints the whole tree from inside the frame loop,
+    # which is where it has to be asked: before the renderer starts, every key
+    # under /rtx is one this code invented.
     settings.set("/rtx/post/histogram/enabled", False)
     settings.set("/rtx/post/tonemap/op", 1)
-    settings.set("/rtx/post/tonemap/cameraShutter", 1.0 / 60.0)
+    settings.set("/rtx/post/tonemap/exposureTime", 1.0 / 60.0)
     # Measured off an exposure ladder — the same reef at four apertures in one
     # run — and then reopened by a third of a stop once the fill light came
     # down, because the two are the same knob seen from different ends and
@@ -216,9 +229,9 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # answered in one run instead of an afternoon of "that change did nothing".
     from coral.runner import asked_for
     iso = asked_for("CORAL_CITY_ISO", min(9000.0, 140.0 / max(left, 0.05)))
-    settings.set("/rtx/post/tonemap/iso", float(iso))
-    say("camera_is", iso=round(float(iso), 1), fNumber=4.5, shutter=1 / 60.0,
-        pinned=asked_for("CORAL_CITY_ISO") is not None)
+    settings.set("/rtx/post/tonemap/filmIso", float(iso))
+    say("camera_is", filmIso=round(float(iso), 1), fNumber=4.5,
+        exposureTime=1 / 60.0, pinned=asked_for("CORAL_CITY_ISO") is not None)
     if os.environ.get("CORAL_CITY_SETTINGS") == "1":
         _say_what_the_renderer_has(settings, say)
 
