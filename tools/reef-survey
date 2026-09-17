@@ -193,8 +193,7 @@ def main() -> int:
     # reads it. Both live with the place: a published package has to carry
     # everything it is drawn from.
     import corallite
-    forms = [CORALLITES.get(kind) for kind in kind_of]
-    for form in sorted({f for f in forms if f}):
+    for form in sorted({f for f in map(reef.corallite_for, kind_of) if f}):
         made = corallite.write(form, place / "textures")
         print(f"  corallites: {form}, {made['corallliteMm']:.1f} mm, "
               f"{made['reliefMm']:.2f} mm of relief ({made['says']})")
@@ -203,7 +202,7 @@ def main() -> int:
                 place / "coral_tissue.mdl")
 
     (place / "coral.usda").write_text(
-        _instancer(prototypes, colours, forms, x, y, z, which, sx, sz, turn))
+        _instancer(prototypes, colours, kind_of, x, y, z, which, sx, sz, turn))
     size = (place / "coral.usda").stat().st_size
     print(f"  coral.usda: {len(prototypes)} prototypes, {len(colonies):,} instances, {size / 1e6:.1f} MB")
 
@@ -274,18 +273,7 @@ def _begin(x, y, depth, band, across):
             "depthM": round(-floor, 1), "colonies": int(smooth[r, c])}
 
 
-# Which corallite surface each of this file's kinds wears. tools/corallite.py
-# knows the growth forms; these are the kinds tools/benthos reports.
-#
-# "low" is on this list as a massive coral and it is the least certain thing
-# here: benthos calls a low grey lump "low" precisely because it cannot tell
-# rock from Siderastrea. Corallites on rock is wrong; smooth rock where there
-# is a Siderastrea is also wrong, and of the two this one is wrong at a
-# millimetre rather than at a metre.
-CORALLITES = {"low": "massive", "stony": "massive", "head": "brain"}
-
-
-def _instancer(prototypes, colours, forms, x, y, z, which, sx, sz, turn) -> str:
+def _instancer(prototypes, colours, kind_of, x, y, z, which, sx, sz, turn) -> str:
     """The reef as one point instancer, in the shape the runtime already draws."""
     import numpy as np
 
@@ -321,7 +309,7 @@ def _instancer(prototypes, colours, forms, x, y, z, which, sx, sz, turn) -> str:
         "    point3f[] positions = [%s]\n    int[] protoIndices = [%s]\n"
         "    float3[] scales = [%s]\n    quath[] orientations = [%s]\n"
         "    rel prototypes = [%s]\n\n    def Scope \"Grown\"\n    {%s    }\n}\n" % (
-            reef._skins(colours, forms),
+            reef._skins(colours, kind_of),
             reef._triples(np.stack([x, y, z], -1)),
             ", ".join(str(int(i)) for i in which),
             reef._triples(np.stack([sx, sx, sz], -1)),
