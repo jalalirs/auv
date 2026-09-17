@@ -175,8 +175,23 @@ class Tank:
     def observe(self) -> Observation:
         truth = self.dive.observation()
         if not self.sensed:
-            return Observation(t=truth.t, position=truth.position.copy(), velocity=truth.velocity.copy(),
-                               rotation=truth.rotation.copy(), floor=truth.floor,
+            # The dive's own observation is what the *vehicle believes*, not
+            # what is true: that is the whole point of it, and it is what a
+            # controller is handed on a real dive. So `sensed=False` cannot use
+            # it — it took the believed position, called it the truth, and
+            # handed a controller an estimate while telling it otherwise.
+            #
+            # In still water the two are the same and nothing showed. In a
+            # current they are not: the vehicle is carried and its reckoning is
+            # not, so the example hold sat there holding a position it was
+            # eight metres away from, scoring perfectly against its own
+            # estimate and failing the task. The test that caught it had been
+            # failing for a long time and the suite had not been run.
+            return Observation(t=truth.t,
+                               position=self.dive.position.copy(),
+                               velocity=self.dive.velocity.copy(),
+                               rotation=self.dive.rotation.copy(),
+                               floor=truth.floor,
                                on_the_bottom=truth.on_the_bottom, estimated=False)
         # Through the sensors: pressure, attitude and rates, velocity over the ground.
         from .sensing import GRAVITY, SURFACE_PRESSURE_PA
@@ -196,17 +211,33 @@ class Tank:
         elif asked is None:
             command = Command.nothing()
         else:
-            asked = np.asarray(asked, dtype=float)
-            command = Command(wrench=asked) if asked.shape[0] == 6 and len(self.model.thrusters) != 6 \
-                else Command(wrench=asked)
+            # A bare array is a wrench. It was two identical branches with a
+            # condition between them — somebody's note to themselves about the
+            # third command form, left in the first file an outside developer
+            # reads and never finished.
+            command = Command(wrench=np.asarray(asked, dtype=float))
         # Through a delay line when asked, so the vehicle acts on what the
         # controller said a few ticks ago, as it does live.
         self._pending.append(command)
         while len(self._pending) > self.latency_ticks + 1:
             self._pending.pop(0)
         acted = self._pending[0] if len(self._pending) > self.latency_ticks else Command.nothing()
-        if acted.thrusters is not None:
+        if acted.actuators is not None:
+            # A vehicle that is not moved by thrust: the pump and the sliding
+            # mass get a step towards what was asked for, and the water does
+            # the rest. There is no wrench here and no thruster to allocate.
+            self.dive.body.model.ask_actuators(acted.actuators, self.dive.dt)
+            if len(self.model.thrusters):
+                self.bridge.say(np.zeros(len(self.model.thrusters)))
+        elif acted.thrusters is not None:
             self.bridge.say(acted.thrusters)
+        elif len(self.model.thrusters) == 0:
+            # Nothing to allocate to. A hull with no thrusters that is handed a
+            # wrench is being flown by a controller written for another vehicle,
+            # and saying so is better than quietly doing nothing.
+            raise ValueError(
+                "this vehicle has no thrusters: command its actuators instead, "
+                "with Command.actuators_of(...). `coral-city vehicles` says which.")
         else:
             wrench = np.zeros(6) if acted.wrench is None else np.asarray(acted.wrench, dtype=float)
             self.bridge.say(self.allocator.allocate(self.dive.helm.guard(wrench)))

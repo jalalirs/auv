@@ -5,6 +5,11 @@ from ..vehicle import Sensor, Thruster, Topic, Vehicle
 DYNAMICS = {
     "massKg": 11.5,
     "displacedVolumeM3": 0.011054,
+    "envelope": {
+        "maxDepthM": 100.0,
+        "maxSpeedMs": 1.5,
+        "minAltitudeM": 0.3
+    },
     "centreOfGravityM": [
         0,
         0,
@@ -60,7 +65,7 @@ DYNAMICS = {
         ]
     },
     "thrusters": {
-        "note": "The standard six-thruster vectored layout: four horizontal at 45 degrees giving surge, sway and yaw, and two vertical giving heave. Positions are metres from the centre of gravity; directions are unit vectors in the body frame.",
+        "note": "The standard six-thruster vectored layout: four horizontal at 45 degrees giving surge, sway and yaw, and two vertical giving heave. Positions are metres from the centre of gravity; directions are unit vectors in the body frame. The verticals sit on the beam at mid-body, which is why the stock vehicle has no pitch authority and is passively stable in pitch: they were briefly modelled 12 cm forward, and every newton of depth-holding heave then pitched the hull and spent the attitude guard's budget, leaving too little horizontal thrust to hold station in a current.",
         "model": "BlueRobotics T200",
         "maxForwardN": 51.5,
         "maxReverseN": 40.0,
@@ -121,7 +126,7 @@ DYNAMICS = {
             {
                 "name": "vertical-right",
                 "position": [
-                    0.12,
+                    0,
                     0.218,
                     0
                 ],
@@ -134,7 +139,7 @@ DYNAMICS = {
             {
                 "name": "vertical-left",
                 "position": [
-                    0.12,
+                    0,
                     -0.218,
                     0
                 ],
@@ -145,6 +150,13 @@ DYNAMICS = {
                 ]
             }
         ]
+    },
+    "tether": {
+        "_": "The Fathom Slim tether Blue Robotics ships with it: 7.6 mm, and made very slightly buoyant in seawater on purpose \u2014 a tether that is not spends the dive dragging the vehicle down.",
+        "diameterM": 0.0076,
+        "lengthM": 100.0,
+        "weightNPerM": -0.02,
+        "dragNormal": 1.2
     },
     "sensors": [
         {
@@ -162,7 +174,9 @@ DYNAMICS = {
             ],
             "focalLengthMm": 21,
             "widthPx": 1280,
-            "heightPx": 720
+            "heightPx": 720,
+            "watts": 2.5,
+            "wattsNote": "a machine-vision camera and its housing"
         },
         {
             "kind": "imaging_sonar",
@@ -182,7 +196,9 @@ DYNAMICS = {
                 10.0
             ],
             "horizontalFovDeg": 130,
-            "verticalFovDeg": 20
+            "verticalFovDeg": 20,
+            "watts": 18.0,
+            "wattsNote": "a Blueprint Oculus, which is most of what a small ROV's hotel load is when it is on"
         },
         {
             "kind": "dvl",
@@ -191,7 +207,9 @@ DYNAMICS = {
                 0,
                 0,
                 -0.05
-            ]
+            ],
+            "watts": 4.0,
+            "wattsNote": "a Nortek DVL1000, averaged over its ping"
         },
         {
             "kind": "imu",
@@ -200,7 +218,9 @@ DYNAMICS = {
                 0,
                 0,
                 0
-            ]
+            ],
+            "watts": 0.5,
+            "wattsNote": "a MEMS unit; a fibre-optic gyro is ten times this"
         },
         {
             "kind": "barometer",
@@ -209,7 +229,22 @@ DYNAMICS = {
                 0,
                 0,
                 0
-            ]
+            ],
+            "watts": 0.1,
+            "wattsNote": "a pressure sensor, which costs nothing"
+        },
+        {
+            "kind": "ctd",
+            "name": "ctd",
+            "position": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "everyS": 1.0,
+            "note": "Conductivity, temperature and depth. The instrument every oceanographic vehicle carries and the reason a glider section is worth flying.",
+            "watts": 0.35,
+            "wattsNote": "a pumped SBE 49, which is why gliders can carry one"
         }
     ],
     "topicContract": {
@@ -217,10 +252,6 @@ DYNAMICS = {
         "publishes": [
             {
                 "topic": "/camera/image_raw",
-                "type": "sensor_msgs/msg/Image"
-            },
-            {
-                "topic": "/sonar/image",
                 "type": "sensor_msgs/msg/Image"
             },
             {
@@ -238,6 +269,14 @@ DYNAMICS = {
             {
                 "topic": "/tf",
                 "type": "tf2_msgs/msg/TFMessage"
+            },
+            {
+                "topic": "/sonar/scan",
+                "type": "sensor_msgs/msg/LaserScan"
+            },
+            {
+                "topic": "/ctd",
+                "type": "sensor_msgs/msg/FluidPressure"
             }
         ],
         "subscribes": [
@@ -252,6 +291,70 @@ DYNAMICS = {
                 "note": "A body-frame wrench for stacks that would rather not allocate thrust themselves."
             }
         ]
+    },
+    "power": {
+        "note": "The stock BlueROV2 pack and the T200's published curve. A dive that spends energy has to spend somebody's real numbers: 14.8 V and 18 Ah is the battery Blue Robotics ships, 350 W is a T200 at full throttle on it, and the hotel load is the electronics, camera and lights the vehicle carries whether or not it is moving.",
+        "capacityWh": 266.4,
+        "nominalVoltage": 14.8,
+        "hotelW": 6.0,
+        "thrusterMaxW": 350.0,
+        "powerExponent": 1.5,
+        "reserveFraction": 0.1,
+        "hotelNote": "The base electronics and nothing else: a Pixhawk, a Raspberry Pi and the tether interface. It was a single lumped figure that stood for the electronics, the sensors and the lights together \u2014 which meant unfitting a Doppler log or switching the lamps off changed the endurance by exactly nothing. Each instrument states its own draw now and they are added to this, so a dive that carries less lasts longer, which is the whole reason to be able to choose."
+    },
+    "lights": {
+        "note": "Blue Robotics Lumen Subsea Lights, which is what a BlueROV2 carries. 1500 lumens each at 15 W, a 135 degree beam in water, mounted either side of the camera and aimed where it looks. Two is the stock fit; the Heavy takes four.",
+        "fitted": [
+            {
+                "name": "port",
+                "kind": "lumen",
+                "position": [
+                    0.22,
+                    -0.16,
+                    0.08
+                ],
+                "aim": [
+                    1.0,
+                    0.0,
+                    -0.15
+                ],
+                "lumens": 1500.0,
+                "watts": 15.0,
+                "coneDeg": 135.0,
+                "colourK": 6000
+            },
+            {
+                "name": "starboard",
+                "kind": "lumen",
+                "position": [
+                    0.22,
+                    0.16,
+                    0.08
+                ],
+                "aim": [
+                    1.0,
+                    0.0,
+                    -0.15
+                ],
+                "lumens": 1500.0,
+                "watts": 15.0,
+                "coneDeg": 135.0,
+                "colourK": 6000
+            }
+        ]
+    },
+    "modem": {
+        "note": "An acoustic modem, because underwater there is no radio. These are a WHOI micro-modem class link at a few hundred metres: a couple of kilobits a second, two thirds of a second per kilometre each way, and packets that go missing when the range is long. It is what shapes autonomy more than anything else on this list \u2014 a vehicle that could ask the ship whenever it was unsure would be a different vehicle from the ones anybody builds.",
+        "bitsPerSecond": 2400.0,
+        "rangeM": 2000.0,
+        "lossShare": 0.08
+    },
+    "computer": {
+        "kind": "raspberry-pi-4",
+        "watts": 5.0,
+        "tops": 0.0,
+        "ramGb": 4,
+        "note": "What a stock BlueROV2 actually carries. It will run a PID loop and a state estimator and it will not run a network: a controller that needs tera-operations to think cannot be flown on this hull, and saying so before the dive is the point of declaring it."
     }
 }
 
@@ -265,8 +368,8 @@ VEHICLE = Vehicle(
         Thruster('front-left', (0.156, -0.111, 0.085), (0.707, 0.707, 0.0)),
         Thruster('rear-right', (-0.156, 0.111, 0.085), (-0.707, -0.707, 0.0)),
         Thruster('rear-left', (-0.156, -0.111, 0.085), (-0.707, 0.707, 0.0)),
-        Thruster('vertical-right', (0.12, 0.218, 0.0), (0.0, 0.0, 1.0)),
-        Thruster('vertical-left', (0.12, -0.218, 0.0), (0.0, 0.0, 1.0)),
+        Thruster('vertical-right', (0.0, 0.218, 0.0), (0.0, 0.0, 1.0)),
+        Thruster('vertical-left', (0.0, -0.218, 0.0), (0.0, 0.0, 1.0)),
     ),
     sensors=(
         Sensor('underwater_camera', 'forward'),
@@ -274,14 +377,16 @@ VEHICLE = Vehicle(
         Sensor('dvl', 'bottom_track'),
         Sensor('imu', 'body'),
         Sensor('barometer', 'depth'),
+        Sensor('ctd', 'ctd'),
     ),
     publishes=(
         Topic('/camera/image_raw', 'sensor_msgs/msg/Image', ''),
-        Topic('/sonar/image', 'sensor_msgs/msg/Image', ''),
         Topic('/imu/data', 'sensor_msgs/msg/Imu', ''),
         Topic('/dvl/twist', 'geometry_msgs/msg/TwistWithCovarianceStamped', ''),
         Topic('/depth', 'sensor_msgs/msg/FluidPressure', ''),
         Topic('/tf', 'tf2_msgs/msg/TFMessage', ''),
+        Topic('/sonar/scan', 'sensor_msgs/msg/LaserScan', ''),
+        Topic('/ctd', 'sensor_msgs/msg/FluidPressure', ''),
     ),
     subscribes=(
         Topic('/thruster_cmd', 'std_msgs/msg/Float64MultiArray', 'Six normalised commands in [-1, 1], in the order the thruster units are listed.'),

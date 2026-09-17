@@ -172,6 +172,13 @@ DYNAMICS = {
             }
         ]
     },
+    "tether": {
+        "_": "The same Fathom Slim cable: 7.6 mm, made very slightly buoyant in seawater on purpose \u2014 one that is not spends the dive dragging the vehicle down. A heavier vehicle does not get a heavier tether; it gets the same one and minds it less.",
+        "diameterM": 0.0076,
+        "lengthM": 100.0,
+        "weightNPerM": -0.02,
+        "dragNormal": 1.2
+    },
     "sensors": [
         {
             "kind": "underwater_camera",
@@ -188,7 +195,9 @@ DYNAMICS = {
             ],
             "focalLengthMm": 21,
             "widthPx": 1280,
-            "heightPx": 720
+            "heightPx": 720,
+            "watts": 2.5,
+            "wattsNote": "a machine-vision camera and its housing"
         },
         {
             "kind": "imaging_sonar",
@@ -208,7 +217,9 @@ DYNAMICS = {
                 10.0
             ],
             "horizontalFovDeg": 130,
-            "verticalFovDeg": 20
+            "verticalFovDeg": 20,
+            "watts": 18.0,
+            "wattsNote": "a Blueprint Oculus, which is most of what a small ROV's hotel load is when it is on"
         },
         {
             "kind": "dvl",
@@ -217,7 +228,9 @@ DYNAMICS = {
                 0,
                 0,
                 -0.05
-            ]
+            ],
+            "watts": 4.0,
+            "wattsNote": "a Nortek DVL1000, averaged over its ping"
         },
         {
             "kind": "imu",
@@ -226,7 +239,9 @@ DYNAMICS = {
                 0,
                 0,
                 0
-            ]
+            ],
+            "watts": 0.5,
+            "wattsNote": "a MEMS unit; a fibre-optic gyro is ten times this"
         },
         {
             "kind": "barometer",
@@ -235,17 +250,28 @@ DYNAMICS = {
                 0,
                 0,
                 0
-            ]
+            ],
+            "watts": 0.1,
+            "wattsNote": "a pressure sensor, which costs nothing"
+        },
+        {
+            "kind": "ctd",
+            "name": "ctd",
+            "position": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "everyS": 1.0,
+            "note": "Conductivity, temperature and depth. The instrument every oceanographic vehicle carries and the reason a glider section is worth flying.",
+            "watts": 0.35,
+            "wattsNote": "a pumped SBE 49, which is why gliders can carry one"
         }
     ],
     "topicContract": {
         "publishes": [
             {
                 "topic": "/camera/image_raw",
-                "type": "sensor_msgs/msg/Image"
-            },
-            {
-                "topic": "/sonar/image",
                 "type": "sensor_msgs/msg/Image"
             },
             {
@@ -263,6 +289,14 @@ DYNAMICS = {
             {
                 "topic": "/tf",
                 "type": "tf2_msgs/msg/TFMessage"
+            },
+            {
+                "topic": "/sonar/scan",
+                "type": "sensor_msgs/msg/LaserScan"
+            },
+            {
+                "topic": "/ctd",
+                "type": "sensor_msgs/msg/FluidPressure"
             }
         ],
         "subscribes": [
@@ -277,6 +311,100 @@ DYNAMICS = {
                 "note": "A body-frame wrench for stacks that would rather not allocate thrust themselves."
             }
         ]
+    },
+    "lights": {
+        "note": "Four Lumens, which is the Heavy's usual fit.",
+        "fitted": [
+            {
+                "name": "port-fore",
+                "kind": "lumen",
+                "position": [
+                    0.24,
+                    -0.18,
+                    0.1
+                ],
+                "aim": [
+                    1.0,
+                    0.0,
+                    -0.15
+                ],
+                "lumens": 1500.0,
+                "watts": 15.0,
+                "coneDeg": 135.0,
+                "colourK": 6000
+            },
+            {
+                "name": "starboard-fore",
+                "kind": "lumen",
+                "position": [
+                    0.24,
+                    0.18,
+                    0.1
+                ],
+                "aim": [
+                    1.0,
+                    0.0,
+                    -0.15
+                ],
+                "lumens": 1500.0,
+                "watts": 15.0,
+                "coneDeg": 135.0,
+                "colourK": 6000
+            },
+            {
+                "name": "port-aft",
+                "kind": "lumen",
+                "position": [
+                    0.05,
+                    -0.18,
+                    0.1
+                ],
+                "aim": [
+                    1.0,
+                    0.0,
+                    -0.15
+                ],
+                "lumens": 1500.0,
+                "watts": 15.0,
+                "coneDeg": 135.0,
+                "colourK": 6000
+            },
+            {
+                "name": "starboard-aft",
+                "kind": "lumen",
+                "position": [
+                    0.05,
+                    0.18,
+                    0.1
+                ],
+                "aim": [
+                    1.0,
+                    0.0,
+                    -0.15
+                ],
+                "lumens": 1500.0,
+                "watts": 15.0,
+                "coneDeg": 135.0,
+                "colourK": 6000
+            }
+        ]
+    },
+    "modem": {
+        "note": "The same micro-modem class link as the BlueROV2.",
+        "bitsPerSecond": 2400.0,
+        "rangeM": 2000.0,
+        "lossShare": 0.08
+    },
+    "power": {
+        "hotelW": 7.0,
+        "hotelNote": "The base electronics and nothing else: the same electronics, with more to talk to. It was a single lumped figure that stood for the electronics, the sensors and the lights together \u2014 which meant unfitting a Doppler log or switching the lamps off changed the endurance by exactly nothing. Each instrument states its own draw now and they are added to this, so a dive that carries less lasts longer, which is the whole reason to be able to choose."
+    },
+    "computer": {
+        "kind": "jetson-orin-nx",
+        "watts": 25.0,
+        "tops": 100.0,
+        "ramGb": 16,
+        "note": "The machine somebody fits when they mean to run vision. Twenty-five watts against a base of seven: the computer is three times the rest of the electronics, and an eight-hour mission spends two hundred watt-hours thinking."
     }
 }
 
@@ -301,14 +429,16 @@ VEHICLE = Vehicle(
         Sensor('dvl', 'bottom_track'),
         Sensor('imu', 'body'),
         Sensor('barometer', 'depth'),
+        Sensor('ctd', 'ctd'),
     ),
     publishes=(
         Topic('/camera/image_raw', 'sensor_msgs/msg/Image', ''),
-        Topic('/sonar/image', 'sensor_msgs/msg/Image', ''),
         Topic('/imu/data', 'sensor_msgs/msg/Imu', ''),
         Topic('/dvl/twist', 'geometry_msgs/msg/TwistWithCovarianceStamped', ''),
         Topic('/depth', 'sensor_msgs/msg/FluidPressure', ''),
         Topic('/tf', 'tf2_msgs/msg/TFMessage', ''),
+        Topic('/sonar/scan', 'sensor_msgs/msg/LaserScan', ''),
+        Topic('/ctd', 'sensor_msgs/msg/FluidPressure', ''),
     ),
     subscribes=(
         Topic('/thruster_cmd', 'std_msgs/msg/Float64MultiArray', 'Eight normalised commands in [-1, 1], in the order the thruster units are listed.'),

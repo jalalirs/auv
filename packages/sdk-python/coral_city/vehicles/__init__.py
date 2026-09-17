@@ -7,11 +7,13 @@ from ..vehicle import Vehicle
 from .bluerov2 import VEHICLE as _bluerov2
 from .bluerov2_heavy import VEHICLE as _bluerov2_heavy
 from .remus_100 import VEHICLE as _remus_100
+from .seaglider import VEHICLE as _seaglider
 
 ALL: dict[str, Vehicle] = {
     'bluerov2': _bluerov2,
     'bluerov2-heavy': _bluerov2_heavy,
     'remus-100': _remus_100,
+    'seaglider': _seaglider,
 }
 
 

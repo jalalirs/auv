@@ -56,15 +56,33 @@ class Observation:
 
 @dataclass
 class Command:
-    """What a controller wants: a wrench, or the thrusters directly.
+    """What a controller wants: a wrench, the thrusters, or the actuators.
 
     A wrench is what most controllers should ask for, because turning it into
     thruster commands is the vehicle's business. Thruster commands are for a
     controller that has already done that allocation itself.
+
+    And `actuators` is for a vehicle that is not moved by thrust at all.
+
+    That third form existed in the runtime and not here, which meant the
+    vehicle this whole phase was built around was closed to exactly the people
+    whose controllers are supposed to be the point: somebody outside this
+    repository could fly a BlueROV2 and could not fly a Seaglider. A buoyancy
+    glider has no propeller anywhere on it. It is told how much water to
+    displace and where to put its mass, and its wings turn falling into going
+    somewhere — there is no wrench to ask for and no thruster to command, and a
+    platform whose only two answers are those has quietly decided what kind of
+    vehicle a vehicle is.
+
+    Deliberately a plain mapping, as it is in the runtime. What the actuators
+    are belongs to the vehicle's package and not to this file; a controller
+    that had to be updated here every time somebody published a hull with a
+    different pump would be the same assumption in a different place.
     """
 
     wrench: np.ndarray | None = None       # body frame, newtons and newton-metres
     thrusters: np.ndarray | None = None    # per thruster, in [-1, 1]
+    actuators: dict | None = None          # by name, in the vehicle's own terms
 
     @classmethod
     def nothing(cls) -> "Command":
@@ -78,6 +96,17 @@ class Command:
     @classmethod
     def thrusters_of(cls, *commands: float) -> "Command":
         return cls(thrusters=np.clip(np.array(commands, dtype=float), -1.0, 1.0))
+
+    @classmethod
+    def actuators_of(cls, **asked: float) -> "Command":
+        """Ask a vehicle for its own actuators, by their own names.
+
+            Command.actuators_of(buoyancyCm3=180.0, massAtM=0.012)
+
+        The names are the vehicle package's, so `coral-city vehicles` is how
+        you find out what a hull will answer to.
+        """
+        return cls(actuators={name: float(value) for name, value in asked.items()})
 
 
 @dataclass

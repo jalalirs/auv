@@ -89,7 +89,9 @@ DYNAMICS = {
                 0.2,
                 0,
                 -0.08
-            ]
+            ],
+            "watts": 4.0,
+            "wattsNote": "a Nortek DVL1000, averaged over its ping"
         },
         {
             "kind": "imu",
@@ -98,7 +100,9 @@ DYNAMICS = {
                 0,
                 0,
                 0
-            ]
+            ],
+            "watts": 0.5,
+            "wattsNote": "a MEMS unit; a fibre-optic gyro is ten times this"
         },
         {
             "kind": "barometer",
@@ -107,7 +111,9 @@ DYNAMICS = {
                 0,
                 0,
                 0
-            ]
+            ],
+            "watts": 0.1,
+            "wattsNote": "a pressure sensor, which costs nothing"
         },
         {
             "kind": "imaging_sonar",
@@ -127,7 +133,22 @@ DYNAMICS = {
                 50.0
             ],
             "horizontalFovDeg": 1,
-            "verticalFovDeg": 50
+            "verticalFovDeg": 50,
+            "watts": 18.0,
+            "wattsNote": "a Blueprint Oculus, which is most of what a small ROV's hotel load is when it is on"
+        },
+        {
+            "kind": "ctd",
+            "name": "ctd",
+            "position": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "everyS": 1.0,
+            "note": "Conductivity, temperature and depth. The instrument every oceanographic vehicle carries and the reason a glider section is worth flying.",
+            "watts": 0.35,
+            "wattsNote": "a pumped SBE 49, which is why gliders can carry one"
         }
     ],
     "topicContract": {
@@ -147,6 +168,10 @@ DYNAMICS = {
             {
                 "topic": "/tf",
                 "type": "tf2_msgs/msg/TFMessage"
+            },
+            {
+                "topic": "/ctd",
+                "type": "sensor_msgs/msg/FluidPressure"
             }
         ],
         "subscribes": [
@@ -156,6 +181,23 @@ DYNAMICS = {
                 "note": "One normalised command in [-1, 1] for the propeller."
             }
         ]
+    },
+    "modem": {
+        "note": "The same micro-modem class link as the BlueROV2.",
+        "bitsPerSecond": 2400.0,
+        "rangeM": 2000.0,
+        "lossShare": 0.08
+    },
+    "power": {
+        "hotelW": 9.0,
+        "hotelNote": "The base electronics and nothing else: the vehicle computer and its housekeeping. It was a single lumped figure that stood for the electronics, the sensors and the lights together \u2014 which meant unfitting a Doppler log or switching the lamps off changed the endurance by exactly nothing. Each instrument states its own draw now and they are added to this, so a dive that carries less lasts longer, which is the whole reason to be able to choose."
+    },
+    "computer": {
+        "kind": "vehicle-computer",
+        "watts": 12.0,
+        "tops": 0.0,
+        "ramGb": 8,
+        "note": "A survey AUV's own computer: navigation, logging, and the payload."
     }
 }
 
@@ -172,12 +214,14 @@ VEHICLE = Vehicle(
         Sensor('imu', 'body'),
         Sensor('barometer', 'depth'),
         Sensor('imaging_sonar', 'side_scan'),
+        Sensor('ctd', 'ctd'),
     ),
     publishes=(
         Topic('/imu/data', 'sensor_msgs/msg/Imu', ''),
         Topic('/dvl/twist', 'geometry_msgs/msg/TwistWithCovarianceStamped', ''),
         Topic('/depth', 'sensor_msgs/msg/FluidPressure', ''),
         Topic('/tf', 'tf2_msgs/msg/TFMessage', ''),
+        Topic('/ctd', 'sensor_msgs/msg/FluidPressure', ''),
     ),
     subscribes=(
         Topic('/thruster_cmd', 'std_msgs/msg/Float64MultiArray', 'One normalised command in [-1, 1] for the propeller.'),
