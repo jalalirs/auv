@@ -497,6 +497,14 @@ class CoralCityShell(omni.ext.IExt):
         self._meter_the_frame()
 
         if self.tour is not None:
+            # Nothing is photographed until the exposure has settled. A sheet
+            # whose first view was taken two stops darker than its last is not
+            # a sheet: the whole point of holding the same four views of every
+            # place is that what differs between two of them is what somebody
+            # changed, and an exposure drifting through the set makes every
+            # frame differ from every other for no reason.
+            if self._meter is not None and not self._meter.done:
+                return
             self._fly_the_tour(dive)
             return
 
@@ -901,6 +909,16 @@ class CoralCityShell(omni.ext.IExt):
             return
         if self._metering and time.monotonic() - self._metered_at < 2.0:
             return
+        # A meter that never got an answer must not hold a dive open. Ten
+        # seconds is many times what three rounds take, and past it the camera
+        # keeps whatever exposure it was given.
+        if (self._first_frame_at is not None
+                and time.monotonic() - self._first_frame_at > 10.0
+                and self._meter is not None):
+            self._meter.done = True
+            self._meter.why = "gave up waiting for a frame"
+            self._say("metered", **self._meter.report())
+            return
         # Its own clock, not the run's: `began` is when somebody took the
         # controls, and a dive waiting for a pilot would never meter.
         if self._first_frame_at is None:
@@ -914,8 +932,8 @@ class CoralCityShell(omni.ext.IExt):
 
             if self._meter is None:
                 from coral import metering
-                now = carb.settings.get_settings().get("/rtx/post/tonemap/iso")
-                self._meter = metering.Meter(float(now or 800.0))
+                now = carb.settings.get_settings().get("/rtx/post/tonemap/filmIso")
+                self._meter = metering.Meter(float(now or 100.0))
             viewport = get_active_viewport()
             if viewport is None:
                 return
@@ -945,7 +963,7 @@ class CoralCityShell(omni.ext.IExt):
             # callback, which is not the place to be slow.
             wanted = self._meter.read(frame[::4, ::4])
             if wanted is not None:
-                carb.settings.get_settings().set("/rtx/post/tonemap/iso", float(wanted))
+                carb.settings.get_settings().set("/rtx/post/tonemap/filmIso", float(wanted))
             if self._meter.done:
                 self._say("metered", **self._meter.report())
         except Exception as exc:
