@@ -52,7 +52,7 @@ DEFAULT_TYPE = "1C"
 
 # Stamped so a frame can be traced to the code that made it. Bumped by hand
 # whenever this file changes in a way a picture should show.
-BUILD = "water-14"
+BUILD = "water-15"
 
 # The two facts that make the far half of a frame the colour it is.
 #
@@ -239,7 +239,21 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     settings.set("/rtx/directLighting/sampledLighting/samplesPerSurface", 4)
     settings.set("/rtx/directLighting/sampledLighting/maxLightCount", 32)
 
-    settings.set("/rtx/fog/enabled", True)
+    # Clear water, for looking at what is actually on the bottom.
+    #
+    # Not a dive: fifteen metres of visibility is the truth about this water
+    # and it is also a blue wall at any height worth surveying from, so a
+    # picture of the reef itself needs the scattering out of the way. The
+    # seabed, the coral and the light are exactly what a dive gets; what goes
+    # is the medium between them and the camera.
+    if os.environ.get("CORAL_CITY_CLEAR") == "1":
+        settings.set("/rtx/fog/enabled", False)
+        say("water_cleared", why="showing the reef rather than the water over it")
+        _clear = True
+    else:
+        _clear = False
+
+    settings.set("/rtx/fog/enabled", not _clear)
     settings.set("/rtx/fog/fogColor", list(veiling))
     # The fog is added to everything the camera sees, so its strength is how
     # much of the picture is water rather than reef, and where it starts is how
