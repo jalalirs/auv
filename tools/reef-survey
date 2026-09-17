@@ -193,6 +193,7 @@ def main() -> int:
     # reads it. Both live with the place: a published package has to carry
     # everything it is drawn from.
     import corallite
+    import reef
     for form in sorted({f for f in map(reef.corallite_for, kind_of) if f}):
         made = corallite.write(form, place / "textures")
         print(f"  corallites: {form}, {made['corallliteMm']:.1f} mm, "
