@@ -202,10 +202,15 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     #
     # A tenth of the shallow reef was blowing to white while the deep site was
     # a stop under. Both move the same way: a little less sensitivity at the
-    # top of the column, a lot more allowed at the bottom of it. This is still
-    # a formula and it is still the reason a lamp correct at six hundred metres
-    # is wrong at six; metering off what is actually in the frame is the fix
-    # and is its own piece of work.
+    # top of the column, a lot more allowed at the bottom of it.
+    #
+    # This is now a *starting point* and not the answer. coral/metering.py
+    # reads the first few frames of a run and sets the exposure from what is
+    # actually in the picture, then stops; this is where it starts from, which
+    # is worth having good because a meter that starts close converges in one
+    # round instead of three. The reason it could not stay the answer is that
+    # a formula over depth knows nothing about the lamps, which is why a lamp
+    # correct at six hundred metres blew the frame out at six.
     settings.set("/rtx/post/tonemap/iso",
                  float(min(9000.0, 140.0 / max(left, 0.05))))
 
