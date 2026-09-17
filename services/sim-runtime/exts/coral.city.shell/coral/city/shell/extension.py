@@ -886,7 +886,7 @@ class CoralCityShell(omni.ext.IExt):
     # How long to let the renderer settle before believing what it draws. Kit
     # spends the first second or two of a run with the scene half loaded and
     # nothing lit, and a camera metered off that opens all the way and stays.
-    SETTLE_BEFORE_METERING = 2.5
+    SETTLE_BEFORE_METERING = 2.0
 
     def _meter_the_frame(self) -> None:
         """Set the exposure from the picture, a few times, and then leave it."""
@@ -907,13 +907,15 @@ class CoralCityShell(omni.ext.IExt):
                 self._say("settings_unavailable", why=str(exc)[:200])
         if os.environ.get("CORAL_CITY_METER", "1") == "0":
             return
-        if self._metering and time.monotonic() - self._metered_at < 2.0:
+        if self._metering and time.monotonic() - self._metered_at < 1.0:
             return
-        # A meter that never got an answer must not hold a dive open. Ten
-        # seconds is many times what three rounds take, and past it the camera
-        # keeps whatever exposure it was given.
+        # A meter that never got an answer must not hold a dive open. Forty
+        # seconds is several times what three rounds take on a cold scene, and
+        # past it the camera keeps whatever exposure it was given. It was ten,
+        # which a scene still streaming its textures does not fit into: the
+        # meter gave up one round in, a stop short.
         if (self._first_frame_at is not None
-                and time.monotonic() - self._first_frame_at > 10.0
+                and time.monotonic() - self._first_frame_at > 40.0
                 and self._meter is not None):
             self._meter.done = True
             self._meter.why = "gave up waiting for a frame"
