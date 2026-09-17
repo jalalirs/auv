@@ -211,8 +211,21 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     which_kind = which // variants
     turn = rng.uniform(0, 2 * math.pi, how_many)
 
+    # The surface of a coral at the scale of its polyps, and the material that
+    # reads it. Both live with the place: a published package has to carry
+    # everything it is drawn from.
+    import shutil
+
+    import corallite
+    kinds_of = [kinds[i // variants] for i in range(len(prototypes))]
+    for form in sorted({_CORALLITES[k] for k in kinds_of if k in _CORALLITES}):
+        corallite.write(form, where / "textures")
+    shutil.copy(pathlib.Path(__file__).resolve().parent.parent
+                / "catalog" / "materials" / "coral_tissue.mdl",
+                where / "coral_tissue.mdl")
+
     (where / "coral.usda").write_text(
-        _instancer(prototypes, colours, x, y, z, which, scale, turn))
+        _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn))
 
     # How much of the ground this actually covers, square metre by square metre.
     #
@@ -274,9 +287,11 @@ def _triples(values) -> str:
 # `UsdPreviewSurface` has no subsurface term, and coral is translucent tissue
 # over a white aragonite skeleton: light goes in, scatters, and leaves nearby,
 # which is why a living colony looks lit from inside and a dead one looks like
-# a stone. A few per cent of its own colour, emitted, stands in for that. It is
-# a cheat and it is the honest one — the alternative is an MDL material, and
-# until there is one this is the difference between a colony and a painted rock.
+# a stone. A few per cent of its own colour, emitted, stands in for that.
+#
+# There is an MDL material now — catalog/materials/coral_tissue.mdl — and this
+# is what is left for renderers that cannot read one. It is a cheat, and it is
+# the honest cheat: the alternative for those renderers is a painted rock.
 TISSUE_GLOW = 0.055
 
 # Wet, not chalk. Roughness 0.82 is a dry bone; tissue under water is nearer a
@@ -284,20 +299,56 @@ TISSUE_GLOW = 0.055
 # rather than "on a shelf".
 WET = 0.52
 
+# How much tissue is on the skeleton. One is a healthy colony and nought is
+# bare aragonite; a bleached reef is this number falling, which is a thing this
+# platform should be able to show and cannot yet say a measured value for.
+ALIVE = 0.85
 
-def _skins(colours) -> str:
+# And how much light goes through the thin parts. A branch tip and the edge of
+# a plate pass light, and that lit rim is the first thing an eye uses to tell
+# coral from rock.
+THROUGH = 0.30
+
+
+def _skins(colours, forms=None, tile_metres: float = 0.04) -> str:
     """A material per prototype.
 
     A mesh carrying only a display colour gets flat shading, and under a bright
     sun every colony comes out chalk-white — which is what the first reef looked
     like: correct shapes, correct places, and the colour of bone.
+
+    Two materials, not one. `coral_tissue.mdl` is what a renderer that reads
+    MDL gets: translucent tissue over white aragonite, light through the thin
+    parts, corallites at polyp scale, and a stand-in for fluorescence. The
+    preview surface beside it is what everything else gets, and it is the
+    bleached version of the same colony, because a diffuse surface with a
+    colour on it is exactly what a dead skeleton is.
     """
     skins = []
     for i, colour in enumerate(colours):
+        form = None if forms is None else forms[i]
+        corallites = ("" if form is None else
+                      '                asset inputs:corallites = '
+                      '@textures/corallite_%s_normal.png@\n'
+                      '                float inputs:tile_metres = %.4f\n'
+                      % (form, tile_metres))
         skins.append(
             '        def Material "Skin_%d"\n        {\n'
+            "            token outputs:mdl:surface.connect = "
+            "</Coral/Skins/Skin_%d/Tissue.outputs:out>\n"
             "            token outputs:surface.connect = "
             "</Coral/Skins/Skin_%d/Surface.outputs:surface>\n"
+            '            def Shader "Tissue"\n            {\n'
+            '                uniform token info:implementationSource = "sourceAsset"\n'
+            "                uniform asset info:mdl:sourceAsset = @coral_tissue.mdl@\n"
+            '                uniform token info:mdl:sourceAsset:subIdentifier = "coral_tissue"\n'
+            "                color3f inputs:tissue = (%.3g, %.3g, %.3g)\n"
+            "                float inputs:alive = %.3g\n"
+            "                float inputs:through = %.3g\n"
+            "                float inputs:wet = %.3g\n"
+            "%s"
+            "                token outputs:out\n"
+            "            }\n"
             '            def Shader "Surface"\n            {\n'
             '                uniform token info:id = "UsdPreviewSurface"\n'
             "                color3f inputs:diffuseColor = (%.3g, %.3g, %.3g)\n"
@@ -306,13 +357,22 @@ def _skins(colours) -> str:
             "                float inputs:metallic = 0\n"
             "                token outputs:surface\n"
             "            }\n        }\n" % (
-                i, i, colour[0], colour[1], colour[2],
+                i, i, i, colour[0], colour[1], colour[2],
+                ALIVE, THROUGH, WET, corallites,
+                colour[0], colour[1], colour[2],
                 colour[0] * TISSUE_GLOW, colour[1] * TISSUE_GLOW,
                 colour[2] * TISSUE_GLOW, WET))
     return '    def Scope "Skins"\n    {\n%s    }\n' % "".join(skins)
 
 
-def _instancer(prototypes, colours, x, y, z, which, scale, turn) -> str:
+# Which corallite surface each growth form wears. The octocorals are absent on
+# purpose: a sea fan has no corallites at all, its surface is a mesh of
+# spicules with polyps standing off it, and that is a different thing.
+_CORALLITES = {"massive": "massive", "brain": "brain", "branching": "branching",
+               "table": "table", "encrusting": "encrusting", "finger": "finger"}
+
+
+def _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn) -> str:
     """The reef, as one instancer over a handful of grown prototypes."""
     grown = []
     for i, ((points, faces), colour) in enumerate(zip(prototypes, colours)):
@@ -364,7 +424,7 @@ def _instancer(prototypes, colours, x, y, z, which, scale, turn) -> str:
         '    def Scope "Grown"\n'
         "    {%s    }\n"
         "}\n" % (
-            _skins(colours),
+            _skins(colours, [_CORALLITES.get(k) for k in kinds_of]),
             _triples(np.stack([x, y, z], axis=-1)),
             ", ".join(str(int(i)) for i in which),
             _triples(np.stack([scale, scale, scale], axis=-1)),
