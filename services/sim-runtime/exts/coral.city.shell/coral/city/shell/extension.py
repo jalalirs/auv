@@ -999,9 +999,14 @@ class CoralCityShell(omni.ext.IExt):
 
             with Image.open(shot) as picture:
                 # A light meter does not need every pixel, and this runs on the
-                # frame loop.
+                # frame loop. Point sampling, not bilinear: the highlight test
+                # is a percentile, and averaging four pixels into one throws
+                # the bright tail away. Bilinear read this frame's bright end
+                # at 0.85 where it was 0.92, so the meter thought it had a
+                # third of a stop of headroom it did not have and every sheet
+                # came back hot.
                 frame = np.asarray(picture.convert("RGB").resize(
-                    (picture.width // 4, picture.height // 4), Image.BILINEAR))
+                    (picture.width // 3, picture.height // 3), Image.NEAREST))
             self._meter_read += 1
             wanted = self._meter.read(frame)
             if wanted is not None:

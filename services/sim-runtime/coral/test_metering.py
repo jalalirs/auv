@@ -149,3 +149,19 @@ def test_what_it_did_is_on_the_record():
     said = meter.report()
     assert said["from"] == 200.0 and said["iso"] > 200.0
     assert said["middleOfFrame"] is not None and said["aim"] == metering.AIM
+
+
+def test_the_bright_end_survives_being_sampled_down():
+    """A meter reads a smaller copy of the frame, because it runs on the frame
+    loop. Averaging pixels together to make that copy throws the bright tail
+    away: the highlight test is a percentile, and a percentile of an averaged
+    image is not the percentile of the image."""
+    rng = np.random.default_rng(3)
+    frame = rng.uniform(0.1, 0.4, (240, 320, 3)).astype("float32")
+    # A scattering of small specular highlights, as a lamp on wet rock makes.
+    at = rng.integers(0, 240 * 320, 900)
+    frame.reshape(-1, 3)[at] = 0.98
+
+    _, whole = metering.brightness_of(frame)
+    _, sampled = metering.brightness_of(frame[::3, ::3])
+    assert abs(sampled - whole) < 0.1, (sampled, whole)
