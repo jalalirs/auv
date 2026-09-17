@@ -157,11 +157,15 @@ export material coral_tissue(
                 weight: math::saturate(through * alive),
                 layer: df::diffuse_transmission_bsdf(tint: tissue),
                 base: df::diffuse_reflection_bsdf(tint: under)),
-            normal: bumped)
-    ),
-    emission: material_emission(
-        emission: df::diffuse_edf(),
-        intensity: fluoresces * fluorescence * math::saturate(alive)
+            normal: bumped),
+        // Inside the surface, not beside it. `material()` has no `emission`
+        // of its own — its parameters are thin_walled, surface, backface, ior,
+        // volume, geometry and hair — and passing one gets "no overloaded
+        // version of function 'material' matches calling parameters", which
+        // names the line and not the parameter.
+        emission: material_emission(
+            emission: df::diffuse_edf(),
+            intensity: fluoresces * fluorescence * math::saturate(alive))
     ),
     geometry: material_geometry(normal: bumped)
 );
