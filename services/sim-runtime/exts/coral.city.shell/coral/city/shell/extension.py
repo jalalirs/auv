@@ -893,10 +893,15 @@ class CoralCityShell(omni.ext.IExt):
 
     # ── the light meter ──────────────────────────────────────────────────────
 
-    # How long to let the renderer settle before believing what it draws. Kit
-    # spends the first second or two of a run with the scene half loaded and
-    # nothing lit, and a camera metered off that opens all the way and stays.
-    SETTLE_BEFORE_METERING = 2.0
+    # Counted in updates, not in seconds.
+    #
+    # A stills tour over two million triangles gets about four updates in forty
+    # seconds while the scene is still resolving, so every wall-clock budget
+    # here was wrong: two seconds of settling was two updates on one machine
+    # and two hundred on another, and forty seconds to finish was not one round
+    # of metering. The meter now counts what it has actually seen.
+    SETTLE_PASSES = 3
+    MOST_PASSES = 20
 
     def _meter_the_frame(self) -> None:
         """Set the exposure from the picture, a few times, and then leave it.
@@ -928,15 +933,14 @@ class CoralCityShell(omni.ext.IExt):
         if os.environ.get("CORAL_CITY_METER", "1") == "0":
             return
 
-        # Its own clock, not the run's: `began` is when somebody took the
-        # controls, and a dive waiting for a pilot would never meter.
         now = time.monotonic()
-        if self._first_frame_at is None:
-            self._first_frame_at = now
-        if now - self._first_frame_at < self.SETTLE_BEFORE_METERING:
+        # A few updates for the scene to resolve. Kit spends the start of a run
+        # with the scene half loaded and nothing lit, and a camera metered off
+        # that opens all the way and stays there.
+        if self._meter_passes <= self.SETTLE_PASSES:
             return
         # And a meter that never gets an answer must not hold a dive open.
-        if now - self._first_frame_at > 40.0 and self._meter is not None:
+        if self._meter_passes > self.MOST_PASSES and self._meter is not None:
             self._meter.done = True
             self._meter.why = ("gave up: %d passes, asked %d, read %d, last %s"
                                % (self._meter_passes, self._meter_asked,
@@ -961,10 +965,10 @@ class CoralCityShell(omni.ext.IExt):
                     "CORAL_CITY_BRIEF", "/dive/dive.json")).parent / ".metering.png"
 
             if not self._metering:
-                # A frame or two between asking and reading: the capture is
-                # written on a later update and a half-written PNG is a frame
-                # with nothing in it, which a meter reads as darkness and
-                # answers by opening the camera all the way.
+                # An update between asking and reading: the capture is written
+                # on a later one, and a half-written PNG is a frame with
+                # nothing in it — which a meter reads as darkness and answers
+                # by opening the camera all the way.
                 shot.unlink(missing_ok=True)
                 shot.parent.mkdir(parents=True, exist_ok=True)
                 capture_viewport_to_file(viewport, str(shot))
@@ -972,7 +976,7 @@ class CoralCityShell(omni.ext.IExt):
                 self._metered_at = now
                 self._meter_asked += 1
                 return
-            if now - self._metered_at < 0.4:
+            if now - self._metered_at < 0.2:
                 return
             self._metering = False
             self._meter_saw = ("%d bytes" % shot.stat().st_size) if shot.exists() else "no file"
