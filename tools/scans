@@ -109,19 +109,26 @@ def scans_in(row: dict):
                 break
 
 
-def a_name(form: str, genus: str, title: str, filename: str) -> str:
-    """What to call the file, so that tools/scanned.py can tell what it is.
+def a_name(title: str, filename: str) -> str:
+    """What to call the file: the catalogue number and what the museum calls it.
 
-    The genus is in the name on purpose. scanned.py reads growth form off the
-    filename, and a file called `model_4.glb` is a specimen nobody can identify
-    and so nobody should be planting on a reef as though they could.
+    Named from the record's own title and not from the genus that was searched
+    for, because those disagree often and the museum is right. Searching
+    "acropora" turns up *Madrepora horrida* through synonymy, and filing it as
+    `acropora_madrepora` asserts an identification nobody made. The first pass
+    also took the first long word of the title as the species, which turned
+    "Astraea (Orbicella) coronata" into `orbicella_astraea`.
+
+    A file called `model_4.glb` is a specimen nobody can identify and so nobody
+    should be planting on a reef as though they could; which growth form it is
+    lives in scans.json beside it.
     """
     catalogue = re.match(r"([A-Za-z]+_?\d+[a-z]?)", filename)
     stem = (catalogue.group(1) if catalogue else filename.split("-")[0]).lower()
-    words = re.sub(r"[^a-z ]", " ", title.lower()).split()
-    species = next((w for w in words if w not in (genus, "and", "the")
-                    and len(w) > 3 and w != form), "")
-    return "_".join(x for x in (stem, genus, species) if x) + ".glb"
+    # Parentheses hold the genus a name was moved out of, which is worth
+    # keeping and is not part of the binomial.
+    said = re.sub(r"[^a-z ]", " ", title.lower()).split()
+    return "_".join([stem] + [w for w in said if len(w) > 2][:3]) + ".glb"
 
 
 def main() -> int:
@@ -164,7 +171,7 @@ def main() -> int:
             print(f"{form}: {len(have)} already here")
             continue
 
-        found = []
+        found, already = [], set()
         for genus in WANTED[form]:
             question = f"{genus} AND online_visual_material:true"
             if question in seen:
@@ -188,6 +195,16 @@ def main() -> int:
                 cache.write_text(json.dumps(seen))
                 time.sleep(2)
             for row in rows:
+                # One specimen, once. Searching several genera for one growth
+                # form turns the same record up more than once through
+                # synonymy: USNM 58 came back under both orbicella and
+                # montastraea, and a reef standing three copies of one museum
+                # piece is worse than a reef standing one, because it looks
+                # like variation.
+                package = row["scans"][0].get("package") or row["id"]
+                if package in already:
+                    continue
+                already.add(package)
                 found.append((genus, row))
 
         print(f"{form}: {len(found)} scans over {len(WANTED[form])} genera")
@@ -200,19 +217,32 @@ def main() -> int:
             if len(have) + taken >= asked.how_many:
                 break
             scan = row["scans"][0]
-            name = a_name(form, genus, row["title"], scan["filename"])
-            if name in record and (assets / name).is_file():
+            name = a_name(row["title"], scan["filename"])
+            if any(d.get("package") == scan["package"] and (assets / n).is_file()
+                   for n, d in record.items()):
                 continue
             print(f"    {name}  {scan['bytes'] / 1e6:.1f} MB  {row['title']}")
             if asked.dry_run:
                 taken += 1
                 continue
             assets.mkdir(parents=True, exist_ok=True)
-            try:
-                with urllib.request.urlopen(scan["url"], timeout=300) as answer:
-                    (assets / name).write_bytes(answer.read())
-            except (urllib.error.URLError, TimeoutError) as bad:
-                print(f"      could not fetch it: {bad}", file=sys.stderr)
+            # Twice, because 3d-api.si.edu drops a connection now and then and
+            # one dropped connection was the difference between having a real
+            # Acropora and having none.
+            for go in range(2):
+                try:
+                    with urllib.request.urlopen(scan["url"], timeout=600) as answer:
+                        (assets / name).write_bytes(answer.read())
+                    break
+                except (urllib.error.URLError, TimeoutError, OSError) as bad:
+                    print(f"      could not fetch it: {bad}", file=sys.stderr)
+                    (assets / name).unlink(missing_ok=True)
+                    if go:
+                        break
+                    time.sleep(5)
+            else:
+                continue
+            if not (assets / name).is_file():
                 continue
             record[name] = {"form": form, "genus": genus, "title": row["title"],
                             "edan": row["id"], "package": scan["package"],

@@ -242,27 +242,51 @@ def as_a_colony(path: pathlib.Path, size: float, most: int = 6000):
 
 
 def found_in(reference: pathlib.Path) -> dict:
-    """Which kinds have a scan, from a reference directory's assets.
+    """Which growth forms have scans, and all of the scans of each.
 
-    Named by what the file says it is. A specimen nobody can identify is a
-    specimen nobody should be placing on a reef as though they could.
+    A list per form, not one. Twelve specimens over five growth forms means
+    three different Acropora standing on a reef instead of three copies of one,
+    and three copies of one is worse than a blob: it looks like variation.
+
+    Read off `scans.json` where tools/scans wrote one, because that is the
+    record and it says what each specimen is. Falling back to the genus in the
+    filename is for a specimen somebody put there by hand.
     """
     assets = reference / "assets"
     if not assets.is_dir():
         return {}
+
+    found: dict[str, list[pathlib.Path]] = {}
+    said = reference / "scans.json"
+    if said.is_file():
+        try:
+            record = json.loads(said.read_text()).get("specimens", {})
+        except (ValueError, OSError):
+            record = {}
+        for name, about in sorted(record.items()):
+            here = assets / name
+            form = about.get("form")
+            if form and here.is_file():
+                found.setdefault(form, []).append(here)
+        if found:
+            return found
+
     # Which growth form each genus takes. Only genera somebody has actually
     # scanned appear here, and each is what a reef scientist would call it.
     forms = {
         "orbicella": "massive", "montastraea": "massive", "porites": "massive",
+        "astraea": "massive",
         "siderastrea": "brain", "diploria": "brain", "colpophyllia": "brain",
+        "pseudodiploria": "brain",
         "acropora": "branching", "pocillopora": "branching",
+        "stylophora": "branching", "madrepora": "branching",
         "millepora": "encrusting", "agaricia": "table",
+        "turbinaria": "table", "leptoseris": "table",
     }
-    found: dict[str, pathlib.Path] = {}
     for one in sorted(assets.glob("*.glb")):
         name = one.stem.lower()
         for genus, form in forms.items():
             if genus in name:
-                found.setdefault(form, one)
+                found.setdefault(form, []).append(one)
                 break
     return found
