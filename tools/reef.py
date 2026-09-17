@@ -111,18 +111,25 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
                 prototypes.append(coral.grow_one(kind, rng, size))
             colours.append(coral.a_colour(rng, kind))
 
+    # Measured on what is above the seabed. A scan keeps its buried base, which
+    # is wider than the colony that grows out of it; counting that as covered
+    # ground would have the reef hit its cover target with fewer colonies than
+    # the survey saw.
     footprint = np.zeros(len(prototypes))
     for i, (points, _) in enumerate(prototypes):
         if len(points):
-            width = float(np.ptp(points[:, 0]))
-            breadth = float(np.ptp(points[:, 1]))
+            up = points[points[:, 2] >= 0.0]
+            if len(up) < 3:
+                up = points
+            width = float(np.ptp(up[:, 0]))
+            breadth = float(np.ptp(up[:, 1]))
             footprint[i] = (np.pi * (width / 2) * (breadth / 2)
                             * solidity[kinds[i // variants]])
 
     # Capped on how tall it stands, not how wide it is. A sea fan is a metre
     # and a half of height on a thirty centimetre footprint, and capping its
     # width lets it grow to three metres tall on a reef crest.
-    widths = np.array([max(1e-3, float(np.ptp(points[:, 2])))
+    widths = np.array([max(1e-3, float(points[:, 2].max()))
                        for points, _ in prototypes])
     kind_scale = np.array([per_kind[k] for k in kinds])
 

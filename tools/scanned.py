@@ -145,13 +145,75 @@ def _weld(points: np.ndarray, faces: np.ndarray, widest: float, cells: int):
     return welded[used], renumber[kept]
 
 
+def where_the_ground_is(points: np.ndarray) -> float:
+    """How much of a specimen is base rather than colony.
+
+    A museum scan is of a piece somebody broke off a reef and stood on a table.
+    The USNM Orbicella is a third pedestal by height: a skirt of near constant
+    radius from its underside up to a sharp step, and above that the dome. Put
+    the lowest point of it on the seabed and you get a coral standing on a
+    plinth, which is what the first render showed and what nobody has ever seen
+    on a reef.
+
+    So find the step. Slice the specimen in z, take the radius of each slice,
+    and look in the lower half for the place where the radius falls away
+    sharply. That is the top of the base, and the seabed goes there: everything
+    below it is buried, which is where the underside of a coral head is.
+
+    Returns the z of the ground, or the lowest point where there is no step,
+    which is the answer for a specimen that was not mounted.
+    """
+    tall = float(points[:, 2].max() - points[:, 2].min())
+    if tall <= 1e-9:
+        return float(points[:, 2].min())
+    low = float(points[:, 2].min())
+    edges = np.linspace(low, low + tall, 25)
+    middle = 0.5 * (edges[:-1] + edges[1:])
+    radius = np.full(len(middle), np.nan)
+    from_centre = np.hypot(points[:, 0] - points[:, 0].mean(),
+                           points[:, 1] - points[:, 1].mean())
+    for i in range(len(middle)):
+        inside = (points[:, 2] >= edges[i]) & (points[:, 2] < edges[i + 1])
+        if inside.sum() >= 8:
+            radius[i] = np.percentile(from_centre[inside], 95)
+    if np.isnan(radius).all():
+        return low
+
+    # Only the lower half can be a base. A narrowing in the upper half is the
+    # dome doing what a dome does.
+    #
+    # Measured across two slices rather than one. A photogrammetric step is not
+    # a cliff: on this specimen it falls over about a tenth of the height, and
+    # a single-slice test reads that as two gentle tapers and finds nothing.
+    widest = float(np.nanmax(radius))
+    half = len(middle) // 2
+    drop, at = 0.0, None
+    for i in range(1, half):
+        if np.isnan(radius[i - 1]) or np.isnan(radius[min(i + 1, len(radius) - 1)]):
+            continue
+        fell = (radius[i - 1] - radius[i + 1]) / max(widest, 1e-9)
+        if fell > drop:
+            drop, at = fell, i
+    # A seventh of the width over a twelfth of the height is a step, not a
+    # taper. Below that there is no pedestal and the specimen sits on its own
+    # underside, which is the right answer for most scans.
+    if at is None or drop < 0.15:
+        return low
+    # And never bury most of a colony on the strength of one measurement.
+    return float(min(edges[at], low + 0.45 * tall))
+
+
 def as_a_colony(path: pathlib.Path, size: float, most: int = 6000):
     """One scan, ready to stand on a seabed at about `size` metres across.
 
     Museum scans arrive in whatever units and whatever orientation the scanner
-    had. So: centred on its own footprint, sat with its lowest point at zero,
-    and scaled to the size the reef asked for — which is the size the survey
-    said, not the size the specimen happened to be.
+    had. So: centred on its own footprint, scaled to the size the reef asked
+    for (which is the size the survey said, not the size the specimen happened
+    to be), and sat with the seabed at z = 0.
+
+    Points below zero come back with the rest. They are the buried base, and a
+    caller that plants this at the height of the floor gets a colony growing
+    out of the ground rather than resting on it.
     """
     points, faces = read_glb(path)
     points, faces = simplify(points, faces, most)
@@ -159,11 +221,19 @@ def as_a_colony(path: pathlib.Path, size: float, most: int = 6000):
     # glTF is Y-up; this platform is Z-up.
     points = np.column_stack([points[:, 0], -points[:, 2], points[:, 1]])
 
-    span = np.ptp(points[:, :2], axis=0).max()
+    ground = where_the_ground_is(points)
+    points[:, 2] -= ground
+
+    # Measured on what is above the ground, because what is above the ground is
+    # the colony. Measuring the pedestal instead would make every colony read
+    # narrower than the survey said it was.
+    showing = points[:, 2] >= 0.0
+    span = np.ptp(points[showing, :2], axis=0).max() if showing.sum() > 2 \
+        else np.ptp(points[:, :2], axis=0).max()
     if span > 1e-9:
         points = points * (float(size) / float(span))
-    points[:, :2] -= points[:, :2].mean(axis=0)
-    points[:, 2] -= points[:, 2].min()
+    points[:, :2] -= points[showing, :2].mean(axis=0) if showing.sum() > 2 \
+        else points[:, :2].mean(axis=0)
     return points, faces
 
 
