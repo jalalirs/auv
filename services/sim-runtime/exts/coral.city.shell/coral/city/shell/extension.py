@@ -132,6 +132,8 @@ class CoralCityShell(omni.ext.IExt):
         self._said_settings = False
         self._meter_asked = 0
         self._meter_read = 0
+        self._meter_passes = 0
+        self._meter_saw = ""
         self._aim = None
         self._basis = None
         self._eye = None
@@ -909,6 +911,7 @@ class CoralCityShell(omni.ext.IExt):
         """
         if self._meter is not None and self._meter.done:
             return
+        self._meter_passes += 1
         if os.environ.get("CORAL_CITY_SETTINGS") == "1" and not self._said_settings:
             # Late, and on purpose. Asked at dive open, the renderer has not
             # started and every /rtx key is one this code invented; asked from
@@ -935,8 +938,9 @@ class CoralCityShell(omni.ext.IExt):
         # And a meter that never gets an answer must not hold a dive open.
         if now - self._first_frame_at > 40.0 and self._meter is not None:
             self._meter.done = True
-            self._meter.why = ("gave up: asked %d, read %d"
-                               % (self._meter_asked, self._meter_read))
+            self._meter.why = ("gave up: %d passes, asked %d, read %d, last %s"
+                               % (self._meter_passes, self._meter_asked,
+                                  self._meter_read, self._meter_saw or "nothing"))
             self._say("metered", **self._meter.report())
             return
 
@@ -971,6 +975,7 @@ class CoralCityShell(omni.ext.IExt):
             if now - self._metered_at < 0.4:
                 return
             self._metering = False
+            self._meter_saw = ("%d bytes" % shot.stat().st_size) if shot.exists() else "no file"
             if not shot.exists() or shot.stat().st_size < 1024:
                 return
 
