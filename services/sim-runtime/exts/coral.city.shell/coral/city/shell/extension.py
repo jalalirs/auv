@@ -129,6 +129,7 @@ class CoralCityShell(omni.ext.IExt):
         self._metering = False
         self._metered_at = 0.0
         self._first_frame_at = None
+        self._said_settings = False
         self._aim = None
         self._basis = None
         self._eye = None
@@ -883,6 +884,19 @@ class CoralCityShell(omni.ext.IExt):
         """Set the exposure from the picture, a few times, and then leave it."""
         if self._meter is not None and self._meter.done:
             return
+        if os.environ.get("CORAL_CITY_SETTINGS") == "1" and not self._said_settings:
+            # Late, and on purpose. Asked at dive open, the renderer has not
+            # started and every /rtx key is one this code invented; asked from
+            # the frame loop, it is what the renderer actually has.
+            self._said_settings = True
+            try:
+                import carb
+
+                from coral import water
+                water._say_what_the_renderer_has(
+                    carb.settings.get_settings(), self._say, "/rtx")
+            except Exception as exc:
+                self._say("settings_unavailable", why=str(exc)[:200])
         if os.environ.get("CORAL_CITY_METER", "1") == "0":
             return
         if self._metering and time.monotonic() - self._metered_at < 2.0:
