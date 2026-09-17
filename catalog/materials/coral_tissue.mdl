@@ -1,0 +1,167 @@
+/*
+ * Living coral: tissue over aragonite.
+ *
+ * A coral is not a coloured stone, and `UsdPreviewSurface` can only make it
+ * one. Three things it cannot express, and they are most of the difference
+ * between a photograph of a reef and a render of one:
+ *
+ *   **Light goes into it.** A polyp's tissue is a translucent film a
+ *   millimetre thick over a skeleton of white aragonite. Light enters, scatters
+ *   in the white, and comes back out through the colour, which is why living
+ *   coral glows from inside and a bleached head — the same skeleton with the
+ *   tissue gone — is flat chalk. A diffuse surface with a colour on it is the
+ *   bleached one.
+ *
+ *   **Some of it is lit from behind.** A branch tip or the edge of a plate is
+ *   thin enough to pass light, and that rim is the first thing an eye uses to
+ *   tell coral from rock.
+ *
+ *   **It fluoresces.** Reef corals carry GFP-like proteins that absorb blue
+ *   and re-emit green and orange. Ten metres down, where most of what is left
+ *   is blue, that re-emission is a large part of what a camera records, and
+ *   it is most of why reef footage looks the way it does.
+ *
+ * On the fluorescence, plainly: this is **not** a fluorescence model. A real
+ * one re-emits in proportion to the blue light arriving, and a material here
+ * cannot ask what light is arriving. What this does is add emission of the
+ * fluorescent colour at a strength somebody sets, and the thing that sets it
+ * is the water: `coral/water.py` knows how blue-shifted the light is at a
+ * given depth, so the strength is driven from there and it rises with depth
+ * for the right reason even though the mechanism is faked. Anything stronger
+ * than that claim is not supported by what is here.
+ *
+ * The corallites come from tools/corallite.py, projected triplanar in world
+ * space. Triplanar because the prototypes have no texture coordinates at all
+ * and unwrapping a blob would give seams down every colony; world space
+ * because then a corallite is two and a half millimetres on a colony of any
+ * size, which is what a corallite is.
+ */
+
+mdl 1.7;
+
+import ::anno::*;
+import ::base::*;
+import ::df::*;
+import ::math::*;
+import ::state::*;
+import ::tex::*;
+
+export material coral_tissue(
+    uniform color tissue = color(0.72, 0.58, 0.22)
+    [[
+        anno::display_name("Tissue colour"),
+        anno::description("From the photographs of the place, not from a "
+                          "museum specimen: a dry skeleton is the colour of "
+                          "bone."),
+        anno::in_group("Tissue")
+    ]],
+    uniform color aragonite = color(0.88, 0.87, 0.84)
+    [[
+        anno::display_name("Skeleton"),
+        anno::description("What is under the tissue, and what is left when it "
+                          "dies. Near white, and never quite white."),
+        anno::in_group("Tissue")
+    ]],
+    uniform float alive = 0.85
+    [[
+        anno::display_name("How much tissue"),
+        anno::description("One is a healthy colony, nought is bare skeleton. "
+                          "Between them is what a bleaching looks like."),
+        anno::in_group("Tissue")
+    ]],
+    uniform float through = 0.30
+    [[
+        anno::display_name("How much light passes"),
+        anno::description("What makes a branch tip and the edge of a plate "
+                          "glow when the light is behind them."),
+        anno::in_group("Tissue")
+    ]],
+
+    uniform color fluoresces = color(0.30, 1.0, 0.45)
+    [[
+        anno::display_name("Fluorescent colour"),
+        anno::description("GFP-like: green, and orange in some genera."),
+        anno::in_group("Fluorescence")
+    ]],
+    uniform float fluorescence = 0.0
+    [[
+        anno::display_name("How much fluorescence"),
+        anno::description("Set from the water: how blue-shifted the light is "
+                          "at this depth. Nought at the surface. This is not a "
+                          "fluorescence model, it is emission at a strength "
+                          "something else decided; see the note at the top."),
+        anno::in_group("Fluorescence")
+    ]],
+
+    uniform texture_2d corallites = texture_2d()
+    [[
+        anno::display_name("Corallites"),
+        anno::description("A normal map of the surface at polyp scale, from "
+                          "tools/corallite.py."),
+        anno::in_group("Corallites")
+    ]],
+    uniform float tile_metres = 0.04
+    [[
+        anno::display_name("What one tile covers"),
+        anno::description("In metres of the world, so a corallite is the size "
+                          "a corallite is however big the colony is."),
+        anno::in_group("Corallites")
+    ]],
+    uniform float relief = 1.0
+    [[ anno::display_name("How much relief"), anno::in_group("Corallites") ]],
+
+    uniform float wet = 0.42
+    [[
+        anno::display_name("Roughness"),
+        anno::description("Coral tissue underwater is wet by definition and "
+                          "still not a mirror."),
+        anno::in_group("Tissue")
+    ]]
+)
+[[
+    anno::display_name("Coral City living coral"),
+    anno::description("Translucent tissue over white aragonite, with "
+                      "corallites and a stand-in for fluorescence.")
+]]
+= let {
+    // Triplanar, in metres of the world. The prototypes carry no texture
+    // coordinates and a blob has no good unwrapping; this needs neither.
+    base::texture_coordinate_info here = base::coordinate_projection(
+        coordinate_system: base::texture_coordinate_world,
+        texture_space: 0,
+        projection_type: base::projection_tri_planar,
+        projection_transform: base::rotation_translation_scale(
+            scaling: float3(1.0 / math::max(tile_metres, 0.001))));
+
+    float3 bumped = base::tangent_space_normal_texture(
+        texture: corallites, factor: relief, uvw: here, flip_tangent_v: true);
+
+    // What comes back out. Light that goes into the tissue scatters in the
+    // white skeleton and leaves through the colour, so the colour it leaves
+    // with is between the two and never darker than the tissue alone.
+    color under = math::lerp(aragonite, tissue * aragonite * 1.6,
+                             math::saturate(alive));
+} in material(
+    surface: material_surface(
+        // Wet, so there is a sheen on it, and more of one at a grazing angle:
+        // the first thing you see on a reef at distance is the specular off
+        // the tops of the colonies.
+        scattering: df::custom_curve_layer(
+            normal_reflectivity: 0.02,
+            grazing_reflectivity: 0.30,
+            layer: df::microfacet_ggx_smith_bsdf(
+                roughness_u: wet * wet, roughness_v: wet * wet),
+            // Some of the light passes through rather than bouncing off,
+            // which is what lights a branch tip from behind.
+            base: df::weighted_layer(
+                weight: math::saturate(through * alive),
+                layer: df::diffuse_transmission_bsdf(tint: tissue),
+                base: df::diffuse_reflection_bsdf(tint: under)),
+            normal: bumped)
+    ),
+    emission: material_emission(
+        emission: df::diffuse_edf(),
+        intensity: fluoresces * fluorescence * math::saturate(alive)
+    ),
+    geometry: material_geometry(normal: bumped)
+);

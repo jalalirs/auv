@@ -146,14 +146,16 @@ def main() -> int:
     # piece would be as wrong as sixty thousand blobs, in a way that is harder
     # to notice.
     prototypes, colours, index, scans = [], [], {}, 0
+    kind_of = []
     for kind in KINDS:
         scan = from_a_scan(kind, ref)
         for s, shade in enumerate(SHADES):
-            forms = [grow(kind, rng)] + ([scan] if scan is not None else [])
+            shapes = [grow(kind, rng)] + ([scan] if scan is not None else [])
             index[(kind, s)] = []
-            for form in forms:
+            for shape in shapes:
                 index[(kind, s)].append(len(prototypes))
-                prototypes.append(form)
+                prototypes.append(shape)
+                kind_of.append(kind)
                 colours.append(tuple(min(1.0, c * shade) for c in HUE[kind]))
             scans += scan is not None
     print(f"  prototypes: {len(prototypes)} over {len(KINDS)} kinds, "
@@ -187,7 +189,21 @@ def main() -> int:
     z = _floor(heights, across, x, y) - 0.02          # a little into the ground, no floating bases
     turn = rng.uniform(0, 2 * math.pi, len(colonies))
 
-    (place / "coral.usda").write_text(_instancer(prototypes, colours, x, y, z, which, sx, sz, turn))
+    # The surface of a coral at the scale of its polyps, and the material that
+    # reads it. Both live with the place: a published package has to carry
+    # everything it is drawn from.
+    import corallite
+    forms = [CORALLITES.get(kind) for kind in kind_of]
+    for form in sorted({f for f in forms if f}):
+        made = corallite.write(form, place / "textures")
+        print(f"  corallites: {form}, {made['corallliteMm']:.1f} mm, "
+              f"{made['reliefMm']:.2f} mm of relief ({made['says']})")
+    shutil.copy(pathlib.Path(__file__).resolve().parent.parent
+                / "catalog" / "materials" / "coral_tissue.mdl",
+                place / "coral_tissue.mdl")
+
+    (place / "coral.usda").write_text(
+        _instancer(prototypes, colours, forms, x, y, z, which, sx, sz, turn))
     size = (place / "coral.usda").stat().st_size
     print(f"  coral.usda: {len(prototypes)} prototypes, {len(colonies):,} instances, {size / 1e6:.1f} MB")
 
@@ -258,7 +274,18 @@ def _begin(x, y, depth, band, across):
             "depthM": round(-floor, 1), "colonies": int(smooth[r, c])}
 
 
-def _instancer(prototypes, colours, x, y, z, which, sx, sz, turn) -> str:
+# Which corallite surface each of this file's kinds wears. tools/corallite.py
+# knows the growth forms; these are the kinds tools/benthos reports.
+#
+# "low" is on this list as a massive coral and it is the least certain thing
+# here: benthos calls a low grey lump "low" precisely because it cannot tell
+# rock from Siderastrea. Corallites on rock is wrong; smooth rock where there
+# is a Siderastrea is also wrong, and of the two this one is wrong at a
+# millimetre rather than at a metre.
+CORALLITES = {"low": "massive", "stony": "massive", "head": "brain"}
+
+
+def _instancer(prototypes, colours, forms, x, y, z, which, sx, sz, turn) -> str:
     """The reef as one point instancer, in the shape the runtime already draws."""
     import numpy as np
 
@@ -294,7 +321,7 @@ def _instancer(prototypes, colours, x, y, z, which, sx, sz, turn) -> str:
         "    point3f[] positions = [%s]\n    int[] protoIndices = [%s]\n"
         "    float3[] scales = [%s]\n    quath[] orientations = [%s]\n"
         "    rel prototypes = [%s]\n\n    def Scope \"Grown\"\n    {%s    }\n}\n" % (
-            reef._skins(colours),
+            reef._skins(colours, forms),
             reef._triples(np.stack([x, y, z], -1)),
             ", ".join(str(int(i)) for i in which),
             reef._triples(np.stack([sx, sx, sz], -1)),
