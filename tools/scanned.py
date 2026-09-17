@@ -199,6 +199,10 @@ def where_the_ground_is(points: np.ndarray) -> float:
     # underside, which is the right answer for most scans.
     if at is None or drop < 0.15:
         return low
+    # The top of the step, not its foot. A photogrammetric step has a flange:
+    # the wide base overhangs the dome, and cutting at the foot leaves that
+    # flange standing proud of the seabed as a lip nothing on a reef has.
+    at = min(at + 1, len(edges) - 1)
     # And never bury most of a colony on the strength of one measurement.
     return float(min(edges[at], low + 0.45 * tall))
 
