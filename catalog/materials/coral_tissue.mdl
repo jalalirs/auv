@@ -79,13 +79,16 @@ export material coral_tissue(
                           "so a massive coral given it just goes dark."),
         anno::in_group("Tissue")
     ]],
-    uniform float scatter = 0.35
+    uniform float scatter = 0.15
     [[
         anno::display_name("How much the skeleton lifts the colour"),
         anno::description("Light scattering in the white aragonite under the "
                           "tissue and leaving through the colour again. This "
                           "is the subsurface term, and it brightens without "
-                          "desaturating."),
+                          "desaturating. Small: it is a millimetre of tissue, "
+                          "and at 0.35 it lifted a colony a third of a stop, "
+                          "which on a reef already reading pale is the wrong "
+                          "direction."),
         anno::in_group("Tissue")
     ]],
 
