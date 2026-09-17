@@ -218,7 +218,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
 
     import corallite
     kinds_of = [kinds[i // variants] for i in range(len(prototypes))]
-    for form in sorted({_CORALLITES[k] for k in kinds_of if k in _CORALLITES}):
+    for form in sorted({f for f in map(corallite_for, kinds_of) if f}):
         corallite.write(form, where / "textures")
     shutil.copy(pathlib.Path(__file__).resolve().parent.parent
                 / "catalog" / "materials" / "coral_tissue.mdl",
@@ -302,15 +302,32 @@ WET = 0.52
 # How much tissue is on the skeleton. One is a healthy colony and nought is
 # bare aragonite; a bleached reef is this number falling, which is a thing this
 # platform should be able to show and cannot yet say a measured value for.
-ALIVE = 0.85
+#
+# What is left of the mix at 0.85 is fifteen per cent bare skeleton over the
+# whole colony, and against a tissue colour of 0.26 that is enough grey to
+# read as a washed-out colony rather than a living one.
+ALIVE = 0.94
 
-# And how much light goes through the thin parts. A branch tip and the edge of
-# a plate pass light, and that lit rim is the first thing an eye uses to tell
-# coral from rock.
-THROUGH = 0.30
+# And how much light goes right through, per growth form, because it is a
+# property of the shape and not of coral.
+#
+# A branch tip and the edge of a plate pass light, and that lit rim is the
+# first thing an eye uses to tell coral from rock. A boulder passes none: it
+# is thirty centimetres of aragonite. Giving a boulder transmission on a closed
+# mesh does not make it glow, it makes the bright sand behind it come through,
+# and an olive colony rendered as a pale grey pebble — which is what the first
+# pass did, and is the bleached look this material exists to stop.
+# The names are both vocabularies: the growth forms tools/reef.py grows, and
+# the kinds tools/benthos reports off a survey, which are what a photogrammetric
+# DEM can actually distinguish.
+THROUGH = {"massive": 0.0, "brain": 0.0, "encrusting": 0.05,
+           "finger": 0.12, "branching": 0.30, "table": 0.35,
+           "fan": 0.45, "plume": 0.40, "sponge": 0.10, "rubble": 0.0,
+           "low": 0.0, "stony": 0.0, "head": 0.0}
+THROUGH_BY_DEFAULT = 0.0
 
 
-def _skins(colours, forms=None, tile_metres: float = 0.04) -> str:
+def _skins(colours, kinds=None, tile_metres: float = 0.04) -> str:
     """A material per prototype.
 
     A mesh carrying only a display colour gets flat shading, and under a bright
@@ -326,7 +343,8 @@ def _skins(colours, forms=None, tile_metres: float = 0.04) -> str:
     """
     skins = []
     for i, colour in enumerate(colours):
-        form = None if forms is None else forms[i]
+        kind = None if kinds is None else kinds[i]
+        form = _CORALLITES.get(kind)
         corallites = ("" if form is None else
                       '                asset inputs:corallites = '
                       '@textures/corallite_%s_normal.png@\n'
@@ -358,18 +376,30 @@ def _skins(colours, forms=None, tile_metres: float = 0.04) -> str:
             "                token outputs:surface\n"
             "            }\n        }\n" % (
                 i, i, i, colour[0], colour[1], colour[2],
-                ALIVE, THROUGH, WET, corallites,
+                ALIVE, THROUGH.get(kind, THROUGH_BY_DEFAULT), WET, corallites,
                 colour[0], colour[1], colour[2],
                 colour[0] * TISSUE_GLOW, colour[1] * TISSUE_GLOW,
                 colour[2] * TISSUE_GLOW, WET))
     return '    def Scope "Skins"\n    {\n%s    }\n' % "".join(skins)
 
 
-# Which corallite surface each growth form wears. The octocorals are absent on
+# Which corallite surface each kind wears. The octocorals are absent on
 # purpose: a sea fan has no corallites at all, its surface is a mesh of
 # spicules with polyps standing off it, and that is a different thing.
+#
+# "low" is a massive coral here and it is the least certain entry: tools/benthos
+# calls a low grey lump "low" precisely because it cannot tell rock from
+# Siderastrea. Corallites on rock is wrong; a smooth dome where there is a
+# Siderastrea is also wrong, and of the two this one is wrong at a millimetre
+# rather than at a metre.
 _CORALLITES = {"massive": "massive", "brain": "brain", "branching": "branching",
-               "table": "table", "encrusting": "encrusting", "finger": "finger"}
+               "table": "table", "encrusting": "encrusting", "finger": "finger",
+               "low": "massive", "stony": "massive", "head": "brain"}
+
+
+def corallite_for(kind):
+    """The corallite surface a kind wears, or None where nobody has one."""
+    return _CORALLITES.get(kind)
 
 
 def _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn) -> str:
@@ -424,7 +454,7 @@ def _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn) -> st
         '    def Scope "Grown"\n'
         "    {%s    }\n"
         "}\n" % (
-            _skins(colours, [_CORALLITES.get(k) for k in kinds_of]),
+            _skins(colours, kinds_of),
             _triples(np.stack([x, y, z], axis=-1)),
             ", ".join(str(int(i)) for i in which),
             _triples(np.stack([scale, scale, scale], axis=-1)),
