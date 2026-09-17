@@ -497,14 +497,6 @@ class CoralCityShell(omni.ext.IExt):
         self._meter_the_frame()
 
         if self.tour is not None:
-            # Nothing is photographed until the exposure has settled. A sheet
-            # whose first view was taken two stops darker than its last is not
-            # a sheet: the whole point of holding the same four views of every
-            # place is that what differs between two of them is what somebody
-            # changed, and an exposure drifting through the set makes every
-            # frame differ from every other for no reason.
-            if self._meter is not None and not self._meter.done:
-                return
             self._fly_the_tour(dive)
             return
 
@@ -801,6 +793,20 @@ class CoralCityShell(omni.ext.IExt):
             # frames.
             dive.stir()
             self.tour.place(dive.stage, viewport)
+
+            # Nothing is photographed until the exposure has settled, and the
+            # tour keeps flying while it settles rather than stopping for it.
+            # Stopped, the viewport has nothing to draw and the meter's next
+            # capture never arrives — the first attempt at this deadlocked and
+            # came out one read in, a stop short of where it was going.
+            #
+            # A sheet whose first view was taken two stops darker than its last
+            # is not a sheet. The point of holding the same four views of every
+            # place is that what differs between two of them is what somebody
+            # changed, and an exposure drifting through the set makes every
+            # frame differ from every other for no reason at all.
+            if self._meter is not None and not self._meter.done:
+                return
 
             # A rung of the ladder needs a frame or two for the setting to
             # reach the picture; only the last of them is worth keeping.
