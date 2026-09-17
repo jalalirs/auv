@@ -188,18 +188,30 @@ GROUND_MATERIAL = """
                 uniform token info:mdl:sourceAsset:subIdentifier = "coral_ground"
 
                 asset inputs:site_colour = @textures/site_colour.jpg@
-                asset inputs:detail_colour = @textures/seabed_colour.jpg@
-                asset inputs:detail_normal = @textures/seabed_normal.jpg@
-                asset inputs:detail_rough = @textures/seabed_rough.jpg@
+                asset inputs:hardness = @textures/hardness.png@
+
+                # %(soft)s, in the grooves and the sediment.
+                asset inputs:soft_colour = @textures/soft_colour.jpg@
+                asset inputs:soft_normal = @textures/soft_normal.jpg@
+                asset inputs:soft_rough = @textures/soft_rough.jpg@
+                asset inputs:soft_height = @textures/soft_disp.jpg@
+                color3f inputs:soft_average = (%(soft_average)s)
+
+                # %(hard)s, on the spurs and the pavement.
+                asset inputs:hard_colour = @textures/hard_colour.jpg@
+                asset inputs:hard_normal = @textures/hard_normal.jpg@
+                asset inputs:hard_rough = @textures/hard_rough.jpg@
+                asset inputs:hard_height = @textures/hard_disp.jpg@
+                color3f inputs:hard_average = (%(hard_average)s)
 
                 # %(tile).0f metres a repeat over %(across).0f. The eye finds a
                 # period long before it stops seeing the grain, and once it has
                 # found one that is all it sees.
                 float inputs:repeats = %(repeats).4f
-                color3f inputs:detail_average = (%(average)s)
                 float inputs:grain = %(grain).2f
                 float inputs:relief = %(relief).2f
                 float inputs:lift = %(lift).3f
+                float inputs:blend_depth = 0.12
                 token outputs:out
             }
 
@@ -254,16 +266,39 @@ UNTEXTURED_MATERIAL = """
 """
 
 
-def fetch_texture(where: pathlib.Path, name: str) -> bool:
+# What the two surfaces of a reef are, in the CC0 library that has them.
+#
+# Not a beach. The seabed used to be `coast_sand_03`, which is a shingle bank
+# in Normandy, and tiled over a Caribbean fore reef it made the whole place a
+# gravel pit. These are what they say they are: Poly Haven's `coral_ground_02`
+# is photographed coral rubble and pavement, and `damp_beach_sand_02` is wet
+# rippled sand, which is what the bottom of a groove is.
+SURFACES = {"soft": "damp_beach_sand_02", "hard": "coral_ground_02"}
+
+# Sand, pavement, and how hard each habitat class the survey mapped is. Class 0
+# is ground nobody mapped, so it is given the middle: neither claimed as reef
+# nor claimed as sand.
+HARDNESS = {0: 0.5, 1: 0.0, 2: 0.15, 3: 0.10, 4: 0.60, 5: 0.90, 6: 1.0, 7: 1.0}
+HABITAT_NAMES = {0: "unmapped", 1: "sediment", 2: "seagrass (patchy)",
+                 3: "seagrass", 4: "rubble", 5: "pavement",
+                 6: "aggregate reef", 7: "spur and groove"}
+
+
+def fetch_texture(where: pathlib.Path, name: str, prefix: str = "seabed",
+                  disp: bool = False) -> bool:
     """The CC0 maps a seabed is surfaced with, from Poly Haven."""
     import urllib.request
 
-    maps = {"seabed_colour": "diff", "seabed_rough": "rough", "seabed_normal": "nor_gl"}
+    maps = {"colour": "diff", "rough": "rough", "normal": "nor_gl"}
+    if disp:
+        # The height a surface stands at, which is what the two surfaces of a
+        # reef are blended by.
+        maps["disp"] = "disp"
     into = where / "textures"
     into.mkdir(exist_ok=True)
     base = "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k"
     for local, kind in maps.items():
-        target = into / f"{local}.jpg"
+        target = into / f"{prefix}_{local}.jpg"
         if target.exists():
             continue
         url = f"{base}/{name}/{name}_{kind}_2k.jpg"
@@ -271,14 +306,31 @@ def fetch_texture(where: pathlib.Path, name: str) -> bool:
             with urllib.request.urlopen(url, timeout=120) as answer:
                 target.write_bytes(answer.read())
         except Exception as exc:
-            print(f"    could not fetch {kind}: {exc}")
+            print(f"    could not fetch {name} {kind}: {exc}")
             return False
     return True
 
 
+def average_of(path: pathlib.Path) -> str:
+    """What a texture's own colour is, so a material can divide it out.
+
+    In linear, because that is the space the renderer multiplies in. Left in,
+    a grain tints the whole seabed towards whatever beach it was photographed
+    on, which is a thing nobody notices until the reef is the wrong colour and
+    nobody can say why.
+    """
+    import numpy as np
+    from PIL import Image
+
+    grain = np.asarray(Image.open(path).convert("RGB"), dtype="float64") / 255.0
+    linear = np.where(grain <= 0.04045, grain / 12.92,
+                      ((grain + 0.055) / 1.055) ** 2.4)
+    return ", ".join(f"{c:.4f}" for c in linear.reshape(-1, 3).mean(axis=0))
+
+
 def write_usd(where: pathlib.Path, name: str, height, across: float,
               tile: float, texture: str | None, photograph: bool = False,
-              ground: str | None = None) -> dict:
+              ground: dict | None = None) -> dict:
     """The seabed, as a mesh, in a USD anybody can open."""
     import numpy as np
 
@@ -347,9 +399,9 @@ def write_usd(where: pathlib.Path, name: str, height, across: float,
         # A reef photographed through ten metres of water comes back flat and
         # blue-grey; tools/ground has already taken the water out of the
         # orthomosaic, so this only lifts it, and gently.
-        material = GROUND_MATERIAL % {
-            "tile": tile, "across": across, "repeats": across / max(tile, 1e-6),
-            "average": ground, "grain": 0.85, "relief": 1.0, "lift": 1.05}
+        material = GROUND_MATERIAL % dict(
+            ground, tile=tile, across=across, repeats=across / max(tile, 1e-6),
+            grain=0.85, relief=1.0, lift=1.05)
     elif texture:
         material = SEABED_MATERIAL
     else:
@@ -549,39 +601,54 @@ def main() -> int:
         from PIL import Image
         into = where / "textures"
         into.mkdir(exist_ok=True)
-        if not fetch_texture(where, asked.texture):
-            raise SystemExit(f"the ground needs {asked.texture}'s maps and they "
-                             f"did not arrive")
-        colour = pathlib.Path(asked.ground).expanduser()
-        if colour.is_dir():
-            colour = colour / "colour_4096.png"
+        for role, surface in SURFACES.items():
+            if not fetch_texture(where, surface, prefix=role, disp=True):
+                raise SystemExit(f"the ground needs {surface}'s maps and they "
+                                 f"did not arrive")
+
+        reference = pathlib.Path(asked.ground).expanduser()
+        colour = reference / "colour_4096.png" if reference.is_dir() else reference
         if not colour.is_file():
             raise SystemExit(f"no ground colour map at {colour}")
         # North is at the top of a map and v = 0 is the south edge of the mesh,
-        # so the map is flipped on the way in. tools/ground says this about its
-        # own output and it is the kind of thing that is invisible until a reef
-        # is a mile from where the survey put it.
+        # so the maps are flipped on the way in. tools/ground says this about
+        # its own output and it is the kind of thing that is invisible until a
+        # reef is a mile from where the survey put it.
         Image.open(colour).convert("RGB").transpose(
             Image.FLIP_TOP_BOTTOM).save(into / "site_colour.jpg", quality=95)
 
-        # What the grain's own colour is, so the material can divide it out.
-        # Measured, because it is a property of this particular photograph:
-        # coast_sand_03 is a warm pale beach and left in it would tint a
-        # Caribbean pavement towards Normandy. sRGB to linear first, because
-        # that is the space the renderer will be multiplying in.
-        grain = np.asarray(Image.open(into / "seabed_colour.jpg").convert("RGB"),
-                           dtype="float64") / 255.0
-        linear = np.where(grain <= 0.04045, grain / 12.92,
-                          ((grain + 0.055) / 1.055) ** 2.4)
-        average = linear.reshape(-1, 3).mean(axis=0)
-        ground = ", ".join(f"{c:.4f}" for c in average)
+        # Where the hard ground is, from the habitat polygons the survey drew.
+        # A place with no habitat map gets pavement everywhere, which is the
+        # safer half to be wrong about: sand where there is reef reads as a
+        # reef somebody dredged.
+        classes = reference / "habitat_4096.npy" if reference.is_dir() else None
+        if classes is not None and classes.is_file():
+            kinds = np.load(classes)
+            hard = np.zeros(kinds.shape, dtype="float32")
+            for kind, how_hard in HARDNESS.items():
+                hard[kinds == kind] = how_hard
+            named = ", ".join(f"{HABITAT_NAMES.get(k, k)} {100 * (kinds == k).mean():.0f}%"
+                              for k in sorted(set(np.unique(kinds).tolist())))
+            print(f"  habitat: {named}")
+        else:
+            hard = np.ones((1024, 1024), dtype="float32")
+            print("  habitat: no map for this place, so pavement everywhere")
+        Image.fromarray((np.flipud(hard) * 255).astype("uint8")).save(
+            into / "hardness.png")
+
+        ground = {
+            "soft": SURFACES["soft"], "hard": SURFACES["hard"],
+            "soft_average": average_of(into / "soft_colour.jpg"),
+            "hard_average": average_of(into / "hard_colour.jpg"),
+        }
 
         # The material lives with the place, not in this checkout: a published
         # package has to carry everything it is drawn from.
-        mdl = pathlib.Path(__file__).resolve().parent.parent / "catalog" / "materials" / "coral_ground.mdl"
+        mdl = (pathlib.Path(__file__).resolve().parent.parent
+               / "catalog" / "materials" / "coral_ground.mdl")
         shutil.copy(mdl, where / "coral_ground.mdl")
-        print(f"  ground: {colour.name} as the site colour, {asked.texture} "
-              f"grain every {asked.tile:.0f} m (average {ground})")
+        print(f"  ground: {colour.name} as the site colour, "
+              f"{SURFACES['soft']} and {SURFACES['hard']} every {asked.tile:.0f} m")
 
     made = write_usd(where, asked.name, height, asked.across, asked.tile,
                      asked.texture if textured else None, photograph=photograph,

@@ -21,6 +21,13 @@
  * passed in because it is a property of the texture, computed once where the
  * place is built rather than guessed at here.
  *
+ * And there are two grains, not one, because a reef is not one surface. Sand
+ * in the grooves and carbonate pavement on the spurs, chosen by the habitat
+ * map the survey drew. They are blended by height rather than mixed: at the
+ * edge of a sand patch the pavement shows through the gaps between the grains,
+ * which is what it does, instead of the two fading through a grey halfway
+ * surface that is neither one.
+ *
  * Licence: the same as the platform. The textures it reads are CC0.
  */
 
@@ -42,31 +49,56 @@ export material coral_ground(
                           "whole site."),
         anno::in_group("Ground")
     ]],
-    uniform texture_2d detail_colour = texture_2d()
+    uniform texture_2d hardness = texture_2d()
     [[
-        anno::display_name("Grain"),
+        anno::display_name("Where the hard ground is"),
+        anno::description("Nought is sediment, one is reef pavement. Drawn "
+                          "from the habitat map a survey made, laid over the "
+                          "site the same way the colour is."),
+        anno::in_group("Ground")
+    ]],
+
+    uniform texture_2d soft_colour = texture_2d()
+    [[
+        anno::display_name("Sand"),
         anno::description("A tiled photograph of a real surface. Divided "
                           "through by its own average, so it carries variation "
                           "and not colour."),
-        anno::in_group("Grain")
+        anno::in_group("Sand")
     ]],
-    uniform texture_2d detail_normal = texture_2d()
-    [[ anno::display_name("Grain relief"), anno::in_group("Grain") ]],
-    uniform texture_2d detail_rough = texture_2d()
-    [[ anno::display_name("Grain roughness"), anno::in_group("Grain") ]],
+    uniform texture_2d soft_normal = texture_2d()
+    [[ anno::display_name("Sand relief"), anno::in_group("Sand") ]],
+    uniform texture_2d soft_rough = texture_2d()
+    [[ anno::display_name("Sand roughness"), anno::in_group("Sand") ]],
+    uniform texture_2d soft_height = texture_2d()
+    [[ anno::display_name("Sand height"), anno::in_group("Sand") ]],
+    uniform color soft_average = color(0.5)
+    [[ anno::display_name("Average of the sand"), anno::in_group("Sand") ]],
+
+    uniform texture_2d hard_colour = texture_2d()
+    [[ anno::display_name("Pavement"), anno::in_group("Pavement") ]],
+    uniform texture_2d hard_normal = texture_2d()
+    [[ anno::display_name("Pavement relief"), anno::in_group("Pavement") ]],
+    uniform texture_2d hard_rough = texture_2d()
+    [[ anno::display_name("Pavement roughness"), anno::in_group("Pavement") ]],
+    uniform texture_2d hard_height = texture_2d()
+    [[ anno::display_name("Pavement height"), anno::in_group("Pavement") ]],
+    uniform color hard_average = color(0.5)
+    [[ anno::display_name("Average of the pavement"), anno::in_group("Pavement") ]],
+
+    uniform float blend_depth = 0.12
+    [[
+        anno::display_name("How sharp the join is"),
+        anno::description("The band of height over which the two surfaces "
+                          "interleave. Small is a hard edge with grains of one "
+                          "showing through the other; large is a fade."),
+        anno::in_group("Ground")
+    ]],
     uniform float repeats = 100.0
     [[
         anno::display_name("Repeats across the site"),
         anno::description("Site metres divided by tile metres. Ten metres a "
                           "repeat over a kilometre is a hundred."),
-        anno::in_group("Grain")
-    ]],
-    uniform color detail_average = color(0.5)
-    [[
-        anno::display_name("Average of the grain"),
-        anno::description("Measured off the texture where the place is built. "
-                          "Dividing by it is what stops the grain tinting the "
-                          "seabed towards whatever beach it was photographed on."),
         anno::in_group("Grain")
     ]],
     uniform float grain = 1.0
@@ -110,25 +142,59 @@ export material coral_ground(
         texture: site_colour, uvw: wide,
         wrap_u: tex::wrap_clamp, wrap_v: tex::wrap_clamp).tint;
 
-    color high = base::file_texture(
-        texture: detail_colour, uvw: fine,
-        wrap_u: tex::wrap_repeat, wrap_v: tex::wrap_repeat).tint;
+    float hard_here = base::file_texture(
+        texture: hardness, uvw: wide,
+        wrap_u: tex::wrap_clamp, wrap_v: tex::wrap_clamp,
+        mono_source: base::mono_average).mono;
+
+    // Height blend. Each surface gets its own bed height plus the share of the
+    // ground the habitat map gives it; whichever stands higher wins, and
+    // within `blend_depth` of the top both show. That is why a sand patch on
+    // pavement has pavement between its grains at the edge instead of a grey
+    // band.
+    float soft_up = base::file_texture(
+        texture: soft_height, uvw: fine,
+        wrap_u: tex::wrap_repeat, wrap_v: tex::wrap_repeat,
+        mono_source: base::mono_average).mono * 0.6 + (1.0 - hard_here);
+    float hard_up = base::file_texture(
+        texture: hard_height, uvw: fine,
+        wrap_u: tex::wrap_repeat, wrap_v: tex::wrap_repeat,
+        mono_source: base::mono_average).mono * 0.6 + hard_here;
+    float top = math::max(soft_up, hard_up) - math::max(blend_depth, 0.001);
+    float soft_weight = math::max(soft_up - top, 0.0);
+    float hard_weight = math::max(hard_up - top, 0.0);
+    float pick = hard_weight / math::max(soft_weight + hard_weight, 0.000001);
+
+    color soft_high = base::file_texture(
+        texture: soft_colour, uvw: fine,
+        wrap_u: tex::wrap_repeat, wrap_v: tex::wrap_repeat).tint / soft_average;
+    color hard_high = base::file_texture(
+        texture: hard_colour, uvw: fine,
+        wrap_u: tex::wrap_repeat, wrap_v: tex::wrap_repeat).tint / hard_average;
 
     // Variation about one, not colour. Faded towards one by `grain`, so that
     // turning the grain down leaves the site's own colour rather than turning
     // the seabed black.
-    color variation = math::lerp(color(1.0), high / detail_average, grain);
+    color variation = math::lerp(color(1.0),
+                                 math::lerp(soft_high, hard_high, pick), grain);
     color albedo = math::saturate(low * lift * variation);
 
-    float wet = base::file_texture(
-        texture: detail_rough, uvw: fine,
-        wrap_u: tex::wrap_repeat, wrap_v: tex::wrap_repeat,
-        mono_source: base::mono_average).mono;
+    float wet = math::lerp(
+        base::file_texture(texture: soft_rough, uvw: fine,
+                           wrap_u: tex::wrap_repeat, wrap_v: tex::wrap_repeat,
+                           mono_source: base::mono_average).mono,
+        base::file_texture(texture: hard_rough, uvw: fine,
+                           wrap_u: tex::wrap_repeat, wrap_v: tex::wrap_repeat,
+                           mono_source: base::mono_average).mono,
+        pick);
     float rough = math::lerp(smoothest, roughest, wet);
 
-    float3 bumped = base::tangent_space_normal_texture(
-        texture: detail_normal, factor: relief, uvw: fine,
-        flip_tangent_v: true);
+    float3 bumped = math::normalize(math::lerp(
+        base::tangent_space_normal_texture(
+            texture: soft_normal, factor: relief, uvw: fine, flip_tangent_v: true),
+        base::tangent_space_normal_texture(
+            texture: hard_normal, factor: relief, uvw: fine, flip_tangent_v: true),
+        pick));
 } in material(
     surface: material_surface(
         // Wet rock under water: a weak specular over a diffuse base. Not a
