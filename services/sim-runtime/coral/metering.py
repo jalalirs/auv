@@ -28,14 +28,14 @@ import math
 
 # Where a scene should sit. Middle grey is 0.18 in linear light and about 0.46
 # through a display curve, and the frame this meters is already through one.
-AIM = 0.46
+AIM = 0.42
 
 # And what must not blow. Underwater the bright things are sand and whatever is
 # closest to a lamp, and both are small parts of a frame, so this is a high
 # percentile rather than the maximum: a dozen specular pixels on a lamp housing
 # are not a reason to underexpose a reef.
-CEILING = 0.94
-HIGHLIGHT = 99.0
+CEILING = 0.90
+HIGHLIGHT = 99.5
 
 # What a camera on this platform can actually do. Not unbounded: an exposure
 # that can reach any value hides a scene that has no light in it, which is a
@@ -47,7 +47,7 @@ BRIGHTEST = 12_000.0
 # a curve, so the step from a measurement is an estimate and not an answer;
 # under-stepping converges, over-stepping rings.
 DAMPING = 0.8
-ROUNDS = 3
+ROUNDS = 4
 
 
 def brightness_of(pixels) -> tuple[float, float]:
@@ -95,12 +95,18 @@ def next_iso(iso_now: float, middle: float, bright: float,
     for_the_highlights = iso_now * math.exp(
         DAMPING * math.log(ceiling / max(bright, 1e-4)))
 
-    # Only a constraint when it is one: a frame whose bright end is under the
-    # ceiling must not be *pushed up* to reach it, because that is not what a
-    # highlight guard is for.
-    wanted = (min(for_the_middle, for_the_highlights)
-              if bright > ceiling else for_the_middle)
-    return float(min(BRIGHTEST, max(DIMMEST, wanted)))
+    # Always, not only when the frame is already clipping. A guard that waits
+    # until the highlights are gone is not a guard: the first version only
+    # applied when `bright > ceiling`, so a frame with its bright end at 0.78
+    # was read as having headroom, the exposure was raised for the mid-tones,
+    # and every view in the sheet came back with its top percentile at pure
+    # white. The limit is on where the exposure may go, which is a question
+    # about the next frame and not about this one.
+    #
+    # The smaller wins. Clipped highlights cannot be recovered and a slightly
+    # dark frame can, which is the whole reason a camera errs this way.
+    return float(min(BRIGHTEST,
+                     max(DIMMEST, min(for_the_middle, for_the_highlights))))
 
 
 def settled(middle: float, bright: float,
