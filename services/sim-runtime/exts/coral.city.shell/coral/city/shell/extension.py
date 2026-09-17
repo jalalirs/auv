@@ -912,7 +912,14 @@ class CoralCityShell(omni.ext.IExt):
     # fifteen passes: while the tour is held for the meter the updates cost
     # almost nothing, so they arrive faster than the clock and the whole budget
     # went on waiting for a frame that was already there.
-    PASSES_TO_DEVELOP = 2
+    #
+    # And waited for, not assumed. Two passes was right on one scene and wrong
+    # on the next — a heavier scene asked nineteen times and read twice, each
+    # ask throwing away a capture that had not landed yet. The file is what
+    # says the frame is ready, so wait for the file, and only ask again if it
+    # has plainly been lost.
+    PASSES_TO_DEVELOP = 1
+    PASSES_TO_GIVE_UP_ON_A_FRAME = 25
 
     def _meter_the_frame(self) -> None:
         """Set the exposure from the picture, a few times, and then leave it.
@@ -989,10 +996,25 @@ class CoralCityShell(omni.ext.IExt):
                 return
             if self._meter_passes - self._asked_on_pass < self.PASSES_TO_DEVELOP:
                 return
-            self._metering = False
-            self._meter_saw = ("%d bytes" % shot.stat().st_size) if shot.exists() else "no file"
-            if not shot.exists() or shot.stat().st_size < 1024:
+            # A PNG is complete when it ends with its IEND chunk. Reading a
+            # half-written one gives a frame with nothing in it, which a meter
+            # reads as darkness and answers by opening the camera all the way.
+            ready = False
+            if shot.exists() and shot.stat().st_size > 1024:
+                with shot.open("rb") as bytes_of_it:
+                    bytes_of_it.seek(-8, 2)
+                    ready = bytes_of_it.read(4) == b"IEND"
+            self._meter_saw = ("%d bytes%s" % (shot.stat().st_size,
+                                               "" if ready else ", still writing")
+                               if shot.exists() else "no file")
+            if not ready:
+                # Keep waiting. Asking again just throws away a capture that
+                # was on its way.
+                if (self._meter_passes - self._asked_on_pass
+                        > self.PASSES_TO_GIVE_UP_ON_A_FRAME):
+                    self._metering = False
                 return
+            self._metering = False
 
             import numpy as np
             from PIL import Image
