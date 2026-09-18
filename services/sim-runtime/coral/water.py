@@ -325,7 +325,16 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # goes to the same distance the fog reaches full strength at, and the
     # background is the water's own colour, so a surface arrives at the clip
     # plane already the colour of what is behind it.
-    settings.set("/rtx/raytracing/globalVolumetricEffects/enabled", False)
+    # On, and they do more than nothing.
+    #
+    # They were switched off here for an afternoon on the grounds that they
+    # expose no settings of their own without a volume prim, and the frame got
+    # visibly worse: the gap between the far edge of the sea and the far edge
+    # of the seabed went from a thin dark strip to a third of the picture.
+    # Whatever they are doing with the lights in the column, they are doing it,
+    # and a diff against the commit that made the better frame is what found
+    # that — not the settings tree, which says nothing about them at all.
+    settings.set("/rtx/raytracing/globalVolumetricEffects/enabled", not _clear)
     settings.set("/rtx/fog/enabled", not _clear)
     settings.set("/rtx/fog/fogColor", list(veiling))
     # The fog is added to everything the camera sees, so its strength is how
