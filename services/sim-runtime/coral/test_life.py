@@ -236,3 +236,59 @@ def test_every_group_can_be_put_on_a_reef(kind):
     for _ in range(20):
         reef.step(0.1)
     assert np.isfinite(reef.at).all(), f"{kind} went to infinity"
+
+
+# ── and the things that are rooted ───────────────────────────────────────────
+
+def test_still_water_does_not_bend_anything():
+    phase = np.linspace(0, 6, 40)
+    lean, _ = life.bending((0.0, 0.0), phase)
+    assert not lean.any()
+
+
+def test_they_lean_further_in_faster_water():
+    phase = np.linspace(0, 6, 40)
+    slow, _ = life.bending((0.1, 0.0), phase)
+    fast, _ = life.bending((0.4, 0.0), phase)
+    assert fast.mean() > slow.mean()
+
+
+def test_they_lean_the_way_the_water_goes():
+    phase = np.zeros(4)
+    _, towards = life.bending((0.0, 0.3), phase)
+    assert np.allclose(towards, np.pi / 2)
+
+
+def test_a_field_of_them_does_not_move_as_one_sheet():
+    """Real ones are in each other's wake and no two are in step."""
+    phase = np.linspace(0, 2 * np.pi, 50)
+    lean, _ = life.bending((0.3, 0.0), phase)
+    assert lean.std() > 0.0
+
+
+def test_a_sea_rod_is_stiffer_than_a_sea_fan():
+    phase = np.zeros(10)
+    fan, _ = life.bending((0.3, 0.0), phase, life.STIFFNESS["fan"])
+    plume, _ = life.bending((0.3, 0.0), phase, life.STIFFNESS["plume"])
+    assert fan.mean() > plume.mean()
+
+
+def test_nothing_is_laid_flat_however_hard_the_water_runs():
+    phase = np.zeros(10)
+    lean, _ = life.bending((9.0, 0.0), phase)
+    assert lean.max() <= life.MOST
+
+
+def test_a_leaning_colony_is_still_a_rotation():
+    phase = np.linspace(0, 6, 12)
+    lean, towards = life.bending((0.3, 0.2), phase)
+    turn = np.linspace(0, 2 * np.pi, 12)
+    w, x, y, z = life.leaning(lean, towards, turn)
+    assert np.allclose(w * w + x * x + y * y + z * z, 1.0, atol=1e-6)
+
+
+def test_an_unbent_colony_keeps_its_own_turn():
+    turn = np.array([0.0, 1.0, 2.0])
+    w, x, y, z = life.leaning(np.zeros(3), np.zeros(3), turn)
+    assert np.allclose(x, 0.0, atol=1e-9) and np.allclose(y, 0.0, atol=1e-9)
+    assert np.allclose(w, np.cos(turn / 2)) and np.allclose(z, np.sin(turn / 2))

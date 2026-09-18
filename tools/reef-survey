@@ -241,6 +241,12 @@ def main() -> int:
         "kinds": {k: int((drawn == k).sum()) for k in KINDS},
         # What the colonies are made of, so a place's page can say it rather
         # than leaving a reader to assume every shape here was invented.
+        # Which prototypes are rooted and bend in the water. The gorgonians
+        # are most of the silhouette of this reef and a still one looks
+        # stuffed; the runtime rewrites their orientations as the surge goes
+        # back and forth, and this is how it knows which they are.
+        "swaysWith": {kind: sorted({i for i, k in enumerate(kind_of) if k == kind})
+                      for kind in ("fan", "plume")},
         "fromScans": {"prototypes": int(scans),
                       "colonies": int(np.isin(which, from_scans).sum()),
                       "forms": sorted(set(FROM_A_SCAN.values())) if scans else []},

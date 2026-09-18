@@ -447,3 +447,60 @@ def move_them(stage, shoal, at: str = "/World/Life") -> None:
         [Gf.Vec3f(float(x), float(y), float(z)) for x, y, z in shoal.at]))
     instancer.CreateOrientationsAttr(Vt.QuathArray(
         [Gf.Quath(*fishform.facing(v)) for v in shoal.going]))
+
+
+# ── and the things that are rooted ───────────────────────────────────────────
+#
+# A sea fan is an animal and it is also a sail. It stands across the flow —
+# which is why they all lie in the same plane on a reef, and why a still one
+# looks stuffed. What moves it is not the mean current but the surge: the
+# orbital motion of the waves overhead, which reverses every few seconds, and
+# which this platform already computes because it acts on the vehicle too.
+
+# How far a gorgonian leans, in radians, per metre a second of water. A sea fan
+# in a half-knot of surge leans about fifteen degrees and comes back; this is
+# that, and it is a number read off footage rather than measured.
+LEAN = 0.55
+# And how far a stiff one leans. A sea rod is a stick and a sea fan is a net.
+STIFFNESS = {"fan": 1.0, "plume": 0.75}
+# Nothing bends past this, whatever the water does. A gorgonian laid flat is a
+# gorgonian that has been torn off.
+MOST = 0.7
+
+
+def bending(flow, phase, stiffness=1.0):
+    """How far each rooted colony leans, and which way.
+
+    `flow` is the water moving past, in metres a second, as (east, north).
+    `phase` is a number per colony, so that a field of them does not move as
+    one sheet: real ones are in each other's wake and no two are in step.
+
+    Returns the lean in radians and the direction it leans, both as arrays.
+    """
+    east, north = float(flow[0]), float(flow[1])
+    speed = np.hypot(east, north)
+    if speed < 1e-6:
+        return np.zeros_like(phase), np.zeros_like(phase)
+    # Each one a little ahead of or behind the water, which is what makes a
+    # field of them look like a field rather than a flag.
+    lag = 1.0 + 0.25 * np.sin(phase)
+    lean = np.minimum(MOST, LEAN * speed * stiffness * lag)
+    return lean, np.full_like(phase, np.arctan2(north, east))
+
+
+def leaning(lean, towards, turn):
+    """The orientation of a colony that is rooted and leaning.
+
+    Its own turn about the vertical, then a tilt away from upright in the
+    direction the water is going. Quaternions, in the order a renderer wants
+    them: w first.
+    """
+    # Tilt about the axis perpendicular to the flow, which is what bending
+    # downstream is.
+    axis_x, axis_y = -np.sin(towards), np.cos(towards)
+    ch, sh = np.cos(lean / 2), np.sin(lean / 2)
+    tw, tx, ty = ch, sh * axis_x, sh * axis_y
+
+    cz, sz = np.cos(turn / 2), np.sin(turn / 2)
+    # Tilt composed with the colony's own turn about z.
+    return (tw * cz, tx * cz + ty * sz, ty * cz - tx * sz, tw * sz)
