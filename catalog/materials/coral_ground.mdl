@@ -119,7 +119,47 @@ export material coral_ground(
     uniform float smoothest = 0.55
     [[ anno::display_name("Roughness, wettest"), anno::in_group("Ground") ]],
     uniform float roughest = 0.95
-    [[ anno::display_name("Roughness, driest"), anno::in_group("Ground") ]]
+    [[ anno::display_name("Roughness, driest"), anno::in_group("Ground") ]],
+
+    // ── the water between here and the camera ────────────────────────────────
+    //
+    // Done in the material because the renderer has nowhere else to put it.
+    // `/rtx/fog` adds veiling light and never absorbs, so a reef stays sharp to
+    // the horizon; the ray-traced volumetric effects want a volume prim this
+    // scene has no way to author. What is left is the surface's own distance
+    // from the camera, which the surface knows.
+    //
+    // And doing it here buys the thing the renderer's fog could never do: the
+    // attenuation is **per channel**. Red dies in four metres of this water and
+    // green takes seventeen, which is why everything below ten metres is blue,
+    // and a single fog distance cannot say it.
+    uniform float3 eye = float3(0.0)
+    [[
+        anno::display_name("Where the camera is"),
+        anno::description("World metres. Set by the runtime as the vehicle "
+                          "moves; a stale one puts the water in the wrong "
+                          "place, not nowhere."),
+        anno::in_group("Water")
+    ]],
+    uniform color attenuation = color(4.0, 17.0, 13.0)
+    [[
+        anno::display_name("Attenuation lengths"),
+        anno::description("Metres to 1/e, per channel, off the Jerlov type. "
+                          "Not tuned: measured."),
+        anno::in_group("Water")
+    ]],
+    uniform color veiling = color(0.24, 0.55, 0.45)
+    [[
+        anno::display_name("The colour of the water itself"),
+        anno::in_group("Water")
+    ]],
+    uniform float veil = 1.0
+    [[
+        anno::display_name("How bright the water is"),
+        anno::description("Nought turns the medium off, which is what the "
+                          "water-taken-away view wants."),
+        anno::in_group("Water")
+    ]]
 )
 [[
     anno::display_name("Coral City seabed"),
@@ -189,6 +229,17 @@ export material coral_ground(
         pick);
     float rough = math::lerp(smoothest, roughest, wet);
 
+    // How much of what this surface reflects survives the trip to the camera,
+    // and how much water is in front of it. The two are the same number: what
+    // the water takes from the surface it replaces with itself, which is why a
+    // distant reef does not go black, it goes the colour of the sea.
+    float swum = math::distance(
+        state::transform_point(state::coordinate_internal,
+                               state::coordinate_world, state::position()),
+        eye);
+    color survives = math::exp(color(-swum) / math::max(attenuation, color(0.01)));
+    color water = veiling * veil * (color(1.0) - survives);
+
     float3 bumped = math::normalize(math::lerp(
         base::tangent_space_normal_texture(
             texture: soft_normal, factor: relief, uvw: fine, flip_tangent_v: true),
@@ -205,7 +256,14 @@ export material coral_ground(
             normal: bumped,
             layer: df::microfacet_ggx_smith_bsdf(
                 roughness_u: rough * rough, roughness_v: rough * rough),
-            base: df::diffuse_reflection_bsdf(tint: albedo, roughness: 0.0))
+            base: df::diffuse_reflection_bsdf(tint: albedo * survives,
+                                              roughness: 0.0)),
+        // The water's own light, which is what a distant reef turns into. It
+        // is emission because it does not depend on anything shining on this
+        // surface: it is the column in front of it, lit.
+        emission: material_emission(
+            emission: df::diffuse_edf(),
+            intensity: water)
     ),
     geometry: material_geometry(normal: bumped)
 );

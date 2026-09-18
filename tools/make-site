@@ -212,6 +212,16 @@ GROUND_MATERIAL = """
                 float inputs:relief = %(relief).2f
                 float inputs:lift = %(lift).3f
                 float inputs:blend_depth = 0.12
+
+                # The water between this ground and the camera, done here
+                # because the renderer has nowhere else to put it. The runtime
+                # sets all four as a dive opens and moves `eye` as it flies;
+                # what is written here is what a place looks like opened in
+                # something that does not know to.
+                float3 inputs:eye = (0, 0, 0)
+                color3f inputs:attenuation = (4, 17, 13)
+                color3f inputs:veiling = (0.24, 0.55, 0.45)
+                float inputs:veil = 0
                 token outputs:out
             }
 
