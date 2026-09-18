@@ -84,7 +84,7 @@ SCATTERING_ALBEDO = 0.28
 # silently running at the renderer's default five kilometres, where near and
 # far got the same wash and the only way to keep a close colony its own colour
 # was to turn the whole thing off.
-VEIL_STRENGTH = 1.0
+VEIL_STRENGTH = 1.6
 
 # How bright the water's own glow is as a fill light. Read off a ladder.
 DOME_SHARE = 55.0
