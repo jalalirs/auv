@@ -470,6 +470,8 @@ class Dive:
         # rise straight out of the sea and keep going.
         self.water_level = 0.0
         self.water = None
+        self.shoal = None
+        self.last_wrench = None
         self.on_the_bottom = False
 
         # How far the vehicle's middle is from its bottom. Taken from the hull
@@ -637,6 +639,9 @@ class Dive:
                        wave_heading_deg=self.sea_heading_deg,
                        seed=int(self.brief.get("seed", 0)))
             self.water = water
+
+            # And what lives in it.
+            self.shoal = self._stock_the_reef(stage, city, extent)
 
         # A body of the vehicle's actual mass, at the vehicle's actual place.
         # What is being integrated is the dynamics; a dive that reported a
@@ -2267,6 +2272,9 @@ class Dive:
         wrench = self.body.step(self.rotation, through_water, self.commands, self.dt, submerged,
                                 depth_m=here, temperature_c=self.temperature_at(here),
                                 density=self.density_at(here))
+        # Kept, because how hard the vehicle is working is what frightens the
+        # fish. Nothing else needs it and it is one assignment.
+        self.last_wrench = wrench
         # And the cable, if there is one out. In the world frame — a tether
         # does not know which way the vehicle is pointing — so it is turned
         # into the body before it joins the rest.
@@ -2610,11 +2618,86 @@ class Dive:
             float(self.position[0]), float(self.position[1]),
             max(0.0, float(-self.position[2])), self.simulated)
 
+    # How far from where a dive begins the fish are put.
+    #
+    # Not the whole site. A kilometre of seabed at the density this reef
+    # actually holds is tens of thousands of fish, which is both more than can
+    # be drawn and more than a vehicle working one patch will ever see. So the
+    # water around the work is stocked properly and the rest is empty, and the
+    # record says which — an autonomy scored on counting fish has to know where
+    # the counting means anything.
+    STOCKED_TO_M = 90.0
+    MOST_FISH = 1400
+
+    def _stock_the_reef(self, stage, city, extent):
+        """Put the fish this place recorded into the water around the work."""
+        import json
+        import math
+
+        import life
+
+        described = json.loads((city / "site.json").read_text())
+        says = described.get("life")
+        if not says or not says.get("shares"):
+            self.say("no_life", why="this place has no record of what lives in it")
+            return None
+
+        reef = math.pi * self.STOCKED_TO_M ** 2
+        # Only the part of that which is reef rather than sand. The habitat
+        # shares are on the place; where they are not, half is the honest
+        # guess and it is written down as one.
+        holds = float(described.get("reef", {}).get("reefFraction", 0.5))
+        wanted = int(reef * holds * float(says.get("perSquareMetre", 0.1)))
+        how_many = min(self.MOST_FISH, wanted)
+
+        groups = {}
+        left = how_many
+        for i, (name, share) in enumerate(sorted(says["shares"].items())):
+            take = (left if i == len(says["shares"]) - 1
+                    else int(round(how_many * float(share))))
+            groups[name] = max(0, min(left, take))
+            left -= groups[name]
+
+        shoal = life.Shoal(
+            {k: v for k, v in groups.items() if v},
+            lambda x, y: (self.seabed.under(float(x), float(y))
+                          if self.seabed is not None else self.floor),
+            across=2.2 * self.STOCKED_TO_M,
+            water_level=0.0,
+            seed=int(self.brief.get("seed", 0)))
+        # The shoal works in its own square centred on the work, so it is
+        # offset into the site rather than placed at the origin.
+        shoal.at[:, :2] += self.position[:2]
+        shoal.home += self.position[:2]
+        shoal._remember_the_floor = lambda: None
+        life.put_them_in(stage, shoal)
+        self.say("life_is", **shoal.said(), stockedToM=self.STOCKED_TO_M,
+                 asked=wanted, drawn=how_many,
+                 perSquareMetre=says.get("perSquareMetre"))
+        return shoal
+
     def stir(self) -> None:
         """Move the water. Still caustics are a painted floor."""
         if self.water is not None:
             self.water.drift(self.stage, self.simulated, follow=self.position)
             self.water.light_for(self.stage, float(-self.position[2]))
+        self.swim(1.0 / 20.0)
+
+    def swim(self, dt: float) -> None:
+        """One tick of everything alive.
+
+        The thrust is what frightens them, not the presence of the vehicle: a
+        machine drifting past on a current is a log, and the same machine on
+        full thrusters clears a hundred square metres.
+        """
+        if getattr(self, "shoal", None) is None:
+            return
+        import life
+
+        working = float(np.clip(np.abs(self.last_wrench[:3]).sum() / 60.0, 0.0, 1.0)) \
+            if getattr(self, "last_wrench", None) is not None else 0.0
+        self.shoal.step(dt, vehicle=self.position, thrust=working)
+        life.move_them(self.stage, self.shoal)
 
     def show(self) -> None:
         """Move what is drawn to where the vehicle is.
