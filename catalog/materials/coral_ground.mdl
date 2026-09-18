@@ -188,9 +188,20 @@ export material coral_ground(
         tangent_v: here.tangent_v);
 
     // How far the light off this surface has to swim to reach the camera.
+    //
+    // Kit's "world" for MDL is camera-relative: it keeps the origin at the eye
+    // so that a scene a long way from the origin does not lose precision. So
+    // the length of the position *is* the distance to the camera, and
+    // subtracting a camera position from it subtracts the camera twice. The
+    // first version did that, and painted a distance field that was brightest
+    // under the lens and darkest at the horizon.
+    //
+    // `eye` is kept and set by the runtime because it costs nothing and
+    // because a renderer whose world is really the world needs it; where the
+    // two disagree, this is the one the picture agrees with.
     float3 standing = state::transform_point(
         state::coordinate_internal, state::coordinate_world, state::position());
-    float swum = math::distance(standing, eye);
+    float swum = math::length(standing);
 
     color low = base::file_texture(
         texture: site_colour, uvw: wide,
