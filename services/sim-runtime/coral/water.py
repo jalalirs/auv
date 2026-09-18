@@ -873,9 +873,14 @@ def tell_the_water_where_the_camera_is(stage, at) -> None:
     frame. A stale value does not break the picture, it puts the water in the
     wrong place, which is harder to notice.
     """
-    from pxr import Gf, Sdf
+    from pxr import Gf
 
     where = Gf.Vec3f(float(at[0]), float(at[1]), float(at[2]))
+    if getattr(tell_the_water_where_the_camera_is, "_last", None) == tuple(where):
+        return
+    tell_the_water_where_the_camera_is._last = tuple(where)
+
+    told = 0
     for prim in stage.Traverse():
         if prim.GetTypeName() != "Shader":
             continue
@@ -883,6 +888,15 @@ def tell_the_water_where_the_camera_is(stage, at) -> None:
         if not eye:
             continue
         eye.Set(where)
+        told += 1
+    # Said once, because a medium that is silently attached to nothing looks
+    # exactly like a medium that is working badly: with the camera left at the
+    # origin the water measures from the middle of the site, so the ground
+    # under the vehicle is the most veiled thing in the frame and the horizon
+    # is the clearest. Which is what the first attempt rendered.
+    if not getattr(tell_the_water_where_the_camera_is, "_said", False):
+        tell_the_water_where_the_camera_is._said = True
+        print('{"event": "water_follows", "materials": %d}' % told, flush=True)
 
 
 def put_the_water_in_the_materials(stage, veiling, lengths, veil: float) -> None:

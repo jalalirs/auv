@@ -798,6 +798,14 @@ class CoralCityShell(omni.ext.IExt):
             # frames.
             dive.stir()
             self.tour.place(dive.stage, viewport)
+            # The water is measured from the camera, and on a tour the camera
+            # is not the vehicle. `stir` puts it on the vehicle because that is
+            # where it is on a dive; a tour then moves the camera tens of
+            # metres away, and the medium stays behind.
+            eye = getattr(self.tour, "eye", None)
+            if eye is not None:
+                from coral import water
+                water.tell_the_water_where_the_camera_is(dive.stage, eye)
 
             # Nothing is photographed until the exposure has settled, and the
             # tour keeps flying while it settles rather than stopping for it.
