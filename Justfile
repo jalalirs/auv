@@ -20,6 +20,19 @@ check:
     gofmt -l services/control-plane services/worker | (! grep .) || \
         (echo "the Go above is not formatted; run: just format" && exit 1)
     pnpm --recursive --if-present check
+    just check-python
+
+# Vet the Python: the simulation runtime, the SDK, and the tools.
+#
+# There was none of this until a `global` line was written above the variable
+# it read, the runtime raised a NameError halfway through building the water,
+# and a render sat at nought frames for a quarter of an hour with nothing in
+# the log. Ruff finds that in a tenth of a second. The rules it runs are in
+# ruff.toml and are the bug-shaped ones only; this codebase has its own voice
+# and a linter is not going to improve it.
+check-python:
+    uvx ruff@0.14.0 check --config ruff.toml \
+        services/sim-runtime packages/sdk-python tools apps
 
 # Run every component's tests.
 test:
