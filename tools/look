@@ -96,6 +96,17 @@ one_place() {
         || { echo "  the registry has no ${image}" >&2; return 1; }
 
     rm -rf "${here}"; mkdir -p "${here}/frames"; chmod -R 777 "${here}"
+
+    # And take the old sheet away before this one starts, not after it fails.
+    #
+    # Every guard below clears it on the way out, and none of them run if this
+    # script is killed from outside — which is what `timeout ./tools/look` does
+    # while somebody is working out why a run hangs. Three times in one morning
+    # a killed run left the previous sheet and its log sitting there, and three
+    # times they were read as the results of the run that had just been killed.
+    # The invariant that is actually wanted is: what is on disk is from this
+    # run, or there is nothing there.
+    rm -rf "${looks:?}/$(basename "${place}")-${WATER}"
     # Which water to look through. A place has no opinion of its own yet, so
     # this is how one is tried: the same reef through clear ocean and through a
     # turbid bay is the comparison the water types exist to make.
