@@ -2698,7 +2698,7 @@ class Dive:
         if self._rooted is None:
             return
         import life
-        from pxr import Gf, Vt
+        from pxr import Gf
 
         under = self.water.orbital_here(
             float(self.position[0]), float(self.position[1]),
@@ -2709,11 +2709,15 @@ class Dive:
         instancer, held, turn, phase, stiff = self._rooted
         lean, towards = life.bending(flow, phase + self.simulated * 1.6, stiff)
         w, x, y, z = life.leaning(lean, towards, turn)
+        # The array is kept and written into, not rebuilt. There are 83,000
+        # colonies on this reef and 7,300 of them bend; constructing eighty
+        # thousand quaternions every frame to change seven thousand of them is
+        # most of a frame's budget spent on the ones that did not move.
         was = self._rooted_orientations
         for slot, i in enumerate(held):
             was[i] = Gf.Quath(float(w[slot]), float(x[slot]),
                               float(y[slot]), float(z[slot]))
-        instancer.CreateOrientationsAttr(Vt.QuathArray(was))
+        instancer.GetOrientationsAttr().Set(was)
 
     def _root_the_gorgonians(self, stage, city):
         """Find the rooted colonies once, so the sway is arithmetic after that."""
@@ -2736,8 +2740,8 @@ class Dive:
             return None
 
         which = np.array(instancer.GetProtoIndicesAttr().Get() or [])
-        orientations = list(instancer.GetOrientationsAttr().Get() or [])
-        if not len(which) or not orientations:
+        orientations = instancer.GetOrientationsAttr().Get()
+        if not len(which) or orientations is None or not len(orientations):
             return None
 
         held, stiff = [], []
@@ -2751,8 +2755,16 @@ class Dive:
         held = np.array(held)
         # Their own turn about the vertical, read back off what is there, so a
         # colony that stops bending goes back to where the reef put it.
+        # Its own turn about the vertical, read back off what is there, so a
+        # colony that stops bending goes back to where the reef put it.
+        #
+        # No clamp on the real part. Clamping it positive looks like it guards
+        # a division and is instead a bug: past half a turn the cosine is
+        # negative, atan2 is the function that already knows that, and every
+        # gorgonian facing the back half of the compass would have been spun
+        # to face the front.
         turn = np.array([2.0 * np.arctan2(float(orientations[i].imaginary[2]),
-                                          max(float(orientations[i].real), 1e-9))
+                                          float(orientations[i].real))
                          for i in held])
         phase = np.linspace(0, 2 * np.pi, len(held), endpoint=False)
         self._rooted_orientations = orientations
