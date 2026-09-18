@@ -914,9 +914,16 @@ def put_the_water_in_the_materials(stage, veiling, lengths, veil: float) -> None
             continue
         if not prim.GetAttribute("inputs:eye"):
             continue
+        # A shader cannot print. CORAL_CITY_SHOW_DISTANCE paints what it
+        # thinks the distance to the camera is instead of the ground, in
+        # metres, white at the number given. It is the only way to find out.
+        import os as _os
+        shown = _os.environ.get("CORAL_CITY_SHOW_DISTANCE", "")
         for name, value in (("inputs:veiling", colour),
                             ("inputs:attenuation", lengths),
-                            ("inputs:veil", float(veil))):
+                            ("inputs:veil", float(veil)),
+                            ("inputs:show_distance",
+                             float(shown) if shown else 0.0)):
             got = prim.GetAttribute(name)
             if got:
                 got.Set(value)

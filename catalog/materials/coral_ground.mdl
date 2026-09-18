@@ -159,6 +159,15 @@ export material coral_ground(
         anno::description("Nought turns the medium off, which is what the "
                           "water-taken-away view wants."),
         anno::in_group("Water")
+    ]],
+    uniform float show_distance = 0.0
+    [[
+        anno::display_name("Paint the distance instead"),
+        anno::description("Metres at white. Nought is off. There is no way to "
+                          "print a number out of a shader, so the only way to "
+                          "find out what a shader thinks a distance is, is to "
+                          "look at it."),
+        anno::in_group("Water")
     ]]
 )
 [[
@@ -177,6 +186,11 @@ export material coral_ground(
         position: here.position * repeats,
         tangent_u: here.tangent_u,
         tangent_v: here.tangent_v);
+
+    // How far the light off this surface has to swim to reach the camera.
+    float3 standing = state::transform_point(
+        state::coordinate_internal, state::coordinate_world, state::position());
+    float swum = math::distance(standing, eye);
 
     color low = base::file_texture(
         texture: site_colour, uvw: wide,
@@ -217,7 +231,9 @@ export material coral_ground(
     // the seabed black.
     color variation = math::lerp(color(1.0),
                                  math::lerp(soft_high, hard_high, pick), grain);
-    color albedo = math::saturate(low * lift * variation);
+    color albedo = show_distance > 0.0
+        ? color(math::saturate(swum / show_distance))
+        : math::saturate(low * lift * variation);
 
     float wet = math::lerp(
         base::file_texture(texture: soft_rough, uvw: fine,
@@ -229,16 +245,11 @@ export material coral_ground(
         pick);
     float rough = math::lerp(smoothest, roughest, wet);
 
-    // How much of what this surface reflects survives the trip to the camera,
-    // and how much water is in front of it. The two are the same number: what
-    // the water takes from the surface it replaces with itself, which is why a
-    // distant reef does not go black, it goes the colour of the sea.
-    float swum = math::distance(
-        state::transform_point(state::coordinate_internal,
-                               state::coordinate_world, state::position()),
-        eye);
+    // What the water takes from the surface it replaces with itself, which is
+    // why a distant reef does not go black, it goes the colour of the sea.
     color survives = math::exp(color(-swum) / math::max(attenuation, color(0.01)));
-    color water = veiling * veil * (color(1.0) - survives);
+    color water = show_distance > 0.0
+        ? color(0.0) : veiling * veil * (color(1.0) - survives);
 
     float3 bumped = math::normalize(math::lerp(
         base::tangent_space_normal_texture(
