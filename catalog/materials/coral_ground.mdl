@@ -189,16 +189,20 @@ export material coral_ground(
 
     // How far the light off this surface has to swim to reach the camera.
     //
-    // Kit's "world" for MDL is camera-relative: it keeps the origin at the eye
-    // so that a scene a long way from the origin does not lose precision. So
-    // the length of the position *is* the distance to the camera, and
-    // subtracting a camera position from it subtracts the camera twice. The
-    // first version did that, and painted a distance field that was brightest
-    // under the lens and darkest at the horizon.
+    // NOT YET RIGHT, and the medium is held at veil = 0 until it is.
     //
-    // `eye` is kept and set by the runtime because it costs nothing and
-    // because a renderer whose world is really the world needs it; where the
-    // two disagree, this is the one the picture agrees with.
+    // `state::position()` here is **object space**, and the transform through
+    // `coordinate_internal -> coordinate_world` does not move it. The proof is
+    // in the pictures: a coral prototype is a fifth of a metre across, so its
+    // positions are tiny and it renders unattenuated, while this seabed mesh
+    // spans a kilometre, so its positions run to five hundred and it renders
+    // fully absorbed. What this measures is distance from the middle of the
+    // site, which is why the first attempt veiled the ground under the lens
+    // and left the horizon clear.
+    //
+    // What it needs is the distance from the camera, per pixel. `eye` is set
+    // by the runtime and is right; the position is not. Until that is settled,
+    // the fog does the airlight and the far clip does the absorbing.
     float3 raw = state::position();
     float3 standing = state::transform_point(
         state::coordinate_internal, state::coordinate_world, raw);
@@ -263,7 +267,13 @@ export material coral_ground(
 
     // What the water takes from the surface it replaces with itself, which is
     // why a distant reef does not go black, it goes the colour of the sea.
-    color survives = math::exp(color(-swum) / math::max(attenuation, color(0.01)));
+    // Nought veil means no medium at all, so nothing is taken either. The
+    // first version gated only the light the water adds and left the light it
+    // takes, so turning the water off multiplied every surface by
+    // exp(-distance) and the seabed came back black.
+    color survives = veil <= 0.0
+        ? color(1.0)
+        : math::exp(color(-swum) / math::max(attenuation, color(0.01)));
     // Two candidates at once, so one render answers instead of two: red is
     // the raw state position, green is that position transformed to world.
     // Whichever channel shows a gradient from the lens to the horizon is the
