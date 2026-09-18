@@ -584,9 +584,9 @@ func (r *Runtime) Remove(ctx context.Context, id string) error {
 // boundary the autonomy runs behind, and it is the only thing it gets.
 func (r *Runtime) CreateNetwork(ctx context.Context, name string) (string, error) {
 	response, err := r.do(ctx, http.MethodPost, "/networks/create", map[string]any{
-		"Name":     name,
-		"Driver":   "bridge",
-		"Internal": true,
+		"Name":       name,
+		"Driver":     "bridge",
+		"Internal":   true,
 		"Attachable": true,
 	})
 	if err != nil {

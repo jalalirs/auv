@@ -89,25 +89,25 @@ type Vehicle struct {
 // what lets a node treat its cache as append-only: a digest never changes
 // meaning, so nothing it holds is ever stale.
 type Version struct {
-	ID          string                 `json:"id"`
-	AssetKind   AssetKind              `json:"assetKind"`
-	AssetID     string                 `json:"assetId"`
-	Ordinal     int                    `json:"ordinal"`
-	Label       string                 `json:"label"`
-	Notes       string                 `json:"notes"`
-	Digest      domain.Digest          `json:"digest"`
-	Manifest    []domain.ManifestEntry `json:"manifest,omitempty"`
+	ID        string                 `json:"id"`
+	AssetKind AssetKind              `json:"assetKind"`
+	AssetID   string                 `json:"assetId"`
+	Ordinal   int                    `json:"ordinal"`
+	Label     string                 `json:"label"`
+	Notes     string                 `json:"notes"`
+	Digest    domain.Digest          `json:"digest"`
+	Manifest  []domain.ManifestEntry `json:"manifest,omitempty"`
 	// What this version is, when it is not a package of files. A layout is a
 	// few kilobytes of JSON somebody edits and saves repeatedly, and putting
 	// that through an upload grant, a confirmation and an object would be the
 	// file machinery used for something that is not a file. A version holds
 	// one or the other and never both.
-	Document    json.RawMessage        `json:"document,omitempty"`
-	TotalBytes  int64                  `json:"totalBytes"`
-	RuntimeMin  string                 `json:"runtimeMin"`
-	PublishedAt *time.Time             `json:"publishedAt,omitempty"`
-	CreatedAt   time.Time              `json:"createdAt"`
-	CreatedBy   string                 `json:"createdBy"`
+	Document    json.RawMessage `json:"document,omitempty"`
+	TotalBytes  int64           `json:"totalBytes"`
+	RuntimeMin  string          `json:"runtimeMin"`
+	PublishedAt *time.Time      `json:"publishedAt,omitempty"`
+	CreatedAt   time.Time       `json:"createdAt"`
+	CreatedBy   string          `json:"createdBy"`
 }
 
 // Published reports whether anything may pin this version. An unpublished

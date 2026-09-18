@@ -128,8 +128,8 @@ func (rt *Router) registerSweeps() {
 	// is checked inside the handler, because a sweep holds a machine as many
 	// times over as it has scenarios and that is the part that costs.
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/sweeps",
-		Summary: "fly a mission against everything that could go wrong with it",
-		Action:  policy.DiveWrite,
+		Summary:  "fly a mission against everything that could go wrong with it",
+		Action:   policy.DiveWrite,
 		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.createSweep})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations/{orgId}/sweeps",
 		Summary: "what has been swept", Action: policy.DiveRead,
@@ -138,7 +138,7 @@ func (rt *Router) registerSweeps() {
 		Summary: "one sweep", Action: policy.PlatformReadCatalogue,
 		Resource: atPlatform(), Handle: d.readSweep})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/sweeps/{sweepId}/findings",
-		Summary: "what breaks this mission, and what would fix it",
-		Action:  policy.PlatformReadCatalogue,
+		Summary:  "what breaks this mission, and what would fix it",
+		Action:   policy.PlatformReadCatalogue,
 		Resource: atPlatform(), Handle: d.sweepFindings})
 }

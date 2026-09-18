@@ -287,9 +287,9 @@ func (d *Dependencies) setQuota(w http.ResponseWriter, r *http.Request) {
 	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
 		var err error
 		stored, err = d.Broker.SetQuota(r.Context(), conn, exec.Quota{
-			OrgID:             orgID,
-			MaxConcurrentJobs: request.MaxConcurrentJobs,
-			MaxCPU:            request.MaxCPU,
+			OrgID:              orgID,
+			MaxConcurrentJobs:  request.MaxConcurrentJobs,
+			MaxCPU:             request.MaxCPU,
 			MaxMemoryBytes:     request.MaxMemoryBytes,
 			MaxGPU:             request.MaxGPU,
 			MaxConcurrentDives: request.MaxConcurrentDives,

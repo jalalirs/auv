@@ -204,8 +204,8 @@ func (rt *Router) registerMadeOfAPlace() {
 			catalog.KindMission: "plan of work",
 		}[what.kind]
 		rt.register(Route{Method: "GET", Pattern: "/api/v1/cities/{cityId}/" + what.path,
-			Summary: "what has been made of this place: every " + noun,
-			Action:  policy.CityRead,
+			Summary:  "what has been made of this place: every " + noun,
+			Action:   policy.CityRead,
 			Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.list(what)})
 		rt.register(Route{Method: "POST", Pattern: "/api/v1/cities/{cityId}/" + what.path,
 			Summary: "start a " + noun + " for this place", Action: policy.CityCreate,
@@ -214,8 +214,8 @@ func (rt *Router) registerMadeOfAPlace() {
 			Summary: "one " + noun, Action: policy.PlatformReadCatalogue,
 			Resource: atPlatform(), Handle: d.read(what)})
 		rt.register(Route{Method: "GET", Pattern: "/api/v1/" + what.path + "/{" + what.id + "}/versions",
-			Summary: "what has been saved of this " + noun,
-			Action:  policy.PlatformReadCatalogue,
+			Summary:  "what has been saved of this " + noun,
+			Action:   policy.PlatformReadCatalogue,
 			Resource: atPlatform(), Handle: d.versions(what)})
 		rt.register(Route{Method: "POST", Pattern: "/api/v1/" + what.path + "/{" + what.id + "}/versions",
 			Summary: "save this " + noun, Action: policy.CityCreate,
@@ -223,7 +223,7 @@ func (rt *Router) registerMadeOfAPlace() {
 	}
 	// And one only a plan of work has: what it costs.
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/missions/{missionId}/cost",
-		Summary: "what this plan of work takes, from the last time it was flown",
-		Action:  policy.PlatformReadCatalogue,
+		Summary:  "what this plan of work takes, from the last time it was flown",
+		Action:   policy.PlatformReadCatalogue,
 		Resource: atPlatform(), Handle: d.missionCost})
 }

@@ -42,15 +42,15 @@ type Target struct {
 // the same way data is: through the decision point, then against a stated
 // limit.
 type Quota struct {
-	OrgID             string    `json:"orgId"`
-	MaxConcurrentJobs int       `json:"maxConcurrentJobs"`
-	MaxCPU            float64   `json:"maxCpu"`
-	MaxMemoryBytes    int64     `json:"maxMemoryBytes"`
-	MaxGPU            int       `json:"maxGpu"`
+	OrgID             string  `json:"orgId"`
+	MaxConcurrentJobs int     `json:"maxConcurrentJobs"`
+	MaxCPU            float64 `json:"maxCpu"`
+	MaxMemoryBytes    int64   `json:"maxMemoryBytes"`
+	MaxGPU            int     `json:"maxGpu"`
 	// Dives, as distinct from jobs: how many at once, and how many GPU-hours
 	// in a day, counted over every card a dive held.
-	MaxConcurrentDives int     `json:"maxConcurrentDives"`
-	MaxGPUHoursDaily   float64 `json:"maxGpuHoursDaily"`
+	MaxConcurrentDives int       `json:"maxConcurrentDives"`
+	MaxGPUHoursDaily   float64   `json:"maxGpuHoursDaily"`
 	UpdatedAt          time.Time `json:"updatedAt"`
 }
 

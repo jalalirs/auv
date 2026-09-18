@@ -141,13 +141,13 @@ var ErrHandedOver = errors.New("the dive was handed over to the next agent")
 // handles is what a successor needs to take over a running dive: written
 // beside the brief while the dive runs, read by the agent that starts next.
 type handles struct {
-	Claimed     Claimed `json:"claimed"`
-	Simulator   string  `json:"simulator"`
-	Network     string  `json:"network"`
-	Autonomy    string  `json:"autonomy,omitempty"`
-	BriefDir    string  `json:"briefDir"`
-	SignalPort  int     `json:"signalPort"`
-	HandedOver  bool    `json:"handedOver"`
+	Claimed    Claimed `json:"claimed"`
+	Simulator  string  `json:"simulator"`
+	Network    string  `json:"network"`
+	Autonomy   string  `json:"autonomy,omitempty"`
+	BriefDir   string  `json:"briefDir"`
+	SignalPort int     `json:"signalPort"`
+	HandedOver bool    `json:"handedOver"`
 }
 
 // Diver runs dives on one host.
@@ -193,7 +193,6 @@ type Diver struct {
 
 // Stopping tells the diver how to know the agent is shutting down.
 func (d *Diver) Stopping(is func() bool) { d.stopping = is }
-
 
 // AnHour is how long an interactive dive is given.
 //
@@ -420,12 +419,12 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		"vehiclePath":    "/dive/vehicle",
 		"conditions":     claimed.Conditions,
 		// What is in the water besides the vehicle, and which version of it.
-		"layout":         claimed.Layout,
+		"layout":          claimed.Layout,
 		"layoutVersionId": claimed.LayoutVersionID,
 		"layoutChanges":   claimed.LayoutChanges,
-		"initialState":   claimed.InitialState,
-		"objective":      claimed.Objective,
-		"rosDomainId":    claimed.ROSDomainID,
+		"initialState":    claimed.InitialState,
+		"objective":       claimed.Objective,
+		"rosDomainId":     claimed.ROSDomainID,
 		// Whether anything is coming to fly this. The simulator waits for
 		// autonomy to appear before it starts, and a dive with none was
 		// spending its first minute waiting for a stack that was never going
@@ -438,7 +437,7 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		// absurd one for a dive somebody is trying to fly — it was over before
 		// the application could connect.
 		"durationSeconds": durationOf(claimed),
-		"deviceIndex":    claimed.DeviceIndex,
+		"deviceIndex":     claimed.DeviceIndex,
 		// Whether anything is flying this vehicle. A dive that is flown paces
 		// itself to real time so the controller has time to exist in; one that
 		// is not runs as fast as the machine allows.
@@ -1044,7 +1043,6 @@ func (d *Diver) await(ctx context.Context, simID, marker, said string,
 	return fmt.Errorf("the simulator did not report %s within five minutes", said)
 }
 
-
 // keepRecording puts what the dive left in its recording directory into
 // storage, file by file, and names each against the run. Best effort: a file
 // that will not upload is logged and the rest still go, because a recording
@@ -1100,14 +1098,12 @@ func mediaTypeOf(path string) string {
 	}
 }
 
-
 // recording says whether a dive will leave a recording: it does when it is
 // for something, which is what the objective says.
 func recording(claimed Claimed) bool {
 	var objective map[string]any
 	return len(claimed.Objective) > 0 && json.Unmarshal(claimed.Objective, &objective) == nil && len(objective) > 0
 }
-
 
 // relay remembers which of the simulator's lines have already reached the run.
 type relay struct {
@@ -1168,7 +1164,6 @@ func (d *Diver) relayEvents(ctx context.Context, runID, simID string, relayed *r
 		}
 	}
 }
-
 
 // whatComputedIt reports what actually ran a dive, once, when the runtime says
 // which physics it is.
