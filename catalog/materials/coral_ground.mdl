@@ -242,9 +242,13 @@ export material coral_ground(
     // the seabed black.
     color variation = math::lerp(color(1.0),
                                  math::lerp(soft_high, hard_high, pick), grain);
+    // Painted as emission and not as albedo, so that nothing shines on it.
+    // The first version made it the albedo, and what came back was a picture
+    // of the lighting: bright where the sun hit the near ground, dark at the
+    // horizon where everything is at a grazing angle. Which reads exactly like
+    // a distance field pointing the wrong way, and was read as one.
     color albedo = show_distance > 0.0
-        ? color(math::saturate(swum / show_distance))
-        : math::saturate(low * lift * variation);
+        ? color(0.0) : math::saturate(low * lift * variation);
 
     float wet = math::lerp(
         base::file_texture(texture: soft_rough, uvw: fine,
@@ -260,7 +264,8 @@ export material coral_ground(
     // why a distant reef does not go black, it goes the colour of the sea.
     color survives = math::exp(color(-swum) / math::max(attenuation, color(0.01)));
     color water = show_distance > 0.0
-        ? color(0.0) : veiling * veil * (color(1.0) - survives);
+        ? color(math::saturate(swum / show_distance))
+        : veiling * veil * (color(1.0) - survives);
 
     float3 bumped = math::normalize(math::lerp(
         base::tangent_space_normal_texture(
