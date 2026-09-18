@@ -246,6 +246,50 @@ def main() -> int:
                       "forms": sorted(set(FROM_A_SCAN.values())) if scans else []},
         "beginAt": begin,
     }
+    # ── what lives here ──────────────────────────────────────────────────────
+    #
+    # The species somebody actually recorded at this place, grouped into the
+    # handful of things a reef fish does, and the share of each. A dive decides
+    # how many to put in the water; this says what they are, and it says it
+    # from the record rather than from a general idea of a reef.
+    watched = ref / "species_counts.json"
+    if watched.is_file():
+        # By path, not by import. There is a `tools/coral.py` and a runtime
+        # package called `coral`, and `tools` is first on sys.path here, so
+        # `from coral import life` finds the wrong one and says so in a way
+        # that takes a minute to read.
+        import importlib.util
+        where = (pathlib.Path(__file__).resolve().parent.parent / "services"
+                 / "sim-runtime" / "coral" / "life.py")
+        spec = importlib.util.spec_from_file_location("coral_life", where)
+        fauna = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(fauna)
+
+        counted = json.loads(watched.read_text())
+        fish = [one for one in counted if one.get("group") == "Actinopterygii"]
+        seen = fauna.as_observed(counted, 10_000)
+        shares = {k: round(v / 10_000, 5) for k, v in seen.items()}
+        shutil.copy(watched, place / "fauna.json")
+        site["life"] = {
+            "source": listed.get("lifeSource",
+                                 "observations recorded at this place"),
+            "observations": sum(int(one.get("observations", 0)) for one in fish),
+            "species": len(fish),
+            "shares": shares,
+            # Not from the observation record, which counts photographs and not
+            # fish. This is the figure used for individuals a vehicle camera
+            # can resolve on Caribbean fore reef, and it is a parameter with
+            # its uncertainty beside it rather than a measurement of this site.
+            "perSquareMetre": 0.10,
+            "perSquareMetreFrom": ("Caribbean fore-reef visual census, order "
+                                   "0.05-0.2 for individuals over ~8 cm; not "
+                                   "measured at this site"),
+            "file": "fauna.json",
+        }
+        print(f"  life: {len(fish)} species, "
+              f"{site['life']['observations']:,} observations, "
+              f"{len(shares)} behaviour groups")
+
     site["beginAt"] = begin["at"]
     site["beginBecause"] = ("the densest surveyed reef between %.0f and %.0f m, three metres off the bottom "
                             "(%d colonies within 10 m, %.1f m deep)"
