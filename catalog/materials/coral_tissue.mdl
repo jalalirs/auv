@@ -196,7 +196,13 @@ export material coral_tissue(
         state::transform_point(state::coordinate_internal,
                                state::coordinate_world, state::position()),
         eye);
-    color survives = math::exp(color(-swum) / math::max(attenuation, color(0.01)));
+    // Nought veil means no medium at all, so nothing is taken either. The
+    // first version gated only the light the water adds and left the light it
+    // takes, so turning the water off multiplied every surface by
+    // exp(-distance) and the seabed came back black.
+    color survives = veil <= 0.0
+        ? color(1.0)
+        : math::exp(color(-swum) / math::max(attenuation, color(0.01)));
     color water = veiling * veil * (color(1.0) - survives);
 } in material(
     surface: material_surface(
