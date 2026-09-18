@@ -316,8 +316,27 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # surface stays visible forty metres away and fills the top of every frame
     # with a bright ceiling. Real water at forty metres in this type is gone.
     scale = 1.0 if not visibility_m else max(0.15, float(visibility_m) / lengths[1])
-    settings.set("/rtx/fog/fogDistance", float(lengths[1] * scale))
+    green = float(lengths[1] * scale)
+    # The renderer's own names are `fogStartDist` and `fogEndDist`, and they
+    # were never set. `fogDistance` and `fogStartDistance`, which this file has
+    # been writing for a fortnight, are not settings this renderer has: carb
+    # takes any key you hand it and creates one nothing reads, which is the
+    # same way the exposure was written to `/rtx/post/tonemap/iso` and quietly
+    # did nothing.
+    #
+    # So the fog has been running at its default five kilometres. At five
+    # kilometres a reef a hundred metres away is two per cent veiled, and every
+    # frame this platform has produced has had a seabed sharp to the horizon
+    # through water that absorbs green in seventeen metres.
+    #
+    # Three lengths, not one: the control is a linear ramp from start to end,
+    # not an e-folding, so the distance where it reaches full strength is the
+    # distance where real water has already gone, and that is about three
+    # attenuation lengths.
+    settings.set("/rtx/fog/fogStartDist", 0.0)
+    settings.set("/rtx/fog/fogEndDist", float(green * 3.0))
     settings.set("/rtx/fog/fogDensity", 1.0)
+    settings.set("/rtx/fog/fogDistanceDensity", 1.0)
     # Fog everywhere in the water, not only near the bottom.
     #
     # The renderer's fog thins with height above a plane, which is right for
@@ -349,6 +368,8 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # wrong place: what greyed out a close colony was a veiling intensity above
     # one, not haze at half a metre. At this water's length a thing a metre
     # away is six per cent hazed, which is what a photograph shows.
+    # `fogStartDist` above is the one the renderer reads; this is kept only
+    # because a place opened in some other Kit application may read it.
     settings.set("/rtx/fog/fogStartDistance", 0.0)
 
     # ── the sun ──────────────────────────────────────────────────────────────
@@ -512,7 +533,8 @@ def make(stage, say, floor: float, water_level: float = 0.0,
 
     say("water_made",
         fogApplied=applied,
-        visibilityM=round(17.0 * scale, 1), surfaceAtM=water_level,
+        visibilityM=round(17.0 * scale, 1), fogEndsAtM=round(green * 3.0, 1),
+        surfaceAtM=water_level,
         daylightLeft=round(left, 3), atDepthM=round(working_depth, 1),
         absorbsInM=list(ATTENUATION_METRES))
 
