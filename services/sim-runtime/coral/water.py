@@ -72,7 +72,17 @@ SCATTERING_ALBEDO = 0.28
 # How much veiling light there is at all, before depth dims it. Read off the
 # same ladder: at 0.28 the whole frame went the colour of the water, at 0.05
 # there was no water in the picture.
-VEIL_STRENGTH = 0.12
+# How bright the veiling light is. Not a fraction: this fog adds light rather
+# than blending towards it.
+#
+# It was 0.12, and it was tuned when the distance ramp was silently running at
+# the renderer's default five kilometres, so near things and far things were
+# getting the same wash and the only way to keep a close colony its own colour
+# was to turn the whole thing down to nothing. With the ramp at three
+# attenuation lengths a close colony gets almost none of this and a distant
+# one gets all of it, which is what water does and is what the number can now
+# be set for.
+VEIL_STRENGTH = 1.6
 
 # How bright the water's own glow is as a fill light. Read off a ladder.
 DOME_SHARE = 55.0
@@ -317,6 +327,23 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # distance at which a thing is lost is the distance at which the light in
     # front of it out-shines it.
     settings.set("/rtx/fog/fogColorIntensity", float(max(0.0, veil)))
+
+    # And the colour of nothing at all.
+    #
+    # The fog is applied per pixel from that pixel's depth, so a pixel with no
+    # geometry behind it gets no fog and comes back the background colour,
+    # which is black. That is the band across the top of every frame this
+    # platform has ever made: not the water surface, not the fog giving out,
+    # but the gap between the far edge of the sea and the far edge of the
+    # seabed, painted in the colour of nothing. Two rounds of work went into
+    # moving the fog's height plane to chase it.
+    #
+    # A pixel with nothing behind it is a pixel looking at infinitely deep
+    # water, and infinitely deep water is the veiling colour at full strength.
+    # So that is what it is painted.
+    nothing = [float(min(1.0, one * max(0.0, veil))) for one in veiling]
+    settings.set("/rtx/post/backgroundZeroAlpha/backgroundDefaultColor", nothing)
+    settings.set("/rtx/post/backgroundZeroAlpha/enabled", True)
     # The distance is the water's own attenuation length, for green.
     #
     # Green because it is most of what the eye reads as brightness, and green
