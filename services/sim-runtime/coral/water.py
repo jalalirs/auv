@@ -292,8 +292,13 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     #
     # It was 0.55, measured off an exposure ladder — which was honest, and was
     # one number standing in for two facts that move independently.
-    settings.set("/rtx/fog/fogColorIntensity",
-                 float(min(1.0, VEIL_STRENGTH * (0.4 + 0.6 * left))))
+    #
+    # CORAL_CITY_VEIL pins it, the same way CORAL_CITY_ISO pins the exposure:
+    # a question about one number gets answered in one run rather than in an
+    # afternoon of "that change did nothing".
+    from coral.runner import asked_for
+    veil = asked_for("CORAL_CITY_VEIL", VEIL_STRENGTH * (0.4 + 0.6 * left))
+    settings.set("/rtx/fog/fogColorIntensity", float(min(1.0, veil)))
     # The distance is the water's own attenuation length, for green.
     #
     # Green because it is most of what the eye reads as brightness, and green
@@ -534,6 +539,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     say("water_made",
         fogApplied=applied,
         visibilityM=round(17.0 * scale, 1), fogEndsAtM=round(green * 3.0, 1),
+        veil=round(float(min(1.0, veil)), 3),
         surfaceAtM=water_level,
         daylightLeft=round(left, 3), atDepthM=round(working_depth, 1),
         absorbsInM=list(ATTENUATION_METRES))

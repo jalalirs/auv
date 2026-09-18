@@ -103,6 +103,7 @@ JSON
         -e CORAL_CITY_ISO="${ISO:-}" \
         -e CORAL_CITY_METER="${METER:-1}" \
         -e CORAL_CITY_SETTINGS="${SETTINGS:-0}" \
+        -e CORAL_CITY_VEIL="${VEIL:-}" \
         -e CORAL_CITY_LAMP_INTENSITY="${LAMP_INTENSITY:-}" \
         -e CORAL_CITY_TOUR_INTO=/dive/frames \
         -v "${here}:/dive:rw" \
