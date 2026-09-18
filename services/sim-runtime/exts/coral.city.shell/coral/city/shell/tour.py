@@ -577,7 +577,15 @@ class Stills:
         # Twenty-four millimetres, which is about what a vehicle's camera is —
         # wide, because everything underwater is close.
         camera.CreateFocalLengthAttr(24.0)
-        camera.CreateClippingRangeAttr(Gf.Vec2f(0.05, 12000.0))
+        # Stop drawing where the water has already taken everything.
+        #
+        # Twelve kilometres of seabed was being drawn through water that
+        # absorbs green in seventeen metres, and the renderer's fog adds
+        # veiling light without absorbing any, so all of it stayed sharp. The
+        # background is the water's own colour, so a surface reaches this plane
+        # already the colour of what is behind it and there is no edge to see.
+        from coral import water
+        camera.CreateClippingRangeAttr(Gf.Vec2f(0.05, float(water.SEEN_TO_M)))
         look = Gf.Matrix4d().SetLookAt(
             Gf.Vec3d(*eye), Gf.Vec3d(*target), Gf.Vec3d(0, 0, 1)).GetInverse()
         moving = UsdGeom.Xformable(camera.GetPrim())
