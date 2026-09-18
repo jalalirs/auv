@@ -51,6 +51,12 @@ def main() -> int:
     unsourced = []
     print("%-14s %11s  %-9s %s" % ("place", "per km²", "density", "from"))
     for place in sorted(where.iterdir()):
+        # Not the working copies somebody left beside the real ones. A
+        # `.looe-key-before` kept for a comparison reported itself as
+        # "looe-key" and showed up in this table twice, once with the truth
+        # and once without it.
+        if place.name.startswith("."):
+            continue
         said = about(place)
         if said is None:
             continue
