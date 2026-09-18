@@ -568,6 +568,9 @@ class Stills:
         tx, ty = self.anchor[0] + how["at"][0], self.anchor[1] + how["at"][1]
         eye = (ex, ey, self._height(ex, ey, how["above"]))
         target = (tx, ty, self._height(tx, ty, how["at_above"]))
+        # Kept, because the water is measured from wherever the camera is and
+        # on a tour that is not the vehicle.
+        self.eye = eye
 
         camera_path = "/World/LookCamera"
         camera = UsdGeom.Camera.Define(stage, camera_path)
