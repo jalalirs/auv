@@ -27,7 +27,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Formatting, vetting, type-checking, and that the generated client still
-      # matches the contract it was generated from.
+      # matches the contract it was generated from. `just check` includes the
+      # Python, which is most of the simulation runtime and all of the tools.
       - name: Validate source
         run: just check
 
