@@ -312,7 +312,11 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # afternoon of "that change did nothing".
     from coral.runner import asked_for
     veil = asked_for("CORAL_CITY_VEIL", VEIL_STRENGTH * (0.4 + 0.6 * left))
-    settings.set("/rtx/fog/fogColorIntensity", float(min(1.0, veil)))
+    # Not clamped at one. This fog adds veiling light rather than blending
+    # towards it, so "how much" is a brightness and not a fraction, and the
+    # distance at which a thing is lost is the distance at which the light in
+    # front of it out-shines it.
+    settings.set("/rtx/fog/fogColorIntensity", float(max(0.0, veil)))
     # The distance is the water's own attenuation length, for green.
     #
     # Green because it is most of what the eye reads as brightness, and green
@@ -553,7 +557,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     say("water_made",
         fogApplied=applied,
         visibilityM=round(17.0 * scale, 1), fogEndsAtM=round(green * 3.0, 1),
-        veil=round(float(min(1.0, veil)), 3),
+        veil=round(float(veil), 3),
         surfaceAtM=water_level,
         daylightLeft=round(left, 3), atDepthM=round(working_depth, 1),
         absorbsInM=list(ATTENUATION_METRES))
