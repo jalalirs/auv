@@ -1,10 +1,8 @@
 """The tank runs the runtime's physics; a controller that holds here holds there."""
 
-import math
 import pathlib
 import sys
 
-import numpy as np
 import pytest
 
 HERE = pathlib.Path(__file__).resolve().parent

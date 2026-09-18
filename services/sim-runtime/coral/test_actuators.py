@@ -14,7 +14,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from hydrodynamics import Hydrodynamics  # noqa: E402
+from hydrodynamics import Hydrodynamics
 
 PACKAGE = pathlib.Path(__file__).resolve().parents[3] / "catalog/vehicles/bluerov2/dynamics.json"
 

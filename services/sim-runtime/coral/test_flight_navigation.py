@@ -18,7 +18,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from navigation import Navigation  # noqa: E402
+from navigation import Navigation
 
 
 def level():

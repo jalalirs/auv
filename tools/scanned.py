@@ -27,7 +27,6 @@ the spread within a species that one specimen cannot express.
 from __future__ import annotations
 
 import json
-import math
 import pathlib
 import struct
 

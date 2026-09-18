@@ -448,7 +448,13 @@ def sponge(rng, height=0.6):
         rings = 4
         for r in range(rings):
             low, high = r / rings, (r + 1) / rings
-            fatten = lambda t: wide * (0.62 + 0.55 * math.sin(math.pi * t ** 0.8))
+            # Waisted by the ring's own position, worked out here rather than
+            # in a lambda that closes over the loop's `wide`. It was called
+            # inside the iteration so it was never wrong, and it is the shape
+            # of a bug that is wrong the moment somebody keeps the function.
+            def fatten(where, wide=wide):
+                return wide * (0.62 + 0.55 * math.sin(math.pi * where ** 0.8))
+
             pieces.append(_cylinder(at + lean * tall * low,
                                     at + lean * tall * high,
                                     fatten(low), fatten(high), sides=10))

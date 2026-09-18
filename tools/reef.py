@@ -211,7 +211,6 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # What shape each one is, decided by the depth it landed at rather than by
     # one mix for the whole site.
     which, scale, covered_by = a_draw(depth[row, column], rng)
-    which_kind = which // variants
     turn = rng.uniform(0, 2 * math.pi, how_many)
 
     # The surface of a coral at the scale of its polyps, and the material that

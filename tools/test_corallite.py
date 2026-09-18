@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-import corallite  # noqa: E402
+import corallite
 
 
 @pytest.mark.parametrize("form", sorted(corallite.FORMS))

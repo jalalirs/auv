@@ -21,7 +21,6 @@ than better, so a controller that copes here is not being flattered.
 
 from __future__ import annotations
 
-import math
 
 import numpy as np
 

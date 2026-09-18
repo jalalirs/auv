@@ -20,7 +20,6 @@ A network in place of the matrix is the same path with more parameters.
 from __future__ import annotations
 
 import json
-import math
 import pathlib
 import sys
 import time
@@ -32,7 +31,7 @@ sys.path.insert(0, str(HERE.parent))
 
 from coral_city.tank import Tank  # noqa: E402
 from coral_city.tasks import hold_station  # noqa: E402
-from hold_policy import FEATURES, LinearHold, features  # noqa: E402
+from hold_policy import FEATURES, LinearHold  # noqa: E402
 
 CURRENT = (0.51, 90.0)      # one knot, flowing east
 SECONDS = 30.0

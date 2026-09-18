@@ -10,7 +10,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from modem import SOUND_MS, Modem  # noqa: E402
+from modem import Modem
 
 
 def test_sound_takes_time_to_cross_water():

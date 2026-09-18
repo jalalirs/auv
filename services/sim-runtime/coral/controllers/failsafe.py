@@ -19,7 +19,6 @@ it back on its own. A person can take it back; nothing else can.
 
 from __future__ import annotations
 
-import math
 
 import numpy as np
 

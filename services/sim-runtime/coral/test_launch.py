@@ -9,11 +9,10 @@ nor counted in what the day costs.
 import pathlib
 import sys
 
-import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from world import World  # noqa: E402
+from world import World
 
 
 class Placed:

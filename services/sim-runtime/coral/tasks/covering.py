@@ -13,7 +13,7 @@ import math
 
 import numpy as np
 
-from .base import Task, footprint_half_angle, wrap
+from .base import Task, footprint_half_angle
 
 
 class Survey(Task):

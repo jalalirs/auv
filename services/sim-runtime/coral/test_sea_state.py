@@ -14,7 +14,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from sea_state import SeaState  # noqa: E402
+from sea_state import SeaState
 
 
 def significant_of(sea, n=4000, seed=1):

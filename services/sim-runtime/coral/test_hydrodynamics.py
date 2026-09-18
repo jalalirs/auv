@@ -8,7 +8,6 @@ not, which is the failure mode worth spending tests on.
 Run with plain pytest; nothing here needs Isaac Sim.
 """
 
-import json
 import math
 import pathlib
 
@@ -20,7 +19,6 @@ from hydrodynamics import (
     Allocator,
     Body,
     Hydrodynamics,
-    Thruster,
     terminal_velocity,
 )
 

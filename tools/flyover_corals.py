@@ -77,7 +77,7 @@ def _fan(name, rng):
     mesh.from_pydata(verts, edges, [])
     obj = bpy.data.objects.new(name, mesh)
     # Skin the wire so it renders: a thin tube along every edge.
-    mod = obj.modifiers.new("skin", "SKIN")
+    obj.modifiers.new("skin", "SKIN")
     for v in obj.data.skin_vertices[0].data:
         v.radius = (0.022, 0.022)
     return obj
@@ -100,7 +100,7 @@ def _plume(name, rng):
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata(verts, edges, [])
     obj = bpy.data.objects.new(name, mesh)
-    mod = obj.modifiers.new("skin", "SKIN")
+    obj.modifiers.new("skin", "SKIN")
     for v in obj.data.skin_vertices[0].data:
         v.radius = (0.018, 0.018)
     return obj
@@ -158,7 +158,6 @@ def stand(scene, ground_dir: pathlib.Path, floor_at, exaggeration: float) -> Non
     # ── prototypes, in a collection the instancer picks from by index ────────
     protos = bpy.data.collections.new("Colonies")
     scene.collection.children.link(protos)
-    things = []
     low = bpy.data.objects.new("low", _dome("low", rng, lumps=0.18)); low.data.materials.append(_material("low", COLOUR["low"]))
     stony = bpy.data.objects.new("stony", _dome("stony", rng, lumps=0.10)); stony.data.materials.append(_material("stony", COLOUR["stony"]))
     scan = _scan(ground_dir)

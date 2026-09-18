@@ -497,7 +497,7 @@ class Dive:
         changes is whether there is anything to see.
         """
         import omni.usd
-        from pxr import Gf, Usd, UsdGeom, UsdLux, UsdPhysics
+        from pxr import Gf, Usd, UsdGeom, UsdPhysics
 
         context = omni.usd.get_context()
         context.open_stage(str(self.scene))
@@ -1430,7 +1430,7 @@ class Dive:
         """
         import json
 
-        from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux
+        from pxr import Gf, Usd, UsdGeom, UsdLux
 
         self.lamps = []
         self.lamp_watts = 0.0

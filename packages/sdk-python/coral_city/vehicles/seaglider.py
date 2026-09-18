@@ -1,6 +1,6 @@
 """seaglider, as the catalogue describes it. Generated; do not edit."""
 
-from ..vehicle import Sensor, Thruster, Topic, Vehicle
+from ..vehicle import Sensor, Topic, Vehicle
 
 DYNAMICS = {
     "massKg": 52.0,

@@ -14,7 +14,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-import scanned  # noqa: E402
+import scanned
 
 REFERENCE = pathlib.Path.home() / "coral-city" / "reference" / "looe-key"
 

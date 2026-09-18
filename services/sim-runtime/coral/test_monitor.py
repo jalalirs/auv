@@ -12,7 +12,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from tasks import task_for  # noqa: E402
+from tasks import task_for
 
 CAMERA = {"focalLengthMm": 21, "widthPx": 1280, "heightPx": 720}
 

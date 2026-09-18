@@ -10,12 +10,11 @@ what our BlueROV2 is out of trim by — did not exist.
 import pathlib
 import sys
 
-import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from hydrodynamics import DENSITY_SEAWATER, Allocator, Body, Hydrodynamics, density_of  # noqa: E402
-from runner import Dive  # noqa: E402
+from hydrodynamics import DENSITY_SEAWATER, Allocator, Body, Hydrodynamics, density_of
+from runner import Dive
 
 PACKAGE = pathlib.Path(__file__).resolve().parents[3] / "catalog/vehicles/bluerov2/dynamics.json"
 

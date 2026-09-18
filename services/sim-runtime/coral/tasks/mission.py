@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import math
 
 import numpy as np
 
-from .base import Task, wrap
+from .base import Task
 
 
 class Mission(Task):

@@ -14,7 +14,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from world import World  # noqa: E402
+from world import World
 
 
 def a_line(slack: float = 0.1, weight: float = 0.0) -> World:
