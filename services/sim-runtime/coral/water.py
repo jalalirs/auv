@@ -279,6 +279,20 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     else:
         _clear = False
 
+    # Volumetric fog, not the post-process kind.
+    #
+    # `/rtx/fog` *adds* veiling light and never takes any away: a reef at three
+    # hundred metres gets a wash of green laid over it and stays perfectly
+    # sharp. That is airlight without absorption, which is half of what water
+    # does, and it is why every frame this platform has made has had a seabed
+    # legible to the horizon through water that absorbs green in seventeen
+    # metres. The comment in this file has said "the fog is added to everything
+    # the camera sees" since it was written, which turns out to have been the
+    # literal truth.
+    #
+    # The ray-traced volumetric effects absorb as well as scatter, which is a
+    # medium rather than a filter over the picture.
+    settings.set("/rtx/raytracing/globalVolumetricEffects/enabled", not _clear)
     settings.set("/rtx/fog/enabled", not _clear)
     settings.set("/rtx/fog/fogColor", list(veiling))
     # The fog is added to everything the camera sees, so its strength is how
