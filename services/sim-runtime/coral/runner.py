@@ -2769,10 +2769,19 @@ class Dive:
 
         from pxr import UsdGeom
 
+        import time as _time
+        began = _time.perf_counter()
+
+        def took(what):
+            self.say("sway_step", did=what,
+                     ms=round(1000 * (_time.perf_counter() - began), 1))
+
         described = json.loads((city / "site.json").read_text())
         sways = described.get("reef", {}).get("swaysWith") or {}
         if not sways:
+            self.say("no_sway", why="this place records nothing that bends")
             return None
+        took("read the record")
         named = described.get("layers", {}).get("coral", "coral.usda")
         instancer = None
         for prim in stage.Traverse():
@@ -2782,11 +2791,14 @@ class Dive:
         if instancer is None:
             self.say("no_sway", why=f"no coral instancer in {named}")
             return None
+        took("found the instancer")
 
         which = np.array(instancer.GetProtoIndicesAttr().Get() or [])
         orientations = instancer.GetOrientationsAttr().Get()
         if not len(which) or orientations is None or not len(orientations):
+            self.say("no_sway", why="the coral instancer has nothing in it")
             return None
+        took("read %d instances" % len(which))
 
         held, stiff = [], []
         for kind, prototypes in sways.items():
@@ -2794,7 +2806,9 @@ class Dive:
                 held.append(int(i))
                 stiff.append(life_stiffness(kind))
         if not held:
+            self.say("no_sway", why="none of the colonies are rooted kinds")
             return None
+        took("picked %d rooted" % len(held))
 
         held = np.array(held)
         # Their own turn about the vertical, read back off what is there, so a
@@ -2810,6 +2824,7 @@ class Dive:
         turn = np.array([2.0 * np.arctan2(float(orientations[i].imaginary[2]),
                                           float(orientations[i].real))
                          for i in held])
+        took("read their turns")
         phase = np.linspace(0, 2 * np.pi, len(held), endpoint=False)
         self._rooted_orientations = orientations
         self.say("sway_is", colonies=int(len(held)),
