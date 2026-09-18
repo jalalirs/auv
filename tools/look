@@ -70,6 +70,24 @@ one_place() {
     fi
     [ -n "${vehicle}" ] || { echo "  no vehicle package to open the scene with" >&2; return 1; }
 
+    # And a place carries its own copy of the materials it is drawn with,
+    # because a published package has to hold everything it is drawn from. So
+    # a material edited in this checkout does not reach a place until the place
+    # is built again — which is exactly the stale-build trap one level down,
+    # and it cost three renders of a distance field that never changed because
+    # the shader being compiled was the one from an hour earlier.
+    local mine theirs
+    for mine in "$(dirname "$0")/../catalog/materials/"*.mdl; do
+        theirs="${city}/$(basename "${mine}")"
+        [ -f "${theirs}" ] || continue
+        if ! cmp -s "${mine}" "${theirs}"; then
+            echo "  ${place}: $(basename "${mine}") is older than the one in this checkout." >&2
+            echo "  Build the place again, or copy it:" >&2
+            echo "    cp catalog/materials/*.mdl ${city}/" >&2
+            return 1
+        fi
+    done
+
     # Pulled, not assumed. `fly-over` has always done this and this did not,
     # which is how an afternoon went: every build was pushed to the registry
     # and every run used whatever image happened to be sitting on the box, so
