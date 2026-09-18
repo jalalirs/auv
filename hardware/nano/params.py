@@ -5,7 +5,8 @@ the same as the simulator's body frame, so a thruster listed here can be
 copied into a dynamics.json without a sign flip.
 
 Bought parts are recorded as the supplier states them, with the source, and
-the frame is designed around them. Nothing below is a number somebody liked.
+the printed parts are designed around them. Nothing below is a number
+somebody liked; where one is a guess it says so and says what would settle it.
 """
 
 # ── the dry hull: Blue Robotics 3" locking series ────────────────────────────
@@ -15,56 +16,101 @@ TUBE_OD = 88.9
 TUBE_ID = 76.2
 TUBE_LENGTH = 150.0
 # How far a locking flange and its cap reach past the tube end. Not on the
-# product page; taken from the enclosure user guide's drawing at a glance and
-# TO BE CHECKED against the CAD model before the frame is printed.
+# product page; a guess from the user guide's drawing. TO BE CHECKED against
+# the CAD before the chassis is printed: it sets where the window is.
 CAP_REACH = 20.0
-# Where the tube sits along the body. Forward of centre so the two horizontal
-# thrusters fit behind its rear cap.
-TUBE_X = 15.0
-# Clearance around the tube in the cradle, on the diameter.
-TUBE_CLEARANCE = 0.6
+TUBE_X = -1.0                # tube centre; the front cap face sits 2 mm inside the nose
+TUBE_CLEARANCE = 0.6         # on the diameter, in the cradle
+TUBE_FRONT = TUBE_X + TUBE_LENGTH / 2 + CAP_REACH   # the window's face, x = 100
+TUBE_REAR = TUBE_X - TUBE_LENGTH / 2 - CAP_REACH    # the rear cap's face, x = -90
 
-# ── the body: a Titan at 0.55 scale, from Geneinno's 390 × 347 × 165 ─────────
-# 0.55 rather than 0.5 because the tube is 88.9 mm across and a 83 mm tall
-# body cannot hold it. 215 × 191 × 91 would be the exact figure.
-BODY_L = 220.0       # the skin; the horizontal pods reach a further POD_OVERHANG
-BODY_W = 190.0       # 180 would put the front verticals into the tube
-BODY_H = 100.0
-# The Titan's shape, as sections along x from stern to nose: (x, width,
-# height, corner radius). Full width from the stern to just ahead of the
-# front verticals, then the nose narrows and drops, which is where the look
-# comes from. The nose must still stay taller than the tube.
-SECTIONS = [
-    (-BODY_L / 2, 176.0, 96.0, 24.0),
-    (-60.0,       BODY_W, BODY_H, 26.0),
-    ( 70.0,       BODY_W, BODY_H, 26.0),
-    ( 95.0,       160.0, 98.0, 24.0),
-    ( BODY_L / 2, 126.0, 96.0, 22.0),   # 96: the tube bore is 89.5 and needs 3 mm of skin over it
-]
-SKIN = 2.5           # MJF PA12; JLC3DP's floor is 1.2
-BULKHEAD = 4.0       # the two plates the tube is clamped between
-BULKHEAD_X = (TUBE_X - 50.0, TUBE_X + 50.0)
-
-# ── thrusters: 6, the Titan's 4 vertical + 2 horizontal ──────────────────────
-# A 30–40 mm micro thruster in a duct. The duct bore is the space the unit
-# needs; the exact unit is chosen next and this number follows it.
-DUCT_D = 40.0
+# ── the thruster: ApisQueen UG500 ────────────────────────────────────────────
+# https://www.underwaterthruster.com/products/apisqueen-uq500-mini-brushless-thruster-motor-small-size-and-light-weight-perfect-for-small-size-rovs/
+# 36 mm propeller, 47 mm long, 18.33 g, 400 g of thrust at most, 1.3 A at
+# 12 V, 520 KV, 5–24 V, CW and CCW, $23.91. No ESC in the box.
+# The motor body diameter and the mount pattern are not published. The hub
+# below carries slots that take any pattern from 12 to 19 mm across, which
+# covers every small outrunner, and the first unit to arrive is measured.
+THRUSTER_PROP_D = 36.0
+THRUSTER_LENGTH = 47.0
+THRUSTER_MOTOR_D = 28.0      # a guess: a 2205-class outrunner. Measure it.
+THRUSTER_THRUST_N = 3.92     # 400 gf
+THRUSTER_MASS_G = 18.33
+DUCT_D = 40.0                # 2 mm of tip clearance each side of the propeller
 DUCT_WALL = 3.0
-# Vertical, at the four corners, pushing along z.
-VERTICAL = [
-    ("vertical-front-port",      ( 50.0,  70.0, 0.0)),
-    ("vertical-front-starboard", ( 50.0, -70.0, 0.0)),
-    ("vertical-rear-port",       (-50.0,  70.0, 0.0)),
-    ("vertical-rear-starboard",  (-50.0, -70.0, 0.0)),
-]
-# Horizontal, in two pods on the stern corners like the Titan's, pushing
-# along x. A pod is a duct with its own skin that overhangs the stern.
+POD_OD = DUCT_D + 2 * DUCT_WALL
 POD_LENGTH = 50.0
-POD_OVERHANG = 20.0
-HORIZONTAL = [
-    ("horizontal-port",      (-BODY_L / 2 - POD_OVERHANG + POD_LENGTH / 2,  72.0, 0.0)),
-    ("horizontal-starboard", (-BODY_L / 2 - POD_OVERHANG + POD_LENGTH / 2, -72.0, 0.0)),
-]
+HUB_D = 24.0
+HUB_T = 3.0
+SPOKES = 3
+SPOKE_W = 3.0
 
-# ── the window ───────────────────────────────────────────────────────────────
-WINDOW_D = TUBE_ID   # the front cap is the window; the bezel shows the clear part
+# ── the capsule: the Titan's orange body over the tube ───────────────────────
+# A stadium in plan, half of it above the parting line as the orange cover
+# and half below as part of the black chassis. 0.55 of the Titan's 390 × 347
+# × 165 would be 215 × 191 × 91; the tube sets the capsule at 100 × 100.
+CAPSULE_L = 207.0
+CAPSULE_W = 100.0
+CAPSULE_H = 100.0            # full height, top of cover to bottom of cradle
+CAPSULE_X = 3.5              # centre; nose at 107, stern at -100
+CAPSULE_SKIN = 2.5           # MJF PA12; JLC3DP's floor is 1.2
+# The plan is a rounded rectangle, not a stadium: the tube's flat front cap
+# has to sit inside the nose, and a semicircular nose would meet its corners.
+CAPSULE_CORNER_R = 20.0
+CAPSULE_CROWN_R = 18.0       # the fillet that domes the top
+WINDOW_D = 82.0              # the opening the bezel frames, over the front cap
+BEZEL_OD = 94.0
+BEZEL_T = 5.0
+
+# ── the chassis: the Titan's black base with the arms ────────────────────────
+PLATE_L = 225.0
+PLATE_W = 150.0
+PLATE_X = -5.0               # spans -117.5 to 107.5
+PLATE_Z = (-52.0, -46.0)     # bottom and top of the plate
+ARM_W = 22.0
+
+# ── thrusters, placed: the Titan's 4 vertical + 2 horizontal ─────────────────
+# Vertical, in pods on the wings, outside the capsule, pushing along z.
+# ±75 puts the pod's inner wall 2 mm off the capsule's side.
+POD_Z = -20.0                # the vertical pods hang low, as the Titan's do
+VERTICAL = [
+    ("vertical-front-port",      ( 60.0,  75.0, POD_Z)),
+    ("vertical-front-starboard", ( 60.0, -75.0, POD_Z)),
+    ("vertical-rear-port",       (-50.0,  75.0, POD_Z)),
+    ("vertical-rear-starboard",  (-50.0, -75.0, POD_Z)),
+]
+# Horizontal, in two pods off the stern corners, pushing along x.
+HORIZONTAL = [
+    ("horizontal-port",      (-105.0,  70.0, -25.0)),
+    ("horizontal-starboard", (-105.0, -70.0, -25.0)),
+]
+# Where the cover screws to the chassis: four M3 bosses on the parting line.
+BOSSES = [(70.0, 38.0), (70.0, -38.0), (-70.0, 38.0), (-70.0, -38.0)]
+BOSS_D = 8.0
+BOSS_H = 10.0
+SCREW_D = 2.6                # M3 tapping into nylon
+
+# ── vents, the tether eye, and ballast ───────────────────────────────────────
+# The cover floods through the parting line and the stern; the vents let the
+# air out of the crown, or the vehicle's buoyancy changes with its attitude.
+VENT_D = 4.0
+VENTS_X = [-60.0, -30.0, 0.0, 30.0, 60.0]
+# Where the tether clips on, on the crown, a little behind the centre of
+# buoyancy so a tug lifts the nose.
+TETHER_EYE = (-15.0, 0.0)
+# Two steel bars under the plate, one each side, as low as anything on the
+# vehicle so they buy righting moment as well as trim. 140 × 12 × 6 mm of
+# mild steel is 79 g each; the rails take that and are open at one end.
+BALLAST_BAR = (140.0, 12.0, 6.0)
+BALLAST_Y = 52.0
+BALLAST_X = -10.0
+
+# ── lights: two, either side of the window on the chassis nose ───────────────
+LIGHT_D = 20.0
+LIGHT_L = 24.0
+LIGHTS = [(96.0, 46.0, -36.0), (96.0, -46.0, -36.0)]
+
+# ── the overall envelope, derived ────────────────────────────────────────────
+OVERALL_L = (CAPSULE_X + CAPSULE_L / 2) - (HORIZONTAL[0][1][0] - POD_LENGTH / 2)
+OVERALL_W = 2 * (abs(VERTICAL[0][1][1]) + POD_OD / 2)
+OVERALL_H = CAPSULE_H
