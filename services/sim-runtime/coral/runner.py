@@ -2655,13 +2655,6 @@ class Dive:
             self.say("no_life", why="this place has no record of what lives in it")
             return None
 
-        import time as _time
-        began = _time.perf_counter()
-
-        def took(what):
-            self.say("life_step", did=what,
-                     ms=round(1000 * (_time.perf_counter() - began), 1))
-
         reef = math.pi * self.STOCKED_TO_M ** 2
         # Only the part of that which is reef rather than sand. The habitat
         # shares are on the place; where they are not, half is the honest
@@ -2686,9 +2679,8 @@ class Dive:
             water_level=0.0,
             seed=int(self.brief.get("seed", 0)),
             about=(float(self.position[0]), float(self.position[1])))
-        took("made the shoal")
         try:
-            life.put_them_in(stage, shoal, say=self.say)
+            life.put_them_in(stage, shoal)
         except Exception as bad:
             # Said, not swallowed. Something above this caught it and carried
             # on, so the scene built, the app started, and the only sign that
@@ -2699,7 +2691,6 @@ class Dive:
             self.say("life_failed", why=str(bad)[:200],
                      where=traceback.format_exc().strip().splitlines()[-2][:160])
             return None
-        took("drew them")
         self.say("life_is", **shoal.said(), stockedToM=self.STOCKED_TO_M,
                  asked=wanted, drawn=how_many,
                  perSquareMetre=says.get("perSquareMetre"))
@@ -2769,19 +2760,11 @@ class Dive:
 
         from pxr import UsdGeom
 
-        import time as _time
-        began = _time.perf_counter()
-
-        def took(what):
-            self.say("sway_step", did=what,
-                     ms=round(1000 * (_time.perf_counter() - began), 1))
-
         described = json.loads((city / "site.json").read_text())
         sways = described.get("reef", {}).get("swaysWith") or {}
         if not sways:
             self.say("no_sway", why="this place records nothing that bends")
             return None
-        took("read the record")
         named = described.get("layers", {}).get("coral", "coral.usda")
         instancer = None
         for prim in stage.Traverse():
@@ -2791,7 +2774,6 @@ class Dive:
         if instancer is None:
             self.say("no_sway", why=f"no coral instancer in {named}")
             return None
-        took("found the instancer")
 
         which = np.array(instancer.GetProtoIndicesAttr().Get() or [])
         # Copied out of the USD array once, into a plain list.
@@ -2811,7 +2793,6 @@ class Dive:
         if not len(which) or orientations is None or not len(orientations):
             self.say("no_sway", why="the coral instancer has nothing in it")
             return None
-        took("read %d instances" % len(which))
 
         held, stiff = [], []
         for kind, prototypes in sways.items():
@@ -2821,7 +2802,6 @@ class Dive:
         if not held:
             self.say("no_sway", why="none of the colonies are rooted kinds")
             return None
-        took("picked %d rooted" % len(held))
 
         held = np.array(held)
         # Their own turn about the vertical, read back off what is there, so a
@@ -2837,7 +2817,6 @@ class Dive:
         turn = np.array([2.0 * np.arctan2(float(orientations[i].imaginary[2]),
                                           float(orientations[i].real))
                          for i in held])
-        took("read their turns")
         phase = np.linspace(0, 2 * np.pi, len(held), endpoint=False)
         self._rooted_orientations = orientations
         self.say("sway_is", colonies=int(len(held)),
