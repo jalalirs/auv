@@ -414,12 +414,22 @@ def put_them_in(stage, shoal, at: str = "/World/Life", say=None) -> None:
     for i, kind in enumerate(shoal._kinds_present):
         points, faces = fishform.body(fishform.OF_GROUP[kind])
         mesh = UsdGeom.Mesh.Define(stage, f"{shapes.GetPath()}/Fish_{i}")
-        mesh.CreatePointsAttr(Vt.Vec3fArray([Gf.Vec3f(*p) for p in points]))
+        # `float(...)` on every component, and it is not decoration.
+        #
+        # `Gf.Vec3f(*row)` on a numpy array hands the binding three
+        # numpy.float32, and the binding takes Python floats: it raises
+        # "did not match C++ signature", which is a sentence about a type
+        # nobody wrote down. Everything above this line is numpy because the
+        # geometry is arithmetic; everything below is USD, and the boundary is
+        # here.
+        mesh.CreatePointsAttr(Vt.Vec3fArray(
+            [Gf.Vec3f(float(x), float(y), float(z)) for x, y, z in points]))
         mesh.CreateFaceVertexCountsAttr(Vt.IntArray([3] * len(faces)))
         mesh.CreateFaceVertexIndicesAttr(
             Vt.IntArray([int(v) for f in faces for v in f]))
-        mesh.CreateExtentAttr([Gf.Vec3f(*points.min(axis=0)),
-                               Gf.Vec3f(*points.max(axis=0))])
+        low, high = points.min(axis=0), points.max(axis=0)
+        mesh.CreateExtentAttr([Gf.Vec3f(*(float(v) for v in low)),
+                               Gf.Vec3f(*(float(v) for v in high))])
         # Both sides. The fins are single triangles and a one-sided fin is
         # invisible from half the reef.
         mesh.CreateDoubleSidedAttr(True)
@@ -429,7 +439,7 @@ def put_them_in(stage, shoal, at: str = "/World/Life", say=None) -> None:
         shader = UsdShade.Shader.Define(stage, f"{looks.GetPath()}/Fish_{i}/S")
         shader.CreateIdAttr("UsdPreviewSurface")
         shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
-            Gf.Vec3f(*colour))
+            Gf.Vec3f(*(float(c) for c in colour)))
         # Wet, and a fish is wetter than a rock: the flank of a live fish is
         # the brightest specular on a reef and it is most of how one catches
         # an eye at ten metres.
@@ -469,7 +479,8 @@ def move_them(stage, shoal, at: str = "/World/Life") -> None:
     instancer.CreatePositionsAttr(Vt.Vec3fArray(
         [Gf.Vec3f(float(x), float(y), float(z)) for x, y, z in shoal.at]))
     instancer.CreateOrientationsAttr(Vt.QuathArray(
-        [Gf.Quath(*fishform.facing(v)) for v in shoal.going]))
+        [Gf.Quath(*(float(c) for c in fishform.facing(v)))
+         for v in shoal.going]))
 
 
 # ── and the things that are rooted ───────────────────────────────────────────
