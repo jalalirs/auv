@@ -367,6 +367,14 @@ def _skins(colours, kinds=None, tile_metres: float = 0.04) -> str:
             "                float inputs:alive = %.3g\n"
             "                float inputs:through = %.3g\n"
             "                float inputs:wet = %.3g\n"
+            # The water between this colony and the camera. The runtime sets
+            # all four as a dive opens and moves `eye` as it flies; what is
+            # written here is what a place looks like opened in something that
+            # does not know to.
+            "                float3 inputs:eye = (0, 0, 0)\n"
+            "                color3f inputs:attenuation = (4, 17, 13)\n"
+            "                color3f inputs:veiling = (0.24, 0.55, 0.45)\n"
+            "                float inputs:veil = 0\n"
             "%s"
             "                token outputs:out\n"
             "            }\n"

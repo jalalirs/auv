@@ -72,17 +72,19 @@ SCATTERING_ALBEDO = 0.28
 # How much veiling light there is at all, before depth dims it. Read off the
 # same ladder: at 0.28 the whole frame went the colour of the water, at 0.05
 # there was no water in the picture.
-# How bright the veiling light is. Not a fraction: this fog adds light rather
-# than blending towards it.
+# How bright the water's own light is, as a multiple of the veiling colour.
 #
-# It was 0.12, and it was tuned when the distance ramp was silently running at
-# the renderer's default five kilometres, so near things and far things were
-# getting the same wash and the only way to keep a close colony its own colour
-# was to turn the whole thing down to nothing. With the ramp at three
-# attenuation lengths a close colony gets almost none of this and a distant
-# one gets all of it, which is what water does and is what the number can now
-# be set for.
-VEIL_STRENGTH = 1.6
+# One, meaning: a surface far enough away that none of its own light survives
+# looks exactly like the colour of this water, which is what looking into deep
+# water is. `veiling_colour()` already carries the brightness; this is here so
+# a place can be made lighter or darker than its water type without moving the
+# colour, and so that taking the water away is veil = 0.
+#
+# It was 0.12 for a fortnight, tuned against a fog whose distance ramp was
+# silently running at the renderer's default five kilometres, where near and
+# far got the same wash and the only way to keep a close colony its own colour
+# was to turn the whole thing off.
+VEIL_STRENGTH = 1.0
 
 # How bright the water's own glow is as a fill light. Read off a ladder.
 DOME_SHARE = 55.0
@@ -247,8 +249,8 @@ def make(stage, say, floor: float, water_level: float = 0.0,
 
     # ── the water ────────────────────────────────────────────────────────────
     #
-    # The renderer's global fog, which is a general atmospheric effect being
-    # used for the thing it is actually a good model of: a participating medium
+    # The renderer's global fog, which is a general atmospheric effect that was
+    # being used for the thing it is *not* a good model of: a participating medium
     # that absorbs and scatters over distance.
     # Local lights, which this renderer does not draw until it is told to.
     #
@@ -283,7 +285,6 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # seabed, the coral and the light are exactly what a dive gets; what goes
     # is the medium between them and the camera.
     if os.environ.get("CORAL_CITY_CLEAR") == "1":
-        settings.set("/rtx/fog/enabled", False)
         say("water_cleared", why="showing the reef rather than the water over it")
         _clear = True
     else:
@@ -302,8 +303,19 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     #
     # The ray-traced volumetric effects absorb as well as scatter, which is a
     # medium rather than a filter over the picture.
-    settings.set("/rtx/raytracing/globalVolumetricEffects/enabled", not _clear)
-    settings.set("/rtx/fog/enabled", not _clear)
+    # Off. Both of them.
+    #
+    # `/rtx/fog` adds veiling light and never absorbs, so with the materials
+    # doing the medium properly it is a second helping of airlight laid over
+    # the first, and the near ground goes green a metre from the lens. The
+    # ray-traced volumetric effects want a volume prim this scene has no way to
+    # author and do nothing without one.
+    #
+    # Everything below about the fog is left set, because it costs nothing and
+    # a place opened in something that cannot read this platform's materials
+    # gets an approximation rather than clear water.
+    settings.set("/rtx/raytracing/globalVolumetricEffects/enabled", False)
+    settings.set("/rtx/fog/enabled", False)
     settings.set("/rtx/fog/fogColor", list(veiling))
     # The fog is added to everything the camera sees, so its strength is how
     # much of the picture is water rather than reef, and where it starts is how

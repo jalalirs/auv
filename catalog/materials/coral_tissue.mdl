@@ -139,7 +139,23 @@ export material coral_tissue(
                           "still not a mirror."),
         anno::in_group("Tissue")
     ]]
-)
+,
+
+    // ── the water between here and the camera ────────────────────────────────
+    //
+    // The same medium the ground carries, and it has to be the same or a
+    // colony at twenty metres is sharp against a seabed that has gone. Done in
+    // the material because the renderer has nowhere else to put it, and done
+    // per channel because red dies in four metres of this water and green
+    // takes seventeen.
+    uniform float3 eye = float3(0.0)
+    [[ anno::display_name("Where the camera is"), anno::in_group("Water") ]],
+    uniform color attenuation = color(4.0, 17.0, 13.0)
+    [[ anno::display_name("Attenuation lengths"), anno::in_group("Water") ]],
+    uniform color veiling = color(0.24, 0.55, 0.45)
+    [[ anno::display_name("The colour of the water itself"), anno::in_group("Water") ]],
+    uniform float veil = 1.0
+    [[ anno::display_name("How bright the water is"), anno::in_group("Water") ]])
 [[
     anno::display_name("Coral City living coral"),
     anno::description("Translucent tissue over white aragonite, with "
@@ -174,6 +190,14 @@ export material coral_tissue(
     // And as the tissue goes, so does the colour: `alive` at nought is the
     // same skeleton with nothing on it, which is what a bleached colony is.
     color under = math::lerp(aragonite, lit_from_under, math::saturate(alive));
+
+    // What survives the swim to the camera, and the water in front of it.
+    float swum = math::distance(
+        state::transform_point(state::coordinate_internal,
+                               state::coordinate_world, state::position()),
+        eye);
+    color survives = math::exp(color(-swum) / math::max(attenuation, color(0.01)));
+    color water = veiling * veil * (color(1.0) - survives);
 } in material(
     surface: material_surface(
         // Wet, so there is a sheen on it, and more of one at a grazing angle:
@@ -191,7 +215,7 @@ export material coral_tissue(
             base: df::weighted_layer(
                 weight: math::saturate(through * alive),
                 layer: df::diffuse_transmission_bsdf(tint: tissue),
-                base: df::diffuse_reflection_bsdf(tint: under)),
+                base: df::diffuse_reflection_bsdf(tint: under * survives)),
             normal: bumped),
         // Inside the surface, not beside it. `material()` has no `emission`
         // of its own — its parameters are thin_walled, surface, backface, ior,
@@ -200,7 +224,7 @@ export material coral_tissue(
         // names the line and not the parameter.
         emission: material_emission(
             emission: df::diffuse_edf(),
-            intensity: fluoresces * fluorescence * math::saturate(alive))
+            intensity: fluoresces * fluorescence * math::saturate(alive) + water)
     ),
     geometry: material_geometry(normal: bumped)
 );
