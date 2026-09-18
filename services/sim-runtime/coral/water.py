@@ -602,6 +602,20 @@ def make(stage, say, floor: float, water_level: float = 0.0,
 # see. Two hundred metres is far beyond visibility in any of Jerlov's waters.
 SURFACE_ACROSS = 200.0
 SURFACE_CELL = 0.7
+# And how far the sea goes after that.
+#
+# The wave mesh was 200 m across over a site 1000 m across, so from the middle
+# the sea ran out at 100 m and the seabed ran on to 500. Between the far edge
+# of one and the far edge of the other there was a gap with nothing in it, and
+# that gap is the hard band across the top of every frame this platform has
+# made. It was read as the fog giving out and chased through two rounds of
+# height settings; it was the sea ending.
+#
+# Fine cells where the waves can be seen, then cells that grow until the sea
+# reaches past anything a dive can look at. A wave four hundred metres away is
+# four hundred metres away.
+SURFACE_REACH = 2500.0
+SURFACE_GROWTH = 1.35
 
 # The sea this place is having, set when the water is made and used by every
 # vertex of the surface after that.
@@ -636,20 +650,40 @@ def orbital_here(x: float, y: float, depth: float, seconds: float = 0.0):
     return _SEA.orbital_at(x, y, depth, seconds)
 
 
+def _across():
+    """Where the sea is sampled along one axis, from the middle outwards.
+
+    Even at the size of a wave out to `SURFACE_ACROSS`, then growing by a third
+    each step until it reaches `SURFACE_REACH`. Uniform cells all the way out
+    would be eight million quads for one flat sheet, and stopping at two
+    hundred metres is what put the band in the picture.
+    """
+    half = SURFACE_ACROSS / 2.0
+    n = int(round(SURFACE_ACROSS / SURFACE_CELL))
+    steps = [-half + i * SURFACE_CELL for i in range(n + 1)]
+
+    at, wide = half, SURFACE_CELL
+    while at < SURFACE_REACH:
+        wide *= SURFACE_GROWTH
+        at += wide
+        steps.append(at)
+        steps.insert(0, -at)
+    return steps
+
+
 def _wave_mesh(surface, water_level: float, seconds: float = 0.0,
                centre=(0.0, 0.0)) -> None:
     """Build the patch of sea, displaced by the waves on it."""
     from pxr import Gf, Vt
 
-    n = int(SURFACE_ACROSS / SURFACE_CELL)
-    half = SURFACE_ACROSS / 2.0
     cx, cy = float(centre[0]), float(centre[1])
+    steps = _across()
+    n = len(steps) - 1
 
     points, counts, indices = [], [], []
     for j in range(n + 1):
         for i in range(n + 1):
-            x = cx - half + i * SURFACE_CELL
-            y = cy - half + j * SURFACE_CELL
+            x, y = cx + steps[i], cy + steps[j]
             points.append(Gf.Vec3f(x, y, water_level + surface_height(x, y, seconds)))
     for j in range(n):
         for i in range(n):
@@ -663,9 +697,10 @@ def _wave_mesh(surface, water_level: float, seconds: float = 0.0,
     # No authored normals. The renderer works them out from the displaced
     # geometry, which is the whole point: a normal per square metre is what
     # makes the underside of a sea look like a sea.
+    reach = steps[-1]
     surface.CreateExtentAttr([
-        Gf.Vec3f(cx - half, cy - half, water_level - 1.0),
-        Gf.Vec3f(cx + half, cy + half, water_level + 1.0)])
+        Gf.Vec3f(cx - reach, cy - reach, water_level - 1.0),
+        Gf.Vec3f(cx + reach, cy + reach, water_level + 1.0)])
     surface.SetNormalsInterpolation("faceVarying")
 
 
