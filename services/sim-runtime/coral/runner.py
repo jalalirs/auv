@@ -2742,7 +2742,7 @@ class Dive:
         if self._rooted is None or asked_for("CORAL_CITY_LIFE", 1.0) == 0.0:
             return
         import life
-        from pxr import Gf
+        from pxr import Gf, Vt
 
         under = self.water.orbital_here(
             float(self.position[0]), float(self.position[1]),
@@ -2761,7 +2761,7 @@ class Dive:
         for slot, i in enumerate(held):
             was[i] = Gf.Quath(float(w[slot]), float(x[slot]),
                               float(y[slot]), float(z[slot]))
-        instancer.GetOrientationsAttr().Set(was)
+        instancer.GetOrientationsAttr().Set(Vt.QuathArray(was))
 
     def _root_the_gorgonians(self, stage, city):
         """Find the rooted colonies once, so the sway is arithmetic after that."""
@@ -2794,7 +2794,20 @@ class Dive:
         took("found the instancer")
 
         which = np.array(instancer.GetProtoIndicesAttr().Get() or [])
+        # Copied out of the USD array once, into a plain list.
+        #
+        # Indexing a Vt array from Python is not the cheap thing it looks like,
+        # and the loop below touches seven thousand of eighty-three thousand
+        # elements. Left as a Vt array it did not finish: the dive built its
+        # reef, drew its fish, and then sat in this one list comprehension
+        # until the tour timed out with no frames at all.
+        #
+        # This is the same line that was a `list(...)` an hour ago, changed to
+        # a Vt array to avoid rebuilding eighty thousand quaternions a frame.
+        # Both problems are real; the answer is to copy once here and rebuild
+        # from the copy, rather than to index the array that USD holds.
         orientations = instancer.GetOrientationsAttr().Get()
+        orientations = list(orientations) if orientations is not None else None
         if not len(which) or orientations is None or not len(orientations):
             self.say("no_sway", why="the coral instancer has nothing in it")
             return None
