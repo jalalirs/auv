@@ -199,8 +199,9 @@ export material coral_ground(
     // `eye` is kept and set by the runtime because it costs nothing and
     // because a renderer whose world is really the world needs it; where the
     // two disagree, this is the one the picture agrees with.
+    float3 raw = state::position();
     float3 standing = state::transform_point(
-        state::coordinate_internal, state::coordinate_world, state::position());
+        state::coordinate_internal, state::coordinate_world, raw);
     float swum = math::length(standing);
 
     color low = base::file_texture(
@@ -263,8 +264,14 @@ export material coral_ground(
     // What the water takes from the surface it replaces with itself, which is
     // why a distant reef does not go black, it goes the colour of the sea.
     color survives = math::exp(color(-swum) / math::max(attenuation, color(0.01)));
+    // Two candidates at once, so one render answers instead of two: red is
+    // the raw state position, green is that position transformed to world.
+    // Whichever channel shows a gradient from the lens to the horizon is the
+    // distance, and whichever is flat is the one that does not work here.
     color water = show_distance > 0.0
-        ? color(math::saturate(swum / show_distance))
+        ? color(math::saturate(math::length(raw) / show_distance),
+                math::saturate(swum / show_distance),
+                0.0)
         : veiling * veil * (color(1.0) - survives);
 
     float3 bumped = math::normalize(math::lerp(
