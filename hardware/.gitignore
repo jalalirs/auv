@@ -1,0 +1,4 @@
+# The CAD environment and everything it exports. Both are reproducible from
+# the model files, and a STEP is not a source.
+.venv/
+out/
