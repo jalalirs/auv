@@ -344,6 +344,12 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     nothing = [float(min(1.0, one * max(0.0, veil))) for one in veiling]
     settings.set("/rtx/post/backgroundZeroAlpha/backgroundDefaultColor", nothing)
     settings.set("/rtx/post/backgroundZeroAlpha/enabled", True)
+
+    # And the medium in the materials, which is the half /rtx/fog cannot do:
+    # what the water takes out rather than what it adds, per channel. Nought
+    # when the water is asked to be taken away, which is what that view is.
+    put_the_water_in_the_materials(stage, veiling, lengths,
+                                   0.0 if _clear else float(veil))
     # The distance is the water's own attenuation length, for green.
     #
     # Green because it is most of what the eye reads as brightness, and green
@@ -762,6 +768,8 @@ def drift(stage, seconds: float, follow=None) -> None:
     from pxr import Gf, UsdGeom
 
     x, y = (follow[0], follow[1]) if follow is not None else (0.0, 0.0)
+    if follow is not None:
+        tell_the_water_where_the_camera_is(stage, follow)
 
     # The sea moves, and the patch of it that is drawn stays over the vehicle.
     # Rebuilt rather than translated, because the waves have to travel through
@@ -829,3 +837,60 @@ def _say_what_the_renderer_has(settings, say, under: str = "/rtx/post") -> None:
             say("renderer_setting", at=branch, value=here)
 
     walk(under)
+
+
+# Which materials hold a column of water between themselves and the camera.
+# Every material that draws something at a distance has to, because the water
+# is a property of the trip and not of the thing.
+LOOKS_WITH_WATER = ("/World/Looks/Seabed/Surface", "/Coral/Skins")
+
+
+def tell_the_water_where_the_camera_is(stage, at) -> None:
+    """Move the medium with the camera.
+
+    The materials do the water themselves: `/rtx/fog` adds veiling light and
+    never absorbs, so a reef stays sharp to the horizon however the fog is set,
+    and the ray-traced volumetric effects want a volume prim this scene has no
+    way to author. What is left is each surface's own distance from the camera,
+    which the surface knows and which lets the attenuation be per channel. Red
+    dies in four metres of this water and green takes seventeen; a fog with one
+    distance cannot say that, and it is why everything below ten metres is
+    blue.
+
+    The cost is this: something has to tell them where the camera is, every
+    frame. A stale value does not break the picture, it puts the water in the
+    wrong place, which is harder to notice.
+    """
+    from pxr import Gf, Sdf
+
+    where = Gf.Vec3f(float(at[0]), float(at[1]), float(at[2]))
+    for prim in stage.Traverse():
+        if prim.GetTypeName() != "Shader":
+            continue
+        eye = prim.GetAttribute("inputs:eye")
+        if not eye:
+            continue
+        eye.Set(where)
+
+
+def put_the_water_in_the_materials(stage, veiling, lengths, veil: float) -> None:
+    """Tell every surface what the water between it and the camera is.
+
+    Once, when the dive opens: the type of water does not change under a
+    vehicle. Where the camera is does, and that is the other function.
+    """
+    from pxr import Gf
+
+    colour = Gf.Vec3f(*[float(one) for one in veiling])
+    lengths = Gf.Vec3f(*[max(0.01, float(one)) for one in lengths])
+    for prim in stage.Traverse():
+        if prim.GetTypeName() != "Shader":
+            continue
+        if not prim.GetAttribute("inputs:eye"):
+            continue
+        for name, value in (("inputs:veiling", colour),
+                            ("inputs:attenuation", lengths),
+                            ("inputs:veil", float(veil))):
+            got = prim.GetAttribute(name)
+            if got:
+                got.Set(value)
