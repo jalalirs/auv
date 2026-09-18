@@ -535,6 +535,10 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # up — total internal reflection, the "Snell's window" every diver knows.
     # A transmissive surface with water's index of refraction produces that for
     # free, which is worth far more than painting it on.
+    # The wall of water that stands where the seabed runs out, so that no
+    # pixel in the frame is looking at nothing.
+    _horizon(stage, water_level, floor, veiling, veil)
+
     surface = UsdGeom.Mesh.Define(stage, "/World/Surface")
     _wave_mesh(surface, water_level)
     # Where the mean level is, for the rebuilds that follow the vehicle.
@@ -704,6 +708,79 @@ def orbital_here(x: float, y: float, depth: float, seconds: float = 0.0):
     if _SEA is None or _SEA.flat:
         return _np.zeros(3)
     return _SEA.orbital_at(x, y, depth, seconds)
+
+
+
+# How far out the water goes before it is just water.
+#
+# Beyond the seabed there is no geometry, and the renderer's fog is applied per
+# pixel from that pixel's depth — so a pixel with nothing behind it gets no fog
+# and comes back the background colour. That is the dark band across the
+# horizon of every frame this platform has made.
+#
+# It cannot be fixed by choosing a better background colour, and an afternoon
+# went into trying. This fog *adds* veiling light without absorbing any, so
+# fully-fogged geometry is always brighter than empty space by exactly the
+# light that geometry reflects. One colour cannot match both.
+#
+# So: give those pixels something to be. A wall of water standing round the
+# site, from the deepest point up to the surface, far enough out to be behind
+# the seabed and well inside the sea above it. Every ray then lands on
+# something, everything gets fogged the same way, and the horizon is continuous
+# because it is made of the same stuff as everything in front of it.
+HORIZON_AT_M = 900.0
+HORIZON_SIDES = 96
+
+
+def _horizon(stage, water_level: float, lowest: float, veiling, veil: float):
+    """The wall of water that stands where the seabed runs out."""
+    from pxr import Gf, Sdf, UsdGeom, UsdShade, Vt
+
+    import math as _math
+
+    top = float(water_level)
+    # Down past the deepest thing here, so no view under the seabed's edge
+    # finds the gap under the wall.
+    bottom = float(lowest) - 50.0
+    radius = HORIZON_AT_M
+
+    points, counts, indices = [], [], []
+    for i in range(HORIZON_SIDES):
+        angle = 2 * _math.pi * i / HORIZON_SIDES
+        x, y = radius * _math.cos(angle), radius * _math.sin(angle)
+        points.append(Gf.Vec3f(float(x), float(y), bottom))
+        points.append(Gf.Vec3f(float(x), float(y), top))
+    for i in range(HORIZON_SIDES):
+        a = 2 * i
+        b = 2 * ((i + 1) % HORIZON_SIDES)
+        counts.append(4)
+        # Wound so the inside is the side that faces the camera.
+        indices.extend([a, b, b + 1, a + 1])
+
+    wall = UsdGeom.Mesh.Define(stage, "/World/Horizon")
+    wall.CreatePointsAttr(Vt.Vec3fArray(points))
+    wall.CreateFaceVertexCountsAttr(Vt.IntArray(counts))
+    wall.CreateFaceVertexIndicesAttr(Vt.IntArray(indices))
+    wall.CreateDoubleSidedAttr(True)
+    wall.CreateExtentAttr([Gf.Vec3f(-radius, -radius, bottom),
+                           Gf.Vec3f(radius, radius, top)])
+
+    # Emissive, and dark otherwise. It is not a surface being lit at nine
+    # hundred metres — there is no light down there to light it. It is the
+    # colour looking into water that far goes, which is the veiling colour, and
+    # the fog then adds its own on top exactly as it does to everything else.
+    colour = Gf.Vec3f(*[float(min(1.0, one * max(0.0, veil))) for one in veiling])
+    material = UsdShade.Material.Define(stage, "/World/Looks/Horizon")
+    shader = UsdShade.Shader.Define(stage, "/World/Looks/Horizon/Surface")
+    shader.CreateIdAttr("UsdPreviewSurface")
+    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
+        Gf.Vec3f(0.0, 0.0, 0.0))
+    shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(colour)
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(1.0)
+    material.CreateSurfaceOutput().ConnectToSource(
+        shader.ConnectableAPI(), "surface")
+    UsdShade.MaterialBindingAPI.Apply(wall.GetPrim()).Bind(material)
+    return radius
 
 
 def _across():
