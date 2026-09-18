@@ -293,7 +293,7 @@ func TestADoubtMayChangeTheWorld(t *testing.T) {
 // And two doubts about the world accumulate, the way two failures do.
 func TestWorldDoubtsAccumulate(t *testing.T) {
 	got, err := Combinations(map[string]json.RawMessage{
-		"the array":   json.RawMessage(`{"one down": {"world": {"remove": ["t2"]}}}`),
+		"the array": json.RawMessage(`{"one down": {"world": {"remove": ["t2"]}}}`),
 		"the mooring": json.RawMessage(`{"adrift": {"world": {"remove": ["block"],
 		                                 "move": {"buoy": {"dx": 30}}}}}`),
 	}, nil)
@@ -433,8 +433,8 @@ func TestWhenNothingIsDecidedItSaysSo(t *testing.T) {
 				State: "succeeded", Score: score, Survived: score >= 0.15})
 		}
 	}
-	add("as laid", 0.155, 0.152, 0.148)   // two of three: works, and marginal
-	add("one down", 0.151, 0.149, 0.147)  // one of three: fails, and marginal
+	add("as laid", 0.155, 0.152, 0.148)  // two of three: works, and marginal
+	add("one down", 0.151, 0.149, 0.147) // one of three: fails, and marginal
 	found := What(runs, 0.15)
 	if found.Marginal != 2 {
 		t.Fatalf("both could have gone either way, counted %d", found.Marginal)

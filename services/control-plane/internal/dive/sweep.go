@@ -52,7 +52,7 @@ type Sweep struct {
 	// everything.
 	Repeats   int       `json:"repeats"`
 	CreatedAt time.Time `json:"createdAt"`
-	CreatedBy        string          `json:"createdBy"`
+	CreatedBy string    `json:"createdBy"`
 
 	// How it is going, counted from its runs rather than kept on the row: a
 	// state that had to be maintained would be a state that could be wrong.
@@ -359,18 +359,18 @@ type Dimension struct {
 
 // Findings is what the sweep is for.
 type Findings struct {
-	Scenarios int     `json:"scenarios"`
-	Flown     int     `json:"flown"`
-	FlownRuns int     `json:"flownRuns"`
-	Flying    int     `json:"flying"`
-	Survived  int     `json:"survived"`
+	Scenarios int `json:"scenarios"`
+	Flown     int `json:"flown"`
+	FlownRuns int `json:"flownRuns"`
+	Flying    int `json:"flying"`
+	Survived  int `json:"survived"`
 	// How many scenarios could have gone either way: some of their runs did
 	// the job and some did not. A sweep with many of these is a sweep whose
 	// threshold is sitting in the noise, and the answer says so rather than
 	// ranking it.
-	Marginal int `json:"marginal"`
-	Repeats  int `json:"repeats"`
-	Good      float64 `json:"good"`
+	Marginal int     `json:"marginal"`
+	Repeats  int     `json:"repeats"`
+	Good     float64 `json:"good"`
 
 	// Ranked by how much each *changes* the outcome, not by how often it was
 	// present when the mission failed. Those are different and the second is
@@ -382,18 +382,18 @@ type Findings struct {
 	MadeNoDifference []string `json:"madeNoDifference"`
 
 	// The sentence a dive plan actually turns on.
-	TurnsOn   string `json:"turnsOn,omitempty"`
-	At        string `json:"at,omitempty"`
-	FailsOf   [2]int `json:"failsOf,omitempty"`
-	Rescue    string `json:"rescue,omitempty"`
-	RescueOf  [2]int `json:"rescueOf,omitempty"`
-	NoRescue  bool   `json:"noRescue"`
+	TurnsOn  string `json:"turnsOn,omitempty"`
+	At       string `json:"at,omitempty"`
+	FailsOf  [2]int `json:"failsOf,omitempty"`
+	Rescue   string `json:"rescue,omitempty"`
+	RescueOf [2]int `json:"rescueOf,omitempty"`
+	NoRescue bool   `json:"noRescue"`
 	// Every doubt separates only scenarios that could have gone either way, so
 	// there is nothing to say about which of them matters. Either what counts
 	// as done is sitting in the noise, or this mission is not sensitive to
 	// anything it was doubted against.
 	NothingDecided bool `json:"nothingDecided"`
-	HeldBack  int    `json:"heldBack"`
+	HeldBack       int  `json:"heldBack"`
 	// What computed them. A sweep whose runs were not all computed by the same
 	// simulator is a table that should not be one, and saying so here is the
 	// same rule the record keeps everywhere else.
@@ -438,12 +438,12 @@ type ScenarioFlown struct {
 	// Some of its runs did the job and some did not, so whether it "survives"
 	// is a coin flip rather than an answer. Which is worth knowing before
 	// anybody ranks a doubt on it.
-	Marginal bool `json:"marginal"`
-	Score    float64           `json:"score"`
-	Worst    float64           `json:"worst"`
-	Best     float64           `json:"best"`
-	Says     string            `json:"says,omitempty"`
-	HeldBack bool              `json:"heldBack"`
+	Marginal bool    `json:"marginal"`
+	Score    float64 `json:"score"`
+	Worst    float64 `json:"worst"`
+	Best     float64 `json:"best"`
+	Says     string  `json:"says,omitempty"`
+	HeldBack bool    `json:"heldBack"`
 }
 
 // gather turns runs into scenarios, keeping the order they were first seen.

@@ -233,7 +233,6 @@ func hostCapacity() controlplane.Capacity {
 	return capacity
 }
 
-
 // Keep puts one file of a run's recording in storage and names it against the
 // run: the bytes are declared by digest, put where the grant says, checked,
 // and only then recorded — the same three steps every file the platform holds

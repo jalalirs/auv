@@ -1,8 +1,8 @@
 package httpapi
 
 import (
-	"log/slog"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 

@@ -1,10 +1,10 @@
 package httpapi
 
 import (
-	"log/slog"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -635,7 +635,6 @@ func (d *Dependencies) listRunEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, r, http.StatusOK, map[string]any{"events": events})
 }
-
 
 // ── What a run left behind ───────────────────────────────────────────────────
 

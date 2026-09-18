@@ -276,8 +276,8 @@ func (rt *Router) registerAll() {
 		Summary: "the simulator is up", Action: policy.WorkReport,
 		Resource: atWork(), Handle: d.runStarted})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/runs/{runId}/computed",
-		Summary: "what actually ran this: the image, and the physics",
-		Action:  policy.WorkReport,
+		Summary:  "what actually ran this: the image, and the physics",
+		Action:   policy.WorkReport,
 		Resource: atWork(), Handle: d.runComputed})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/runs/{runId}/renew",
 		Summary: "still working; hold the device a while longer",

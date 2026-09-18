@@ -189,9 +189,9 @@ type Dive struct {
 
 // DiveSpec describes a dive to define.
 type DiveSpec struct {
-	OrgID            string
-	Name             string
-	CityVersionID    string
+	OrgID         string
+	Name          string
+	CityVersionID string
 	// Which arrangement of that place, when the dive is flown in one. Pinned
 	// as hard as the place is, because a mission flown over an array is only
 	// repeatable if the array is as fixed as the reef under it.
@@ -206,7 +206,7 @@ type DiveSpec struct {
 	// were laid, things missing, things nobody drew. Carried with the dive
 	// rather than folded into the layout, because the layout is what somebody
 	// drew and this is what happened to it.
-	LayoutChanges json.RawMessage
+	LayoutChanges    json.RawMessage
 	VehicleVersionID string
 	ConditionsID     string
 	AutonomyStackID  *string
@@ -1734,7 +1734,6 @@ func readTopics(raw json.RawMessage) ([]string, error) {
 	}
 	return topics, nil
 }
-
 
 // ── What a run left behind ───────────────────────────────────────────────────
 

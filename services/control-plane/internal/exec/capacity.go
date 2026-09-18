@@ -165,11 +165,11 @@ func (b *Broker) Quota(ctx context.Context, orgID string) (Quota, map[string]any
 		return Quota{}, nil, fmt.Errorf("reading the institution's dives: %w", err)
 	}
 	return quota, map[string]any{
-		"jobs":         current.Jobs,
-		"cpu":          current.CPU,
-		"memoryBytes":  current.MemoryBytes,
-		"gpu":          current.GPU,
-		"dives":        dives,
+		"jobs":          current.Jobs,
+		"cpu":           current.CPU,
+		"memoryBytes":   current.MemoryBytes,
+		"gpu":           current.GPU,
+		"dives":         dives,
 		"gpuHoursToday": fmt.Sprintf("%.2f", hours),
 	}, nil
 }
