@@ -325,14 +325,25 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # where the fog stopped and the underside of the surface came through
     # unveiled. The plane goes above the water and the falloff goes off, so the
     # whole column is the same medium, which is what water is.
+    # Up is z.
+    #
+    # The renderer's fog measures height along **y** unless told otherwise, and
+    # this platform is z-up. So every height setting in this block was being
+    # applied sideways: the fog thinned across the scene horizontally instead
+    # of upward, which is why a hard band kept appearing across the frame and
+    # why moving the height plane never quite killed it. Two rounds of work
+    # went into that band against a control pointing the wrong way.
+    settings.set("/rtx/fog/fogZup/enabled", True)
     settings.set("/rtx/fog/fogHeightDensity", 1.0)
-    # The plane the height falloff is measured from, put well above the water.
-    # Left at its default it sits near the seabed, so the fog thinned upward
-    # and the underside of the surface came through unveiled: a hard stripe
-    # across every frame at the height where the fog gave out. Setting the
-    # density to zero to stop that turned the fog off altogether, which is the
-    # other way to have no stripe and no water either.
+    # And no falloff at all, because the sea is not ground mist. Water is the
+    # same medium from the seabed to the surface; a column that thins with
+    # height leaves the underside of the surface unveiled, which is the bright
+    # ceiling this is trying to be rid of.
+    settings.set("/rtx/fog/fogHeightFalloff", 0.0)
+    # The plane the height is measured from, put well above the water so that
+    # everything a dive can see is on the dense side of it.
     settings.set("/rtx/fog/fogHeight", float(water_level + 200.0))
+    settings.set("/rtx/fog/fogStartHeight", float(water_level + 200.0))
     # Water starts at the lens, because it does. It was eleven metres, to keep
     # close things their own colour — which is a real problem solved in the
     # wrong place: what greyed out a close colony was a veiling intensity above
