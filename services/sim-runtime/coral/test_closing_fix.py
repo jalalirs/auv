@@ -14,7 +14,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from navigation import Navigation  # noqa: E402
+from navigation import Navigation
 
 
 def a_navigator(began_at=(0.0, 0.0, -5.0)):

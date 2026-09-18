@@ -24,5 +24,5 @@ def load(slug: str) -> Vehicle:
         raise KeyError(f"no vehicle '{slug}' in the catalogue; there are {', '.join(ALL)}") from None
 
 
-def all() -> list[Vehicle]:  # noqa: A001 — reads well at the call site
+def all() -> list[Vehicle]:
     return list(ALL.values())

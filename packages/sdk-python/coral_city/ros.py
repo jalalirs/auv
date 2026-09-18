@@ -16,7 +16,6 @@ beside a real vehicle's ROS 2 graph.
 
 from __future__ import annotations
 
-import importlib
 import re
 import sys
 

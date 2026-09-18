@@ -42,7 +42,6 @@ def build(across: float, samples: int, seed: int = 1,
     ey = (y - 0.5) * across
 
     # ── the parts, as fractions across the site ──────────────────────────────
-    flat_to = -0.22 * across      # reef flat runs from the shore to here
     crest_at = -0.20 * across     # the crest: shallowest, and narrow
     slope_to = 0.18 * across      # fore-reef slope ends at the terrace
     terrace_to = 0.34 * across    # sand terrace, then the deeper slope

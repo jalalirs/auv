@@ -7,10 +7,10 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from controllers import Observation  # noqa: E402
-from energy import Battery  # noqa: E402
-from hydrodynamics import Allocator, Body, Hydrodynamics  # noqa: E402
-from runner import Dive  # noqa: E402
+from controllers import Observation
+from energy import Battery
+from hydrodynamics import Allocator, Body, Hydrodynamics
+from runner import Dive
 
 VEHICLE = pathlib.Path(__file__).resolve().parents[3] / "catalog/vehicles/bluerov2"
 

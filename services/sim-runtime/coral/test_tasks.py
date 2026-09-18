@@ -8,7 +8,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from tasks import KINDS, task_for  # noqa: E402
+from tasks import KINDS, task_for
 
 START = np.array([100.0, -20.0, -5.0])
 

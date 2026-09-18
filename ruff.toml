@@ -1,0 +1,41 @@
+# Static checks for the Python in this repository.
+#
+# There were none until a `global SEEN_TO_M` line was written forty lines above
+# the variable it read, `make()` raised a NameError halfway through building
+# the water, and a render sat at nought frames for a quarter of an hour with
+# nothing in the log after the line before it. Ruff finds that in a tenth of a
+# second, and the rest of this repository's checks are the same bargain: a
+# thing that costs nothing to run and catches what a person looking at a diff
+# does not.
+
+line-length = 100
+target-version = "py310"
+
+exclude = [".runtime", "node_modules", "dist", "build"]
+
+[lint]
+# Pyflakes and the bug-shaped half of the rest. Not the style rules: this
+# codebase has its own voice and a linter is not going to improve it.
+select = [
+    "F",      # pyflakes: undefined names, unused imports, shadowed bindings
+    "E9",     # syntax errors
+    "E402",   # an import after code, which several tools do on purpose and say so
+    "B",      # bugbear: mutable defaults, loop-variable capture, and friends
+    "UP032",  # format() where an f-string says it
+    "RUF100", # a noqa that no longer suppresses anything
+]
+
+ignore = [
+    # Asserting inside a `try` is how several of these tools report a refusal.
+    "B011",
+    # zip() without strict=. It is a real class of bug and there are twenty of
+    # them here, every one of which is zipping two things built in the same
+    # breath from the same length. Turning it on means twenty edits to working
+    # code for no defect found, so it is off and written down rather than off
+    # and forgotten.
+    "B905",
+]
+
+[lint.per-file-ignores]
+# Tests say what they mean with bare asserts and long lines of numbers.
+"**/test_*.py" = ["E501"]

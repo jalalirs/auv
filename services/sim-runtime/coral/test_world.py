@@ -12,7 +12,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from world import KINDS, World  # noqa: E402
+from world import KINDS, World
 
 ARRAY = {"describedBy": "coral-city/layout/v1", "things": [
     {"id": "t1", "kind": "transponder", "x": 0.0, "y": 0.0, "groundM": 14.0},

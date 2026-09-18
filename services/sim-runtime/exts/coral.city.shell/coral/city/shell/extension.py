@@ -636,7 +636,7 @@ class CoralCityShell(omni.ext.IExt):
     def _greeting(self) -> dict:
         """What a watcher is told on arrival, and what it may ask to be sent."""
         from .stream import Encoder
-        from .watch import FRAMES_PER_SECOND, TALL, WIDE
+        from .watch import FRAMES_PER_SECOND
 
         said = self.dive.hello() if self.dive is not None else {"kind": "hello"}
         # The size is not promised here: it is whatever the frames turn out to
@@ -645,7 +645,7 @@ class CoralCityShell(omni.ext.IExt):
                          "framesPerSecond": FRAMES_PER_SECOND}
         return said
 
-    def _wanted(self, want: str) -> None:      # noqa: D401 — see below
+    def _wanted(self, want: str) -> None:
         """A watcher saying what it can decode.
 
         Only noted here. The encoder cannot be opened until a frame has been
@@ -830,7 +830,7 @@ class CoralCityShell(omni.ext.IExt):
                 ("%s.png" % self.tour.name()) if hasattr(self.tour, "name")
                 else ("frame_%05d.png" % self.tour.taken))
             self.tour.waiting = True
-            capture = capture_viewport_to_file(viewport, str(frame))
+            capture_viewport_to_file(viewport, str(frame))
             self.tour.taken += 1
             # Kit hands back something awaitable; whether it does or not, the
             # frame is written by the time the next few updates have gone by.
@@ -959,7 +959,6 @@ class CoralCityShell(omni.ext.IExt):
         if os.environ.get("CORAL_CITY_METER", "1") == "0":
             return
 
-        now = time.monotonic()
         # A few updates for the scene to resolve. Kit spends the start of a run
         # with the scene half loaded and nothing lit, and a camera metered off
         # that opens all the way and stays there.

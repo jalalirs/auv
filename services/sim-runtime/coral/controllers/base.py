@@ -17,7 +17,7 @@ z up; wrench as surge, sway, heave, roll, pitch, yaw; metres, radians, seconds.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 

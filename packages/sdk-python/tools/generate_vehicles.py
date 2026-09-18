@@ -84,7 +84,7 @@ def main() -> int:
         "from ..vehicle import Vehicle",
         "",
     ]
-    for slug, module in written:
+    for _, module in written:
         index.append(f"from .{module} import VEHICLE as _{module}")
     index += ["", "ALL: dict[str, Vehicle] = {"]
     for slug, module in written:

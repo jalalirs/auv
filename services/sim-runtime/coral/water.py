@@ -782,7 +782,6 @@ def light_for(stage, depth: float) -> None:
     stays lit that way all the way to the bottom, which is the single most
     obviously wrong thing an underwater renderer can do.
     """
-    from pxr import UsdLux
 
     left = is_it_deep(max(0.0, depth))
     # The sun is the key light and everything else is fill. The first balance
@@ -804,7 +803,6 @@ def drift(stage, seconds: float, follow=None) -> None:
     Still caustics are a painted floor, and caustics fixed to the world are a
     patch of light the vehicle flies out of.
     """
-    import math
 
     from pxr import Gf, UsdGeom
 

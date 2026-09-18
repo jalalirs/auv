@@ -19,8 +19,8 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from controllers.asking import AskingController, _document_in  # noqa: E402
-from controllers.base import Observation  # noqa: E402
+from controllers.asking import AskingController, _document_in
+from controllers.base import Observation
 
 GOAL = {"kind": "go", "to": [100.0, 0.0, -8.0], "radiusM": 2.0}
 

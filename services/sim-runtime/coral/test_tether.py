@@ -13,7 +13,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from tether import Tether  # noqa: E402
+from tether import Tether
 
 
 def hanging(length: float, out: float = 40.0, current=(0.0, 0.0, 0.0)) -> Tether:

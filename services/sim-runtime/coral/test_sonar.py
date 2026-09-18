@@ -13,8 +13,8 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from sonar import Sonar  # noqa: E402
-from world import World  # noqa: E402
+from sonar import Sonar
+from world import World
 
 FORWARD = np.eye(3)
 
