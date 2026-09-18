@@ -473,6 +473,7 @@ class Dive:
         self.shoal = None
         self._rooted = None
         self._rooted_orientations = None
+        self._life_cost = [0.0, 0.0, 0]
         self.last_wrench = None
         self.on_the_bottom = False
 
@@ -2683,8 +2684,26 @@ class Dive:
         if self.water is not None:
             self.water.drift(self.stage, self.simulated, follow=self.position)
             self.water.light_for(self.stage, float(-self.position[2]))
+        # What each half of the living reef costs, said once.
+        #
+        # A reef that hangs the renderer is worse than a reef with nothing in
+        # it, and "the frames stopped coming" is not a measurement. These are
+        # two numbers and they cost two clock reads a frame.
+        import time as _time
+        began = _time.perf_counter()
         self.swim(1.0 / 20.0)
+        swam = _time.perf_counter()
         self.sway()
+        ended = _time.perf_counter()
+        self._life_cost[0] += swam - began
+        self._life_cost[1] += ended - swam
+        self._life_cost[2] += 1
+        if self._life_cost[2] == 20:
+            self.say("life_costs",
+                     swimMs=round(1000 * self._life_cost[0] / 20, 1),
+                     swayMs=round(1000 * self._life_cost[1] / 20, 1),
+                     fish=0 if self.shoal is None else self.shoal.of_them,
+                     rooted=0 if self._rooted is None else int(len(self._rooted[1])))
 
     def sway(self) -> None:
         """Bend the rooted things in the water that is actually moving.
