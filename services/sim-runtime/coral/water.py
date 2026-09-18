@@ -375,11 +375,6 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # distance it depends on. See the note above the fog settings.
     put_the_water_in_the_materials(stage, veiling, lengths, 0.0)
 
-    # How far a camera in this water can see anything at all, for whoever is
-    # placing one. Three attenuation lengths in green, which is where this
-    # fog reaches full strength and where real water has gone.
-    global SEEN_TO_M
-    SEEN_TO_M = float(green * 3.0)
     # The distance is the water's own attenuation length, for green.
     #
     # Green because it is most of what the eye reads as brightness, and green
@@ -421,6 +416,17 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # attenuation lengths.
     settings.set("/rtx/fog/fogStartDist", 0.0)
     settings.set("/rtx/fog/fogEndDist", float(green * 3.0))
+    # How far a camera in this water can see anything at all, for whoever is
+    # placing one: the distance the fog reaches full strength at, which is also
+    # where the far clip goes, so the two are one number and not two.
+    #
+    # Set here and not earlier, because `green` is worked out here. It was set
+    # forty lines above this, where the name does not exist yet, and `make`
+    # raised a NameError halfway through building the water: no sun, no
+    # surface, no caustics, and a tour that sat at nought frames for a quarter
+    # of an hour with nothing in the log after the line before it.
+    global SEEN_TO_M
+    SEEN_TO_M = float(green * 3.0)
     settings.set("/rtx/fog/fogDensity", 1.0)
     settings.set("/rtx/fog/fogDistanceDensity", 1.0)
     # Fog everywhere in the water, not only near the bottom.
