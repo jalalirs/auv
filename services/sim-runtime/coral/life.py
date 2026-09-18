@@ -154,11 +154,19 @@ class Shoal:
     ELBOW = 2.5
 
     def __init__(self, groups: dict, floor_at, across: float,
-                 water_level: float = 0.0, seed: int = 0) -> None:
+                 water_level: float = 0.0, seed: int = 0, about=(0.0, 0.0)) -> None:
         self.rng = np.random.default_rng(seed)
         self.floor_at = floor_at
         self.across = float(across)
         self.water_level = float(water_level)
+        # Where the middle of the stocked water is, in the site's own
+        # coordinates. A shoal is a patch of reef around the work and not the
+        # whole site, and it has to know where that patch is: the first
+        # version put the fish in their own square centred on nothing and then
+        # slid them across afterwards, which left every lookup and every edge
+        # measuring from the wrong place. They were clipped back off the dive
+        # on the first step.
+        self.about = np.array([float(about[0]), float(about[1])])
 
         kinds, home, above, school = [], [], [], []
         schools = 0
@@ -171,7 +179,8 @@ class Shoal:
             while put < many:
                 # One school at a time, each with its own patch of reef.
                 size = min(int(self.rng.integers(low, high + 1)), many - put)
-                at = self.rng.uniform(-0.45 * across, 0.45 * across, 2)
+                at = self.about + self.rng.uniform(
+                    -0.45 * across, 0.45 * across, 2)
                 held = max(0.2, self.rng.normal(*says["above"]))
                 for _ in range(size):
                     kinds.append(name)
@@ -228,10 +237,11 @@ class Shoal:
     def _remember_the_floor(self):
         n = self.REMEMBERED
         edge = 0.5 * self.across
-        line = np.linspace(-edge, edge, n)
+        line_x = np.linspace(self.about[0] - edge, self.about[0] + edge, n)
+        line = np.linspace(self.about[1] - edge, self.about[1] + edge, n)
         self._known = np.empty((n, n))
         for j, y in enumerate(line):
-            for i, x in enumerate(line):
+            for i, x in enumerate(line_x):
                 got = self.floor_at(float(x), float(y))
                 self._known[j, i] = -30.0 if got is None else float(got)
         self._known_at = line
@@ -240,7 +250,7 @@ class Shoal:
         """The seabed under each of them, as an array."""
         n = self.REMEMBERED
         edge = 0.5 * self.across
-        where = (np.asarray(xy) + edge) / (2 * edge) * (n - 1)
+        where = (np.asarray(xy) - self.about + edge) / (2 * edge) * (n - 1)
         where = np.clip(where, 0, n - 1.001)
         i, j = where[:, 0].astype(int), where[:, 1].astype(int)
         fx, fy = where[:, 0] - i, where[:, 1] - j
@@ -336,7 +346,8 @@ class Shoal:
         floor = self._floor(self.at[:, :2])
         self.at[:, 2] = np.clip(self.at[:, 2], floor + 0.08, self.water_level - 0.3)
         edge = 0.49 * self.across
-        self.at[:, :2] = np.clip(self.at[:, :2], -edge, edge)
+        self.at[:, :2] = np.clip(self.at[:, :2], self.about - edge,
+                                 self.about + edge)
 
     def seen_from(self, at, looking, half_angle_deg: float = 32.0,
                   reach: float = 12.0) -> dict:

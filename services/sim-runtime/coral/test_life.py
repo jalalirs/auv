@@ -292,3 +292,25 @@ def test_an_unbent_colony_keeps_its_own_turn():
     w, x, y, z = life.leaning(np.zeros(3), np.zeros(3), turn)
     assert np.allclose(x, 0.0, atol=1e-9) and np.allclose(y, 0.0, atol=1e-9)
     assert np.allclose(w, np.cos(turn / 2)) and np.allclose(z, np.sin(turn / 2))
+
+
+def test_a_shoal_lives_where_the_work_is():
+    """A shoal is a patch of reef around the dive, not the whole site. The
+    first version built it centred on nothing and slid it across afterwards,
+    so every seabed lookup and every edge measured from the wrong place and
+    the first step clipped the fish back off the dive."""
+    work = np.array([140.0, -60.0])
+    across = 200.0
+    reef = life.Shoal({"snapper": 400}, a_seabed, across, seed=3, about=work)
+
+    def inside():
+        return np.abs(reef.at[:, :2] - work).max()
+
+    # Every one of them is in the water that was stocked, which is around the
+    # work and not around the origin.
+    assert inside() <= 0.5 * across, inside()
+    for _ in range(80):
+        reef.step(0.1)
+    assert inside() <= 0.5 * across, inside()
+    # And with enough schools the middle of them is the middle of the work.
+    assert np.allclose(reef.at[:, :2].mean(axis=0), work, atol=0.2 * across)

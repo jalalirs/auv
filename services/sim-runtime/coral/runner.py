@@ -2639,6 +2639,9 @@ class Dive:
 
         import life
 
+        if asked_for("CORAL_CITY_LIFE", 1.0) == 0.0:
+            self.say("no_life", why="asked for a reef with nothing living in it")
+            return None
         described = json.loads((city / "site.json").read_text())
         says = described.get("life")
         if not says or not says.get("shares"):
@@ -2667,12 +2670,8 @@ class Dive:
                           if self.seabed is not None else self.floor),
             across=2.2 * self.STOCKED_TO_M,
             water_level=0.0,
-            seed=int(self.brief.get("seed", 0)))
-        # The shoal works in its own square centred on the work, so it is
-        # offset into the site rather than placed at the origin.
-        shoal.at[:, :2] += self.position[:2]
-        shoal.home += self.position[:2]
-        shoal._remember_the_floor = lambda: None
+            seed=int(self.brief.get("seed", 0)),
+            about=(float(self.position[0]), float(self.position[1])))
         life.put_them_in(stage, shoal)
         self.say("life_is", **shoal.said(), stockedToM=self.STOCKED_TO_M,
                  asked=wanted, drawn=how_many,
@@ -2695,7 +2694,7 @@ class Dive:
         seconds, and it is already computed here because it acts on the hull
         as well. A reef whose gorgonians are still is a reef nobody believes.
         """
-        if self._rooted is None:
+        if self._rooted is None or asked_for("CORAL_CITY_LIFE", 1.0) == 0.0:
             return
         import life
         from pxr import Gf
