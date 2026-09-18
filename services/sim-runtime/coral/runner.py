@@ -2687,7 +2687,7 @@ class Dive:
             seed=int(self.brief.get("seed", 0)),
             about=(float(self.position[0]), float(self.position[1])))
         took("made the shoal")
-        life.put_them_in(stage, shoal)
+        life.put_them_in(stage, shoal, say=self.say)
         took("drew them")
         self.say("life_is", **shoal.said(), stockedToM=self.STOCKED_TO_M,
                  asked=wanted, drawn=how_many,

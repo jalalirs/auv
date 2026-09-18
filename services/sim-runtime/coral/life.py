@@ -382,7 +382,7 @@ class Shoal:
 
 # ── and what a renderer draws ────────────────────────────────────────────────
 
-def put_them_in(stage, shoal, at: str = "/World/Life") -> None:
+def put_them_in(stage, shoal, at: str = "/World/Life", say=None) -> None:
     """Write the shoal into the stage as one instancer, once.
 
     One prototype per behaviour group, which is one shape and one colour each.
@@ -397,6 +397,14 @@ def put_them_in(stage, shoal, at: str = "/World/Life") -> None:
 
     if not shoal.of_them:
         return
+    import time as _time
+    began = _time.perf_counter()
+
+    def took(what):
+        if say is not None:
+            say("life_built", did=what,
+                ms=round(1000 * (_time.perf_counter() - began), 1))
+
     rng = np.random.default_rng(7)
     instancer = UsdGeom.PointInstancer.Define(stage, at)
     looks = UsdGeom.Scope.Define(stage, f"{at}/Looks")
@@ -431,8 +439,10 @@ def put_them_in(stage, shoal, at: str = "/World/Life") -> None:
             shader.ConnectableAPI(), "surface")
         UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(material)
         prototypes.append(mesh.GetPath())
+        took(f"body {i}")
 
     instancer.CreatePrototypesRel().SetTargets(prototypes)
+    took("pointed at the bodies")
     instancer.CreateProtoIndicesAttr(Vt.IntArray(
         [shoal._kinds_present.index(k) for k in shoal.kinds]))
     # A fish is the length its group is, and they are not all the same size.
@@ -440,7 +450,9 @@ def put_them_in(stage, shoal, at: str = "/World/Life") -> None:
     size = size * rng.uniform(0.72, 1.3, len(size))
     instancer.CreateScalesAttr(Vt.Vec3fArray(
         [Gf.Vec3f(float(s), float(s), float(s)) for s in size]))
+    took("sized them")
     move_them(stage, shoal, at)
+    took("placed them")
 
 
 def move_them(stage, shoal, at: str = "/World/Life") -> None:
