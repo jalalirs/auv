@@ -222,6 +222,7 @@ GROUND_MATERIAL = """
                 color3f inputs:attenuation = (4, 17, 13)
                 color3f inputs:veiling = (0.24, 0.55, 0.45)
                 float inputs:veil = 0
+                float inputs:show_distance = 0
                 token outputs:out
             }
 
