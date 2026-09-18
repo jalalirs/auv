@@ -2687,7 +2687,18 @@ class Dive:
             seed=int(self.brief.get("seed", 0)),
             about=(float(self.position[0]), float(self.position[1])))
         took("made the shoal")
-        life.put_them_in(stage, shoal, say=self.say)
+        try:
+            life.put_them_in(stage, shoal, say=self.say)
+        except Exception as bad:
+            # Said, not swallowed. Something above this caught it and carried
+            # on, so the scene built, the app started, and the only sign that
+            # the reef had no fish in it was the absence of a line nobody was
+            # looking for. A dive that cannot draw its fish is still a dive;
+            # one that cannot say why is not worth running.
+            import traceback
+            self.say("life_failed", why=str(bad)[:200],
+                     where=traceback.format_exc().strip().splitlines()[-2][:160])
+            return None
         took("drew them")
         self.say("life_is", **shoal.said(), stockedToM=self.STOCKED_TO_M,
                  asked=wanted, drawn=how_many,
