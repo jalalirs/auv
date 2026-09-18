@@ -303,19 +303,30 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     #
     # The ray-traced volumetric effects absorb as well as scatter, which is a
     # medium rather than a filter over the picture.
-    # Off. Both of them.
+    # `/rtx/fog` back on, and the absorbing half done by not drawing what the
+    # water would have swallowed.
     #
-    # `/rtx/fog` adds veiling light and never absorbs, so with the materials
-    # doing the medium properly it is a second helping of airlight laid over
-    # the first, and the near ground goes green a metre from the lens. The
-    # ray-traced volumetric effects want a volume prim this scene has no way to
-    # author and do nothing without one.
+    # The medium wants two things: light added by the column in front of a
+    # surface, and light taken from the surface itself. This fog does the
+    # first and cannot do the second, so a reef stays sharp to the horizon
+    # however it is set. The ray-traced volumetric effects want a volume prim
+    # this scene has no way to author.
     #
-    # Everything below about the fog is left set, because it costs nothing and
-    # a place opened in something that cannot read this platform's materials
-    # gets an approximation rather than clear water.
+    # Doing it in the materials instead needs each surface's distance from the
+    # camera, and three renders went into finding out what Kit's MDL will
+    # actually hand a shader for that: `state::position()` through
+    # `coordinate_internal -> coordinate_world` came back as nothing useful,
+    # and bisecting a shading language eight minutes at a time is not a way to
+    # spend an afternoon. That code is still here behind `veil = 0` and the
+    # question is written down rather than guessed at.
+    #
+    # What is left is honest and simple: **beyond about three attenuation
+    # lengths there is nothing to see**, so stop drawing there. The far clip
+    # goes to the same distance the fog reaches full strength at, and the
+    # background is the water's own colour, so a surface arrives at the clip
+    # plane already the colour of what is behind it.
     settings.set("/rtx/raytracing/globalVolumetricEffects/enabled", False)
-    settings.set("/rtx/fog/enabled", False)
+    settings.set("/rtx/fog/enabled", not _clear)
     settings.set("/rtx/fog/fogColor", list(veiling))
     # The fog is added to everything the camera sees, so its strength is how
     # much of the picture is water rather than reef, and where it starts is how
@@ -360,8 +371,15 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # And the medium in the materials, which is the half /rtx/fog cannot do:
     # what the water takes out rather than what it adds, per channel. Nought
     # when the water is asked to be taken away, which is what that view is.
-    put_the_water_in_the_materials(stage, veiling, lengths,
-                                   0.0 if _clear else float(veil))
+    # Nought: the materials carry the medium and cannot yet measure the
+    # distance it depends on. See the note above the fog settings.
+    put_the_water_in_the_materials(stage, veiling, lengths, 0.0)
+
+    # How far a camera in this water can see anything at all, for whoever is
+    # placing one. Three attenuation lengths in green, which is where this
+    # fog reaches full strength and where real water has gone.
+    global SEEN_TO_M
+    SEEN_TO_M = float(green * 3.0)
     # The distance is the water's own attenuation length, for green.
     #
     # Green because it is most of what the eye reads as brightness, and green
@@ -618,6 +636,11 @@ def make(stage, say, floor: float, water_level: float = 0.0,
 # A patch rather than the whole site, because the fog takes everything past a
 # couple of attenuation lengths and there is no point shading what nobody can
 # see. Two hundred metres is far beyond visibility in any of Jerlov's waters.
+# How far anything can be seen in the water a dive is in. Set as the water is
+# made; read by whoever places a camera, so that the far clip and the distance
+# the fog reaches full strength are one number and not two.
+SEEN_TO_M = 60.0
+
 SURFACE_ACROSS = 200.0
 SURFACE_CELL = 0.7
 # And how far the sea goes after that.
