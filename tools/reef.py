@@ -32,7 +32,8 @@ import zonation
 
 
 def plant(where: pathlib.Path, height, across: float, seed: int,
-          how_many: int, picture=None, reference: pathlib.Path | None = None) -> dict:
+          how_many: int, picture=None, reference: pathlib.Path | None = None,
+          cover_from: str | None = None) -> dict:
     """Grow a reef onto a seabed, and write it beside it.
 
     `reference` is a place's fetched corpus. Where it holds a scan of a colony
@@ -40,6 +41,22 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     shape. Museum specimens are dry skeletons, so they give the form, and the
     colour still comes from photographs of the reef itself.
     """
+    # Where the density came from, and it has to come from somewhere.
+    #
+    # Everything below works out how much coral a square metre holds from the
+    # depth, the hardness of the ground and a patchiness, which is a *model*
+    # and not a measurement. That is a reasonable way to build a reef nobody
+    # has counted; it is not a reasonable thing to publish without saying so.
+    # Three of this platform's places carried densities from this model —
+    # 44,000, 500,000 and 1.4 million colonies a square kilometre — against
+    # the 83,055 that somebody actually counted at Looe Key, and nothing in
+    # the record said which of the four was the measured one.
+    if not cover_from:
+        raise ValueError(
+            "say where this reef's density comes from: a survey, or that it "
+            "was chosen. A reef built without an answer to that is a number "
+            "somebody will later cite as a measurement.")
+
     rng = np.random.default_rng(seed)
     rows, columns = height.shape
     depth = -height
@@ -255,6 +272,17 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
             # has to take a render's word for it.
             "fromScans": from_a_scan,
             "scannedForms": sorted(scans),
+            "cover": {
+                "asked": round(asked_for, 3),
+                "whereItGrows": round(cover, 3),
+                "perSquareKm": round(how_many / max(1e-9, (across / 1000) ** 2)),
+                "from": cover_from,
+                # Nothing that comes out of this function is measured. The
+                # cover is worked out from the depth and the ground; only a
+                # survey can say what is actually there, and a survey does not
+                # come through here.
+                "measured": False,
+            },
             "coverAskedFor": round(asked_for, 3),
             "beginAt": begin,
             "points": int(sum(len(p) for p, _ in prototypes)),

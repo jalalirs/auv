@@ -237,6 +237,14 @@ def main() -> int:
 
     site["reef"] = {
         "source": listed.get("source"), "method": listed.get("method"),
+        # This one *is* measured: every colony here is one the survey saw,
+        # which is the whole difference between this tool and tools/reef.py.
+        "cover": {
+            "colonies": len(colonies),
+            "perSquareKm": round(len(colonies) / max(1e-9, (across / 1000) ** 2)),
+            "from": listed.get("source", "a survey of this reef"),
+            "measured": True,
+        },
         "colonies": len(colonies), "prototypes": len(prototypes),
         "kinds": {k: int((drawn == k).sum()) for k in KINDS},
         # What the colonies are made of, so a place's page can say it rather

@@ -12,15 +12,16 @@ three STEP files `model.py` writes to `hardware/out/`.
 | 3" locking flange with O-rings | 2 | 34 (from) | [flanges](https://bluerobotics.com/store/watertight-enclosures/locking-series/wte-locking-tube-r1-vp/) |
 | 3" acrylic end cap, blank (the window) | 1 | 16 | [end caps](https://bluerobotics.com/store/watertight-enclosures/locking-series/wte-end-cap-vp/) |
 | 3" aluminium end cap, 7 × M10 | 1 | 32 | same |
-| WetLink penetrator, M10, sized to the thruster cable | 6 | 13–17 | [penetrators](https://bluerobotics.com/store/cables-connectors/penetrators/wlp-vp/) |
-| WetLink penetrator, M10, for the tether | 1 | 13–17 | same |
-| Pressure relief / vent plug, M10 | 1 | ~15 | Blue Robotics; **use the 7th hole for this, not the tether, until the tether exists** |
+| Potted penetrator, M10, blank, epoxy-filled: two thruster cables each | 3 | ~6 | [potted penetrators](https://bluerobotics.com/store/cables-connectors/penetrators/penetrator-vp/) |
+| WetLink penetrator, M10, for the tether | 1 | 13–17 | [penetrators](https://bluerobotics.com/store/cables-connectors/penetrators/wlp-vp/) |
+| Pressure relief / vent plug, M10 | 1 | ~15 | Blue Robotics |
 
-Seven holes, eight things that want one: six thrusters, a tether, a vent
-plug. Under a tether the vent plug is the one to give up, and when the tether
-comes off, the plug goes in. The rear cap could also be the 4-hole version
-with the ESCs potted outside the tube; that is the 2-inch trick and is not
-this design.
+**The seven holes.** Six thruster cables, a depth sensor, a tether and a vent
+plug want nine, and the cap has seven. The UG500's cable is thin, so two of
+them go through one epoxy-potted penetrator: three for the thrusters, one
+for the depth sensor, one for the tether, one for the vent plug, one spare
+for the leak sensor's future or a second camera. A WetLink takes one cable
+only, which is why the thruster holes are potted and the tether's is not.
 
 ## Propulsion
 
@@ -39,16 +40,11 @@ diagonally on the verticals, one of each at the stern.
 | Raspberry Pi Zero 2 W | 1 | 15 | official |
 | Raspberry Pi Camera Module 3, wide | 1 | 35 | official |
 | IMU, BNO085 breakout | 1 | ~25 | Adafruit or clone |
-| Pressure and depth sensor, MS5837-02BA (Blue Robotics Bar02 or a breakout) | 1 | 15–85 | mounts in a penetrator hole; **needs one of the seven** |
+| Pressure and depth sensor, MS5837-02BA (Blue Robotics Bar02 or a breakout) | 1 | 15–85 | mounts in one of the seven holes |
 | 18650 cells, 3S in a holder with a BMS | 3 + 1 | ~25 (est.) | local; do not ship |
 | PWM driver, PCA9685, if the Pi's own PWM is not enough | 1 | ~6 | any |
 | Leak sensor, two probes on the floor of the tube | 1 | ~5 | any |
 | Wiring, connectors, heat-shrink | | ~20 (est.) | |
-
-The depth sensor takes the seventh hole. That settles the count above: six
-thrusters plus depth is seven, the tether shares a thruster penetrator sized
-for two cables, and the vent plug waits for the four-hole cap that a later
-version earns by potting the ESCs outside.
 
 ## Outside
 

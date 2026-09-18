@@ -41,7 +41,8 @@ BOUGHT = [
 PRINT_Z = {"cover": 25.0, "chassis": -30.0, "bezel": 0.0}
 
 
-def main() -> int:
+def compute() -> dict:
+    """The rows and the totals, for the terminal and for the sheet alike."""
     parts = json.loads((OUT / "parts.json").read_text())
     rows = []
     for name, meta in parts.items():
@@ -53,16 +54,26 @@ def main() -> int:
     rows += BOUGHT
     mass = sum(r[1] for r in rows)
     displaced = sum((r[2] if r[2] is not None else 0.0) for r in rows)
+    buoyancy = displaced * FRESH
+    cg = sum(r[1] * r[3] for r in rows) / mass
+    cb = sum((r[2] or 0.0) * r[3] for r in rows) / displaced
+    return {"rows": rows, "mass_g": mass, "displaced_cm3": displaced, "buoyancy_g": buoyancy,
+            "net_g": buoyancy - mass, "cg_z": cg, "cb_z": cb, "righting_mm": cb - cg,
+            "heave_n": 4 * P.THRUSTER_THRUST_N, "surge_n": 2 * P.THRUSTER_THRUST_N,
+            "weight_n": mass / 1000 * 9.81}
+
+
+def main() -> int:
+    b = compute()
+    rows, mass, displaced, buoyancy = b["rows"], b["mass_g"], b["displaced_cm3"], b["buoyancy_g"]
     print(f"{'part':46s} {'mass g':>8s} {'displaces cm³':>14s} {'z mm':>6s}   source")
     for name, m, v, z, src in rows:
         print(f"{name:46s} {m:8.0f} {'' if v is None else f'{v:14.0f}':>14s} {z:6.0f}   {src}")
     print("-" * 108)
-    buoyancy = displaced * FRESH
     print(f"{'total':46s} {mass:8.0f} {displaced:14.0f}")
     print(f"buoyancy in the tank {buoyancy:.0f} g against {mass:.0f} g of mass: "
           f"{buoyancy - mass:+.0f} g  ({'floats' if buoyancy > mass else 'sinks'})")
-    cg = sum(r[1] * r[3] for r in rows) / mass
-    cb = sum((r[2] or 0.0) * r[3] for r in rows) / displaced
+    cg, cb = b["cg_z"], b["cb_z"]
     print(f"centre of gravity z {cg:+.1f} mm, centre of buoyancy z {cb:+.1f} mm, "
           f"righting arm {cb - cg:.1f} mm  (the catalogue BlueROV2 has 20)")
     heave = 4 * P.THRUSTER_THRUST_N

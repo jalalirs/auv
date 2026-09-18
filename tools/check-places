@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""What every place claims, and whether it can back it up.
+
+    tools/check-places
+    tools/check-places ~/coral-city/places
+
+A reef's density is the number most likely to be quoted out of a render and
+the least likely to be questioned. Looe Key holds 83,055 colonies a square
+kilometre because somebody went and counted them; three other places on this
+platform held 44,000, 500,000 and 1,400,000, all worked out from a model of
+depth and hardness, and nothing anywhere said which was which.
+
+So this walks the built places and reports, for each, where its density came
+from. It exits non-zero if any of them cannot say — not because an unmeasured
+reef is wrong, but because an unlabelled one is.
+"""
+
+from __future__ import annotations
+
+import json
+import pathlib
+import sys
+
+
+def about(place: pathlib.Path) -> dict | None:
+    said = place / "site.json"
+    if not said.is_file():
+        return None
+    described = json.loads(said.read_text())
+    reef = described.get("reef") or {}
+    cover = reef.get("cover") or {}
+    ground = described.get("from") or {}
+    return {
+        "name": described.get("name", place.name),
+        "colonies": reef.get("colonies"),
+        "perSquareKm": cover.get("perSquareKm"),
+        "from": cover.get("from"),
+        "measured": cover.get("measured"),
+        "surveyed": ground.get("surveyed"),
+        "life": (described.get("life") or {}).get("source"),
+    }
+
+
+def main() -> int:
+    where = pathlib.Path(sys.argv[1] if len(sys.argv) > 1
+                         else pathlib.Path.home() / "coral-city" / "places")
+    if not where.is_dir():
+        print(f"no places at {where}", file=sys.stderr)
+        return 2
+
+    unsourced = []
+    print("%-14s %11s  %-9s %s" % ("place", "per km²", "density", "from"))
+    for place in sorted(where.iterdir()):
+        said = about(place)
+        if said is None:
+            continue
+        if said["from"] is None:
+            mark, source = "UNSOURCED", "— nothing recorded —"
+            unsourced.append(said["name"])
+        else:
+            mark = "measured" if said["measured"] else "chosen"
+            source = said["from"]
+        print("%-14s %11s  %-9s %s" % (
+            said["name"],
+            "—" if said["perSquareKm"] is None else f"{said['perSquareKm']:,}",
+            mark, source[:70]))
+
+    print()
+    if unsourced:
+        print("These claim a density with nothing behind it: "
+              + ", ".join(unsourced), file=sys.stderr)
+        print("Rebuild them with --cover-from, saying the survey or saying "
+              "it was chosen.", file=sys.stderr)
+        return 1
+    print("Every place says where its density comes from.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

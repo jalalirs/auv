@@ -507,6 +507,11 @@ def main() -> int:
                        help="most coral colonies to write")
     parse.add_argument("--seed", type=int, default=1,
                        help="the same seed grows the same reef")
+    parse.add_argument("--cover-from",
+                       help="where this reef's density comes from: name the "
+                            "survey, or say it was chosen. Required whenever "
+                            "coral is grown, because a density with no source "
+                            "is a number somebody will cite as a measurement")
     parse.add_argument("--ground",
                        help="a reference directory built by tools/ground, or its "
                             "colour_4096.png: the colour of this actual seabed, "
@@ -678,6 +683,7 @@ def main() -> int:
         # colony, the reef stands scans rather than grown shapes.
         corpus = pathlib.Path.home() / "coral-city" / "reference" / asked.name
         reef = grow_reef.plant(where, height, asked.across, asked.seed, asked.coral,
+                               cover_from=asked.cover_from,
                                picture=seen_from_above,
                                reference=corpus if corpus.is_dir() else None)
 
