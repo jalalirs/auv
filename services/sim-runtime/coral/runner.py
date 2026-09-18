@@ -471,6 +471,8 @@ class Dive:
         self.water_level = 0.0
         self.water = None
         self.shoal = None
+        self._rooted = None
+        self._rooted_orientations = None
         self.last_wrench = None
         self.on_the_bottom = False
 
@@ -642,6 +644,7 @@ class Dive:
 
             # And what lives in it.
             self.shoal = self._stock_the_reef(stage, city, extent)
+            self._rooted = self._root_the_gorgonians(stage, city)
 
         # A body of the vehicle's actual mass, at the vehicle's actual place.
         # What is being integrated is the dynamics; a dive that reported a
@@ -2682,6 +2685,80 @@ class Dive:
             self.water.drift(self.stage, self.simulated, follow=self.position)
             self.water.light_for(self.stage, float(-self.position[2]))
         self.swim(1.0 / 20.0)
+        self.sway()
+
+    def sway(self) -> None:
+        """Bend the rooted things in the water that is actually moving.
+
+        The mean current pushes them over and the surge is what makes them
+        move: the orbital motion of the waves overhead reverses every few
+        seconds, and it is already computed here because it acts on the hull
+        as well. A reef whose gorgonians are still is a reef nobody believes.
+        """
+        if self._rooted is None:
+            return
+        import life
+        from pxr import Gf, Vt
+
+        under = self.water.orbital_here(
+            float(self.position[0]), float(self.position[1]),
+            float(-self.position[2]), self.simulated) if self.water else (0.0, 0.0, 0.0)
+        flow = (float(self.current[0]) + float(under[0]),
+                float(self.current[1]) + float(under[1]))
+
+        instancer, held, turn, phase, stiff = self._rooted
+        lean, towards = life.bending(flow, phase + self.simulated * 1.6, stiff)
+        w, x, y, z = life.leaning(lean, towards, turn)
+        was = self._rooted_orientations
+        for slot, i in enumerate(held):
+            was[i] = Gf.Quath(float(w[slot]), float(x[slot]),
+                              float(y[slot]), float(z[slot]))
+        instancer.CreateOrientationsAttr(Vt.QuathArray(was))
+
+    def _root_the_gorgonians(self, stage, city):
+        """Find the rooted colonies once, so the sway is arithmetic after that."""
+        import json
+
+        from pxr import UsdGeom
+
+        described = json.loads((city / "site.json").read_text())
+        sways = described.get("reef", {}).get("swaysWith") or {}
+        if not sways:
+            return None
+        named = described.get("layers", {}).get("coral", "coral.usda")
+        instancer = None
+        for prim in stage.Traverse():
+            if prim.GetTypeName() == "PointInstancer" and "Coral" in str(prim.GetPath()):
+                instancer = UsdGeom.PointInstancer(prim)
+                break
+        if instancer is None:
+            self.say("no_sway", why=f"no coral instancer in {named}")
+            return None
+
+        which = np.array(instancer.GetProtoIndicesAttr().Get() or [])
+        orientations = list(instancer.GetOrientationsAttr().Get() or [])
+        if not len(which) or not orientations:
+            return None
+
+        held, stiff = [], []
+        for kind, prototypes in sways.items():
+            for i in np.flatnonzero(np.isin(which, list(prototypes))):
+                held.append(int(i))
+                stiff.append(life_stiffness(kind))
+        if not held:
+            return None
+
+        held = np.array(held)
+        # Their own turn about the vertical, read back off what is there, so a
+        # colony that stops bending goes back to where the reef put it.
+        turn = np.array([2.0 * np.arctan2(float(orientations[i].imaginary[2]),
+                                          max(float(orientations[i].real), 1e-9))
+                         for i in held])
+        phase = np.linspace(0, 2 * np.pi, len(held), endpoint=False)
+        self._rooted_orientations = orientations
+        self.say("sway_is", colonies=int(len(held)),
+                 kinds=sorted(k for k, v in sways.items() if v))
+        return (instancer, held, turn, phase, np.array(stiff))
 
     def swim(self, dt: float) -> None:
         """One tick of everything alive.
@@ -2910,3 +2987,10 @@ class Dive:
                      commandsReceived=self.bridge.commands_seen)
             self.bridge.close()
             self.bridge = None
+
+
+def life_stiffness(kind: str) -> float:
+    """How stiff a rooted colony is. A sea rod is a stick, a sea fan is a net."""
+    import life
+
+    return life.STIFFNESS.get(kind, 1.0)
