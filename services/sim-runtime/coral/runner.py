@@ -645,7 +645,6 @@ class Dive:
 
             # And what lives in it.
             self.shoal = self._stock_the_reef(stage, city, extent)
-            self._rooted = self._root_the_gorgonians(stage, city)
 
         # A body of the vehicle's actual mass, at the vehicle's actual place.
         # What is being integrated is the dynamics; a dive that reported a
@@ -720,6 +719,13 @@ class Dive:
                 stage.DefinePrim("/World/Coral").GetReferences() \
                     .AddReference(str(city / reef))
                 self.say("coral_drawn", file=reef)
+                # And find the rooted colonies, now that there are some.
+                #
+                # This used to run beside the water, which is before the reef
+                # is referenced in: it looked for a coral instancer in an empty
+                # stage, said honestly that there wasn't one, and the
+                # gorgonians never moved.
+                self._rooted = self._root_the_gorgonians(stage, city)
 
             water = find_water(pathlib.Path(
                 self.brief.get("cityPath", "/dive/city")))
@@ -2649,6 +2655,13 @@ class Dive:
             self.say("no_life", why="this place has no record of what lives in it")
             return None
 
+        import time as _time
+        began = _time.perf_counter()
+
+        def took(what):
+            self.say("life_step", did=what,
+                     ms=round(1000 * (_time.perf_counter() - began), 1))
+
         reef = math.pi * self.STOCKED_TO_M ** 2
         # Only the part of that which is reef rather than sand. The habitat
         # shares are on the place; where they are not, half is the honest
@@ -2673,7 +2686,9 @@ class Dive:
             water_level=0.0,
             seed=int(self.brief.get("seed", 0)),
             about=(float(self.position[0]), float(self.position[1])))
+        took("made the shoal")
         life.put_them_in(stage, shoal)
+        took("drew them")
         self.say("life_is", **shoal.said(), stockedToM=self.STOCKED_TO_M,
                  asked=wanted, drawn=how_many,
                  perSquareMetre=says.get("perSquareMetre"))
