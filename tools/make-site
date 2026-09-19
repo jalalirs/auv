@@ -223,6 +223,14 @@ GROUND_MATERIAL = """
                 color3f inputs:veiling = (0.24, 0.55, 0.45)
                 float inputs:veil = 0
                 float inputs:show_distance = 0
+                # The site's own width and about how deep it is, so the
+                # material can turn its texture coordinates back into a place.
+                # Six attempts to read a position out of this renderer came
+                # back as the ordinary seabed or a constant; the texture
+                # coordinate is already laid nought-to-one over the site and
+                # has been working since the colour map went on.
+                float inputs:site_across = %(across).1f
+                float inputs:floor_at_m = %(floor).2f
                 token outputs:out
             }
 
@@ -480,12 +488,15 @@ def write_usd(where: pathlib.Path, name: str, height, across: float,
 
     lowest, highest = float(height.min()), float(height.max())
     if ground is not None:
+        import numpy as np  # noqa: F811
+
         # A reef photographed through ten metres of water comes back flat and
         # blue-grey; tools/ground has already taken the water out of the
         # orthomosaic, so this only lifts it, and gently.
         material = GROUND_MATERIAL % dict(
             ground, tile=tile, across=across, repeats=across / max(tile, 1e-6),
-            grain=0.85, relief=1.0, lift=1.05)
+            grain=0.85, relief=1.0, lift=1.05,
+            floor=float(np.median(height)))
     elif texture:
         material = SEABED_MATERIAL
     else:

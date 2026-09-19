@@ -160,7 +160,21 @@ export material coral_ground(
                           "water-taken-away view wants."),
         anno::in_group("Water")
     ]],
-    uniform float show_distance = 700.0
+    uniform float site_across = 1000.0
+    [[
+        anno::display_name("How wide this site is"),
+        anno::description("Metres. The texture coordinates run nought to one "
+                          "over it, so this turns them back into a place."),
+        anno::in_group("Water")
+    ]],
+    uniform float floor_at_m = -9.0
+    [[
+        anno::display_name("About how deep this seabed is"),
+        anno::description("One number for the site. The horizontal distance "
+                          "dominates everything but a view straight down."),
+        anno::in_group("Water")
+    ]],
+    uniform float show_distance = 0.0
     [[
         anno::display_name("Paint the distance instead"),
         anno::description("Metres at white. Nought is off. There is no way to "
@@ -224,20 +238,23 @@ export material coral_ground(
     // past a forty metre scale whether the position is measured from the site
     // or from the lens, and both saturate to the same white. The test that
     // separates them is the one that is wanted anyway.
-    // No `eye` in this: it comes from the runtime and the runtime has just
-    // been shown not to reach this material. The length of the raw position
-    // alone says which space it is in — a gradient radiating from the middle
-    // of the site means world, and flat means object.
-    float3 standing = state::position();
-    // Painting `length(eye)`, not the distance.
+    // Where this pixel is, from the texture coordinates.
     //
-    // Three expressions gave byte-identical frames, and there is only one way
-    // that happens: `distance(p, eye)` equalled `length(p)`, which means
-    // **eye is zero**, and `distance(transform_point(p), eye)` equalled both,
-    // which means transform_point is the identity rather than zero. So the
-    // position was never the problem. The camera never arrives.
-    float swum = math::length(standing);
-
+    // Not from `state::position()`. Six attempts to read a position out of
+    // this renderer produced six frames that were either the ordinary seabed
+    // or a constant, and the one thing every one of them established is that
+    // this route does not work here and is not worth a seventh.
+    //
+    // The seabed already carries what is needed. Its `st` runs nought to one
+    // over the site — that is how the colour map is laid on — so the world
+    // position is the texture coordinate times the width of the site, which
+    // is a number this file can simply be told. It costs nothing, it uses only
+    // the lookup that already works, and it cannot be a constant because the
+    // colour map is not a constant.
+    float3 here_is = float3((wide.position.x - 0.5) * site_across,
+                            (wide.position.y - 0.5) * site_across,
+                            floor_at_m);
+    float swum = math::distance(here_is, eye);
     color low = base::file_texture(
         texture: site_colour, uvw: wide,
         wrap_u: tex::wrap_clamp, wrap_v: tex::wrap_clamp).tint;
@@ -309,11 +326,6 @@ export material coral_ground(
     // north in green, and up in blue: if this comes back a smooth two-colour
     // ramp across the seabed, the position is a position. If it comes back one
     // flat colour, it is a constant.
-    color albedo = show_distance > 0.0
-        ? color(math::saturate(math::abs(standing.x) / show_distance),
-                math::saturate(math::abs(standing.y) / show_distance),
-                math::saturate(math::abs(standing.z) / 40.0))
-        : math::saturate(low * lift * variation);
 
     float wet = math::lerp(
         base::file_texture(texture: soft_rough, uvw: fine,
@@ -334,15 +346,18 @@ export material coral_ground(
     color survives = veil <= 0.0
         ? color(1.0)
         : math::exp(color(-swum) / math::max(attenuation, color(0.01)));
-    // Two candidates at once, so one render answers instead of two: red is
-    // the raw state position, green is that position transformed to world.
-    // Whichever channel shows a gradient from the lens to the horizon is the
-    // distance, and whichever is flat is the one that does not work here.
-    color water = show_distance > 0.0
-        ? color(math::saturate(math::length(raw) / show_distance),
-                math::saturate(swum / show_distance),
-                0.0)
-        : veiling * veil * (color(1.0) - survives);
+    // The water's own light, which is what a distant reef turns into. It is
+    // added rather than lit because it does not depend on anything shining on
+    // this surface: it is the column in front of it.
+    color water = veiling * veil * (color(1.0) - survives);
+
+    // What the surface reflects, dimmed by the water it has to swim through,
+    // plus the water's own light in front of it. Per channel, so red is gone
+    // in four metres of this water while green takes seventeen — which is the
+    // thing the renderer's own fog could never say.
+    color albedo = show_distance > 0.0
+        ? color(math::saturate(swum / show_distance))
+        : math::saturate(low * lift * variation * survives + water);
 
     float3 bumped = math::normalize(math::lerp(
         base::tangent_space_normal_texture(
