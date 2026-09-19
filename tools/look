@@ -216,11 +216,22 @@ JSON
     echo "  ${n} frames → ${looks}/${as}"
 }
 
+# A place that refused to render used to leave the exit status at nought, so a
+# caller that swallowed the output — every scripted render does — read the
+# sheet from the run before and measured a frame that had not moved. Four
+# conclusions were drawn off one stale file. Refusing is now a failure.
+refused=0
 for place in "${PLACES[@]}"; do
     echo "=== ${place}"
-    one_place "${place}" || true
+    one_place "${place}" || refused=1
 done
 
 echo
+if [ "${refused}" = "1" ]; then
+    echo >&2
+    echo "At least one place did not render. Nothing below is new." >&2
+    exit 1
+fi
+
 echo "Sheets in ${looks}. Pull them with:"
 echo "  scp -r <box>:${looks} ."

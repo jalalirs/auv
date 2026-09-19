@@ -28,7 +28,6 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
-import re
 import sys
 
 
@@ -113,21 +112,22 @@ def aim(place: pathlib.Path) -> dict | None:
         "site_across": across,
     }
 
-    # The material file, not the USD.
+    # Nothing is written into the material.
     #
-    # Setting these as USD shader inputs does nothing here: the values sit in
-    # the attribute, read back correct, and the picture does not move. Moving
-    # the camera a hundred metres that way changed a frame by not one pixel.
+    # An earlier version of this patched four uniforms into the place's own
+    # copy of `coral_ground.mdl`, and that was wrong twice over. It had no
+    # effect, because a USD shader input overrides an MDL default and
+    # tools/make-site writes all four; and it left the place's material
+    # differing from the checkout's, which is exactly the condition tools/look
+    # refuses to render on. So every scripted render after this ran quietly
+    # refused, the sheet on disk stayed as it was, and four readings were
+    # taken off one frame that had not moved since before the change.
+    #
+    # The map below is the whole output. It is the one thing this renderer
+    # will read.
     material = place / "coral_ground.mdl"
     if not material.is_file():
         return None
-    was = material.read_text()
-    now = was
-    for name, value in at.items():
-        now = re.sub(rf"(uniform float {name} = )[-\d.]+",
-                     lambda m, v=value: f"{m.group(1)}{v:.5f}", now, count=1)
-    if now != was:
-        material.write_text(now)
 
     baked = bake(place, site, begins, across)
     if baked is None:
