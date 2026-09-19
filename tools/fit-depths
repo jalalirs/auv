@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""Refit a derived seabed against depths somebody measured.
+
+    tools/fit-depths al-fahal
+    tools/fit-depths al-fahal --write
+
+Satellite-derived bathymetry reads shape off how much light comes back from
+the bottom. The shape is usually good and the *scale* is a fit against an
+assumed water column, so when the assumption is wrong the whole seabed is
+wrong together — stretched, offset, or both. Al Fahal claimed depths to 60 m
+where ICESat-2 measured 24, which is not noise and is not visible in a render,
+because a reef at thirteen metres looks like a reef.
+
+So: fit the claimed depths to the measured ones, apply that to the whole
+raster, and say what is left over. This does not make the seabed measured. It
+makes it a derived seabed with a known error instead of an unknown one, and
+that is the whole difference.
+
+It writes a corrected heightfield beside the original rather than over it.
+Rebuild the place from it with:
+
+    tools/make-site al-fahal --heights .../seabed_fitted.json --centre ...
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+
+# How far past the measured range the fit may be trusted before it is
+# extrapolation. ICESat-2 sees to about 1.5 Secchi depths and no further, so a
+# site with a deep edge will always have some; saying how much is the point.
+BEYOND_M = 3.0
+
+
+def sample(field, across: float, x, y):
+    """What a heightfield says at a scatter of points."""
+    import numpy as np
+
+    rows, columns = field.shape
+    u = np.clip((x / across + 0.5) * (columns - 1), 0, columns - 1.001)
+    v = np.clip((y / across + 0.5) * (rows - 1), 0, rows - 1.001)
+    i, j = u.astype(int), v.astype(int)
+    fu, fv = u - i, v - j
+    return ((field[j, i] * (1 - fu) + field[j, i + 1] * fu) * (1 - fv)
+            + (field[j + 1, i] * (1 - fu) + field[j + 1, i + 1] * fu) * fv)
+
+
+def spread_of(residual):
+    import numpy as np
+
+    middle = float(np.median(residual))
+    return middle, float(np.median(np.abs(residual - middle)) * 1.4826)
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(description="refit a seabed against measured depths")
+    parse.add_argument("place")
+    parse.add_argument("--places",
+                       default=str(pathlib.Path.home() / "coral-city" / "places"))
+    parse.add_argument("--reference",
+                       default=str(pathlib.Path.home() / "coral-city" / "reference"))
+    parse.add_argument("--write", action="store_true",
+                       help="write the corrected heightfield")
+    asked = parse.parse_args()
+
+    import numpy as np
+
+    place = pathlib.Path(asked.places) / asked.place
+    ref = pathlib.Path(asked.reference) / asked.place
+    site = json.loads((place / "site.json").read_text())
+    field = site["mesh"]["heightfield"]
+    claims = np.fromfile(place / field["file"], dtype="<f4").reshape(
+        field["rows"], field["columns"])
+    across = float(site["from"]["acrossMetres"])
+
+    points = np.load(ref / "icesat_depths.npy")
+    x, y, measured = points[:, 0], points[:, 1], points[:, 2]
+    inside = (np.abs(x) < across / 2) & (np.abs(y) < across / 2) & (measured < -0.5)
+    x, y, measured = x[inside], y[inside], measured[inside]
+    said = sample(claims, across, x, y)
+
+    was_middle, was_spread = spread_of(measured - said)
+    was_rms = float(np.sqrt(np.mean((measured - said) ** 2)))
+
+    # Fit, drop what the fit itself calls an outlier, fit again. A photon on a
+    # boat or a fish is a real thing to be rid of and a hand-set threshold is
+    # not; three robust sigma from the first pass is.
+    slope, offset = np.polyfit(said, measured, 1)
+    residual = measured - (slope * said + offset)
+    middle, spread = spread_of(residual)
+    keep = np.abs(residual - middle) < 3 * spread
+    slope, offset = np.polyfit(said[keep], measured[keep], 1)
+
+    fitted = slope * said + offset
+    now_middle, now_spread = spread_of(measured - fitted)
+    now_rms = float(np.sqrt(np.mean((measured - fitted) ** 2)))
+
+    print(f"{asked.place}: {len(x):,} measured depths, "
+          f"{-measured.max():.1f} to {-measured.min():.1f} m")
+    print(f"  fit: measured = {slope:.4f} x claimed {offset:+.3f}")
+    print(f"  before: offset {was_middle:+.2f} m, spread {was_spread:.2f} m, "
+          f"rms {was_rms:.2f} m")
+    print(f"  after:  offset {now_middle:+.2f} m, spread {now_spread:.2f} m, "
+          f"rms {now_rms:.2f} m")
+    print(f"  dropped {int((~keep).sum()):,} of {len(x):,} as outliers")
+
+    if now_rms >= was_rms:
+        print("  the fit does not improve this seabed; leaving it alone",
+              file=__import__("sys").stderr)
+        return 1
+
+    corrected = (slope * claims + offset).astype("float32")
+    # Where the fit is extrapolating rather than interpolating, and how much of
+    # the site that is. A number that is quietly extrapolated over half a
+    # place is not a correction, it is a second guess with a decimal point.
+    deepest, shallowest = float(measured.min()), float(measured.max())
+    beyond = float(((corrected < deepest - BEYOND_M)
+                    | (corrected > shallowest + BEYOND_M)).mean())
+    print(f"  calibrated between {-shallowest:.1f} and {-deepest:.1f} m; "
+          f"{beyond:.0%} of the site is outside that and extrapolated")
+
+    if not asked.write:
+        print("\n  nothing written. Pass --write to keep it.")
+        return 0
+
+    into = ref / "seabed_fitted.f32"
+    corrected.tofile(into)
+    (ref / "seabed_fitted.json").write_text(json.dumps({
+        "rows": int(corrected.shape[0]), "columns": int(corrected.shape[1]),
+        "acrossMetres": across, "file": "seabed_fitted.f32",
+        "surveyed": False,
+        "format": ("little-endian float32, row major, south to north then "
+                   "west to east"),
+        "centre": site["from"]["centre"],
+        "fittedAgainst": {
+            "source": "ICESat-2 ATL24 v002 seafloor photons",
+            "points": int(len(x)),
+            "slope": round(float(slope), 5),
+            "offsetM": round(float(offset), 4),
+            "rmsBeforeM": round(was_rms, 2),
+            "rmsAfterM": round(now_rms, 2),
+            "spreadAfterM": round(now_spread, 2),
+            "calibratedBetweenM": [round(-shallowest, 1), round(-deepest, 1)],
+            "extrapolatedShare": round(beyond, 3),
+            "note": ("derived from Sentinel-2 and rescaled to measured "
+                     "depths. Not a survey: a derived seabed with a known "
+                     "error rather than an unknown one."),
+        },
+    }, indent=1))
+    print(f"\n  written to {into}")
+    print(f"  rebuild with: tools/make-site {asked.place} "
+          f"--heights {ref / 'seabed_fitted.json'} --most {field['rows']}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
