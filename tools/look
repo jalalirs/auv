@@ -212,6 +212,22 @@ JSON
         grep -iE 'could not open|Traceback' "${here}/look.log" | head -3 | sed 's/^/    /' >&2
         return 1
     fi
+    # Did the materials compile?
+    #
+    # When an MDL module fails, Kit does not stop and does not fail the run.
+    # It logs an error, substitutes a fallback material, and renders a
+    # perfectly good picture of the wrong thing — the seabed came back flat
+    # red with no grain on it, and the reason was one line in a log nobody was
+    # reading. A frame that renders is not a frame that is right.
+    if grep -q "MDLC   comp error\|Unable to find SdrShaderNode" \
+            "${here}/look.log" 2>/dev/null; then
+        echo "  ${place}: a material did not compile. The frames are drawn" >&2
+        echo "  with a fallback, not with this material:" >&2
+        grep -o "MDLC   comp error.*\|Unable to find SdrShaderNode for prim: '[^']*'" \
+            "${here}/look.log" | sed 's/^/    /' | sort -u | head -5 >&2
+        return 1
+    fi
+
     docker run --rm -u 0 -v "${here}/frames:/w" --entrypoint chmod "${image}" -R a+r /w
 
     # What made these frames, beside them — so a sheet can say what it is a
