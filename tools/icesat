@@ -1,0 +1,232 @@
+#!/usr/bin/env python3
+"""Measured depths from ICESat-2, for a place whose bathymetry is a guess.
+
+    tools/icesat al-fahal
+    tools/icesat al-fahal --most 12
+
+Al Fahal's seabed comes from Sentinel-2: shape read off how much light comes
+back from the bottom, scaled against the reef's own geomorphology. It is
+5.87 m a sample and it has never been checked against a depth anybody
+measured. This is where a check comes from.
+
+ICESat-2's laser penetrates clear water, and where it does the seafloor comes
+back as a second cluster of photons below the surface return. **ATL24** is the
+product that has already done the hard part: photons classified as seafloor,
+corrected for refraction, with a vertical uncertainty on each one. It is
+twenty times smaller than the raw ATL03 it is derived from — 4.9 GB against
+98 GB over this reef — which is the difference between a job that runs and one
+that does not.
+
+What comes back is not a grid. It is depths along narrow tracks, a few tens of
+metres wide, wherever a satellite happened to pass. That does not replace the
+raster; it calibrates it, which is the thing the raster has never had.
+
+Needs NASA_TOKEN in .env: an Earthdata Login token from
+https://urs.earthdata.nasa.gov/ — free, and revocable, which is why it is a
+token and not a password.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import pathlib
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+CMR = "https://cmr.earthdata.nasa.gov/search/granules.json"
+BATHYMETRY = 40          # what ATL24 calls a seafloor photon
+SEA_SURFACE = 41
+
+
+def token() -> str:
+    got = os.environ.get("NASA_TOKEN", "").strip()
+    if got:
+        return got
+    env = pathlib.Path(__file__).resolve().parent.parent / ".env"
+    if env.is_file():
+        for line in env.read_text().splitlines():
+            if line.startswith("NASA_TOKEN="):
+                return line.split("=", 1)[1].strip().strip('"')
+    raise SystemExit(
+        "no NASA_TOKEN. Make one at https://urs.earthdata.nasa.gov/ "
+        "(profile, Generate Token) and put it in .env")
+
+
+def metres_per_degree(latitude: float):
+    r = math.radians(latitude)
+    north = 111_132.92 - 559.82 * math.cos(2 * r) + 1.175 * math.cos(4 * r)
+    east = 111_412.84 * math.cos(r) - 93.5 * math.cos(3 * r)
+    return east, north
+
+
+def granules(box, bearer: str, most: int) -> list:
+    """Every ATL24 pass over this square, smallest first.
+
+    Smallest first because a granule's size is mostly how much of its track is
+    over water somewhere else, and the cheap ones are as likely to hold this
+    reef as the expensive ones.
+    """
+    query = urllib.parse.urlencode({
+        "short_name": "ATL24", "version": "002",
+        "bounding_box": ",".join(f"{v:.5f}" for v in box),
+        "page_size": 200})
+    ask = urllib.request.Request(f"{CMR}?{query}",
+                                 headers={"Authorization": f"Bearer {bearer}"})
+    with urllib.request.urlopen(ask, timeout=120) as answer:
+        found = json.load(answer)["feed"]["entry"]
+    found.sort(key=lambda g: float(g.get("granule_size", 0)))
+    out = []
+    for one in found[:most]:
+        for link in one.get("links", []):
+            href = link.get("href", "")
+            if href.endswith(".h5") and "protected" in href:
+                out.append((one["producer_granule_id"], href,
+                            float(one.get("granule_size", 0)),
+                            one.get("time_start", "")[:10]))
+                break
+    return out
+
+
+def fetch(url: str, into: pathlib.Path, bearer: str) -> bool:
+    if into.is_file() and into.stat().st_size > 0:
+        return True
+    ask = urllib.request.Request(url, headers={"Authorization": f"Bearer {bearer}"})
+    try:
+        with urllib.request.urlopen(ask, timeout=900) as answer:
+            into.write_bytes(answer.read())
+        return True
+    except (urllib.error.URLError, TimeoutError, OSError) as bad:
+        print(f"    could not fetch: {bad}", file=sys.stderr)
+        into.unlink(missing_ok=True)
+        return False
+
+
+def seafloor(path: pathlib.Path, box):
+    """Every seafloor photon inside the square, from every beam."""
+    import h5py
+    import numpy as np
+
+    west, south, east, north = box
+    lon, lat, depth, error = [], [], [], []
+    with h5py.File(path, "r") as held:
+        for beam in [k for k in held if k.startswith("gt")]:
+            group = held[beam]
+            if "class_ph" not in group:
+                continue
+            kind = group["class_ph"][:]
+            is_floor = kind == BATHYMETRY
+            if not is_floor.any():
+                continue
+            y, x = group["lat_ph"][:][is_floor], group["lon_ph"][:][is_floor]
+            inside = (x >= west) & (x <= east) & (y >= south) & (y <= north)
+            if not inside.any():
+                continue
+            lon.append(x[inside])
+            lat.append(y[inside])
+            # Orthometric height: negative below the geoid, which is a depth
+            # with its sign the same way round as everything else here.
+            depth.append(group["ortho_h"][:][is_floor][inside])
+            error.append(group["sigma_tvu"][:][is_floor][inside]
+                         if "sigma_tvu" in group
+                         else np.full(inside.sum(), np.nan))
+    if not lon:
+        return None
+    return (np.concatenate(lon), np.concatenate(lat),
+            np.concatenate(depth), np.concatenate(error))
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(description="measured depths from ICESat-2")
+    parse.add_argument("place")
+    parse.add_argument("--most", type=int, default=60,
+                       help="granules to try, smallest first")
+    parse.add_argument("--places",
+                       default=str(pathlib.Path.home() / "coral-city" / "places"))
+    parse.add_argument("--into",
+                       default=str(pathlib.Path.home() / "coral-city" / "reference"))
+    parse.add_argument("--cache",
+                       default=str(pathlib.Path.home() / "coral-city" / "source" / "icesat"))
+    asked = parse.parse_args()
+
+    import numpy as np
+
+    site = json.loads(
+        (pathlib.Path(asked.places) / asked.place / "site.json").read_text())
+    centre = site["from"]["centre"]
+    across = float(site["from"]["acrossMetres"])
+    east_m, north_m = metres_per_degree(centre["latitude"])
+    # A margin, because a track that clips the corner of a site still says
+    # something about the water it is in.
+    half = across * 0.75
+    box = (centre["longitude"] - half / east_m, centre["latitude"] - half / north_m,
+           centre["longitude"] + half / east_m, centre["latitude"] + half / north_m)
+
+    bearer = token()
+    found = granules(box, bearer, asked.most)
+    print(f"{asked.place}: {len(found)} ATL24 passes over "
+          f"{2 * half / 1000:.1f} km of sea, "
+          f"{sum(g[2] for g in found) / 1024:.1f} GB")
+
+    cache = pathlib.Path(asked.cache)
+    cache.mkdir(parents=True, exist_ok=True)
+    lon, lat, depth, error = [], [], [], []
+    crossed = 0
+    for name, url, size, when in found:
+        if not fetch(url, cache / name, bearer):
+            continue
+        got = seafloor(cache / name, box)
+        if got is None:
+            continue
+        crossed += 1
+        print(f"    {when}  {len(got[0]):5d} seafloor photons  "
+              f"{-got[2].max():.1f} to {-got[2].min():.1f} m")
+        lon.append(got[0]); lat.append(got[1])
+        depth.append(got[2]); error.append(got[3])
+
+    if not lon:
+        print("  no pass put a seafloor photon inside this square. ICESat-2's "
+              "tracks are tens of metres wide and it does not go everywhere.",
+              file=sys.stderr)
+        return 1
+
+    lon = np.concatenate(lon); lat = np.concatenate(lat)
+    depth = np.concatenate(depth); error = np.concatenate(error)
+    # Into the site's own metres, so nothing downstream has to know about
+    # degrees.
+    x = (lon - centre["longitude"]) * east_m
+    y = (lat - centre["latitude"]) * north_m
+
+    into = pathlib.Path(asked.into) / asked.place
+    into.mkdir(parents=True, exist_ok=True)
+    np.save(into / "icesat_depths.npy",
+            np.column_stack([x, y, depth, error]).astype("float32"))
+    (into / "icesat.json").write_text(json.dumps({
+        "source": "ICESat-2 ATL24 v002, NASA NSIDC",
+        "licence": "public domain",
+        "what": "seafloor photons, refraction corrected, orthometric height",
+        "file": "icesat_depths.npy",
+        "columns": ["x_m_east", "y_m_north", "height_m", "sigma_tvu_m"],
+        "passes": len(found),
+        "passesWithSeafloor": crossed,
+        "photons": int(len(depth)),
+        "deepestM": round(float(-depth.min()), 2),
+        "shallowestM": round(float(-depth.max()), 2),
+        "medianUncertaintyM": None if not np.isfinite(error).any()
+        else round(float(np.nanmedian(error)), 3),
+        "note": ("depths along narrow tracks, not a grid. This does not "
+                 "replace a raster; it is what a raster can be checked "
+                 "against."),
+    }, indent=1))
+    print(f"\n  {len(depth):,} seafloor photons from {crossed} of {len(found)} "
+          f"passes, {-depth.max():.1f} to {-depth.min():.1f} m")
+    print(f"  written to {into / 'icesat_depths.npy'}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
