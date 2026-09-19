@@ -170,13 +170,16 @@ def main() -> int:
     found = granules(box, bearer, asked.most)
     print(f"{asked.place}: {len(found)} ATL24 passes over "
           f"{2 * half / 1000:.1f} km of sea, "
-          f"{sum(g[2] for g in found) / 1024:.1f} GB")
+          f"{sum(g[2] for g in found) / 1024:.1f} GB", flush=True)
 
     cache = pathlib.Path(asked.cache)
     cache.mkdir(parents=True, exist_ok=True)
     lon, lat, depth, error = [], [], [], []
     crossed = 0
-    for name, url, size, when in found:
+    for at, (name, url, size, when) in enumerate(found, 1):
+        if not (cache / name).is_file():
+            print(f"    [{at}/{len(found)}] fetching {size:.0f} MB…",
+                  end="\r", flush=True)
         if not fetch(url, cache / name, bearer):
             continue
         got = seafloor(cache / name, box)
@@ -184,7 +187,7 @@ def main() -> int:
             continue
         crossed += 1
         print(f"    {when}  {len(got[0]):5d} seafloor photons  "
-              f"{-got[2].max():.1f} to {-got[2].min():.1f} m")
+              f"{-got[2].max():.1f} to {-got[2].min():.1f} m", flush=True)
         lon.append(got[0]); lat.append(got[1])
         depth.append(got[2]); error.append(got[3])
 
