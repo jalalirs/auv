@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Point a place's water at the spot dives begin from.
+
+    tools/aim-water ~/coral-city/places/looe-key
+
+The medium in `coral_ground.mdl` needs to know where the camera is, and in
+this renderer an MDL material parameter takes the value it was **built** with
+and nothing else. Four ways of setting it at run time were tried and all four
+failed identically: written per frame, written before the first compile, with
+the `uniform` keyword dropped, and as plain floats rather than a float3. Each
+time the USD attribute read back correct and the compiled shader kept its
+default, so every frame measured distance from the middle of the site.
+
+The runtime cannot fix it either: a place is mounted read-only into the dive.
+
+But a place already knows where dives start — `site.json` says so, chosen as
+the best reef in the working depth band — so the camera can be baked there,
+which is the one kind of value this renderer reads. A dive that swims away
+from its start carries a medium measured from the start, and that is an
+approximation worth its own line in the record rather than a silent one.
+
+Run it after anything that moves `beginAt`, which means after tools/make-site
+and after tools/reef-survey.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import re
+import sys
+
+
+def aim(place: pathlib.Path) -> dict | None:
+    site = json.loads((place / "site.json").read_text())
+    begins = site.get("beginAt")
+    scene = place / site.get("layers", {}).get("terrain", "seabed.usda")
+    if begins is None or not scene.is_file():
+        return None
+    across = float(site["from"]["acrossMetres"])
+
+    was = scene.read_text()
+    if "inputs:site_eye_u" not in was:
+        return None
+    at = {
+        "site_eye_u": float(begins[0]) / across + 0.5,
+        "site_eye_v": float(begins[1]) / across + 0.5,
+        "eye_depth_m": float(begins[2]),
+    }
+    now = was
+    for name, value in at.items():
+        now = re.sub(rf"(float inputs:{name} = )[-\d.]+",
+                     lambda m, v=value: f"{m.group(1)}{v:.5f}", now, count=1)
+    if now == was:
+        return None
+    scene.write_text(now)
+
+    site.setdefault("ground", {})["waterAimedAt"] = {
+        "at": [round(float(v), 1) for v in begins],
+        "why": ("the medium is measured from here, because an MDL parameter "
+                "in this renderer takes the value it was built with. A dive "
+                "that swims far from this point carries water measured from "
+                "this point."),
+    }
+    (place / "site.json").write_text(json.dumps(site, indent=2) + "\n")
+    return at
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(description="aim a place's water at its dive start")
+    parse.add_argument("places", nargs="+")
+    asked = parse.parse_args()
+
+    trouble = 0
+    for one in asked.places:
+        place = pathlib.Path(one).expanduser()
+        got = aim(place)
+        if got is None:
+            print(f"{place.name}: nothing to aim — no beginAt, no terrain, or "
+                  f"a ground material without the water in it", file=sys.stderr)
+            trouble = 1
+            continue
+        print(f"{place.name}: water aimed at u {got['site_eye_u']:.4f}, "
+              f"v {got['site_eye_v']:.4f}, {-got['eye_depth_m']:.1f} m down")
+    return trouble
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
