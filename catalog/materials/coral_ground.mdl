@@ -160,7 +160,7 @@ export material coral_ground(
                           "water-taken-away view wants."),
         anno::in_group("Water")
     ]],
-    uniform float show_distance = 0.0
+    uniform float show_distance = 200.0
     [[
         anno::display_name("Paint the distance instead"),
         anno::description("Metres at white. Nought is off. There is no way to "
@@ -285,8 +285,15 @@ export material coral_ground(
     // itself. A test whose failure mode looks like its success mode is not a
     // test, which is a sentence already written elsewhere in this project by
     // somebody who then wrote this.
+    // Pure red when the diagnostic is on, and the default is on.
+    //
+    // Four expressions produced four byte-identical frames. Either the
+    // material is not being recompiled, or `show_distance` never arrives and
+    // every one of those frames was the ordinary ground. Red settles it
+    // without depending on the runtime for anything: if the seabed is not red,
+    // this file is not what is drawing it.
     color albedo = show_distance > 0.0
-        ? color(math::saturate(swum / show_distance))
+        ? color(1.0, 0.0, 0.0)
         : math::saturate(low * lift * variation);
 
     float wet = math::lerp(
