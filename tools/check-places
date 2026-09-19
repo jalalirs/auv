@@ -54,6 +54,12 @@ def water_of(place: pathlib.Path, site: dict) -> tuple[str, str | None]:
     the brightest texel is the camera, and it has to be where the record says
     the dive starts.
     """
+    # A place where no dive begins has nothing to measure water from, and
+    # that is a fact about the place rather than a gap in it. Thuwal Deep is
+    # five hundred metres down with no reef on it and no dive start: the
+    # medium has no camera to be measured to.
+    if site.get("beginAt") is None:
+        return "no dive", "nothing begins here, so there is nowhere to measure from"
     ground = (site.get("ground") or {}).get("waterBakedFrom")
     if ground is None:
         return "NOT BAKED", "tools/aim-water has not been run on it"
@@ -128,7 +134,7 @@ def main() -> int:
             continue
         site = json.loads((place / "site.json").read_text())
         mark, why = water_of(place, site)
-        if mark != "baked":
+        if mark not in ("baked", "no dive"):
             unwatered.append(f"{site.get('name', place.name)}: {why}")
         baked = (site.get("ground") or {}).get("waterBakedFrom") or {}
         at = baked.get("at")
