@@ -40,21 +40,35 @@ def aim(place: pathlib.Path) -> dict | None:
         return None
     across = float(site["from"]["acrossMetres"])
 
-    was = scene.read_text()
-    if "inputs:site_eye_u" not in was:
-        return None
     at = {
         "site_eye_u": float(begins[0]) / across + 0.5,
         "site_eye_v": float(begins[1]) / across + 0.5,
         "eye_depth_m": float(begins[2]),
+        "site_across": across,
     }
+
+    # The material file, not the USD.
+    #
+    # Setting these as USD shader inputs does nothing here: the values sit in
+    # the attribute, read back correct, and the picture does not move. Aiming
+    # the water by patching `seabed.usda` was tried first and changed a frame
+    # by not one pixel, even though it moved the camera a hundred metres.
+    #
+    # Changing a *default inside the MDL* does work — that is how the
+    # diagnostic managed to paint the seabed red. So a place carries its own
+    # copy of the material precisely so it can be told where its own water is
+    # measured from, and this writes it there.
+    material = place / "coral_ground.mdl"
+    if not material.is_file():
+        return None
+    was = material.read_text()
     now = was
     for name, value in at.items():
-        now = re.sub(rf"(float inputs:{name} = )[-\d.]+",
+        now = re.sub(rf"(uniform float {name} = )[-\d.]+",
                      lambda m, v=value: f"{m.group(1)}{v:.5f}", now, count=1)
     if now == was:
         return None
-    scene.write_text(now)
+    material.write_text(now)
 
     site.setdefault("ground", {})["waterAimedAt"] = {
         "at": [round(float(v), 1) for v in begins],
