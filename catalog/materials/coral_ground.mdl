@@ -171,6 +171,18 @@ export material coral_ground(
                           "water-taken-away view wants."),
         anno::in_group("Water")
     ]],
+    uniform float site_eye_u = 0.5
+    [[
+        anno::display_name("Where the camera is, across"),
+        anno::description("Nought to one over the site, the same coordinates "
+                          "the colour map uses. A parameter of this kind "
+                          "arrives; a float3 written per frame does not."),
+        anno::in_group("Water")
+    ]],
+    uniform float site_eye_v = 0.5
+    [[ anno::display_name("Where the camera is, along"), anno::in_group("Water") ]],
+    uniform float eye_depth_m = -5.0
+    [[ anno::display_name("How deep the camera is"), anno::in_group("Water") ]],
     uniform float site_across = 1000.0
     [[
         anno::display_name("How wide this site is"),
@@ -265,7 +277,23 @@ export material coral_ground(
     float3 here_is = float3((wide.position.x - 0.5) * site_across,
                             (wide.position.y - 0.5) * site_across,
                             floor_at_m);
-    float swum = math::distance(here_is, eye);
+    // The camera's own position, from a place the compiler cannot bake away.
+    //
+    // `eye` is a material parameter and three ways of getting a value into it
+    // all failed the same way: the USD attribute reads back correct, the
+    // picture never changes, and the distance stays measured from the middle
+    // of the site. Written per frame, written before the first compile, and
+    // with the `uniform` keyword dropped — all three, no change.
+    //
+    // So the camera is not passed as a parameter at all. `site_eye_u` and
+    // `site_eye_v` are the camera's own texture coordinates on this site,
+    // written into the material by `make-site` the same way `site_across` is,
+    // and those *do* arrive: the site width has been correct since the colour
+    // map went on. A dive rewrites them when it opens a place.
+    float3 eye_is = float3((site_eye_u - 0.5) * site_across,
+                           (site_eye_v - 0.5) * site_across,
+                           eye_depth_m);
+    float swum = math::distance(here_is, eye_is);
     color low = base::file_texture(
         texture: site_colour, uvw: wide,
         wrap_u: tex::wrap_clamp, wrap_v: tex::wrap_clamp).tint;

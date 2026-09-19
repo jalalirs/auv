@@ -398,7 +398,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # is blue.
     put_the_water_in_the_materials(stage, veiling, lengths,
                                    0.0 if _clear else float(veil),
-                                   eye=begins_at)
+                                   eye=begins_at, across=across)
 
     # The distance is the water's own attenuation length, for green.
     #
@@ -1100,7 +1100,7 @@ def tell_the_water_where_the_camera_is(stage, at) -> None:
 
 
 def put_the_water_in_the_materials(stage, veiling, lengths, veil: float,
-                                   eye=None) -> None:
+                                   eye=None, across: float = 1000.0) -> None:
     """Tell every surface what the water between it and the camera is.
 
     Once, when the dive opens: the type of water does not change under a
@@ -1140,6 +1140,16 @@ def put_the_water_in_the_materials(stage, veiling, lengths, veil: float,
                     ("inputs:show_distance", float(shown) if shown else 0.0)]
         if eye is not None:
             settings.append(("inputs:eye", Gf.Vec3f(*[float(v) for v in eye])))
+            # And the same camera as three plain floats, which is the shape
+            # that arrives. A float3 written into `inputs:eye` reads back
+            # correct and never reaches the shading; `site_across` written the
+            # same way has been right since September. The difference is the
+            # type, so the camera goes in as the type that works.
+            settings += [
+                ("inputs:site_eye_u", float(eye[0]) / across + 0.5),
+                ("inputs:site_eye_v", float(eye[1]) / across + 0.5),
+                ("inputs:eye_depth_m", float(eye[2])),
+            ]
         for name, value in settings:
             got = prim.GetAttribute(name)
             if got:

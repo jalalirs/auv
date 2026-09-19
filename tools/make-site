@@ -229,6 +229,9 @@ GROUND_MATERIAL = """
                 # back as the ordinary seabed or a constant; the texture
                 # coordinate is already laid nought-to-one over the site and
                 # has been working since the colour map went on.
+                float inputs:site_eye_u = %(eye_u).5f
+                float inputs:site_eye_v = %(eye_v).5f
+                float inputs:eye_depth_m = %(eye_z).2f
                 float inputs:site_across = %(across).1f
                 float inputs:floor_at_m = %(floor).2f
                 token outputs:out
@@ -496,7 +499,11 @@ def write_usd(where: pathlib.Path, name: str, height, across: float,
         material = GROUND_MATERIAL % dict(
             ground, tile=tile, across=across, repeats=across / max(tile, 1e-6),
             grain=0.85, relief=1.0, lift=1.05,
-            floor=float(np.median(height)))
+            floor=float(np.median(height)),
+            # The middle of the site until a dive says otherwise. A dive
+            # rewrites these when it opens the place, because a parameter of
+            # this shape arrives where a per-frame float3 does not.
+            eye_u=0.5, eye_v=0.5, eye_z=float(np.median(height)) + 3.0)
     elif texture:
         material = SEABED_MATERIAL
     else:
