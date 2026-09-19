@@ -301,8 +301,18 @@ export material coral_ground(
     // readings of a distance — `show_distance` never arrived from the runtime,
     // and every one of them was the ordinary seabed. The default is on here
     // so the diagnostic depends on nothing outside this file.
+    // The position painted as colour, not as brightness.
+    //
+    // Brightness cannot be read off a lit frame: a grey albedo and a dim light
+    // look the same, which is why four greyscale attempts said nothing and the
+    // red one said everything. Hue survives lighting. So east goes in red,
+    // north in green, and up in blue: if this comes back a smooth two-colour
+    // ramp across the seabed, the position is a position. If it comes back one
+    // flat colour, it is a constant.
     color albedo = show_distance > 0.0
-        ? color(math::saturate(swum / show_distance))
+        ? color(math::saturate(math::abs(standing.x) / show_distance),
+                math::saturate(math::abs(standing.y) / show_distance),
+                math::saturate(math::abs(standing.z) / 40.0))
         : math::saturate(low * lift * variation);
 
     float wet = math::lerp(
