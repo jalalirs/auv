@@ -1083,7 +1083,18 @@ def tell_the_water_where_the_camera_is(stage, at) -> None:
     # is the clearest. Which is what the first attempt rendered.
     if not getattr(tell_the_water_where_the_camera_is, "_said", False):
         tell_the_water_where_the_camera_is._said = True
-        print('{"event": "water_follows", "materials": %d}' % told, flush=True)
+        # Read back, not just written. Setting an attribute that nothing reads
+        # looks exactly like setting one that works, and the medium spent a
+        # day measuring distance from the middle of the site because of it.
+        back = None
+        for prim in stage.Traverse():
+            got = prim.GetAttribute("inputs:eye")
+            if got and got.Get() is not None:
+                back = tuple(round(float(v), 1) for v in got.Get())
+                break
+        print('{"event": "water_follows", "materials": %d, "asked": %s, '
+              '"readBack": %s}' % (told, list(where), list(back) if back else None),
+              flush=True)
 
 
 def put_the_water_in_the_materials(stage, veiling, lengths, veil: float) -> None:
