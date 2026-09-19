@@ -195,7 +195,15 @@ GROUND_MATERIAL = """
                 # Written by tools/aim-water after the place knows where its
                 # dives begin. White until then, which is water that takes
                 # nothing.
-                asset inputs:swum_map = @textures/site_survives.png@
+                # Raw, because this one is not a photograph: every texel is
+                # already exp(-distance / attenuation length). Read as sRGB it
+                # comes back through a curve it has no business going through.
+                # Said here and not in the MDL — `base::file_texture` has no
+                # gamma parameter, and asking it for one fails the whole
+                # module to compile.
+                asset inputs:swum_map = @textures/site_survives.png@ (
+                    colorSpace = "raw"
+                )
 
                 # %(soft)s, in the grooves and the sediment.
                 asset inputs:soft_colour = @textures/soft_colour.jpg@

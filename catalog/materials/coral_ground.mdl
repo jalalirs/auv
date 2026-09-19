@@ -416,16 +416,18 @@ export material coral_ground(
     // this water and green takes seventeen.
     color survives = (veil <= 0.0 && show_distance <= 0.0)
         ? color(1.0)
+        // Read linearly, which is said on the USD input as
+        // `colorSpace = "raw"` and not here: `base::file_texture` has no
+        // gamma parameter, and asking for one does not warn — the module
+        // fails to compile, the renderer quietly substitutes a fallback
+        // material, and the seabed comes back flat red with no grain on it.
+        // Which is what a whole evening's worth of frames looked like.
+        //
+        // It matters because this map is not a picture of anything. Each
+        // texel is exp(-distance / length) already, and running that through
+        // an sRGB curve turns 0.52 into 0.23 and takes the far tail to
+        // nothing.
         : base::file_texture(texture: swum_map, uvw: wide,
-                             // Linear, said out loud. Every other texture in
-                             // this material is a photograph and wants the
-                             // default, which for an eight-bit file is sRGB.
-                             // This one is not a picture of anything: each
-                             // texel is exp(-distance / length) already, and
-                             // reading it as sRGB puts that through a curve
-                             // it has no business going through — 0.52 comes
-                             // back 0.23 and the far tail goes to nothing.
-                             gamma: tex::gamma_linear,
                              wrap_u: tex::wrap_clamp,
                              wrap_v: tex::wrap_clamp).tint;
     // The water's own light, which is what a distant reef turns into. It is
