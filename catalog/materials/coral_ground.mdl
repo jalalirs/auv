@@ -414,7 +414,7 @@ export material coral_ground(
     //
     // Per channel, which is the whole point: red is gone in four metres of
     // this water and green takes seventeen.
-    color survives = veil <= 0.0
+    color survives = (veil <= 0.0 && show_distance <= 0.0)
         ? color(1.0)
         : base::file_texture(texture: swum_map, uvw: wide,
                              wrap_u: tex::wrap_clamp,
@@ -424,25 +424,22 @@ export material coral_ground(
     // this surface: it is the column in front of it.
     color water = veiling * veil * (color(1.0) - survives);
 
-    // What the surface reflects, dimmed by the water it has to swim through,
-    // plus the water's own light in front of it. Per channel, so red is gone
-    // in four metres of this water while green takes seventeen — which is the
-    // thing the renderer's own fog could never say.
-    // Is the texture coordinate reaching the *expression*?
+    // What the surface reflects, and nothing else. The water is not in here:
+    // it is applied once, below, where the surface's own light is handed to
+    // the diffuse lobe, and the column's own light is emission. Written out
+    // because both mistakes were made and both looked plausible in the frame:
+    // `survives` in the albedo as well as on the tint squared it, so the
+    // near ground was dimmed twice; `water` in the albedo multiplied the
+    // veiling light by whatever happened to be shining on the seabed, so the
+    // one term that should hold up at depth went dark with everything else.
     //
-    // It reaches `base::file_texture` — the colour map is laid on correctly,
-    // which is how this whole route was justified. But a lookup and an
-    // arithmetic read are not the same thing, and if `wide.position` is a
-    // constant here then `here_is` is a fixed corner of the site, the
-    // distance to it is about seven hundred metres whatever the camera does,
-    // and every frame is saturated identically. That single fact would
-    // explain every dead end today.
-    //
-    // So: paint the coordinate. A smooth red-green ramp across the seabed
-    // means it arrives. One flat colour means it does not.
+    // With the diagnostic on it paints what the survival map returns instead.
+    // A bright patch fading to black is a lookup that works; one flat colour
+    // is one that does not, and the map has already been read off disk and
+    // is known to be right.
     color albedo = show_distance > 0.0
-        ? color(math::saturate(seen_at.x), math::saturate(seen_at.y), 0.0)
-        : math::saturate(low * lift * variation * survives + water);
+        ? survives
+        : math::saturate(low * lift * variation);
 
     float3 bumped = math::normalize(math::lerp(
         base::tangent_space_normal_texture(
@@ -460,14 +457,20 @@ export material coral_ground(
             normal: bumped,
             layer: df::microfacet_ggx_smith_bsdf(
                 roughness_u: rough * rough, roughness_v: rough * rough),
-            base: df::diffuse_reflection_bsdf(tint: albedo * survives,
-                                              roughness: 0.0)),
+            // The water is applied here, once: what the surface reflects,
+            // dimmed by the column it has to swim back through. Under the
+            // diagnostic the surface is black and the whole frame is the
+            // emission below, so that what is painted is the value itself
+            // and not the value times whatever the lamps are doing.
+            base: df::diffuse_reflection_bsdf(
+                tint: show_distance > 0.0 ? color(0.0) : albedo * survives,
+                roughness: 0.0)),
         // The water's own light, which is what a distant reef turns into. It
         // is emission because it does not depend on anything shining on this
         // surface: it is the column in front of it, lit.
         emission: material_emission(
             emission: df::diffuse_edf(),
-            intensity: water)
+            intensity: show_distance > 0.0 ? albedo : water)
     ),
     geometry: material_geometry(normal: bumped)
 );
