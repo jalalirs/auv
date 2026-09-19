@@ -166,7 +166,25 @@ export material coral_tissue(
     uniform color veiling = color(0.24, 0.55, 0.45)
     [[ anno::display_name("The colour of the water itself"), anno::in_group("Water") ]],
     uniform float veil = 1.0
-    [[ anno::display_name("How bright the water is"), anno::in_group("Water") ]])
+    [[ anno::display_name("How bright the water is"), anno::in_group("Water") ]],
+    uniform texture_2d swum_map = texture_2d()
+    [[
+        anno::display_name("What survives the swim to the camera"),
+        anno::description("Per channel, baked over the site by "
+                          "tools/aim-water from where dives begin. The same "
+                          "map the seabed uses, looked up here through world "
+                          "position so a colony gets the water its own place "
+                          "on the site says it should."),
+        anno::in_group("Water")
+    ]],
+    uniform float site_across = 1000.0
+    [[
+        anno::display_name("How wide this site is"),
+        anno::description("Metres, so world position can be turned into the "
+                          "survival map's own coordinates. Set by the runtime "
+                          "as a dive opens."),
+        anno::in_group("Water")
+    ]])
 [[
     anno::display_name("Coral City living coral"),
     anno::description("Translucent tissue over white aragonite, with "
@@ -203,17 +221,37 @@ export material coral_tissue(
     color under = math::lerp(aragonite, lit_from_under, math::saturate(alive));
 
     // What survives the swim to the camera, and the water in front of it.
-    float swum = math::distance(
-        state::transform_point(state::coordinate_internal,
-                               state::coordinate_world, state::position()),
-        eye);
+    //
+    // Looked up, not computed. `state::position()` reads back as a constant
+    // when it is used in an expression in this renderer, so the distance this
+    // used to work out was the same number for every colony on the reef —
+    // which is exactly what the frames showed: a colony at the horizon lit
+    // like a colony at arm's length, the whole reef reading as cutouts pasted
+    // onto the water. The seabed had the same bug and the same fix.
+    //
+    // The coordinate is world position turned into the site's own square, and
+    // the arithmetic for that is done *inside* a `texture_coordinate_info`
+    // that feeds a lookup. That distinction is the whole trick: the same
+    // `.position` read into a float and used in arithmetic comes back
+    // constant, while built into a coordinate and handed to `file_texture` it
+    // varies per pixel. The tiled grain on the seabed has been sampled this
+    // way since September, which is how we know it works.
+    base::texture_coordinate_info world = base::coordinate_source(
+        coordinate_system: base::texture_coordinate_world, texture_space: 0);
+    base::texture_coordinate_info site = base::texture_coordinate_info(
+        position: world.position / math::max(site_across, 1.0)
+                  + float3(0.5, 0.5, 0.0),
+        tangent_u: world.tangent_u,
+        tangent_v: world.tangent_v);
     // Nought veil means no medium at all, so nothing is taken either. The
     // first version gated only the light the water adds and left the light it
     // takes, so turning the water off multiplied every surface by
     // exp(-distance) and the seabed came back black.
     color survives = veil <= 0.0
         ? color(1.0)
-        : math::exp(color(-swum) / math::max(attenuation, color(0.01)));
+        : base::file_texture(texture: swum_map, uvw: site,
+                             wrap_u: tex::wrap_clamp,
+                             wrap_v: tex::wrap_clamp).tint;
     color water = veiling * veil * (color(1.0) - survives);
 } in material(
     surface: material_surface(
