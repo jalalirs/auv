@@ -192,7 +192,7 @@ GROUND_MATERIAL = """
                 # Written by tools/aim-water after the place knows where its
                 # dives begin. White until then, which is water that takes
                 # nothing.
-                asset inputs:swum_map = @textures/site_survives.jpg@
+                asset inputs:swum_map = @textures/site_survives.png@
 
                 # %(soft)s, in the grooves and the sediment.
                 asset inputs:soft_colour = @textures/soft_colour.jpg@

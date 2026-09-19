@@ -82,9 +82,16 @@ def bake(place: pathlib.Path, site: dict, begins, across: float,
                    + (deep - float(begins[2])) ** 2)
 
     survives = np.exp(-swum[..., None] / np.array(lengths)[None, None, :])
+    # PNG, not JPEG, and it matters here more than anywhere else on the
+    # platform. What survives falls from one to nothing over a few tens of
+    # metres, so on a kilometre-wide map the bright part is a disc twenty
+    # texels across on a black field — which is precisely the thing a DCT
+    # throws away. Written as a JPEG at quality 95 it came back flat, and the
+    # frame with it.
+    #
     # North is at the top of a map and v = 0 is the south edge of the mesh.
     Image.fromarray((np.flipud(survives) * 255).astype("uint8")).save(
-        place / "textures" / "site_survives.jpg", quality=95)
+        place / "textures" / "site_survives.png")
     return {"waterType": kind,
             "attenuationM": [float(v) for v in lengths],
             "nearestM": round(float(swum.min()), 1),
@@ -131,7 +138,7 @@ def aim(place: pathlib.Path) -> dict | None:
         "at": [round(float(v), 1) for v in begins],
         "waterType": at["waterType"],
         "attenuationM": at["attenuationM"],
-        "file": "textures/site_survives.jpg",
+        "file": "textures/site_survives.png",
         "why": ("no per-pixel value reaches an expression in this renderer, "
                 "so how much of each colour survives the swim to the camera "
                 "is worked out here and written into a map. A texture lookup "

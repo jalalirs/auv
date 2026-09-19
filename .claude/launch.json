@@ -2,9 +2,15 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "sheet",
+      "name": "hardware",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8791", "--directory", "hardware/out"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8791",
+        "--directory",
+        "hardware"
+      ],
       "port": 8791
     }
   ]
