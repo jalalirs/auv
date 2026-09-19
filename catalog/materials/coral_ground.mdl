@@ -225,7 +225,14 @@ export material coral_ground(
     // or from the lens, and both saturate to the same white. The test that
     // separates them is the one that is wanted anyway.
     float3 standing = state::position();
-    float swum = math::distance(standing, eye);
+    // Painting `length(eye)`, not the distance.
+    //
+    // Three expressions gave byte-identical frames, and there is only one way
+    // that happens: `distance(p, eye)` equalled `length(p)`, which means
+    // **eye is zero**, and `distance(transform_point(p), eye)` equalled both,
+    // which means transform_point is the identity rather than zero. So the
+    // position was never the problem. The camera never arrives.
+    float swum = math::length(eye);
 
     color low = base::file_texture(
         texture: site_colour, uvw: wide,
