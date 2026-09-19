@@ -1,0 +1,16 @@
+# Third-party CAD, kept as it was downloaded.
+#
+# `tools/gpu sync` runs `git diff --cached --check` before it commits, which
+# is worth having over source: it catches trailing whitespace and conflict
+# markers before they travel. These files are neither. They are STEP, STL and
+# DXF exports from somebody else's tool, thousands of lines of trailing
+# spaces by format, and the check on them blocked three commits in a row —
+# quietly, because the output was long enough that the reason scrolled past
+# and the failure was swallowed by a pipe.
+#
+# Marked binary: git stops diffing them, stops checking their whitespace, and
+# stops pretending a STEP file has lines somebody wrote.
+hardware/reference/** -text -diff
+*.DXF -text -diff
+*.STL -text -diff
+*.x_t -text -diff

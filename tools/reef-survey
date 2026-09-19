@@ -30,6 +30,9 @@ import pathlib
 import shutil
 import sys
 
+# Next to this script, which is where python looks first.
+import built
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 # What these things reflect, with the hue from the Looe Key photographs (see
@@ -274,6 +277,7 @@ def main() -> int:
     site["layers"]["coral"] = "coral.usda"
     if picture.exists():
         site["picture"] = "picture.jpg"
+    built.record_call(site, "reef-survey")
     (place / "site.json").write_text(json.dumps(site, indent=2) + "\n")
     print(f"  begins at {begin['at']} — {site['beginBecause']}")
     print(f"  {place / 'site.json'}")

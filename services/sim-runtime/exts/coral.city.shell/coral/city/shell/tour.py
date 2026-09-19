@@ -454,15 +454,31 @@ class Ladder:
 
 # Where to stand, relative to where the place says a dive begins. Each is a
 # question somebody actually asks about a reef.
+#
+# Every eye is on the anchor itself, and that is not a composition choice.
+#
+# The medium is a baked map: how much of each colour survives the swim from
+# every point on the site to one point, because no per-pixel position reaches
+# an expression in this renderer and a texture lookup is the one thing that
+# does work. That one point is where the place says dives begin. A camera
+# standing somewhere else is looking at water measured from somewhere else —
+# and with red gone in four metres of this water, the fourteen metres this
+# view used to stand back was enough to run the depth cue backwards: the
+# ground nearest the eye came out least red, because it was furthest from the
+# point the water was measured from.
+#
+# So the eye sits on the anchor and only the direction and the height change.
+# Each `at` below is the old target plus the old stand-back, so every view
+# looks the same way at the same thing from the same distance as before.
 VIEWS = (
     # What a vehicle sees doing the work: three metres up, looking along.
-    ("at-work", dict(from_anchor=(-14.0, 0.0), above=3.0,
-                     at=(10.0, 0.0), at_above=2.0,
+    ("at-work", dict(from_anchor=(0.0, 0.0), above=3.0,
+                     at=(24.0, 0.0), at_above=2.0,
                      says="at the work site, three metres up, looking along")),
     # On the bottom, looking horizontally — the view that shows whether the
     # water has any depth to it and whether the coral has any form.
-    ("on-the-bottom", dict(from_anchor=(-8.0, -3.0), above=0.8,
-                           at=(14.0, 2.0), at_above=1.0,
+    ("on-the-bottom", dict(from_anchor=(0.0, 0.0), above=0.8,
+                           at=(22.0, 5.0), at_above=1.0,
                            says="a metre off the bottom, looking along it")),
     # From mid-water looking down, which is how cover is judged.
     ("looking-down", dict(from_anchor=(0.0, 0.0), above=12.0,
@@ -476,8 +492,8 @@ VIEWS = (
     # Where the pilot sits: just behind the vehicle, low, looking where it
     # looks. The only view that shows what the lamps do, because the lamps are
     # on the vehicle and a camera fourteen metres away sees their edge.
-    ("by-the-lamps", dict(from_anchor=(-1.2, 0.0), above=1.4,
-                          at=(9.0, 0.0), at_above=0.6,
+    ("by-the-lamps", dict(from_anchor=(0.0, 0.0), above=1.4,
+                          at=(10.2, 0.0), at_above=0.6,
                           says="just behind the vehicle, where its lamps point")),
 )
 # Frames to let Kit settle before one is kept. The same reason the ladder

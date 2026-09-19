@@ -7,6 +7,7 @@
 #
 #   ./tools/box init -email you@example.org -name "Your Name"
 #   ./tools/box up
+#   ./tools/box sim          # just the simulation runtime, for the render loop
 #   ./tools/box status
 #   ./tools/box logs control-plane
 #   ./tools/box tunnel
@@ -166,10 +167,7 @@ command_up() {
     # under a digest, the agent re-fetches it in seconds if it goes, and the
     # same reference works on the next host as it does on this one.
     say "Building the simulation runtime…"
-    on_box "cd ~/${REMOTE_DIR} && docker build -q -f services/sim-runtime/Dockerfile \
-        -t ${SIM_IMAGE} . | tail -1"
-    say "Publishing it to the registry…"
-    on_box "docker push --quiet ${SIM_IMAGE}"
+    build_sim
     on_box "${COMPOSE} run --rm migrate"
 
     say "Starting…"
@@ -179,6 +177,30 @@ command_up() {
     on_box "curl --fail --silent --show-error http://$(bind_address):${API_PORT}/api/v1/platform" || true
     printf '\n\n'
     command_status
+}
+
+build_sim() {
+    # Stamped with the tree hash of the runtime source, so tools/look can tell
+    # whether the image it is about to render with contains the code in this
+    # checkout. Without it a stale image is indistinguishable from a change
+    # that did nothing.
+    local runtime
+    runtime="$(git -C "$(dirname "$0")/.." rev-parse HEAD:services/sim-runtime)"
+    on_box "cd ~/${REMOTE_DIR} && docker build -q -f services/sim-runtime/Dockerfile \
+        --build-arg CORAL_CITY_RUNTIME=${runtime} \
+        -t ${SIM_IMAGE} . | tail -1"
+    say "Publishing it to the registry…"
+    on_box "docker push --quiet ${SIM_IMAGE}"
+}
+
+command_sim() {
+    # Just the runtime, for the loop that is actually worked in: edit the
+    # shell extension or the water, build, render, look. `up` does this too,
+    # along with a database migration and a restart of everything, which is
+    # not what somebody changing a camera wants to wait for.
+    say "Building the simulation runtime…"
+    build_sim
+    say "Built and pushed. tools/look will pull it."
 }
 
 command_status() {
@@ -282,6 +304,7 @@ case "${1:-}" in
     init)    shift; command_init "$@" ;;
     secret)  command_secret ;;
     up)      command_up ;;
+    sim)     command_sim ;;
     status)  command_status ;;
     logs)    shift; command_logs "$@" ;;
     down)    command_down ;;
@@ -290,5 +313,5 @@ case "${1:-}" in
     clean-dives) command_clean_dives ;;
     forget-dives) command_forget_dives ;;
     ""|help|-h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' ;;
-    *) die "unknown command: $1 (try: init, up, status, logs, down, tunnel, tidy, clean-dives, forget-dives, secret)" ;;
+    *) die "unknown command: $1 (try: init, up, sim, status, logs, down, tunnel, tidy, clean-dives, forget-dives, secret)" ;;
 esac

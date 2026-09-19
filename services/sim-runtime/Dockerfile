@@ -85,6 +85,21 @@ COPY --chown=1234:1234 services/sim-runtime/apps/coral_city.kit /isaac-sim/apps/
 COPY --chown=1234:1234 services/sim-runtime/apps/coral_city.png /isaac-sim/apps/coral_city.png
 COPY --chown=1234:1234 services/sim-runtime/exts/coral.city.shell /isaac-sim/extsUser/coral.city.shell
 
+# Which runtime is actually inside this image.
+#
+# `tools/look` pulls an image and renders with whatever is in it. The place it
+# renders is mounted, so a material or a mesh edited in the checkout reaches
+# the frame immediately — but everything in here does not, and nothing said
+# so. An afternoon of camera, metering and water changes went into frames
+# drawn by a runtime a fortnight old, and each unchanged frame was read as
+# evidence about the change rather than about the build.
+#
+# The tree hash of `services/sim-runtime`, not the commit: it changes when the
+# runtime changes and not when anything else does, so a docs commit does not
+# make every image look stale.
+ARG CORAL_CITY_RUNTIME=unknown
+LABEL org.coralcity.runtime=$CORAL_CITY_RUNTIME
+
 USER 1234:1234
 WORKDIR /isaac-sim
 
