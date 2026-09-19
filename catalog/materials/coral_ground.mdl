@@ -49,6 +49,14 @@ export material coral_ground(
                           "whole site."),
         anno::in_group("Ground")
     ]],
+    uniform texture_2d swum_map = texture_2d()
+    [[
+        anno::display_name("What survives the swim to the camera"),
+        anno::description("Per channel, baked over the site by "
+                          "tools/aim-water from where dives begin. White is "
+                          "arm's length, black is gone."),
+        anno::in_group("Water")
+    ]],
     uniform texture_2d hardness = texture_2d()
     [[
         anno::display_name("Where the hard ground is"),
@@ -395,9 +403,22 @@ export material coral_ground(
     // first version gated only the light the water adds and left the light it
     // takes, so turning the water off multiplied every surface by
     // exp(-distance) and the seabed came back black.
+    // How much of this surface's own light survives the swim to the camera,
+    // looked up rather than computed.
+    //
+    // `tools/aim-water` works it out over the whole site at build time and
+    // writes it into a map, because no per-pixel value reaches an expression
+    // in this renderer: the texture coordinate reads back as a constant in
+    // arithmetic, while the same coordinate handed to a lookup works. So the
+    // distance is baked and this does the one thing that works.
+    //
+    // Per channel, which is the whole point: red is gone in four metres of
+    // this water and green takes seventeen.
     color survives = veil <= 0.0
         ? color(1.0)
-        : math::exp(color(-swum) / math::max(attenuation, color(0.01)));
+        : base::file_texture(texture: swum_map, uvw: wide,
+                             wrap_u: tex::wrap_clamp,
+                             wrap_v: tex::wrap_clamp).tint;
     // The water's own light, which is what a distant reef turns into. It is
     // added rather than lit because it does not depend on anything shining on
     // this surface: it is the column in front of it.
