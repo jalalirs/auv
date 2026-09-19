@@ -64,22 +64,91 @@ GROUPS = {
     # Everything that is on its own: filefish, trumpetfish, grouper, hogfish.
     "solitary": dict(above=(1.0, 0.8), school=(1, 1), cruise=0.35, dash=1.5,
                      length=0.30, home=30.0, wary=5.0),
+    # And everything that sits on the bottom rather than swimming over it:
+    # gobies, blennies, sandperches, hawkfish perched on a coral head.
+    #
+    # This group exists because a Red Sea record said it should. Measuring how
+    # much of Al Fahal's species list the map could place came back at 45%
+    # unplaced and named the genera that did it, and half of them were fish
+    # that do not swim in the water column at all. They are small, they barely
+    # move, they hold a few centimetres off the substrate, and they let a
+    # vehicle get very close before they go — which is the opposite of
+    # everything else here and is most of what is actually on a reef.
+    "bottom": dict(above=(0.08, 0.05), school=(1, 3), cruise=0.12, dash=0.9,
+                   length=0.07, home=3.0, wary=1.2),
 }
 
 # Which genus belongs to which group. Genus, because the record names species
 # and the behaviour is a property of the genus at this resolution.
+#
+# Both oceans. The first version of this was Caribbean only, which was fine
+# while Looe Key was the only place with a record; the moment a Red Sea reef
+# got one, every Pseudanthias, Pomacentrus and Chlorurus on it fell silently
+# into "solitary" and a reef of schooling planktivores was drawn as a reef of
+# loners. `as_observed` now reports how much of a record it could not place,
+# so the next ocean says so instead of quietly looking wrong.
 BY_GENUS = {
+    # ── grazers on the bottom ────────────────────────────────────────────────
     "scarus": "parrotfish", "sparisoma": "parrotfish",
+    "chlorurus": "parrotfish", "hipposcarus": "parrotfish",
+    "calotomus": "parrotfish", "cetoscarus": "parrotfish",
+    # ── schools hanging over the reef ────────────────────────────────────────
     "ocyurus": "snapper", "lutjanus": "snapper", "haemulon": "snapper",
-    "anisotremus": "snapper",
-    "acanthurus": "surgeonfish",
+    "anisotremus": "snapper", "macolor": "snapper", "plectorhinchus": "snapper",
+    "caesio": "snapper", "pterocaesio": "snapper", "monotaxis": "snapper",
+    # ── loose foraging groups ────────────────────────────────────────────────
+    "acanthurus": "surgeonfish", "zebrasoma": "surgeonfish",
+    "ctenochaetus": "surgeonfish", "naso": "surgeonfish",
+    "siganus": "surgeonfish",
+    # ── small, dense, tied to a head of coral ────────────────────────────────
     "abudefduf": "damselfish", "microspathodon": "damselfish",
     "azurina": "damselfish", "chromis": "damselfish", "stegastes": "damselfish",
+    "pomacentrus": "damselfish", "pycnochromis": "damselfish",
+    "dascyllus": "damselfish", "amphiprion": "damselfish",
+    "neopomacentrus": "damselfish", "chrysiptera": "damselfish",
+    # Anthias hover in their hundreds a metre or two over the reef and go back
+    # into it when anything comes: small, dense and site-attached, which is
+    # this group whatever the family says.
+    "pseudanthias": "damselfish", "anthias": "damselfish",
+    # ── darting, close to the bottom ─────────────────────────────────────────
     "thalassoma": "wrasse", "bodianus": "wrasse", "halichoeres": "wrasse",
-    "lachnolaimus": "wrasse",
+    "lachnolaimus": "wrasse", "epibulus": "wrasse", "cheilinus": "wrasse",
+    "coris": "wrasse", "labroides": "wrasse", "gomphosus": "wrasse",
+    "cheilio": "wrasse", "hemigymnus": "wrasse",
+    # ── pairs, slow, over coral ──────────────────────────────────────────────
     "chaetodon": "butterflyfish", "holacanthus": "butterflyfish",
-    "pomacanthus": "butterflyfish",
+    "pomacanthus": "butterflyfish", "pygoplites": "butterflyfish",
+    "heniochus": "butterflyfish", "genicanthus": "butterflyfish",
+    "chaetodontoplus": "butterflyfish",
+    # ── fast, open water, passing through ────────────────────────────────────
     "caranx": "jack", "sphyraena": "jack", "seriola": "jack",
+    "elagatis": "jack", "gnathanodon": "jack", "scomberoides": "jack",
+    # ── sitting on the bottom, not swimming over it ──────────────────────────
+    "eviota": "bottom", "amblyeleotris": "bottom", "valenciennea": "bottom",
+    "istigobius": "bottom", "ecsenius": "bottom", "parapercis": "bottom",
+    "paracirrhites": "bottom", "cirrhitichthys": "bottom",
+    "gobiodon": "bottom", "pseudochromis": "bottom", "meiacanthus": "bottom",
+    "salarias": "bottom", "synodus": "bottom", "corythoichthys": "bottom",
+    # ── on their own: groupers, squirrelfish, triggers, filefish, puffers ────
+    "cephalopholis": "solitary", "epinephelus": "solitary",
+    "plectropomus": "solitary", "variola": "solitary",
+    "sargocentron": "solitary", "myripristis": "solitary",
+    "balistoides": "solitary", "rhinecanthus": "solitary",
+    "balistapus": "solitary", "melichthys": "solitary",
+    "aluterus": "solitary", "aulostomus": "solitary", "fistularia": "solitary",
+    "arothron": "solitary", "diodon": "solitary", "ostracion": "solitary",
+    "zanclus": "solitary", "platax": "solitary",
+    # ── mid-water schools: emperors and fusiliers are the Indo-Pacific grunts
+    "lethrinus": "snapper", "gnathodentex": "snapper",
+    "amblyglyphidodon": "damselfish", "dischistodus": "damselfish",
+    # ── and the tail each record named when it was measured ──────────────────
+    # Al Fahal's, then Looe Key's. Both lists came out of
+    # `how_much_was_placed`, which is the point of having it: it does not say
+    # "some of this is unplaced", it says which genera and how many.
+    "trimma": "bottom", "vanderhorstia": "bottom", "ctenogobiops": "bottom",
+    "gymnothorax": "bottom", "ophioblennius": "bottom",
+    "brachygenys": "snapper", "calamus": "snapper",
+    "holocentrus": "solitary", "scomberomorus": "jack",
 }
 OTHERWISE = "solitary"
 
@@ -87,6 +156,36 @@ OTHERWISE = "solitary"
 def group_of(taxon: str) -> str:
     """Which behaviour group a species name belongs to."""
     return BY_GENUS.get(taxon.split()[0].lower(), OTHERWISE)
+
+
+def how_much_was_placed(counted) -> dict:
+    """How much of a record this map could actually place, and what it could not.
+
+    A record from an ocean this map does not know comes back almost entirely
+    as "solitary", and a reef of schooling fish gets drawn as a reef of
+    loners with nothing anywhere saying so. So: the share that landed in the
+    fallback, and the genera that put it there, biggest first.
+    """
+    placed, fell_through = 0, {}
+    for one in counted:
+        if one.get("group") != "Actinopterygii":
+            continue
+        many = int(one.get("observations", 0))
+        genus = one["taxon"].split()[0].lower()
+        if genus in BY_GENUS:
+            placed += many
+        else:
+            fell_through[genus] = fell_through.get(genus, 0) + many
+    unplaced = sum(fell_through.values())
+    total = placed + unplaced
+    return {
+        "observations": total,
+        "placed": placed,
+        "unplaced": unplaced,
+        "unplacedShare": round(unplaced / total, 3) if total else 0.0,
+        "commonestUnplaced": [g for g, _ in sorted(
+            fell_through.items(), key=lambda kv: -kv[1])[:8]],
+    }
 
 
 def as_observed(counted, how_many: int) -> dict:
