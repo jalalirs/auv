@@ -203,10 +203,17 @@ export material coral_ground(
     // What it needs is the distance from the camera, per pixel. `eye` is set
     // by the runtime and is right; the position is not. Until that is settled,
     // the fog does the airlight and the far clip does the absorbing.
-    float3 raw = state::position();
+    // Two candidates, and `show_distance` is how they are told apart.
+    //
+    //   `state::position()` transformed to world is the position in the
+    //   site, and its length is the distance from the middle of the site.
+    //   `eye` then has to be subtracted to get the distance from the camera.
+    //
+    // Which of those this renderer actually gives has never been established,
+    // because the tool for establishing it was painting black.
     float3 standing = state::transform_point(
-        state::coordinate_internal, state::coordinate_world, raw);
-    float swum = math::length(standing);
+        state::coordinate_internal, state::coordinate_world, state::position());
+    float swum = math::distance(standing, eye);
 
     color low = base::file_texture(
         texture: site_colour, uvw: wide,
@@ -252,8 +259,16 @@ export material coral_ground(
     // of the lighting: bright where the sun hit the near ground, dark at the
     // horizon where everything is at a grazing angle. Which reads exactly like
     // a distance field pointing the wrong way, and was read as one.
+    // `show_distance` paints what the shader thinks the distance is, instead
+    // of the ground. It paints the *distance*: this line said `color(0.0)`
+    // for two whole investigations, so the diagnostic painted black whatever
+    // the distance was, and both runs of it were the diagnostic reporting on
+    // itself. A test whose failure mode looks like its success mode is not a
+    // test, which is a sentence already written elsewhere in this project by
+    // somebody who then wrote this.
     color albedo = show_distance > 0.0
-        ? color(0.0) : math::saturate(low * lift * variation);
+        ? color(math::saturate(swum / show_distance))
+        : math::saturate(low * lift * variation);
 
     float wet = math::lerp(
         base::file_texture(texture: soft_rough, uvw: fine,
