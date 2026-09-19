@@ -133,7 +133,18 @@ export material coral_ground(
     // attenuation is **per channel**. Red dies in four metres of this water and
     // green takes seventeen, which is why everything below ten metres is blue,
     // and a single fog distance cannot say it.
-    uniform float3 eye = float3(0.0)
+    // Not `uniform`, and that one word cost a day.
+    //
+    // A uniform parameter in MDL is baked when the material is compiled, so
+    // the compiled shader kept the nought it was born with and every
+    // per-frame update went into a USD attribute nothing read. The attribute
+    // was set correctly the whole time — asked for (5, -105, -5.2), read back
+    // (5, -105, -5.2) — which is why reading it back was not enough on its
+    // own and the picture had to be measured as well.
+    //
+    // Dropping the keyword makes it an argument the renderer passes in rather
+    // than a constant it compiles in.
+    float3 eye = float3(0.0)
     [[
         anno::display_name("Where the camera is"),
         anno::description("World metres. Set by the runtime as the vehicle "
