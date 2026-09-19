@@ -716,7 +716,7 @@ def main() -> int:
             print(f"  habitat: surveyed polygons: {named}")
             hardness_from = "habitat polygons from a survey of this place"
         else:
-            hard = derived_hardness(height, across)
+            hard = derived_hardness(height, asked.across)
             print(f"  habitat: derived from slope and relief, "
                   f"{100 * float(hard.mean()):.0f}% hard")
             hardness_from = ("derived from the slope and relief of the seabed, "
@@ -736,7 +736,7 @@ def main() -> int:
                 Image.FLIP_TOP_BOTTOM).save(into / "site_colour.jpg", quality=95)
             colour_from = "orthomosaic and habitat classes from a survey"
         else:
-            Image.fromarray(np.flipud(derived_colour(height, hard, across))).save(
+            Image.fromarray(np.flipud(derived_colour(height, hard, asked.across))).save(
                 into / "site_colour.jpg", quality=95)
             colour_from = ("derived: carbonate sand and turf-grown rock at "
                            "their own reflectances, dimmed and reddened out "
