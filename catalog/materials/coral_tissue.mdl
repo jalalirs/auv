@@ -290,7 +290,12 @@ export material coral_tissue(
         // names the line and not the parameter.
         emission: material_emission(
             emission: df::diffuse_edf(),
-            intensity: show_distance > 0.0 ? survives
+            // Magenta, which nothing on a reef is. This is one question and
+            // not two: if a colony does not turn magenta with the switch on,
+            // then this material is not what draws it, and every reading
+            // taken of the coral's medium has been a reading of the
+            // UsdPreviewSurface sitting beside it.
+            intensity: show_distance > 0.0 ? color(1.0, 0.0, 1.0)
                        : fluoresces * fluorescence * math::saturate(alive) + water)
     ),
     geometry: material_geometry(normal: bumped)
