@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""What lives at a place, from what somebody recorded there.
+
+    tools/fauna ~/coral-city/places/al-fahal ~/coral-city/reference/al-fahal
+
+Separate from tools/reef-survey on purpose. What is on the seabed and what
+swims over it are two different questions with two different sources: a
+photogrammetric survey counts colonies and cannot count fish, and an
+observation record counts fish and says nothing about coral. Al Fahal has the
+second and not the first, and tying them together meant a place could only
+have fish if somebody had flown a survey over it.
+
+What this writes into site.json is the *shares* — which behaviour groups, in
+what proportion — and how much of the record the platform could actually
+place. A dive decides how many fish to put in the water; this says what they
+are, and it says it from the record rather than from a general idea of a reef.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import pathlib
+import shutil
+
+
+def life_module():
+    """The runtime's own, by path.
+
+    There is a `tools/coral.py` and a runtime package called `coral`, and
+    `tools` is first on sys.path here, so `from coral import life` finds the
+    wrong one and says so in a way that takes a minute to read.
+    """
+    where = (pathlib.Path(__file__).resolve().parent.parent / "services"
+             / "sim-runtime" / "coral" / "life.py")
+    spec = importlib.util.spec_from_file_location("coral_life", where)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# How much of a record can fall outside the behaviour map before the shares
+# stop meaning anything. Not a target: the map does not have to know every
+# genus in an ocean. It does have to know most of what a record of one holds,
+# and a record that comes back mostly unplaced would draw a reef of schooling
+# fish as a reef of loners.
+TOO_MUCH_UNPLACED = 0.35
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(description="write what lives at a place")
+    parse.add_argument("place", help="the place directory, with site.json")
+    parse.add_argument("reference", help="its reference, with species_counts.json")
+    parse.add_argument("--per-square-metre", type=float, default=0.10,
+                       help="individuals a vehicle camera can resolve, per m2")
+    parse.add_argument("--density-from", default=(
+        "visual census of reef fish over ~8 cm, order 0.05-0.2 per m2; "
+        "not measured at this site"),
+        help="where that density comes from, because an observation count is "
+             "a count of photographs and not a density")
+    asked = parse.parse_args()
+
+    life = life_module()
+    place, ref = pathlib.Path(asked.place), pathlib.Path(asked.reference)
+    site = json.loads((place / "site.json").read_text())
+    watched = ref / "species_counts.json"
+    if not watched.is_file():
+        raise SystemExit(f"no species record at {watched}")
+
+    counted = json.loads(watched.read_text())
+    fish = [one for one in counted if one.get("group") == "Actinopterygii"]
+    placed = life.how_much_was_placed(counted)
+    if not placed["observations"]:
+        raise SystemExit("that record has no bony fish in it")
+
+    seen = life.as_observed(counted, 10_000)
+    shares = {k: round(v / 10_000, 5) for k, v in seen.items()}
+    shutil.copy(watched, place / "fauna.json")
+
+    said = ref / "reference.json"
+    about = {}
+    if said.is_file():
+        about = (json.loads(said.read_text()).get("sources", {})
+                 .get("observations", {}))
+
+    site["life"] = {
+        "source": about.get("source", "observations recorded at this place"),
+        "radiusKm": about.get("radiusKm"),
+        "observations": placed["observations"],
+        "species": len(fish),
+        "shares": shares,
+        # What the map could not place, kept with the shares rather than in a
+        # log somewhere. A reader can then see how much of this record was
+        # understood before they trust the proportions.
+        "unplacedShare": placed["unplacedShare"],
+        "commonestUnplaced": placed["commonestUnplaced"],
+        "perSquareMetre": asked.per_square_metre,
+        "perSquareMetreFrom": asked.density_from,
+        "file": "fauna.json",
+    }
+    (place / "site.json").write_text(json.dumps(site, indent=1))
+
+    print(f"{site.get('name', place.name)}: {len(fish)} bony fish species, "
+          f"{placed['observations']:,} observations"
+          + (f" within {about['radiusKm']:.0f} km" if about.get("radiusKm") else ""))
+    print("  groups: " + ", ".join(f"{k} {v:.0%}" for k, v in sorted(
+        shares.items(), key=lambda kv: -kv[1])))
+    if placed["unplacedShare"] > TOO_MUCH_UNPLACED:
+        print(f"  {placed['unplacedShare']:.0%} of this record is outside the "
+              f"behaviour map, so these shares do not mean much yet.")
+        print(f"  commonest: {', '.join(placed['commonestUnplaced'])}")
+        return 1
+    print(f"  {placed['unplacedShare']:.0%} unplaced"
+          + (f" ({', '.join(placed['commonestUnplaced'][:4])})"
+             if placed["commonestUnplaced"] else ""))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
