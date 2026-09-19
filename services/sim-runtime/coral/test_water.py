@@ -248,9 +248,12 @@ def test_the_far_sea_is_flat_because_it_cannot_carry_a_wave():
     fine = water.SURFACE_ACROSS / 2.0
     far = [s for s in steps if abs(s) > 2 * fine]
     assert far, "the sea should reach well past its fine region"
-    # Two cells out from the fine region, nothing is left of the amplitude.
-    for out in (2 * fine, 3 * fine):
-        carries = max(0.0, 1.0 - (out - fine) / fine)
-        assert carries == 0.0, out
-    # And inside it, the full wave.
-    assert max(0.0, 1.0 - (0.5 * fine - fine) / fine) == 1.0
+    # Well past the fine region, nothing is left of the amplitude.
+    for out in (2 * fine, 3 * fine, 10 * fine):
+        assert water.carries_a_wave(out) == 0.0, out
+    # Inside it, the whole wave.
+    for out in (0.0, 0.5 * fine, fine):
+        assert water.carries_a_wave(out) == 1.0, out
+    # And in between, something between, falling as it goes out.
+    middle = [water.carries_a_wave(fine * s) for s in (1.2, 1.5, 1.8)]
+    assert 1.0 > middle[0] > middle[1] > middle[2] > 0.0, middle

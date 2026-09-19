@@ -830,6 +830,20 @@ def _across(across: float = 1000.0):
     return steps
 
 
+def carries_a_wave(out: float) -> float:
+    """How much of the wave a cell this far from the middle can hold.
+
+    One inside the fine region, falling to nothing over the same distance
+    again. Named rather than written inline because a test that repeats the
+    expression is a test of the expression it repeated: the first one asserted
+    1.5 == 1.0 because it applied the taper where the code does not.
+    """
+    fine = SURFACE_ACROSS / 2.0
+    if out <= fine:
+        return 1.0
+    return max(0.0, 1.0 - (out - fine) / fine)
+
+
 def _wave_mesh(surface, water_level: float, seconds: float = 0.0,
                centre=(0.0, 0.0), across: float = 1000.0) -> None:
     """Build the patch of sea, displaced by the waves on it."""
@@ -852,13 +866,11 @@ def _wave_mesh(surface, water_level: float, seconds: float = 0.0,
     # So the amplitude falls to nothing over the last of the fine region, and
     # beyond that the sea is flat — which is also what a sea a kilometre away
     # looks like from half a metre under it.
-    fine = SURFACE_ACROSS / 2.0
     points, counts, indices = [], [], []
     for j in range(n + 1):
         for i in range(n + 1):
             x, y = cx + steps[i], cy + steps[j]
-            out = max(abs(steps[i]), abs(steps[j]))
-            carries = 1.0 if out <= fine else max(0.0, 1.0 - (out - fine) / fine)
+            carries = carries_a_wave(max(abs(steps[i]), abs(steps[j])))
             lift = (water_level + carries * surface_height(x, y, seconds)
                     if carries > 0.0 else water_level)
             points.append(Gf.Vec3f(x, y, lift))
