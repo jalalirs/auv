@@ -237,3 +237,20 @@ def test_the_sea_is_sampled_finely_near_the_middle_whatever_the_site():
         middle = len(steps) // 2
         assert abs((steps[middle + 1] - steps[middle]) - water.SURFACE_CELL) < 1e-6
         assert steps[-1] >= water.sea_reaches(across)
+
+
+def test_the_far_sea_is_flat_because_it_cannot_carry_a_wave():
+    """The mesh grows outwards, so the far cells are hundreds of metres across.
+    A two metre wave sampled once per two hundred metres is not a coarse wave,
+    it is noise, and since the surface is glass at a grazing angle that noise
+    filled the top third of every frame."""
+    steps = water._across(1000.0)
+    fine = water.SURFACE_ACROSS / 2.0
+    far = [s for s in steps if abs(s) > 2 * fine]
+    assert far, "the sea should reach well past its fine region"
+    # Two cells out from the fine region, nothing is left of the amplitude.
+    for out in (2 * fine, 3 * fine):
+        carries = max(0.0, 1.0 - (out - fine) / fine)
+        assert carries == 0.0, out
+    # And inside it, the full wave.
+    assert max(0.0, 1.0 - (0.5 * fine - fine) / fine) == 1.0
