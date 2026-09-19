@@ -322,6 +322,79 @@ def fetch_texture(where: pathlib.Path, name: str, prefix: str = "seabed",
     return True
 
 
+
+def derived_hardness(height, across: float, n: int = 1024):
+    """Where the hard ground is, worked out from the shape of the seabed.
+
+    For the four places with no habitat map. Sediment collects where the water
+    is slow and the ground is flat; rock stays bare where it is steep or
+    standing proud. So: slope makes ground hard, and sitting in a hollow makes
+    it soft.
+
+    This is a model, not a survey, and the difference matters — it is written
+    into the record as derived so that nobody reads a sand patch here as a
+    sand patch somebody mapped. What it buys is a seabed that is two surfaces
+    instead of one flat grey plane, everywhere rather than at the one site
+    that has polygons.
+    """
+    import numpy as np
+    from scipy import ndimage
+
+    rows, columns = height.shape
+    step = across / max(1, columns - 1)
+    dy, dx = np.gradient(height.astype("float64"), step, step)
+    slope = np.hypot(dx, dy)
+
+    # How far this ground stands above the ground around it. A hollow fills
+    # with sand; a rise is scoured.
+    wide = max(3, int(round(25.0 / step)))
+    around = ndimage.uniform_filter(height.astype("float64"), wide)
+    stands = height - around
+
+    # Both to nought-to-one on their own spread, because a reef flat and a
+    # continental slope have nothing in common but the shape of the histogram.
+    def spread(field, gentle=0.8):
+        middle = np.median(field)
+        scale = np.median(np.abs(field - middle)) * 1.4826
+        return 1.0 / (1.0 + np.exp(-(field - middle) / max(scale * gentle, 1e-6)))
+
+    hard = np.clip(0.62 * spread(slope) + 0.38 * spread(stands), 0.0, 1.0)
+    # And the shallowest water is scoured whatever the shape: a reef crest in
+    # the surf holds no sediment.
+    crest = np.clip((height + 4.0) / 3.0, 0.0, 1.0)
+    hard = np.clip(hard + 0.35 * crest, 0.0, 1.0)
+
+    at = (np.linspace(0, rows - 1, n).astype(int)[:, None],
+          np.linspace(0, columns - 1, n).astype(int)[None, :])
+    return hard[at].astype("float32")
+
+
+def derived_colour(height, hard, across: float, n: int = 1024):
+    """What the bottom looks like from above, where nobody has photographed it.
+
+    Carbonate sand is pale and nearly white in the shallows; rock under turf
+    algae is dark olive-brown; everything goes bluer and darker with depth
+    because that is what the water takes. These are reflectances, not pixels
+    off a photograph — a picture of a reef through ten metres of water is not
+    the reef's albedo, and this platform has made that mistake once already.
+    """
+    import numpy as np
+
+    rows, columns = height.shape
+    at = (np.linspace(0, rows - 1, n).astype(int)[:, None],
+          np.linspace(0, columns - 1, n).astype(int)[None, :])
+    deep = -height[at]
+
+    sand = np.array([0.74, 0.71, 0.62])
+    rock = np.array([0.20, 0.21, 0.16])
+    colour = (sand[None, None, :] * (1 - hard[..., None])
+              + rock[None, None, :] * hard[..., None])
+    # Deeper ground is dimmer ground, and loses its red first.
+    dim = np.exp(-np.clip(deep, 0, None)[..., None]
+                 / np.array([26.0, 55.0, 70.0])[None, None, :])
+    return np.clip(colour * (0.45 + 0.55 * dim) * 255, 0, 255).astype("uint8")
+
+
 def average_of(path: pathlib.Path) -> str:
     """What a texture's own colour is, so a material can divide it out.
 
@@ -611,7 +684,7 @@ def main() -> int:
     # orthomosaic where there is one, and habitat class laid down from the
     # satellite's pattern everywhere else. It has existed for Looe Key since
     # the second of September and nothing has ever drawn it.
-    ground = None
+    ground = ground_said = None
     if asked.ground:
         import numpy as np
         from PIL import Image
@@ -624,20 +697,15 @@ def main() -> int:
 
         reference = pathlib.Path(asked.ground).expanduser()
         colour = reference / "colour_4096.png" if reference.is_dir() else reference
-        if not colour.is_file():
-            raise SystemExit(f"no ground colour map at {colour}")
-        # North is at the top of a map and v = 0 is the south edge of the mesh,
-        # so the maps are flipped on the way in. tools/ground says this about
-        # its own output and it is the kind of thing that is invisible until a
-        # reef is a mile from where the survey put it.
-        Image.open(colour).convert("RGB").transpose(
-            Image.FLIP_TOP_BOTTOM).save(into / "site_colour.jpg", quality=95)
-
-        # Where the hard ground is, from the habitat polygons the survey drew.
-        # A place with no habitat map gets pavement everywhere, which is the
-        # safer half to be wrong about: sand where there is reef reads as a
-        # reef somebody dredged.
         classes = reference / "habitat_4096.npy" if reference.is_dir() else None
+        surveyed_ground = colour.is_file()
+        # Where the hard ground is. From the habitat polygons a survey drew,
+        # if there are any; from the shape of the seabed if not.
+        #
+        # It used to be pavement everywhere when there was no map, on the
+        # grounds that sand where there is reef reads as a reef somebody
+        # dredged. That is true and it left four of five places as one flat
+        # grey plane at close range, which is the thing A3 exists to stop.
         if classes is not None and classes.is_file():
             kinds = np.load(classes)
             hard = np.zeros(kinds.shape, dtype="float32")
@@ -645,18 +713,43 @@ def main() -> int:
                 hard[kinds == kind] = how_hard
             named = ", ".join(f"{HABITAT_NAMES.get(k, k)} {100 * (kinds == k).mean():.0f}%"
                               for k in sorted(set(np.unique(kinds).tolist())))
-            print(f"  habitat: {named}")
+            print(f"  habitat: surveyed polygons: {named}")
+            hardness_from = "habitat polygons from a survey of this place"
         else:
-            hard = np.ones((1024, 1024), dtype="float32")
-            print("  habitat: no map for this place, so pavement everywhere")
+            hard = derived_hardness(height, across)
+            print(f"  habitat: derived from slope and relief, "
+                  f"{100 * float(hard.mean()):.0f}% hard")
+            hardness_from = ("derived from the slope and relief of the seabed, "
+                             "not from any survey: sediment collects where the "
+                             "water is slow and the ground is flat")
         Image.fromarray((np.flipud(hard) * 255).astype("uint8")).save(
             into / "hardness.png")
+
+        # And what the bottom looks like from above.
+        #
+        # North is at the top of a map and v = 0 is the south edge of the mesh,
+        # so a fetched map is flipped on the way in. tools/ground says this
+        # about its own output and it is the kind of thing that is invisible
+        # until a reef is a mile from where the survey put it.
+        if surveyed_ground:
+            Image.open(colour).convert("RGB").transpose(
+                Image.FLIP_TOP_BOTTOM).save(into / "site_colour.jpg", quality=95)
+            colour_from = "orthomosaic and habitat classes from a survey"
+        else:
+            Image.fromarray(np.flipud(derived_colour(height, hard, across))).save(
+                into / "site_colour.jpg", quality=95)
+            colour_from = ("derived: carbonate sand and turf-grown rock at "
+                           "their own reflectances, dimmed and reddened out "
+                           "with depth. Not a photograph of this place")
+            print("  colour: derived from depth and hardness, not photographed")
 
         ground = {
             "soft": SURFACES["soft"], "hard": SURFACES["hard"],
             "soft_average": average_of(into / "soft_colour.jpg"),
             "hard_average": average_of(into / "hard_colour.jpg"),
         }
+        ground_said = {"hardnessFrom": hardness_from, "colourFrom": colour_from,
+                       "surveyed": bool(surveyed_ground)}
 
         # The material lives with the place, not in this checkout: a published
         # package has to carry everything it is drawn from.
@@ -754,6 +847,10 @@ def main() -> int:
             "heightfield": "seabed.f32",
             **({"coral": "coral.usda"} if reef.get("colonies") else {}),
         },
+        # What the bottom is made of, and where that came from. A sand patch
+        # worked out from the slope and a sand patch somebody mapped look the
+        # same in a frame and are not the same claim.
+        **({"ground": ground_said} if ground is not None else {}),
     }
     (where / "site.json").write_text(json.dumps(site, indent=2) + "\n")
 
