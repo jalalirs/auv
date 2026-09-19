@@ -177,6 +177,16 @@ export material coral_tissue(
                           "on the site says it should."),
         anno::in_group("Water")
     ]],
+    uniform float show_distance = 0.0
+    [[
+        anno::display_name("Paint the medium instead of the coral"),
+        anno::description("A shader cannot print. Above nought this paints "
+                          "what the survival lookup returns, unlit, instead "
+                          "of the colony — the only way to find out whether a "
+                          "coordinate varies in this renderer or comes back "
+                          "the same number everywhere."),
+        anno::in_group("Water")
+    ]],
     uniform float site_across = 1000.0
     [[
         anno::display_name("How wide this site is"),
@@ -270,7 +280,8 @@ export material coral_tissue(
             base: df::weighted_layer(
                 weight: math::saturate(through * alive),
                 layer: df::diffuse_transmission_bsdf(tint: tissue),
-                base: df::diffuse_reflection_bsdf(tint: under * survives)),
+                base: df::diffuse_reflection_bsdf(
+                tint: show_distance > 0.0 ? color(0.0) : under * survives)),
             normal: bumped),
         // Inside the surface, not beside it. `material()` has no `emission`
         // of its own — its parameters are thin_walled, surface, backface, ior,
@@ -279,7 +290,8 @@ export material coral_tissue(
         // names the line and not the parameter.
         emission: material_emission(
             emission: df::diffuse_edf(),
-            intensity: fluoresces * fluorescence * math::saturate(alive) + water)
+            intensity: show_distance > 0.0 ? survives
+                       : fluoresces * fluorescence * math::saturate(alive) + water)
     ),
     geometry: material_geometry(normal: bumped)
 );

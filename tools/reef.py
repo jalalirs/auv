@@ -402,6 +402,10 @@ def _skins(colours, kinds=None, tile_metres: float = 0.04) -> str:
             "                color3f inputs:attenuation = (4, 17, 13)\n"
             "                color3f inputs:veiling = (0.24, 0.55, 0.45)\n"
             "                float inputs:veil = 0\n"
+            # Declared so the runtime can find it: it sets the water on every
+            # shader that has an `eye`, and skips any input the prim does not
+            # already carry.
+            "                float inputs:show_distance = 0\n"
             # The same map the seabed uses. Raw, because every texel is
             # already exp(-distance / length) and reading it as sRGB puts it
             # through a curve it has no business going through.
