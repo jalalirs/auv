@@ -217,8 +217,15 @@ export material coral_ground(
     // does return zero here, which was guessed before and is now seen.
     //
     // This is the raw position, untransformed, which is the other candidate.
+    // Raw position, minus where the camera is.
+    //
+    // Painting `length(state::position())` could not settle it: the camera is
+    // a hundred metres from the middle of the site, so every pixel in frame is
+    // past a forty metre scale whether the position is measured from the site
+    // or from the lens, and both saturate to the same white. The test that
+    // separates them is the one that is wanted anyway.
     float3 standing = state::position();
-    float swum = math::length(standing);
+    float swum = math::distance(standing, eye);
 
     color low = base::file_texture(
         texture: site_colour, uvw: wide,
