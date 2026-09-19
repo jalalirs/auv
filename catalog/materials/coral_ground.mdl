@@ -394,8 +394,21 @@ export material coral_ground(
     // plus the water's own light in front of it. Per channel, so red is gone
     // in four metres of this water while green takes seventeen — which is the
     // thing the renderer's own fog could never say.
+    // Is the texture coordinate reaching the *expression*?
+    //
+    // It reaches `base::file_texture` — the colour map is laid on correctly,
+    // which is how this whole route was justified. But a lookup and an
+    // arithmetic read are not the same thing, and if `wide.position` is a
+    // constant here then `here_is` is a fixed corner of the site, the
+    // distance to it is about seven hundred metres whatever the camera does,
+    // and every frame is saturated identically. That single fact would
+    // explain every dead end today.
+    //
+    // So: paint the coordinate. A smooth red-green ramp across the seabed
+    // means it arrives. One flat colour means it does not.
     color albedo = show_distance > 0.0
-        ? color(math::saturate(swum / show_distance))
+        ? color(math::saturate(wide.position.x),
+                math::saturate(wide.position.y), 0.0)
         : math::saturate(low * lift * variation * survives + water);
 
     float3 bumped = math::normalize(math::lerp(
