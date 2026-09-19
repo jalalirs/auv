@@ -309,10 +309,19 @@ def brain(rng, height=0.6):
 
 
 def table(rng, height=0.5):
-    """A table coral: a stem, and a plate that spread once it found light."""
-    radius = height * rng.uniform(1.6, 2.6)
-    stem = _cylinder(np.zeros(3), np.array([0, 0, height * 0.75]),
-                     height * 0.13, height * 0.09, sides=8)
+    """A table coral: a stem, and a plate that spread once it found light.
+
+    The plate is about twice its own standoff across, not five times.
+    Acropora tables are wide and they are not canopies: the first version made
+    a plate 2.6 times the height in *radius* sitting at 0.75 of it, so a
+    colony a third of a metre tall spread nearly two metres and hovered a hand
+    above the sand. In a frame that does not read as coral. It reads as a
+    dark oval on the seabed, because what you actually see from above is the
+    shadow it throws.
+    """
+    radius = height * rng.uniform(0.9, 1.5)
+    stem = _cylinder(np.zeros(3), np.array([0, 0, height * 0.80]),
+                     height * 0.15, height * 0.10, sides=8)
 
     sides, rings = 20, 4
     points, faces = [], []
@@ -321,7 +330,7 @@ def table(rng, height=0.5):
         for s in range(sides):
             a = 2 * math.pi * s / sides
             # Plates are not flat; they dish slightly and their edge undulates.
-            lift = height * (0.75 + 0.10 * share ** 2) + 0.02 * math.sin(6 * a)
+            lift = height * (0.80 + 0.10 * share ** 2) + 0.02 * math.sin(6 * a)
             rr = radius * share * (1.0 + 0.08 * math.sin(5 * a))
             points.append([rr * math.cos(a), rr * math.sin(a), lift])
     points = np.array(points)
