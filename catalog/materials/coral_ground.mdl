@@ -160,7 +160,7 @@ export material coral_ground(
                           "water-taken-away view wants."),
         anno::in_group("Water")
     ]],
-    uniform float show_distance = 200.0
+    uniform float show_distance = 700.0
     [[
         anno::display_name("Paint the distance instead"),
         anno::description("Metres at white. Nought is off. There is no way to "
@@ -224,6 +224,10 @@ export material coral_ground(
     // past a forty metre scale whether the position is measured from the site
     // or from the lens, and both saturate to the same white. The test that
     // separates them is the one that is wanted anyway.
+    // No `eye` in this: it comes from the runtime and the runtime has just
+    // been shown not to reach this material. The length of the raw position
+    // alone says which space it is in — a gradient radiating from the middle
+    // of the site means world, and flat means object.
     float3 standing = state::position();
     // Painting `length(eye)`, not the distance.
     //
@@ -232,7 +236,7 @@ export material coral_ground(
     // **eye is zero**, and `distance(transform_point(p), eye)` equalled both,
     // which means transform_point is the identity rather than zero. So the
     // position was never the problem. The camera never arrives.
-    float swum = math::length(eye);
+    float swum = math::length(standing);
 
     color low = base::file_texture(
         texture: site_colour, uvw: wide,
@@ -292,8 +296,13 @@ export material coral_ground(
     // every one of those frames was the ordinary ground. Red settles it
     // without depending on the runtime for anything: if the seabed is not red,
     // this file is not what is drawing it.
+    // The red test passed: this file draws the ground and is recompiled when
+    // it changes. So the four identical frames before it were not four
+    // readings of a distance — `show_distance` never arrived from the runtime,
+    // and every one of them was the ordinary seabed. The default is on here
+    // so the diagnostic depends on nothing outside this file.
     color albedo = show_distance > 0.0
-        ? color(1.0, 0.0, 0.0)
+        ? color(math::saturate(swum / show_distance))
         : math::saturate(low * lift * variation);
 
     float wet = math::lerp(
