@@ -13,6 +13,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
+import water
 from hydrodynamics import DENSITY_SEAWATER, Allocator, Body, Hydrodynamics, density_of
 from runner import Dive
 
@@ -196,3 +197,43 @@ def test_water_somebody_measured_is_not_extrapolated():
     dive = a_dive({"salinityPsu": 40.6, "temperatureC": 26.0, "densityKgM3": 1031.0})
     assert dive.density_at(0.0) == 1031.0
     assert dive.density_at(1000.0) == 1031.0
+
+
+# ── the horizon has to enclose the site it stands round ──────────────────────
+
+def test_the_wall_clears_the_corners_of_its_site():
+    """A site is a square and the wall is a circle, so it has to clear half
+    the diagonal, not half the edge."""
+    import math
+
+    for across in (600.0, 1000.0, 3000.0, 6000.0):
+        half_diagonal = across / 2 * math.sqrt(2)
+        assert water.horizon_for(across) > half_diagonal, across
+
+
+def test_the_wall_clears_where_a_dive_actually_begins():
+    """Al Fahal is three kilometres across and its dive begins 1,398 m from
+    the origin. At a fixed nine hundred metres the camera was outside its own
+    horizon: the band came back, and the downward view was onto nothing."""
+    assert water.horizon_for(3000.0) > 1398.0
+
+
+def test_the_sea_reaches_past_the_wall():
+    """If the sea stops short of the horizon, the gap between them is the band
+    again, in the one place nothing else can cover it."""
+    for across in (600.0, 1000.0, 3000.0, 6000.0):
+        assert water.sea_reaches(across) > water.horizon_for(across), across
+
+
+def test_a_small_site_still_gets_a_wall_worth_having():
+    assert water.horizon_for(200.0) >= water.HORIZON_AT_LEAST_M
+
+
+def test_the_sea_is_sampled_finely_near_the_middle_whatever_the_site():
+    """Fine cells where the waves can be seen, growing cells after that. A
+    three kilometre site must not buy its reach by coarsening the near field."""
+    for across in (1000.0, 3000.0):
+        steps = water._across(across)
+        middle = len(steps) // 2
+        assert abs((steps[middle + 1] - steps[middle]) - water.SURFACE_CELL) < 1e-6
+        assert steps[-1] >= water.sea_reaches(across)

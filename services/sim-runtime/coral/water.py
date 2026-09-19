@@ -537,10 +537,11 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # free, which is worth far more than painting it on.
     # The wall of water that stands where the seabed runs out, so that no
     # pixel in the frame is looking at nothing.
-    _horizon(stage, water_level, floor, veiling, veil)
+    _horizon(stage, water_level, floor, veiling, veil, across)
 
     surface = UsdGeom.Mesh.Define(stage, "/World/Surface")
-    _wave_mesh(surface, water_level)
+    _wave_mesh(surface, water_level, across=across)
+    drift._across = across
     # Where the mean level is, for the rebuilds that follow the vehicle.
     drift._level = float(water_level)
     surface.CreateDoubleSidedAttr(True)
@@ -728,11 +729,35 @@ def orbital_here(x: float, y: float, depth: float, seconds: float = 0.0):
 # the seabed and well inside the sea above it. Every ray then lands on
 # something, everything gets fogged the same way, and the horizon is continuous
 # because it is made of the same stuff as everything in front of it.
-HORIZON_AT_M = 900.0
+HORIZON_AT_LEAST_M = 900.0
 HORIZON_SIDES = 96
 
 
-def _horizon(stage, water_level: float, lowest: float, veiling, veil: float):
+def horizon_for(across: float) -> float:
+    """How far out the wall has to stand for a site this size.
+
+    Past the corners, not past the edges. A site is a square and the wall is a
+    circle, so it has to clear half the *diagonal* — and then some, because a
+    dive does not begin in the middle. Al Fahal is three kilometres across and
+    its dive begins 1,398 m from the origin; at a fixed nine hundred metres
+    the camera was outside its own horizon, which does not look like a wall in
+    the wrong place. It looks like the band coming back, and like a downward
+    view onto nothing.
+    """
+    return max(HORIZON_AT_LEAST_M, 0.85 * float(across))
+
+
+def sea_reaches(across: float) -> float:
+    """And how far the sea goes, which must be past the wall.
+
+    If the sea stops short of the horizon, the gap between them is the band
+    again, in the one place nothing else can cover it.
+    """
+    return max(SURFACE_REACH, 1.25 * horizon_for(across))
+
+
+def _horizon(stage, water_level: float, lowest: float, veiling, veil: float,
+             across: float = 1000.0):
     """The wall of water that stands where the seabed runs out."""
     from pxr import Gf, Sdf, UsdGeom, UsdShade, Vt
 
@@ -742,7 +767,7 @@ def _horizon(stage, water_level: float, lowest: float, veiling, veil: float):
     # Down past the deepest thing here, so no view under the seabed's edge
     # finds the gap under the wall.
     bottom = float(lowest) - 50.0
-    radius = HORIZON_AT_M
+    radius = horizon_for(across)
 
     points, counts, indices = [], [], []
     for i in range(HORIZON_SIDES):
@@ -783,7 +808,7 @@ def _horizon(stage, water_level: float, lowest: float, veiling, veil: float):
     return radius
 
 
-def _across():
+def _across(across: float = 1000.0):
     """Where the sea is sampled along one axis, from the middle outwards.
 
     Even at the size of a wave out to `SURFACE_ACROSS`, then growing by a third
@@ -796,7 +821,8 @@ def _across():
     steps = [-half + i * SURFACE_CELL for i in range(n + 1)]
 
     at, wide = half, SURFACE_CELL
-    while at < SURFACE_REACH:
+    reach = sea_reaches(across)
+    while at < reach:
         wide *= SURFACE_GROWTH
         at += wide
         steps.append(at)
@@ -805,12 +831,12 @@ def _across():
 
 
 def _wave_mesh(surface, water_level: float, seconds: float = 0.0,
-               centre=(0.0, 0.0)) -> None:
+               centre=(0.0, 0.0), across: float = 1000.0) -> None:
     """Build the patch of sea, displaced by the waves on it."""
     from pxr import Gf, Vt
 
     cx, cy = float(centre[0]), float(centre[1])
-    steps = _across()
+    steps = _across(across)
     n = len(steps) - 1
 
     points, counts, indices = [], [], []
@@ -913,7 +939,11 @@ def drift(stage, seconds: float, follow=None) -> None:
         moved = was is None or math.hypot(x - was[0], y - was[1]) > SURFACE_CELL * 4
         if moved or seconds - (getattr(drift, "_rebuilt_t", -99.0)) > 0.25:
             level = getattr(drift, "_level", 0.0)
-            _wave_mesh(mesh, level, seconds, centre=(x, y))
+            # The size the sea was first built at. Rebuilt smaller, it would
+            # shrink inside the horizon the moment the vehicle moved, and the
+            # band would come back a few seconds into every dive.
+            _wave_mesh(mesh, level, seconds, centre=(x, y),
+                       across=getattr(drift, "_across", 1000.0))
             drift._rebuilt_at = (x, y)
             drift._rebuilt_t = seconds
 
