@@ -163,7 +163,13 @@ def main() -> int:
     parse.add_argument("--across", type=float, default=1000.0,
                        help="metres on a side")
     parse.add_argument("--samples", type=int, default=512)
-    parse.add_argument("--into", default=".")
+    # Beside the other fetched squares, not in whatever directory somebody
+    # happened to run this from. The default was "." and it dropped an
+    # eleven megabyte .f32 into the source tree, which is both a second origin
+    # for the same bytes and enough to stop a deploy.
+    parse.add_argument("--into",
+                       default=str(pathlib.Path.home() / "coral-city"
+                                   / "source" / "bathymetry"))
     parse.add_argument("--from", dest="source", default="auto",
                        choices=("auto", "noaa", "gmrt"),
                        help="auto tries NOAA and falls back to the global synthesis")
