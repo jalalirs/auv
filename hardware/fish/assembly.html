@@ -1,0 +1,419 @@
+<title>Fish v1 Assembly</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --ground: #eef3f4; --surface: #ffffff; --ink: #17191b; --muted: #5a6670; --rule: #d3dbde;
+  --accent: #f26a1b; --accent-ink: #ffffff; --water: #7fb3d5; --water-soft: #d7e9f4; --good: #2e7d32; --wait: #b26a00;
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #101416; --surface: #171c1f; --ink: #e8ecee; --muted: #98a4ab; --rule: #2a3236;
+    --accent: #f58a45; --accent-ink: #17191b; --water: #6fa3c8; --water-soft: #1c2e3a; --good: #7bc47f; --wait: #e0a94a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #101416; --surface: #171c1f; --ink: #e8ecee; --muted: #98a4ab; --rule: #2a3236;
+  --accent: #f58a45; --accent-ink: #17191b; --water: #6fa3c8; --water-soft: #1c2e3a; --good: #7bc47f; --wait: #e0a94a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+h1, h2, h3 { font-family: var(--display); font-weight: 600; margin: 0; text-wrap: balance; }
+h1 { font-size: 44px; line-height: 1; }
+h2 { font-size: 24px; line-height: 1.1; }
+.eyebrow { font-family: var(--display); font-weight: 500; text-transform: uppercase; letter-spacing: 0.12em; font-size: 13px; color: var(--accent); }
+header, main { max-width: 1100px; margin: 0 auto; padding: 0 28px; }
+header { padding-top: 30px; padding-bottom: 8px; }
+header p { color: var(--muted); max-width: 66ch; margin: 8px 0 0; }
+figure { margin: 0; }
+figure svg { display: block; width: 100%; height: auto; max-width: 100%; }
+figcaption { font-size: 13px; color: var(--muted); margin-top: 6px; }
+.system { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 18px 20px 14px; margin: 22px 0 30px; }
+.steps { display: grid; gap: 14px; counter-reset: step; }
+.step { display: grid; grid-template-columns: 64px 300px 1fr; gap: 0 22px; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 18px 20px; align-items: start; }
+.step .n { font-family: var(--display); font-weight: 700; font-size: 44px; line-height: 0.9; color: var(--accent); }
+.step .n small { display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-top: 6px; font-family: var(--body); }
+.step h2 { margin-bottom: 4px; }
+.step p { margin: 6px 0; }
+.step .done { border-left: 3px solid var(--good); padding: 6px 12px; background: color-mix(in oklab, var(--good) 8%, var(--surface)); font-size: 14px; margin-top: 10px; }
+.step .done b { font-family: var(--display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 12px; color: var(--good); margin-right: 6px; }
+.parts { font-size: 13px; color: var(--muted); margin-top: 8px; }
+.parts b { color: var(--ink); font-weight: 500; }
+.chip { display: inline-block; font-family: var(--display); font-weight: 600; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 3px; border: 1px solid var(--rule); margin-left: 8px; vertical-align: middle; }
+.chip.ordered { color: var(--good); border-color: var(--good); }
+.chip.print { color: var(--wait); border-color: var(--wait); }
+.chip.cad { color: var(--accent); border-color: var(--accent); }
+.matrix { margin: 34px 0 10px; overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-family: var(--display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 12px; color: var(--muted); }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--rule); margin: 30px 0 40px; padding-top: 12px; }
+@media (max-width: 860px) {
+  .step { grid-template-columns: 48px 1fr; }
+  .step figure { grid-column: 1 / -1; order: 3; margin-top: 10px; }
+  .step .n { font-size: 34px; }
+}
+</style>
+
+<header>
+  <div class="eyebrow">Hardware · fish v1 · build sequence</div>
+  <h1>Fish v1 Assembly</h1>
+  <p>Ten steps from the parts ordered on 19 September to a fish swimming in the tank with the DGX Spark driving it. Each step says what it uses, what you do, and what has to be true before the next one starts. Nothing is skipped: the bench tests come first because a motor that bogs or a Pi that will not stream is cheaper to find on a desk than inside a sealed head.</p>
+</header>
+
+<main>
+  <figure class="system">
+    <svg viewBox="0 0 960 250" role="img" aria-label="The finished system: DGX Spark and a 12 volt supply on the surface, a tether carrying Ethernet and power through the water to the fish's head, where a Raspberry Pi and a motor driver turn the tail motor, whose crank pulls two steel cables that flex the silicone tail.">
+      <defs>
+        <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+        <marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f26a1b"/></marker>
+      </defs>
+      <g fill="none" stroke="currentColor" stroke-width="1.5" font-family="IBM Plex Sans, sans-serif" font-size="12">
+        <!-- surface -->
+        <rect x="20" y="30" width="130" height="56" rx="4"/>
+        <text x="85" y="53" text-anchor="middle" fill="currentColor" stroke="none" font-weight="600">DGX Spark</text>
+        <text x="85" y="71" text-anchor="middle" fill="currentColor" stroke="none" font-size="11">controller, video, ROS 2</text>
+        <rect x="20" y="120" width="130" height="44" rx="4"/>
+        <text x="85" y="147" text-anchor="middle" fill="currentColor" stroke="none" font-weight="600">12 V 5 A supply</text>
+        <text x="30" y="200" fill="currentColor" stroke="none" font-size="11" opacity="0.7">surface</text>
+        <!-- water line -->
+        <path d="M210,20 q10,-6 20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0" stroke="#7fb3d5" stroke-width="2"/>
+        <line x1="210" y1="20" x2="210" y2="235" stroke="#7fb3d5" stroke-dasharray="4 4"/>
+        <text x="216" y="232" fill="#7fb3d5" stroke="none" font-size="11">tank</text>
+        <!-- tether -->
+        <line x1="150" y1="58" x2="330" y2="90" marker-end="url(#a)"/>
+        <line x1="330" y1="98" x2="150" y2="66" marker-end="url(#a)"/>
+        <text x="235" y="62" text-anchor="middle" fill="currentColor" stroke="none" font-size="11">Cat6, 15 m · tail commands down</text>
+        <text x="235" y="112" text-anchor="middle" fill="currentColor" stroke="none" font-size="11">video + IMU up</text>
+        <line x1="150" y1="142" x2="330" y2="128" marker-end="url(#a)"/>
+        <text x="240" y="150" text-anchor="middle" fill="currentColor" stroke="none" font-size="11">2 × 1 mm², 12 V</text>
+        <!-- head -->
+        <path d="M330,70 h190 a40,40 0 0 1 40,40 v10 a40,40 0 0 1 -40,40 h-190 a14,14 0 0 1 -14,-14 v-62 a14,14 0 0 1 14,-14 z"/>
+        <circle cx="325" cy="100" r="5" fill="#f26a1b" stroke="none"/>
+        <text x="340" y="63" fill="currentColor" stroke="none" font-size="11" opacity="0.7">printed head, sealed · gland at the nose</text>
+        <rect x="340" y="82" width="64" height="24" rx="3"/><text x="372" y="98" text-anchor="middle" fill="currentColor" stroke="none" font-size="11">Pi Zero 2 W</text>
+        <rect x="340" y="114" width="64" height="24" rx="3"/><text x="372" y="130" text-anchor="middle" fill="currentColor" stroke="none" font-size="11">buck 12→5</text>
+        <rect x="416" y="82" width="64" height="24" rx="3"/><text x="448" y="98" text-anchor="middle" fill="currentColor" stroke="none" font-size="11">BTS7960</text>
+        <rect x="416" y="114" width="64" height="24" rx="3"/><text x="448" y="130" text-anchor="middle" fill="currentColor" stroke="none" font-size="11">BNO055</text>
+        <rect x="492" y="88" width="52" height="44" rx="3" stroke="#f26a1b"/><text x="518" y="106" text-anchor="middle" fill="currentColor" stroke="none" font-size="11">motor</text><text x="518" y="121" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">500 rpm</text>
+        <line x1="404" y1="94" x2="416" y2="94" marker-end="url(#a)"/>
+        <line x1="480" y1="100" x2="492" y2="100" marker-end="url(#a)"/>
+        <text x="486" y="80" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">PWM</text>
+        <!-- camera -->
+        <circle cx="352" cy="150" r="7"/><text x="366" y="154" fill="currentColor" stroke="none" font-size="11">camera looks forward</text>
+        <!-- crank and cables -->
+        <circle cx="570" cy="110" r="12" stroke="#f26a1b"/>
+        <line x1="544" y1="110" x2="558" y2="110" stroke="#f26a1b"/>
+        <path d="M580,102 C640,80 700,120 760,105" stroke="#f26a1b" stroke-width="1.2"/>
+        <path d="M580,118 C640,140 700,100 760,115" stroke="#f26a1b" stroke-width="1.2"/>
+        <text x="670" y="70" text-anchor="middle" fill="#f26a1b" stroke="none" font-size="11">crank pulls two steel cables</text>
+        <!-- tail -->
+        <path d="M560,74 C660,60 760,80 860,110 C760,140 660,160 560,146" stroke="currentColor" stroke-dasharray="3 3"/>
+        <path d="M860,110 L920,70 L905,110 L920,150 z"/>
+        <line x1="620" y1="72" x2="620" y2="150"/><line x1="680" y1="70" x2="680" y2="152"/><line x1="740" y1="76" x2="740" y2="146"/><line x1="800" y1="88" x2="800" y2="134"/>
+        <text x="710" y="185" text-anchor="middle" fill="currentColor" stroke="none" font-size="11">silicone tail cast over printed ribs · flooded, nothing to seal</text>
+        <path d="M900,40 q-20,10 0,20" stroke="#f26a1b" marker-end="url(#ao)"/>
+        <path d="M900,200 q-20,-10 0,-20" stroke="#f26a1b" marker-end="url(#ao)"/>
+      </g>
+    </svg>
+    <figcaption>What is being built. All thinking happens on the surface. The fish carries a camera, an IMU, one motor and the cables that turn its rotation into a tail beat. The only sealed volume is the head; the tail floods.</figcaption>
+  </figure>
+
+  <div class="steps">
+
+    <section class="step">
+      <div class="n">1<small>desk</small></div>
+      <figure>
+        <svg viewBox="0 0 300 170" role="img" aria-label="Bench test: 12 volt supply into the BTS7960 driver, ESP32 sending PWM, driver output to the gear motor, motor turning both ways.">
+          <defs><marker id="b1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+          <g fill="none" stroke="currentColor" stroke-width="1.5" font-family="IBM Plex Sans, sans-serif" font-size="11">
+            <rect x="10" y="20" width="70" height="34" rx="3"/><text x="45" y="41" text-anchor="middle" fill="currentColor" stroke="none">12 V 5 A</text>
+            <rect x="115" y="20" width="76" height="34" rx="3"/><text x="153" y="41" text-anchor="middle" fill="currentColor" stroke="none">BTS7960</text>
+            <line x1="80" y1="37" x2="115" y2="37" marker-end="url(#b1)"/>
+            <rect x="115" y="110" width="76" height="34" rx="3"/><text x="153" y="131" text-anchor="middle" fill="currentColor" stroke="none">ESP32</text>
+            <line x1="153" y1="110" x2="153" y2="54" marker-end="url(#b1)"/><text x="160" y="86" fill="currentColor" stroke="none" font-size="10">2 × PWM</text>
+            <circle cx="245" cy="37" r="22" stroke="#f26a1b"/><text x="245" y="41" text-anchor="middle" fill="currentColor" stroke="none">motor</text>
+            <line x1="191" y1="37" x2="223" y2="37" marker-end="url(#b1)"/>
+            <path d="M275,25 a20,20 0 0 1 0,24" stroke="#f26a1b" marker-end="url(#b1)"/>
+            <path d="M215,49 a20,20 0 0 1 0,-24" stroke="#f26a1b" marker-end="url(#b1)"/>
+            <text x="245" y="80" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">both directions, under load</text>
+            <rect x="10" y="110" width="70" height="34" rx="3" stroke-dasharray="3 3"/><text x="45" y="131" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">scale under</text>
+            <text x="45" y="158" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">a lever arm</text>
+          </g>
+        </svg>
+      </figure>
+      <div>
+        <h2>Bench the drivetrain <span class="chip ordered">parts ordered</span></h2>
+        <p>Wire the 12 V supply to the BTS7960, the driver to the motor, and the ESP32 you already own to the driver's two PWM pins. Run the motor forward and reverse from a ten-line sketch. Then clamp a 30 mm lever on the shaft, press it on the scale, and read the stall torque.</p>
+        <div class="parts"><b>Uses</b> motor · BTS7960 · 12 V supply · ESP32 · breadboard kit · scale</div>
+        <div class="done"><b>Done when</b> the motor reverses cleanly and holds at least 0.8 kg·cm at 12 V. Below that, order the 37 mm 300 rpm motor before printing anything.</div>
+      </div>
+    </section>
+
+    <section class="step">
+      <div class="n">2<small>desk</small></div>
+      <figure>
+        <svg viewBox="0 0 300 170" role="img" aria-label="Pi bring-up: camera on the 22-pin ribbon, BNO055 on I2C, micro-USB Ethernet adapter to Cat6 to the laptop, buck converter feeding 5 volts.">
+          <defs><marker id="b2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+          <g fill="none" stroke="currentColor" stroke-width="1.5" font-family="IBM Plex Sans, sans-serif" font-size="11">
+            <rect x="105" y="60" width="90" height="46" rx="3" stroke="#f26a1b"/><text x="150" y="80" text-anchor="middle" fill="currentColor" stroke="none">Pi Zero 2 W</text><text x="150" y="96" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">Pi OS Lite</text>
+            <circle cx="40" cy="40" r="14"/><text x="40" y="20" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">camera</text>
+            <line x1="54" y1="46" x2="105" y2="70" marker-end="url(#b2)"/><text x="66" y="50" fill="currentColor" stroke="none" font-size="9">22-pin</text>
+            <rect x="15" y="110" width="50" height="26" rx="3"/><text x="40" y="127" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">BNO055</text>
+            <line x1="65" y1="118" x2="105" y2="98" marker-end="url(#b2)"/><text x="72" y="118" fill="currentColor" stroke="none" font-size="9">I²C</text>
+            <rect x="225" y="20" width="60" height="26" rx="3"/><text x="255" y="37" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">laptop</text>
+            <line x1="195" y1="72" x2="225" y2="40" marker-end="url(#b2)"/><text x="218" y="62" fill="currentColor" stroke="none" font-size="9">USB→RJ45, Cat6</text>
+            <rect x="225" y="110" width="60" height="26" rx="3"/><text x="255" y="127" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">buck 5 V</text>
+            <line x1="225" y1="118" x2="195" y2="98" marker-end="url(#b2)"/>
+            <text x="150" y="150" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">video 1080p30 + orientation at 100 Hz over one cable</text>
+          </g>
+        </svg>
+      </figure>
+      <div>
+        <h2>Bring the Pi up on the desk <span class="chip ordered">parts ordered</span></h2>
+        <p>Flash Pi OS Lite, plug the camera in with the 22-pin ribbon, the BNO055 on I²C, the Ethernet adapter into the micro-USB port, and power it from the buck set to 5.1 V. Stream the camera to your laptop over the 15 m Cat6 and print the IMU's heading beside it. This is also where the ROS 2 nodes for the fish get written, before there is a fish.</p>
+        <div class="parts"><b>Uses</b> Pi Zero 2 W · camera · 22-pin cable · Ethernet adapter · BNO055 · buck · Cat6 · 12 V supply</div>
+        <div class="done"><b>Done when</b> the laptop shows live video and heading over the full tether length, and the Pi drives the BTS7960 from a ROS 2 topic.</div>
+      </div>
+    </section>
+
+    <section class="step">
+      <div class="n">3<small>cad</small></div>
+      <figure>
+        <svg viewBox="0 0 300 170" role="img" aria-label="The head redrawn around the 25 millimetre motor: two printed half shells, a motor mount, a camera window at the nose, a gland boss, and a gasket groove on the parting line.">
+          <g fill="none" stroke="currentColor" stroke-width="1.5" font-family="IBM Plex Sans, sans-serif" font-size="11">
+            <path d="M40,60 h150 a30,30 0 0 1 30,30 v0 h-180 a10,10 0 0 1 -10,-10 v-10 a10,10 0 0 1 10,-10 z"/>
+            <path d="M40,110 h150 a30,30 0 0 0 30,-30 v0 h-180 a10,10 0 0 0 -10,10 v10 a10,10 0 0 0 10,10 z" transform="translate(0,14)"/>
+            <line x1="30" y1="90" x2="220" y2="90" stroke="#f26a1b" stroke-dasharray="4 3"/><text x="226" y="94" fill="#f26a1b" stroke="none" font-size="10">gasket groove</text>
+            <circle cx="150" cy="75" r="13" stroke="#f26a1b"/><text x="150" y="50" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">Ø25 motor mount</text>
+            <circle cx="45" cy="136" r="8"/><text x="45" y="160" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">window</text>
+            <rect x="24" y="68" width="10" height="14" rx="2" stroke="#f26a1b"/><text x="14" y="60" fill="currentColor" stroke="none" font-size="10">PG7 boss</text>
+            <line x1="200" y1="124" x2="240" y2="124"/><line x1="200" y1="132" x2="240" y2="132"/><text x="244" y="131" fill="currentColor" stroke="none" font-size="10">cable exits</text>
+          </g>
+        </svg>
+      </figure>
+      <div>
+        <h2>Redraw the head, print at Sketchat <span class="chip cad">my work</span></h2>
+        <p>OpenFish's head is built around a Pololu motor and a right-angle gearbox we cannot buy here. It gets redrawn in build123d around the 25GA-370: the crank sits directly on its shaft, the camera looks out of a flat acrylic window in the nose, the tether enters through a PG7 boss beside it, and the two halves meet on a gasket groove. The tail ribs and the tail mould come from OpenFish unchanged. Everything goes to Sketchat in PETG.</p>
+        <div class="parts"><b>Prints</b> head top · head bottom · crank · 6 tail ribs · 2 mould halves · gasket tray</div>
+        <div class="done"><b>Done when</b> the motor, Pi, driver, buck and IMU all fit inside the printed head with the lid on, dry, and the halves close flat on the groove.</div>
+      </div>
+    </section>
+
+    <section class="step">
+      <div class="n">4<small>hands</small></div>
+      <figure>
+        <svg viewBox="0 0 300 170" role="img" aria-label="Casting the tail: printed ribs and two steel cables held in a two-part mould, silicone poured in from the top, cured and demoulded.">
+          <defs><marker id="b4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#f26a1b"/></marker></defs>
+          <g fill="none" stroke="currentColor" stroke-width="1.5" font-family="IBM Plex Sans, sans-serif" font-size="11">
+            <path d="M30,60 C90,45 170,55 250,80 C170,105 90,115 30,100 z"/>
+            <path d="M30,60 C90,45 170,55 250,80" transform="translate(0,-14)" stroke-dasharray="3 3"/>
+            <text x="140" y="30" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">printed mould, two halves</text>
+            <line x1="70" y1="52" x2="70" y2="108"/><line x1="110" y1="50" x2="110" y2="110"/><line x1="150" y1="52" x2="150" y2="108"/><line x1="190" y1="58" x2="190" y2="102"/><line x1="225" y1="68" x2="225" y2="92"/>
+            <line x1="40" y1="72" x2="245" y2="78" stroke="#f26a1b" stroke-width="1"/><line x1="40" y1="88" x2="245" y2="82" stroke="#f26a1b" stroke-width="1"/>
+            <text x="150" y="132" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">ribs on two 0.5 mm steel cables</text>
+            <path d="M140,10 v20" stroke="#f26a1b" marker-end="url(#b4)"/><text x="150" y="16" fill="#f26a1b" stroke="none" font-size="10">pour A+B, 1:1</text>
+            <text x="150" y="155" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">cure 4 h · demould · trim the flash</text>
+          </g>
+        </svg>
+      </figure>
+      <div>
+        <h2>Cast the tail <span class="chip ordered">silicone ordered</span></h2>
+        <p>Thread the six ribs onto the two steel cables at OpenFish's spacings, lay them in the mould, close it, and pour the silicone mixed 1:1 through the top. Tap the mould to shed bubbles. Four hours later, open it. Pour the leftover into the flat tray: that sheet is the head gasket.</p>
+        <div class="parts"><b>Uses</b> BBDINO silicone · steel wire · printed ribs and mould</div>
+        <div class="done"><b>Done when</b> the tail bends smoothly to 45° either side with a finger on the cable and springs back, and there are no voids at the rib edges.</div>
+      </div>
+    </section>
+
+    <section class="step">
+      <div class="n">5<small>hands</small></div>
+      <figure>
+        <svg viewBox="0 0 300 170" role="img" aria-label="Drivetrain: the motor shaft turns a crank disc; two cables leave the disc at opposite points, run through guides in the head, and pull alternately on the tail's last rib, turning rotation into a tail beat.">
+          <defs><marker id="b5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#f26a1b"/></marker></defs>
+          <g fill="none" stroke="currentColor" stroke-width="1.5" font-family="IBM Plex Sans, sans-serif" font-size="11">
+            <rect x="20" y="65" width="50" height="40" rx="3"/><text x="45" y="89" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">motor</text>
+            <circle cx="105" cy="85" r="18" stroke="#f26a1b"/><line x1="70" y1="85" x2="87" y2="85"/>
+            <circle cx="105" cy="70" r="2.5" fill="#f26a1b" stroke="none"/><circle cx="105" cy="100" r="2.5" fill="#f26a1b" stroke="none"/>
+            <path d="M128,72 a22,22 0 0 1 0,26" stroke="#f26a1b" marker-end="url(#b5)"/>
+            <text x="105" y="50" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">crank on the D-shaft</text>
+            <path d="M105,70 C160,60 200,60 250,72" stroke="#f26a1b" stroke-width="1.2"/>
+            <path d="M105,100 C160,110 200,110 250,98" stroke="#f26a1b" stroke-width="1.2"/>
+            <rect x="150" y="62" width="6" height="12" rx="1"/><rect x="150" y="96" width="6" height="12" rx="1"/><text x="153" y="130" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">guides</text>
+            <line x1="250" y1="55" x2="250" y2="115" stroke-width="3"/><text x="250" y="135" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">first tail rib</text>
+            <path d="M262,60 q14,25 0,50" stroke="#f26a1b" stroke-dasharray="3 2"/>
+            <text x="150" y="158" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">one turn of the crank = one tail beat</text>
+          </g>
+        </svg>
+      </figure>
+      <div>
+        <h2>Fit the drivetrain <span class="chip print">after printing</span></h2>
+        <p>Motor into its mount, crank pressed onto the D-shaft, the tail's two cables through the guides and clamped to the crank at opposite points. Turn the crank by hand: the tail should swing fully left and fully right once per revolution. Adjust cable length until both sides reach the same angle. Then run step 1's sketch and watch it beat at 8 Hz in air.</p>
+        <div class="parts"><b>Uses</b> motor · printed crank and guides · the cast tail</div>
+        <div class="done"><b>Done when</b> the tail beats symmetrically at full speed in air for five minutes without a cable slipping or the motor warming past hand-hot.</div>
+      </div>
+    </section>
+
+    <section class="step">
+      <div class="n">6<small>hands</small></div>
+      <figure>
+        <svg viewBox="0 0 300 170" role="img" aria-label="Electronics placed in the lower head half: camera at the nose window, Pi and buck in the middle, BTS7960 and IMU beside the motor, tether through the PG7 gland at the nose.">
+          <g fill="none" stroke="currentColor" stroke-width="1.5" font-family="IBM Plex Sans, sans-serif" font-size="11">
+            <path d="M30,50 h180 a40,40 0 0 1 40,40 v10 h-220 a10,10 0 0 1 -10,-10 v-30 a10,10 0 0 1 10,-10 z"/>
+            <circle cx="42" cy="78" r="7"/><text x="42" y="120" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">camera</text>
+            <rect x="60" y="62" width="46" height="18" rx="2"/><text x="83" y="75" text-anchor="middle" fill="currentColor" stroke="none" font-size="9">Pi</text>
+            <rect x="60" y="84" width="46" height="12" rx="2"/><text x="83" y="93" text-anchor="middle" fill="currentColor" stroke="none" font-size="8">buck</text>
+            <rect x="116" y="62" width="40" height="18" rx="2"/><text x="136" y="75" text-anchor="middle" fill="currentColor" stroke="none" font-size="9">BTS7960</text>
+            <rect x="116" y="84" width="40" height="12" rx="2"/><text x="136" y="93" text-anchor="middle" fill="currentColor" stroke="none" font-size="8">BNO055</text>
+            <rect x="166" y="60" width="36" height="36" rx="3" stroke="#f26a1b"/><text x="184" y="82" text-anchor="middle" fill="currentColor" stroke="none" font-size="9">motor</text>
+            <rect x="18" y="56" width="10" height="14" rx="2" stroke="#f26a1b"/><line x1="0" y1="63" x2="18" y2="63" stroke="#f26a1b"/><text x="14" y="46" fill="#f26a1b" stroke="none" font-size="10">tether in through PG7</text>
+            <text x="150" y="140" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">IMU flat, x forward · battery-free, so nothing here can catch fire</text>
+            <text x="150" y="158" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">leak probes on the floor, wired to a Pi GPIO</text>
+          </g>
+        </svg>
+      </figure>
+      <div>
+        <h2>Install the electronics <span class="chip print">after printing</span></h2>
+        <p>Camera against the nose window, Pi and buck amidships, driver and IMU beside the motor, IMU flat with its x axis forward. The tether comes in through the PG7 gland: the Cat6 and the two power cores both pass through it, with a bead of silicone around the bundle. Two bare wires on the floor of the head go to a GPIO pin; water across them is the leak alarm.</p>
+        <div class="parts"><b>Uses</b> everything from step 2 · PG7 gland · the head</div>
+        <div class="done"><b>Done when</b> with the lid off, video, IMU and tail all work over the tether, and the leak pin reads dry.</div>
+      </div>
+    </section>
+
+    <section class="step">
+      <div class="n">7<small>bucket</small></div>
+      <figure>
+        <svg viewBox="0 0 300 170" role="img" aria-label="Leak test: the sealed head, with a paper tissue inside and no power, held under water in a bucket for one hour.">
+          <g fill="none" stroke="currentColor" stroke-width="1.5" font-family="IBM Plex Sans, sans-serif" font-size="11">
+            <path d="M50,40 v100 a10,10 0 0 0 10,10 h180 a10,10 0 0 0 10,-10 v-100"/>
+            <path d="M50,60 q10,-5 20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0" stroke="#7fb3d5" stroke-width="2"/>
+            <rect x="50" y="62" width="200" height="88" fill="#7fb3d5" opacity="0.15" stroke="none"/>
+            <path d="M100,95 h80 a20,20 0 0 1 20,20 v0 h-100 a8,8 0 0 1 -8,-8 v-4 a8,8 0 0 1 8,-8 z"/>
+            <path d="M100,115 h100 v6 h-100 a8,8 0 0 1 -8,-8 z" transform="translate(0,-2)"/>
+            <line x1="92" y1="113" x2="200" y2="113" stroke="#f26a1b"/><text x="206" y="117" fill="#f26a1b" stroke="none" font-size="10">gasket + 8 screws</text>
+            <rect x="130" y="100" width="30" height="8" rx="1" stroke-dasharray="2 2"/><text x="145" y="135" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">tissue inside</text>
+            <circle cx="255" cy="30" r="14"/><line x1="255" y1="30" x2="255" y2="20"/><line x1="255" y1="30" x2="263" y2="30"/><text x="255" y="18" text-anchor="middle" fill="currentColor" stroke="none" font-size="9" dy="-6">60 min</text>
+            <text x="150" y="165" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">tether unplugged at the surface end, gland still sealed</text>
+          </g>
+        </svg>
+      </figure>
+      <div>
+        <h2>Seal and leak-test the head <span class="chip print">after printing</span></h2>
+        <p>Gasket on the groove, lid on, eight M3 screws tightened in a star pattern. A folded paper tissue sits inside against the floor. Sink the head in a bucket with the tether's surface end unplugged and leave it an hour. Open it. Do this before the first swim, and again after any time the head is opened.</p>
+        <div class="parts"><b>Uses</b> gasket sheet from step 4 · M3 screws · a bucket</div>
+        <div class="done"><b>Done when</b> the tissue is dry after an hour at the bottom of the bucket. A damp corner means the gasket or the gland, and the fish does not swim until it is dry.</div>
+      </div>
+    </section>
+
+    <section class="step">
+      <div class="n">8<small>bucket</small></div>
+      <figure>
+        <svg viewBox="0 0 300 170" role="img" aria-label="Trimming: the whole fish in the bucket, adhesive weights stuck to the underside of the head until it floats level and barely positive.">
+          <defs><marker id="b8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#f26a1b"/></marker></defs>
+          <g fill="none" stroke="currentColor" stroke-width="1.5" font-family="IBM Plex Sans, sans-serif" font-size="11">
+            <path d="M30,40 v100 a10,10 0 0 0 10,10 h220 a10,10 0 0 0 10,-10 v-100"/>
+            <path d="M30,70 q10,-5 20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0 t20,0" stroke="#7fb3d5" stroke-width="2"/>
+            <rect x="30" y="72" width="240" height="78" fill="#7fb3d5" opacity="0.15" stroke="none"/>
+            <path d="M70,85 h70 a24,24 0 0 1 24,24 v0 h-94 a10,10 0 0 1 -10,-10 v-4 a10,10 0 0 1 10,-10 z"/>
+            <path d="M164,97 C200,90 230,95 262,105 C230,115 200,120 164,109 z" stroke-dasharray="3 3"/>
+            <rect x="80" y="110" width="14" height="5" fill="#f26a1b" stroke="none"/><rect x="98" y="110" width="14" height="5" fill="#f26a1b" stroke="none"/><rect x="116" y="110" width="14" height="5" fill="#f26a1b" stroke="none"/>
+            <text x="105" y="132" text-anchor="middle" fill="#f26a1b" stroke="none" font-size="10">5 g strips, low and centred</text>
+            <path d="M120,60 v-16" stroke="#f26a1b" marker-end="url(#b8)"/><text x="128" y="50" fill="currentColor" stroke="none" font-size="10">rises slowly when still</text>
+            <text x="150" y="165" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">level: nose and tail at the same depth</text>
+          </g>
+        </svg>
+      </figure>
+      <div>
+        <h2>Trim it <span class="chip ordered">weights ordered</span></h2>
+        <p>Whole fish in the bucket, powered off. It will float high, head up, because the sealed head is the only air in it. Stick 5 g strips under the head until the fish hangs level just under the surface and rises at about a centimetre a second when you let go. Weigh it on the scale before and after; the difference is what the simulator's model will need.</p>
+        <div class="parts"><b>Uses</b> adhesive weights · scale · a bucket</div>
+        <div class="done"><b>Done when</b> it floats level, barely positive, and stays that way for ten minutes. A fish that sinks when the power fails is a fish you have to go and get.</div>
+      </div>
+    </section>
+
+    <section class="step">
+      <div class="n">9<small>tank</small></div>
+      <figure>
+        <svg viewBox="0 0 300 170" role="img" aria-label="First swim: the fish in the 100 by 50 centimetre tank, tether to the DGX Spark, an overhead camera watching from above and recording the track.">
+          <defs><marker id="b9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+          <g fill="none" stroke="currentColor" stroke-width="1.5" font-family="IBM Plex Sans, sans-serif" font-size="11">
+            <rect x="60" y="70" width="200" height="80" rx="2"/><rect x="60" y="70" width="200" height="80" fill="#7fb3d5" opacity="0.15" stroke="none"/>
+            <text x="160" y="164" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">100 × 50 cm, seen from above</text>
+            <rect x="150" y="14" width="20" height="14" rx="2"/><path d="M150,28 L110,68 M170,28 L210,68" stroke-dasharray="3 3"/><text x="160" y="10" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">overhead camera = ground truth</text>
+            <path d="M90,110 C130,95 170,125 215,108" stroke="#f26a1b" stroke-dasharray="4 3" marker-end="url(#b9)"/>
+            <path d="M78,104 h12 a8,8 0 0 1 8,8 v0 h-20 z"/>
+            <line x1="78" y1="106" x2="20" y2="50"/><rect x="6" y="30" width="34" height="20" rx="2"/><text x="23" y="44" text-anchor="middle" fill="currentColor" stroke="none" font-size="9">DGX</text>
+            <text x="160" y="140" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">tail sinusoid: 1 Hz, then 3, then 6</text>
+          </g>
+        </svg>
+      </figure>
+      <div>
+        <h2>First swim, on the tether <span class="chip cad">controller is code</span></h2>
+        <p>Tank filled, tether to the DGX, a phone or webcam clamped above the tank looking straight down. The first controller is a sine wave: tail amplitude and frequency as ROS 2 parameters, start at 1 Hz, go up in steps. The overhead camera records the track. From it you get speed per frequency, the turn radius when the wave is offset to one side, and whether the fish rolls.</p>
+        <div class="parts"><b>Uses</b> the fish · tether · DGX Spark · overhead camera · the tank</div>
+        <div class="done"><b>Done when</b> the fish crosses the tank on its own, the track is recorded, and a plot of speed against tail frequency exists.</div>
+      </div>
+    </section>
+
+    <section class="step">
+      <div class="n">10<small>record</small></div>
+      <figure>
+        <svg viewBox="0 0 300 170" role="img" aria-label="Measuring the fish for the simulator: mass on the scale, volume by water displacement, thrust with the tail pushing against the scale, and a drop test for drag, producing a dynamics file.">
+          <defs><marker id="b10" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+          <g fill="none" stroke="currentColor" stroke-width="1.5" font-family="IBM Plex Sans, sans-serif" font-size="11">
+            <rect x="14" y="30" width="60" height="30" rx="3"/><text x="44" y="49" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">mass, g</text>
+            <rect x="14" y="70" width="60" height="30" rx="3"/><text x="44" y="89" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">volume, cm³</text>
+            <rect x="14" y="110" width="60" height="30" rx="3"/><text x="44" y="129" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">thrust, N</text>
+            <rect x="94" y="30" width="60" height="30" rx="3"/><text x="124" y="49" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">CG, CB</text>
+            <rect x="94" y="70" width="60" height="30" rx="3"/><text x="124" y="89" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">drag, drop test</text>
+            <rect x="94" y="110" width="60" height="30" rx="3"/><text x="124" y="129" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">speed vs Hz</text>
+            <line x1="154" y1="85" x2="196" y2="85" marker-end="url(#b10)"/><line x1="74" y1="85" x2="94" y2="85"/>
+            <rect x="196" y="55" width="90" height="60" rx="3" stroke="#f26a1b"/>
+            <text x="241" y="80" text-anchor="middle" fill="currentColor" stroke="none" font-family="IBM Plex Mono, monospace" font-size="10">dynamics.json</text>
+            <text x="241" y="98" text-anchor="middle" fill="currentColor" stroke="none" font-size="9">catalog/vehicles/fish/</text>
+            <text x="150" y="162" text-anchor="middle" fill="currentColor" stroke="none" font-size="10">measured, not looked up: the first vehicle in the catalogue that is</text>
+          </g>
+        </svg>
+      </figure>
+      <div>
+        <h2>Measure it for the simulator <span class="chip cad">my work</span></h2>
+        <p>Mass on the scale. Volume by lowering it into a full jug and weighing what spills. Thrust by tethering the nose to the scale through a pulley and running the tail. Drag from how fast it sinks with a known weight added. Centre of gravity from where it balances on a pencil. These six numbers become the fish's entry in the vehicle catalogue, and the other session gets a vehicle whose coefficients somebody actually measured.</p>
+        <div class="parts"><b>Uses</b> scale · a jug · a pulley · the step 9 plots</div>
+        <div class="done"><b>Done when</b> the simulator's fish, given the same tail command, crosses the virtual tank in the same time as the real one did, within a fifth.</div>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="matrix">
+    <h2>Where each part is used</h2>
+    <table>
+      <thead><tr><th>Ordered 19 Sep</th><th>SAR</th><th>First used at step</th></tr></thead>
+      <tbody>
+        <tr><td>25GA-370 gearmotor, 12 V 500 rpm</td><td class="num">65</td><td class="num">1</td></tr>
+        <tr><td>HiLetgo BTS7960 driver</td><td class="num">33</td><td class="num">1</td></tr>
+        <tr><td>inShareplus 12 V 5 A supply</td><td class="num">97</td><td class="num">1</td></tr>
+        <tr><td>Ultrean scale, 3 kg / 0.1 g</td><td class="num">79</td><td class="num">1</td></tr>
+        <tr><td>Raspberry Pi Zero 2 W</td><td class="num">468</td><td class="num">2</td></tr>
+        <tr><td>Camera Module 3 Wide</td><td class="num">276</td><td class="num">2</td></tr>
+        <tr><td>GeeekPi 22-pin camera cable</td><td class="num">53</td><td class="num">2</td></tr>
+        <tr><td>Micro-USB Ethernet adapter</td><td class="num">21</td><td class="num">2</td></tr>
+        <tr><td>Adafruit BNO055</td><td class="num">220</td><td class="num">2</td></tr>
+        <tr><td>LM2596 buck converter</td><td class="num">23</td><td class="num">2</td></tr>
+        <tr><td>Round outdoor Cat6, 15 m</td><td class="num">79</td><td class="num">2</td></tr>
+        <tr><td>BBDINO silicone, 600 g</td><td class="num">116</td><td class="num">4</td></tr>
+        <tr><td>Joyzzz 0.5 mm steel wire, 100 m</td><td class="num">44</td><td class="num">4</td></tr>
+        <tr><td>PG7 cable glands, 15</td><td class="num">13</td><td class="num">6</td></tr>
+        <tr><td>Adhesive wheel weights, 60 g</td><td class="num">94</td><td class="num">8</td></tr>
+        <tr><td>Already owned: ESP32, breadboard kit, DGX Spark</td><td class="num">0</td><td class="num">1, 9</td></tr>
+        <tr><td>Still to buy: 2 × 1 mm² power flex 15 m, M3 screws, acrylic window disc, silicone sealant (SACO); PETG prints (Sketchat)</td><td class="num">~330</td><td class="num">3, 6</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>Sequence follows the OpenFish build (TU Delft, CC BY 4.0) with the head redrawn for parts sold in Saudi Arabia and the electronics moved to the surface. Steps 1 and 2 run in parallel as parts arrive; 3 starts now; 4 waits for the prints; 5 to 10 are in order. Sources in the repository under <code>hardware/fish/</code>.</footer>
+</main>
