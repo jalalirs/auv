@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""What a place's seabed claims, against depths somebody measured.
+
+    tools/check-depths al-fahal
+
+Al Fahal's bathymetry is derived from Sentinel-2: shape read off how much
+light comes back from the bottom. That is a reasonable way to get a seabed
+where nobody has flown a survey, and it has never been checked against a depth
+anybody measured — so the error on it has been unknown rather than small.
+
+tools/icesat fetches what ICESat-2 measured over the same water. This puts the
+two side by side and says how far apart they are, which is a number this
+platform has never had for any of its unsurveyed places.
+
+A bias is worth more than a scatter here. Satellite-derived bathymetry is
+fitted against an assumed water column, and when that assumption is off the
+whole seabed moves up or down together — which is invisible in a render and
+obvious in a histogram.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(description="a seabed against measured depths")
+    parse.add_argument("place")
+    parse.add_argument("--places",
+                       default=str(pathlib.Path.home() / "coral-city" / "places"))
+    parse.add_argument("--reference",
+                       default=str(pathlib.Path.home() / "coral-city" / "reference"))
+    parse.add_argument("--record", action="store_true",
+                       help="write the answer into the place's site.json")
+    asked = parse.parse_args()
+
+    import numpy as np
+
+    place = pathlib.Path(asked.places) / asked.place
+    ref = pathlib.Path(asked.reference) / asked.place
+    site = json.loads((place / "site.json").read_text())
+    measured = ref / "icesat_depths.npy"
+    if not measured.is_file():
+        raise SystemExit(f"no measured depths at {measured}; run tools/icesat")
+
+    field = site["mesh"]["heightfield"]
+    claims = np.fromfile(place / field["file"], dtype="<f4").reshape(
+        field["rows"], field["columns"])
+    across = float(site["from"]["acrossMetres"])
+
+    points = np.load(measured)
+    x, y, height, error = points[:, 0], points[:, 1], points[:, 2], points[:, 3]
+
+    # Only what is inside the site, and only what is in the water. A photon on
+    # the beach is not a check on a seabed.
+    edge = across / 2
+    keep = (np.abs(x) < edge) & (np.abs(y) < edge) & (height < -0.5)
+    x, y, height, error = x[keep], y[keep], height[keep], error[keep]
+    if not len(x):
+        raise SystemExit("no measured depth falls inside this site")
+
+    rows, columns = claims.shape
+    u = np.clip((x / across + 0.5) * (columns - 1), 0, columns - 1.001)
+    v = np.clip((y / across + 0.5) * (rows - 1), 0, rows - 1.001)
+    i, j = u.astype(int), v.astype(int)
+    fu, fv = u - i, v - j
+    said = ((claims[j, i] * (1 - fu) + claims[j, i + 1] * fu) * (1 - fv)
+            + (claims[j + 1, i] * (1 - fu) + claims[j + 1, i + 1] * fu) * fv)
+
+    off = said - height          # positive: the place says shallower than it is
+    bias = float(np.median(off))
+    spread = float(np.median(np.abs(off - bias)) * 1.4826)   # robust sigma
+    rms = float(np.sqrt(np.mean(off ** 2)))
+
+    print(f"{asked.place}: {len(x):,} measured depths inside the site, "
+          f"{-height.max():.1f} to {-height.min():.1f} m")
+    print(f"  the seabed says shallower by a median {bias:+.2f} m")
+    print(f"  spread {spread:.2f} m, rms {rms:.2f} m")
+    if np.isfinite(error).any():
+        print(f"  ICESat-2's own uncertainty: median "
+              f"{float(np.nanmedian(error)):.2f} m")
+    for low, high in ((0, 5), (5, 10), (10, 15), (15, 25)):
+        band = (-height >= low) & (-height < high)
+        if band.sum() > 30:
+            print(f"    {low:2d}-{high:2d} m: {band.sum():6,d} points, "
+                  f"median {float(np.median(off[band])):+.2f} m")
+
+    if asked.record:
+        site.setdefault("from", {})["checkedAgainst"] = {
+            "source": "ICESat-2 ATL24 v002 seafloor photons",
+            "points": int(len(x)),
+            "medianOffsetM": round(bias, 2),
+            "spreadM": round(spread, 2),
+            "rmsM": round(rms, 2),
+            "note": ("positive means this seabed says shallower than the "
+                     "laser measured. Depths along tracks, not a grid."),
+        }
+        (place / "site.json").write_text(json.dumps(site, indent=1))
+        print(f"\n  recorded in {place / 'site.json'}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
