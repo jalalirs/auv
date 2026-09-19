@@ -839,11 +839,29 @@ def _wave_mesh(surface, water_level: float, seconds: float = 0.0,
     steps = _across(across)
     n = len(steps) - 1
 
+    # Waves only where the cells are fine enough to carry them.
+    #
+    # The mesh grows geometrically outwards, so the far cells are hundreds of
+    # metres across. Sampling a two-metre wave at one point per two hundred
+    # metres does not make a coarse wave, it makes noise: the normals of those
+    # cells point wherever the sampling happened to land, and since the surface
+    # is glass seen at a grazing angle, that noise is what fills the top third
+    # of every frame. It read as a smeared repeating reflection and it was the
+    # ugliest thing left in the picture.
+    #
+    # So the amplitude falls to nothing over the last of the fine region, and
+    # beyond that the sea is flat — which is also what a sea a kilometre away
+    # looks like from half a metre under it.
+    fine = SURFACE_ACROSS / 2.0
     points, counts, indices = [], [], []
     for j in range(n + 1):
         for i in range(n + 1):
             x, y = cx + steps[i], cy + steps[j]
-            points.append(Gf.Vec3f(x, y, water_level + surface_height(x, y, seconds)))
+            out = max(abs(steps[i]), abs(steps[j]))
+            carries = 1.0 if out <= fine else max(0.0, 1.0 - (out - fine) / fine)
+            lift = (water_level + carries * surface_height(x, y, seconds)
+                    if carries > 0.0 else water_level)
+            points.append(Gf.Vec3f(x, y, lift))
     for j in range(n):
         for i in range(n):
             a = j * (n + 1) + i
