@@ -274,8 +274,21 @@ export material coral_ground(
     // is a number this file can simply be told. It costs nothing, it uses only
     // the lookup that already works, and it cannot be a constant because the
     // colour map is not a constant.
-    float3 here_is = float3((wide.position.x - 0.5) * site_across,
-                            (wide.position.y - 0.5) * site_across,
+    // `state::texture_coordinate(0)`, not `wide.position`.
+    //
+    // `wide` comes from `base::coordinate_source`, and passing it to
+    // `base::file_texture` works — the colour map lands correctly, which is
+    // what justified this whole route. Reading `.position` arithmetically
+    // does not: it is a **constant**. Painting it proved it, red and green
+    // flat to three decimals across the entire seabed.
+    //
+    // That one fact is behind every dead end of 19 September. `here_is` was a
+    // fixed point, so `swum` was a constant, so no camera position by any
+    // delivery mechanism could ever have changed a pixel — and eight of them
+    // were tried and each blamed for the silence in turn.
+    float3 seen_at = state::texture_coordinate(0);
+    float3 here_is = float3((seen_at.x - 0.5) * site_across,
+                            (seen_at.y - 0.5) * site_across,
                             floor_at_m);
     // The camera's own position, from a place the compiler cannot bake away.
     //
@@ -407,8 +420,7 @@ export material coral_ground(
     // So: paint the coordinate. A smooth red-green ramp across the seabed
     // means it arrives. One flat colour means it does not.
     color albedo = show_distance > 0.0
-        ? color(math::saturate(wide.position.x),
-                math::saturate(wide.position.y), 0.0)
+        ? color(math::saturate(seen_at.x), math::saturate(seen_at.y), 0.0)
         : math::saturate(low * lift * variation * survives + water);
 
     float3 bumped = math::normalize(math::lerp(
