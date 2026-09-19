@@ -29,6 +29,9 @@ import pathlib
 import shutil
 import sys
 
+# Next to this script, which is where python looks first.
+import built
+
 # What a degree is worth, in metres, at a given latitude. Good to a fraction of
 # a percent over a site of a few kilometres, which is the size of thing this
 # makes; a projection would be more correct and would also mean a dependency and
@@ -881,6 +884,7 @@ def main() -> int:
         # same in a frame and are not the same claim.
         **({"ground": ground_said} if ground is not None else {}),
     }
+    built.record_call(site, "make-site")
     (where / "site.json").write_text(json.dumps(site, indent=2) + "\n")
 
     print(f"  {asked.name}"

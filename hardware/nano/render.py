@@ -17,7 +17,8 @@ import numpy as np
 import trimesh
 from PIL import Image
 
-OUT = pathlib.Path(__file__).resolve().parents[1] / "out"
+import os
+OUT = pathlib.Path(os.environ.get("RENDER_OUT", pathlib.Path(__file__).resolve().parents[1] / "out"))
 
 # elevation, azimuth (degrees), from where the camera looks at the origin.
 VIEWS = {
@@ -112,6 +113,8 @@ def load(view: str):
         mesh = trimesh.load(path, force="mesh")
         if view == "open" and name == "cover":
             mesh.apply_translation((0, 0, 90))
+        if view == "open" and name == "shell":
+            mesh.apply_translation((0, 0, 110))
         rgb = hexrgb(parts[name]["colour"])
         meshes.append((mesh, (*rgb, parts[name].get("alpha", 1.0))))
     return meshes

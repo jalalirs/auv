@@ -95,6 +95,25 @@ one_place() {
     docker pull -q "${image}" >/dev/null 2>&1 \
         || { echo "  the registry has no ${image}" >&2; return 1; }
 
+    # And whether what came down contains the runtime in this checkout.
+    #
+    # The place is mounted, so a material or a mesh edited here is in the next
+    # frame. Everything else — the cameras, the metering, the water, the life
+    # — is baked into the image, and until now nothing said when it had fallen
+    # behind. A day went into frames that could not have changed, each one
+    # read as evidence about a change rather than about the build.
+    local want got
+    want="$(git -C "$(dirname "$0")/.." rev-parse HEAD:services/sim-runtime 2>/dev/null || echo unknown)"
+    got="$(docker image inspect "${image}" \
+           --format '{{index .Config.Labels "org.coralcity.runtime"}}' 2>/dev/null)"
+    if [ "${want}" != "unknown" ] && [ "${got}" != "${want}" ]; then
+        echo "  the runtime in ${image} is not the one in this checkout." >&2
+        echo "    image:    ${got:-unstamped}" >&2
+        echo "    checkout: ${want}" >&2
+        echo "  Build it:  ./tools/box sim" >&2
+        return 1
+    fi
+
     rm -rf "${here}"; mkdir -p "${here}/frames"; chmod -R 777 "${here}"
 
     # And take the old sheet away before this one starts, not after it fails.

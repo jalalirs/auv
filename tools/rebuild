@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""Build a place again exactly the way it was built the first time.
+
+    tools/rebuild ~/coral-city/places/looe-key
+    tools/rebuild ~/coral-city/places/*            # all of them
+
+Every place is made by a chain of hand-typed commands — `make-site` with a
+dozen arguments, then `reef-survey`, then `fauna`, then `aim-water` — and
+until now none of it was written down. Rebuilds were reconstructed from a
+shell history, and a place rebuilt with one argument different is a place
+whose record no longer describes it.
+
+This matters more than reproducibility for its own sake. A place carries its
+own copy of the materials it is drawn with, so a material edited in the
+checkout does not reach a place until the place is built again, and
+`tools/look` refuses to render a place whose material has fallen behind. An
+afternoon went into frames that never changed because the rebuild in front of
+them was quietly failing on an argument nobody could check.
+
+So the tools write down how they were called and this replays it, in the one
+order that works: the ground before what grows on it, and the water last
+because it is measured from where the dive begins and only `reef-survey`
+knows that.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import subprocess
+import sys
+
+# The order is not alphabetical and not the order they were first run in. It
+# is the order of dependency: `make-site` writes a new site.json from nothing,
+# `reef-survey` chooses where a dive begins, `fauna` needs the reef to swim
+# over, and `aim-water` bakes the medium measured from that start.
+IN_ORDER = ["make-site", "reef-survey", "fauna", "aim-water"]
+
+HERE = pathlib.Path(__file__).resolve().parent
+
+
+def rebuild(place: pathlib.Path, python: str, say: bool = True) -> int:
+    site_file = place / "site.json"
+    if not site_file.is_file():
+        print(f"{place.name}: no site.json", file=sys.stderr)
+        return 1
+    # Read every recorded call before anything runs. `make-site` writes a
+    # fresh site.json, which would take the rest of the record with it.
+    remembered = json.loads(site_file.read_text()).get("builtBy") or {}
+    if not remembered:
+        print(f"{place.name}: no record of how it was built. Build it once "
+              f"with the tools directly and they will write one.",
+              file=sys.stderr)
+        return 1
+
+    for tool in IN_ORDER:
+        call = remembered.get(tool)
+        if call is None:
+            continue
+        where = pathlib.Path(call.get("cwd", "."))
+        run = [python, str(HERE / tool), *call["argv"]]
+        if say:
+            print(f"  {tool} {' '.join(call['argv'])}")
+        done = subprocess.run(run, cwd=where if where.is_dir() else None)
+        if done.returncode != 0:
+            print(f"{place.name}: {tool} failed", file=sys.stderr)
+            return done.returncode
+
+    # And put the record back, because make-site wrote a new one.
+    site = json.loads(site_file.read_text())
+    site.setdefault("builtBy", {})
+    for tool, call in remembered.items():
+        site["builtBy"].setdefault(tool, call)
+    site_file.write_text(json.dumps(site, indent=2) + "\n")
+    print(f"{place.name}: rebuilt from its own record")
+    return 0
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(
+        description="build a place again from the record it keeps of itself")
+    parse.add_argument("places", nargs="+")
+    parse.add_argument("--python", default=sys.executable,
+                       help="the interpreter the tools run under")
+    asked = parse.parse_args()
+
+    trouble = 0
+    for one in asked.places:
+        place = pathlib.Path(one).expanduser()
+        print(f"== {place.name}")
+        trouble |= rebuild(place, asked.python)
+    return trouble
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

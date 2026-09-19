@@ -5,7 +5,18 @@ purpose: the simulator's session does not touch it and this one does not touch
 the simulator. The two meet at one file, the vehicle's `dynamics.json`, which
 this side measures and that side integrates.
 
-## The first vehicle: nano
+## Two vehicles
+
+**nano** is a Geneinno Titan at 0.55 scale, six thrusters, an acrylic tube
+for a hull. Designed first; parked while the fish is built, because the
+fish costs a fifth as much and answers the question the user asked next,
+which was how fast a small thing can move.
+
+**fish** is a tethered OpenFish with a redrawn head and the brain on the
+surface. Parts ordered 19 September; the head is modelled; see
+[fish/README.md](fish/README.md).
+
+## nano
 
 A Geneinno Titan at 0.55 scale, 220 × 180 × 100 mm, built the way every hobby
 ROV is built: a bought acrylic tube is the dry hull and the seal, and a printed
