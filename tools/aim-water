@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Point a place's water at the spot dives begin from.
+"""Bake a place's water into a map, measured from where dives begin.
 
     tools/aim-water ~/coral-city/places/looe-key
 
@@ -32,6 +32,65 @@ import re
 import sys
 
 
+def water_of(kind: str):
+    """The attenuation lengths of a Jerlov water, from the runtime's own table."""
+    import importlib.util
+
+    where = (pathlib.Path(__file__).resolve().parent.parent / "services"
+             / "sim-runtime" / "coral" / "water.py")
+    spec = importlib.util.spec_from_file_location("coral_water", where)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.JERLOV[kind], module.veiling_colour(module.JERLOV[kind])
+
+
+def bake(place: pathlib.Path, site: dict, begins, across: float,
+         kind: str = "1C", size: int = 1024) -> dict | None:
+    """How much of each colour survives the swim from each point to the camera.
+
+    Worked out here rather than in the shader, because in this renderer no
+    per-pixel value reaches an expression — the texture coordinate reads back
+    as a constant when it is used in arithmetic, even though the same
+    coordinate handed to a texture lookup works perfectly. So the distance is
+    computed over the site at build time and written into a map, and the
+    material does the one thing it can do: look it up.
+
+    Red is gone in four metres of clear coastal water and green takes
+    seventeen, and that is the whole point of doing it per channel. A fog with
+    one distance cannot say it.
+    """
+    import numpy as np
+    from PIL import Image
+
+    lengths, _ = water_of(kind)
+    field = site.get("mesh", {}).get("heightfield")
+    if field is None:
+        return None
+    floor = np.fromfile(place / field["file"], dtype="<f4").reshape(
+        field["rows"], field["columns"])
+
+    # Every texel's own place on the site, and its own depth.
+    line = (np.arange(size) + 0.5) / size
+    x = (line - 0.5) * across
+    y = (line - 0.5) * across
+    at = ((np.arange(size) + 0.5) / size * (np.array(floor.shape)[:, None] - 1)
+          ).astype(int)
+    deep = floor[at[0][:, None], at[1][None, :]]
+
+    swum = np.sqrt((x[None, :] - float(begins[0])) ** 2
+                   + (y[:, None] - float(begins[1])) ** 2
+                   + (deep - float(begins[2])) ** 2)
+
+    survives = np.exp(-swum[..., None] / np.array(lengths)[None, None, :])
+    # North is at the top of a map and v = 0 is the south edge of the mesh.
+    Image.fromarray((np.flipud(survives) * 255).astype("uint8")).save(
+        place / "textures" / "site_survives.jpg", quality=95)
+    return {"waterType": kind,
+            "attenuationM": [float(v) for v in lengths],
+            "nearestM": round(float(swum.min()), 1),
+            "farthestM": round(float(swum.max()), 1)}
+
+
 def aim(place: pathlib.Path) -> dict | None:
     site = json.loads((place / "site.json").read_text())
     begins = site.get("beginAt")
@@ -50,14 +109,8 @@ def aim(place: pathlib.Path) -> dict | None:
     # The material file, not the USD.
     #
     # Setting these as USD shader inputs does nothing here: the values sit in
-    # the attribute, read back correct, and the picture does not move. Aiming
-    # the water by patching `seabed.usda` was tried first and changed a frame
-    # by not one pixel, even though it moved the camera a hundred metres.
-    #
-    # Changing a *default inside the MDL* does work — that is how the
-    # diagnostic managed to paint the seabed red. So a place carries its own
-    # copy of the material precisely so it can be told where its own water is
-    # measured from, and this writes it there.
+    # the attribute, read back correct, and the picture does not move. Moving
+    # the camera a hundred metres that way changed a frame by not one pixel.
     material = place / "coral_ground.mdl"
     if not material.is_file():
         return None
@@ -66,16 +119,26 @@ def aim(place: pathlib.Path) -> dict | None:
     for name, value in at.items():
         now = re.sub(rf"(uniform float {name} = )[-\d.]+",
                      lambda m, v=value: f"{m.group(1)}{v:.5f}", now, count=1)
-    if now == was:
-        return None
-    material.write_text(now)
+    if now != was:
+        material.write_text(now)
 
-    site.setdefault("ground", {})["waterAimedAt"] = {
+    baked = bake(place, site, begins, across)
+    if baked is None:
+        return None
+    at.update(baked)
+
+    site.setdefault("ground", {})["waterBakedFrom"] = {
         "at": [round(float(v), 1) for v in begins],
-        "why": ("the medium is measured from here, because an MDL parameter "
-                "in this renderer takes the value it was built with. A dive "
-                "that swims far from this point carries water measured from "
-                "this point."),
+        "waterType": at["waterType"],
+        "attenuationM": at["attenuationM"],
+        "file": "textures/site_survives.jpg",
+        "why": ("no per-pixel value reaches an expression in this renderer, "
+                "so how much of each colour survives the swim to the camera "
+                "is worked out here and written into a map. A texture lookup "
+                "is the thing that does work. It is measured from where dives "
+                "begin: a vehicle that swims far from this point carries "
+                "water measured from this point, and a different water type "
+                "needs this run again."),
     }
     (place / "site.json").write_text(json.dumps(site, indent=2) + "\n")
     return at
