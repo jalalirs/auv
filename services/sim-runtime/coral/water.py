@@ -1152,6 +1152,14 @@ def put_the_water_in_the_materials(stage, veiling, lengths, veil: float,
         settings = [("inputs:veiling", colour),
                     ("inputs:attenuation", lengths),
                     ("inputs:veil", float(veil)),
+                    # How wide the site is, so a material can turn a world
+                    # position into the survival map's own square. The seabed
+                    # gets this written into its USD by tools/make-site, which
+                    # knows the number; the coral is written by two other
+                    # tools that do not, and rather than thread it through
+                    # both it is set here, where every material that has the
+                    # water on it is already being visited.
+                    ("inputs:site_across", float(across)),
                     ("inputs:show_distance", float(shown) if shown else 0.0)]
         if eye is not None:
             settings.append(("inputs:eye", Gf.Vec3f(*[float(v) for v in eye])))
