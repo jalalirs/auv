@@ -763,7 +763,14 @@ def main() -> int:
                      asked.texture if textured else None, photograph=photograph,
                      ground=ground)
 
-    reef = {"colonies": 0}
+    # A place with no coral on it still has to say why it has none. Thuwal
+    # Deep is 520 m down and below the light, which is a measurement rather
+    # than an absence of one — and until this was written it came back from
+    # tools/check-places as a density nobody could account for.
+    reef = {"colonies": 0, "cover": {
+        "colonies": 0, "perSquareKm": 0,
+        "from": asked.cover_from or "no coral was asked for at this place",
+        "measured": False}}
     if asked.coral > 0:
         sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
         import reef as grow_reef
