@@ -148,7 +148,18 @@ export material coral_tissue(
     // the material because the renderer has nowhere else to put it, and done
     // per channel because red dies in four metres of this water and green
     // takes seventeen.
-    uniform float3 eye = float3(0.0)
+    // Not `uniform`, and that one word cost a day.
+    //
+    // A uniform parameter in MDL is baked when the material is compiled, so
+    // the compiled shader kept the nought it was born with and every
+    // per-frame update went into a USD attribute nothing read. The attribute
+    // was set correctly the whole time — asked for (5, -105, -5.2), read back
+    // (5, -105, -5.2) — which is why reading it back was not enough on its
+    // own and the picture had to be measured as well.
+    //
+    // Dropping the keyword makes it an argument the renderer passes in rather
+    // than a constant it compiles in.
+    float3 eye = float3(0.0)
     [[ anno::display_name("Where the camera is"), anno::in_group("Water") ]],
     uniform color attenuation = color(4.0, 17.0, 13.0)
     [[ anno::display_name("Attenuation lengths"), anno::in_group("Water") ]],
