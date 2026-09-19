@@ -136,6 +136,20 @@ def aim(place: pathlib.Path) -> dict | None:
     if begins is None or not scene.is_file():
         return None
     across = float(site["from"]["acrossMetres"])
+    # Which water this place is in, if it has said.
+    #
+    # Everything on this platform is rendered through Jerlov 1C, which is
+    # coastal water, because that is what this tool has always baked and what
+    # tools/look defaults to. It is a fair description of Looe Key and it is
+    # not one of Al Fahal: an offshore Red Sea reef sees thirty or forty
+    # metres, and through 1C it renders as fog.
+    #
+    # A place is not given a water type here, because a water type is a claim
+    # about a place and wants a source the way its density does. What happens
+    # here is only that a place which has recorded one gets it used.
+    kind = ((site.get("water") or {}).get("type")
+            or (site.get("conditions") or {}).get("waterType")
+            or "1C")
 
     at = {
         "site_eye_u": float(begins[0]) / across + 0.5,
@@ -161,7 +175,7 @@ def aim(place: pathlib.Path) -> dict | None:
     if not material.is_file():
         return None
 
-    baked = bake(place, site, begins, across)
+    baked = bake(place, site, begins, across, kind=kind)
     if baked is None:
         return None
     at.update(baked)
