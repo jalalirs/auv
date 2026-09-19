@@ -372,7 +372,8 @@ def test_an_empty_record_does_not_divide_by_nothing():
     assert life.how_much_was_placed([])["unplacedShare"] == 0.0
 
 
-@pytest.mark.parametrize("place,most", [("looe-key", 0.12), ("al-fahal", 0.20)])
+@pytest.mark.parametrize("place,most", [("looe-key", 0.08), ("al-fahal", 0.15),
+                                       ("kaneohe", 0.05)])
 def test_a_real_record_is_mostly_placed(place, most):
     """A guard, not a target. The map does not have to know every genus in an
     ocean, and it does have to know most of what a record of one actually
