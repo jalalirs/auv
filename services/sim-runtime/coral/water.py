@@ -382,7 +382,21 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # when the water is asked to be taken away, which is what that view is.
     # Nought: the materials carry the medium and cannot yet measure the
     # distance it depends on. See the note above the fog settings.
-    put_the_water_in_the_materials(stage, veiling, lengths, 0.0)
+    # On, at last.
+    #
+    # It was pinned at nought while the materials had no way to tell how far a
+    # pixel was from the camera — six attempts to read a position out of the
+    # renderer came back either as the ordinary seabed or as a constant. The
+    # seabed's own texture coordinates turned out to be the answer: they run
+    # nought to one over the site and have been laying the colour map on since
+    # September, so the world position is that times the site width.
+    #
+    # What this buys that `/rtx/fog` never could is the per-channel part. Red
+    # is gone in four metres of this water and green takes seventeen, and a fog
+    # with one distance cannot say that. It is why everything below ten metres
+    # is blue.
+    put_the_water_in_the_materials(stage, veiling, lengths,
+                                   0.0 if _clear else float(veil))
 
     # The distance is the water's own attenuation length, for green.
     #
