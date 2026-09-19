@@ -149,6 +149,21 @@ BY_GENUS = {
     "gymnothorax": "bottom", "ophioblennius": "bottom",
     "brachygenys": "snapper", "calamus": "snapper",
     "holocentrus": "solitary", "scomberomorus": "jack",
+    # ── and Kaneohe's, which is a third ocean again ──────────────────────────
+    # Hawaii is its own fauna: a bay with reef fish, introduced tilapia, and a
+    # great many gobies and blennies that never leave the substrate.
+    "asterropteryx": "bottom", "istiblennius": "bottom",
+    "antennatus": "bottom", "exallias": "bottom",
+    "canthigaster": "solitary", "sarotherodon": "solitary",
+    "oreochromis": "solitary", "albula": "solitary",
+    "stethojulis": "wrasse", "macropharyngodon": "wrasse",
+    "oxycheilinus": "wrasse", "novaculichthys": "wrasse",
+    # Goatfish forage over sand in loose groups a foot off the bottom, which
+    # is what this group does rather than what its family is.
+    "mulloidichthys": "surgeonfish", "parupeneus": "surgeonfish",
+    # And the tail of Looe Key's own, named the same way.
+    "lactophrys": "solitary", "cantherhines": "solitary",
+    "chaetodipterus": "butterflyfish",
 }
 OTHERWISE = "solitary"
 
