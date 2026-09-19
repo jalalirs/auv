@@ -314,3 +314,90 @@ def test_a_shoal_lives_where_the_work_is():
     assert inside() <= 0.5 * across, inside()
     # And with enough schools the middle of them is the middle of the work.
     assert np.allclose(reef.at[:, :2].mean(axis=0), work, atol=0.2 * across)
+
+
+# ── a record from an ocean this map may not know ─────────────────────────────
+
+def a_record(*pairs):
+    return [{"taxon": t, "group": "Actinopterygii", "observations": n}
+            for t, n in pairs]
+
+
+def test_a_caribbean_record_is_almost_all_placed():
+    got = life.how_much_was_placed(a_record(
+        ("Sparisoma viride", 161), ("Ocyurus chrysurus", 151),
+        ("Acanthurus coeruleus", 113), ("Abudefduf saxatilis", 93),
+        ("Thalassoma bifasciatum", 90), ("Caranx ruber", 66)))
+    assert got["unplacedShare"] == 0.0
+
+
+def test_a_red_sea_record_is_placed_too():
+    """The map was Caribbean only. The moment a Red Sea reef got a record,
+    every Pseudanthias, Pomacentrus and Chlorurus on it fell into the
+    fallback, and a reef of schooling planktivores was drawn as loners."""
+    got = life.how_much_was_placed(a_record(
+        ("Pseudanthias squamipinnis", 9), ("Pomacentrus sulfureus", 8),
+        ("Halichoeres hortulanus", 7), ("Epibulus insidiator", 6),
+        ("Scarus ferrugineus", 6), ("Pygoplites diacanthus", 5),
+        ("Chlorurus sordidus", 4), ("Zebrasoma desjardinii", 3)))
+    assert got["unplacedShare"] == 0.0, got["commonestUnplaced"]
+
+
+def test_the_red_sea_genera_land_where_they_belong():
+    assert life.group_of("Pseudanthias squamipinnis") == "damselfish"
+    assert life.group_of("Chlorurus sordidus") == "parrotfish"
+    assert life.group_of("Epibulus insidiator") == "wrasse"
+    assert life.group_of("Pygoplites diacanthus") == "butterflyfish"
+    assert life.group_of("Zebrasoma desjardinii") == "surgeonfish"
+
+
+def test_an_ocean_it_does_not_know_says_so():
+    """The point of the measurement: a record it cannot place must be loud
+    about it rather than quietly filling a reef with loners."""
+    got = life.how_much_was_placed(a_record(
+        ("Nototheniidae something", 40), ("Notothenia rossii", 30),
+        ("Sparisoma viride", 30)))
+    assert got["unplacedShare"] == 0.7
+    assert "notothenia" in got["commonestUnplaced"]
+
+
+def test_what_is_not_a_fish_is_not_counted_against_the_map():
+    counted = a_record(("Sparisoma viride", 50))
+    counted.append({"taxon": "Gorgonia ventalina", "group": "Animalia",
+                    "observations": 78})
+    assert life.how_much_was_placed(counted)["observations"] == 50
+
+
+def test_an_empty_record_does_not_divide_by_nothing():
+    assert life.how_much_was_placed([])["unplacedShare"] == 0.0
+
+
+@pytest.mark.parametrize("place,most", [("looe-key", 0.12), ("al-fahal", 0.20)])
+def test_a_real_record_is_mostly_placed(place, most):
+    """A guard, not a target. The map does not have to know every genus in an
+    ocean, and it does have to know most of what a record of one actually
+    contains — Al Fahal's came back 45% unplaced on a Caribbean map and a reef
+    of schooling planktivores would have been drawn as a reef of loners."""
+    import json
+    import pathlib as _pathlib
+
+    counted = _pathlib.Path.home() / "coral-city" / "reference" / place / "species_counts.json"
+    if not counted.is_file():
+        pytest.skip(f"no species record fetched for {place}")
+    got = life.how_much_was_placed(json.loads(counted.read_text()))
+    assert got["unplacedShare"] <= most, got["commonestUnplaced"]
+
+
+def test_a_fish_that_sits_on_the_bottom_stays_on_it():
+    reef = life.Shoal({"bottom": 40}, a_seabed, 300.0, seed=2)
+    for _ in range(60):
+        reef.step(0.1)
+    above = reef.at[:, 2] - FLAT
+    assert above.max() < 0.6, above.max()
+
+
+def test_a_bottom_sitter_lets_a_vehicle_closer_than_a_jack_does():
+    """It is the opposite of everything else here, and it is most of what is
+    actually on a reef."""
+    assert life.GROUPS["bottom"]["wary"] < life.GROUPS["jack"]["wary"]
+    assert life.GROUPS["bottom"]["above"][0] < life.GROUPS["parrotfish"]["above"][0]

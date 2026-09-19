@@ -38,7 +38,7 @@ OF_GROUP = {
     "parrotfish": "fusiform", "snapper": "fusiform", "jack": "fusiform",
     "solitary": "fusiform",
     "surgeonfish": "deep", "damselfish": "deep", "butterflyfish": "deep",
-    "wrasse": "elongate",
+    "wrasse": "elongate", "bottom": "elongate",
 }
 
 # Roughly what each group is, in the water, at the depth this reef is at.
@@ -56,6 +56,9 @@ COLOURS = {
     "butterflyfish": ((0.46, 0.42, 0.24), (0.62, 0.56, 0.32)),
     "jack": ((0.32, 0.36, 0.38), (0.48, 0.52, 0.54)),
     "solitary": ((0.26, 0.26, 0.22), (0.40, 0.38, 0.30)),
+    # A fish that sits on the bottom is the colour of the bottom. That is what
+    # sitting on the bottom is for.
+    "bottom": ((0.20, 0.19, 0.15), (0.34, 0.31, 0.24)),
 }
 
 AROUND = 8       # sides to the body
