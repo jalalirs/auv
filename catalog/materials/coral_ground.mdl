@@ -197,7 +197,7 @@ export material coral_ground(
                           "dominates everything but a view straight down."),
         anno::in_group("Water")
     ]],
-    uniform float show_distance = 0.0
+    uniform float show_distance = 200.0
     [[
         anno::display_name("Paint the distance instead"),
         anno::description("Metres at white. Nought is off. There is no way to "
