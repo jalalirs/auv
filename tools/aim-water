@@ -46,8 +46,33 @@ def water_of(kind: str):
     return module.JERLOV[kind], module.veiling_colour(module.JERLOV[kind])
 
 
+# How fine the survival map has to be, in metres a texel.
+#
+# Not a fixed number of texels: the sites are a kilometre across and three
+# kilometres across, and a map that is right for one is a smear on the other.
+# What the map has to resolve is the water, not the site — everything happens
+# within a few attenuation lengths of the camera, which in this water is a
+# couple of dozen metres — so the texel is sized in metres and the map grows
+# to fit the site.
+#
+# Al Fahal at 1024 over three kilometres was 2.9 m a texel: red is gone in
+# four, so the entire near field was one texel and a bit, and the frame had no
+# gradient in it at all while the kilometre-wide places did.
+METRES_A_TEXEL = 0.5
+MOST_TEXELS = 4096
+
+
+def _how_big(across: float) -> int:
+    """A power of two, fine enough for the water and not larger than needed."""
+    want = across / METRES_A_TEXEL
+    size = 1024
+    while size < want and size < MOST_TEXELS:
+        size *= 2
+    return size
+
+
 def bake(place: pathlib.Path, site: dict, begins, across: float,
-         kind: str = "1C", size: int = 1024) -> dict | None:
+         kind: str = "1C", size: int | None = None) -> dict | None:
     """How much of each colour survives the swim from each point to the camera.
 
     Worked out here rather than in the shader, because in this renderer no
@@ -65,6 +90,8 @@ def bake(place: pathlib.Path, site: dict, begins, across: float,
     from PIL import Image
 
     lengths, _ = water_of(kind)
+    if size is None:
+        size = _how_big(across)
     field = site.get("mesh", {}).get("heightfield")
     if field is None:
         return None
@@ -96,6 +123,8 @@ def bake(place: pathlib.Path, site: dict, begins, across: float,
         place / "textures" / "site_survives.png")
     return {"waterType": kind,
             "attenuationM": [float(v) for v in lengths],
+            "texels": int(size),
+            "metresATexel": round(float(across) / size, 3),
             "nearestM": round(float(swum.min()), 1),
             "farthestM": round(float(swum.max()), 1)}
 
