@@ -105,7 +105,17 @@ def water_of(kind: str | None = None):
 # Both read off a ladder: eleven frames of one view, stepping the veil. At full
 # saturation the corals lost their own colour entirely; at these the reds and
 # oranges come through and the distance still goes the colour of the sea.
-VEIL_TOWARDS_GREY = 0.35
+# How far the veiling light is pulled back towards grey from the attenuation
+# ratios, and how bright it ends up.
+#
+# 0.6, not 0.35, and for a reason rather than because the frame looked too
+# green. The colour of the distance is **backscattered** light, and scattering
+# is far less wavelength-selective than absorption: the attenuation lengths
+# say red dies four times faster than green, and the light coming back off the
+# water does not differ by anything like that much. Taking the ratios straight
+# treats the veil as though it were absorption, and it renders a seabed that
+# is not green through green water but simply green.
+VEIL_TOWARDS_GREY = 0.6
 VEIL_BRIGHTNESS = 0.62
 
 
@@ -115,6 +125,11 @@ def veiling_colour(lengths) -> tuple:
     What survives, then mixed back towards grey and dimmed. Clear ocean comes
     out blue because blue survives; turbid harbour comes out green-brown
     because by then blue does not.
+
+    The mix towards grey is not a fudge for taste. This is the colour of light
+    scattered back out of the water, and scattering is much flatter across the
+    spectrum than absorption is — so the veil is a desaturated version of what
+    survives, never the attenuation ratios themselves.
     """
     most = max(lengths)
     ratio = [float(one) / most for one in lengths]
