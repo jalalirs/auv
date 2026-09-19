@@ -290,12 +290,17 @@ export material coral_tissue(
         // names the line and not the parameter.
         emission: material_emission(
             emission: df::diffuse_edf(),
-            // Magenta, which nothing on a reef is. This is one question and
-            // not two: if a colony does not turn magenta with the switch on,
-            // then this material is not what draws it, and every reading
-            // taken of the coral's medium has been a reading of the
-            // UsdPreviewSurface sitting beside it.
-            intensity: show_distance > 0.0 ? color(1.0, 0.0, 1.0)
+            // With the switch on, what the survival lookup returns, unlit.
+            //
+            // It was magenta for one run, to answer a question worth writing
+            // down: nothing turned magenta, and the conclusion drawn was that
+            // this material does not draw the colonies. That was wrong. The
+            // material draws them; it had simply compiled before the water
+            // was ever put on it, with the `veil = 0` from its own USD, and a
+            // parameter baked at compile does not move afterwards. The reef
+            // is referenced into the stage after the water is made, and
+            // nothing in the log said so.
+            intensity: show_distance > 0.0 ? survives
                        : fluoresces * fluorescence * math::saturate(alive) + water)
     ),
     geometry: material_geometry(normal: bumped)

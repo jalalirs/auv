@@ -730,6 +730,18 @@ class Dive:
                 # stage, said honestly that there wasn't one, and the
                 # gorgonians never moved.
                 self._rooted = self._root_the_gorgonians(stage, city)
+                # And put the water on the colonies, now that there are some.
+                #
+                # Exactly the same reason the line above it is here. The water
+                # is worked out and applied before this reference exists, and
+                # an MDL parameter takes the value it compiled with — so every
+                # coral material compiled with the `veil = 0` sitting in its
+                # USD, which means no medium at all. A colony at the horizon
+                # was lit like a colony at arm's length for as long as the
+                # medium has existed.
+                import water as water_module
+                water_module.put_the_water_in_whatever_arrived_since(
+                    stage, self.say)
 
             water = find_water(pathlib.Path(
                 self.brief.get("cityPath", "/dive/city")))

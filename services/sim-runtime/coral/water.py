@@ -414,6 +414,26 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     put_the_water_in_the_materials(stage, veiling, lengths,
                                    0.0 if _clear else float(veil),
                                    eye=begins_at, across=across)
+    # Kept, so it can be put on whatever arrives later.
+    #
+    # An MDL parameter is baked when the material compiles, and a material
+    # compiles the first time something is drawn with it. The reef is
+    # referenced into the stage *after* this runs — so every coral material
+    # compiled with the defaults sitting in its USD, which say `veil = 0`,
+    # which means no medium at all. The colonies have had no water on them
+    # since the day the medium was written, and nothing said so: the
+    # per-frame update afterwards reported twenty-two materials set and every
+    # one of those writes went into an attribute the compiled shader had
+    # stopped reading.
+    #
+    # It is the same mistake, in the same function, that left the gorgonians
+    # standing still: work done beside the water, which is before the reef
+    # exists. See `_root_the_gorgonians` in runner.py, which was moved for
+    # exactly this reason and is now where this has to be called from too.
+    global _AS_APPLIED
+    _AS_APPLIED = dict(veiling=veiling, lengths=lengths,
+                       veil=0.0 if _clear else float(veil),
+                       eye=begins_at, across=across)
 
     # The distance is the water's own attenuation length, for green.
     #
@@ -1114,6 +1134,33 @@ def tell_the_water_where_the_camera_is(stage, at) -> None:
               flush=True)
 
 
+# What the last `make` applied, so a layer referenced in after it can be given
+# the same water. Nothing else should read this.
+_AS_APPLIED: dict | None = None
+
+
+def put_the_water_in_whatever_arrived_since(stage, say=None) -> int:
+    """Put the water on materials that did not exist when it was made.
+
+    A place is layers and they do not all arrive together: the seabed is open
+    before the water is worked out, and the reef is referenced in after. A
+    material compiles the first time it is drawn, and an MDL parameter takes
+    the value it compiled with — so a coral material that appeared after the
+    water was applied is a coral material with no water on it, for good, and
+    no amount of setting the attribute afterwards changes the picture.
+
+    So this is called once more, after the reef is in. It returns how many
+    materials it found, which is worth logging: the number going up between
+    the first call and this one is the reef arriving.
+    """
+    if _AS_APPLIED is None:
+        return 0
+    found = put_the_water_in_the_materials(stage, **_AS_APPLIED)
+    if say is not None:
+        say("water_caught_up", materials=found)
+    return found
+
+
 def put_the_water_in_the_materials(stage, veiling, lengths, veil: float,
                                    eye=None, across: float = 1000.0) -> None:
     """Tell every surface what the water between it and the camera is.
@@ -1125,6 +1172,7 @@ def put_the_water_in_the_materials(stage, veiling, lengths, veil: float,
 
     colour = Gf.Vec3f(*[float(one) for one in veiling])
     lengths = Gf.Vec3f(*[max(0.01, float(one)) for one in lengths])
+    found = 0
     for prim in stage.Traverse():
         if prim.GetTypeName() != "Shader":
             continue
@@ -1177,3 +1225,5 @@ def put_the_water_in_the_materials(stage, veiling, lengths, veil: float,
             got = prim.GetAttribute(name)
             if got:
                 got.Set(value)
+        found += 1
+    return found
