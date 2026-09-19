@@ -211,9 +211,14 @@ export material coral_ground(
     //
     // Which of those this renderer actually gives has never been established,
     // because the tool for establishing it was painting black.
-    float3 standing = state::transform_point(
-        state::coordinate_internal, state::coordinate_world, state::position());
-    float swum = math::distance(standing, eye);
+    // With the diagnostic finally painting the distance, `transform_point`
+    // to world came back a **constant** — the whole seabed saturated, and the
+    // constant is |eye|, which is what `distance(0, eye)` is. So that call
+    // does return zero here, which was guessed before and is now seen.
+    //
+    // This is the raw position, untransformed, which is the other candidate.
+    float3 standing = state::position();
+    float swum = math::length(standing);
 
     color low = base::file_texture(
         texture: site_colour, uvw: wide,
