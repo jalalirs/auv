@@ -640,7 +640,11 @@ class Dive:
                        significant_height_m=self.sea_height_m,
                        wave_period_s=self.sea_period_s,
                        wave_heading_deg=self.sea_heading_deg,
-                       seed=int(self.brief.get("seed", 0)))
+                       seed=int(self.brief.get("seed", 0)),
+                       # Where the dive starts, so the medium is baked
+                       # measuring from there rather than from the middle of
+                       # the site.
+                       begins_at=tuple(float(v) for v in self.position))
             self.water = water
 
             # And what lives in it.

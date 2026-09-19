@@ -139,7 +139,8 @@ def make(stage, say, floor: float, water_level: float = 0.0,
          visibility_m: float | None = None, water_type: str | None = None,
          significant_height_m: float | None = None,
          wave_period_s: float | None = None,
-         wave_heading_deg: float | None = None, seed: int = 0) -> None:
+         wave_heading_deg: float | None = None, seed: int = 0,
+         begins_at=None) -> None:
     """Put water over a place, and light it from above.
 
     Four things, in the order they matter: the fog that is the water itself, the
@@ -396,7 +397,8 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # with one distance cannot say that. It is why everything below ten metres
     # is blue.
     put_the_water_in_the_materials(stage, veiling, lengths,
-                                   0.0 if _clear else float(veil))
+                                   0.0 if _clear else float(veil),
+                                   eye=begins_at)
 
     # The distance is the water's own attenuation length, for green.
     #
@@ -1097,7 +1099,8 @@ def tell_the_water_where_the_camera_is(stage, at) -> None:
               flush=True)
 
 
-def put_the_water_in_the_materials(stage, veiling, lengths, veil: float) -> None:
+def put_the_water_in_the_materials(stage, veiling, lengths, veil: float,
+                                   eye=None) -> None:
     """Tell every surface what the water between it and the camera is.
 
     Once, when the dive opens: the type of water does not change under a
@@ -1117,11 +1120,27 @@ def put_the_water_in_the_materials(stage, veiling, lengths, veil: float) -> None
         # metres, white at the number given. It is the only way to find out.
         import os as _os
         shown = _os.environ.get("CORAL_CITY_SHOW_DISTANCE", "")
-        for name, value in (("inputs:veiling", colour),
-                            ("inputs:attenuation", lengths),
-                            ("inputs:veil", float(veil)),
-                            ("inputs:show_distance",
-                             float(shown) if shown else 0.0)):
+        # The camera, set here and not only per frame.
+        #
+        # An MDL parameter is baked when the material compiles, and the
+        # material compiles once, before the first frame. So the value that
+        # matters is the one sitting in the attribute at that moment — which is
+        # this one. Every per-frame update after it went into an attribute the
+        # compiled shader had already stopped reading, which is why the
+        # distance was measured from the middle of the site: the attribute
+        # still held the nought it was written with.
+        #
+        # A dive moves and this does not follow it. Over a sheet of stills, all
+        # four cameras sit within a few metres of where the dive begins, so the
+        # near field is right to within a few metres of water. That is worth
+        # having and it is not the whole answer.
+        settings = [("inputs:veiling", colour),
+                    ("inputs:attenuation", lengths),
+                    ("inputs:veil", float(veil)),
+                    ("inputs:show_distance", float(shown) if shown else 0.0)]
+        if eye is not None:
+            settings.append(("inputs:eye", Gf.Vec3f(*[float(v) for v in eye])))
+        for name, value in settings:
             got = prim.GetAttribute(name)
             if got:
                 got.Set(value)
