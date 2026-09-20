@@ -1022,6 +1022,14 @@ def _water_material(stage, surface) -> None:
     shader.CreateIdAttr("UsdPreviewSurface")
     shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
         Gf.Vec3f(0.05, 0.22, 0.30))
+    # Painted alongside the horizon wall, so one frame can say which pixels
+    # are the surface, which are the wall, and which are neither — and
+    # "neither" is the whole question, because a pixel that is nothing is the
+    # band this wall was built to remove.
+    if os.environ.get("CORAL_CITY_PAINT_HORIZON") == "1":
+        shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(
+            Gf.Vec3f(0.0, 1.0, 1.0))
+        shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(1.0)
     shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.06)
     shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
     shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(0.22)
