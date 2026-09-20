@@ -22,9 +22,15 @@ always do, including any code Amazon sends you; the profile keeps the
 session, the way your normal browser does. `sync` reuses that profile. If
 you want it gone, delete the directory.
 
-`cart-url` needs no browser at all: Amazon accepts a URL that adds a list
-of ASINs and quantities to the cart of whoever opens it. It cannot remove
-things, which is what `sync` is for.
+`cart-url` needs no browser of its own: Amazon accepts a URL that adds a
+list of ASINs and quantities to the cart of whoever opens it. On Amazon.sa
+it asks you to sign in first, then adds them. It cannot remove things,
+which is what `sync` is for.
+
+`sync` reads the cart page's own markup to find what is in it, and Amazon
+changes that markup without notice. Run `sync --dry-run` first; it prints
+what it would remove and add and touches nothing. If it lists the cart as
+empty when it is not, the selectors in `read_cart` need updating.
 
 Nothing here buys anything. The cart is left for you to check out.
 

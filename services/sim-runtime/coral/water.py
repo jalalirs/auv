@@ -636,6 +636,12 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # same number: a turbid green bay now fills green and a clear ocean fills
     # blue, without anybody picking either.
     sky.CreateColorAttr(Gf.Vec3f(*[min(1.0, one * 1.35) for one in veiling]))
+    # A dome light is a light, so no amount of painting a *material* can say
+    # whether it is what fills the top of the frame. Three were painted — the
+    # horizon wall, the sea surface, the background — and none of them showed.
+    # This is what is left.
+    if os.environ.get("CORAL_CITY_PAINT_HORIZON") == "1":
+        sky.CreateColorAttr(Gf.Vec3f(1.0, 0.45, 0.0))
 
     # ── the surface, from below ──────────────────────────────────────────────
     #
