@@ -116,7 +116,51 @@ def water_of(kind: str | None = None):
 # treats the veil as though it were absorption, and it renders a seabed that
 # is not green through green water but simply green.
 VEIL_TOWARDS_GREY = 0.6
+
+# How bright the veil is — which is not one number, and used to be.
+#
+# It was 0.62 for every water on the platform. Jerlov I, the clearest open
+# ocean there is, backscattered exactly as much light as a turbid harbour, and
+# the only thing a water type changed was the colour of it. That is wrong in
+# the way that matters most for a picture: the veiling light is what limits
+# contrast underwater, so making it constant means clear water buys you
+# nothing. Al Fahal, in the clearest water of the five places here, rendered
+# as the foggiest one — its seabed held a tenth of its own colour where Looe
+# Key's held a quarter.
+#
+# The veil is backscattered light. How much comes back is the water's
+# scattering, and that is exactly what a water type differs in: a Jerlov
+# number is a statement about how much is suspended in it. Deep ocean water is
+# usually taken to return about five per cent of what falls on it, and
+# productive or turbid water upwards of twenty-five — call it fivefold across
+# the range, which is the span this table covers from I to 9C.
+#
+# Scaled off the green length, because green is the middle of the three and
+# the channel the eye reads most of brightness from, and anchored on 1C
+# because that is the water the 0.62 was read off an eleven-frame ladder in.
+# The exponent puts about a fourfold spread across the table once the clamps
+# are in, which is the right order and is not pretending to be more than that.
 VEIL_BRIGHTNESS = 0.62
+VEIL_MEASURED_ON = 17.0
+VEIL_WITH_TURBIDITY = 0.7
+# Nothing dimmer than open ocean, nothing brighter than a full white-out. The
+# top clamp matters: past one the veil is brighter than the surface it sits in
+# front of, and every frame is a flat rectangle.
+VEIL_DIMMEST = 0.30
+VEIL_BRIGHTEST = 1.00
+
+
+def veil_brightness(lengths) -> float:
+    """How much light this water sends back, relative to the water 0.62 was read on.
+
+    Shorter lengths mean more suspended in the water, which means more
+    scattering, which means a brighter veil and less contrast at range. It is
+    the same fact seen twice: the water that hides things soonest is the water
+    that glows most.
+    """
+    green = max(float(lengths[1]), 0.01)
+    scaled = VEIL_BRIGHTNESS * (VEIL_MEASURED_ON / green) ** VEIL_WITH_TURBIDITY
+    return min(VEIL_BRIGHTEST, max(VEIL_DIMMEST, scaled))
 
 
 def veiling_colour(lengths) -> tuple:
@@ -135,7 +179,8 @@ def veiling_colour(lengths) -> tuple:
     ratio = [float(one) / most for one in lengths]
     grey = sum(ratio) / 3.0
     mixed = [one + (grey - one) * VEIL_TOWARDS_GREY for one in ratio]
-    return tuple(round(one * VEIL_BRIGHTNESS, 4) for one in mixed)
+    bright = veil_brightness(lengths)
+    return tuple(round(one * bright, 4) for one in mixed)
 
 
 # Kept as the name the rest of this file used before water types existed.
