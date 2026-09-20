@@ -5,6 +5,12 @@ purpose: the simulator's session does not touch it and this one does not touch
 the simulator. The two meet at one file, the vehicle's `dynamics.json`, which
 this side measures and that side integrates.
 
+## Buying
+
+[procure/](procure/README.md) holds the parts list as data and a tool that
+puts the Amazon lines in your cart and records what arrived and what it
+measured. It never holds a password.
+
 ## Four designs, one being built
 
 **titan** is the one being built: the Geneinno Titan's construction at 0.8

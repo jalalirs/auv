@@ -1,0 +1,113 @@
+{
+  "currency": "SAR",
+  "checked": "2026-09-20",
+  "vehicle": "titan",
+  "parts": [
+    {
+      "id": "box",
+      "role": "the dry hull: IP65 box, clear lid, lying flat inside the capsule",
+      "pick": "LeMotech project box, 3.9\" x 2.6\" x 1.9\" (100 x 68 x 50 mm), black, pack of 1",
+      "source": {"amazon": "B0FDQCN274"},
+      "qty": 1,
+      "price": 60.05,
+      "status": "wanted",
+      "gates": ["titan.BOX_L", "titan.BOX_W", "titan.BOX_H", "titan.BOX_WALL", "titan.LID_T", "titan.BOSS_INSET"],
+      "measure": ["outside length, width, height with the lid on (mm)", "wall thickness", "lid thickness", "corner boss diameter and its distance from each inside wall"],
+      "note": "This one gates the JLC3DP order. Measure it the day it arrives."
+    },
+    {
+      "id": "thruster",
+      "role": "six thrusters, four vertical in the wings, two horizontal at the stern",
+      "pick": "ApisQueen UG500 mini brushless thruster, 36 mm propeller; 3 CW + 3 CCW",
+      "source": {"url": "https://www.underwaterthruster.com/products/apisqueen-uq500-mini-brushless-thruster-motor-small-size-and-light-weight-perfect-for-small-size-rovs/", "usd": 23.91},
+      "qty": 6,
+      "price": 90.0,
+      "status": "wanted",
+      "gates": ["titan.DUCT_OD", "titan.DUCT_LENGTH", "titan.THRUSTER_MASS_G"],
+      "measure": ["guard outside diameter (mm)", "overall length", "mass (g)", "mount hole pattern"],
+      "note": "Not sold on Amazon.sa on 20 Sep 2026; the maker ships to KSA. Price here is an estimate landed. One unit gates the pod rings."
+    },
+    {
+      "id": "esc",
+      "role": "two 4-in-1 ESCs drive all six thrusters from two 30 mm boards",
+      "pick": "4-in-1 ESC, BLHeli-32, 40 A, 2-6S, 30.5 x 30.5 mount, variant (32Bit 40A)",
+      "source": {"amazon": "B0HDYZRHZC"},
+      "qty": 2,
+      "price": 331.73,
+      "status": "wanted",
+      "note": "Must be the 32-bit variant: BLHeli-32 has bidirectional (3D) mode. The 8-bit 35 A variant at 272 SAR does not reverse. Ships from outside KSA, mid October."
+    },
+    {
+      "id": "pwm",
+      "role": "16-channel PWM from the Pi over I2C; the Pi Zero has only two PWM pins",
+      "pick": "DollaTek PCA9685 16 channel 12-bit PWM driver",
+      "source": {"amazon": "B0BKZC1XWR"},
+      "qty": 1,
+      "price": 27.0,
+      "status": "wanted"
+    },
+    {
+      "id": "supply-24v",
+      "role": "surface supply; 24 V rides the Cat6's spare pairs to the vehicle",
+      "pick": "Morelian AC to DC 24 V 5 A 120 W switching supply",
+      "source": {"amazon": "B09P55WKVS"},
+      "qty": 1,
+      "price": 35.19,
+      "status": "wanted",
+      "note": "Open frame with mains screw terminals: needs a cord with a plug and an earth, and a box or shelf where nothing wet reaches it."
+    },
+    {
+      "id": "poe-pair",
+      "role": "puts 24 V on pins 4-5 and 7-8 at the surface and takes it off in the box",
+      "pick": "passive PoE injector + splitter pair, 5.5 x 2.1 mm barrel",
+      "source": {"amazon": "B0D8VM6ZGN"},
+      "qty": 1,
+      "price": 30.2,
+      "status": "wanted"
+    },
+    {
+      "id": "gland-pg9",
+      "role": "the one gland: the round Cat6 through the box lid under the cover's dome",
+      "pick": "PG9 nylon cable gland, IP68, 4-8 mm, 15 pcs",
+      "source": {"amazon": "B0DZ6QWRDN"},
+      "qty": 1,
+      "price": 20.26,
+      "status": "wanted"
+    },
+
+    {
+      "id": "pi",
+      "role": "the vehicle's computer",
+      "pick": "Raspberry Pi Zero 2 W",
+      "source": {"amazon": "B09LH5SBPS"},
+      "qty": 1,
+      "price": 467.71,
+      "status": "ordered",
+      "ordered": "2026-09-19"
+    },
+    {"id": "camera", "role": "forward camera behind the nose window", "pick": "Raspberry Pi Camera Module 3 Wide", "source": {"amazon": null}, "qty": 1, "price": 275.52, "status": "ordered", "ordered": "2026-09-19"},
+    {"id": "camera-cable", "role": "22-pin ribbon for the Zero", "pick": "GeeekPi 15-to-22 pin FFC, 16 + 30 cm", "source": {"amazon": null}, "qty": 1, "price": 53.04, "status": "ordered", "ordered": "2026-09-19"},
+    {"id": "ethernet", "role": "the Zero's Ethernet, off the tether", "pick": "micro-USB to RJ45 adapter", "source": {"amazon": null}, "qty": 1, "price": 20.73, "status": "ordered", "ordered": "2026-09-19"},
+    {"id": "imu", "role": "orientation over I2C", "pick": "Adafruit BNO055 (ADA2472)", "source": {"amazon": null}, "qty": 1, "price": 220.8, "status": "ordered", "ordered": "2026-09-19"},
+    {"id": "buck", "role": "24 V down to 5 V for the Pi", "pick": "LM2596S buck converter with display", "source": {"amazon": null}, "qty": 1, "price": 23.0, "status": "ordered", "ordered": "2026-09-19"},
+    {"id": "tether", "role": "the one tether: Ethernet on two pairs, 24 V on the other two", "pick": "round outdoor Cat6, 15 m", "source": {"amazon": null}, "qty": 1, "price": 79.27, "status": "ordered", "ordered": "2026-09-19"},
+    {"id": "supply-12v", "role": "bench supply for one thruster at a time", "pick": "inShareplus 12 V 5 A", "source": {"amazon": null}, "qty": 1, "price": 96.74, "status": "ordered", "ordered": "2026-09-19"},
+    {"id": "gland-pg7", "role": "spares; too small for the Cat6", "pick": "PG7 nylon glands, 15 pcs", "source": {"amazon": null}, "qty": 1, "price": 13.2, "status": "ordered", "ordered": "2026-09-19"},
+    {"id": "scale", "role": "every mass the simulator needs", "pick": "Ultrean coffee scale, 3 kg / 0.1 g", "source": {"amazon": null}, "qty": 1, "price": 79.0, "status": "ordered", "ordered": "2026-09-19"},
+    {"id": "weights", "role": "trim", "pick": "adhesive wheel weights, 5 g strips", "source": {"amazon": null}, "qty": 1, "price": 94.0, "status": "ordered", "ordered": "2026-09-19"},
+
+    {"id": "esp32", "role": "bench controller before the Pi arrives", "pick": "ESP-WROOM-32 dev board", "source": {"amazon": "B09ZL5NWY3"}, "qty": 1, "price": 45.0, "status": "arrived"},
+    {"id": "breadboard", "role": "bench wiring", "pick": "830-point breadboard kit", "source": {"amazon": "B0B9YS2NX1"}, "qty": 1, "price": 53.37, "status": "arrived"},
+
+    {"id": "gear-motor", "role": "fish v2 tail drive; not this vehicle", "pick": "25GA-370 12 V 500 rpm", "source": {"amazon": null}, "qty": 1, "price": 65.34, "status": "shelved", "ordered": "2026-09-19"},
+    {"id": "h-bridge", "role": "fish v2; not this vehicle", "pick": "HiLetgo BTS7960", "source": {"amazon": null}, "qty": 1, "price": 33.49, "status": "shelved", "ordered": "2026-09-19"},
+    {"id": "silicone", "role": "fish v2 tail; not this vehicle", "pick": "BBDINO super elastic, 600 g", "source": {"amazon": null}, "qty": 1, "price": 115.59, "status": "shelved", "ordered": "2026-09-19"},
+    {"id": "steel-wire", "role": "fish v2 tail cables; not this vehicle", "pick": "Joyzzz 0.5 mm 7-strand, 100 m", "source": {"amazon": null}, "qty": 1, "price": 43.8, "status": "shelved", "ordered": "2026-09-19"},
+
+    {"id": "window", "role": "26 mm disc of 3 mm clear acrylic for the nose", "pick": "cut from a small sheet", "source": {"shop": "SACO"}, "qty": 1, "price": 15.0, "status": "wanted"},
+    {"id": "oring", "role": "under the window", "pick": "22 x 2 mm O-ring or 2 mm silicone cord", "source": {"shop": "SACO"}, "qty": 1, "price": 5.0, "status": "wanted"},
+    {"id": "foam", "role": "buoyancy: nose, tail, and two sheets over and under the box", "pick": "one pool noodle, closed-cell polyethylene", "source": {"shop": "SACO or any sports shop"}, "qty": 1, "price": 15.0, "status": "wanted"},
+    {"id": "grease", "role": "on the box gasket", "pick": "small tube of silicone grease", "source": {"shop": "car parts shop"}, "qty": 1, "price": 15.0, "status": "wanted"},
+    {"id": "sundries", "role": "M3 screws, four M3 brass inserts, silicone sealant, two 20 mm webbing straps", "pick": "", "source": {"shop": "SACO"}, "qty": 1, "price": 40.0, "status": "wanted"}
+  ]
+}

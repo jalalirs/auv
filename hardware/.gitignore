@@ -2,3 +2,6 @@
 # the model files, and a STEP is not a source.
 .venv/
 out/
+
+# Local: the browser profile path. Never a password, but never committed either.
+procure/.env
