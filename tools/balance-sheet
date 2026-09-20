@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""Put the camera's white balance on a finished sheet.
+
+    tools/balance-sheet ~/coral-city/work/looks/looe-key-1C
+
+The runtime measures the cast off its own settled frame and writes the gains
+into the log as `camera_balances`. This reads them back and applies them to
+the stills, so the numbers on the sheet and the numbers in the record are the
+same numbers.
+
+Applied here rather than in the renderer because `/rtx/post/colorcorr/gain`
+is not a multiplier — it takes the values and does something else with them,
+violently: a red gain of 1.138 turned a green reef magenta, and pinning that
+exact triple reproduced it, so the setting works and its meaning is simply
+not written down anywhere. And applied here rather than in the frame loop
+because Kit writes a capture on a later update than the one that asks for it,
+so waiting for the file inside the callback waits for work that cannot start
+until the wait ends.
+"""
+
+from __future__ import annotations
+
+import json
+import pathlib
+import sys
+
+
+def gains_from(log: pathlib.Path):
+    """What the camera settled on, out of its own log."""
+    if not log.is_file():
+        return None
+    found = None
+    for line in log.read_text(errors="replace").splitlines():
+        if '"camera_balances"' not in line:
+            continue
+        start = line.find("{", line.find('"event"') - 40)
+        if start < 0:
+            start = line.find("{")
+        try:
+            said = json.loads(line[start:line.rindex("}") + 1])
+        except ValueError:
+            continue
+        if said.get("event") == "camera_balances" and said.get("gain"):
+            found = [float(one) for one in said["gain"]][:3]
+    return found
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print("which sheet?", file=sys.stderr)
+        return 2
+    sheet = pathlib.Path(sys.argv[1]).expanduser()
+    gains = gains_from(sheet / "look.log")
+    if gains is None:
+        print("no white balance in the log; the sheet is as it was rendered")
+        return 0
+    if max(abs(one - 1.0) for one in gains) < 1e-3:
+        print("the camera asked for no correction")
+        return 0
+
+    sys.path.insert(0, str(
+        pathlib.Path(__file__).resolve().parent.parent
+        / "services" / "sim-runtime" / "coral"))
+    import numpy as np
+    import metering
+    from PIL import Image
+
+    done = 0
+    for shot in sorted(sheet.glob("*.png")):
+        with Image.open(shot) as picture:
+            got = np.asarray(picture.convert("RGB"))
+        Image.fromarray(metering.balanced(got, gains)).save(shot)
+        done += 1
+    print("white balance %s on %d frames"
+          % (", ".join("%.3f" % one for one in gains), done))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
