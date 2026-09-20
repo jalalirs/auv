@@ -1066,7 +1066,20 @@ class CoralCityShell(omni.ext.IExt):
             # does not disturb the exposure that just settled.
             from coral import metering as _metering
             if self._meter.done and self._balance == (1.0, 1.0, 1.0):
-                self._balance = _metering.balance_for(_metering.cast_of(frame))
+                # CORAL_CITY_BALANCE pins the gains, the same way
+                # CORAL_CITY_ISO pins the exposure: three numbers, so a
+                # question about this stage gets answered in one run rather
+                # than in an afternoon of "that change did nothing". Pinning
+                # it to 1,1,1 turns the stage on and asks it to do nothing,
+                # which is the only way to find out whether turning it on is
+                # itself a change.
+                pinned = os.environ.get("CORAL_CITY_BALANCE", "")
+                if pinned:
+                    self._balance = tuple(
+                        float(one) for one in pinned.split(","))[:3]
+                else:
+                    self._balance = _metering.balance_for(
+                        _metering.cast_of(frame))
                 carb.settings.get_settings().set(
                     "/rtx/post/colorcorr/enabled", True)
                 carb.settings.get_settings().set(
