@@ -936,11 +936,25 @@ def _horizon(stage, water_level: float, lowest: float, veiling, veil: float,
     wall.CreateExtentAttr([Gf.Vec3f(-radius, -radius, bottom),
                            Gf.Vec3f(radius, radius, top)])
 
-    # Emissive, and dark otherwise. It is not a surface being lit at nine
-    # hundred metres — there is no light down there to light it. It is the
-    # colour looking into water that far goes, which is the veiling colour, and
-    # the fog then adds its own on top exactly as it does to everything else.
-    colour = Gf.Vec3f(*[float(min(1.0, one * max(0.0, veil))) for one in veiling])
+    # Black, and lit by nothing. The fog paints it.
+    #
+    # It used to be emissive at the veiling colour, on the reasoning that
+    # nothing lights a surface nine hundred metres down so the wall has to
+    # carry its own colour. That was right while the wall was a half-degree
+    # strip nobody could see. Now that it stands above the water line and
+    # fills the top of the frame it is wrong, and wrong in the way the note
+    # above `HORIZON_AT_LEAST_M` already warned about: this fog *adds* veiling
+    # light without absorbing any. An emissive wall therefore comes back at
+    # the veiling colour twice — once from itself and once from the fog — and
+    # renders brighter than any real geometry at the same distance. The
+    # distant reef, which is fully fogged and reflects almost nothing, lost a
+    # third of its depth cue against a backdrop that out-shone it.
+    #
+    # A black wall at nine hundred metres is exactly "geometry, fully fogged,
+    # reflecting nothing", which is what the far seabed already is. The
+    # horizon is then continuous because both sides of it are the same
+    # calculation.
+    colour = Gf.Vec3f(0.0, 0.0, 0.0)
     # CORAL_CITY_PAINT_HORIZON makes this wall a colour nothing else in the
     # scene is, so the pixels it actually owns can be pointed at. Geometry
     # says it should be a thin strip — from six metres down, the top of a wall
