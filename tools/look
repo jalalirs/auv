@@ -265,6 +265,20 @@ JSON
         return 1
     fi
     cp "${here}/look.log" "${looks}/${as}/look.log" 2>/dev/null || true
+
+    # And the camera's white balance, on the sheet.
+    #
+    # Where a camera puts it: on what it captured. Not in the renderer —
+    # `/rtx/post/colorcorr/gain` takes the numbers and applies something else
+    # to them, a red gain of 1.138 turning a green reef magenta — and not in
+    # the frame loop either, where waiting for Kit to finish writing a capture
+    # is waiting for work that cannot happen until the wait is over.
+    #
+    # The gains are the runtime's: measured off the settled frame, logged, and
+    # read back out of the log here so that what is on the sheet and what the
+    # record says are the same numbers.
+    "${PYTHON:-python3}" "$(dirname "$0")/balance-sheet" \
+        "${looks}/${as}" 2>&1 | sed 's/^/  /' || true
     {
         printf '{"place": "%s", "package": "%s", "at": "%s",\n' \
             "${place}" "$(basename "${city}")" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
