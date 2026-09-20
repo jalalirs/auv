@@ -67,7 +67,7 @@ def env() -> dict:
 def cmd_list(args) -> int:
     data = load()
     cur = data.get("currency", "")
-    order = ["wanted", "ordered", "arrived", "measured", "shelved"]
+    order = ["wanted", "ordered", "arrived", "measured", "dropped"]
     for status in order:
         rows = [p for p in data["parts"] if p["status"] == status]
         if not rows:
@@ -169,10 +169,15 @@ def cmd_sync(args) -> int:
             continue
         print(f"  remove  {item['asin']}  {item['title']}")
         if not args.dry_run:
-            row = page.locator(f'[data-asin="{item["asin"]}"]').first
-            btn = row.locator('input[value="Delete"], [data-action="delete"], .sc-action-delete input, button:has-text("Delete")').first
-            btn.click()
-            page.wait_for_timeout(1500)
+            row = page.locator(f'.sc-list-item[data-asin="{item["asin"]}"], [data-itemid][data-asin="{item["asin"]}"]').first
+            # Amazon's "item removed" message also carries data-action=delete
+            # and is hidden, so ask for the visible control only.
+            btn = row.locator('input[data-action="delete"], input[value="Delete"], .sc-action-delete input, .sc-action-delete a')
+            btn = btn.locator("visible=true").first
+            if btn.count() == 0:
+                btn = row.get_by_role("button", name="Delete").first
+            btn.click(timeout=10000)
+            page.wait_for_timeout(2000)
     # 2. Add or fix what is.
     have = {i["asin"]: i["qty"] for i in read_cart(page, cart)} if not args.dry_run else {i["asin"]: i["qty"] for i in now}
     missing = [(a, n) for a, (n, p) in want.items() if have.get(a, 0) != n]
@@ -181,12 +186,45 @@ def cmd_sync(args) -> int:
     if missing and not args.dry_run:
         q = "&".join(f"ASIN.{i}={a}&Quantity.{i}={n}" for i, (a, n) in enumerate(missing, 1))
         page.goto(f"https://www.{e['AMAZON_DOMAIN']}/gp/aws/cart/add.html?{q}")
-        page.wait_for_timeout(3000)
+        page.wait_for_timeout(2500)
+        # The add-by-URL page lists the items and waits for a confirmation.
+        confirm = page.locator('input[name="add"], input[value="Add to Cart"], input[value="Add to cart"], '
+                               '#add-to-cart-button, button:has-text("Add to cart"), input[type="submit"][value*="Cart"]')
+        if confirm.locator("visible=true").count():
+            confirm.locator("visible=true").first.click()
+            page.wait_for_timeout(3000)
+        have = {i["asin"]: i["qty"] for i in read_cart(page, cart)}
+        failed = []
+        # Whatever is still missing goes in from its own product page.
+        for a, n in missing:
+            if have.get(a, 0) == n:
+                continue
+            print(f"  adding {a} from its product page")
+            page.goto(f"https://www.{e['AMAZON_DOMAIN']}/dp/{a}")
+            page.wait_for_timeout(2500)
+            qty = page.locator("#quantity")
+            if qty.count() and n > 1:
+                try:
+                    qty.select_option(str(n))
+                except Exception:
+                    pass
+            button = page.locator('#add-to-cart-button, input[name="submit.add-to-cart"], '
+                                  'button:has-text("Add to cart"), input[value="Add to Cart"], '
+                                  '[data-csa-c-content-id*="add-to-cart"] button').locator("visible=true")
+            try:
+                button.first.click(timeout=10000)
+                page.wait_for_timeout(3000)
+            except Exception:
+                failed.append((a, n))
+                print(f"  could not find an add button on {a}; add it by hand: https://www.{e['AMAZON_DOMAIN']}/dp/{a}")
         final = read_cart(page, cart)
         print(f"Cart now has {len(final)} lines:")
         for i in final:
             mark = "ok" if i["asin"] in want and i["qty"] == want[i["asin"]][0] else ("keep" if i["asin"] in keep else "??")
             print(f"  {mark:4s} {i['asin']}  ×{i['qty']}  {i['title']}")
+        still = [a for a in want if a not in {i["asin"] for i in final}]
+        for a in still:
+            print(f"  MISSING {a}  ×{want[a][0]}  {want[a][1]['pick'][:60]}  → https://www.{e['AMAZON_DOMAIN']}/dp/{a}")
     print("\nNothing was bought. Check out when you are ready.")
     if not args.dry_run:
         print("The window stays open for you; close it when done.")

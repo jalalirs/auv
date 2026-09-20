@@ -893,11 +893,27 @@ def _horizon(stage, water_level: float, lowest: float, veiling, veil: float,
 
     import math as _math
 
-    top = float(water_level)
+    radius = horizon_for(across)
+    # Up past the surface, not up to it.
+    #
+    # This wall stood from the seabed to the water line, and the water line is
+    # about seven metres above a camera doing reef work. At nine hundred
+    # metres out that is half a degree: the wall could only ever cover the
+    # half-degree of frame just above eye level, and everything higher went
+    # through the sea surface — which is transmissive, as it has to be for
+    # Snell's window — and out of the water, where there is no geometry at
+    # all. Those rays came back the background colour, and that is the band
+    # across the top of every frame this platform has made.
+    #
+    # It is not a wall of water any more, above the line. It is the horizon:
+    # what you see looking out through a surface from underneath, which is the
+    # same colour as looking into the distance under it, because it is the
+    # same light. Tall enough to cover forty-five degrees from where a camera
+    # stands, which is every view on the sheet.
+    top = float(water_level) + float(radius)
     # Down past the deepest thing here, so no view under the seabed's edge
     # finds the gap under the wall.
     bottom = float(lowest) - 50.0
-    radius = horizon_for(across)
 
     points, counts, indices = [], [], []
     for i in range(HORIZON_SIDES):
