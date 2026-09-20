@@ -435,6 +435,8 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # water, and infinitely deep water is the veiling colour at full strength.
     # So that is what it is painted.
     nothing = [float(min(1.0, one * max(0.0, veil))) for one in veiling]
+    if os.environ.get("CORAL_CITY_PAINT_HORIZON") == "1":
+        nothing = [1.0, 0.5, 0.0]
     settings.set("/rtx/post/backgroundZeroAlpha/backgroundDefaultColor", nothing)
     settings.set("/rtx/post/backgroundZeroAlpha/enabled", True)
 
@@ -1050,14 +1052,20 @@ def _water_material(stage, surface) -> None:
     # are the surface, which are the wall, and which are neither — and
     # "neither" is the whole question, because a pixel that is nothing is the
     # band this wall was built to remove.
-    if os.environ.get("CORAL_CITY_PAINT_HORIZON") == "1":
-        shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(
-            Gf.Vec3f(0.0, 1.0, 1.0))
-        shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(1.0)
     shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.06)
     shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
     shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(0.22)
     shader.CreateInput("ior", Sdf.ValueTypeNames.Float).Set(1.333)
+    # After the opacity above, not before it. The first version of this set
+    # the opacity to one three lines earlier and the original line then set it
+    # straight back to 0.22, so the surface stayed seven-eighths transparent
+    # and the diagnostic said "the surface is not here" about a surface that
+    # was. A paint that is overwritten is indistinguishable from a paint that
+    # was never applied.
+    if os.environ.get("CORAL_CITY_PAINT_HORIZON") == "1":
+        shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(
+            Gf.Vec3f(0.0, 1.0, 1.0))
+        shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(1.0)
     material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
     UsdShade.MaterialBindingAPI.Apply(surface.GetPrim()).Bind(material)
 
