@@ -18,17 +18,17 @@ PETG = 1.27
 
 # (name, mass g, displaced cm³, z of centre, source)
 BOUGHT = [
-    ("LeMotech box 158 × 89 × 58 with lid", 220.0, P.BOX_L * P.BOX_W * P.BOX_H / 1000, 0.0, "mass estimated from 2.5 mm ABS; displacement is the sealed outside"),
+    ("LeMotech box 100 × 68 × 50 with lid", 110.0, P.BOX_L * P.BOX_W * P.BOX_H / 1000, 0.0, "mass estimated from 2.5 mm ABS; displacement is the sealed outside"),
     ("6 × thruster", 6 * P.THRUSTER_MASS_G, 6 * P.THRUSTER_DISPLACED_CM3, -5.0, "class estimate; MEASURE"),
-    ("Pi, PCA9685, BNO055, buck, 6 ESC, wiring", 190.0, 0.0, 0.0, "inside"),
+    ("Pi, PCA9685, BNO055, buck, 2 × 4-in-1 ESC, PoE tap, wiring", 110.0, 0.0, 0.0, "inside"),
     ("camera", 12.0, 0.0, P.WINDOW_Z, "inside"),
-    ("window, bezel screws, 2 glands", 40.0, 6.0, 0.0, "estimate"),
+    ("window, bezel screws, gland", 25.0, 4.0, 0.0, "estimate"),
     # Six thrusters and 700 g of nylon make this one heavier than the box
     # alone; the steel bars stay out and the rails wait for a lighter build.
     ("trim: wheel weights on the plate", 120.0, 15.0, P.PLATE_Z - P.PLATE_T - 2.0, "5 g strips, as many as the bucket says"),
-    ("straps, screws, tether stub", 40.0, 10.0, 0.0, "estimate"),
+    ("straps, screws, tether stub", 25.0, 6.0, 0.0, "estimate"),
 ]
-PRINT_Z = {"cover": 18.0, "chassis": -28.0, "bezel": P.WINDOW_Z, "pods": -10.0, "tray": -10.0}
+PRINT_Z = {"cover": 14.0, "chassis": -22.0, "bezel": P.WINDOW_Z, "pods": -8.0, "tray": -8.0}
 
 
 def compute():
