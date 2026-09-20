@@ -402,9 +402,17 @@ def _skins(colours, kinds=None, tile_metres: float = 0.04) -> str:
             "                color3f inputs:attenuation = (4, 17, 13)\n"
             "                color3f inputs:veiling = (0.24, 0.55, 0.45)\n"
             "                float inputs:veil = 0\n"
-            # Declared so the runtime can find it: it sets the water on every
-            # shader that has an `eye`, and skips any input the prim does not
-            # already carry.
+            # Declared so the runtime can find them: it sets the water on
+            # every shader that has an `eye`, and skips any input the prim
+            # does not already carry. Which is how the site width came to be
+            # missing — the map lookup needs it to turn a world position into
+            # the map's own square, the runtime knows it, and with nothing
+            # here to write it into the material kept the thousand metres it
+            # was compiled with. On Al Fahal, three kilometres across, every
+            # colony read the map a long way outside its edges and came back
+            # the colour of the clamp, which is black. Looe Key is a thousand
+            # metres across and was right by coincidence.
+            "                float inputs:site_across = 1000\n"
             "                float inputs:show_distance = 0\n"
             # The same map the seabed uses. Raw, because every texel is
             # already exp(-distance / length) and reading it as sRGB puts it
