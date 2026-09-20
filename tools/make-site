@@ -418,7 +418,25 @@ def derived_colour(height, hard, across: float, n: int = 1024):
     # Deeper ground is dimmer ground, and loses its red first.
     dim = np.exp(-np.clip(deep, 0, None)[..., None]
                  / np.array([26.0, 55.0, 70.0])[None, None, :])
-    return np.clip(colour * (0.45 + 0.55 * dim) * 255, 0, 255).astype("uint8")
+    lit = np.clip(colour * (0.45 + 0.55 * dim), 0.0, 1.0)
+
+    # Encoded, because the renderer reads this file as sRGB.
+    #
+    # Everything above is a reflectance — 0.74 for carbonate sand, 0.20 for
+    # rock under turf — and those numbers went into the file as if they were
+    # already sRGB. They are not, and the difference is not small: the
+    # material decodes 0.20 back to 0.033, which is six times darker than the
+    # rock this says it is drawing, and 0.74 back to 0.51.
+    #
+    # Al Fahal is the place that showed it. Its ground is a derived one and
+    # came out at a third the brightness of Looe Key's, whose ground is an
+    # orthomosaic — a photograph, which genuinely is sRGB and so was never
+    # wrong. A dark seabed under a bright veil is a washed-out seabed, and Al
+    # Fahal held a tenth of its own colour at arm's length where Looe Key held
+    # a quarter. It was not the water. It was this.
+    encoded = np.where(lit <= 0.0031308, lit * 12.92,
+                       1.055 * np.power(lit, 1 / 2.4) - 0.055)
+    return np.clip(encoded * 255, 0, 255).astype("uint8")
 
 
 def average_of(path: pathlib.Path) -> str:
