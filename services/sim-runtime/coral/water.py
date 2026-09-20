@@ -84,93 +84,6 @@ SCATTERING_ALBEDO = 0.28
 # silently running at the renderer's default five kilometres, where near and
 # far got the same wash and the only way to keep a close colony its own colour
 # was to turn the whole thing off.
-# How far off the bottom the camera does its work, for white balance.
-#
-# A camera balances on the light it is actually getting, and underwater what
-# it is getting depends on how far away the thing it is looking at is. Three
-# metres is where this platform's working view sits and about where a vehicle
-# flies a transect: close enough to see a colony, far enough not to be in it.
-WORKING_METRES = 3.0
-
-# How much of the correction to apply. One is a camera that fully adapts.
-#
-# Nought is the raw radiance, which is what the water actually does to the
-# light and what a calibrated instrument would record. That is worth being
-# able to ask for — this platform is meant to stand up as evidence — so it is
-# a switch rather than a decision baked into the picture.
-WHITE_BALANCE = 1.0
-
-# Gains are clamped, because a camera cannot invent light that is not there.
-#
-# At twenty metres in coastal water the red channel has about a thousandth of
-# the green left in it; dividing by that does not recover a red reef, it
-# recovers red *noise* and paints the whole frame magenta. A real camera hits
-# the same wall, which is why divers carry lights rather than turning the gain
-# up.
-MOST_GAIN = 4.0
-
-# Rec.709 luminance, so balancing changes the colour of the picture and not
-# how bright it is. Weighted, not a plain average: the eye reads most of
-# brightness off green, and normalising on a flat mean makes every balanced
-# frame come out darker than the one beside it.
-LUMA = (0.2126, 0.7152, 0.0722)
-
-
-def white_balance(lengths, veiling, veil: float,
-                  at_metres: float = WORKING_METRES,
-                  albedo: float = 0.18,
-                  strength: float = WHITE_BALANCE):
-    """Per-channel gains that put a grey card at the working distance back to grey.
-
-    This is what a camera does and the reason underwater video does not all
-    look like this platform's frames did: green. The medium is right — red is
-    gone in four metres of coastal water — but a camera pointed into it
-    adapts, and one that does not is not modelling a camera, it is modelling a
-    spectroradiometer.
-
-    The reference is an eighteen per cent grey card at the distance the
-    vehicle works at. What comes back off it is what the water leaves of its
-    own reflection plus the column's own light in front of it:
-
-        seen = albedo * exp(-d / length) + veiling * veil * (1 - exp(-d / length))
-
-    and the gains are whatever puts those three numbers equal without changing
-    the luminance. In clear water at close range that is nearly nothing. At
-    depth, or in a harbour, it is most of what makes the frame readable.
-
-    `strength` at nought returns unity gains, which is the raw radiance.
-    """
-    import math
-
-    # No medium, nothing to correct.
-    #
-    # The same gate the materials use: `veil` at nought means the water is
-    # switched off entirely, not that it has no glow — so absorption is off
-    # too, and a camera balancing for absorption that is not happening would
-    # put a cast on a picture that did not have one.
-    if float(veil) <= 0.0 or float(strength) <= 0.0:
-        return (1.0, 1.0, 1.0)
-
-    seen = []
-    for length, colour in zip(lengths, veiling):
-        gone = math.exp(-float(at_metres) / max(float(length), 0.01))
-        seen.append(albedo * gone + float(colour) * float(veil) * (1.0 - gone))
-
-    # Where the balanced grey card should sit: its own luminance, unchanged.
-    reference = sum(w * s for w, s in zip(LUMA, seen))
-    if reference <= 0.0:
-        return (1.0, 1.0, 1.0)
-
-    gains = []
-    for one in seen:
-        want = reference / one if one > 1e-6 else MOST_GAIN
-        # Applied partially if asked, in the multiplicative direction — half
-        # of a gain of four is two, not two and a half.
-        want = want ** max(0.0, float(strength))
-        gains.append(min(MOST_GAIN, max(1.0 / MOST_GAIN, want)))
-    return tuple(gains)
-
-
 VEIL_STRENGTH = 1.0
 
 # How bright the water's own glow is as a fill light. Read off a ladder.
@@ -498,26 +411,15 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # is gone in four metres of this water and green takes seventeen, and a fog
     # with one distance cannot say that. It is why everything below ten metres
     # is blue.
-    # And what a camera in this water does about its colour.
+    # What colour the water has made everything is not set here.
     #
-    # The medium is right and the frames were still green, because a green
-    # frame is what a spectroradiometer records and not what a camera
-    # produces. A camera adapts to the light it is getting; every underwater
-    # photograph anybody has seen has been through that adaptation, and a
-    # render that skips it does not look like footage, it looks like data.
-    #
-    # `/rtx/post/colorcorr/gain` is a real setting on this renderer — read out
-    # of its own tree with CORAL_CITY_SETTINGS=1, not guessed, because two
-    # separate settings on this platform turned out to be names nothing read.
-    wants = asked_for("CORAL_CITY_WHITE_BALANCE", WHITE_BALANCE)
-    gains = white_balance(lengths, veiling, 0.0 if _clear else float(veil),
-                          strength=wants)
-    settings.set("/rtx/post/colorcorr/enabled", max(gains) != min(gains))
-    settings.set("/rtx/post/colorcorr/gain", [float(one) for one in gains])
-    say("camera_balances",
-        onGreyCardAtM=WORKING_METRES,
-        gain=[round(float(one), 3) for one in gains],
-        strength=round(float(wants), 2))
+    # It was, for one run: an eighteen per cent grey card three metres out,
+    # worked out from these very attenuation lengths. It asked for gains of
+    # 0.99, 1.00, 1.00 — nothing at all — because within a few metres the
+    # water's own backscatter puts about as much into red as absorption takes
+    # out. The cast is not in the near field; it is in the other forty metres
+    # of the frame. So it is measured off the frame instead, in
+    # `coral/metering.py`, beside the exposure and for the same reason.
 
     put_the_water_in_the_materials(stage, veiling, lengths,
                                    0.0 if _clear else float(veil),

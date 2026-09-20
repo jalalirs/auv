@@ -18,6 +18,20 @@ RENDER_OUT=hardware/out/titan hardware/.venv/bin/python hardware/nano/render.py 
 hardware/.venv/bin/python hardware/titan/sheet.py
 ```
 
+## Measurements, against the Titan
+
+| | Titan (390 × 347 × 165) | Ours | Ratio, ours ÷ Titan |
+| --- | --- | --- | --- |
+| Capsule width | ~100 | 100 | 1.0 |
+| Capsule height | ~90 | 85 | 0.94 |
+| Capsule length | ~340 | 275 | 0.81 |
+| Overall length, width | 390, 347 | 344, 302 | 0.88, 0.87 |
+| Height over the pods | 165 | 125 | 0.76 |
+
+The capsule reads as the Titan's because its width-to-height is 1.18
+against the Titan's 1.1. The first two attempts were 1.9 (box flat) and
+0.66 (box on its side); this one uses the smaller box, which is what fixed it.
+
 ## Why this shape
 
 The Titan is three things: a capsule, a chassis with four arms, and six
