@@ -277,7 +277,12 @@ JSON
     # The gains are the runtime's: measured off the settled frame, logged, and
     # read back out of the log here so that what is on the sheet and what the
     # record says are the same numbers.
-    "${PYTHON:-python3}" "$(dirname "$0")/balance-sheet" \
+    # The interpreter that has numpy and PIL. A bare python3 on the box does
+    # not, and the balance would be skipped with a traceback nobody reads.
+    balancer="${PYTHON:-}"
+    [ -n "${balancer}" ] || balancer="${CITY}/venv/bin/python"
+    [ -x "${balancer}" ] || balancer="python3"
+    "${balancer}" "$(dirname "$0")/balance-sheet" \
         "${looks}/${as}" 2>&1 | sed 's/^/  /' || true
     {
         printf '{"place": "%s", "package": "%s", "at": "%s",\n' \
