@@ -901,6 +901,14 @@ def _horizon(stage, water_level: float, lowest: float, veiling, veil: float,
     # colour looking into water that far goes, which is the veiling colour, and
     # the fog then adds its own on top exactly as it does to everything else.
     colour = Gf.Vec3f(*[float(min(1.0, one * max(0.0, veil))) for one in veiling])
+    # CORAL_CITY_PAINT_HORIZON makes this wall a colour nothing else in the
+    # scene is, so the pixels it actually owns can be pointed at. Geometry
+    # says it should be a thin strip — from six metres down, the top of a wall
+    # nine hundred metres away subtends about a third of a degree — and a band
+    # a hundred pixels tall is therefore something else. Worth being able to
+    # ask rather than reason about.
+    if os.environ.get("CORAL_CITY_PAINT_HORIZON") == "1":
+        colour = Gf.Vec3f(1.0, 0.0, 1.0)
     material = UsdShade.Material.Define(stage, "/World/Looks/Horizon")
     shader = UsdShade.Shader.Define(stage, "/World/Looks/Horizon/Surface")
     shader.CreateIdAttr("UsdPreviewSurface")
