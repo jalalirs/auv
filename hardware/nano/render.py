@@ -83,7 +83,10 @@ def rasterise(meshes, elev, azim):
             inside = (l0 >= 0) & (l1 >= 0) & (l2 >= 0)
             if not inside.any():
                 continue
-            zz = l0 * z[i0] + l1 * z[i1] + l2 * z[i2]
+            # Perspective-correct depth: interpolate 1/z, not z. Affine z put
+            # the far corners of big flat triangles several millimetres too
+            # near, and foam flush under a 2.5 mm skin punched through it.
+            zz = 1.0 / (l0 / z[i0] + l1 / z[i1] + l2 / z[i2])
             win = depth[ymin:ymax + 1, xmin:xmax + 1]
             hit = inside & (zz < win)
             if not hit.any():

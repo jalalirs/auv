@@ -257,3 +257,103 @@ def test_the_far_sea_is_flat_because_it_cannot_carry_a_wave():
     # And in between, something between, falling as it goes out.
     middle = [water.carries_a_wave(fine * s) for s in (1.2, 1.5, 1.8)]
     assert 1.0 > middle[0] > middle[1] > middle[2] > 0.0, middle
+
+
+# ── white balance ────────────────────────────────────────────────────────────
+#
+# What a camera does about the fact that the water has taken most of the red
+# before the light ever reaches it. Every frame this platform made for months
+# was green, and the medium was not wrong — the camera was missing.
+
+def test_a_grey_card_comes_back_grey():
+    """The whole point: balance on grey and grey is what you get."""
+    import math
+
+    lengths = water.JERLOV["1C"]
+    veiling = water.veiling_colour(lengths)
+    gains = water.white_balance(lengths, veiling, veil=1.0, at_metres=3.0)
+
+    seen = []
+    for length, colour, gain in zip(lengths, veiling, gains):
+        gone = math.exp(-3.0 / length)
+        seen.append((0.18 * gone + colour * 1.0 * (1.0 - gone)) * gain)
+    assert max(seen) - min(seen) < 0.02 * max(seen), seen
+
+
+def test_balancing_does_not_change_how_bright_it_is():
+    """A balanced frame is a different colour, not a darker one."""
+    import math
+
+    lengths = water.JERLOV["1C"]
+    veiling = water.veiling_colour(lengths)
+    gains = water.white_balance(lengths, veiling, veil=1.0, at_metres=3.0)
+
+    before = after = 0.0
+    for weight, length, colour, gain in zip(water.LUMA, lengths, veiling, gains):
+        gone = math.exp(-3.0 / length)
+        one = 0.18 * gone + colour * 1.0 * (1.0 - gone)
+        before += weight * one
+        after += weight * one * gain
+    assert abs(after - before) < 1e-6 * max(before, 1e-9), (before, after)
+
+
+def test_at_range_red_is_the_channel_that_gets_lifted():
+    """Far off, red is the one the water took, so red is the one a camera lifts.
+
+    Not at arm's length, though, and that is worth writing down because it is
+    not what you would guess. Within a few metres the water's own backscatter
+    puts *more* into the red channel than absorption takes out of it — the
+    column in front of a near surface is short, so little is absorbed, while
+    the veiling light is close to neutral and fills red in. A grey card at
+    three metres in coastal water comes back very slightly warm, and a camera
+    balancing on it turns red down.
+
+    It is only past a few attenuation lengths, where the surface's own light
+    has gone and the veiling is all that is left, that red needs lifting.
+    """
+    lengths = water.JERLOV["1C"]
+    veiling = water.veiling_colour(lengths)
+
+    close = water.white_balance(lengths, veiling, veil=1.0, at_metres=3.0)
+    far = water.white_balance(lengths, veiling, veil=1.0, at_metres=20.0)
+    assert far[0] > far[1], far
+    assert far[0] > 1.0, far
+    assert far[0] > close[0], (close, far)
+
+
+def test_clearer_water_needs_less_correcting():
+    """Open ocean at arm's length barely needs a camera to do anything."""
+    close = water.white_balance(water.JERLOV["I"],
+                                water.veiling_colour(water.JERLOV["I"]),
+                                veil=1.0, at_metres=3.0)
+    murky = water.white_balance(water.JERLOV["9C"],
+                                water.veiling_colour(water.JERLOV["9C"]),
+                                veil=1.0, at_metres=3.0)
+    assert max(close) < max(murky), (close, murky)
+
+
+def test_no_gain_is_ever_past_the_clamp():
+    """A camera cannot invent light. Dividing by nothing gives magenta noise."""
+    for kind, lengths in water.JERLOV.items():
+        veiling = water.veiling_colour(lengths)
+        for far in (1.0, 5.0, 20.0, 80.0):
+            for gain in water.white_balance(lengths, veiling, veil=1.0,
+                                            at_metres=far):
+                assert 1.0 / water.MOST_GAIN <= gain <= water.MOST_GAIN, (
+                    kind, far, gain)
+
+
+def test_strength_nought_is_the_raw_radiance():
+    """Off means off: what the water actually did, for whoever wants that."""
+    lengths = water.JERLOV["5C"]
+    gains = water.white_balance(lengths, water.veiling_colour(lengths),
+                                veil=1.0, at_metres=6.0, strength=0.0)
+    assert gains == (1.0, 1.0, 1.0), gains
+
+
+def test_no_water_asks_for_no_correction():
+    """Veil at nought is no medium at all, so there is nothing to correct."""
+    lengths = water.JERLOV["1C"]
+    gains = water.white_balance(lengths, water.veiling_colour(lengths),
+                                veil=0.0, at_metres=3.0)
+    assert max(abs(one - 1.0) for one in gains) < 0.05, gains

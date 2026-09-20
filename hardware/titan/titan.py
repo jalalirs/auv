@@ -49,18 +49,20 @@ def capsule_half(top: bool):
     h = P.CAPSULE_H / 2
     s = P.SKIN
     sign = 1.0 if top else -1.0
+    r = P.CAPSULE_CROWN_R if top else P.BELLY_R
     outer = rounded(P.CAPSULE_L, P.CAPSULE_W, P.CAPSULE_CORNER_R, 0.0, sign * h, P.CAPSULE_X)
     crown = outer.faces().sort_by(Axis.Z)[-1 if top else 0]
-    outer = fillet(crown.edges(), P.CAPSULE_CROWN_R)
+    outer = fillet(crown.edges(), r)
     inner = rounded(P.CAPSULE_L - 2 * s, P.CAPSULE_W - 2 * s, P.CAPSULE_CORNER_R - s, -sign * 1.0, sign * (h - s), P.CAPSULE_X)
     crown = inner.faces().sort_by(Axis.Z)[-1 if top else 0]
-    inner = fillet(crown.edges(), P.CAPSULE_CROWN_R - s)
+    inner = fillet(crown.edges(), r - s)
     shell = outer - inner
-    # The nose opening for the bezel, and the stern opening for the glands.
+    # The nose opening for the window, and a drain slot low in the stern.
     nose_x = P.CAPSULE_X + P.CAPSULE_L / 2
-    shell -= along_x(P.NOSE_OPENING_D, 30.0, (nose_x, 0, P.WINDOW_Z))
-    sw, sh = P.STERN_OPENING
-    shell -= Location((P.CAPSULE_X - P.CAPSULE_L / 2, 0, 5.0)) * Box(30.0, sw, sh)
+    shell -= along_x(P.NOSE_OPENING_D, 40.0, (nose_x, 0, P.WINDOW_Z))
+    if not top:
+        sw, sh = P.STERN_OPENING
+        shell -= Location((P.CAPSULE_X - P.CAPSULE_L / 2, 0, -h + 12.0)) * Box(30.0, sw, sh)
     return shell, inner
 
 
@@ -119,11 +121,13 @@ def cover():
     part = shell + bosses(top=True)
     for x, y in P.VENTS:
         part -= along_z(P.VENT_D, 40.0, (x, y, P.CAPSULE_H / 2))
-    ex, ey = P.TETHER_EYE
-    lug = Location((ex, ey, P.CAPSULE_H / 2 + 2.0)) * Box(18.0, 6.0, 14.0)
-    lug = fillet(lug.edges().filter_by(Axis.Y), 2.5)
-    lug -= Location((ex, ey, P.CAPSULE_H / 2 + 5.0)) * Rot(90, 0, 0) * Cylinder(3.0, 10.0)
-    part += lug
+    # The connector dome: a rounded collar on the crown over the gland.
+    top_z = P.CAPSULE_H / 2
+    dome = along_z(P.PORT_DOME_D, P.PORT_DOME_H + 12.0, (P.PORT_X, 0, top_z - 6.0 + (P.PORT_DOME_H + 12.0) / 2 - 6.0))
+    dome = fillet(dome.faces().sort_by(Axis.Z)[-1].edges(), 8.0)
+    dome -= along_z(P.PORT_DOME_D - 8.0, P.PORT_DOME_H + 12.0, (P.PORT_X, 0, top_z - 8.0 + (P.PORT_DOME_H + 12.0) / 2 - 6.0))
+    dome -= along_z(P.PORT_HOLE_D, 60.0, (P.PORT_X, 0, top_z))
+    part += dome
     PARTS["cover"] = {"print": "JLC3DP, MJF PA12, dyed orange if offered, else grey and painted. Order on day one", "colour": "#f26a1b"}
     return part
 
@@ -133,35 +137,30 @@ def chassis():
     part = shell + bosses(top=False)
     # The base plate under the capsule, lightened to a rim and a spine.
     z0, z1 = P.PLATE_Z - P.PLATE_T, P.PLATE_Z
-    plate = rounded(P.CAPSULE_L - 20.0, P.CAPSULE_W + 10.0, P.CAPSULE_CORNER_R, z0, z1, P.CAPSULE_X)
-    plate -= rounded(P.CAPSULE_L - 70.0, P.CAPSULE_W - 50.0, 8.0, z0 - 1, z1 + 1, P.CAPSULE_X)
-    plate += Location((P.CAPSULE_X, 0, (z0 + z1) / 2)) * Box(P.CAPSULE_L - 30.0, 22.0, P.PLATE_T)
+    plate = rounded(P.CAPSULE_L - 16.0, P.PLATE_W, P.CAPSULE_CORNER_R, z0, z1, P.CAPSULE_X)
+    plate -= rounded(P.CAPSULE_L - 80.0, P.PLATE_W - 30.0, 8.0, z0 - 1, z1 + 1, P.CAPSULE_X + 10.0)
+    plate += Location((P.CAPSULE_X, 0, (z0 + z1) / 2)) * Box(P.CAPSULE_L - 30.0, 18.0, P.PLATE_T)
     part += plate
     # Arms out to the vertical pods, and the pods.
     for name, at, axis in P.THRUSTERS:
         x, y, z = at
         if axis[2] == 1.0:
             side = 1.0 if y > 0 else -1.0
-            y_in = side * (P.CAPSULE_W / 2 + 4.0)
+            y_in = side * (P.PLATE_W / 2 - 4.0)
             _, yj = tab_y(at)
             arm = Location((x, (y_in + yj) / 2, z)) * Box(P.ARM_W, abs(yj - y_in), P.ARM_T)
             riser = Location((x, y_in, (z1 + z) / 2)) * Box(P.ARM_W, 8.0, abs(z - z1) + P.ARM_T)
             part += arm + riser + tab(at, chassis_side=True)
         else:
             side = 1.0 if y > 0 else -1.0
-            x_in = P.CAPSULE_X - P.CAPSULE_L / 2 + 20.0
             _, yj = tab_y(at)
-            strut = Location(((x_in + x) / 2, yj - side * (P.TAB_T + P.ARM_W / 2), z)) * Box(abs(x - x_in) + P.TAB_W / 2, P.ARM_W, P.ARM_T)
-            drop = Location((x_in, yj - side * (P.TAB_T + P.ARM_W / 2), (z1 + z) / 2)) * Box(10.0, P.ARM_W, abs(z - z1) + P.ARM_T)
+            ys = yj - side * (P.TAB_T + P.ARM_W / 2)
+            # A strut back from under the tail to the pod's tab, and a drop.
+            x_in = P.TAIL_X + 24.0
+            strut = Location(((x_in + x) / 2, ys, z0 - P.ARM_T / 2)) * Box(abs(x - x_in) + P.TAB_W / 2, P.ARM_W, P.ARM_T)
+            drop = Location((x, ys, (z0 - P.ARM_T + z) / 2)) * Box(P.TAB_W - 10.0, P.ARM_W - 8.0, abs(z - z0) + P.ARM_T)
             part += strut + drop + tab(at, chassis_side=True)
-    # Ballast rails under the plate, open at the stern.
-    bl, bw, bh = P.BALLAST_BAR
-    for side in (1.0, -1.0):
-        y = side * P.BALLAST_Y
-        rail = Location((P.CAPSULE_X, y, z0 - bh / 2 - 1.0)) * Box(bl + 6.0, bw + 6.0, bh + 2.0)
-        rail -= Location((P.CAPSULE_X - 3.0, y, z0 - bh / 2 - 1.0)) * Box(bl + 6.0, bw + 0.4, bh + 0.4)
-        part += rail
-    # Two cradle ribs inside the lower capsule that the box sits on.
+    # Two cradle ribs inside the lower capsule that the standing box sits in.
     for x in (P.BOX_X - 60.0, P.BOX_X + 60.0):
         rib = Location((x, 0, -P.CAPSULE_H / 4)) * Box(6.0, P.CAPSULE_W, P.CAPSULE_H / 2)
         rib -= Location((x, 0, 0)) * Box(8.0, P.BOX_W + 1.0, P.BOX_H + 1.0)
@@ -192,14 +191,25 @@ def bezel():
 
 
 def tray():
-    part = Location((P.BOX_X, 0, P.TRAY_Z - P.TRAY_T / 2)) * Box(P.TRAY_L, P.TRAY_W, P.TRAY_T)
-    nx, ny = int(P.TRAY_L // P.TRAY_GRID), int(P.TRAY_W // P.TRAY_GRID)
-    for i in range(1, nx):
-        for j in range(1, ny):
-            part -= along_z(2.6, P.TRAY_T + 2, (P.BOX_X - P.TRAY_L / 2 + i * P.TRAY_GRID, -P.TRAY_W / 2 + j * P.TRAY_GRID, P.TRAY_Z - P.TRAY_T / 2))
+    """Two flat decks: ESCs and the converter on the lower, the small boards
+    on the upper, joined by four standoffs. One printed part."""
+    def deck(z_top):
+        d = Location((P.BOX_X, 0, z_top - P.TRAY_T / 2)) * Box(P.TRAY_L, P.TRAY_W, P.TRAY_T)
+        nx, ny = int(P.TRAY_L // P.TRAY_GRID), int(P.TRAY_W // P.TRAY_GRID)
+        for i in range(1, nx):
+            for j in range(1, ny):
+                d -= along_z(2.6, P.TRAY_T + 2, (P.BOX_X - P.TRAY_L / 2 + i * P.TRAY_GRID, -P.TRAY_W / 2 + j * P.TRAY_GRID, z_top - P.TRAY_T / 2))
+        return d
+    lower = deck(P.TRAY_Z)
+    upper = deck(P.DECK_Z)
+    # The upper deck stops short of the converter at the stern.
+    upper -= Location((P.BOX_X - 48.0, 0, P.DECK_Z)) * Box(46.0, P.TRAY_W + 2, P.TRAY_T + 2)
+    part = lower + upper
     for sx in (1.0, -1.0):
         for sy in (1.0, -1.0):
-            part += along_z(6.0, P.TRAY_Z - P.TRAY_T - P.FLOOR_Z, (P.BOX_X + sx * (P.TRAY_L / 2 - 6.0), sy * (P.TRAY_W / 2 - 6.0), (P.FLOOR_Z + P.TRAY_Z - P.TRAY_T) / 2))
+            x = P.BOX_X + (58.0 if sx > 0 else -20.0)
+            part += along_z(5.0, P.DECK_Z - P.TRAY_T - P.TRAY_Z, (x, sy * (P.TRAY_W / 2 - 5.0), (P.TRAY_Z + P.DECK_Z - P.TRAY_T) / 2))
+            part += along_z(5.0, P.TRAY_Z - P.TRAY_T - P.FLOOR_Z, (P.BOX_X + sx * (P.TRAY_L / 2 - 5.0), sy * (P.TRAY_W / 2 - 5.0), (P.FLOOR_Z + P.TRAY_Z - P.TRAY_T) / 2))
     cx, cy, cz, cw, ch, ct = P.CAMERA
     px = cx - ct / 2 - 1.5
     post = Location((px, 0, (P.TRAY_Z + cz + 14.0) / 2)) * Box(3.0, 30.0, cz + 14.0 - P.TRAY_Z)
@@ -208,20 +218,19 @@ def tray():
             post -= along_x(2.2, 6.0, (px, sy * 10.5, cz + sz * 6.25))
     post -= along_x(12.0, 6.0, (px, 0, cz))
     part += post
-    PARTS["tray"] = {"print": "PETG at Sketchat after the box is measured; a grid of M2.5 holes", "colour": "#c9c9c9"}
+    PARTS["tray"] = {"print": "PETG at Sketchat after the box is measured; two decks on standoffs", "colour": "#c9c9c9"}
     return part
 
 
 def bought():
     parts = {}
-    body = rounded(P.BOX_L, P.BOX_W, P.BOX_R, -P.BOX_H / 2, P.LID_Z, P.BOX_X)
-    body -= rounded(P.INSIDE_L, P.INSIDE_W, P.BOX_R - P.BOX_WALL, P.FLOOR_Z, P.LID_Z + 1, P.BOX_X)
+    body = Location((P.BOX_X, 0, (-P.BOX_H / 2 + P.LID_Z) / 2)) * Box(P.BOX_L, P.BOX_W, P.LID_Z + P.BOX_H / 2)
+    body -= Location((P.BOX_X, 0, (P.FLOOR_Z + P.LID_Z + 1) / 2)) * Box(P.INSIDE_L, P.INSIDE_W, P.LID_Z + 1 - P.FLOOR_Z)
     body -= along_x(P.WINDOW_BORE, 10.0, (P.BOX_X + P.BOX_L / 2, 0, P.WINDOW_Z))
-    for x, y, z in P.GLANDS:
-        body -= along_x(P.GLAND_HOLE_D, 10.0, (x, y, z))
-    parts["ref-box"] = (body, {"buy": "LeMotech ABS box 200 × 120 × 75, IP65, inside the capsule", "colour": "#2a2a2a"})
-    lid = rounded(P.BOX_L, P.BOX_W, P.BOX_R, P.LID_Z, P.BOX_H / 2, P.BOX_X)
-    parts["ref-lid"] = (lid, {"buy": "its clear lid", "colour": "#a8d4f0", "alpha": 0.4})
+    parts["ref-box"] = (body, {"buy": "LeMotech ABS box 158 × 89 × 58 (6.2 × 3.5 × 2.3 in), IP65, lying flat inside the capsule", "colour": "#2a2a2a"})
+    lid = Location((P.BOX_X, 0, (P.LID_Z + P.BOX_H / 2) / 2)) * Box(P.BOX_L, P.BOX_W, P.LID_T)
+    lid -= along_z(P.GLAND_HOLE_D, 10.0, (P.PORT_X, 0, P.BOX_H / 2))
+    parts["ref-lid"] = (lid, {"buy": "its clear lid, up, with the PG9 through it", "colour": "#a8d4f0", "alpha": 0.4})
     thr = None
     for name, at, axis in P.THRUSTERS:
         x, y, z = at
@@ -237,11 +246,9 @@ def bought():
     parts["ref-thrusters"] = (thr, {"buy": "6 × Cryfokt 2838 500 KV, 60 mm duct; duct size is a guess until measured", "colour": "#3a3f44"})
     window = along_x(P.WINDOW_D, P.WINDOW_T, (P.BOX_X + P.BOX_L / 2 + 1.6, 0, P.WINDOW_Z))
     parts["ref-window"] = (window, {"buy": "30 × 3 mm cast acrylic disc, SACO", "colour": "#cfe8f7", "alpha": 0.5})
-    glands = None
-    for x, y, z in P.GLANDS:
-        g = along_x(15.0, 14.0, (x - 7.0, y, z)) + along_x(6.0, 50.0, (x - 35.0, y, z))
-        glands = g if glands is None else glands + g
-    parts["ref-glands"] = (glands, {"buy": "2 × PG7, owned", "colour": "#111111"})
+    gz = P.BOX_H / 2
+    gland = along_z(19.0, 12.0, (P.PORT_X, 0, gz + 6.0)) + along_z(6.5, 90.0, (P.PORT_X, 0, gz + 50.0))
+    parts["ref-glands"] = (gland, {"buy": "1 × PG9 gland in the box's top wall; the tether is the round Cat6, owned", "colour": "#111111"})
     boards = None
     for name, x, y, z, length, width, height in P.BOARDS:
         b = Location((x, y, z + height / 2)) * Box(length, width, height)
@@ -250,12 +257,21 @@ def bought():
     cx, cy, cz, cw, ch, ct = P.CAMERA
     parts["ref-camera"] = (Location((cx, cy, cz)) * Box(ct, cw, ch) + along_x(9.0, 6.0, (cx + ct / 2 + 3.0, cy, cz)),
                            {"buy": "Camera Module 3 Wide, owned", "colour": "#222222"})
-    bl, bw, bh = P.BALLAST_BAR
-    bars = None
-    for side in (1.0, -1.0):
-        b = Location((P.CAPSULE_X, side * P.BALLAST_Y, P.PLATE_Z - P.PLATE_T - bh / 2 - 1.0)) * Box(bl, bw, bh)
-        bars = b if bars is None else bars + b
-    parts["ref-ballast"] = (bars, {"buy": "2 × mild steel 150 × 20 × 8", "colour": "#6d6d6d"})
+    foam = None
+    for x0, x1 in (P.FOAM_TAIL, P.FOAM_NOSE):
+        f = Location(((x0 + x1) / 2, 0, 0)) * Box(x1 - x0, P.CAPSULE_W - 2 * P.SKIN - 4.0, P.CAPSULE_H - 2 * P.SKIN - 6.0)
+        foam = f if foam is None else foam + f
+    foam -= along_x(P.NOSE_OPENING_D + 4.0, 80.0, (P.BOX_X + P.BOX_L / 2 + 20.0, 0, P.WINDOW_Z))
+    x0, x1 = P.FOAM_OVER
+    for zc in (P.BOX_H / 2 + 1.0 + P.FOAM_SHEET / 2, -(P.BOX_H / 2 + 1.0 + P.FOAM_SHEET / 2)):
+        foam += Location(((x0 + x1) / 2, 0, zc)) * Box(x1 - x0, P.BOX_W - 6.0, P.FOAM_SHEET)
+    foam -= along_z(P.PORT_DOME_D, 60.0, (P.PORT_X, 0, P.BOX_H / 2 + 10.0))
+    # Clip the foam to the capsule's true inside, crown fillets included. A
+    # plain rounded box left the foam poking through the curved top corners.
+    _, inner_top = capsule_half(top=True)
+    _, inner_bottom = capsule_half(top=False)
+    foam = foam & (inner_top + inner_bottom)
+    parts["ref-foam"] = (foam, {"buy": "closed-cell foam, cut from a pool noodle, in the tail and nose voids", "colour": "#e9e4d3"})
     return parts
 
 
