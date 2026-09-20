@@ -105,6 +105,7 @@ def main() -> int:
 
     unsourced = []
     unwatered = []
+    unsourced_sea = []
     print("%-14s %11s  %-9s %s" % ("place", "per km²", "density", "from"))
     for place in sorted(where.iterdir()):
         # Not the working copies somebody left beside the real ones. A
@@ -128,7 +129,7 @@ def main() -> int:
             mark, source[:70]))
 
     print()
-    print("%-14s %-10s %s" % ("place", "water", "how it was aimed"))
+    print("%-14s %-6s %-10s %s" % ("place", "sea", "water", "how it was aimed"))
     for place in sorted(where.iterdir()):
         if place.name.startswith(".") or not (place / "site.json").is_file():
             continue
@@ -138,8 +139,20 @@ def main() -> int:
             unwatered.append(f"{site.get('name', place.name)}: {why}")
         baked = (site.get("ground") or {}).get("waterBakedFrom") or {}
         at = baked.get("at")
-        print("%-14s %-10s %s" % (
-            site.get("name", place.name), mark,
+        # Which sea, and whether anybody can say why.
+        #
+        # The same rule as the density above it: an unmeasured reef is not
+        # wrong, an unlabelled one is. Everything here was rendered through
+        # Jerlov 1C — clear coastal water — because that was the default in
+        # three separate tools, and nothing anywhere said whether that was a
+        # decision about the place or a number nobody had got to yet.
+        sea = (site.get("water") or {})
+        told = sea.get("type") or "1C"
+        if not sea.get("from"):
+            told += "?"
+            unsourced_sea.append(site.get("name", place.name))
+        print("%-14s %-6s %-10s %s" % (
+            site.get("name", place.name), told, mark,
             why if why else
             f"{baked.get('waterType', '?')} from {at[0]:.0f}, {at[1]:.0f}, "
             f"{at[2]:.0f} m" if at else ""))
@@ -157,6 +170,14 @@ def main() -> int:
         print("Rebuild them with --cover-from, saying the survey or saying "
               "it was chosen.", file=sys.stderr)
         return 1
+    if unsourced_sea:
+        print("A `?` beside the sea means nobody has said which water that "
+              "place is in, so it is being rendered through Jerlov 1C — "
+              "clear coastal — by default: " + ", ".join(unsourced_sea))
+        print("Give it one with tools/make-site --water and --water-from. "
+              "This is not a failure: a sea nobody has measured is a fair "
+              "thing to have, and a sea nobody has labelled is not.")
+        print()
     print("Every place says where its density comes from, and every one "
           "carries a medium aimed at its own dive start.")
     return 0
