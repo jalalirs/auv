@@ -49,7 +49,7 @@ def main() -> int:
     groups = {
         "cover": ["cover"], "chassis": ["chassis"], "pods": ["pods"], "box": ["ref-box", "ref-lid"], "thrusters": ["ref-thrusters"],
         "tray + boards": ["tray", "ref-boards", "ref-camera"], "window + bezel": ["ref-window", "bezel"],
-        "glands": ["ref-glands"], "ballast": ["ref-ballast"],
+        "tether gland": ["ref-glands"], "foam": ["ref-foam"],
     }
     groups = {g: [n for n in ns if n in parts] for g, ns in groups.items()}
     legend = "".join(
@@ -119,7 +119,7 @@ code {{ font-family: var(--mono); font-size: 0.92em; }}
   <div>
     <div class="eyebrow">Hardware · first vehicle · mini Titan</div>
     <h1>Mini Titan</h1>
-    <p>The Geneinno Titan's construction at 0.8 scale: an orange capsule over a black chassis, four vertical thruster pods in the wings, two horizontal pods on the stern corners, a window in the nose. The dry part is an IP65 box hidden inside the capsule, the way the Titan hides its own hull under its shell. The capsule floods; the box seals. No battery, no moving seal: the DGX Spark on the surface does the thinking.</p>
+    <p>The Geneinno Titan's construction at 0.8 scale: a domed orange capsule 100 mm wide and 85 tall over a black chassis, its tail reaching back over the stern pods, four vertical thruster pods on long arms in the wings, two horizontal pods behind the stern, a window in the nose, and one tether into a connector dome on the crown. Nothing else crosses the skin. The dry part is an IP65 box lying inside the capsule under foam-filled nose and tail, the way the Titan hides its own hull under its shell. The capsule floods; the box seals. No battery, no moving seal: the DGX Spark on the surface does the thinking, and the vehicle boots when the tether is plugged in.</p>
   </div>
   <div class="eyebrow" style="text-align:right">Drag to orbit · scroll to zoom<br>Generated from the model</div>
 </header>
@@ -147,7 +147,7 @@ code {{ font-family: var(--mono); font-size: 0.92em; }}
       <div class="scroll"><table><thead><tr><th>Part</th><th class="num">cm³</th><th class="num">g</th><th class="num">Box, mm</th><th>How</th></tr></thead><tbody>{printed_rows}</tbody></table></div>
       <h3>Bought, drawn for the fit</h3>
       <div class="scroll"><table><thead><tr><th>Drawn as</th><th>Part</th></tr></thead><tbody>{bought_rows}</tbody></table></div>
-      <div class="seal"><strong>Where water is kept out.</strong> The box's own lid gasket, greased, inside the flooded capsule. The window on an O-ring with silicone under its bezel. Two PG7 glands in the box's rear wall, reached through the capsule's stern opening. Nothing rotates through a wall; the thrusters live in the water.</div>
+      <div class="seal"><strong>Where water is kept out.</strong> The box's own lid gasket, greased, inside the flooded capsule. The window on an O-ring with silicone under its bezel. One PG9 gland in the box's top wall for the one tether, under the cover's connector dome. Nothing rotates through a wall; the thrusters live in the water.</div>
     </section>
     <section>
       <h2>Open questions, in the order they close</h2>

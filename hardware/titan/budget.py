@@ -18,9 +18,9 @@ PETG = 1.27
 
 # (name, mass g, displaced cm³, z of centre, source)
 BOUGHT = [
-    ("LeMotech box with lid", 380.0, P.BOX_L * P.BOX_W * P.BOX_H / 1000, 0.0, "mass estimated from 3 mm ABS; displacement is the sealed outside"),
+    ("LeMotech box 158 × 89 × 58 with lid", 220.0, P.BOX_L * P.BOX_W * P.BOX_H / 1000, 0.0, "mass estimated from 2.5 mm ABS; displacement is the sealed outside"),
     ("6 × thruster", 6 * P.THRUSTER_MASS_G, 6 * P.THRUSTER_DISPLACED_CM3, -5.0, "class estimate; MEASURE"),
-    ("Pi, PCA9685, BNO055, buck, 6 ESC, wiring", 190.0, 0.0, P.TRAY_Z + 6, "inside"),
+    ("Pi, PCA9685, BNO055, buck, 6 ESC, wiring", 190.0, 0.0, 0.0, "inside"),
     ("camera", 12.0, 0.0, P.WINDOW_Z, "inside"),
     ("window, bezel screws, 2 glands", 40.0, 6.0, 0.0, "estimate"),
     # Six thrusters and 700 g of nylon make this one heavier than the box
@@ -28,7 +28,7 @@ BOUGHT = [
     ("trim: wheel weights on the plate", 120.0, 15.0, P.PLATE_Z - P.PLATE_T - 2.0, "5 g strips, as many as the bucket says"),
     ("straps, screws, tether stub", 40.0, 10.0, 0.0, "estimate"),
 ]
-PRINT_Z = {"cover": 25.0, "chassis": -35.0, "bezel": P.WINDOW_Z, "pods": -15.0, "tray": P.TRAY_Z}
+PRINT_Z = {"cover": 18.0, "chassis": -28.0, "bezel": P.WINDOW_Z, "pods": -10.0, "tray": -10.0}
 
 
 def compute():
@@ -36,6 +36,9 @@ def compute():
     rows = [(f"{k} (printed)", v["volume_cm3"] * PETG, v["volume_cm3"], PRINT_Z[k], "from the model")
             for k, v in parts.items() if "print" in v]
     rows += BOUGHT
+    if "ref-foam" in parts:
+        v = parts["ref-foam"]["volume_cm3"]
+        rows.append(("closed-cell foam, tail and nose", v * P.FOAM_DENSITY * 1000 / 1000, v, 4.0, "volume from the model, 30 g/L"))
     mass = sum(r[1] for r in rows)
     disp = sum(r[2] for r in rows)
     buoy = disp * FRESH
