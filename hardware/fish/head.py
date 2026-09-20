@@ -285,7 +285,11 @@ def geometry(parts: dict) -> None:
 
     out = []
     for name, meta in parts.items():
-        mesh = trimesh.load(OUT / f"{name}.stl", force="mesh")
+        # The sheet's geometry file must stay under 16 MB. A coarse STL is
+        # written beside the fine one for parts with many small features,
+        # because a grid of holes does not decimate.
+        coarse = OUT / f"{name}.sheet.stl"
+        mesh = trimesh.load(coarse if coarse.exists() else OUT / f"{name}.stl", force="mesh")
         tris = mesh.vertices[mesh.faces].astype(np.float32).reshape(-1)
         out.append({"name": name, "colour": meta["colour"], "alpha": meta.get("alpha", 1.0),
                     "triangles": int(len(mesh.faces)),
@@ -300,6 +304,7 @@ def main() -> int:
     for name, part in printed.items():
         export_step(part, str(OUT / f"{name}.step"))
         export_stl(part, str(OUT / f"{name}.stl"))
+        export_stl(part, str(OUT / f"{name}.sheet.stl"), tolerance=0.4, angular_tolerance=0.8)
         PARTS[name]["volume_cm3"] = round(part.volume / 1000, 1)
         PARTS[name]["mass_g"] = round(part.volume / 1000 * 1.27)   # PETG
         bb = part.bounding_box()

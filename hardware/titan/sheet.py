@@ -1,7 +1,7 @@
 """The head's design sheet: the model you can orbit, the parts, the open
 questions. Generated from head.py's output and README.md.
 
-    hardware/.venv/bin/python hardware/fish/sheet.py   → hardware/out/fish/rov.html
+    hardware/.venv/bin/python hardware/fish/sheet.py   → hardware/out/fish/titan.html
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import budget  # noqa: E402
 import params as P  # noqa: E402
 
-OUT = pathlib.Path(__file__).resolve().parents[1] / "out" / "rov"
+OUT = pathlib.Path(__file__).resolve().parents[1] / "out" / "titan"
 README = pathlib.Path(__file__).parent / "README.md"
 
 
@@ -47,7 +47,7 @@ def main() -> int:
     printed = {k: v for k, v in parts.items() if "print" in v}
     bought = {k: v for k, v in parts.items() if "buy" in v}
     groups = {
-        "box": ["ref-box"], "lid": ["ref-lid"], "cradle": ["cradle"], "thrusters": ["ref-thrusters"],
+        "cover": ["cover"], "chassis": ["chassis"], "pods": ["pods"], "box": ["ref-box", "ref-lid"], "thrusters": ["ref-thrusters"],
         "tray + boards": ["tray", "ref-boards", "ref-camera"], "window + bezel": ["ref-window", "bezel"],
         "glands": ["ref-glands"], "ballast": ["ref-ballast"],
     }
@@ -65,7 +65,7 @@ def main() -> int:
     questions = "".join(f"<li>{md_inline(q)}</li>" for q in open_questions())
     mass = sum(v["mass_g"] for v in printed.values())
 
-    page = f"""<title>Mini ROV</title>
+    page = f"""<title>Mini Titan</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
@@ -117,16 +117,16 @@ code {{ font-family: var(--mono); font-size: 0.92em; }}
 
 <header>
   <div>
-    <div class="eyebrow">Hardware · first vehicle · mini ROV</div>
-    <h1>Mini ROV</h1>
-    <p>A bought IP65 box is the hull, lying flat with its clear lid up. A printed cradle holds it and carries four thrusters: two vertical on the sides for heave and roll, two at the stern for surge and yaw. The camera looks forward through a window in the front wall; the tether enters the rear wall through two glands. No battery, no moving seal: the DGX Spark on the surface does the thinking.</p>
+    <div class="eyebrow">Hardware · first vehicle · mini Titan</div>
+    <h1>Mini Titan</h1>
+    <p>The Geneinno Titan's construction at 0.8 scale: an orange capsule over a black chassis, four vertical thruster pods in the wings, two horizontal pods on the stern corners, a window in the nose. The dry part is an IP65 box hidden inside the capsule, the way the Titan hides its own hull under its shell. The capsule floods; the box seals. No battery, no moving seal: the DGX Spark on the surface does the thinking.</p>
   </div>
   <div class="eyebrow" style="text-align:right">Drag to orbit · scroll to zoom<br>Generated from the model</div>
 </header>
 
 <div class="stage" id="stage">
   <canvas id="view"></canvas>
-  <div class="legend">{legend}<button id="lift" type="button">Lift the lid</button></div>
+  <div class="legend">{legend}<button id="lift" type="button">Lift the cover</button></div>
   <div class="hint">x forward · y port · z up · millimetres · origin at the box centre</div>
 </div>
 
@@ -137,7 +137,7 @@ code {{ font-family: var(--mono); font-size: 0.92em; }}
     <div class="stat"><div class="v">{b['displaced_cm3']:.0f}<small>cm³</small></div><div class="k">Displacement</div></div>
     <div class="stat"><div class="v">{b['net_g']:+.0f}<small>g</small></div><div class="k">Net in fresh water, before trim</div></div>
     <div class="stat"><div class="v">{b['righting_mm']:.0f}<small>mm</small></div><div class="k">Righting arm</div></div>
-    <div class="stat"><div class="v">{b['heave_n']:.0f}<small>N</small></div><div class="k">Heave and surge, 2 thrusters each</div></div>
+    <div class="stat"><div class="v">{b['heave_n']:.0f}<small>N</small></div><div class="k">Heave, 4 verticals</div></div>
   </div>
 
   <div class="cols">
@@ -147,7 +147,7 @@ code {{ font-family: var(--mono); font-size: 0.92em; }}
       <div class="scroll"><table><thead><tr><th>Part</th><th class="num">cm³</th><th class="num">g</th><th class="num">Box, mm</th><th>How</th></tr></thead><tbody>{printed_rows}</tbody></table></div>
       <h3>Bought, drawn for the fit</h3>
       <div class="scroll"><table><thead><tr><th>Drawn as</th><th>Part</th></tr></thead><tbody>{bought_rows}</tbody></table></div>
-      <div class="seal"><strong>Where water is kept out.</strong> The box's own lid gasket, greased. The window on an O-ring with silicone under its bezel. Two PG7 glands in the rear wall. Nothing rotates through a wall; the thrusters live in the water.</div>
+      <div class="seal"><strong>Where water is kept out.</strong> The box's own lid gasket, greased, inside the flooded capsule. The window on an O-ring with silicone under its bezel. Two PG7 glands in the box's rear wall, reached through the capsule's stern opening. Nothing rotates through a wall; the thrusters live in the water.</div>
     </section>
     <section>
       <h2>Open questions, in the order they close</h2>
@@ -155,7 +155,7 @@ code {{ font-family: var(--mono); font-size: 0.92em; }}
     </section>
   </div>
 
-  <footer>Sources: <code>hardware/rov/params.py</code> (every dimension and its origin), <code>rov.py</code> (the parts as code, exporting STEP for Sketchat), <code>budget.py</code>, <code>README.md</code>. Frame: x forward, y port, z up, the simulator's body frame, so the thruster table copies into a <code>dynamics.json</code>.</footer>
+  <footer>Sources: <code>hardware/titan/params.py</code> (every dimension and its origin), <code>titan.py</code> (the parts as code, exporting STEP for Sketchat), <code>budget.py</code>, <code>README.md</code>. Frame: x forward, y port, z up, the simulator's body frame, so the thruster table copies into a <code>dynamics.json</code>.</footer>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
@@ -176,13 +176,13 @@ code {{ font-family: var(--mono); font-size: 0.92em; }}
   function size() {{ const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }}
   window.addEventListener("resize", size); size();
   function decode(b64) {{ const bin = atob(b64), bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return new Float32Array(bytes.buffer); }}
-  fetch("rov.json").then((r) => r.json()).then((parts) => {{
+  fetch("titan.json").then((r) => r.json()).then((parts) => {{
     for (const part of parts) {{
       const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(decode(part.positions), 3)); g.computeVertexNormals();
       const m = new THREE.MeshStandardMaterial({{ color: part.colour, roughness: 0.55, metalness: 0.05, flatShading: true }});
       if (part.alpha < 0.99) {{ m.transparent = true; m.opacity = part.alpha; m.depthWrite = false; }}
       const o = new THREE.Mesh(g, m); o.name = part.name; o.renderOrder = part.alpha < 0.99 ? 2 : 1;
-      nodes[part.name] = o; if (part.name === "ref-lid") shell = o; world.add(o);
+      nodes[part.name] = o; if (part.name === "cover") shell = o; world.add(o);
     }}
     const box = new THREE.Box3().setFromObject(world), c = box.getCenter(new THREE.Vector3()), r = box.getSize(new THREE.Vector3()).length() / 2;
     controls.target.copy(c); camera.position.set(c.x + r * 1.4, c.y + r * 1.1, c.z + r * 1.5);
@@ -190,7 +190,7 @@ code {{ font-family: var(--mono); font-size: 0.92em; }}
   }});
   document.querySelectorAll(".legend input").forEach((b) => b.addEventListener("change", () => {{ for (const n of groups[b.dataset.group]) if (nodes[n]) nodes[n].visible = b.checked; }}));
   const button = document.getElementById("lift");
-  button.addEventListener("click", () => {{ lifted = !lifted; target = lifted ? 110 : 0; button.textContent = lifted ? "Close the lid" : "Lift the lid"; }});
+  button.addEventListener("click", () => {{ lifted = !lifted; target = lifted ? 110 : 0; button.textContent = lifted ? "Close the cover" : "Lift the cover"; }});
   const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
   function frame() {{
     for (const o of [shell, bezel]) if (o) o.position.z += still ? (target - o.position.z) : (target - o.position.z) * 0.12;
@@ -200,8 +200,8 @@ code {{ font-family: var(--mono); font-size: 0.92em; }}
 }})();
 </script>
 """
-    (OUT / "rov.html").write_text(page)
-    print(OUT / "rov.html")
+    (OUT / "titan.html").write_text(page)
+    print(OUT / "titan.html")
     return 0
 
 

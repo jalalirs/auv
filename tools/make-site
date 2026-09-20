@@ -912,6 +912,7 @@ def main() -> int:
     }
     if asked.water:
         site["water"] = {"type": asked.water, "from": asked.water_from}
+    built.carry_the_record_forward(site, where / "site.json")
     built.record_call(site, "make-site")
     (where / "site.json").write_text(json.dumps(site, indent=2) + "\n")
 
