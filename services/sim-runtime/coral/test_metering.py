@@ -247,3 +247,43 @@ def test_a_black_frame_changes_nothing():
     got = metering.balance_for(metering.cast_of(_flat((0.0, 0.0, 0.0))),
                                already=(1.1, 0.9, 1.0))
     assert got == (1.1, 0.9, 1.0), got
+
+
+def test_balancing_a_frame_is_done_in_light_not_in_the_encoding():
+    """sRGB is a curve. Multiplying the curve is not multiplying the light."""
+    mid = _flat((0.5, 0.5, 0.5))
+    out = metering.balanced(mid, (2.0, 1.0, 1.0))
+    # Half in sRGB is 0.214 in light; doubled is 0.428; encoded again is 0.68.
+    assert abs(float(out[0, 0, 0]) - 0.683) < 0.01, out[0, 0, 0]
+    assert abs(float(out[0, 0, 1]) - 0.5) < 1e-3
+
+
+def test_unity_gains_leave_a_frame_alone():
+    import numpy as np
+    before = _flat((0.2, 0.55, 0.44))
+    after = metering.balanced(before, (1.0, 1.0, 1.0))
+    assert float(np.abs(after - before).max()) < 2e-3
+
+
+def test_a_balanced_green_frame_comes_out_closer_to_neutral():
+    """End to end: read the cast, apply it, the cast is smaller."""
+    green = _flat((0.18, 0.42, 0.33))
+    gains = metering.balance_for(metering.cast_of(green))
+    after = metering.balanced(green, gains)
+    def spread(v):
+        return max(v) / max(min(v), 1e-6)
+    assert spread(metering.cast_of(after)) < spread(metering.cast_of(green))
+
+
+def test_nothing_comes_back_out_of_range():
+    import numpy as np
+    out = metering.balanced(_flat((0.9, 0.9, 0.9)), (3.0, 3.0, 3.0))
+    assert float(np.asarray(out).max()) <= 1.0 + 1e-6
+
+
+def test_an_eight_bit_frame_stays_eight_bit():
+    import numpy as np
+    frame = (np.asarray(_flat((0.4, 0.4, 0.4))) * 255).astype("uint8")
+    out = metering.balanced(frame, (1.2, 1.0, 0.9))
+    assert out.dtype == np.uint8, out.dtype
+    assert out[0, 0, 0] > out[0, 0, 1] > out[0, 0, 2], out[0, 0]

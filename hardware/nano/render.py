@@ -113,6 +113,10 @@ def load(view: str):
         path = OUT / f"{name}.stl"
         if not path.exists():
             continue
+        # Foam sits flush under the skin and z-fights with it from outside;
+        # it is only worth drawing when the cover is off.
+        if name == "ref-foam" and view != "open":
+            continue
         mesh = trimesh.load(path, force="mesh")
         if view == "open" and name == "cover":
             mesh.apply_translation((0, 0, 90))

@@ -55,30 +55,24 @@ TAB_T = 3.0
 TAB_HOLES = 14.0
 
 # ── the capsule: the Titan's body, over the box ──────────────────────────────
-GAP = 3.0
-SKIN = 2.5
-CAPSULE_W = BOX_W + 2 * (GAP + SKIN)               # 100
-# 85 tall on 100 wide, the Titan's 0.85. The box is 58, so there is 11 mm
-# above the lid and 11 below the floor inside the skin: foam sheets, which
-# is where the last of the buoyancy comes from and why the centre of
-# buoyancy sits above the centre of gravity.
-CAPSULE_H = 85.0
-FOAM_SHEET = 10.0
-# 30 past the front wall for the nose, 105 past the rear wall for a tail
-# that reaches over the stern pods, as the Titan's does. The tail is void,
-# and the void is where the buoyancy foam goes: this size of vehicle with
-# six thrusters sinks without it.
-NOSE_PAST = 30.0
-TAIL_PAST = 90.0
-CAPSULE_L = BOX_L + NOSE_PAST + TAIL_PAST          # 293
-CAPSULE_X = BOX_X + (NOSE_PAST - TAIL_PAST) / 2    # the capsule's centre, aft of the box's
+GAP = 2.5
+SKIN = 2.0
+CAPSULE_W = BOX_W + 2 * (GAP + SKIN)               # 77
+# 66 tall on 77 wide, the Titan's 0.85. The box is 50, so there is 6 mm
+# above the lid and 6 below the floor inside the skin: foam sheets.
+CAPSULE_H = 66.0
+FOAM_SHEET = 5.0
+# 22 past the front wall for the nose, 50 past the rear wall for the tail.
+# The voids carry the buoyancy foam.
+NOSE_PAST = 22.0
+TAIL_PAST = 50.0
+CAPSULE_L = BOX_L + NOSE_PAST + TAIL_PAST          # 172
+CAPSULE_X = BOX_X + (NOSE_PAST - TAIL_PAST) / 2
 TAIL_X = CAPSULE_X - CAPSULE_L / 2
-# In plan, a near-stadium: 46 of a possible 50, which clears the box's
-# corners by 3 mm at the inside skin.
-CAPSULE_CORNER_R = 46.0
-# The cover is a low dome: the crown fillet is most of its half-height.
-CAPSULE_CROWN_R = 26.0
-BELLY_R = 16.0               # the chassis' lower half is rounded too
+# In plan, a near-stadium: 34 of a possible 38.5.
+CAPSULE_CORNER_R = 34.0
+CAPSULE_CROWN_R = 20.0
+BELLY_R = 12.0
 PARTING_Z = 0.0
 # Four M4 bosses on the parting line, in the room beyond the box's end walls,
 # out at the sides so the nose opening does not show them.

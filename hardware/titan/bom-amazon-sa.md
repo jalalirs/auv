@@ -1,72 +1,64 @@
 # Mini Titan: what to buy
 
-Prices as shown on Amazon.sa, 20 September 2026, delivering to Riyadh.
+The vehicle is half the Titan: 222 × 205 × 87 mm, under a kilo. That size
+comes from two choices, the smallest box a Pi fits in and the smallest real
+thruster, and everything else follows.
 
-## Already owned or in today's cart
+## Already owned, from 19 September
 
-From 19 September: Pi Zero 2 W · Camera Module 3 Wide · 22-pin camera cable
-· micro-USB Ethernet adapter · BNO055 · LM2596 buck · round Cat6 15 m · PG7
-glands · scale · wheel weights · ESP32 · breadboard kit.
+Pi Zero 2 W · Camera Module 3 Wide · 22-pin camera cable · micro-USB
+Ethernet adapter · BNO055 · LM2596 buck · round Cat6 15 m · PG7 glands ·
+scale · wheel weights · ESP32 · breadboard kit. All used.
 
-From today's cart: 4 × Cryfokt thruster · Readytosky 20 A bidirectional
-ESC, pack of 4 · PCA9685. Two changes to make in the cart:
+## What to change in the cart
 
-- **The box: change the size to 6.2" × 3.5" × 2.3"** (158 × 89 × 58 mm),
-  same LeMotech clear-cover listing, about 45 SAR. The 200 × 120 × 75 made
-  the capsule either too wide or too tall; this one gives the Titan's
-  proportion.
-- **Remove the RUIZHI 12 V 20 A supply.** The single-tether design below
-  runs on 48 V and steps down inside.
+The 20 September cart was for the big version. Swap these:
 
-## To add for the Titan layout
+| Remove | Replace with | Qty | SAR | Where |
+| --- | --- | --- | --- | --- |
+| 4 × Cryfokt 2838 thruster | **ApisQueen UG500**, 3 × CW + 3 × CCW | 6 | ~90 each | Amazon.sa search `ApisQueen UG500`; or [underwaterthruster.com](https://www.underwaterthruster.com/products/apisqueen-uq500-mini-brushless-thruster-motor-small-size-and-light-weight-perfect-for-small-size-rovs/) at 24 USD, ships to KSA |
+| Readytosky 20 A ESC 4-pack | **4-in-1 drone ESC, 30 × 30 mm, 20–35 A, 3–6S, BLHeli_32** | 2 | ~180 each | search `4in1 ESC 35A BLHeli_32 6S`; BLHeli_32 has 3D mode, which is reverse |
+| LeMotech 200 × 120 × 75 box | **LeMotech 3.9" × 2.6" × 1.9"**, 100 × 68 × 50, clear cover, single | 1 | 60 | same listing, the size it opened on |
+| RUIZHI 12 V 20 A supply | **24 V 5 A 120 W** switching supply | 1 | ~70 | search `24V 5A switching power supply` |
+| | passive PoE injector + splitter pair, 5.5 mm barrel | 1 | ~25 | search `passive PoE injector splitter` |
+| | PG9 nylon cable glands, IP68, 4–8 mm | 1 pack | ~15 | search `PG9 cable gland waterproof` |
+| | PCA9685 PWM board | 1 | 27 | keep it, it is right |
 
-| # | Item | Pick | Qty | SAR | Why |
-| --- | --- | --- | --- | --- | --- |
-| 1 | Thrusters | Cryfokt 500KV 60 mm, one more Forward and one more reverse | 2 | 376 | six pods: four vertical, two horizontal. Three CW and three CCW so reaction torque cancels |
-| 2 | ESCs | Readytosky Bidirectional 20 A, single, with UBEC | 2 | 172 | the 4-pack covers four; singles are 86 each. Or a second 4-pack at 213 and keep two spares |
+About **1,000 SAR** for the swaps. The 12 V 5 A brick from 19 September
+stays for bench work.
 
-## The one tether
+## Why 24 volts and no converter
 
-One round Cat6 carries everything: Ethernet on two pairs, 48 V on the other
-two, into one PG9 gland in the box's top wall under the cover's connector
-dome. The vehicle boots when it is plugged in. Nothing else crosses the skin.
-
-| # | Item | Pick | Qty | SAR | Search on Amazon.sa | Why |
-| --- | --- | --- | --- | --- | --- | --- |
-| 3 | Surface supply | 48 V 5 A 240 W switching supply, open frame | 1 | ~110 | `48V 5A 240W switching power supply` | 3 A at 48 V is 150 W at the vehicle; over 15 m of Cat6 the drop is about 4 V |
-| 4 | Converter | DC-DC 48 V to 12 V 20 A 240 W step-down, sealed | 1 | ~70 | `48V to 12V 20A 240W DC DC converter` | inside the box, feeds the ESCs; the LM2596 then makes 5 V for the Pi |
-| 5 | Gland | PG9 nylon cable gland, IP68, 4–8 mm | 1 pack | ~15 | `PG9 cable gland waterproof` | the round Cat6 is 6–7 mm; the owned PG7 stops at 6.5 |
-| 6 | RJ45 splitter | passive PoE injector/splitter pair, 5.5 mm barrel | 1 | ~25 | `passive PoE injector splitter` | puts 48 V on pins 4-5 and 7-8 at the surface and takes it off in the box without cutting the cable |
-
-About **770 SAR** on top of today's cart, less the 110 for the 12 V supply
-if it comes out. The 2 × 2.5 mm² power flex is no longer needed.
+Six UG500 at full throttle draw under 8 A at 12 V. On 24 V that is 4 A,
+which drops about 5 V over 15 m of Cat6 on two pairs, so the vehicle sees
+19 V. The UG500 is rated to 24 V and the ESCs are 6S, so the thrusters run
+straight off the tether and only the Pi needs a step-down, the LM2596
+already owned. One cable, one gland, nothing warm in the box.
 
 ## Order at JLC3DP on day one
 
 Upload these three STEP files from `hardware/out/titan/`, material **MJF
-PA12 (nylon)**, finish as-printed. Nothing on them depends on a measurement.
+PA12 (nylon)**. Nothing on them depends on a measurement.
 
 | File | Colour | Size, mm |
 | --- | --- | --- |
-| `cover.step` | dyed orange if the site offers it for PA12, else grey and spray-painted | 275 × 100 × 57 |
-| `chassis.step` | black | 333 × 148 × 67 |
-| `bezel.step` | black | 46 × 46 × 5 |
+| `cover.step` | dyed orange if offered for PA12, else grey and painted | 170 × 77 × 45 |
+| `chassis.step` | black | 212 × 109 × 50 |
+| `bezel.step` | black | 40 × 40 × 4 |
 
-Expect 80 to 150 USD for the set. Standard build, ships in about a week.
+Expect 50 to 90 USD for the set.
 
 ## Print later, at Sketchat, after measuring
 
-| File | Waits for | Why |
-| --- | --- | --- |
-| `pods.step`, six copies | the thruster duct's outside diameter | each ring clamps the duct; 72 mm is a guess |
-| `tray.step` | the box's inside dimensions and corner bosses | it must sit between the bosses and clear the lid |
-
-Both are PETG, cheap, and bolt on: the pods to the chassis on four M3 each,
-the tray on its own feet.
+| File | Waits for |
+| --- | --- |
+| `pods.step`, six copies | the UG500 guard's outside diameter, 44 assumed |
+| `tray.step` | the box's inside and its corner bosses |
 
 ## From SACO or any hardware shop
 
-- a 30 mm disc of 3 mm clear acrylic, or a small sheet to cut one
-- a 26 × 2 mm O-ring, or a strip of 2 mm silicone cord
+- a 26 mm disc of 3 mm clear acrylic, or a small sheet to cut one
+- a 22 × 2 mm O-ring, or a strip of 2 mm silicone cord
+- a pool noodle: the buoyancy foam for the nose, the tail, and the two sheets over and under the box
 - a small tube of silicone grease for the box gasket
-- silicone sealant, M3 screws, four M3 brass inserts for the cover, two 25 mm webbing straps
+- silicone sealant, M3 screws, four M3 brass inserts for the cover, two 20 mm webbing straps

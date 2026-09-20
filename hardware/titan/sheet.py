@@ -119,7 +119,7 @@ code {{ font-family: var(--mono); font-size: 0.92em; }}
   <div>
     <div class="eyebrow">Hardware · first vehicle · mini Titan</div>
     <h1>Mini Titan</h1>
-    <p>The Geneinno Titan's construction at 0.8 scale: a domed orange capsule 100 mm wide and 85 tall over a black chassis, its tail reaching back over the stern pods, four vertical thruster pods on long arms in the wings, two horizontal pods behind the stern, a window in the nose, and one tether into a connector dome on the crown. Nothing else crosses the skin. The dry part is an IP65 box lying inside the capsule under foam-filled nose and tail, the way the Titan hides its own hull under its shell. The capsule floods; the box seals. No battery, no moving seal: the DGX Spark on the surface does the thinking, and the vehicle boots when the tether is plugged in.</p>
+    <p>The Geneinno Titan's construction at half scale: a domed orange capsule 77 mm wide and 66 tall over a black chassis, four vertical thruster pods on long arms in the wings, two horizontal pods behind the stern, a window in the nose, and one tether into a connector dome on the crown. Nothing else crosses the skin. The dry part is an IP65 box lying inside the capsule under foam-filled nose and tail, the way the Titan hides its own hull under its shell. The capsule floods; the box seals. No battery, no moving seal: the DGX Spark on the surface does the thinking, and the vehicle boots when the tether is plugged in.</p>
   </div>
   <div class="eyebrow" style="text-align:right">Drag to orbit · scroll to zoom<br>Generated from the model</div>
 </header>
