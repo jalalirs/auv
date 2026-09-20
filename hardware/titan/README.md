@@ -1,11 +1,11 @@
 # Mini Titan
 
-The first vehicle to build: the Geneinno Titan's construction at 0.8 scale.
-A domed orange capsule 100 mm wide and 85 tall on a black chassis, its tail
-reaching back over the stern; six thrusters in pods on long arms; one tether
-into a connector dome on the crown and nothing else on the skin. The dry part
-is the small IP65 box, 158 × 89 × 58, lying inside the capsule with foam
-above, below, ahead and behind it. The capsule floods. The box seals.
+The first vehicle to build: the Geneinno Titan's construction at half scale,
+222 × 205 × 87 mm and under a kilo. A domed orange capsule 77 mm wide and 66
+tall on a black chassis; six small thrusters in pods on arms; one tether into
+a connector dome on the crown and nothing else on the skin. The dry part is
+the smallest IP65 box a Pi fits in, 100 × 68 × 50, lying inside the capsule
+with foam above, below, ahead and behind it. The capsule floods. The box seals.
 
 - What to buy: [bom-amazon-sa.md](bom-amazon-sa.md)
 - The vehicle as code: [params.py](params.py), [titan.py](titan.py), [budget.py](budget.py)
@@ -22,15 +22,21 @@ hardware/.venv/bin/python hardware/titan/sheet.py
 
 | | Titan (390 × 347 × 165) | Ours | Ratio, ours ÷ Titan |
 | --- | --- | --- | --- |
-| Capsule width | ~100 | 100 | 1.0 |
-| Capsule height | ~90 | 85 | 0.94 |
-| Capsule length | ~340 | 275 | 0.81 |
-| Overall length, width | 390, 347 | 344, 302 | 0.88, 0.87 |
-| Height over the pods | 165 | 125 | 0.76 |
+| Capsule width | ~100 | 77 | 0.77 |
+| Capsule height | ~90 | 66 | 0.73 |
+| Capsule length | ~340 | 172 | 0.51 |
+| Overall length, width | 390, 347 | 222, 205 | 0.57, 0.59 |
+| Height over the pods | 165 | 87 | 0.53 |
+| Mass | 4,400 g | ~925 g | 0.21 |
 
-The capsule reads as the Titan's because its width-to-height is 1.18
-against the Titan's 1.1. The first two attempts were 1.9 (box flat) and
-0.66 (box on its side); this one uses the smaller box, which is what fixed it.
+Half scale overall. The capsule is a little fatter than half because the
+Pi Zero is 65 mm long and no box that holds it is narrower than 68. Its
+width-to-height is 1.17, the Titan's 1.1, so it reads right.
+
+What set the size: the thruster. The Cryfokt 2838 duct is 72 mm across and
+six of them made the vehicle 0.88 of the Titan. The UG500 is 44 and gives
+half. Thrust drops from 15 N to 4 N per unit, which is plenty for a tank and
+the reason this one is under a kilo.
 
 ## Why this shape
 
@@ -44,24 +50,24 @@ nose shows only the window bezel and its stern only the two glands.
 | --- | --- | --- |
 | **cover** | orange, the domed upper half of the capsule; three vents, the connector dome; four M4 to the chassis | wet |
 | **chassis** | black: the lower half of the capsule, a base plate, four arms to the wing pods, two struts to the stern pods, two cradle ribs the box sits on, ballast rails | wet |
-| **box** | LeMotech 158 × 89 × 58 (the 6.2 × 3.5 × 2.3 in size), IP65, lying flat, lid up, held by two ribs in the chassis | its own gasket, greased |
-| **window** | 30 mm acrylic in the box's front wall, printed bezel seen through the capsule's nose | O-ring, silicone |
-| **the one tether** | round Cat6, Ethernet on two pairs and 48 V on the other two, into one PG9 through the box's lid under the cover's dome | the gland |
+| **box** | LeMotech 100 × 68 × 50 (the 3.9 × 2.6 × 1.9 in size), IP65, lying flat, lid up, held by two ribs in the chassis | its own gasket, greased |
+| **window** | 26 mm acrylic in the box's front wall, printed bezel seen through the capsule's nose | O-ring, silicone |
+| **the one tether** | round Cat6, Ethernet on two pairs and 24 V on the other two, into one PG9 through the box's lid under the cover's dome | the gland |
 | **foam** | closed-cell, cut from a pool noodle: a sheet above the lid, a sheet under the floor, blocks in the nose and the tail | wet; it is what floats the six thrusters |
-| **tray** | inside the box: two decks on standoffs, ESCs and the converter below, the small boards above | dry |
+| **tray** | inside the box: two decks on standoffs, the two 4-in-1 ESCs and the buck below, the Pi, PCA9685 and IMU above | dry |
 
 Six thrusters, the Titan's layout: four vertical in the wings give heave,
-roll and pitch; two horizontal at the stern give surge and yaw. That is two
-more thrusters and two more ESCs than the four-thruster list, about 480 SAR,
-and it is what makes it a Titan and not a box with fans.
+roll and pitch; two horizontal at the stern give surge and yaw. Two 4-in-1
+drone ESCs drive all six from two 30 mm boards, which is what lets the
+small box work.
 
 ## The open questions, in the order they close
 
-1. **48 V on Cat6.** Passive PoE at 48 V and 3 A is common practice and
-   inside the cable's rating, but the RJ45 plugs get warm at 3 A; the
-   connection at the box is soldered, not a plug. The step-down converter
-   is the one part in the box that gets hot; it sits against the floor wall.
-2. **The duct.** The Cryfokt listing gives no outside diameter. Every pod is
+1. **24 V on Cat6.** Passive PoE at 24 V and 4 A is inside the cable's
+   rating; the RJ45 plug at the surface end is fine, and the box end is
+   soldered. The ESCs must be 6S-rated and flashed for 3D mode; a 4S board
+   here fails on the first plug-in.
+2. **The guard.** The Cryfokt listing gives no outside diameter. Every pod is
    a band clamp sized from `DUCT_OD`, 72 in the model; measured on arrival.
 3. **The box's wall, lid and corner bosses.** Measured on arrival; the tray
    and the cradle ribs follow.

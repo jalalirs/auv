@@ -254,3 +254,42 @@ def balance_for(cast, already=(1.0, 1.0, 1.0),
         want = (reference / one) ** max(0.0, towards) if one > 1e-6 else MOST_GAIN
         gains.append(min(MOST_GAIN, max(1.0 / MOST_GAIN, float(was) * want)))
     return tuple(gains)
+
+
+def balanced(pixels, gains):
+    """Apply the gains to a frame, in light rather than in the encoding.
+
+    A picture on disk is sRGB-encoded, and multiplying an encoded value is not
+    multiplying the light it stands for: the encoding is a curve, so the same
+    gain moves a dark pixel much further than a bright one and the result is
+    a colour cast that was not in the scene. So it is decoded, scaled, and
+    encoded again.
+
+    This is where a camera's white balance goes. It was tried in the renderer
+    first, on `/rtx/post/colorcorr/gain`, which is a real setting and does
+    take the values — a gain of 1.138 on red turned a green reef into a
+    magenta one, and pinning that exact triple reproduced it exactly, so the
+    setting works and it is simply not a multiplier. Whatever curve it is, it
+    is undocumented and violently sensitive, and a camera model should not
+    rest on a number nobody can write down the meaning of.
+    """
+    import numpy as np
+
+    frame = np.asarray(pixels, dtype="float32")
+    encoded = frame.max() > 1.5
+    if encoded:
+        frame = frame / 255.0
+    keep = frame[..., 3:] if frame.shape[-1] > 3 else None
+    frame = frame[..., :3]
+
+    # sRGB in, sRGB out, with the multiply done in between.
+    light = np.where(frame <= 0.04045, frame / 12.92,
+                     ((frame + 0.055) / 1.055) ** 2.4)
+    light = light * np.asarray(gains, dtype="float32")[None, None, :]
+    light = np.clip(light, 0.0, 1.0)
+    out = np.where(light <= 0.0031308, light * 12.92,
+                   1.055 * light ** (1 / 2.4) - 0.055)
+
+    if keep is not None:
+        out = np.concatenate([out, keep], axis=-1)
+    return (out * 255.0).astype("uint8") if encoded else out

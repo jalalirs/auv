@@ -833,6 +833,7 @@ class CoralCityShell(omni.ext.IExt):
                 else ("frame_%05d.png" % self.tour.taken))
             self.tour.waiting = True
             capture_viewport_to_file(viewport, str(frame))
+            self._balance_when_written(frame)
             self.tour.taken += 1
             # Kit hands back something awaitable; whether it does or not, the
             # frame is written by the time the next few updates have gone by.
@@ -1080,11 +1081,19 @@ class CoralCityShell(omni.ext.IExt):
                 else:
                     self._balance = _metering.balance_for(
                         _metering.cast_of(frame))
-                carb.settings.get_settings().set(
-                    "/rtx/post/colorcorr/enabled", True)
-                carb.settings.get_settings().set(
-                    "/rtx/post/colorcorr/gain",
-                    [float(one) for one in self._balance])
+                # Not set on the renderer.
+                #
+                # `/rtx/post/colorcorr/gain` is a real setting and it does
+                # take these numbers — a red gain of 1.138 turned the reef
+                # magenta, and pinning that exact triple reproduced it to two
+                # decimal places, so it works and it is simply not a
+                # multiplier. Whatever curve it applies is undocumented and
+                # violently sensitive: fourteen per cent in became a factor of
+                # two and a half out, and not by any consistent exponent.
+                #
+                # So the balance goes on the captured frame instead, which is
+                # where a camera puts it anyway, and where the arithmetic is
+                # ours and has tests.
             if self._meter.done:
                 shot.unlink(missing_ok=True)
                 self._say("metered", **self._meter.report())
@@ -1099,6 +1108,37 @@ class CoralCityShell(omni.ext.IExt):
                 self._meter.done = True
                 self._meter.why = f"could not read the frame: {exc}"[:120]
             self._say("metering_unavailable", why=str(exc)[:200])
+
+    def _balance_when_written(self, frame) -> None:
+        """Put the camera's white balance on a still, once it is on disk.
+
+        Kit writes the capture on a later update than the one that asked for
+        it, so this waits for the file rather than assuming it. A frame that
+        never arrives is left alone: an unbalanced picture is worth having and
+        a half-written one is not.
+        """
+        if self._balance == (1.0, 1.0, 1.0):
+            return
+        try:
+            import numpy as np
+            from PIL import Image
+
+            from coral import metering as _metering
+
+            for _ in range(self.PASSES_TO_GIVE_UP_ON_A_FRAME):
+                if frame.exists() and frame.stat().st_size > 1024:
+                    with frame.open("rb") as bytes_of_it:
+                        bytes_of_it.seek(-8, 2)
+                        if bytes_of_it.read(4) == b"IEND":
+                            break
+                time.sleep(0.05)
+            else:
+                return
+            with Image.open(frame) as picture:
+                got = np.asarray(picture.convert("RGB"))
+            Image.fromarray(_metering.balanced(got, self._balance)).save(frame)
+        except Exception as exc:
+            carb.log_warn(f"Coral City could not balance {frame.name}: {exc}")
 
     def _photograph(self, at: float) -> None:
         """Write out what the dive looks like.
