@@ -257,3 +257,49 @@ def test_the_far_sea_is_flat_because_it_cannot_carry_a_wave():
     # And in between, something between, falling as it goes out.
     middle = [water.carries_a_wave(fine * s) for s in (1.2, 1.5, 1.8)]
     assert 1.0 > middle[0] > middle[1] > middle[2] > 0.0, middle
+
+
+# ── how bright the veil is ───────────────────────────────────────────────────
+#
+# It was one number for every water, so the clearest sea on the platform
+# rendered as foggy as a harbour. The veil is backscattered light: how much
+# comes back is what a water type is a statement about.
+
+def test_the_water_the_ladder_was_read_on_is_unchanged():
+    """0.62 came off eleven frames of one view. Nothing here may move it."""
+    assert abs(water.veil_brightness(water.JERLOV["1C"]) - 0.62) < 1e-9
+
+
+def test_clearer_water_sends_less_light_back():
+    order = ["I", "IA", "IB", "II", "III", "1C", "3C", "5C"]
+    got = [water.veil_brightness(water.JERLOV[k]) for k in order]
+    assert got == sorted(got), dict(zip(order, got))
+    assert got[0] < got[-1] / 2.5, got
+
+
+def test_the_veil_is_never_brighter_than_what_it_sits_in_front_of():
+    """Past one it is brighter than the surface and every frame is a rectangle."""
+    for kind, lengths in water.JERLOV.items():
+        got = water.veil_brightness(lengths)
+        assert water.VEIL_DIMMEST <= got <= water.VEIL_BRIGHTEST, (kind, got)
+
+
+def test_open_ocean_is_dimmer_than_coastal_by_about_half():
+    """The anchor: deep ocean returns a few per cent, turbid water many times that."""
+    clear = water.veil_brightness(water.JERLOV["I"])
+    coastal = water.veil_brightness(water.JERLOV["1C"])
+    assert 0.4 < clear / coastal < 0.7, (clear, coastal)
+
+
+def test_brightness_scales_the_veil_without_turning_it():
+    """A dimmer veil is the same colour, not a different one."""
+    for kind in ("I", "IB", "3C"):
+        lengths = water.JERLOV[kind]
+        colour = water.veiling_colour(lengths)
+        bright = water.veil_brightness(lengths)
+        shape = [one / bright for one in colour]
+        # The hue is whatever the lengths say, mixed towards grey; dividing the
+        # brightness back out must give the same shape for every water scale.
+        assert abs(sum(shape) - sum(
+            one / water.veil_brightness(lengths) for one in colour)) < 1e-9
+        assert max(shape) <= 1.0 + 1e-9, (kind, shape)
