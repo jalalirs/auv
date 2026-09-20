@@ -618,6 +618,19 @@ def main() -> int:
                             "survey, or say it was chosen. Required whenever "
                             "coral is grown, because a density with no source "
                             "is a number somebody will cite as a measurement")
+    parse.add_argument("--water",
+                       help="which Jerlov water this place is in — I, IA, IB, "
+                            "II, III for open ocean, 1C through 9C for "
+                            "coastal. Everything on this platform has been "
+                            "rendered through 1C, which is clear coastal, and "
+                            "for an offshore Red Sea reef that is fog")
+    parse.add_argument("--water-from",
+                       help="where that water type comes from: the "
+                            "measurement and the paper. Required with "
+                            "--water, for the same reason --cover-from is "
+                            "required with coral — an attenuation length is "
+                            "a claim about a real sea and somebody will cite "
+                            "it")
     parse.add_argument("--ground",
                        help="a reference directory built by tools/ground, or its "
                             "colour_4096.png: the colour of this actual seabed, "
@@ -636,6 +649,11 @@ def main() -> int:
     parse.add_argument("--into",
                        default=str(pathlib.Path.home() / "coral-city" / "places"))
     asked = parse.parse_args()
+    if asked.water and not asked.water_from:
+        parse.error("--water needs --water-from: say which measurement it "
+                    "came from. A place rendered through the wrong sea looks "
+                    "exactly as convincing as one rendered through the right "
+                    "one.")
 
     where = pathlib.Path(asked.into) / asked.name
     where.mkdir(parents=True, exist_ok=True)
@@ -892,6 +910,8 @@ def main() -> int:
         # same in a frame and are not the same claim.
         **({"ground": ground_said} if ground is not None else {}),
     }
+    if asked.water:
+        site["water"] = {"type": asked.water, "from": asked.water_from}
     built.record_call(site, "make-site")
     (where / "site.json").write_text(json.dumps(site, indent=2) + "\n")
 

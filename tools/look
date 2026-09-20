@@ -21,7 +21,29 @@ set -euo pipefail
 
 # Which of Jerlov's waters. One name, and every number in the medium comes
 # off it: I is the clearest open ocean, 9C a turbid harbour.
-WATER="${WATER:-1C}"
+#
+# Unset, a place is rendered through its own — `site.json` says, if somebody
+# has found the measurement and written it down. Only a place that has not
+# falls back to 1C, which is clear coastal water and which every place on this
+# platform has been rendered through since the medium was written. For Looe
+# Key that is about right. For an offshore Red Sea reef, where the one per
+# cent light depth is forty to ninety metres, it is fog — and a frame full of
+# fog is a correct picture of the wrong sea.
+#
+# Set WATER to override, which is how the same reef is looked at through two
+# different seas; that is the comparison the water types exist to make.
+WATER_ASKED="${WATER:-}"
+
+water_of() {
+    # Read as JSON, not grepped. `site.json` has more than one "type" in it
+    # and the first one down the file is not this one.
+    python3 -c 'import json,sys
+try:
+    said = json.load(open(sys.argv[1] + "/site.json")).get("water") or {}
+    print(said.get("type") or "1C")
+except Exception:
+    print("1C")' "$1"
+}
 
 PLACES=("$@")
 [ ${#PLACES[@]} -eq 0 ] && PLACES=(al-fahal looe-key kaneohe red-sea thuwal-deep)
@@ -257,6 +279,8 @@ JSON
 # conclusions were drawn off one stale file. Refusing is now a failure.
 refused=0
 for place in "${PLACES[@]}"; do
+    # This place's own sea, unless the caller named one.
+    WATER="${WATER_ASKED:-$(water_of "${CITY}/places/${place}")}"
     echo "=== ${place}"
     one_place "${place}" || refused=1
 done
