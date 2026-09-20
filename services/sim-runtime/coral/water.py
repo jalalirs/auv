@@ -644,6 +644,14 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # The wall of water that stands where the seabed runs out, so that no
     # pixel in the frame is looking at nothing.
     _horizon(stage, water_level, floor, veiling, veil, across)
+    # What was actually built, said out loud.
+    #
+    # This wall exists so that no pixel in the frame is looking at nothing,
+    # and there is a band across the top of every frame that says some pixels
+    # are. Painting it a colour nothing else is put none of that colour in the
+    # picture — so either it is not there, or it is somewhere it cannot be
+    # seen, and the frame cannot tell those apart. This can.
+    say("horizon_made", **getattr(_horizon, "said", {}))
 
     surface = UsdGeom.Mesh.Define(stage, "/World/Surface")
     _wave_mesh(surface, water_level, across=across)
@@ -660,6 +668,14 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     surface.GetPrim().CreateAttribute(
         "primvars:doNotCastShadows", Sdf.ValueTypeNames.Bool).Set(True)
     _water_material(stage, surface)
+    from pxr import UsdGeom as _UsdGeom
+    _bounds = _UsdGeom.Mesh(surface).GetPointsAttr().Get()
+    say("surface_made",
+        reachM=round(float(sea_reaches(across)), 1),
+        levelZ=round(float(water_level), 2),
+        points=0 if _bounds is None else len(_bounds),
+        lowestZ=None if not _bounds else round(min(float(q[2]) for q in _bounds), 2),
+        highestZ=None if not _bounds else round(max(float(q[2]) for q in _bounds), 2))
 
     # ── caustics ─────────────────────────────────────────────────────────────
     #
@@ -919,6 +935,14 @@ def _horizon(stage, water_level: float, lowest: float, veiling, veil: float,
     material.CreateSurfaceOutput().ConnectToSource(
         shader.ConnectableAPI(), "surface")
     UsdShade.MaterialBindingAPI.Apply(wall.GetPrim()).Bind(material)
+    _horizon.said = {
+        "radius": round(float(radius), 1),
+        "topZ": round(top, 2),
+        "bottomZ": round(bottom, 2),
+        "exists": bool(stage.GetPrimAtPath("/World/Horizon")),
+        "visible": str(UsdGeom.Imageable(wall).ComputeVisibility()),
+        "points": len(points),
+    }
     return radius
 
 
