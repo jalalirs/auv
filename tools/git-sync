@@ -105,7 +105,25 @@ if [ -n "$(git status --porcelain)" ]; then
     fi
 
     git add -A
-    git diff --cached --check
+    # Say so, loudly, when this is what stopped the commit.
+    #
+    # `--check` is worth having: trailing whitespace and conflict markers
+    # should not travel. But it exits non-zero into `set -e` and the script
+    # simply stops, and every caller here pipes this through `tail`, so what
+    # reaches the screen is the last line of a whitespace report and not the
+    # words "nothing was committed". Three times in one night a commit did not
+    # happen, the push did not happen, the box stayed on the commit before,
+    # and the next build was made from stale code — twice that was read as a
+    # change having no effect on the picture.
+    if ! git diff --cached --check; then
+        printf '\n' >&2
+        printf 'NOTHING WAS COMMITTED. Nothing was pushed. The GPU checkout\n' >&2
+        printf 'is still on %s and anything built there is stale.\n' \
+               "$(git rev-parse --short HEAD)" >&2
+        printf 'Fix the whitespace above, or mark the file binary in\n' >&2
+        printf '.gitattributes if it is not source, then run this again.\n' >&2
+        exit 3
+    fi
     git commit -m "${COMMIT_MESSAGE}"
 else
     printf 'No local changes to commit.\n'

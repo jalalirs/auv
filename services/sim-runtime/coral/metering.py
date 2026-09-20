@@ -171,3 +171,86 @@ class Meter:
                 "middleOfFrame": None if self.middle is None else round(self.middle, 3),
                 "brightEnd": None if self.bright is None else round(self.bright, 3),
                 "aim": self.aim, "why": self.why or "still looking"}
+
+
+# ── what colour the water has made everything ────────────────────────────────
+#
+# The medium was right and every frame was still green.
+#
+# That is not a contradiction: green is what a spectroradiometer records
+# pointed into coastal water, and every underwater photograph anybody has
+# seen has been through a camera that adapted to it. A render that skips the
+# adaptation does not look like footage. It looks like data.
+#
+# The first attempt balanced on an eighteen per cent grey card three metres
+# out, worked out from the attenuation lengths and the veiling colour. It came
+# back asking for gains of 0.99, 1.00, 1.00 — nothing — and the reason is
+# worth keeping: within a few metres the water's own backscatter puts about as
+# much into the red channel as absorption takes out of it, so a card at arm's
+# length really is neutral. The green is not in the near field. It is in the
+# other forty metres of the frame, where the surface's own light is long gone
+# and the veiling is all that is left.
+#
+# So it is measured off the frame, the way the exposure beside it is, and for
+# the same reason: the thing being photographed is the only thing that knows
+# what it looks like.
+
+# How far to push a cast towards neutral. One is full grey-world.
+#
+# Not one. Grey-world assumes the scene averages to grey, and a reef does not
+# — it is genuinely green and blue, and a camera that insisted otherwise would
+# take the sea out of a picture of the sea. This is a camera that adapts, not
+# one that pretends it is in air.
+TOWARDS_NEUTRAL = 0.75
+
+# And a limit, because a camera cannot invent light that is not there. Past
+# four the red channel is noise being amplified into a magenta frame, which is
+# what happens to real footage shot too deep without lights.
+MOST_GAIN = 3.0
+
+
+def cast_of(pixels) -> tuple[float, float, float]:
+    """What colour this frame averages to, weighted like the exposure is.
+
+    The same soft centre weight `brightness_of` uses, so the exposure and the
+    balance are reading the same picture rather than two different ones.
+    """
+    import numpy as np
+
+    frame = np.asarray(pixels, dtype="float32")
+    if frame.ndim == 3 and frame.shape[2] >= 3:
+        frame = frame[:, :, :3]
+    if frame.max() > 1.5:
+        frame = frame / 255.0
+
+    tall, wide = frame.shape[0], frame.shape[1]
+    y = (np.arange(tall, dtype="float32") - (tall - 1) / 2) / max(tall / 2, 1)
+    x = (np.arange(wide, dtype="float32") - (wide - 1) / 2) / max(wide / 2, 1)
+    weight = np.exp(-1.6 * (y[:, None] ** 2 + x[None, :] ** 2))
+
+    total = weight.sum()
+    return tuple(float((frame[..., c] * weight).sum() / total) for c in range(3))
+
+
+def balance_for(cast, already=(1.0, 1.0, 1.0),
+                towards: float = TOWARDS_NEUTRAL) -> tuple[float, float, float]:
+    """Gains that take the cast out, on top of whatever is already applied.
+
+    `already` matters: the frame this was measured on was itself rendered
+    through the last set of gains, so what comes back is the residual cast and
+    the answer multiplies rather than replaces. Without that the meter would
+    oscillate — correct, over-correct the correction, and never settle.
+
+    Luminance is held, Rec. 709, so balancing changes the colour of a frame
+    and not how bright it is. The exposure meter is doing brightness and two
+    loops pulling on the same number do not converge.
+    """
+    reference = sum(w * c for w, c in zip((0.2126, 0.7152, 0.0722), cast))
+    if reference <= 1e-6:
+        return tuple(float(one) for one in already)
+
+    gains = []
+    for was, one in zip(already, cast):
+        want = (reference / one) ** max(0.0, towards) if one > 1e-6 else MOST_GAIN
+        gains.append(min(MOST_GAIN, max(1.0 / MOST_GAIN, float(was) * want)))
+    return tuple(gains)

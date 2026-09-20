@@ -127,6 +127,8 @@ class CoralCityShell(omni.ext.IExt):
         # of how much light there is down there.
         self._meter = None
         self._metering = False
+        # What the camera has settled on for colour, carried between rounds.
+        self._balance = (1.0, 1.0, 1.0)
         self._metered_at = 0.0
         self._first_frame_at = None
         self._said_settings = False
@@ -1041,9 +1043,28 @@ class CoralCityShell(omni.ext.IExt):
             if wanted is not None:
                 carb.settings.get_settings().set(
                     "/rtx/post/tonemap/filmIso", float(wanted))
+
+            # And what colour the water has made everything, off the same
+            # frame. A camera adapts to the light it is in; one that does not
+            # is a spectroradiometer, and every frame this platform made was
+            # green because of it.
+            #
+            # On top of the gains already applied, because the frame just read
+            # was rendered through them. Replacing rather than compounding is
+            # how a balance oscillates instead of settling.
+            from coral import metering as _metering
+            self._balance = _metering.balance_for(
+                _metering.cast_of(frame), already=self._balance)
+            carb.settings.get_settings().set("/rtx/post/colorcorr/enabled", True)
+            carb.settings.get_settings().set(
+                "/rtx/post/colorcorr/gain",
+                [float(one) for one in self._balance])
             if self._meter.done:
                 shot.unlink(missing_ok=True)
                 self._say("metered", **self._meter.report())
+                self._say("camera_balances",
+                          gain=[round(float(one), 3) for one in self._balance],
+                          towards=_metering.TOWARDS_NEUTRAL)
         except Exception as exc:
             # A dive that cannot meter keeps the exposure it was given. That is
             # the old behaviour and it is not a reason to fail.
