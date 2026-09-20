@@ -1049,16 +1049,29 @@ class CoralCityShell(omni.ext.IExt):
             # is a spectroradiometer, and every frame this platform made was
             # green because of it.
             #
-            # On top of the gains already applied, because the frame just read
-            # was rendered through them. Replacing rather than compounding is
-            # how a balance oscillates instead of settling.
+            # Once, from the settled frame, and not round after round.
+            #
+            # The first version compounded: each read multiplied the gains it
+            # had by the residual cast it measured. That is the textbook
+            # iteration and it ran away here, because a capture lags the
+            # setting that produced it — the frame this reads was rendered
+            # through the gains from two passes ago, so the loop kept
+            # correcting a cast it had already corrected and drove green into
+            # the clamp at three while pushing red and blue to a third. The
+            # green frame it was trying to fix came out greener.
+            #
+            # There is no loop to tune here. The exposure has settled, the
+            # frame is what the camera is actually seeing, and the balance
+            # that neutralises it is one calculation. Luminance is held, so it
+            # does not disturb the exposure that just settled.
             from coral import metering as _metering
-            self._balance = _metering.balance_for(
-                _metering.cast_of(frame), already=self._balance)
-            carb.settings.get_settings().set("/rtx/post/colorcorr/enabled", True)
-            carb.settings.get_settings().set(
-                "/rtx/post/colorcorr/gain",
-                [float(one) for one in self._balance])
+            if self._meter.done and self._balance == (1.0, 1.0, 1.0):
+                self._balance = _metering.balance_for(_metering.cast_of(frame))
+                carb.settings.get_settings().set(
+                    "/rtx/post/colorcorr/enabled", True)
+                carb.settings.get_settings().set(
+                    "/rtx/post/colorcorr/gain",
+                    [float(one) for one in self._balance])
             if self._meter.done:
                 shot.unlink(missing_ok=True)
                 self._say("metered", **self._meter.report())
