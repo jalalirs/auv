@@ -5,16 +5,25 @@ purpose: the simulator's session does not touch it and this one does not touch
 the simulator. The two meet at one file, the vehicle's `dynamics.json`, which
 this side measures and that side integrates.
 
-## Two vehicles
+## Four designs, one being built
 
-**nano** is a Geneinno Titan at 0.55 scale, six thrusters, an acrylic tube
-for a hull. Designed first; parked while the fish is built, because the
-fish costs a fifth as much and answers the question the user asked next,
-which was how fast a small thing can move.
+**titan** is the one being built: the Geneinno Titan's construction at 0.8
+scale, an orange cover over a black chassis with six thruster pods, and the
+IP65 box hidden inside as the dry part. The cover, chassis and bezel go to
+JLC3DP in MJF nylon on day one; the pods and tray wait for two measurements.
+See [titan/README.md](titan/README.md).
 
-**fish** is a tethered OpenFish with a redrawn head and the brain on the
-surface. Parts ordered 19 September; the head is modelled; see
+**rov** was the same box and thrusters on a bare cradle, drawn earlier on
+20 September and rejected as ugly. Its parameters and budget are kept; the
+titan reuses its box, window and gland layout. See [rov/README.md](rov/README.md).
+
+**fish** is a tethered OpenFish with a redrawn head. Designed on 19
+September, parked the next day as too hard for a first build; its files and
+its four fish-only parts wait for version two. See
 [fish/README.md](fish/README.md).
+
+**nano** is a Geneinno Titan at 0.55 scale on a Blue Robotics tube, the
+first design, superseded by the rov's cheaper hull. See [nano/](nano/).
 
 ## nano
 

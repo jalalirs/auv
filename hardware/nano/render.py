@@ -115,6 +115,8 @@ def load(view: str):
             mesh.apply_translation((0, 0, 90))
         if view == "open" and name == "shell":
             mesh.apply_translation((0, 0, 110))
+        if view == "open" and name == "ref-lid" and "cover" not in {p for p in parts}:
+            mesh.apply_translation((0, 0, 90))
         rgb = hexrgb(parts[name]["colour"])
         meshes.append((mesh, (*rgb, parts[name].get("alpha", 1.0))))
     return meshes
