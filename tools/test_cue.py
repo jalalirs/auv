@@ -139,3 +139,46 @@ def test_bands_come_back_in_order_and_only_where_there_is_seabed():
 def test_open_water_alone_says_so_rather_than_inventing_a_number():
     frame = np.zeros((40, 40, 3), dtype="float32")
     assert cue.cue(frame, np.full((40, 40), np.nan)) is None
+
+
+def test_the_water_alone_is_the_ratio_between_the_two_flights():
+    """A pale reef and a failed medium are the same saturation. Not the same
+    ratio: with the medium off the reef is whatever it is, and dividing one
+    by the other leaves the water."""
+    tall, wide = 40, 40
+    far = np.full((tall, wide), np.nan)
+    far[:20, :] = 12.0
+    far[20:, :] = 100.0
+
+    # A reef whose near half is pale and far half is vivid — the opposite of
+    # what the medium does, so a saturation reading would be misled.
+    dry = np.zeros((tall, wide, 3), dtype="float32")
+    dry[:20] = [0.60, 0.62, 0.61]
+    dry[20:] = [0.20, 0.55, 0.40]
+    # Water that takes red fastest, applied to both halves.
+    near_left, far_left = (0.80, 0.95, 0.92), (0.20, 0.70, 0.60)
+    wet = dry.copy()
+    wet[:20] *= near_left
+    wet[20:] *= far_left
+
+    told = cue.against(wet, dry, far)
+    assert told is not None and len(told) == 2
+    # Normalised on the near band, so it reads one there by construction.
+    assert told[0]["survives"] == [1.0, 1.0, 1.0], told[0]
+    # And the far band is how much faster the far field went.
+    want = [round(f / n, 3) for f, n in zip(far_left, near_left)]
+    assert told[1]["survives"] == pytest.approx(want, abs=0.002), (
+        told[1], want)
+    # Red must go fastest of the three.
+    assert told[1]["survives"][0] < told[1]["survives"][1]
+
+
+def test_a_uniform_medium_reads_flat():
+    """No falloff in, no falloff out."""
+    far = np.full((40, 40), np.nan)
+    far[:20, :] = 12.0
+    far[20:, :] = 100.0
+    dry = np.full((40, 40, 3), 0.5, dtype="float32")
+    wet = dry * 0.4
+    told = cue.against(wet, dry, far)
+    assert all(b["survives"] == [1.0, 1.0, 1.0] for b in told), told

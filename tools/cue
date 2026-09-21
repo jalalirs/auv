@@ -142,6 +142,48 @@ def distances(eye, look, grid, across: float, wide: int, tall: int):
     return got
 
 
+def against(wet, dry, far):
+    """What the water did, separated from what the reef is.
+
+    Saturation of a rendered frame is albedo and medium together, and the two
+    are not separable by looking. Red Sea reads as a poor depth cue at close
+    range for the simple reason that its foreground is pale cream staghorn:
+    low saturation because the coral is pale, not because the water failed. A
+    pale reef and a broken medium are the same number.
+
+    The same flight with the medium switched off is the reef's own colour. The
+    ratio between them, band by band, is the water alone — and it should fall
+    with distance in every place whatever the reef is made of.
+
+    Exposure differs between the two runs, because each is metered on its own
+    frame. So the ratio is normalised on the nearest band: what is being
+    asked is how much *faster* the far field goes than the near one, which is
+    what depth cueing means, and that survives a stop either way.
+    """
+    import numpy as np
+
+    keep = ~np.isnan(far)
+    edges = [0, 2, 4, 8, 16, 32, 64, 128, 400]
+    rows = []
+    for lo, hi in zip(edges, edges[1:]):
+        here = keep & (far >= lo) & (far < hi)
+        if here.sum() < 200:
+            continue
+        rows.append((lo, hi, int(here.sum()),
+                     wet[here].mean(axis=0), dry[here].mean(axis=0)))
+    if not rows:
+        return None
+    first = rows[0]
+    base = [float(first[3][c] / max(first[4][c], 1e-6)) for c in range(3)]
+    out = []
+    for lo, hi, n, w, d in rows:
+        ratio = [float(w[c] / max(d[c], 1e-6)) / max(base[c], 1e-6)
+                 for c in range(3)]
+        out.append({"fromM": lo, "toM": hi, "pixels": n,
+                    "survives": [round(v, 3) for v in ratio]})
+    return out
+
+
 def cue(frame, far):
     """Colour against distance: what the seabed keeps, in bands of metres."""
     import numpy as np
@@ -174,6 +216,11 @@ def main() -> int:
     parse.add_argument("place")
     parse.add_argument("sheet")
     parse.add_argument("--view", default="at-work")
+    parse.add_argument("--against", metavar="SHEET",
+                       help="a sheet of the same flight with the medium off "
+                            "(CLEAR=1 ./tools/look). With it, what is reported "
+                            "is the water on its own rather than the water and "
+                            "the reef's own colour together")
     parse.add_argument("--json", action="store_true")
     asked = parse.parse_args()
 
@@ -220,6 +267,22 @@ def main() -> int:
         print("  %4d-%-4d    %.3f     %.3f     %s"
               % (band["fromM"], band["toM"], band["keeps"],
                  band["redOverGreen"], band["rgb"]))
+    if asked.against:
+        other = pathlib.Path(asked.against).expanduser() / f"{asked.view}.png"
+        if not other.is_file():
+            print(f"no {asked.view} in {asked.against}", file=sys.stderr)
+            return 2
+        with Image.open(other) as picture:
+            plain = np.asarray(picture.convert("RGB").resize(
+                (wide, tall), Image.BILINEAR), dtype="float32") / 255.0
+        told = against(frame, plain, far)
+        if told:
+            print("\n  the water alone, against the same reef with it off")
+            print("   metres      red    green    blue")
+            for band in told:
+                print("  %4d-%-4d   %.3f   %.3f   %.3f"
+                      % (band["fromM"], band["toM"], *band["survives"]))
+
     near = [b for b in got["bands"] if b["toM"] <= 8]
     away = [b for b in got["bands"] if b["fromM"] >= 32]
     if near and away:
