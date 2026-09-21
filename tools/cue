@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+"""How much of its own colour the seabed keeps, against how far away it is.
+
+    tools/cue ~/coral-city/places/looe-key ~/coral-city/work/looks/looe-key-1C
+
+Depth cueing is a statement about *distance*: near surfaces keep their colour,
+far ones become the water. Every earlier version of this measured rows of the
+image instead, on the assumption that the bottom of a frame is near and the
+middle is far, and that assumption is wrong often enough to have produced two
+confident reports of faults that did not exist.
+
+    - Red Sea has no visible ground at all. At 1.4 million colonies a square
+      kilometre the coral covers the seabed, so the band of pixels called "the
+      ground near the camera" was a staghorn thicket, and the number said the
+      medium had failed when it was working.
+    - The horizon is not at a fixed row. It sits at row 164 at Red Sea, where
+      the camera looks down the fore-reef slope, and at 322 at Al Fahal. A
+      fixed "far" band is sky in one place and seabed in another.
+    - After the horizon band was fixed the figure got *worse* on three places,
+      because the far field stopped being the background colour and started
+      being the water, which is brighter. A real improvement read as a
+      regression.
+
+So this does not guess. The camera is reconstructed from the same table the
+runtime flies — `VIEWS` in the tour, the place's own `beginAt`, and the lens
+written down in the extension — and every pixel is traced against the place's
+own heightfield until it meets the seabed. What comes back is colour against
+metres, which is the thing depth cueing is about.
+
+What it cannot see: coral stands above the heightfield, so a pixel of coral is
+nearer than the ground traced behind it. The bias is towards over-stating
+distance, it is the same in every place, and it does not change the shape of
+the curve. Said here rather than left for somebody to rediscover.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import sys
+
+# The lens, from services/sim-runtime/exts/.../extension.py. Written down there
+# "because a console that paints the world onto its own picture needs the field
+# of view to be a fact and not an inference", and for the same reason here.
+FOCAL_LENGTH_MM = 24.0
+APERTURE_MM = 20.955
+
+# Where the sea is, when a place does not say. Every place so far is at nought.
+WATER_LEVEL = 0.0
+
+# How far to trace before calling a ray "open water", and how finely.
+FURTHEST_M = 400.0
+STEP_M = 0.25
+
+
+def heights_of(place: pathlib.Path, site: dict):
+    """The place's own seabed, as metres and a way to ask it for a height."""
+    import numpy as np
+
+    field = site["mesh"]["heightfield"]
+    grid = np.fromfile(place / field["file"], dtype="<f4").reshape(
+        field["rows"], field["columns"])
+    across = float(site["from"]["acrossMetres"])
+    return grid, across
+
+
+def floor_at(grid, across: float, x, y):
+    """Height of the seabed at these site metres. Rows run south to north."""
+    import numpy as np
+
+    rows, columns = grid.shape
+    j = np.clip(((np.asarray(x) + across / 2) / across * (columns - 1)),
+                0, columns - 1).astype(np.int32)
+    i = np.clip(((np.asarray(y) + across / 2) / across * (rows - 1)),
+                0, rows - 1).astype(np.int32)
+    return grid[i, j]
+
+
+def camera_for(view: str, site: dict, grid, across: float):
+    """Where the tour puts its camera for this view, and where it looks.
+
+    The same arithmetic as `Stills.place`, off the same table, so that what is
+    measured is what was photographed rather than something near it.
+    """
+    sys.path.insert(0, str(
+        pathlib.Path(__file__).resolve().parent.parent / "services"
+        / "sim-runtime" / "exts" / "coral.city.shell" / "coral" / "city" / "shell"))
+    import tour as flying
+
+    how = dict(flying.VIEWS)[view]
+    begins = site["beginAt"]
+    anchor = (float(begins[0]), float(begins[1]))
+
+    def height(x, y, above):
+        floor = float(floor_at(grid, across, x, y))
+        return min(floor + above, WATER_LEVEL - flying.Stills.UNDER)
+
+    ex, ey = anchor[0] + how["from_anchor"][0], anchor[1] + how["from_anchor"][1]
+    tx, ty = anchor[0] + how["at"][0], anchor[1] + how["at"][1]
+    eye = (ex, ey, height(ex, ey, how["above"]))
+    look = (tx, ty, height(tx, ty, how["at_above"]))
+    return eye, look
+
+
+def distances(eye, look, grid, across: float, wide: int, tall: int):
+    """Metres from the camera to the seabed, one per pixel. NaN for open water.
+
+    A heightfield is a function of x and y, so a ray meets it at the first step
+    where the ray is below the ground. Marched rather than solved because the
+    ground is a grid and not a surface with an equation.
+    """
+    import numpy as np
+
+    eye = np.array(eye, dtype="float64")
+    ahead = np.array(look, dtype="float64") - eye
+    ahead /= np.linalg.norm(ahead)
+    # Z is up on this platform, so "up" is whatever is left of it.
+    right = np.cross(ahead, np.array([0.0, 0.0, 1.0]))
+    right /= np.linalg.norm(right)
+    up = np.cross(right, ahead)
+
+    half_wide = (APERTURE_MM / 2.0) / FOCAL_LENGTH_MM
+    half_tall = half_wide * tall / wide
+    sx = (np.arange(wide) + 0.5) / wide * 2 - 1
+    sy = 1 - (np.arange(tall) + 0.5) / tall * 2
+    dirs = (ahead[None, None, :]
+            + right[None, None, :] * (sx[None, :, None] * half_wide)
+            + up[None, None, :] * (sy[:, None, None] * half_tall))
+    dirs /= np.linalg.norm(dirs, axis=2, keepdims=True)
+
+    got = np.full((tall, wide), np.nan)
+    steps = np.arange(STEP_M, FURTHEST_M, STEP_M)
+    for t in steps:
+        at = eye[None, None, :] + dirs * t
+        under = at[..., 2] <= floor_at(grid, across, at[..., 0], at[..., 1])
+        fresh = under & np.isnan(got)
+        if fresh.any():
+            got[fresh] = t
+        if not np.isnan(got).any():
+            break
+    return got
+
+
+def cue(frame, far):
+    """Colour against distance: what the seabed keeps, in bands of metres."""
+    import numpy as np
+
+    keep = ~np.isnan(far)
+    if keep.sum() < 100:
+        return None
+    top = frame.max(axis=2)
+    sat = (top - frame.min(axis=2)) / np.maximum(top, 1e-6)
+
+    edges = [0, 2, 4, 8, 16, 32, 64, 128, 400]
+    bands = []
+    for lo, hi in zip(edges, edges[1:]):
+        here = keep & (far >= lo) & (far < hi)
+        if here.sum() < 200:
+            continue
+        rgb = frame[here].mean(axis=0)
+        bands.append({
+            "fromM": lo, "toM": hi, "pixels": int(here.sum()),
+            "keeps": round(float(sat[here].mean()), 3),
+            "redOverGreen": round(float(rgb[0] / max(rgb[1], 1e-6)), 3),
+            "rgb": [round(float(v), 3) for v in rgb],
+        })
+    return {"seabed": round(float(keep.mean()), 3), "bands": bands}
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(
+        description="how much colour the seabed keeps, against how far it is")
+    parse.add_argument("place")
+    parse.add_argument("sheet")
+    parse.add_argument("--view", default="at-work")
+    parse.add_argument("--json", action="store_true")
+    asked = parse.parse_args()
+
+    import numpy as np
+    from PIL import Image
+
+    place = pathlib.Path(asked.place).expanduser()
+    shot = pathlib.Path(asked.sheet).expanduser() / f"{asked.view}.png"
+    if not shot.is_file():
+        print(f"no {asked.view} in {asked.sheet}", file=sys.stderr)
+        return 2
+    site = json.loads((place / "site.json").read_text())
+    if site.get("beginAt") is None:
+        print(f"{place.name}: no dive begins here, so there is no camera to "
+              f"measure from", file=sys.stderr)
+        return 0
+
+    grid, across = heights_of(place, site)
+    eye, look = camera_for(asked.view, site, grid, across)
+    with Image.open(shot) as picture:
+        # A tenth of the pixels is plenty for a curve and turns the trace from
+        # minutes into a second.
+        small = picture.convert("RGB").resize(
+            (picture.width // 4, picture.height // 4), Image.BILINEAR)
+        frame = np.asarray(small, dtype="float32") / 255.0
+    tall, wide = frame.shape[:2]
+    far = distances(eye, look, grid, across, wide, tall)
+    got = cue(frame, far)
+    if got is None:
+        print(f"{place.name} {asked.view}: no seabed in this view")
+        return 0
+
+    got.update({"place": place.name, "view": asked.view,
+                "eye": [round(float(v), 1) for v in eye]})
+    if asked.json:
+        print(json.dumps(got, indent=2))
+        return 0
+
+    print(f"{place.name} · {asked.view} · camera at "
+          f"{eye[0]:.0f}, {eye[1]:.0f}, {eye[2]:.1f} m · "
+          f"{got['seabed'] * 100:.0f}% of the frame is seabed")
+    print("   metres      keeps   red/green   rgb")
+    for band in got["bands"]:
+        print("  %4d-%-4d    %.3f     %.3f     %s"
+              % (band["fromM"], band["toM"], band["keeps"],
+                 band["redOverGreen"], band["rgb"]))
+    near = [b for b in got["bands"] if b["toM"] <= 8]
+    away = [b for b in got["bands"] if b["fromM"] >= 32]
+    if near and away:
+        a = sum(b["keeps"] for b in near) / len(near)
+        b = sum(one["keeps"] for one in away) / len(away)
+        print(f"\n  within 8 m it keeps {a:.3f}; past 32 m, {b:.3f} "
+              f"— {a / max(b, 1e-6):.1f} times as much")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
