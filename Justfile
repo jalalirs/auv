@@ -39,6 +39,35 @@ test:
     go -C services/control-plane test ./...
     go -C services/worker test ./...
     pnpm --recursive --if-present test
+    just test-python
+
+# The Python, which `test` did not run for the life of this repository.
+#
+# Four hundred tests sat in services/sim-runtime and tools and no recipe
+# touched any of them; `just test` ran Go and the workspaces and said nothing
+# was wrong. They were only ever run by hand, which means they were only run
+# when somebody already suspected something.
+#
+# From inside `coral`, not from the root: several of these import their
+# neighbours as top-level modules, so the directory is the package path.
+# Run from the root, `test_hydrodynamics` cannot find `hydrodynamics` and
+# pytest stops collecting at the error.
+#
+# `test_energy` and `test_tether` are excluded by default because between them
+# they take a quarter of an hour of honest arithmetic. `just test-python-all`
+# runs those too, and CI should.
+test-python:
+    cd services/sim-runtime/coral && \
+        uv run --with pytest --with numpy --with pillow --with scipy \
+            python -m pytest . -q --ignore=./test_energy.py --ignore=./test_tether.py
+    cd tools && \
+        uv run --with pytest --with numpy --with pillow --with scipy python -m pytest . -q
+
+test-python-all:
+    cd services/sim-runtime/coral && \
+        uv run --with pytest --with numpy --with pillow --with scipy python -m pytest . -q
+    cd tools && \
+        uv run --with pytest --with numpy --with pillow --with scipy python -m pytest . -q
 
 # Format the Go sources in place.
 format:

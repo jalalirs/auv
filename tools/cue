@@ -282,6 +282,19 @@ def main() -> int:
             for band in told:
                 print("  %4d-%-4d   %.3f   %.3f   %.3f"
                       % (band["fromM"], band["toM"], *band["survives"]))
+            # Above one is not a fault and is worth saying so in the output,
+            # because it looks like one. Near the camera the water takes light
+            # and the ratio falls; far away the surface's own light has gone
+            # and what is left is the column's glow, which the frame with the
+            # medium off does not have at all. So the ratio turns and climbs.
+            # Where it turns is roughly where the reef stops being a reef and
+            # starts being water.
+            turns = [b for b in told if max(b["survives"]) > 1.0]
+            if turns:
+                print("  past %d m it rises above one: that is the veil "
+                      "adding light where" % turns[0]["fromM"])
+                print("  the frame with the water off has none, not the "
+                      "medium failing to take any.")
 
     near = [b for b in got["bands"] if b["toM"] <= 8]
     away = [b for b in got["bands"] if b["fromM"] >= 32]
