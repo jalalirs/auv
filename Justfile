@@ -58,16 +58,16 @@ test:
 # runs those too, and CI should.
 test-python:
     cd services/sim-runtime/coral && \
-        uv run --with pytest --with numpy --with pillow --with scipy \
+        uv run --no-project --with pytest --with numpy --with pillow --with scipy \
             python -m pytest . -q --ignore=./test_energy.py --ignore=./test_tether.py
     cd tools && \
-        uv run --with pytest --with numpy --with pillow --with scipy python -m pytest . -q
+        uv run --no-project --with pytest --with numpy --with pillow --with scipy python -m pytest . -q
 
 test-python-all:
     cd services/sim-runtime/coral && \
-        uv run --with pytest --with numpy --with pillow --with scipy python -m pytest . -q
+        uv run --no-project --with pytest --with numpy --with pillow --with scipy python -m pytest . -q
     cd tools && \
-        uv run --with pytest --with numpy --with pillow --with scipy python -m pytest . -q
+        uv run --no-project --with pytest --with numpy --with pillow --with scipy python -m pytest . -q
 
 # Format the Go sources in place.
 format:

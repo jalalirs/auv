@@ -1,6 +1,0 @@
-Metadata-Version: 2.4
-Name: coral-city-runtime
-Version: 0.1.0
-Summary: The Coral City simulation runtime's physics and controllers, importable without Isaac Sim.
-Requires-Python: >=3.10
-Requires-Dist: numpy>=1.24
