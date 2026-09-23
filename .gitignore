@@ -26,3 +26,16 @@ __pycache__/
 .uav-terrain.png
 .uav-exposure.png
 .uav-exposure/
+
+# Build output from running the tests, which is not the runtime.
+#
+# `just test-python` used to run `uv run` inside services/sim-runtime, where
+# there is a pyproject, so uv installed the package and left an egg-info and a
+# lock behind. `git add -A` committed them, the tree hash of the runtime moved,
+# and tools/look correctly refused to render against an image that no longer
+# matched a checkout whose *code* had not changed at all. Two renders were
+# refused and both sheets read as the run before them.
+#
+# The recipe passes --no-project now, so these should not appear again.
+services/sim-runtime/coral_city_runtime.egg-info/
+services/sim-runtime/uv.lock
