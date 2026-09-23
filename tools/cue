@@ -361,13 +361,16 @@ def main() -> int:
             print("   metres     transmission        what the water says"
                   "     veil added")
             for band in pulled:
-                got = band["transmission"]
-                if None in got:
+                # Not `got`: that is the whole reading, three lines down, and
+                # naming a loop variable over it lost it silently.
+                through = band["transmission"]
+                if None in through:
                     continue
                 want = band.get("expected", (0.0, 0.0, 0.0))
                 print("  %4d-%-4d   %.2f %.2f %.2f         %.2f %.2f %.2f"
                       "          %.3f %.3f %.3f"
-                      % (band["fromM"], band["toM"], *got, *want, *band["veil"]))
+                      % (band["fromM"], band["toM"], *through, *want,
+                         *band["veil"]))
         told = against(frame, plain, far)
         if told:
             print("\n  the water alone, against the same reef with it off")
