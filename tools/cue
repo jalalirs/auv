@@ -142,6 +142,83 @@ def distances(eye, look, grid, across: float, wide: int, tall: int):
     return got
 
 
+def water_of(kind: str):
+    """The attenuation lengths of a Jerlov water, from the runtime's own table."""
+    import importlib.util
+
+    where = (pathlib.Path(__file__).resolve().parent.parent / "services"
+             / "sim-runtime" / "coral" / "water.py")
+    spec = importlib.util.spec_from_file_location("coral_water", where)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.JERLOV.get(kind, module.JERLOV["1C"])
+
+
+def linear(srgb):
+    """Undo the transfer curve, so that a straight line is a straight line."""
+    import numpy as np
+
+    srgb = np.clip(srgb, 0.0, 1.0)
+    return np.where(srgb <= 0.04045, srgb / 12.92,
+                    ((srgb + 0.055) / 1.055) ** 2.4)
+
+
+def fit(wet, dry, far, lengths=None):
+    """Pull the two terms of the medium apart, band by band.
+
+    Every pixel in a band is the same water over a different surface:
+
+        wet = dry x transmission + veil
+
+    — what the surface sends that survives the swim, plus what the column in
+    front of it glows. Two unknowns, and a band holds thousands of pixels with
+    different surfaces under them, so a least-squares line through (dry, wet)
+    gives both: the slope is the transmission, the intercept is the veil.
+
+    Worth having because the two failure modes are identical in a picture. A
+    medium that takes too much and a veil that adds too much both read as "the
+    reef has gone grey", and deciding between them by looking is how three
+    days went.
+
+    Two things it cannot do. The frames are tonemapped and a tonemap is not a
+    straight line, so the slope is transmission seen through whatever that
+    curve did. And each frame is metered on itself, so an exposure difference
+    multiplies the whole line — the slope carries it, the ratios between
+    channels do not. Read the channel ratios as the strong claim and the
+    absolute numbers as the weak one.
+    """
+    import numpy as np
+
+    keep = ~np.isnan(far)
+    wet, dry = linear(wet), linear(dry)
+    edges = [0, 2, 4, 8, 16, 32, 64, 128, 400]
+    out = []
+    for lo, hi in zip(edges, edges[1:]):
+        here = keep & (far >= lo) & (far < hi)
+        if here.sum() < 500:
+            continue
+        row = {"fromM": lo, "toM": hi, "pixels": int(here.sum()),
+               "transmission": [], "veil": []}
+        for channel in range(3):
+            x = dry[here][:, channel]
+            y = wet[here][:, channel]
+            # One surface is one point, and no line goes through a point.
+            # Saying so beats returning the slope of noise.
+            if float(x.std()) < 1e-3:
+                row["transmission"].append(None)
+                row["veil"].append(None)
+                continue
+            slope, intercept = np.polyfit(x, y, 1)
+            row["transmission"].append(round(float(slope), 3))
+            row["veil"].append(round(float(intercept), 4))
+        if lengths is not None:
+            middle = (lo + hi) / 2.0
+            row["expected"] = [round(float(np.exp(-middle / one)), 3)
+                               for one in lengths]
+        out.append(row)
+    return out
+
+
 def against(wet, dry, far):
     """What the water did, separated from what the reef is.
 
@@ -275,6 +352,22 @@ def main() -> int:
         with Image.open(other) as picture:
             plain = np.asarray(picture.convert("RGB").resize(
                 (wide, tall), Image.BILINEAR), dtype="float32") / 255.0
+        kind = (site.get("water") or {}).get("type") or "1C"
+        lengths = water_of(kind)
+        pulled = fit(frame, plain, far, lengths)
+        if pulled:
+            print(f"\n  the two terms pulled apart · {kind} water · "
+                  f"lengths {lengths[0]:.0f}/{lengths[1]:.0f}/{lengths[2]:.0f} m")
+            print("   metres     transmission        what the water says"
+                  "     veil added")
+            for band in pulled:
+                got = band["transmission"]
+                if None in got:
+                    continue
+                want = band.get("expected", (0.0, 0.0, 0.0))
+                print("  %4d-%-4d   %.2f %.2f %.2f         %.2f %.2f %.2f"
+                      "          %.3f %.3f %.3f"
+                      % (band["fromM"], band["toM"], *got, *want, *band["veil"]))
         told = against(frame, plain, far)
         if told:
             print("\n  the water alone, against the same reef with it off")

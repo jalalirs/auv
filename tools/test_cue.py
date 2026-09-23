@@ -182,3 +182,50 @@ def test_a_uniform_medium_reads_flat():
     wet = dry * 0.4
     told = cue.against(wet, dry, far)
     assert all(b["survives"] == [1.0, 1.0, 1.0] for b in told), told
+
+
+def test_the_fit_recovers_a_medium_it_was_given():
+    """Make a frame out of a known transmission and veil, and get them back.
+
+    This is the check that matters: the whole point of the fit is to say which
+    of the two terms is wrong when a picture looks grey, and a fit that cannot
+    recover a medium somebody planted is no use for that.
+    """
+    rng = np.random.default_rng(7)
+    tall, wide = 60, 60
+    far = np.full((tall, wide), np.nan)
+    far[:30, :] = 12.0
+    far[30:, :] = 50.0
+
+    # A reef of many different surfaces, which is what lets a line be drawn.
+    dry_lin = rng.uniform(0.02, 0.6, size=(tall, wide, 3)).astype("float64")
+    trans = {12.0: np.array([0.60, 0.85, 0.80]),
+             50.0: np.array([0.10, 0.45, 0.38])}
+    veil = {12.0: np.array([0.02, 0.05, 0.06]),
+            50.0: np.array([0.09, 0.20, 0.23])}
+    wet_lin = np.zeros_like(dry_lin)
+    for d in (12.0, 50.0):
+        where = far == d
+        wet_lin[where] = dry_lin[where] * trans[d] + veil[d]
+
+    # Back through the transfer curve, because that is what a PNG holds.
+    def encode(x):
+        return np.where(x <= 0.0031308, x * 12.92,
+                        1.055 * np.power(np.clip(x, 0, None), 1 / 2.4) - 0.055)
+
+    got = cue.fit(encode(wet_lin), encode(dry_lin), far)
+    assert len(got) == 2
+    for band, d in zip(got, (12.0, 50.0)):
+        assert band["transmission"] == pytest.approx(
+            list(np.round(trans[d], 3)), abs=0.02), (band, d)
+        assert band["veil"] == pytest.approx(
+            list(np.round(veil[d], 4)), abs=0.01), (band, d)
+
+
+def test_the_fit_will_not_guess_from_one_surface():
+    """A band of one albedo is a single point: no line through it, and saying
+    so is better than returning the slope of noise."""
+    far = np.full((60, 60), 12.0)
+    dry = np.full((60, 60, 3), 0.4, dtype="float64")
+    got = cue.fit(dry * 0.5 + 0.1, dry, far)
+    assert got and got[0]["transmission"] == [None, None, None], got
