@@ -131,6 +131,44 @@ ASSEMBLAGES["red-sea"] = (
 )
 
 
+# And Hawaii, which is the odd one of the three.
+#
+# Kāne'ohe Bay is two species and a third: *Porites compressa*, finger coral,
+# which builds the bay's patch reefs; *Montipora capitata*, rice coral,
+# encrusting and plating and sometimes branching; and *Porites lobata*, the
+# lobe coral, massive. The two-thousand-fourteen baseline for the bay's
+# mitigation bank put cover between 37.9 and 88.0 per cent across its reefs,
+# which is high — these are not degraded reefs.
+#
+# What matters for a picture is the two shapes that are *missing*. The main
+# Hawaiian islands have essentially no Acropora, so there are **no tables** —
+# the shape the Red Sea slope is known for does not occur here at all. And
+# there are no shallow gorgonian sea fans. An archipelago four thousand
+# kilometres from anywhere has a short species list, and a reef drawn from a
+# general idea of a reef gets it wrong in exactly the way a diver would
+# notice first.
+ASSEMBLAGES["hawaii"] = (
+    # The reef flat and the tops of the patch reefs.
+    (2.0, {"finger": 0.30, "encrusting": 0.24, "massive": 0.18,
+           "rubble": 0.16, "branching": 0.08, "sponge": 0.04}, 0.55),
+    # The sides of the patch reefs, which is where the finger coral is.
+    (4.5, {"finger": 0.34, "encrusting": 0.22, "massive": 0.18,
+           "branching": 0.12, "rubble": 0.06, "brain": 0.04,
+           "sponge": 0.04}, 1.50),
+    (10.0, {"finger": 0.28, "encrusting": 0.26, "massive": 0.20,
+            "branching": 0.10, "sponge": 0.07, "brain": 0.05,
+            "plume": 0.04}, 1.80),
+    # The lagoon floor and below, where it goes to plates and sand.
+    (18.0, {"encrusting": 0.32, "massive": 0.20, "finger": 0.16,
+            "sponge": 0.14, "branching": 0.08, "plume": 0.06,
+            "brain": 0.04}, 1.70),
+    (26.0, {"encrusting": 0.36, "sponge": 0.22, "massive": 0.16,
+            "plume": 0.12, "finger": 0.08, "brain": 0.06}, 1.50),
+    (999.0, {"encrusting": 0.40, "sponge": 0.28, "massive": 0.14,
+             "plume": 0.12, "brain": 0.06}, 1.30),
+)
+
+
 def bands_for(assemblage: str | None):
     """The mix for a named reef, or the one this platform started with."""
     if assemblage is None:
