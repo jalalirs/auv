@@ -250,6 +250,21 @@ def main() -> int:
         },
         "colonies": len(colonies), "prototypes": len(prototypes),
         "kinds": {k: int((drawn == k).sum()) for k in KINDS},
+        # What each prototype is, by its index in the instancer. Said rather
+        # than left to be worked out: `reef.kinds` above is a *histogram* of
+        # what the survey counted, and the first version of `tools/deliver`
+        # read it as a list of growth forms and labelled every colony in a
+        # published CSV "low" or "unknown".
+        "prototypeKinds": list(kind_of),
+        # And how to read a colony's scale, which is not the same on a
+        # surveyed reef as on a grown one. Here the scale *is* the
+        # measurement — the survey recorded a diameter for every colony and
+        # the instancer carries half of it — so a colony inventory out of this
+        # place has real sizes in it and may say so. A grown reef's scale is a
+        # draw against a prototype and must not.
+        "sizesAre": "surveyed",
+        "sizesFrom": (listed.get("source")
+                      or "the survey this reef was built from"),
         # What the colonies are made of, so a place's page can say it rather
         # than leaving a reader to assume every shape here was invented.
         # Which prototypes are rooted and bend in the water. The gorgonians
