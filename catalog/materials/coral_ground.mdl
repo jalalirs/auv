@@ -501,8 +501,11 @@ export material coral_ground(
                               mono_source: base::mono_average).mono * 2.0,
                      math::saturate(caustics_strength));
 
+    // With the diagnostic on, the net itself and nothing else. "It is
+    // written into the material" and "it is in the picture" are different
+    // claims, and only one of them can be read off a frame.
     color albedo = show_distance > 0.0
-        ? survives
+        ? color(woven, woven, woven)
         : math::saturate(low * lift * variation * woven);
 
     float3 bumped = math::normalize(math::lerp(
