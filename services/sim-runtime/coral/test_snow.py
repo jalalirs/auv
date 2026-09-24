@@ -181,3 +181,41 @@ def test_the_clear_half_metre_is_round_whoever_is_looking():
     now = np.linalg.norm(field.where() - lens[None, :], axis=1).min()
     assert now >= snow.NEAREST_M - 1e-9, now
     assert now > off_the_glass
+
+
+def test_less_of_it_gets_to_the_deep():
+    """Marine snow is made at the top of the ocean and eaten on the way down.
+
+    Pilskaln's aggregates were counted in the euphotic zone. Applied unchanged
+    at five hundred and fifty metres they put a snowstorm in front of a
+    vehicle at the density of a reef at fifteen — and the deep is exactly
+    where the difference is the whole character of the frame.
+
+    Martin et al. 1987 fitted the fall of sinking flux as (z/100) to the minus
+    0.858, which at 550 m is about a fifth.
+    """
+    assert snow.how_much_gets_this_deep(100.0) == pytest.approx(1.0)
+    assert snow.how_much_gets_this_deep(550.0) == pytest.approx(0.232, abs=0.01)
+    assert snow.how_much_gets_this_deep(1000.0) < snow.how_much_gets_this_deep(550.0)
+
+    reef = snow.per_cubic_metre(depth_m=15.0)
+    deep = snow.per_cubic_metre(depth_m=550.0)
+    assert deep < reef / 4.0, (reef, deep)
+
+
+def test_the_curve_is_not_run_upwards_into_a_reef():
+    """It is a fit to sediment traps below the euphotic zone, and it has
+    nothing to say about the water a reef is in. Extrapolated up it claims
+    four times the snow at ten metres, off the back of a deep-sea correction.
+    """
+    for shallow in (0.0, 5.0, 15.0, 40.0, 99.0, 100.0):
+        assert snow.how_much_gets_this_deep(shallow) == pytest.approx(1.0)
+    assert snow.per_cubic_metre(depth_m=15.0) == pytest.approx(
+        snow.per_cubic_metre(depth_m=None))
+
+
+def test_a_deep_box_holds_fewer_than_a_shallow_one():
+    shallow = snow.Snow(reaches_m=3.0, seed=3, most=200000, depth_m=15.0)
+    deep = snow.Snow(reaches_m=3.0, seed=3, most=200000, depth_m=550.0)
+    assert deep.count < shallow.count / 4, (shallow.count, deep.count)
+    assert deep.count > 0

@@ -823,15 +823,23 @@ class Dive:
                 # this class, not a number. Both would have been swallowed by
                 # the catch below into "snow_not_drawn", and the dive would
                 # have rendered with no snow and no reason given.
+                # How deep the dive is, because marine snow is made at the
+                # top of the ocean and eaten on the way down. Without it
+                # Thuwal Deep rendered a snowstorm at the density of a reef
+                # at fifteen metres.
+                how_deep = float(-self.position[2])
                 self.snow = marine_snow.Snow(
                     reaches_m=self.SNOW_REACHES_M, most=self.SNOW_MOST,
                     lengths=water_module.water_of(self.water_type),
-                    seed=int(self.seed()))
+                    seed=int(self.seed()), depth_m=how_deep)
                 self.snow.follow(self.position)
                 drawn = marine_snow.draw(stage, self.snow)
                 self.say("snow_is", drawn=self.snow.count,
                          askedFor=self.snow.asked,
                          perCubicMetre=round(self.snow.per_cubic_metre(), 1),
+                         atDepthM=round(how_deep, 1),
+                         ofTheUpperOcean=round(
+                             marine_snow.how_much_gets_this_deep(how_deep), 3),
                          reachesM=self.SNOW_REACHES_M, inScene=bool(drawn))
             except Exception as exc:
                 # Loud, because a silent fallback here is a dive that looks
