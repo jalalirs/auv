@@ -297,4 +297,22 @@ def as_texture(lit: np.ndarray) -> np.ndarray:
     mean = float(lit.mean())
     if mean <= 0.0:
         return np.full(lit.shape, 128, dtype="uint8")
-    return np.clip(lit / mean * 0.5 * 255.0, 0.0, 255.0).astype("uint8")
+
+    # Clipped first, then normalised — and that order is the whole of it.
+    #
+    # An eight-bit texture holding a mean of a half can carry twice the mean
+    # and no more, and a real net goes to four times it. Normalising and then
+    # clipping throws the bright tail away and the mean of what is left is
+    # *below* a half, so the material multiplies the ground by less than one
+    # everywhere and the whole seabed goes dark. A caustic moves light about;
+    # it does not remove any.
+    #
+    # So the peaks are cut at the ceiling the format has, and what remains is
+    # scaled to put the mean back where it belongs. The brightest bands lose
+    # their tips, which is what any eight-bit picture of a caustic does.
+    ceiling = 2.0
+    cut = np.minimum(lit / mean, ceiling)
+    kept = float(cut.mean())
+    if kept <= 0.0:
+        return np.full(lit.shape, 128, dtype="uint8")
+    return np.clip(cut / kept * 0.5 * 255.0, 0.0, 255.0).astype("uint8")
