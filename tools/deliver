@@ -111,13 +111,13 @@ def prototypes_in(site: dict) -> tuple[list[str], list[float]]:
     """
     reef = site.get("reef", {})
     kinds = reef.get("prototypeKinds")
-    areas = reef.get("prototypeAreaM2")
-    if not kinds or not areas or len(kinds) != len(areas):
+    if not kinds:
         raise SystemExit(
             f"{site.get('name')} does not say what its prototypes are. It was "
             f"built before the reef recorded them; build it again with "
             f"tools/rebuild and the record will have them.")
-    return list(kinds), [float(one) for one in areas]
+    areas = reef.get("prototypeAreaM2")
+    return list(kinds), None if not areas else [float(one) for one in areas]
 
 
 # What a coverage raster is drawn at, in metres a cell.
@@ -196,7 +196,7 @@ def write_grid(into: pathlib.Path, grid: np.ndarray, centre: dict,
            "lat": float(centre["latitude"]), "lon": float(centre["longitude"])})
 
 
-def provenance(site: dict) -> dict:
+def provenance(site: dict) -> dict:  # noqa: C901
     """What each of these numbers is, and whether anybody measured it.
 
     The most important file in the set. A deliverable that does not
@@ -209,16 +209,22 @@ def provenance(site: dict) -> dict:
     ground = site.get("ground", {})
     cover = reef.get("cover", {})
     surveyed = bool(site.get("from", {}).get("surveyed"))
+    surveyed_sizes = reef.get("sizesAre") == "surveyed"
     return {
         "place": site.get("name"),
         "madeBy": "Coral City",
-        "readThisFirst":
-            "These are simulation outputs. The seabed is a real survey; the "
-            "individual colonies are not real colonies. Nothing in "
-            "colonies.csv or colonies.geojson is an observation of a living "
-            "animal: they are a draw from a cover figure, and the field "
-            "`measured` on each column below says which of the numbers here "
-            "anybody went and looked at.",
+        "readThisFirst": (
+            "These are simulation outputs. The seabed is a real survey. "
+            + ("Every colony listed here is one a survey detected, at the "
+               "position and diameter it recorded, so the positions and sizes "
+               "are observations — but the growth form assigned to each one "
+               "is not, and neither is anything drawn from it. "
+               if surveyed_sizes else
+               "The individual colonies are not real colonies: nothing in "
+               "colonies.csv or colonies.geojson is an observation of a "
+               "living animal, they are a draw from a cover figure. ")
+            + "The field `measured` on each column below says which of the "
+              "numbers here anybody went and looked at."),
         "georeference": {
             "frame": "metres east and north of the site centre",
             "centre": site.get("from", {}).get("centre"),
@@ -238,27 +244,41 @@ def provenance(site: dict) -> dict:
         },
         "columns": {
             "id": {"measured": False, "from": "an index; the reef has no names"},
-            "latitude": {"measured": False,
-                         "from": "the colony's site-local position, projected "
-                                 "back out by the transform above. Exact as a "
-                                 "transform; the position itself is not an "
-                                 "observation"},
-            "longitude": {"measured": False, "from": "as latitude"},
-            "eastingM": {"measured": False,
-                         "from": "where the reef builder put this colony"},
-            "northingM": {"measured": False, "from": "as eastingM"},
+            "latitude": {"measured": surveyed_sizes,
+                         "from": ("where the survey detected this colony, "
+                                  "projected out by the transform above"
+                                  if surveyed_sizes else
+                                  "the colony's site-local position, projected "
+                                  "back out by the transform above. Exact as a "
+                                  "transform; the position itself is not an "
+                                  "observation")},
+            "longitude": {"measured": surveyed_sizes, "from": "as latitude"},
+            "eastingM": {"measured": surveyed_sizes,
+                         "from": ("where the survey detected this colony"
+                                  if surveyed_sizes else
+                                  "where the reef builder put this colony")},
+            "northingM": {"measured": surveyed_sizes, "from": "as eastingM"},
             "depthM": {"measured": surveyed,
                        "from": (site.get("from", {}).get("source")
                                 or "the seabed this place was built from")},
+            # Never measured, on any place. A detector that found a colony
+            # in an orthomosaic found a blob of a size and a colour; which
+            # growth form it is was assigned afterwards from that, and on a
+            # surveyed reef it is the one column that is *not* an observation
+            # while everything beside it is.
             "growthForm": {"measured": False,
                            "from": (reef.get("assemblage", {}) or {}).get("from")
                                    or reef.get("source")
                                    or "drawn from the assemblage's depth bands"},
-            "acrossM": {"measured": False,
-                        "from": "the prototype's size times its drawn scale"},
-            "footprintM2": {"measured": False,
-                            "from": "the prototype's own plan area times the "
-                                    "square of its scale"},
+            "acrossM": {"measured": surveyed_sizes,
+                        "from": reef.get("sizesFrom")
+                                or "the prototype's size times its drawn scale"},
+            "footprintM2": {"measured": surveyed_sizes,
+                            "from": ("a circle of the diameter the survey "
+                                     "recorded for this colony"
+                                     if surveyed_sizes else
+                                     "the prototype's own plan area times the "
+                                     "square of its scale")},
         },
         "cover": {
             "cellMetres": COVER_CELL_M,
@@ -279,19 +299,30 @@ def provenance(site: dict) -> dict:
     }
 
 
-def sizes_of(colonies: dict, areas: list[float]) -> dict:
-    """What each colony covers, from the prototype it is and how big it grew.
+def sizes_of(colonies: dict, areas, surveyed: bool) -> dict:
+    """How big each colony is, and what that number is worth.
 
-    A colony is its prototype scaled, so its plan area is the prototype's
-    times the square of the scale. The prototype's own area is measured in
-    `tools/reef.py` on the part of it that stands above the seabed, with the
-    growth form's solidity applied — a sea fan is a metre and a half of height
-    on almost no ground — so this must not try to recompute it.
+    Two different things, and the place says which it has.
+
+    On a *surveyed* reef the scale is the measurement: the survey recorded a
+    diameter for every colony it found and the instancer carries half of it.
+    So the size in the inventory is a size somebody measured, and the CSV may
+    say so.
+
+    On a *grown* reef the colony is a prototype scaled, so its plan area is
+    the prototype's times the square of the scale. The prototype's own area is
+    worked out in `tools/reef.py` on the part that stands above the seabed
+    with the growth form's solidity applied — a sea fan is a metre and a half
+    of height on almost no ground — so this must not try to recompute it.
     """
     across, area = [], []
     for which, scale in zip(colonies["which"], colonies["scale"]):
         grown = float(scale[0])
-        plan = areas[which] if which < len(areas) else 0.0
+        if surveyed:
+            across.append(2.0 * grown)
+            area.append(math.pi * grown * grown)
+            continue
+        plan = areas[which] if areas and which < len(areas) else 0.0
         area.append(plan * grown * grown)
         # The diameter of a circle of that plan area, which is the one number
         # a person asking "how big is it" wants.
@@ -312,7 +343,15 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
 
     colonies = colonies_of(place)
     kinds, areas = prototypes_in(site)
-    sized = sizes_of(colonies, areas)
+    surveyed_sizes = (site.get("reef", {}).get("sizesAre") == "surveyed")
+    sized = sizes_of(colonies, areas, surveyed_sizes)
+
+    # Anything already here is from a previous run of this and may describe a
+    # place that has since been rebuilt. A refusal that leaves yesterday's CSV
+    # sitting in the folder is a refusal nobody sees.
+    for old in ("colonies.csv", "colonies.geojson", "cover.asc", "cover.prj",
+                "provenance.json"):
+        (into / old).unlink(missing_ok=True)
 
     rows = []
     for i, ((x, y, z), which) in enumerate(zip(colonies["at"], colonies["which"])):

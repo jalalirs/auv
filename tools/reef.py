@@ -317,6 +317,13 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
             "prototypeKinds": [kinds[i // variants] for i in range(len(prototypes))],
             "prototypeAreaM2": [round(float(one), 6) for one in footprint],
             "variantsEach": variants,
+            # Nothing here is a measurement. A colony's size is a draw against
+            # a prototype's size, and a colony inventory out of this place
+            # must not claim otherwise — which is the whole point of saying it
+            # here rather than letting the exporter assume.
+            "sizesAre": "grown",
+            "sizesFrom": "a draw against the prototype's own size, capped by "
+                         "the depth band; nobody measured any of these",
             # How many of the shapes came from a scan rather than a grower,
             # so a place's page can say what its coral is made of and nobody
             # has to take a render's word for it.
