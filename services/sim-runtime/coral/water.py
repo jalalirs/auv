@@ -739,16 +739,19 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     try:
         import pathlib
 
-        from coral import caustics as caustic_net
-        from coral import sea_state
-        sea = sea_state.SeaState(
-            significant_height_m=0.0 if significant_height_m is None
-            else float(significant_height_m),
-            peak_period_s=6.0 if wave_period_s is None else float(wave_period_s),
-            heading_deg=0.0 if wave_heading_deg is None
-            else float(wave_heading_deg),
-            seed=seed)
-        if not sea.flat:
+        import caustics as caustic_net
+
+        # `_SEA`, and not a sea built again here.
+        #
+        # The first version of this made its own SeaState from the same
+        # arguments — and defaulted a missing height to a flat calm, where
+        # `_SEA` twenty lines above defaults it to CALM_HEIGHT_M. So every
+        # dive whose brief does not name a sea, which is every dive the look
+        # sheet flies, had a hull rolling in forty centimetres of swell and
+        # caustics that reported "a flat calm throws no net". Two seas, one
+        # dive, and only the log showed it.
+        sea = _SEA
+        if sea is not None and not sea.flat:
             from PIL import Image
 
             lit = caustic_net.net(sea, across=CAUSTIC_PATCH_M,
