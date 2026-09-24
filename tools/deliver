@@ -93,22 +93,31 @@ def colonies_of(place: pathlib.Path) -> dict:
     return {"at": points, "which": which, "scale": scales}
 
 
-def kinds_in(site: dict) -> list[str]:
-    """Which growth form each prototype is.
+def prototypes_in(site: dict) -> tuple[list[str], list[float]]:
+    """What each prototype is, and what one of them covers at scale one.
 
-    The instancer's prototype index is `kind * variants + variant`, and the
-    kinds are the sorted union of every assemblage's palette — which is what
-    `tools/zonation.community` uses, so the two cannot drift apart without a
-    test noticing.
+    Read out of the place's own record, because the place says. The first
+    version of this worked both out from the USD — the prototype index was
+    assumed to be `kind * variants + variant` and the names were taken from
+    `reef.kinds`, which on a surveyed place is a *histogram* of what the
+    survey counted and not a list of growth forms. Every row of the CSV came
+    out labelled "low" or "unknown" and every footprint was a hundred times
+    too small, and neither showed up as an error: they showed up as a reef
+    with no cover on it.
+
+    A file that has to be reverse-engineered by the tool that ships it is a
+    file that will be reverse-engineered wrong, so `tools/reef.py` writes both
+    down and this refuses a place that does not have them.
     """
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-    import zonation
-
-    named = site.get("reef", {}).get("kinds")
-    if named:
-        return list(named)
-    return sorted({kind for mix in zonation.ASSEMBLAGES.values()
-                   for _, weights, _ in mix for kind in weights})
+    reef = site.get("reef", {})
+    kinds = reef.get("prototypeKinds")
+    areas = reef.get("prototypeAreaM2")
+    if not kinds or not areas or len(kinds) != len(areas):
+        raise SystemExit(
+            f"{site.get('name')} does not say what its prototypes are. It was "
+            f"built before the reef recorded them; build it again with "
+            f"tools/rebuild and the record will have them.")
+    return list(kinds), [float(one) for one in areas]
 
 
 # What a coverage raster is drawn at, in metres a cell.
@@ -270,30 +279,23 @@ def provenance(site: dict) -> dict:
     }
 
 
-def sizes_of(place: pathlib.Path, colonies: dict, variants: int = 6) -> dict:
-    """How big each colony is and what it covers, from the prototype it is.
+def sizes_of(colonies: dict, areas: list[float]) -> dict:
+    """What each colony covers, from the prototype it is and how big it grew.
 
-    The prototypes are in the same USD; their own extents give a plan area
-    each, and a colony is that times the square of its drawn scale.
+    A colony is its prototype scaled, so its plan area is the prototype's
+    times the square of the scale. The prototype's own area is measured in
+    `tools/reef.py` on the part of it that stands above the seabed, with the
+    growth form's solidity applied — a sea fan is a metre and a half of height
+    on almost no ground — so this must not try to recompute it.
     """
-    text = (place / "coral.usda").read_text()
-    spread, tall = {}, {}
-    for match in re.finditer(
-            r'def Mesh "Colony_(\d+)".*?float3\[\] extent = '
-            r'\[\(([^)]*)\), \(([^)]*)\)\]', text, re.S):
-        i = int(match.group(1))
-        low = [float(v) for v in match.group(2).split(",")]
-        high = [float(v) for v in match.group(3).split(",")]
-        spread[i] = ((high[0] - low[0]) / 2.0, (high[1] - low[1]) / 2.0)
-        tall[i] = high[2] - low[2]
-
     across, area = [], []
     for which, scale in zip(colonies["which"], colonies["scale"]):
-        a, b = spread.get(which, (0.25, 0.25))
         grown = float(scale[0])
-        across.append(2.0 * max(a, b) * grown)
-        # An ellipse, which is what a colony's plan is nearer to than a square.
-        area.append(math.pi * a * b * grown * grown)
+        plan = areas[which] if which < len(areas) else 0.0
+        area.append(plan * grown * grown)
+        # The diameter of a circle of that plan area, which is the one number
+        # a person asking "how big is it" wants.
+        across.append(2.0 * math.sqrt(max(area[-1], 0.0) / math.pi))
     return {"acrossM": across, "m2": area}
 
 
@@ -309,15 +311,13 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
     into.mkdir(parents=True, exist_ok=True)
 
     colonies = colonies_of(place)
-    kinds = kinds_in(site)
-    variants = max(1, int(site.get("reef", {}).get("prototypes", 6))
-                   // max(1, len(kinds)))
-    sized = sizes_of(place, colonies)
+    kinds, areas = prototypes_in(site)
+    sized = sizes_of(colonies, areas)
 
     rows = []
     for i, ((x, y, z), which) in enumerate(zip(colonies["at"], colonies["which"])):
         latitude, longitude = where_on_earth(centre, x, y)
-        kind = kinds[which // variants] if which // variants < len(kinds) else "unknown"
+        kind = kinds[which] if which < len(kinds) else "unknown"
         rows.append({
             "id": i,
             "latitude": round(latitude, 8),
