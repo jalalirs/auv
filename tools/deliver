@@ -350,7 +350,7 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
     # place that has since been rebuilt. A refusal that leaves yesterday's CSV
     # sitting in the folder is a refusal nobody sees.
     for old in ("colonies.csv", "colonies.geojson", "cover.asc", "cover.prj",
-                "provenance.json"):
+                "cover-by-form.csv", "provenance.json"):
         (into / old).unlink(missing_ok=True)
 
     rows = []
@@ -395,13 +395,64 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
     }) + "\n")
 
     grid = cover_raster(colonies, sized, across)
+
+    # Cover by growth form, on the ground that was actually looked at.
+    #
+    # Over the whole site Looe Key's colonies come to 0.46%, which is true and
+    # useless: the SQUID-5 survey covers about an eighth of the square
+    # kilometre this place is drawn over and the rest has no colonies because
+    # nobody flew it, not because there is no coral there. A transect figure
+    # is cover *where the transect ran*, so the number that can be compared
+    # with one is cover where there is survey.
+    looked_at = float((grid > 0).sum()) * COVER_CELL_M * COVER_CELL_M
+    by_form = {}
+    for one in rows:
+        seen = by_form.setdefault(one["growthForm"], {"colonies": 0, "m2": 0.0})
+        seen["colonies"] += 1
+        seen["m2"] += one["footprintM2"]
+    for form, seen in by_form.items():
+        seen["m2"] = round(seen["m2"], 2)
+        seen["coverOfSurveyedGround"] = round(seen["m2"] / max(looked_at, 1e-9), 5)
+
+    with (into / "cover-by-form.csv").open("w", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["growthForm", "colonies", "footprintM2",
+                         "coverOfSurveyedGround"])
+        for form in sorted(by_form, key=lambda f: -by_form[f]["m2"]):
+            seen = by_form[form]
+            writer.writerow([form, seen["colonies"], seen["m2"],
+                             seen["coverOfSurveyedGround"]])
     write_grid(into, grid, {**centre, "name": site.get("name", "site")},
                across, COVER_CELL_M)
-    (into / "provenance.json").write_text(
-        json.dumps(provenance(site), indent=2) + "\n")
+    said = provenance(site)
+    said["coverByForm"] = {
+        "surveyedGroundM2": round(looked_at, 1),
+        "ofWhichIsSurvey":
+            "cells of the raster with any colony in them. On a place built "
+            "from a partial survey this is the ground somebody flew, not the "
+            "site: quoting cover over the whole site instead would put Looe "
+            "Key at a fifth of what its own transects say, because seven "
+            "eighths of the square kilometre has no colonies for want of "
+            "anybody having looked",
+        "forms": by_form,
+        "allStanding": round(
+            sum(one["m2"] for one in by_form.values()) / max(looked_at, 1e-9), 5),
+        "compareWith":
+            "A transect's cover figure is the number to hold this against, "
+            "and the two are not quite the same measurement: a transect "
+            "records what is under a point, this records the plan area of "
+            "every object a detector found standing above the seabed. Which "
+            "of the growth forms below counts as stony coral is a question "
+            "about the *classifier*, not about these numbers.",
+    }
+    (into / "provenance.json").write_text(json.dumps(said, indent=2) + "\n")
 
     return {"colonies": len(rows), "coverCells": int(grid.size),
-            "meanCover": float(grid.mean()), "into": into}
+            "meanCover": float(grid.mean()),
+            "surveyedGroundM2": looked_at,
+            "onSurveyedGround": sum(one["m2"] for one in by_form.values())
+                                / max(looked_at, 1e-9),
+            "byForm": by_form, "into": into}
 
 
 def main() -> int:
@@ -418,9 +469,13 @@ def main() -> int:
     made = deliver(place, into)
 
     print(f"  {place.name}")
-    print(f"    {made['colonies']:,} colonies, "
-          f"{made['coverCells']:,} cover cells at {COVER_CELL_M:.0f} m, "
-          f"{100 * made['meanCover']:.1f}% mean cover")
+    print(f"    {made['colonies']:,} colonies over "
+          f"{made['surveyedGroundM2']:,.0f} m2 of surveyed ground, "
+          f"{100 * made['onSurveyedGround']:.2f}% covered")
+    for form in sorted(made["byForm"], key=lambda f: -made["byForm"][f]["m2"]):
+        seen = made["byForm"][form]
+        print(f"      {form:<12} {seen['colonies']:7,}  "
+              f"{100 * seen['coverOfSurveyedGround']:5.2f}%")
     for one in sorted(p.name for p in into.iterdir()):
         print(f"    {into / one}")
     print()
