@@ -169,6 +169,38 @@ ASSEMBLAGES["hawaii"] = (
 )
 
 
+# And the deep, which is not a reef and must not be drawn as one.
+#
+# Five hundred metres down there is no light, so there is no zooxanthellate
+# coral — nothing that builds a reef builds anything here. What is down there
+# feeds on what falls: black corals standing in the current as whips and
+# fans, sponges, and a sediment plain between them that is mostly empty.
+#
+# The Red Sea deep is among the least explored in the world. The Red Sea
+# Decade Expedition's ROV surveys ran from thirty-eight metres to one
+# thousand seven hundred and eighty-three, and found a hundred and forty-three
+# taxa in fifty-three families — including black corals, which are the
+# standing shapes at this depth.
+#
+# Two things about this mix. It has no depth structure worth the name, because
+# nothing here is set by light: the bands are flat and the only reason there
+# is more than one is that the palette wants them. And it is *sparse* — how
+# sparse is set by the colony count a place is built with, not here, and for
+# Thuwal Deep that is a few hundred a square kilometre against a reef's
+# hundreds of thousands.
+ASSEMBLAGES["deep"] = (
+    (2.0, {"sponge": 0.44, "encrusting": 0.34, "plume": 0.22}, 0.80),
+    (4.5, {"sponge": 0.44, "encrusting": 0.32, "plume": 0.24}, 1.00),
+    (10.0, {"sponge": 0.42, "plume": 0.30, "encrusting": 0.28}, 1.20),
+    (18.0, {"plume": 0.36, "sponge": 0.36, "encrusting": 0.28}, 1.40),
+    (26.0, {"plume": 0.38, "sponge": 0.36, "encrusting": 0.26}, 1.60),
+    # Everything Thuwal Deep actually is falls in this band: whips standing in
+    # the current, sponges, and crusts on whatever rock the sediment has not
+    # buried.
+    (999.0, {"plume": 0.40, "sponge": 0.36, "encrusting": 0.24}, 1.80),
+)
+
+
 def bands_for(assemblage: str | None):
     """The mix for a named reef, or the one this platform started with."""
     if assemblage is None:
