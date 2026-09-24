@@ -64,3 +64,39 @@ def test_it_is_a_rotation_and_not_a_squash():
 def test_an_aim_of_nothing_does_not_explode():
     R = aiming(np.array([0.0, 0.0, -1.0]))
     assert np.allclose(R, np.eye(3))
+
+
+# ── how bright a lamp is ─────────────────────────────────────────────────────
+
+def test_a_lamp_is_its_own_lumens_over_its_own_face():
+    """A Lambertian emitter's luminance is flux over area times pi.
+
+    A Lumen Subsea is fifteen hundred lumens across eight centimetres, which
+    is about seventy-four thousand candela a square metre. The scale it
+    replaces produced a hundred and five million — four orders of magnitude
+    out, because it had been tuned to make a light that was pointing behind
+    the vehicle show up at all.
+    """
+    from runner import lamp_nits
+
+    assert lamp_nits(1500.0, 0.08) == pytest.approx(74_603.0, rel=0.01)
+
+
+def test_a_bigger_face_at_the_same_flux_is_dimmer():
+    from runner import lamp_nits
+
+    assert lamp_nits(1500.0, 0.16) == pytest.approx(
+        lamp_nits(1500.0, 0.08) / 4.0, rel=1e-6)
+
+
+def test_twice_the_lumens_is_twice_the_luminance():
+    from runner import lamp_nits
+
+    assert lamp_nits(3000.0, 0.08) == pytest.approx(
+        2.0 * lamp_nits(1500.0, 0.08), rel=1e-9)
+
+
+def test_it_does_not_divide_by_a_face_of_no_size():
+    from runner import lamp_nits
+
+    assert lamp_nits(1500.0, 0.0) > 0.0
