@@ -6,6 +6,16 @@
     "maxSpeedMs": 1.5,
     "minAltitudeM": 0.3
   },
+  "hull": {
+    "note": "How big the hull is, which the package has never said. Nothing on this platform needed it until tools/tow: a drag coefficient can only be checked against half rho U squared C_d A, and A is this. Length is along the tow, then beam, then height.",
+    "dimensionsM": [
+      0.457,
+      0.338,
+      0.254
+    ],
+    "dimensionsFrom": "Blue Robotics' published dimensions for the BlueROV2 in its standard six-thruster configuration, 457 x 338 x 254 mm. Read, not fetched, and not measured off a vehicle. The Heavy configuration is a different hull and this package is not it: it has six thrusters, which is the standard.",
+    "shape": "An open polymer frame carrying two horizontal cylinders \u2014 the electronics enclosure and the battery \u2014 with six thrusters hanging off it. Not a fairing. Its drag is form drag off bluff bodies and not skin friction, which is why a flat-plate friction line is the wrong thing to check it against."
+  },
   "centreOfGravityM": [
     0,
     0,
