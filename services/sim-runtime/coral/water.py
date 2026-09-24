@@ -909,8 +909,14 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     _water_material(stage, surface)
     from pxr import UsdGeom as _UsdGeom
     _bounds = _UsdGeom.Mesh(surface).GetPointsAttr().Get()
+    # `enclosed` here too, and it was missed the first time: the mesh was
+    # built at the tank's own size and this line reported the ocean's, so the
+    # log said a two-and-a-half-kilometre sea over a place whose surface was
+    # a hundred and twenty metres across. A report that says the opposite of
+    # what was built is worse than no report, because it is believed.
     say("surface_made",
-        reachM=round(float(sea_reaches(across)), 1),
+        reachM=round(float(sea_reaches(across, enclosed=enclosed)), 1),
+        indoors=bool(enclosed),
         levelZ=round(float(water_level), 2),
         points=0 if _bounds is None else len(_bounds),
         lowestZ=None if not _bounds else round(min(float(q[2]) for q in _bounds), 2),
