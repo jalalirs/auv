@@ -465,6 +465,8 @@ class Dive:
         # acts on the vehicle's motion through the water, not over the ground,
         # so a vehicle doing nothing in a current is carried by it.
         self.current = np.zeros(3)
+        self.lamp_intensity = 0.0
+        self.lamp_lumens = 0.0
         # How far the snow box reaches from the camera. Four metres: past
         # that a two-millimetre aggregate is under a pixel and the lamp has
         # nothing left to give it, so drawing more is cost without picture.
@@ -1604,9 +1606,11 @@ class Dive:
             across = asked_for("CORAL_CITY_LAMP_SIZE", 0.08)
             light.CreateWidthAttr(across)
             light.CreateHeightAttr(across)
-            light.CreateIntensityAttr(asked_for(
-                "CORAL_CITY_LAMP_INTENSITY",
-                lamp_nits(float(one.get("lumens", 1500.0)), across)))
+            lumens = float(one.get("lumens", 1500.0))
+            nits = asked_for("CORAL_CITY_LAMP_INTENSITY",
+                             lamp_nits(lumens, across))
+            light.CreateIntensityAttr(nits)
+            self.lamp_intensity, self.lamp_lumens = float(nits), lumens
             light.CreateColorAttr(Gf.Vec3f(1.0, 0.98, 0.95))
             light.CreateNormalizeAttr(False)
             # No shaping cone.
@@ -1687,10 +1691,18 @@ class Dive:
                               for i in range(3)])
             else:
                 where.append(None)
+        # What was set, not what a second copy of the formula says.
+        #
+        # This line worked the intensity out again from `1500 * LAMP_SCALE`
+        # while the light itself had been given something else, so after the
+        # lamps became a real photometric conversion the log went on
+        # reporting a hundred and five million — four orders of magnitude
+        # above the value in the scene. A readback that recomputes is not a
+        # readback.
         self.say("lamps_made",
                  acrossM=asked_for("CORAL_CITY_LAMP_SIZE", 0.08),
-                 intensity=asked_for("CORAL_CITY_LAMP_INTENSITY",
-                                     1500.0 * LAMP_SCALE))
+                 intensity=round(float(self.lamp_intensity), 1),
+                 lumensEach=round(float(self.lamp_lumens), 1))
         self.say("lamps_at", where=where,
                  vehicleAt=[round(float(v), 2) for v in self.position])
 
