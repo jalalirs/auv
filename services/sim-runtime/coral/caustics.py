@@ -70,9 +70,29 @@ OPTICAL_FROM = 0.8      # x the peak frequency
 OPTICAL_TO = 26.0       # x the peak frequency — about a fifteen-centimetre wave
 OPTICAL_COMPONENTS = 40
 
-# How many rays a texel gets, along each axis. Too few and the net is noise
-# rather than light; this is the smallest that came out smooth.
-RAYS_PER_TEXEL = 3
+# The slope of the sea, measured off the sun's glitter.
+#
+# Cox and Munk photographed the glitter pattern from an aircraft in 1954 and
+# got the mean square slope of the surface as a straight line in wind speed.
+# It is the number that decides whether anything focuses: a sea of a given
+# height can be smooth or steep depending on the wind that made it, and it is
+# the steepness that throws the net.
+COX_MUNK_STILL = 0.003
+COX_MUNK_PER_WIND = 0.00512
+
+# How many rays a texel gets, along each axis.
+#
+# Sixteen, so two hundred and fifty-six a texel. Three was the first guess and
+# it made a texture that was almost entirely its own shot noise: nine rays is
+# a Poisson count with a third of its own mean as scatter, and at five metres
+# the sun's blur is a twentieth of a texel, so nothing smoothed it out. It
+# measured contrast 0.104 between neighbouring texels and 0.090 eight texels
+# apart — a net has *more* structure at the larger scale, not less, and that
+# ordering is how noise announces itself.
+#
+# Two hundred and fifty-six rays puts the shot noise at a sixteenth, well
+# under the net's own contrast. It costs a few seconds once, as a dive opens.
+RAYS_PER_TEXEL = 16
 
 # The sun is not a point, and that is the whole reason caustics are a
 # shallow-water sight.
@@ -114,17 +134,47 @@ def bending_waves(sea, seed: int = 11):
         if amplitude <= 0.0:
             continue
         w = 2.0 * math.pi * middle
-        spread = math.radians(sea_state.SPREAD_DEG) * float(draw.normal(0.0, 0.5))
-        heading = sea.heading + max(-math.pi / 2, min(math.pi / 2, spread))
+        # Round the whole compass, not along the swell.
+        #
+        # The energy band is long-crested: a swell runs one way and the tour
+        # of headings is thirty degrees either side of it. The chop is not.
+        # Short waves are stirred by the local wind and by each other and run
+        # every way at once, and Cox and Munk measured the difference between
+        # along-wind and across-wind slope as about three to two — a bias, not
+        # a direction.
+        #
+        # Taking the swell's spread for the optical band made every component
+        # nearly parallel, so every ray was displaced along one axis and what
+        # came out was not a net but a curtain of vertical streaks. A net
+        # needs rays folding across each other from two directions.
+        heading = float(draw.random_sample()) * 2.0 * math.pi
         out.append([amplitude, w * w / sea_state.GRAVITY, heading,
                     float(draw.random_sample()) * 2.0 * math.pi])
         variance += 0.5 * amplitude * amplitude
-    if variance <= 0.0:
+    if not out:
         return []
-    # The energy band already carries the stated height; this band is the tail
-    # beside it, so it is scaled to the share of the height the tail holds
-    # rather than to the whole of it.
-    scale = sea.height / (4.0 * math.sqrt(variance)) * 0.35
+
+    # Scaled to the sea's *slope*, not to its height.
+    #
+    # This was scaled to a share of the significant height, and that share was
+    # a guess. It made a surface far too smooth to focus anything: the waves
+    # that throw a net are short, a JONSWAP energy tail gives them almost no
+    # amplitude, and at five metres down the displacement came out a
+    # centimetre against a wavelength of seventy. Nothing focuses at a
+    # fiftieth of a wavelength, so the map that came back was its own shot
+    # noise with no net in it.
+    #
+    # Height is the wrong quantity anyway. What bends a ray is the slope, and
+    # the slope of the sea is a thing somebody measured: Cox and Munk read it
+    # off the sun's glitter from an aircraft in 1954 and got a mean square
+    # slope of 0.003 + 0.00512 U for wind speed U in metres a second, which
+    # has stood since. So the band is scaled to carry that slope.
+    wind = math.sqrt(max(0.0, sea.height) / 0.0246)
+    mss = COX_MUNK_STILL + COX_MUNK_PER_WIND * wind
+    have = sum(0.5 * (a * k) ** 2 for a, k, _, _ in out)
+    if have <= 0.0:
+        return []
+    scale = math.sqrt(mss / have)
     for one in out:
         one[0] *= scale
     return [tuple(one) for one in out]
@@ -146,6 +196,24 @@ def net(sea, across: float, depth: float, seconds: float = 0.0,
     than adding a second sun.
     """
     waves = bending_waves(sea, seed)
+    if not waves:
+        return np.ones((size, size), dtype="float32")
+
+    # Nothing finer than the texture can hold.
+    #
+    # A texel here is a third of a metre, and a wave fifteen centimetres long
+    # throws a net finer than that. Synthesising it anyway does not put fine
+    # detail in the texture — it puts *noise* in it, because structure below
+    # the sampling scale folds back as grain. Measured: neighbouring texels
+    # differing by more than the whole map's spread, which is how a picture
+    # says it is mostly noise.
+    #
+    # Two texels to a wavelength is the most that can be represented, so the
+    # short end of the band is cut there and the net that comes out is the
+    # net this patch can actually carry.
+    finest = 2.0 * (across / size)
+    biggest_k = 2.0 * math.pi / finest
+    waves = [one for one in waves if one[1] <= biggest_k]
     if not waves:
         return np.ones((size, size), dtype="float32")
 

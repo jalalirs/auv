@@ -50,6 +50,12 @@ JUNGE_ABOVE = 3.0
 # speck; those are the ones the veil is already made of.
 SMALLEST_DRAWN_MM = 2.0
 
+# And the largest. A power law has no top to it, so one draw in a few thousand
+# came out at five centimetres — which at a metre from the lens is a white
+# square the size of a thumbnail, and there were several in every frame.
+# Marine snow does reach a centimetre or two; it does not reach five.
+LARGEST_DRAWN_MM = 15.0
+
 # Which water this count belongs to: the clearest there is.
 CLEAREST_GREEN_M = 40.0
 
@@ -83,7 +89,8 @@ def sizes(count: int, draw) -> np.ndarray:
     mostly grains, occasionally something with structure to it.
     """
     u = np.clip(draw.random_sample(count), 1e-6, 1.0)
-    return (SMALLEST_DRAWN_MM * u ** (-1.0 / JUNGE_ABOVE)) / 1000.0
+    drawn = SMALLEST_DRAWN_MM * u ** (-1.0 / JUNGE_ABOVE)
+    return np.minimum(drawn, LARGEST_DRAWN_MM) / 1000.0
 
 
 class Snow:
