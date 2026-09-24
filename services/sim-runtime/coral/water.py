@@ -121,6 +121,17 @@ def water_of(kind: str | None = None):
 # wrong scale, and it looks like nothing more than a different sea.
 CAUSTIC_PATCH_M = 90.0
 
+# How much of the net to lay on the ground, where one would replace the
+# ground's own lighting with it entirely. A caustic is a modulation of
+# sunlight and not a second sun, and at depth most of what reaches the bottom
+# has been scattered on the way and arrives from every direction with no net
+# in it at all.
+CAUSTIC_STRENGTH = 0.55
+
+# The net, and how strong, for the pass that writes them into the materials.
+_NET = ""
+_NET_STRENGTH = 0.0
+
 VEIL_TOWARDS_GREY = 0.6
 
 # How bright the veil is — which is not one number, and used to be.
@@ -760,6 +771,8 @@ def make(stage, say, floor: float, water_level: float = 0.0,
             where.parent.mkdir(parents=True, exist_ok=True)
             Image.fromarray(caustic_net.as_texture(lit)).save(where)
             pattern = str(where)
+            global _NET, _NET_STRENGTH
+            _NET, _NET_STRENGTH = str(where), CAUSTIC_STRENGTH
             say("caustics_made", fromTheSea=True,
                 patchM=CAUSTIC_PATCH_M, atDepthM=round(float(working_depth), 1),
                 contrast=round(float(lit.std()), 3),
@@ -1364,7 +1377,7 @@ def put_the_water_in_the_materials(stage, veiling, lengths, veil: float,
     Once, when the dive opens: the type of water does not change under a
     vehicle. Where the camera is does, and that is the other function.
     """
-    from pxr import Gf
+    from pxr import Gf, Sdf
 
     colour = Gf.Vec3f(*[float(one) for one in veiling])
     lengths = Gf.Vec3f(*[max(0.01, float(one)) for one in lengths])
@@ -1404,6 +1417,13 @@ def put_the_water_in_the_materials(stage, veiling, lengths, veil: float,
                     # both it is set here, where every material that has the
                     # water on it is already being visited.
                     ("inputs:site_across", float(across)),
+                    # The net the surface throws, laid on by the material
+                    # rather than projected by the caustic light — a
+                    # ninety-metre emitter five metres up averages any
+                    # texture it carries over ninety metres before it lands.
+                    ("inputs:caustics", Sdf.AssetPath(_NET)),
+                    ("inputs:caustics_across", float(CAUSTIC_PATCH_M)),
+                    ("inputs:caustics_strength", float(_NET_STRENGTH)),
                     ("inputs:show_distance", float(shown) if shown else 0.0)]
         if eye is not None:
             settings.append(("inputs:eye", Gf.Vec3f(*[float(v) for v in eye])))

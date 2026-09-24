@@ -413,6 +413,9 @@ def _skins(colours, kinds=None, tile_metres: float = 0.04) -> str:
             # the colour of the clamp, which is black. Looe Key is a thousand
             # metres across and was right by coincidence.
             "                float inputs:site_across = 1000\n"
+            "                asset inputs:caustics = @@\n"
+            "                float inputs:caustics_across = 90\n"
+            "                float inputs:caustics_strength = 0\n"
             "                float inputs:show_distance = 0\n"
             # The same map the seabed uses. Raw, because every texel is
             # already exp(-distance / length) and reading it as sRGB puts it

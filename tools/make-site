@@ -238,6 +238,13 @@ GROUND_MATERIAL = """
                 color3f inputs:veiling = (0.24, 0.55, 0.45)
                 float inputs:veil = 0
                 float inputs:show_distance = 0
+                # The net the surface throws. Declared here so the runtime
+                # can write it as a dive opens: it sets the water on every
+                # shader that has an `eye`, and skips any input the prim does
+                # not already carry.
+                asset inputs:caustics = @@
+                float inputs:caustics_across = 90
+                float inputs:caustics_strength = 0
                 # The site's own width and about how deep it is, so the
                 # material can turn its texture coordinates back into a place.
                 # Six attempts to read a position out of this renderer came

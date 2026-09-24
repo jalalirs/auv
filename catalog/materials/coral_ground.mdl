@@ -57,6 +57,29 @@ export material coral_ground(
                           "arm's length, black is gone."),
         anno::in_group("Water")
     ]],
+    uniform texture_2d caustics = texture_2d()
+    [[
+        anno::display_name("The net the surface throws on the bottom"),
+        anno::description("Built per dive by coral.caustics from the sea "
+                          "actually running, and sampled here rather than "
+                          "projected by a light: a ninety-metre emitter five "
+                          "metres above the floor cannot cast a feature a "
+                          "third of a metre across, because every point of "
+                          "the floor sees the whole of it. Tiles in world "
+                          "metres."),
+        anno::in_group("Water")
+    ]],
+    uniform float caustics_across = 90.0
+    [[
+        anno::display_name("How wide the caustic net is, in metres"),
+        anno::in_group("Water")
+    ]],
+    uniform float caustics_strength = 0.0
+    [[
+        anno::display_name("How much of the net to lay on"),
+        anno::description("Nought in a flat calm, which throws no net at all."),
+        anno::in_group("Water")
+    ]],
     uniform texture_2d hardness = texture_2d()
     [[
         anno::display_name("Where the hard ground is"),
@@ -448,9 +471,39 @@ export material coral_ground(
     // A bright patch fading to black is a lookup that works; one flat colour
     // is one that does not, and the map has already been read off disk and
     // is known to be right.
+    // The net the surface throws, laid on in world metres.
+    //
+    // Sampled by the material and not projected by the caustic light, and
+    // that is not a preference. The light is a rectangle ninety metres across
+    // sitting five metres above the seabed: every point of the floor sees the
+    // whole of it, so whatever texture it carries is averaged over ninety
+    // metres before it arrives. It can brighten the ground and it cannot
+    // draw a net on it. Measured, with the net on the light: a rough sea came
+    // back with *less* fine contrast on the seabed than a flat calm, at every
+    // scale from four pixels to a hundred and twenty-eight.
+    //
+    // The site's own texture coordinate runs nought to one across the site,
+    // so multiplying by the site's width and dividing by the net's gives
+    // world metres in tiles of the net — the same arithmetic the tiled sand
+    // uses, inside a coordinate that feeds a lookup, which is the one shape
+    // of expression that varies per pixel in this renderer.
+    base::texture_coordinate_info netted = base::texture_coordinate_info(
+        position: here.position * (site_across
+                                   / math::max(caustics_across, 1.0)),
+        tangent_u: here.tangent_u,
+        tangent_v: here.tangent_v);
+    float woven = caustics_strength <= 0.0
+        ? 1.0
+        : math::lerp(1.0, base::file_texture(
+                              texture: caustics, uvw: netted,
+                              wrap_u: tex::wrap_repeat,
+                              wrap_v: tex::wrap_repeat,
+                              mono_source: base::mono_average).mono * 2.0,
+                     math::saturate(caustics_strength));
+
     color albedo = show_distance > 0.0
         ? survives
-        : math::saturate(low * lift * variation);
+        : math::saturate(low * lift * variation * woven);
 
     float3 bumped = math::normalize(math::lerp(
         base::tangent_space_normal_texture(

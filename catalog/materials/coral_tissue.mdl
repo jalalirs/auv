@@ -187,6 +187,21 @@ export material coral_tissue(
                           "the same number everywhere."),
         anno::in_group("Water")
     ]],
+    uniform texture_2d caustics = texture_2d()
+    [[
+        anno::display_name("The net the surface throws"),
+        anno::description("The same net the seabed wears, sampled here so a "
+                          "colony is lit by it too. A reef where the sand is "
+                          "netted and the coral standing on it is not reads "
+                          "as coral pasted onto a photograph."),
+        anno::in_group("Water")
+    ]],
+    uniform float caustics_across = 90.0
+    [[ anno::display_name("How wide the net is, in metres"),
+       anno::in_group("Water") ]],
+    uniform float caustics_strength = 0.0
+    [[ anno::display_name("How much of the net to lay on"),
+       anno::in_group("Water") ]],
     uniform float site_across = 1000.0
     [[
         anno::display_name("How wide this site is"),
@@ -229,6 +244,25 @@ export material coral_tissue(
     // And as the tissue goes, so does the colour: `alive` at nought is the
     // same skeleton with nothing on it, which is what a bleached colony is.
     color under = math::lerp(aragonite, lit_from_under, math::saturate(alive));
+
+    // And the net the surface throws, off the same world position the medium
+    // is looked up through, in tiles of the net's own width. A reef where the
+    // sand is netted and the coral standing in it is not reads as coral
+    // pasted onto a photograph.
+    base::texture_coordinate_info world_for_net = base::coordinate_source(
+        coordinate_system: base::texture_coordinate_world, texture_space: 0);
+    base::texture_coordinate_info netted = base::texture_coordinate_info(
+        position: world_for_net.position / math::max(caustics_across, 1.0),
+        tangent_u: world_for_net.tangent_u,
+        tangent_v: world_for_net.tangent_v);
+    float woven = caustics_strength <= 0.0
+        ? 1.0
+        : math::lerp(1.0, base::file_texture(
+                              texture: caustics, uvw: netted,
+                              wrap_u: tex::wrap_repeat,
+                              wrap_v: tex::wrap_repeat,
+                              mono_source: base::mono_average).mono * 2.0,
+                     math::saturate(caustics_strength));
 
     // What survives the swim to the camera, and the water in front of it.
     //
@@ -281,7 +315,8 @@ export material coral_tissue(
                 weight: math::saturate(through * alive),
                 layer: df::diffuse_transmission_bsdf(tint: tissue),
                 base: df::diffuse_reflection_bsdf(
-                tint: show_distance > 0.0 ? color(0.0) : under * survives)),
+                tint: show_distance > 0.0 ? color(0.0)
+                      : under * survives * woven)),
             normal: bumped),
         // Inside the surface, not beside it. `material()` has no `emission`
         // of its own — its parameters are thin_walled, surface, backface, ior,
