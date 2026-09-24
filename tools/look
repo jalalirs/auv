@@ -151,11 +151,17 @@ one_place() {
     # Which water to look through. A place has no opinion of its own yet, so
     # this is how one is tried: the same reef through clear ocean and through a
     # turbid bay is the comparison the water types exist to make.
+    # And which sea. Unset, the runtime's own quiet day; SEA=0 is a flat calm
+    # and SEA=1.5 is a rough one, which is how a question about the caustics
+    # gets answered in two runs rather than by argument — the net on the
+    # bottom is built from this number and a flat calm throws none at all.
+    local sea=""
+    [ -n "${SEA:-}" ] && sea=", \"significantWaveHeightM\": ${SEA}"
     cat > "${here}/dive.json" <<JSON
 {"cityPath": "/dive/city", "vehiclePath": "/dive/vehicle",
  "durationSeconds": 600, "autonomy": false,
  "conditions": {"kind": "constructed",
-                "parameters": {"waterType": "${WATER:-1C}"}}}
+                "parameters": {"waterType": "${WATER:-1C}"${sea}}}}
 JSON
     chmod 666 "${here}/dive.json"
 
