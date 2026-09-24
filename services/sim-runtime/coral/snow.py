@@ -68,20 +68,61 @@ NEAREST_M = 0.5
 # Which water this count belongs to: the clearest there is.
 CLEAREST_GREEN_M = 40.0
 
+# And which *depth* it belongs to, which is the upper water column.
+#
+# Pilskaln's aggregates were counted in the North Pacific Subtropical Gyre's
+# euphotic zone and just under it. Marine snow is made at the top of the
+# ocean and eaten on the way down: the sinking flux of particles falls as a
+# power of depth, and Martin et al., "VERTEX: carbon cycling in the northeast
+# Pacific", Deep-Sea Research 34 (1987), fitted that fall as (z/100) to the
+# minus 0.858 — the most-cited curve in ocean biogeochemistry, and the one
+# every carbon-export budget since has been written against.
+#
+# At a sinking speed that does not change much with depth, concentration
+# follows flux, so the same exponent serves. At five hundred and fifty metres
+# that is a fifth of what is at a hundred, and the difference is the whole
+# character of the frame: Thuwal Deep was rendering a snowstorm at the
+# density of a reef at fifteen metres.
+#
+# Clamped at one above the reference depth rather than continued upwards. The
+# curve is a fit to sediment traps *below* the euphotic zone and it has
+# nothing to say about the water a reef is in; extrapolated up it claims four
+# times the snow at ten metres, which is not measured and would repaint every
+# shallow place on the platform off the back of a deep-sea correction.
+MARTIN_FROM_M = 100.0
+MARTIN_FALLS = 0.858
+
 # Marine snow sinks, slowly, and this is the middle of the measured range —
 # tens of metres a day, which is about half a millimetre a second. Slow enough
 # that a frame shows drift rather than rain, which is what the footage shows.
 SINKS_M_PER_S = 0.0006
 
 
-def per_cubic_metre(lengths=None) -> float:
+def how_much_gets_this_deep(depth_m: float | None) -> float:
+    """What share of the upper ocean's marine snow is still falling at a depth.
+
+    Martin's curve, above. One at and above a hundred metres, a fifth of it at
+    five hundred and fifty.
+    """
+    if depth_m is None:
+        return 1.0
+    depth = max(0.0, float(depth_m))
+    if depth <= MARTIN_FROM_M:
+        return 1.0
+    return float((depth / MARTIN_FROM_M) ** -MARTIN_FALLS)
+
+
+def per_cubic_metre(lengths=None, depth_m: float | None = None) -> float:
     """How many aggregates worth drawing are in a cubic metre of this water.
 
     Scaled off the green attenuation length, which is this platform's measure
     of how much is suspended in a water — the same number the veil's
-    brightness comes off, because it is the same particles doing both.
+    brightness comes off, because it is the same particles doing both — and
+    off the depth, because marine snow is made at the top of the ocean and
+    eaten on the way down.
     """
     above = ABOVE_HALF_MM * (SMALLEST_DRAWN_MM / 0.5) ** -JUNGE_ABOVE
+    above *= how_much_gets_this_deep(depth_m)
     if lengths is None:
         return above
     green = max(0.5, float(lengths[1]))
@@ -113,11 +154,12 @@ class Snow:
     """
 
     def __init__(self, reaches_m: float = 4.0, lengths=None, seed: int = 0,
-                 most: int = 6000) -> None:
+                 most: int = 6000, depth_m: float | None = None) -> None:
         self.reaches = float(reaches_m)
+        self.depth_m = None if depth_m is None else float(depth_m)
         side = 2.0 * self.reaches
         volume = side ** 3
-        wanted = int(round(per_cubic_metre(lengths) * volume))
+        wanted = int(round(per_cubic_metre(lengths, depth_m) * volume))
         self.asked = wanted
         self.count = min(int(most), max(0, wanted))
         self.draw = np.random.RandomState(seed % (2 ** 32))
