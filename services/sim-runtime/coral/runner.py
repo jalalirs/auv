@@ -762,7 +762,7 @@ class Dive:
                 # the catch below into "snow_not_drawn", and the dive would
                 # have rendered with no snow and no reason given.
                 self.snow = marine_snow.Snow(
-                    reaches_m=self.SNOW_REACHES_M,
+                    reaches_m=self.SNOW_REACHES_M, most=self.SNOW_MOST,
                     lengths=water_module.water_of(self.water_type),
                     seed=int(self.seed()))
                 self.snow.follow(self.position)
@@ -2747,10 +2747,18 @@ class Dive:
                  perSquareMetre=says.get("perSquareMetre"))
         return shoal
 
-    # How far the marine snow reaches from the camera, in metres. Past four
-    # a two-millimetre aggregate is under a pixel and the lamp has nothing
-    # left to give it, so more is cost without picture.
-    SNOW_REACHES_M = 4.0
+    # How far the marine snow reaches from the camera, in metres, and how many
+    # aggregates will be drawn at most.
+    #
+    # Three, not four. Backscatter is a near-field thing — it is the lamp
+    # lighting the water between itself and the lens — and a particle at four
+    # metres is both under a pixel and past most of what the lamp has to
+    # give. A four-metre box spent more than half its budget out there and
+    # then hit the ceiling, so the density actually drawn came out at 11.7 a
+    # cubic metre against the 25.7 the water asked for. Pulling the box in
+    # and lifting the ceiling puts the full density where it can be seen.
+    SNOW_REACHES_M = 3.0
+    SNOW_MOST = 20000
 
     def stir(self) -> None:
         """Move the water. Still caustics are a painted floor."""
