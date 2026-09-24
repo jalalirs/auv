@@ -103,7 +103,10 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # those fill the view and read as scenery flats.
     per_kind = {"branching": 1.0, "rubble": 1.0, "encrusting": 0.36,
                 "finger": 1.0, "massive": 0.9, "table": 0.55,
-                "brain": 0.9, "fan": 0.9, "plume": 0.9, "sponge": 0.9}
+                "brain": 0.9, "fan": 0.9, "plume": 0.9, "sponge": 0.9,
+                # Small, and kept small by its own cap below rather than by
+                # the band's: an animal's length is set by the animal.
+                "holothurian": 0.30}
 
     bands = zonation.bands_for(assemblage)
     kinds = sorted({kind for mix in zonation.ASSEMBLAGES.values()
@@ -154,6 +157,18 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # width lets it grow to three metres tall on a reef crest.
     widths = np.array([max(1e-3, float(points[:, 2].max()))
                        for points, _ in prototypes])
+    # And how long each one lies, for the things a height cap does not cap.
+    #
+    # A sea cucumber is eight centimetres tall and half a metre long, so the
+    # deep band's 1.8 m ceiling on height is no ceiling at all on it: the
+    # first draw would have put five-times-life-size holothurians on the mud.
+    # `zonation.NO_BIGGER_THAN_M` says what an animal's own size is, and this
+    # is the measurement that cap applies to.
+    lies = np.array([max(1e-3, float(max(np.ptp(points[:, 0]),
+                                         np.ptp(points[:, 1]))))
+                     for points, _ in prototypes])
+    own_size = np.array([zonation.NO_BIGGER_THAN_M.get(kinds[i // variants], 0.0)
+                         for i in range(len(prototypes))])
     kind_scale = np.array([per_kind[k] for k in kinds])
 
     def a_draw(at_depth, rng):
@@ -164,6 +179,13 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
         # No bigger than the band allows. A three metre table belongs on the
         # fore reef, not on a crest scoured to the rock every winter.
         scale = np.minimum(scale, cap / widths[which])
+        # And no bigger than the animal itself gets, whatever band it is in.
+        has_own = own_size[which] > 0
+        if has_own.any():
+            scale = np.where(
+                has_own,
+                np.minimum(scale, own_size[which] / lies[which]),
+                scale)
         return which, scale, footprint[which] * scale ** 2
 
     # How many colonies that cover needs.
@@ -356,6 +378,10 @@ ALIVE = 0.94
 THROUGH = {"massive": 0.0, "brain": 0.0, "encrusting": 0.05,
            "finger": 0.12, "branching": 0.30, "table": 0.35,
            "fan": 0.45, "plume": 0.40, "sponge": 0.10, "rubble": 0.0,
+           # A holothurian is a bag of water and muscle several centimetres
+           # thick. Nothing goes through it, and the thin-edge glow that makes
+           # a sea fan read as tissue would make this read as jelly.
+           "holothurian": 0.0,
            "low": 0.0, "stony": 0.0, "head": 0.0}
 THROUGH_BY_DEFAULT = 0.0
 

@@ -103,6 +103,12 @@ BY_KIND = {
                    "brown": 2, "lavender": 2, "chalk": 1},
     "encrusting": {"brown": 4, "dark brown": 3, "olive": 3, "grey green": 3,
                    "red": 2, "rust": 2, "mustard": 1},
+    # Deep-sea holothurians are violet, ochre and translucent grey-brown.
+    # Benthodytes is a deep purple, Psychropotes a yellow-brown; nothing down
+    # there is the mustard of a reef-building head, because nothing down there
+    # is carrying an alga.
+    "holothurian": {"purple": 4, "lavender": 3, "dark brown": 3, "brown": 3,
+                    "rust": 2, "tan": 2, "chalk": 1},
     "rubble":     {"dark brown": 4, "brown": 4, "grey green": 3, "olive": 3,
                    "tan": 2, "chalk": 1},
 }
@@ -510,9 +516,74 @@ def encrusting(rng, height=0.25):
     return points, np.array(faces, dtype=int)
 
 
+def holothurian(rng, height=0.22):
+    """A sea cucumber, lying on the mud.
+
+    Not a coral, not sessile, and the most conspicuous animal on a bathyal
+    seabed — in a great many deep-sea photographs it is the only thing in
+    frame that is obviously alive. It belongs here for the same reason a
+    sponge does: at lamp range nobody sorting a frame cares which phylum it
+    came from, they care that the ground has animals on it.
+
+    It is also what made the trails. `tools/sediment.py` ploughs grooves
+    through the mud with the spoil standing in levees either side, and until
+    now nothing on this platform had made them.
+
+    Placed as though still, because on the length of a dive it is: a
+    holothurian grazes at centimetres a minute, so over the ten minutes a
+    vehicle spends over one it moves less than its own length. The record says
+    so rather than implying these are rooted.
+
+    Shape: a tapered sausage lying along its own axis, arched a little, flat
+    underneath where it meets the ground, with papillae standing off the back.
+    """
+    long = height * rng.uniform(3.2, 5.0)
+    fat = height * rng.uniform(0.42, 0.62)
+    arch = height * rng.uniform(0.10, 0.30)
+
+    # The body, as segments along an arched line. Tapered at both ends, and
+    # fattest a little behind the middle, which is what a grazing animal full
+    # of sediment looks like.
+    rings = 12
+    pieces = []
+
+    def spine(where):
+        return np.array([(where - 0.5) * long, 0.0,
+                         fat * 0.34 + arch * math.sin(math.pi * where)])
+
+    def girth(where):
+        return fat * (0.18 + 0.92 * math.sin(math.pi * where ** 0.82) ** 0.7)
+
+    for r in range(rings):
+        low, high = r / rings, (r + 1) / rings
+        pieces.append(_cylinder(spine(low), spine(high),
+                                girth(low), girth(high), sides=9))
+
+    # Papillae: the soft conical processes along the back and flanks. They are
+    # what separates a holothurian from a slug at any distance a lamp reaches.
+    for _ in range(int(rng.integers(9, 18))):
+        where = rng.uniform(0.12, 0.88)
+        around = rng.uniform(-1.15, 1.15)
+        base = spine(where)
+        radius = girth(where)
+        out = np.array([0.0, math.sin(around), math.cos(around)])
+        tip = base + out * (radius + height * rng.uniform(0.18, 0.42))
+        pieces.append(_cylinder(base + out * radius * 0.85, tip,
+                                radius * 0.26, radius * 0.05, sides=5))
+
+    points, faces = _join(pieces)
+    if len(points):
+        # Flattened where it lies on the ground: an animal on mud is not a
+        # tube, it is a tube with its underside spread into a sole.
+        under = points[:, 2] < fat * 0.30
+        points[under, 2] *= 0.45
+    return points, faces
+
+
 GROWERS = {"branching": branching, "massive": massive, "table": table,
            "brain": brain, "fan": fan, "plume": plume, "sponge": sponge,
-           "finger": finger, "rubble": rubble, "encrusting": encrusting}
+           "finger": finger, "rubble": rubble, "encrusting": encrusting,
+           "holothurian": holothurian}
 
 
 def grow_one(kind: str, rng, size: float):
@@ -526,7 +597,11 @@ def grow_one(kind: str, rng, size: float):
     by = {"massive": 0.055, "brain": 0.030, "table": 0.020,
           "branching": 0.014, "finger": 0.022, "fan": 0.006,
           "plume": 0.006, "sponge": 0.045,
-          "rubble": 0.070, "encrusting": 0.030}[kind] * size
+          "rubble": 0.070, "encrusting": 0.030,
+          # Soft-bodied and smooth. Roughening a holothurian the way a boulder
+          # coral is roughened gives it a rind, and the whole point of the
+          # shape is that it is the one thing in a deep frame that is soft.
+          "holothurian": 0.010}[kind] * size
     points = roughen(points, by, rng, scale=2.0 + 6.0 / max(size, 0.2))
     # Every colony is turned, so a field of them has no grain.
     turn = rng.uniform(0, 2 * math.pi)
