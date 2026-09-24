@@ -304,6 +304,30 @@ def find_scene(root: pathlib.Path) -> pathlib.Path | None:
 LAMP_SCALE = 70_000.0
 
 
+def lamp_nits(lumens: float, across_m: float) -> float:
+    """What a rect light has to be set to for a lamp of this many lumens.
+
+    The compromise above is over. It said, in as many words, that when the
+    camera metered properly this would become a real photometric conversion —
+    and the camera does now, and the lamps now point where they are aimed
+    rather than behind the vehicle, which is the other half of why seventy
+    thousand was ever needed. A number tuned to make a light that was facing
+    the wrong way show up at all is not a unit conversion.
+
+    A Lambertian emitter of area A radiating a luminous flux into the
+    hemisphere in front of it has luminance
+
+        L = flux / (A x pi)
+
+    and that is what a rect light's intensity is in. Fifteen hundred lumens
+    across the eight centimetres of a Lumen Subsea's face is about seventy-four
+    thousand candela a square metre — which is a bright lamp, and is four
+    orders of magnitude below the hundred million the old scale produced.
+    """
+    area = max(float(across_m) * float(across_m), 1e-9)
+    return float(lumens) / (area * math.pi)
+
+
 def asked_for(name: str, fallback=None):
     """A number from the environment, where unset and empty mean the same.
 
@@ -1582,7 +1606,7 @@ class Dive:
             light.CreateHeightAttr(across)
             light.CreateIntensityAttr(asked_for(
                 "CORAL_CITY_LAMP_INTENSITY",
-                float(one.get("lumens", 1500.0)) * LAMP_SCALE))
+                lamp_nits(float(one.get("lumens", 1500.0)), across)))
             light.CreateColorAttr(Gf.Vec3f(1.0, 0.98, 0.95))
             light.CreateNormalizeAttr(False)
             # No shaping cone.
