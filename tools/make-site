@@ -643,6 +643,18 @@ def main() -> int:
                             "survey, or say it was chosen. Required whenever "
                             "coral is grown, because a density with no source "
                             "is a number somebody will cite as a measurement")
+    parse.add_argument("--assemblage",
+                       help="which reef this is: caribbean or red-sea. The "
+                            "shapes are the same everywhere and the mix is "
+                            "not — a gorgonian sea fan is a Caribbean "
+                            "signature and the Red Sea has Acropora tables "
+                            "instead. Everything on this platform was grown "
+                            "from the Caribbean mix until Al Fahal, where "
+                            "sixty-seven of sixty-eight dives happen")
+    parse.add_argument("--assemblage-from",
+                       help="where that mix comes from: the survey and the "
+                            "paper. Required with --assemblage, for the same "
+                            "reason --cover-from is required with coral")
     parse.add_argument("--water",
                        help="which Jerlov water this place is in — I, IA, IB, "
                             "II, III for open ocean, 1C through 9C for "
@@ -674,6 +686,10 @@ def main() -> int:
     parse.add_argument("--into",
                        default=str(pathlib.Path.home() / "coral-city" / "places"))
     asked = parse.parse_args()
+    if asked.assemblage and not asked.assemblage_from:
+        parse.error("--assemblage needs --assemblage-from: say which survey "
+                    "it came from. A reef drawn as the wrong ocean is as "
+                    "convincing as one drawn as the right one.")
     if asked.water and not asked.water_from:
         parse.error("--water needs --water-from: say which measurement it "
                     "came from. A place rendered through the wrong sea looks "
@@ -860,6 +876,7 @@ def main() -> int:
         corpus = pathlib.Path.home() / "coral-city" / "reference" / asked.name
         reef = grow_reef.plant(where, height, asked.across, asked.seed, asked.coral,
                                cover_from=asked.cover_from,
+                               assemblage=asked.assemblage,
                                picture=seen_from_above,
                                reference=corpus if corpus.is_dir() else None)
 
@@ -937,6 +954,9 @@ def main() -> int:
     }
     if asked.water:
         site["water"] = {"type": asked.water, "from": asked.water_from}
+    if asked.assemblage:
+        site.setdefault("reef", {})["assemblage"] = {
+            "name": asked.assemblage, "from": asked.assemblage_from}
     built.carry_the_record_forward(site, where / "site.json")
     built.record_call(site, "make-site")
     (where / "site.json").write_text(json.dumps(site, indent=2) + "\n")
