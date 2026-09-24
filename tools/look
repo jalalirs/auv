@@ -124,6 +124,26 @@ else:
 LAMPS
     [ -n "${vehicle}" ] || { echo "  no vehicle package to open the scene with" >&2; return 1; }
 
+    # A place that is still being built is not a place.
+    #
+    # make-site writes `being-built.json` when it starts and removes it when
+    # it finishes, so a build that died halfway leaves it behind. That place
+    # is torn: some of it new, the rest whatever was there before, and a
+    # site.json describing neither. Thuwal Deep was rebuilt with a missing
+    # dictionary entry, make-site raised after writing the new ground and
+    # before writing the seabed, and this tool rendered the old reef on the
+    # new mud and said five frames, exit nought.
+    #
+    # Nothing about such a frame looks wrong, which is the whole problem, and
+    # which is why this is a refusal and not a warning.
+    if [ -f "${city}/being-built.json" ]; then
+        echo "  ${place}: this place is part way through being built." >&2
+        echo "  Some of it is new and the rest is whatever was here before," >&2
+        echo "  and nothing about a frame of it will look wrong. Build it" >&2
+        echo "  again:  tools/rebuild ${city}" >&2
+        return 1
+    fi
+
     # And a place carries its own copy of the materials it is drawn with,
     # because a published package has to hold everything it is drawn from. So
     # a material edited in this checkout does not reach a place until the place

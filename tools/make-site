@@ -28,6 +28,7 @@ import math
 import pathlib
 import shutil
 import sys
+import time
 
 # Next to this script, which is where python looks first.
 import built
@@ -758,6 +759,26 @@ def main() -> int:
 
     where = pathlib.Path(asked.into) / asked.name
     where.mkdir(parents=True, exist_ok=True)
+    # Said in the place itself, for as long as it takes to build it.
+    #
+    # A build that dies halfway leaves a place that is *torn*: some of it new,
+    # the rest of it whatever was there before, and a site.json describing
+    # neither. Nothing about it looks wrong. Thuwal Deep was rebuilt with a
+    # missing dictionary entry, make-site raised after writing the new ground
+    # textures and before writing the seabed, and `tools/look` then rendered
+    # the old reef on the new mud and said five frames, exit nought — which is
+    # four readings off a place that does not exist.
+    #
+    # So the place says it is being built, and stops saying it when it is.
+    # Anything that flies a place refuses one that is still saying it.
+    torn = where / "being-built.json"
+    torn.write_text(json.dumps({
+        "argv": sys.argv[1:], "began": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "why": ("make-site is part way through this place. Until it finishes "
+                "this file is here, and a place with it is torn: some of it "
+                "is new and the rest is whatever was here before. Nothing "
+                "will look wrong. Build it again."),
+    }, indent=2) + "\n")
 
     if asked.build:
         sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -1090,6 +1111,8 @@ def main() -> int:
     built.carry_the_record_forward(site, where / "site.json")
     built.record_call(site, "make-site")
     (where / "site.json").write_text(json.dumps(site, indent=2) + "\n")
+    # Finished. Nothing above this line may be trusted if it is still there.
+    torn.unlink(missing_ok=True)
 
     print(f"  {asked.name}"
           f"{'' if surveyed else '  (terrain constructed, not surveyed)'}")

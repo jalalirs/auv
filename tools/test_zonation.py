@@ -226,3 +226,27 @@ def test_a_reef_still_uses_the_diving_band():
     assert got is not None
     assert got["depthM"] == pytest.approx(12.0, abs=0.5), got
     assert "vehicle works a reef in" in got["within"], got["within"]
+
+
+def test_a_place_says_while_it_is_being_built():
+    """A build that dies halfway leaves a torn place: some of it new, the rest
+    whatever was there before, and a site.json describing neither.
+
+    Thuwal Deep was rebuilt with a missing dictionary entry, make-site raised
+    after writing the new ground textures and before writing the seabed, and
+    `tools/look` rendered the old reef on the new mud and said five frames,
+    exit nought — four readings off a place that does not exist. Nothing about
+    the frames looked wrong, which is why this is a refusal and not a warning.
+    """
+    import pathlib as _p
+
+    source = (_p.Path(__file__).resolve().parent / "make-site").read_text()
+    assert "being-built.json" in source
+    # Written before anything else is, and removed only after site.json.
+    writes = source.index('torn = where / "being-built.json"')
+    site = source.index('(where / "site.json").write_text')
+    clears = source.index("torn.unlink(missing_ok=True)")
+    assert writes < site < clears, (writes, site, clears)
+
+    flying = (_p.Path(__file__).resolve().parent / "look").read_text()
+    assert "being-built.json" in flying, "tools/look does not refuse a torn place"

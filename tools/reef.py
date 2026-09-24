@@ -80,7 +80,10 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # a pavement.
     solidity = {"branching": 0.32, "fan": 0.14, "plume": 0.20, "sponge": 0.80,
                 "finger": 0.55, "massive": 0.88, "brain": 0.90, "table": 0.80,
-                "rubble": 0.62, "encrusting": 0.75}
+                "rubble": 0.62, "encrusting": 0.75,
+                # A sea cucumber is a solid body with a smooth outline: what
+                # it covers is very nearly the ellipse it lies in.
+                "holothurian": 0.92}
 
     # Colonies the size colonies are, against a vehicle 0.46 m long. On a
     # Caribbean fore reef most of what you swim past is between a fist and a
@@ -97,7 +100,12 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
              # The gorgonians stand as tall as anything on the reef and are
              # most of its silhouette. A sea fan at eighty centimetres is a
              # seedling; a metre and a bit is an ordinary one.
-             "fan": 1.15, "plume": 0.95, "sponge": 0.60}
+             "fan": 1.15, "plume": 0.95, "sponge": 0.60,
+             # The prototype's own scale, which for this one is a body
+             # dimension rather than a colony's reach: `holothurian()` reads
+             # it as the animal's girth and builds four or five of it in
+             # length. Capped at its real length by NO_BIGGER_THAN_M.
+             "holothurian": 0.11}
     # A table two metres across is a table; the same multiplier on a plate that
     # is already three metres wide gives a seven metre sheet, and a handful of
     # those fill the view and read as scenery flats.
