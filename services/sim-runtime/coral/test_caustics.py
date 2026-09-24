@@ -129,3 +129,19 @@ def test_the_texture_is_eight_bit_and_whole():
     got = caustics.as_texture(lit)
     assert got.dtype == np.uint8
     assert got.shape == lit.shape
+
+
+def test_the_texture_does_not_darken_the_ground_it_is_laid_on():
+    """A caustic moves light about; it does not remove any.
+
+    The material multiplies the ground by twice this texture's grey, so the
+    texture's mean has to come out at a half whatever the net is doing.
+    Normalising before clipping threw the bright tail away and left a mean
+    below a half, which multiplied the whole seabed by less than one — the
+    reef went dark and it looked like an exposure fault.
+    """
+    for height in (0.4, 1.2, 3.0):
+        lit = caustics.net(swell(height=height), 90.0, 6.0, size=192)
+        got = caustics.as_texture(lit).astype(float) / 255.0
+        assert float(got.mean()) == pytest.approx(0.5, abs=0.02), (
+            height, got.mean())
