@@ -143,3 +143,28 @@ def test_it_says_why_rather_than_only_where():
     got = make_site.where_a_dive_begins(np.full((80, 80), -600.0), 2000.0)
     assert "below the light" in got["beginBecause"]
     assert "600" in got["beginBecause"]
+
+
+def test_nothing_that_needs_light_grows_in_the_dark():
+    """Five hundred metres down there is no zooxanthellate coral, so none of
+    the reef-building shapes may appear at any depth of this mix."""
+    for _, weights, _ in zonation.bands_for("deep"):
+        for shape in ("table", "branching", "finger", "massive", "brain",
+                      "fan", "rubble"):
+            assert weights.get(shape, 0.0) == 0.0, (shape, weights)
+
+
+def test_the_deep_is_whips_and_sponges_and_crusts():
+    for _, weights, _ in zonation.bands_for("deep"):
+        assert set(weights) == {"plume", "sponge", "encrusting"}, weights
+
+
+def test_the_deep_has_no_depth_structure_because_nothing_there_is_set_by_light():
+    """A reef's bands change with depth because light does. Below the light
+    they should not change much, and a mix that swung about with depth would
+    be claiming a gradient that has nothing driving it."""
+    shares = []
+    for _, weights, _ in zonation.bands_for("deep"):
+        total = sum(weights.values())
+        shares.append(weights["plume"] / total)
+    assert max(shares) - min(shares) < 0.25, shares
