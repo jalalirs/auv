@@ -54,7 +54,16 @@ SMALLEST_DRAWN_MM = 2.0
 # came out at five centimetres — which at a metre from the lens is a white
 # square the size of a thumbnail, and there were several in every frame.
 # Marine snow does reach a centimetre or two; it does not reach five.
-LARGEST_DRAWN_MM = 15.0
+LARGEST_DRAWN_MM = 8.0
+
+# And no aggregate closer to the lens than this.
+#
+# A particle at a hand's breadth is thirty milliradians across and fills forty
+# pixels, which is not a speck of anything — and a wide-angle lens under water
+# cannot focus that close anyway, so what is really there is a soft smudge
+# rather than an object. This is roughly where the port is and where the lens
+# gives up.
+NEAREST_M = 0.5
 
 # Which water this count belongs to: the clearest there is.
 CLEAREST_GREEN_M = 40.0
@@ -114,7 +123,22 @@ class Snow:
         self.draw = np.random.RandomState(seed % (2 ** 32))
         self.at = (self.draw.random_sample((self.count, 3)) - 0.5) * side
         self.size = sizes(self.count, self.draw)
+        # Which way each one is facing, once. They never turn — an aggregate
+        # of mucus and dead plankton has no reason to — but they must not all
+        # face the *same* way.
+        #
+        # Unrotated, every cube presents the same face to the camera and the
+        # frame fills with identical squares. It was the squareness that read
+        # as wrong, more than the size: a speck at arm's length is allowed to
+        # be a few pixels, and it is not allowed to be a perfect square that
+        # is the same perfect square as every other one.
+        self.facing = self.draw.random_sample((self.count, 4)) * 2.0 - 1.0
+        norm = np.linalg.norm(self.facing, axis=1, keepdims=True)
+        self.facing /= np.maximum(norm, 1e-9)
         self.middle = np.zeros(3)
+        # Settled once here, so that following a camera that has not moved
+        # leaves everything exactly where it was.
+        self._wrap()
 
     def per_cubic_metre(self) -> float:
         """What was actually drawn, which is not always what was asked for."""
@@ -142,6 +166,13 @@ class Snow:
         # Relative to the box's middle, wrapped into it, and back to the world.
         near = self.at - self.middle[None, :]
         near = (near + self.reaches) % side - self.reaches
+        # And pushed out of the lens's own near field, radially, so nothing
+        # sits closer than a camera can make sense of.
+        far = np.linalg.norm(near, axis=1, keepdims=True)
+        too_close = far[:, 0] < NEAREST_M
+        if too_close.any():
+            direction = near[too_close] / np.maximum(far[too_close], 1e-9)
+            near[too_close] = direction * NEAREST_M
         self.at = near + self.middle[None, :]
 
     def where(self) -> np.ndarray:
@@ -200,6 +231,9 @@ def draw(stage, field, at: str = "/World/Snow") -> bool:
     instancer.CreateProtoIndicesAttr(Vt.IntArray([0] * field.count))
     instancer.CreateScalesAttr(Vt.Vec3fArray(
         [Gf.Vec3f(float(s), float(s), float(s)) for s in field.size]))
+    instancer.CreateOrientationsAttr(Vt.QuathArray(
+        [Gf.Quath(float(w), float(x), float(y), float(z))
+         for w, x, y, z in field.facing]))
     move(stage, field, at)
     return True
 
