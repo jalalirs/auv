@@ -115,6 +115,12 @@ def water_of(kind: str | None = None):
 # water does not differ by anything like that much. Taking the ratios straight
 # treats the veil as though it were absorption, and it renders a seabed that
 # is not green through green water but simply green.
+# How wide the caustic patch is, in metres. One number, because the light and
+# the net that goes on it have to agree about the ground they cover — a net
+# computed for ninety metres laid on a light sixty metres wide is a net at the
+# wrong scale, and it looks like nothing more than a different sea.
+CAUSTIC_PATCH_M = 90.0
+
 VEIL_TOWARDS_GREY = 0.6
 
 # How bright the veil is — which is not one number, and used to be.
@@ -701,8 +707,8 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # patch that travels with the vehicle, which is the only part anybody can
     # see anyway.
     caustics = UsdLux.RectLight.Define(stage, "/World/Caustics")
-    caustics.CreateWidthAttr(90.0)
-    caustics.CreateHeightAttr(90.0)
+    caustics.CreateWidthAttr(CAUSTIC_PATCH_M)
+    caustics.CreateHeightAttr(CAUSTIC_PATCH_M)
     # A modulation of sunlight, not a second sun.
     #
     # At 5200 this was adding twenty-five points of brightness to the whole
@@ -715,8 +721,56 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     caustics.CreateIntensityAttr(1400.0 * left)
     caustics.CreateColorAttr(Gf.Vec3f(1.0, 0.97, 0.90))
     caustics.CreateNormalizeAttr(False)
+    # The net itself, made from the sea that is actually running.
+    #
+    # It was a painted texture, the same one in every dive. A flat calm threw
+    # the same net as a metre of swell, and turning the sea state up changed
+    # how the hull moved and how the surface looked while the light on the
+    # bottom carried on exactly as before. `coral.caustics` builds it from the
+    # same JONSWAP spectrum — sampled further up its tail, because the net is
+    # thrown by the chop rather than by the swell that moves a vehicle — and
+    # blurs it by the sun's own half-degree at this depth.
+    #
+    # If anything about that fails the painted one is still there, and the log
+    # says which was used. A dive that renders with the old texture is worth
+    # more than a dive that does not render.
+    painted = "/isaac-sim/coral/caustics.png"
+    pattern = painted
+    try:
+        import pathlib
+
+        from coral import caustics as caustic_net
+        from coral import sea_state
+        sea = sea_state.SeaState(
+            significant_height_m=0.0 if significant_height_m is None
+            else float(significant_height_m),
+            peak_period_s=6.0 if wave_period_s is None else float(wave_period_s),
+            heading_deg=0.0 if wave_heading_deg is None
+            else float(wave_heading_deg),
+            seed=seed)
+        if not sea.flat:
+            from PIL import Image
+
+            lit = caustic_net.net(sea, across=CAUSTIC_PATCH_M,
+                                  depth=max(0.5, float(working_depth)))
+            where = pathlib.Path("/dive/caustics.png")
+            where.parent.mkdir(parents=True, exist_ok=True)
+            Image.fromarray(caustic_net.as_texture(lit)).save(where)
+            pattern = str(where)
+            say("caustics_made", fromTheSea=True,
+                patchM=CAUSTIC_PATCH_M, atDepthM=round(float(working_depth), 1),
+                contrast=round(float(lit.std()), 3),
+                brightest=round(float(lit.max()), 2))
+        else:
+            say("caustics_made", fromTheSea=False,
+                why="a flat calm throws no net, so the painted one is not used "
+                    "either: the light is simply even")
+            pattern = ""
+    except Exception as exc:
+        say("caustics_painted", why=str(exc)[:200],
+            note="fell back to the texture in the image")
     caustics.GetPrim().CreateAttribute(
-        "inputs:texture:file", Sdf.ValueTypeNames.Asset).Set("/isaac-sim/coral/caustics.png")
+        "inputs:texture:file", Sdf.ValueTypeNames.Asset).Set(pattern)
     # No rotation. A rect light already faces its own -Z, which is downward
     # here; turning it a half turn about X — which looked like the obvious way
     # to point it at the seabed — pointed it at the sky, and the caustics lit

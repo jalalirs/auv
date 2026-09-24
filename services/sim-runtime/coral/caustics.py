@@ -1,0 +1,232 @@
+"""The net of light a wavy surface throws on the bottom, from the sea itself.
+
+The caustics on this platform were a painted texture, scrolling. That is the
+way every underwater scene has ever done it and it is not wrong — but the
+pattern had nothing to do with the sea in the dive. A flat calm threw the same
+net as a metre of swell, six hundred metres down looked like six, and turning
+the sea state up changed the hull's motion and the surface's shape while the
+light on the seabed carried on exactly as before.
+
+The sea is already a sum of wave components with known amplitude, wavenumber,
+heading and phase — it is what pushes the hull and shapes the surface mesh. So
+the caustics can come from the same place, and then they are a consequence of
+the dive rather than a decoration on it.
+
+**How.** Sunlight arriving from overhead meets a surface of height h(x, y) and
+refracts. For the small slopes a real sea has, a ray entering at (x, y) lands
+on a plane `depth` below displaced by
+
+    delta = depth x (1 - 1/n) x grad h
+
+with n = 1.333 for seawater, so the factor is about a quarter. That is a map
+from the surface to the bottom, and light is conserved along it: where the map
+squeezes, the bottom is bright. The brightness is the inverse of the map's
+Jacobian determinant,
+
+    J = I + depth x (1 - 1/n) x H,   H the Hessian of h
+
+and every second derivative of a sum of sines is another sum of sines, so this
+is exact rather than a difference taken across a grid.
+
+Three things come out of it for free, and all three are real:
+
+  - A flat sea throws no net at all, because H is zero and the Jacobian is the
+    identity. The light is simply even.
+  - The pattern washes out with depth. Further down, the displacement term
+    grows until neighbouring rays have crossed over each other many times and
+    the focusing averages away — which is why caustics are a shallow-water
+    sight and why a reef at forty metres does not have them.
+  - A longer swell throws a coarser net than a short chop, because the
+    wavenumber enters squared.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+
+import sea_state
+
+# Seawater. The refraction factor 1 - 1/n turns a surface slope into a
+# displacement on the bottom, and it is about a quarter.
+INDEX = 1.333
+BENDS = 1.0 - 1.0 / INDEX
+
+# The band of the sea that actually bends light.
+#
+# `SeaState` samples a third of the peak frequency to three times it, because
+# that is where a sea's energy is and energy is what moves a hull. It is the
+# wrong band for optics. A swell of eight seconds has a wavelength of a
+# hundred and sixty metres and a slope under one per cent: at six metres down
+# it displaces a ray by a centimetre and a half, which focuses nothing. The
+# net on a reef is thrown by the chop — wavelengths of a metre and less, which
+# carry almost none of the sea's energy and almost all of its curvature.
+#
+# So the same JONSWAP spectrum is sampled again, further up its tail, for this
+# one purpose. It is the same sea: same significant height, same heading, same
+# f^-5 falloff. Only the question is different.
+OPTICAL_FROM = 0.8      # x the peak frequency
+OPTICAL_TO = 26.0       # x the peak frequency — about a fifteen-centimetre wave
+OPTICAL_COMPONENTS = 40
+
+# How many rays a texel gets, along each axis. Too few and the net is noise
+# rather than light; this is the smallest that came out smooth.
+RAYS_PER_TEXEL = 3
+
+# The sun is not a point, and that is the whole reason caustics are a
+# shallow-water sight.
+#
+# Its disc is about half a degree across, so every ray is really a narrow cone
+# and a caustic at depth d is blurred across d x tan(quarter of a degree).
+# Fourteen millimetres at three metres, which is nothing beside a chop of
+# fifteen centimetres; twenty-eight centimetres at sixty, which is twice the
+# chop and rubs the net out entirely.
+#
+# Without this the model does the opposite of the truth. Rays go on crossing
+# and folding the further they travel, so the contrast climbs with depth for
+# ever and a reef at sixty metres comes out with a harder net on it than one
+# at three. Measured, before this went in: contrast 0.06 at one metre rising
+# to 0.59 at a hundred and twenty.
+#
+# In the water, not in the air: refraction narrows the cone by the index.
+SUN_HALF_ANGLE = math.radians(0.265) / INDEX
+
+
+def bending_waves(sea, seed: int = 11):
+    """The same sea, sampled where it bends light instead of where it lifts.
+
+    Returns (amplitude, wavenumber, heading, phase) per component, scaled so
+    the whole sea — energy band and optical band together — still has the
+    significant height it was asked for.
+    """
+    if sea is None or getattr(sea, "flat", True):
+        return []
+    draw = np.random.RandomState(seed % (2 ** 32))
+    peak = 1.0 / sea.period
+    lows = np.linspace(peak * OPTICAL_FROM, peak * OPTICAL_TO,
+                       OPTICAL_COMPONENTS + 1)
+    out, variance = [], 0.0
+    for low, high in zip(lows, lows[1:]):
+        middle = 0.5 * (low + high)
+        amplitude = math.sqrt(
+            max(0.0, 2.0 * sea_state.jonswap(middle, peak) * (high - low)))
+        if amplitude <= 0.0:
+            continue
+        w = 2.0 * math.pi * middle
+        spread = math.radians(sea_state.SPREAD_DEG) * float(draw.normal(0.0, 0.5))
+        heading = sea.heading + max(-math.pi / 2, min(math.pi / 2, spread))
+        out.append([amplitude, w * w / sea_state.GRAVITY, heading,
+                    float(draw.random_sample()) * 2.0 * math.pi])
+        variance += 0.5 * amplitude * amplitude
+    if variance <= 0.0:
+        return []
+    # The energy band already carries the stated height; this band is the tail
+    # beside it, so it is scaled to the share of the height the tail holds
+    # rather than to the whole of it.
+    scale = sea.height / (4.0 * math.sqrt(variance)) * 0.35
+    for one in out:
+        one[0] *= scale
+    return [tuple(one) for one in out]
+
+
+def net(sea, across: float, depth: float, seconds: float = 0.0,
+        size: int = 256, middle=(0.0, 0.0), seed: int = 11) -> np.ndarray:
+    """Relative brightness on a patch of bottom `depth` below the surface.
+
+    Rays are traced and counted where they land, rather than the map's
+    Jacobian being solved. The difference is what happens past the first
+    focus: a Jacobian is single-valued, so it can only ever sharpen with
+    depth, while real caustics sharpen to a focus and then break up as
+    neighbouring rays cross and keep crossing. Counting where light lands gets
+    the crossing for nothing, and with it the reason caustics are a
+    shallow-water sight.
+
+    One at the mean, so it multiplies a sunlight that is already right rather
+    than adding a second sun.
+    """
+    waves = bending_waves(sea, seed)
+    if not waves:
+        return np.ones((size, size), dtype="float32")
+
+    n = size * RAYS_PER_TEXEL
+    half = across / 2.0
+    span = np.linspace(-half, half, n, dtype="float64")
+    x = span[None, :] + float(middle[0])
+    y = span[:, None] + float(middle[1])
+
+    # The slope of the surface where each ray meets it.
+    hx = np.zeros((n, n))
+    hy = np.zeros((n, n))
+    for amplitude, k, heading, phase in waves:
+        cos, sin = math.cos(heading), math.sin(heading)
+        slope = amplitude * k * np.cos(k * (x * cos + y * sin)
+                                       - math.sqrt(k * sea_state.GRAVITY) * seconds
+                                       + phase)
+        hx += slope * cos
+        hy += slope * sin
+
+    bends = max(0.0, float(depth)) * BENDS
+    lands_x = np.broadcast_to(x, (n, n)) + bends * hx
+    lands_y = np.broadcast_to(y, (n, n)) + bends * hy
+
+
+
+    # Where they land, counted. Rays that leave the patch are simply not
+    # counted, and as many arrive from outside it as leave, so the mean holds.
+    lit, _, _ = np.histogram2d(
+        lands_y.ravel(), lands_x.ravel(), bins=size,
+        range=[[float(middle[1]) - half, float(middle[1]) + half],
+               [float(middle[0]) - half, float(middle[0]) + half]])
+    # And the sun's own width, as a blur on the light that landed rather than
+    # a wobble on each ray.
+    #
+    # Jittering the rays was the first attempt and it measured its own shot
+    # noise: nine rays a texel is a Poisson count, so randomising where they
+    # fall puts a third of a stop of grain into every texel and the "contrast"
+    # rises with depth because the grain does. Blurring what landed is the
+    # same physics, exactly, with none of the noise and a tenth of the work.
+    blur = max(0.0, float(depth)) * math.tan(SUN_HALF_ANGLE)
+    lit = _softened(lit, blur / (across / size))
+
+    mean = lit.mean()
+    if mean <= 0.0:
+        return np.ones((size, size), dtype="float32")
+    return (lit / mean).astype("float32")
+
+
+def _softened(image, sigma: float):
+    """A Gaussian blur, separable, in numpy alone.
+
+    The runtime declares numpy and nothing else, and one blur is not worth a
+    dependency that has to be present on every machine a dive ever runs on.
+    """
+    if sigma <= 0.05:
+        return image
+    reach = max(1, int(round(3.0 * sigma)))
+    at = np.arange(-reach, reach + 1, dtype="float64")
+    kernel = np.exp(-0.5 * (at / sigma) ** 2)
+    kernel /= kernel.sum()
+    # Edges repeated rather than wrapped: the patch is a window on a larger
+    # sea, so what is past its edge is more sea and not the other side.
+    wide = np.pad(image, ((0, 0), (reach, reach)), mode="edge")
+    image = np.apply_along_axis(
+        lambda row: np.convolve(row, kernel, mode="valid"), 1, wide)
+    tall = np.pad(image, ((reach, reach), (0, 0)), mode="edge")
+    return np.apply_along_axis(
+        lambda col: np.convolve(col, kernel, mode="valid"), 0, tall)
+
+
+def as_texture(lit: np.ndarray) -> np.ndarray:
+    """The net as eight-bit grey, scaled so the mean sits mid-range.
+
+    The light this multiplies is set separately, so what the texture carries
+    is the *shape* of the net and not its strength. Normalising on the mean
+    keeps a calm sea and a rough one at the same average brightness, with only
+    the contrast between them changing — which is the difference a sea state
+    actually makes to the bottom.
+    """
+    mean = float(lit.mean())
+    if mean <= 0.0:
+        return np.full(lit.shape, 128, dtype="uint8")
+    return np.clip(lit / mean * 0.5 * 255.0, 0.0, 255.0).astype("uint8")
