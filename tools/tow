@@ -1,0 +1,389 @@
+#!/usr/bin/env python3
+"""Tow a hull down the tank and put a number on its drag.
+
+    tools/tow catalog/vehicles/bluerov2 --in ~/coral-city/places/mhl-tank
+
+Fossen's six degrees of freedom are implemented in this platform and not one
+coefficient has ever been checked against anything. They came in as a table —
+linear and quadratic damping on six axes — and everything since has been built
+on top of them. A drag coefficient that is wrong by a factor of two makes a
+controller that looks well tuned in simulation and overshoots every station in
+the water, and nothing in the pipeline would say so.
+
+Checking them over a reef is not possible: a drag number measured over a reef
+is a drag number plus an unknown amount of terrain. The tank is a box of still
+water whose dimensions are published, which is why it exists.
+
+**Two checks, and they are different questions.**
+
+*Does the simulator obey its own model?* Tow the hull at a commanded speed,
+wait for it to settle, and read the thrust it is holding. At steady state
+thrust equals drag, so that number must equal `D_l U + D_q U²` from the very
+table it was integrated from. If it does not, something between the
+allocation, the thruster saturation and the integrator is wrong — and this is
+a *bug*, not a modelling judgement, so a disagreement here fails.
+
+*Are the coefficients the right size at all?* That cannot be settled by the
+table against itself. So the towed drag is also put beside what a bluff open
+frame of this vehicle's dimensions would produce — half rho U squared times a
+frontal area times a drag coefficient — with the solid fraction and the
+coefficient both stated as a *band*, because an open frame of cylinders is not
+one number. The verdict is whether the model lands inside that band. Outside
+it is not proof of an error; it is the thing somebody has to explain, which is
+exactly what has been missing.
+
+**Fresh water, not seawater.** The tank is tap water at 998 kg/m³ and the sea
+is 1025. `hydrodynamics.py` has said for months that the eight per cent is
+more than the uncertainty in the drag coefficients and that a tank test and an
+ocean dive are not interchangeable; this is the first thing on the platform
+that has had to act on it.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import pathlib
+import sys
+
+import numpy as np
+
+HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent / "services" / "sim-runtime" / "coral"))
+
+import hydrodynamics as hydro  # noqa: E402
+
+# How long to hold each speed before believing the number, in seconds, and how
+# finely to integrate.
+#
+# The settling time of a first-order system is the effective mass over the
+# linear damping, which for this hull in surge is about seventeen kilos over
+# four newton-seconds a metre — four seconds. Sixty is fifteen time constants
+# and costs nothing, because none of this is rendered.
+HOLDS_FOR_S = 60.0
+STEP_S = 1.0 / 200.0
+# When a release is close enough to its asymptote to be read, as acceleration
+# in metres per second per second.
+#
+# Stopping on acceleration leaves the speed short of the asymptote by about
+# `SETTLED_MS` times the time constant, because the approach is exponential
+# and the acceleration is the deficit divided by that constant. The constant
+# here is the effective mass over `l + 2qU`, which for this hull at a fifth of
+# a metre a second is about 1.3 s — so a thousandth left it 0.56 per cent
+# short, which is not settled, it is stopped early. Two orders tighter puts
+# the deficit at a few parts in a hundred thousand and costs five more time
+# constants of a loop that is not rendering anything.
+SETTLED_MS = 1e-5
+
+# What a bluff open frame does, and it is a band rather than a number.
+#
+# The BlueROV2 is not a fairing. It is two horizontal cylinders in an open
+# polymer frame with six thrusters hanging off it, and its drag is form drag —
+# separation off bluff bodies — not skin friction. So the flat-plate friction
+# line every ship is checked against (ITTC 1957) is the wrong reference here
+# and is deliberately not used: it would give a number ten times too small and
+# a false pass.
+#
+# A circular cylinder in cross flow sits near 1.0 to 1.2 over the whole
+# subcritical range, which is where this is. An open frame is less than the
+# sum of its parts — the wake of one member shields the next — and more than
+# its solid fraction alone would suggest, because the gaps are not free
+# stream.
+#
+# Both numbers below are chosen, and they are chosen as a band on purpose: a
+# single number here would be a second unchecked table pretending to check the
+# first.
+SOLID_FRACTION = (0.45, 0.70)
+BLUFF_CD = (0.85, 1.25)
+
+# And where the comparison means anything at all.
+#
+# Half rho U squared C_d A is a *quadratic* drag and it has no linear term in
+# it. The table has both, and at low speed the linear one is most of the drag:
+# below l/q — about a fifth of a metre a second for this hull — the quadratic
+# term is not even half of it. Comparing a quadratic band against a drag that
+# is four fifths linear is comparing the wrong things, and the first run of
+# this reported the hull as OUT at 0.1 m/s and said so as though it were a
+# finding.
+#
+# Three times l/q is where the quadratic term is three quarters of the drag,
+# which is where a bluff-body estimate is a fair thing to hold it against.
+WHERE_THE_BAND_APPLIES = 3.0
+
+# Water at a laboratory temperature, for the Reynolds number. Kinematic
+# viscosity of fresh water at 20 °C, m²/s — a published constant, not a
+# choice.
+VISCOSITY_M2_S = 1.004e-6
+
+
+def a_tank(place: pathlib.Path) -> dict:
+    """What the tank says about itself, and a refusal if it is not one."""
+    site = json.loads((place / "site.json").read_text())
+    if not site.get("enclosed"):
+        raise SystemExit(
+            f"{place.name} is not a tank. A drag number measured over a reef "
+            f"is a drag number plus an unknown amount of terrain, which is the "
+            f"whole reason the tank exists.")
+    if "tow" not in site:
+        raise SystemExit(f"{place.name} does not say where a tow runs")
+    return site
+
+
+def closed_form(model: hydro.Hydrodynamics, speed: float, axis: int = 0) -> float:
+    """What the table says the drag is, in newtons, with no simulation in it."""
+    return float(model.linear_damping[axis] * speed
+                 + model.quadratic_damping[axis] * speed * speed)
+
+
+def towed(model: hydro.Hydrodynamics, speed: float) -> dict:
+    """Hold the hull at a speed and read the pull the carriage is taking.
+
+    Velocity imposed, not commanded. A towing carriage does not negotiate with
+    the hull, it drags it, and that is the measurement: hold the speed, read
+    the force. There is no controller in it on purpose — a controller between
+    the question and the answer puts a controller's tuning in the answer.
+
+    So nothing here settles and nothing is integrated, and the first version
+    of this had a sixty-second loop and a settling tolerance that dressed one
+    evaluation up as a run. What it does check is real and is not nothing: the
+    whole water path through `Body.step` — restoring, damping, the wrench
+    assembly and every sign in them — against the table those coefficients
+    came in as. `released()` below is the one that tests the integrator.
+    """
+    body = hydro.Body(model)
+    velocity = np.zeros(6)
+    velocity[0] = speed
+    # Level, and fully wet: the tow runs at half the tank's depth so neither
+    # the surface nor the floor is in it.
+    wrench = body.step(np.eye(3), velocity, np.zeros(len(model.thrusters)),
+                       STEP_S, submerged=1.0, depth_m=1.5)
+    return {"speedMs": speed, "towedN": -float(wrench[0])}
+
+
+def released(model: hydro.Hydrodynamics, thrust_n: float,
+             runs_for: float = HOLDS_FOR_S) -> dict:
+    """Push the hull with a constant force and let it find its own speed.
+
+    The other half, and the half that tests the integrator: released from rest
+    under a steady pull, the hull accelerates until drag balances it, and the
+    speed it arrives at is the positive root of `q U² + l U - F = 0`. That
+    root is arithmetic. Getting there is the effective mass — the hull plus
+    the water it drags with it — and the loop that divides by it, so a wrong
+    added mass, a wrong time step or a sign error shows up as an arrival at
+    the wrong speed or as no arrival at all.
+
+    It is also the one check a person can run on a real vehicle without
+    instrumenting anything: hold a known thrust, wait, measure the speed.
+    """
+    body = hydro.Body(model)
+    velocity = np.zeros(6)
+    rotation = np.eye(3)
+    mass = body.effective_mass(1.0)
+    steps = int(round(runs_for / STEP_S))
+
+    settled_at = None
+    for i in range(steps):
+        wrench = body.step(rotation, velocity, np.zeros(len(model.thrusters)),
+                           STEP_S, submerged=1.0, depth_m=1.5)
+        # The steady pull along the tow, on top of whatever the water does.
+        along = float(wrench[0]) + thrust_n
+        was = velocity[0]
+        velocity[0] = was + (along / mass[0]) * STEP_S
+        if abs(velocity[0] - was) / STEP_S < SETTLED_MS:
+            settled_at = (i + 1) * STEP_S
+            break
+
+    linear, quadratic = model.linear_damping[0], model.quadratic_damping[0]
+    root = ((-linear + math.sqrt(linear * linear + 4.0 * quadratic * thrust_n))
+            / (2.0 * quadratic))
+    return {"thrustN": thrust_n, "reachedMs": float(velocity[0]),
+            "theRootMs": float(root), "settledInS": settled_at,
+            "effectiveMassKg": float(mass[0])}
+
+
+def frontal_area_m2(vehicle: dict) -> float | None:
+    """The area the hull presents along the tow, from the package's own size."""
+    size = (vehicle.get("hull") or {}).get("dimensionsM")
+    if not size or len(size) != 3:
+        return None
+    # Width by height: a tow runs along the length.
+    return float(size[1]) * float(size[2])
+
+
+def a_bluff_frame(area_m2: float, speed: float, density: float) -> tuple[float, float]:
+    """What half rho U squared C_D A says, as a band in newtons."""
+    dynamic = 0.5 * density * speed * speed * area_m2
+    return (dynamic * SOLID_FRACTION[0] * BLUFF_CD[0],
+            dynamic * SOLID_FRACTION[1] * BLUFF_CD[1])
+
+
+def reynolds(speed: float, length_m: float) -> float:
+    return speed * length_m / VISCOSITY_M2_S
+
+
+# The speeds a tow runs at. The vehicle's own envelope tops out at 1.5 m/s and
+# the working speed of a survey ROV is a quarter of that, so the set spans
+# both: at 0.1 m/s linear damping is four fifths of the drag and at 1.5 it is
+# a seventh, which means one set of readings tests both terms of the table.
+SPEEDS = (0.1, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5)
+
+# How far the simulation may differ from the table it was integrated from
+# before this is called a bug. Three parts in a thousand: this is arithmetic
+# against itself, so anything beyond rounding is something wrong.
+OBEYS_ITSELF = 3e-3
+
+# And how close a release has to land to the root it is chasing. Looser than
+# the tow, because this one really is integrated and stops a hair short of the
+# asymptote by construction — see `SETTLED_MS`, which puts that hair at a few
+# parts in a hundred thousand. Five in a thousand is two orders of room on top
+# of that, so anything failing here is a fault and not a stopping rule.
+REACHES_THE_ROOT = 5e-3
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(
+        description="tow a hull down the tank and put a number on its drag")
+    parse.add_argument("vehicle", help="a vehicle package directory")
+    parse.add_argument("--in", dest="place", required=True,
+                       help="the tank to tow it in")
+    parse.add_argument("--json", action="store_true",
+                       help="the readings, as data")
+    asked = parse.parse_args()
+
+    place = pathlib.Path(asked.place).expanduser()
+    tank = a_tank(place)
+
+    package = pathlib.Path(asked.vehicle).expanduser()
+    vehicle = json.loads((package / "dynamics.json").read_text())
+    # Fresh, because it is a tank. `hydrodynamics.py` has said since it was
+    # written that the eight per cent between this and seawater is more than
+    # the uncertainty in the drag coefficients and that a tank test and an
+    # ocean dive are not interchangeable. This is the first thing that has
+    # had to act on it.
+    density = hydro.density_of(0.0, 20.0)
+    model = hydro.Hydrodynamics.from_package(package / "dynamics.json",
+                                             density=density)
+
+    area = frontal_area_m2(vehicle)
+    size = (vehicle.get("hull") or {}).get("dimensionsM")
+    length = float(size[0]) if size else None
+
+    # Where a quadratic band is a fair thing to hold this table against.
+    where_the_band_applies = (
+        WHERE_THE_BAND_APPLIES * model.linear_damping[0]
+        / max(model.quadratic_damping[0], 1e-9))
+
+    readings, wrong = [], 0
+    for speed in SPEEDS:
+        run = towed(model, speed)
+        said = closed_form(model, speed)
+        off = abs(run["towedN"] - said) / max(said, 1e-9)
+        if off > OBEYS_ITSELF:
+            wrong += 1
+        one = {**run, "fromTheTableN": said, "differsBy": off}
+        if area:
+            low, high = a_bluff_frame(area, speed, density)
+            one["bluffFrameN"] = [low, high]
+            one["bandApplies"] = bool(speed >= where_the_band_applies)
+            one["insideTheBand"] = (
+                bool(low <= run["towedN"] <= high) if one["bandApplies"]
+                else None)
+            one["reynolds"] = reynolds(speed, length)
+        readings.append(one)
+
+    if asked.json:
+        print(json.dumps({
+            "vehicle": package.name, "tank": tank["name"],
+            "densityKgM3": round(density, 2),
+            "frontalAreaM2": None if area is None else round(area, 5),
+            "solidFraction": list(SOLID_FRACTION), "bluffCd": list(BLUFF_CD),
+            "readings": readings}, indent=2))
+        return 1 if wrong else 0
+
+    print(f"  {package.name} towed in {tank['name']}")
+    print(f"    {tank['from']['lengthM']:.2f} m of tank, "
+          f"{tank['tow']['steadyLengthM']:.1f} m of steady run at "
+          f"{abs(tank['tow']['atDepthM']):.2f} m")
+    print(f"    fresh water, {density:.1f} kg/m3 "
+          f"(the sea is {hydro.DENSITY_SEAWATER:.0f}: "
+          f"{100 * (hydro.DENSITY_SEAWATER / density - 1):.1f}% more)")
+    if area is None:
+        print("    the package does not say how big the hull is, so there is "
+              "nothing to compare the coefficients against — only the "
+              "simulator against its own table")
+    else:
+        print(f"    {area:.4f} m2 presented along the tow, solid "
+              f"{100 * SOLID_FRACTION[0]:.0f}-{100 * SOLID_FRACTION[1]:.0f}%, "
+              f"Cd {BLUFF_CD[0]:.2f}-{BLUFF_CD[1]:.2f}")
+    print()
+    head = "      U m/s     towed N    table N"
+    if area:
+        head += "    a bluff frame of this size      Re"
+    print(head)
+    for one in readings:
+        line = (f"      {one['speedMs']:5.2f}   {one['towedN']:9.3f}  "
+                f"{one['fromTheTableN']:9.3f}")
+        if area:
+            low, high = one["bluffFrameN"]
+            mark = ("-" if not one["bandApplies"]
+                    else "in" if one["insideTheBand"] else "OUT")
+            line += (f"    {low:7.2f} to {high:7.2f}  {mark:>3}"
+                     f"  {one['reynolds']:8.2e}")
+        print(line)
+
+    # And the other half: released under a steady pull, does it arrive where
+    # the arithmetic says it should?
+    print()
+    print("      pull N   reaches m/s   the root m/s   settled in s")
+    released_wrong = 0
+    for pull in (2.0, 8.0, 20.0, 40.0):
+        run = released(model, pull)
+        off = abs(run["reachedMs"] - run["theRootMs"]) / max(run["theRootMs"], 1e-9)
+        if off > REACHES_THE_ROOT:
+            released_wrong += 1
+        settled = "—" if run["settledInS"] is None else f"{run['settledInS']:.1f}"
+        print(f"      {pull:6.1f}   {run['reachedMs']:11.4f}   "
+              f"{run['theRootMs']:12.4f}   {settled:>12}")
+    print(f"      effective mass along the tow "
+          f"{hydro.Body(model).effective_mass(1.0)[0]:.2f} kg "
+          f"({model.mass_kg:.1f} of hull and the rest is water)")
+
+    print()
+    if released_wrong:
+        print(f"  {released_wrong} of 4 releases did not arrive at the speed "
+              f"the table's own root says.", file=sys.stderr)
+        print("  That is the integrator or the effective mass, and it is a "
+              "bug.", file=sys.stderr)
+        wrong += released_wrong
+    if wrong:
+        print(f"  {wrong} of {len(readings)} readings disagree with the table "
+              f"they were integrated from by more than "
+              f"{100 * OBEYS_ITSELF:.1f}%.", file=sys.stderr)
+        print("  That is a bug in the allocation, the saturation or the "
+              "integrator, not a modelling judgement.", file=sys.stderr)
+        return 1
+    print(f"  the simulator obeys its own table to "
+          f"{100 * OBEYS_ITSELF:.1f}%, at every speed.")
+    if area:
+        print(f"  the band is a quadratic drag and has no linear term, so it "
+              f"is only held against this")
+        print(f"  table above {where_the_band_applies:.2f} m/s, where the "
+              f"quadratic term is three quarters of the drag.")
+        judged = [one for one in readings if one["bandApplies"]]
+        outside = [one for one in judged if not one["insideTheBand"]]
+        if outside:
+            at = ", ".join(f"{one['speedMs']:.2f}" for one in outside)
+            print(f"  and the table itself lands outside what a bluff open "
+                  f"frame of this size would give, at {at} m/s.")
+            print("  Not proof of an error. It is the thing somebody has to "
+                  "explain, and until now there was nothing to explain it "
+                  "against.")
+        else:
+            print(f"  Inside it at every one of the {len(judged)} speeds where "
+                  f"it applies.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

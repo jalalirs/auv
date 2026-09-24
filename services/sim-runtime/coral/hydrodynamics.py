@@ -39,9 +39,17 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-# Seawater at survey depth and temperature. Fresh water is 998, and the eight
-# per cent difference is more than the uncertainty in the drag coefficients, so
-# a tank test and an ocean dive are not interchangeable.
+# Seawater at survey depth and temperature. Fresh water is 998, and the not
+# quite three per cent between them is still more than the precision anyone
+# claims for a drag coefficient, so a tank test and an ocean dive are not
+# interchangeable.
+#
+# This said "eight per cent" from the day it was written. Twenty-seven parts in
+# nine hundred and ninety-eight is 2.7, and nothing caught it until tools/tow
+# printed the difference next to the sentence claiming it. The conclusion did
+# not change — it is the first thing on the platform that had to act on this,
+# and it acts on it the same way — but a number in a comment is a number
+# somebody will quote.
 #
 # Kept as the default for water that does not say what it is, so that a dive
 # briefed before conditions carried a salinity floats exactly as it used to.
