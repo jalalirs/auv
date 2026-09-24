@@ -106,6 +106,7 @@ def main() -> int:
     unsourced = []
     unwatered = []
     unsourced_sea = []
+    unsourced_reef = []
     print("%-14s %11s  %-9s %s" % ("place", "per km²", "density", "from"))
     for place in sorted(where.iterdir()):
         # Not the working copies somebody left beside the real ones. A
@@ -127,6 +128,32 @@ def main() -> int:
             said["name"],
             "—" if said["perSquareKm"] is None else f"{said['perSquareKm']:,}",
             mark, source[:70]))
+
+    print()
+    print("%-14s %-11s %s" % ("place", "grown as", "where that mix comes from"))
+    for place in sorted(where.iterdir()):
+        if place.name.startswith(".") or not (place / "site.json").is_file():
+            continue
+        site = json.loads((place / "site.json").read_text())
+        reef = site.get("reef") or {}
+        if not reef.get("colonies"):
+            continue
+        # The same rule as the density and the sea. A reef drawn as the wrong
+        # ocean is exactly as convincing as one drawn as the right one, and
+        # every place on this platform was grown from a Caribbean mix until
+        # somebody looked.
+        mix = reef.get("assemblage") or {}
+        named = mix.get("name") or "caribbean?"
+        if not mix.get("from"):
+            unsourced_reef.append(site.get("name", place.name))
+        print("%-14s %-11s %s" % (site.get("name", place.name), named,
+                                  (mix.get("from") or "— nothing recorded —")[:56]))
+    if unsourced_reef:
+        print()
+        print("These are grown from the mix this platform started with and "
+              "nobody has said it is theirs: " + ", ".join(unsourced_reef))
+        print("tools/make-site --assemblage and --assemblage-from say which "
+              "reef a place is.")
 
     print()
     print("%-14s %-6s %-10s %s" % ("place", "sea", "water", "how it was aimed"))
