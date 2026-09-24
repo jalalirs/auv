@@ -86,6 +86,11 @@ SCATTERING_ALBEDO = 0.28
 # was to turn the whole thing off.
 VEIL_STRENGTH = 1.0
 
+# What is left of the veil where no daylight reaches: the water the lamps
+# light between themselves and the lens. Small, because most of that is
+# particles and the particles are drawn.
+VEIL_BY_LAMP = 0.04
+
 # How bright the water's own glow is as a fill light. Read off a ladder.
 DOME_SHARE = 55.0
 
@@ -232,9 +237,20 @@ SCATTER = veiling_colour(ATTENUATION_METRES)
 
 
 def is_it_deep(depth: float, lengths=None) -> float:
-    """How much daylight is left at a depth, as a fraction of the surface."""
+    """How much daylight is left at a depth, as a fraction of the surface.
+
+    No floor. There was one — two per cent — and at five hundred and fifty
+    metres it was the difference between a place below the light and a place
+    lit at two per cent of noon, which after an auto-exposure is a lit place.
+    Thuwal Deep's first frame was a daylit seabed half a kilometre down.
+
+    Two per cent of the sun is not a small number, it is a *different scene*.
+    Every caller that divides by this already guards against nought: the
+    exposure clamps at a twentieth, and a light of intensity nought is simply
+    a light that is off, which is what the sun is down there.
+    """
     lengths = lengths or ATTENUATION_METRES
-    return max(0.02, 2.718 ** (-depth / lengths[1]))
+    return 2.718 ** (-depth / lengths[1])
 
 
 def make(stage, say, floor: float, water_level: float = 0.0,
@@ -546,8 +562,24 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # CORAL_CITY_VEIL pins it, the same way CORAL_CITY_ISO pins the exposure:
     # a question about one number gets answered in one run rather than in an
     # afternoon of "that change did nothing".
+    # The floor of four tenths was wrong, and the deep is where it showed.
+    #
+    # The veil is ambient light scattered back out of the water. `left` is how
+    # much daylight is down here, and at five hundred and fifty metres it is
+    # nought — there is no sunlight at all, which is the entire point of
+    # Thuwal Deep. A floor of four tenths kept glowing anyway, so the first
+    # frame that place ever produced was a daylit seabed half a kilometre
+    # below the last of the light, with the auto-exposure obligingly lifting
+    # it to mid-grey.
+    #
+    # Light that is not there cannot be scattered. What is left at depth is
+    # what the lamps themselves throw into the water in front of the lens,
+    # and that is small, and it is drawn rather than glowed: it is the marine
+    # snow. So the veil follows the daylight down, with a floor only big
+    # enough to stand for the lamp-lit water the particles do not fill.
     from coral.runner import asked_for
-    veil = asked_for("CORAL_CITY_VEIL", VEIL_STRENGTH * (0.4 + 0.6 * left))
+    veil = asked_for("CORAL_CITY_VEIL",
+                     VEIL_STRENGTH * max(VEIL_BY_LAMP, left))
     # Not clamped at one. This fog adds veiling light rather than blending
     # towards it, so "how much" is a brightness and not a fraction, and the
     # distance at which a thing is lost is the distance at which the light in

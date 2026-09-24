@@ -13,6 +13,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
+import pytest
+
 import water
 from hydrodynamics import DENSITY_SEAWATER, Allocator, Body, Hydrodynamics, density_of
 from runner import Dive
@@ -332,3 +334,27 @@ def test_the_volume_and_the_surfaces_agree_about_the_water():
         # Red goes first, and blue outlasts green only where the table says.
         assert told[0] < told[1], (kind, told)
         assert all(0.0 < one < 1.0 for one in told), (kind, told)
+
+
+def test_the_veil_follows_the_daylight_down():
+    """Below the light there is nothing to scatter.
+
+    The veil had a floor of four tenths, which kept glowing at five hundred
+    metres where there is no sunlight at all — and the auto-exposure lifted it
+    obligingly to mid-grey, so the first frame Thuwal Deep ever made was a
+    daylit seabed half a kilometre below the last of the light.
+    """
+    lengths = water.JERLOV["1C"]
+    shallow = water.is_it_deep(5.0, lengths)
+    deep = water.is_it_deep(550.0, lengths)
+    assert deep < 1e-6 < shallow
+
+    veil_shallow = water.VEIL_STRENGTH * max(water.VEIL_BY_LAMP, shallow)
+    veil_deep = water.VEIL_STRENGTH * max(water.VEIL_BY_LAMP, deep)
+    assert veil_deep == pytest.approx(water.VEIL_BY_LAMP)
+    assert veil_shallow > 10 * veil_deep, (veil_shallow, veil_deep)
+
+
+def test_there_is_still_a_little_veil_under_a_lamp():
+    """Not nought: a lamp lights the water between itself and the lens."""
+    assert 0.0 < water.VEIL_BY_LAMP < 0.15
