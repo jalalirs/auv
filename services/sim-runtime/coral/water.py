@@ -274,12 +274,27 @@ def make(stage, say, floor: float, water_level: float = 0.0,
          significant_height_m: float | None = None,
          wave_period_s: float | None = None,
          wave_heading_deg: float | None = None, seed: int = 0,
-         begins_at=None) -> None:
+         begins_at=None, enclosed: bool = False) -> None:
     """Put water over a place, and light it from above.
 
     Four things, in the order they matter: the fog that is the water itself, the
     sun coming through the surface, the surface seen from below, and the caustic
     light the surface throws on the bottom.
+
+    `enclosed` is a tank rather than an ocean, and it changes three of those
+    four. A towing tank is a hundred and ten metres of still water in a
+    concrete box, and the ocean's water put a nine-hundred-metre horizon wall
+    round it, a two-and-a-half-kilometre sea surface over it, and a JONSWAP
+    wave field on that surface with thirty centimetres of swell in it. None of
+    those is wrong in an ocean and all three are nonsense in a building.
+
+    What changes: no horizon wall, because the tank's own walls are the
+    horizon and a wall outside them is geometry nobody can see that the
+    renderer still traces; a surface the size of the place rather than of an
+    ocean; and a flat calm, because there is no wind on a laboratory floor.
+    The fog, the sun and the caustics stay — a tank has water in it and lights
+    over it, and the whole reason this place exists is to put a number on what
+    the water does.
     """
     import carb
     from pxr import Gf, Sdf, UsdGeom, UsdLux
@@ -301,13 +316,22 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     global _SEA
     from sea_state import SeaState
 
+    # Flat in a building, whatever the quiet day says. `CALM_HEIGHT_M` is a
+    # quiet day at sea and a quiet day at sea is thirty centimetres of swell,
+    # which in a towing tank is a third of the hull's draught arriving from a
+    # fetch that does not exist. A tank that is asked for a sea state gets
+    # one — a wave basin is a real thing — but nothing gets one by default
+    # for having no measurement.
+    indoors = bool(enclosed) and significant_height_m is None
     _SEA = SeaState(
-        CALM_HEIGHT_M if significant_height_m is None else float(significant_height_m),
+        0.0 if indoors else
+        (CALM_HEIGHT_M if significant_height_m is None else float(significant_height_m)),
         CALM_PERIOD_S if wave_period_s is None else float(wave_period_s),
         0.0 if wave_heading_deg is None else float(wave_heading_deg),
         seed=int(seed))
     say("sea_is", **_SEA.said(),
-        measured=significant_height_m is not None)
+        measured=significant_height_m is not None,
+        indoors=bool(enclosed))
 
     lengths = water_of(water_type)
     veiling = veiling_colour(lengths)
@@ -848,7 +872,12 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # free, which is worth far more than painting it on.
     # The wall of water that stands where the seabed runs out, so that no
     # pixel in the frame is looking at nothing.
-    _horizon(stage, water_level, floor, veiling, veil, across)
+    #
+    # Except in a tank, where nothing runs out: the walls are the place. A
+    # nine-hundred-metre cylinder round a hundred-and-ten-metre building is
+    # geometry no ray can reach and every ray is still tested against it.
+    if not enclosed:
+        _horizon(stage, water_level, floor, veiling, veil, across)
     # What was actually built, said out loud.
     #
     # This wall exists so that no pixel in the frame is looking at nothing,
@@ -856,11 +885,16 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # are. Painting it a colour nothing else is put none of that colour in the
     # picture — so either it is not there, or it is somewhere it cannot be
     # seen, and the frame cannot tell those apart. This can.
-    say("horizon_made", **getattr(_horizon, "said", {}))
+    # Said either way, including when there is none, because "no horizon_made
+    # line" and "a horizon that failed to build" read the same in a log.
+    say("horizon_made", **({"exists": False, "why": "enclosed: the tank's own "
+                            "walls are the horizon"} if enclosed
+                           else getattr(_horizon, "said", {})))
 
     surface = UsdGeom.Mesh.Define(stage, "/World/Surface")
-    _wave_mesh(surface, water_level, across=across)
+    _wave_mesh(surface, water_level, across=across, enclosed=enclosed)
     drift._across = across
+    drift._enclosed = bool(enclosed)
     # Where the mean level is, for the rebuilds that follow the vehicle.
     drift._level = float(water_level)
     surface.CreateDoubleSidedAttr(True)
@@ -1133,12 +1167,19 @@ def horizon_for(across: float) -> float:
     return max(HORIZON_AT_LEAST_M, 0.85 * float(across))
 
 
-def sea_reaches(across: float) -> float:
+def sea_reaches(across: float, enclosed: bool = False) -> float:
     """And how far the sea goes, which must be past the wall.
 
     If the sea stops short of the horizon, the gap between them is the band
     again, in the one place nothing else can cover it.
+
+    In a tank there is no wall and nothing to be past. The surface is the
+    surface of the tank, a little proud of it so the rim is covered — a
+    hundred and ten metres, not two and a half kilometres of open ocean laid
+    over a building.
     """
+    if enclosed:
+        return 0.55 * float(across)
     return max(SURFACE_REACH, 1.25 * horizon_for(across))
 
 
@@ -1250,20 +1291,28 @@ def _horizon(stage, water_level: float, lowest: float, veiling, veil: float,
     return radius
 
 
-def _across(across: float = 1000.0):
+def _across(across: float = 1000.0, enclosed: bool = False):
     """Where the sea is sampled along one axis, from the middle outwards.
 
     Even at the size of a wave out to `SURFACE_ACROSS`, then growing by a third
     each step until it reaches `SURFACE_REACH`. Uniform cells all the way out
     would be eight million quads for one flat sheet, and stopping at two
     hundred metres is what put the band in the picture.
+
+    A tank is smaller than the fine region, so it gets uniform cells all the
+    way across and stops at its own rim. The growth exists to reach a horizon
+    and there is no horizon indoors.
     """
+    reach = sea_reaches(across, enclosed=enclosed)
+    if enclosed:
+        n = max(2, int(round(2.0 * reach / SURFACE_CELL)))
+        return [-reach + i * (2.0 * reach / n) for i in range(n + 1)]
+
     half = SURFACE_ACROSS / 2.0
     n = int(round(SURFACE_ACROSS / SURFACE_CELL))
     steps = [-half + i * SURFACE_CELL for i in range(n + 1)]
 
     at, wide = half, SURFACE_CELL
-    reach = sea_reaches(across)
     while at < reach:
         wide *= SURFACE_GROWTH
         at += wide
@@ -1287,12 +1336,13 @@ def carries_a_wave(out: float) -> float:
 
 
 def _wave_mesh(surface, water_level: float, seconds: float = 0.0,
-               centre=(0.0, 0.0), across: float = 1000.0) -> None:
+               centre=(0.0, 0.0), across: float = 1000.0,
+               enclosed: bool = False) -> None:
     """Build the patch of sea, displaced by the waves on it."""
     from pxr import Gf, Vt
 
     cx, cy = float(centre[0]), float(centre[1])
-    steps = _across(across)
+    steps = _across(across, enclosed=enclosed)
     n = len(steps) - 1
 
     # Waves only where the cells are fine enough to carry them.
@@ -1428,8 +1478,15 @@ def drift(stage, seconds: float, follow=None) -> None:
             # The size the sea was first built at. Rebuilt smaller, it would
             # shrink inside the horizon the moment the vehicle moved, and the
             # band would come back a few seconds into every dive.
-            _wave_mesh(mesh, level, seconds, centre=(x, y),
-                       across=getattr(drift, "_across", 1000.0))
+            # And indoors it is not re-centred on the vehicle either: the
+            # surface of a tank is fixed to the tank, and a sheet that slides
+            # along under a vehicle is a painted ceiling that happens to be
+            # moving. Outdoors the sea is unbounded and following is right.
+            indoors = bool(getattr(drift, "_enclosed", False))
+            _wave_mesh(mesh, level, seconds,
+                       centre=(0.0, 0.0) if indoors else (x, y),
+                       across=getattr(drift, "_across", 1000.0),
+                       enclosed=indoors)
             drift._rebuilt_at = (x, y)
             drift._rebuilt_t = seconds
 

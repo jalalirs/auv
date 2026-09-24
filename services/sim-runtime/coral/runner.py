@@ -710,7 +710,11 @@ class Dive:
                        # Where the dive starts, so the medium is baked
                        # measuring from there rather than from the middle of
                        # the site.
-                       begins_at=tuple(float(v) for v in self.position))
+                       begins_at=tuple(float(v) for v in self.position),
+                       # A tank, not an ocean. The place says so; nothing
+                       # here guesses it from the size, because a small
+                       # site is not a building.
+                       enclosed=bool(self._site_is_enclosed()))
             self.water = water
 
             # And what lives in it.
@@ -924,6 +928,23 @@ class Dive:
         except Exception:
             pass
         return None
+
+    def _site_is_enclosed(self) -> bool:
+        """Whether this place is a tank rather than an ocean.
+
+        Asked of the place and never inferred from its size. A hundred-metre
+        site is not a building — Looe Key's layout plot is smaller than the
+        MHL tank is long — and a medium that decided for itself would be a
+        medium nobody could argue with.
+        """
+        import json
+
+        try:
+            city = pathlib.Path(self.brief.get("cityPath", "/dive/city"))
+            return bool(json.loads((city / "site.json").read_text())
+                        .get("enclosed", False))
+        except Exception:
+            return False
 
     def spawn(self, corner, far):
         """The middle of the water, two metres down.

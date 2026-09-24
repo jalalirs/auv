@@ -171,6 +171,14 @@ def a_place(name: str, long_m: float, wide_m: float, deep_m: float,
             "decimatedBy": 1,
         },
         "datum": "still water; z = 0 is the free surface and depth is negative z",
+        # A tank, not an ocean, and the medium is told rather than left to
+        # work it out from the size. Without it the water put a
+        # nine-hundred-metre horizon wall round a hundred-and-ten-metre
+        # building, laid two and a half kilometres of sea surface over it, and
+        # ran a JONSWAP wave field on that surface with thirty centimetres of
+        # swell — a third of a hull's draught, arriving from a fetch that does
+        # not exist.
+        "enclosed": True,
         "deepestM": round(deep_m, 2),
         "shallowestM": round(deep_m, 2),
         "underwater": 1.0,
