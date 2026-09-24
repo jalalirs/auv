@@ -949,8 +949,12 @@ def main() -> int:
         mdl = (pathlib.Path(__file__).resolve().parent.parent
                / "catalog" / "materials" / "coral_ground.mdl")
         shutil.copy(mdl, where / "coral_ground.mdl")
+        # `soft_named`, not SURFACES["soft"]: this line said
+        # "damp_beach_sand_02" directly underneath the line saying the place
+        # was floored with mud instead, which is a report that contradicts the
+        # report above it.
         print(f"  ground: {colour.name} as the site colour, "
-              f"{SURFACES['soft']} and {SURFACES['hard']} every {asked.tile:.0f} m")
+              f"{soft_named} and {SURFACES['hard']} every {asked.tile:.0f} m")
 
     made = write_usd(where, asked.name, height, asked.across, asked.tile,
                      asked.texture if textured else None, photograph=photograph,
