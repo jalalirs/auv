@@ -446,6 +446,59 @@ def derived_colour(height, hard, across: float, n: int = 1024):
     return np.clip(encoded * 255, 0, 255).astype("uint8")
 
 
+def where_a_dive_begins(height, across: float, off_bottom: float = 3.0) -> dict:
+    """A start on ground that has nothing growing on it.
+
+    Flat, at the depth most of the site is at, and inside the middle half so
+    a vehicle can fly in any direction without meeting the edge. Flatness
+    matters more than anywhere else down here: there is no reef to look at,
+    so what a dive is for is the bottom itself, and a start on the wall of a
+    canyon is a start looking at a wall.
+    """
+    import numpy as np
+
+    rows, columns = height.shape
+    # The middle half of the site, so there is room on every side.
+    lo_r, hi_r = rows // 4, rows - rows // 4
+    lo_c, hi_c = columns // 4, columns - columns // 4
+    inside = height[lo_r:hi_r, lo_c:hi_c]
+
+    # How rough each patch is, over about a tenth of the site.
+    step = max(1, min(inside.shape) // 24)
+    coarse = inside[::step, ::step]
+    rough = np.zeros_like(coarse)
+    rough[1:-1, 1:-1] = (
+        np.abs(coarse[1:-1, 1:-1] - coarse[:-2, 1:-1])
+        + np.abs(coarse[1:-1, 1:-1] - coarse[2:, 1:-1])
+        + np.abs(coarse[1:-1, 1:-1] - coarse[1:-1, :-2])
+        + np.abs(coarse[1:-1, 1:-1] - coarse[1:-1, 2:]))
+    rough[0, :] = rough[-1, :] = rough[:, 0] = rough[:, -1] = np.inf
+
+    # And how far from the depth the site mostly sits at.
+    typical = float(np.median(inside))
+    off = np.abs(coarse - typical)
+    scored = rough + off
+    if not np.isfinite(scored).any():
+        return {}
+    r, c = np.unravel_index(int(np.argmin(scored)), scored.shape)
+
+    row = lo_r + r * step
+    column = lo_c + c * step
+    y = (row / max(1, rows - 1) - 0.5) * across
+    x = (column / max(1, columns - 1) - 0.5) * across
+    floor = float(height[min(row, rows - 1), min(column, columns - 1)])
+    return {
+        "beginAt": [round(float(x), 1), round(float(y), 1),
+                    round(floor + off_bottom, 2)],
+        "beginBecause": ("flat ground at the depth most of this site is at "
+                         "(%.0f m), three metres off the bottom, inside the "
+                         "middle half so a vehicle can fly any way from it. "
+                         "There is no reef here to begin at: this place is "
+                         "below the light, and that is what it is for."
+                         % abs(floor)),
+    }
+
+
 def average_of(path: pathlib.Path) -> str:
     """What a texture's own colour is, so a material can divide it out.
 
@@ -942,6 +995,23 @@ def main() -> int:
         **({"beginAt": morphology["beginAt"],
             "beginBecause": morphology.get("beginBecause", "")}
            if morphology and "beginAt" in morphology else {}),
+        # And where a dive begins on ground with no reef on it.
+        #
+        # Every other place gets its start from its coral: the best reef in
+        # the working band. Thuwal Deep has no coral — it is five hundred
+        # metres down, which is the point of it — so nothing ever chose one,
+        # `beginAt` stayed null, and the consequences were quiet and total.
+        # No anchor for the stills, so no camera; no camera, so no medium to
+        # bake; and every sheet of the place came back a dark rectangle that
+        # looked like a rendering fault.
+        #
+        # A place that cannot be flown is not a place. So ground with nothing
+        # growing on it gets a start read off the ground itself: somewhere
+        # flat, at the depth most of the site is at, far enough from the edge
+        # to fly in any direction.
+        **(where_a_dive_begins(height, asked.across)
+           if not reef.get("beginAt")
+           and not (morphology and "beginAt" in morphology) else {}),
         "layers": {
             "terrain": "seabed.usda",
             "heightfield": "seabed.f32",

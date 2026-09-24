@@ -99,3 +99,47 @@ def test_the_three_reefs_are_actually_different():
         key = tuple(tuple(sorted(w.items())) for _, w, _ in mix)
         assert key not in seen, name
         seen.add(key)
+
+
+# ── where a dive begins on ground with nothing on it ─────────────────────────
+
+def _make_site():
+    import importlib.machinery
+    import importlib.util
+    import pathlib as _p
+    loader = importlib.machinery.SourceFileLoader(
+        "make_site", str(_p.Path(__file__).resolve().parent / "make-site"))
+    spec = importlib.util.spec_from_loader("make_site", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def test_a_start_is_found_on_ground_with_no_reef_on_it():
+    """Thuwal Deep had none, so it had no camera, no medium and no picture —
+    every sheet of it came back a dark rectangle."""
+    make_site = _make_site()
+    ground = np.full((200, 200), -520.0)
+    # A canyon down one side, which is where a start must not be.
+    ground[:, :40] -= np.linspace(0, 80, 40)[None, :]
+    got = make_site.where_a_dive_begins(ground, 8000.0)
+    assert "beginAt" in got and "beginBecause" in got
+    x, y, z = got["beginAt"]
+    assert abs(x) <= 8000.0 / 4 + 1e-6 and abs(y) <= 8000.0 / 4 + 1e-6
+    assert z == pytest.approx(-517.0, abs=1.0), z
+
+
+def test_the_start_avoids_the_rough_ground():
+    make_site = _make_site()
+    ground = np.full((160, 160), -500.0)
+    # Ridges through the right-hand half: flat ground is on the left.
+    ground[:, 80:] += (np.arange(80) % 2)[None, :] * 25.0
+    got = make_site.where_a_dive_begins(ground, 1000.0)
+    assert got["beginAt"][0] < 0.0, got
+
+
+def test_it_says_why_rather_than_only_where():
+    make_site = _make_site()
+    got = make_site.where_a_dive_begins(np.full((80, 80), -600.0), 2000.0)
+    assert "below the light" in got["beginBecause"]
+    assert "600" in got["beginBecause"]
