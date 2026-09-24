@@ -142,8 +142,19 @@ def main() -> int:
         # ocean is exactly as convincing as one drawn as the right one, and
         # every place on this platform was grown from a Caribbean mix until
         # somebody looked.
+        # A surveyed reef is not grown from a mix at all.
+        #
+        # Looe Key's colonies are found in a one-centimetre DEM and classified
+        # by shape, so there is no assemblage behind them and asking which one
+        # it used is the wrong question. Reporting it as an unlabelled mix
+        # said the place was missing something it cannot have.
+        measured = bool(((reef.get("cover") or {}).get("measured")))
         mix = reef.get("assemblage") or {}
-        named = mix.get("name") or "caribbean?"
+        if measured and not mix:
+            print("%-14s %-11s %s" % (site.get("name", place.name), "surveyed",
+                                      "its colonies were counted, not grown"))
+            continue
+        named = mix.get("name") or "unnamed"
         if not mix.get("from"):
             unsourced_reef.append(site.get("name", place.name))
         print("%-14s %-11s %s" % (site.get("name", place.name), named,
