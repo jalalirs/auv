@@ -578,9 +578,26 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # of the frame. So it is measured off the frame instead, in
     # `coral/metering.py`, beside the exposure and for the same reason.
 
-    put_the_water_in_the_materials(stage, veiling, lengths,
-                                   0.0 if _clear else float(veil),
+    # The materials carry the medium only when the volume is not doing it.
+    #
+    # Both apply exp(-distance / length), so running them together attenuates
+    # the water twice: measured with both on, the transmission at ten metres
+    # came back a tenth where 1C says a half, and the depth cue — which took
+    # three days to get right — went flat, because everything past arm's
+    # length was equally gone.
+    #
+    # When the volume is on it is the better of the two, and not by a little.
+    # The map in the material is baked from one point, so a vehicle that
+    # swims away from where the dive began carries water measured from where
+    # the dive began; the volume works from each pixel's own distance and has
+    # no such approximation in it. What the materials keep either way is
+    # their albedo, which is theirs.
+    in_materials = 0.0 if (_clear or volume) else float(veil)
+    put_the_water_in_the_materials(stage, veiling, lengths, in_materials,
                                    eye=begins_at, across=across)
+    say("medium_is", inTheVolume=bool(volume and not _clear),
+        inTheMaterials=in_materials > 0.0,
+        why="both apply exp(-d/L), so only one of them may")
     # Kept, so it can be put on whatever arrives later.
     #
     # An MDL parameter is baked when the material compiles, and a material
