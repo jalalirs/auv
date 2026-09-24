@@ -482,6 +482,18 @@ def make(stage, say, floor: float, water_level: float = 0.0,
         settings.set("/rtx/raytracing/inscattering/anisotropyFactor",
                      float(VOLUME_ANISOTROPY))
         settings.set("/rtx/raytracing/inscattering/densityMult", 1.0)
+        # Finer than the eight-pixel froxels it ships with.
+        #
+        # At eight, the light in the water came out as soft blobs the size of
+        # a fist held at arm's length — the structure was there and the grid
+        # could not hold it. Four is the same calculation at twice the
+        # resolution in each direction, which is where a shaft starts looking
+        # like a shaft rather than a cloud.
+        settings.set("/rtx/raytracing/inscattering/pixelRatio", 4)
+        settings.set("/rtx/raytracing/inscattering/blurSigma", 0.8)
+        # Slices bunched towards the camera, where the water in front of the
+        # lens is doing most of the work.
+        settings.set("/rtx/raytracing/inscattering/sliceDistributionExponent", 3.0)
         # Out to where the medium has nothing left to say, rather than the
         # fifty kilometres it ships with: the slices are spent where they can
         # be seen.
