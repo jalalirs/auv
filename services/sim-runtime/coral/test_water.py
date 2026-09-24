@@ -370,3 +370,39 @@ def test_no_veil_at_all_below_the_light():
     assert not hasattr(water, "VEIL_BY_LAMP")
     for depth in (400.0, 550.0, 900.0):
         assert water.VEIL_STRENGTH * water.is_it_deep(depth) < 1e-6
+
+
+def test_a_tank_gets_a_tank_of_water_and_not_an_ocean():
+    """A towing tank is a hundred and ten metres of still water in a concrete
+    box. The ocean's water put a nine-hundred-metre horizon wall round it, two
+    and a half kilometres of sea surface over it, and a JONSWAP field on that
+    surface with thirty centimetres of swell in it — a third of a hull's
+    draught, arriving from a fetch that does not exist.
+    """
+    tank = 109.73
+    # The surface stops at the tank's own rim rather than at an ocean's reach.
+    assert water.sea_reaches(tank, enclosed=True) < tank
+    assert water.sea_reaches(tank, enclosed=True) > tank / 2
+    # And outdoors nothing changes: it still has to be past the horizon, or
+    # the gap between them is the band again.
+    assert water.sea_reaches(tank) >= water.horizon_for(tank)
+
+    indoors = water._across(tank, enclosed=True)
+    outdoors = water._across(tank)
+    assert max(indoors) < tank, max(indoors)
+    assert max(outdoors) > 1000.0, max(outdoors)
+    # Uniform cells: the geometric growth exists to reach a horizon, and there
+    # is no horizon indoors.
+    steps = [b - a for a, b in zip(indoors, indoors[1:])]
+    assert max(steps) - min(steps) < 1e-9, (min(steps), max(steps))
+
+
+def test_the_medium_is_told_it_is_indoors_rather_than_guessing():
+    """A hundred-metre site is not a building — Looe Key's layout plot is
+    smaller than the MHL tank is long — so a medium that decided for itself
+    from the size would be a medium nobody could argue with."""
+    import inspect
+
+    said = inspect.signature(water.make).parameters
+    assert "enclosed" in said
+    assert said["enclosed"].default is False
