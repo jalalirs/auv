@@ -985,10 +985,18 @@ def main() -> int:
         # built to a plan; a surveyed one has to be read off its own ground, and
         # the reef says where the reef is. Either way the middle of the site is
         # the wrong answer — at Looe Key the middle is three metres of surf.
+        # The band is said rather than written in, because it is not always
+        # eight to eighteen: a place below the light has no cell in that band
+        # at all and uses its own depths instead, and a record that claims
+        # "between eight and eighteen metres" for a start at five hundred and
+        # fifty-six is a record that is wrong about the one thing it is for.
         **({"beginAt": reef["beginAt"]["at"],
-            "beginBecause": "the best reef between eight and eighteen metres, "
-                            "three metres off the bottom (%.0f%% cover at %.0f m)"
-                            % (100 * reef["beginAt"]["coverThere"],
+            "beginBecause": "the best reef within %s, three metres off the "
+                            "bottom (%.0f%% cover at %.0f m)"
+                            % (reef["beginAt"].get(
+                                   "within",
+                                   "the band a vehicle works a reef in"),
+                               100 * reef["beginAt"]["coverThere"],
                                reef["beginAt"]["depthM"])}
            if reef.get("beginAt") and not (morphology and "beginAt" in morphology)
            else {}),

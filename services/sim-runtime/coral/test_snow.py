@@ -155,3 +155,29 @@ def test_nothing_sits_against_the_lens():
         near = np.linalg.norm(
             field.where() - np.array([step * 0.7, 0.0, 0.0])[None, :], axis=1)
         assert near.min() >= snow.NEAREST_M - 1e-9, near.min()
+
+
+def test_the_clear_half_metre_is_round_whoever_is_looking():
+    """The guard is only worth anything at the point the camera is at.
+
+    On a dive the camera is on the vehicle and the two are the same point. On
+    a tour they are not: the still camera stands where the view says, and
+    Thuwal Deep's lamp view put it a metre and a half under the hull. The box
+    had been settled on the *vehicle*, so an eight-millimetre aggregate a
+    clear half-metre from the hull was nineteen centimetres off the glass, and
+    came back sixty-one pixels across.
+
+    So following a camera has to mean following *that* camera.
+    """
+    hull = np.array([10.0, -4.0, -556.0])
+    lens = hull + np.array([0.0, 0.0, -1.6])
+
+    field = snow.Snow(reaches_m=3.0, seed=11)
+    field.follow(hull)
+    # The fault, stated: settled on the hull, the lens is not protected.
+    off_the_glass = np.linalg.norm(field.where() - lens[None, :], axis=1).min()
+
+    field.follow(lens)
+    now = np.linalg.norm(field.where() - lens[None, :], axis=1).min()
+    assert now >= snow.NEAREST_M - 1e-9, now
+    assert now > off_the_glass

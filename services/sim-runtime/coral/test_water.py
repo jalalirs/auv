@@ -349,12 +349,24 @@ def test_the_veil_follows_the_daylight_down():
     deep = water.is_it_deep(550.0, lengths)
     assert deep < 1e-6 < shallow
 
-    veil_shallow = water.VEIL_STRENGTH * max(water.VEIL_BY_LAMP, shallow)
-    veil_deep = water.VEIL_STRENGTH * max(water.VEIL_BY_LAMP, deep)
-    assert veil_deep == pytest.approx(water.VEIL_BY_LAMP)
-    assert veil_shallow > 10 * veil_deep, (veil_shallow, veil_deep)
+    veil_shallow = water.VEIL_STRENGTH * shallow
+    veil_deep = water.VEIL_STRENGTH * deep
+    assert veil_deep < 1e-6
+    assert veil_shallow > 0.5, veil_shallow
 
 
-def test_there_is_still_a_little_veil_under_a_lamp():
-    """Not nought: a lamp lights the water between itself and the lens."""
-    assert 0.0 < water.VEIL_BY_LAMP < 0.15
+def test_no_veil_at_all_below_the_light():
+    """Not a small veil: none.
+
+    There was a floor of four hundredths, for "the water the lamps light
+    between themselves and the lens". That water is real and this is not what
+    draws it. `/rtx/fog` is global: four hundredths of a veil lights the six
+    kilometres of empty ocean above a vehicle at five hundred metres exactly
+    as brightly as the half metre in front of its lamps, and Thuwal Deep came
+    back with a grey sky and a hard line across it.
+
+    The near-field haze a lamp makes is the marine snow, which is drawn.
+    """
+    assert not hasattr(water, "VEIL_BY_LAMP")
+    for depth in (400.0, 550.0, 900.0):
+        assert water.VEIL_STRENGTH * water.is_it_deep(depth) < 1e-6
