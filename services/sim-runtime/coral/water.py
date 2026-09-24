@@ -119,6 +119,32 @@ def water_of(kind: str | None = None):
 # the net that goes on it have to agree about the ground they cover — a net
 # computed for ninety metres laid on a light sixty metres wide is a net at the
 # wrong scale, and it looks like nothing more than a different sea.
+# Over what distance the volume's transmittance is stated. Ten metres, which
+# is the scale a reef is looked at over, so the number in the log is one
+# somebody can check against a dive.
+VOLUME_MEASURED_OVER_M = 10.0
+
+# How hard sea water scatters forwards. Petzold measured the phase function of
+# ocean water in 1972 and it is one of the most forward-peaked in nature:
+# most of the light goes on within a few degrees of where it was headed. It is
+# why a beam under water stays a beam rather than becoming a glow, and why
+# looking towards the sun is so much brighter than looking away.
+VOLUME_ANISOTROPY = 0.9
+
+
+def scattering_albedo(lengths) -> float:
+    """How much of what this water takes is scattered rather than absorbed.
+
+    Clear ocean returns a few per cent of what falls on it; turbid and
+    productive water twenty-five or more. Scaled off the same green length the
+    veil's brightness uses, because it is the same suspended particles doing
+    both, and bounded well short of one — water that scatters everything and
+    absorbs nothing is fog, not sea.
+    """
+    green = max(0.5, float(lengths[1]))
+    return min(0.92, max(0.15, 0.45 * (17.0 / green) ** 0.5))
+
+
 CAUSTIC_PATCH_M = 90.0
 
 # How much of the net to lay on the ground, where one would replace the
@@ -413,7 +439,62 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # and a diff against the commit that made the better frame is what found
     # that — not the settings tree, which says nothing about them at all.
     settings.set("/rtx/raytracing/globalVolumetricEffects/enabled", not _clear)
-    settings.set("/rtx/fog/enabled", not _clear)
+    # ── the volume, which is what the fog was standing in for ────────────────
+    #
+    # This renderer has a participating medium after all, and it took a
+    # settings dump to find it: `/rtx/raytracing/globalVolumetricEffects`,
+    # with an inscattering model that asks for exactly the things a water
+    # type is made of — a transmittance colour over a stated distance, a
+    # single-scattering albedo, and a phase-function anisotropy.
+    #
+    # That matters for three reasons. It is per channel, so red dies faster
+    # than green in the *water* and not only on the surfaces. It is computed
+    # on a grid through the view, so a light that is occluded lights the water
+    # in front of it and not behind — which is a shaft, and is the thing A5
+    # asked for that a global fog cannot do at all. And it is the same
+    # quantities the medium is already written in, so nothing has to be
+    # invented to fill it in.
+    #
+    # The fog goes off when this is on. Both are "haze added with distance"
+    # and running them together counts the same water twice.
+    volume = os.environ.get("CORAL_CITY_VOLUME", "1") != "0"
+    settings.set("/rtx/raytracing/globalVolumetricEffects/enabled",
+                 bool(volume and not _clear))
+    if volume and not _clear:
+        # Transmittance per channel, stated over a distance. exp(-d / L) is
+        # the same arithmetic the survival map is baked with, so the volume
+        # and the surfaces agree about what this water does.
+        over = VOLUME_MEASURED_OVER_M
+        settings.set("/rtx/raytracing/inscattering/transmittanceMeasurementDistance",
+                     float(over))
+        settings.set("/rtx/raytracing/inscattering/transmittanceColor",
+                     [float(math.exp(-over / max(0.01, one))) for one in lengths])
+        # How much of what the water takes is scattered rather than absorbed.
+        # Clear ocean returns a few per cent of what falls on it and turbid
+        # water many times that, and it is the same turbidity the veil's
+        # brightness comes off — the same particles doing both.
+        settings.set("/rtx/raytracing/inscattering/singleScatteringAlbedo",
+                     [float(scattering_albedo(lengths))] * 3)
+        # Sea water scatters hard forwards: Petzold's measurements give a
+        # phase function with most of its light within a few degrees of
+        # straight on, which is why a beam stays a beam and why looking
+        # towards the sun under water is so much brighter than looking away.
+        settings.set("/rtx/raytracing/inscattering/anisotropyFactor",
+                     float(VOLUME_ANISOTROPY))
+        settings.set("/rtx/raytracing/inscattering/densityMult", 1.0)
+        # Out to where the medium has nothing left to say, rather than the
+        # fifty kilometres it ships with: the slices are spent where they can
+        # be seen.
+        settings.set("/rtx/raytracing/inscattering/maxDistance",
+                     float(max(20.0, 4.0 * lengths[1])))
+        say("volume_is", transmittanceOverM=over,
+            transmittance=[round(math.exp(-over / max(0.01, one)), 4)
+                           for one in lengths],
+            scatteringAlbedo=round(scattering_albedo(lengths), 3),
+            anisotropy=VOLUME_ANISOTROPY,
+            reachesM=round(max(20.0, 4.0 * lengths[1]), 1))
+
+    settings.set("/rtx/fog/enabled", (not _clear) and not volume)
     settings.set("/rtx/fog/fogColor", list(veiling))
     # The fog is added to everything the camera sees, so its strength is how
     # much of the picture is water rather than reef, and where it starts is how

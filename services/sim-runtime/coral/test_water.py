@@ -303,3 +303,32 @@ def test_brightness_scales_the_veil_without_turning_it():
         assert abs(sum(shape) - sum(
             one / water.veil_brightness(lengths) for one in colour)) < 1e-9
         assert max(shape) <= 1.0 + 1e-9, (kind, shape)
+
+
+# ── the volume ───────────────────────────────────────────────────────────────
+
+def test_the_volume_scatters_more_in_dirtier_water():
+    clear = water.scattering_albedo(water.JERLOV["I"])
+    coastal = water.scattering_albedo(water.JERLOV["1C"])
+    harbour = water.scattering_albedo(water.JERLOV["9C"])
+    assert clear < coastal < harbour, (clear, coastal, harbour)
+
+
+def test_water_that_scatters_everything_is_fog_not_sea():
+    for lengths in water.JERLOV.values():
+        got = water.scattering_albedo(lengths)
+        assert 0.15 <= got <= 0.92, (lengths, got)
+
+
+def test_the_volume_and_the_surfaces_agree_about_the_water():
+    """The transmittance handed to the volume has to be the same exp(-d/L)
+    the survival map is baked with, or the water in front of a surface takes
+    a different amount from the water on it."""
+    import math
+
+    for kind, lengths in water.JERLOV.items():
+        over = water.VOLUME_MEASURED_OVER_M
+        told = [math.exp(-over / one) for one in lengths]
+        # Red goes first, and blue outlasts green only where the table says.
+        assert told[0] < told[1], (kind, told)
+        assert all(0.0 < one < 1.0 for one in told), (kind, told)
