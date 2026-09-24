@@ -405,6 +405,10 @@ class Dive:
         # acts on the vehicle's motion through the water, not over the ground,
         # so a vehicle doing nothing in a current is carried by it.
         self.current = np.zeros(3)
+        # How far the snow box reaches from the camera. Four metres: past
+        # that a two-millimetre aggregate is under a pixel and the lamp has
+        # nothing left to give it, so drawing more is cost without picture.
+        self.snow = None
         self.visibility_m = None
         # Which of Jerlov's waters this is. Named by the conditions, because
         # "clear Red Sea" and "the Keys in August" are selections a person
@@ -742,6 +746,37 @@ class Dive:
                 import water as water_module
                 water_module.put_the_water_in_whatever_arrived_since(
                     stage, self.say)
+
+            # And the marine snow, which is the water's and not the reef's.
+            #
+            # Made after the water because how much of it there is comes off
+            # the water type: the same suspended particles that shorten the
+            # attenuation length are the ones a lamp finds.
+            try:
+                import snow as marine_snow
+
+                # `water_module`, not `water`: fifteen lines below, `water`
+                # is rebound to a file path, which makes it a local for the
+                # whole function and unbound here. And `seed` is a method on
+                # this class, not a number. Both would have been swallowed by
+                # the catch below into "snow_not_drawn", and the dive would
+                # have rendered with no snow and no reason given.
+                self.snow = marine_snow.Snow(
+                    reaches_m=self.SNOW_REACHES_M,
+                    lengths=water_module.water_of(self.water_type),
+                    seed=int(self.seed()))
+                self.snow.follow(self.position)
+                drawn = marine_snow.draw(stage, self.snow)
+                self.say("snow_is", drawn=self.snow.count,
+                         askedFor=self.snow.asked,
+                         perCubicMetre=round(self.snow.per_cubic_metre(), 1),
+                         reachesM=self.SNOW_REACHES_M, inScene=bool(drawn))
+            except Exception as exc:
+                # Loud, because a silent fallback here is a dive that looks
+                # finished and is missing the thing that makes the footage
+                # read as footage.
+                self.snow = None
+                self.say("snow_not_drawn", why=f"{type(exc).__name__}: {exc}"[:240])
 
             water = find_water(pathlib.Path(
                 self.brief.get("cityPath", "/dive/city")))
@@ -2712,11 +2747,26 @@ class Dive:
                  perSquareMetre=says.get("perSquareMetre"))
         return shoal
 
+    # How far the marine snow reaches from the camera, in metres. Past four
+    # a two-millimetre aggregate is under a pixel and the lamp has nothing
+    # left to give it, so more is cost without picture.
+    SNOW_REACHES_M = 4.0
+
     def stir(self) -> None:
         """Move the water. Still caustics are a painted floor."""
         if self.water is not None:
             self.water.drift(self.stage, self.simulated, follow=self.position)
             self.water.light_for(self.stage, float(-self.position[2]))
+        # The snow sinks and goes where the water goes, and the box it lives
+        # in keeps up with the camera. The particles themselves do not follow
+        # the camera — that is the difference between backscatter and a decal
+        # stuck to the lens.
+        if getattr(self, "snow", None) is not None:
+            import snow as marine_snow
+
+            self.snow.drift(1.0 / 20.0, current=self.current)
+            self.snow.follow(self.position)
+            marine_snow.move(self.stage, self.snow)
         # What each half of the living reef costs, said once.
         #
         # A reef that hangs the renderer is worse than a reef with nothing in
