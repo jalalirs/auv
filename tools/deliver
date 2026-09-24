@@ -1,0 +1,488 @@
+#!/usr/bin/env python3
+"""Turn a place into the things a marine department actually asks for.
+
+    tools/deliver ~/coral-city/places/looe-key
+
+A score and a video is not a deliverable. What a reef scientist asks for is a
+colony inventory they can open in a spreadsheet, points they can drop on a
+map, and a coverage raster they can put under their own layers — with a
+coordinate system, so that "this colony" means a place on the Earth and not a
+pixel in somebody's render.
+
+**The georeference is exact, not approximate.** Every place here was built by
+sampling a raster around a centre latitude and longitude at a stated number of
+metres a degree, so a colony at x metres east of the centre is at a longitude
+this can compute by inverting the very expression that put it there. It is
+the same arithmetic, run backwards, and `provenance.json` writes it out so
+that anybody can check it without reading this file.
+
+**And every column says whether it was measured.** A deliverable that does not
+distinguish a surveyed cover figure from a grown one is exactly the thing that
+gets cited back as though the model had measured it. Looe Key's colony *count*
+comes from a CREMP transect; its colony *positions* do not — they are a draw
+from a cover map, and a CSV that lets somebody map an individual colony and
+go and look for it is a CSV that has to say so on every row.
+
+What comes out:
+
+  colonies.csv       every colony: where, how deep, what shape, how big
+  colonies.geojson   the same points, in WGS84, which is what GeoJSON is
+  cover.asc          coverage as a real raster — ESRI ASCII grid, no GDAL
+  cover.prj          what its coordinates mean
+  provenance.json    what each field is, and whether anybody measured it
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import math
+import pathlib
+import re
+import sys
+
+import numpy as np
+
+
+def metres_per_degree(latitude: float) -> tuple[float, float]:
+    """The same expression `tools/make-site` sampled the bathymetry with.
+
+    Copied rather than imported, and that is deliberate: this is the inverse
+    of a transform, and a transform whose forward and backward halves share an
+    implementation cannot be checked by comparing them. `test_deliver.py`
+    holds the two against each other and would not if they were one function.
+    """
+    radians = math.radians(latitude)
+    north = 111_132.92 - 559.82 * math.cos(2 * radians) + 1.175 * math.cos(4 * radians)
+    east = 111_412.84 * math.cos(radians) - 93.5 * math.cos(3 * radians)
+    return east, north
+
+
+def where_on_earth(centre: dict, x: float, y: float) -> tuple[float, float]:
+    """Site-local metres back to latitude and longitude.
+
+    x is east and y is north of the centre, which is how every place on this
+    platform is laid out: the origin is the middle of the site.
+    """
+    east, north = metres_per_degree(float(centre["latitude"]))
+    return (float(centre["latitude"]) + y / north,
+            float(centre["longitude"]) + x / east)
+
+
+def colonies_of(place: pathlib.Path) -> dict:
+    """Read the reef out of the place's own USD.
+
+    Parsed rather than opened with USD, because this tool has to run anywhere
+    a spreadsheet does and pulling in the whole of OpenUSD to read four arrays
+    out of a text file is not a dependency worth having. The file is written
+    by `tools/reef.py` in this repository and its shape is known.
+    """
+    text = (place / "coral.usda").read_text()
+
+    def array(name: str):
+        found = re.search(rf"{name} = \[(.*?)\]\n", text, re.S)
+        return "" if found is None else found.group(1)
+
+    points = [tuple(float(v) for v in one.split(","))
+              for one in re.findall(r"\(([^)]*)\)", array("point3f\\[\\] positions"))]
+    which = [int(v) for v in array(r"int\[\] protoIndices").replace("\n", "").split(",")
+             if v.strip()]
+    scales = [tuple(float(v) for v in one.split(","))
+              for one in re.findall(r"\(([^)]*)\)", array("float3\\[\\] scales"))]
+    return {"at": points, "which": which, "scale": scales}
+
+
+def prototypes_in(site: dict) -> tuple[list[str], list[float]]:
+    """What each prototype is, and what one of them covers at scale one.
+
+    Read out of the place's own record, because the place says. The first
+    version of this worked both out from the USD — the prototype index was
+    assumed to be `kind * variants + variant` and the names were taken from
+    `reef.kinds`, which on a surveyed place is a *histogram* of what the
+    survey counted and not a list of growth forms. Every row of the CSV came
+    out labelled "low" or "unknown" and every footprint was a hundred times
+    too small, and neither showed up as an error: they showed up as a reef
+    with no cover on it.
+
+    A file that has to be reverse-engineered by the tool that ships it is a
+    file that will be reverse-engineered wrong, so `tools/reef.py` writes both
+    down and this refuses a place that does not have them.
+    """
+    reef = site.get("reef", {})
+    kinds = reef.get("prototypeKinds")
+    if not kinds:
+        raise SystemExit(
+            f"{site.get('name')} does not say what its prototypes are. It was "
+            f"built before the reef recorded them; build it again with "
+            f"tools/rebuild and the record will have them.")
+    areas = reef.get("prototypeAreaM2")
+    return list(kinds), None if not areas else [float(one) for one in areas]
+
+
+# What a coverage raster is drawn at, in metres a cell.
+#
+# Five metres, which is coarser than the colonies and deliberately so: a
+# coverage raster is a statement about *area*, and a cell finer than a colony
+# reports the presence of one colony as a hundred per cent cover. Five metres
+# is twenty-five square metres, which on a reef holds tens of colonies, and it
+# is about the resolution of the satellite-derived habitat maps these places
+# are built against.
+COVER_CELL_M = 5.0
+
+# An ESRI ASCII grid, which is the most portable raster there is: plain text,
+# its georeference in six lines of header, and readable by QGIS, ArcGIS, GDAL,
+# R and numpy without any of them needing the others. A GeoTIFF would be
+# smaller and would need GDAL to write, which is a dependency this tool would
+# then have and a spreadsheet user would then not have.
+NODATA = -9999
+
+
+def cover_raster(colonies: dict, footprints: dict, across: float,
+                 cell_m: float = COVER_CELL_M) -> np.ndarray:
+    """How much of each cell the colonies cover, nought to one.
+
+    Area summed and then saturated, not counted: two colonies that overlap
+    cover less than the sum of their areas, and a cell whose colonies add to
+    more than its area is fully covered rather than a hundred and forty per
+    cent. `tools/reef.py` makes the same point about a whole site — area A
+    dropped at random over ground G covers 1 - exp(-A/G) — and this is the
+    same arithmetic per cell.
+    """
+    n = max(1, int(round(across / cell_m)))
+    area = np.zeros((n, n), dtype=float)
+    half = across / 2.0
+    for (x, y, _z), covers in zip(colonies["at"], footprints["m2"]):
+        column = int((x + half) / across * n)
+        row = int((y + half) / across * n)
+        if 0 <= row < n and 0 <= column < n:
+            area[row, column] += covers
+    return 1.0 - np.exp(-area / (cell_m * cell_m))
+
+
+def write_grid(into: pathlib.Path, grid: np.ndarray, centre: dict,
+               across: float, cell_m: float) -> None:
+    """The raster and what its coordinates mean."""
+    n = grid.shape[0]
+    # Row 0 of the array is the south edge; an ASCII grid is written from the
+    # north down. This is the same flip every texture on this platform needs
+    # and it is the one that puts a reef a mile from where the survey put it.
+    lines = ["ncols        %d" % n,
+             "nrows        %d" % n,
+             "xllcorner    %.4f" % (-across / 2.0),
+             "yllcorner    %.4f" % (-across / 2.0),
+             "cellsize     %.4f" % cell_m,
+             "NODATA_value %d" % NODATA]
+    for row in range(n - 1, -1, -1):
+        lines.append(" ".join("%.4f" % v for v in grid[row]))
+    (into / "cover.asc").write_text("\n".join(lines) + "\n")
+
+    # Metres east and north of the site's centre, on the sphere the place was
+    # sampled off. Azimuthal equidistant at the centre is the projection whose
+    # distances from that point are true, which is exactly the claim the site
+    # makes about itself: a colony at x metres east is x metres from the
+    # middle.
+    (into / "cover.prj").write_text(
+        'PROJCS["%(name)s site-local",'
+        'GEOGCS["WGS 84",DATUM["WGS_1984",'
+        'SPHEROID["WGS 84",6378137,298.257223563]],'
+        'PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],'
+        'PROJECTION["Azimuthal_Equidistant"],'
+        'PARAMETER["latitude_of_center",%(lat).8f],'
+        'PARAMETER["longitude_of_center",%(lon).8f],'
+        'PARAMETER["false_easting",0],PARAMETER["false_northing",0],'
+        'UNIT["metre",1]]\n'
+        % {"name": centre.get("name", "site"),
+           "lat": float(centre["latitude"]), "lon": float(centre["longitude"])})
+
+
+def provenance(site: dict) -> dict:  # noqa: C901
+    """What each of these numbers is, and whether anybody measured it.
+
+    The most important file in the set. A deliverable that does not
+    distinguish a surveyed cover figure from a grown one is exactly the thing
+    that gets cited back as though the model had measured it, and a CSV that
+    lets somebody map an individual colony and go and look for it will be
+    taken at face value unless it says otherwise on every row.
+    """
+    reef = site.get("reef", {})
+    ground = site.get("ground", {})
+    cover = reef.get("cover", {})
+    surveyed = bool(site.get("from", {}).get("surveyed"))
+    surveyed_sizes = reef.get("sizesAre") == "surveyed"
+    return {
+        "place": site.get("name"),
+        "madeBy": "Coral City",
+        "readThisFirst": (
+            "These are simulation outputs. The seabed is a real survey. "
+            + ("Every colony listed here is one a survey detected, at the "
+               "position and diameter it recorded, so the positions and sizes "
+               "are observations — but the growth form assigned to each one "
+               "is not, and neither is anything drawn from it. "
+               if surveyed_sizes else
+               "The individual colonies are not real colonies: nothing in "
+               "colonies.csv or colonies.geojson is an observation of a "
+               "living animal, they are a draw from a cover figure. ")
+            + "The field `measured` on each column below says which of the "
+              "numbers here anybody went and looked at."),
+        "georeference": {
+            "frame": "metres east and north of the site centre",
+            "centre": site.get("from", {}).get("centre"),
+            "acrossMetres": site.get("from", {}).get("acrossMetres"),
+            # Written out so the transform can be checked without reading the
+            # code that performed it.
+            "toLatitudeLongitude": (
+                "latitude = centre.latitude + northing / N, "
+                "longitude = centre.longitude + easting / E, where "
+                "N = 111132.92 - 559.82 cos(2 phi) + 1.175 cos(4 phi) and "
+                "E = 111412.84 cos(phi) - 93.5 cos(3 phi), phi being the "
+                "centre latitude in radians. This is the inverse of the "
+                "expression the place was sampled with, so it is exact for "
+                "this place rather than a re-projection of it."),
+            "datum": "WGS 84",
+            "verticalDatum": site.get("datum"),
+        },
+        "columns": {
+            "id": {"measured": False, "from": "an index; the reef has no names"},
+            "latitude": {"measured": surveyed_sizes,
+                         "from": ("where the survey detected this colony, "
+                                  "projected out by the transform above"
+                                  if surveyed_sizes else
+                                  "the colony's site-local position, projected "
+                                  "back out by the transform above. Exact as a "
+                                  "transform; the position itself is not an "
+                                  "observation")},
+            "longitude": {"measured": surveyed_sizes, "from": "as latitude"},
+            "eastingM": {"measured": surveyed_sizes,
+                         "from": ("where the survey detected this colony"
+                                  if surveyed_sizes else
+                                  "where the reef builder put this colony")},
+            "northingM": {"measured": surveyed_sizes, "from": "as eastingM"},
+            "depthM": {"measured": surveyed,
+                       "from": (site.get("from", {}).get("source")
+                                or "the seabed this place was built from")},
+            # Never measured, on any place. A detector that found a colony
+            # in an orthomosaic found a blob of a size and a colour; which
+            # growth form it is was assigned afterwards from that, and on a
+            # surveyed reef it is the one column that is *not* an observation
+            # while everything beside it is.
+            "growthForm": {"measured": False,
+                           "from": (reef.get("assemblage", {}) or {}).get("from")
+                                   or reef.get("source")
+                                   or "drawn from the assemblage's depth bands"},
+            "acrossM": {"measured": surveyed_sizes,
+                        "from": reef.get("sizesFrom")
+                                or "the prototype's size times its drawn scale"},
+            "footprintM2": {"measured": surveyed_sizes,
+                            "from": ("a circle of the diameter the survey "
+                                     "recorded for this colony"
+                                     if surveyed_sizes else
+                                     "the prototype's own plan area times the "
+                                     "square of its scale")},
+        },
+        "cover": {
+            "cellMetres": COVER_CELL_M,
+            "measured": bool(cover.get("measured")),
+            "askedFor": cover.get("asked"),
+            "from": cover.get("from") or reef.get("source"),
+            "howItIsComputed":
+                "colony plan areas summed into each cell and saturated as "
+                "1 - exp(-A/G): colonies are scattered rather than tiled, so "
+                "they land on each other, and a cell whose colonies add to "
+                "more than its area is fully covered rather than a hundred "
+                "and forty per cent",
+        },
+        "ground": {"surveyed": bool(ground.get("surveyed")),
+                   "colourFrom": ground.get("colourFrom"),
+                   "hardnessFrom": ground.get("hardnessFrom")},
+        "builtBy": site.get("builtBy"),
+    }
+
+
+def sizes_of(colonies: dict, areas, surveyed: bool) -> dict:
+    """How big each colony is, and what that number is worth.
+
+    Two different things, and the place says which it has.
+
+    On a *surveyed* reef the scale is the measurement: the survey recorded a
+    diameter for every colony it found and the instancer carries half of it.
+    So the size in the inventory is a size somebody measured, and the CSV may
+    say so.
+
+    On a *grown* reef the colony is a prototype scaled, so its plan area is
+    the prototype's times the square of the scale. The prototype's own area is
+    worked out in `tools/reef.py` on the part that stands above the seabed
+    with the growth form's solidity applied — a sea fan is a metre and a half
+    of height on almost no ground — so this must not try to recompute it.
+    """
+    across, area = [], []
+    for which, scale in zip(colonies["which"], colonies["scale"]):
+        grown = float(scale[0])
+        if surveyed:
+            across.append(2.0 * grown)
+            area.append(math.pi * grown * grown)
+            continue
+        plan = areas[which] if areas and which < len(areas) else 0.0
+        area.append(plan * grown * grown)
+        # The diameter of a circle of that plan area, which is the one number
+        # a person asking "how big is it" wants.
+        across.append(2.0 * math.sqrt(max(area[-1], 0.0) / math.pi))
+    return {"acrossM": across, "m2": area}
+
+
+def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
+    site = json.loads((place / "site.json").read_text())
+    centre = (site.get("from") or {}).get("centre")
+    if not centre:
+        raise SystemExit(
+            f"{place.name} has no centre latitude and longitude, so nothing it "
+            f"contains can be put on a map. A deliverable without a "
+            f"georeference is a picture.")
+    across = float(site["from"]["acrossMetres"])
+    into.mkdir(parents=True, exist_ok=True)
+
+    colonies = colonies_of(place)
+    kinds, areas = prototypes_in(site)
+    surveyed_sizes = (site.get("reef", {}).get("sizesAre") == "surveyed")
+    sized = sizes_of(colonies, areas, surveyed_sizes)
+
+    # Anything already here is from a previous run of this and may describe a
+    # place that has since been rebuilt. A refusal that leaves yesterday's CSV
+    # sitting in the folder is a refusal nobody sees.
+    for old in ("colonies.csv", "colonies.geojson", "cover.asc", "cover.prj",
+                "cover-by-form.csv", "provenance.json"):
+        (into / old).unlink(missing_ok=True)
+
+    rows = []
+    for i, ((x, y, z), which) in enumerate(zip(colonies["at"], colonies["which"])):
+        latitude, longitude = where_on_earth(centre, x, y)
+        kind = kinds[which] if which < len(kinds) else "unknown"
+        rows.append({
+            "id": i,
+            "latitude": round(latitude, 8),
+            "longitude": round(longitude, 8),
+            "eastingM": round(x, 3),
+            "northingM": round(y, 3),
+            "depthM": round(-z, 3),
+            "growthForm": kind,
+            "acrossM": round(sized["acrossM"][i], 4),
+            "footprintM2": round(sized["m2"][i], 5),
+        })
+
+    with (into / "colonies.csv").open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0]) if rows else
+                                ["id", "latitude", "longitude"])
+        writer.writeheader()
+        writer.writerows(rows)
+
+    # GeoJSON is WGS84 by definition — RFC 7946 says so and says a file may
+    # not carry another one — which is why the points go out in degrees and
+    # the raster, which is about area, goes out in metres.
+    (into / "colonies.geojson").write_text(json.dumps({
+        "type": "FeatureCollection",
+        "coralCity": {
+            "place": site.get("name"),
+            "readThisFirst": provenance(site)["readThisFirst"],
+        },
+        "features": [
+            {"type": "Feature",
+             "geometry": {"type": "Point",
+                          "coordinates": [one["longitude"], one["latitude"],
+                                          -one["depthM"]]},
+             "properties": {k: v for k, v in one.items()
+                            if k not in ("latitude", "longitude")}}
+            for one in rows],
+    }) + "\n")
+
+    grid = cover_raster(colonies, sized, across)
+
+    # Cover by growth form, on the ground that was actually looked at.
+    #
+    # Over the whole site Looe Key's colonies come to 0.46%, which is true and
+    # useless: the SQUID-5 survey covers about an eighth of the square
+    # kilometre this place is drawn over and the rest has no colonies because
+    # nobody flew it, not because there is no coral there. A transect figure
+    # is cover *where the transect ran*, so the number that can be compared
+    # with one is cover where there is survey.
+    looked_at = float((grid > 0).sum()) * COVER_CELL_M * COVER_CELL_M
+    by_form = {}
+    for one in rows:
+        seen = by_form.setdefault(one["growthForm"], {"colonies": 0, "m2": 0.0})
+        seen["colonies"] += 1
+        seen["m2"] += one["footprintM2"]
+    for form, seen in by_form.items():
+        seen["m2"] = round(seen["m2"], 2)
+        seen["coverOfSurveyedGround"] = round(seen["m2"] / max(looked_at, 1e-9), 5)
+
+    with (into / "cover-by-form.csv").open("w", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["growthForm", "colonies", "footprintM2",
+                         "coverOfSurveyedGround"])
+        for form in sorted(by_form, key=lambda f: -by_form[f]["m2"]):
+            seen = by_form[form]
+            writer.writerow([form, seen["colonies"], seen["m2"],
+                             seen["coverOfSurveyedGround"]])
+    write_grid(into, grid, {**centre, "name": site.get("name", "site")},
+               across, COVER_CELL_M)
+    said = provenance(site)
+    said["coverByForm"] = {
+        "surveyedGroundM2": round(looked_at, 1),
+        "ofWhichIsSurvey":
+            "cells of the raster with any colony in them. On a place built "
+            "from a partial survey this is the ground somebody flew, not the "
+            "site: quoting cover over the whole site instead would put Looe "
+            "Key at a fifth of what its own transects say, because seven "
+            "eighths of the square kilometre has no colonies for want of "
+            "anybody having looked",
+        "forms": by_form,
+        "allStanding": round(
+            sum(one["m2"] for one in by_form.values()) / max(looked_at, 1e-9), 5),
+        "compareWith":
+            "A transect's cover figure is the number to hold this against, "
+            "and the two are not quite the same measurement: a transect "
+            "records what is under a point, this records the plan area of "
+            "every object a detector found standing above the seabed. Which "
+            "of the growth forms below counts as stony coral is a question "
+            "about the *classifier*, not about these numbers.",
+    }
+    (into / "provenance.json").write_text(json.dumps(said, indent=2) + "\n")
+
+    return {"colonies": len(rows), "coverCells": int(grid.size),
+            "meanCover": float(grid.mean()),
+            "surveyedGroundM2": looked_at,
+            "onSurveyedGround": sum(one["m2"] for one in by_form.values())
+                                / max(looked_at, 1e-9),
+            "byForm": by_form, "into": into}
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(
+        description="turn a place into what a marine department asks for")
+    parse.add_argument("place")
+    parse.add_argument("--into", default=None,
+                       help="where to write them (default: beside the place)")
+    asked = parse.parse_args()
+
+    place = pathlib.Path(asked.place).expanduser()
+    into = (pathlib.Path(asked.into).expanduser() if asked.into
+            else place.parent.parent / "deliverables" / place.name)
+    made = deliver(place, into)
+
+    print(f"  {place.name}")
+    print(f"    {made['colonies']:,} colonies over "
+          f"{made['surveyedGroundM2']:,.0f} m2 of surveyed ground, "
+          f"{100 * made['onSurveyedGround']:.2f}% covered")
+    for form in sorted(made["byForm"], key=lambda f: -made["byForm"][f]["m2"]):
+        seen = made["byForm"][form]
+        print(f"      {form:<12} {seen['colonies']:7,}  "
+              f"{100 * seen['coverOfSurveyedGround']:5.2f}%")
+    for one in sorted(p.name for p in into.iterdir()):
+        print(f"    {into / one}")
+    print()
+    print("    provenance.json says which of these numbers anybody measured.")
+    print("    Nothing in colonies.csv is an observation of a living animal.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

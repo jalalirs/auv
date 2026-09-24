@@ -300,6 +300,30 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     asked_for = float(np.average(want, weights=want > 0.02)) if (want > 0.02).any() else 0.0
     begin = zonation.best_ground(ground, want, across)
     return {"colonies": int(how_many), "prototypes": len(prototypes),
+            # What each prototype *is*, by its index in the instancer, and how
+            # much ground one of them covers at scale one.
+            #
+            # Said rather than left to be worked out. `tools/deliver` has to
+            # put a growth form and a plan area on every colony in a CSV
+            # somebody will open in a spreadsheet, and its first version
+            # reverse-engineered both from the USD: it assumed the prototype
+            # index was kind times variants plus variant, and it read the
+            # kinds off `reef.kinds`, which on a surveyed place is a
+            # *histogram* and not a list. Every row came out labelled "low" or
+            # "unknown" and every footprint was a hundred times too small.
+            #
+            # A file that has to be reverse-engineered by the tool that ships
+            # it is a file that will be reverse-engineered wrong.
+            "prototypeKinds": [kinds[i // variants] for i in range(len(prototypes))],
+            "prototypeAreaM2": [round(float(one), 6) for one in footprint],
+            "variantsEach": variants,
+            # Nothing here is a measurement. A colony's size is a draw against
+            # a prototype's size, and a colony inventory out of this place
+            # must not claim otherwise — which is the whole point of saying it
+            # here rather than letting the exporter assume.
+            "sizesAre": "grown",
+            "sizesFrom": "a draw against the prototype's own size, capped by "
+                         "the depth band; nobody measured any of these",
             # How many of the shapes came from a scan rather than a grower,
             # so a place's page can say what its coral is made of and nobody
             # has to take a render's word for it.
