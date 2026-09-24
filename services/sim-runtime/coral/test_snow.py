@@ -37,7 +37,7 @@ def test_the_sizes_are_a_heavy_tail_starting_at_the_cut():
     small = (drawn < 1.33 * snow.SMALLEST_DRAWN_MM / 1000.0).mean()
     assert small > 0.5, small
     # And a few with some size to them.
-    assert drawn.max() > 4.0 * snow.SMALLEST_DRAWN_MM / 1000.0
+    assert drawn.max() >= snow.LARGEST_DRAWN_MM / 1000.0 - 1e-12
 
 
 def test_the_particles_stay_put_when_the_camera_moves():
@@ -79,13 +79,26 @@ def shifted(before, after, reaches):
     return (after - before + reaches) % side - reaches
 
 
+def freely(field, before):
+    """Which particles the near-field guard did not have to touch.
+
+    Anything pushed off the lens has not moved by the drift, and it should
+    not have: its position is set by where the camera is, not by where the
+    water went. Those are excluded rather than argued with.
+    """
+    near = np.linalg.norm(field.where() - field.middle[None, :], axis=1)
+    was = np.linalg.norm(before - field.middle[None, :], axis=1)
+    return (near > snow.NEAREST_M + 0.05) & (was > snow.NEAREST_M + 0.05)
+
+
 def test_it_sinks_rather_than_rains():
     """Tens of metres a day. Over a ten-second shot that is millimetres, which
     is drift and not weather."""
     field = snow.Snow(reaches_m=4.0, seed=3)
     before = field.where().copy()
     field.drift(10.0)
-    fell = -shifted(before, field.where(), field.reaches)[:, 2]
+    free = freely(field, before)
+    fell = -shifted(before, field.where(), field.reaches)[free, 2]
     assert np.allclose(fell, snow.SINKS_M_PER_S * 10.0, atol=1e-9)
     assert 0.0 < float(fell.mean()) < 0.02, fell.mean()
 
@@ -94,7 +107,8 @@ def test_it_goes_where_the_water_goes():
     field = snow.Snow(reaches_m=4.0, seed=4)
     before = field.where().copy()
     field.drift(2.0, current=(0.5, 0.0, 0.0))
-    moved = shifted(before, field.where(), field.reaches)
+    free = freely(field, before)
+    moved = shifted(before, field.where(), field.reaches)[free]
     assert np.allclose(moved[:, 0], 1.0, atol=1e-9), moved[:, 0].mean()
 
 
@@ -119,5 +133,25 @@ def test_nothing_the_size_of_a_thumbnail():
     square — and there were several in every frame."""
     drawn = snow.sizes(200000, np.random.RandomState(1)) * 1000.0
     assert drawn.max() <= snow.LARGEST_DRAWN_MM + 1e-9, drawn.max()
-    # And the cap is rare enough not to pile everything up on it.
-    assert (drawn >= snow.LARGEST_DRAWN_MM - 1e-9).mean() < 0.005
+    # And the cap is rare enough not to pile everything up on it. A quarter
+    # the size is sixty-four times as many, so a couple of per cent sit on it.
+    assert (drawn >= snow.LARGEST_DRAWN_MM - 1e-9).mean() < 0.05
+
+
+def test_they_do_not_all_face_the_same_way():
+    """Unrotated cubes present identical squares and the frame fills with
+    them. It was the sameness that read as wrong more than the size."""
+    field = snow.Snow(reaches_m=3.0, seed=6)
+    assert field.facing.shape == (field.count, 4)
+    lengths = np.linalg.norm(field.facing, axis=1)
+    assert np.allclose(lengths, 1.0, atol=1e-6)
+    assert field.facing.std(axis=0).min() > 0.1, field.facing.std(axis=0)
+
+
+def test_nothing_sits_against_the_lens():
+    field = snow.Snow(reaches_m=3.0, seed=7)
+    for step in range(12):
+        field.follow((step * 0.7, 0.0, 0.0))
+        near = np.linalg.norm(
+            field.where() - np.array([step * 0.7, 0.0, 0.0])[None, :], axis=1)
+        assert near.min() >= snow.NEAREST_M - 1e-9, near.min()
