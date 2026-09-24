@@ -457,12 +457,35 @@ def best_ground(ground: dict, cover, across: float,
 
     So: the best reef inside the depth band a vehicle actually works in, far
     enough from the edge to fly in any direction, and with room underneath.
+
+    `between` is a reef-diving band and it is the right one for every place on
+    this platform that is a reef. It is not right for a place that is not.
+    Thuwal Deep runs from five hundred and nineteen metres to six hundred and
+    thirty-eight, so no cell on it was ever inside eight to eighteen, this
+    returned None, and the site fell back to the start meant for ground with
+    nothing growing on it — on a site carrying twenty thousand colonies. Every
+    frame it has ever produced was of empty mud, and the record beside them
+    said, in so many words, "there is no reef here to begin at".
+
+    A band that contains none of the site is not a band, it is a filter that
+    rejected everything. When that happens the site's own middle half of its
+    depth range is used instead: a vehicle works where the place is.
     """
     depth = ground["depth"]
     rows, columns = depth.shape
     step = across / max(1, columns - 1)
 
-    good = np.where((depth >= between[0]) & (depth <= between[1]), cover, 0.0)
+    inside = (depth >= between[0]) & (depth <= between[1])
+    why = "the band a vehicle works a reef in, %g to %g m" % between
+    if not inside.any():
+        low, high = (float(np.percentile(depth, 25)),
+                     float(np.percentile(depth, 75)))
+        inside = (depth >= low) & (depth <= high)
+        why = ("the middle half of this site's own depths, %.0f to %.0f m: "
+               "nothing here is between %g and %g, which is the band a reef "
+               "is dived in and not a band this place has"
+               % (low, high, between[0], between[1]))
+    good = np.where(inside, cover, 0.0)
     # Not against the edge: a start point ten metres from the boundary is a
     # start point with one direction to go.
     margin = max(2, int(round(0.12 * rows)))
@@ -484,4 +507,5 @@ def best_ground(ground: dict, cover, across: float,
                round(floor + off_bottom, 1)],
         "depthM": round(float(depth[row, column]), 1),
         "coverThere": round(float(cover[row, column]), 2),
+        "within": why,
     }

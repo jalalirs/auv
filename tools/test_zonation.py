@@ -168,3 +168,48 @@ def test_the_deep_has_no_depth_structure_because_nothing_there_is_set_by_light()
         total = sum(weights.values())
         shares.append(weights["plume"] / total)
     assert max(shares) - min(shares) < 0.25, shares
+
+
+def test_a_deep_site_begins_on_its_reef_and_not_on_its_mud():
+    """A band containing none of the site is a filter that rejected everything.
+
+    `best_ground` looked for the best cover between eight and eighteen metres,
+    which is the band a reef is dived in. Thuwal Deep runs from 519 m to 638 m,
+    so no cell on it was ever inside that band, the search returned None, and
+    the site fell back to the start meant for ground with nothing growing on
+    it — on a site carrying twenty thousand colonies. Every frame it had ever
+    produced was of empty mud.
+    """
+    rows = columns = 120
+    depth = np.full((rows, columns), 560.0)
+    cover = np.zeros((rows, columns))
+    # One patch of deep fauna, well inside the margin, at 60 rows / 60 columns.
+    cover[55:65, 55:65] = 0.6
+
+    got = zonation.best_ground({"depth": depth}, cover, 4000.0)
+    assert got is not None, "a deep site found nowhere to begin"
+    assert got["coverThere"] > 0.0, got
+    assert got["depthM"] == pytest.approx(560.0, abs=1.0)
+    # And it says which band it used, because the record must not claim
+    # "between eight and eighteen metres" about a start at five hundred and sixty.
+    assert "8" not in got["within"].split(":")[0] or "own depths" in got["within"]
+    assert "own depths" in got["within"], got["within"]
+
+
+def test_a_reef_still_uses_the_diving_band():
+    """The fallback must not fire where the band is real: at Looe Key the
+    middle of the site is three metres of surf-scoured flat, and the band is
+    what keeps a dive off it."""
+    rows = columns = 120
+    depth = np.zeros((rows, columns))
+    depth[:, :] = 12.0
+    # A shallow flat with the heaviest cover on it, which the band must reject.
+    depth[50:70, 50:70] = 3.0
+    cover = np.zeros((rows, columns))
+    cover[50:70, 50:70] = 0.9
+    cover[20:40, 20:40] = 0.3
+
+    got = zonation.best_ground({"depth": depth}, cover, 1000.0)
+    assert got is not None
+    assert got["depthM"] == pytest.approx(12.0, abs=0.5), got
+    assert "vehicle works a reef in" in got["within"], got["within"]

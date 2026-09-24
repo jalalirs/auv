@@ -86,10 +86,25 @@ SCATTERING_ALBEDO = 0.28
 # was to turn the whole thing off.
 VEIL_STRENGTH = 1.0
 
-# What is left of the veil where no daylight reaches: the water the lamps
-# light between themselves and the lens. Small, because most of that is
-# particles and the particles are drawn.
-VEIL_BY_LAMP = 0.04
+# There is no floor, and there was one.
+#
+# It was four hundredths, and it stood for "the water the lamps light between
+# themselves and the lens". That water is real. This fog is not the thing that
+# can draw it: `/rtx/fog` is global, so four hundredths of a veil lights the
+# six kilometres of empty ocean above a vehicle at five hundred metres exactly
+# as brightly as the half metre in front of its lamps. Thuwal Deep came back
+# with a grey sky and a hard line across it, and the line was not the horizon
+# wall and not the sea surface — painting both of them magenta and cyan moved
+# nothing — it was this fog, laid over water no light has reached since the
+# Pliocene.
+#
+# A lamp's haze is near-field and it is *drawn*: it is the marine snow, five
+# and a half thousand aggregates at the density this water carries. So the
+# veil follows the daylight all the way to nought, and below the light the
+# frame is black past the lamps, which is what every photograph from that
+# depth looks like.
+#
+# Same mistake as the two-per-cent floor under `is_it_deep`, one level up.
 
 # How bright the water's own glow is as a fill light. Read off a ladder.
 DOME_SHARE = 55.0
@@ -575,11 +590,11 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # Light that is not there cannot be scattered. What is left at depth is
     # what the lamps themselves throw into the water in front of the lens,
     # and that is small, and it is drawn rather than glowed: it is the marine
-    # snow. So the veil follows the daylight down, with a floor only big
-    # enough to stand for the lamp-lit water the particles do not fill.
+    # snow. So the veil follows the daylight down, to nought. See the note
+    # where VEIL_BY_LAMP used to be: a floor here is a floor over the whole
+    # sky, because this fog does not know where the lamps are.
     from coral.runner import asked_for
-    veil = asked_for("CORAL_CITY_VEIL",
-                     VEIL_STRENGTH * max(VEIL_BY_LAMP, left))
+    veil = asked_for("CORAL_CITY_VEIL", VEIL_STRENGTH * left)
     # Not clamped at one. This fog adds veiling light rather than blending
     # towards it, so "how much" is a brightness and not a fraction, and the
     # distance at which a thing is lost is the distance at which the light in
@@ -1215,6 +1230,16 @@ def _horizon(stage, water_level: float, lowest: float, veiling, veil: float,
         shader.ConnectableAPI(), "surface")
     UsdShade.MaterialBindingAPI.Apply(wall.GetPrim()).Bind(material)
     _horizon.said = {
+        # Whether the paint went on, said out loud.
+        #
+        # A run with PAINT_HORIZON=1 that comes back the same colour as a run
+        # without it has two readings — "these pixels are not the wall" and
+        # "the switch never reached the renderer" — and they are opposite. It
+        # cost two renders here to tell them apart by eye. This is the line
+        # that does it, and it is the same rule as `water_begins`: a tool that
+        # cannot do its job must fail, and a diagnostic that says nothing about
+        # itself is a diagnostic nobody can trust the answer of.
+        "painted": os.environ.get("CORAL_CITY_PAINT_HORIZON") == "1",
         "radius": round(float(radius), 1),
         "topZ": round(top, 2),
         "bottomZ": round(bottom, 2),

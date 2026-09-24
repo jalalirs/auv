@@ -2888,6 +2888,31 @@ class Dive:
                      fish=0 if self.shoal is None else self.shoal.of_them,
                      rooted=0 if self._rooted is None else int(len(self._rooted[1])))
 
+    def the_snow_is_seen_from(self, eye) -> None:
+        """Put the box of aggregates on the camera, when it is not the vehicle.
+
+        `stir` puts it on the vehicle, which is where the camera is on a dive.
+        On a tour the camera stands somewhere else, and the box's whole job is
+        near-field: it is drawn dense out to three metres and it holds nothing
+        closer than `NEAREST_M`, so that no particle ever sits nearer than a
+        lens can make sense of.
+
+        Measured from the wrong point, that guard protects nothing. Thuwal
+        Deep's lamp view had an eight-millimetre aggregate nineteen centimetres
+        off the glass, rendered sixty-one pixels across — a floating boulder in
+        the top of the frame — because it was a clear half-metre away from the
+        *vehicle*, and the still camera stood a metre and a half below it.
+
+        The water is already moved to the camera this way, in the same place
+        in the frame loop. The snow was not.
+        """
+        if getattr(self, "snow", None) is None or eye is None:
+            return
+        import snow as marine_snow
+
+        self.snow.follow(eye)
+        marine_snow.move(self.stage, self.snow)
+
     def sway(self) -> None:
         """Bend the rooted things in the water that is actually moving.
 

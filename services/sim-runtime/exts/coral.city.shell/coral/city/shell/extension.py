@@ -808,6 +808,10 @@ class CoralCityShell(omni.ext.IExt):
             if eye is not None:
                 from coral import water
                 water.tell_the_water_where_the_camera_is(dive.stage, eye)
+                # And the marine snow, for the same reason and with a sharper
+                # edge: the snow box is near-field, and the half-metre it
+                # keeps clear of the lens was being kept clear of the vehicle.
+                dive.the_snow_is_seen_from(eye)
 
             # Nothing is photographed until the exposure has settled, and the
             # tour keeps flying while it settles rather than stopping for it.
