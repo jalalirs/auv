@@ -31,6 +31,7 @@ import sys
 
 # Next to this script, which is where python looks first.
 import built
+import sediment
 
 # What a degree is worth, in metres, at a given latitude. Good to a fraction of
 # a percent over a site of a few kilometres, which is the size of thing this
@@ -206,10 +207,16 @@ GROUND_MATERIAL = """
                 )
 
                 # %(soft)s, in the grooves and the sediment.
-                asset inputs:soft_colour = @textures/soft_colour.jpg@
-                asset inputs:soft_normal = @textures/soft_normal.jpg@
-                asset inputs:soft_rough = @textures/soft_rough.jpg@
-                asset inputs:soft_height = @textures/soft_disp.jpg@
+                #
+                # Named rather than written in, because it is not always a
+                # photograph. Below the reach of the waves there is nothing to
+                # photograph that is right: every soft-seabed texture in every
+                # library is rippled sand, and the ripples in it were made by
+                # surface waves. See tools/sediment.py.
+                asset inputs:soft_colour = @textures/%(soft_colour_file)s@
+                asset inputs:soft_normal = @textures/%(soft_normal_file)s@
+                asset inputs:soft_rough = @textures/%(soft_rough_file)s@
+                asset inputs:soft_height = @textures/%(soft_height_file)s@
                 color3f inputs:soft_average = (%(soft_average)s)
 
                 # %(hard)s, on the spurs and the pavement.
@@ -888,13 +895,54 @@ def main() -> int:
                            "with depth. Not a photograph of this place")
             print("  colour: derived from depth and hardness, not photographed")
 
+        # And what the soft half of the ground is.
+        #
+        # A photograph of wet rippled sand, everywhere the waves reach. Below
+        # that, mud that nothing has stirred but animals — because the ripples
+        # in every soft-seabed texture in every library were made by surface
+        # waves, and a regular directional corrugation half a kilometre down is
+        # not a small error. It is the single thing a diver would name first.
+        under_the_waves = -float(np.median(height)) >= sediment.BELOW_THE_WAVES_M
+        soft_files = {role: f"soft_{role}.jpg" for role in
+                      ("colour", "normal", "rough")}
+        soft_files["height"] = "soft_disp.jpg"
+        soft_named = SURFACES["soft"]
+        soft_said = None
+        if under_the_waves:
+            soft_said = sediment.write_into(into, tile_metres=asked.tile,
+                                            seed=abs(hash(asked.name)) % (2 ** 31))
+            soft_files = {role: f"soft_{role}.png" for role in
+                          ("colour", "normal", "rough", "height")}
+            soft_named = "bioturbated mud, generated"
+            print("  sediment: bioturbated mud, not rippled sand — %.0f m down "
+                  "is below the reach of the waves (%.0f%% of the surface "
+                  "worked, %.0f mm of relief)"
+                  % (-float(np.median(height)),
+                     100 * soft_said["workedFraction"],
+                     1000 * soft_said["reliefM"]))
+
         ground = {
-            "soft": SURFACES["soft"], "hard": SURFACES["hard"],
-            "soft_average": average_of(into / "soft_colour.jpg"),
+            "soft": soft_named, "hard": SURFACES["hard"],
+            "soft_average": (", ".join(f"{c:.4f}" for c in soft_said["average"])
+                             if soft_said else average_of(into / "soft_colour.jpg")),
             "hard_average": average_of(into / "hard_colour.jpg"),
+            **{f"soft_{role}_file": name for role, name in soft_files.items()},
         }
         ground_said = {"hardnessFrom": hardness_from, "colourFrom": colour_from,
-                       "surveyed": bool(surveyed_ground)}
+                       "surveyed": bool(surveyed_ground),
+                       "softFrom": (
+                           "bioturbated mud, generated: trails, burrow mouths, "
+                           "mounds and casts. The kinds of trace are what a "
+                           "bathyal seabed photograph shows and what the Red "
+                           "Sea Decade Expedition's transects show on this "
+                           "slope; how many of each is chosen, not counted. "
+                           "Used because this place is below %.0f m, where the "
+                           "waves do not reach the bottom and a rippled sand "
+                           "texture is a lie about where the place is"
+                           % sediment.BELOW_THE_WAVES_M) if soft_said else
+                       ("%s, photographed wet rippled sand"
+                        % SURFACES["soft"]),
+                       **({"soft": soft_said} if soft_said else {})}
 
         # The material lives with the place, not in this checkout: a published
         # package has to carry everything it is drawn from.
