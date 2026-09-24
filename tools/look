@@ -86,10 +86,42 @@ one_place() {
         [ -f "${vehicle}/dynamics.json" ] || { echo "  ${vehicle} has no dynamics.json" >&2; return 1; }
         vehicle="$(cd "${vehicle}" && pwd)"
     else
-        for d in "${work}"/packages/*/; do
-            [ -f "${d}/dynamics.json" ] && vehicle="${d%/}"
-        done
+        # The catalogue, not the newest published package.
+        #
+        # This flew whatever package happened to be latest in the work
+        # directory, and that package was published before the vehicle had
+        # lights. Its `dynamics.json` has no `lights` key at all — so every
+        # sheet this tool has ever produced, at every place, was flown by a
+        # vehicle carrying no lamps. In daylight nobody noticed. At Thuwal
+        # Deep, five hundred metres below the last of the sunlight, the lamps
+        # are the only light there is and the frame came back dark.
+        #
+        # This tool already refuses a runtime older than the checkout and a
+        # place whose materials have fallen behind it. The vehicle is the
+        # third thing it draws with and it was the one thing not held to that
+        # rule. It is now: `look` flies what is in the checkout, and a
+        # published package is something `VEHICLE=` asks for on purpose.
+        vehicle="$(cd "$(dirname "$0")/../catalog/vehicles/bluerov2" && pwd)"
+        [ -f "${vehicle}/dynamics.json" ] || {
+            echo "  no vehicle in the catalogue to fly" >&2; return 1; }
     fi
+    # And say what it carries, because a dark frame and a frame with the lamps
+    # unshipped look the same.
+    python3 - "${vehicle}" <<'LAMPS'
+import json, pathlib, sys
+try:
+    got = json.loads((pathlib.Path(sys.argv[1]) / "dynamics.json").read_text())
+except Exception as exc:
+    print(f"  the vehicle could not be read: {exc}")
+    raise SystemExit(0)
+fitted = ((got.get("lights") or {}).get("fitted")) or []
+lumens = sum(float(one.get("lumens", 0.0)) for one in fitted)
+where = pathlib.Path(sys.argv[1]).name
+if fitted:
+    print(f"  flying {where}: {len(fitted)} lamps, {lumens:.0f} lumens")
+else:
+    print(f"  flying {where}: NO LAMPS — anything below the light will be dark")
+LAMPS
     [ -n "${vehicle}" ] || { echo "  no vehicle package to open the scene with" >&2; return 1; }
 
     # And a place carries its own copy of the materials it is drawn with,
