@@ -111,3 +111,13 @@ def test_a_camera_that_has_not_moved_leaves_them_alone():
     before = field.where().copy()
     field.follow((0.0, 0.0, 0.0))
     assert np.allclose(field.where(), before)
+
+
+def test_nothing_the_size_of_a_thumbnail():
+    """A power law has no top to it. Unbounded, one draw in a few thousand
+    came out at five centimetres, which at a metre from the lens is a white
+    square — and there were several in every frame."""
+    drawn = snow.sizes(200000, np.random.RandomState(1)) * 1000.0
+    assert drawn.max() <= snow.LARGEST_DRAWN_MM + 1e-9, drawn.max()
+    # And the cap is rare enough not to pile everything up on it.
+    assert (drawn >= snow.LARGEST_DRAWN_MM - 1e-9).mean() < 0.005
