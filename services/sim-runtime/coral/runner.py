@@ -323,6 +323,42 @@ def asked_for(name: str, fallback=None):
         return fallback
 
 
+def aiming(towards):
+    """A rotation that takes a rect light's own -Z round to point at `towards`.
+
+    Row-vector convention, which is USD's: a direction d is sent to d @ R. So
+    what this has to satisfy is `(0, 0, -1) @ aiming(t) == t`, and that is
+    exactly what it is tested against — for level aims, for straight down, for
+    straight up, and for a bearing off to one side, which is the case the
+    old swing-then-tip ordering silently dropped.
+    """
+    import numpy as _np
+
+    towards = _np.asarray(towards, dtype=float)
+    towards = towards / max(float(_np.linalg.norm(towards)), 1e-12)
+    down = _np.array([0.0, 0.0, -1.0])
+    axis = _np.cross(down, towards)
+    length = float(_np.linalg.norm(axis))
+    if length < 1e-9:
+        # Parallel or opposite: no unique axis, so pick one and turn a half
+        # turn if it is opposite.
+        if float(_np.dot(down, towards)) > 0.0:
+            return _np.eye(3)
+        return _np.diag([1.0, -1.0, -1.0])
+    axis = axis / length
+    angle = math.acos(max(-1.0, min(1.0, float(_np.dot(down, towards)))))
+    x, y, z = axis
+    c, s = math.cos(angle), math.sin(angle)
+    # Rodrigues, written out already transposed for the row-vector
+    # convention — so no `.T` on the end. Putting one there as well turns it
+    # back into the column-vector form, which sends every aim to its mirror.
+    return _np.array([
+        [c + x * x * (1 - c), x * y * (1 - c) + z * s, x * z * (1 - c) - y * s],
+        [y * x * (1 - c) - z * s, c + y * y * (1 - c), y * z * (1 - c) + x * s],
+        [z * x * (1 - c) + y * s, z * y * (1 - c) - x * s, c + z * z * (1 - c)],
+    ])
+
+
 class Dive:
     """A vehicle, in a place, being integrated.
 
@@ -1581,9 +1617,24 @@ class Dive:
             # and the pose is applied here rather than inherited.
             moving = UsdGeom.Xformable(light.GetPrim())
             moving.ClearXformOpOrder()
-            self.lamp_places[name] = (moving.AddTranslateOp(),
-                                      moving.AddRotateZOp(),
-                                      moving.AddRotateYOp())
+            # One matrix, not a translate and two rotations.
+            #
+            # The three-op version was wrong twice and the two faults hid each
+            # other. A rect light faces its own -Z; the tip was `90 + asin(z)`,
+            # which for a lamp aimed level swings -Z round to *-X* — the lamps
+            # pointed behind the vehicle. And the ops were ordered swing-then-
+            # tip, so the swing acted on a vector still pointing straight down
+            # and did nothing at all, which meant every lamp came out aimed the
+            # same way whatever bearing it was given.
+            #
+            # For a lamp aimed straight down both faults cancel and the answer
+            # is right, which is why the caustics — a rect light pointed at the
+            # seabed — have worked all along while the lamps never have.
+            #
+            # A rotation that takes -Z to the aim has no order and no sign to
+            # get wrong, and `aiming` below is checked against the four
+            # directions that matter.
+            self.lamp_places[name] = moving.AddTransformOp()
             self.lamp_rig[name] = (at, [float(v) for v in aim])
             self.aim_the_lamps()
             self.lamps.append(name)
@@ -1656,20 +1707,25 @@ class Dive:
         """
         if not self.lamp_places:
             return
+        from pxr import Gf
+
         R = np.asarray(self.rotation, dtype=float)
-        for name, (place, spin, tip) in self.lamp_places.items():
+        for name, place in self.lamp_places.items():
             at, aim = self.lamp_rig[name]
             world = np.asarray(self.position, dtype=float) + R @ np.asarray(at, dtype=float)
-            place.Set(self.drawn_at(world))
             towards = R @ np.asarray(aim, dtype=float)
             if np.linalg.norm(towards) < 1e-9:
                 continue
-            towards = towards / np.linalg.norm(towards)
-            # A rect light faces its own -Z, straight down with no rotation.
-            # Swing it to the bearing, then tip it up to the aim's own slope.
-            spin.Set(float(math.degrees(math.atan2(towards[1], towards[0]))))
-            tip.Set(float(90.0 + math.degrees(
-                math.asin(max(-1.0, min(1.0, towards[2]))))))
+            spun = aiming(towards / np.linalg.norm(towards))
+            matrix = Gf.Matrix4d(
+                float(spun[0][0]), float(spun[0][1]), float(spun[0][2]), 0.0,
+                float(spun[1][0]), float(spun[1][1]), float(spun[1][2]), 0.0,
+                float(spun[2][0]), float(spun[2][1]), float(spun[2][2]), 0.0,
+                0.0, 0.0, 0.0, 1.0)
+            drawn = self.drawn_at(world)
+            matrix.SetTranslateOnly(Gf.Vec3d(float(drawn[0]), float(drawn[1]),
+                                             float(drawn[2])))
+            place.Set(matrix)
 
     def add_up_what_it_carries(self) -> None:
         """Every fitted instrument draws, and the sum is what the battery pays.
