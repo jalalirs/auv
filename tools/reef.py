@@ -33,7 +33,8 @@ import zonation
 
 def plant(where: pathlib.Path, height, across: float, seed: int,
           how_many: int, picture=None, reference: pathlib.Path | None = None,
-          cover_from: str | None = None) -> dict:
+          cover_from: str | None = None,
+          assemblage: str | None = None) -> dict:
     """Grow a reef onto a seabed, and write it beside it.
 
     `reference` is a place's fetched corpus. Where it holds a scan of a colony
@@ -104,7 +105,9 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
                 "finger": 1.0, "massive": 0.9, "table": 0.55,
                 "brain": 0.9, "fan": 0.9, "plume": 0.9, "sponge": 0.9}
 
-    kinds = sorted({kind for _, weights, _ in zonation.BANDS for kind in weights})
+    bands = zonation.bands_for(assemblage)
+    kinds = sorted({kind for mix in zonation.ASSEMBLAGES.values()
+                    for _, weights, _ in mix for kind in weights})
     variants = 6
 
     # Which growth forms somebody has scanned. A scan carries the corallite
@@ -155,7 +158,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
 
     def a_draw(at_depth, rng):
         """Which prototype each colony is, how big, and what it covers."""
-        _, which_kind, cap = zonation.community(at_depth, rng)
+        _, which_kind, cap = zonation.community(at_depth, rng, bands)
         which = which_kind * variants + rng.integers(0, variants, len(at_depth))
         scale = rng.uniform(0.65, 1.8, len(at_depth)) * kind_scale[which_kind]
         # No bigger than the band allows. A three metre table belongs on the

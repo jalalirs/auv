@@ -42,6 +42,20 @@ COVER = (0.10, 0.42, 0.34, 0.76, 0.84, 0.74, 0.56, 0.42, 0.26, 0.15, 0.04)
 # catching a tenth of the light does to a colony's shape.
 #
 # Each band is (deepest metre, weights by kind, the biggest a colony gets).
+# Which reef. The shapes are the same everywhere; the mix is not.
+#
+# The bands below were read off Caribbean and Red Sea fore-reef surveys
+# together, and used for every place on the platform. That is wrong in a way
+# that shows: they are heavy in *fans* at depth, and a gorgonian sea fan is a
+# Caribbean signature. The Red Sea has very few of them. What it has instead
+# is Acropora tables on the slope and soft corals — Xenia, Sarcophyton,
+# Dendronephthya — which are a different shape and a different colour.
+#
+# Al Fahal is the reef that made this worth fixing: sixty-seven of the
+# sixty-eight dives on this platform happen there, and it was being drawn as
+# a Caribbean reef.
+ASSEMBLAGES = {}
+
 BANDS = (
     (2.0, {"encrusting": 0.28, "rubble": 0.24, "massive": 0.20,
            "branching": 0.09, "finger": 0.09, "plume": 0.06,
@@ -61,6 +75,72 @@ BANDS = (
     (999.0, {"table": 0.24, "fan": 0.18, "sponge": 0.18, "encrusting": 0.16,
              "plume": 0.10, "massive": 0.08, "brain": 0.06}, 1.70),
 )
+
+
+# The Caribbean mix is the one above, named so a place can ask for it.
+ASSEMBLAGES["caribbean"] = BANDS
+
+# And the Red Sea, off what somebody counted on this reef.
+#
+# Al Fahal is a midshelf reef in the Thuwal group, surveyed by line intercept
+# on ten-metre transects at two and ten metres — Roberts et al., "Spatial
+# variation in coral reef fish and benthic communities in the central Saudi
+# Arabian Red Sea", PeerJ 5:e3410, 2017, which recorded twenty-five
+# scleractinian genera across nine reefs and found Porites, Pocillopora and
+# Acropora each above five per cent of benthic cover. Transects in August 2024
+# put those three at 63.8% of coral cover between them — Porites 34.6,
+# Pocillopora 22.8, Acropora 6.4.
+#
+# Turning genera into the shapes this platform draws:
+#
+#   Porites       massive. The great smooth boulders, and the single most
+#                 abundant thing on the reef.
+#   Pocillopora   branching, small and bushy rather than staghorn thickets.
+#   Acropora      table on the slope, branching in the shallows. Tables are
+#                 the shape a Red Sea fore reef is known for and the shape the
+#                 Caribbean does not have at all.
+#   the rest      Stylophora branching, Millepora and Montipora encrusting and
+#                 plating, Favia and Platygyra brain, and soft corals which
+#                 this palette draws as plumes.
+#
+# So: massive and branching carry the reef, tables appear on the slope and
+# peak at ten to twenty metres, and fans nearly disappear.
+ASSEMBLAGES["red-sea"] = (
+    # The flat and the crest, scoured. Nothing delicate survives here.
+    (2.0, {"encrusting": 0.26, "rubble": 0.22, "massive": 0.24,
+           "branching": 0.16, "finger": 0.06, "plume": 0.04,
+           "sponge": 0.02}, 0.55),
+    # Upper fore reef: Porites boulders and Pocillopora, tables beginning.
+    (4.5, {"massive": 0.28, "branching": 0.22, "encrusting": 0.12,
+           "table": 0.10, "finger": 0.09, "plume": 0.08, "brain": 0.06,
+           "rubble": 0.03, "sponge": 0.02}, 1.70),
+    # The slope, which is the postcard: tables over boulders.
+    (10.0, {"massive": 0.26, "table": 0.20, "branching": 0.16,
+            "plume": 0.11, "encrusting": 0.09, "brain": 0.08,
+            "finger": 0.05, "sponge": 0.04, "fan": 0.01}, 2.30),
+    (18.0, {"table": 0.24, "massive": 0.21, "plume": 0.14,
+            "encrusting": 0.12, "brain": 0.10, "branching": 0.08,
+            "sponge": 0.07, "fan": 0.02, "rubble": 0.02}, 2.30),
+    # Deeper, where light is a tenth and a colony spreads to catch it.
+    (26.0, {"encrusting": 0.24, "table": 0.20, "massive": 0.16,
+            "sponge": 0.14, "plume": 0.13, "brain": 0.08,
+            "fan": 0.03, "branching": 0.02}, 2.00),
+    (999.0, {"encrusting": 0.30, "sponge": 0.22, "table": 0.18,
+             "massive": 0.14, "plume": 0.10, "fan": 0.04,
+             "brain": 0.02}, 1.70),
+)
+
+
+def bands_for(assemblage: str | None):
+    """The mix for a named reef, or the one this platform started with."""
+    if assemblage is None:
+        return BANDS
+    try:
+        return ASSEMBLAGES[str(assemblage).lower()]
+    except KeyError:
+        raise KeyError(
+            f"no assemblage called {assemblage!r}; "
+            f"there is {', '.join(sorted(ASSEMBLAGES))}") from None
 
 
 def _blur(field, metres: float, step: float):
@@ -262,7 +342,7 @@ def cover(ground: dict, rng, patchiness: float = 1.0):
     return np.clip(wanted * patch, 0.0, 0.94)
 
 
-def community(depths, rng):
+def community(depths, rng, bands=None):
     """Which kind of coral each colony is, and how big it may get.
 
     Sampled per colony from the band it landed in, rather than from one mix for
@@ -270,16 +350,21 @@ def community(depths, rng):
     crest where the waves break them and boulder heads at thirty metres where
     there is no light to build them with.
     """
-    kinds = sorted({kind for _, weights, _ in BANDS for kind in weights})
+    bands = BANDS if bands is None else bands
+    # Every kind in the palette, not only the ones this assemblage uses, so a
+    # reef's prototypes line up with its weights whichever mix it was grown
+    # from.
+    kinds = sorted({kind for mix in ASSEMBLAGES.values()
+                    for _, weights, _ in mix for kind in weights})
     index = {kind: i for i, kind in enumerate(kinds)}
 
-    edges = np.array([deepest for deepest, _, _ in BANDS])
+    edges = np.array([deepest for deepest, _, _ in bands])
     band = np.searchsorted(edges, np.asarray(depths), side="left")
-    band = np.clip(band, 0, len(BANDS) - 1)
+    band = np.clip(band, 0, len(bands) - 1)
 
-    table = np.zeros((len(BANDS), len(kinds)))
-    caps = np.zeros(len(BANDS))
-    for b, (_, weights, cap) in enumerate(BANDS):
+    table = np.zeros((len(bands), len(kinds)))
+    caps = np.zeros(len(bands))
+    for b, (_, weights, cap) in enumerate(bands):
         for kind, weight in weights.items():
             table[b, index[kind]] = weight
         table[b] /= table[b].sum()
