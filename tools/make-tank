@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+"""A towing tank, as a place: the only geometry on this platform that is known.
+
+    tools/make-tank mhl-tank \\
+        --long 109.73 --wide 6.71 --deep 3.05 \\
+        --from "University of Michigan Marine Hydrodynamics Laboratory, ..."
+
+Every other place here is *derived*. A bathymetric survey is a measurement of
+the seabed at fifteen metres a sample and the mesh between those samples is an
+interpolation; a reef is grown from a cover figure; a colour map is worked out
+from depth and hardness. All of it is defensible and none of it is exact, and
+that is fine for a reef because a reef is not exact either.
+
+It is not fine for checking the physics. Fossen's six degrees of freedom are
+implemented here and not one coefficient has ever been checked against a real
+vehicle, because there has been nowhere to check them: a drag number measured
+over a reef is a drag number plus an unknown amount of terrain. A towing tank
+is a box of still water whose length, width and depth are *published to the
+centimetre* — so a hull towed along it at a stated speed is a drag measurement
+and not an estimate, and the difference between what this simulator says and
+what the tank said is a number with no terrain in it.
+
+**So the one thing this tool must not do is invent a dimension.** `--long`,
+`--wide` and `--deep` are required and so is `--from`, which says where they
+came from. A tank whose size was chosen is a reef with extra steps.
+
+What it builds: a rectangular basin — floor, four walls, and the water level at
+the top of them — in metres, Z up, z = 0 at the still water surface. The origin
+is the middle of the tank rather than one end, because every other place on
+this platform has its origin in the middle and a vehicle that starts at
+`[0, 0, -1]` should start in the water in all of them.
+
+No reef, no sediment texture, no caustics worth the name and nothing growing.
+A tank is a tank.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import sys
+import time
+
+# Next to this script, which is where python looks first.
+import built
+
+# How far under the surface a tow runs, as a fraction of the tank's depth.
+#
+# Deep enough that the free surface is not the dominant term and the hull is
+# not in ground effect off the floor — the middle is the only defensible answer
+# without a specific test to match, and a tow that matches a specific test
+# should say its own depth rather than take this.
+TOWS_AT = 0.5
+
+# How much of the tank's length is usable for a steady run.
+#
+# A towing carriage accelerates, holds, and decelerates, and only the held part
+# is a measurement. A fifth at each end is the conventional allowance and it is
+# stated here rather than assumed: a drag number averaged through the
+# acceleration is not a drag number.
+STEADY_FROM, STEADY_TO = 0.2, 0.8
+
+TANK = '''#usda 1.0
+(
+    doc = "%(name)s: a towing tank. Metres, Z up, z = 0 at the still water surface. %(long).3f m long, %(wide).3f m wide, %(deep).3f m deep. %(source)s"
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def Mesh "Tank" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/Looks/Concrete>
+        int[] faceVertexCounts = [%(counts)s]
+        int[] faceVertexIndices = [%(indices)s]
+        point3f[] points = [%(points)s]
+        float3[] extent = [(%(x0).4f, %(y0).4f, %(z0).4f), (%(x1).4f, %(y1).4f, %(z1).4f)]
+        uniform token subsetFamily:materialBind:familyType = "partition"
+    }
+
+    def Scope "Looks"
+    {
+        def Material "Concrete"
+        {
+            token outputs:surface.connect = </World/Looks/Concrete/Surface.outputs:surface>
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.62, 0.63, 0.61)
+                float inputs:roughness = 0.75
+                float inputs:metallic = 0
+                token outputs:surface
+            }
+        }
+    }
+}
+'''
+
+
+def walls(long_m: float, wide_m: float, deep_m: float):
+    """A box with no lid: floor and four sides, wound to face inwards.
+
+    Five quads. The tank is watertight in the sense that matters here — a
+    vehicle inside it cannot see out of it — and open at the top because the
+    top is the water surface, which the medium draws.
+    """
+    x0, x1 = -long_m / 2.0, long_m / 2.0
+    y0, y1 = -wide_m / 2.0, wide_m / 2.0
+    z0, z1 = -deep_m, 0.0
+
+    # Eight corners: floor 0-3, rim 4-7, both anticlockwise seen from above.
+    points = [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0),
+              (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)]
+    # Wound so that every face's normal points *into* the tank, which is the
+    # only winding that gives a box a vehicle cannot see out of. Written the
+    # obvious way first and checked against the middle of the box in
+    # test_tank.py, which is how both the floor and all four walls turned out
+    # to be facing outwards: five quads is few enough to get wrong by hand and
+    # few enough for arithmetic to settle.
+    faces = [(0, 1, 2, 3)]
+    for a, b in ((0, 1), (1, 2), (2, 3), (3, 0)):
+        faces.append((a, a + 4, b + 4, b))
+    return points, faces, (x0, y0, z0), (x1, y1, z1)
+
+
+def write_usd(where: pathlib.Path, name: str, long_m: float, wide_m: float,
+              deep_m: float, source: str) -> dict:
+    points, faces, low, high = walls(long_m, wide_m, deep_m)
+    body = TANK % {
+        "name": name, "long": long_m, "wide": wide_m, "deep": deep_m,
+        "source": source.replace('"', "'"),
+        "counts": ", ".join("4" for _ in faces),
+        "indices": ", ".join(str(i) for face in faces for i in face),
+        "points": ", ".join("(%.4f, %.4f, %.4f)" % p for p in points),
+        "x0": low[0], "y0": low[1], "z0": low[2],
+        "x1": high[0], "y1": high[1], "z1": high[2],
+    }
+    (where / "tank.usda").write_text(body)
+    return {"points": len(points), "quads": len(faces),
+            "lowest": low[2], "highest": high[2]}
+
+
+def a_place(name: str, long_m: float, wide_m: float, deep_m: float,
+            source: str, made: dict) -> dict:
+    """The record, in the shape every other place on this platform keeps."""
+    tows_at = -deep_m * TOWS_AT
+    return {
+        "name": name,
+        "from": {
+            # The one place where this is true, and it is the whole reason
+            # the tank is here.
+            "surveyed": False,
+            "measured": True,
+            "source": source,
+            # Said out loud in the same words `tools/cite` uses, because it is
+            # the same distinction: nobody ran a query for these numbers.
+            # Somebody read them, and they have not been checked against a
+            # drawing of the tank.
+            "fetched": False,
+            "acrossMetres": max(long_m, wide_m),
+            "lengthM": round(long_m, 3),
+            "widthM": round(wide_m, 3),
+            "depthM": round(deep_m, 3),
+            "sampleMetres": 0.0,
+            "decimatedBy": 1,
+        },
+        "datum": "still water; z = 0 is the free surface and depth is negative z",
+        "deepestM": round(deep_m, 2),
+        "shallowestM": round(deep_m, 2),
+        "underwater": 1.0,
+        "mesh": made,
+        # There is no reef and there must not be one. Written rather than
+        # omitted, because a missing key reads as "nobody got round to it" and
+        # a zero with a reason reads as a decision.
+        "reef": {"colonies": 0, "prototypes": 0,
+                 "from": "there is no reef in a towing tank, and the point of "
+                         "this place is that there is nothing in it but water"},
+        "layers": {"terrain": "tank.usda"},
+        # A tow runs along the tank, so a dive begins at the near end of the
+        # steady section on the centre line, at tow depth.
+        "beginAt": [round(-long_m / 2.0 + long_m * STEADY_FROM, 3), 0.0,
+                    round(tows_at, 3)],
+        "beginBecause": (
+            "on the centre line at half the tank's depth, at the near end of "
+            "the steady section. Deep enough that the free surface is not the "
+            "dominant term and the hull is not in ground effect off the floor; "
+            "%.0f%% of the length in, because a carriage accelerates, holds "
+            "and decelerates and only the held part is a measurement."
+            % (100 * STEADY_FROM)),
+        # What a tow down this tank actually is, so a mission does not have to
+        # work it out from the dimensions and get it subtly wrong.
+        "tow": {
+            "atDepthM": round(tows_at, 3),
+            "steadyFromM": round(-long_m / 2.0 + long_m * STEADY_FROM, 3),
+            "steadyToM": round(-long_m / 2.0 + long_m * STEADY_TO, 3),
+            "steadyLengthM": round(long_m * (STEADY_TO - STEADY_FROM), 3),
+            "why": ("only the held part of a carriage run is a measurement: a "
+                    "drag number averaged through the acceleration is not a "
+                    "drag number"),
+        },
+        "ground": {
+            "hardnessFrom": "it is a concrete tank",
+            "colourFrom": "not photographed and not derived: plain concrete, "
+                          "because what this place is for is the water in it",
+            "surveyed": False,
+        },
+    }
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(
+        description="build a towing tank as a place, from its published size")
+    parse.add_argument("name")
+    parse.add_argument("--long", type=float, required=True,
+                       help="metres, along the tow")
+    parse.add_argument("--wide", type=float, required=True, help="metres")
+    parse.add_argument("--deep", type=float, required=True,
+                       help="metres of still water")
+    # Required, and required for the same reason `--cover-from` is: a number
+    # with no provenance is a number that gets cited back as though this
+    # platform had measured it.
+    parse.add_argument("--from", dest="source", required=True,
+                       help="where the three dimensions came from")
+    parse.add_argument("--into", default=str(pathlib.Path.home() / "coral-city" / "places"))
+    asked = parse.parse_args()
+
+    for what, value in (("long", asked.long), ("wide", asked.wide),
+                        ("deep", asked.deep)):
+        if not (value > 0):
+            print(f"a tank {what} {value} m is not a tank", file=sys.stderr)
+            return 1
+    if len(asked.source.strip()) < 12:
+        print("--from must say where the dimensions came from, in words",
+              file=sys.stderr)
+        return 1
+
+    where = pathlib.Path(asked.into) / asked.name
+    where.mkdir(parents=True, exist_ok=True)
+    # The same marker make-site writes, for the same reason: a place part way
+    # through being built is not a place, and nothing about it looks wrong.
+    torn = where / "being-built.json"
+    torn.write_text(json.dumps({
+        "argv": sys.argv[1:], "began": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "why": "make-tank is part way through this place.",
+    }, indent=2) + "\n")
+
+    made = write_usd(where, asked.name, asked.long, asked.wide, asked.deep,
+                     asked.source)
+    site = a_place(asked.name, asked.long, asked.wide, asked.deep,
+                   asked.source, made)
+    built.carry_the_record_forward(site, where / "site.json")
+    built.record_call(site, "make-tank")
+    (where / "site.json").write_text(json.dumps(site, indent=2) + "\n")
+    torn.unlink(missing_ok=True)
+
+    print(f"  {asked.name}")
+    print(f"    {asked.long:.2f} m long, {asked.wide:.2f} m wide, "
+          f"{asked.deep:.2f} m of water")
+    print(f"    steady run {site['tow']['steadyLengthM']:.1f} m at "
+          f"{abs(site['tow']['atDepthM']):.2f} m down")
+    print(f"    {made['quads']} quads, {made['points']} points")
+    print(f"    size from: {asked.source}")
+    print(f"    {where}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

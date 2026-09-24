@@ -35,7 +35,12 @@ import sys
 # is the order of dependency: `make-site` writes a new site.json from nothing,
 # `reef-survey` chooses where a dive begins, `fauna` needs the reef to swim
 # over, and `aim-water` bakes the medium measured from that start.
-IN_ORDER = ["make-site", "reef-survey", "fauna", "aim-water"]
+# `make-tank` stands where `make-site` does and never beside it: a place is
+# built from a survey or it is a tank, and the two write the same site.json
+# from different things. A tank has no reef to survey, nothing to swim over,
+# and no medium to bake from where the dive begins, so the rest of the chain
+# simply has no record to replay for it.
+IN_ORDER = ["make-site", "make-tank", "reef-survey", "fauna", "aim-water"]
 
 HERE = pathlib.Path(__file__).resolve().parent
 

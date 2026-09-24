@@ -33,7 +33,7 @@ def task_kinds():
 
 def places():
     return {"al-fahal", "looe-key", "kaneohe", "red-sea", "thuwal-deep",
-            "tank"}
+            "mhl-tank"}
 
 
 @pytest.mark.parametrize("path", MISSIONS, ids=lambda p: p.stem)
