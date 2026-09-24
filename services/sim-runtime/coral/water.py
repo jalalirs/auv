@@ -474,7 +474,13 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     #
     # VOLUME=1 runs it. What it buys, today, is light with structure in the
     # water column rather than a flat haze — which is the shafts A5 asks for.
-    volume = os.environ.get("CORAL_CITY_VOLUME", "0") != "0"
+    # `or "0"`, not a default argument: docker hands an unset variable
+    # through as an empty string, so `.get(name, "0")` returns "" and "" is
+    # not "0". The volume came on in every run that had not asked for it, and
+    # the log said so while the default said otherwise. `asked_for` in the
+    # runner documents this exact trap for numbers; this is the same trap for
+    # a flag.
+    volume = (os.environ.get("CORAL_CITY_VOLUME") or "0") != "0"
     settings.set("/rtx/raytracing/globalVolumetricEffects/enabled",
                  bool(volume and not _clear))
     if volume and not _clear:
