@@ -457,7 +457,24 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     #
     # The fog goes off when this is on. Both are "haze added with distance"
     # and running them together counts the same water twice.
-    volume = os.environ.get("CORAL_CITY_VOLUME", "1") != "0"
+    # Off by default, and that is a decision rather than caution.
+    #
+    # The volume is the better model and it is not finished. It attenuates
+    # every path through the water, including the sun's way *down* — which is
+    # right, and is a job `light_for` is already doing by dimming the sun with
+    # depth. Run together they take the downwelling light twice, and the
+    # measurement says so: transmission at ten metres came back a tenth where
+    # 1C says a half, and the depth cue went flat.
+    #
+    # Adopting it properly means handing the whole medium over — the sun stops
+    # being dimmed by depth, the veil stops being added by the materials, and
+    # the survival map is not needed at all because the volume works from each
+    # pixel's own distance instead of one baked point. That is a better
+    # platform and it is a change to the medium, not a change to the look.
+    #
+    # VOLUME=1 runs it. What it buys, today, is light with structure in the
+    # water column rather than a flat haze — which is the shafts A5 asks for.
+    volume = os.environ.get("CORAL_CITY_VOLUME", "0") != "0"
     settings.set("/rtx/raytracing/globalVolumetricEffects/enabled",
                  bool(volume and not _clear))
     if volume and not _clear:
