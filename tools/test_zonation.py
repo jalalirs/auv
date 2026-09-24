@@ -154,9 +154,22 @@ def test_nothing_that_needs_light_grows_in_the_dark():
             assert weights.get(shape, 0.0) == 0.0, (shape, weights)
 
 
-def test_the_deep_is_whips_and_sponges_and_crusts():
+def test_the_deep_is_whips_and_sponges_and_crusts_and_sea_cucumbers():
     for _, weights, _ in zonation.bands_for("deep"):
-        assert set(weights) == {"plume", "sponge", "encrusting"}, weights
+        assert set(weights) == {"plume", "sponge", "encrusting",
+                                "holothurian"}, weights
+
+
+def test_a_sea_cucumber_is_not_capped_by_a_band_that_caps_height():
+    """A band's cap is on how tall a thing stands. A holothurian is eight
+    centimetres tall and half a metre long, so that cap is no cap at all on
+    it, and the first draw would have put five-times-life-size ones on the mud.
+    """
+    assert zonation.NO_BIGGER_THAN_M["holothurian"] < 0.6
+    # And nothing that stands has its own cap, because the band is the right
+    # cap for those: a whip's height really is set by the water it is in.
+    for standing in ("plume", "sponge", "table", "fan", "massive"):
+        assert standing not in zonation.NO_BIGGER_THAN_M
 
 
 def test_the_deep_has_no_depth_structure_because_nothing_there_is_set_by_light():

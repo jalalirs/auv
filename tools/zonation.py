@@ -188,17 +188,50 @@ ASSEMBLAGES["hawaii"] = (
 # sparse is set by the colony count a place is built with, not here, and for
 # Thuwal Deep that is a few hundred a square kilometre against a reef's
 # hundreds of thousands.
+#
+# And a holothurian, which is the fourth thing and not a coral at all. On a
+# bathyal seabed it is the most conspicuous animal there is — in a great many
+# deep-sea photographs it is the only thing in frame that is obviously alive —
+# and it is what ploughs the trails `tools/sediment.py` puts in the mud. Until
+# it was added the ground had the traces and nothing that could have made them.
+#
+# Placed by the same cover map as everything else, which is a known
+# limitation: that map favours hard ground, and most holothurians are out on
+# the open mud between. Fixing it means a second placement channel for the
+# things that want soft ground, which this does not have yet.
 ASSEMBLAGES["deep"] = (
-    (2.0, {"sponge": 0.44, "encrusting": 0.34, "plume": 0.22}, 0.80),
-    (4.5, {"sponge": 0.44, "encrusting": 0.32, "plume": 0.24}, 1.00),
-    (10.0, {"sponge": 0.42, "plume": 0.30, "encrusting": 0.28}, 1.20),
-    (18.0, {"plume": 0.36, "sponge": 0.36, "encrusting": 0.28}, 1.40),
-    (26.0, {"plume": 0.38, "sponge": 0.36, "encrusting": 0.26}, 1.60),
+    (2.0, {"sponge": 0.40, "encrusting": 0.31, "plume": 0.20,
+           "holothurian": 0.09}, 0.80),
+    (4.5, {"sponge": 0.39, "encrusting": 0.28, "plume": 0.21,
+           "holothurian": 0.12}, 1.00),
+    (10.0, {"sponge": 0.36, "plume": 0.26, "encrusting": 0.24,
+            "holothurian": 0.14}, 1.20),
+    (18.0, {"plume": 0.31, "sponge": 0.31, "encrusting": 0.24,
+            "holothurian": 0.14}, 1.40),
+    (26.0, {"plume": 0.32, "sponge": 0.31, "encrusting": 0.22,
+            "holothurian": 0.15}, 1.60),
     # Everything Thuwal Deep actually is falls in this band: whips standing in
-    # the current, sponges, and crusts on whatever rock the sediment has not
-    # buried.
-    (999.0, {"plume": 0.40, "sponge": 0.36, "encrusting": 0.24}, 1.80),
+    # the current, sponges, crusts on whatever rock the sediment has not
+    # buried, and sea cucumbers grazing across the mud between them.
+    (999.0, {"plume": 0.34, "sponge": 0.31, "encrusting": 0.20,
+             "holothurian": 0.15}, 1.80),
 )
+
+
+# What a kind cannot exceed whatever band it lands in, in metres of its
+# longest dimension.
+#
+# A band's cap is a cap on *height*, which is the right cap for a table and a
+# whip and no cap at all on a sea cucumber: a holothurian stands eight
+# centimetres and lies half a metre, so a height cap of 1.8 m would let one
+# grow to five times life size on the mud.
+#
+# Only for things whose size is set by the animal rather than by the light and
+# the water. Psychropotes, the largest thing regularly filmed at these depths,
+# is about forty centimetres of body; most bathyal species are five to
+# twenty-five. Chosen at the top of that, so the biggest one drawn is a big
+# one rather than an impossible one.
+NO_BIGGER_THAN_M = {"holothurian": 0.45}
 
 
 def bands_for(assemblage: str | None):
