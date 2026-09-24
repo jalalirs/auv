@@ -772,7 +772,13 @@ def make(stage, say, floor: float, water_level: float = 0.0,
             Image.fromarray(caustic_net.as_texture(lit)).save(where)
             pattern = str(where)
             global _NET, _NET_STRENGTH
-            _NET, _NET_STRENGTH = str(where), CAUSTIC_STRENGTH
+            # CORAL_CITY_CAUSTIC_STRENGTH pins it, the same way the exposure
+            # and the veil are pinned: a question about one number gets
+            # answered in one run rather than by argument.
+            from coral.runner import asked_for as _asked
+            _NET = str(where)
+            _NET_STRENGTH = float(
+                _asked("CORAL_CITY_CAUSTIC_STRENGTH", CAUSTIC_STRENGTH))
             say("caustics_made", fromTheSea=True,
                 patchM=CAUSTIC_PATCH_M, atDepthM=round(float(working_depth), 1),
                 contrast=round(float(lit.std()), 3),
@@ -1366,7 +1372,10 @@ def put_the_water_in_whatever_arrived_since(stage, say=None) -> int:
         return 0
     found = put_the_water_in_the_materials(stage, **_AS_APPLIED)
     if say is not None:
-        say("water_caught_up", materials=found)
+        # The net too, because "it is set" and "it is in the picture" are
+        # different claims and only one of them can be read off a frame.
+        say("water_caught_up", materials=found,
+            net=_NET or "none", netStrength=round(float(_NET_STRENGTH), 3))
     return found
 
 
