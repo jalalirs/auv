@@ -328,6 +328,11 @@ UNTEXTURED_MATERIAL = """
 # rippled sand, which is what the bottom of a groove is.
 SURFACES = {"soft": "damp_beach_sand_02", "hard": "coral_ground_02"}
 
+# How hard the ground `tools/past-the-limit` built is. It is the sediment
+# apron off the toe of a reef running out onto the shelf, so: sand, with the
+# odd thing on it.
+SEDIMENT_APRON = 0.04
+
 # Sand, pavement, and how hard each habitat class the survey mapped is. Class 0
 # is ground nobody mapped, so it is given the middle: neither claimed as reef
 # nor claimed as sand.
@@ -899,6 +904,41 @@ def main() -> int:
             hardness_from = ("derived from the slope and relief of the seabed, "
                              "not from any survey: sediment collects where the "
                              "water is slow and the ground is flat")
+
+        # Ground that `tools/past-the-limit` built is sediment, and is known
+        # to be rather than inferred.
+        #
+        # It has to be said, because the inference reads it as rock. The flank
+        # is continued at the gradient it was last measured falling at — 1.77°
+        # at Al Fahal — and `zonation` calls anything with a slope on it hard,
+        # so a quarter of that site went from 0.5% hard as a flat plateau to
+        # 30% hard as a ramp, and its reef habitat went *up* from 67% of the
+        # site to 93%. Fixing the geometry made the habitat worse, which is
+        # what inferring a thing you already know looks like.
+        #
+        # What that ground is is not in doubt: it is the sediment apron off
+        # the toe of a reef, running out to the shelf. The reef stops where
+        # the sensor stopped seeing it, and everything past that is sand.
+        past_the_sensor = ((survey_note or {}).get("constructedPastTheSensor")
+                           if survey_note else None)
+        if past_the_sensor:
+            bits = (pathlib.Path(asked.heights).parent
+                    / past_the_sensor.get("mask", "constructed.bits"))
+            if bits.is_file():
+                built_ground = np.unpackbits(
+                    np.fromfile(bits, dtype="uint8"))[:height.size].reshape(
+                        height.shape).astype(bool)
+                at = (np.linspace(0, height.shape[0] - 1, hard.shape[0]).astype(int)[:, None],
+                      np.linspace(0, height.shape[1] - 1, hard.shape[1]).astype(int)[None, :])
+                hard = np.where(built_ground[at], SEDIMENT_APRON, hard
+                                ).astype("float32")
+                print(f"  habitat: and the {100 * float(built_ground.mean()):.0f}% "
+                      f"of it built past the sensor is sediment, which is "
+                      f"known rather than inferred")
+                hardness_from += ("; and the ground continued past the sensor's "
+                                  "limit is sediment apron off the toe of the "
+                                  "reef, which is what it is by construction "
+                                  "rather than something read off its shape")
         Image.fromarray((np.flipud(hard) * 255).astype("uint8")).save(
             into / "hardness.png")
 
@@ -960,7 +1000,8 @@ def main() -> int:
                        # habitat polygons and for a composed reef's own parts.
                        "knowsItsOwn": bool(
                            (classes is not None and classes.is_file())
-                           or (morphology and morphology.get("hard") is not None)),
+                           or (morphology and morphology.get("hard") is not None)
+                           or past_the_sensor),
                        "softFrom": (
                            "bioturbated mud, generated: trails, burrow mouths, "
                            "mounds and casts. The kinds of trace are what a "
@@ -1019,6 +1060,8 @@ def main() -> int:
                                # is made of rather than on a second opinion.
                                hard=hard if ground_said and ground_said.get(
                                    "knowsItsOwn") else None,
+                               # Never on ground that is not there.
+
                                reference=corpus if corpus.is_dir() else None)
 
     import numpy as np
