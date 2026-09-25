@@ -581,7 +581,12 @@ def is_it_all_reef(want, surveyed: bool = False) -> dict:
     return {
         "habitatShareOfSite": round(share, 4),
         "believable": bool(surveyed or share <= TOO_MUCH_OF_A_SITE),
-        "why": ("from a survey of this place" if surveyed else
+        "why": (("the place says what it is made of — a survey's habitat "
+                 "polygons, or a composed reef's own parts — rather than this "
+                 "working it out from the shape. %.0f%% of the site is reef "
+                 "habitat and that is a fact about the place, not an "
+                 "inference that failed to discriminate." % (100 * share))
+                if surveyed else
                 "derived from the shape of the seabed" if share <= TOO_MUCH_OF_A_SITE
                 else ("derived, and it calls %.0f%% of this site reef habitat. "
                       "A reef is a structure and a site is a box drawn around "
