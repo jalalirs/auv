@@ -1050,7 +1050,13 @@ def main() -> int:
                if survey_note else {}),
             **({k: survey_note[k] for k in
                 ("method", "observedAt", "opticalLimitM", "bottomVisibleFraction",
-                 "beyondOpticalDepthFraction", "medianDetailM", "toCalibrate")
+                 "beyondOpticalDepthFraction", "medianDetailM", "toCalibrate",
+                 # Where the sensor that measured this ground went blind and
+                 # the flank was continued instead. Carried through rather
+                 # than left in the reference, because the place is the thing
+                 # somebody flies and the place has to say which of its
+                 # seabed is a measurement. A quarter of Al Fahal is not.
+                 "constructedPastTheSensor", "fittedAgainst")
                 if survey_note and k in survey_note}),
             # Without the hardness map itself, which is an array and belongs
             # in hardness.png beside the place rather than in its record.
