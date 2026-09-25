@@ -380,8 +380,15 @@ def describe(height, across: float, picture=None) -> dict:
     # in the surf holds no sediment. This came from `make-site`, which had a
     # second hardness of its own — see the note on `describe` — and it is the
     # one thing that model knew and this one did not.
+    # Added rather than floored, which is how `make-site` had it and is the
+    # weaker and truer claim. As a floor at 0.55 this said every shallow thing
+    # is rock, and shallow flat ground is a reef flat *or* a lagoon floor —
+    # both exist and nothing here can tell them apart. Red Sea, which is a
+    # composed site with most of its ground above four metres, went to 99% reef
+    # habitat on that one line: the fix for sand being unable to be sand,
+    # undone in the shallows.
     crest = np.clip((SCOURED_ABOVE_M - depth) / 3.0, 0.0, 1.0)
-    hard = np.clip(np.maximum(np.maximum(rough, proud), 0.55 * crest),
+    hard = np.clip(np.maximum(rough, proud) + 0.35 * crest,
                    SAND_IS_STILL, 1.0)
 
     if picture is not None:
