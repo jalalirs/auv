@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+"""Give a seabed shape where the sensor that measured it went blind.
+
+    tools/past-the-limit ~/coral-city/reference/al-fahal/seabed_fitted.json
+
+Satellite-derived bathymetry works by how much light comes back off the
+bottom, so it stops working at a depth that depends on the water. Past that
+depth it does not return "unknown" — it returns *the limit*, for every pixel,
+for ever. The result is a dead-flat plateau at exactly one depth, and it is
+not seabed. It is the shape of the sensor giving up.
+
+Al Fahal is a quarter of its site: eight hundred and ten metres of ground at
+exactly 21.59 m, along the whole western flank where the reef drops away onto
+the shelf. Every dive flown there has flown over a plane that does not exist,
+and the reef builder read that plane as ground and — before this week — as
+prime reef habitat carrying forty-four per cent coral.
+
+**What this does not do is invent better bathymetry.** There is none. ICESat-2
+ATL24 is already fitted into this seabed and its own deepest seafloor photon
+here is 25.4 m, because it is a green lidar and stops for the same reason. The
+global grids are four hundred and fifty metres a sample, which over a
+three-kilometre site is seven numbers, and asked for this square they come
+back *shallower* than the reef.
+
+So what it does is two things, and says so in the record:
+
+  **Continue the slope** at the gradient the sensor last measured honestly,
+  easing onto the shelf floor the regional grid puts west of the reef. A flat
+  plane is wrong in a way a vehicle flies through and a controller learns
+  from. A slope that eases onto a shelf is not measured, and is not wrong in
+  character.
+
+  **Mark every cell it touched.** The heightfield comes out with a companion
+  mask, and nothing downstream may call that ground surveyed.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import sys
+
+import numpy as np
+
+# How near the deepest value a cell has to be to count as the sensor's floor
+# rather than as ground that happens to be deep.
+#
+# A hundredth of a metre. Real bathymetry does not produce thousands of cells
+# agreeing to the centimetre; a clamp does, and that is exactly the signature.
+AT_THE_LIMIT_M = 0.01
+
+# And how much of the site has to be sitting on it before this is a clamp and
+# not a coincidence. One in fifty.
+ENOUGH_TO_BE_A_CLAMP = 0.02
+
+# Where to measure the gradient the slope is continued at.
+#
+# Not at the boundary. The last stretch before a satellite-derived depth
+# saturates is already compressed — the signal is dying, so the depths come
+# back too shallow and the apparent slope flattens. At Al Fahal the gradient
+# over the thirty cells before the clip is 0.10 degrees, which is a shelf, and
+# the gradient two metres shallower than that is 1.68, which is a reef flank.
+# The first number is a measurement of the sensor.
+#
+# So: the band that is deep enough to be the flank and shallow enough that the
+# sensor was still working, as a fraction of the limit.
+HONEST_BETWEEN = (0.86, 0.975)
+
+
+def where_it_gave_up(depth: np.ndarray) -> np.ndarray:
+    """The cells sitting on the sensor's floor rather than on the seabed."""
+    return depth >= depth.max() - AT_THE_LIMIT_M
+
+
+def the_last_honest_gradient(depth: np.ndarray, step_m: float,
+                             clamped: np.ndarray) -> dict:
+    """How fast the ground was falling while the sensor could still see it.
+
+    Measured along rows, on the side of each row's shallowest point that the
+    clamped ground is on — which is the flank running down to it, rather than
+    the other flank running down to something else.
+    """
+    limit = float(depth.max())
+    low, high = (HONEST_BETWEEN[0] * limit, HONEST_BETWEEN[1] * limit)
+    gradients = []
+    for r in range(depth.shape[0]):
+        row, clamp = depth[r], clamped[r]
+        if not clamp.any():
+            continue
+        # Which side the sensor lost: whichever side of the crest the clamped
+        # cells are on.
+        crest = int(np.argmin(row))
+        westward = float(np.flatnonzero(clamp).mean()) < crest
+        band = np.flatnonzero((row >= low) & (row <= high) & (~clamp))
+        band = band[band < crest] if westward else band[band > crest]
+        if band.size < 8:
+            continue
+        fell = np.polyfit(band * step_m, row[band], 1)[0]
+        # Metres deeper per metre travelled away from the reef.
+        gradients.append(-fell if westward else fell)
+    if not gradients:
+        return {}
+    gradients = np.array(gradients)
+    return {
+        "metresPerMetre": float(np.median(gradients)),
+        "degrees": float(np.degrees(np.arctan(np.median(gradients)))),
+        "rowsMeasured": int(gradients.size),
+        "betweenM": [round(low, 2), round(high, 2)],
+        "why": ("measured where the sensor was still working, not at the "
+                "boundary: the last stretch before a satellite-derived depth "
+                "saturates is already compressed, so the apparent slope there "
+                "is a measurement of the sensor rather than of the ground"),
+    }
+
+
+def _how_far_from_the_edge(clamped: np.ndarray, step_m: float) -> np.ndarray:
+    """Metres from each clamped cell to the nearest ground that was measured.
+
+    A distance transform if scipy is here, and a flood outwards if not —
+    this tool must run wherever a place is built.
+    """
+    try:
+        from scipy import ndimage
+
+        return ndimage.distance_transform_edt(clamped, sampling=step_m)
+    except ImportError:  # pragma: no cover - scipy is present on the box
+        far = np.where(clamped, np.inf, 0.0)
+        for _ in range(max(clamped.shape)):
+            moved = np.minimum.reduce([
+                np.roll(far, 1, 0), np.roll(far, -1, 0),
+                np.roll(far, 1, 1), np.roll(far, -1, 1)]) + step_m
+            new = np.minimum(far, moved)
+            if np.allclose(new, far):
+                break
+            far = new
+        return np.where(clamped, far, 0.0)
+
+
+def carry_on(depth: np.ndarray, step_m: float, clamped: np.ndarray,
+             gradient: float, shelf_m: float, seed: int = 0) -> np.ndarray:
+    """Continue the slope into the ground the sensor could not see.
+
+    The flank falls at the gradient it was last measured falling at, and eases
+    onto the shelf: an exponential approach, so it leaves the boundary at the
+    right slope and arrives flat instead of meeting the shelf at a corner.
+    Both halves of that matter — a kink is as unlike a seabed as a plane is.
+
+        d(x) = shelf - (shelf - limit) * exp(-gradient * x / (shelf - limit))
+
+    which has d(0) = limit and d'(0) = gradient by construction.
+    """
+    limit = float(depth.max())
+    out = depth.copy()
+    if shelf_m <= limit:
+        return out
+    far = _how_far_from_the_edge(clamped, step_m)
+    drop = shelf_m - limit
+    carried = shelf_m - drop * np.exp(-gradient * far / drop)
+
+    # And a little unevenness, because nothing on a seabed is a smooth
+    # surface of revolution. Small: this is a sediment shelf off the toe of a
+    # reef, not the reef. Tapered in from the boundary so the measured ground
+    # is not disturbed by it.
+    rough = np.random.default_rng(seed).normal(0, 1, depth.shape)
+    for _ in range(6):
+        rough = 0.25 * (np.roll(rough, 1, 0) + np.roll(rough, -1, 0)
+                        + np.roll(rough, 1, 1) + np.roll(rough, -1, 1))
+    spread = rough.std() or 1.0
+    carried = carried + (rough / spread) * 0.25 * np.clip(far / 60.0, 0.0, 1.0)
+
+    out[clamped] = carried[clamped]
+    return out
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(
+        description="give a seabed shape where its sensor went blind")
+    parse.add_argument("heights", help="a seabed_*.json written by fit-depths")
+    parse.add_argument("--shelf", type=float, default=None,
+                       help="metres: the depth the flank eases onto")
+    parse.add_argument("--shelf-from", default=None,
+                       help="where that number came from")
+    parse.add_argument("--seed", type=int, default=0)
+    asked = parse.parse_args()
+
+    said = pathlib.Path(asked.heights).expanduser()
+    field = json.loads(said.read_text())
+    raw = said.parent / (field.get("file") or said.stem + ".f32")
+    rows, columns = int(field["rows"]), int(field["columns"])
+    across = float(field["acrossMetres"])
+    step = across / max(1, columns - 1)
+
+    height = np.fromfile(raw, dtype="<f4").reshape(rows, columns).astype("float64")
+    depth = -height
+    clamped = where_it_gave_up(depth)
+    share = float(clamped.mean())
+
+    print(f"  {said.parent.name}: deepest {depth.max():.2f} m, "
+          f"{100 * share:.1f}% of the site is sitting on it")
+    if share < ENOUGH_TO_BE_A_CLAMP:
+        print("  That is not a clamp, it is ground that happens to be deep. "
+              "Nothing to do.")
+        return 0
+
+    gradient = the_last_honest_gradient(depth, step, clamped)
+    if not gradient:
+        print("  no measured flank to continue: this seabed saturates before "
+              "it shows a slope", file=sys.stderr)
+        return 1
+    print(f"  the flank was last falling at {gradient['degrees']:.2f}° "
+          f"(measured between {gradient['betweenM'][0]:.1f} and "
+          f"{gradient['betweenM'][1]:.1f} m, over {gradient['rowsMeasured']} rows)")
+
+    if asked.shelf is None:
+        print("  --shelf is required: how deep the ground this flank runs onto "
+              "actually is. There is no measurement of it in this file — that "
+              "is the whole problem — so it has to come from somewhere and be "
+              "said.", file=sys.stderr)
+        return 1
+    if not asked.shelf_from or len(asked.shelf_from.strip()) < 12:
+        print("  --shelf-from must say where that depth came from, in words.",
+              file=sys.stderr)
+        return 1
+
+    carried = carry_on(depth, step, clamped, gradient["metresPerMetre"],
+                       float(asked.shelf), seed=asked.seed)
+    out = (-carried).astype("float32")
+    out.tofile(raw)
+    np.packbits(clamped, axis=None).tofile(said.parent / "constructed.bits")
+
+    field["constructedPastTheSensor"] = {
+        "share": round(share, 4),
+        "cells": int(clamped.sum()),
+        "limitM": round(float(depth.max()), 2),
+        "shelfM": float(asked.shelf),
+        "shelfFrom": asked.shelf_from,
+        "gradient": gradient,
+        "mask": "constructed.bits",
+        "maskFormat": "np.packbits of a %d x %d boolean, row major, "
+                      "true where the ground was constructed" % (rows, columns),
+        "what": ("the sensor returned its own limit rather than a depth, for "
+                 "every cell past the depth it can see. This is not that "
+                 "ground measured: it is the flank continued at the gradient "
+                 "it was last measured falling at, eased onto the shelf depth "
+                 "above. Nothing here is a survey and nothing downstream may "
+                 "call it one."),
+    }
+    field["deepestM"] = round(float(carried.max()), 2)
+    said.write_text(json.dumps(field, indent=2) + "\n")
+
+    print(f"  continued onto a shelf at {asked.shelf:.1f} m; the site now "
+          f"reaches {carried.max():.2f} m")
+    print(f"  {clamped.sum():,} cells marked constructed in "
+          f"{said.parent / 'constructed.bits'}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
