@@ -216,6 +216,8 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     each_covers = float(a_draw(depth[trial_rows, trial_columns],
                                np.random.default_rng(seed + 1))[2].mean())
     needed = wanted_area / max(each_covers, 1e-6)
+    how_many_asked = int(how_many)
+    short_by = needed / max(float(how_many), 1.0)
     how_many = int(min(how_many, max(1000, needed)))
 
     # In stands, not sprinkled.
@@ -354,6 +356,28 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
                 "measured": False,
             },
             "coverAskedFor": round(asked_for, 5),
+            # Whether the colony budget could actually pay for the cover that
+            # was asked for, and by how much it fell short if not.
+            #
+            # `how_many` is a ceiling somebody types on the command line and
+            # `needed` is what the cover map costs. When the ceiling binds,
+            # the reef is built at whatever density the budget allows and the
+            # cover asked for is simply not delivered — and until the
+            # denominator was fixed nothing could see it, because cover was
+            # being measured inside the stands where it *is* what was asked
+            # for. Al Fahal asks for 43% over eight and a half square
+            # kilometres of mapped habitat, which costs nine million
+            # colonies; it was given four hundred thousand.
+            "coverPaidFor": {
+                "coloniesAsked": int(how_many_asked),
+                "coloniesNeeded": int(round(needed)),
+                "shortBy": round(short_by, 2),
+                "paid": bool(short_by <= 1.0),
+                "why": ("the colony ceiling binds: this reef is built at the "
+                        "density the budget allows and not at the cover its "
+                        "map asks for" if short_by > 1.0 else
+                        "the budget covers what the map asks for"),
+            },
             "beginAt": begin,
             "points": int(sum(len(p) for p, _ in prototypes)),
             "coverWhereItGrows": round(cover, 5),
