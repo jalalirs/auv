@@ -33,8 +33,49 @@ import numpy as np
 # against it. Read off Caribbean and Red Sea fore-reef surveys: the peak is at
 # four to ten metres, not at the surface, because the surface is where the waves
 # are. Below twenty-five metres it is plates and sponges and falling.
-DEPTH_M = (0.0, 1.0, 2.5, 4.0, 8.0, 14.0, 20.0, 25.0, 30.0, 36.0, 60.0)
-COVER = (0.10, 0.42, 0.34, 0.76, 0.84, 0.74, 0.56, 0.42, 0.26, 0.15, 0.04)
+# The curve has to reach nought, and it did not.
+#
+# It used to stop at sixty metres with four per cent, and `np.interp` clamps
+# past the end of its table rather than continuing — so every depth below
+# sixty metres came back four per cent, for ever. Thuwal Deep is five hundred
+# and fifty metres down and was handed a coral ceiling of four per cent over
+# five square kilometres of seabed, which is why a place built specifically to
+# have no reef on it kept being given reef habitat.
+#
+# Zooxanthellate coral needs light and runs out of it. Mesophotic reefs reach
+# about a hundred and fifty metres in the clearest water and nothing builds
+# below that, so the curve goes to nought there. Between sixty and a hundred
+# and fifty it is a taper and not a survey: nobody counted this and the shape
+# is chosen, which matters little because no place on this platform sits in
+# that band — what matters is that the end of it is nought rather than a
+# clamp.
+DEPTH_M = (0.0, 1.0, 2.5, 4.0, 8.0, 14.0, 20.0, 25.0, 30.0, 36.0, 60.0,
+           100.0, 150.0)
+COVER = (0.10, 0.42, 0.34, 0.76, 0.84, 0.74, 0.56, 0.42, 0.26, 0.15, 0.04,
+         0.01, 0.0)
+
+# How much of open sand is rock anyway.
+#
+# Not nought, because a sand flat does carry the odd head — a lump of rubble
+# with something growing on it, a lone boulder. But small, and it was 0.02,
+# which is not small enough: multiplied by a cover ceiling of 0.8 in the
+# shallows and lifted by the patchiness, dead flat sand came out over the two
+# per cent at which ground starts being counted as reef, and a fifth of a
+# featureless plain was reef habitat again by a different route.
+#
+# Five in a thousand puts the most a sand flat can carry at about four parts
+# in a thousand, which is a colony every couple of hundred square metres.
+SAND_IS_STILL = 0.005
+
+# And the cover below which ground is not reef at all: sand with the odd head
+# on it rather than a reef somebody would run a transect over.
+#
+# It lives here rather than in `reef`, which is the module that imports this
+# one — the first attempt had it the other way about and the two imported each
+# other, which worked or did not depending on which was loaded first. A
+# threshold written twice is how there came to be two definitions of cover,
+# and a threshold written once in a cycle is no better.
+COVER_FLOOR = 0.02
 
 # What grows there, by depth. The shallow end is built to survive being hit:
 # encrusting sheets, low boulders, rubble. The middle is the postcard — tables
@@ -330,7 +371,7 @@ def describe(height, across: float, picture=None) -> dict:
     # than a cleverer inference, which is what B3 says Al Fahal needs.
     rough = np.clip(slope / 6.0, 0.0, 1.0)
     proud = np.clip(stands / 0.8, 0.0, 1.0)
-    hard = np.clip(np.maximum(rough, proud), 0.02, 1.0)
+    hard = np.clip(np.maximum(rough, proud), SAND_IS_STILL, 1.0)
 
     if picture is not None:
         seen = _hard_from_picture(picture, depth.shape)
@@ -449,15 +490,6 @@ def substrate_colour(height, across: float, picture=None):
                 colour *= grain[..., None]
 
     return np.clip(colour, 0, 255).astype("uint8")
-
-
-# The cover below which ground is not reef. Imported from `reef` rather than
-# written again, because two copies of a threshold is how there came to be two
-# definitions of cover.
-try:
-    from reef import COVER_FLOOR
-except ImportError:  # pragma: no cover - reef imports zonation in some orders
-    COVER_FLOOR = 0.02
 
 
 def cover(ground: dict, rng, patchiness: float = 1.0):

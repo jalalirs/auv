@@ -218,7 +218,24 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     needed = wanted_area / max(each_covers, 1e-6)
     how_many_asked = int(how_many)
     short_by = needed / max(float(how_many), 1.0)
-    how_many = int(min(how_many, max(1000, needed)))
+
+    # Below the light the cover map is not the authority, and must not cap.
+    #
+    # `zonation`'s depth curve reaches nought at a hundred and fifty metres,
+    # because zooxanthellate coral runs out of light and stops. On a place
+    # below that the map correctly asks for no coral at all — and the cap
+    # `min(how_many, needed)` then reduced Thuwal Deep from the twenty
+    # thousand colonies it was built with to a thousand.
+    #
+    # Nothing down there is set by light: that is the first sentence of the
+    # `deep` assemblage and it is the entire point of the place. What grows
+    # there is azooxanthellate — black corals, sponges, crusts — and how much
+    # of it there is was *chosen*, which the place's own `--cover-from` says
+    # in so many words. So a count asked for on a site the map has nothing to
+    # say about is a count, not a ceiling.
+    below_the_light = needed < 0.05 * how_many_asked
+    if not below_the_light:
+        how_many = int(min(how_many, max(1000, needed)))
 
     # In stands, not sprinkled.
     #
@@ -298,14 +315,31 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # The reef this is cover of: the habitat `zonation.cover` drew, which is
     # the ground these colonies were planted into and the ground a transect
     # would have been run on.
-    habitat = float((want > COVER_FLOOR).sum()) * step_x * step_y
+    # The reef this is cover of. Where the light reaches, the habitat the
+    # cover map drew; below it, the hard ground, because what lives down there
+    # attaches to rock and is not placed by light.
+    if below_the_light:
+        habitat = float((ground["hard"] > 0.5).sum()) * step_x * step_y
+    else:
+        habitat = float((want > COVER_FLOOR).sum()) * step_x * step_y
     # And whether that habitat is believable, said out loud. A derived map
     # that calls two thirds of a box reef has stopped discriminating, and
     # every number downstream of it — the cover target, the colonies it costs,
     # the cover finally measured — is a number about the box.
     believable = zonation.is_it_all_reef(want, surveyed=picture is not None)
-    if not believable["believable"]:
-        print(f"  habitat: {believable['why']}")
+    if below_the_light:
+        believable = {
+            "habitatShareOfSite": round(
+                float((ground["hard"] > 0.5).mean()), 4),
+            "believable": True,
+            "why": ("below the light: the cover map asks for no coral here "
+                    "and is right to, so the habitat is the hard ground that "
+                    "azooxanthellate growth attaches to and the colony count "
+                    "is the one this place was built with rather than one "
+                    "derived from a map of light"),
+        }
+    elif not believable["believable"]:
+        print(f"  reef habitat: {believable['why']}")
     measured = cover_over(x, y, covered_by, across, ground_m2=habitat)
     cover = measured["cover"]
     thick = measured["thicketM2"]
@@ -377,11 +411,15 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
             # colonies; it was given four hundred thousand.
             "habitatFrom": believable,
             "coverPaidFor": {
+                "belowTheLight": bool(below_the_light),
                 "coloniesAsked": int(how_many_asked),
                 "coloniesNeeded": int(round(needed)),
                 "shortBy": round(short_by, 2),
-                "paid": bool(short_by <= 1.0),
-                "why": ("the colony ceiling binds: this reef is built at the "
+                "paid": bool(below_the_light or short_by <= 1.0),
+                "why": ("below the light, where the cover map asks for no "
+                        "coral and the colony count is a choice rather than "
+                        "a budget" if below_the_light else
+                        "the colony ceiling binds: this reef is built at the "
                         "density the budget allows and not at the cover its "
                         "map asks for" if short_by > 1.0 else
                         "the budget covers what the map asks for"),
@@ -517,8 +555,10 @@ THROUGH_BY_DEFAULT = 0.0
 # seeing rather than choosing between.
 COVER_CELL_M = 5.0
 # Below this a cell is bare ground rather than thin reef. Two per cent of a
-# five-metre cell is half a square metre.
-COVER_FLOOR = 0.02
+# five-metre cell is half a square metre. Defined in `zonation`, which is the
+# module that decides what ground is reef, and imported here so there is one
+# of it.
+COVER_FLOOR = zonation.COVER_FLOOR
 # And above this a cell is thicket rather than scattered heads — close enough
 # together to be an obstacle rather than a thing to fly past.
 COVER_THICKET = 0.45
