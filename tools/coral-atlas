@@ -111,7 +111,7 @@ def rings_of(geometry: dict):
 
 
 def paint(features: list, centre: tuple, across: float, texels: int,
-          onto=None) -> np.ndarray:
+          codes: dict | None = None, order: list | None = None) -> np.ndarray:
     """Polygons in degrees onto a square grid in the site's own metres.
 
     PIL rather than GDAL, because every other tool here runs on numpy and a
@@ -119,8 +119,10 @@ def paint(features: list, centre: tuple, across: float, texels: int,
     """
     from PIL import Image, ImageDraw
 
+    codes = AS_HABITAT if codes is None else codes
+    order = IN_ORDER if order is None else order
     east, north = metres_per_degree(centre[0])
-    grid = Image.new("I", (texels, texels), UNMAPPED) if onto is None else onto
+    grid = Image.new("I", (texels, texels), UNMAPPED)
     draw = ImageDraw.Draw(grid)
 
     by_class = {}
@@ -129,8 +131,8 @@ def paint(features: list, centre: tuple, across: float, texels: int,
         by_class.setdefault(name, []).append(one.get("geometry") or {})
 
     painted = {}
-    for name in IN_ORDER:
-        code = AS_HABITAT.get(name)
+    for name in order:
+        code = codes.get(name)
         if code is None or name not in by_class:
             continue
         drawn = 0
@@ -186,6 +188,15 @@ def main() -> int:
             area[name] = area.get(name, 0.0) + float(properties.get("area_sqkm") or 0.0)
         said[layer] = {
             "polygons": len(features),
+            # What the Atlas says about *this site*, which is not the sum of
+            # the areas it hands back.
+            #
+            # A WFS bbox query returns every polygon that *intersects* the
+            # box, whole, and `area_sqkm` is the whole polygon's area. Over a
+            # one-kilometre site with reef polygons a kilometre across, the
+            # areas added up to 2.24 km2 "of 1.00" — which is not a share of
+            # anything and was being printed as one. The shares that mean
+            # something come off the raster, which is clipped to the site.
             # Said, because a WFS will silently give you a page rather than
             # the answer, and a habitat map missing its eastern half looks
             # exactly like a reef that stops.
@@ -202,14 +213,36 @@ def main() -> int:
                   f"page, not the answer", file=sys.stderr)
             return 1
         (into / f"coral-atlas-{layer}.geojson").write_text(json.dumps(answer))
+        # The benthic layer is painted into the platform's own habitat codes,
+        # because that is what `make-site` reads. The geomorphic layer has a
+        # different taxonomy entirely — reef crest, back reef slope, lagoon —
+        # so it is painted into codes of its own, purely to say how much of
+        # the site each part covers. Nothing downstream reads those.
         if layer == "benthic":
-            grid = paint(features, (asked.latitude, asked.longitude),
-                         asked.across, asked.texels)
-            classes = np.array(grid, dtype="int16")
+            codes, order = AS_HABITAT, IN_ORDER
+        else:
+            order = [k for k, _ in sorted(area.items(), key=lambda kv: -kv[1])]
+            codes = {name: i + 1 for i, name in enumerate(order)}
+        grid = paint(features, (asked.latitude, asked.longitude),
+                     asked.across, asked.texels, codes=codes, order=order)
+        classes = np.array(grid, dtype="int16")
+        square_km = asked.across * asked.across / 1e6
+        on_site = {}
+        for name, code in codes.items():
+            share = float((classes == code).mean())
+            if share > 0:
+                on_site[name] = on_site.get(name, 0.0) + share
+        said[layer]["onSiteShare"] = {
+            k: round(v, 4) for k, v in
+            sorted(on_site.items(), key=lambda kv: -kv[1])}
+        said[layer]["onSiteSqKm"] = {
+            k: round(v * square_km, 4) for k, v in
+            sorted(on_site.items(), key=lambda kv: -kv[1])}
+        said[layer]["unmappedShare"] = round(
+            float((classes == UNMAPPED).mean()), 4)
+        said[layer]["drawn"] = dict(paint.drawn)
+        if layer == "benthic":
             np.save(into / f"habitat_{asked.texels}.npy", classes)
-            said[layer]["drawn"] = paint.drawn
-            said[layer]["unmappedShare"] = round(
-                float((classes == UNMAPPED).mean()), 4)
 
     record = {
         "source": "Allen Coral Atlas, global benthic and geomorphic maps",
@@ -235,14 +268,16 @@ def main() -> int:
     (into / "coral-atlas.json").write_text(json.dumps(record, indent=2) + "\n")
 
     print(f"  {asked.name}: Allen Coral Atlas, {asked.across:.0f} m across")
+    square_km = asked.across * asked.across / 1e6
     for layer in ("benthic", "geomorphic"):
         one = said[layer]
-        print(f"    {layer}: {one['polygons']} polygons, "
-              f"{one['mappedSqKm']:.2f} km2 of "
-              f"{asked.across * asked.across / 1e6:.2f}")
-        total = max(one["mappedSqKm"], 1e-9)
-        for name, area in list(one["areaSqKmByClass"].items())[:7]:
-            print(f"      {name:<24} {area:7.4f} km2  {100 * area / total:5.1f}%")
+        mapped = 1.0 - one["unmappedShare"]
+        print(f"    {layer}: {one['polygons']} polygons; the Atlas maps "
+              f"{100 * mapped:.0f}% of this {square_km:.2f} km2 site")
+        for name, share in list(one["onSiteShare"].items())[:8]:
+            print(f"      {name:<24} {share * square_km:7.4f} km2  "
+                  f"{100 * share:5.1f}% of the site  "
+                  f"{100 * share / max(mapped, 1e-9):5.1f}% of what is mapped")
     print(f"    {into / ('habitat_%d.npy' % asked.texels)}")
     return 0
 
