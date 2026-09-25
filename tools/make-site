@@ -370,6 +370,27 @@ def fetch_texture(where: pathlib.Path, name: str, prefix: str = "seabed",
 
 
 
+def _soften(field, texels: float):
+    """Blur a field by a width in texels, separably.
+
+    Written out rather than reached for in scipy, because this runs wherever a
+    place is built and the one thing it must not do is depend on a GIS stack.
+    """
+    import numpy as np
+
+    radius = max(1, int(round(2.0 * texels)))
+    x = np.arange(-radius, radius + 1, dtype="float64")
+    kernel = np.exp(-0.5 * (x / max(texels, 1e-6)) ** 2)
+    kernel /= kernel.sum()
+    out = field.astype("float64")
+    for axis in (0, 1):
+        out = np.apply_along_axis(
+            lambda row: np.convolve(
+                np.pad(row, radius, mode="edge"), kernel, mode="valid"),
+            axis, out)
+    return out.astype("float32")
+
+
 def derived_hardness(height, across: float, n: int = 1024):
     """Where the hard ground is, worked out from the shape of the seabed.
 
@@ -909,6 +930,30 @@ def main() -> int:
                 guessed = derived_hardness(height, asked.across,
                                            n=kinds.shape[0])
                 hard = np.where(nobody_looked, guessed, hard).astype("float32")
+
+            # Softened to the map's own resolution, where it says what that is.
+            #
+            # The Allen Coral Atlas is a ten-metre raster vectorised into
+            # polygons, so its boundaries are stacks of ten-metre rectangles —
+            # and drawn as a step, a boundary known to ten metres is a claim
+            # of precision the map does not have. Kāne'ohe's derived colour
+            # came out visibly tiled. A boundary known to ten metres is drawn
+            # over ten metres.
+            #
+            # Only where the reference says its resolution. A survey that
+            # mapped a reef at a metre should keep its edges.
+            told = (pathlib.Path(asked.ground).expanduser() / "coral-atlas.json"
+                    if asked.ground else None)
+            if told and told.is_file():
+                try:
+                    coarse = float(json.loads(told.read_text())["resolutionM"])
+                except Exception:
+                    coarse = 0.0
+                texels = coarse / (asked.across / max(1, hard.shape[0] - 1))
+                if texels >= 2:
+                    hard = _soften(hard, texels)
+                    print(f"  habitat: softened over {coarse:.0f} m, which is "
+                          f"what that map resolves")
             named = ", ".join(f"{HABITAT_NAMES.get(k, k)} {100 * (kinds == k).mean():.0f}%"
                               for k in sorted(set(np.unique(kinds).tolist())))
             print(f"  habitat: surveyed polygons: {named}")
