@@ -299,6 +299,13 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # the ground these colonies were planted into and the ground a transect
     # would have been run on.
     habitat = float((want > COVER_FLOOR).sum()) * step_x * step_y
+    # And whether that habitat is believable, said out loud. A derived map
+    # that calls two thirds of a box reef has stopped discriminating, and
+    # every number downstream of it — the cover target, the colonies it costs,
+    # the cover finally measured — is a number about the box.
+    believable = zonation.is_it_all_reef(want, surveyed=picture is not None)
+    if not believable["believable"]:
+        print(f"  habitat: {believable['why']}")
     measured = cover_over(x, y, covered_by, across, ground_m2=habitat)
     cover = measured["cover"]
     thick = measured["thicketM2"]
@@ -368,6 +375,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
             # for. Al Fahal asks for 43% over eight and a half square
             # kilometres of mapped habitat, which costs nine million
             # colonies; it was given four hundred thousand.
+            "habitatFrom": believable,
             "coverPaidFor": {
                 "coloniesAsked": int(how_many_asked),
                 "coloniesNeeded": int(round(needed)),
