@@ -279,7 +279,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     (where / "coral.usda").write_text(
         _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn))
 
-    # How much of the ground this actually covers, square metre by square metre.
+    # How much of the ground this actually covers.
     #
     # A single number over "the reef" is not a measurement, because it depends
     # entirely on how generously the reef is defined — a loose threshold makes a
@@ -287,15 +287,15 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # whatever the count is. Both happened. What a diver means by cover is
     # local: stand somewhere on the reef, look down, and see how much of the
     # ground is coral.
-    metres = np.floor_divide(
-        np.stack([x + across / 2, y + across / 2], axis=-1), 1.0).astype(int)
-    metres = np.clip(metres, 0, int(across) - 1)
-    per_metre = np.zeros((int(across), int(across)))
-    np.add.at(per_metre, (metres[:, 1], metres[:, 0]), covered_by)
-
-    lived_in = per_metre[per_metre > 0.02]
-    cover = float(np.clip(np.median(lived_in), 0, 1)) if lived_in.size else 0.0
-    thick = float((per_metre > 0.45).sum())
+    #
+    # Worked out by `cover_over` above, which `tools/deliver` also calls on the
+    # colonies it reads back out of the published USD. Two independent inputs,
+    # one definition: if they disagree the file does not contain the reef this
+    # function says it built. They used to disagree by up to half as much
+    # again, and the reason was that there were two *definitions*.
+    measured = cover_over(x, y, covered_by, across)
+    cover = measured["cover"]
+    thick = measured["thicketM2"]
 
     asked_for = float(np.average(want, weights=want > 0.02)) if (want > 0.02).any() else 0.0
     begin = zonation.best_ground(ground, want, across)
@@ -344,8 +344,22 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
             "beginAt": begin,
             "points": int(sum(len(p) for p, _ in prototypes)),
             "coverWhereItGrows": round(cover, 3),
-            "reefAreaM2": int(lived_in.size),
-            "denseAreaM2": int(thick)}
+            "reefAreaM2": int(round(measured["reefGroundM2"])),
+            "denseAreaM2": int(thick),
+            # How it was measured, so a deliverable computing the same number
+            # off the published file can be held against this one rather than
+            # quietly reporting a different statistic under the same word.
+            "coverMeasuredBy": {
+                "cellM": measured["cellM"],
+                "over": "cells with more than %g cover in them" % COVER_FLOOR,
+                "statistic": "mean over those cells, each saturated as "
+                             "1 - exp(-A/G) because colonies are scattered "
+                             "rather than tiled",
+                "medianCover": round(measured["medianCover"], 3),
+                "piledUp": round(measured["piledUp"], 3),
+                "colonyAreaM2": round(measured["colonyAreaM2"], 1),
+                "biggerThanACell": measured["biggerThanACell"],
+            }}
 
 
 def _smooth_normals(points, faces):
@@ -416,6 +430,117 @@ THROUGH = {"massive": 0.0, "brain": 0.0, "encrusting": 0.05,
            "holothurian": 0.0,
            "low": 0.0, "stony": 0.0, "head": 0.0}
 THROUGH_BY_DEFAULT = 0.0
+
+
+# How much of the ground a reef covers, worked out one way for everybody.
+#
+# There were two of these and they disagreed by up to half as much again.
+#
+# `tools/reef.py` binned every colony into a *one metre* cell by its centre,
+# summed the areas, kept the cells above two per cent and took the **median**,
+# clipped at one. `tools/deliver` summed every colony's area, divided by the
+# count of those cells and saturated it — a **mean**. Al Fahal came out 44.2%
+# one way and 52.7% the other, Thuwal Deep 12.1% and 18.3%, and Red Sea the
+# other way about. Nothing was broken: they were two different statistics of
+# two different binnings wearing the same word.
+#
+# Both binnings also had the same fault under them. A cell one metre across is
+# smaller than the colonies in it, so a three-metre table put seven square
+# metres into a single cell and six of them were lost to the clip, while its
+# neighbours — which it is physically standing over — got nothing.
+#
+# So: one function. A colony is spread over the cells it actually covers
+# rather than dropped in the one its centre is in, as a square of the same
+# area, which makes the overlap a product of two box intersections and exact
+# to compute. Cells are five metres, which is larger than all but a handful of
+# colonies and is about the resolution of the habitat maps these places are
+# built against. Within a cell colonies are scattered rather than tiled, so
+# what they cover is 1 - exp(-A/G) and not A/G — the same arithmetic the
+# planting uses to decide how many to plant.
+#
+# What comes back is the mean over the ground that has any reef on it, which
+# is what a diver means by "cover on this reef", and the median beside it,
+# because the two differ exactly where a reef is patchy and that is worth
+# seeing rather than choosing between.
+COVER_CELL_M = 5.0
+# Below this a cell is bare ground rather than thin reef. Two per cent of a
+# five-metre cell is half a square metre.
+COVER_FLOOR = 0.02
+# And above this a cell is thicket rather than scattered heads — close enough
+# together to be an obstacle rather than a thing to fly past.
+COVER_THICKET = 0.45
+
+
+def cover_over(x, y, area, across: float, cell_m: float = COVER_CELL_M) -> dict:
+    """What a reef of these colonies covers, and over how much ground.
+
+    `x` and `y` are metres from the middle of the site, `area` each colony's
+    plan area in square metres. Everything is in metres and nothing here knows
+    what a growth form is.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    area = np.asarray(area, dtype=float)
+    n = max(1, int(round(float(across) / float(cell_m))))
+    piled = np.zeros((n, n))
+    if x.size == 0:
+        return {"cellM": float(cell_m), "cells": int(piled.size),
+                "reefGroundM2": 0.0, "cover": 0.0, "medianCover": 0.0,
+                "piledUp": 0.0, "colonyAreaM2": 0.0, "biggerThanACell": 0}
+
+    # A square of the same area, so the overlap with a cell is a product of
+    # two one-dimensional intersections. A colony wider than a cell is
+    # clamped — there are a handful on the biggest reefs and spreading one
+    # further would need its real outline, which this does not have.
+    side = np.sqrt(np.maximum(area, 0.0))
+    too_big = int((side > cell_m).sum())
+    side = np.minimum(side, cell_m)
+    half = side / 2.0
+
+    # Into the corner-origin frame the grid is indexed in.
+    left = (x + across / 2.0) - half
+    bottom = (y + across / 2.0) - half
+    lo_c = np.floor(left / cell_m).astype(int)
+    lo_r = np.floor(bottom / cell_m).astype(int)
+
+    # At most two cells in each direction, because a side is never more than a
+    # cell. `np.add.at` rather than `+=` because many colonies land in one cell
+    # and buffered addition would keep only the last of them.
+    for dc in (0, 1):
+        column = lo_c + dc
+        edge = column * cell_m
+        wide = np.clip(np.minimum(left + side, edge + cell_m)
+                       - np.maximum(left, edge), 0.0, None)
+        for dr in (0, 1):
+            row = lo_r + dr
+            floor_edge = row * cell_m
+            tall = np.clip(np.minimum(bottom + side, floor_edge + cell_m)
+                           - np.maximum(bottom, floor_edge), 0.0, None)
+            share = wide * tall
+            inside = ((column >= 0) & (column < n) & (row >= 0) & (row < n)
+                      & (share > 0))
+            if inside.any():
+                np.add.at(piled, (row[inside], column[inside]), share[inside])
+
+    ground = float(cell_m) * float(cell_m)
+    covered = 1.0 - np.exp(-piled / ground)
+    reef = covered > COVER_FLOOR
+    on_reef = covered[reef]
+    return {
+        "cellM": float(cell_m),
+        "cells": int(piled.size),
+        "reefGroundM2": float(reef.sum()) * ground,
+        # And the part of it that is thicket rather than scattered heads. A
+        # diver knows the difference and so does a vehicle: it is where a
+        # colony is close enough to the next one to be an obstacle.
+        "thicketM2": float((covered > COVER_THICKET).sum()) * ground,
+        "cover": float(on_reef.mean()) if on_reef.size else 0.0,
+        "medianCover": float(np.median(on_reef)) if on_reef.size else 0.0,
+        "piledUp": (float(piled[reef].sum()) / (float(reef.sum()) * ground)
+                    if reef.any() else 0.0),
+        "colonyAreaM2": float(area.sum()),
+        "biggerThanACell": too_big,
+    }
 
 
 def _skins(colours, kinds=None, tile_metres: float = 0.04) -> str:

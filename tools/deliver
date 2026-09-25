@@ -137,6 +137,16 @@ COVER_CELL_M = 5.0
 # then have and a spreadsheet user would then not have.
 NODATA = -9999
 
+# How far the cover measured off the published file may be from the cover the
+# place's own record claims.
+#
+# One part in a hundred, which is rounding: both numbers come from the same
+# function now, so the only things between them are the four decimal places
+# the USD is written to and the rounding in site.json. Anything more means the
+# file does not contain the reef its record describes, which is the whole
+# reason this is computed twice rather than read once.
+AGREES_WITHIN = 0.01
+
 
 def cover_raster(colonies: dict, footprints: dict, across: float,
                  cell_m: float = COVER_CELL_M) -> np.ndarray:
@@ -394,52 +404,38 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
             for one in rows],
     }) + "\n")
 
-    grid = cover_raster(colonies, sized, across)
+    # What this reef covers, worked out by the same function that worked it
+    # out when the place was built — `reef.cover_over` — on colonies read back
+    # out of the published USD rather than on the builder's own arrays.
+    #
+    # Two independent inputs, one definition. If they disagree, the file does
+    # not contain the reef its record says it does, and that is the check this
+    # tool is for. There used to be two definitions instead: this summed every
+    # colony's area and saturated it, the builder took the median of
+    # *one-metre* cells clipped at one, and they came out up to half as much
+    # again apart with nothing broken and nothing to point at.
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import reef as reef_tools
 
-    # Cover by growth form, over the ground the colonies are on.
-    #
-    # Over the whole *site* Looe Key's colonies come to 0.46%, which is true
-    # and useless: the SQUID-5 survey covers about an eighth of the square
-    # kilometre this place is drawn over, and the rest has no colonies because
-    # nobody flew it rather than because there is no coral. A transect figure
-    # is cover where the transect ran, so the comparable number is cover over
-    # the ground that has reef on it.
-    #
-    # Which ground that is has to come from the place, not from this raster.
-    #
-    # The first version counted every five-metre cell with any colony in it,
-    # and that is only right where the colonies are dense enough to fill a
-    # cell. On a sparse reef one colony marks all twenty-five square metres as
-    # reef ground, so the denominator balloons: Al Fahal's 216,229 m2 of
-    # colony came out at 9.1% that way and at 52.6% against the 289,257 m2 the
-    # reef builder says it actually grew over. The wrong one went into the
-    # plan's own table as a measurement, where it flattered exactly the three
-    # places whose density nobody has checked.
-    #
-    # Looe Key agreed with its transects anyway, which is why it was believed:
-    # there the survey tiles *are* nearly filled, so the two denominators
-    # happen to coincide.
-    grew_over = site.get("reef", {}).get("reefAreaM2")
-    if grew_over:
-        looked_at = float(grew_over)
-        ground_is = ("the ground the reef builder grew this reef over, which "
-                     "the place records as reefAreaM2")
-    else:
-        looked_at = float((grid > 0).sum()) * COVER_CELL_M * COVER_CELL_M
-        ground_is = ("cells of the raster with any colony in them, at "
-                     "%.0f m. This place does not record the ground its "
-                     "colonies are on — it was built from a survey of real "
-                     "detections rather than grown over an area — so the "
-                     "extent of the detections is used instead. It is an "
-                     "over-estimate wherever the colonies are sparse enough "
-                     "not to fill a cell." % COVER_CELL_M)
+    east = np.array([one["eastingM"] for one in rows], dtype=float)
+    north = np.array([one["northingM"] for one in rows], dtype=float)
+    plan = np.array([one["footprintM2"] for one in rows], dtype=float)
+    measured = reef_tools.cover_over(east, north, plan, across)
+
+    grid = cover_raster(colonies, sized, across, measured["cellM"])
+    looked_at = measured["reefGroundM2"]
+    ground_is = ("cells of %.0f m with more than %g cover in them — the same "
+                 "measurement `tools/reef.py` makes when it builds a place, "
+                 "run here on what the published file actually contains"
+                 % (measured["cellM"], reef_tools.COVER_FLOOR))
+
     by_form = {}
     for one in rows:
         seen = by_form.setdefault(one["growthForm"], {"colonies": 0, "m2": 0.0})
         seen["colonies"] += 1
         seen["m2"] += one["footprintM2"]
     piled = sum(one["m2"] for one in by_form.values())
-    covered = 1.0 - math.exp(-piled / max(looked_at, 1e-9))
+    covered = measured["cover"]
     for form, seen in by_form.items():
         seen["m2"] = round(seen["m2"], 2)
         # This form's share of the ground that is covered at all. Not its own
@@ -456,12 +452,10 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
             seen = by_form[form]
             writer.writerow([form, seen["colonies"], seen["m2"],
                              seen["coverOfReefGround"]])
-    write_grid(into, grid, {**centre, "name": site.get("name", "site")},
-               across, COVER_CELL_M)
-    _piled = sum(one["m2"] for one in by_form.values())
+
     said = provenance(site)
     said["coverByForm"] = {
-        "surveyedGroundM2": round(looked_at, 1),
+        "reefGroundM2": round(looked_at, 1),
         "groundIs": ground_is,
         "notTheSite":
             "Cover here is over that ground and not over the whole site. "
@@ -470,19 +464,24 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
             "square kilometre has no colonies for want of anybody having "
             "looked.",
         "forms": by_form,
-        # Cover, which is not the same as the area added up.
-        #
-        # Colonies are scattered rather than tiled, so they land on each
-        # other: area A dropped at random over ground G covers 1 - exp(-A/G)
-        # of it and not A/G. `tools/reef.py` says exactly this about a whole
-        # site and `cover_raster` above does it per cell, and this line did
-        # not — so Red Sea came out at 110.78 per cent covered, which is not a
-        # number, and the four places under it were all wrong in the same
-        # direction by less obvious amounts.
-        "allStanding": round(1.0 - math.exp(-_piled / max(looked_at, 1e-9)), 5),
-        # And the raw ratio, because it is the input to that and because a
-        # reef with more colony than ground is worth being able to see.
-        "colonyAreaOverGround": round(_piled / max(looked_at, 1e-9), 5),
+        "allStanding": round(measured["cover"], 5),
+        "medianCover": round(measured["medianCover"], 5),
+        # The raw ratio, because it is the input to the saturation and because
+        # a reef carrying more colony area than it has ground is worth being
+        # able to see.
+        "colonyAreaOverGround": round(measured["piledUp"], 5),
+        "thicketM2": round(measured["thicketM2"], 1),
+        "colonyAreaM2": round(measured["colonyAreaM2"], 1),
+        "biggerThanACell": measured["biggerThanACell"],
+        "measuredBy": {
+            "cellM": measured["cellM"],
+            "statistic": "mean over cells with reef in them, each saturated "
+                         "as 1 - exp(-A/G) because colonies are scattered "
+                         "rather than tiled",
+            "sameAs": "tools/reef.py cover_over, which is where the place's "
+                      "own coverWhereItGrows comes from",
+        },
+        "whatThePlaceSays": (site.get("reef", {}) or {}).get("coverWhereItGrows"),
         "compareWith":
             "A transect's cover figure is the number to hold this against, "
             "and the two are not quite the same measurement: a transect "
@@ -495,9 +494,11 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
 
     return {"colonies": len(rows), "coverCells": int(grid.size),
             "meanCover": float(grid.mean()),
-            "surveyedGroundM2": looked_at, "groundIs": ground_is,
-            "onSurveyedGround": covered,
-            "piledUp": piled / max(looked_at, 1e-9),
+            "reefGroundM2": looked_at, "groundIs": ground_is,
+            "cover": measured["cover"],
+            "medianCover": measured["medianCover"],
+            "piledUp": measured["piledUp"],
+            "saysItIs": (site.get("reef", {}) or {}).get("coverWhereItGrows"),
             "byForm": by_form, "into": into}
 
 
@@ -516,11 +517,19 @@ def main() -> int:
 
     print(f"  {place.name}")
     print(f"    {made['colonies']:,} colonies over "
-          f"{made['surveyedGroundM2']:,.0f} m2 of reef ground, "
-          f"{100 * made['onSurveyedGround']:.2f}% covered")
-    print(f"    ({made['groundIs']})")
-    print(f"    ({100 * made['piledUp']:.1f}% of colony area piled up, "
-          f"saturated as 1 - exp(-A/G) because they land on each other)")
+          f"{made['reefGroundM2']:,.0f} m2 of reef ground, "
+          f"{100 * made['cover']:.2f}% covered "
+          f"(median {100 * made['medianCover']:.1f}%, "
+          f"{100 * made['piledUp']:.0f}% piled up)")
+    # And what the place itself claims, because the whole point of computing
+    # this off the published file is that the two can be held against each
+    # other. Silent agreement is worth nothing if nobody is shown it.
+    says = made.get("saysItIs")
+    if says is not None:
+        off = abs(made["cover"] - says) / max(says, 1e-9)
+        verdict = "agrees" if off <= AGREES_WITHIN else "DISAGREES"
+        print(f"    the place's own record says {100 * says:.2f}% — "
+              f"{verdict} ({100 * off:.1f}% apart)")
     for form in sorted(made["byForm"], key=lambda f: -made["byForm"][f]["m2"]):
         seen = made["byForm"][form]
         print(f"      {form:<12} {seen['colonies']:7,}  "
