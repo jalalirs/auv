@@ -998,10 +998,23 @@ def main() -> int:
                        # Whether this place is telling us what it is made of
                        # rather than being guessed at. True for a survey's
                        # habitat polygons and for a composed reef's own parts.
+                       # Whether this place is telling us what *all* of it is
+                       # made of rather than being guessed at. True for a
+                       # survey's habitat polygons and for a composed reef's
+                       # own parts.
+                       #
+                       # Not for Al Fahal, which knows only the quarter of
+                       # itself that was built past the sensor. That quarter
+                       # is passed to the reef so nothing is planted on it,
+                       # and the other three quarters are still an inference —
+                       # so the guard that asks whether the inference has
+                       # stopped discriminating must still run. Folding the
+                       # two together silenced it on a site where 72% of the
+                       # ground is a guess.
                        "knowsItsOwn": bool(
                            (classes is not None and classes.is_file())
-                           or (morphology and morphology.get("hard") is not None)
-                           or past_the_sensor),
+                           or (morphology and morphology.get("hard") is not None)),
+                       "knowsPartOfItself": bool(past_the_sensor),
                        "softFrom": (
                            "bioturbated mud, generated: trails, burrow mouths, "
                            "mounds and casts. The kinds of trace are what a "
@@ -1056,12 +1069,22 @@ def main() -> int:
                                assemblage=asked.assemblage,
                                picture=seen_from_above,
                                # The same ground this seabed is painted with,
-                               # so the coral grows on what the place says it
-                               # is made of rather than on a second opinion.
-                               hard=hard if ground_said and ground_said.get(
-                                   "knowsItsOwn") else None,
-                               # Never on ground that is not there.
-
+                               # The same ground this seabed is painted with,
+                               # wherever the place knows it — all of it for a
+                               # survey or a composition, and the sediment
+                               # apron alone for a seabed continued past its
+                               # sensor. Either way the coral does not grow on
+                               # ground the pipeline itself called sand.
+                               hard=hard if ground_said and (
+                                   ground_said.get("knowsItsOwn")
+                                   or ground_said.get("knowsPartOfItself")
+                               ) else None,
+                               # And whether *all* of it is known, which is a
+                               # different question and the one the habitat
+                               # guard turns on.
+                               knows_its_own=bool(
+                                   ground_said
+                                   and ground_said.get("knowsItsOwn")),
                                reference=corpus if corpus.is_dir() else None)
 
     import numpy as np

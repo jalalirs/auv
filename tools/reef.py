@@ -34,7 +34,8 @@ import zonation
 def plant(where: pathlib.Path, height, across: float, seed: int,
           how_many: int, picture=None, reference: pathlib.Path | None = None,
           cover_from: str | None = None,
-          assemblage: str | None = None, hard=None) -> dict:
+          assemblage: str | None = None, hard=None,
+          knows_its_own: bool = False) -> dict:
     """Grow a reef onto a seabed, and write it beside it.
 
     `reference` is a place's fetched corpus. Where it holds a scan of a colony
@@ -361,8 +362,12 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # that calls two thirds of a box reef has stopped discriminating, and
     # every number downstream of it — the cover target, the colonies it costs,
     # the cover finally measured — is a number about the box.
+    # `surveyed` here means "this habitat is not an inference", and a
+    # hardness map handed in is not enough on its own: a seabed continued past
+    # its sensor knows what that quarter of itself is and is still guessing at
+    # the rest. `knows_its_own` is the caller saying the whole map is known.
     believable = zonation.is_it_all_reef(
-        want, surveyed=picture is not None or hard is not None)
+        want, surveyed=picture is not None or knows_its_own)
     if below_the_light:
         believable = {
             "habitatShareOfSite": round(
