@@ -65,8 +65,35 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # What kind of ground this is, everywhere.
     ground = zonation.describe(height, across, picture=picture)
     want = zonation.cover(ground, rng)
-    if want.sum() <= 0:
-        return {"colonies": 0}
+
+    # Below the light the cover map is correctly empty, and that is not the
+    # same as there being nothing to plant.
+    #
+    # `zonation`'s depth curve reaches nought at a hundred and fifty metres
+    # because zooxanthellate coral runs out of light and stops. At Thuwal
+    # Deep, five hundred and fifty metres down, it therefore asks for no coral
+    # anywhere — correctly, and the first time it did, this function returned
+    # `{"colonies": 0}` and the place came back with no reef at all. What
+    # lives down there is azooxanthellate: black corals, sponges, crusts, and
+    # they attach to rock. So the field the colonies are placed against
+    # becomes the hard ground rather than the light, and how many of them
+    # there are is the count the place was built with — a choice, which its
+    # own `--cover-from` says in so many words.
+    #
+    # `want` itself is left alone. It is the light's answer and the light's
+    # answer is nought; a map quietly rewritten to say otherwise is how a
+    # place ends up claiming five square kilometres of reef half a kilometre
+    # below the last of the sunlight.
+    below_the_light = want.sum() <= 0
+    if below_the_light:
+        rock = ground["hard"]
+        if rock.max() <= 0:
+            return {"colonies": 0}
+        # Scaled to the floor `here` clamps at anyway, so the stands come out
+        # the same size they always did and only *where* they are changes.
+        plant_on = rock / rock.max() * 0.04
+    else:
+        plant_on = want
 
     step_x = across / max(1, columns - 1)
     step_y = across / max(1, rows - 1)
@@ -211,8 +238,9 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # every time, which is what it did.
     wanted_area = float((-np.log1p(-want) * step_x * step_y).sum())
     trial_rows, trial_columns = np.unravel_index(
-        rng.choice(want.size, size=20000, p=(want / want.sum()).ravel()),
-        want.shape)
+        rng.choice(plant_on.size, size=20000,
+                   p=(plant_on / plant_on.sum()).ravel()),
+        plant_on.shape)
     each_covers = float(a_draw(depth[trial_rows, trial_columns],
                                np.random.default_rng(seed + 1))[2].mean())
     needed = wanted_area / max(each_covers, 1e-6)
@@ -233,7 +261,6 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # of it there is was *chosen*, which the place's own `--cover-from` says
     # in so many words. So a count asked for on a site the map has nothing to
     # say about is a count, not a ceiling.
-    below_the_light = needed < 0.05 * how_many_asked
     if not below_the_light:
         how_many = int(min(how_many, max(1000, needed)))
 
@@ -246,7 +273,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # everywhere — the failure mode that reads as ornaments on a beach.
     per_stand = 8
     stands = max(1, how_many // per_stand)
-    flat = (want / want.sum()).ravel()
+    flat = (plant_on / plant_on.sum()).ravel()
     picked = rng.choice(flat.size, size=stands, p=flat)
     stand_row, stand_column = np.unravel_index(picked, want.shape)
     centre_x = -across / 2 + stand_column * step_x
@@ -265,7 +292,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # metre across inside a two metre circle is ten of them in the same place.
     # It measured as ninety per cent cover over a fifth of the site, which is
     # both numbers being wrong in opposite directions at once.
-    here = np.clip(want[stand_row, stand_column], 0.04, 0.94)
+    here = np.clip(plant_on[stand_row, stand_column], 0.04, 0.94)
     reach = np.sqrt(per_stand * each_covers / (np.pi * here)) * 0.62
     spread = rng.normal(0, 1.0, (how_many, 2)) * reach[belongs][:, None]
     x = np.clip(centre_x[belongs] + spread[:, 0], -across / 2, across / 2)
