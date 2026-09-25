@@ -892,10 +892,30 @@ def main() -> int:
             hard = np.zeros(kinds.shape, dtype="float32")
             for kind, how_hard in HARDNESS.items():
                 hard[kinds == kind] = how_hard
+            # Where nobody mapped it, the inference — not a constant.
+            #
+            # Class 0 is "unmapped" and `HARDNESS` gives it 0.5, which is an
+            # honest "don't know" for one polygon and is the can't-be-wrong
+            # default over a large area: it says the same thing about every
+            # square metre of it. The Atlas maps Al Fahal's flat and lagoon
+            # and not its fore-reef slope, so a quarter of that site was
+            # taking a flat half and dominating the habitat figure.
+            #
+            # A guess that varies with the ground beats a constant that does
+            # not. Measurement where there is one, inference where there is
+            # not, and a number picked out of the air nowhere.
+            nobody_looked = kinds == 0
+            if nobody_looked.any():
+                guessed = derived_hardness(height, asked.across,
+                                           n=kinds.shape[0])
+                hard = np.where(nobody_looked, guessed, hard).astype("float32")
             named = ", ".join(f"{HABITAT_NAMES.get(k, k)} {100 * (kinds == k).mean():.0f}%"
                               for k in sorted(set(np.unique(kinds).tolist())))
             print(f"  habitat: surveyed polygons: {named}")
-            hardness_from = "habitat polygons from a survey of this place"
+            hardness_from = ("habitat polygons from a survey of this place"
+                             + (", and the slope and relief of the seabed "
+                                "where the survey did not reach"
+                                if nobody_looked.any() else ""))
         elif morphology and morphology.get("hard") is not None:
             # A composed place knows, because it laid its own parts down by
             # name. Reading it back out of the shape is guessing at something
