@@ -1,0 +1,251 @@
+#!/usr/bin/env python3
+"""Fetch the Allen Coral Atlas habitat map for a place.
+
+    tools/coral-atlas al-fahal 22.284 38.962 --across 3000
+
+Every reef here that is not Looe Key has had its habitat *inferred* — worked
+out from the slope and relief of its own bathymetry, because nobody had a map
+of what the ground is. That inference is the weakest thing under a reef: it
+decides how much of a site is reef at all, which is the denominator of every
+cover figure the place reports, and at Al Fahal it called 72% of a
+three-kilometre box reef habitat.
+
+The Atlas is a measurement of exactly that. Ten metres a pixel, Sentinel-2
+derived and field-validated, global across the tropics, CC BY 4.0, and served
+from a public GeoServer that wants no account — which is worth saying because
+this plan recorded for a fortnight that it was behind one.
+
+  benthic     what the bottom is made of: sand, rubble, rock, coral/algae,
+              microalgal mats, seagrass
+  geomorphic  where on a reef you are: reef crest, outer and inner reef flat,
+              back reef slope, lagoons, plateau
+
+**"Coral/Algae" is one class and that matters.** Sentinel-2 cannot separate
+living coral from the algae growing on and beside it, so the number is an
+upper bound on coral cover and not a measurement of it. It is recorded under
+its own name here rather than quietly read as coral.
+
+Written as the same `habitat_4096.npy` that a survey's polygons are written
+as, so `tools/make-site` reads it through the path it already has.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import pathlib
+import sys
+import urllib.parse
+import urllib.request
+
+import numpy as np
+
+WFS = "https://allencoralatlas.org/geoserver/ows"
+AGENT = "coral-city reference corpus (https://github.com/jalalirs/auv)"
+
+# The Atlas's benthic classes, onto the habitat codes this platform already
+# uses for a survey's polygons — so a place mapped by the Atlas and a place
+# mapped by Florida's reef tract survey are read by the same code.
+#
+# `make-site.HARDNESS` turns these into how hard the ground is; the names are
+# in `HABITAT_NAMES` beside it.
+AS_HABITAT = {
+    "Sand": 1,                 # sediment
+    "Microalgal Mats": 1,      # a film on sediment, and sediment underneath
+    "Seagrass": 3,
+    "Rubble": 4,
+    "Rock": 5,                 # pavement
+    "Coral/Algae": 6,          # aggregate reef — see the note above
+}
+UNMAPPED = 0
+
+# Drawn in this order, so that where two polygons overlap the more particular
+# one wins. Sand is the background of a reef and coral is the exception.
+IN_ORDER = ["Sand", "Microalgal Mats", "Seagrass", "Rubble", "Rock", "Coral/Algae"]
+
+
+def metres_per_degree(latitude: float) -> tuple[float, float]:
+    """The same expression every other tool here uses, so the grids line up."""
+    radians = math.radians(latitude)
+    north = 111_132.92 - 559.82 * math.cos(2 * radians) + 1.175 * math.cos(4 * radians)
+    east = 111_412.84 * math.cos(radians) - 93.5 * math.cos(3 * radians)
+    return east, north
+
+
+def ask(layer: str, bbox: tuple, tries: int = 3) -> dict:
+    """One WFS layer over a bounding box, as GeoJSON."""
+    query = urllib.parse.urlencode({
+        "service": "wfs", "version": "2.0.0", "request": "GetFeature",
+        "typeNames": f"coral-atlas:{layer}_data_verbose",
+        "outputFormat": "application/json",
+        "srsName": "EPSG:4326", "count": 200000,
+        "bbox": "%.6f,%.6f,%.6f,%.6f,EPSG:4326" % bbox,
+    })
+    last = None
+    for attempt in range(tries):
+        try:
+            request = urllib.request.Request(f"{WFS}?{query}",
+                                             headers={"User-Agent": AGENT})
+            with urllib.request.urlopen(request, timeout=180) as answer:
+                return json.loads(answer.read().decode())
+        except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+            last = exc
+    raise SystemExit(f"the Atlas would not answer for {layer}: {last}")
+
+
+def rings_of(geometry: dict):
+    """Every outer ring in a geometry, as lists of (lon, lat).
+
+    Holes are ignored on purpose. A hole in a sand polygon is a patch of
+    something else, and that something else is its own polygon drawn after it
+    — so the hole fills itself, and honouring it would only leave unmapped
+    ground where there is a measurement.
+    """
+    kind = geometry.get("type")
+    if kind == "Polygon":
+        return [geometry["coordinates"][0]]
+    if kind == "MultiPolygon":
+        return [part[0] for part in geometry["coordinates"]]
+    return []
+
+
+def paint(features: list, centre: tuple, across: float, texels: int,
+          onto=None) -> np.ndarray:
+    """Polygons in degrees onto a square grid in the site's own metres.
+
+    PIL rather than GDAL, because every other tool here runs on numpy and a
+    place should not need a GIS stack to be built.
+    """
+    from PIL import Image, ImageDraw
+
+    east, north = metres_per_degree(centre[0])
+    grid = Image.new("I", (texels, texels), UNMAPPED) if onto is None else onto
+    draw = ImageDraw.Draw(grid)
+
+    by_class = {}
+    for one in features:
+        name = (one.get("properties") or {}).get("class_name")
+        by_class.setdefault(name, []).append(one.get("geometry") or {})
+
+    painted = {}
+    for name in IN_ORDER:
+        code = AS_HABITAT.get(name)
+        if code is None or name not in by_class:
+            continue
+        drawn = 0
+        for geometry in by_class[name]:
+            for ring in rings_of(geometry):
+                # Degrees to metres from the centre, then to texels. Row 0 is
+                # the south edge, which is the convention every heightfield
+                # and every texture on this platform uses.
+                points = []
+                for lon, lat in ring:
+                    x = (lon - centre[1]) * east
+                    y = (lat - centre[0]) * north
+                    points.append((
+                        (x / across + 0.5) * (texels - 1),
+                        (y / across + 0.5) * (texels - 1)))
+                if len(points) >= 3:
+                    draw.polygon(points, fill=code)
+                    drawn += 1
+        painted[name] = drawn
+    paint.drawn = painted
+    return grid
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(
+        description="fetch the Allen Coral Atlas habitat map for a place")
+    parse.add_argument("name")
+    parse.add_argument("latitude", type=float)
+    parse.add_argument("longitude", type=float)
+    parse.add_argument("--across", type=float, default=1000.0, help="metres")
+    parse.add_argument("--texels", type=int, default=4096)
+    parse.add_argument("--into",
+                       default=str(pathlib.Path.home() / "coral-city" / "reference"))
+    asked = parse.parse_args()
+
+    into = pathlib.Path(asked.into).expanduser() / asked.name
+    into.mkdir(parents=True, exist_ok=True)
+
+    east, north = metres_per_degree(asked.latitude)
+    half_lon = (asked.across / 2) / east
+    half_lat = (asked.across / 2) / north
+    bbox = (asked.longitude - half_lon, asked.latitude - half_lat,
+            asked.longitude + half_lon, asked.latitude + half_lat)
+
+    said = {}
+    for layer in ("benthic", "geomorphic"):
+        answer = ask(layer, bbox)
+        features = answer.get("features") or []
+        area = {}
+        for one in features:
+            properties = one.get("properties") or {}
+            name = properties.get("class_name")
+            area[name] = area.get(name, 0.0) + float(properties.get("area_sqkm") or 0.0)
+        said[layer] = {
+            "polygons": len(features),
+            # Said, because a WFS will silently give you a page rather than
+            # the answer, and a habitat map missing its eastern half looks
+            # exactly like a reef that stops.
+            "matched": answer.get("numberMatched"),
+            "returned": answer.get("numberReturned"),
+            "areaSqKmByClass": {k: round(v, 5) for k, v in
+                                sorted(area.items(), key=lambda kv: -kv[1])},
+            "mappedSqKm": round(sum(area.values()), 4),
+        }
+        if (answer.get("numberMatched") not in (None, "unknown")
+                and int(answer["numberMatched"]) != len(features)):
+            print(f"  the Atlas returned {len(features)} of "
+                  f"{answer['numberMatched']} {layer} polygons — this is a "
+                  f"page, not the answer", file=sys.stderr)
+            return 1
+        (into / f"coral-atlas-{layer}.geojson").write_text(json.dumps(answer))
+        if layer == "benthic":
+            grid = paint(features, (asked.latitude, asked.longitude),
+                         asked.across, asked.texels)
+            classes = np.array(grid, dtype="int16")
+            np.save(into / f"habitat_{asked.texels}.npy", classes)
+            said[layer]["drawn"] = paint.drawn
+            said[layer]["unmappedShare"] = round(
+                float((classes == UNMAPPED).mean()), 4)
+
+    record = {
+        "source": "Allen Coral Atlas, global benthic and geomorphic maps",
+        "via": WFS,
+        "licence": "CC BY 4.0",
+        "resolutionM": 10,
+        "fetched": True,
+        "centre": {"latitude": asked.latitude, "longitude": asked.longitude},
+        "acrossMetres": asked.across,
+        "texels": asked.texels,
+        "habitat": f"habitat_{asked.texels}.npy",
+        "classesAre": ("the platform's own habitat codes, which a survey's "
+                       "polygons are also written as: 0 unmapped, 1 sediment, "
+                       "3 seagrass, 4 rubble, 5 pavement, 6 aggregate reef"),
+        "mappedAs": AS_HABITAT,
+        "readThisFirst": (
+            "\"Coral/Algae\" is one class. Sentinel-2 cannot separate living "
+            "coral from the algae growing on and beside it, so that figure is "
+            "an upper bound on coral cover and not a measurement of it. It is "
+            "written here under its own name rather than read as coral."),
+        **said,
+    }
+    (into / "coral-atlas.json").write_text(json.dumps(record, indent=2) + "\n")
+
+    print(f"  {asked.name}: Allen Coral Atlas, {asked.across:.0f} m across")
+    for layer in ("benthic", "geomorphic"):
+        one = said[layer]
+        print(f"    {layer}: {one['polygons']} polygons, "
+              f"{one['mappedSqKm']:.2f} km2 of "
+              f"{asked.across * asked.across / 1e6:.2f}")
+        total = max(one["mappedSqKm"], 1e-9)
+        for name, area in list(one["areaSqKmByClass"].items())[:7]:
+            print(f"      {name:<24} {area:7.4f} km2  {100 * area / total:5.1f}%")
+    print(f"    {into / ('habitat_%d.npy' % asked.texels)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
