@@ -2,7 +2,7 @@
 """Put a published measurement into a place's reference, as data.
 
     tools/cite ~/coral-city/reference/al-fahal --as benthos \\
-        --paper "Roberts et al., PeerJ 5:e3410, 2017" \\
+        --paper "Khalil, Bouwmeester and Berumen, PeerJ 5:e3410, 2017" \\
         --doi 10.7717/peerj.3410 \\
         --says '{"porites": 34.6, "pocillopora": 22.8}' \\
         --note "line-intercept transects at 2 and 10 m"
