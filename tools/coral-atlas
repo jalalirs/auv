@@ -218,20 +218,31 @@ def main() -> int:
         # different taxonomy entirely — reef crest, back reef slope, lagoon —
         # so it is painted into codes of its own, purely to say how much of
         # the site each part covers. Nothing downstream reads those.
-        if layer == "benthic":
-            codes, order = AS_HABITAT, IN_ORDER
-        else:
-            order = [k for k, _ in sorted(area.items(), key=lambda kv: -kv[1])]
-            codes = {name: i + 1 for i, name in enumerate(order)}
-        grid = paint(features, (asked.latitude, asked.longitude),
-                     asked.across, asked.texels, codes=codes, order=order)
-        classes = np.array(grid, dtype="int16")
+        # Painted twice, on purpose, and the second time is not a waste.
+        #
+        # The habitat file has to be in the platform's own codes, where two
+        # Atlas classes share one: Sand and Microalgal Mats are both sediment,
+        # because a film of algae on mud is mud. Counting *names* against that
+        # grid then gives both of them the same pixels — Al Fahal reported
+        # Sand at 22.9% of the site and Microalgal Mats at 22.9%, which are
+        # the same 22.9%.
+        #
+        # So the reporting grid gives every Atlas class a code of its own, and
+        # the habitat grid is a separate paint. One says what the Atlas saw;
+        # the other says what this platform does with it.
+        by_name = [k for k, _ in sorted(area.items(), key=lambda kv: -kv[1])]
+        counted = paint(features, (asked.latitude, asked.longitude),
+                        asked.across, asked.texels,
+                        codes={n: i + 1 for i, n in enumerate(by_name)},
+                        order=by_name)
+        named = np.array(counted, dtype="int16")
         square_km = asked.across * asked.across / 1e6
         on_site = {}
-        for name, code in codes.items():
-            share = float((classes == code).mean())
+        for i, name in enumerate(by_name):
+            share = float((named == i + 1).mean())
             if share > 0:
-                on_site[name] = on_site.get(name, 0.0) + share
+                on_site[name] = share
+        classes = named
         said[layer]["onSiteShare"] = {
             k: round(v, 4) for k, v in
             sorted(on_site.items(), key=lambda kv: -kv[1])}
@@ -242,7 +253,11 @@ def main() -> int:
             float((classes == UNMAPPED).mean()), 4)
         said[layer]["drawn"] = dict(paint.drawn)
         if layer == "benthic":
-            np.save(into / f"habitat_{asked.texels}.npy", classes)
+            habitat = np.array(
+                paint(features, (asked.latitude, asked.longitude),
+                      asked.across, asked.texels,
+                      codes=AS_HABITAT, order=IN_ORDER), dtype="int16")
+            np.save(into / f"habitat_{asked.texels}.npy", habitat)
 
     record = {
         "source": "Allen Coral Atlas, global benthic and geomorphic maps",

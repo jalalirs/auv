@@ -135,7 +135,7 @@ def test_the_shares_reported_are_of_the_site_and_not_of_the_polygons():
     assert "onSiteShare" in source
     assert "unmappedShare" in source
     # And the shares come off the raster, which is clipped to the site.
-    assert 'float((classes == code).mean())' in source
+    assert 'float((named == i + 1).mean())' in source
 
 
 def test_a_geomorphic_class_is_not_painted_as_a_habitat_code():
@@ -162,3 +162,15 @@ def test_a_geomorphic_class_is_not_painted_as_a_habitat_code():
                                codes={"Plateau": 1}, order=["Plateau"]),
                    dtype="int16")
     assert (own == 1).any()
+
+
+def test_two_atlas_classes_sharing_a_habitat_code_are_still_counted_apart():
+    """Sand and Microalgal Mats are both sediment here, because a film of
+    algae on mud is mud. Counting names against the habitat grid gave both of
+    them the same pixels: Al Fahal reported Sand at 22.9% of the site and
+    Microalgal Mats at 22.9%, which are the same 22.9%."""
+    atlas = _atlas()
+    assert atlas.AS_HABITAT["Sand"] == atlas.AS_HABITAT["Microalgal Mats"]
+    source = (HERE / "coral-atlas").read_text()
+    assert "Painted twice, on purpose" in source
+    assert "which are\n        # the same 22.9%." in source
