@@ -296,18 +296,41 @@ def describe(height, across: float, picture=None) -> dict:
     # is where the sand goes.
     stands = -(_blur(depth, 2.5, step) - _blur(depth, 22.0, step))
 
-    # Rock or sand. Sand fills the low ground and lies flat; anything standing
-    # proud of its surroundings, or steep, is swept and stays hard.
-    # Flat ground is pavement, not half sand. What sand does is fill the low
-    # places, so this starts near one and falls away in the hollows rather than
-    # sitting at a half everywhere and taking half the reef with it.
-    hard = np.clip(0.88 + stands / 1.5, 0.0, 1.0)
-    hard = np.maximum(hard, np.clip((slope - 3.0) / 12.0, 0.0, 1.0))
-    # A wide flat plain is sand whatever its local relief says, because local
-    # relief on a plain is noise.
-    plain = np.clip(1.0 - slope / 2.5, 0.0, 1.0) * np.clip((depth - 22.0) / 8.0, 0.0, 1.0)
-    hard *= 1.0 - 0.85 * plain
-    hard = np.clip(hard, 0.02, 1.0)
+    # Rock or sand.
+    #
+    # Rock has texture and sand does not. That is the whole discriminator
+    # available in a bathymetry, and it is the one used: ground that is rough
+    # at the grid's own scale, or that stands proud of what is around it, is
+    # swept and stays hard; ground that is smooth and level is sand.
+    #
+    # This line used to read `0.88 + stands / 1.5`, on the argument — written
+    # in the comment above it — that "flat ground is pavement, not half sand".
+    # That is true standing *on a reef*, and these are not reefs, they are
+    # kilometre boxes drawn around reefs. With an 0.88 pedestal under it,
+    # `hard` averaged 0.85 across every site and fell below 0.2 on less than
+    # one per cent of Al Fahal, so `zonation.cover` called 94 to 98 per cent of
+    # every site reef habitat. Nothing downstream could then deliver the cover
+    # its own map asked for: Al Fahal needed eleven million colonies for a
+    # ceiling of four hundred thousand and came out twenty-eight times short,
+    # and because cover was being measured inside the stands the colonies do
+    # land in, it measured as though it had worked.
+    #
+    # Al Fahal is the case that makes it plain. A quarter of that site is
+    # perfectly level at exactly 21.6 m, which is not seabed — it is where
+    # Sentinel-2 stopped being able to see, and everything past it was clipped
+    # to the limit. Under the old line that plateau was 88% hard and carried
+    # about 44% coral. It is the flattest ground on the site and now it is
+    # sand, which is the least wrong thing to call a number a sensor could not
+    # read.
+    #
+    # **What this cannot do.** At six metres a sample a real coral pavement is
+    # smoothed as flat as sand, so a coarse site with no habitat map will
+    # under-call its hard ground. That is the safe direction — it under-claims
+    # reef rather than inventing it — and the answer is a habitat map rather
+    # than a cleverer inference, which is what B3 says Al Fahal needs.
+    rough = np.clip(slope / 6.0, 0.0, 1.0)
+    proud = np.clip(stands / 0.8, 0.0, 1.0)
+    hard = np.clip(np.maximum(rough, proud), 0.02, 1.0)
 
     if picture is not None:
         seen = _hard_from_picture(picture, depth.shape)
@@ -428,6 +451,15 @@ def substrate_colour(height, across: float, picture=None):
     return np.clip(colour, 0, 255).astype("uint8")
 
 
+# The cover below which ground is not reef. Imported from `reef` rather than
+# written again, because two copies of a threshold is how there came to be two
+# definitions of cover.
+try:
+    from reef import COVER_FLOOR
+except ImportError:  # pragma: no cover - reef imports zonation in some orders
+    COVER_FLOOR = 0.02
+
+
 def cover(ground: dict, rng, patchiness: float = 1.0):
     """How much of each square metre the coral should cover.
 
@@ -453,6 +485,43 @@ def cover(ground: dict, rng, patchiness: float = 1.0):
 
     patch = 1.0 + patchiness * (blobs(24.0, 0.34) + blobs(110.0, 0.26))
     return np.clip(wanted * patch, 0.0, 0.94)
+
+
+# How much of a site may be reef habitat before the inference is not to be
+# believed.
+#
+# A reef is a structure and a site is a box drawn around it, so most of a box
+# is the sand, rubble and open water the reef sits in. When this said 94 to 98
+# per cent for all three grown places nobody noticed, because nothing was
+# looking: the number was only ever used as a denominator inside the builder
+# and it made every reef quietly unbuildable at the cover it asked for.
+#
+# Two thirds is deliberately loose. It is not a claim about what fraction of a
+# reef site is reef — that varies enormously, and a bay full of patch reefs
+# really can be most of its box. It is the point past which a *derived*
+# habitat has stopped discriminating and is just saying yes everywhere.
+TOO_MUCH_OF_A_SITE = 0.66
+
+
+def is_it_all_reef(want, surveyed: bool = False) -> dict:
+    """Whether a derived habitat has stopped telling reef from sand.
+
+    Said rather than raised, because a site legitimately can be mostly reef
+    and this cannot tell the difference between that and a broken inference.
+    What it can do is refuse to be silent about it.
+    """
+    share = float((want > COVER_FLOOR).mean())
+    return {
+        "habitatShareOfSite": round(share, 4),
+        "believable": bool(surveyed or share <= TOO_MUCH_OF_A_SITE),
+        "why": ("from a survey of this place" if surveyed else
+                "derived from the shape of the seabed" if share <= TOO_MUCH_OF_A_SITE
+                else ("derived, and it calls %.0f%% of this site reef habitat. "
+                      "A reef is a structure and a site is a box drawn around "
+                      "it; an inference that says yes to two thirds of a box "
+                      "has stopped discriminating. This place needs a habitat "
+                      "map." % (100 * share))),
+    }
 
 
 def community(depths, rng, bands=None):
