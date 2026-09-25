@@ -421,6 +421,19 @@ def derived_colour(height, hard, across: float, n: int = 1024):
           np.linspace(0, columns - 1, n).astype(int)[None, :])
     deep = -height[at]
 
+    # Hardness to the same grid, rather than assuming it already is.
+    #
+    # It was assumed, and it held for a year because it was always true: the
+    # only caller handed in `derived_hardness(..., n=1024)`. A survey's habitat
+    # polygons come in at 4096, and the one place that had those also had an
+    # orthomosaic — so it took the photographed branch and never reached here.
+    # Al Fahal is the first place with a habitat map and no photograph of
+    # itself, and this raised on the shapes the moment it got one.
+    if hard.shape != (n, n):
+        fine = (np.linspace(0, hard.shape[0] - 1, n).astype(int)[:, None],
+                np.linspace(0, hard.shape[1] - 1, n).astype(int)[None, :])
+        hard = hard[fine]
+
     sand = np.array([0.74, 0.71, 0.62])
     rock = np.array([0.20, 0.21, 0.16])
     colour = (sand[None, None, :] * (1 - hard[..., None])
