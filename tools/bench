@@ -345,25 +345,36 @@ def command_compare(args) -> int:
         return 1
     print(f"{BOLD}{args.left}{OFF} against {BOLD}{args.right}{OFF}"
           f"{DIM} · {len(both)} tasks, the same water and the same seeds{OFF}\n")
-    print(f"{'':<14}{args.left:>10}{args.right:>10}{'':>4}{'energy':>16}{'thinking':>12}")
+    print(f"{'':<14}{args.left:>10}{args.right:>10}{'':>4}{'energy':>16}"
+          f"{'hit':>10}{'thinking':>12}")
     for task in both:
         mine, yours = ours[task], theirs[task]
         gap = (yours["score"] - mine["score"]) * 100
         ink = GREEN if gap > 1 else RED if gap < -1 else DIM
         energy = yours["energyWh"] - mine["energyWh"]
+        # Things struck, which is the column this bench exists for. A
+        # controller that scores five points better by driving through a
+        # nursery frame has not scored five points better.
+        hit = f"{_hit(mine)}/{_hit(yours)}"
         print(f"{task:<14}{mine['score'] * 100:9.0f}%{yours['score'] * 100:9.0f}%"
               f"{ink}{gap:+8.0f}{OFF}"
-              f"{energy:+11.2f} Wh{yours['slowestThoughtS']:9.2f} s")
+              f"{energy:+11.2f} Wh{hit:>10}{yours['slowestThoughtS']:9.2f} s")
     mine, yours = summarise(list(ours.values())), summarise(list(theirs.values()))
     gap = (yours["score"] - mine["score"]) * 100
     print()
     print(f"{BOLD}{'overall':<14}{mine['score'] * 100:9.1f}%{yours['score'] * 100:9.1f}%"
           f"{gap:+8.1f}{OFF}"
           f"{yours['energyWh'] - mine['energyWh']:+11.2f} Wh"
+          f"{_hit(mine)}/{_hit(yours):<6}"
           f"{yours['slowestThoughtS']:9.2f} s")
     print()
     print(_attribution(mine, yours, args.left, args.right))
     return 0
+
+
+def _hit(row: dict) -> int:
+    """Everything a dive ran into: what somebody placed, and the place."""
+    return int(row.get("struck") or 0) + int(row.get("grounded") or 0)
 
 
 def _attribution(mine: dict, yours: dict, left: str, right: str) -> str:
@@ -381,6 +392,14 @@ def _attribution(mine: dict, yours: dict, left: str, right: str) -> str:
     if yours["thoughts"] or mine["thoughts"]:
         said += (f". {right} thought {yours['thoughts']} times, the slowest taking "
                  f"{yours['slowestThoughtS']:.2f} s")
+    # Said before the drift and after the score, because it is the one thing
+    # on this bench that can turn a better score into a worse controller.
+    if _hit(mine) or _hit(yours):
+        said += (f". {left} hit {_hit(mine)} thing{'' if _hit(mine) == 1 else 's'} "
+                 f"and {right} hit {_hit(yours)}")
+        if _hit(yours) > _hit(mine) and (yours["score"] - mine["score"]) > 0:
+            said += (f", so whatever {right} gained in score it gained partly "
+                     f"by going through things")
     drift = yours["driftM"] - mine["driftM"]
     if abs(drift) > 0.2:
         said += (f". Its navigation ended {abs(drift):.2f} m "
