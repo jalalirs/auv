@@ -162,28 +162,6 @@ NODATA = -9999
 AGREES_WITHIN = 1e-4
 
 
-def cover_raster(colonies: dict, footprints: dict, across: float,
-                 cell_m: float = COVER_CELL_M) -> np.ndarray:
-    """How much of each cell the colonies cover, nought to one.
-
-    Area summed and then saturated, not counted: two colonies that overlap
-    cover less than the sum of their areas, and a cell whose colonies add to
-    more than its area is fully covered rather than a hundred and forty per
-    cent. `tools/reef.py` makes the same point about a whole site — area A
-    dropped at random over ground G covers 1 - exp(-A/G) — and this is the
-    same arithmetic per cell.
-    """
-    n = max(1, int(round(across / cell_m)))
-    area = np.zeros((n, n), dtype=float)
-    half = across / 2.0
-    for (x, y, _z), covers in zip(colonies["at"], footprints["m2"]):
-        column = int((x + half) / across * n)
-        row = int((y + half) / across * n)
-        if 0 <= row < n and 0 <= column < n:
-            area[row, column] += covers
-    return 1.0 - np.exp(-area / (cell_m * cell_m))
-
-
 def write_grid(into: pathlib.Path, grid: np.ndarray, centre: dict,
                across: float, cell_m: float) -> None:
     """The raster and what its coordinates mean."""
@@ -436,7 +414,7 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
     plan = np.array([one["footprintM2"] for one in rows], dtype=float)
     measured = reef_tools.cover_over(east, north, plan, across)
 
-    grid = cover_raster(colonies, sized, across, measured["cellM"])
+    grid = measured["grid"]
     looked_at = measured["reefGroundM2"]
     ground_is = ("cells of %.0f m with more than %g cover in them — the same "
                  "measurement `tools/reef.py` makes when it builds a place, "
