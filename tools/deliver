@@ -396,15 +396,43 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
 
     grid = cover_raster(colonies, sized, across)
 
-    # Cover by growth form, on the ground that was actually looked at.
+    # Cover by growth form, over the ground the colonies are on.
     #
-    # Over the whole site Looe Key's colonies come to 0.46%, which is true and
-    # useless: the SQUID-5 survey covers about an eighth of the square
-    # kilometre this place is drawn over and the rest has no colonies because
-    # nobody flew it, not because there is no coral there. A transect figure
-    # is cover *where the transect ran*, so the number that can be compared
-    # with one is cover where there is survey.
-    looked_at = float((grid > 0).sum()) * COVER_CELL_M * COVER_CELL_M
+    # Over the whole *site* Looe Key's colonies come to 0.46%, which is true
+    # and useless: the SQUID-5 survey covers about an eighth of the square
+    # kilometre this place is drawn over, and the rest has no colonies because
+    # nobody flew it rather than because there is no coral. A transect figure
+    # is cover where the transect ran, so the comparable number is cover over
+    # the ground that has reef on it.
+    #
+    # Which ground that is has to come from the place, not from this raster.
+    #
+    # The first version counted every five-metre cell with any colony in it,
+    # and that is only right where the colonies are dense enough to fill a
+    # cell. On a sparse reef one colony marks all twenty-five square metres as
+    # reef ground, so the denominator balloons: Al Fahal's 216,229 m2 of
+    # colony came out at 9.1% that way and at 52.6% against the 289,257 m2 the
+    # reef builder says it actually grew over. The wrong one went into the
+    # plan's own table as a measurement, where it flattered exactly the three
+    # places whose density nobody has checked.
+    #
+    # Looe Key agreed with its transects anyway, which is why it was believed:
+    # there the survey tiles *are* nearly filled, so the two denominators
+    # happen to coincide.
+    grew_over = site.get("reef", {}).get("reefAreaM2")
+    if grew_over:
+        looked_at = float(grew_over)
+        ground_is = ("the ground the reef builder grew this reef over, which "
+                     "the place records as reefAreaM2")
+    else:
+        looked_at = float((grid > 0).sum()) * COVER_CELL_M * COVER_CELL_M
+        ground_is = ("cells of the raster with any colony in them, at "
+                     "%.0f m. This place does not record the ground its "
+                     "colonies are on — it was built from a survey of real "
+                     "detections rather than grown over an area — so the "
+                     "extent of the detections is used instead. It is an "
+                     "over-estimate wherever the colonies are sparse enough "
+                     "not to fill a cell." % COVER_CELL_M)
     by_form = {}
     for one in rows:
         seen = by_form.setdefault(one["growthForm"], {"colonies": 0, "m2": 0.0})
@@ -427,13 +455,13 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
     said = provenance(site)
     said["coverByForm"] = {
         "surveyedGroundM2": round(looked_at, 1),
-        "ofWhichIsSurvey":
-            "cells of the raster with any colony in them. On a place built "
-            "from a partial survey this is the ground somebody flew, not the "
-            "site: quoting cover over the whole site instead would put Looe "
-            "Key at a fifth of what its own transects say, because seven "
-            "eighths of the square kilometre has no colonies for want of "
-            "anybody having looked",
+        "groundIs": ground_is,
+        "notTheSite":
+            "Cover here is over that ground and not over the whole site. "
+            "Quoting the site average instead would put Looe Key at a fifth "
+            "of what its own transects say, because seven eighths of its "
+            "square kilometre has no colonies for want of anybody having "
+            "looked.",
         "forms": by_form,
         "allStanding": round(
             sum(one["m2"] for one in by_form.values()) / max(looked_at, 1e-9), 5),
@@ -449,7 +477,7 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
 
     return {"colonies": len(rows), "coverCells": int(grid.size),
             "meanCover": float(grid.mean()),
-            "surveyedGroundM2": looked_at,
+            "surveyedGroundM2": looked_at, "groundIs": ground_is,
             "onSurveyedGround": sum(one["m2"] for one in by_form.values())
                                 / max(looked_at, 1e-9),
             "byForm": by_form, "into": into}
@@ -470,8 +498,9 @@ def main() -> int:
 
     print(f"  {place.name}")
     print(f"    {made['colonies']:,} colonies over "
-          f"{made['surveyedGroundM2']:,.0f} m2 of surveyed ground, "
+          f"{made['surveyedGroundM2']:,.0f} m2 of reef ground, "
           f"{100 * made['onSurveyedGround']:.2f}% covered")
+    print(f"    ({made['groundIs']})")
     for form in sorted(made["byForm"], key=lambda f: -made["byForm"][f]["m2"]):
         seen = made["byForm"][form]
         print(f"      {form:<12} {seen['colonies']:7,}  "
