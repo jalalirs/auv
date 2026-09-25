@@ -238,6 +238,17 @@ def main() -> int:
     if picture.exists():
         shutil.copy(picture, place / "picture.jpg")
 
+    # What this reef covers, by the one definition — `reef.cover_over` — that
+    # `tools/reef.py` and `tools/deliver` also use. A surveyed reef measured
+    # its cover a different way from a grown one until now, which meant the
+    # two could not be put in the same column of a table without somebody
+    # quietly comparing a median of one-metre cells with a saturated mean.
+    #
+    # Here the colony areas are the survey's own: every one of these is a
+    # circle of the diameter something was detected at.
+    on_the_ground = math.pi * sx * sx
+    measured = reef.cover_over(x, y, on_the_ground, across)
+
     site["reef"] = {
         "source": listed.get("source"), "method": listed.get("method"),
         # This one *is* measured: every colony here is one the survey saw,
@@ -265,6 +276,23 @@ def main() -> int:
         "sizesAre": "surveyed",
         "sizesFrom": (listed.get("source")
                       or "the survey this reef was built from"),
+        "coverWhereItGrows": round(measured["cover"], 5),
+        "reefAreaM2": int(round(measured["reefGroundM2"])),
+        "denseAreaM2": int(round(measured["thicketM2"])),
+        "coverMeasuredBy": {
+            "cellM": measured["cellM"],
+            "over": "cells with more than %g cover in them" % reef.COVER_FLOOR,
+            "statistic": "mean over those cells, each saturated as "
+                         "1 - exp(-A/G) because colonies are scattered rather "
+                         "than tiled",
+            "medianCover": round(measured["medianCover"], 5),
+            "piledUp": round(measured["piledUp"], 5),
+            # The number `tools/deliver` holds the published file against.
+            # It has no threshold in it, which cover does, so it is the one
+            # that can be checked rather than merely compared.
+            "colonyAreaM2": round(measured["colonyAreaM2"], 1),
+            "biggerThanACell": measured["biggerThanACell"],
+        },
         # What the colonies are made of, so a place's page can say it rather
         # than leaving a reader to assume every shape here was invented.
         # Which prototypes are rooted and bend in the water. The gorgonians
