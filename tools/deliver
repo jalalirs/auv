@@ -137,15 +137,29 @@ COVER_CELL_M = 5.0
 # then have and a spreadsheet user would then not have.
 NODATA = -9999
 
-# How far the cover measured off the published file may be from the cover the
+# How far the reef measured off the published file may be from the reef the
 # place's own record claims.
 #
-# One part in a hundred, which is rounding: both numbers come from the same
-# function now, so the only things between them are the four decimal places
-# the USD is written to and the rounding in site.json. Anything more means the
-# file does not contain the reef its record describes, which is the whole
-# reason this is computed twice rather than read once.
-AGREES_WITHIN = 0.01
+# Checked on **colony area**, not on cover, and that took two goes to get
+# right. Cover has a threshold in it — a cell counts as reef above two per
+# cent — and a threshold is a knife edge: on a sparse reef hundreds of cells
+# sit within a rounding of it and flip in or out between two computations that
+# agree about every colony. At Al Fahal 968 cells of 79,000 flipped and the
+# two covers came out 1.3 per cent apart; at Red Sea, which is dense, one cell
+# flipped and they agreed to four decimal places. Nothing was wrong either
+# time.
+#
+# Total colony area has no threshold in it. It matched to 0.2 square metres in
+# 216,228 — one part in a million, which is the four decimal places the USD is
+# written to — on every place. That is the invariant worth testing: if the
+# published file has the colonies the builder planted, at the sizes it planted
+# them, then it *is* the reef, and any cover statistic computed from it is a
+# question about the statistic rather than about the file.
+#
+# One part in ten thousand, which is fifty times looser than what was measured
+# and still tight enough to catch a single colony going missing from a
+# thousand.
+AGREES_WITHIN = 1e-4
 
 
 def cover_raster(colonies: dict, footprints: dict, across: float,
@@ -499,6 +513,9 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
             "medianCover": measured["medianCover"],
             "piledUp": measured["piledUp"],
             "saysItIs": (site.get("reef", {}) or {}).get("coverWhereItGrows"),
+            "colonyAreaM2": measured["colonyAreaM2"],
+            "builtWith": ((site.get("reef", {}) or {})
+                          .get("coverMeasuredBy", {}) or {}).get("colonyAreaM2"),
             "byForm": by_form, "into": into}
 
 
@@ -524,12 +541,21 @@ def main() -> int:
     # And what the place itself claims, because the whole point of computing
     # this off the published file is that the two can be held against each
     # other. Silent agreement is worth nothing if nobody is shown it.
+    built = made.get("builtWith")
+    if built:
+        off = abs(made["colonyAreaM2"] - built) / max(built, 1e-9)
+        verdict = "is the reef it was built as" if off <= AGREES_WITHIN else "IS NOT"
+        print(f"    {made['colonyAreaM2']:,.1f} m2 of colony against "
+              f"{built:,.1f} planted — this file {verdict}"
+              f" ({off:.1e} apart)")
     says = made.get("saysItIs")
     if says is not None:
         off = abs(made["cover"] - says) / max(says, 1e-9)
-        verdict = "agrees" if off <= AGREES_WITHIN else "DISAGREES"
-        print(f"    the place's own record says {100 * says:.2f}% — "
-              f"{verdict} ({100 * off:.1f}% apart)")
+        # Not a verdict. Cover has a two-per-cent threshold in it and a
+        # threshold is a knife edge on a sparse reef; see AGREES_WITHIN.
+        print(f"    cover: {100 * made['cover']:.2f}% here, "
+              f"{100 * says:.2f}% in the record "
+              f"({100 * off:.1f}% apart — the threshold, not the file)")
     for form in sorted(made["byForm"], key=lambda f: -made["byForm"][f]["m2"]):
         seen = made["byForm"][form]
         print(f"      {form:<12} {seen['colonies']:7,}  "
