@@ -536,6 +536,11 @@ def cover_over(x, y, area, across: float, cell_m: float = COVER_CELL_M) -> dict:
     reef = covered > COVER_FLOOR
     on_reef = covered[reef]
     return {
+        # The grid itself, so that whatever writes a coverage raster writes
+        # *this* one rather than computing a second one beside it. There were
+        # two saturations for a while and that is how there came to be two
+        # covers.
+        "grid": covered,
         "cellM": float(cell_m),
         "cells": int(piled.size),
         "reefGroundM2": float(reef.sum()) * ground,

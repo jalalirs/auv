@@ -77,21 +77,6 @@ def test_a_degree_of_longitude_is_shorter_further_north():
             < deliver.metres_per_degree(0.0)[0])
 
 
-def test_cover_saturates_rather_than_exceeding_one():
-    """Colonies are scattered, not tiled, so they land on each other. A cell
-    whose colonies add to more than its area is fully covered, not a hundred
-    and forty per cent — the same arithmetic tools/reef.py applies to a whole
-    site, per cell."""
-    deliver = _deliver()
-    across, cell = 100.0, deliver.COVER_CELL_M
-    # Forty square metres of colony, all in one five-metre cell.
-    colonies = {"at": [(0.1, 0.1, -3.0)] * 40}
-    grid = deliver.cover_raster(colonies, {"m2": [1.0] * 40}, across, cell)
-    assert grid.max() < 1.0
-    assert grid.max() > 0.7
-    assert (grid >= 0).all() and (grid <= 1).all()
-
-
 def test_a_surveyed_size_is_the_measurement_and_a_grown_one_is_not():
     """On a surveyed reef the instancer's scale *is* the diameter the survey
     recorded, halved. On a grown reef it is a draw against a prototype. The
@@ -179,62 +164,23 @@ def test_provenance_marks_a_grown_reef_as_grown():
     assert "observation of a living animal" in said_first
 
 
-def test_cover_is_quoted_over_the_ground_the_place_says_it_grew_on():
-    """The denominator has to come from the place, not from the raster.
+def test_cover_is_measured_by_the_one_function_and_not_by_this_tool():
+    """This had two denominators of its own before it had none.
 
-    Counting every five-metre cell with any colony in it is only right where
-    the colonies are dense enough to fill a cell. On a sparse reef one colony
-    marks all twenty-five square metres as reef ground and the denominator
-    balloons: Al Fahal's 216,229 m2 of colony read as 9.1% that way and 52.6%
-    against the 289,257 m2 the reef builder says it grew over. The wrong one
-    went into the plan's own table as a measurement, where it flattered
-    exactly the three places whose density nobody has checked.
+    First it divided by every five-metre cell with a colony in it, which is
+    only the reef's ground where the colonies are dense enough to fill a cell;
+    Al Fahal read 9.1% instead of 52.7% and the error flattered exactly the
+    three places whose density nobody has checked. Then it divided by the
+    ground the builder recorded, and summed areas without saturating them, and
+    Red Sea came back 110.78% covered.
+
+    It does not compute cover at all now. `reef.cover_over` does, here and in
+    both builders, on whatever colonies it is handed.
     """
     source = (HERE / "deliver").read_text()
-    assert 'grew_over = site.get("reef", {}).get("reefAreaM2")' in source
-    # And the fallback says it is one, rather than presenting itself as the
-    # same measurement.
-    assert "over-estimate" in source
-
-
-def test_a_sparse_reef_would_have_been_flattered_by_the_old_denominator():
-    """The arithmetic of the fault, so it cannot come back quietly."""
-    deliver = _deliver()
-    across, cell = 100.0, deliver.COVER_CELL_M
-    # One small colony in each of sixteen separate cells, spaced two cells
-    # apart so none of them share: sparse.
-    at = [(-40.0 + 10.0 * i, -40.0 + 10.0 * j, -3.0)
-          for i in range(4) for j in range(4)]
-    colonies = {"at": at}
-    colony_area = 0.5
-    grid = deliver.cover_raster(colonies, {"m2": [colony_area] * len(at)},
-                                across, cell)
-    cells = float((grid > 0).sum())
-    assert cells == len(at), cells
-    by_cells = len(at) * colony_area / (cells * cell * cell)
-    # Every colony is alone in its cell, so the denominator is the whole cell
-    # and the cover reads as the colony over twenty-five square metres.
-    assert by_cells == pytest.approx(colony_area / (cell * cell)), by_cells
-    # Against the ground they actually sit on — say a metre each — it is
-    # twenty-five times that, which is the size of the fault.
-    assert (colony_area / 1.0) / by_cells == pytest.approx(cell * cell)
-
-
-def test_cover_cannot_exceed_one_however_much_colony_there_is():
-    """Red Sea came out at 110.78 per cent covered, which is not a number.
-
-    Colonies are scattered rather than tiled, so they land on each other: area
-    A dropped at random over ground G covers 1 - exp(-A/G) and not A/G.
-    tools/reef.py says exactly that about a whole site and cover_raster says it
-    per cell, and the summary line under both of them did not — so every place
-    was wrong in the same direction and only the one over a hundred showed it.
-    """
-    deliver = _deliver()
-    source = (HERE / "deliver").read_text()
-    assert "math.exp(-_piled" in source
-    # And the raw ratio is kept, because a reef with more colony than ground
-    # is worth being able to see.
-    assert '"colonyAreaOverGround"' in source
+    assert "reef_tools.cover_over(" in source
+    assert "grew_over" not in source
+    assert "def cover_raster" not in source
 
 
 def test_the_shares_of_each_form_add_up_to_the_cover_they_are_shares_of():
@@ -244,3 +190,11 @@ def test_the_shares_of_each_form_add_up_to_the_cover_they_are_shares_of():
     deliver = _deliver()
     source = (HERE / "deliver").read_text()
     assert 'covered * seen["m2"] / max(piled, 1e-9)' in source
+
+def test_the_raster_it_writes_is_the_one_it_measured():
+    """`deliver` used to build its own grid with its own saturation beside the
+    summary that had another. Two implementations of one thing is how there
+    came to be two covers with the same name."""
+    source = (HERE / "deliver").read_text()
+    assert "def cover_raster" not in source
+    assert 'grid = measured["grid"]' in source
