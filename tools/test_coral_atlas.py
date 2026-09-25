@@ -123,3 +123,42 @@ def test_derived_colour_takes_hardness_at_any_size():
         out = make_site.derived_colour(height, np.full((n, n), 0.5, dtype="float32"),
                                        1000.0, n=512)
         assert out.shape == (512, 512, 3), n
+
+
+def test_the_shares_reported_are_of_the_site_and_not_of_the_polygons():
+    """A WFS bbox query returns every polygon that *intersects* the box,
+    whole, and `area_sqkm` is the whole polygon's area. Over a
+    one-kilometre site with reef polygons a kilometre across, Kāne'ohe's
+    areas added up to 2.24 km² "of 1.00" — which is not a share of anything
+    and was being printed as one."""
+    source = (HERE / "coral-atlas").read_text()
+    assert "onSiteShare" in source
+    assert "unmappedShare" in source
+    # And the shares come off the raster, which is clipped to the site.
+    assert 'float((classes == code).mean())' in source
+
+
+def test_a_geomorphic_class_is_not_painted_as_a_habitat_code():
+    """Reef crest, back reef slope and lagoon are a different taxonomy from
+    sand, rubble and coral. Painting one into the other's codes would write a
+    habitat map that says "aggregate reef" where the Atlas said "plateau"."""
+    atlas = _atlas()
+    centre, across, texels = (21.49, -157.83), 1000.0, 32
+    east, north = atlas.metres_per_degree(centre[0])
+
+    def at(x, y):
+        return [centre[1] + x / east, centre[0] + y / north]
+
+    feature = {"properties": {"class_name": "Plateau"},
+               "geometry": {"type": "Polygon", "coordinates": [[
+                   at(-100, -100), at(100, -100), at(100, 100),
+                   at(-100, 100), at(-100, -100)]]}}
+    # With the benthic map it paints nothing, because "Plateau" is not one.
+    benthic = np.array(atlas.paint([feature], centre, across, texels),
+                       dtype="int16")
+    assert (benthic == atlas.UNMAPPED).all()
+    # With its own it paints.
+    own = np.array(atlas.paint([feature], centre, across, texels,
+                               codes={"Plateau": 1}, order=["Plateau"]),
+                   dtype="int16")
+    assert (own == 1).any()
