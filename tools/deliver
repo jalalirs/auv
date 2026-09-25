@@ -412,14 +412,17 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
     east = np.array([one["eastingM"] for one in rows], dtype=float)
     north = np.array([one["northingM"] for one in rows], dtype=float)
     plan = np.array([one["footprintM2"] for one in rows], dtype=float)
-    measured = reef_tools.cover_over(east, north, plan, across)
+    # The reef this is cover of, read from the place rather than re-derived:
+    # the habitat a grown reef was planted into, or the ground a survey
+    # actually flew. Deriving it from where the colonies are does not work in
+    # either direction — see `reef.cover_over`.
+    measured = reef_tools.cover_over(
+        east, north, plan, across,
+        ground_m2=(site.get("reef", {}) or {}).get("reefAreaM2"))
 
     grid = measured["grid"]
     looked_at = measured["reefGroundM2"]
-    ground_is = ("cells of %.0f m with more than %g cover in them — the same "
-                 "measurement `tools/reef.py` makes when it builds a place, "
-                 "run here on what the published file actually contains"
-                 % (measured["cellM"], reef_tools.COVER_FLOOR))
+    ground_is = measured["groundFrom"]
 
     by_form = {}
     for one in rows:
@@ -457,7 +460,9 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
             "looked.",
         "forms": by_form,
         "allStanding": round(measured["cover"], 5),
+        "localCover": round(measured["localCover"], 5),
         "medianCover": round(measured["medianCover"], 5),
+        "occupiedM2": round(measured["occupiedM2"], 1),
         # The raw ratio, because it is the input to the saturation and because
         # a reef carrying more colony area than it has ground is worth being
         # able to see.
@@ -489,6 +494,7 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
             "reefGroundM2": looked_at, "groundIs": ground_is,
             "cover": measured["cover"],
             "medianCover": measured["medianCover"],
+            "localCover": measured["localCover"],
             "piledUp": measured["piledUp"],
             "saysItIs": (site.get("reef", {}) or {}).get("coverWhereItGrows"),
             "colonyAreaM2": measured["colonyAreaM2"],
@@ -514,7 +520,7 @@ def main() -> int:
     print(f"    {made['colonies']:,} colonies over "
           f"{made['reefGroundM2']:,.0f} m2 of reef ground, "
           f"{100 * made['cover']:.2f}% covered "
-          f"(median {100 * made['medianCover']:.1f}%, "
+          f"({100 * made['localCover']:.0f}% where the colonies are, "
           f"{100 * made['piledUp']:.0f}% piled up)")
     # And what the place itself claims, because the whole point of computing
     # this off the published file is that the two can be held against each
