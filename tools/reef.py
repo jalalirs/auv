@@ -293,7 +293,11 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # one definition: if they disagree the file does not contain the reef this
     # function says it built. They used to disagree by up to half as much
     # again, and the reason was that there were two *definitions*.
-    measured = cover_over(x, y, covered_by, across)
+    # The reef this is cover of: the habitat `zonation.cover` drew, which is
+    # the ground these colonies were planted into and the ground a transect
+    # would have been run on.
+    habitat = float((want > COVER_FLOOR).sum()) * step_x * step_y
+    measured = cover_over(x, y, covered_by, across, ground_m2=habitat)
     cover = measured["cover"]
     thick = measured["thicketM2"]
 
@@ -359,13 +363,21 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
             # off the published file can be held against this one rather than
             # quietly reporting a different statistic under the same word.
             "coverMeasuredBy": {
+                "over": measured["groundFrom"],
+                "statistic": "all the colony area over all the reef habitat, "
+                             "saturated as 1 - exp(-A/G) because colonies are "
+                             "scattered rather than tiled",
+                # What a diver standing on an occupied patch sees, which on a
+                # patchy reef is a good deal more and is not the same claim.
+                "localCover": round(measured["localCover"], 5),
+                "medianCover": round(measured["medianCover"], 5),
+                "occupiedM2": int(round(measured["occupiedM2"])),
                 "cellM": measured["cellM"],
-                "over": "cells with more than %g cover in them" % COVER_FLOOR,
-                "statistic": "mean over those cells, each saturated as "
-                             "1 - exp(-A/G) because colonies are scattered "
-                             "rather than tiled",
-                "medianCover": round(measured["medianCover"], 3),
-                "piledUp": round(measured["piledUp"], 3),
+                "piledUp": round(measured["piledUp"], 5),
+                # The number `tools/deliver` holds the published file against.
+                # It has no threshold and no denominator in it, which cover
+                # has both of, so it is the one that can be checked rather
+                # than merely compared.
                 "colonyAreaM2": round(measured["colonyAreaM2"], 1),
                 "biggerThanACell": measured["biggerThanACell"],
             }}
@@ -480,12 +492,31 @@ COVER_FLOOR = 0.02
 COVER_THICKET = 0.45
 
 
-def cover_over(x, y, area, across: float, cell_m: float = COVER_CELL_M) -> dict:
+def cover_over(x, y, area, across: float, cell_m: float = COVER_CELL_M,
+               ground_m2: float | None = None) -> dict:
     """What a reef of these colonies covers, and over how much ground.
 
     `x` and `y` are metres from the middle of the site, `area` each colony's
     plan area in square metres. Everything is in metres and nothing here knows
     what a growth form is.
+
+    **`ground_m2` is the reef, and it has to be passed in.** How much of the
+    ground a reef covers is a fraction, and the only hard part of it is the
+    denominator: a transect figure is cover along a line a diver put *on the
+    reef*, so the comparable number is colony area over reef habitat.
+
+    Deriving the reef from where the colonies happen to be does not work, and
+    it fails in both directions. Cells of one metre are smaller than the
+    colonies, so a three-metre table claims one square metre of reef and the
+    cover reads high. Cells of five metres are bigger than almost all of them,
+    so a single colony claims twenty-five and on a sparse reef the cover reads
+    low — Al Fahal came out at 9.7% that way against a planting target of
+    43.2%, and both numbers were computed from the same colonies.
+
+    The place already knows its reef: `zonation.cover` draws the habitat that
+    the colonies are then planted into, and that area is what gets recorded
+    and passed back in here. Without it this still returns a number, from the
+    cells the colonies occupy, and says in `groundFrom` that it had to guess.
     """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -494,7 +525,10 @@ def cover_over(x, y, area, across: float, cell_m: float = COVER_CELL_M) -> dict:
     piled = np.zeros((n, n))
     if x.size == 0:
         return {"cellM": float(cell_m), "cells": int(piled.size),
-                "reefGroundM2": 0.0, "cover": 0.0, "medianCover": 0.0,
+                "reefGroundM2": float(ground_m2 or 0.0), "occupiedM2": 0.0,
+                "groundFrom": "there are no colonies",
+                "grid": piled, "cover": 0.0, "localCover": 0.0,
+                "medianCover": 0.0, "thicketM2": 0.0,
                 "piledUp": 0.0, "colonyAreaM2": 0.0, "biggerThanACell": 0}
 
     # A square of the same area, so the overlap with a cell is a product of
@@ -535,6 +569,19 @@ def cover_over(x, y, area, across: float, cell_m: float = COVER_CELL_M) -> dict:
     covered = 1.0 - np.exp(-piled / ground)
     reef = covered > COVER_FLOOR
     on_reef = covered[reef]
+
+    # The reef this is cover *of*.
+    if ground_m2 and ground_m2 > 0:
+        reef_ground = float(ground_m2)
+        ground_from = ("the reef habitat this place was planted into, which "
+                       "is what a transect figure is cover of")
+    else:
+        reef_ground = float(reef.sum()) * ground
+        ground_from = ("the %.0f m cells the colonies occupy, because no reef "
+                       "habitat was given. On a sparse reef this over-states "
+                       "the ground — one colony claims a whole cell — and the "
+                       "cover under-states to match" % cell_m)
+    piled_total = float(area.sum())
     return {
         # The grid itself, so that whatever writes a coverage raster writes
         # *this* one rather than computing a second one beside it. There were
@@ -543,16 +590,27 @@ def cover_over(x, y, area, across: float, cell_m: float = COVER_CELL_M) -> dict:
         "grid": covered,
         "cellM": float(cell_m),
         "cells": int(piled.size),
-        "reefGroundM2": float(reef.sum()) * ground,
+        "reefGroundM2": reef_ground,
+        "groundFrom": ground_from,
+        # What the colonies occupy, whatever the reef is said to be. Kept
+        # because the two differing is the interesting case: a reef whose
+        # colonies sit on a tenth of its habitat is a patchy reef, and that is
+        # a fact about it rather than an error.
+        "occupiedM2": float(reef.sum()) * ground,
         # And the part of it that is thicket rather than scattered heads. A
         # diver knows the difference and so does a vehicle: it is where a
         # colony is close enough to the next one to be an obstacle.
         "thicketM2": float((covered > COVER_THICKET).sum()) * ground,
-        "cover": float(on_reef.mean()) if on_reef.size else 0.0,
+        # Cover of the reef: all the colony area over all the reef habitat,
+        # saturated once, which is the quantity a transect measures.
+        "cover": (1.0 - math.exp(-piled_total / reef_ground)
+                  if reef_ground > 0 else 0.0),
+        # And what a diver standing on an occupied patch sees, which on a
+        # patchy reef is much more and is not the same claim.
+        "localCover": float(on_reef.mean()) if on_reef.size else 0.0,
         "medianCover": float(np.median(on_reef)) if on_reef.size else 0.0,
-        "piledUp": (float(piled[reef].sum()) / (float(reef.sum()) * ground)
-                    if reef.any() else 0.0),
-        "colonyAreaM2": float(area.sum()),
+        "piledUp": piled_total / reef_ground if reef_ground > 0 else 0.0,
+        "colonyAreaM2": piled_total,
         "biggerThanACell": too_big,
     }
 

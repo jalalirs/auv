@@ -247,7 +247,15 @@ def main() -> int:
     # Here the colony areas are the survey's own: every one of these is a
     # circle of the diameter something was detected at.
     on_the_ground = math.pi * sx * sx
-    measured = reef.cover_over(x, y, on_the_ground, across)
+    # The reef this is cover of: the ground the survey actually flew.
+    #
+    # A grown place passes its habitat map; a surveyed one has no habitat map
+    # because it has real detections instead, and the right denominator is the
+    # extent of the survey. Looe Key's photogrammetry covers about an eighth
+    # of the square kilometre the place is drawn over, and quoting cover over
+    # the whole site would put it at a fifth of what its own transects say.
+    flown = _how_much_was_flown(ref, across)
+    measured = reef.cover_over(x, y, on_the_ground, across, ground_m2=flown)
 
     site["reef"] = {
         "source": listed.get("source"), "method": listed.get("method"),
@@ -281,11 +289,13 @@ def main() -> int:
         "denseAreaM2": int(round(measured["thicketM2"])),
         "coverMeasuredBy": {
             "cellM": measured["cellM"],
-            "over": "cells with more than %g cover in them" % reef.COVER_FLOOR,
-            "statistic": "mean over those cells, each saturated as "
-                         "1 - exp(-A/G) because colonies are scattered rather "
-                         "than tiled",
+            "over": measured["groundFrom"],
+            "statistic": "all the colony area over all the surveyed ground, "
+                         "saturated as 1 - exp(-A/G) because colonies are "
+                         "scattered rather than tiled",
+            "localCover": round(measured["localCover"], 5),
             "medianCover": round(measured["medianCover"], 5),
+            "occupiedM2": int(round(measured["occupiedM2"])),
             "piledUp": round(measured["piledUp"], 5),
             # The number `tools/deliver` holds the published file against.
             # It has no threshold in it, which cover does, so it is the one
@@ -362,6 +372,25 @@ def _begin(x, y, depth, band, across):
     return {"at": [round(float(-across / 2 + (c + 0.5) * cell), 1), round(float(-across / 2 + (r + 0.5) * cell), 1),
                    round(float(floor + 3.0), 1)],
             "depthM": round(-floor, 1), "colonies": int(smooth[r, c])}
+
+
+def _how_much_was_flown(ref, across: float) -> float | None:
+    """How much ground the survey this reef came from actually covers.
+
+    The reference keeps it: the photogrammetry is tiled and only some of the
+    site has tiles. Without it there is no honest denominator for cover on a
+    surveyed reef — the site is the wrong one, because most of a site nobody
+    flew has no colonies for want of anybody having looked.
+    """
+    for name in ("seabed_1m.json", "seabed_1m_merged.json"):
+        try:
+            said = json.loads((ref / name).read_text())
+        except Exception:
+            continue
+        share = said.get("surveyFraction") or said.get("surveyedFraction")
+        if share:
+            return float(share) * float(across) * float(across)
+    return None
 
 
 def _instancer(prototypes, colours, kind_of, x, y, z, which, sx, sz, turn) -> str:
