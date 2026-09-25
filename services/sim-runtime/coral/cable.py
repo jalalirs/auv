@@ -20,6 +20,8 @@ vehicle flying the chart's line meets neither.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 # Seawater. The difference over any working range is under half a per cent and
@@ -108,6 +110,34 @@ def relax(shape: np.ndarray, segment: float, ends: tuple[bool, bool] = (True, Tr
     last = len(shape) - 1
     if sweeps is None:
         sweeps = max(2, last // 4)
+    if last < 1:
+        return
+
+    # Done on plain floats, not on numpy rows, and it is the same arithmetic.
+    #
+    # Each correction here is three multiplies and a square root on a
+    # three-element vector, and numpy costs more to *call* than that costs to
+    # do: `np.linalg.norm` on a 3-vector is about a microsecond, almost all of
+    # it dispatch. A hundred-node tether swept twenty-five times at two
+    # hundred hertz is half a million of those a simulated second, and it was
+    # seventy-eight per cent of the entire dry benchmark — `tools/bench` calls
+    # itself the difference between benchmarking as a ritual and as a habit,
+    # and at three hundred steps a second it was a ritual.
+    #
+    # The sweep stays sequential, and it is worth being exact about what that
+    # buys, because the note above and this one are each half of it.
+    #
+    # The loop runs from node 0 upwards, and a correction at constraint i
+    # moves node i+1 before constraint i+1 is applied. So a disturbance at the
+    # *near* end travels the whole chain in a single sweep, and one at the far
+    # end travels exactly one node — which is what the hundred-node mooring
+    # line was hitting. Sweeping it as many times as it is long is what makes
+    # both directions carry.
+    #
+    # Red-black ordering would vectorise this and propagate two nodes a sweep
+    # in either direction, which is neither of those behaviours: it is a
+    # different solver wearing the same name.
+    nodes = shape.tolist()
     for _ in range(sweeps):
         for i in range(last):
             first = 0.0 if (i == 0 and ends[0]) else 0.5
@@ -115,14 +145,24 @@ def relax(shape: np.ndarray, segment: float, ends: tuple[bool, bool] = (True, Tr
             share = first + second
             if share <= 0.0:
                 continue
-            a, b = shape[i], shape[i + 1]
-            apart = b - a
-            length = float(np.linalg.norm(apart))
+            a, b = nodes[i], nodes[i + 1]
+            dx = b[0] - a[0]
+            dy = b[1] - a[1]
+            dz = b[2] - a[2]
+            length = math.sqrt(dx * dx + dy * dy + dz * dz)
             if length < 1e-9:
                 continue
-            correct = (length - segment) / length * apart
-            shape[i] = a + correct * (first / share)
-            shape[i + 1] = b - correct * (second / share)
+            by = (length - segment) / length
+            cx, cy, cz = dx * by, dy * by, dz * by
+            towards = first / share
+            away = second / share
+            a[0] += cx * towards
+            a[1] += cy * towards
+            a[2] += cz * towards
+            b[0] -= cx * away
+            b[1] -= cy * away
+            b[2] -= cz * away
+    shape[:] = nodes
 
 
 def settle(shape: np.ndarray, a, b, length: float, current,

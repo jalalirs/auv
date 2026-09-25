@@ -116,6 +116,18 @@ def command_run(args) -> int:
 
 # ── flying it here, with no simulator at all ─────────────────────────────────
 
+def hit_by(dive) -> dict:
+    """What a dive struck, in the shape the bench keeps rows in.
+
+    Asked of the dive rather than counted here, because the runtime already
+    counts each thing once however long the vehicle was held against it.
+    """
+    said = dive.what_it_hit() if hasattr(dive, "what_it_hit") else {}
+    return {"struck": int(said.get("things", 0)),
+            "grounded": int(said.get("ground", 0)),
+            "whatItStruck": said.get("which", [])}
+
+
 def command_dry(args) -> int:
     """Fly the suite in this process: no Isaac, no graphics card, no queue.
 
@@ -190,9 +202,17 @@ def command_dry(args) -> int:
             "thoughts": sum((t or {}).get("thoughts") or 0 for t in thought.values()),
             "slowestThoughtS": max([(t or {}).get("slowestS") or 0.0
                                     for t in thought.values()], default=0.0),
+            # What it hit. The benchmark asks for "energy, time, closing
+            # navigation error, things struck" and this was the one of the
+            # four nothing reported — which is the whole difference between
+            # `wary`, which arrives five metres short and hits nothing, and
+            # `pursue`, which arrives exactly and ploughs through three
+            # nursery frames.
+            **hit_by(dive),
         })
         print(f"  {task:<12} {rows[-1]['score'] * 100:5.0f}%  "
               f"{rows[-1]['driftM']:6.2f} m drift  {rows[-1]['energyWh']:6.2f} Wh  "
+              f"{rows[-1]['struck'] + rows[-1]['grounded']:2d} hit  "
               f"{DIM}flown by {rows[-1]['flownBy']}{OFF}")
     kept = _bench_file(args.suite)
     called = args.called or args.controller
@@ -246,6 +266,9 @@ def flown(platform) -> list[dict]:
                 "driftM": (out.get("navigation") or {}).get("driftM", 0.0),
                 "flownBy": (task_said.get("flownBy") or {}).get("mostly", "?"),
                 "thoughts": thoughts, "slowestThoughtS": slowest,
+                "struck": int((out.get("hit") or {}).get("things", 0)),
+                "grounded": int((out.get("hit") or {}).get("ground", 0)),
+                "whatItStruck": (out.get("hit") or {}).get("which", []),
                 "dive": dive["id"], "run": run["id"],
             })
             break
@@ -260,6 +283,11 @@ def summarise(rows: list[dict]) -> dict:
             "driftM": mean("driftM"), "seconds": mean("seconds"),
             "thoughts": sum(r["thoughts"] for r in rows),
             "slowestThoughtS": max([r["slowestThoughtS"] for r in rows], default=0.0),
+            # Summed, not averaged. A controller that ploughed through three
+            # nursery frames on one dive and nothing on seven did not hit
+            # three-eighths of a frame.
+            "struck": sum(r.get("struck") or 0 for r in rows),
+            "grounded": sum(r.get("grounded") or 0 for r in rows),
             "achieved": sum(1 for r in rows if r["ended"] == "achieved")}
 
 
@@ -295,6 +323,8 @@ def command_show(args) -> int:
                              ("drift", "driftM", lambda v: f"{v:.2f} m"),
                              ("energy", "energyWh", lambda v: f"{v:.2f} Wh"),
                              ("in the water", "seconds", lambda v: f"{v:.0f} s"),
+                             ("struck", "struck", lambda v: f"{v:.0f}"),
+                             ("grounded", "grounded", lambda v: f"{v:.0f}"),
                              ("thoughts", "thoughts", lambda v: f"{v:.0f}"),
                              ("slowest thought", "slowestThoughtS", lambda v: f"{v:.2f} s")):
         line = f"{DIM}{label:<14}{OFF}"

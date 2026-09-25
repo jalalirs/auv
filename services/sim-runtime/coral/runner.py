@@ -488,6 +488,10 @@ class Dive:
 
         self.world = World(brief.get("layout"))
         self._struck: set[str] = set()   # said once each, not once a step
+        # And the seabed, separately, because they are different mistakes. A
+        # vehicle that clips a nursery frame has hit something somebody put
+        # there; one that flies into a spur has hit the place.
+        self._grounded = 0
         # The cable, if this vehicle is on one. Set up once the vehicle has
         # been placed, because a tether is a line between two points and one of
         # them is the vehicle.
@@ -2681,6 +2685,24 @@ class Dive:
                      is_=struck.spec.what,
                      where=[round(float(v), 2) for v in allowed])
 
+    def what_it_hit(self) -> dict:
+        """What this dive struck, for whoever is judging it.
+
+        `tools/bench` asks for it. The benchmark in the plan says a controller
+        is judged on "energy, time, closing navigation error, **things
+        struck**", and things struck was the one of those nothing reported —
+        which is the difference between `wary`, which arrives five metres
+        short and hits nothing, and `pursue`, which arrives exactly and
+        ploughs through three nursery frames. That is the whole question the
+        bench exists to answer and it was the column that was missing.
+
+        Counted once per thing, not once per physics step: a vehicle held
+        against a frame for four seconds struck it once.
+        """
+        return {"things": len(self._struck),
+                "which": sorted(self._struck),
+                "ground": int(self._grounded)}
+
     def strike(self) -> None:
         """Stop the vehicle against ground it cannot ride over.
 
@@ -2716,6 +2738,11 @@ class Dive:
             return                      # already leaving the face
         moving[:2] = flat - into * going
         self.velocity[:3] = self.rotation.T @ moving
+        # Counted once per contact rather than once per step, the same way a
+        # world object is: a vehicle pressed against a spur for four seconds
+        # flew into it once.
+        if not self.against_the_ground:
+            self._grounded += 1
         self.against_the_ground = True
 
     def charge_at_the_dock(self) -> None:
@@ -3242,6 +3269,14 @@ class Dive:
                  # reads it to go and fetch the document — and a run whose
                  # vehicle struck something ought to say so where the result is.
                  **({} if not len(self.world) else {"world": self.world.described()}),
+                 # And what it hit, always, including when the answer is
+                 # nothing. The benchmark judges a controller on "energy,
+                 # time, closing navigation error, things struck", and the
+                 # last of those was the one a run never reported: `struck`
+                 # events went into the log and nothing gathered them. A
+                 # column that is absent when a controller hit nothing and
+                 # present when it did cannot be compared down its length.
+                 hit=self.what_it_hit(),
                  **({} if self.sonar is None else {"sonar": self.sonar.said()}),
                  # What the vehicle managed to say, and what went missing. A
                  # controller that phones home is judged on a channel that
