@@ -67,6 +67,11 @@ COVER = (0.10, 0.42, 0.34, 0.76, 0.84, 0.74, 0.56, 0.42, 0.26, 0.15, 0.04,
 # in a thousand, which is a colony every couple of hundred square metres.
 SAND_IS_STILL = 0.005
 
+# Above this the water is shallow enough that the surf keeps the rock bare
+# whatever its shape. Four metres, which is where the cover curve above peaks
+# and starts coming down again for the same reason.
+SCOURED_ABOVE_M = 4.0
+
 # And the cover below which ground is not reef at all: sand with the odd head
 # on it rather than a reef somebody would run a transect over.
 #
@@ -371,7 +376,13 @@ def describe(height, across: float, picture=None) -> dict:
     # than a cleverer inference, which is what B3 says Al Fahal needs.
     rough = np.clip(slope / 6.0, 0.0, 1.0)
     proud = np.clip(stands / 0.8, 0.0, 1.0)
-    hard = np.clip(np.maximum(rough, proud), SAND_IS_STILL, 1.0)
+    # And the shallowest water is scoured whatever the shape is: a reef crest
+    # in the surf holds no sediment. This came from `make-site`, which had a
+    # second hardness of its own — see the note on `describe` — and it is the
+    # one thing that model knew and this one did not.
+    crest = np.clip((SCOURED_ABOVE_M - depth) / 3.0, 0.0, 1.0)
+    hard = np.clip(np.maximum(np.maximum(rough, proud), 0.55 * crest),
+                   SAND_IS_STILL, 1.0)
 
     if picture is not None:
         seen = _hard_from_picture(picture, depth.shape)

@@ -82,3 +82,61 @@ def test_the_floor_is_not_written_twice():
     import reef
 
     assert zonation.COVER_FLOOR is reef.COVER_FLOOR
+
+
+def test_there_is_one_hardness_and_make_site_asks_for_it():
+    """There were two, and they decided two different things from the same
+    seabed: `make-site.derived_hardness` what the ground is *painted* as,
+    `zonation.describe` what the coral *grows* on. A place could be drawn as
+    pavement where its reef was planted on sand and nothing would disagree
+    with itself.
+
+    The one in make-site was also the one that could not be wrong: it
+    normalised on the median, which maps the middle of any site to a half
+    whatever the site is, so it always found about as much rock as sand. On Al
+    Fahal it called 63% of the site hard, including the quarter that is a
+    Sentinel-2 floor clipped flat at 21.6 m.
+    """
+    import importlib.machinery
+    import importlib.util
+    import pathlib as _p
+
+    source = (_p.Path(__file__).resolve().parent / "make-site").read_text()
+    assert 'zonation.describe(height, across)["hard"]' in source
+    # And none of the old model is left behind to drift back into use.
+    for gone in ("1.4826", "0.62 * spread", "def spread("):
+        assert gone not in source, gone
+
+
+def test_the_two_hardnesses_are_the_same_numbers():
+    """Not merely both present: the same array, resampled."""
+    import importlib.machinery
+    import importlib.util
+    import pathlib as _p
+
+    loader = importlib.machinery.SourceFileLoader(
+        "make_site", str(_p.Path(__file__).resolve().parent / "make-site"))
+    spec = importlib.util.spec_from_loader("make_site", loader)
+    make_site = importlib.util.module_from_spec(spec)
+    loader.exec_module(make_site)
+
+    rows = np.arange(128)
+    ground = -10.0 + 1.4 * np.sin(rows[:, None] * 0.4) * np.cos(rows[None, :] * 0.4)
+    across = 400.0
+    painted = make_site.derived_hardness(ground, across, n=128)
+    grown = zonation.describe(ground, across)["hard"]
+    assert painted.shape == (128, 128)
+    assert np.allclose(painted, grown, atol=1e-6)
+
+
+def test_the_surf_keeps_the_crest_bare():
+    """The one thing make-site's model knew that zonation's did not: the
+    shallowest water is scoured whatever the shape, because a reef crest in
+    the surf holds no sediment."""
+    across = 400.0
+    # Dead flat, which would otherwise be sand — but at a metre down.
+    shallow = zonation.describe(np.full((64, 64), -1.0), across)["hard"]
+    deep = zonation.describe(np.full((64, 64), -14.0), across)["hard"]
+    assert shallow.mean() > 0.3, shallow.mean()
+    assert deep.mean() < 0.05, deep.mean()
+    assert zonation.SCOURED_ABOVE_M == pytest.approx(4.0)
