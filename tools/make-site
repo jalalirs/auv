@@ -33,6 +33,7 @@ import time
 # Next to this script, which is where python looks first.
 import built
 import sediment
+import zonation
 
 # What a degree is worth, in metres, at a given latitude. Good to a fraction of
 # a percent over a site of a few kilometres, which is the size of thing this
@@ -368,47 +369,36 @@ def derived_hardness(height, across: float, n: int = 1024):
     """Where the hard ground is, worked out from the shape of the seabed.
 
     For the four places with no habitat map. Sediment collects where the water
-    is slow and the ground is flat; rock stays bare where it is steep or
-    standing proud. So: slope makes ground hard, and sitting in a hollow makes
-    it soft.
+    is slow and the ground is flat; rock stays bare where it is steep, or
+    standing proud, or shallow enough that the surf keeps it swept.
+
+    **Asked of `zonation`, not worked out here.** There were two of these.
+    This one had its own model — logistic curves on the median and the median
+    absolute deviation of the slope and the relief — and `zonation.describe`
+    had another, and they decided two different things from the same seabed:
+    this one what the ground is *painted* as, that one what the coral *grows*
+    on. So a place could be drawn as pavement where its reef was planted on
+    sand, and nothing anywhere would disagree with itself.
+
+    Worse, this was the model that could not be wrong. Normalising on the
+    median maps the middle of any site to a half whatever the site is, so it
+    always found about as much hard ground as soft — on Al Fahal it called 63%
+    of the site hard, including the quarter of it that is a Sentinel-2
+    detection floor clipped flat at 21.6 m. That is the same fault
+    `zonation.describe` had until this week, in the function nobody had
+    looked at, and it is the reason this is now four lines instead of forty.
 
     This is a model, not a survey, and the difference matters — it is written
     into the record as derived so that nobody reads a sand patch here as a
-    sand patch somebody mapped. What it buys is a seabed that is two surfaces
-    instead of one flat grey plane, everywhere rather than at the one site
-    that has polygons.
+    sand patch somebody mapped.
     """
     import numpy as np
-    from scipy import ndimage
 
-    rows, columns = height.shape
-    step = across / max(1, columns - 1)
-    dy, dx = np.gradient(height.astype("float64"), step, step)
-    slope = np.hypot(dx, dy)
-
-    # How far this ground stands above the ground around it. A hollow fills
-    # with sand; a rise is scoured.
-    wide = max(3, int(round(25.0 / step)))
-    around = ndimage.uniform_filter(height.astype("float64"), wide)
-    stands = height - around
-
-    # Both to nought-to-one on their own spread, because a reef flat and a
-    # continental slope have nothing in common but the shape of the histogram.
-    def spread(field, gentle=0.8):
-        middle = np.median(field)
-        scale = np.median(np.abs(field - middle)) * 1.4826
-        return 1.0 / (1.0 + np.exp(-(field - middle) / max(scale * gentle, 1e-6)))
-
-    hard = np.clip(0.62 * spread(slope) + 0.38 * spread(stands), 0.0, 1.0)
-    # And the shallowest water is scoured whatever the shape: a reef crest in
-    # the surf holds no sediment.
-    crest = np.clip((height + 4.0) / 3.0, 0.0, 1.0)
-    hard = np.clip(hard + 0.35 * crest, 0.0, 1.0)
-
+    hard = zonation.describe(height, across)["hard"]
+    rows, columns = hard.shape
     at = (np.linspace(0, rows - 1, n).astype(int)[:, None],
           np.linspace(0, columns - 1, n).astype(int)[None, :])
     return hard[at].astype("float32")
-
 
 def derived_colour(height, hard, across: float, n: int = 1024):
     """What the bottom looks like from above, where nobody has photographed it.
