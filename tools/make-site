@@ -949,11 +949,20 @@ def main() -> int:
                     coarse = float(json.loads(told.read_text())["resolutionM"])
                 except Exception:
                     coarse = 0.0
+                # A step softened with a Gaussian of sigma s transitions
+                # over about two and a half s, so a boundary known to ten
+                # metres wants a four-metre sigma. Taking sigma as the full
+                # ten spread the influence over forty metres and grew
+                # Kāne'ohe's habitat by two fifths — which is not softening a
+                # boundary, it is moving one.
                 texels = coarse / (asked.across / max(1, hard.shape[0] - 1))
-                if texels >= 2:
-                    hard = _soften(hard, texels)
-                    print(f"  habitat: softened over {coarse:.0f} m, which is "
-                          f"what that map resolves")
+                if texels >= 2.5:
+                    was = float((hard > 0.1).mean())
+                    hard = _soften(hard, texels / 2.5)
+                    print(f"  habitat: boundaries softened over {coarse:.0f} m, "
+                          f"which is what that map resolves "
+                          f"({100 * was:.0f}% hard before, "
+                          f"{100 * float((hard > 0.1).mean()):.0f}% after)")
             named = ", ".join(f"{HABITAT_NAMES.get(k, k)} {100 * (kinds == k).mean():.0f}%"
                               for k in sorted(set(np.unique(kinds).tolist())))
             print(f"  habitat: surveyed polygons: {named}")
