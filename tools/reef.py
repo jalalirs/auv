@@ -330,8 +330,17 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
             "fromScans": from_a_scan,
             "scannedForms": sorted(scans),
             "cover": {
-                "asked": round(asked_for, 3),
-                "whereItGrows": round(cover, 3),
+                "asked": round(asked_for, 5),
+                # Five places, not three.
+                #
+                # `tools/deliver` measures this again off the published USD
+                # and holds the two against each other to one per cent, and at
+                # Thuwal Deep's three per cent cover the third decimal place
+                # *is* one per cent: 0.0326 written as 0.033 failed the check
+                # on its own rounding. A record whose precision is coarser
+                # than the test it has to pass is a record that fails for no
+                # reason, and the first instinct is to loosen the test.
+                "whereItGrows": round(cover, 5),
                 "perSquareKm": round(how_many / max(1e-9, (across / 1000) ** 2)),
                 "from": cover_from,
                 # Nothing that comes out of this function is measured. The
@@ -340,10 +349,10 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
                 # come through here.
                 "measured": False,
             },
-            "coverAskedFor": round(asked_for, 3),
+            "coverAskedFor": round(asked_for, 5),
             "beginAt": begin,
             "points": int(sum(len(p) for p, _ in prototypes)),
-            "coverWhereItGrows": round(cover, 3),
+            "coverWhereItGrows": round(cover, 5),
             "reefAreaM2": int(round(measured["reefGroundM2"])),
             "denseAreaM2": int(thick),
             # How it was measured, so a deliverable computing the same number
