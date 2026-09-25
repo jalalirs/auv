@@ -34,7 +34,7 @@ import zonation
 def plant(where: pathlib.Path, height, across: float, seed: int,
           how_many: int, picture=None, reference: pathlib.Path | None = None,
           cover_from: str | None = None,
-          assemblage: str | None = None) -> dict:
+          assemblage: str | None = None, hard=None) -> dict:
     """Grow a reef onto a seabed, and write it beside it.
 
     `reference` is a place's fetched corpus. Where it holds a scan of a colony
@@ -63,7 +63,15 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     depth = -height
 
     # What kind of ground this is, everywhere.
-    ground = zonation.describe(height, across, picture=picture)
+    # `hard` is what the place says it is made of, where it knows: habitat
+    # polygons from a survey, or a composed reef's own parts. Believed over
+    # the inference, and over the picture, because it is not a guess.
+    #
+    # It also has to be the *same* ground the seabed is painted with. It was
+    # not: make-site read the composition's hardness and this inferred its
+    # own, so Red Sea's coral was planted on a sand terrace the very same
+    # pipeline had drawn as sand a hundred lines earlier.
+    ground = zonation.describe(height, across, picture=picture, known=hard)
     want = zonation.cover(ground, rng)
 
     # Below the light the cover map is correctly empty, and that is not the
