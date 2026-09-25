@@ -177,3 +177,44 @@ def test_provenance_marks_a_grown_reef_as_grown():
     said_first = said["readThisFirst"]
     assert "are not real colonies" in said_first
     assert "observation of a living animal" in said_first
+
+
+def test_cover_is_quoted_over_the_ground_the_place_says_it_grew_on():
+    """The denominator has to come from the place, not from the raster.
+
+    Counting every five-metre cell with any colony in it is only right where
+    the colonies are dense enough to fill a cell. On a sparse reef one colony
+    marks all twenty-five square metres as reef ground and the denominator
+    balloons: Al Fahal's 216,229 m2 of colony read as 9.1% that way and 52.6%
+    against the 289,257 m2 the reef builder says it grew over. The wrong one
+    went into the plan's own table as a measurement, where it flattered
+    exactly the three places whose density nobody has checked.
+    """
+    source = (HERE / "deliver").read_text()
+    assert 'grew_over = site.get("reef", {}).get("reefAreaM2")' in source
+    # And the fallback says it is one, rather than presenting itself as the
+    # same measurement.
+    assert "over-estimate" in source
+
+
+def test_a_sparse_reef_would_have_been_flattered_by_the_old_denominator():
+    """The arithmetic of the fault, so it cannot come back quietly."""
+    deliver = _deliver()
+    across, cell = 100.0, deliver.COVER_CELL_M
+    # One small colony in each of sixteen separate cells, spaced two cells
+    # apart so none of them share: sparse.
+    at = [(-40.0 + 10.0 * i, -40.0 + 10.0 * j, -3.0)
+          for i in range(4) for j in range(4)]
+    colonies = {"at": at}
+    colony_area = 0.5
+    grid = deliver.cover_raster(colonies, {"m2": [colony_area] * len(at)},
+                                across, cell)
+    cells = float((grid > 0).sum())
+    assert cells == len(at), cells
+    by_cells = len(at) * colony_area / (cells * cell * cell)
+    # Every colony is alone in its cell, so the denominator is the whole cell
+    # and the cover reads as the colony over twenty-five square metres.
+    assert by_cells == pytest.approx(colony_area / (cell * cell)), by_cells
+    # Against the ground they actually sit on — say a metre each — it is
+    # twenty-five times that, which is the size of the fault.
+    assert (colony_area / 1.0) / by_cells == pytest.approx(cell * cell)
