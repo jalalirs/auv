@@ -83,13 +83,23 @@ ASSEMBLAGES["caribbean"] = BANDS
 # And the Red Sea, off what somebody counted on this reef.
 #
 # Al Fahal is a midshelf reef in the Thuwal group, surveyed by line intercept
-# on ten-metre transects at two and ten metres — Roberts et al., "Spatial
-# variation in coral reef fish and benthic communities in the central Saudi
-# Arabian Red Sea", PeerJ 5:e3410, 2017, which recorded twenty-five
-# scleractinian genera across nine reefs and found Porites, Pocillopora and
-# Acropora each above five per cent of benthic cover. Transects in August 2024
-# put those three at 63.8% of coral cover between them — Porites 34.6,
-# Pocillopora 22.8, Acropora 6.4.
+# on ten-metre transects at two and ten metres — Khalil, Bouwmeester and
+# Berumen, "Spatial variation in coral reef fish and benthic communities in
+# the central Saudi Arabian Red Sea", PeerJ 5:e3410, 2017, doi
+# 10.7717/peerj.3410, which surveyed nine reefs off Thuwal and found mean
+# coral cover from 8.35% (±3.3) on the inshore Abu Shosha to 30.70% (±3.7) on
+# the midshelf Al-Taweel. Al Fahal is one of the three midshelf reefs and had
+# the most hard coral genera of any of the nine, at twenty-three.
+#
+# The author list here read "Roberts et al." for a fortnight. It was wrong:
+# nobody of that name is on the paper. The title and the DOI were right, which
+# is how it survived — a citation that resolves is not a citation that is
+# correct, and this one was checked only when somebody went to the paper for a
+# different number entirely.
+#
+# Transects in August 2024 put Porites, Pocillopora and Acropora at 63.8% of
+# *coral cover* between them — Porites 34.6, Pocillopora 22.8, Acropora 6.4.
+# Those are shares of the coral, not of the benthos.
 #
 # Turning genera into the shapes this platform draws:
 #
