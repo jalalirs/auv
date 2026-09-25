@@ -438,20 +438,27 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
         seen = by_form.setdefault(one["growthForm"], {"colonies": 0, "m2": 0.0})
         seen["colonies"] += 1
         seen["m2"] += one["footprintM2"]
+    piled = sum(one["m2"] for one in by_form.values())
+    covered = 1.0 - math.exp(-piled / max(looked_at, 1e-9))
     for form, seen in by_form.items():
         seen["m2"] = round(seen["m2"], 2)
-        seen["coverOfSurveyedGround"] = round(seen["m2"] / max(looked_at, 1e-9), 5)
+        # This form's share of the ground that is covered at all. Not its own
+        # area over the ground: that does not saturate, so on a crowded reef
+        # the shares add to more than the cover they are shares of.
+        seen["coverOfReefGround"] = round(
+            covered * seen["m2"] / max(piled, 1e-9), 5)
 
     with (into / "cover-by-form.csv").open("w", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(["growthForm", "colonies", "footprintM2",
-                         "coverOfSurveyedGround"])
+                         "coverOfReefGround"])
         for form in sorted(by_form, key=lambda f: -by_form[f]["m2"]):
             seen = by_form[form]
             writer.writerow([form, seen["colonies"], seen["m2"],
-                             seen["coverOfSurveyedGround"]])
+                             seen["coverOfReefGround"]])
     write_grid(into, grid, {**centre, "name": site.get("name", "site")},
                across, COVER_CELL_M)
+    _piled = sum(one["m2"] for one in by_form.values())
     said = provenance(site)
     said["coverByForm"] = {
         "surveyedGroundM2": round(looked_at, 1),
@@ -463,8 +470,19 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
             "square kilometre has no colonies for want of anybody having "
             "looked.",
         "forms": by_form,
-        "allStanding": round(
-            sum(one["m2"] for one in by_form.values()) / max(looked_at, 1e-9), 5),
+        # Cover, which is not the same as the area added up.
+        #
+        # Colonies are scattered rather than tiled, so they land on each
+        # other: area A dropped at random over ground G covers 1 - exp(-A/G)
+        # of it and not A/G. `tools/reef.py` says exactly this about a whole
+        # site and `cover_raster` above does it per cell, and this line did
+        # not — so Red Sea came out at 110.78 per cent covered, which is not a
+        # number, and the four places under it were all wrong in the same
+        # direction by less obvious amounts.
+        "allStanding": round(1.0 - math.exp(-_piled / max(looked_at, 1e-9)), 5),
+        # And the raw ratio, because it is the input to that and because a
+        # reef with more colony than ground is worth being able to see.
+        "colonyAreaOverGround": round(_piled / max(looked_at, 1e-9), 5),
         "compareWith":
             "A transect's cover figure is the number to hold this against, "
             "and the two are not quite the same measurement: a transect "
@@ -478,8 +496,8 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
     return {"colonies": len(rows), "coverCells": int(grid.size),
             "meanCover": float(grid.mean()),
             "surveyedGroundM2": looked_at, "groundIs": ground_is,
-            "onSurveyedGround": sum(one["m2"] for one in by_form.values())
-                                / max(looked_at, 1e-9),
+            "onSurveyedGround": covered,
+            "piledUp": piled / max(looked_at, 1e-9),
             "byForm": by_form, "into": into}
 
 
@@ -501,10 +519,12 @@ def main() -> int:
           f"{made['surveyedGroundM2']:,.0f} m2 of reef ground, "
           f"{100 * made['onSurveyedGround']:.2f}% covered")
     print(f"    ({made['groundIs']})")
+    print(f"    ({100 * made['piledUp']:.1f}% of colony area piled up, "
+          f"saturated as 1 - exp(-A/G) because they land on each other)")
     for form in sorted(made["byForm"], key=lambda f: -made["byForm"][f]["m2"]):
         seen = made["byForm"][form]
         print(f"      {form:<12} {seen['colonies']:7,}  "
-              f"{100 * seen['coverOfSurveyedGround']:5.2f}%")
+              f"{100 * seen['coverOfReefGround']:5.2f}%")
     for one in sorted(p.name for p in into.iterdir()):
         print(f"    {into / one}")
     print()
