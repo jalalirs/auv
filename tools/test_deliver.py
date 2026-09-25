@@ -218,3 +218,29 @@ def test_a_sparse_reef_would_have_been_flattered_by_the_old_denominator():
     # Against the ground they actually sit on — say a metre each — it is
     # twenty-five times that, which is the size of the fault.
     assert (colony_area / 1.0) / by_cells == pytest.approx(cell * cell)
+
+
+def test_cover_cannot_exceed_one_however_much_colony_there_is():
+    """Red Sea came out at 110.78 per cent covered, which is not a number.
+
+    Colonies are scattered rather than tiled, so they land on each other: area
+    A dropped at random over ground G covers 1 - exp(-A/G) and not A/G.
+    tools/reef.py says exactly that about a whole site and cover_raster says it
+    per cell, and the summary line under both of them did not — so every place
+    was wrong in the same direction and only the one over a hundred showed it.
+    """
+    deliver = _deliver()
+    source = (HERE / "deliver").read_text()
+    assert "math.exp(-_piled" in source
+    # And the raw ratio is kept, because a reef with more colony than ground
+    # is worth being able to see.
+    assert '"colonyAreaOverGround"' in source
+
+
+def test_the_shares_of_each_form_add_up_to_the_cover_they_are_shares_of():
+    """Per form it is a share of what is covered, not the form's own area over
+    the ground: that does not saturate, so on a crowded reef the parts would
+    add to more than the whole."""
+    deliver = _deliver()
+    source = (HERE / "deliver").read_text()
+    assert 'covered * seen["m2"] / max(piled, 1e-9)' in source
