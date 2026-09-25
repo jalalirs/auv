@@ -138,9 +138,48 @@ def build(across: float, samples: int, seed: int = 1,
     begin_row = max(0, min(samples - 1, begin_row))
     bottom = float(depth[begin_row, begin_column])
 
+    # ── what each part of it is ──────────────────────────────────────────────
+    #
+    # This place knows. It was not surveyed and it was not inferred: the parts
+    # were laid down by name a hundred lines above — reef flat, crest,
+    # fore-reef slope, sand terrace, deeper slope — and which of them is rock
+    # is a fact about the composition rather than something to read back out
+    # of the shape it produced.
+    #
+    # It was being read back out of the shape, and wrongly.
+    # `zonation.describe` works from rugosity and relief, and the rugosity here
+    # is applied everywhere — `building` is 0.18 on the flat and 0.22 on the
+    # terrace, not nought — so the sand terrace came back textured enough to
+    # be rock and the site was called 98.5% reef habitat. A sixth of it is a
+    # sand terrace by name: "where the slope eases and everything the reef
+    # sheds settles".
+    hard = np.zeros_like(depth)
+    # The reef flat is pavement — scoured level by the waves, which is why it
+    # is level — with a lagoon of sand behind it towards the shore.
+    hard[flat] = np.clip(0.85 - 0.75 * towards_shore[flat] ** 1.4, 0.05, 1.0)
+    # The fore-reef slope is where the coral builds, and is rock throughout.
+    hard[slope] = 0.95
+    # The terrace is sand. That is what it is for.
+    hard[terrace] = 0.04
+    # And the deeper slope is sediment over rock, coarsening downwards as the
+    # fine stuff keeps going.
+    along_deep = np.clip((ex[deep] - terrace_to) / (across / 2 - terrace_to), 0, 1)
+    hard[deep] = np.clip(0.10 + 0.35 * along_deep, 0.0, 1.0)
+    # The grooves are bare sand channels cut through the spurs, deliberately
+    # clear of coral, and they are most of why a diver can tell a fore reef
+    # from a boulder field.
+    in_a_groove = (ridges < -0.35) & (strength > 0.25)
+    hard[in_a_groove] = np.minimum(hard[in_a_groove], 0.12)
+
     return -depth.astype("float32"), {
         "morphology": "fringing reef: flat, crest, fore-reef slope with "
                       "spur-and-groove, sand terrace, deeper slope",
+        # Handed back so nothing downstream has to guess it.
+        "hard": hard.astype("float32"),
+        "hardFrom": ("the composition itself: this reef was laid down part by "
+                     "part and each part knows whether it is rock. Not "
+                     "inferred from the shape, which read the sand terrace as "
+                     "reef because the rugosity is applied everywhere"),
         "shoreAt": "the -x edge",
         # Four metres off the bottom, and never shallower than six down. The
         # first version subtracted a fixed six metres from the bottom depth and

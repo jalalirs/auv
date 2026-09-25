@@ -878,6 +878,20 @@ def main() -> int:
                               for k in sorted(set(np.unique(kinds).tolist())))
             print(f"  habitat: surveyed polygons: {named}")
             hardness_from = "habitat polygons from a survey of this place"
+        elif morphology and morphology.get("hard") is not None:
+            # A composed place knows, because it laid its own parts down by
+            # name. Reading it back out of the shape is guessing at something
+            # this pipeline decided itself an hour earlier — and it guessed
+            # wrong: the rugosity a fringing reef gets is applied everywhere,
+            # so the sand terrace came back textured enough to be rock and
+            # Red Sea was called 98.5% reef habitat.
+            said = np.asarray(morphology["hard"], dtype="float32")
+            at = (np.linspace(0, said.shape[0] - 1, 1024).astype(int)[:, None],
+                  np.linspace(0, said.shape[1] - 1, 1024).astype(int)[None, :])
+            hard = said[at]
+            print(f"  habitat: from the composition itself, "
+                  f"{100 * float(hard.mean()):.0f}% hard")
+            hardness_from = morphology.get("hardFrom", "the composition itself")
         else:
             hard = derived_hardness(height, asked.across)
             print(f"  habitat: derived from slope and relief, "
@@ -941,6 +955,12 @@ def main() -> int:
         }
         ground_said = {"hardnessFrom": hardness_from, "colourFrom": colour_from,
                        "surveyed": bool(surveyed_ground),
+                       # Whether this place is telling us what it is made of
+                       # rather than being guessed at. True for a survey's
+                       # habitat polygons and for a composed reef's own parts.
+                       "knowsItsOwn": bool(
+                           (classes is not None and classes.is_file())
+                           or (morphology and morphology.get("hard") is not None)),
                        "softFrom": (
                            "bioturbated mud, generated: trails, burrow mouths, "
                            "mounds and casts. The kinds of trace are what a "
@@ -994,6 +1014,11 @@ def main() -> int:
                                cover_from=asked.cover_from,
                                assemblage=asked.assemblage,
                                picture=seen_from_above,
+                               # The same ground this seabed is painted with,
+                               # so the coral grows on what the place says it
+                               # is made of rather than on a second opinion.
+                               hard=hard if ground_said and ground_said.get(
+                                   "knowsItsOwn") else None,
                                reference=corpus if corpus.is_dir() else None)
 
     import numpy as np
@@ -1027,7 +1052,10 @@ def main() -> int:
                 ("method", "observedAt", "opticalLimitM", "bottomVisibleFraction",
                  "beyondOpticalDepthFraction", "medianDetailM", "toCalibrate")
                 if survey_note and k in survey_note}),
-            **({"constructed": morphology} if morphology else {}),
+            # Without the hardness map itself, which is an array and belongs
+            # in hardness.png beside the place rather than in its record.
+            **({"constructed": {k: v for k, v in morphology.items()
+                                if k != "hard"}} if morphology else {}),
             **({"centre": {"latitude": asked.centre[0],
                            "longitude": asked.centre[1]}} if asked.centre else {}),
             "acrossMetres": asked.across,

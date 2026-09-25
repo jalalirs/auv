@@ -140,3 +140,66 @@ def test_the_surf_keeps_the_crest_bare():
     assert shallow.mean() > 0.3, shallow.mean()
     assert deep.mean() < 0.05, deep.mean()
     assert zonation.SCOURED_ABOVE_M == pytest.approx(4.0)
+
+
+def test_a_composed_reef_knows_which_of_its_parts_are_sand():
+    """It laid them down by name — reef flat, crest, fore-reef slope, sand
+    terrace, deeper slope — so which are rock is a fact about the composition
+    and not something to read back out of the shape it produced.
+
+    It was being read back out, and wrongly: the rugosity a fringing reef gets
+    is applied everywhere (`building` is 0.18 on the flat and 0.22 on the
+    terrace, not nought), so the sand terrace came back textured enough to be
+    rock and Red Sea was called 98.5% reef habitat.
+    """
+    import fringing
+
+    height, said = fringing.build(1000.0, 256, seed=1)
+    hard = said["hard"]
+    assert hard.shape == height.shape
+    assert "hardFrom" in said
+
+    # The terrace runs from 0.18 to 0.34 of the width, measured from the
+    # middle, and is sand by name: "where the slope eases and everything the
+    # reef sheds settles".
+    across, samples = 1000.0, 256
+    ex = (np.arange(samples) / (samples - 1) - 0.5) * across
+    terrace = (ex > 0.18 * across) & (ex <= 0.34 * across)
+    slope = (ex > -0.20 * across) & (ex <= 0.18 * across)
+    assert hard[:, terrace].mean() < 0.1, hard[:, terrace].mean()
+    assert hard[:, slope].mean() > 0.6, hard[:, slope].mean()
+    # And the whole thing is not rock: that was the fault.
+    assert hard.mean() < 0.7, hard.mean()
+
+
+def test_a_place_that_knows_is_believed_over_the_inference():
+    """A survey's habitat polygons already were. A composed reef's own parts
+    are now, and by the same door."""
+    across = 400.0
+    rows = np.arange(128)
+    # Ground with plenty of texture, which the inference would call rock.
+    rough = -10.0 + 1.4 * np.sin(rows[:, None] * 0.5) * np.cos(rows[None, :] * 0.5)
+    inferred = zonation.describe(rough, across)["hard"]
+    assert inferred.mean() > 0.4
+
+    # But the place says half of it is sand.
+    said = np.ones((128, 128))
+    said[:, :64] = 0.02
+    told = zonation.describe(rough, across, known=said)["hard"]
+    assert told[:, :64].mean() < 0.05
+    assert told[:, 64:].mean() > 0.9
+
+
+def test_the_coral_grows_on_what_the_seabed_is_painted_as():
+    """make-site read the composition's hardness for the texture and reef.py
+    inferred its own for the planting, so Red Sea's coral was planted on a
+    sand terrace the same pipeline had drawn as sand a hundred lines
+    earlier."""
+    import inspect
+    import pathlib as _p
+
+    import reef
+
+    assert "hard" in inspect.signature(reef.plant).parameters
+    source = (_p.Path(__file__).resolve().parent / "make-site").read_text()
+    assert "hard=hard if ground_said" in source

@@ -319,7 +319,7 @@ def _blur(field, metres: float, step: float):
     return field
 
 
-def describe(height, across: float, picture=None) -> dict:
+def describe(height, across: float, picture=None, known=None) -> dict:
     """Read a seabed and say what kind of ground each square metre of it is.
 
     `picture` is the place photographed from above, when there is one, as rows
@@ -391,7 +391,24 @@ def describe(height, across: float, picture=None) -> dict:
     hard = np.clip(np.maximum(rough, proud) + 0.35 * crest,
                    SAND_IS_STILL, 1.0)
 
-    if picture is not None:
+    # A place that knows what it is made of says so, and is believed over any
+    # of the above.
+    #
+    # Called `known` and not `hard`, which is what it was called first: the
+    # local `hard` is computed a dozen lines above this, so a parameter of the
+    # same name was overwritten before it was ever read and the place's own
+    # map was silently ignored. The test caught it; a render would not have. A survey's habitat polygons are one such; a composed reef
+    # is another — `fringing.build` lays its parts down by name and hands back
+    # which of them are rock, and inferring it instead read that reef's sand
+    # terrace as reef and called the site 98.5% habitat.
+    if known is not None:
+        given = np.asarray(known, dtype="float64")
+        if given.shape != depth.shape:
+            at = (np.linspace(0, given.shape[0] - 1, depth.shape[0]).astype(int)[:, None],
+                  np.linspace(0, given.shape[1] - 1, depth.shape[1]).astype(int)[None, :])
+            given = given[at]
+        hard = np.clip(given, SAND_IS_STILL, 1.0)
+    elif picture is not None:
         seen = _hard_from_picture(picture, depth.shape)
         if seen is not None:
             # Two thirds the picture, one third the shape. Not all of the
