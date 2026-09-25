@@ -361,7 +361,8 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # that calls two thirds of a box reef has stopped discriminating, and
     # every number downstream of it — the cover target, the colonies it costs,
     # the cover finally measured — is a number about the box.
-    believable = zonation.is_it_all_reef(want, surveyed=picture is not None)
+    believable = zonation.is_it_all_reef(
+        want, surveyed=picture is not None or hard is not None)
     if below_the_light:
         believable = {
             "habitatShareOfSite": round(
