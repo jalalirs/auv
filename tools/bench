@@ -556,8 +556,11 @@ def command_compare(args) -> int:
     print(f"{BOLD}{'overall':<14}{mine['score'] * 100:9.1f}%{yours['score'] * 100:9.1f}%"
           f"{gap:+8.1f}{OFF}"
           f"{yours['energyWh'] - mine['energyWh']:+11.2f} Wh"
-          f"{_hit(mine)}/{_hit(yours):<6}"
-          f"{yours['slowestThoughtS']:9.2f} s")
+          # Right-aligned in the same width as the column above it. It was
+          # the pair left-aligned after the Wh, so the overall row read
+          # "-5.36 Wh0/0" with the two columns run together.
+          f"{f'{_hit(mine)}/{_hit(yours)}':>10}"
+          f"{yours['slowestThoughtS']:11.2f} s")
     print()
     print(_attribution(mine, yours, args.left, args.right))
     return 0

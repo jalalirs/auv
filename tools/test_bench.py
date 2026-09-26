@@ -264,3 +264,26 @@ def test_a_dry_row_names_its_hull_too():
     source = (HERE / "bench").read_text()
     inside = source[source.index("def command_dry("):]
     assert 'named(args.suite, called, task, args.vehicle)' in inside
+
+
+def test_the_overall_row_lines_up_with_the_columns_above_it(capsys):
+    """It read "-5.36 Wh0/0": the hit column was left-aligned after the
+    energy and the two ran together."""
+    tool = _bench()
+
+    class _Args:
+        suite = "quick"
+        left = "a"
+        right = "b"
+        here = True
+
+    rows = [{"task": t, "controller": c, "score": s, "energyWh": e, "driftM": 1.0,
+             "seconds": 90.0, "thoughts": 0, "slowestThoughtS": 0.0,
+             "struck": 0, "grounded": 0, "ended": "achieved"}
+            for t, c, s, e in (("reach", "a", 0.2, 14.0), ("reach", "b", 0.5, 8.0))]
+    tool.rows_for = lambda args: rows
+    tool.command_compare(_Args())
+    overall = [line for line in capsys.readouterr().out.splitlines()
+               if "overall" in line][0]
+    assert "Wh0/0" not in overall
+    assert " Wh" in overall and "0/0" in overall
