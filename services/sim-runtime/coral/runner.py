@@ -1420,8 +1420,10 @@ class Dive:
                "currentHeadingDeg": "still water",
                "visibilityM": "whatever the water type gives",
                "waterType": "the place's own water",
-               "significantWaveHeightM": "a flat surface",
-               "waveMeanPeriodS": "a flat surface",
+               "significantWaveHeightM": "a quiet day, 0.4 m",
+               # Not "flat": a dive that states a height and no period still
+               # gets a sea, built on the runtime's own quiet-day period.
+               "waveMeanPeriodS": "the quiet-day period, 6 s",
                "temperatureC": "unstated, so the density constant stands",
                "salinityPsu": "unstated, so the density constant stands",
                "densityKgM3": "ordinary seawater",
