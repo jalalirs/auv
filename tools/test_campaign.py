@@ -515,25 +515,26 @@ def test_where_it_came_from_is_on_the_page(tmp_path):
     assert "own record says its reef is" in page
 
 
-def test_a_place_that_disagrees_with_itself_is_told_it_does(tmp_path):
-    """The restored Al Fahal says its reef is 269,804 m2 and its coral
-    layer puts nine tenths of its colonies outside that. One of the two is
-    wrong, and a plan built on either alone would be too."""
+def test_a_grid_too_coarse_for_its_reef_says_so(tmp_path):
+    """A place measures its reef area over five-metre cells; this bins at
+    whatever was asked for. Al Fahal's reef is 269,804 m2 and at fifty
+    metres the densest cells covering that much ground hold a tenth of its
+    colonies — the ground is right and the grid is too coarse for it."""
     tool = _tool()
     place = _scattered(tmp_path, per_cell=50)      # the scatter dominates
     grid = tool.cells_over(place, cell_m=25.0, where="reef")
-    assert "do not describe the same reef" in grid["reefFrom"]
+    assert "too coarse for it" in grid["reefFrom"]
     said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
     page = tool.page(grid, said, {}, tool.in_lanes(grid["working"]))
-    assert "This place disagrees with itself" in page
+    assert "The grid is too coarse for this reef" in page
 
 
-def test_a_place_that_agrees_with_itself_is_not_warned(tmp_path):
+def test_a_grid_that_fits_its_reef_is_not_warned(tmp_path):
     tool = _tool()
     grid = tool.cells_over(_scattered(tmp_path, per_cell=1), cell_m=25.0, where="reef")
-    assert "do not describe the same reef" not in grid["reefFrom"]
+    assert "too coarse" not in grid["reefFrom"]
     said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
-    assert "disagrees with itself" not in tool.page(
+    assert "too coarse" not in tool.page(
         grid, said, {}, tool.in_lanes(grid["working"]))
 
 
@@ -544,5 +545,5 @@ def test_two_warnings_are_both_shown(tmp_path):
     grid = tool.cells_over(_scattered(tmp_path, per_cell=50), cell_m=25.0, where="reef")
     said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
     page = tool.page(grid, said, {}, tool.in_lanes(grid["working"]))
-    assert "This place disagrees with itself" in page
+    assert "The grid is too coarse for this reef" in page
     assert "No days here" in page
