@@ -418,7 +418,9 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
     # either direction — see `reef.cover_over`.
     measured = reef_tools.cover_over(
         east, north, plan, across,
-        ground_m2=(site.get("reef", {}) or {}).get("reefAreaM2"))
+        ground_m2=(site.get("reef", {}) or {}).get("reefAreaM2"),
+        ground_is=((site.get("reef", {}) or {}).get("coverMeasuredBy", {})
+                   or {}).get("over"))
 
     grid = measured["grid"]
     looked_at = measured["reefGroundM2"]

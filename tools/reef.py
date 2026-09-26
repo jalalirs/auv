@@ -381,7 +381,13 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
         }
     elif not believable["believable"]:
         print(f"  reef habitat: {believable['why']}")
-    measured = cover_over(x, y, covered_by, across, ground_m2=habitat)
+    measured = cover_over(
+        x, y, covered_by, across, ground_m2=habitat,
+        ground_is=("the hard ground this place's growth attaches to: it is "
+                   "below the light and its cover map is empty, correctly"
+                   if below_the_light else
+                   "the reef habitat this place was planted into, which is "
+                   "what a transect figure is cover of"))
     cover = measured["cover"]
     thick = measured["thicketM2"]
 
@@ -606,7 +612,8 @@ COVER_THICKET = 0.45
 
 
 def cover_over(x, y, area, across: float, cell_m: float = COVER_CELL_M,
-               ground_m2: float | None = None) -> dict:
+               ground_m2: float | None = None,
+               ground_is: str | None = None) -> dict:
     """What a reef of these colonies covers, and over how much ground.
 
     `x` and `y` are metres from the middle of the site, `area` each colony's
@@ -686,8 +693,14 @@ def cover_over(x, y, area, across: float, cell_m: float = COVER_CELL_M,
     # The reef this is cover *of*.
     if ground_m2 and ground_m2 > 0:
         reef_ground = float(ground_m2)
-        ground_from = ("the reef habitat this place was planted into, which "
-                       "is what a transect figure is cover of")
+        # Said by the caller, because only the caller knows. A grown reef's
+        # denominator is the habitat it was planted into; a surveyed one's is
+        # the ground somebody flew. Looe Key's record claimed for a while
+        # that its cover was over "the reef habitat this place was planted
+        # into" — of a reef nobody planted — which is exactly the kind of
+        # sentence a provenance file exists to not contain.
+        ground_from = ground_is or ("the ground this cover is of, which the "
+                                    "place did not say")
     else:
         reef_ground = float(reef.sum()) * ground
         ground_from = ("the %.0f m cells the colonies occupy, because no reef "

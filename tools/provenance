@@ -1,0 +1,294 @@
+#!/usr/bin/env python3
+"""One page per place, saying what anybody actually measured.
+
+    tools/provenance looe-key
+    tools/provenance --all
+
+Every number this platform produces already carries where it came from —
+`site.json` says whether the ground was surveyed, what the cover was held
+against, whether the colony budget could pay for the cover the map asked for,
+which part of the seabed was built past a sensor's limit; `provenance.json`
+says, column by column, whether anybody went and looked.
+
+All of that is in files nobody reads. This is the page.
+
+**Why it matters more than it sounds.** A cover figure that traces to a
+transect is citable and one that came out of a pipeline is not, and most
+simulators cannot tell you which they handed you. That distinction is the
+thing a research customer buys, and it is worth nothing if the only way to
+see it is to open four JSON files and know what they mean.
+
+The page is deliberately plain and self-contained: no fonts to fetch, no
+scripts, no styling that needs anything. It is meant to survive being emailed,
+printed, and put in a slide.
+"""
+
+from __future__ import annotations
+
+import argparse
+import html
+import json
+import pathlib
+import sys
+
+# What a thing is, in one word, when it is not a measurement.
+#
+# These are the only three answers. "Derived" and "chosen" are not the same
+# and the difference matters: derived is arithmetic on something real, chosen
+# is a person deciding. A page that collapsed them would be doing exactly what
+# this page exists to stop.
+MEASURED, DERIVED, CHOSEN = "measured", "derived", "chosen"
+
+INK = {MEASURED: "#1a6b2a", DERIVED: "#8a5a00", CHOSEN: "#8a2a2a"}
+WASH = {MEASURED: "#e8f4ea", DERIVED: "#fbf1de", CHOSEN: "#f9e9e9"}
+
+
+def a_row(what: str, kind: str, value: str, whence: str) -> dict:
+    return {"what": what, "kind": kind, "value": value, "from": whence}
+
+
+def about(site: dict, delivered: dict | None) -> list[dict]:
+    """Every claim this place makes, and what kind of claim it is."""
+    came = site.get("from") or {}
+    reef = site.get("reef") or {}
+    ground = site.get("ground") or {}
+    cover = reef.get("cover") or {}
+    rows = []
+
+    # ── the ground ───────────────────────────────────────────────────────────
+    surveyed = bool(came.get("surveyed"))
+    rows.append(a_row(
+        "The seabed", MEASURED if surveyed else DERIVED,
+        f"{came.get('acrossMetres', 0):,.0f} m across at "
+        f"{came.get('sampleMetres', 0)} m a sample",
+        came.get("source") or ("a survey" if surveyed else
+                               "constructed, not surveyed — this place says so")))
+
+    fitted = came.get("fittedAgainst")
+    if fitted:
+        rows.append(a_row(
+            "Its depths", MEASURED,
+            f"RMS {fitted.get('rmsBeforeM')} m before, "
+            f"{fitted.get('rmsAfterM')} m after, over "
+            f"{fitted.get('points'):,} points",
+            fitted.get("source", "")))
+
+    built = came.get("constructedPastTheSensor")
+    if built:
+        rows.append(a_row(
+            "Where the sensor went blind", CHOSEN,
+            f"{100 * built.get('share', 0):.0f}% of the site, continued at "
+            f"{built.get('gradient', {}).get('degrees', 0):.2f}° onto a shelf "
+            f"at {built.get('shelfM')} m",
+            built.get("shelfFrom", "")))
+
+    # ── what it is made of ───────────────────────────────────────────────────
+    knows = ground.get("knowsItsOwn") or ground.get("knowsPartOfItself")
+    rows.append(a_row(
+        "What the ground is made of",
+        MEASURED if (ground.get("surveyed") or knows) else DERIVED,
+        "habitat classes" if knows else "inferred from slope and relief",
+        ground.get("hardnessFrom", "")))
+
+    rows.append(a_row(
+        "Its colour", MEASURED if ground.get("surveyed") else DERIVED,
+        "an orthomosaic" if ground.get("surveyed") else "reflectances by depth",
+        ground.get("colourFrom", "")))
+
+    # ── the reef ─────────────────────────────────────────────────────────────
+    rows.append(a_row(
+        "How many colonies", MEASURED if cover.get("measured") else CHOSEN,
+        f"{reef.get('colonies', 0):,}"
+        + (f" ({cover['perSquareKm']:,} a km²)" if cover.get("perSquareKm") else ""),
+        cover.get("from") or reef.get("source") or ""))
+
+    if reef.get("sizesAre"):
+        rows.append(a_row(
+            "How big each one is",
+            MEASURED if reef["sizesAre"] == "surveyed" else CHOSEN,
+            reef["sizesAre"], reef.get("sizesFrom", "")))
+
+    said = reef.get("coverMeasuredBy") or {}
+    if reef.get("coverWhereItGrows") is not None:
+        rows.append(a_row(
+            "What it covers", DERIVED,
+            f"{100 * reef['coverWhereItGrows']:.1f}% over "
+            f"{reef.get('reefAreaM2', 0):,} m²",
+            said.get("over", "") + (" — " + said["statistic"]
+                                    if said.get("statistic") else "")))
+
+    paid = reef.get("coverPaidFor")
+    if paid and not paid.get("paid"):
+        rows.append(a_row(
+            "Whether it got the cover its map asked for", DERIVED,
+            f"no — {paid.get('shortBy')}× short",
+            f"{paid.get('coloniesNeeded'):,} colonies needed, "
+            f"{paid.get('coloniesAsked'):,} given. {paid.get('why', '')}"))
+
+    assemblage = reef.get("assemblage") or {}
+    if assemblage.get("name"):
+        rows.append(a_row(
+            "Which shapes grow here", DERIVED,
+            assemblage["name"], assemblage.get("from", "")))
+
+    habitat = reef.get("habitatFrom") or {}
+    if habitat and not habitat.get("believable", True):
+        rows.append(a_row(
+            "Is the habitat believable?", DERIVED, "no", habitat.get("why", "")))
+
+    # ── the water ────────────────────────────────────────────────────────────
+    water = site.get("water") or {}
+    if water.get("type"):
+        rows.append(a_row(
+            "The water", MEASURED if water.get("from") else CHOSEN,
+            f"Jerlov {water['type']}", water.get("from", "")))
+
+    # ── and what was delivered out of it ─────────────────────────────────────
+    if delivered:
+        for name, said in (delivered.get("columns") or {}).items():
+            rows.append(a_row(
+                f"Column “{name}” in colonies.csv",
+                MEASURED if said.get("measured") else DERIVED,
+                "an observation" if said.get("measured") else "not an observation",
+                said.get("from", "")))
+    return rows
+
+
+PAGE = """<!doctype html>
+<meta charset="utf-8">
+<title>%(name)s — what anybody measured</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 2.5rem 2rem 4rem;
+         font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif;
+         color: #1b1b1b; background: #fff; max-width: 60rem; margin-inline: auto; }
+  h1 { font-size: 1.6rem; margin: 0 0 .2rem; font-weight: 650; }
+  .where { color: #555; margin: 0 0 1.6rem; }
+  .says { background: #f4f4f2; border-left: 3px solid #999; padding: .9rem 1.1rem;
+          margin: 0 0 2rem; }
+  .says strong { font-weight: 650; }
+  table { border-collapse: collapse; width: 100%%; margin-bottom: 2rem; }
+  th { text-align: left; font-weight: 650; font-size: .78rem; letter-spacing: .04em;
+       text-transform: uppercase; color: #666; padding: 0 .7rem .5rem 0;
+       border-bottom: 1px solid #ddd; }
+  td { padding: .7rem .7rem .7rem 0; border-bottom: 1px solid #eee;
+       vertical-align: top; }
+  td.what { font-weight: 550; width: 15rem; }
+  td.value { width: 13rem; }
+  td.from { color: #444; font-size: .9rem; }
+  .tag { display: inline-block; padding: .1rem .5rem; border-radius: .7rem;
+         font-size: .74rem; font-weight: 650; letter-spacing: .03em;
+         text-transform: uppercase; white-space: nowrap; }
+  .key { display: flex; gap: 1.4rem; flex-wrap: wrap; margin: 0 0 2rem;
+         font-size: .88rem; color: #444; }
+  .key div { max-width: 17rem; }
+  footer { color: #666; font-size: .85rem; border-top: 1px solid #ddd;
+           padding-top: 1rem; }
+  code { font: 12.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+         background: #f2f2f0; padding: .05rem .3rem; border-radius: .2rem; }
+</style>
+<h1>%(name)s</h1>
+<p class="where">%(where)s</p>
+
+<p class="says"><strong>What this page is.</strong> Every number this place
+carries, and whether anybody went and looked. A cover figure that traces to a
+transect can be cited; one that came out of a pipeline cannot, and the
+difference is not visible in a render. It is visible here.</p>
+
+<div class="key">
+  <div><span class="tag" style="color:%(mi)s;background:%(mw)s">measured</span>
+       somebody surveyed it and this is what they found.</div>
+  <div><span class="tag" style="color:%(di)s;background:%(dw)s">derived</span>
+       arithmetic on something real. Reproducible, not observed.</div>
+  <div><span class="tag" style="color:%(ci)s;background:%(cw)s">chosen</span>
+       a person decided. The reasoning is beside it.</div>
+</div>
+
+<table>
+  <tr><th>What</th><th></th><th>Value</th><th>Where it came from</th></tr>
+  %(rows)s
+</table>
+
+<footer>%(counted)s · built by Coral City from this place's own record ·
+%(built)s</footer>
+"""
+
+ROW = """<tr><td class="what">%(what)s</td>
+  <td><span class="tag" style="color:%(ink)s;background:%(wash)s">%(kind)s</span></td>
+  <td class="value">%(value)s</td><td class="from">%(from)s</td></tr>"""
+
+
+def page(site: dict, rows: list[dict]) -> str:
+    centre = (site.get("from") or {}).get("centre") or {}
+    where = []
+    if centre:
+        where.append("%.5f, %.5f" % (centre.get("latitude", 0),
+                                     centre.get("longitude", 0)))
+    if site.get("deepestM") is not None:
+        where.append("%.1f to %.1f m deep" % (site.get("shallowestM", 0),
+                                              site.get("deepestM", 0)))
+    built = ((site.get("builtBy") or {}).get("make-site")
+             or (site.get("builtBy") or {}).get("make-tank") or {}).get("at", "")
+    counted = ", ".join(
+        "%d %s" % (sum(1 for r in rows if r["kind"] == k), k)
+        for k in (MEASURED, DERIVED, CHOSEN)
+        if any(r["kind"] == k for r in rows))
+    return PAGE % {
+        "name": html.escape(site.get("name", "a place")),
+        "where": html.escape(" · ".join(where)),
+        "mi": INK[MEASURED], "mw": WASH[MEASURED],
+        "di": INK[DERIVED], "dw": WASH[DERIVED],
+        "ci": INK[CHOSEN], "cw": WASH[CHOSEN],
+        "counted": html.escape(counted),
+        "built": html.escape(built),
+        "rows": "\n  ".join(ROW % {
+            "what": html.escape(r["what"]),
+            "kind": r["kind"], "ink": INK[r["kind"]], "wash": WASH[r["kind"]],
+            "value": html.escape(r["value"]),
+            "from": html.escape(r["from"] or "—"),
+        } for r in rows),
+    }
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(
+        description="one page per place, saying what anybody measured")
+    parse.add_argument("places", nargs="*")
+    parse.add_argument("--all", action="store_true")
+    parse.add_argument("--from", dest="root",
+                       default=str(pathlib.Path.home() / "coral-city"))
+    asked = parse.parse_args()
+
+    root = pathlib.Path(asked.root).expanduser()
+    names = asked.places or (sorted(p.name for p in (root / "places").iterdir()
+                                    if (p / "site.json").is_file())
+                             if asked.all else [])
+    if not names:
+        print("name a place, or --all", file=sys.stderr)
+        return 1
+
+    into = root / "provenance"
+    into.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        site_file = root / "places" / name / "site.json"
+        if not site_file.is_file():
+            print(f"  {name}: no site.json", file=sys.stderr)
+            return 1
+        site = json.loads(site_file.read_text())
+        delivered = None
+        said = root / "deliverables" / name / "provenance.json"
+        if said.is_file():
+            delivered = json.loads(said.read_text())
+        rows = about(site, delivered)
+        out = into / f"{name}.html"
+        out.write_text(page(site, rows))
+        counted = {k: sum(1 for r in rows if r["kind"] == k)
+                   for k in (MEASURED, DERIVED, CHOSEN)}
+        print(f"  {name:<18} {counted[MEASURED]:2d} measured, "
+              f"{counted[DERIVED]:2d} derived, {counted[CHOSEN]:2d} chosen "
+              f"→ {out}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
