@@ -83,10 +83,16 @@ def about(site: dict, delivered: dict | None) -> list[dict]:
             built.get("shelfFrom", "")))
 
     # ── what it is made of ───────────────────────────────────────────────────
-    knows = ground.get("knowsItsOwn") or ground.get("knowsPartOfItself")
+    # The tag and the value have to come from the same test, and did not:
+    # Looe Key came out tagged "measured" with a value of "inferred from
+    # slope and relief" and a source saying "habitat polygons from a survey"
+    # — three fields disagreeing in one row, on the page whose whole job is
+    # to be believed. `knowsItsOwn` is newer than that place's record, so it
+    # was absent while `ground.surveyed` was true.
+    knows = bool(ground.get("knowsItsOwn") or ground.get("knowsPartOfItself")
+                 or ground.get("surveyed"))
     rows.append(a_row(
-        "What the ground is made of",
-        MEASURED if (ground.get("surveyed") or knows) else DERIVED,
+        "What the ground is made of", MEASURED if knows else DERIVED,
         "habitat classes" if knows else "inferred from slope and relief",
         ground.get("hardnessFrom", "")))
 
