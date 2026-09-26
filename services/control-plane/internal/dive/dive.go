@@ -1209,6 +1209,14 @@ type Claimed struct {
 	// this is what happened to it.
 	LayoutChanges json.RawMessage `json:"layoutChanges,omitempty"`
 
+	// What the controller flying this dive is called, by the people who
+	// deployed it. Carried because the record and the benchmark have to say
+	// which controller produced a result, and everything that arrives over
+	// ROS 2 arrives as "a stack": two of somebody's controllers on one bench
+	// were both called stack, so they could not be told apart or compared,
+	// which is the one thing a benchmark is for.
+	AutonomySlug   string          `json:"autonomySlug,omitempty"`
+	AutonomyName   string          `json:"autonomyName,omitempty"`
 	AutonomyImage  string          `json:"autonomyImage,omitempty"`
 	AutonomyDigest string          `json:"autonomyDigest,omitempty"`
 	AutonomyGPU    bool            `json:"autonomyWantsGpu"`
@@ -1412,7 +1420,7 @@ func (s *Store) ClaimNext(ctx context.Context, conn db.Conn, targetName string,
 	claimed.DeviceIndex = simulator.DeviceIndex
 	claimed.DeviceUUID = simulator.DeviceUUID
 
-	var stackImage, stackDigest *string
+	var stackImage, stackDigest, stackSlug, stackName *string
 	var wantsGPU *bool
 	var subscribes, publishes []byte
 	var layoutVersion *string
@@ -1420,7 +1428,8 @@ func (s *Store) ClaimNext(ctx context.Context, conn db.Conn, targetName string,
 	err = conn.QueryRow(ctx, `
 		SELECT d.city_version_id, d.vehicle_version_id, d.initial_state, d.objective,
 		       d.layout_version_id, l.document, d.layout_changes,
-		       s.image_repository, s.image_digest, s.wants_gpu, s.subscribes, s.publishes
+		       s.image_repository, s.image_digest, s.wants_gpu, s.subscribes, s.publishes,
+		       s.slug, s.name
 		  FROM dive.dive d
 		  JOIN dive.run r ON r.dive_id = d.id
 		  LEFT JOIN catalog.version l ON l.id = d.layout_version_id
@@ -1429,7 +1438,8 @@ func (s *Store) ClaimNext(ctx context.Context, conn db.Conn, targetName string,
 		Scan(&claimed.CityVersionID, &claimed.VehicleVersionID,
 			&claimed.InitialState, &claimed.Objective,
 			&layoutVersion, &layout, &claimed.LayoutChanges,
-			&stackImage, &stackDigest, &wantsGPU, &subscribes, &publishes)
+			&stackImage, &stackDigest, &wantsGPU, &subscribes, &publishes,
+			&stackSlug, &stackName)
 	if err != nil {
 		return Claimed{}, fmt.Errorf("reading what the run needs: %w", err)
 	}
@@ -1440,6 +1450,12 @@ func (s *Store) ClaimNext(ctx context.Context, conn db.Conn, targetName string,
 	if stackImage != nil {
 		claimed.AutonomyImage = *stackImage
 		claimed.AutonomyDigest = *stackDigest
+		if stackSlug != nil {
+			claimed.AutonomySlug = *stackSlug
+		}
+		if stackName != nil {
+			claimed.AutonomyName = *stackName
+		}
 		claimed.AutonomyGPU = claimed.Needs.Controller != nil && claimed.Needs.Controller.GPU
 		claimed.Subscribes = subscribes
 		claimed.Publishes = publishes
