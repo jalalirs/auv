@@ -290,3 +290,33 @@ def test_a_survey_records_the_ground_it_covered_not_only_a_fraction(tmp_path):
                                  {"latitude": 24.5, "longitude": -81.4, "name": "x"})
     assert said["rectangleM2"] == pytest.approx(16.0)
     assert said["seenM2"] == pytest.approx(8.0)      # two of four 2x2 m cells
+
+
+def test_a_chart_says_how_much_ground_was_covered_when_no_camera_did(tmp_path):
+    """A bathymetric survey covers a wider strip than the camera sees, and
+    when the product is a chart that is the right ground to plan against."""
+    tool = _tool()
+    flown = tmp_path / "mission.json"
+    flown.write_text(json.dumps({
+        "seconds": 1800.0,
+        "task": {"achieved": {"energyWh": 120.0}},
+        "bathymetry": {"cellsWithASounding": 4000, "cellM": 0.5},
+    }))
+    cost = tool.cost_from(flown)
+    assert cost["coveredM2"] == pytest.approx(1000.0)
+    assert cost["coveredBy"] == "the multibeam's soundings"
+
+
+def test_the_camera_wins_when_both_instruments_answered(tmp_path):
+    """A dive that charted more than it photographed has not photographed
+    it."""
+    tool = _tool()
+    flown = tmp_path / "mission.json"
+    flown.write_text(json.dumps({
+        "seconds": 1800.0, "task": {"achieved": {}},
+        "coverage": {"seenM2": 300.0},
+        "bathymetry": {"cellsWithASounding": 4000, "cellM": 0.5},
+    }))
+    cost = tool.cost_from(flown)
+    assert cost["coveredM2"] == pytest.approx(300.0)
+    assert cost["coveredBy"] == "the camera's footprint"
