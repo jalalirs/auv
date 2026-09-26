@@ -84,12 +84,19 @@ def deployed(platform, slug: str) -> dict | None:
     no way to bench a customer's controller, and no way to bench two of them
     against each other, because both were `stack`. A bench that can only rank
     our own baselines is ranking the wrong thing.
+
+    The newest build of that slug, not the first the listing happens to hand
+    back. Every `coral-city deploy` registers another build under the same
+    handle — `learned-hold` already has two — and benching whichever came
+    back first means a change verified against the build it replaced. That
+    exact mistake has been made here before, with dives rather than stacks.
     """
     listed = platform.call("GET", f"/api/v1/organisations/{platform.org}/autonomy")
-    for one in listed.get("autonomy", []):
-        if one.get("slug") == slug or one.get("name") == slug:
-            return one
-    return None
+    theirs = [one for one in listed.get("autonomy", [])
+              if one.get("slug") == slug or one.get("name") == slug]
+    if not theirs:
+        return None
+    return max(theirs, key=lambda one: one.get("createdAt") or "")
 
 
 def whose(platform, slug: str) -> dict:
@@ -113,6 +120,21 @@ def whose(platform, slug: str) -> dict:
     return {"stack": stack}
 
 
+def built_or_built_by(flying: dict) -> str:
+    """Which controller this actually is, said where somebody will read it.
+
+    The digest, because a slug is a handle and a handle is not a build: two
+    runs of the bench under one name are only comparable if they were the
+    same image, and the only way anybody can check that afterwards is if the
+    run said which one it flew.
+    """
+    if "builtIn" in flying:
+        return "built in"
+    stack = flying["stack"]
+    digest = (stack.get("imageDigest") or "")[7:19]
+    return f"deployed {stack.get('createdAt', '')[:10]} · {digest}"
+
+
 # ── flying it ────────────────────────────────────────────────────────────────
 
 def command_run(args) -> int:
@@ -134,7 +156,7 @@ def command_run(args) -> int:
     already = {row["name"] for row in flown(platform)} if not args.again else set()
     asked = []
     print(f"{BOLD}{args.suite}{OFF} flown by {BOLD}{args.controller}{OFF} "
-          f"{DIM}· {'built in' if 'builtIn' in flying else 'deployed here'}"
+          f"{DIM}· {built_or_built_by(flying)}"
           f" · {water_name} · {technology_name}{OFF}")
     for task in tasks:
         name = named(args.suite, args.controller, task)

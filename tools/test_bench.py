@@ -90,3 +90,65 @@ def test_the_suite_does_not_move():
         "treat", "inspect", "dock"]
     assert bench.WATER == "gentle"
     assert bench.TECHNOLOGY == "dead-reckoning"
+
+
+# ── whose controller the bench is about to fly ───────────────────────────────
+
+class _Listing:
+    """A platform that answers with an organisation's autonomy and nothing else."""
+
+    org = "org_x"
+
+    def __init__(self, autonomy):
+        self.autonomy = autonomy
+
+    def call(self, method, path, body=None):
+        assert path.endswith("/autonomy"), path
+        return {"autonomy": self.autonomy}
+
+
+TWO_BUILDS = [
+    {"id": "stack_old", "slug": "learned-hold", "name": "Learned hold",
+     "imageDigest": "sha256:1111", "createdAt": "2026-09-03T19:52:19Z"},
+    {"id": "stack_new", "slug": "learned-hold", "name": "Learned hold",
+     "imageDigest": "sha256:2222", "createdAt": "2026-09-03T20:04:28Z"},
+]
+
+
+def test_a_built_in_is_flown_by_name():
+    tool = _bench()
+    assert tool.whose(_Listing([]), "pursue") == {"builtIn": "pursue"}
+
+
+def test_somebody_elses_controller_is_found_by_its_slug():
+    tool = _bench()
+    flying = tool.whose(_Listing(TWO_BUILDS), "learned-hold")
+    assert flying["stack"]["id"] == "stack_new"
+
+
+def test_the_newest_build_of_a_slug_is_the_one_flown():
+    """Every deploy registers another build under the same handle. Benching
+    whichever the listing hands back first means verifying a change against
+    the build it replaced."""
+    tool = _bench()
+    backwards = _Listing(list(reversed(TWO_BUILDS)))
+    assert tool.deployed(backwards, "learned-hold")["id"] == "stack_new"
+
+
+def test_a_name_that_is_neither_is_refused_with_what_there_is():
+    """A bench row attributed to a controller that never flew is worse than a
+    bench that would not run."""
+    tool = _bench()
+    with pytest.raises(SystemExit) as raised:
+        tool.whose(_Listing(TWO_BUILDS), "nobodys-controller")
+    said = str(raised.value)
+    assert "learned-hold" in said and "pursue" in said
+
+
+def test_the_run_says_which_build_it_flew():
+    """A slug is a handle and a handle is not a build."""
+    tool = _bench()
+    flying = tool.whose(_Listing(TWO_BUILDS), "learned-hold")
+    said = tool.built_or_built_by(flying)
+    assert "2026-09-03" in said and "2222" in said
+    assert tool.built_or_built_by({"builtIn": "pursue"}) == "built in"
