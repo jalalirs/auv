@@ -1009,7 +1009,9 @@ class Dive:
                                  logger=lambda kind, **d: self.say(kind, **d))
             # The helm learns of the stack the moment the boundary opens, and
             # keeps whatever a hand has already tuned.
-            self.helm = Helm(self.allocator, self.dt, bridge=self.bridge)
+            self.helm = Helm(self.allocator, self.dt, bridge=self.bridge,
+                             deployed=str(self.brief.get("autonomyName") or ""),
+                             slug=str(self.brief.get("autonomySlug") or ""))
             self.say("bridge_open", domain=self.brief.get("rosDomainId"),
                      publishes=["/depth", "/imu/data", "/dvl/twist"],
                      subscribes=["/thruster_cmd", "/cmd_vel"])
@@ -3263,6 +3265,9 @@ class Dive:
             "commanded": bool(self.bridge.commanded) if self.bridge else False,
             "byHand": self.flown_by_hand,
             "flying": self.helm.flying.name,
+            # And which controller that actually was, when the slot is
+            # somebody else's stack.
+            "flyingAs": self.helm.flying_as(),
             "onTheBottom": self.on_the_bottom,
             "thrust": [round(float(c), 3) for c in self.commands],
             "position": [round(float(x), 4) for x in self.position],
@@ -3398,6 +3403,11 @@ class Dive:
                  ended=self.ended or "time",
                  carried=self.carried,
                  attempts=self.attempts,
+                 # Which controller flew it. The benchmark compares runs, and
+                 # two runs flown by two of somebody's controllers both said
+                 # "stack" — so they could not be told apart, which is the
+                 # one thing a benchmark is for.
+                 flownBy=self.helm.flying_as(),
                  **({} if self.navigation is None
                     else {"navigation": self.navigation.said(self.position, self.simulated)}),
                  # And the one number a dive is judged on, said on its own line
