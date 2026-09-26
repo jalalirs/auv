@@ -522,11 +522,30 @@ class Stills:
     """The same four views of every place, held still, for comparing."""
 
     def __init__(self, across: float, floor_at, say, begin=None,
-                 water_level: float | None = None) -> None:
+                 water_level: float | None = None,
+                 sample_metres: float | None = None) -> None:
         self.across = across
         self.floor_at = floor_at
         self.say = say
-        self.frames = len(VIEWS) * STILL_SETTLE
+        # Which views this place can honestly be given.
+        #
+        # `a-square-metre` exists to be put beside a photograph, and it sits
+        # 1.15 m up because that is where a 24 mm lens sees a metre across.
+        # On a place whose coral is *grown onto* the ground rather than
+        # surveyed as part of it, that camera ends up inside a colony — Al
+        # Fahal's came back a solid sheet of yellow, which is a correct
+        # picture of the inside of a Porites and no use to anybody.
+        #
+        # So it is taken only where the coral *is* the ground: a seabed
+        # sampled finer than ten centimetres. That is the same test
+        # `make-site` uses to decide a place wants no tiled stock surface,
+        # and it is the same reason — below it, nothing is missing between
+        # the samples, and above it, the reef is somewhere else.
+        self.sample_metres = sample_metres
+        self.views = [(name, how) for name, how in VIEWS
+                      if name != "a-square-metre"
+                      or (sample_metres is not None and sample_metres < 0.10)]
+        self.frames = len(self.views) * STILL_SETTLE
         self.taken = 0
         self.waiting = False
         self.tidied = False
@@ -539,7 +558,8 @@ class Stills:
         # too thick. It was the sky.
         self.water_level = 0.0 if water_level is None else float(water_level)
         self.placed_for = None
-        self.say("stills_begin", views=[name for name, _ in VIEWS],
+        self.say("stills_begin", views=[name for name, _ in self.views],
+                 sampleMetres=sample_metres,
                  anchor=[round(v, 1) for v in self.anchor],
                  floorAtAnchorM=round(float(self.floor_at(*self.anchor) or 0.0), 1))
 
@@ -549,7 +569,7 @@ class Stills:
 
     @property
     def view(self):
-        return VIEWS[min(self.taken // STILL_SETTLE, len(VIEWS) - 1)]
+        return self.views[min(self.taken // STILL_SETTLE, len(self.views) - 1)]
 
     def name(self) -> str:
         return self.view[0]
