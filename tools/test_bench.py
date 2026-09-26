@@ -287,3 +287,26 @@ def test_the_overall_row_lines_up_with_the_columns_above_it(capsys):
                if "overall" in line][0]
     assert "Wh0/0" not in overall
     assert " Wh" in overall and "0/0" in overall
+
+
+def test_two_long_names_do_not_run_together_in_the_header(capsys):
+    """Two controllers with twelve-character names read as one word:
+    "station-holdlearned-hold"."""
+    tool = _bench()
+
+    class _Args:
+        suite = "quick"
+        left = "station-hold"
+        right = "learned-hold"
+        here = True
+
+    rows = [{"task": "reach", "controller": c, "score": 0.0, "energyWh": e,
+             "driftM": 1.0, "seconds": 90.0, "thoughts": 0, "slowestThoughtS": 0.0,
+             "struck": 0, "grounded": 0, "ended": "time"}
+            for c, e in (("station-hold", 9.5), ("learned-hold", 36.25))]
+    tool.rows_for = lambda args: rows
+    tool.command_compare(_Args())
+    header = [line for line in capsys.readouterr().out.splitlines()
+              if "energy" in line][0]
+    assert "station-holdlearned" not in header
+    assert "…" in header
