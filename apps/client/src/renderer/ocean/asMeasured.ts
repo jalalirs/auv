@@ -61,33 +61,37 @@ export function asMeasured(record: SeaRecord | undefined): Measured | undefined 
 
   const parameters: Record<string, unknown> = { temperatureC: temperature.value };
   const sources: Record<string, unknown>[] = [];
-  const cite = (what: string, reading: Reading | undefined): void => {
+  // `parameter` is the field this reading became, so that a run can put the
+  // instrument beside the number rather than beside a word for it. `what` is
+  // still there because it is what a person reads.
+  const cite = (what: string, parameter: string, reading: Reading | undefined): void => {
     if (reading === undefined) return;
     sources.push({
       what,
+      parameter,
       at: reading.at,
       from: INSTRUMENTS[reading.source] ?? reading.source,
       through: "aqualink.org",
     });
   };
-  cite("temperature", temperature);
+  cite("temperature", "temperatureC", temperature);
 
   // Sea state, which is measured where there is a buoy and is what a surface
   // vehicle and a launch both live with.
   if (now.significantWaveHeightM !== undefined) {
     parameters["significantWaveHeightM"] = now.significantWaveHeightM.value;
-    cite("wave height", now.significantWaveHeightM);
+    cite("wave height", "significantWaveHeightM", now.significantWaveHeightM);
   }
   if (now.waveMeanPeriodS !== undefined) {
     parameters["waveMeanPeriodS"] = now.waveMeanPeriodS.value;
-    cite("wave period", now.waveMeanPeriodS);
+    cite("wave period", "waveMeanPeriodS", now.waveMeanPeriodS);
   }
   if (now.waveMeanDirectionDeg !== undefined) {
     parameters["waveHeadingDeg"] = now.waveMeanDirectionDeg.value;
   }
   if (now.windSpeedMs !== undefined) {
     parameters["windSpeedMs"] = now.windSpeedMs.value;
-    cite("wind", now.windSpeedMs);
+    cite("wind", "windSpeedMs", now.windSpeedMs);
   }
   if (now.windDirectionDeg !== undefined) {
     parameters["windHeadingDeg"] = now.windDirectionDeg.value;
