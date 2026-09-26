@@ -113,6 +113,20 @@ def cut(path: pathlib.Path, lon: float, lat: float, across: float, out: int,
             list(range(1, min(bands, source.count) + 1)),
             window=window, out_shape=(min(bands, source.count), out, out),
             boundless=True, fill_value=float("nan") if bands == 1 else 0)
+        # What the raster says is nothing, turned into nothing.
+        #
+        # This release marks absent elevation with 32767 — an int16 sentinel —
+        # and read as a number it is a seabed thirty-two kilometres below the
+        # surface. The first patch cut here came back with "3.3 to 32767.0 m,
+        # 32763 m of relief" and zero holes filled, which is a hole detector
+        # that found no holes because the holes were not NaN.
+        if bands == 1 and source.nodata is not None:
+            got = np.where(np.isclose(got, source.nodata), np.nan, got)
+        # And anything that is not a depth a reef could be at. The sentinel is
+        # declared here; on another release it may not be, and a seabed at
+        # thirty-two kilometres should not need a declaration to be refused.
+        if bands == 1:
+            got = np.where(np.abs(got) > 1000.0, np.nan, got)
         # North is up in a raster and +y in the world, so the rows flip.
         got = np.flip(got, axis=1)
         return got[0] if bands == 1 else np.moveaxis(got, 0, -1)
@@ -181,7 +195,13 @@ def main() -> int:
             f"({lat:.6f}, {lon:.6f}) with both an elevation model that opens "
             f"and an orthomosaic beside it")
 
-    name = asked.name or f"{asked.place}-{x:+.0f}{y:+.0f}".replace("+", "e").replace("-", "w")
+    # `looe-key` at +157, +7 becomes `looe-key-e157n7`. Built from the
+    # compass rather than from the sign, because the first version replaced
+    # every "-" with "w" and turned the place's own name into `looewkey`.
+    def bearing(v: float, pos: str, neg: str) -> str:
+        return f"{pos if v >= 0 else neg}{abs(v):.0f}"
+
+    name = asked.name or f"{asked.place}-{bearing(x, 'e', 'w')}{bearing(y, 'n', 's')}"
     into = pathlib.Path(asked.reference).expanduser() / name
     into.mkdir(parents=True, exist_ok=True)
 
