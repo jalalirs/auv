@@ -205,9 +205,9 @@ def test_the_raster_it_writes_is_the_one_it_measured():
 CENTRE = {"latitude": 22.305, "longitude": 38.97}
 
 
-def _recording(tmp_path, *, place=True, marks=True):
-    into = tmp_path / "run_TEST" / "recording"
-    into.mkdir(parents=True)
+def _recording(tmp_path, *, place=True, marks=True, named="run_TEST"):
+    into = tmp_path / named / "recording"
+    into.mkdir(parents=True, exist_ok=True)
     manifest = {
         "place": ({"name": "red-sea", "centre": CENTRE, "acrossMetres": 1000.0,
                    "sampleMetres": 1.96, "surveyed": False} if place else None),
@@ -415,3 +415,31 @@ def test_the_chart_says_it_is_the_instrument_that_measured_it(tmp_path):
     chart = said["columns"]["bathymetry.asc"]
     assert chart["kind"] == "measured by the instrument"
     assert "not an interpolation" in chart["from"]
+
+
+# ── a whole round at once ────────────────────────────────────────────────────
+
+def test_every_recording_under_a_directory_is_delivered(tmp_path, capsys):
+    """Doing it one at a time by hand is how a round of forty dives ends up
+    half delivered, and a coverage map with half a round in it lies."""
+    tool = _deliver()
+    under = tmp_path / "work"
+    for n in range(3):
+        _recording(under, named=f"run_{n}")
+    assert tool.all_of_them(under, tmp_path / "out") == 0
+    said = capsys.readouterr().out
+    assert "3 of 3 delivered" in said
+    for n in range(3):
+        assert (tmp_path / "out" / f"run_{n}" / "mission.json").is_file()
+
+
+def test_one_that_cannot_be_delivered_does_not_stop_the_rest(tmp_path, capsys):
+    tool = _deliver()
+    under = tmp_path / "work"
+    _recording(under, named="good")
+    _recording(under, named="nowhere", place=False)
+    assert tool.all_of_them(under, tmp_path / "out") == 1
+    out, err = capsys.readouterr()
+    assert "1 of 2 delivered" in out
+    assert "nowhere" in err and "1 refused" in err
+    assert (tmp_path / "out" / "good" / "mission.json").is_file()

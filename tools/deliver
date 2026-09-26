@@ -1115,6 +1115,48 @@ def deliver_dive(recording: pathlib.Path, into: pathlib.Path) -> dict:
     return summary
 
 
+def all_of_them(under: pathlib.Path, into: pathlib.Path | None) -> int:
+    """Every recording under a directory, each delivered into its own folder.
+
+    What a campaign's proof of coverage reads: one folder per mission, each
+    holding what that mission produced. Doing it one at a time by hand is
+    how a round of forty dives ends up half delivered, and a coverage map
+    with half a round in it is a coverage map that lies.
+
+    A recording that cannot be delivered is named and the rest still go —
+    but the count of what was refused is printed at the end and the exit
+    code says so, because a round that is missing four of its forty is not
+    a round anybody should bin against.
+    """
+    recordings = sorted(p for p in under.rglob("recording")
+                        if (p / "manifest.json").is_file())
+    if not recordings:
+        print(f"no recordings under {under}", file=sys.stderr)
+        return 1
+    into = into or under / "deliverables"
+    into.mkdir(parents=True, exist_ok=True)
+    done, refused = 0, []
+    for one in recordings:
+        run = one.parent.name
+        try:
+            deliver_dive(one, into / run)
+        except SystemExit as why:
+            refused.append((run, str(why)))
+            continue
+        except Exception as why:                        # noqa: BLE001
+            refused.append((run, f"{type(why).__name__}: {why}"))
+            continue
+        done += 1
+        print(f"  {run}")
+    print(f"\n  {done} of {len(recordings)} delivered → {into}")
+    for run, why in refused:
+        print(f"    {run}: {why}", file=sys.stderr)
+    if refused:
+        print(f"  {len(refused)} refused. A coverage map with half a round in "
+              f"it is a coverage map that lies.", file=sys.stderr)
+    return 0 if not refused else 1
+
+
 def flown(recording: pathlib.Path, into: pathlib.Path | None) -> int:
     """What one mission produced, said the way a person reads it."""
     if not (recording / "manifest.json").is_file():
@@ -1162,10 +1204,17 @@ def main() -> int:
                        help="a place, for a reef's own product")
     parse.add_argument("--dive", metavar="RECORDING", default=None,
                        help="a dive's recording, for what a flown mission produced")
+    parse.add_argument("--every-dive", metavar="UNDER", default=None,
+                       help="every recording under a directory, each into its own "
+                            "folder — what a campaign's proof of coverage reads")
     parse.add_argument("--into", default=None,
                        help="where to write them (default: beside the place)")
     asked = parse.parse_args()
 
+    if asked.every_dive:
+        return all_of_them(pathlib.Path(asked.every_dive).expanduser(),
+                           None if asked.into is None
+                           else pathlib.Path(asked.into).expanduser())
     if asked.dive:
         return flown(pathlib.Path(asked.dive).expanduser(),
                      None if asked.into is None else pathlib.Path(asked.into).expanduser())
