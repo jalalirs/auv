@@ -129,10 +129,14 @@ def fetch(where: pathlib.Path, one: dict, say=print) -> tuple[str, int]:
             start_again(here, one, got, say)
             got = 0
             continue
-        if done.returncode == 0 and got == before:
-            # curl is content and the file did not grow: the far end is not
-            # resuming, it is answering the range with nothing. Retrying the
-            # same request gets the same nothing.
+        if done.returncode == 0 and got == before > 0:
+            # curl is content and the part-file did not grow: the far end is
+            # not resuming, it is answering the range with nothing. Asking
+            # again the same way gets the same nothing.
+            #
+            # Only when there was something to resume. A fetch from nothing
+            # that returns nothing is a server having a bad minute, and the
+            # answer to that is to ask it again.
             start_again(here, one, got, say)
             got = 0
     return kind, got
