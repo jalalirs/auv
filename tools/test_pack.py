@@ -89,7 +89,7 @@ def test_the_page_needs_nothing_to_render(tmp_path):
     assert "-apple-system" in page
 
 
-def test_the_place_page_is_found_by_what_sits_beside_it(tmp_path):
+def test_the_place_page_is_the_one_whose_name_nobody_fixed(tmp_path):
     """It is called after the place. A pack that looked for a file called
     provenance.html found nothing and said the reef had never been
     described."""
@@ -104,10 +104,17 @@ def test_the_place_page_is_found_by_what_sits_beside_it(tmp_path):
     assert "2 claims, 1 of them measured" in page
 
 
-def test_a_stray_html_without_its_json_is_not_a_place_page(tmp_path):
+def test_a_missions_own_pages_are_not_mistaken_for_the_reef(tmp_path):
+    """A mission folder carries a provenance.json of its own, so "the html
+    next to a provenance.json" made the first real pack call its dive
+    report and its conditions page the reef, twice."""
     tool = _tool()
-    (tmp_path / "notes.html").write_text("<h1>notes</h1>")
-    assert tool.find(tmp_path, "*.html:provenance.json") == []
+    _a_dive(tmp_path / "run_1")
+    (tmp_path / "run_1" / "conditions.html").write_text("<h1>water</h1>")
+    (tmp_path / "run_1" / "provenance.json").write_text("{}")
+    assert tool.find(tmp_path, "*.html!") == []
+    (tmp_path / "looe-key.html").write_text("<h1>looe-key</h1>")
+    assert [one.name for one in tool.find(tmp_path, "*.html!")] == ["looe-key.html"]
 
 
 def test_a_label_and_its_description_are_not_one_word(tmp_path):

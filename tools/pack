@@ -102,7 +102,12 @@ KINDS = [
     # writes — a page called provenance.html would be a page about nothing
     # in particular, and a pack that looked for one found nothing and said
     # the reef had never been described.
-    ("the reef", "*.html:provenance.json",
+    #
+    # "Not one of the others" rather than "next to a provenance.json": a
+    # *mission's* folder has a provenance.json too, so that rule made the
+    # first real pack call its dive report and its conditions page the
+    # reef, twice.
+    ("the reef", "*.html!",
      "what anybody actually measured about this place",
      "tools/provenance <place> --into <this folder>"),
     ("the water", "conditions.html",
@@ -158,6 +163,13 @@ def find(where: pathlib.Path, filename: str) -> list[pathlib.Path]:
     `pattern:beside` finds a page whose name nobody fixed — the place page
     is called after the place — by the file that is always next to it.
     """
+    if filename.endswith("!"):
+        # A page whose name nobody fixed, found by not being one of the
+        # pages whose names are.
+        taken = {one[1] for one in KINDS if not one[1].endswith("!")}
+        taken.add("index.html")
+        return [one for one in sorted(where.rglob(filename[:-1]))
+                if one.name not in taken]
     if ":" in filename:
         pattern, beside = filename.split(":", 1)
         return [one for one in sorted(where.rglob(pattern))
