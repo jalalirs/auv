@@ -547,3 +547,34 @@ def test_two_warnings_are_both_shown(tmp_path):
     page = tool.page(grid, said, {}, tool.in_lanes(grid["working"]))
     assert "The cells and the coral do not line up" in page
     assert "No days here" in page
+
+
+def test_full_is_measured_against_the_reef_and_not_against_a_constant(tmp_path):
+    """A quarter of a colony a square metre sounds cautious and would
+    call every cell at Looe Key full — it runs at about half."""
+    tool = _tool()
+    place = _scattered(tmp_path)
+    said = json.loads((place / "site.json").read_text())
+    # 116 colonies over 625 m2 of reef: 0.186 a square metre.
+    assert tool.as_dense_as_it_grows(said) == pytest.approx(
+        said["reef"]["colonies"] / 625.0)
+
+
+def test_a_place_that_does_not_say_cannot_answer(tmp_path):
+    tool = _tool()
+    assert tool.as_dense_as_it_grows({"reef": {"colonies": 100}}) is None
+    assert tool.as_dense_as_it_grows({}) is None
+
+
+def test_the_page_says_whether_full_came_from_the_place(tmp_path):
+    tool = _tool()
+    place = _scattered(tmp_path)
+    grid = tool.cells_over(place, cell_m=25.0, where="all")
+    said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
+    order = tool.by_suitability(grid["working"], grid["cellM"], (3.0, 12.0), 0.2)
+    from_place = tool.page(grid, said, {}, order, None, "suitability",
+                           (3.0, 12.0), 0.2, True)
+    assert "how thick this reef already is where it grows" in from_place
+    chosen = tool.page(grid, said, {}, order, None, "suitability",
+                       (3.0, 12.0), 0.25, False)
+    assert "a figure chosen here" in chosen

@@ -138,6 +138,21 @@ def cells_over(place: pathlib.Path, cell_m: float, where: str) -> dict:
             "colonies": int(sum(one["colonies"] for one in working))}
 
 
+def as_dense_as_it_grows(site: dict) -> float | None:
+    """How thick this reef's coral already is, where it grows, per m².
+
+    So that "full" is not a constant somebody picked. A quarter of a
+    colony a square metre sounds cautious and would call every cell at
+    Looe Key full — it runs at about half a colony a square metre. The
+    place knows its own answer: the colonies it holds over the ground it
+    calls its reef.
+    """
+    reef = site.get("reef") or {}
+    area = float(reef.get("reefAreaM2") or 0.0)
+    colonies = float(reef.get("colonies") or 0.0)
+    return colonies / area if area > 0 and colonies > 0 else None
+
+
 def by_suitability(working: list[dict], cell_m: float,
                    band: tuple[float, float], room: float) -> list[dict]:
     """Which cell to plant next, and it is a ranking rather than a model.
@@ -600,7 +615,8 @@ def proof_of(covered: dict | None, grid: dict) -> str:
 
 def page(grid: dict, said: dict, cost: dict, order: list[dict],
          covered: dict | None = None, how: str = "lanes",
-         band: tuple[float, float] = (3.0, 12.0), room: float = 0.25) -> str:
+         band: tuple[float, float] = (3.0, 12.0), room: float = 0.25,
+         room_from_place: bool = False) -> str:
     provenance = a_tool("provenance")
     ink = dict(INK, derived=provenance.INK["derived"])
     wash = dict(WASH, derived=provenance.WASH["derived"])
@@ -651,10 +667,15 @@ def page(grid: dict, said: dict, cost: dict, order: list[dict],
         order_said = ("Ranked for planting: between %.0f and %.0f m, where coral "
                       "already grows — which is the substrate demonstrated rather "
                       "than inferred — and emptiest first past %.2f colonies a "
-                      "square metre, because a cell that is full has nowhere to "
-                      "put anything. The current is the third thing that decides "
-                      "this and nothing in the place records it, so it is not in "
-                      "the ranking. " % (band[0], band[1], room))
+                      "square metre, %s, because a cell that is full has nowhere "
+                      "to put anything. The current is the third thing that "
+                      "decides this and nothing in the place records it, so it "
+                      "is not in the ranking. "
+                      % (band[0], band[1], room,
+                         "which is how thick this reef already is where it grows"
+                         if room_from_place else
+                         "a figure chosen here because this place does not say "
+                         "how much of it is reef"))
     order_said += ("First three: "
                    + ", ".join("row %d column %d (%.0f m, %d colonies)"
                                % (one["row"], one["column"], one["depthM"],
@@ -690,8 +711,12 @@ def main() -> int:
     parse.add_argument("--band", type=float, nargs=2, default=(3.0, 12.0),
                        metavar=("SHALLOW", "DEEP"),
                        help="the depths outplanting is done between")
-    parse.add_argument("--room", type=float, default=0.25,
-                       help="colonies a square metre past which a cell is full")
+    parse.add_argument("--room", type=float, default=1.0,
+                       help="how dense a cell may get before it counts as full, "
+                            "as a multiple of how dense this reef already is "
+                            "where it grows. 1.0 is 'as thick as the rest of "
+                            "it'. A place that does not say falls back to a "
+                            "quarter of a colony a square metre")
     parse.add_argument("--cost", default=None,
                        help="a flown mission's mission.json, or a sweep's findings.json")
     parse.add_argument("--vehicles", type=int, default=1)
@@ -715,9 +740,14 @@ def main() -> int:
     cost = cost_from(None if asked.cost is None
                      else pathlib.Path(asked.cost).expanduser())
     said = a_campaign(grid, cost, asked.vehicles, asked.day_hours, asked.survives)
+    # "Full" against this reef's own density, not against a number chosen
+    # here. A place that does not say how much ground its reef is on
+    # cannot answer, and gets the old constant with the page saying so.
+    grows = as_dense_as_it_grows(json.loads((place / "site.json").read_text()))
+    room = asked.room * grows if grows else 0.25
     order = (in_lanes(grid["working"]) if asked.order == "lanes"
              else by_suitability(grid["working"], grid["cellM"],
-                                 tuple(asked.band), asked.room))
+                                 tuple(asked.band), room))
     covered = None
     if asked.flown:
         flown = pathlib.Path(asked.flown).expanduser()
@@ -746,7 +776,7 @@ def main() -> int:
         indent=2, default=float) + "\n")
     (into / "campaign.html").write_text(
         page(grid, said, cost, order, covered, asked.order,
-             tuple(asked.band), asked.room))
+             tuple(asked.band), room, grows is not None))
 
     print(f"  {place.name}")
     print(f"    {said['cells']} cells of {grid['cellM']:.0f} m to work, "
