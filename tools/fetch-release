@@ -190,7 +190,13 @@ def main() -> int:
         return 1
 
     short = [f for f in files if state_of(where, f)[0] != "complete"]
-    owed = sum(f["bytes"] - state_of(where, f)[1] for f in short)
+    # What is actually still to come down. A file that overshot owes its
+    # whole size, because it is going to be thrown away and fetched again —
+    # counting it as bytes-already-there made the total negative, and a
+    # release that says it owes minus three hundred megabytes is not saying
+    # anything.
+    owed = sum(f["bytes"] if state_of(where, f)[0] == "too long"
+               else f["bytes"] - state_of(where, f)[1] for f in short)
     print(f"  {where}")
     print(f"    {len(files)} files in the manifest, {len(short)} not complete, "
           f"{size(owed)} owed")
