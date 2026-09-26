@@ -187,3 +187,31 @@ def test_a_step_that_refuses_does_not_stop_the_rest(tmp_path, capsys):
     said = capsys.readouterr().out
     assert "—" in said, "a refusal was not shown"
     assert (into / "index.html").is_file()
+
+
+def test_the_cost_comes_from_the_dive_worth_costing_off(tmp_path):
+    """Not the first folder alphabetically, which in the first real pack
+    was the dive whose controller threw two seconds in and recorded zero
+    seconds in the water."""
+    tool = _tool()
+    pack = tmp_path / "pack"
+    for name, kind, seconds in (("a_broken", "survey", 0.0),
+                                ("b_short", "survey", 300.0),
+                                ("c_long", "survey", 1800.0),
+                                ("d_reach", "reach", 3600.0)):
+        where = pack / name
+        where.mkdir(parents=True)
+        (where / "mission.json").write_text(json.dumps(
+            {"seconds": seconds, "task": {"kind": kind}}))
+    best = tool.worth_costing_off(pack)
+    assert best is not None and best.parent.name == "c_long"
+
+
+def test_a_pack_with_no_dive_that_worked_ground_costs_off_nothing(tmp_path):
+    tool = _tool()
+    pack = tmp_path / "pack"
+    where = pack / "only_a_reach"
+    where.mkdir(parents=True)
+    (where / "mission.json").write_text(json.dumps(
+        {"seconds": 900.0, "task": {"kind": "reach"}}))
+    assert tool.worth_costing_off(pack) is None
