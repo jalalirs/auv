@@ -128,6 +128,48 @@ def cells_over(place: pathlib.Path, cell_m: float, where: str) -> dict:
             "colonies": int(sum(one["colonies"] for one in working))}
 
 
+def by_suitability(working: list[dict], cell_m: float,
+                   band: tuple[float, float], room: float) -> list[dict]:
+    """Which cell to plant next, and it is a ranking rather than a model.
+
+    KCRI's gap, in their words: which cell to plant next given depth,
+    substrate and current. Two of those three this can answer off the
+    place, and it should say plainly which.
+
+    **Depth** is straight out of the place's own seabed. A band, because
+    outplanting is done in one — too shallow and it bleaches and gets
+    broken, too deep and there is not the light.
+
+    **Substrate** is not inferred; it is *demonstrated*. A cell with four
+    hundred colonies already in it has hard bottom at a survivable depth,
+    proven by the coral that is on it — which is better evidence than a
+    hardness field computed off the shape of the ground, and it is the
+    answer a reef ecologist gives when you ask where to plant.
+
+    **Current** it cannot answer. Nothing in a place records it, and a
+    number invented for it would be the kind of claim the rest of this
+    platform exists to refuse. It is the third thing a survey would add.
+
+    And the obvious caveat, because it is not obvious to a spreadsheet: a
+    cell that is already full has nowhere to put anything. Cells past
+    `room` colonies a square metre rank below emptier ones with the same
+    depth, so the work goes where coral grows *and there is space*.
+    """
+    shallow, deep = band
+    area = max(1e-9, cell_m ** 2)
+
+    def how_good(one: dict) -> tuple:
+        depth = one["depthM"]
+        if not shallow <= depth <= deep:
+            return (2, 0.0, depth)                 # outside the band at all
+        density = one["colonies"] / area
+        if density > room:
+            return (1, -density, depth)            # proven, and full
+        return (0, -density, depth)                # proven, and room left
+
+    return sorted(working, key=how_good)
+
+
 def in_lanes(working: list[dict]) -> list[dict]:
     """The order to work them in: up and down the grid, not nearest-first.
 
@@ -338,7 +380,7 @@ a dive to have been flown are absent until one has.</p>
 </table>
 
 %(proof)s
-<h2>The order</h2>
+<h2>%(order_head)s</h2>
 <p class="where">%(order)s</p>
 
 <footer>Built by Coral City from the place's own seabed and colonies, and
@@ -469,7 +511,8 @@ def proof_of(covered: dict | None, grid: dict) -> str:
 
 
 def page(grid: dict, said: dict, cost: dict, order: list[dict],
-         covered: dict | None = None) -> str:
+         covered: dict | None = None, how: str = "lanes",
+         band: tuple[float, float] = (3.0, 12.0), room: float = 0.25) -> str:
     provenance = a_tool("provenance")
     ink = dict(INK, derived=provenance.INK["derived"])
     wash = dict(WASH, derived=provenance.WASH["derived"])
@@ -507,13 +550,22 @@ def page(grid: dict, said: dict, cost: dict, order: list[dict],
         for what, kind, value, whence in rows_of(said, cost, grid))
 
     first = order[:3]
-    order_said = ("Worked in lanes, not nearest-first: a boat that hops to the "
-                  "densest cell and then the next spends the day moving. "
-                  + ("First three: "
-                     + ", ".join("row %d column %d (%.0f m, %d colonies)"
-                                 % (one["row"], one["column"], one["depthM"],
-                                    one["colonies"]) for one in first)
-                     if first else ""))
+    if how == "lanes":
+        order_said = ("Worked in lanes, not nearest-first: a boat that hops to the "
+                      "densest cell and then the next spends the day moving. ")
+    else:
+        order_said = ("Ranked for planting: between %.0f and %.0f m, where coral "
+                      "already grows — which is the substrate demonstrated rather "
+                      "than inferred — and emptiest first past %.2f colonies a "
+                      "square metre, because a cell that is full has nowhere to "
+                      "put anything. The current is the third thing that decides "
+                      "this and nothing in the place records it, so it is not in "
+                      "the ranking. " % (band[0], band[1], room))
+    order_said += ("First three: "
+                   + ", ".join("row %d column %d (%.0f m, %d colonies)"
+                               % (one["row"], one["column"], one["depthM"],
+                                  one["colonies"]) for one in first)
+                   if first else "")
     return PAGE % {
         "style": provenance.STYLE,
         "name": html.escape(str(centre.get("name", "a place"))),
@@ -522,6 +574,7 @@ def page(grid: dict, said: dict, cost: dict, order: list[dict],
         "ground": "What was covered" if covered is not None else "The ground",
         "picture": picture, "caption": html.escape(caption),
         "rows": rows, "order": html.escape(order_said),
+        "order_head": "Where to plant next" if how != "lanes" else "The order",
         "proof": proof_of(covered, grid),
         "source": html.escape(cost.get("from", "no flown dive at all")),
     }
@@ -534,6 +587,15 @@ def main() -> int:
     parse.add_argument("--cell", type=float, default=20.0, help="cell size in metres")
     parse.add_argument("--where", choices=("reef", "all"), default="reef",
                        help="reef: only cells with colonies in them")
+    parse.add_argument("--order", choices=("lanes", "suitability"), default="lanes",
+                       help="lanes: work the ground, which is how a survey goes. "
+                            "suitability: plant where coral already grows and "
+                            "there is room, which is how an outplant goes")
+    parse.add_argument("--band", type=float, nargs=2, default=(3.0, 12.0),
+                       metavar=("SHALLOW", "DEEP"),
+                       help="the depths outplanting is done between")
+    parse.add_argument("--room", type=float, default=0.25,
+                       help="colonies a square metre past which a cell is full")
     parse.add_argument("--cost", default=None,
                        help="a flown mission's mission.json, or a sweep's findings.json")
     parse.add_argument("--vehicles", type=int, default=1)
@@ -557,7 +619,9 @@ def main() -> int:
     cost = cost_from(None if asked.cost is None
                      else pathlib.Path(asked.cost).expanduser())
     said = a_campaign(grid, cost, asked.vehicles, asked.day_hours, asked.survives)
-    order = in_lanes(grid["working"])
+    order = (in_lanes(grid["working"]) if asked.order == "lanes"
+             else by_suitability(grid["working"], grid["cellM"],
+                                 tuple(asked.band), asked.room))
     covered = None
     if asked.flown:
         flown = pathlib.Path(asked.flown).expanduser()
@@ -584,7 +648,9 @@ def main() -> int:
          **({} if covered is None else {"covered": {
              k: v for k, v in covered.items() if k != "hit"}})},
         indent=2, default=float) + "\n")
-    (into / "campaign.html").write_text(page(grid, said, cost, order, covered))
+    (into / "campaign.html").write_text(
+        page(grid, said, cost, order, covered, asked.order,
+             tuple(asked.band), asked.room))
 
     print(f"  {place.name}")
     print(f"    {said['cells']} cells of {grid['cellM']:.0f} m to work, "
