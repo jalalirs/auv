@@ -139,7 +139,11 @@ def fetch(where: pathlib.Path, one: dict, say=print) -> tuple[str, int]:
             # answer to that is to ask it again.
             start_again(here, one, got, say)
             got = 0
-    return kind, got
+    # Read again rather than reporting what the last try saw: a try that
+    # ended by putting a spoiled file aside leaves nothing there, and saying
+    # "too long" about a file that is no longer on disk is a report of a
+    # state the caller cannot act on.
+    return state_of(where, one)
 
 
 def opens(where: pathlib.Path, name: str) -> bool:

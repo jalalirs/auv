@@ -164,10 +164,13 @@ def test_it_does_not_resume_the_same_overshoot_four_times(tmp_path):
     kind, got = tool.fetch(where, {"name": "thing.bin", "bytes": 100,
                                    "url": "https://example.invalid/thing.bin"},
                            say=lambda *a: None)
-    assert kind == "too long"
-    # Every try started from nothing, so the file never grew beyond one body.
-    assert got == 140, "a try resumed an already-too-long file"
+    # Nothing usable is left, and it says so rather than naming a state the
+    # caller cannot act on.
+    assert (kind, got) == ("missing", 0)
     assert curl.calls == tool.TRIES
+    # The proof that no try resumed an overshoot: what was put aside is one
+    # body and not four stacked on each other.
+    assert (where / "thing.bin.too-long").stat().st_size == 140
 
 
 def test_a_try_that_gains_nothing_and_succeeds_starts_again(tmp_path):
