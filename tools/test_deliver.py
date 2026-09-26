@@ -443,3 +443,21 @@ def test_one_that_cannot_be_delivered_does_not_stop_the_rest(tmp_path, capsys):
     assert "1 of 2 delivered" in out
     assert "nowhere" in err and "1 refused" in err
     assert (tmp_path / "out" / "good" / "mission.json").is_file()
+
+
+def test_the_map_shows_what_was_asked_for_even_when_it_went_nowhere():
+    """A station-keeping controller asked to travel 250 m held position to
+    a centimetre, and the map scaled itself to a ten-centimetre scribble —
+    leaving out the one thing the page existed to show."""
+    tool = _deliver()
+    poses = [{"position": [0.0, 0.0, -7.0]}, {"position": [0.05, 0.0, -7.0]}]
+    geometry = {"points": [{"x": 250.0, "y": 0.0}],
+                "line": [{"x": 0.0, "y": 0.0}, {"x": 250.0, "y": 0.0}]}
+    drawn, key = tool.a_map(poses, geometry)
+    assert "what it was asked for" in key
+    # The map spans the task and not the scribble, so the scale bar is in
+    # tens of metres rather than tenths.
+    assert "0.1 m</text>" not in drawn
+    assert "10 m</text>" in drawn, drawn[-200:]
+    # And the point it was asked for is drawn, so a reader can see the gap.
+    assert drawn.count('stroke="#8a2a2a"') >= 1

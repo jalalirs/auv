@@ -735,6 +735,22 @@ def a_map(poses: list[dict], geometry: dict) -> tuple[str, str]:
         points.append((float(mark["x"]), float(mark["y"])))
     for corner in geometry.get("rectangle") or []:
         points.append((float(corner["x"]), float(corner["y"])))
+    # And what the task asked for, which has to be in the picture even when
+    # the vehicle never went near it — *especially* then.
+    #
+    # A station-keeping controller asked to travel 250 m held position to a
+    # centimetre, so the map scaled itself to a ten-centimetre scribble with
+    # a "0.1 m" scale bar: a reader saw an empty box, and the one thing the
+    # page existed to show — that it was asked to go there and went nowhere
+    # — was the thing left out of the frame.
+    asked_for = [(float(one["x"]), float(one["y"]))
+                 for one in (geometry.get("points") or [])]
+    asked_for += [(float(one["x"]), float(one["y"]))
+                  for one in (geometry.get("line") or [])]
+    circle = geometry.get("circle")
+    if isinstance(circle, dict):
+        asked_for.append((float(circle["x"]), float(circle["y"])))
+    points.extend(asked_for)
     if not points:
         return "", ""
     xs = [p[0] for p in points]
@@ -773,6 +789,10 @@ def a_map(poses: list[dict], geometry: dict) -> tuple[str, str]:
     for put in geometry.get("planted") or []:
         x, y = at(float(put["x"]), float(put["y"]))
         parts.append('<circle cx="%.1f" cy="%.1f" r="2.5" fill="#1a6b2a"/>' % (x, y))
+    for want in asked_for:
+        x, y = at(*want)
+        parts.append('<circle cx="%.1f" cy="%.1f" r="5" fill="none" stroke="#8a2a2a" '
+                     'stroke-width="1.6" stroke-dasharray="3 2"/>' % (x, y))
     if truth:
         x, y = at(*truth[0])
         parts.append('<circle cx="%.1f" cy="%.1f" r="4" fill="#fff" stroke="#1b1b1b" '
@@ -793,6 +813,8 @@ def a_map(poses: list[dict], geometry: dict) -> tuple[str, str]:
                    "where it believed it was")
     if geometry.get("planted"):
         key.append("● corals as planted, ○ where the plan wanted them")
+    if asked_for:
+        key.append("◌ what it was asked for")
     return "".join(parts), " · ".join(key)
 
 
