@@ -210,3 +210,17 @@ def test_a_size_is_shown_in_a_unit_that_shows_it(tmp_path):
     assert tool.size(4_200_000) == "4.20 MB"
     assert tool.size(1_290_000_000) == "1.29 GB"
     assert tool.size(512) == "512 B"
+
+
+def test_what_is_owed_is_never_negative(tmp_path, capsys):
+    """A file that overshot owes its whole size — it is going to be thrown
+    away and fetched again. Counted as bytes-already-there it made the total
+    negative, and a release owing minus three hundred megabytes says nothing."""
+    tool = _tool()
+    where = _a_release(tmp_path, [("big.bin", 100), ("small.bin", 50)])
+    (where / "big.bin").write_bytes(b"x" * 140)
+    (where / "small.bin").write_bytes(b"x" * 20)
+    tool.sys.argv = ["fetch-release", str(where), "--check"]
+    tool.main()
+    said = capsys.readouterr().out
+    assert "130 B owed" in said, said
