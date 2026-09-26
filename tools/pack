@@ -220,6 +220,39 @@ def run(what: list[str]) -> tuple[int, str]:
     return done.returncode, (done.stdout + done.stderr).strip()
 
 
+# What a cell's cost may be taken from. The same list `tools/campaign`
+# refuses against, because the pack should not hand it something it will
+# turn down — and a pack that picked the wrong dive would be refused with
+# a message about that dive rather than about the pack.
+WORKED_GROUND = ("survey", "search", "outplant", "transect", "section",
+                 "monitor", "treat", "profile", "mission")
+
+
+def worth_costing_off(into: pathlib.Path) -> pathlib.Path | None:
+    """The dive in this pack a cell's cost should come from.
+
+    Not the first folder alphabetically, which is what it was: in the
+    first real pack that was the dive whose controller threw two seconds
+    in and recorded zero seconds in the water. A cost has to come from a
+    dive that did the work and lasted long enough to have a duration, and
+    among those the longest, because that is the one that did most of it.
+    """
+    best, longest = None, 0.0
+    for folder in sorted(one for one in into.iterdir() if one.is_dir()):
+        where = folder / "mission.json"
+        if not where.is_file():
+            continue
+        try:
+            said = json.loads(where.read_text())
+        except ValueError:
+            continue
+        kind = (said.get("task") or {}).get("kind")
+        seconds = float(said.get("seconds") or 0.0)
+        if kind in WORKED_GROUND and seconds > longest:
+            best, longest = where, seconds
+    return best
+
+
 def assemble(place: pathlib.Path, dives: pathlib.Path | None, into: pathlib.Path,
              cell: float, order: str) -> None:
     """Build the pack, in the order the pieces depend on each other.
@@ -248,12 +281,11 @@ def assemble(place: pathlib.Path, dives: pathlib.Path | None, into: pathlib.Path
 
     # The campaign last, because it is costed off a dive and checked
     # against every dive, so both have to be here first.
-    flown = sorted(one for one in into.iterdir()
-                   if one.is_dir() and (one / "mission.json").is_file())
     campaign = [HERE / "campaign", place, "--cell", str(cell), "--order", order,
                 "--flown", into, "--into", into / "campaign"]
-    if flown:
-        campaign += ["--cost", flown[0] / "mission.json"]
+    best = worth_costing_off(into)
+    if best is not None:
+        campaign += ["--cost", best]
     code, said = run(campaign)
     print(f"  {'·' if code == 0 else '—'} the whole grid")
     for line in said.splitlines()[-4:]:
