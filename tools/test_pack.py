@@ -215,3 +215,12 @@ def test_a_pack_with_no_dive_that_worked_ground_costs_off_nothing(tmp_path):
     (where / "mission.json").write_text(json.dumps(
         {"seconds": 900.0, "task": {"kind": "reach"}}))
     assert tool.worth_costing_off(pack) is None
+
+
+def test_every_tool_that_writes_a_page_is_in_the_readme():
+    """Six of these were written in one day. A tool nobody can find is a
+    tool nobody uses."""
+    readme = (HERE / "README.md").read_text()
+    for name in ("provenance", "deliver", "rehearsal", "campaign", "again",
+                 "pack", "bench", "fetch-release"):
+        assert f"`{name}`" in readme, f"{name} is not in tools/README.md"
