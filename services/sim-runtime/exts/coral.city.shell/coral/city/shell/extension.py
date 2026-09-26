@@ -249,9 +249,16 @@ class CoralCityShell(omni.ext.IExt):
                 # The same four views of every place, held still. Everything in
                 # the look plan is a judgement about an image, and two paths
                 # flown over two places are not an argument about anything.
+                # How finely this place was surveyed, so the sheet can leave
+                # out the square-metre view where it would be inside a coral
+                # rather than above one.
+                sampled = None
+                if dive.seabed is not None and dive.seabed.columns > 1:
+                    sampled = float(dive.seabed.across) / (dive.seabed.columns - 1)
                 self.tour = Stills(dive.across_metres(), floor_at, self._say,
                                    begin=dive.position,
-                                   water_level=dive.water_level)
+                                   water_level=dive.water_level,
+                                   sample_metres=sampled)
             else:
                 self.tour = Tour(dive.across_metres(), floor_at, self._say,
                                  begin=dive.position)
