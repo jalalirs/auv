@@ -54,6 +54,8 @@ type Claimed struct {
 	// What a scenario changed about the world it is flown in.
 	LayoutChanges json.RawMessage `json:"layoutChanges,omitempty"`
 
+	AutonomySlug   string `json:"autonomySlug"`
+	AutonomyName   string `json:"autonomyName"`
 	AutonomyImage  string `json:"autonomyImage"`
 	AutonomyDigest string `json:"autonomyDigest"`
 	AutonomyGPU    bool   `json:"autonomyWantsGpu"`
@@ -430,6 +432,11 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		// spending its first minute waiting for a stack that was never going
 		// to arrive.
 		"autonomyImage": claimed.AutonomyImage,
+		// And what that controller is called, so the record and the bench can
+		// say which one flew. Everything that arrives over ROS 2 arrives as
+		// "a stack"; two of somebody's controllers were both called that.
+		"autonomySlug": claimed.AutonomySlug,
+		"autonomyName": claimed.AutonomyName,
 		// How long there is to be. A batch dive is as long as it was defined to
 		// be; an interactive one lasts until the person flying it leaves, which
 		// is not a number, so it is given an hour and ended early when they go.
