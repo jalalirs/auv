@@ -3403,11 +3403,6 @@ class Dive:
                  ended=self.ended or "time",
                  carried=self.carried,
                  attempts=self.attempts,
-                 # Which controller flew it. The benchmark compares runs, and
-                 # two runs flown by two of somebody's controllers both said
-                 # "stack" — so they could not be told apart, which is the
-                 # one thing a benchmark is for.
-                 flownBy=self.helm.flying_as(),
                  **({} if self.navigation is None
                     else {"navigation": self.navigation.said(self.position, self.simulated)}),
                  # And the one number a dive is judged on, said on its own line

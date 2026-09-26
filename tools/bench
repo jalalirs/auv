@@ -70,6 +70,49 @@ def named(suite: str, controller: str, task: str) -> str:
     return f"bench · {suite} · {controller} · {task}"
 
 
+# The controllers that live inside the runtime. Everything else named on the
+# command line is somebody's own, deployed through the SDK, and is flown by
+# attaching it to the dive rather than by asking the helm for it by name.
+BUILT_IN = ("pursue", "wary", "ponder", "asking", "hold", "glide")
+
+
+def deployed(platform, slug: str) -> dict | None:
+    """Somebody's own controller, by the handle they deployed it under.
+
+    The bench selected a controller by name out of the helm's registry, which
+    only ever holds the built-ins and one entry called `stack` — so there was
+    no way to bench a customer's controller, and no way to bench two of them
+    against each other, because both were `stack`. A bench that can only rank
+    our own baselines is ranking the wrong thing.
+    """
+    listed = platform.call("GET", f"/api/v1/organisations/{platform.org}/autonomy")
+    for one in listed.get("autonomy", []):
+        if one.get("slug") == slug or one.get("name") == slug:
+            return one
+    return None
+
+
+def whose(platform, slug: str) -> dict:
+    """What it takes to fly this controller: a built-in by name, or a stack.
+
+    Refuses a name that is neither, rather than quietly falling back to the
+    hold — a bench row attributed to a controller that never flew is worse
+    than a bench that would not run.
+    """
+    if slug in BUILT_IN:
+        return {"builtIn": slug}
+    stack = deployed(platform, slug)
+    if stack is None:
+        listed = platform.call("GET", f"/api/v1/organisations/{platform.org}/autonomy")
+        theirs = ", ".join(sorted(one.get("slug", "") for one in listed.get("autonomy", [])))
+        raise SystemExit(
+            f"no controller called '{slug}'. Built in: {', '.join(BUILT_IN)}."
+            + (f" Deployed here: {theirs}." if theirs else
+               " Nothing has been deployed to this organisation; "
+               "`coral-city deploy` puts one there."))
+    return {"stack": stack}
+
+
 # ── flying it ────────────────────────────────────────────────────────────────
 
 def command_run(args) -> int:
@@ -85,10 +128,14 @@ def command_run(args) -> int:
         "kind": "constructed", "name": f"the bench · {water_name} · {technology_name}",
         "parameters": {**water, **technology}})
 
+    # Whose controller this is, before anything is flown: a built-in by name,
+    # or one somebody deployed, attached to every dive in the suite.
+    flying = whose(platform, args.controller)
     already = {row["name"] for row in flown(platform)} if not args.again else set()
     asked = []
     print(f"{BOLD}{args.suite}{OFF} flown by {BOLD}{args.controller}{OFF} "
-          f"{DIM}· {water_name} · {technology_name}{OFF}")
+          f"{DIM}· {'built in' if 'builtIn' in flying else 'deployed here'}"
+          f" · {water_name} · {technology_name}{OFF}")
     for task in tasks:
         name = named(args.suite, args.controller, task)
         if name in already:
@@ -97,11 +144,18 @@ def command_run(args) -> int:
         objective = dict(TASKS[task])
         # What makes the comparison a comparison: the controller by name, and
         # the same seed for the same task whoever is flying it.
-        objective["controller"] = args.controller
         objective["seed"] = seed_for(args.suite, task)
-        dive = platform.call("POST", f"/api/v1/organisations/{platform.org}/dives", {
-            "name": name, "cityVersionId": city, "vehicleVersionId": vehicle,
-            "conditionsId": conditions["id"], "objective": objective})
+        defined = {"name": name, "cityVersionId": city, "vehicleVersionId": vehicle,
+                   "conditionsId": conditions["id"], "objective": objective}
+        if "builtIn" in flying:
+            objective["controller"] = flying["builtIn"]
+        else:
+            # Somebody else's, in a container. It is not named in the
+            # objective because the helm has no such entry to look up: the
+            # dive carries the stack, the agent starts it, and it arrives
+            # over ROS 2 — under its own name, now that the dive says so.
+            defined["autonomyStackId"] = flying["stack"]["id"]
+        dive = platform.call("POST", f"/api/v1/organisations/{platform.org}/dives", defined)
         run = platform.call("POST", f"/api/v1/dives/{dive['id']}/runs", {
             "queueId": queue["id"], "mode": "batch", "runtimeVersion": runtime})
         asked.append({"dive": dive["id"], "run": run["id"], "name": name})
