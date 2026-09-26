@@ -533,7 +533,13 @@ def command_compare(args) -> int:
         return 1
     print(f"{BOLD}{args.left}{OFF} against {BOLD}{args.right}{OFF}"
           f"{DIM} · {len(both)} tasks, the same water and the same seeds{OFF}\n")
-    print(f"{'':<14}{args.left:>10}{args.right:>10}{'':>4}{'energy':>16}"
+    # Trimmed to the column, like the table in `show`. Two controllers
+    # with twelve-character names ran together into one word:
+    # "station-holdlearned-hold".
+    def column(name: str) -> str:
+        return (name if len(name) <= 10 else name[:9] + "…").rjust(10)
+
+    print(f"{'':<14}{column(args.left)}{column(args.right)}{'':>4}{'energy':>16}"
           f"{'hit':>10}{'thinking':>12}")
     for task in both:
         mine, yours = ours[task], theirs[task]
