@@ -20,6 +20,56 @@
 
 import type { Reading, SeaNow, SeaRecord } from "../../shared/bridge.js";
 
+/**
+ * The sea as it was on a stated day, or nothing if nobody recorded that day.
+ *
+ * "Fly it as it was last Tuesday" is a different question from "fly it as it
+ * is", and it is the one an operator asks: a dive is planned against a day
+ * that already happened, because that is the day there is evidence for.
+ *
+ * What the record holds for a past day is the satellite temperature and the
+ * heat it had been under, and **that is all** — the daily series carries no
+ * wave and no wind, because the buoy's are readings and not a history. So
+ * this returns a day's temperature with that day's instant on it, and says
+ * nothing about the rest. A dive flown from it reads, claim by claim:
+ * temperature measured, sea state nobody said, current nobody said. Which is
+ * the truth about what anybody knows about last Tuesday, and is worth more
+ * than a plausible number with no instant behind it.
+ */
+export function asItWasOn(record: SeaRecord | undefined, date: string): Measured | undefined {
+  if (record === undefined) return undefined;
+  const day = record.days.find((one) => one.date === date);
+  if (day === undefined || day.satelliteTemperatureC === undefined) return undefined;
+  // Noon UTC: a daily satellite product is a day and not a moment, and
+  // pretending it was taken at midnight would be a sharper claim than the
+  // product makes.
+  const at = `${day.date}T12:00:00Z`;
+  const parameters: Record<string, unknown> = {
+    temperatureC: day.satelliteTemperatureC,
+    // Said out loud, as above: a field that is absent reads as a field
+    // nobody thought about.
+    currentNotMeasured: true,
+  };
+  const sources = [{
+    what: "temperature", parameter: "temperatureC", at,
+    from: `${INSTRUMENTS["noaa"]}, as a daily mean`, through: "aqualink.org",
+  }];
+  if (day.degreeHeatingWeeks !== undefined) {
+    parameters["degreeHeatingWeeks"] = day.degreeHeatingWeeks;
+    sources.push({
+      what: "heat stress", parameter: "degreeHeatingWeeks", at,
+      from: INSTRUMENTS["noaa"]!, through: "aqualink.org",
+    });
+  }
+  return {
+    kind: "observed",
+    name: `${record.site.name}, as it was on ${day.date}`,
+    observedAt: at,
+    sources,
+    parameters,
+  };
+}
+
 /** Conditions as the platform takes them. */
 export interface Measured {
   kind: "observed";

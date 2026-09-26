@@ -3,15 +3,15 @@
 import { describe, expect, it } from "vitest";
 
 import type { SeaRecord } from "../../shared/bridge.js";
-import { asMeasured } from "./asMeasured.js";
+import { asItWasOn, asMeasured } from "./asMeasured.js";
 
-function aRecord(now: SeaRecord["now"]): SeaRecord {
+function aRecord(now: SeaRecord["now"], days: SeaRecord["days"] = []): SeaRecord {
   return {
     site: { id: 1, name: "Looe Key", region: undefined, latitude: 24.5,
             longitude: -81.4, depth: undefined, status: "deployed",
             hasBuoy: true, timezone: undefined, maxMonthlyMean: undefined,
             page: "" } as unknown as SeaRecord["site"],
-    now, days: [], surveys: [], fetchedAt: "2026-09-16T12:00:00Z",
+    now, days, surveys: [], fetchedAt: "2026-09-16T12:00:00Z",
   };
 }
 
@@ -53,5 +53,52 @@ describe("the sea as it was measured", () => {
     }));
     expect(got?.parameters["currentNotMeasured"]).toBe(true);
     expect(got?.parameters["currentMetresPerSecond"]).toBeUndefined();
+  });
+});
+
+
+// ── as it was last Tuesday ───────────────────────────────────────────────────
+//
+// A different question from "as it is", and the one an operator asks: a dive
+// is planned against a day that already happened, because that is the day
+// there is evidence for.
+
+const DAYS = [
+  { date: "2026-09-14", satelliteTemperatureC: 30.4, degreeHeatingWeeks: 2.1, alertLevel: 1 },
+  { date: "2026-09-15", satelliteTemperatureC: 30.9, degreeHeatingWeeks: 2.3, alertLevel: 1 },
+  { date: "2026-09-16", satelliteTemperatureC: undefined, degreeHeatingWeeks: undefined, alertLevel: undefined },
+];
+
+describe("the sea as it was on a day", () => {
+  it("takes that day's temperature, with that day's instant on it", () => {
+    const got = asItWasOn(aRecord({}, DAYS), "2026-09-14");
+    expect(got?.kind).toBe("observed");
+    expect(got?.parameters["temperatureC"]).toBe(30.4);
+    // Noon, because a daily satellite product is a day and not a moment.
+    expect(got?.observedAt).toBe("2026-09-14T12:00:00Z");
+    expect(got?.name).toContain("2026-09-14");
+  });
+
+  it("says nothing about waves, wind or current, because nobody recorded them", () => {
+    const got = asItWasOn(aRecord({}, DAYS), "2026-09-15");
+    expect(got?.parameters["significantWaveHeightM"]).toBeUndefined();
+    expect(got?.parameters["windSpeedMs"]).toBeUndefined();
+    // Absent is a field nobody thought about; this is a field nobody measured.
+    expect(got?.parameters["currentNotMeasured"]).toBe(true);
+  });
+
+  it("cites the satellite by the field it became", () => {
+    const got = asItWasOn(aRecord({}, DAYS), "2026-09-14");
+    expect(got?.sources.map((one) => one["parameter"]))
+      .toEqual(["temperatureC", "degreeHeatingWeeks"]);
+    expect(String(got?.sources[0]?.["from"])).toContain("daily mean");
+  });
+
+  it("refuses a day nobody recorded rather than reaching for a nearby one", () => {
+    // A temperature from the day before, wearing Tuesday's date, is exactly
+    // the kind of claim an instant is supposed to prevent.
+    expect(asItWasOn(aRecord({}, DAYS), "2026-09-13")).toBeUndefined();
+    expect(asItWasOn(aRecord({}, DAYS), "2026-09-16")).toBeUndefined();
+    expect(asItWasOn(undefined, "2026-09-14")).toBeUndefined();
   });
 });
