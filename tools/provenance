@@ -256,6 +256,100 @@ def page(site: dict, rows: list[dict]) -> str:
     }
 
 
+INDEX = """<!doctype html>
+<meta charset="utf-8">
+<title>Coral City — what anybody measured</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 2.5rem 2rem 4rem;
+         font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif;
+         color: #1b1b1b; background: #fff; max-width: 60rem; margin-inline: auto; }
+  h1 { font-size: 1.7rem; margin: 0 0 .2rem; font-weight: 650; }
+  .where { color: #555; margin: 0 0 1.6rem; }
+  .says { background: #f4f4f2; border-left: 3px solid #999; padding: .9rem 1.1rem;
+          margin: 0 0 2rem; }
+  .says strong { font-weight: 650; }
+  table { border-collapse: collapse; width: 100%%; margin-bottom: 1rem; }
+  th { text-align: left; font-weight: 650; font-size: .78rem; letter-spacing: .04em;
+       text-transform: uppercase; color: #666; padding: 0 .7rem .5rem 0;
+       border-bottom: 1px solid #ddd; }
+  th.n, td.n { text-align: right; width: 6rem; }
+  td { padding: .65rem .7rem; border-bottom: 1px solid #eee; vertical-align: top; }
+  td.place { font-weight: 550; padding-left: 0; }
+  td.place span { display: block; font-weight: 400; color: #666; font-size: .88rem; }
+  a { color: #1a4f8a; }
+  .bar { display: flex; height: .55rem; border-radius: .3rem; overflow: hidden;
+         min-width: 9rem; }
+  .bar i { display: block; }
+  footer { color: #666; font-size: .85rem; border-top: 1px solid #ddd;
+           padding-top: 1rem; margin-top: 2rem; }
+</style>
+<h1>Coral City</h1>
+<p class="where">%(count)d places · what anybody measured</p>
+
+<p class="says"><strong>Read the first column.</strong> A cover figure that
+traces to a transect can be cited; one that came out of a pipeline cannot.
+Most simulators cannot tell you which they handed you. Every place below
+says, claim by claim, and the page behind each name shows the working.</p>
+
+<table>
+  <tr><th>Place</th><th class="n">measured</th><th class="n">derived</th>
+      <th class="n">chosen</th><th></th></tr>
+  %(rows)s
+</table>
+
+<footer>Built by Coral City from each place's own record. Nothing on this page
+was typed by hand.</footer>
+"""
+
+INDEX_ROW = """<tr>
+  <td class="place"><a href="%(file)s">%(name)s</a><span>%(about)s</span></td>
+  <td class="n">%(m)d</td><td class="n">%(d)d</td><td class="n">%(c)d</td>
+  <td><span class="bar">%(bar)s</span></td></tr>"""
+
+
+def index(places: list[dict]) -> str:
+    """The table, which is the thing that goes in the slide.
+
+    Sorted by how much of each place anybody actually measured, because that
+    is the order somebody should read them in and because the honest answer
+    to "which of these is real" is a ranking rather than a yes.
+    """
+    rows = []
+    for one in sorted(places, key=lambda p: (-p["measured"], p["name"])):
+        total = max(one["measured"] + one["derived"] + one["chosen"], 1)
+        bar = "".join(
+            '<i style="background:%s;width:%.1f%%"></i>' % (INK[kind], 100 * n / total)
+            for kind, n in ((MEASURED, one["measured"]), (DERIVED, one["derived"]),
+                            (CHOSEN, one["chosen"])) if n)
+        rows.append(INDEX_ROW % {
+            "file": html.escape(one["name"] + ".html"),
+            "name": html.escape(one["name"]),
+            "about": html.escape(one["about"]),
+            "m": one["measured"], "d": one["derived"], "c": one["chosen"],
+            "bar": bar,
+        })
+    return INDEX % {"count": len(places), "rows": "\n  ".join(rows)}
+
+
+def one_line(site: dict) -> str:
+    """What a place is, in the width of a table cell."""
+    came = site.get("from") or {}
+    reef = site.get("reef") or {}
+    said = []
+    if came.get("acrossMetres"):
+        said.append("%.0f m across" % came["acrossMetres"])
+    if came.get("sampleMetres"):
+        metres = float(came["sampleMetres"])
+        said.append("%.0f cm a sample" % (100 * metres) if metres < 1
+                    else "%.1f m a sample" % metres)
+    if reef.get("colonies"):
+        said.append("%s colonies" % f"{reef['colonies']:,}")
+    if site.get("deepestM") is not None:
+        said.append("%.0f m deep" % site["deepestM"])
+    return " · ".join(said)
+
+
 def main() -> int:
     parse = argparse.ArgumentParser(
         description="one page per place, saying what anybody measured")
@@ -275,6 +369,7 @@ def main() -> int:
 
     into = root / "provenance"
     into.mkdir(parents=True, exist_ok=True)
+    made = []
     for name in names:
         site_file = root / "places" / name / "site.json"
         if not site_file.is_file():
@@ -293,6 +388,14 @@ def main() -> int:
         print(f"  {name:<18} {counted[MEASURED]:2d} measured, "
               f"{counted[DERIVED]:2d} derived, {counted[CHOSEN]:2d} chosen "
               f"→ {out}")
+        made.append({"name": name, "about": one_line(site),
+                     "measured": counted[MEASURED], "derived": counted[DERIVED],
+                     "chosen": counted[CHOSEN]})
+
+    if len(made) > 1:
+        front = into / "index.html"
+        front.write_text(index(made))
+        print(f"\n  {len(made)} places → {front}")
     return 0
 
 
