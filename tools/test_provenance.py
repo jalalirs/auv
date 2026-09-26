@@ -271,3 +271,33 @@ def test_a_count_nobody_sourced_is_chosen_and_says_nothing():
     bare = {"name": "x", "from": {}, "reef": {"colonies": 1000}}
     count = next(r for r in tool.about(bare, None) if r["what"] == "How many colonies")
     assert count["kind"] == tool.CHOSEN and count["from"] == ""
+
+
+GUESS_WORDS = ("inferred", "assumed", "estimated", "chosen", "by construction",
+               "stands in", "nobody")
+
+
+def test_no_row_is_tagged_measured_while_its_words_say_otherwise():
+    """The mirror of the test above, and the shape the fault took the
+    first time: a row tagged measured whose value read "inferred from
+    slope and relief"."""
+    tool = _tool()
+    for site in (_surveyed(), _a_place_built_before_cover()):
+        for row in tool.about(site, None):
+            if row["kind"] != tool.MEASURED:
+                continue
+            said = ((row["value"] or "") + " " + (row["from"] or "")).lower()
+            assert not any(word in said for word in GUESS_WORDS), row
+
+
+def test_the_same_holds_for_a_dive_s_conditions():
+    """A dive's page has the same three fields and the same way to get
+    them out of step."""
+    tool = _tool()
+    rows = tool.about_dive(FLOWN["cameFrom"], FLOWN["were"])
+    for row in rows:
+        said = (row["from"] or "").lower()
+        if row["kind"] == tool.MEASURED:
+            assert "nobody said" not in said, row
+        if row["kind"] == tool.ASSUMED:
+            assert "instrument" not in said and "buoy" not in said, row
