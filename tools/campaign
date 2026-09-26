@@ -170,10 +170,15 @@ def cost_from(path: pathlib.Path | None) -> dict:
     task = said.get("task") or {}
     seconds = said.get("seconds")
     achieved = task.get("achieved") or {}
+    coverage = said.get("coverage") or {}
     return {"energyWh": achieved.get("energyWh") or task.get("energyWh"),
             "hours": None if not seconds else round(float(seconds) / 3600.0, 4),
             "from": FLOWN, "runs": 1,
-            "coveredM2": None}
+            # How much ground that dive actually covered, when it was a
+            # survey and said so. Without it a campaign has to assume one
+            # dive covers one cell, which is an assumption wearing the
+            # clothes of arithmetic.
+            "coveredM2": coverage.get("seenM2")}
 
 
 def a_campaign(grid: dict, cost: dict, vehicles: int, day_hours: float,
@@ -187,16 +192,30 @@ def a_campaign(grid: dict, cost: dict, vehicles: int, day_hours: float,
         said["cannotSay"] = ("nothing has been flown here, so there is no "
                              "figure for what a cell takes")
         return said
-    said["hoursPerCell"] = round(float(hours), 3)
-    said["vehicleHours"] = round(cells * float(hours), 1)
+    # How many dives a cell takes, from the ground the flown survey actually
+    # covered. Without that figure it is one, and the page says so as an
+    # assumption rather than letting it look like arithmetic — a cell four
+    # times the size of what a dive covers is four dives, and a plan that
+    # quietly called it one is out by a factor of four.
+    covered = cost.get("coveredM2")
+    if covered and float(covered) > 0:
+        said["divesPerCell"] = round(float(grid["cellM"]) ** 2 / float(covered), 3)
+        said["divesPerCellFrom"] = cost.get("from", FLOWN)
+        said["coveredM2"] = float(covered)
+    else:
+        said["divesPerCell"] = 1.0
+        said["divesPerCellFrom"] = CHOSEN
+    said["dives"] = math.ceil(cells * said["divesPerCell"])
+    said["hoursPerCell"] = round(float(hours) * said["divesPerCell"], 3)
+    said["vehicleHours"] = round(cells * said["hoursPerCell"], 1)
     # A day is what the fleet can do in it, and a fleet is vehicles times
     # hours — not vehicles times cells, which would let half a dive count.
     a_day = max(1e-9, day_hours * vehicles)
-    said["workingDays"] = math.ceil(cells * float(hours) / a_day)
+    said["workingDays"] = math.ceil(said["vehicleHours"] / a_day)
     if cost.get("energyWh"):
-        said["energyWh"] = round(cells * float(cost["energyWh"]), 1)
+        said["energyWh"] = round(said["dives"] * float(cost["energyWh"]), 1)
     if cost.get("perCharge"):
-        said["charges"] = math.ceil(cells / max(1e-9, float(cost["perCharge"])))
+        said["charges"] = math.ceil(said["dives"] / max(1e-9, float(cost["perCharge"])))
     share = survives if survives is not None else cost.get("survives")
     if share:
         said["survives"] = round(float(share), 3)
@@ -379,6 +398,16 @@ def rows_of(said: dict, cost: dict, grid: dict) -> list[tuple]:
              "the place's own seabed, wet cells with colonies in them"),
             ("Colonies in them", PLACE, f"{grid['colonies']:,}",
              "counted out of the place's own reef")]
+    if "divesPerCell" in said:
+        rows.append(("Dives a cell takes", said["divesPerCellFrom"],
+                     "%.2f" % said["divesPerCell"],
+                     ("a cell of %.0f m against the %.0f m2 the flown survey "
+                      "actually covered" % (grid["cellM"], said["coveredM2"]))
+                     if said["divesPerCellFrom"] != CHOSEN
+                     else "nothing flown here says how much ground a dive covers, "
+                          "so one cell is one dive"))
+        rows.append(("Dives, all of it", "derived", "%d" % said["dives"],
+                     "cells times the dives above"))
     if "hoursPerCell" in said:
         rows.append(("A cell takes", cost.get("from", FLOWN),
                      "%.2f h" % said["hoursPerCell"],

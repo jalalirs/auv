@@ -246,3 +246,47 @@ def test_a_folder_with_nothing_in_it_says_so_rather_than_claiming_nothing_flew(t
     said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
     page = tool.page(grid, said, {}, tool.in_lanes(grid["working"]), covered)
     assert "none of those folders holds what a mission produced" in page
+
+
+def test_one_dive_per_cell_is_an_assumption_and_says_so(tmp_path):
+    """A cell four times the size of what a dive covers is four dives, and
+    a plan that quietly called it one is out by a factor of four."""
+    tool = _tool()
+    grid = tool.cells_over(_a_place(tmp_path), cell_m=25.0, where="all")
+    said = tool.a_campaign(grid, {"hours": 1.0, "from": tool.FLOWN},
+                           vehicles=1, day_hours=10.0, survives=None)
+    assert said["divesPerCell"] == 1.0
+    assert said["divesPerCellFrom"] == tool.CHOSEN
+    page = tool.page(grid, said, {"hours": 1.0, "from": tool.FLOWN},
+                     tool.in_lanes(grid["working"]))
+    assert "one cell is one dive" in page
+
+
+def test_a_survey_that_says_what_it_covered_settles_it(tmp_path):
+    tool = _tool()
+    grid = tool.cells_over(_a_place(tmp_path), cell_m=25.0, where="all")   # 625 m2
+    cost = {"hours": 1.0, "from": tool.FLOWN, "coveredM2": 125.0}
+    said = tool.a_campaign(grid, cost, vehicles=1, day_hours=10.0, survives=None)
+    assert said["divesPerCell"] == pytest.approx(5.0)
+    assert said["hoursPerCell"] == pytest.approx(5.0)
+    assert said["dives"] == 12 * 5
+    assert said["divesPerCellFrom"] == tool.FLOWN
+
+
+def test_a_survey_records_the_ground_it_covered_not_only_a_fraction(tmp_path):
+    """A fraction of a rectangle is not an area, and a campaign needs an
+    area."""
+    deliver = importlib.util.module_from_spec(
+        importlib.util.spec_from_loader(
+            "deliver", importlib.machinery.SourceFileLoader("deliver", str(HERE / "deliver"))))
+    importlib.machinery.SourceFileLoader("deliver", str(HERE / "deliver")).exec_module(deliver)
+    geometry = {
+        "rectangle": [{"x": 0.0, "y": 0.0}, {"x": 4.0, "y": 0.0},
+                      {"x": 4.0, "y": 4.0}, {"x": 0.0, "y": 4.0}],
+        "seen": {"rows": 2, "columns": 2,
+                 "cells": list(np.packbits(np.array([[1, 0], [0, 1]], dtype=np.uint8)).tolist())},
+    }
+    said = deliver.coverage_file(tmp_path, geometry,
+                                 {"latitude": 24.5, "longitude": -81.4, "name": "x"})
+    assert said["rectangleM2"] == pytest.approx(16.0)
+    assert said["seenM2"] == pytest.approx(8.0)      # two of four 2x2 m cells

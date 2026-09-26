@@ -678,8 +678,16 @@ def coverage_file(into: pathlib.Path, geometry: dict, centre: dict) -> dict | No
     (into / "coverage.geojson").write_text(json.dumps(
         {"type": "FeatureCollection", "features": features}, indent=1) + "\n")
     covered = int(flags.sum())
+    # And how much ground that is, because a fraction of a rectangle is not
+    # an area and a campaign needs an area: how many of these it takes to
+    # cover a cell is the difference between a plan and a guess.
+    wide = float(np.linalg.norm(np.array([corners[1]["x"], corners[1]["y"]]) - origin))
+    deep = float(np.linalg.norm(np.array([corners[3]["x"], corners[3]["y"]]) - origin))
+    each = (wide / columns) * (deep / rows)
     return {"cells": rows * columns, "seen": covered,
-            "fraction": round(covered / float(rows * columns), 4)}
+            "fraction": round(covered / float(rows * columns), 4),
+            "rectangleM2": round(wide * deep, 1),
+            "seenM2": round(covered * each, 1)}
 
 
 REPORT = """<!doctype html>
