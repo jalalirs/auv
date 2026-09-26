@@ -255,7 +255,12 @@ def main() -> int:
     # of the square kilometre the place is drawn over, and quoting cover over
     # the whole site would put it at a fifth of what its own transects say.
     flown = _how_much_was_flown(ref, across)
-    measured = reef.cover_over(x, y, on_the_ground, across, ground_m2=flown)
+    measured = reef.cover_over(
+        x, y, on_the_ground, across, ground_m2=flown,
+        ground_is=("the ground the survey actually flew, which for this "
+                   "release is about an eighth of the square kilometre the "
+                   "place is drawn over. Nothing was planted here: every "
+                   "colony is one the survey detected"))
 
     site["reef"] = {
         "source": listed.get("source"), "method": listed.get("method"),
