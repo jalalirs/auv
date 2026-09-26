@@ -119,3 +119,18 @@ def test_a_builtin_controller_is_its_own_name():
     helm = Helm(Allocator(model), 0.005)
     assert helm.flying_as() == helm.flying.name
     assert helm.describe()["flyingAs"] == helm.flying.name
+
+
+def test_the_record_says_who_flew_by_name_and_not_by_slot():
+    """`who_flew` is what the bench reads to attribute a result."""
+    from hydrodynamics import Allocator, Hydrodynamics
+    from controllers import Helm
+
+    package = HERE.parents[3] / "catalog/vehicles/bluerov2/dynamics.json"
+    model = Hydrodynamics.from_package(package)
+    helm = Helm(Allocator(model), 0.005, bridge=_Bridge(),
+                deployed="Hold the depth", slug="hold-depth")
+    helm.steps_flown = {"stack": 900, "hold": 100}
+    said = helm.who_flew()
+    assert said["mostly"] == "Hold the depth"
+    assert said["shares"] == {"Hold the depth": 0.9, "hold": 0.1}

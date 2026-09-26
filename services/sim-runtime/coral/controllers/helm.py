@@ -512,13 +512,30 @@ class Helm:
             "why": "the attitude guard held the push down to keep the hull from leaning over",
         }
 
+    def a_name_for(self, key: str) -> str:
+        """The registry key, turned into what a person would call it.
+
+        For every controller in the runtime these are the same word. For
+        somebody's own they are not: the key is "stack", which is the slot,
+        and the controller has a name of its own that the dive was told.
+        """
+        one = self.controllers.get(key)
+        told = getattr(one, "flying_as", None)
+        return told() if callable(told) else key
+
     def who_flew(self) -> dict:
-        """What share of the dive each controller had of the vehicle."""
+        """What share of the dive each controller had of the vehicle.
+
+        By name rather than by slot. The benchmark reads `mostly` off this to
+        say who produced a result, and two of somebody's controllers both
+        came back as "stack" — so a bench could not tell them apart, which is
+        the one thing a bench is for.
+        """
         total = sum(self.steps_flown.values())
         if total == 0:
             return {}
-        return {"mostly": max(self.steps_flown, key=self.steps_flown.get),
-                "shares": {name: round(count / total, 3)
+        return {"mostly": self.a_name_for(max(self.steps_flown, key=self.steps_flown.get)),
+                "shares": {self.a_name_for(name): round(count / total, 3)
                            for name, count in sorted(self.steps_flown.items(),
                                                      key=lambda kv: -kv[1])}}
 
