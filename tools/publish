@@ -175,7 +175,28 @@ step "digest $(printf '%s' "$VERSION" | json "['digest']")"
 # checks for it.
 if [ "$KIND" = vehicle ] && [ -f "$SOURCE/dynamics.json" ]; then
     say "Saying how it moves"
-    answer=$(api PUT "/api/v1/versions/$VERSION_ID/dynamics" "$(cat "$SOURCE/dynamics.json")")
+    # What the *platform* keeps, which is a summary and not the package.
+    #
+    # A vehicle package declares far more than this — its tether, its modem,
+    # its battery, its computer, what it is allowed to do — and the runtime
+    # reads all of it from the package at dive time. The control plane keeps
+    # only what it has to reason about before a dive: how heavy, how trimmed,
+    # what it can push with, what it carries, and what it says on the wire.
+    # Sending the rest is refused, field by field, so the list is here.
+    #
+    # `tools/test_publish.py` holds this list against the Go struct's own
+    # json tags. Two places, and the second checks the first — a list that
+    # drifted would refuse every new vehicle with a message about a field
+    # nobody had heard of.
+    moves=$(python3 -c "
+import json, sys
+KEPT = ('massKg', 'displacedVolumeM3', 'centreOfGravityM', 'centreOfBuoyancyM',
+        'inertiaTensor', 'addedMass', 'linearDamping', 'quadraticDamping',
+        'thrusters', 'sensors', 'topicContract')
+said = json.load(open('$SOURCE/dynamics.json'))
+print(json.dumps({k: said[k] for k in KEPT if k in said}))
+")
+    answer=$(api PUT "/api/v1/versions/$VERSION_ID/dynamics" "$moves")
     if [ -n "$(printf '%s' "$answer" | json "['error']['message']")" ]; then
         die "refused: $(printf '%s' "$answer" | head -c 300)"
     fi
