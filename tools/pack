@@ -98,9 +98,13 @@ def a_line(kind: str, where: pathlib.Path) -> str:
 # Every kind of page a programme produces, whether or not it is here, and
 # what would produce the ones that are not.
 KINDS = [
-    ("the reef", "provenance.html",
+    # By the place's own name, because that is what `tools/provenance`
+    # writes — a page called provenance.html would be a page about nothing
+    # in particular, and a pack that looked for one found nothing and said
+    # the reef had never been described.
+    ("the reef", "*.html:provenance.json",
      "what anybody actually measured about this place",
-     "tools/provenance <place>"),
+     "tools/provenance <place> --into <this folder>"),
     ("the water", "conditions.html",
      "which of a dive's conditions were observed and which nobody set",
      "tools/provenance --dive <a dive's log>"),
@@ -144,7 +148,15 @@ them — a pack that quietly omitted them would read as complete.</p>
 
 
 def find(where: pathlib.Path, filename: str) -> list[pathlib.Path]:
-    """Every page of a kind under here, nearest first."""
+    """Every page of a kind under here, nearest first.
+
+    `pattern:beside` finds a page whose name nobody fixed — the place page
+    is called after the place — by the file that is always next to it.
+    """
+    if ":" in filename:
+        pattern, beside = filename.split(":", 1)
+        return [one for one in sorted(where.rglob(pattern))
+                if (one.parent / beside).is_file()]
     if (where / filename).is_file():
         return [where / filename]
     return sorted(where.rglob(filename))

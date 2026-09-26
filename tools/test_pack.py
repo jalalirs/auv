@@ -87,3 +87,24 @@ def test_the_page_needs_nothing_to_render(tmp_path):
     for fetched in ("<script", "@import", "<link", "src=", 'href="http'):
         assert fetched not in page, fetched
     assert "-apple-system" in page
+
+
+def test_the_place_page_is_found_by_what_sits_beside_it(tmp_path):
+    """It is called after the place. A pack that looked for a file called
+    provenance.html found nothing and said the reef had never been
+    described."""
+    tool = _tool()
+    (tmp_path / "looe-key.html").write_text("<h1>looe-key</h1>")
+    (tmp_path / "provenance.json").write_text(json.dumps(
+        {"columns": {"latitude": {"measured": True}, "growthForm": {"measured": False}}}))
+    tool.sys.argv = ["pack", str(tmp_path)]
+    tool.main()
+    page = (tmp_path / "index.html").read_text()
+    assert "looe-key.html" in page
+    assert "2 claims, 1 of them measured" in page
+
+
+def test_a_stray_html_without_its_json_is_not_a_place_page(tmp_path):
+    tool = _tool()
+    (tmp_path / "notes.html").write_text("<h1>notes</h1>")
+    assert tool.find(tmp_path, "*.html:provenance.json") == []
