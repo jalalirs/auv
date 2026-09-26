@@ -16,7 +16,10 @@ second implementation of the arithmetic the runtime uses to fly the thing,
 and two implementations of one idea agree until they do not.
 
 Point `CORAL_CITY_VEHICLES` at a directory of packages and they load by
-slug like any other.
+slug like any other — and if you are signed in to a platform that has the
+hull, the card comes off its published package without your having the
+package at all. That last part needed no new endpoint: the card is a file
+in the package, and the platform already serves a version's files.
 """
 
 from __future__ import annotations
@@ -62,6 +65,44 @@ def where_to_look() -> list[pathlib.Path]:
     return [pathlib.Path(one).expanduser() for one in said.split(os.pathsep) if one]
 
 
+def from_the_platform(slug: str) -> Vehicle | None:
+    """A hull the platform has, by the card its published package carries.
+
+    No new endpoint: the card is a file in the package, `tools/publish`
+    uploads every file in the directory, and the platform already serves a
+    version's files. So a hull somebody else published is describable
+    without having their package on disk, which is the difference between
+    "you can publish a vehicle" and "somebody else can fly it".
+
+    Quietly nothing when there is no session or no such vehicle, because
+    this is the third place looked and the error that matters is the one
+    `from_a_package` raises after all three.
+    """
+    try:
+        from .platform import Platform
+
+        platform = Platform.from_session()
+        vehicle = platform.vehicle(slug)
+        versions = [one for one in platform.vehicle_versions(vehicle["id"])
+                    if one.get("publishedAt")]
+        if not versions:
+            return None
+        newest = max(versions, key=lambda one: one.get("ordinal", 0))
+        files = platform.call("GET", f"/api/v1/versions/{newest['id']}/files")
+        card = next((one for one in files.get("files", [])
+                     if str(one.get("path", "")).endswith("vehicle.json")), None)
+        if card is None:
+            return None
+        import urllib.request
+
+        with urllib.request.urlopen(card["url"], timeout=30) as answer:
+            return a_vehicle(json.loads(answer.read().decode("utf-8")))
+    except SystemExit:
+        return None
+    except Exception:
+        return None
+
+
 def from_a_package(slug: str, known: dict) -> Vehicle:
     """A hull that is not ours, or the error that says what is.
 
@@ -77,6 +118,10 @@ def from_a_package(slug: str, known: dict) -> Vehicle:
         # A package handed over directly, rather than a directory of them.
         if root.name == slug and (root / "vehicle.json").is_file():
             return a_vehicle(json.loads((root / "vehicle.json").read_text()))
+    # And the platform, when you are signed in to one that has it.
+    theirs = from_the_platform(slug)
+    if theirs is not None:
+        return theirs
     ours = ", ".join(known) or "none"
     looked = ", ".join(str(one) for one in where_to_look())
     raise KeyError(

@@ -1,0 +1,283 @@
+{
+  "slug": "remus-100",
+  "name": "REMUS 100",
+  "massKg": 30.48,
+  "netBuoyancyN": 6.669,
+  "capability": [
+    15.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "thrusters": [
+    {
+      "name": "propeller",
+      "position": [
+        -0.67,
+        0.0,
+        0.0
+      ],
+      "direction": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "sensors": [
+    {
+      "kind": "dvl",
+      "name": "bottom_track"
+    },
+    {
+      "kind": "imu",
+      "name": "body"
+    },
+    {
+      "kind": "barometer",
+      "name": "depth"
+    },
+    {
+      "kind": "imaging_sonar",
+      "name": "side_scan"
+    },
+    {
+      "kind": "ctd",
+      "name": "ctd"
+    }
+  ],
+  "publishes": [
+    {
+      "topic": "/imu/data",
+      "type": "sensor_msgs/msg/Imu",
+      "note": ""
+    },
+    {
+      "topic": "/dvl/twist",
+      "type": "geometry_msgs/msg/TwistWithCovarianceStamped",
+      "note": ""
+    },
+    {
+      "topic": "/depth",
+      "type": "sensor_msgs/msg/FluidPressure",
+      "note": ""
+    },
+    {
+      "topic": "/tf",
+      "type": "tf2_msgs/msg/TFMessage",
+      "note": ""
+    },
+    {
+      "topic": "/ctd",
+      "type": "sensor_msgs/msg/FluidPressure",
+      "note": ""
+    }
+  ],
+  "subscribes": [
+    {
+      "topic": "/thruster_cmd",
+      "type": "std_msgs/msg/Float64MultiArray",
+      "note": "One normalised command in [-1, 1] for the propeller."
+    }
+  ],
+  "dynamics": {
+    "massKg": 30.48,
+    "displacedVolumeM3": 0.0304,
+    "centreOfGravityM": [
+      0,
+      0,
+      -0.0196
+    ],
+    "centreOfBuoyancyM": [
+      0,
+      0,
+      0
+    ],
+    "inertiaTensor": [
+      0.177,
+      0,
+      0,
+      0,
+      3.45,
+      0,
+      0,
+      0,
+      3.45
+    ],
+    "addedMass": {
+      "note": "Diagonal of the added-mass matrix from Prestero (2001): a slender body, so sway and heave carry far more entrained water than surge.",
+      "diagonal": [
+        -0.93,
+        -35.5,
+        -35.5,
+        -0.0704,
+        -4.88,
+        -4.88
+      ]
+    },
+    "linearDamping": {
+      "note": "Prestero models the drag as quadratic; the linear terms are small and are carried so that the model settles rather than oscillating at very low speed.",
+      "diagonal": [
+        -0.5,
+        -1.0,
+        -1.0,
+        -0.01,
+        -0.5,
+        -0.5
+      ]
+    },
+    "quadraticDamping": {
+      "note": "Cross-flow and axial drag coefficients from Prestero (2001).",
+      "diagonal": [
+        -1.62,
+        -1310.0,
+        -1310.0,
+        -0.13,
+        -188.0,
+        -188.0
+      ]
+    },
+    "thrusters": {
+      "note": "A torpedo: one propeller on the axis and four fins. Only the propeller is a thruster in the sense this platform allocates; the fins steer by deflection at speed, which the allocator does not model yet. Until it does, this vehicle can go forward and cannot turn.",
+      "model": "REMUS 100 propeller",
+      "maxForwardN": 15.0,
+      "maxReverseN": 5.0,
+      "timeConstantS": 0.3,
+      "units": [
+        {
+          "name": "propeller",
+          "position": [
+            -0.67,
+            0,
+            0
+          ],
+          "direction": [
+            1,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    "sensors": [
+      {
+        "kind": "dvl",
+        "name": "bottom_track",
+        "position": [
+          0.2,
+          0,
+          -0.08
+        ],
+        "watts": 4.0,
+        "wattsNote": "a Nortek DVL1000, averaged over its ping"
+      },
+      {
+        "kind": "imu",
+        "name": "body",
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "watts": 0.5,
+        "wattsNote": "a MEMS unit; a fibre-optic gyro is ten times this"
+      },
+      {
+        "kind": "barometer",
+        "name": "depth",
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "watts": 0.1,
+        "wattsNote": "a pressure sensor, which costs nothing"
+      },
+      {
+        "kind": "imaging_sonar",
+        "name": "side_scan",
+        "position": [
+          0,
+          0,
+          -0.05
+        ],
+        "orientation": [
+          0,
+          0,
+          0
+        ],
+        "rangeM": [
+          2.0,
+          50.0
+        ],
+        "horizontalFovDeg": 1,
+        "verticalFovDeg": 50,
+        "watts": 18.0,
+        "wattsNote": "a Blueprint Oculus, which is most of what a small ROV's hotel load is when it is on"
+      },
+      {
+        "kind": "ctd",
+        "name": "ctd",
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "everyS": 1.0,
+        "note": "Conductivity, temperature and depth. The instrument every oceanographic vehicle carries and the reason a glider section is worth flying.",
+        "watts": 0.35,
+        "wattsNote": "a pumped SBE 49, which is why gliders can carry one"
+      }
+    ],
+    "topicContract": {
+      "publishes": [
+        {
+          "topic": "/imu/data",
+          "type": "sensor_msgs/msg/Imu"
+        },
+        {
+          "topic": "/dvl/twist",
+          "type": "geometry_msgs/msg/TwistWithCovarianceStamped"
+        },
+        {
+          "topic": "/depth",
+          "type": "sensor_msgs/msg/FluidPressure"
+        },
+        {
+          "topic": "/tf",
+          "type": "tf2_msgs/msg/TFMessage"
+        },
+        {
+          "topic": "/ctd",
+          "type": "sensor_msgs/msg/FluidPressure"
+        }
+      ],
+      "subscribes": [
+        {
+          "topic": "/thruster_cmd",
+          "type": "std_msgs/msg/Float64MultiArray",
+          "note": "One normalised command in [-1, 1] for the propeller."
+        }
+      ]
+    },
+    "modem": {
+      "note": "The same micro-modem class link as the BlueROV2.",
+      "bitsPerSecond": 2400.0,
+      "rangeM": 2000.0,
+      "lossShare": 0.08
+    },
+    "power": {
+      "hotelW": 9.0,
+      "hotelNote": "The base electronics and nothing else: the vehicle computer and its housekeeping. It was a single lumped figure that stood for the electronics, the sensors and the lights together \u2014 which meant unfitting a Doppler log or switching the lamps off changed the endurance by exactly nothing. Each instrument states its own draw now and they are added to this, so a dive that carries less lasts longer, which is the whole reason to be able to choose."
+    },
+    "computer": {
+      "kind": "vehicle-computer",
+      "watts": 12.0,
+      "tops": 0.0,
+      "ramGb": 8,
+      "note": "A survey AUV's own computer: navigation, logging, and the payload."
+    }
+  }
+}

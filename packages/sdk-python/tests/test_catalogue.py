@@ -113,3 +113,103 @@ def test_the_card_a_package_carries_is_written_by_the_runtime(tmp_path):
     ours = vehicles.load("bluerov2")
     assert theirs.capability == pytest.approx(ours.capability)
     assert theirs.net_buoyancy_n == pytest.approx(ours.net_buoyancy_n)
+
+
+# ── and from a platform you are signed in to ─────────────────────────────────
+#
+# No new endpoint: the card is a file in the package, tools/publish uploads
+# every file in the directory, and the platform already serves a version's
+# files. That is the difference between "you can publish a vehicle" and
+# "somebody else can fly it".
+
+class _Platform:
+    def __init__(self, files, versions=None):
+        self.files = files
+        self.versions = versions if versions is not None else [
+            {"id": "ver_1", "ordinal": 1, "publishedAt": "2026-09-27T00:00:00Z"},
+            {"id": "ver_2", "ordinal": 2, "publishedAt": "2026-09-27T01:00:00Z"},
+        ]
+
+    @classmethod
+    def from_session(cls):
+        raise NotImplementedError
+
+    def vehicle(self, slug):
+        if slug != "their-hull":
+            raise SystemExit("no vehicle")
+        return {"id": "veh_1", "slug": slug}
+
+    def vehicle_versions(self, vehicle_id):
+        return self.versions
+
+    def call(self, method, path):
+        assert path.endswith("/files"), path
+        assert "ver_2" in path, "the newest published version is the one asked for"
+        return {"files": self.files}
+
+
+def _pretend(monkeypatch, platform, body=None):
+    import coral_city.catalogue as catalogue
+    import coral_city.platform as real
+
+    monkeypatch.setattr(real.Platform, "from_session",
+                        classmethod(lambda cls: platform))
+    if body is not None:
+        class _Answer:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def read(self):
+                return json.dumps(body).encode()
+
+        import urllib.request
+        monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: _Answer())
+    return catalogue
+
+
+def test_a_hull_comes_off_the_platform_when_it_is_not_on_disk(monkeypatch):
+    monkeypatch.delenv("CORAL_CITY_VEHICLES", raising=False)
+    catalogue = _pretend(monkeypatch,
+                         _Platform([{"path": "vehicle.json", "url": "https://x/1"}]),
+                         body=A_CARD)
+    assert catalogue.from_the_platform("their-hull").name == "Their hull"
+
+
+def test_a_package_on_disk_wins_over_a_round_trip(tmp_path, monkeypatch):
+    """Cheaper, and the one you are working on."""
+    a_package(tmp_path, {**A_CARD, "name": "The one on disk"})
+    monkeypatch.setenv("CORAL_CITY_VEHICLES", str(tmp_path))
+    catalogue = _pretend(monkeypatch, _Platform([]))
+    assert catalogue.from_a_package("their-hull", {}).name == "The one on disk"
+
+
+def test_a_package_with_no_card_is_not_a_vehicle_the_sdk_can_describe(monkeypatch):
+    monkeypatch.delenv("CORAL_CITY_VEHICLES", raising=False)
+    catalogue = _pretend(monkeypatch, _Platform([{"path": "dynamics.json",
+                                                  "url": "https://x/1"}]))
+    assert catalogue.from_the_platform("their-hull") is None
+
+
+def test_nothing_published_means_nothing_to_fly(monkeypatch):
+    monkeypatch.delenv("CORAL_CITY_VEHICLES", raising=False)
+    catalogue = _pretend(monkeypatch, _Platform(
+        [{"path": "vehicle.json", "url": "https://x/1"}],
+        versions=[{"id": "ver_1", "ordinal": 1}]))
+    assert catalogue.from_the_platform("their-hull") is None
+
+
+def test_not_being_signed_in_is_not_an_error_here(monkeypatch):
+    """It is the third place looked; the error that matters is the one
+    raised after all three."""
+    monkeypatch.delenv("CORAL_CITY_VEHICLES", raising=False)
+    monkeypatch.delenv("CORAL_CITY_API", raising=False)
+    monkeypatch.delenv("CORAL_CITY_TOKEN", raising=False)
+    import coral_city.catalogue as catalogue
+    import coral_city.platform as real
+    monkeypatch.setattr(real, "SESSION", pathlib.Path("/nowhere/at/all"))
+    assert catalogue.from_the_platform("their-hull") is None
+    with pytest.raises(KeyError):
+        catalogue.from_a_package("their-hull", {"bluerov2": None})
