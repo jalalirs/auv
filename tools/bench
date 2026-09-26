@@ -140,6 +140,18 @@ def built_or_built_by(flying: dict) -> str:
 def command_run(args) -> int:
     platform = Platform()
     tasks = SUITES[args.suite]
+    if args.tasks:
+        # A subset, on purpose and named on the command line. The suite is
+        # held still because a benchmark whose contents move is not one; this
+        # is for getting one dive through the whole path, and `show` says
+        # underneath each controller how much of the suite it actually flew,
+        # so a partial run cannot be read as a result.
+        asked_for = [t.strip() for t in args.tasks.split(",") if t.strip()]
+        unknown = [t for t in asked_for if t not in tasks]
+        if unknown:
+            raise SystemExit(f"{args.suite} has no task called {', '.join(unknown)}. "
+                             f"It has {', '.join(tasks)}.")
+        tasks = asked_for
     city = mod["newest_version"](platform, "cities", args.place)
     vehicle = mod["newest_version"](platform, "vehicles", args.vehicle)
     queue = platform.call("GET", "/api/v1/queues")["queues"][0]
@@ -394,6 +406,16 @@ def command_show(args) -> int:
         print(line)
     print()
     print(f"{'':<14}" + "".join(column(c) for c in controllers))
+    # How much of the suite each of them actually flew. Every average below
+    # is over that many dives, and a mean over one task beside a mean over
+    # eight is not a comparison.
+    whole = len(SUITES[args.suite])
+    line = f"{DIM}{'of the suite':<14}{OFF}"
+    for controller in controllers:
+        flew = len({r["task"] for r in rows if r["controller"] == controller})
+        ink = "" if flew == whole else AMBER
+        line += f"{ink}{f'{flew} of {whole}':>17}{OFF if ink else ''}"
+    print(line)
     for label, key, form in (("score", "score", lambda v: f"{v * 100:.1f}%"),
                              ("achieved", "achieved", lambda v: f"{v:.0f}"),
                              ("drift", "driftM", lambda v: f"{v:.2f} m"),
@@ -498,6 +520,9 @@ def main() -> int:
 
     running = doing.add_parser("run", help="fly the suite with one controller")
     running.add_argument("--controller", required=True)
+    running.add_argument("--tasks", default="",
+                         help="a comma-separated subset, for walking the path rather "
+                              "than for a comparison; the suite is what a comparison is")
     running.add_argument("--place", default="looe-key")
     running.add_argument("--vehicle", default="bluerov2")
     running.add_argument("--at-once", type=int, default=2)
