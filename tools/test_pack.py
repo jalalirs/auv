@@ -108,3 +108,14 @@ def test_a_stray_html_without_its_json_is_not_a_place_page(tmp_path):
     tool = _tool()
     (tmp_path / "notes.html").write_text("<h1>notes</h1>")
     assert tool.find(tmp_path, "*.html:provenance.json") == []
+
+
+def test_a_label_and_its_description_are_not_one_word(tmp_path):
+    """The house `.where` is a paragraph style; inside a table cell it has
+    to be told to be a line of its own."""
+    tool = _tool()
+    _a_dive(tmp_path / "run_1")
+    tool.sys.argv = ["pack", str(tmp_path)]
+    tool.main()
+    page = (tmp_path / "index.html").read_text()
+    assert "td.what span.where { display: block" in page
