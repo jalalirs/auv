@@ -690,20 +690,7 @@ def coverage_file(into: pathlib.Path, geometry: dict, centre: dict) -> dict | No
             "seenM2": round(covered * each, 1)}
 
 
-REPORT = """<!doctype html>
-<meta charset="utf-8">
-<title>%(name)s — what this dive produced</title>
-<style>%(style)s</style>
-<h1>%(name)s</h1>
-<p class="where">%(where)s</p>
-
-<p class="says"><strong>What this is.</strong> One dive, flown in a simulator, and
-everything it produced. The figures below are what happened in a model — the
-reef it was flown over has its own page saying which of <em>its</em> numbers
-anybody measured. What no real vehicle can hand you is on the map: where the
-vehicle actually was, beside where it believed it was.</p>
-
-<div class="big">%(headline)s</div>
+REPORT_BODY = """<div class="big">%(headline)s</div>
 
 <h2>Where it went</h2>
 <figure>%(map)s<figcaption>%(caption)s</figcaption></figure>
@@ -713,11 +700,14 @@ vehicle actually was, beside where it believed it was.</p>
 <table>%(conditions)s</table>
 
 <h2>What is in this folder</h2>
-<table>%(files)s</table>
+<table>%(files)s</table>"""
 
-<footer>Built by Coral City from the dive's own recording. <code>provenance.json</code>
-says what every column is; not one of them is an observation of a real reef.</footer>
-"""
+# The one thing a mission report needs that no other page does.
+REPORT_SAYS = """<p class="says"><strong>What this is.</strong> One dive, flown
+in a simulator, and everything it produced. The figures below are what happened
+in a model — the reef it was flown over has its own page saying which of
+<em>its</em> numbers anybody measured. What no real vehicle can hand you is on
+the map: where the vehicle actually was, beside where it believed it was.</p>"""
 
 
 def a_map(poses: list[dict], geometry: dict) -> tuple[str, str]:
@@ -1059,11 +1049,16 @@ def report(place: dict, manifest: dict, summary: dict, poses: list[dict],
                     + "".join('<figure><img alt="a frame from the dive" src="%s" '
                               'style="width:100%%;border:1px solid #e3e3df"></figure>' % one
                               for one in stills))
-    return REPORT % {"style": prov.STYLE,
-                     "name": html.escape(task.get("name") or "A dive"),
-                     "where": html.escape(" · ".join(where)),
-                     "headline": headline, "map": drawn, "stills": pictures,
-                     "caption": caption, "conditions": rows, "files": files}
+    name = html.escape(task.get("name") or "A dive")
+    return prov.frame(
+        title=name + " — what this dive produced", name=name,
+        where=html.escape(" · ".join(where)), says=REPORT_SAYS,
+        body=REPORT_BODY % {"headline": headline, "map": drawn,
+                            "stills": pictures, "caption": caption,
+                            "conditions": rows, "files": files},
+        footer="Built by Coral City from the dive's own recording. "
+               "<code>provenance.json</code> says what every column is; not one "
+               "of them is an observation of a real reef.")
 
 
 WHAT_A_FILE_IS = {

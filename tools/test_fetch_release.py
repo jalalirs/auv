@@ -49,7 +49,7 @@ def test_it_tells_the_four_states_apart(tmp_path, wrote, expected):
     assert got == wrote
 
 
-def test_longer_than_the_manifest_is_not_complete(tmp_path):
+def test_longer_than_the_manifest_is_not_complete(tmp_path, monkeypatch):
     """A file longer than it should be is not a short copy of the right file
     to resume — it is a different file, or a resume that appended."""
     tool = _tool()
@@ -58,7 +58,7 @@ def test_longer_than_the_manifest_is_not_complete(tmp_path):
     assert tool.state_of(where, {"name": "thing.bin", "bytes": 100})[0] == "too long"
 
 
-def test_it_resumes_rather_than_skipping(tmp_path):
+def test_it_resumes_rather_than_skipping(tmp_path, monkeypatch):
     """`curl -C -` is the difference between this and the script it replaces."""
     source = (HERE / "fetch-release").read_text()
     assert '"-C", "-"' in source
@@ -76,7 +76,7 @@ def test_reference_no_longer_writes_the_script_that_could_not_fail(tmp_path):
     assert "tools/fetch-release" in source
 
 
-def test_a_file_that_weighs_right_and_will_not_open_is_still_wrong(tmp_path):
+def test_a_file_that_weighs_right_and_will_not_open_is_still_wrong(tmp_path, monkeypatch):
     """The size check catches every truncation. This catches the rest: a file
     that arrived whole and is corrupt anyway."""
     tool = _tool()
@@ -101,7 +101,7 @@ def test_only_narrows_the_manifest(tmp_path):
     assert len(tool.wanted(where, None)) == 2
 
 
-def test_a_manifest_entry_with_no_size_is_not_fetched(tmp_path):
+def test_a_manifest_entry_with_no_size_is_not_fetched(tmp_path, monkeypatch):
     """There is nothing to check it against, and a file this cannot verify is
     a file it must not claim to have got."""
     tool = _tool()
@@ -118,7 +118,14 @@ def test_a_manifest_entry_with_no_size_is_not_fetched(tmp_path):
 # try resumed *that*. Four tries in a row made it worse.
 
 class _Curl:
-    """A fake curl that appends the whole body however it is asked."""
+    """A fake curl that appends the whole body however it is asked.
+
+    Installed with `monkeypatch` and not by assignment. `subprocess` is one
+    module object for the whole session, so `tool.subprocess.run = ...`
+    replaces it for every test that runs afterwards — which is what it did:
+    a pack built in a later file got a CompletedProcess with no output and
+    fell over adding None to None.
+    """
 
     def __init__(self, where, name, body, fails=0):
         self.here = where / name
@@ -136,13 +143,13 @@ class _Curl:
         return subprocess.CompletedProcess(argv, 0)
 
 
-def test_a_resume_that_overshoots_is_thrown_away_and_started_again(tmp_path):
+def test_a_resume_that_overshoots_is_thrown_away_and_started_again(tmp_path, monkeypatch):
     tool = _tool()
     where = _a_release(tmp_path, [("thing.bin", 100)])
     (where / "thing.bin").write_bytes(b"x" * 60)
     # The server ignores the range and sends all 100 bytes every time: 60 + 100
     # is too long, and resuming that would only make it longer.
-    tool.subprocess.run = _Curl(where, "thing.bin", b"y" * 100)
+    monkeypatch.setattr(tool.subprocess, "run", _Curl(where, "thing.bin", b"y" * 100))
     kind, got = tool.fetch(where, {"name": "thing.bin", "bytes": 100,
                                    "url": "https://example.invalid/thing.bin"},
                            say=lambda *a: None)
@@ -152,7 +159,7 @@ def test_a_resume_that_overshoots_is_thrown_away_and_started_again(tmp_path):
     assert (where / "thing.bin").read_bytes() == b"y" * 100
 
 
-def test_it_does_not_resume_the_same_overshoot_four_times(tmp_path):
+def test_it_does_not_resume_the_same_overshoot_four_times(tmp_path, monkeypatch):
     """The bug, precisely: the length was checked before the loop and not
     inside it, so a file that overshot on try one was resumed on tries two,
     three and four."""
@@ -160,7 +167,7 @@ def test_it_does_not_resume_the_same_overshoot_four_times(tmp_path):
     where = _a_release(tmp_path, [("thing.bin", 100)])
     (where / "thing.bin").write_bytes(b"x" * 60)
     curl = _Curl(where, "thing.bin", b"y" * 140)     # always too long
-    tool.subprocess.run = curl
+    monkeypatch.setattr(tool.subprocess, "run", curl)
     kind, got = tool.fetch(where, {"name": "thing.bin", "bytes": 100,
                                    "url": "https://example.invalid/thing.bin"},
                            say=lambda *a: None)
@@ -173,13 +180,13 @@ def test_it_does_not_resume_the_same_overshoot_four_times(tmp_path):
     assert (where / "thing.bin.too-long").stat().st_size == 140
 
 
-def test_a_try_that_gains_nothing_and_succeeds_starts_again(tmp_path):
+def test_a_try_that_gains_nothing_and_succeeds_starts_again(tmp_path, monkeypatch):
     """curl content and the file no bigger means the far end answered the
     range with nothing. Asking again the same way gets the same nothing."""
     tool = _tool()
     where = _a_release(tmp_path, [("thing.bin", 100)])
     (where / "thing.bin").write_bytes(b"x" * 60)
-    tool.subprocess.run = _Curl(where, "thing.bin", b"")
+    monkeypatch.setattr(tool.subprocess, "run", _Curl(where, "thing.bin", b""))
     kind, got = tool.fetch(where, {"name": "thing.bin", "bytes": 100,
                                    "url": "https://example.invalid/thing.bin"},
                            say=lambda *a: None)
@@ -187,14 +194,14 @@ def test_a_try_that_gains_nothing_and_succeeds_starts_again(tmp_path):
     assert (where / "thing.bin.too-long").read_bytes() == b"x" * 60
 
 
-def test_a_dropped_connection_is_still_resumed(tmp_path):
+def test_a_dropped_connection_is_still_resumed(tmp_path, monkeypatch):
     """Ordinary. A large transfer over a long link drops, and that is what
     resuming is for — it must not be confused with a server that will not."""
     tool = _tool()
     where = _a_release(tmp_path, [("thing.bin", 100)])
     (where / "thing.bin").write_bytes(b"x" * 60)
     curl = _Curl(where, "thing.bin", b"y" * 40, fails=1)
-    tool.subprocess.run = curl
+    monkeypatch.setattr(tool.subprocess, "run", curl)
     kind, got = tool.fetch(where, {"name": "thing.bin", "bytes": 100,
                                    "url": "https://example.invalid/thing.bin"},
                            say=lambda *a: None)
@@ -202,7 +209,7 @@ def test_a_dropped_connection_is_still_resumed(tmp_path):
     assert not (where / "thing.bin.too-long").exists(), "nothing was thrown away"
 
 
-def test_a_size_is_shown_in_a_unit_that_shows_it(tmp_path):
+def test_a_size_is_shown_in_a_unit_that_shows_it(tmp_path, monkeypatch):
     """Everything was printed in GB to two places, so a 3 kB metadata file
     and a 4 MB one both read "0.00 of 0.00 GB"."""
     tool = _tool()

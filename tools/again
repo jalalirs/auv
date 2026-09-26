@@ -133,24 +133,20 @@ def the_same_ground(place: pathlib.Path, cell_m: float, where: str,
             "hitFirst": a, "hitThen": b, "planned": planned}
 
 
-PAGE = """<!doctype html>
-<meta charset="utf-8">
-<title>%(name)s — round two against round one</title>
-<style>%(style)s
+PAGE_EXTRA = """
   .grid { display: grid; gap: 1px; margin: 0 0 1rem; max-width: 34rem; }
   .grid i { display: block; aspect-ratio: 1; }
   .key i { display: inline-block; width: .8rem; height: .8rem; vertical-align: -1px;
            margin-right: .3rem; }
-</style>
-<h1>%(name)s</h1>
-<p class="where">%(where)s</p>
+"""
 
-<p class="says"><strong>What this is.</strong> Whether round two can honestly
+PAGE_SAYS = """<p class="says"><strong>What this is.</strong> Whether round two can honestly
 be held against round one. Two questions, kept apart: did it cover the same
 ground, and was it seen the same way. It does not say whether the reef
 changed — that is a question for the data the rounds produced, and this says
-whether it can be asked of them.</p>
-%(verdict)s
+whether it can be asked of them.</p>"""
+
+PAGE_BODY = """%(verdict)s
 
 <div class="big">%(headline)s</div>
 
@@ -162,13 +158,12 @@ whether it can be asked of them.</p>
 <table>
   <tr><th>What</th><th>Round one</th><th>Round two</th><th></th></tr>
   %(rows)s
-</table>
+</table>"""
 
-<footer>Built by Coral City from what each round's missions produced. A
+PAGE_FOOTER = """Built by Coral City from what each round's missions produced. A
 round flown differently from the last will read as change on the reef, and
 that is the most expensive mistake a monitoring programme can make: it is
-invisible, and it is in the direction of a finding.</footer>
-"""
+invisible, and it is in the direction of a finding."""
 
 
 def a_picture(said: dict) -> tuple[str, str, str]:
@@ -248,14 +243,16 @@ def page(name: str, said: dict, alike: list[dict]) -> str:
                        + ("" if not one.get("offBy") else
                           ", off by %.2f" % one["offBy"])))
         for one in alike)
-    return PAGE % {
-        "style": provenance.STYLE, "name": html.escape(name),
-        "where": html.escape("%d cells of %.0f m in the plan"
-                             % (planned, said["grid"]["cellM"])),
-        "verdict": verdict, "headline": headline,
-        "picture": picture, "caption": html.escape(caption), "legend": legend,
-        "rows": rows,
-    }
+    return provenance.frame(
+        title=html.escape(name) + " — round two against round one",
+        name=html.escape(name),
+        where=html.escape("%d cells of %.0f m in the plan"
+                          % (planned, said["grid"]["cellM"])),
+        says=PAGE_SAYS, extra=PAGE_EXTRA,
+        body=PAGE_BODY % {"verdict": verdict, "headline": headline,
+                          "picture": picture, "caption": html.escape(caption),
+                          "legend": legend, "rows": rows},
+        footer=PAGE_FOOTER)
 
 
 def main() -> int:

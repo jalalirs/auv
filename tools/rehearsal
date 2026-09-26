@@ -50,18 +50,12 @@ def house_style():
     return module
 
 
-PAGE = """<!doctype html>
-<meta charset="utf-8">
-<title>%(name)s — what the day turns on</title>
-<style>%(style)s</style>
-<h1>%(name)s</h1>
-<p class="where">%(where)s</p>
-
-<p class="says"><strong>What this is.</strong> One mission, flown against
+PAGE_SAYS = """<p class="says"><strong>What this is.</strong> One mission, flown against
 everything nobody could promise about it, before anybody got on a boat. The
 question a rehearsal answers is not whether the mission works — it is what
-breaks it, and which of those is worth spending a day of ship time on.</p>
-%(warnings)s
+breaks it, and which of those is worth spending a day of ship time on.</p>"""
+
+PAGE_BODY = """%(warnings)s
 
 <div class="big">%(headline)s</div>
 %(turns)s
@@ -77,11 +71,7 @@ breaks it, and which of those is worth spending a day of ship time on.</p>
 <table>
   <tr><th>Scenario</th><th class="n">Ran</th><th class="n">Worked</th><th class="n">Score</th><th></th></tr>
   %(scenarios)s
-</table>
-
-<footer>Built by Coral City from the sweep's own findings. A doubt whose
-scenarios could all have gone either way is named and not ranked.</footer>
-"""
+</table>"""
 
 
 def a_bar(share: float, ink: str = "#1a6b2a") -> str:
@@ -228,18 +218,22 @@ def page(name: str, found: dict) -> str:
         where.append("%d runs" % int(found["flownRuns"]))
     if found.get("heldBack"):
         where.append("%d held back by the hull" % int(found["heldBack"]))
-    return PAGE % {
-        "style": house_style().STYLE,
-        "name": html.escape(name),
-        "where": html.escape(" · ".join(where)),
-        "warnings": warnings_of(found),
-        "headline": headline_of(found),
-        "turns": turns_on(found),
-        "matters": matters_of(found),
-        "nothing": nothing_of(found),
-        "cost": cost_of(found),
-        "scenarios": scenarios_of(found),
-    }
+    return house_style().frame(
+        title=html.escape(name) + " — what the day turns on",
+        name=html.escape(name), where=html.escape(" · ".join(where)),
+        says=PAGE_SAYS,
+        body=PAGE_BODY % {
+            "warnings": warnings_of(found),
+            "headline": headline_of(found),
+            "turns": turns_on(found),
+            "matters": matters_of(found),
+            "nothing": nothing_of(found),
+            "cost": cost_of(found),
+            "scenarios": scenarios_of(found),
+        },
+        footer="Built by Coral City from the sweep's own findings. A doubt "
+               "whose scenarios could all have gone either way is named and "
+               "not ranked.")
 
 
 def main() -> int:

@@ -211,3 +211,15 @@ def test_every_page_this_platform_prints_is_one_stylesheet(tmp_path):
         assert "-apple-system" in page, "a page went out with no stylesheet in it"
         assert "%(style)s" not in page
     assert deliver.the_provenance_tool().STYLE is not None
+
+
+def test_every_page_is_hung_on_one_skeleton():
+    """The stylesheet was pulled into one place; the *shape* was still
+    copied into six tools, which is how the same small CSS fault got fixed
+    twice in one day in two files."""
+    for name in ("provenance", "deliver", "rehearsal", "campaign", "again", "pack"):
+        source = (HERE / name).read_text()
+        assert "<!doctype html>" not in source or name == "provenance", (
+            f"{name} still carries a page of its own")
+    # And the one that does carry it carries exactly one.
+    assert (HERE / "provenance").read_text().count("<!doctype html>") == 1
