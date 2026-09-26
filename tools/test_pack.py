@@ -126,3 +126,14 @@ def test_a_label_and_its_description_are_not_one_word(tmp_path):
     tool.main()
     page = (tmp_path / "index.html").read_text()
     assert "td.what span.where { display: block" in page
+
+
+def test_the_water_row_says_what_nobody_set_first(tmp_path):
+    """It is the row a reader should look at, so it leads."""
+    tool = _tool()
+    where = tmp_path / "run_1"
+    where.mkdir()
+    (where / "conditions.html").write_text("<h1>water</h1>")
+    (where / "mission.json").write_text(json.dumps({"conditions": {"cameFrom": {
+        "counted": {"measured": 0, "derived": 0, "chosen": 2, "assumed": 8}}}}))
+    assert tool.a_line("the water", where / "conditions.html") == "8 assumed · 2 chosen"
