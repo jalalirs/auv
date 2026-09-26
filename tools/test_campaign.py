@@ -164,3 +164,85 @@ def test_the_page_is_named_once(tmp_path):
     page = tool.page(grid, said, {}, tool.in_lanes(grid["working"]))
     assert page.count("the whole grid") == 1
     assert "<h1>somewhere</h1>" in page
+
+
+# ── and afterwards, what was actually covered ────────────────────────────────
+#
+# Every one of these programmes can tell you what they set out to do; none
+# can hand a regulator a map of what they actually covered.
+
+def _flown(tmp_path, place, cells, what="coverage.geojson"):
+    """A folder of what `deliver --dive` produced, covering the named cells."""
+    tool = _tool()
+    deliver = importlib.util.module_from_spec(
+        importlib.util.spec_from_loader(
+            "deliver", importlib.machinery.SourceFileLoader("deliver", str(HERE / "deliver"))))
+    importlib.machinery.SourceFileLoader("deliver", str(HERE / "deliver")).exec_module(deliver)
+    grid = tool.cells_over(place, cell_m=25.0, where="all")
+    centre = grid["centre"]
+    features = []
+    for row, column in cells:
+        one = next(c for c in grid["cells"] if c["row"] == row and c["column"] == column)
+        latitude, longitude = deliver.where_on_earth(centre, one["x"], one["y"])
+        features.append({"type": "Feature", "properties": {"what": "seen"},
+                         "geometry": {"type": "Point",
+                                      "coordinates": [longitude, latitude]}})
+    flown = tmp_path / "flown" / "run_1"
+    flown.mkdir(parents=True, exist_ok=True)
+    (flown / what).write_text(json.dumps(
+        {"type": "FeatureCollection", "features": features}))
+    return tmp_path / "flown"
+
+
+def test_a_round_trip_through_wgs84_lands_in_the_cell_it_left(tmp_path):
+    """The whole proof rests on this: metres out to the Earth and back."""
+    tool = _tool()
+    place = _a_place(tmp_path)
+    grid = tool.cells_over(place, cell_m=25.0, where="all")
+    covered = tool.covered_by(_flown(tmp_path, place, [(0, 0), (1, 2)]), grid)
+    assert set(covered["hit"]) == {(0, 0), (1, 2)}
+
+
+def test_it_says_which_planned_cells_were_missed(tmp_path):
+    tool = _tool()
+    place = _a_place(tmp_path)
+    grid = tool.cells_over(place, cell_m=25.0, where="reef")   # one cell: (0, 0)
+    nothing = tool.covered_by(_flown(tmp_path, place, [(1, 2)]), grid)
+    assert nothing["cellsCovered"] == 0 and nothing["cellsMissed"] == 1
+    # And ground covered that nobody planned to work is named, not counted
+    # as coverage of the grid.
+    assert nothing["cellsOutsideThePlan"] == 1
+
+
+def test_a_missed_cell_is_not_allowed_to_look_like_water(tmp_path):
+    tool = _tool()
+    place = _a_place(tmp_path)
+    grid = tool.cells_over(place, cell_m=25.0, where="reef")
+    covered = tool.covered_by(_flown(tmp_path, place, [(1, 2)]), grid)
+    said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
+    page = tool.page(grid, said, {}, tool.in_lanes(grid["working"]), covered)
+    assert "MISSED" in page
+    assert "were not reached" in page
+    assert "#b04a4a" in page, "a missed cell was not drawn as missed"
+
+
+def test_planted_corals_count_as_coverage_too(tmp_path):
+    tool = _tool()
+    place = _a_place(tmp_path)
+    grid = tool.cells_over(place, cell_m=25.0, where="reef")
+    covered = tool.covered_by(
+        _flown(tmp_path, place, [(0, 0)], what="planting.geojson"), grid)
+    assert covered["cellsCovered"] == 1
+    assert covered["missions"][0]["what"] == "planted"
+
+
+def test_a_folder_with_nothing_in_it_says_so_rather_than_claiming_nothing_flew(tmp_path):
+    tool = _tool()
+    place = _a_place(tmp_path)
+    grid = tool.cells_over(place, cell_m=25.0, where="reef")
+    empty = tmp_path / "empty" / "run_1"
+    empty.mkdir(parents=True)
+    covered = tool.covered_by(tmp_path / "empty", grid)
+    said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
+    page = tool.page(grid, said, {}, tool.in_lanes(grid["working"]), covered)
+    assert "none of those folders holds what a mission produced" in page
