@@ -227,24 +227,47 @@ STYLE = """
          background: #f2f2f0; padding: .05rem .3rem; border-radius: .2rem; }
 """
 
-PAGE = """<!doctype html>
+# The skeleton every page this platform prints is hung on.
+#
+# The stylesheet was pulled into one place earlier; the *shape* was still
+# copied into six tools — doctype, charset, title, style, the heading, the
+# line under it, the paragraph saying what the page is, and the footer.
+# Six copies meant fixing the same small CSS fault twice in one day, in two
+# files, because each page carried its own.
+#
+# A page hands in its body and gets the rest. `extra` is for the handful of
+# rules one page needs and the others do not — a grid of cells, a swatch in
+# a legend — kept beside the page that needs them rather than pushed into
+# the house style where they would be five rules nobody could account for.
+FRAME = """<!doctype html>
 <meta charset="utf-8">
-<title>%(name)s — what anybody measured</title>
-<style>%(style)s</style>
+<title>%(title)s</title>
+<style>%(style)s%(extra)s</style>
 <h1>%(name)s</h1>
 <p class="where">%(where)s</p>
 
 %(says)s
+%(body)s
 
-<div class="key">%(key)s</div>
+<footer>%(footer)s</footer>
+"""
+
+
+def frame(title: str, name: str, where: str, says: str, body: str,
+          footer: str, extra: str = "") -> str:
+    """One page, in the house shape. Everything here is already escaped:
+    a frame that escaped its body would escape the body's own markup."""
+    return FRAME % {"title": title, "style": STYLE, "extra": extra,
+                    "name": name, "where": where, "says": says,
+                    "body": body, "footer": footer}
+
+
+BODY = """<div class="key">%(key)s</div>
 
 <table>
   <tr><th>%(first)s</th><th></th><th>Value</th><th>Where it came from</th></tr>
   %(rows)s
-</table>
-
-<footer>%(counted)s · built by Coral City from %(whose)s own record%(built)s</footer>
-"""
+</table>"""
 
 PLACE_SAYS = """<p class="says"><strong>What this page is.</strong> Every number this place
 carries, and whether anybody went and looked. A cover figure that traces to a
@@ -298,46 +321,34 @@ def sheet(name: str, where: str, says: str, first: str, rows: list[dict],
     `site.json`; a dive fills it from what the runtime said it was flown in."""
     counted = ", ".join("%d %s" % (sum(1 for r in rows if r["kind"] == k), k)
                         for k in kinds if any(r["kind"] == k for r in rows))
-    return PAGE % {
-        "style": STYLE,
-        "name": html.escape(name),
-        "where": html.escape(where),
-        "says": says,
+    return frame(
+        title=html.escape(name) + " — what anybody measured",
+        name=html.escape(name), where=html.escape(where), says=says,
+        footer="%s · built by Coral City from %s own record%s"
+               % (html.escape(counted), html.escape(whose),
+                  (" · " + html.escape(built)) if built else ""),
+        body=BODY % {
         "key": a_key(kinds),
         "first": html.escape(first),
-        "counted": html.escape(counted),
-        "whose": html.escape(whose),
-        "built": (" · " + html.escape(built)) if built else "",
         "rows": "\n  ".join(ROW % {
             "what": html.escape(r["what"]),
             "kind": r["kind"], "ink": INK[r["kind"]], "wash": WASH[r["kind"]],
             "value": html.escape(r["value"]),
             "from": html.escape(r["from"] or "—"),
-        } for r in rows),
-    }
+        } for r in rows)})
 
 
-INDEX = """<!doctype html>
-<meta charset="utf-8">
-<title>Coral City — what anybody measured</title>
-<style>%(style)s</style>
-<h1>Coral City</h1>
-<p class="where">%(count)d places · what anybody measured</p>
+INDEX_SAYS = """<p class="says"><strong>Read the first column.</strong> A cover
+figure that traces to a transect can be cited; one that came out of a pipeline
+cannot. Most simulators cannot tell you which they handed you. Every place
+below says, claim by claim, and the page behind each name shows the
+working.</p>"""
 
-<p class="says"><strong>Read the first column.</strong> A cover figure that
-traces to a transect can be cited; one that came out of a pipeline cannot.
-Most simulators cannot tell you which they handed you. Every place below
-says, claim by claim, and the page behind each name shows the working.</p>
-
-<table>
+INDEX_BODY = """<table>
   <tr><th>Place</th><th class="n">measured</th><th class="n">derived</th>
       <th class="n">chosen</th><th></th></tr>
   %(rows)s
-</table>
-
-<footer>Built by Coral City from each place's own record. Nothing on this page
-was typed by hand.</footer>
-"""
+</table>"""
 
 INDEX_ROW = """<tr>
   <td class="place"><a href="%(file)s">%(name)s</a><span>%(about)s</span></td>
@@ -366,7 +377,13 @@ def index(places: list[dict]) -> str:
             "m": one["measured"], "d": one["derived"], "c": one["chosen"],
             "bar": bar,
         })
-    return INDEX % {"style": STYLE, "count": len(places), "rows": "\n  ".join(rows)}
+    return frame(
+        title="Coral City — what anybody measured", name="Coral City",
+        where="%d places · what anybody measured" % len(places),
+        says=INDEX_SAYS,
+        body=INDEX_BODY % {"rows": "\n  ".join(rows)},
+        footer="Built by Coral City from each place's own record. Nothing on "
+               "this page was typed by hand.")
 
 
 # ── a dive ───────────────────────────────────────────────────────────────────

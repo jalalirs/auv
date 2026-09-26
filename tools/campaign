@@ -351,24 +351,20 @@ def covered_by(flown: pathlib.Path, grid: dict) -> dict:
 
 # ── the page ─────────────────────────────────────────────────────────────────
 
-PAGE = """<!doctype html>
-<meta charset="utf-8">
-<title>%(name)s — working the whole grid</title>
-<style>%(style)s
+PAGE_EXTRA = """
   .grid { display: grid; gap: 1px; margin: 0 0 1rem; max-width: 34rem; }
   .grid i { display: block; aspect-ratio: 1; }
   .key i { display: inline-block; width: .8rem; height: .8rem; vertical-align: -1px;
            margin-right: .3rem; }
-</style>
-<h1>%(name)s</h1>
-<p class="where">%(where)s</p>
+"""
 
-<p class="says"><strong>What this is.</strong> Not one dive — the whole
+PAGE_SAYS = """<p class="says"><strong>What this is.</strong> Not one dive — the whole
 programme. A place cut into cells the size of a day's work, what it takes to
 work all of them, and how many days of ship time that is once the weather
 has its share. Every figure says where it came from, and the ones that need
-a dive to have been flown are absent until one has.</p>
-%(warning)s
+a dive to have been flown are absent until one has.</p>"""
+
+PAGE_BODY = """%(warning)s
 
 <div class="big">%(headline)s</div>
 
@@ -384,12 +380,11 @@ a dive to have been flown are absent until one has.</p>
 
 %(proof)s
 <h2>%(order_head)s</h2>
-<p class="where">%(order)s</p>
+<p class="where">%(order)s</p>"""
 
-<footer>Built by Coral City from the place's own seabed and colonies, and
+PAGE_FOOTER = """Built by Coral City from the place's own seabed and colonies, and
 from %(source)s. Cells times a number nobody measured is a promise, not a
-plan — so the arithmetic stops where the evidence does.</footer>
-"""
+plan — so the arithmetic stops where the evidence does."""
 
 
 def a_picture(grid: dict, covered: dict | None = None) -> tuple[str, str, str]:
@@ -577,18 +572,20 @@ def page(grid: dict, said: dict, cost: dict, order: list[dict],
                                % (one["row"], one["column"], one["depthM"],
                                   one["colonies"]) for one in first)
                    if first else "")
-    return PAGE % {
-        "style": provenance.STYLE,
-        "name": html.escape(str(centre.get("name", "a place"))),
-        "where": html.escape(" · ".join(where)),
-        "warning": warning, "headline": headline,
-        "ground": "What was covered" if covered is not None else "The ground",
-        "picture": picture, "caption": html.escape(caption), "legend": legend,
-        "rows": rows, "order": html.escape(order_said),
-        "order_head": "Where to plant next" if how != "lanes" else "The order",
-        "proof": proof_of(covered, grid),
-        "source": html.escape(cost.get("from", "no flown dive at all")),
-    }
+    name = html.escape(str(centre.get("name", "a place")))
+    return provenance.frame(
+        title=name + " — working the whole grid", name=name,
+        where=html.escape(" · ".join(where)),
+        says=PAGE_SAYS, extra=PAGE_EXTRA,
+        body=PAGE_BODY % {
+            "warning": warning, "headline": headline,
+            "ground": "What was covered" if covered is not None else "The ground",
+            "picture": picture, "caption": html.escape(caption), "legend": legend,
+            "rows": rows, "order": html.escape(order_said),
+            "order_head": "Where to plant next" if how != "lanes" else "The order",
+            "proof": proof_of(covered, grid)},
+        footer=PAGE_FOOTER % {
+            "source": html.escape(cost.get("from", "no flown dive at all"))})
 
 
 def main() -> int:

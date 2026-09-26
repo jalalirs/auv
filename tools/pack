@@ -137,10 +137,7 @@ KINDS = [
      "tools/again <place> --first <round one> --then <round two>"),
 ]
 
-PAGE = """<!doctype html>
-<meta charset="utf-8">
-<title>%(name)s — everything in the pack</title>
-<style>%(style)s
+PAGE_EXTRA = """
   td.miss { color: #8a2a2a; }
   td.miss code { background: #f9e9e9; }
   /* The house `.where` is a paragraph style; inside a cell it has to be
@@ -148,23 +145,20 @@ PAGE = """<!doctype html>
      together into one word. */
   td.what span.where { display: block; margin: .15rem 0 0;
                        font-weight: 400; font-size: .88rem; }
-</style>
-<h1>%(name)s</h1>
-<p class="where">%(where)s</p>
+"""
 
-<p class="says"><strong>What this is.</strong> Everything this place has
+PAGE_SAYS = """<p class="says"><strong>What this is.</strong> Everything this place has
 produced, and everything it has not. Each page below is right on its own;
 together they are a directory listing, which is not a deliverable. The rows
 in red are the ones that do not exist yet, with the command that would make
-them — a pack that quietly omitted them would read as complete.</p>
+them — a pack that quietly omitted them would read as complete.</p>"""
 
-<table>
+PAGE_BODY = """<table>
   <tr><th>What</th><th>It says</th><th></th></tr>
   %(rows)s
-</table>
+</table>"""
 
-<footer>%(counted)s · built by Coral City from what is in this folder.</footer>
-"""
+PAGE_FOOTER = """%(counted)s · built by Coral City from what is in this folder."""
 
 
 def find(where: pathlib.Path, filename: str) -> list[pathlib.Path]:
@@ -208,14 +202,13 @@ def page(name: str, where: pathlib.Path, found: list[dict]) -> str:
                     % (html.escape(one["kind"]), html.escape(one["says"]),
                        html.escape(one["line"]), links))
     here = sum(1 for one in found if one["at"])
-    return PAGE % {
-        "style": provenance.STYLE,
-        "name": html.escape(name),
-        "where": html.escape(str(where)),
-        "rows": "\n  ".join(rows),
-        "counted": html.escape("%d of %d kinds of page are here"
-                               % (here, len(found))),
-    }
+    return provenance.frame(
+        title=html.escape(name) + " — everything in the pack",
+        name=html.escape(name), where=html.escape(str(where)),
+        says=PAGE_SAYS, extra=PAGE_EXTRA,
+        body=PAGE_BODY % {"rows": "\n  ".join(rows)},
+        footer=PAGE_FOOTER % {"counted": html.escape(
+            "%d of %d kinds of page are here" % (here, len(found)))})
 
 
 def run(what: list[str]) -> tuple[int, str]:
