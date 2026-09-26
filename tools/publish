@@ -164,6 +164,26 @@ VERSION_ID=$(printf '%s' "$VERSION" | json "['id']")
 step "version $(printf '%s' "$VERSION" | json "['ordinal']")  $VERSION_ID"
 step "digest $(printf '%s' "$VERSION" | json "['digest']")"
 
+# A vehicle version has to say how it moves before it can be published, and
+# what it moves like is in the package that was just uploaded. Nothing sent
+# it, so `tools/publish vehicle ... --publish` — the command written at the
+# top of this file — uploaded a package and was then refused, every time,
+# with a message about dynamics that named no file.
+#
+# The package's own dynamics.json is the answer and it is right here. Sent
+# before publishing rather than after, because publishing is the step that
+# checks for it.
+if [ "$KIND" = vehicle ] && [ -f "$SOURCE/dynamics.json" ]; then
+    say "Saying how it moves"
+    answer=$(api PUT "/api/v1/versions/$VERSION_ID/dynamics" "$(cat "$SOURCE/dynamics.json")")
+    if [ -n "$(printf '%s' "$answer" | json "['error']['message']")" ]; then
+        die "refused: $(printf '%s' "$answer" | head -c 300)"
+    fi
+    step "mass, trim, inertia, damping, thrusters, sensors and the topic contract"
+elif [ "$KIND" = vehicle ]; then
+    die "$SOURCE has no dynamics.json, and a vehicle version states how it moves before it can be published"
+fi
+
 if $PUBLISH; then
     say "Publishing"
     published=$(api POST "/api/v1/versions/$VERSION_ID/publish")
