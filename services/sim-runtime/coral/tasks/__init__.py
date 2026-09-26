@@ -18,13 +18,15 @@ from __future__ import annotations
 
 from .base import Task, footprint_half_angle, wrap
 from .covering import Profile, Search, Section, Survey
-from .going import Dock, HoldStation, Reach, Return, Transect, Waypoints, Wait
+from .going import (Descend, Dock, HoldStation, Reach, Return, Transect,
+                    Waypoints, Wait)
 from .mission import Mission, Unavailable
 from .working import Inspect, Monitor, Outplant, Revisit, Treat
 
 TASKS = {
     "hold-station": HoldStation, "waypoints": Waypoints, "transect": Transect,
     "reach": Reach, "return": Return, "dock": Dock, "wait": Wait,
+    "descend": Descend,
     "survey": Survey, "search": Search, "profile": Profile, "section": Section,
     "treat": Treat, "outplant": Outplant, "monitor": Monitor,
     "inspect": Inspect, "revisit": Revisit,
@@ -32,7 +34,7 @@ TASKS = {
 KINDS = tuple(TASKS) + ("mission",)
 
 __all__ = ["KINDS", "TASKS", "Task", "footprint_half_angle", "task_for", "wrap",
-           "Dock", "HoldStation", "Inspect", "Mission", "Monitor", "Outplant",
+           "Descend", "Dock", "HoldStation", "Inspect", "Mission", "Monitor", "Outplant",
            "Profile", "Reach", "Return", "Revisit", "Search", "Section",
            "Survey", "Transect", "Treat", "Unavailable", "Wait", "Waypoints"]
 

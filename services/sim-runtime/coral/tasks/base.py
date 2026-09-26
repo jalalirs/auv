@@ -88,11 +88,17 @@ class Task:
         self.samples = 0
         self.done = False
         self.believed: np.ndarray | None = None
+        # Whether the Doppler log has the bottom, when anybody told us.
+        # Handed down rather than worked out: the navigation knows the log's
+        # range and whether one is fitted at all, and a task that inferred it
+        # from an altitude would be a second implementation of the same idea.
+        # None means nobody said, which is not the same as no lock.
+        self.locked: bool | None = None
 
     # ── what every task shares ───────────────────────────────────────────────
 
     def step(self, t: float, position, heading: float, floor: float | None, commands,
-             believed=None) -> None:
+             believed=None, locked=None) -> None:
         if self.started_t is None:
             self.started_t = t
         self.t = t
@@ -105,6 +111,7 @@ class Task:
         # believed it had arrived, because that is when the work happens. The
         # gap between the two is then the finding rather than the error.
         self.believed = None if believed is None else np.asarray(believed, dtype=float)
+        self.locked = None if locked is None else bool(locked)
         if not self.done:
             self.judge(t - self.started_t, np.asarray(position, dtype=float), float(heading), floor)
 

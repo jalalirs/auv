@@ -257,6 +257,199 @@ class Reach(Task):
         return self.done and not self.arrived
 
 
+class Descend(Task):
+    """Get down to the bottom, on the site, under control.
+
+    The phase of a dive nobody had modelled, and the one an operator spends
+    the most breath on. A vehicle enters the water above the site and has to
+    arrive at working altitude *over the site*, and between those two moments
+    it is being set sideways by whatever the current is doing and it cannot
+    see the bottom to know.
+
+    Three things are scored, and they are the three an operator argues about:
+
+      **Did it arrive** — at the altitude it was told, and in the time there
+      was. Everything after this assumes a vehicle that is down.
+
+      **Did it land on the mark.** A descent is a drift problem: a tenth of a
+      knot over a hundred metres of water column is twenty metres downstream,
+      and the site is forty metres across. This is where a dive plan is won
+      or lost and no log from a real vehicle can tell you how badly, because
+      the vehicle does not know where it actually was.
+
+      **Under control.** A vehicle that arrives by falling arrives badly: it
+      stirs the bottom it came to photograph, and a manipulator wants a hull
+      that is already still.
+
+    And one thing is reported rather than scored, because it is the fact the
+    rest of the dive's navigation rests on: **how much of the descent was
+    flown blind**. A Doppler log has a range, and above it there is no bottom
+    track at all — the vehicle is dead reckoning on a flight model through
+    the part of the dive where the current is strongest. The metres it
+    descended before lock, and the metres it moved sideways in them, are the
+    honest size of the error every later leg inherits.
+    """
+
+    kind = "descend"
+    name = "Descend to the bottom"
+
+    def __init__(self, objective, began_at, heading, **extra) -> None:
+        super().__init__(objective, began_at, heading, **extra)
+        # Where to stop: an altitude off the bottom is what an operator says,
+        # and a depth is what somebody says when there is no bottom to speak
+        # of. Altitude wins when both are given, because the bottom is the
+        # thing being worked on.
+        self.altitude = objective.get("toAltitudeM")
+        self.altitude = None if self.altitude is None else float(self.altitude)
+        self.depth = objective.get("toDepthM")
+        self.depth = None if self.depth is None else float(self.depth)
+        if self.altitude is None and self.depth is None:
+            self.altitude = 3.0
+        self.band = float(objective.get("bandM", 1.0))
+        # How far from the mark it may land and still count. Wider than a
+        # reach's radius on purpose: nobody expects a descent to be placed to
+        # a metre, and pretending otherwise scores every real descent zero.
+        self.within = float(objective.get("withinM", 5.0))
+        # What counts as under control on arrival. A vehicle still making
+        # half a metre a second at the bottom is a vehicle about to hit it.
+        self.rate = float(objective.get("rateMs", 0.4))
+        self.limit = float(objective.get("timeLimitS", 900.0))
+        # Where it was meant to come down, in the world. The entry point by
+        # default, which is the operational case: the boat holds station over
+        # the site and the vehicle is meant to arrive under itself.
+        self.mark = self.somewhere(objective.get("over") or objective.get("mark"),
+                                   self.began_at.copy())[:2]
+
+        self.arrived = False
+        self.arrived_at = 0.0
+        self.off_the_mark = 0.0
+        self.worst_rate = 0.0
+        self.rate_on_arrival = 0.0
+        self.altitude_now: float | None = None
+        self.depth_now = 0.0
+        # The blind part. `locked` is the navigation's own answer, handed
+        # down; the fallback is "we cannot say", which is reported as such
+        # rather than guessed from a range this task would have to keep a
+        # second copy of.
+        self.began_depth: float | None = None
+        self.locked_at_depth: float | None = None
+        self.locked_at_altitude: float | None = None
+        self.blind_from: np.ndarray | None = None
+        self.blind_moved: float | None = None
+        self.was_told = False
+        self.last: np.ndarray | None = None
+        self.last_t: float | None = None
+
+    def judge(self, elapsed, position, heading, floor) -> None:
+        depth = float(-position[2])
+        if self.began_depth is None:
+            self.began_depth = depth
+            self.blind_from = position[:2].copy()
+        self.depth_now = depth
+        self.altitude_now = None if floor is None else float(position[2] - floor)
+
+        # How fast it is going down, from the truth rather than from a
+        # command: a vehicle whose thrusters are saturated is not descending
+        # at the rate it asked for.
+        if self.last is not None and self.last_t is not None and elapsed > self.last_t:
+            down = (self.last[2] - float(position[2])) / (elapsed - self.last_t)
+            self.worst_rate = max(self.worst_rate, down)
+            self.rate_on_arrival = down
+        self.last = position.copy()
+        self.last_t = elapsed
+
+        # When the log found the bottom, and how far the water had carried it
+        # by then. Asked of the navigation, not worked out here.
+        if self.locked and self.locked_at_depth is None:
+            self.was_told = True
+            self.locked_at_depth = depth
+            self.locked_at_altitude = self.altitude_now
+            if self.blind_from is not None:
+                self.blind_moved = float(np.linalg.norm(position[:2] - self.blind_from))
+
+        self.off_the_mark = float(np.linalg.norm(position[:2] - self.mark))
+        if not self.arrived and self.there(depth):
+            self.arrived = True
+            self.arrived_at = elapsed
+            self.done = True
+        if elapsed >= self.limit:
+            self.done = True
+
+    def there(self, depth: float) -> bool:
+        if self.altitude is not None:
+            return (self.altitude_now is not None
+                    and abs(self.altitude_now - self.altitude) <= self.band)
+        return abs(depth - float(self.depth)) <= self.band
+
+    def score(self) -> float:
+        if not self.arrived:
+            # Credit for the water column it did get through, so a vehicle
+            # that stopped at forty metres of a hundred and one that never
+            # left the surface are not the same number.
+            if self.altitude is not None and self.altitude_now is not None:
+                left = max(0.0, self.altitude_now - self.altitude)
+                whole = max(1e-6, (self.altitude_now if self.began_depth is None
+                                   else abs(self.depth_now - self.began_depth) + left))
+            else:
+                left = abs(self.depth_now - float(self.depth or 0.0))
+                whole = max(1e-6, abs(float(self.depth or 0.0) - (self.began_depth or 0.0)))
+            return 0.5 * max(0.0, min(1.0, 1.0 - left / whole))
+        # Arrived. The rest is where it landed and how hard.
+        placed = max(0.0, 1.0 - self.off_the_mark / max(1e-6, self.within))
+        gentle = 1.0 if self.rate_on_arrival <= self.rate else max(
+            0.0, 1.0 - (self.rate_on_arrival - self.rate) / max(1e-6, self.rate))
+        return 0.5 + 0.35 * placed + 0.15 * gentle
+
+    def says(self) -> str:
+        if self.arrived:
+            return (f"down in {self.arrived_at:.0f} s, {self.off_the_mark:.1f} m "
+                    f"off the mark")
+        if self.altitude is not None and self.altitude_now is not None:
+            return f"{self.altitude_now:.1f} m off the bottom"
+        return f"{self.depth_now:.1f} m down"
+
+    def detail(self) -> dict:
+        blind = None
+        if self.began_depth is not None and self.locked_at_depth is not None:
+            blind = round(self.locked_at_depth - self.began_depth, 2)
+        return {
+            "arrived": self.arrived,
+            "toAltitudeM": self.altitude, "toDepthM": self.depth,
+            "altitudeM": None if self.altitude_now is None else round(self.altitude_now, 2),
+            "depthM": round(self.depth_now, 2),
+            "offTheMarkM": round(self.off_the_mark, 2), "withinM": self.within,
+            "rateMs": self.rate,
+            "worstRateMs": round(self.worst_rate, 3),
+            "rateOnArrivalMs": round(self.rate_on_arrival, 3),
+            # The part no real vehicle can report about itself.
+            "bottomLock": self.was_told,
+            "blindThroughM": blind,
+            "lockedAtDepthM": None if self.locked_at_depth is None
+            else round(self.locked_at_depth, 2),
+            "lockedAtAltitudeM": None if self.locked_at_altitude is None
+            else round(self.locked_at_altitude, 2),
+            "driftedWhileBlindM": None if self.blind_moved is None
+            else round(self.blind_moved, 2),
+        }
+
+    def geometry(self) -> dict:
+        return {"points": [{"x": float(self.mark[0]), "y": float(self.mark[1])}],
+                "circle": {"x": float(self.mark[0]), "y": float(self.mark[1]),
+                           "radiusM": self.within}}
+
+    def goal(self) -> dict:
+        said = {"kind": "descend", "over": [float(self.mark[0]), float(self.mark[1])],
+                "withinM": self.within, "rateMs": self.rate}
+        if self.altitude is not None:
+            said["altitudeM"] = self.altitude
+        else:
+            said["depthM"] = self.depth
+        return said
+
+    def failed(self) -> bool:
+        return self.done and not self.arrived
+
+
 class Return(Task):
     kind = "return"
     name = "Return"

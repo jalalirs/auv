@@ -2651,7 +2651,12 @@ class Dive:
                 floor = self.seabed.under(float(self.position[0]), float(self.position[1]))
             self.task.step(self.simulated, self.position,
                            float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0])), floor, self.commands,
-                           believed=None if self.navigation is None else self.navigation.believed)
+                           believed=None if self.navigation is None else self.navigation.believed,
+                           # Whether the log has the bottom. A descent is
+                           # scored partly on how much of it was flown blind,
+                           # and only the navigation knows.
+                           locked=None if self.navigation is None
+                           else self.navigation.bottom_lock)
         if self.recorder is not None:
             self.recorder.step(self)
         # Every five seconds of simulated time. One a second put four hundred
