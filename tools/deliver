@@ -1163,7 +1163,9 @@ def all_of_them(under: pathlib.Path, into: pathlib.Path | None) -> int:
         try:
             deliver_dive(one, into / run)
         except SystemExit as why:
-            refused.append((run, str(why)))
+            # Without the path, so that the same fault about a thousand
+            # recordings is one line and not a thousand.
+            refused.append((run, str(why).replace(str(one), "this recording")))
             continue
         except Exception as why:                        # noqa: BLE001
             refused.append((run, f"{type(why).__name__}: {why}"))
@@ -1171,8 +1173,18 @@ def all_of_them(under: pathlib.Path, into: pathlib.Path | None) -> int:
         done += 1
         print(f"  {run}")
     print(f"\n  {done} of {len(recordings)} delivered → {into}")
+    # Grouped, because a round of twelve hundred recordings that all
+    # predate a change refuses twelve hundred times with the same
+    # sentence, and twelve hundred copies of one fact is not a report.
+    # The names of the first few, so somebody can go and look at one.
+    why_many: dict[str, list[str]] = {}
     for run, why in refused:
-        print(f"    {run}: {why}", file=sys.stderr)
+        why_many.setdefault(why, []).append(run)
+    for why, runs in sorted(why_many.items(), key=lambda one: -len(one[1])):
+        print(f"    {len(runs)}: {why}", file=sys.stderr)
+        print(f"       e.g. {', '.join(runs[:3])}"
+              + (f" and {len(runs) - 3} more" if len(runs) > 3 else ""),
+              file=sys.stderr)
     if refused:
         print(f"  {len(refused)} refused. A coverage map with half a round in "
               f"it is a coverage map that lies.", file=sys.stderr)
