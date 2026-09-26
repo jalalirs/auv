@@ -40,6 +40,15 @@ import numpy as np
 
 HERE = pathlib.Path(__file__).resolve().parent
 
+# The tasks that work ground. A cell's cost has to come from a dive that
+# did the work a cell needs — a survey covers it, an outplant plants it, a
+# transect runs a line over it. A dive that went somewhere and held
+# station tells you what going somewhere costs and nothing about a cell,
+# and 94 cells times a station-keeping dive is a number with the wrong
+# name on it.
+WORKS_GROUND = ("survey", "search", "outplant", "transect", "section", "monitor",
+                "treat", "profile", "mission")
+
 # Where each figure came from, in the words this page uses. Not the place
 # pages' vocabulary and deliberately so: nothing here is a measurement of a
 # real reef, and the useful distinction is between a number a dive produced
@@ -230,7 +239,7 @@ def cost_from(path: pathlib.Path | None) -> dict:
         by = "the multibeam's soundings"
     return {"energyWh": achieved.get("energyWh") or task.get("energyWh"),
             "hours": None if not seconds else round(float(seconds) / 3600.0, 4),
-            "from": FLOWN, "runs": 1,
+            "from": FLOWN, "runs": 1, "task": task.get("kind"),
             "coveredM2": covered, "coveredBy": by if covered else None}
 
 
@@ -244,6 +253,17 @@ def a_campaign(grid: dict, cost: dict, vehicles: int, day_hours: float,
     if not hours:
         said["cannotSay"] = ("nothing has been flown here, so there is no "
                              "figure for what a cell takes")
+        return said
+    # And it has to have been a dive that worked a cell. A `reach` that
+    # went somewhere and held station for twenty minutes will happily
+    # multiply out to four working days over ninety-four cells, and every
+    # figure in that column would be a number with the wrong name on it.
+    kind = cost.get("task")
+    if kind is not None and kind not in WORKS_GROUND:
+        said["cannotSay"] = (
+            "the dive this was costed from was a '%s', which does not work a "
+            "cell — it says what going somewhere costs, not what covering "
+            "ground costs. Fly a survey or an outplant here" % kind)
         return said
     # How many dives a cell takes, from the ground the flown survey actually
     # covered. Without that figure it is one, and the page says so as an
