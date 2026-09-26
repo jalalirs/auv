@@ -234,3 +234,33 @@ def test_a_comparison_leaves_out_dives_that_never_happened(capsys):
     said = capsys.readouterr().out
     assert "1 tasks" in said, said
     assert "never flew" in said and "dock" in said
+
+
+def test_a_row_names_the_hull_when_it_is_not_the_usual_one():
+    """Fly pursue on a BlueROV2 and then on a Heavy and both rows were
+    called the same thing. A Heavy has eight thrusters and half again the
+    surge; that is not the same controller doing better."""
+    tool = _bench()
+    assert tool.named("quick", "pursue", "reach") == "bench · quick · pursue · reach"
+    assert tool.named("quick", "pursue", "reach", "bluerov2") \
+        == "bench · quick · pursue · reach"
+    assert tool.named("quick", "pursue", "reach", "bluerov2-heavy") \
+        == "bench · quick · pursue on bluerov2-heavy · reach"
+
+
+def test_a_named_hull_still_parses_as_four_parts():
+    """Every row already in the record has to keep reading as it did."""
+    tool = _bench()
+    name = tool.named("quick", "pursue", "reach", "remus-100")
+    parts = [p.strip() for p in name.split("·")]
+    assert len(parts) == 4
+    assert parts[2] == "pursue on remus-100"
+
+
+def test_a_dry_row_names_its_hull_too():
+    """A dry row that did not name the hull would collide with a flown one
+    exactly as the flown ones collided with each other."""
+    tool = _bench()
+    source = (HERE / "bench").read_text()
+    inside = source[source.index("def command_dry("):]
+    assert 'named(args.suite, called, task, args.vehicle)' in inside

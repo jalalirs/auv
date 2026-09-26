@@ -66,8 +66,25 @@ def seed_for(suite: str, task: str) -> int:
     return int(hashlib.sha256(f"{suite}/{task}".encode()).hexdigest()[:8], 16) % 100000
 
 
-def named(suite: str, controller: str, task: str) -> str:
-    return f"bench · {suite} · {controller} · {task}"
+# The hull the suite is flown on unless somebody says otherwise. Named here
+# because a row's name has to say when it was *not* that one.
+THE_USUAL_HULL = "bluerov2"
+
+
+def named(suite: str, controller: str, task: str, vehicle: str = THE_USUAL_HULL) -> str:
+    """What a row is called, and it has to name everything being compared.
+
+    The hull was not in it. Fly `pursue` on a BlueROV2 and then on a Heavy
+    and both rows are called "bench · quick · pursue · reach" — two
+    different things under one name, which the bench then reads as one and
+    reports whichever came back first. A Heavy has eight thrusters and half
+    again the surge; that is not the same controller doing better.
+
+    Put in the controller's own field rather than as a fifth part, so every
+    row already in the record still parses and reads as it did.
+    """
+    whose = controller if vehicle == THE_USUAL_HULL else f"{controller} on {vehicle}"
+    return f"bench · {suite} · {whose} · {task}"
 
 
 # The controllers that live inside the runtime. Everything else named on the
@@ -171,7 +188,7 @@ def command_run(args) -> int:
           f"{DIM}· {built_or_built_by(flying)}"
           f" · {water_name} · {technology_name}{OFF}")
     for task in tasks:
-        name = named(args.suite, args.controller, task)
+        name = named(args.suite, args.controller, task, args.vehicle)
         if name in already:
             print(f"{DIM}  {task} — already flown{OFF}")
             continue
@@ -277,9 +294,13 @@ def command_dry(args) -> int:
         thought = dive.helm.thought()
         who = dive.helm.who_flew()
         called = args.called or args.controller
+        # The hull here too: `bench dry` takes --vehicle and a dry row that
+        # did not name it would collide with the flown one exactly as the
+        # flown ones collided with each other.
+        on = named(args.suite, called, task, args.vehicle)
         rows.append({
-            "name": named(args.suite, called, task), "suite": args.suite,
-            "controller": called, "task": task,
+            "name": on, "suite": args.suite,
+            "controller": on.split("·")[2].strip(), "task": task,
             "score": said.get("score", 0.0),
             "ended": dive.ended or "time",
             "seconds": said.get("seconds", 0.0),
