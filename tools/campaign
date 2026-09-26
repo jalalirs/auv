@@ -206,6 +206,77 @@ def a_campaign(grid: dict, cost: dict, vehicles: int, day_hours: float,
     return said
 
 
+# ── and afterwards, what was actually covered ────────────────────────────────
+#
+# The half that makes a campaign a product rather than a calculator. Every
+# one of these programmes can tell you what they set out to do; none of them
+# can hand a regulator a map of what they actually covered, because the
+# vehicle does not know where it was and the divers were counting.
+#
+# Read back out of what the missions themselves produced — the ground a
+# survey's camera actually passed over, the corals that actually went in —
+# and binned onto the same grid the plan was made on. Same cells, before and
+# after, which is the only way the two are comparable.
+
+
+def back_to_metres(centre: dict, latitude: float, longitude: float) -> tuple:
+    """WGS84 back to site-local metres: the inverse of what `deliver` wrote."""
+    deliver = a_tool("deliver")
+    east, north = deliver.metres_per_degree(float(centre["latitude"]))
+    return ((longitude - float(centre["longitude"])) * east,
+            (latitude - float(centre["latitude"])) * north)
+
+
+def covered_by(flown: pathlib.Path, grid: dict) -> dict:
+    """Which cells the flown missions actually reached.
+
+    A cell counts as covered when something a mission *produced* fell in it:
+    ground a survey's camera passed over, or a coral that actually went in.
+    Not where the plan said to go, and not where the vehicle believed it
+    was — the two columns a dive keeps apart, kept apart here too.
+    """
+    centre = grid["centre"]
+    across = grid["acrossMetres"]
+    n = grid["across"]
+    step = across / n
+    hit: dict[tuple, int] = {}
+    read = []
+    for folder in sorted(p for p in flown.iterdir() if p.is_dir()):
+        for name, what in (("coverage.geojson", "seen"),
+                           ("planting.geojson", "planted")):
+            where = folder / name
+            if not where.is_file():
+                continue
+            try:
+                drawn = json.loads(where.read_text())
+            except ValueError:
+                continue
+            points = 0
+            for feature in drawn.get("features") or []:
+                geometry = feature.get("geometry") or {}
+                if geometry.get("type") != "Point":
+                    continue
+                longitude, latitude = geometry["coordinates"][:2]
+                x, y = back_to_metres(centre, latitude, longitude)
+                column = int((x + across / 2) // step)
+                row = int((y + across / 2) // step)
+                if 0 <= row < n and 0 <= column < n:
+                    hit[(row, column)] = hit.get((row, column), 0) + 1
+                    points += 1
+            read.append({"from": folder.name, "what": what, "points": points})
+    working = {(one["row"], one["column"]) for one in grid["working"]}
+    touched = set(hit)
+    return {"missions": read,
+            "cellsCovered": len(working & touched),
+            "cellsMissed": len(working - touched),
+            # Ground covered that nobody planned to work. Not an error — a
+            # transit passes over cells on its way — but it is not coverage
+            # of the grid either, and calling it that would inflate the
+            # number the whole page exists to be honest about.
+            "cellsOutsideThePlan": len(touched - working),
+            "hit": hit}
+
+
 # ── the page ─────────────────────────────────────────────────────────────────
 
 PAGE = """<!doctype html>
@@ -227,7 +298,7 @@ a dive to have been flown are absent until one has.</p>
 
 <div class="big">%(headline)s</div>
 
-<h2>The ground</h2>
+<h2>%(ground)s</h2>
 <figure>%(picture)s<figcaption>%(caption)s</figcaption></figure>
 
 <h2>What it takes</h2>
@@ -236,6 +307,7 @@ a dive to have been flown are absent until one has.</p>
   %(rows)s
 </table>
 
+%(proof)s
 <h2>The order</h2>
 <p class="where">%(order)s</p>
 
@@ -245,35 +317,60 @@ plan — so the arithmetic stops where the evidence does.</footer>
 """
 
 
-def a_picture(grid: dict) -> tuple[str, str]:
+def a_picture(grid: dict, covered: dict | None = None) -> tuple[str, str]:
     """The grid, drawn: worked cells against the rest.
 
     Small and plain, because the point is the shape of the work — where the
     reef is in the site and how much of the site it is.
+
+    Once something has been flown the same picture says what was actually
+    reached, on the same cells, which is the only way the plan and the
+    outcome are comparable. A cell that was worked and missed is red: the
+    page must not let a gap look like water.
     """
     n = grid["across"]
     by = {(one["row"], one["column"]): one for one in grid["cells"]}
     working = {(one["row"], one["column"]) for one in grid["working"]}
+    hit = (covered or {}).get("hit") or {}
     most = max([one["colonies"] for one in grid["working"]] or [1])
     out = ['<div class="grid" style="grid-template-columns:repeat(%d,1fr)">' % n]
     # Row 0 is the south edge; a page reads from the north down.
     for row in range(n - 1, -1, -1):
         for column in range(n):
             one = by[(row, column)]
+            at = (row, column)
+            title = "%.0f m, %d colonies" % (one["depthM"], one["colonies"])
             if one["wetShare"] <= 0.5:
                 colour = "#efe6d8"                       # land
-            elif (row, column) in working:
+            elif covered is not None and at in working:
+                if at in hit:
+                    colour = "#1a6b2a"
+                    title += ", covered"
+                else:
+                    colour = "#b04a4a"
+                    title += ", MISSED"
+            elif covered is not None and at in hit:
+                colour = "#cfe0cf"                       # passed over, not planned
+                title += ", passed over"
+            elif at in working:
                 weight = 0.25 + 0.75 * (one["colonies"] / most if most else 0)
                 colour = "rgba(26,107,42,%.2f)" % weight
             else:
                 colour = "#dfe7ee"                       # water, nothing to work
-            out.append('<i style="background:%s" title="%.0f m, %d colonies"></i>'
-                       % (colour, one["depthM"], one["colonies"]))
+            out.append('<i style="background:%s" title="%s"></i>' % (colour, title))
     out.append("</div>")
-    caption = ("%d cells of %.0f m · %d to work, shaded by how many colonies are in "
-               "them · %d dry, %d wet with nothing to work"
-               % (n * n, grid["cellM"], len(grid["working"]), grid["dry"],
-                  grid["wet"] - len(grid["working"])))
+    if covered is None:
+        caption = ("%d cells of %.0f m · %d to work, shaded by how many colonies are "
+                   "in them · %d dry, %d wet with nothing to work"
+                   % (n * n, grid["cellM"], len(grid["working"]), grid["dry"],
+                      grid["wet"] - len(grid["working"])))
+    else:
+        caption = ("%d of %d cells covered, %d missed"
+                   % (covered["cellsCovered"], len(grid["working"]),
+                      covered["cellsMissed"])
+                   + (", %d cells passed over that were not in the plan"
+                      % covered["cellsOutsideThePlan"]
+                      if covered["cellsOutsideThePlan"] else ""))
     return "".join(out), caption
 
 
@@ -309,7 +406,28 @@ def rows_of(said: dict, cost: dict, grid: dict) -> list[tuple]:
     return rows
 
 
-def page(grid: dict, said: dict, cost: dict, order: list[dict]) -> str:
+def proof_of(covered: dict | None, grid: dict) -> str:
+    """What was flown, and what it reached. Absent until something has."""
+    if covered is None:
+        return ""
+    rows = "".join(
+        "<tr><td class='what'>%s</td><td>%s</td><td class='n'>%s</td></tr>"
+        % (html.escape(one["from"]), html.escape(one["what"]), f"{one['points']:,}")
+        for one in covered["missions"])
+    if not rows:
+        rows = ("<tr><td class='what'>nothing</td><td colspan=2>none of those "
+                "folders holds what a mission produced</td></tr>")
+    return ("<h2>What was flown</h2><table>"
+            "<tr><th>Mission</th><th>Produced</th><th class='n'>Points</th></tr>"
+            + rows + "</table>"
+            + ("<p class=\"says warn\"><strong>%d of the cells you planned to "
+               "work were not reached.</strong> They are the red ones above. A "
+               "gap must not be allowed to look like water.</p>"
+               % covered["cellsMissed"] if covered["cellsMissed"] else ""))
+
+
+def page(grid: dict, said: dict, cost: dict, order: list[dict],
+         covered: dict | None = None) -> str:
     provenance = a_tool("provenance")
     ink = dict(INK, derived=provenance.INK["derived"])
     wash = dict(WASH, derived=provenance.WASH["derived"])
@@ -332,7 +450,12 @@ def page(grid: dict, said: dict, cost: dict, order: list[dict]) -> str:
                    'point.</strong> %s. Fly one and give it to this with '
                    '<code>--cost</code>.</p>' % html.escape(said["cannotSay"]))
 
-    picture, caption = a_picture(grid)
+    picture, caption = a_picture(grid, covered)
+    if covered is not None:
+        share = covered["cellsCovered"] / max(1, len(grid["working"]))
+        big.append(("%d%%" % round(100 * share), "of the grid covered"))
+        headline = "".join("<div><b>%s</b><span>%s</span></div>"
+                           % (html.escape(v), html.escape(w)) for v, w in big)
     rows = "".join(
         '<tr><td class="what">%s</td>'
         '<td><span class="tag" style="color:%s;background:%s">%s</span></td>'
@@ -354,8 +477,10 @@ def page(grid: dict, said: dict, cost: dict, order: list[dict]) -> str:
         "name": html.escape(str(centre.get("name", "a place"))),
         "where": html.escape(" · ".join(where)),
         "warning": warning, "headline": headline,
+        "ground": "What was covered" if covered is not None else "The ground",
         "picture": picture, "caption": html.escape(caption),
         "rows": rows, "order": html.escape(order_said),
+        "proof": proof_of(covered, grid),
         "source": html.escape(cost.get("from", "no flown dive at all")),
     }
 
@@ -373,6 +498,9 @@ def main() -> int:
     parse.add_argument("--day-hours", dest="day_hours", type=float, default=10.0)
     parse.add_argument("--survives", type=float, default=None,
                        help="share of attempts that come off, if no sweep says")
+    parse.add_argument("--flown", default=None,
+                       help="a directory of what tools/deliver --dive produced, "
+                            "one folder per mission, for what was actually covered")
     parse.add_argument("--into", default=None)
     asked = parse.parse_args()
 
@@ -388,6 +516,13 @@ def main() -> int:
                      else pathlib.Path(asked.cost).expanduser())
     said = a_campaign(grid, cost, asked.vehicles, asked.day_hours, asked.survives)
     order = in_lanes(grid["working"])
+    covered = None
+    if asked.flown:
+        flown = pathlib.Path(asked.flown).expanduser()
+        if not flown.is_dir():
+            print(f"no flown missions at {flown}", file=sys.stderr)
+            return 1
+        covered = covered_by(flown, grid)
 
     into = pathlib.Path(asked.into).expanduser() if asked.into else place / "campaign"
     into.mkdir(parents=True, exist_ok=True)
@@ -403,8 +538,11 @@ def main() -> int:
         {"type": "FeatureCollection", "features": features}, indent=1) + "\n")
     (into / "campaign.json").write_text(json.dumps(
         {"place": place.name, "grid": {k: v for k, v in grid.items() if k != "cells"},
-         "cost": cost, "campaign": said}, indent=2, default=float) + "\n")
-    (into / "campaign.html").write_text(page(grid, said, cost, order))
+         "cost": cost, "campaign": said,
+         **({} if covered is None else {"covered": {
+             k: v for k, v in covered.items() if k != "hit"}})},
+        indent=2, default=float) + "\n")
+    (into / "campaign.html").write_text(page(grid, said, cost, order, covered))
 
     print(f"  {place.name}")
     print(f"    {said['cells']} cells of {grid['cellM']:.0f} m to work, "
@@ -416,6 +554,9 @@ def main() -> int:
                  if "shipDays" in said else ""))
     else:
         print(f"    {said['cannotSay']}")
+    if covered is not None:
+        print(f"    covered {covered['cellsCovered']} of {said['cells']} cells, "
+              f"missed {covered['cellsMissed']}")
     for one in sorted(p.name for p in into.iterdir()):
         print(f"    {into / one}")
     return 0
