@@ -54,6 +54,19 @@ def wanted(where: pathlib.Path, only: str | None) -> list[dict]:
     return out
 
 
+def size(n: int) -> str:
+    """Bytes in a unit that shows them.
+
+    Everything was printed in GB to two places, so a 3 KB metadata file and a
+    4 MB one both read "0.00 of 0.00 GB" — which says a file is missing when
+    it is there, and says nothing at all about how big it should be.
+    """
+    for unit, each in (("GB", 1e9), ("MB", 1e6), ("kB", 1e3)):
+        if n >= each:
+            return f"{n / each:.2f} {unit}"
+    return f"{n} B"
+
+
 def state_of(where: pathlib.Path, one: dict) -> tuple[str, int]:
     here = where / one["name"]
     got = here.stat().st_size if here.is_file() else 0
@@ -68,24 +81,40 @@ def state_of(where: pathlib.Path, one: dict) -> tuple[str, int]:
     return "part way", got
 
 
+def start_again(here: pathlib.Path, one: dict, got: int, say) -> None:
+    """Put a spoiled part-file aside, so the next try starts from nothing."""
+    spoiled = here.with_suffix(here.suffix + ".too-long")
+    if spoiled.exists():
+        spoiled.unlink()
+    here.rename(spoiled)
+    say(f"    {one['name']}: {size(got)} against {size(one['bytes'])} wanted "
+        f"— moved to {spoiled.name} and fetched from the start")
+
+
 def fetch(where: pathlib.Path, one: dict, say=print) -> tuple[str, int]:
     """Get one file to its stated size, resuming whatever is there.
 
     `curl -C -` continues from the end of what exists, which is the whole
-    difference between this and the script it replaces. A file that is longer
-    than the manifest says is moved aside rather than resumed, because there
-    is nothing to continue from — it is not a short copy of the right file.
+    difference between this and the script it replaces.
+
+    Resuming is only safe while the server honours a range. USGS's does not
+    always: asked to continue a Looe Key elevation model from 0.46 GB it sent
+    the whole body again, curl appended it, and the file passed 0.77 GB on
+    its way to 1.07 — at which point every further try resumed *that*, and
+    four tries in a row made it worse. So the length is checked after every
+    try, not only before the first, and a file that has overshot is put aside
+    and fetched from nothing. There is no continuing from a file that is not
+    a short copy of the right one.
     """
     here = where / one["name"]
     kind, got = state_of(where, one)
     if kind == "complete":
         return kind, got
     if kind == "too long":
-        spoiled = here.with_suffix(here.suffix + ".too-long")
-        here.rename(spoiled)
-        say(f"    {one['name']}: {got:,} bytes against {one['bytes']:,} wanted "
-            f"— moved to {spoiled.name} and fetched again")
+        start_again(here, one, got, say)
+        got = 0
     for attempt in range(1, TRIES + 1):
+        before = got
         done = subprocess.run(
             ["curl", "-sL", "-C", "-", "--retry", "3", "--retry-delay", "2",
              "-A", "coral-city (https://github.com/jalalirs/auv)",
@@ -93,9 +122,19 @@ def fetch(where: pathlib.Path, one: dict, say=print) -> tuple[str, int]:
         kind, got = state_of(where, one)
         if kind == "complete":
             return kind, got
-        say(f"    {one['name']}: {got / 1e9:.2f} of "
-            f"{one['bytes'] / 1e9:.2f} GB after try {attempt}"
+        say(f"    {one['name']}: {size(got)} of {size(one['bytes'])} "
+            f"after try {attempt}"
             + (f" (curl exit {done.returncode})" if done.returncode else ""))
+        if kind == "too long":
+            start_again(here, one, got, say)
+            got = 0
+            continue
+        if done.returncode == 0 and got == before:
+            # curl is content and the file did not grow: the far end is not
+            # resuming, it is answering the range with nothing. Retrying the
+            # same request gets the same nothing.
+            start_again(here, one, got, say)
+            got = 0
     return kind, got
 
 
@@ -146,19 +185,18 @@ def main() -> int:
     owed = sum(f["bytes"] - state_of(where, f)[1] for f in short)
     print(f"  {where}")
     print(f"    {len(files)} files in the manifest, {len(short)} not complete, "
-          f"{owed / 1e9:.2f} GB owed")
+          f"{size(owed)} owed")
 
     if asked.check:
         for one in files:
             kind, got = state_of(where, one)
-            print(f"    {one['name']:<34} {got / 1e9:6.2f} of "
-                  f"{one['bytes'] / 1e9:6.2f} GB  {kind}")
+            print(f"    {one['name']:<40} {size(got):>9} of "
+                  f"{size(one['bytes']):>9}  {kind}")
         return 0
 
     for one in short:
         kind, got = state_of(where, one)
-        print(f"    {one['name']} — {kind}, {got / 1e9:.2f} of "
-              f"{one['bytes'] / 1e9:.2f} GB")
+        print(f"    {one['name']} — {kind}, {size(got)} of {size(one['bytes'])}")
         fetch(where, one)
 
     # And say, at the end, what is actually there — because the thing this
