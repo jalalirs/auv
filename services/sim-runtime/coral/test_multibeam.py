@@ -141,22 +141,39 @@ def test_two_runs_of_one_seed_sound_the_same():
 # ── fitted to a vehicle, and kept ────────────────────────────────────────────
 
 def test_a_dive_fits_the_multibeam_its_package_declares(tmp_path):
+    """The REMUS, because that is what carries one.
+
+    It was fitted to the BlueROV2 first, which was wrong twice over: a
+    stock BlueROV2 does not have a multibeam, and declaring one added
+    twenty-eight watts to the hotel load of every dive the platform has
+    ever flown that hull on. A survey AUV is what a survey head goes on.
+    """
     from hydrodynamics import Allocator, Body, Hydrodynamics
     from runner import Dive
 
-    package = pathlib.Path(__file__).resolve().parents[3] / "catalog/vehicles/bluerov2"
+    package = pathlib.Path(__file__).resolve().parents[3] / "catalog/vehicles/remus-100"
     model = Hydrodynamics.from_package(package / "dynamics.json")
     said = []
     dive = Dive({"durationSeconds": 2, "initialState": {"positionM": [0, 0, -7]},
                  "vehiclePath": str(package), "recordInto": str(tmp_path / "rec")},
                 Body(model), Allocator(model), pathlib.Path("nowhere.usda"),
                 lambda kind, **d: said.append((kind, d)))
-    dive.begin_task({"kind": "survey", "widthM": 10, "heightM": 5})
+    dive.begin_task({"kind": "transect", "lengthM": 20.0})
     assert dive.multibeam is not None
     on = next(d for kind, d in said if kind == "multibeam_on")
     assert on["beams"] == 256 and on["halfSwathDeg"] == 60.0
     # And it is a different instrument from the forward-looking one.
     assert dive.sonar is not None and dive.sonar is not dive.multibeam
+
+
+def test_a_hull_that_does_not_carry_one_is_not_given_one():
+    """A stock BlueROV2 has no multibeam, and saying it did put twenty-eight
+    watts on every dive's hotel load."""
+    import json
+
+    package = pathlib.Path(__file__).resolve().parents[3] / "catalog/vehicles/bluerov2"
+    said = json.loads((package / "dynamics.json").read_text())
+    assert not any(one["kind"] == "multibeam" for one in said.get("sensors", []))
 
 
 def test_the_soundings_are_kept_in_a_file_of_their_own(tmp_path):
