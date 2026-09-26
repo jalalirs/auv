@@ -729,6 +729,24 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 					d.landFlyer(ctx, claimed.Run.ID, autonomy, log)
 				}
 			}()
+			// Started is not the same as flying. A controller that comes up,
+			// throws, and exits leaves the dive to run its full length with
+			// nobody at the keys — and that arrives as a controller that
+			// achieved nothing, which is the same confusion as never
+			// starting it, wearing a different face. It happened on the
+			// first deployed controller this platform ever flew: a stale
+			// build, an AttributeError two seconds in, and twenty minutes of
+			// card time scoring an empty vehicle.
+			//
+			// So the first seconds are watched. Later than that and the dive
+			// has a result worth keeping, whatever the stack did afterwards.
+			if gone, why := d.diedEarly(ctx, autonomy, log); gone {
+				_ = d.platform.Record(ctx, claimed.Run.ID, "autonomy_failed", nil,
+					map[string]any{"why": why})
+				return "failed", nil, fmt.Sprintf(
+					"the controller started and then stopped, so nothing flew this "+
+						"dive: %s", why)
+			}
 		}
 	}
 
@@ -1016,6 +1034,58 @@ func (d *Diver) landFlyer(ctx context.Context, runID, id string, log *slog.Logge
 
 // awaitVehicle waits until the simulator is publishing before anything is
 // started to talk to it.
+// diedEarly says whether the autonomy fell over in the first seconds.
+//
+// Short on purpose: this is about a controller that cannot start, not about
+// one that stops later. A stack that flies for two minutes and then exits has
+// produced two minutes of dive, and the record of what it did is worth more
+// than a failure.
+func (d *Diver) diedEarly(ctx context.Context, autonomy string,
+	log *slog.Logger) (bool, string) {
+	const watch = 20 * time.Second
+	deadline := time.Now().Add(watch)
+	for time.Now().Before(deadline) {
+		if err := ctx.Err(); err != nil {
+			return false, ""
+		}
+		running, err := d.runtime.Running(ctx, autonomy)
+		if err != nil {
+			return false, ""
+		}
+		if !running {
+			said, _ := d.runtime.Logs(ctx, autonomy, 30)
+			log.Warn("the autonomy stopped as soon as it started",
+				"container", autonomy[:12])
+			return true, lastLine(said)
+		}
+		select {
+		case <-ctx.Done():
+			return false, ""
+		case <-time.After(2 * time.Second):
+		}
+	}
+	return false, ""
+}
+
+// lastLine is what a container said before it went, for a failure somebody
+// has to act on rather than go and look up.
+func lastLine(said string) string {
+	lines := strings.Split(strings.TrimRight(said, "\n"), "\n")
+	for at := len(lines) - 1; at >= 0; at-- {
+		if strings.TrimSpace(lines[at]) != "" {
+			return cutTo(strings.TrimSpace(lines[at]), 300)
+		}
+	}
+	return "it said nothing"
+}
+
+func cutTo(said string, at int) string {
+	if len(said) <= at {
+		return said
+	}
+	return said[:at] + "…"
+}
+
 func (d *Diver) awaitVehicle(ctx context.Context, simID string, log *slog.Logger) error {
 	if err := d.await(ctx, simID, `"event": "bridge_open"`,
 		"the vehicle is publishing", log); err != nil {
