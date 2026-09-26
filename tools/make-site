@@ -626,9 +626,28 @@ def write_usd(where: pathlib.Path, name: str, height, across: float,
         # A reef photographed through ten metres of water comes back flat and
         # blue-grey; tools/ground has already taken the water out of the
         # orthomosaic, so this only lifts it, and gently.
+        #
+        # And a place surveyed finer than the photograph is tiled over gets no
+        # tiled photograph at all.
+        #
+        # The stock surfaces exist because a site sampled every two metres has
+        # nothing between its samples, and a seabed with nothing between its
+        # samples is a smooth plane at close range. A patch cut from the
+        # SQUID-5 release is sampled every *centimetre* and coloured every
+        # two and a half millimetres, so there is nothing missing to stand in
+        # for — and tiling a photograph of a Normandy beach over it at one
+        # metre does not add detail, it replaces measured detail with
+        # invented detail. The first square metre rendered from that patch
+        # came out as stock pebbles with the reef nowhere in it.
+        #
+        # Ten centimetres: finer than that and the survey is resolving what
+        # the tile would have been standing in for.
+        surveyed_fine = (across / max(1, height.shape[0] - 1)) < 0.10
         material = GROUND_MATERIAL % dict(
             ground, tile=tile, across=across, repeats=across / max(tile, 1e-6),
-            grain=0.85, relief=1.0, lift=1.05,
+            grain=0.0 if surveyed_fine else 0.85,
+            relief=0.0 if surveyed_fine else 1.0,
+            lift=1.05,
             floor=float(np.median(height)),
             # The middle of the site until a dive says otherwise. A dive
             # rewrites these when it opens the place, because a parameter of
@@ -1125,8 +1144,14 @@ def main() -> int:
         # "damp_beach_sand_02" directly underneath the line saying the place
         # was floored with mud instead, which is a report that contradicts the
         # report above it.
-        print(f"  ground: {colour.name} as the site colour, "
-              f"{soft_named} and {SURFACES['hard']} every {asked.tile:.0f} m")
+        if (asked.across / max(1, height.shape[0] - 1)) < 0.10:
+            print(f"  ground: {colour.name} as the site colour, and no tiled "
+                  f"surface over it — this place is sampled every "
+                  f"{100 * asked.across / max(1, height.shape[0] - 1):.1f} cm "
+                  f"and has nothing missing to stand in for")
+        else:
+            print(f"  ground: {colour.name} as the site colour, "
+                  f"{soft_named} and {SURFACES['hard']} every {asked.tile:.0f} m")
 
     made = write_usd(where, asked.name, height, asked.across, asked.tile,
                      asked.texture if textured else None, photograph=photograph,
