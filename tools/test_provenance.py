@@ -188,3 +188,26 @@ def test_the_dive_page_needs_nothing_to_render(tmp_path):
     # Four words on a dive, three on a place, and the legend carries only
     # the ones the page uses.
     assert ">assumed<" in out
+
+
+def test_every_page_this_platform_prints_is_one_stylesheet(tmp_path):
+    """There were three, near-identical and drifting. A house style that has
+    to be copied is a house style that stops being one, and these pages go in
+    front of the same people, often on the same day."""
+    tool = _tool()
+    loader = importlib.machinery.SourceFileLoader("deliver", str(HERE / "deliver"))
+    spec = importlib.util.spec_from_loader("deliver", loader)
+    deliver = importlib.util.module_from_spec(spec)
+    loader.exec_module(deliver)
+    # Written down once: the stylesheet lives in `provenance` and nothing
+    # else declares one.
+    assert (HERE / "deliver").read_text().count("color-scheme: light") == 0
+    assert (HERE / "provenance").read_text().count("color-scheme: light") == 1
+    pages = [tool.page(_surveyed(), tool.about(_surveyed(), None)),
+             tool.index([{"name": "a", "about": "", "measured": 1, "derived": 0, "chosen": 0}]),
+             tool.dive_page("a dive", FLOWN["cameFrom"],
+                            tool.about_dive(FLOWN["cameFrom"], FLOWN["were"]))]
+    for page in pages:
+        assert "-apple-system" in page, "a page went out with no stylesheet in it"
+        assert "%(style)s" not in page
+    assert deliver.the_provenance_tool().STYLE is not None

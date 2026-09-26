@@ -1,0 +1,9 @@
+{
+ "rows": 2001,
+ "columns": 2001,
+ "acrossMetres": 2000.0,
+ "file": "seabed_1m.f32",
+ "surveyFraction": 0.0,
+ "surveyDatumOffsetM": 0.0,
+ "format": "little-endian float32, row major, south to north then west to east"
+}

@@ -1,0 +1,80 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>shushah — what anybody measured</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 2.5rem 2rem 4rem;
+         font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif;
+         color: #1b1b1b; background: #fff; max-width: 60rem; margin-inline: auto; }
+  h1 { font-size: 1.6rem; margin: 0 0 .2rem; font-weight: 650; }
+  .where { color: #555; margin: 0 0 1.6rem; }
+  .says { background: #f4f4f2; border-left: 3px solid #999; padding: .9rem 1.1rem;
+          margin: 0 0 2rem; }
+  .says strong { font-weight: 650; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 2rem; }
+  th { text-align: left; font-weight: 650; font-size: .78rem; letter-spacing: .04em;
+       text-transform: uppercase; color: #666; padding: 0 .7rem .5rem 0;
+       border-bottom: 1px solid #ddd; }
+  td { padding: .7rem .7rem .7rem 0; border-bottom: 1px solid #eee;
+       vertical-align: top; }
+  td.what { font-weight: 550; width: 15rem; }
+  td.value { width: 13rem; }
+  td.from { color: #444; font-size: .9rem; }
+  .tag { display: inline-block; padding: .1rem .5rem; border-radius: .7rem;
+         font-size: .74rem; font-weight: 650; letter-spacing: .03em;
+         text-transform: uppercase; white-space: nowrap; }
+  .key { display: flex; gap: 1.4rem; flex-wrap: wrap; margin: 0 0 2rem;
+         font-size: .88rem; color: #444; }
+  .key div { max-width: 17rem; }
+  footer { color: #666; font-size: .85rem; border-top: 1px solid #ddd;
+           padding-top: 1rem; }
+  code { font: 12.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+         background: #f2f2f0; padding: .05rem .3rem; border-radius: .2rem; }
+</style>
+<h1>shushah</h1>
+<p class="where">27.93660, 34.91080 · 4.9 to 35.2 m deep</p>
+
+<p class="says"><strong>What this page is.</strong> Every number this place
+carries, and whether anybody went and looked. A cover figure that traces to a
+transect can be cited; one that came out of a pipeline cannot, and the
+difference is not visible in a render. It is visible here.</p>
+
+<div class="key"><div><span class="tag" style="color:#1a6b2a;background:#e8f4ea">measured</span> an instrument read it, at a stated instant.</div>
+  <div><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span> arithmetic on something real. Reproducible, not observed.</div>
+  <div><span class="tag" style="color:#8a2a2a;background:#f9e9e9">chosen</span> a person decided. The reasoning is beside it.</div></div>
+
+<table>
+  <tr><th>What</th><th></th><th>Value</th><th>Where it came from</th></tr>
+  <tr><td class="what">The seabed</td>
+  <td><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span></td>
+  <td class="value">2,000 m across at 3.91 m a sample</td><td class="from">constructed, not surveyed — this place says so</td></tr>
+  <tr><td class="what">Its depths</td>
+  <td><span class="tag" style="color:#1a6b2a;background:#e8f4ea">measured</span></td>
+  <td class="value">RMS 6.84 m before, 4.49 m after, over 6,784 points</td><td class="from">ICESat-2 ATL24 v002 seafloor photons</td></tr>
+  <tr><td class="what">What the ground is made of</td>
+  <td><span class="tag" style="color:#1a6b2a;background:#e8f4ea">measured</span></td>
+  <td class="value">habitat classes</td><td class="from">habitat polygons from a survey of this place, and the slope and relief of the seabed where the survey did not reach</td></tr>
+  <tr><td class="what">Its colour</td>
+  <td><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span></td>
+  <td class="value">reflectances by depth</td><td class="from">derived: carbonate sand and turf-grown rock at their own reflectances, dimmed and reddened out with depth. Not a photograph of this place</td></tr>
+  <tr><td class="what">How many colonies</td>
+  <td><span class="tag" style="color:#8a2a2a;background:#f9e9e9">chosen</span></td>
+  <td class="value">1,700,000 (425,000 a km²)</td><td class="from">Allen Coral Atlas benthic map of this reef, 10 m, CC BY 4.0: over the 0.62 km2 of this 4 km2 site it maps, Rubble 36.5%, Rock 32.3%, Coral/Algae 20.0%, Sand 11.1%; inner reef flat 39.5%, outer reef flat 31.8%, reef slope 13.7%, sheltered slope 12.8%. Coral/Algae is one class and an upper bound on coral cover, not a measurement. No transect has been published for Shushah itself. Held against the northeastern Saudi Red Sea: Lin et al. 2023, Mar. Pollut. Bull. 196:115693 (doi 10.1016/j.marpolbul.2023.115693), visual census and BRUV across the NE Red Sea, mean 36% coral of which 32% stony and 4% soft; and Pisapia, Osman and Johnson 2026, Mar. Pollut. Bull. (doi 10.1016/j.marpolbul.2025.119050), northern Saudi reef sites carrying 42.6% more coral cover than comparable central ones</td></tr>
+  <tr><td class="what">How big each one is</td>
+  <td><span class="tag" style="color:#8a2a2a;background:#f9e9e9">chosen</span></td>
+  <td class="value">grown</td><td class="from">a draw against the prototype&#x27;s own size, capped by the depth band; nobody measured any of these</td></tr>
+  <tr><td class="what">What it covers</td>
+  <td><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span></td>
+  <td class="value">22.9% over 3,747,412 m²</td><td class="from">the reef habitat this place was planted into, which is what a transect figure is cover of — all the colony area over all the reef habitat, saturated as 1 - exp(-A/G) because colonies are scattered rather than tiled</td></tr>
+  <tr><td class="what">Whether it got the cover its map asked for</td>
+  <td><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span></td>
+  <td class="value">no — 2.98× short</td><td class="from">5,065,268 colonies needed, 1,700,000 given. the colony ceiling binds: this reef is built at the density the budget allows and not at the cover its map asks for</td></tr>
+  <tr><td class="what">Which shapes grow here</td>
+  <td><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span></td>
+  <td class="value">red-sea</td><td class="from">The platform&#x27;s Red Sea mix, derived from Khalil, Bouwmeester and Berumen 2017 (PeerJ 5:e3410) line-intercept transects off Thuwal, 600 km south: Porites massive, Pocillopora branching, Acropora table on the slope. Pisapia, Osman and Johnson 2026 (Mar. Pollut. Bull., doi 10.1016/j.marpolbul.2025.119050) surveyed the same three genera on northern (NEOM-region) reef crests and slopes and found them present with larger massive Porites on the crest and more Pocillopora than the central reefs, so the mix stands for the north with those two shifts unmodelled; a NEOM transect with genus shares should replace it</td></tr>
+  <tr><td class="what">The water</td>
+  <td><span class="tag" style="color:#1a6b2a;background:#e8f4ea">measured</span></td>
+  <td class="value">Jerlov IA</td><td class="from">Kd(PAR) 0.039 per metre at the station off Duba (27.3 N, 34.8 E), 70 km south of Shushah and the clearest station in the basin: Overmans &amp; Agusti 2019, Photochem. Photobiol. 95:1267, doi 10.1111/php.13112</td></tr>
+</table>
+
+<footer>3 measured, 5 derived, 2 chosen · built by Coral City from this place&#x27;s own record · 2026-09-26T15:15:12+00:00</footer>

@@ -1,0 +1,30 @@
+{
+  "name": "shushah",
+  "surveyed": false,
+  "method": "Sentinel-2 satellite-derived bathymetry, Stumpf log-ratio, uncalibrated",
+  "source": "Copernicus Sentinel-2 S2B_T36RXR_20251110T082107_L2A",
+  "observedAt": "2025-11-10",
+  "cloudPercent": 0.004,
+  "centre": {
+    "latitude": 27.9366,
+    "longitude": 34.9108
+  },
+  "acrossMetres": 2000.0,
+  "sampleMetres": 3.914,
+  "bottomVisibleFraction": 0.6747,
+  "beyondOpticalDepthFraction": 0.0782,
+  "opticalLimitM": 22.0,
+  "deepestM": 60.0,
+  "shallowestM": -0.6,
+  "medianDetailM": 0.0,
+  "toCalibrate": "ICESat-2 ATL24 crosses this reef; two granules would pin the scale",
+  "colour": "shushah-colour.png",
+  "colourIs": "bottom reflectance with the water column taken back out, in the bands that survived it \u2014 structure, not true colour. Red is gone in four metres, so a reef in fifteen has no red left to recover and this cannot say what colour the coral is.",
+  "colourAsSeen": "shushah-as-seen.png",
+  "heightfield": {
+    "rows": 512,
+    "columns": 512,
+    "format": "little-endian float32, row major, south to north then west to east",
+    "file": "shushah.f32"
+  }
+}

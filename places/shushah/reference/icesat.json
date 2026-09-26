@@ -1,0 +1,19 @@
+{
+ "source": "ICESat-2 ATL24 v002, NASA NSIDC",
+ "licence": "public domain",
+ "what": "seafloor photons, refraction corrected, orthometric height",
+ "file": "icesat_depths.npy",
+ "columns": [
+  "x_m_east",
+  "y_m_north",
+  "height_m",
+  "sigma_tvu_m"
+ ],
+ "passes": 31,
+ "passesWithSeafloor": 16,
+ "photons": 7206,
+ "deepestM": 26.34,
+ "shallowestM": -0.1,
+ "medianUncertaintyM": 0.173,
+ "note": "depths along narrow tracks, not a grid. This does not replace a raster; it is what a raster can be checked against."
+}

@@ -1,0 +1,102 @@
+{
+  "source": "Allen Coral Atlas, global benthic and geomorphic maps",
+  "via": "https://allencoralatlas.org/geoserver/ows",
+  "licence": "CC BY 4.0",
+  "resolutionM": 10,
+  "fetched": true,
+  "centre": {
+    "latitude": 27.9366,
+    "longitude": 34.9108
+  },
+  "acrossMetres": 2000.0,
+  "texels": 4096,
+  "habitat": "habitat_4096.npy",
+  "classesAre": "the platform's own habitat codes, which a survey's polygons are also written as: 0 unmapped, 1 sediment, 3 seagrass, 4 rubble, 5 pavement, 6 aggregate reef",
+  "mappedAs": {
+    "Sand": 1,
+    "Microalgal Mats": 1,
+    "Seagrass": 3,
+    "Rubble": 4,
+    "Rock": 5,
+    "Coral/Algae": 6
+  },
+  "readThisFirst": "\"Coral/Algae\" is one class. Sentinel-2 cannot separate living coral from the algae growing on and beside it, so that figure is an upper bound on coral cover and not a measurement of it. It is written here under its own name rather than read as coral.",
+  "benthic": {
+    "polygons": 148,
+    "matched": 148,
+    "returned": 148,
+    "areaSqKmByClass": {
+      "Rubble": 0.23306,
+      "Rock": 0.19968,
+      "Coral/Algae": 0.13541,
+      "Sand": 0.06379,
+      "Seagrass": 0.00013
+    },
+    "mappedSqKm": 0.6321,
+    "onSiteShare": {
+      "Rubble": 0.0564,
+      "Rock": 0.05,
+      "Coral/Algae": 0.031,
+      "Sand": 0.0172,
+      "Seagrass": 0.0
+    },
+    "onSiteSqKm": {
+      "Rubble": 0.2257,
+      "Rock": 0.2,
+      "Coral/Algae": 0.1241,
+      "Sand": 0.0688,
+      "Seagrass": 0.0002
+    },
+    "unmappedShare": 0.8453,
+    "drawn": {
+      "Rubble": 20,
+      "Rock": 50,
+      "Coral/Algae": 58,
+      "Sand": 17,
+      "Seagrass": 3
+    }
+  },
+  "geomorphic": {
+    "polygons": 58,
+    "matched": 58,
+    "returned": 58,
+    "areaSqKmByClass": {
+      "Inner Reef Flat": 0.26694,
+      "Outer Reef Flat": 0.21299,
+      "Reef Slope": 0.09638,
+      "Sheltered Reef Slope": 0.08478,
+      "Terrestrial Reef Flat": 0.00625,
+      "Reef Crest": 0.00508,
+      "Back Reef Slope": 0.00341
+    },
+    "mappedSqKm": 0.6758,
+    "onSiteShare": {
+      "Inner Reef Flat": 0.0664,
+      "Outer Reef Flat": 0.0534,
+      "Reef Slope": 0.023,
+      "Sheltered Reef Slope": 0.0216,
+      "Terrestrial Reef Flat": 0.0016,
+      "Reef Crest": 0.0013,
+      "Back Reef Slope": 0.0009
+    },
+    "onSiteSqKm": {
+      "Inner Reef Flat": 0.2656,
+      "Outer Reef Flat": 0.2136,
+      "Reef Slope": 0.0918,
+      "Sheltered Reef Slope": 0.0863,
+      "Terrestrial Reef Flat": 0.0065,
+      "Reef Crest": 0.0052,
+      "Back Reef Slope": 0.0036
+    },
+    "unmappedShare": 0.8319,
+    "drawn": {
+      "Inner Reef Flat": 4,
+      "Outer Reef Flat": 12,
+      "Reef Slope": 15,
+      "Sheltered Reef Slope": 13,
+      "Terrestrial Reef Flat": 7,
+      "Reef Crest": 3,
+      "Back Reef Slope": 4
+    }
+  }
+}

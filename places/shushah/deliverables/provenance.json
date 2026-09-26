@@ -1,0 +1,170 @@
+{
+  "place": "shushah",
+  "madeBy": "Coral City",
+  "readThisFirst": "These are simulation outputs. The seabed is a real survey. The individual colonies are not real colonies: nothing in colonies.csv or colonies.geojson is an observation of a living animal, they are a draw from a cover figure. The field `measured` on each column below says which of the numbers here anybody went and looked at.",
+  "georeference": {
+    "frame": "metres east and north of the site centre",
+    "centre": {
+      "latitude": 27.9366,
+      "longitude": 34.9108
+    },
+    "acrossMetres": 2000.0,
+    "toLatitudeLongitude": "latitude = centre.latitude + northing / N, longitude = centre.longitude + easting / E, where N = 111132.92 - 559.82 cos(2 phi) + 1.175 cos(4 phi) and E = 111412.84 cos(phi) - 93.5 cos(3 phi), phi being the centre latitude in radians. This is the inverse of the expression the place was sampled with, so it is exact for this place rather than a re-projection of it.",
+    "datum": "WGS 84",
+    "verticalDatum": "mean sea level; z = 0 is the surface and depth is negative z"
+  },
+  "columns": {
+    "id": {
+      "measured": false,
+      "from": "an index; the reef has no names"
+    },
+    "latitude": {
+      "measured": false,
+      "from": "the colony's site-local position, projected back out by the transform above. Exact as a transform; the position itself is not an observation"
+    },
+    "longitude": {
+      "measured": false,
+      "from": "as latitude"
+    },
+    "eastingM": {
+      "measured": false,
+      "from": "where the reef builder put this colony"
+    },
+    "northingM": {
+      "measured": false,
+      "from": "as eastingM"
+    },
+    "depthM": {
+      "measured": false,
+      "from": "the seabed this place was built from"
+    },
+    "growthForm": {
+      "measured": false,
+      "from": "The platform's Red Sea mix, derived from Khalil, Bouwmeester and Berumen 2017 (PeerJ 5:e3410) line-intercept transects off Thuwal, 600 km south: Porites massive, Pocillopora branching, Acropora table on the slope. Pisapia, Osman and Johnson 2026 (Mar. Pollut. Bull., doi 10.1016/j.marpolbul.2025.119050) surveyed the same three genera on northern (NEOM-region) reef crests and slopes and found them present with larger massive Porites on the crest and more Pocillopora than the central reefs, so the mix stands for the north with those two shifts unmodelled; a NEOM transect with genus shares should replace it"
+    },
+    "acrossM": {
+      "measured": false,
+      "from": "a draw against the prototype's own size, capped by the depth band; nobody measured any of these"
+    },
+    "footprintM2": {
+      "measured": false,
+      "from": "the prototype's own plan area times the square of its scale"
+    }
+  },
+  "cover": {
+    "cellMetres": 5.0,
+    "measured": false,
+    "askedFor": 0.42069,
+    "from": "Allen Coral Atlas benthic map of this reef, 10 m, CC BY 4.0: over the 0.62 km2 of this 4 km2 site it maps, Rubble 36.5%, Rock 32.3%, Coral/Algae 20.0%, Sand 11.1%; inner reef flat 39.5%, outer reef flat 31.8%, reef slope 13.7%, sheltered slope 12.8%. Coral/Algae is one class and an upper bound on coral cover, not a measurement. No transect has been published for Shushah itself. Held against the northeastern Saudi Red Sea: Lin et al. 2023, Mar. Pollut. Bull. 196:115693 (doi 10.1016/j.marpolbul.2023.115693), visual census and BRUV across the NE Red Sea, mean 36% coral of which 32% stony and 4% soft; and Pisapia, Osman and Johnson 2026, Mar. Pollut. Bull. (doi 10.1016/j.marpolbul.2025.119050), northern Saudi reef sites carrying 42.6% more coral cover than comparable central ones",
+    "howItIsComputed": "colony plan areas summed into each cell and saturated as 1 - exp(-A/G): colonies are scattered rather than tiled, so they land on each other, and a cell whose colonies add to more than its area is fully covered rather than a hundred and forty per cent"
+  },
+  "ground": {
+    "surveyed": false,
+    "colourFrom": "derived: carbonate sand and turf-grown rock at their own reflectances, dimmed and reddened out with depth. Not a photograph of this place",
+    "hardnessFrom": "habitat polygons from a survey of this place, and the slope and relief of the seabed where the survey did not reach"
+  },
+  "builtBy": {
+    "make-site": {
+      "argv": [
+        "shushah",
+        "--heights",
+        "/Users/jalalirs/coral-city/reference/shushah/seabed_fitted.json",
+        "--centre",
+        "27.9366",
+        "34.9108",
+        "--across",
+        "2000",
+        "--most",
+        "512",
+        "--coral",
+        "1700000",
+        "--ground",
+        "/Users/jalalirs/coral-city/reference/shushah",
+        "--cover-from",
+        "Allen Coral Atlas benthic map of this reef, 10 m, CC BY 4.0: over the 0.62 km2 of this 4 km2 site it maps, Rubble 36.5%, Rock 32.3%, Coral/Algae 20.0%, Sand 11.1%; inner reef flat 39.5%, outer reef flat 31.8%, reef slope 13.7%, sheltered slope 12.8%. Coral/Algae is one class and an upper bound on coral cover, not a measurement. No transect has been published for Shushah itself. Held against the northeastern Saudi Red Sea: Lin et al. 2023, Mar. Pollut. Bull. 196:115693 (doi 10.1016/j.marpolbul.2023.115693), visual census and BRUV across the NE Red Sea, mean 36% coral of which 32% stony and 4% soft; and Pisapia, Osman and Johnson 2026, Mar. Pollut. Bull. (doi 10.1016/j.marpolbul.2025.119050), northern Saudi reef sites carrying 42.6% more coral cover than comparable central ones",
+        "--water",
+        "IA",
+        "--water-from",
+        "Kd(PAR) 0.039 per metre at the station off Duba (27.3 N, 34.8 E), 70 km south of Shushah and the clearest station in the basin: Overmans & Agusti 2019, Photochem. Photobiol. 95:1267, doi 10.1111/php.13112",
+        "--assemblage",
+        "red-sea",
+        "--assemblage-from",
+        "The platform's Red Sea mix, derived from Khalil, Bouwmeester and Berumen 2017 (PeerJ 5:e3410) line-intercept transects off Thuwal, 600 km south: Porites massive, Pocillopora branching, Acropora table on the slope. Pisapia, Osman and Johnson 2026 (Mar. Pollut. Bull., doi 10.1016/j.marpolbul.2025.119050) surveyed the same three genera on northern (NEOM-region) reef crests and slopes and found them present with larger massive Porites on the crest and more Pocillopora than the central reefs, so the mix stands for the north with those two shifts unmodelled; a NEOM transect with genus shares should replace it"
+      ],
+      "cwd": "/Users/jalalirs/coral-city",
+      "at": "2026-09-26T15:15:12+00:00"
+    }
+  },
+  "coverByForm": {
+    "reefGroundM2": 3747412.0,
+    "groundIs": "the reef habitat this place was planted into, which is what a transect figure is cover of",
+    "notTheSite": "Cover here is over that ground and not over the whole site. Quoting the site average instead would put Looe Key at a fifth of what its own transects say, because seven eighths of its square kilometre has no colonies for want of anybody having looked.",
+    "forms": {
+      "branching": {
+        "colonies": 153932,
+        "m2": 26911.51,
+        "coverOfReefGround": 0.00632
+      },
+      "sponge": {
+        "colonies": 116297,
+        "m2": 22530.57,
+        "coverOfReefGround": 0.00529
+      },
+      "plume": {
+        "colonies": 224159,
+        "m2": 4647.24,
+        "coverOfReefGround": 0.00109
+      },
+      "table": {
+        "colonies": 382487,
+        "m2": 225755.78,
+        "coverOfReefGround": 0.05304
+      },
+      "encrusting": {
+        "colonies": 214917,
+        "m2": 96616.92,
+        "coverOfReefGround": 0.0227
+      },
+      "massive": {
+        "colonies": 366566,
+        "m2": 311137.51,
+        "coverOfReefGround": 0.0731
+      },
+      "brain": {
+        "colonies": 156543,
+        "m2": 260878.75,
+        "coverOfReefGround": 0.06129
+      },
+      "rubble": {
+        "colonies": 39178,
+        "m2": 21090.26,
+        "coverOfReefGround": 0.00495
+      },
+      "fan": {
+        "colonies": 31375,
+        "m2": 3654.41,
+        "coverOfReefGround": 0.00086
+      },
+      "finger": {
+        "colonies": 14546,
+        "m2": 2436.83,
+        "coverOfReefGround": 0.00057
+      }
+    },
+    "allStanding": 0.22922,
+    "localCover": 0.25394,
+    "medianCover": 0.22707,
+    "occupiedM2": 2971525.0,
+    "colonyAreaOverGround": 0.26036,
+    "thicketM2": 467900.0,
+    "colonyAreaM2": 975659.8,
+    "biggerThanACell": 0,
+    "measuredBy": {
+      "cellM": 5.0,
+      "statistic": "mean over cells with reef in them, each saturated as 1 - exp(-A/G) because colonies are scattered rather than tiled",
+      "sameAs": "tools/reef.py cover_over, which is where the place's own coverWhereItGrows comes from"
+    },
+    "whatThePlaceSays": 0.22922,
+    "compareWith": "A transect's cover figure is the number to hold this against, and the two are not quite the same measurement: a transect records what is under a point, this records the plan area of every object a detector found standing above the seabed. Which of the growth forms below counts as stony coral is a question about the *classifier*, not about these numbers."
+  }
+}
