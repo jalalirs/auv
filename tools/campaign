@@ -357,6 +357,8 @@ PAGE = """<!doctype html>
 <style>%(style)s
   .grid { display: grid; gap: 1px; margin: 0 0 1rem; max-width: 34rem; }
   .grid i { display: block; aspect-ratio: 1; }
+  .key i { display: inline-block; width: .8rem; height: .8rem; vertical-align: -1px;
+           margin-right: .3rem; }
 </style>
 <h1>%(name)s</h1>
 <p class="where">%(where)s</p>
@@ -372,6 +374,7 @@ a dive to have been flown are absent until one has.</p>
 
 <h2>%(ground)s</h2>
 <figure>%(picture)s<figcaption>%(caption)s</figcaption></figure>
+<p class="key">%(legend)s</p>
 
 <h2>What it takes</h2>
 <table>
@@ -389,7 +392,7 @@ plan — so the arithmetic stops where the evidence does.</footer>
 """
 
 
-def a_picture(grid: dict, covered: dict | None = None) -> tuple[str, str]:
+def a_picture(grid: dict, covered: dict | None = None) -> tuple[str, str, str]:
     """The grid, drawn: worked cells against the rest.
 
     Small and plain, because the point is the shape of the work — where the
@@ -431,6 +434,14 @@ def a_picture(grid: dict, covered: dict | None = None) -> tuple[str, str]:
                 colour = "#dfe7ee"                       # water, nothing to work
             out.append('<i style="background:%s" title="%s"></i>' % (colour, title))
     out.append("</div>")
+    legend = "".join(
+        '<span><i style="background:%s"></i>%s</span>&nbsp;&nbsp;' % (colour, what)
+        for colour, what in (
+            (("#1a6b2a", "covered"), ("#b04a4a", "planned and missed"),
+             ("#cfe0cf", "passed over, not planned"), ("#dfe7ee", "not in the plan"))
+            if covered is not None else
+            (("#1a6b2a", "to work, darker where there is more coral"),
+             ("#dfe7ee", "water with nothing to work"), ("#efe6d8", "land"))))
     if covered is None:
         caption = ("%d cells of %.0f m · %d to work, shaded by how many colonies are "
                    "in them · %d dry, %d wet with nothing to work"
@@ -443,7 +454,7 @@ def a_picture(grid: dict, covered: dict | None = None) -> tuple[str, str]:
                    + (", %d cells passed over that were not in the plan"
                       % covered["cellsOutsideThePlan"]
                       if covered["cellsOutsideThePlan"] else ""))
-    return "".join(out), caption
+    return "".join(out), caption, legend
 
 
 def rows_of(said: dict, cost: dict, grid: dict) -> list[tuple]:
@@ -535,7 +546,7 @@ def page(grid: dict, said: dict, cost: dict, order: list[dict],
                    'point.</strong> %s. Fly one and give it to this with '
                    '<code>--cost</code>.</p>' % html.escape(said["cannotSay"]))
 
-    picture, caption = a_picture(grid, covered)
+    picture, caption, legend = a_picture(grid, covered)
     if covered is not None:
         share = covered["cellsCovered"] / max(1, len(grid["working"]))
         big.append(("%d%%" % round(100 * share), "of the grid covered"))
@@ -572,7 +583,7 @@ def page(grid: dict, said: dict, cost: dict, order: list[dict],
         "where": html.escape(" · ".join(where)),
         "warning": warning, "headline": headline,
         "ground": "What was covered" if covered is not None else "The ground",
-        "picture": picture, "caption": html.escape(caption),
+        "picture": picture, "caption": html.escape(caption), "legend": legend,
         "rows": rows, "order": html.escape(order_said),
         "order_head": "Where to plant next" if how != "lanes" else "The order",
         "proof": proof_of(covered, grid),
