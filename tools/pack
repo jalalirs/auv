@@ -56,6 +56,16 @@ def a_line(kind: str, where: pathlib.Path) -> str:
             measured = sum(1 for one in columns.values()
                            if one.get("measured") or one.get("kind") == "measured")
             return f"{len(columns)} claims, {measured} of them measured"
+        if kind == "the water":
+            said = json.loads((where.parent / "mission.json").read_text())
+            counted = number(said, "conditions", "cameFrom", "counted") or {}
+            if not counted:
+                return "—"
+            # In the order that matters: what nobody set, first.
+            return " · ".join(
+                "%d %s" % (counted[word], word)
+                for word in ("assumed", "chosen", "derived", "measured")
+                if counted.get(word))
         if kind == "a dive":
             said = json.loads((where.parent / "mission.json").read_text())
             task = said.get("task") or {}
