@@ -1187,6 +1187,27 @@ class Dive:
         parameters = {}
         if isinstance(conditions, dict):
             parameters = conditions.get("parameters") or {}
+        # Where each of these numbers came from, kept before anything is
+        # defaulted. The control plane has always known that conditions are
+        # either observed at an instant or constructed by somebody, and it
+        # refuses the ones that claim the wrong thing — but the runtime read
+        # only `parameters` and threw the claim away, so a dive record showed
+        # 1025 kg/m3 whether a CTD measured it or the runtime made it up.
+        # Those are not the same dive and the record should not say they are.
+        said = conditions if isinstance(conditions, dict) else {}
+        self.conditions_kind = str(said.get("kind") or "constructed")
+        self.observed_at = said.get("observedAt") or None
+        self.condition_sources = [one for one in (said.get("sources") or [])
+                                  if isinstance(one, dict)]
+        # Stated means somebody put a number there. An empty string is the
+        # form a blank field arrives in and is not a statement.
+        self.stated = {key for key, value in parameters.items()
+                       if value not in (None, "")}
+        # Nothing measures a current: not a satellite, not a wave buoy. When
+        # the conditions say so out loud, an observed set still does not get
+        # to call its current measured.
+        self.current_measured = bool(parameters.get("currentMetresPerSecond")) and \
+            not parameters.get("currentNotMeasured")
         speed = float(parameters.get("currentMetresPerSecond", 0.0) or 0.0)
         # The heading a current is named by is where it flows towards, from
         # north, clockwise — the way a current is written on a chart.
@@ -1230,6 +1251,9 @@ class Dive:
                                   "forS": said.get("forS")})
         self.dead_thrusters: set[int] = set()
         self.sensors_out_until = 0.0
+        # Said once, at the top of the log, because a reader who scrolls past
+        # `water_is` should not have to guess whether anybody measured it.
+        self.say("conditions_from", **self.where_conditions_came_from())
 
     def things_go_wrong(self) -> None:
         """Apply whatever the conditions said would fail, when it said."""
@@ -1385,6 +1409,83 @@ class Dive:
             return self.density
         return density_of(float(self.salinity_psu), float(warm), max(0.0, float(depth_m)))
 
+    # What each field of the conditions would have been if nobody had said.
+    # Named, because "assumed" on its own tells you a number is not yours
+    # without telling you what stood in for it.
+    INSTEAD = {"currentMetresPerSecond": "still water",
+               "currentHeadingDeg": "still water",
+               "visibilityM": "whatever the water type gives",
+               "waterType": "the place's own water",
+               "significantWaveHeightM": "a flat surface",
+               "waveMeanPeriodS": "a flat surface",
+               "temperatureC": "unstated, so the density constant stands",
+               "salinityPsu": "unstated, so the density constant stands",
+               "densityKgM3": "ordinary seawater",
+               "depthGaugeDensityKgM3": "a gauge right for the water it is in"}
+
+    def where_conditions_came_from(self) -> dict:
+        """Which of this dive's conditions were measured, and which were chosen.
+
+        The same discipline the place pages apply to a reef, applied to a run.
+        Four words, and the fourth is the one that matters: *measured* is an
+        instrument reading with an instant on it, *derived* is computed from
+        measured things, *chosen* is a person putting a number in a field, and
+        *assumed* is nobody saying anything and the runtime's default standing
+        in unannounced. A dive that reads as still water because the sea was
+        calm and one that reads as still water because the current box was
+        empty are different claims, and only this tells them apart.
+        """
+        observed = self.conditions_kind == "observed"
+        # An instrument per field, where the conditions named one. Sources
+        # written before this existed name a field in prose rather than by
+        # key; those still count as measured, they just cannot say by what.
+        instrument = {}
+        for one in self.condition_sources:
+            key = one.get("parameter")
+            if isinstance(key, str) and key:
+                instrument[key] = {k: one[k] for k in ("at", "from", "through")
+                                   if one.get(k)}
+
+        def how(key: str) -> dict:
+            if key not in self.stated:
+                return {"how": "assumed", "instead": self.INSTEAD.get(key, "the runtime's default")}
+            if not observed:
+                return {"how": "chosen"}
+            told = {"how": "measured"}
+            if self.observed_at:
+                told["at"] = self.observed_at
+            told.update(instrument.get(key, {}))
+            return told
+
+        fields = {key: how(key) for key in
+                  ("currentMetresPerSecond", "currentHeadingDeg", "visibilityM",
+                   "waterType", "significantWaveHeightM", "waveMeanPeriodS",
+                   "temperatureC", "salinityPsu")}
+        # A current is the one thing nothing in the water measures. An
+        # observed set that says so is still telling the truth about the rest.
+        for key in ("currentMetresPerSecond", "currentHeadingDeg"):
+            if fields[key]["how"] == "measured" and not self.current_measured:
+                fields[key] = {"how": "chosen"}
+        # Density is the whole argument in one field: stated outright, worked
+        # out of a CTD's two numbers, or the constant nobody asked for.
+        if "densityKgM3" in self.stated:
+            fields["densityKgM3"] = how("densityKgM3")
+        elif self.salinity_psu is not None and self.temperature_c is not None:
+            fields["densityKgM3"] = {"how": "derived", "fromFields": ["salinityPsu", "temperatureC"],
+                                     "by": "the equation of state"}
+        else:
+            fields["densityKgM3"] = how("densityKgM3")
+        fields["depthGaugeDensityKgM3"] = (how("depthGaugeDensityKgM3")
+                                           if "depthGaugeDensityKgM3" in self.stated
+                                           else {"how": "assumed",
+                                                 "instead": self.INSTEAD["depthGaugeDensityKgM3"]})
+        counted = {"measured": 0, "derived": 0, "chosen": 0, "assumed": 0}
+        for told in fields.values():
+            counted[told["how"]] = counted[told["how"]] + 1
+        return {"kind": self.conditions_kind,
+                **({} if self.observed_at is None else {"observedAt": self.observed_at}),
+                "fields": fields, "counted": counted}
+
     def conditions_said(self) -> dict:
         speed = float(np.hypot(self.current[0], self.current[1]))
         heading = (90.0 - np.degrees(np.arctan2(self.current[1], self.current[0]))) % 360.0 if speed > 1e-9 else 0.0
@@ -1402,6 +1503,7 @@ class Dive:
             said["temperatureC"] = round(float(self.temperature_c), 2)
         if abs(self.depth_gauge_density - self.density) > 1e-9:
             said["depthGaugeDensityKgM3"] = round(float(self.depth_gauge_density), 3)
+        said["cameFrom"] = self.where_conditions_came_from()
         return said
 
     def begin_task(self, objective, again: bool = False) -> None:
