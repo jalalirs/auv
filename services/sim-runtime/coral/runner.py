@@ -500,6 +500,7 @@ class Dive:
         # The sonar, if the vehicle carries one. Built once the packages are
         # read, because it is described by the vehicle's own package.
         self.sonar = None
+        self.multibeam = None
         # The thin pipe to the surface, if the vehicle carries one.
         self.modem = None
         # And the instrument that reads the water it is flying in.
@@ -1534,6 +1535,7 @@ class Dive:
             self.switch_on_the_ctd()
             self.switch_on_the_modem()
             self.switch_on_the_sonar()
+            self.switch_on_the_multibeam()
             self.run_out_the_tether()
             self.began_with_wh = (0.0 if self.battery is None else self.battery.remaining_wh)
         # Every task that is about the coral rather than about the ground.
@@ -2093,6 +2095,29 @@ class Dive:
         self.sonar = Sonar(said, seed=int(self.brief.get("seed", 0)))
         self.say("sonar_on", **self.sonar.said())
 
+    def switch_on_the_multibeam(self) -> None:
+        """And the downward-looking swath, if the package says it has one.
+
+        A separate instrument and a separate question. The forward sonar is
+        so a controller can avoid what nobody told it about; this is what a
+        survey is actually bought for, and what it leaves behind is a chart.
+        """
+        import json
+
+        from multibeam import Multibeam
+
+        try:
+            described = json.loads((pathlib.Path(self.brief.get("vehiclePath", "/dive/vehicle"))
+                                    / "dynamics.json").read_text())
+            said = next((one for one in described.get("sensors", [])
+                         if one.get("kind") == "multibeam"), None)
+        except Exception:
+            said = None
+        if said is None:
+            return
+        self.multibeam = Multibeam(said, seed=int(self.brief.get("seed", 0)))
+        self.say("multibeam_on", **self.multibeam.said())
+
     def run_out_the_tether(self) -> None:
         """Put the cable in the water, if this vehicle is on one.
 
@@ -2547,6 +2572,11 @@ class Dive:
         # The sonar pings at its own rate, before anything is asked of the
         # controller: what it commands on is what the instrument last said.
         self.read_the_ctd()
+        if self.multibeam is not None and self.multibeam.due(self.simulated):
+            swath = self.multibeam.ping(self.simulated, self.position,
+                                        self.rotation, self.seabed)
+            if self.recorder is not None and swath["beams"]:
+                self.recorder.sounded(swath)
         if self.sonar is not None and self.sonar.due(self.simulated):
             self.sonar.ping(self.simulated, self.position, self.rotation,
                             self.world, self.seabed)

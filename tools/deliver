@@ -839,7 +839,94 @@ def stills_from(recording: pathlib.Path, into: pathlib.Path, how_many: int = 2) 
     return kept
 
 
-def mission_provenance(has_planting: bool, has_coverage: bool) -> dict:
+def soundings_of(recording: pathlib.Path) -> list[dict]:
+    """Every swath the multibeam kept, as it kept them."""
+    where = recording / "soundings.jsonl"
+    if not where.is_file():
+        return []
+    kept = []
+    for line in where.read_text().splitlines():
+        line = line.strip()
+        if line.startswith("{"):
+            kept.append(json.loads(line))
+    return kept
+
+
+def bathymetry_file(into: pathlib.Path, swaths: list[dict], centre: dict,
+                    cell_m: float = 0.5) -> dict | None:
+    """The soundings, gridded, as a chart anybody can open.
+
+    An ESRI ASCII grid, because that is what every GIS reads and it needs no
+    library to write. The cell is half a metre by default: fine enough to be
+    worth having off a multibeam and coarse enough that a survey of a few
+    hundred metres is a file somebody can open.
+
+    A cell with no sounding in it is **NODATA** and not an interpolation.
+    Filling a hole with the average of its neighbours makes a chart that
+    looks complete and is not, which is the same fault as letting a gap in
+    the coverage look like water — and on a bathymetric chart it is worse,
+    because somebody navigates off it.
+    """
+    xs, ys, depths = [], [], []
+    for swath in swaths:
+        xs.extend(swath.get("x") or [])
+        ys.extend(swath.get("y") or [])
+        depths.extend(swath.get("depthM") or [])
+    if not depths:
+        return None
+    xs, ys, depths = np.array(xs), np.array(ys), np.array(depths)
+    west, east = float(xs.min()), float(xs.max())
+    south, north = float(ys.min()), float(ys.max())
+    columns = max(1, int(math.ceil((east - west) / cell_m)) + 1)
+    rows = max(1, int(math.ceil((north - south) / cell_m)) + 1)
+
+    total = np.zeros((rows, columns))
+    count = np.zeros((rows, columns))
+    column = np.clip(((xs - west) / cell_m).astype(int), 0, columns - 1)
+    row = np.clip(((ys - south) / cell_m).astype(int), 0, rows - 1)
+    np.add.at(total, (row, column), depths)
+    np.add.at(count, (row, column), 1)
+    grid = np.where(count > 0, total / np.maximum(count, 1), float(NODATA))
+
+    lines = ["ncols        %d" % columns,
+             "nrows        %d" % rows,
+             "xllcorner    %.4f" % west,
+             "yllcorner    %.4f" % south,
+             "cellsize     %.4f" % cell_m,
+             "NODATA_value %d" % NODATA]
+    for at in range(rows - 1, -1, -1):
+        lines.append(" ".join("%.3f" % v for v in grid[at]))
+    (into / "bathymetry.asc").write_text("\n".join(lines) + "\n")
+    (into / "bathymetry.prj").write_text(
+        (into / "cover.prj").read_text() if (into / "cover.prj").is_file()
+        else projection_of(centre))
+    filled = int((count > 0).sum())
+    return {"soundings": int(len(depths)), "cellM": cell_m,
+            "rows": rows, "columns": columns,
+            "cellsWithASounding": filled,
+            "cellsEmpty": int(rows * columns - filled),
+            "shallowestM": round(float(depths.min()), 3),
+            "deepestM": round(float(depths.max()), 3),
+            "swaths": len(swaths)}
+
+
+def projection_of(centre: dict) -> str:
+    """Metres east and north of the site's centre, said the way a GIS reads."""
+    return ('PROJCS["%(name)s site-local",'
+            'GEOGCS["WGS 84",DATUM["WGS_1984",'
+            'SPHEROID["WGS 84",6378137,298.257223563]],'
+            'PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],'
+            'PROJECTION["Azimuthal_Equidistant"],'
+            'PARAMETER["latitude_of_center",%(lat).8f],'
+            'PARAMETER["longitude_of_center",%(lon).8f],'
+            'PARAMETER["false_easting",0],PARAMETER["false_northing",0],'
+            'UNIT["metre",1]]\n'
+            % {"name": centre.get("name", "site"),
+               "lat": float(centre["latitude"]), "lon": float(centre["longitude"])})
+
+
+def mission_provenance(has_planting: bool, has_coverage: bool,
+                       has_bathymetry: bool = False) -> dict:
     """What each column of a mission's product is. Not one of them is a
     measurement of a real reef, and the file says so first."""
     columns = {
@@ -862,6 +949,12 @@ def mission_provenance(has_planting: bool, has_coverage: bool) -> dict:
     if has_coverage:
         columns["coverage.geojson"] = {"kind": TRUTH,
             "from": "the cells the camera's footprint actually passed over"}
+    if has_bathymetry:
+        columns["bathymetry.asc"] = {"kind": "measured by the instrument",
+            "from": "the multibeam's own soundings, gridded. A cell with no "
+                    "sounding is NODATA and not an interpolation: a chart that "
+                    "looks complete and is not is worse than a chart with holes, "
+                    "because somebody navigates off it"}
     return {
         "about": "A flown mission, in a simulator. Nothing here is an observation of a "
                  "real reef or a real vehicle: it is what happened in a model whose "
@@ -957,6 +1050,8 @@ WHAT_A_FILE_IS = {
     "planting.csv": "every coral: the mark, where it actually went, and the miss",
     "planting.geojson": "the same, as points",
     "coverage.geojson": "the ground the camera actually passed over",
+    "bathymetry.asc": "the multibeam's soundings as a chart; holes are holes",
+    "bathymetry.prj": "what its coordinates mean",
     "conditions.html": "the water it was flown in, and who said so",
     "mission.json": "the whole result in one object",
     "provenance.json": "what every column above is",
@@ -983,6 +1078,13 @@ def deliver_dive(recording: pathlib.Path, into: pathlib.Path) -> dict:
     track = track_files(into, poses, centre, manifest.get("positioning"))
     planting = planting_files(into, geometry, achieved, centre)
     coverage = coverage_file(into, geometry, centre)
+    # And the chart, when the vehicle carried a multibeam. This is the one
+    # product on the list that is a *measurement* rather than a record of
+    # what the simulator did: an instrument was modelled, it returned
+    # soundings with errors that grow off nadir, and the grid is what those
+    # soundings make. Still a simulated instrument — but the thing being
+    # tested by it is the survey plan, and that is a geometry question.
+    bathymetry = bathymetry_file(into, soundings_of(recording), centre)
 
     conditions = manifest.get("conditions") or {}
     came = conditions.get("cameFrom") or {}
@@ -996,11 +1098,13 @@ def deliver_dive(recording: pathlib.Path, into: pathlib.Path) -> dict:
 
     summary = {"place": place, "task": task, "seconds": manifest.get("seconds"),
                "track": track, "planting": planting, "coverage": coverage,
+               "bathymetry": bathymetry,
                "conditions": conditions,
                "files": sorted(p.name for p in into.iterdir())}
     (into / "mission.json").write_text(json.dumps(summary, indent=2) + "\n")
     (into / "provenance.json").write_text(json.dumps(
-        mission_provenance(planting is not None, coverage is not None), indent=2) + "\n")
+        mission_provenance(planting is not None, coverage is not None,
+                           bathymetry is not None), indent=2) + "\n")
     # The one document: the numbers, the map, the water, and what else is in
     # the folder. A funder is not going to open eight files.
     (into / "report.html").write_text(
@@ -1037,6 +1141,11 @@ def flown(recording: pathlib.Path, into: pathlib.Path | None) -> int:
         seen = made["coverage"]
         print(f"    {seen['seen']:,} of {seen['cells']:,} cells seen "
               f"({100 * seen['fraction']:.1f}%)")
+    if made.get("bathymetry"):
+        chart = made["bathymetry"]
+        print(f"    {chart['soundings']:,} soundings over {chart['swaths']:,} swaths → "
+              f"{chart['rows']}x{chart['columns']} at {chart['cellM']:.2f} m, "
+              f"{chart['cellsEmpty']:,} cells with nothing in them")
     for one in made["files"]:
         print(f"    {into / one}")
     print()
