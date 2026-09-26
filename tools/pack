@@ -218,14 +218,78 @@ def page(name: str, where: pathlib.Path, found: list[dict]) -> str:
     }
 
 
+def run(what: list[str]) -> tuple[int, str]:
+    """One of this repository's own tools, with its say kept."""
+    import subprocess
+
+    done = subprocess.run([sys.executable, *[str(one) for one in what]],
+                          capture_output=True, text=True)
+    return done.returncode, (done.stdout + done.stderr).strip()
+
+
+def assemble(place: pathlib.Path, dives: pathlib.Path | None, into: pathlib.Path,
+             cell: float, order: str) -> None:
+    """Build the pack, in the order the pieces depend on each other.
+
+    Worked out by hand the first time and then written down, because a
+    chain that lives in somebody's shell history is a chain that is run
+    differently the second time. Every step's refusal is printed and none
+    of them stops the rest: a pack is worth having with four of its six
+    pages, and the index says which four.
+    """
+    into.mkdir(parents=True, exist_ok=True)
+    steps = [
+        ("the reef's own product",
+         [HERE / "deliver", place, "--into", into]),
+        ("what anybody measured about it",
+         [HERE / "provenance", place.name, "--into", into]),
+    ]
+    if dives is not None:
+        steps.append(("every dive flown here",
+                      [HERE / "deliver", "--every-dive", dives, "--into", into]))
+    for what, command in steps:
+        code, said = run(command)
+        print(f"  {'·' if code == 0 else '—'} {what}")
+        for line in said.splitlines()[-3:]:
+            print(f"      {line}")
+
+    # The campaign last, because it is costed off a dive and checked
+    # against every dive, so both have to be here first.
+    flown = sorted(one for one in into.iterdir()
+                   if one.is_dir() and (one / "mission.json").is_file())
+    campaign = [HERE / "campaign", place, "--cell", str(cell), "--order", order,
+                "--flown", into, "--into", into / "campaign"]
+    if flown:
+        campaign += ["--cost", flown[0] / "mission.json"]
+    code, said = run(campaign)
+    print(f"  {'·' if code == 0 else '—'} the whole grid")
+    for line in said.splitlines()[-4:]:
+        print(f"      {line}")
+
+
 def main() -> int:
     parse = argparse.ArgumentParser(
         description="everything a place has produced, as one page with links")
-    parse.add_argument("where", help="a deliverables directory")
+    parse.add_argument("where", help="a deliverables directory, or where to build one")
     parse.add_argument("--name", default=None)
+    parse.add_argument("--for", dest="place", default=None,
+                       help="a place: build the whole pack here rather than "
+                            "indexing what is already in it")
+    parse.add_argument("--dives", default=None,
+                       help="a directory of recordings, delivered into the pack")
+    parse.add_argument("--cell", type=float, default=40.0)
+    parse.add_argument("--order", choices=("lanes", "suitability"), default="lanes")
     asked = parse.parse_args()
 
     where = pathlib.Path(asked.where).expanduser()
+    if asked.place:
+        place = pathlib.Path(asked.place).expanduser()
+        if not (place / "site.json").is_file():
+            print(f"no place at {place}", file=sys.stderr)
+            return 1
+        assemble(place, None if asked.dives is None
+                 else pathlib.Path(asked.dives).expanduser(),
+                 where, asked.cell, asked.order)
     if not where.is_dir():
         print(f"nothing at {where}", file=sys.stderr)
         return 1
