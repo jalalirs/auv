@@ -258,7 +258,7 @@ DYNAMICS = {
         },
         {
             "kind": "multibeam",
-            "name": "/multibeam/soundings",
+            "name": "downward_swath",
             "beams": 256,
             "halfSwathDeg": 60.0,
             "rangeM": [
@@ -273,7 +273,9 @@ DYNAMICS = {
                 0.0,
                 -0.1
             ],
-            "note": "a downward swath, for survey. The forward sonar is for avoiding things; this is for charting the bottom."
+            "note": "a downward swath, for survey. The forward sonar is for avoiding things; this is for charting the bottom.",
+            "watts": 28.0,
+            "topic": "/multibeam/soundings"
         }
     ],
     "topicContract": {
@@ -407,7 +409,7 @@ VEHICLE = Vehicle(
         Sensor('imu', 'body'),
         Sensor('barometer', 'depth'),
         Sensor('ctd', 'ctd'),
-        Sensor('multibeam', '/multibeam/soundings'),
+        Sensor('multibeam', 'downward_swath'),
     ),
     publishes=(
         Topic('/camera/image_raw', 'sensor_msgs/msg/Image', ''),
