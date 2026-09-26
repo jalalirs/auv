@@ -131,13 +131,34 @@ class Transect(Task):
         self.tolerance = math.radians(float(objective.get("headingToleranceDeg", 10.0)))
         self.ahead_xy = np.array(self.ahead())
         self.line_heading = math.atan2(self.ahead_xy[1], self.ahead_xy[0])
+        # Where this leg's line starts, and which way it runs — both settled
+        # when the leg starts and not when the dive did.
+        #
+        # This was `began_at`, which inside a mission is where the *dive*
+        # began and not where the previous stage left the vehicle. `Reach`
+        # has carried a comment about exactly this for months; a transect
+        # did not, and nothing noticed because until there was a mission
+        # with more than one stage in it the two were the same place. After
+        # a leg that had already run along the line, `along` began at some
+        # positive number, the transect ended immediately, and it scored
+        # zero for a reason that had nothing to do with the flying.
+        #
+        # An unstated heading is the one the vehicle has when the leg
+        # begins, which is also what it was before for a dive of one stage.
+        self.stated_heading = objective.get("headingDeg") is not None
+        self.from_at: np.ndarray | None = None
         self.along = 0.0
         self.good = 0.0
         self.last_along: float | None = None
         self.altitude_now: float | None = None
 
     def judge(self, elapsed, position, heading, floor) -> None:
-        along = float(np.dot(position[:2] - self.began_at[:2], self.ahead_xy))
+        if self.from_at is None:
+            self.from_at = position[:2].copy()
+            if not self.stated_heading:
+                self.line_heading = float(heading)
+                self.ahead_xy = np.array([math.cos(heading), math.sin(heading)])
+        along = float(np.dot(position[:2] - self.from_at, self.ahead_xy))
         along = max(0.0, min(self.length, along))
         self.altitude_now = None if floor is None else float(position[2] - floor)
         in_band = self.altitude_now is not None and abs(self.altitude_now - self.altitude) <= self.band
@@ -161,14 +182,20 @@ class Transect(Task):
                 "altitudeM": self.altitude, "altitudeBandM": self.band,
                 "headingToleranceDeg": round(math.degrees(self.tolerance), 1)}
 
+    def starts_at(self) -> np.ndarray:
+        """Where the line begins: where this leg did, once it has."""
+        return self.began_at[:2] if self.from_at is None else self.from_at
+
     def geometry(self) -> dict:
-        end = self.began_at[:2] + self.ahead_xy * self.length
-        return {"line": [{"x": float(self.began_at[0]), "y": float(self.began_at[1])},
+        start = self.starts_at()
+        end = start + self.ahead_xy * self.length
+        return {"line": [{"x": float(start[0]), "y": float(start[1])},
                          {"x": float(end[0]), "y": float(end[1])}]}
 
     def goal(self) -> dict:
-        end = self.began_at[:2] + self.ahead_xy * self.length
-        return {"kind": "line", "from": [float(v) for v in self.began_at[:2]],
+        start = self.starts_at()
+        end = start + self.ahead_xy * self.length
+        return {"kind": "line", "from": [float(v) for v in start],
                 "to": [float(end[0]), float(end[1])], "altitudeM": self.altitude}
 
 
