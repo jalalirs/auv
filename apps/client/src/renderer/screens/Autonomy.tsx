@@ -58,6 +58,9 @@ export function Autonomy({ held }: { held: Held }): React.JSX.Element {
                           flew.struck > 0 ? `${flew.struck} struck` : undefined,
                           flew.lastAt === undefined ? undefined : `last ${ago(flew.lastAt)}`,
                         ].filter(Boolean).join(" · ")}
+                    {flew.neverFlew > 0
+                      ? ` · ${flew.neverFlew} never flew (the platform could not start them)`
+                      : ""}
                   </span>
                   <Pill kind={needs.gpu || newest.wantsGpu ? "busy" : undefined}>{card}</Pill>
                 </div>

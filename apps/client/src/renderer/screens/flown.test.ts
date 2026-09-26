@@ -8,8 +8,8 @@ import { describe, expect, it } from "vitest";
 
 import { recordOf } from "./flown.js";
 
-const run = (state: string, outcome: unknown, at: string) =>
-  ({ state, outcome, requestedAt: at } as never);
+const run = (state: string, outcome: unknown, at: string, failureReason?: string) =>
+  ({ state, outcome, requestedAt: at, failureReason } as never);
 
 const RUNS = [
   { name: "bench · quick · reach", flownBy: "Station hold",
@@ -18,9 +18,10 @@ const RUNS = [
   { name: "bench · quick · dock", flownBy: "Station hold",
     run: run("succeeded", { task: { score: 0.4, energyWh: 6 }, navigation: { driftM: 4 },
                             hit: { things: 0 } }, "2026-09-21T10:00:00Z") },
-  // Asked for and never finished: counted as a dive, not as a score.
+  // Its own controller broke: counted as a dive, not as a score.
   { name: "bench · quick · transect", flownBy: "Station hold",
-    run: run("failed", {}, "2026-09-22T10:00:00Z") },
+    run: run("failed", {}, "2026-09-22T10:00:00Z",
+             "the controller started and then stopped, so nothing flew this dive") },
   { name: "somebody else's", flownBy: "Sonar follow",
     run: run("succeeded", { task: { score: 0.1 } }, "2026-09-19T10:00:00Z") },
   { name: "flown by hand", flownBy: "by hand",
@@ -55,7 +56,36 @@ describe("what a controller has flown", () => {
   it("has nothing to say about a controller that has never flown", () => {
     const said = recordOf("Deployed yesterday", RUNS);
     expect(said).toEqual({ dives: 0, succeeded: 0, score: undefined, driftM: undefined,
-                           energyWh: undefined, struck: 0, lastAt: undefined });
+                           energyWh: undefined, struck: 0, lastAt: undefined,
+                           neverFlew: 0 });
+  });
+
+  it("does not count a dive the platform could not start against it", () => {
+    // Not somebody's controller flying badly. Counting it as one of that
+    // controller's dives puts the wrong name on a number — but it is not
+    // hidden either.
+    const ours = [{ name: "x", flownBy: "Station hold",
+                    run: run("failed", {}, "2026-09-23T10:00:00Z",
+                             "the simulator could not be started: no such image") }];
+    const said = recordOf("Station hold", ours);
+    expect(said.dives).toBe(0);
+    expect(said.neverFlew).toBe(1);
+  });
+
+  it("does count a dive its own controller broke", () => {
+    const ours = [{ name: "x", flownBy: "Station hold",
+                    run: run("failed", {}, "2026-09-23T10:00:00Z",
+                             "the controller started and then stopped, so nothing "
+                             + "flew this dive: AttributeError") }];
+    const said = recordOf("Station hold", ours);
+    expect(said.dives).toBe(1);
+    expect(said.neverFlew).toBe(0);
+  });
+
+  it("does not pin an unexplained failure on a controller", () => {
+    const ours = [{ name: "x", flownBy: "Station hold",
+                    run: run("failed", {}, "2026-09-23T10:00:00Z") }];
+    expect(recordOf("Station hold", ours).dives).toBe(0);
   });
 
   it("does not invent a score from dives that carried no task", () => {

@@ -28,9 +28,34 @@ export interface Record_ {
   struck: number;
   /** When it last flew, or nothing if it never has. */
   lastAt: string | undefined;
+  /** Dives the platform could not start. Not this controller's failures, so
+   *  not counted among its dives — but not hidden either. */
+  neverFlew: number;
 }
 
 type Flight = { name: string; flownBy: string; run: Run };
+
+// What a failure is about, by what the agent said when it gave up.
+//
+// The agent writes these sentences in one place — services/worker's diver —
+// and both this and `tools/bench` read them. Two matchers on one wire
+// format, which is what a wire format is for; what must not happen is two
+// different ideas of whose failure it was.
+//
+// A dive the platform could not start is not somebody's controller flying
+// badly, and counting it as one of that controller's dives puts the wrong
+// name on a number. Unknown counts as the platform's: attributing a failure
+// to a controller on a guess is the one direction that must not be guessed.
+const THEIRS = [
+  "the controller started and then stopped",
+  "defined with a controller and it would not start",
+  "defined with a controller and the vehicle never came up",
+];
+
+function theirFault(run: Run): boolean {
+  const why = String((run as { failureReason?: string }).failureReason ?? "").toLowerCase();
+  return THEIRS.some((one) => why.includes(one));
+}
 
 function mean(values: number[]): number | undefined {
   return values.length === 0 ? undefined
@@ -46,7 +71,9 @@ function mean(values: number[]): number | undefined {
  * telling the truth rather than this guessing.
  */
 export function recordOf(name: string, runs: Flight[]): Record_ {
-  const mine = runs.filter((one) => one.flownBy === name);
+  const mine = runs
+    .filter((one) => one.flownBy === name)
+    .filter((one) => one.run.state !== "failed" || theirFault(one.run));
   const done = mine.filter((one) => one.run.state === "succeeded");
   const outcomes = done.map((one) => (one.run.outcome ?? {}) as Record<string, unknown>);
   const tasks = outcomes
@@ -70,5 +97,7 @@ export function recordOf(name: string, runs: Flight[]): Record_ {
     energyWh: mean(tasks.map((t) => t.energyWh).filter((v): v is number => typeof v === "number")),
     struck,
     lastAt: when[when.length - 1],
+    neverFlew: runs.filter((one) => one.flownBy === name
+      && one.run.state === "failed" && !theirFault(one.run)).length,
   };
 }
