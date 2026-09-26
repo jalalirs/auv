@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""Fetch a data release, and know whether it worked.
+
+    tools/fetch-release ~/coral-city/reference/looe-key/usgs
+    tools/fetch-release ~/coral-city/reference/looe-key/usgs --only DEM
+
+`tools/reference` lists a USGS release and writes `files.json` with every
+file's name, URL and **exact byte count**, then generates a shell script to
+fetch them:
+
+    [ -s NAME ] || curl -sL --retry 3 -o NAME URL
+
+That line is why this tool exists. `-s` is true of any file that is not empty,
+so a download interrupted halfway leaves a file the script will never touch
+again; there is no resume and no check afterwards. Looe Key's release came out
+of it with three of its eight elevation models truncated and three never
+fetched at all — and every one of them the right kind of size in a listing,
+raising only on the first read, months later, when somebody tried to build a
+place from one.
+
+A tool that cannot do its job must fail rather than report. This one knows
+what each file should weigh, resumes what is part-way, refuses to call a
+short file done, and exits non-zero if anything is still wrong when it stops.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import subprocess
+import sys
+
+# How many times to come back to a file that is still short. A large transfer
+# over a long link drops; that is ordinary and is what resuming is for.
+TRIES = 4
+
+
+def wanted(where: pathlib.Path, only: str | None) -> list[dict]:
+    """Every file in the manifest, with what it should weigh."""
+    said = json.loads((where / "files.json").read_text())
+    files = said if isinstance(said, list) else (
+        said.get("files") or said.get("items") or [])
+    out = []
+    for one in files:
+        name = one.get("name")
+        size = one.get("bytes") or one.get("size")
+        url = one.get("url")
+        if not (name and url and size):
+            continue
+        if only and only not in name:
+            continue
+        out.append({"name": name, "url": url, "bytes": int(size)})
+    return out
+
+
+def state_of(where: pathlib.Path, one: dict) -> tuple[str, int]:
+    here = where / one["name"]
+    got = here.stat().st_size if here.is_file() else 0
+    if got == one["bytes"]:
+        return "complete", got
+    if got == 0:
+        return "missing", 0
+    if got > one["bytes"]:
+        # Longer than the manifest says is not "done": it is a different file,
+        # or a resume that appended to something. Either way it is not this.
+        return "too long", got
+    return "part way", got
+
+
+def fetch(where: pathlib.Path, one: dict, say=print) -> tuple[str, int]:
+    """Get one file to its stated size, resuming whatever is there.
+
+    `curl -C -` continues from the end of what exists, which is the whole
+    difference between this and the script it replaces. A file that is longer
+    than the manifest says is moved aside rather than resumed, because there
+    is nothing to continue from — it is not a short copy of the right file.
+    """
+    here = where / one["name"]
+    kind, got = state_of(where, one)
+    if kind == "complete":
+        return kind, got
+    if kind == "too long":
+        spoiled = here.with_suffix(here.suffix + ".too-long")
+        here.rename(spoiled)
+        say(f"    {one['name']}: {got:,} bytes against {one['bytes']:,} wanted "
+            f"— moved to {spoiled.name} and fetched again")
+    for attempt in range(1, TRIES + 1):
+        done = subprocess.run(
+            ["curl", "-sL", "-C", "-", "--retry", "3", "--retry-delay", "2",
+             "-A", "coral-city (https://github.com/jalalirs/auv)",
+             "-o", str(here), one["url"]])
+        kind, got = state_of(where, one)
+        if kind == "complete":
+            return kind, got
+        say(f"    {one['name']}: {got / 1e9:.2f} of "
+            f"{one['bytes'] / 1e9:.2f} GB after try {attempt}"
+            + (f" (curl exit {done.returncode})" if done.returncode else ""))
+    return kind, got
+
+
+def opens(where: pathlib.Path, name: str) -> bool:
+    """Whether a raster will actually read, not merely weigh the right amount.
+
+    The size check is the cheap one and catches every truncation. This catches
+    the rest: a file that arrived whole and is corrupt anyway. Skipped
+    silently where rasterio is not installed, because a fetcher that refuses
+    to run without a GIS stack is a fetcher nobody runs.
+    """
+    if not name.lower().endswith((".tif", ".tiff")):
+        return True
+    try:
+        import rasterio
+    except ImportError:
+        return True
+    try:
+        with rasterio.open(where / name) as source:
+            source.read(1, window=((0, 2), (0, 2)))
+        return True
+    except Exception:
+        return False
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(
+        description="fetch a data release, and know whether it worked")
+    parse.add_argument("where", help="a directory holding files.json")
+    parse.add_argument("--only", default=None,
+                       help="only files whose name contains this")
+    parse.add_argument("--check", action="store_true",
+                       help="say what is there and fetch nothing")
+    asked = parse.parse_args()
+
+    where = pathlib.Path(asked.where).expanduser()
+    if not (where / "files.json").is_file():
+        print(f"no files.json in {where}: nothing says what should be here",
+              file=sys.stderr)
+        return 1
+
+    files = wanted(where, asked.only)
+    if not files:
+        print("nothing in the manifest matches", file=sys.stderr)
+        return 1
+
+    short = [f for f in files if state_of(where, f)[0] != "complete"]
+    owed = sum(f["bytes"] - state_of(where, f)[1] for f in short)
+    print(f"  {where}")
+    print(f"    {len(files)} files in the manifest, {len(short)} not complete, "
+          f"{owed / 1e9:.2f} GB owed")
+
+    if asked.check:
+        for one in files:
+            kind, got = state_of(where, one)
+            print(f"    {one['name']:<34} {got / 1e9:6.2f} of "
+                  f"{one['bytes'] / 1e9:6.2f} GB  {kind}")
+        return 0
+
+    for one in short:
+        kind, got = state_of(where, one)
+        print(f"    {one['name']} — {kind}, {got / 1e9:.2f} of "
+              f"{one['bytes'] / 1e9:.2f} GB")
+        fetch(where, one)
+
+    # And say, at the end, what is actually there — because the thing this
+    # replaces did not.
+    wrong = []
+    for one in files:
+        kind, got = state_of(where, one)
+        if kind != "complete":
+            wrong.append((one["name"], f"{kind}, {got:,} of {one['bytes']:,}"))
+        elif not opens(where, one["name"]):
+            wrong.append((one["name"], "the right size and it does not open"))
+    print()
+    if wrong:
+        print(f"  {len(wrong)} of {len(files)} are still wrong:", file=sys.stderr)
+        for name, why in wrong:
+            print(f"    {name}: {why}", file=sys.stderr)
+        return 1
+    print(f"  all {len(files)} complete, and every raster among them opens.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
