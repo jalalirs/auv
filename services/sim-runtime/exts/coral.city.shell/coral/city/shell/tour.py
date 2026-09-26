@@ -16,8 +16,6 @@ what a dive gets; only the camera is different, and no physics runs at all.
 
 from __future__ import annotations
 
-import numpy as np
-
 import math
 
 # A fifth of the flight is out of the water, which is enough to read the layout
@@ -283,41 +281,6 @@ class Tour:
         if str(viewport.camera_path) != camera_path:
             viewport.camera_path = camera_path
 
-        # What this frame is a picture of, in the world, said out loud.
-        #
-        # A nadir frame *is* an orthophoto, and an orthophoto that does not
-        # carry where it is, how wide it is and which way is north is a
-        # picture rather than a measurement. Half a day went into putting one
-        # square metre of render beside one square metre of the USGS
-        # orthomosaic it was built from, and the whole of it was spent
-        # arguing about a rotation and a sign — the frame matched at 0.84 and
-        # it took a search over eight orientations and a grid of offsets to
-        # find *where*, because nothing in the output said.
-        #
-        # The basis is read back out of the matrix that was just set rather
-        # than derived from the up vector that was passed in, because those
-        # two disagreed and the matrix is the one the renderer uses.
-        world = look
-        right = Gf.Vec3d(world[0][0], world[0][1], world[0][2])
-        frame_up = Gf.Vec3d(world[1][0], world[1][1], world[1][2])
-        towards_floor = abs(float(eye[2]) - float(target[2]))
-        # A 24 mm lens on this camera's aperture: how much ground the full
-        # width of the frame covers, at the depth the target is.
-        across_m = towards_floor * (camera.GetHorizontalApertureAttr().Get()
-                                    or 20.955) / 24.0
-        self.said_about = {
-            "view": name,
-            "eyeM": [round(float(v), 4) for v in eye],
-            "atM": [round(float(v), 4) for v in target],
-            # Unit vectors in the world for one step right and one step up in
-            # the picture. With these, a pixel is a place.
-            "rightIsM": [round(float(v), 5) for v in right],
-            "upIsM": [round(float(v), 5) for v in frame_up],
-            "widthM": round(float(across_m), 5),
-            "nadir": bool(straight_down),
-        }
-        self.say("stills_where", **self.said_about)
-
 
 # ── the exposure ladder ──────────────────────────────────────────────────────
 #
@@ -470,29 +433,8 @@ class Ladder:
         camera = UsdGeom.Camera.Define(stage, camera_path)
         camera.CreateFocalLengthAttr(18.0)
         camera.CreateClippingRangeAttr(Gf.Vec2f(0.1, 12000.0))
-        # Which way is up in the frame.
-        #
-        # World up, for every view that looks along the bottom — that is what
-        # makes a horizon horizontal.
-        #
-        # Except looking straight down, where it is degenerate: with the eye
-        # directly above the target, an up vector of +Z is parallel to the
-        # direction of view and the camera's roll becomes whatever the
-        # arithmetic happens to produce. `a-square-metre` sits 1.15 m above
-        # its target with a millimetre of horizontal offset, and the frame
-        # came out rotated by an amount nobody chose — which is invisible on
-        # a patch of seabed and fatal to the one thing that view is for,
-        # putting a square metre beside the photograph of that square metre.
-        #
-        # So a near-nadir view takes **north** as up, which is also what an
-        # orthomosaic uses, and the two are then comparable without anybody
-        # having to work out the rotation.
-        towards = np.array(target) - np.array(eye)
-        flat = float(np.hypot(towards[0], towards[1]))
-        straight_down = flat < 0.2 * abs(float(towards[2]))
-        up = Gf.Vec3d(0, 1, 0) if straight_down else Gf.Vec3d(0, 0, 1)
         look = Gf.Matrix4d().SetLookAt(
-            Gf.Vec3d(*eye), Gf.Vec3d(*target), up).GetInverse()
+            Gf.Vec3d(*eye), Gf.Vec3d(*target), Gf.Vec3d(0, 0, 1)).GetInverse()
         moving = UsdGeom.Xformable(camera.GetPrim())
         moving.ClearXformOpOrder()
         moving.AddTransformOp().Set(look)
@@ -677,10 +619,60 @@ class Stills:
         # The fog's wash is what fades the distance, and it has to be enough on
         # its own.
         camera.CreateClippingRangeAttr(Gf.Vec2f(0.05, 12000.0))
+
+        # Which way is up for this view.
+        #
+        # World up for anything looking along the bottom — that is what makes
+        # a horizon horizontal. Straight down it is degenerate: with the eye
+        # directly above the target, an up of +Z is parallel to the direction
+        # of view and the camera's roll becomes whatever the arithmetic
+        # produces. `Tour.place` fixed this months ago and this method never
+        # got it; `looking-down` has been rendering at an angle nobody chose
+        # ever since, and `a-square-metre` inherited it.
+        #
+        # North, so that a nadir frame and an orthomosaic agree without
+        # anybody having to work out a rotation. `Tour` uses +X here and calls
+        # it north in the comment beside it; +Y is north.
+        way = (target[0] - eye[0], target[1] - eye[1], target[2] - eye[2])
+        flat = math.hypot(way[0], way[1])
+        straight_down = flat < 0.05 * abs(way[2])
         look = Gf.Matrix4d().SetLookAt(
-            Gf.Vec3d(*eye), Gf.Vec3d(*target), Gf.Vec3d(0, 0, 1)).GetInverse()
+            Gf.Vec3d(*eye), Gf.Vec3d(*target),
+            Gf.Vec3d(0, 1, 0) if straight_down else Gf.Vec3d(0, 0, 1)).GetInverse()
         moving = UsdGeom.Xformable(camera.GetPrim())
         moving.ClearXformOpOrder()
         moving.AddTransformOp().Set(look)
         if str(viewport.camera_path) != camera_path:
             viewport.camera_path = camera_path
+
+        # And what this frame is a picture of, in the world.
+        #
+        # A nadir frame *is* an orthophoto, and one that does not carry where
+        # it is, how wide it is and which way is north is a picture rather
+        # than a measurement. Half a day went into putting a square metre of
+        # render beside the square metre of orthomosaic it was built from, and
+        # almost all of it was spent arguing about a rotation and a sign: the
+        # frame matched at 0.84 and finding *where* took a search over eight
+        # orientations and a grid of offsets, because nothing in the output
+        # said.
+        #
+        # The basis is read back out of the matrix that was set rather than
+        # derived from the up vector passed in, because reasoning about the
+        # second is what produced the wrong answer twice.
+        towards = look.GetInverse()
+        right = Gf.Vec3d(towards[0][0], towards[0][1], towards[0][2])
+        upward = Gf.Vec3d(towards[1][0], towards[1][1], towards[1][2])
+        drop = abs(float(eye[2]) - float(target[2]))
+        aperture = camera.GetHorizontalApertureAttr().Get() or 20.955
+        self.said_about = {
+            "view": name,
+            "eyeM": [round(float(v), 4) for v in eye],
+            "atM": [round(float(v), 4) for v in target],
+            # One step right and one step up in the picture, as world metres.
+            # With these and the width, a pixel is a place.
+            "rightIsM": [round(float(v), 5) for v in right],
+            "upIsM": [round(float(v), 5) for v in upward],
+            "widthM": round(float(drop) * float(aperture) / 24.0, 5),
+            "nadir": bool(straight_down),
+        }
+        self.say("stills_where", **self.said_about)
