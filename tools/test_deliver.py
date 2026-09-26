@@ -319,7 +319,9 @@ def test_the_report_draws_both_tracks_and_needs_nothing(tmp_path):
     tool = _deliver()
     tool.deliver_dive(_recording(tmp_path), tmp_path / "out")
     page = (tmp_path / "out" / "report.html").read_text()
-    for fetched in ("<script", "http://", "https:/" + "/", "@import", "<link"):
+    # An SVG names its own namespace with a URL and never fetches it, so what
+    # is checked is references a browser would actually go and get.
+    for fetched in ("<script", "@import", "<link", "src=", 'href="http', "url(http"):
         assert fetched not in page, fetched
     # Two paths in the map: where it was, and where it thought it was.
     assert page.count("<path") == 2
@@ -332,8 +334,6 @@ def test_the_report_scales_both_axes_the_same(tmp_path):
     tool = _deliver()
     poses = [{"position": [0.0, 0.0, -7.0]}, {"position": [100.0, 10.0, -7.0]}]
     drawn, _ = tool.a_map(poses, {})
-    moves = [one for one in drawn.split('d="')[1].split('"')[0].split(" ")]
-    start = [float(v) for v in moves[0][1:].split(" ") + [moves[1]]] if False else None
     # The 100 m of easting must be ten times the 10 m of northing on the page.
     import re as _re
     pairs = _re.findall(r"[ML]([\d.]+) ([\d.]+)", drawn.split('d="')[1].split('"')[0])
