@@ -120,3 +120,46 @@ def test_a_whole_dive_runs_its_stages_in_order():
     kinds = [one["kind"] for one in task.result()["achieved"]["stages"]]
     assert kinds == ["descend", "transect", "return"], task.result()["achieved"]
     assert task.result()["achieved"]["stopped"] is False
+
+
+# ── the recovery ─────────────────────────────────────────────────────────────
+#
+# Coming up is the descent's mirror and the half nobody writes down. An
+# untethered vehicle cannot hold station while it rises, so the water takes
+# it, and where it breaks the surface decides whether the boat has to go
+# looking.
+
+def a_return(**asked):
+    return task_for({"kind": "return", "homeRadiusM": 3.0, "surfaceDepthM": 0.5,
+                     **asked}, began_at=(0.0, 0.0, -18.0), heading=0.0)
+
+
+def test_a_return_reports_where_it_surfaced_and_how_far_the_water_took_it():
+    task = a_return()
+    # Rises from 18 m, set 2 m sideways each step by the current.
+    fly(task, [(2.0 * n, 0.0, -18.0 + 2.0 * n) for n in range(10)])
+    said = task.detail()
+    assert said["roseFromM"] == pytest.approx(18.0)
+    assert said["surfacedOffM"] == pytest.approx(18.0)
+    assert said["driftedWhileRisingM"] == pytest.approx(18.0)
+
+
+def test_it_says_how_fast_it_came_up():
+    task = a_return()
+    fly(task, [(0.0, 0.0, -18.0 + 3.0 * n) for n in range(8)])
+    assert task.detail()["worstRateMs"] == pytest.approx(3.0)
+
+
+def test_what_a_return_is_worth_has_not_moved():
+    """Getting home and surfacing is the job. The recovery is reported, not
+    scored — every return already in the record must mean what it meant."""
+    got_home = a_return()
+    fly(got_home, [(0.0, 0.0, -18.0 + 2.0 * n) for n in range(10)])
+    assert got_home.score() == pytest.approx(1.0)
+    assert got_home.detail()["surfaced"] is True
+
+    drifted = a_return()
+    fly(drifted, [(20.0, 0.0, -18.0 + 2.0 * n) for n in range(10)])
+    # Surfaced, but nowhere near home: half marks, as before.
+    assert drifted.score() == pytest.approx(0.0)
+    assert drifted.detail()["surfacedOffM"] == pytest.approx(20.0)

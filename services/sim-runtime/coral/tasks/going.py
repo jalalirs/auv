@@ -501,16 +501,45 @@ class Return(Task):
         self.distance = 0.0
         self.depth = 0.0
         self.farthest = 0.0
+        # The ascent, reported and not scored. Coming up is the descent's
+        # mirror and the half nobody writes down: an untethered vehicle
+        # cannot hold station while it rises, so the water takes it, and
+        # where it breaks the surface decides whether the boat has to go
+        # looking. None of that changes what a return is worth — getting
+        # home and surfacing is the job — but a dive that does not say it
+        # is a dive whose recovery nobody can plan.
+        self.deepest = 0.0
+        self.rose_from: np.ndarray | None = None
+        self.worst_rate = 0.0
+        self.surfaced_off: float | None = None
+        self.drifted_up: float | None = None
+        self.last: np.ndarray | None = None
+        self.last_t: float | None = None
 
     def judge(self, elapsed, position, heading, floor) -> None:
         self.distance = float(np.hypot(*(position[:2] - self.home_at[:2])))
         self.depth = float(-position[2])
         self.farthest = max(self.farthest, self.distance)
+        # The deepest it got on this leg is where the ascent began, which is
+        # the honest answer on a dive that worked its way up rather than
+        # stopping and rising.
+        if self.depth >= self.deepest:
+            self.deepest = self.depth
+            self.rose_from = position[:2].copy()
+        if self.last is not None and self.last_t is not None and elapsed > self.last_t:
+            up = (float(position[2]) - self.last[2]) / (elapsed - self.last_t)
+            self.worst_rate = max(self.worst_rate, up)
+        self.last = position.copy()
+        self.last_t = elapsed
         if self.distance <= self.home_radius:
             self.home = True
-            if self.depth <= self.surface:
-                self.surfaced = True
-                self.done = True
+        if self.depth <= self.surface and self.surfaced_off is None:
+            self.surfaced_off = self.distance
+            if self.rose_from is not None:
+                self.drifted_up = float(np.linalg.norm(position[:2] - self.rose_from))
+        if self.home and self.depth <= self.surface:
+            self.surfaced = True
+            self.done = True
         if elapsed >= self.limit:
             self.done = True
 
@@ -521,8 +550,17 @@ class Return(Task):
         return f"{self.distance:.1f} m from home, {self.depth:.1f} m down"
 
     def detail(self) -> dict:
-        return {"home": self.home, "surfaced": self.surfaced, "distanceM": round(self.distance, 2),
-                "depthM": round(self.depth, 2), "farthestM": round(self.farthest, 2), "timeLimitS": self.limit}
+        return {"home": self.home, "surfaced": self.surfaced,
+                "distanceM": round(self.distance, 2),
+                "depthM": round(self.depth, 2), "farthestM": round(self.farthest, 2),
+                "timeLimitS": self.limit,
+                # The recovery, for whoever has to be there for it.
+                "roseFromM": round(self.deepest, 2),
+                "worstRateMs": round(self.worst_rate, 3),
+                "surfacedOffM": None if self.surfaced_off is None
+                else round(self.surfaced_off, 2),
+                "driftedWhileRisingM": None if self.drifted_up is None
+                else round(self.drifted_up, 2)}
 
     def geometry(self) -> dict:
         return {"circle": {"x": float(self.home_at[0]), "y": float(self.home_at[1]),
