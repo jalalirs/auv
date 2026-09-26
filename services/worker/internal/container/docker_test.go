@@ -122,3 +122,25 @@ func TestACommandReplacesTheImagesEntrypoint(t *testing.T) {
 		t.Error("work that named no command overrode the image's entrypoint")
 	}
 }
+
+func TestADiveRunsFromTheDirectoryItsImageDeclares(t *testing.T) {
+	// Every container was given WorkingDir=/work, which is where work that
+	// stages inputs and outputs finds them. A dive is not that shape: it
+	// mounts /dive, nothing is mounted at /work, and asking for it anyway
+	// made Docker invent an empty root-owned directory and drop a process
+	// that runs as 1234 into it — instead of the working directory the image
+	// declares, which is where a simulator resolves its caches and its logs.
+	dive := createRequest(Spec{
+		Image:   "sim",
+		Command: []string{"/isaac-sim/kit/kit"},
+		Mounts:  []Mount{{Source: "/host/run", Target: "/dive"}},
+	})
+	if where, named := dive["WorkingDir"]; named {
+		t.Errorf("a dive was given a working directory of its own: %v", where)
+	}
+
+	staged := createRequest(Spec{Image: "tool", InputsHost: "/host/in", OutputsHost: "/host/out"})
+	if where, _ := staged["WorkingDir"].(string); where != "/work" {
+		t.Errorf("staged work did not start where its inputs are: %v", staged["WorkingDir"])
+	}
+}
