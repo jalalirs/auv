@@ -205,3 +205,32 @@ def test_a_controllers_own_failure_is_averaged_as_the_zero_it_is():
              "thoughts": 0, "slowestThoughtS": 0.0, "ended": "failed",
              "fault": "theirs"}]
     assert tool.summarise(rows)["score"] == pytest.approx(0.4)
+
+
+def test_a_comparison_leaves_out_dives_that_never_happened(capsys):
+    """A comparison against a dive the platform could not start is not a
+    comparison."""
+    tool = _bench()
+
+    class _Args:
+        suite = "quick"
+        left = "pursue"
+        right = "ponder"
+        here = True
+
+    rows = [
+        {"task": "reach", "controller": "pursue", "score": 0.8, "energyWh": 3.0,
+         "driftM": 1.0, "seconds": 90.0, "thoughts": 0, "slowestThoughtS": 0.0,
+         "struck": 0, "grounded": 0, "ended": "achieved"},
+        {"task": "reach", "controller": "ponder", "score": 0.6, "energyWh": 4.0,
+         "driftM": 1.0, "seconds": 95.0, "thoughts": 2, "slowestThoughtS": 0.4,
+         "struck": 0, "grounded": 0, "ended": "achieved"},
+        {"task": "dock", "controller": "pursue", "score": 0.0, "energyWh": 0.0,
+         "driftM": 0.0, "seconds": 0.0, "thoughts": 0, "slowestThoughtS": 0.0,
+         "struck": 0, "grounded": 0, "ended": "failed", "fault": "the platform's"},
+    ]
+    tool.rows_for = lambda args: rows
+    assert tool.command_compare(_Args()) == 0
+    said = capsys.readouterr().out
+    assert "1 tasks" in said, said
+    assert "never flew" in said and "dock" in said

@@ -493,11 +493,22 @@ def command_show(args) -> int:
 
 def command_compare(args) -> int:
     rows = rows_for(args)
-    ours = {r["task"]: r for r in rows if r["controller"] == args.left}
-    theirs = {r["task"]: r for r in rows if r["controller"] == args.right}
+    # A dive the platform could not start is an absence on both sides. Shown
+    # separately below rather than compared: a comparison against a dive
+    # that never happened is not a comparison.
+    ours = {r["task"]: r for r in rows
+            if r["controller"] == args.left and r.get("fault") != "the platform's"}
+    theirs = {r["task"]: r for r in rows
+              if r["controller"] == args.right and r.get("fault") != "the platform's"}
+    missing = sorted({r["task"] for r in rows
+                      if r["controller"] in (args.left, args.right)
+                      and r.get("fault") == "the platform's"})
     both = [t for t in SUITES[args.suite] if t in ours and t in theirs]
     if not both:
         print(f"{args.left} and {args.right} have no task in common on this bench")
+        if missing:
+            print(f"{AMBER}  {', '.join(missing)} never flew — the platform "
+                  f"could not start them{OFF}")
         return 1
     print(f"{BOLD}{args.left}{OFF} against {BOLD}{args.right}{OFF}"
           f"{DIM} · {len(both)} tasks, the same water and the same seeds{OFF}\n")
@@ -518,6 +529,9 @@ def command_compare(args) -> int:
     mine, yours = summarise(list(ours.values())), summarise(list(theirs.values()))
     gap = (yours["score"] - mine["score"]) * 100
     print()
+    if missing:
+        print(f"{AMBER}{'never flew':<14}{', '.join(missing)} — the platform could "
+              f"not start them, so they are in neither column{OFF}")
     print(f"{BOLD}{'overall':<14}{mine['score'] * 100:9.1f}%{yours['score'] * 100:9.1f}%"
           f"{gap:+8.1f}{OFF}"
           f"{yours['energyWh'] - mine['energyWh']:+11.2f} Wh"
