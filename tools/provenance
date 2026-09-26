@@ -110,11 +110,28 @@ def about(site: dict, delivered: dict | None) -> list[dict]:
         ground.get("colourFrom", "")))
 
     # ── the reef ─────────────────────────────────────────────────────────────
+    #
+    # The tag and the source have to come out of the same field, or they
+    # disagree. This row took its tag from `cover.measured` and fell back
+    # to `reef.source` for its words, so a place built before the cover
+    # block existed came out as **chosen**, 83,055 colonies, "from the
+    # USGS SQUID-5 survey" — three fields in one row, two of which say a
+    # survey counted them and one of which says somebody picked a number.
+    if cover.get("from"):
+        how, whence = (MEASURED if cover.get("measured") else CHOSEN), cover["from"]
+    elif reef.get("source"):
+        # The count came out of that source. Whether that is a measurement
+        # is the same question as whether the ground was surveyed, because
+        # it is the survey the colonies were found in.
+        how = MEASURED if came.get("surveyed") else DERIVED
+        whence = reef["source"]
+    else:
+        how, whence = CHOSEN, ""
     rows.append(a_row(
-        "How many colonies", MEASURED if cover.get("measured") else CHOSEN,
+        "How many colonies", how,
         f"{reef.get('colonies', 0):,}"
         + (f" ({cover['perSquareKm']:,} a km²)" if cover.get("perSquareKm") else ""),
-        cover.get("from") or reef.get("source") or ""))
+        whence))
 
     if reef.get("sizesAre"):
         rows.append(a_row(

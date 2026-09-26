@@ -223,3 +223,51 @@ def test_every_page_is_hung_on_one_skeleton():
             f"{name} still carries a page of its own")
     # And the one that does carry it carries exactly one.
     assert (HERE / "provenance").read_text().count("<!doctype html>") == 1
+
+
+# ── a row's three fields have to agree ───────────────────────────────────────
+#
+# This has now bitten twice. A row tagged measured with a value reading
+# "inferred from slope and relief" and a source naming a survey; and a row
+# tagged chosen, "83,055", "from the USGS SQUID-5 survey". Both times the
+# tag came out of one field and the words out of another.
+
+SURVEY_WORDS = ("survey", "transect", "orthomosaic", "measured", "observed",
+                "sounded", "counted by")
+
+
+def _a_place_built_before_cover():
+    """A place from before the reef recorded its cover — which is how the
+    restored Looe Key reads, and how any older place reads."""
+    return {"name": "somewhere",
+            "from": {"surveyed": True, "acrossMetres": 1000.0, "sampleMetres": 1.96,
+                     "centre": {"latitude": 24.5, "longitude": -81.4}},
+            "ground": {"surveyed": True},
+            "reef": {"colonies": 83055,
+                     "source": "USGS SQUID-5 survey, standing objects in the 1 cm DEM"}}
+
+
+def test_a_count_that_came_out_of_a_survey_is_not_chosen():
+    tool = _tool()
+    rows = {r["what"]: r for r in tool.about(_a_place_built_before_cover(), None)}
+    count = rows["How many colonies"]
+    assert count["kind"] == tool.MEASURED, count
+
+
+def test_no_row_is_tagged_chosen_while_its_source_names_a_survey():
+    """The class of the bug, rather than the instance: whatever the tag is,
+    the words beside it must not contradict it."""
+    tool = _tool()
+    for site in (_surveyed(), _a_place_built_before_cover()):
+        for row in tool.about(site, None):
+            if row["kind"] != tool.CHOSEN:
+                continue
+            said = (row["from"] or "").lower()
+            assert not any(word in said for word in SURVEY_WORDS), row
+
+
+def test_a_count_nobody_sourced_is_chosen_and_says_nothing():
+    tool = _tool()
+    bare = {"name": "x", "from": {}, "reef": {"colonies": 1000}}
+    count = next(r for r in tool.about(bare, None) if r["what"] == "How many colonies")
+    assert count["kind"] == tool.CHOSEN and count["from"] == ""
