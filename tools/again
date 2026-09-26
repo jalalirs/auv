@@ -1,0 +1,303 @@
+#!/usr/bin/env python3
+"""Round two, and whether it can be compared with round one.
+
+    tools/again ~/coral-city/places/looe-key --first round-1 --then round-2
+
+A repeat survey is only worth flying if it can be held against the last
+one. NCW covered four hundred sites in 2024–25 and the next thing they need
+is round two *comparable* to round one; Red Sea Global runs three hundred
+sites on a cycle and has the same problem three hundred times. "We went
+back" is not comparable. Comparable means the same ground, seen the same
+way.
+
+So this checks both, and refuses to treat them as one question:
+
+  **The same ground.** Which cells each round reached, on the grid the plan
+  was made on. A cell round one covered and round two missed is a hole in
+  the time series, and a cell round two added is not a repeat of anything.
+
+  **Seen the same way.** Altitude, swath, and what the task even was. A
+  round flown at four metres where the last was at two is not a repeat, and
+  the difference will read as change on the reef — which is the most
+  expensive mistake a monitoring programme can make, because it is invisible
+  and it is in the direction of a finding.
+
+What it will not do is score the reef. Whether the coral changed is a
+question for the data the rounds produced; this says whether that question
+can honestly be asked of them.
+"""
+
+from __future__ import annotations
+
+import argparse
+import html
+import importlib.machinery
+import importlib.util
+import json
+import pathlib
+import sys
+
+HERE = pathlib.Path(__file__).resolve().parent
+
+
+def a_tool(name: str):
+    loader = importlib.machinery.SourceFileLoader(name, str(HERE / name))
+    spec = importlib.util.spec_from_loader(name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+# What has to match for two rounds to be a repeat, and how much drift is
+# tolerable in each. Altitude decides what the camera sees on the bottom, so
+# it is the one that matters most; a tenth of a metre is nothing and half a
+# metre is a different survey.
+MUST_MATCH = [
+    ("task", "what was flown", None),
+    ("altitudeM", "how high it was flown", 0.25),
+    ("swathM", "how wide the camera saw", 0.5),
+]
+
+
+def how_it_was_flown(round_at: pathlib.Path) -> dict:
+    """What each mission in a round was asked for, out of its own record."""
+    missions = []
+    for folder in sorted(p for p in round_at.iterdir() if p.is_dir()):
+        where = folder / "mission.json"
+        if not where.is_file():
+            continue
+        said = json.loads(where.read_text())
+        task = said.get("task") or {}
+        achieved = task.get("achieved") or {}
+        missions.append({
+            "from": folder.name,
+            "task": task.get("kind"),
+            "altitudeM": achieved.get("altitudeM"),
+            "swathM": achieved.get("swathM"),
+            "seconds": said.get("seconds"),
+        })
+    return {"missions": missions}
+
+
+def one_value(missions: list[dict], key: str):
+    """What a round did, when it did one thing. None when it did several.
+
+    A round flown half at two metres and half at four is not one survey and
+    must not be reduced to an average — the average is a number no dive was
+    flown at.
+    """
+    seen = {one.get(key) for one in missions if one.get(key) is not None}
+    return seen.pop() if len(seen) == 1 else None
+
+
+def the_same_way(first: dict, then: dict) -> list[dict]:
+    """Whether the two rounds were flown alike, setting by setting."""
+    out = []
+    for key, what, within in MUST_MATCH:
+        was = one_value(first["missions"], key)
+        now = one_value(then["missions"], key)
+        if was is None or now is None:
+            out.append({"what": what, "was": was, "now": now, "verdict": "cannot say",
+                        "why": "one of the rounds did not do one thing, so there is "
+                               "nothing to compare — an average is a number no dive "
+                               "was flown at"})
+            continue
+        if within is None:
+            same = was == now
+            off = None
+        else:
+            off = abs(float(now) - float(was))
+            same = off <= within
+        out.append({"what": what, "was": was, "now": now,
+                    "verdict": "the same" if same else "different",
+                    "offBy": off,
+                    "why": "" if same else
+                           "this will read as change on the reef, and it is not"})
+    return out
+
+
+def the_same_ground(place: pathlib.Path, cell_m: float, where: str,
+                    first: pathlib.Path, then: pathlib.Path) -> dict:
+    """Which cells each round reached, on one grid."""
+    campaign = a_tool("campaign")
+    grid = campaign.cells_over(place, cell_m, where)
+    was = campaign.covered_by(first, grid)
+    now = campaign.covered_by(then, grid)
+    a, b = set(was["hit"]), set(now["hit"])
+    planned = {(one["row"], one["column"]) for one in grid["working"]}
+    return {"grid": grid, "first": was, "then": now,
+            "inBoth": len(a & b),
+            "lostSinceRoundOne": len((a - b) & planned),
+            "newInRoundTwo": len((b - a) & planned),
+            "neither": len(planned - a - b),
+            "hitFirst": a, "hitThen": b, "planned": planned}
+
+
+PAGE = """<!doctype html>
+<meta charset="utf-8">
+<title>%(name)s — round two against round one</title>
+<style>%(style)s
+  .grid { display: grid; gap: 1px; margin: 0 0 1rem; max-width: 34rem; }
+  .grid i { display: block; aspect-ratio: 1; }
+  .key i { display: inline-block; width: .8rem; height: .8rem; vertical-align: -1px;
+           margin-right: .3rem; }
+</style>
+<h1>%(name)s</h1>
+<p class="where">%(where)s</p>
+
+<p class="says"><strong>What this is.</strong> Whether round two can honestly
+be held against round one. Two questions, kept apart: did it cover the same
+ground, and was it seen the same way. It does not say whether the reef
+changed — that is a question for the data the rounds produced, and this says
+whether it can be asked of them.</p>
+%(verdict)s
+
+<div class="big">%(headline)s</div>
+
+<h2>The same ground</h2>
+<figure>%(picture)s<figcaption>%(caption)s</figcaption></figure>
+<p class="key">%(legend)s</p>
+
+<h2>Seen the same way</h2>
+<table>
+  <tr><th>What</th><th>Round one</th><th>Round two</th><th></th></tr>
+  %(rows)s
+</table>
+
+<footer>Built by Coral City from what each round's missions produced. A
+round flown differently from the last will read as change on the reef, and
+that is the most expensive mistake a monitoring programme can make: it is
+invisible, and it is in the direction of a finding.</footer>
+"""
+
+
+def a_picture(said: dict) -> tuple[str, str, str]:
+    grid = said["grid"]
+    n = grid["across"]
+    by = {(one["row"], one["column"]): one for one in grid["cells"]}
+    out = ['<div class="grid" style="grid-template-columns:repeat(%d,1fr)">' % n]
+    for row in range(n - 1, -1, -1):
+        for column in range(n):
+            at = (row, column)
+            one = by[at]
+            in_first, in_then = at in said["hitFirst"], at in said["hitThen"]
+            if one["wetShare"] <= 0.5:
+                colour, title = "#efe6d8", "land"
+            elif at not in said["planned"]:
+                colour, title = "#eef2f6", "not in the plan"
+            elif in_first and in_then:
+                colour, title = "#1a6b2a", "both rounds"
+            elif in_first:
+                colour, title = "#b04a4a", "ROUND ONE ONLY — a hole in the series"
+            elif in_then:
+                colour, title = "#c08a21", "new in round two"
+            else:
+                colour, title = "#dfe7ee", "neither round"
+            out.append('<i style="background:%s" title="%s"></i>' % (colour, title))
+    out.append("</div>")
+    caption = ("%d cells in both rounds · %d covered in round one and missed in "
+               "round two · %d new in round two · %d in neither"
+               % (said["inBoth"], said["lostSinceRoundOne"],
+                  said["newInRoundTwo"], said["neither"]))
+    legend = "".join(
+        '<span><i style="background:%s"></i>%s</span>&nbsp;&nbsp;' % (colour, what)
+        for colour, what in (("#1a6b2a", "both rounds"),
+                             ("#b04a4a", "round one only"),
+                             ("#c08a21", "new in round two"),
+                             ("#dfe7ee", "neither")))
+    return "".join(out), caption, legend
+
+
+def page(name: str, said: dict, alike: list[dict]) -> str:
+    provenance = a_tool("provenance")
+    picture, caption, legend = a_picture(said)
+    planned = len(said["planned"])
+    big = [("%d%%" % round(100 * said["inBoth"] / max(1, planned)), "of the grid in both"),
+           ("%d" % said["lostSinceRoundOne"], "covered then, missed now"),
+           ("%d" % said["newInRoundTwo"], "new in round two")]
+    headline = "".join("<div><b>%s</b><span>%s</span></div>"
+                       % (html.escape(v), html.escape(w)) for v, w in big)
+
+    broken = [one for one in alike if one["verdict"] == "different"]
+    unknown = [one for one in alike if one["verdict"] == "cannot say"]
+    if broken:
+        verdict = ('<p class="says warn"><strong>These are not two rounds of one '
+                   'survey.</strong> %s. A round flown differently from the last '
+                   'will read as change on the reef.</p>'
+                   % html.escape("; ".join(
+                       "%s was %s and is now %s" % (one["what"], one["was"], one["now"])
+                       for one in broken)))
+    elif unknown:
+        verdict = ('<p class="says warn"><strong>Cannot say whether these are '
+                   'comparable.</strong> %s</p>'
+                   % html.escape("; ".join(one["why"] for one in unknown)))
+    elif said["lostSinceRoundOne"]:
+        verdict = ('<p class="says warn"><strong>Flown the same way, with %d holes.'
+                   '</strong> Those cells have a reading from round one and none '
+                   'from round two, so nothing can be said about them either '
+                   'way.</p>' % said["lostSinceRoundOne"])
+    else:
+        verdict = ('<p class="says"><strong>These are two rounds of one survey.</strong>'
+                   ' Same ground, seen the same way.</p>')
+
+    rows = "".join(
+        "<tr><td class='what'>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
+        % (html.escape(one["what"]), html.escape(str(one["was"])),
+           html.escape(str(one["now"])),
+           html.escape(one["verdict"]
+                       + ("" if not one.get("offBy") else
+                          ", off by %.2f" % one["offBy"])))
+        for one in alike)
+    return PAGE % {
+        "style": provenance.STYLE, "name": html.escape(name),
+        "where": html.escape("%d cells of %.0f m in the plan"
+                             % (planned, said["grid"]["cellM"])),
+        "verdict": verdict, "headline": headline,
+        "picture": picture, "caption": html.escape(caption), "legend": legend,
+        "rows": rows,
+    }
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(
+        description="round two, and whether it can be compared with round one")
+    parse.add_argument("place")
+    parse.add_argument("--first", required=True, help="round one's deliverables")
+    parse.add_argument("--then", required=True, help="round two's deliverables")
+    parse.add_argument("--cell", type=float, default=20.0)
+    parse.add_argument("--where", choices=("reef", "all"), default="reef")
+    parse.add_argument("--into", default=None)
+    asked = parse.parse_args()
+
+    place = pathlib.Path(asked.place).expanduser()
+    first = pathlib.Path(asked.first).expanduser()
+    then = pathlib.Path(asked.then).expanduser()
+    for one in (place / "site.json", first, then):
+        if not one.exists():
+            print(f"nothing at {one}", file=sys.stderr)
+            return 1
+
+    said = the_same_ground(place, asked.cell, asked.where, first, then)
+    alike = the_same_way(how_it_was_flown(first), how_it_was_flown(then))
+
+    into = pathlib.Path(asked.into).expanduser() if asked.into else then / "against"
+    into.mkdir(parents=True, exist_ok=True)
+    (into / "again.json").write_text(json.dumps(
+        {"place": place.name,
+         "ground": {k: v for k, v in said.items()
+                    if k not in ("grid", "hitFirst", "hitThen", "planned")},
+         "flownAlike": alike}, indent=2, default=str) + "\n")
+    (into / "again.html").write_text(page(place.name, said, alike))
+
+    print(f"  {place.name}: round two against round one")
+    print(f"    {said['inBoth']} cells in both · {said['lostSinceRoundOne']} covered "
+          f"then and missed now · {said['newInRoundTwo']} new")
+    for one in alike:
+        print(f"    {one['what']:<28} {str(one['was']):>8} → {str(one['now']):<8} "
+              f"{one['verdict']}")
+    print(f"    {into / 'again.html'}")
+    return 0 if not any(one["verdict"] == "different" for one in alike) else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
