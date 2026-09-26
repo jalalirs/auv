@@ -60,6 +60,12 @@ class Recorder:
         # Line-buffered, so a dive that is stopped without ceremony still
         # leaves every line it wrote; a manifest is rewritten as it goes for
         # the same reason.
+        # Soundings, when the vehicle carries a multibeam. Their own file
+        # and not the sensors stream: a swath is a few hundred numbers a
+        # ping and would swamp everything else in a line nobody could read,
+        # and what it is for is a chart rather than a trace.
+        self._soundings = None
+        self.soundings = 0
         self._poses = (self.into / "poses.jsonl").open("w", buffering=1)
         self._sensors = (self.into / "sensors.jsonl").open("w", buffering=1)
         self._task = (self.into / "task.jsonl").open("w", buffering=1)
@@ -72,6 +78,13 @@ class Recorder:
         self.frames_taken = 0
         self.frame_name: str | None = None
         self._site: dict | None = None
+
+    def sounded(self, swath: dict) -> None:
+        """One swath of the bottom, kept."""
+        if self._soundings is None:
+            self._soundings = (self.into / "soundings.jsonl").open("w", buffering=1)
+        self._soundings.write(json.dumps(swath) + "\n")
+        self.soundings += int(swath.get("beams") or 0)
 
     def due(self, t: float) -> bool:
         """Whether a picture is owed at this moment of the dive."""
@@ -143,7 +156,9 @@ class Recorder:
             (self.into / "manifest.json").write_text(json.dumps(self.manifest(dive, self.camera, closed=False), indent=2))
 
     def close(self, dive, camera: dict | None) -> dict:
-        for handle in (self._poses, self._sensors, self._task):
+        for handle in (self._poses, self._sensors, self._task, self._soundings):
+            if handle is None:
+                continue
             handle.flush()
             handle.close()
         if self.video:
@@ -223,8 +238,10 @@ class Recorder:
             "video": {"file": self.video_name,
                        "framesPerSecond": round(1.0 / self.frame_every, 2),
                        "frames": self.frames_taken} if self.video else None,
+            **({} if not self.soundings else {"soundings": self.soundings}),
             "files": ["poses.jsonl", "sensors.jsonl", "task.jsonl", "manifest.json"]
-                     + (["plan.json"] if isinstance(document, dict) else []),
+                     + (["plan.json"] if isinstance(document, dict) else [])
+                     + (["soundings.jsonl"] if self.soundings else []),
             "closed": closed,
         }
         return manifest

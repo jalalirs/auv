@@ -343,3 +343,75 @@ def test_the_report_scales_both_axes_the_same(tmp_path):
     pairs = _re.findall(r"[ML]([\d.]+) ([\d.]+)", drawn.split('d="')[1].split('"')[0])
     (x0, y0), (x1, y1) = [(float(a), float(b)) for a, b in pairs]
     assert abs(x1 - x0) == pytest.approx(10 * abs(y1 - y0), rel=1e-6)
+
+
+# ── the chart ────────────────────────────────────────────────────────────────
+
+def _soundings(into, swaths):
+    into.mkdir(parents=True, exist_ok=True)
+    (into / "soundings.jsonl").write_text(
+        "\n".join(json.dumps(one) for one in swaths) + "\n")
+
+
+def test_soundings_become_a_chart_anybody_can_open(tmp_path):
+    tool = _deliver()
+    recording = tmp_path / "rec"
+    _soundings(recording, [
+        {"t": 0.1, "beams": 3, "x": [0.0, 1.0, 2.0], "y": [0.0, 0.0, 0.0],
+         "depthM": [20.0, 20.5, 21.0]},
+        {"t": 0.2, "beams": 3, "x": [0.0, 1.0, 2.0], "y": [1.0, 1.0, 1.0],
+         "depthM": [20.2, 20.7, 21.2]},
+    ])
+    said = tool.bathymetry_file(tmp_path, tool.soundings_of(recording), CENTRE,
+                                cell_m=1.0)
+    assert said["soundings"] == 6 and said["swaths"] == 2
+    grid = (tmp_path / "bathymetry.asc").read_text().splitlines()
+    assert grid[0].startswith("ncols")
+    assert "NODATA_value" in grid[5]
+    # An ESRI grid is written from the north down, which is the flip every
+    # raster on this platform needs.
+    assert grid[6].split()[0] == "20.200"
+    assert (tmp_path / "bathymetry.prj").read_text().startswith("PROJCS")
+
+
+def test_a_cell_with_no_sounding_is_a_hole_and_not_an_average(tmp_path):
+    """A chart that looks complete and is not is worse than one with holes,
+    because somebody navigates off it."""
+    tool = _deliver()
+    recording = tmp_path / "rec"
+    _soundings(recording, [{"t": 0.1, "beams": 2, "x": [0.0, 4.0], "y": [0.0, 0.0],
+                            "depthM": [20.0, 24.0]}])
+    said = tool.bathymetry_file(tmp_path, tool.soundings_of(recording), CENTRE,
+                                cell_m=1.0)
+    assert said["cellsWithASounding"] == 2
+    assert said["cellsEmpty"] == 3
+    row = (tmp_path / "bathymetry.asc").read_text().splitlines()[6].split()
+    assert row[0] == "20.000" and row[-1] == "24.000"
+    assert row[1] == "%.3f" % tool.NODATA
+
+
+def test_two_soundings_in_one_cell_are_averaged():
+    """Which is what a grid is; it is only a hole that must not be filled."""
+    tool = _deliver()
+    import tempfile
+    with tempfile.TemporaryDirectory() as folder:
+        into = pathlib.Path(folder)
+        _soundings(into / "rec", [{"t": 0.1, "beams": 2, "x": [0.1, 0.2],
+                                   "y": [0.1, 0.2], "depthM": [20.0, 22.0]}])
+        tool.bathymetry_file(into, tool.soundings_of(into / "rec"), CENTRE, cell_m=1.0)
+        assert "21.000" in (into / "bathymetry.asc").read_text()
+
+
+def test_a_dive_with_no_multibeam_writes_no_chart(tmp_path):
+    tool = _deliver()
+    assert tool.soundings_of(tmp_path) == []
+    assert tool.bathymetry_file(tmp_path, [], CENTRE) is None
+    assert not (tmp_path / "bathymetry.asc").exists()
+
+
+def test_the_chart_says_it_is_the_instrument_that_measured_it(tmp_path):
+    tool = _deliver()
+    said = tool.mission_provenance(False, False, has_bathymetry=True)
+    chart = said["columns"]["bathymetry.asc"]
+    assert chart["kind"] == "measured by the instrument"
+    assert "not an interpolation" in chart["from"]
