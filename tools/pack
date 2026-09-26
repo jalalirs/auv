@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+"""Everything a place has produced, as one page with links.
+
+    tools/pack ~/coral-city/deliverables/looe-key
+
+By the end of a programme there are a lot of pages: what anybody measured
+about the reef, what each dive produced, what the day turns on, what the
+whole grid would take, whether round two can be held against round one.
+Each is right on its own and together they are a directory listing, which
+is not a deliverable. This is the top of the pack: what is in it, one line
+each, and — the part that matters — **what is not**.
+
+A pack that quietly omits the missing pieces is a pack that reads as
+complete. So every kind is listed whether or not it is there, and the ones
+that are not say what would produce them. A customer who is handed this
+should be able to tell in ten seconds what they have and what they have
+not.
+"""
+
+from __future__ import annotations
+
+import argparse
+import html
+import importlib.machinery
+import importlib.util
+import json
+import pathlib
+import sys
+
+HERE = pathlib.Path(__file__).resolve().parent
+
+
+def a_tool(name: str):
+    loader = importlib.machinery.SourceFileLoader(name, str(HERE / name))
+    spec = importlib.util.spec_from_loader(name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def number(said, *keys, otherwise=None):
+    for key in keys:
+        if isinstance(said, dict) and key in said:
+            said = said[key]
+        else:
+            return otherwise
+    return said
+
+
+def a_line(kind: str, where: pathlib.Path) -> str:
+    """One line saying what a page actually says, read from beside it."""
+    try:
+        if kind == "the reef":
+            said = json.loads((where.parent / "provenance.json").read_text())
+            columns = said.get("columns") or {}
+            measured = sum(1 for one in columns.values()
+                           if one.get("measured") or one.get("kind") == "measured")
+            return f"{len(columns)} claims, {measured} of them measured"
+        if kind == "a dive":
+            said = json.loads((where.parent / "mission.json").read_text())
+            task = said.get("task") or {}
+            bits = [str(task.get("name") or "a dive")]
+            if task.get("score") is not None:
+                bits.append("scored %.0f%%" % (100 * float(task["score"])))
+            if number(said, "track", "meanFixErrorM") is not None:
+                bits.append("%.1f m mean navigation error"
+                            % number(said, "track", "meanFixErrorM"))
+            if number(said, "bathymetry", "soundings"):
+                bits.append("%s soundings" % f"{number(said, 'bathymetry', 'soundings'):,}")
+            return " · ".join(bits)
+        if kind == "the whole grid":
+            said = json.loads((where.parent / "campaign.json").read_text())
+            work = said.get("campaign") or {}
+            bits = ["%d cells" % work.get("cells", 0)]
+            if work.get("workingDays"):
+                bits.append("%d working days" % work["workingDays"])
+            if work.get("shipDays"):
+                bits.append("%d ship days" % work["shipDays"])
+            covered = said.get("covered") or {}
+            if covered:
+                bits.append("%d covered, %d missed"
+                            % (covered.get("cellsCovered", 0),
+                               covered.get("cellsMissed", 0)))
+            return " · ".join(bits)
+        if kind == "round two":
+            said = json.loads((where.parent / "again.json").read_text())
+            ground = said.get("ground") or {}
+            alike = said.get("flownAlike") or []
+            off = [one for one in alike if one.get("verdict") == "different"]
+            return ("%d cells in both, %d holes · %s"
+                    % (ground.get("inBoth", 0), ground.get("lostSinceRoundOne", 0),
+                       "not flown the same way" if off else "flown the same way"))
+    except Exception:
+        pass
+    return "—"
+
+
+# Every kind of page a programme produces, whether or not it is here, and
+# what would produce the ones that are not.
+KINDS = [
+    ("the reef", "provenance.html",
+     "what anybody actually measured about this place",
+     "tools/provenance <place>"),
+    ("the water", "conditions.html",
+     "which of a dive's conditions were observed and which nobody set",
+     "tools/provenance --dive <a dive's log>"),
+    ("a dive", "report.html",
+     "what one flown mission produced: where it went, what it put down",
+     "tools/deliver --dive <a recording>"),
+    ("what the day turns on", "findings.html",
+     "one mission flown against everything nobody could promise about it",
+     "tools/rehearsal <a sweep's findings.json>"),
+    ("the whole grid", "campaign.html",
+     "the programme: cells, days of ship time, and what was covered",
+     "tools/campaign <place> --cost <a flown mission>"),
+    ("round two", "again.html",
+     "whether the second round can be held against the first",
+     "tools/again <place> --first <round one> --then <round two>"),
+]
+
+PAGE = """<!doctype html>
+<meta charset="utf-8">
+<title>%(name)s — everything in the pack</title>
+<style>%(style)s
+  td.miss { color: #8a2a2a; }
+  td.miss code { background: #f9e9e9; }
+</style>
+<h1>%(name)s</h1>
+<p class="where">%(where)s</p>
+
+<p class="says"><strong>What this is.</strong> Everything this place has
+produced, and everything it has not. Each page below is right on its own;
+together they are a directory listing, which is not a deliverable. The rows
+in red are the ones that do not exist yet, with the command that would make
+them — a pack that quietly omitted them would read as complete.</p>
+
+<table>
+  <tr><th>What</th><th>It says</th><th></th></tr>
+  %(rows)s
+</table>
+
+<footer>%(counted)s · built by Coral City from what is in this folder.</footer>
+"""
+
+
+def find(where: pathlib.Path, filename: str) -> list[pathlib.Path]:
+    """Every page of a kind under here, nearest first."""
+    if (where / filename).is_file():
+        return [where / filename]
+    return sorted(where.rglob(filename))
+
+
+def page(name: str, where: pathlib.Path, found: list[dict]) -> str:
+    provenance = a_tool("provenance")
+    rows = []
+    for one in found:
+        if one["at"] is None:
+            rows.append(
+                '<tr><td class="what">%s</td><td class="miss">not here — '
+                '<code>%s</code></td><td class="n">—</td></tr>'
+                % (html.escape(one["kind"]), html.escape(one["how"])))
+            continue
+        links = " · ".join(
+            '<a href="%s">%s</a>' % (html.escape(str(at)), html.escape(at.parent.name
+                                                                       or at.name))
+            for at in one["at"])
+        rows.append('<tr><td class="what">%s<span class="where">%s</span></td>'
+                    '<td>%s</td><td class="n">%s</td></tr>'
+                    % (html.escape(one["kind"]), html.escape(one["says"]),
+                       html.escape(one["line"]), links))
+    here = sum(1 for one in found if one["at"])
+    return PAGE % {
+        "style": provenance.STYLE,
+        "name": html.escape(name),
+        "where": html.escape(str(where)),
+        "rows": "\n  ".join(rows),
+        "counted": html.escape("%d of %d kinds of page are here"
+                               % (here, len(found))),
+    }
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(
+        description="everything a place has produced, as one page with links")
+    parse.add_argument("where", help="a deliverables directory")
+    parse.add_argument("--name", default=None)
+    asked = parse.parse_args()
+
+    where = pathlib.Path(asked.where).expanduser()
+    if not where.is_dir():
+        print(f"nothing at {where}", file=sys.stderr)
+        return 1
+
+    found = []
+    for kind, filename, says, how in KINDS:
+        at = find(where, filename)
+        found.append({"kind": kind, "says": says, "how": how,
+                      "at": [one.relative_to(where) for one in at] if at else None,
+                      "line": a_line(kind, at[0]) if at else ""})
+    (where / "index.html").write_text(
+        page(asked.name or where.name, where, found))
+
+    print(f"  {where.name}")
+    for one in found:
+        mark = "·" if one["at"] else "—"
+        print(f"    {mark} {one['kind']:<24} "
+              + (f"{len(one['at'])} page(s)" if one["at"] else f"not here: {one['how']}"))
+    print(f"    {where / 'index.html'}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
