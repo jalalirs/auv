@@ -495,6 +495,23 @@ VIEWS = (
     ("by-the-lamps", dict(from_anchor=(0.0, 0.0), above=1.4,
                           at=(10.2, 0.0), at_above=0.6,
                           says="just behind the vehicle, where its lamps point")),
+    # One square metre, straight down, at the scale a survey photographs it.
+    #
+    # Every other view here is a diver's view: metres away, looking along. A
+    # square metre looking down is the only one that can be put *beside a
+    # photograph* — an orthomosaic is nadir and has a scale bar, so a frame
+    # that is nadir and one metre across is comparable to it directly, pixel
+    # for pixel, with nothing to argue about but the reef.
+    #
+    # 1.15 m up: a 24 mm lens on this camera's aperture sees a metre across
+    # from there. It is the last view on the sheet because on a site built at
+    # two metres a sample it shows the interpolation rather than the reef —
+    # which is itself worth seeing, and is why Looe Key has a patch cut at one
+    # centimetre for it to be honest on.
+    ("a-square-metre", dict(from_anchor=(0.0, 0.0), above=1.15,
+                            at=(0.001, 0.0), at_above=0.0,
+                            says="one square metre, straight down, at the "
+                                 "scale a survey photographs it")),
 )
 # Frames to let Kit settle before one is kept. The same reason the ladder
 # waits: moving a camera on a scene this size is not instant.
