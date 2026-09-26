@@ -21,8 +21,12 @@ def load(slug: str) -> Vehicle:
     try:
         return ALL[slug]
     except KeyError:
-        raise KeyError(f"no vehicle '{slug}' in the catalogue; there are {', '.join(ALL)}") from None
+        # Not one of ours. A customer's own hull is found by the
+        # card its package carries; see coral_city/catalogue.py.
+        from ..catalogue import from_a_package
+
+        return from_a_package(slug, ALL)
 
 
-def all() -> list[Vehicle]:
+def all() -> list[Vehicle]:  # noqa: A001 — reads well at the call site
     return list(ALL.values())
