@@ -104,3 +104,87 @@ def test_it_escapes_what_a_record_says():
     out = tool.page(site, tool.about(site, None))
     assert "<script>" not in out
     assert "&lt;script&gt;" in out
+
+
+# ── a dive ───────────────────────────────────────────────────────────────────
+
+FLOWN = {
+    "event": "conditions_from",
+    "were": {"currentMetresPerSecond": 0.0, "currentHeadingDeg": 0.0,
+             "visibilityM": None, "densityKgM3": 1028.9,
+             "salinityPsu": 40.6, "temperatureC": 26.0,
+             "significantWaveHeightM": 0.4, "waveMeanPeriodS": 6.0},
+    "cameFrom": {
+        "kind": "observed", "observedAt": "2026-09-20T06:00:00Z",
+        "fields": {
+            "currentMetresPerSecond": {"how": "assumed", "instead": "still water"},
+            "currentHeadingDeg": {"how": "assumed", "instead": "still water"},
+            "visibilityM": {"how": "assumed", "instead": "whatever the water type gives"},
+            "waterType": {"how": "chosen"},
+            "significantWaveHeightM": {"how": "measured", "at": "2026-09-20T06:00:00Z",
+                                       "from": "a Sofar Spotter buoy in the water",
+                                       "through": "aqualink.org"},
+            "waveMeanPeriodS": {"how": "measured", "at": "2026-09-20T06:00:00Z"},
+            "temperatureC": {"how": "measured", "at": "2026-09-20T06:00:00Z"},
+            "salinityPsu": {"how": "chosen"},
+            "densityKgM3": {"how": "derived", "fromFields": ["salinityPsu", "temperatureC"],
+                            "by": "the equation of state"},
+            "depthGaugeDensityKgM3": {"how": "assumed",
+                                      "instead": "a gauge right for the water it is in"},
+        },
+        "counted": {"measured": 3, "derived": 1, "chosen": 2, "assumed": 4},
+    },
+}
+
+
+def _log(tmp_path):
+    out = tmp_path / "red-sea-II" / "look.log"
+    out.parent.mkdir()
+    out.write_text('{"event": "place_open", "prims": 4}\n'
+                   + __import__("json").dumps(FLOWN) + "\n")
+    return out
+
+
+def test_a_dive_says_which_of_its_conditions_nobody_set(tmp_path):
+    """The whole point. A run against a measured sea and a run against an
+    empty form both report a number for every field."""
+    tool = _tool()
+    said, came, name = tool.a_dive(_log(tmp_path))
+    rows = {r["what"]: r for r in tool.about_dive(came, said)}
+    assert name == "red-sea-II"
+    assert rows["current"]["kind"] == tool.ASSUMED
+    assert "still water" in rows["current"]["from"]
+    assert rows["wave height"]["kind"] == tool.MEASURED
+    assert "Spotter" in rows["wave height"]["from"]
+    assert rows["density"]["kind"] == tool.DERIVED
+    assert "equation of state" in rows["density"]["from"]
+
+
+def test_an_assumed_condition_still_shows_the_number_it_was_flown_with(tmp_path):
+    """Grey does not mean absent. The dive really was flown in still water —
+    what is missing is anybody having asked for it."""
+    tool = _tool()
+    said, came, _ = tool.a_dive(_log(tmp_path))
+    rows = {r["what"]: r for r in tool.about_dive(came, said)}
+    assert rows["current"]["value"] == "0.00 m/s"
+
+
+def test_a_dive_flown_before_any_of_this_is_refused_not_guessed(tmp_path):
+    """A page of assumptions that passes for a record is worse than no page."""
+    tool = _tool()
+    old = tmp_path / "old-dive" / "look.log"
+    old.parent.mkdir()
+    old.write_text('{"event": "water_is", "type": "1C"}\n')
+    assert tool.dive_of(old, tmp_path) == 1
+
+
+def test_the_dive_page_needs_nothing_to_render(tmp_path):
+    tool = _tool()
+    said, came, name = tool.a_dive(_log(tmp_path))
+    out = tool.dive_page(name, came, tool.about_dive(came, said))
+    for fetched in ("<script", "http://", "https://", "@import", "<link"):
+        assert fetched not in out, fetched
+    assert out.startswith("<!doctype html>")
+    # Four words on a dive, three on a place, and the legend carries only
+    # the ones the page uses.
+    assert ">assumed<" in out

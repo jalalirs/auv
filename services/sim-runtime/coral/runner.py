@@ -1253,11 +1253,11 @@ class Dive:
         self.sensors_out_until = 0.0
         # Said once, at the top of the log, because a reader who scrolls past
         # `water_is` should not have to guess whether anybody measured it.
-        told = dict(self.where_conditions_came_from())
-        # `kind` is what an event is called, so the conditions' own kind has to
-        # go under a name of its own to be said out loud at all.
-        told["conditionsKind"] = told.pop("kind")
-        self.say("conditions_from", **told)
+        # Both halves in one event: the numbers the dive was flown in, and
+        # where each of them came from. Apart, a reader has to join them by
+        # hand, and the second half is the half that gets dropped.
+        were = self.conditions_said()
+        self.say("conditions_from", were=were, cameFrom=were.pop("cameFrom"))
 
     def things_go_wrong(self) -> None:
         """Apply whatever the conditions said would fail, when it said."""
