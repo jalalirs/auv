@@ -55,3 +55,49 @@ def test_coral_is_read_off_the_place_for_the_chart(tmp_path):
         'def PointInstancer "Coral" {\n    point3f[] positions = [(-160.4, -14.33, -3.707), (1, 2, 3), (4.25, -5.5, 0)]\n}\n')
     assert coral_positions(tmp_path) == [[-160.4, -14.3], [1.0, 2.0], [4.2, -5.5]]
     assert coral_positions(tmp_path / "nowhere") == []
+
+
+def test_a_recording_says_which_reef_it_was_and_where_that_is(tmp_path):
+    """Without it a mission's product is metres from a centre nobody wrote
+    down, and nothing it produced can be put on a map."""
+    model = Hydrodynamics.from_package(PACKAGE / "dynamics.json")
+    city = tmp_path / "city"
+    city.mkdir()
+    (city / "site.json").write_text(json.dumps({
+        "name": "red-sea", "from": {"centre": {"latitude": 22.305, "longitude": 38.97},
+                                    "acrossMetres": 1000.0, "sampleMetres": 1.96,
+                                    "surveyed": False}}))
+    into = tmp_path / "recording"
+    dive = Dive({"durationSeconds": 2, "initialState": {"positionM": [0, 0, -7]},
+                 "vehiclePath": str(PACKAGE), "cityPath": str(city),
+                 "recordInto": str(into)},
+                Body(model), Allocator(model), pathlib.Path("nowhere.usda"),
+                lambda kind, **d: None)
+    dive.begin_task({"kind": "survey", "widthM": 10, "heightM": 5})
+    while not dive.done:
+        dive.step()
+    dive.close()
+    place = json.loads((into / "manifest.json").read_text())["place"]
+    assert place["name"] == "red-sea"
+    assert place["centre"] == {"latitude": 22.305, "longitude": 38.97}
+    assert place["surveyed"] is False
+
+
+def test_a_place_that_does_not_say_where_it_is_leaves_the_field_empty(tmp_path):
+    """Empty rather than a guess: `deliver` refuses a recording it cannot
+    georeference, and it can only refuse one that admits it."""
+    model = Hydrodynamics.from_package(PACKAGE / "dynamics.json")
+    city = tmp_path / "city"
+    city.mkdir()
+    (city / "site.json").write_text('{"name": "a tank", "from": {}}')
+    into = tmp_path / "recording"
+    dive = Dive({"durationSeconds": 2, "initialState": {"positionM": [0, 0, -7]},
+                 "vehiclePath": str(PACKAGE), "cityPath": str(city),
+                 "recordInto": str(into)},
+                Body(model), Allocator(model), pathlib.Path("nowhere.usda"),
+                lambda kind, **d: None)
+    dive.begin_task({"kind": "survey", "widthM": 10, "heightM": 5})
+    while not dive.done:
+        dive.step()
+    dive.close()
+    assert json.loads((into / "manifest.json").read_text())["place"] is None
