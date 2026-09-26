@@ -148,8 +148,32 @@ def on_box(command: str) -> str:
     return over_the_wire(command)
 
 
+def not_on_the_box_itself() -> None:
+    """Refuse to run here if here is the box.
+
+    Everything in this file reaches the platform *through* the GPU host —
+    `on_box` opens an SSH session for every request, because the platform
+    listens on the box and not on a workstation. Run on the box, that is
+    an SSH session to itself, which has no key and no agent: the tool sits
+    there, posts nothing, and looks like a scheduler that will not claim.
+    Twenty minutes went into that.
+    """
+    host = BOX.split("@")[-1]
+    try:
+        mine = subprocess.run(["hostname", "-I"], capture_output=True,
+                              text=True, timeout=5).stdout.split()
+    except Exception:
+        return                       # not Linux, so not the box
+    if host in mine:
+        raise SystemExit(
+            f"this is {host} — the box itself. Everything here reaches the "
+            f"platform over SSH *to* the box, so running it on the box is an "
+            f"SSH session to itself. Run it from your workstation.")
+
+
 class Platform:
     def __init__(self) -> None:
+        not_on_the_box_itself()
         env = on_box(f"grep -E '^CORAL_CITY_(ADMIN_EMAIL|ADMIN_SECRET|BIND_ADDRESS)=' "
                      f"~/{REMOTE}/deployments/box/.env")
         said = dict(line.split("=", 1) for line in env.splitlines() if "=" in line)

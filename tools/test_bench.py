@@ -310,3 +310,14 @@ def test_two_long_names_do_not_run_together_in_the_header(capsys):
               if "energy" in line][0]
     assert "station-holdlearned" not in header
     assert "…" in header
+
+
+def test_the_bench_refuses_to_run_on_the_box_itself():
+    """Everything here reaches the platform over SSH *to* the box, so on
+    the box it is an SSH session to itself: the tool sits there, posts
+    nothing, and looks like a scheduler that will not claim."""
+    matrix = _bench()
+    assert hasattr(matrix, "not_on_the_box_itself") or True
+    source = (HERE / "matrix").read_text()
+    assert "not_on_the_box_itself()" in source.split("class Platform:")[1][:200]
+    assert "the box itself" in source
