@@ -37,7 +37,58 @@ def module_name(slug: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", slug.lower()).strip("_")
 
 
+def card_of(dynamics: pathlib.Path) -> dict:
+    """A vehicle package, reduced to what the SDK needs to describe it.
+
+    The capability numbers come from the runtime's own allocator, which is
+    the whole point: what the SDK says a vehicle can do is what the runtime
+    will let it do, and there is one implementation of that arithmetic.
+
+    Written into a package so that a hull somebody else published can be
+    flown by an SDK controller. Until now the SDK's list of vehicles was
+    generated from *our* catalogue at build time, so a customer could
+    publish a hull to the platform and then be told by the SDK that there
+    was no such vehicle.
+    """
+    slug = dynamics.parent.name
+    document = json.loads(dynamics.read_text())
+    model = Hydrodynamics.from_package(dynamics)
+    contract = document.get("topicContract", {})
+    return {
+        "slug": slug,
+        "name": title_of(dynamics.parent / "README.md", slug),
+        "massKg": float(document["massKg"]),
+        "netBuoyancyN": round(float(model.net_buoyancy_n), 3),
+        "capability": [round(float(v), 3) for v in Allocator(model).capability()],
+        "thrusters": [{"name": one["name"],
+                       "position": [float(v) for v in one["position"]],
+                       "direction": [float(v) for v in one["direction"]]}
+                      for one in document.get("thrusters", {}).get("units", [])],
+        "sensors": [{"kind": one["kind"], "name": one["name"]}
+                    for one in document.get("sensors", [])],
+        "publishes": [{"topic": one["topic"], "type": one["type"],
+                       "note": one.get("note", "")}
+                      for one in contract.get("publishes", [])],
+        "subscribes": [{"topic": one["topic"], "type": one["type"],
+                        "note": one.get("note", "")}
+                       for one in contract.get("subscribes", [])],
+        "dynamics": document,
+    }
+
+
 def main() -> int:
+    if len(sys.argv) > 2 and sys.argv[1] == "--package":
+        # One package, carded in place, for a hull that is not ours.
+        package = pathlib.Path(sys.argv[2]).expanduser()
+        dynamics = package / "dynamics.json"
+        if not dynamics.is_file():
+            print(f"no dynamics.json in {package}", file=sys.stderr)
+            return 1
+        (package / "vehicle.json").write_text(
+            json.dumps(card_of(dynamics), indent=2) + "\n")
+        print(f"{package.name} -> {package / 'vehicle.json'}")
+        return 0
+
     written = []
     for dynamics in sorted(CATALOG.glob("*/dynamics.json")):
         slug = dynamics.parent.name
@@ -97,7 +148,11 @@ def main() -> int:
         "    try:",
         "        return ALL[slug]",
         "    except KeyError:",
-        "        raise KeyError(f\"no vehicle '{slug}' in the catalogue; there are {', '.join(ALL)}\") from None",
+        "        # Not one of ours. A customer's own hull is found by the",
+        "        # card its package carries; see coral_city/catalogue.py.",
+        "        from ..catalogue import from_a_package",
+        "",
+        "        return from_a_package(slug, ALL)",
         "",
         "",
         "def all() -> list[Vehicle]:  # noqa: A001 — reads well at the call site",
