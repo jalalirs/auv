@@ -213,8 +213,7 @@ PAGE = """<!doctype html>
   %(rows)s
 </table>
 
-<footer>%(counted)s · built by Coral City from %(whose)s own record ·
-%(built)s</footer>
+<footer>%(counted)s · built by Coral City from %(whose)s own record%(built)s</footer>
 """
 
 PLACE_SAYS = """<p class="says"><strong>What this page is.</strong> Every number this place
@@ -277,7 +276,7 @@ def sheet(name: str, where: str, says: str, first: str, rows: list[dict],
         "first": html.escape(first),
         "counted": html.escape(counted),
         "whose": html.escape(whose),
-        "built": html.escape(built),
+        "built": (" · " + html.escape(built)) if built else "",
         "rows": "\n  ".join(ROW % {
             "what": html.escape(r["what"]),
             "kind": r["kind"], "ink": INK[r["kind"]], "wash": WASH[r["kind"]],
@@ -387,6 +386,10 @@ FIELDS = [
 ]
 
 
+# A field key as the table writes it, for when one claim has to name another.
+READS_AS = {key: what for key, what, _ in FIELDS}
+
+
 def written(shape: str, value) -> str:
     """The number as a person writes it, or the word for not having one."""
     if value is None:
@@ -406,18 +409,28 @@ def about_dive(came: dict, said: dict) -> list[dict]:
         if told is None:
             continue
         how = told.get("how", ASSUMED)
-        value = written(shape, said.get(key))
+        number = said.get(key)
+        # A gauge nobody calibrated is reported only when it disagrees with
+        # the water, which is exactly when it is absent here — and a blank
+        # against "assumed" reads as a field with no value rather than one
+        # that quietly took the water's own density.
+        if key == "depthGaugeDensityKgM3" and number is None:
+            number = said.get("densityKgM3")
+        value = written(shape, number)
         if how == MEASURED:
-            whence = "measured"
-            if told.get("from"):
-                whence = str(told["from"])
-            if told.get("at"):
+            whence = str(told.get("from") or "an instrument")
+            # The instant only when it is not the one already in the heading.
+            # A buoy read at six and a satellite read at four are two claims;
+            # eight rows all repeating the same timestamp are one, said eight
+            # times, and it buries the rows that differ.
+            if told.get("at") and told["at"] != came.get("observedAt"):
                 whence += ", at %s" % told["at"]
             if told.get("through"):
                 whence += ", through %s" % told["through"]
         elif how == DERIVED:
-            whence = "%s, from %s" % (told.get("by", "arithmetic"),
-                                      " and ".join(told.get("fromFields") or []))
+            # Named the way the table names them, not the way the JSON does.
+            words = [READS_AS.get(one, one) for one in (told.get("fromFields") or [])]
+            whence = "%s, from %s" % (told.get("by", "arithmetic"), " and ".join(words))
         elif how == ASSUMED:
             # The value is still printed, because it is what the dive was
             # flown in. What is added is that nobody asked for it.
@@ -456,9 +469,9 @@ def a_dive(path: pathlib.Path) -> tuple[dict, dict, str]:
 
 
 def dive_page(name: str, came: dict, rows: list[dict]) -> str:
-    where = ["conditions %s" % came.get("kind", "constructed")]
+    where = ["%s conditions" % came.get("kind", "constructed")]
     if came.get("observedAt"):
-        where.append("observed %s" % came["observedAt"])
+        where.append("as the sea was at %s" % came["observedAt"])
     return sheet(name=name, where=" · ".join(where), says=DIVE_SAYS,
                  first="Condition", rows=rows,
                  kinds=(MEASURED, DERIVED, CHOSEN, ASSUMED),
