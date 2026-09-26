@@ -283,6 +283,41 @@ class Tour:
         if str(viewport.camera_path) != camera_path:
             viewport.camera_path = camera_path
 
+        # What this frame is a picture of, in the world, said out loud.
+        #
+        # A nadir frame *is* an orthophoto, and an orthophoto that does not
+        # carry where it is, how wide it is and which way is north is a
+        # picture rather than a measurement. Half a day went into putting one
+        # square metre of render beside one square metre of the USGS
+        # orthomosaic it was built from, and the whole of it was spent
+        # arguing about a rotation and a sign — the frame matched at 0.84 and
+        # it took a search over eight orientations and a grid of offsets to
+        # find *where*, because nothing in the output said.
+        #
+        # The basis is read back out of the matrix that was just set rather
+        # than derived from the up vector that was passed in, because those
+        # two disagreed and the matrix is the one the renderer uses.
+        world = look
+        right = Gf.Vec3d(world[0][0], world[0][1], world[0][2])
+        frame_up = Gf.Vec3d(world[1][0], world[1][1], world[1][2])
+        towards_floor = abs(float(eye[2]) - float(target[2]))
+        # A 24 mm lens on this camera's aperture: how much ground the full
+        # width of the frame covers, at the depth the target is.
+        across_m = towards_floor * (camera.GetHorizontalApertureAttr().Get()
+                                    or 20.955) / 24.0
+        self.said_about = {
+            "view": name,
+            "eyeM": [round(float(v), 4) for v in eye],
+            "atM": [round(float(v), 4) for v in target],
+            # Unit vectors in the world for one step right and one step up in
+            # the picture. With these, a pixel is a place.
+            "rightIsM": [round(float(v), 5) for v in right],
+            "upIsM": [round(float(v), 5) for v in frame_up],
+            "widthM": round(float(across_m), 5),
+            "nadir": bool(straight_down),
+        }
+        self.say("stills_where", **self.said_about)
+
 
 # ── the exposure ladder ──────────────────────────────────────────────────────
 #
