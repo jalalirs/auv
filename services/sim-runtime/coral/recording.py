@@ -188,7 +188,16 @@ class Recorder:
                 (self.into / "plan.json").write_text(json.dumps(document, indent=2))
             except Exception:
                 document = None
+        # Which reef this was, and where it is on the Earth. Without it a
+        # recording is a track in metres from a centre nobody wrote down, and
+        # nothing it produced can be put on a map.
+        place = None
+        try:
+            place = dive.where_this_place_is()
+        except Exception:
+            place = None
         manifest = {
+            "place": place,
             "site": self._site or None,
             "plan": None if not isinstance(document, dict) else {
                 "plan": document.get("plan"), "by": getattr(dive, "planned_by", "") or None,
@@ -208,6 +217,9 @@ class Recorder:
             "beganAt": [round(float(v), 3) for v in dive.began_at],
             "camera": camera,
             "task": None if dive.task is None else dive.task.result(),
+            # The water it was flown in and who said so, so that a mission's
+            # product carries its conditions rather than pointing at a log.
+            "conditions": _conditions(dive),
             "video": {"file": self.video_name,
                        "framesPerSecond": round(1.0 / self.frame_every, 2),
                        "frames": self.frames_taken} if self.video else None,
@@ -216,6 +228,13 @@ class Recorder:
             "closed": closed,
         }
         return manifest
+
+
+def _conditions(dive) -> dict | None:
+    try:
+        return dive.conditions_said()
+    except Exception:
+        return None
 
 
 def _quaternion(m: np.ndarray) -> tuple[float, float, float, float]:

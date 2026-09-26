@@ -198,3 +198,117 @@ def test_the_raster_it_writes_is_the_one_it_measured():
     source = (HERE / "deliver").read_text()
     assert "def cover_raster" not in source
     assert 'grid = measured["grid"]' in source
+
+
+# ── a flown mission ──────────────────────────────────────────────────────────
+
+CENTRE = {"latitude": 22.305, "longitude": 38.97}
+
+
+def _recording(tmp_path, *, place=True, marks=True):
+    into = tmp_path / "run_TEST" / "recording"
+    into.mkdir(parents=True)
+    manifest = {
+        "place": ({"name": "red-sea", "centre": CENTRE, "acrossMetres": 1000.0,
+                   "sampleMetres": 1.96, "surveyed": False} if place else None),
+        "positioning": {"kind": "usbl"},
+        "seconds": 120.0,
+        "geometry": ({"marks": [{"x": 0.0, "y": 0.0}, {"x": 2.0, "y": 0.0}],
+                      "planted": [{"x": 0.3, "y": 0.0}, {"x": 5.0, "y": 0.0}]}
+                     if marks else {}),
+        "task": {"kind": "outplant", "name": "Outplant coral", "score": 0.5,
+                 "achieved": {"toleranceM": 1.0}},
+        "conditions": {"waterType": "II", "cameFrom": {
+            "kind": "constructed",
+            "fields": {"waterType": {"how": "chosen"},
+                       "currentMetresPerSecond": {"how": "assumed", "instead": "still water"}},
+            "counted": {"measured": 0, "derived": 0, "chosen": 1, "assumed": 1}}},
+    }
+    (into / "manifest.json").write_text(json.dumps(manifest))
+    lines = []
+    for n in range(3):
+        lines.append(json.dumps({
+            "t": n * 0.2, "position": [float(n), 0.0, -7.0], "depthM": 7.0,
+            "altitudeM": 2.0, "headingDeg": 90.0,
+            "believed": [float(n) + 0.5, 0.0, -7.0]}))
+    (into / "poses.jsonl").write_text("\n".join(lines) + "\n")
+    return into
+
+
+def test_a_mission_puts_its_track_on_the_earth(tmp_path):
+    tool = _deliver()
+    made = tool.deliver_dive(_recording(tmp_path), tmp_path / "out")
+    rows = list(csv.DictReader((tmp_path / "out" / "track.csv").open()))
+    assert len(rows) == 3
+    # Two metres east of the centre is two metres east on the Earth, which is
+    # the same claim the place makes about itself.
+    east, _ = tool.metres_per_degree(CENTRE["latitude"])
+    assert float(rows[2]["longitude"]) == pytest.approx(
+        CENTRE["longitude"] + 2.0 / east, abs=1e-9)
+    assert float(rows[2]["latitude"]) == pytest.approx(CENTRE["latitude"], abs=1e-9)
+    assert made["track"]["worstFixErrorM"] == pytest.approx(0.5)
+
+
+def test_the_track_carries_both_where_it_was_and_where_it_thought_it_was(tmp_path):
+    """The column no real vehicle can produce, and the reason for the file."""
+    tool = _deliver()
+    tool.deliver_dive(_recording(tmp_path), tmp_path / "out")
+    drawn = json.loads((tmp_path / "out" / "track.geojson").read_text())
+    what = [f["properties"]["what"] for f in drawn["features"]]
+    assert "where the vehicle actually was" in what
+    assert "where the vehicle believed it was" in what
+    assert all(f["geometry"]["type"] == "LineString" for f in drawn["features"])
+
+
+def test_a_planting_record_says_how_far_each_coral_missed(tmp_path):
+    tool = _deliver()
+    made = tool.deliver_dive(_recording(tmp_path), tmp_path / "out")
+    rows = list(csv.DictReader((tmp_path / "out" / "planting.csv").open()))
+    assert [r["onTheMark"] for r in rows] == ["yes", "no"]
+    assert float(rows[0]["errorM"]) == pytest.approx(0.3)
+    assert float(rows[1]["errorM"]) == pytest.approx(3.0)
+    assert made["planting"] == {"planted": 2, "of": 2, "onTheMark": 1, "toleranceM": 1.0}
+
+
+def test_a_recording_that_cannot_say_where_it_was_is_refused(tmp_path):
+    """Rather than writing a track in metres from a centre nobody wrote down."""
+    tool = _deliver()
+    with pytest.raises(SystemExit):
+        tool.deliver_dive(_recording(tmp_path, place=False), tmp_path / "out")
+
+
+def test_a_mission_ships_the_water_it_was_flown_in(tmp_path):
+    tool = _deliver()
+    tool.deliver_dive(_recording(tmp_path), tmp_path / "out")
+    page = (tmp_path / "out" / "conditions.html").read_text()
+    assert "nobody said — still water" in page
+
+
+def test_the_mission_provenance_does_not_claim_anything_was_measured(tmp_path):
+    tool = _deliver()
+    tool.deliver_dive(_recording(tmp_path), tmp_path / "out")
+    said = json.loads((tmp_path / "out" / "provenance.json").read_text())
+    kinds = {c["kind"] for c in said["columns"].values()}
+    assert "measured" not in kinds
+    assert tool.TRUTH in kinds and tool.BELIEVED in kinds and tool.PLANNED in kinds
+
+
+def test_a_survey_writes_what_it_actually_saw(tmp_path):
+    """Cells, not an axis-aligned raster: a survey rectangle is square to the
+    mission's heading and not to north."""
+    tool = _deliver()
+    into = _recording(tmp_path, marks=False)
+    manifest = json.loads((into / "manifest.json").read_text())
+    manifest["task"] = {"kind": "survey", "name": "Survey", "score": 0.5, "achieved": {}}
+    manifest["geometry"] = {
+        "rectangle": [{"x": 0.0, "y": 0.0}, {"x": 4.0, "y": 0.0},
+                      {"x": 4.0, "y": 4.0}, {"x": 0.0, "y": 4.0}],
+        "seen": {"rows": 2, "columns": 2,
+                 "cells": list(np.packbits(np.array([[1, 0], [0, 1]], dtype=np.uint8)).tolist())},
+    }
+    (into / "manifest.json").write_text(json.dumps(manifest))
+    made = tool.deliver_dive(into, tmp_path / "out")
+    assert made["coverage"] == {"cells": 4, "seen": 2, "fraction": 0.5}
+    drawn = json.loads((tmp_path / "out" / "coverage.geojson").read_text())
+    assert sum(1 for f in drawn["features"] if f["properties"]["what"] == "seen") == 2
+    assert drawn["features"][0]["geometry"]["type"] == "Polygon"

@@ -13,6 +13,7 @@ what they do between calls.
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import pathlib
@@ -2331,6 +2332,34 @@ class Dive:
         # has to be judged on the channel it would actually have.
         if self.modem is not None:
             self.helm.carries_a_link(self.modem)
+
+    def where_this_place_is(self) -> dict | None:
+        """The place's name and its georeference, off its own record.
+
+        A recording carried the seabed as a grid of heights and nothing that
+        said which reef it was or where on the Earth it sat, so everything a
+        mission produced — the track, where each coral actually went — was in
+        metres from a centre nobody had written down. Deliverables have to be
+        in WGS84 or they are not deliverables, and the arithmetic that puts
+        them there is the same one `make-site` sampled the bathymetry with,
+        run backwards. This is the half of it the runtime knows.
+        """
+        city = pathlib.Path(self.brief.get("cityPath", "/dive/city"))
+        try:
+            described = json.loads((city / "site.json").read_text())
+        except Exception:
+            return None
+        came = described.get("from") or {}
+        centre = came.get("centre") or {}
+        if centre.get("latitude") is None or centre.get("longitude") is None:
+            return None
+        return {"name": described.get("name") or city.name,
+                "centre": {"latitude": float(centre["latitude"]),
+                           "longitude": float(centre["longitude"])},
+                "acrossMetres": came.get("acrossMetres"),
+                "sampleMetres": came.get("sampleMetres"),
+                "surveyed": bool(came.get("surveyed")),
+                "layoutVersionId": self.world.version or None}
 
     def hello(self) -> dict:
         """What somebody arriving at the console needs once: the site as a

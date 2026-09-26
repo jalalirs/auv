@@ -505,13 +505,316 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
             "byForm": by_form, "into": into}
 
 
+# ── a flown mission ──────────────────────────────────────────────────────────
+#
+# A place is a reef somebody can study. A mission is a piece of work somebody
+# actually did, and what it produces is different: where the vehicle went,
+# where it believed it was, and what it put down.
+#
+# The distinction that matters here is not measured-or-not — nothing in a
+# simulated mission is measured. It is *truth against belief*. The simulator
+# knows where the vehicle was; the vehicle only knows where its navigation
+# said it was; the plan knows where it was supposed to be. A restoration that
+# plants on dead reckoning plants a reef nobody can find again, and the gap
+# between those three columns is the only place that shows up. No real
+# vehicle can produce this file, which is the whole argument for the
+# simulator producing it.
+
+TRUTH, BELIEVED, PLANNED = "truth", "believed", "planned"
+
+
+def poses_of(recording: pathlib.Path) -> list[dict]:
+    kept = []
+    with (recording / "poses.jsonl").open() as lines:
+        for line in lines:
+            line = line.strip()
+            if line.startswith("{"):
+                kept.append(json.loads(line))
+    return kept
+
+
+def track_files(into: pathlib.Path, poses: list[dict], centre: dict,
+                positioning: dict | None) -> dict:
+    """Where it went and where it thought it went, as a table and as a map."""
+    rows, flown, thought = [], [], []
+    worst, total = 0.0, 0.0
+    for pose in poses:
+        x, y, z = (float(v) for v in pose["position"])
+        latitude, longitude = where_on_earth(centre, x, y)
+        flown.append([round(longitude, 8), round(latitude, 8)])
+        row = {"t": pose["t"], "x": round(x, 3), "y": round(y, 3),
+               "depthM": pose.get("depthM"), "altitudeM": pose.get("altitudeM"),
+               "headingDeg": pose.get("headingDeg"),
+               "latitude": round(latitude, 8), "longitude": round(longitude, 8),
+               "believedLatitude": "", "believedLongitude": "", "fixErrorM": ""}
+        believed = pose.get("believed")
+        if believed:
+            bx, by = float(believed[0]), float(believed[1])
+            blat, blon = where_on_earth(centre, bx, by)
+            thought.append([round(blon, 8), round(blat, 8)])
+            off = math.hypot(bx - x, by - y)
+            worst = max(worst, off)
+            total += off
+            row["believedLatitude"] = round(blat, 8)
+            row["believedLongitude"] = round(blon, 8)
+            row["fixErrorM"] = round(off, 3)
+        rows.append(row)
+
+    with (into / "track.csv").open("w", newline="") as out:
+        writer = csv.DictWriter(out, fieldnames=list(rows[0]) if rows else ["t"])
+        writer.writeheader()
+        writer.writerows(rows)
+
+    says = "its own navigation"
+    if positioning and positioning.get("kind") not in (None, "", "none"):
+        says = "its navigation, aided by %s" % positioning["kind"].upper()
+    features = [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": flown},
+                 "properties": {"what": "where the vehicle actually was",
+                                "from": "the simulator, which is the only thing that knows"}}]
+    if thought:
+        features.append({"type": "Feature",
+                         "geometry": {"type": "LineString", "coordinates": thought},
+                         "properties": {"what": "where the vehicle believed it was",
+                                        "from": says}})
+    (into / "track.geojson").write_text(json.dumps(
+        {"type": "FeatureCollection", "features": features}, indent=1) + "\n")
+    return {"poses": len(rows), "worstFixErrorM": round(worst, 3),
+            "meanFixErrorM": round(total / len(thought), 3) if thought else None}
+
+
+def planting_files(into: pathlib.Path, geometry: dict, achieved: dict,
+                   centre: dict) -> dict | None:
+    """Every coral: where it was meant to go, and where it actually went.
+
+    The file a restoration programme has to be able to produce and mostly
+    cannot. Two million corals into the seabed by 2030 is a number nobody can
+    check without knowing where each one ended up.
+    """
+    marks = geometry.get("marks") or []
+    planted = geometry.get("planted") or []
+    if not planted:
+        return None
+    tolerance = float(achieved.get("toleranceM") or 0.0)
+    rows = []
+    for n, put in enumerate(planted):
+        mark = marks[n] if n < len(marks) else {}
+        px, py = float(put["x"]), float(put["y"])
+        plat, plon = where_on_earth(centre, px, py)
+        row = {"n": n + 1, "plantedX": round(px, 3), "plantedY": round(py, 3),
+               "plantedLatitude": round(plat, 8), "plantedLongitude": round(plon, 8),
+               "markX": "", "markY": "", "markLatitude": "", "markLongitude": "",
+               "errorM": "", "onTheMark": ""}
+        if mark:
+            mx, my = float(mark["x"]), float(mark["y"])
+            mlat, mlon = where_on_earth(centre, mx, my)
+            off = math.hypot(px - mx, py - my)
+            row.update({"markX": round(mx, 3), "markY": round(my, 3),
+                        "markLatitude": round(mlat, 8), "markLongitude": round(mlon, 8),
+                        "errorM": round(off, 3),
+                        "onTheMark": "yes" if off <= tolerance else "no"})
+        rows.append(row)
+
+    with (into / "planting.csv").open("w", newline="") as out:
+        writer = csv.DictWriter(out, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    features = []
+    for row in rows:
+        features.append({"type": "Feature", "properties": {
+            "n": row["n"], "errorM": row["errorM"], "onTheMark": row["onTheMark"],
+            "what": "where a coral actually went"},
+            "geometry": {"type": "Point",
+                         "coordinates": [row["plantedLongitude"], row["plantedLatitude"]]}})
+        if row["markLatitude"] != "":
+            features.append({"type": "Feature", "properties": {
+                "n": row["n"], "what": "where it was meant to go"},
+                "geometry": {"type": "Point",
+                             "coordinates": [row["markLongitude"], row["markLatitude"]]}})
+    (into / "planting.geojson").write_text(json.dumps(
+        {"type": "FeatureCollection", "features": features}, indent=1) + "\n")
+    return {"planted": len(rows),
+            "of": len(marks) or len(rows),
+            "onTheMark": sum(1 for r in rows if r["onTheMark"] == "yes"),
+            "toleranceM": tolerance}
+
+
+def coverage_file(into: pathlib.Path, geometry: dict, centre: dict) -> dict | None:
+    """What a survey actually saw, as ground rather than as a percentage.
+
+    Written as the cells themselves and not as an ESRI grid on purpose: the
+    rectangle a survey is flown over is stated along the vehicle's own
+    heading, so it is square to the mission and not to north, and an
+    axis-aligned raster of it would be a resampling presented as a
+    measurement.
+    """
+    seen = geometry.get("seen") or {}
+    corners = geometry.get("rectangle") or []
+    cells, rows, columns = seen.get("cells"), seen.get("rows"), seen.get("columns")
+    if not cells or not rows or not columns or len(corners) != 4:
+        return None
+    flags = np.unpackbits(np.array(cells, dtype=np.uint8))[:rows * columns]
+    flags = flags.reshape(rows, columns)
+    # The rectangle's own axes, from its corners: along the first edge and up
+    # the last. A cell's centre is a step along each.
+    origin = np.array([corners[0]["x"], corners[0]["y"]])
+    along = (np.array([corners[1]["x"], corners[1]["y"]]) - origin) / columns
+    up = (np.array([corners[3]["x"], corners[3]["y"]]) - origin) / rows
+
+    features = [{"type": "Feature", "properties": {"what": "the rectangle it was asked to cover"},
+                 "geometry": {"type": "Polygon", "coordinates": [[
+                     list(reversed([round(v, 8) for v in where_on_earth(centre, c["x"], c["y"])]))
+                     for c in corners + [corners[0]]]]}}]
+    for row in range(rows):
+        for column in range(columns):
+            if not flags[row, column]:
+                continue
+            at = origin + along * (column + 0.5) + up * (row + 0.5)
+            latitude, longitude = where_on_earth(centre, float(at[0]), float(at[1]))
+            features.append({"type": "Feature", "properties": {"what": "seen"},
+                             "geometry": {"type": "Point",
+                                          "coordinates": [round(longitude, 8), round(latitude, 8)]}})
+    (into / "coverage.geojson").write_text(json.dumps(
+        {"type": "FeatureCollection", "features": features}, indent=1) + "\n")
+    covered = int(flags.sum())
+    return {"cells": rows * columns, "seen": covered,
+            "fraction": round(covered / float(rows * columns), 4)}
+
+
+def mission_provenance(has_planting: bool, has_coverage: bool) -> dict:
+    """What each column of a mission's product is. Not one of them is a
+    measurement of a real reef, and the file says so first."""
+    columns = {
+        "latitude / longitude": {"kind": TRUTH,
+            "from": "where the vehicle was, from the simulator, put on the Earth by "
+                    "inverting the expression the place was sampled with"},
+        "depthM / altitudeM / headingDeg": {"kind": TRUTH, "from": "the simulator's own state"},
+        "believedLatitude / believedLongitude": {"kind": BELIEVED,
+            "from": "the vehicle's navigation — what it would have logged, errors and all"},
+        "fixErrorM": {"kind": "derived",
+            "from": "the distance between the two above. Only a simulator can write this column"},
+    }
+    if has_planting:
+        columns["markLatitude / markLongitude"] = {"kind": PLANNED,
+            "from": "where the plan asked for a coral"}
+        columns["plantedLatitude / plantedLongitude"] = {"kind": TRUTH,
+            "from": "where the coral actually went, which is where the vehicle actually was"}
+        columns["errorM / onTheMark"] = {"kind": "derived",
+            "from": "the distance from the mark, against the tolerance the mission stated"}
+    if has_coverage:
+        columns["coverage.geojson"] = {"kind": TRUTH,
+            "from": "the cells the camera's footprint actually passed over"}
+    return {
+        "about": "A flown mission, in a simulator. Nothing here is an observation of a "
+                 "real reef or a real vehicle: it is what happened in a model whose "
+                 "own provenance is in the place's provenance.json.",
+        "why it is worth having": "Every row carries both where the vehicle was and "
+                                  "where it believed it was. A real vehicle cannot "
+                                  "produce the first column.",
+        "columns": columns,
+    }
+
+
+def deliver_dive(recording: pathlib.Path, into: pathlib.Path) -> dict:
+    """Turn one flown mission into files somebody can open."""
+    manifest = json.loads((recording / "manifest.json").read_text())
+    place = manifest.get("place")
+    if not place or not (place.get("centre") or {}).get("latitude"):
+        raise SystemExit(
+            f"{recording} does not say which place it was flown in or where that "
+            f"place is on the Earth, so nothing from it can be put on a map. It "
+            f"was recorded before the runtime wrote that down; fly it again.")
+    centre = dict(place["centre"], name=place.get("name", "site"))
+    into.mkdir(parents=True, exist_ok=True)
+
+    task = manifest.get("task") or {}
+    geometry = manifest.get("geometry") or {}
+    achieved = task.get("achieved") or {}
+    track = track_files(into, poses_of(recording), centre, manifest.get("positioning"))
+    planting = planting_files(into, geometry, achieved, centre)
+    coverage = coverage_file(into, geometry, centre)
+
+    conditions = manifest.get("conditions") or {}
+    came = conditions.get("cameFrom") or {}
+    if came.get("fields"):
+        # The same page a dive gets from tools/provenance, shipped with the
+        # product rather than left on the box.
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+        import importlib.machinery
+        import importlib.util
+        here = pathlib.Path(__file__).resolve().parent / "provenance"
+        loader = importlib.machinery.SourceFileLoader("provenance", str(here))
+        spec = importlib.util.spec_from_loader("provenance", loader)
+        prov = importlib.util.module_from_spec(spec)
+        loader.exec_module(prov)
+        rows = prov.about_dive(came, conditions)
+        (into / "conditions.html").write_text(
+            prov.dive_page(place.get("name", "the dive"), came, rows))
+
+    summary = {"place": place, "task": task, "seconds": manifest.get("seconds"),
+               "track": track, "planting": planting, "coverage": coverage,
+               "conditions": conditions,
+               "files": sorted(p.name for p in into.iterdir())}
+    (into / "mission.json").write_text(json.dumps(summary, indent=2) + "\n")
+    (into / "provenance.json").write_text(json.dumps(
+        mission_provenance(planting is not None, coverage is not None), indent=2) + "\n")
+    summary["files"] = sorted(p.name for p in into.iterdir())
+    summary["into"] = into
+    return summary
+
+
+def flown(recording: pathlib.Path, into: pathlib.Path | None) -> int:
+    """What one mission produced, said the way a person reads it."""
+    if not (recording / "manifest.json").is_file():
+        print(f"  no recording at {recording}", file=sys.stderr)
+        return 1
+    run = recording.parent.name
+    into = into or recording.parent.parent.parent / "deliverables" / run
+    made = deliver_dive(recording, into)
+    place = made["place"]
+    task = made["task"] or {}
+    print(f"  {run}")
+    print(f"    {task.get('name', 'a dive')} at {place.get('name')}, "
+          f"{made['seconds']:.0f} s, scored {task.get('score')}")
+    track = made["track"]
+    if track.get("meanFixErrorM") is not None:
+        print(f"    {track['poses']:,} poses · navigation was "
+              f"{track['meanFixErrorM']:.2f} m out on average, "
+              f"{track['worstFixErrorM']:.2f} m at worst")
+    if made["planting"]:
+        put = made["planting"]
+        print(f"    {put['planted']} of {put['of']} corals planted, "
+              f"{put['onTheMark']} within {put['toleranceM']:.1f} m of the mark")
+    if made["coverage"]:
+        seen = made["coverage"]
+        print(f"    {seen['seen']:,} of {seen['cells']:,} cells seen "
+              f"({100 * seen['fraction']:.1f}%)")
+    for one in made["files"]:
+        print(f"    {into / one}")
+    print()
+    print("    provenance.json says what each column is. Nothing here is an")
+    print("    observation of a real reef — but every row says both where the")
+    print("    vehicle was and where it believed it was, which no real vehicle can.")
+    return 0
+
+
 def main() -> int:
     parse = argparse.ArgumentParser(
         description="turn a place into what a marine department asks for")
-    parse.add_argument("place")
+    parse.add_argument("place", nargs="?",
+                       help="a place, for a reef's own product")
+    parse.add_argument("--dive", metavar="RECORDING", default=None,
+                       help="a dive's recording, for what a flown mission produced")
     parse.add_argument("--into", default=None,
                        help="where to write them (default: beside the place)")
     asked = parse.parse_args()
+
+    if asked.dive:
+        return flown(pathlib.Path(asked.dive).expanduser(),
+                     None if asked.into is None else pathlib.Path(asked.into).expanduser())
+    if not asked.place:
+        print("name a place, or --dive a recording", file=sys.stderr)
+        return 1
 
     place = pathlib.Path(asked.place).expanduser()
     into = (pathlib.Path(asked.into).expanduser() if asked.into
