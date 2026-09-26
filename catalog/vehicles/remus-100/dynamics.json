@@ -145,6 +145,27 @@
       "note": "Conductivity, temperature and depth. The instrument every oceanographic vehicle carries and the reason a glider section is worth flying.",
       "watts": 0.35,
       "wattsNote": "a pumped SBE 49, which is why gliders can carry one"
+    },
+    {
+      "kind": "multibeam",
+      "name": "downward_swath",
+      "beams": 256,
+      "halfSwathDeg": 60.0,
+      "rangeM": [
+        0.5,
+        120.0
+      ],
+      "pingsPerSecond": 10.0,
+      "depthNoiseM": 0.02,
+      "acrossNoiseM": 0.05,
+      "position": [
+        0.5,
+        0.0,
+        -0.08
+      ],
+      "note": "a downward swath, for survey. The forward sonar is for avoiding things; this is for charting the bottom \u2014 and charting the bottom is what this vehicle is for.",
+      "watts": 28.0,
+      "topic": "/multibeam/soundings"
     }
   ],
   "topicContract": {
