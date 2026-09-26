@@ -39,3 +39,15 @@ __pycache__/
 # The recipe passes --no-project now, so these should not appear again.
 services/sim-runtime/coral_city_runtime.egg-info/
 services/sim-runtime/uv.lock
+
+# Places built from data, kept beside the code: metadata and small pictures
+# are tracked; rasters, meshes, videos and colony inventories are not.
+places/*/renders/
+places/*/*.usda
+places/*/*.f32
+places/*/*.mdl
+places/*/textures/
+places/*/reference/*.f32
+places/*/reference/*.npy
+places/*/reference/*_4096.png
+places/*/deliverables/colonies.*

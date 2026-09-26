@@ -1,0 +1,33 @@
+{
+  "rows": 512,
+  "columns": 512,
+  "acrossMetres": 2000.0,
+  "file": "seabed_fitted.f32",
+  "surveyed": false,
+  "format": "little-endian float32, row major, south to north then west to east",
+  "centre": {
+    "latitude": 27.9366,
+    "longitude": 34.9108
+  },
+  "fittedAgainst": {
+    "source": "ICESat-2 ATL24 v002 seafloor photons",
+    "points": 6784,
+    "slope": 0.50486,
+    "offsetM": -4.8894,
+    "rmsBeforeM": 6.84,
+    "rmsAfterM": 4.49,
+    "spreadAfterM": 2.3,
+    "calibratedBetweenM": [
+      0.5,
+      22.7
+    ],
+    "extrapolatedShare": 0.042,
+    "note": "derived from Sentinel-2 and rescaled to measured depths. Not a survey: a derived seabed with a known error rather than an unknown one."
+  },
+  "landRestored": {
+    "cells": 64774,
+    "fraction": 0.2471,
+    "why": "fit-depths applies its linear fit to every cell, land included; the island (nir > 0.03 in the scene, written as +0.6 m by get-reef) came out 4.6 m underwater. Land cells are put back at their get-reef height; the fit is unchanged everywhere the satellite saw bottom.",
+    "liftedAboveSurface": 0
+  }
+}

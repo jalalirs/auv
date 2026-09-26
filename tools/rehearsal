@@ -1,0 +1,273 @@
+#!/usr/bin/env python3
+"""A sweep's answer, as one page somebody can send.
+
+    tools/rehearsal findings.json --name "Al Fahal benthic transect"
+    tools/rehearsal --sweep swp_01M2... --name "…"
+
+A sweep flies one mission against everything nobody can promise about it and
+the platform works out which of those the day turns on. That answer is on a
+screen in the application, which is the right place for whoever ran the
+sweep — and the wrong place for whoever decides whether the boat goes out.
+That person will not open the application. They want a page.
+
+So this is the same answer in the same plain house style as the place pages
+and the mission report: what it survives, the sentence it turns on, the
+doubts ranked by how much each *changes* the outcome, the ones that made no
+difference named without being ranked, what it costs, and every scenario
+underneath.
+
+It keeps the two refusals the analysis makes, because they are the reason to
+trust it:
+
+  A doubt whose scenarios could all have gone either way is **not ranked**.
+  With one run either side of a setting an unlucky seed is fifty per cent,
+  and a rehearsal that sent somebody to worry about the wrong thing is the
+  most expensive mistake it can make.
+
+  Runs that were not all computed by the same physics are **not one table**,
+  and the page says so at the top rather than averaging across them.
+"""
+
+from __future__ import annotations
+
+import argparse
+import html
+import importlib.machinery
+import importlib.util
+import json
+import pathlib
+import sys
+
+HERE = pathlib.Path(__file__).resolve().parent
+
+
+def house_style():
+    """`tools/provenance`, for the one stylesheet every page here prints in."""
+    loader = importlib.machinery.SourceFileLoader("provenance", str(HERE / "provenance"))
+    spec = importlib.util.spec_from_loader("provenance", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+PAGE = """<!doctype html>
+<meta charset="utf-8">
+<title>%(name)s — what the day turns on</title>
+<style>%(style)s</style>
+<h1>%(name)s</h1>
+<p class="where">%(where)s</p>
+
+<p class="says"><strong>What this is.</strong> One mission, flown against
+everything nobody could promise about it, before anybody got on a boat. The
+question a rehearsal answers is not whether the mission works — it is what
+breaks it, and which of those is worth spending a day of ship time on.</p>
+%(warnings)s
+
+<div class="big">%(headline)s</div>
+%(turns)s
+
+<h2>What changes the outcome</h2>
+%(matters)s
+%(nothing)s
+
+<h2>What it costs</h2>
+%(cost)s
+
+<h2>Every scenario</h2>
+<table>
+  <tr><th>Scenario</th><th class="n">Ran</th><th class="n">Worked</th><th class="n">Score</th><th></th></tr>
+  %(scenarios)s
+</table>
+
+<footer>Built by Coral City from the sweep's own findings. A doubt whose
+scenarios could all have gone either way is named and not ranked.</footer>
+"""
+
+
+def a_bar(share: float, ink: str = "#1a6b2a") -> str:
+    """How much of something worked, as a bar rather than as a sentence."""
+    share = max(0.0, min(1.0, float(share)))
+    return ('<span class="bar"><i style="width:%.1f%%;background:%s"></i></span>'
+            % (100 * share, ink))
+
+
+def headline_of(found: dict) -> str:
+    flown = int(found.get("flown") or 0)
+    survived = int(found.get("survived") or 0)
+    cost = found.get("cost") or {}
+    big = [("%d of %d" % (survived, flown), "scenarios survive")]
+    if found.get("repeats", 1) and int(found.get("repeats") or 1) > 1:
+        big.append(("%d" % int(found["repeats"]), "runs of each"))
+    if cost.get("perDay"):
+        big.append(("%.1f" % cost["perDay"], "in a working day"))
+    if cost.get("shipDaysPerWorkingDay"):
+        big.append(("%.1f" % cost["shipDaysPerWorkingDay"],
+                    "ship days per working day"))
+    return "".join("<div><b>%s</b><span>%s</span></div>"
+                   % (html.escape(value), html.escape(what)) for value, what in big)
+
+
+def warnings_of(found: dict) -> str:
+    said = []
+    physics = found.get("physics") or []
+    if len(physics) > 1:
+        said.append("These were not all computed by the same simulator — physics %s. "
+                    "A change to the physics changes the answer, so this is not one table."
+                    % " and ".join(str(one) for one in physics))
+    if found.get("marginal"):
+        said.append("%d of the scenarios could have gone either way: some of their runs "
+                    "did the job and some did not. What counts as done is sitting inside "
+                    "the spread." % int(found["marginal"]))
+    if found.get("nothingDecided"):
+        said.append("Every doubt separates only scenarios that could have gone either "
+                    "way, so there is nothing to say about which of them matters.")
+    if found.get("flying"):
+        said.append("%d scenarios are still in the water; this is the answer so far."
+                    % int(found["flying"]))
+    return "".join('<p class="says warn">%s</p>' % html.escape(one) for one in said)
+
+
+def turns_on(found: dict) -> str:
+    if found.get("survived") == found.get("flown") and found.get("flown"):
+        return '<p class="says"><strong>Nothing in the doubt list breaks it.</strong></p>'
+    if not found.get("turnsOn"):
+        return ""
+    fails = found.get("failsOf") or [0, 0]
+    said = ("<strong>It turns on %s.</strong> %d of %d scenarios with it fail."
+            % (html.escape(str(found["turnsOn"])), fails[0], fails[1]))
+    if found.get("rescue"):
+        rescued = found.get("rescueOf") or [0, 0]
+        said += (" %d of %d of those are rescued by %s."
+                 % (rescued[0], rescued[1], html.escape(str(found["rescue"]))))
+    elif found.get("noRescue"):
+        said += " Nothing else in the list rescues it."
+    return '<p class="says">%s</p>' % said
+
+
+def matters_of(found: dict) -> str:
+    ranked = found.get("matters") or []
+    if not ranked:
+        return '<p class="quiet">Nothing separated the scenarios.</p>'
+    out = []
+    for one in ranked:
+        rows = []
+        for rate in one.get("rates") or []:
+            worked = 1.0 - float(rate.get("failedShare") or 0.0)
+            rows.append("<tr><td class='what'>%s</td><td>%s</td>"
+                        "<td class='n'>%d/%d</td></tr>"
+                        % (html.escape(str(rate.get("value", ""))),
+                           a_bar(worked), int(rate.get("survived") or 0),
+                           int(rate.get("of") or 0)))
+        note = ""
+        if one.get("onACoinFlip"):
+            note = ('<p class="says warn">Every scenario this separates is one that '
+                    'could have gone either way, so the difference is where the coins '
+                    'landed and not what the setting did. Named, not ranked.</p>')
+        out.append("<h3>%s <span class='where'>changes the outcome by %d%%</span></h3>%s"
+                   "<table>%s</table>"
+                   % (html.escape(str(one.get("name", ""))),
+                      round(100 * float(one.get("changes") or 0.0)), note,
+                      "".join(rows)))
+    return "".join(out)
+
+
+def nothing_of(found: dict) -> str:
+    quiet = found.get("madeNoDifference") or []
+    if not quiet:
+        return ""
+    return ('<p class="where">Made no difference: %s. Named once, and not ranked.</p>'
+            % html.escape(", ".join(str(one) for one in quiet)))
+
+
+def cost_of(found: dict) -> str:
+    cost = found.get("cost") or {}
+    if not cost.get("runs"):
+        return '<p class="quiet">Nothing finished, so nothing can be priced.</p>'
+    rows = [("A dive, end to end", "%.1f Wh over %.1f h"
+             % (cost.get("diveEnergyWh", 0.0), cost.get("diveHours", 0.0))),
+            ("Of that, the work itself", "%d%%"
+             % round(100 * float(cost.get("workingShare") or 0.0))),
+            ("On one charge", "%.1f of them" % (cost.get("perCharge") or 0.0)),
+            ("In a working day of %.0f h" % (cost.get("workingDayHours") or 0.0),
+             "%.1f, held back by the %s"
+             % (cost.get("perDay") or 0.0, cost.get("heldBackBy") or "clock"))]
+    if cost.get("shipDaysPerWorkingDay"):
+        rows.append(("What the weather costs",
+                     "%.1f ship days for one working day, at %d%% surviving"
+                     % (cost["shipDaysPerWorkingDay"],
+                        round(100 * float(cost.get("survives") or 0.0)))))
+    said = "".join("<tr><td class='what'>%s</td><td>%s</td></tr>"
+                   % (html.escape(what), html.escape(value)) for what, value in rows)
+    if cost.get("notEnough"):
+        said += ("<tr><td class='what'>Not enough of it</td><td>%s</td></tr>"
+                 % html.escape(str(cost.get("says", ""))))
+    return "<table>%s</table>" % said
+
+
+def scenarios_of(found: dict) -> str:
+    rows = []
+    for one in found.get("scenariosFlown") or []:
+        worked = "yes" if one.get("survived") else "no"
+        if one.get("marginal"):
+            worked = "either way"
+        rows.append("<tr><td class='what'>%s</td><td class='n'>%d</td>"
+                    "<td class='n'>%s</td><td class='n'>%d%%</td><td>%s</td></tr>"
+                    % (html.escape(str(one.get("label", ""))),
+                       int(one.get("runs") or 0), html.escape(worked),
+                       round(100 * float(one.get("score") or 0.0)),
+                       a_bar(float(one.get("score") or 0.0),
+                             "#1a6b2a" if one.get("survived") else "#8a2a2a")))
+    return "\n  ".join(rows)
+
+
+def page(name: str, found: dict) -> str:
+    where = []
+    if found.get("good") is not None:
+        where.append("a mission counts as done at %d%%" % round(100 * float(found["good"])))
+    if found.get("flownRuns"):
+        where.append("%d runs" % int(found["flownRuns"]))
+    if found.get("heldBack"):
+        where.append("%d held back by the hull" % int(found["heldBack"]))
+    return PAGE % {
+        "style": house_style().STYLE,
+        "name": html.escape(name),
+        "where": html.escape(" · ".join(where)),
+        "warnings": warnings_of(found),
+        "headline": headline_of(found),
+        "turns": turns_on(found),
+        "matters": matters_of(found),
+        "nothing": nothing_of(found),
+        "cost": cost_of(found),
+        "scenarios": scenarios_of(found),
+    }
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(
+        description="a sweep's answer, as one page somebody can send")
+    parse.add_argument("findings", nargs="?", help="a findings.json")
+    parse.add_argument("--name", default="A rehearsal")
+    parse.add_argument("--into", default=None, help="where to write it")
+    asked = parse.parse_args()
+
+    if not asked.findings:
+        print("name a findings.json", file=sys.stderr)
+        return 1
+    where = pathlib.Path(asked.findings).expanduser()
+    if not where.is_file():
+        print(f"no findings at {where}", file=sys.stderr)
+        return 1
+    found = json.loads(where.read_text())
+    if not found.get("flown"):
+        print("nothing in this sweep has flown, so there is no answer to print",
+              file=sys.stderr)
+        return 1
+    out = pathlib.Path(asked.into).expanduser() if asked.into else where.with_suffix(".html")
+    out.write_text(page(asked.name, found))
+    print(f"  {asked.name}: {found.get('survived', 0)} of {found.get('flown', 0)} "
+          f"scenarios survive → {out}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

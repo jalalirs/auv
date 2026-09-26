@@ -685,35 +685,7 @@ def coverage_file(into: pathlib.Path, geometry: dict, centre: dict) -> dict | No
 REPORT = """<!doctype html>
 <meta charset="utf-8">
 <title>%(name)s — what this dive produced</title>
-<style>
-  :root { color-scheme: light; }
-  body { margin: 0 auto; padding: 2.5rem 2rem 4rem; max-width: 60rem;
-         font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif;
-         color: #1b1b1b; background: #fff; }
-  h1 { font-size: 1.6rem; margin: 0 0 .2rem; font-weight: 650; }
-  h2 { font-size: 1.05rem; margin: 2.2rem 0 .7rem; font-weight: 650; }
-  .where { color: #555; margin: 0 0 1.6rem; }
-  .says { background: #f4f4f2; border-left: 3px solid #999; padding: .9rem 1.1rem;
-          margin: 0 0 2rem; }
-  .big { display: flex; gap: 2.5rem; flex-wrap: wrap; margin: 0 0 1rem; }
-  .big div { min-width: 8rem; }
-  .big b { display: block; font-size: 1.8rem; font-weight: 650; line-height: 1.1; }
-  .big span { color: #666; font-size: .85rem; }
-  table { border-collapse: collapse; width: 100%%; margin-bottom: 1rem; }
-  th { text-align: left; font-weight: 650; font-size: .78rem; letter-spacing: .04em;
-       text-transform: uppercase; color: #666; padding: 0 .7rem .5rem 0;
-       border-bottom: 1px solid #ddd; }
-  td { padding: .55rem .7rem .55rem 0; border-bottom: 1px solid #eee; vertical-align: top; }
-  td.what { font-weight: 550; width: 18rem; }
-  figure { margin: 0 0 1rem; }
-  figcaption { color: #555; font-size: .88rem; margin-top: .4rem; }
-  .keyline { display: inline-block; width: 1.6rem; height: 0; vertical-align: middle;
-             margin-right: .35rem; }
-  footer { color: #666; font-size: .85rem; border-top: 1px solid #ddd; padding-top: 1rem;
-           margin-top: 2.5rem; }
-  code { font: 12.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
-         background: #f2f2f0; padding: .05rem .3rem; border-radius: .2rem; }
-</style>
+<style>%(style)s</style>
 <h1>%(name)s</h1>
 <p class="where">%(where)s</p>
 
@@ -949,10 +921,9 @@ def report(place: dict, manifest: dict, summary: dict, poses: list[dict],
 
     drawn, caption = a_map(poses, geometry)
     rows = "".join(
-        '<tr><td class="what">%s</td><td><span class="tag" '
-        'style="color:%s;background:%s;display:inline-block;padding:.1rem .5rem;'
-        'border-radius:.7rem;font-size:.74rem;font-weight:650;text-transform:uppercase">'
-        '%s</span></td><td>%s</td><td>%s</td></tr>'
+        '<tr><td class="what">%s</td>'
+        '<td><span class="tag" style="color:%s;background:%s">%s</span></td>'
+        '<td>%s</td><td class="from">%s</td></tr>'
         % (html.escape(r["what"]), prov.INK[r["kind"]], prov.WASH[r["kind"]], r["kind"],
            html.escape(r["value"]), html.escape(r["from"] or "—"))
         for r in conditions)
@@ -965,7 +936,8 @@ def report(place: dict, manifest: dict, summary: dict, poses: list[dict],
                     + "".join('<figure><img alt="a frame from the dive" src="%s" '
                               'style="width:100%%;border:1px solid #e3e3df"></figure>' % one
                               for one in stills))
-    return REPORT % {"name": html.escape(task.get("name") or "A dive"),
+    return REPORT % {"style": prov.STYLE,
+                     "name": html.escape(task.get("name") or "A dive"),
                      "where": html.escape(" · ".join(where)),
                      "headline": headline, "map": drawn, "stills": pictures,
                      "caption": caption, "conditions": rows, "files": files}

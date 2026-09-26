@@ -168,39 +168,69 @@ def about(site: dict, delivered: dict | None) -> list[dict]:
     return rows
 
 
-PAGE = """<!doctype html>
-<meta charset="utf-8">
-<title>%(name)s — what anybody measured</title>
-<style>
+# One stylesheet, for every page this platform prints.
+#
+# There were three, near-identical and drifting: the place page, the index,
+# and the mission report. A house style that has to be copied is a house
+# style that stops being one, and these pages are meant to be recognisable as
+# a set — they go in front of the same people, often on the same day.
+#
+# Plain and self-contained on purpose: no fonts to fetch, no scripts, nothing
+# that needs anything, so a page survives being emailed, printed and put in a
+# slide. `%%` because these are formatted with `%`.
+STYLE = """
   :root { color-scheme: light; }
-  body { margin: 0; padding: 2.5rem 2rem 4rem;
+  body { margin: 0 auto; padding: 2.5rem 2rem 4rem; max-width: 60rem;
          font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif;
-         color: #1b1b1b; background: #fff; max-width: 60rem; margin-inline: auto; }
-  h1 { font-size: 1.6rem; margin: 0 0 .2rem; font-weight: 650; }
+         color: #1b1b1b; background: #fff; }
+  h1 { font-size: 1.65rem; margin: 0 0 .2rem; font-weight: 650; }
+  h2 { font-size: 1.05rem; margin: 2.2rem 0 .7rem; font-weight: 650; }
+  h3 { font-size: .95rem; margin: 1.4rem 0 .5rem; font-weight: 650; }
+  h3 .where { display: inline; margin: 0; font-weight: 400; }
+  .quiet { color: #666; }
   .where { color: #555; margin: 0 0 1.6rem; }
   .says { background: #f4f4f2; border-left: 3px solid #999; padding: .9rem 1.1rem;
           margin: 0 0 2rem; }
   .says strong { font-weight: 650; }
-  table { border-collapse: collapse; width: 100%%; margin-bottom: 2rem; }
+  .warn { border-left-color: #8a5a00; background: #fbf1de; }
+  table { border-collapse: collapse; width: 100%%; margin-bottom: 1rem; }
   th { text-align: left; font-weight: 650; font-size: .78rem; letter-spacing: .04em;
        text-transform: uppercase; color: #666; padding: 0 .7rem .5rem 0;
        border-bottom: 1px solid #ddd; }
-  td { padding: .7rem .7rem .7rem 0; border-bottom: 1px solid #eee;
+  th.n, td.n { text-align: right; width: 6rem; }
+  td { padding: .65rem .7rem .65rem 0; border-bottom: 1px solid #eee;
        vertical-align: top; }
-  td.what { font-weight: 550; width: 15rem; }
+  td.what { font-weight: 550; width: 16rem; }
   td.value { width: 13rem; }
   td.from { color: #444; font-size: .9rem; }
+  td.place { font-weight: 550; padding-left: 0; }
+  td.place span { display: block; font-weight: 400; color: #666; font-size: .88rem; }
+  a { color: #1a4f8a; }
   .tag { display: inline-block; padding: .1rem .5rem; border-radius: .7rem;
          font-size: .74rem; font-weight: 650; letter-spacing: .03em;
          text-transform: uppercase; white-space: nowrap; }
   .key { display: flex; gap: 1.4rem; flex-wrap: wrap; margin: 0 0 2rem;
          font-size: .88rem; color: #444; }
   .key div { max-width: 17rem; }
+  .bar { display: flex; height: .55rem; border-radius: .3rem; overflow: hidden;
+         min-width: 9rem; background: #eee; }
+  .bar i { display: block; }
+  .big { display: flex; gap: 2.5rem; flex-wrap: wrap; margin: 0 0 1.4rem; }
+  .big div { min-width: 8rem; }
+  .big b { display: block; font-size: 1.8rem; font-weight: 650; line-height: 1.1; }
+  .big span { color: #666; font-size: .85rem; }
+  figure { margin: 0 0 1rem; }
+  figcaption { color: #555; font-size: .88rem; margin-top: .4rem; }
   footer { color: #666; font-size: .85rem; border-top: 1px solid #ddd;
-           padding-top: 1rem; }
+           padding-top: 1rem; margin-top: 2.5rem; }
   code { font: 12.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
          background: #f2f2f0; padding: .05rem .3rem; border-radius: .2rem; }
-</style>
+"""
+
+PAGE = """<!doctype html>
+<meta charset="utf-8">
+<title>%(name)s — what anybody measured</title>
+<style>%(style)s</style>
 <h1>%(name)s</h1>
 <p class="where">%(where)s</p>
 
@@ -269,6 +299,7 @@ def sheet(name: str, where: str, says: str, first: str, rows: list[dict],
     counted = ", ".join("%d %s" % (sum(1 for r in rows if r["kind"] == k), k)
                         for k in kinds if any(r["kind"] == k for r in rows))
     return PAGE % {
+        "style": STYLE,
         "name": html.escape(name),
         "where": html.escape(where),
         "says": says,
@@ -289,31 +320,7 @@ def sheet(name: str, where: str, says: str, first: str, rows: list[dict],
 INDEX = """<!doctype html>
 <meta charset="utf-8">
 <title>Coral City — what anybody measured</title>
-<style>
-  :root { color-scheme: light; }
-  body { margin: 0; padding: 2.5rem 2rem 4rem;
-         font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif;
-         color: #1b1b1b; background: #fff; max-width: 60rem; margin-inline: auto; }
-  h1 { font-size: 1.7rem; margin: 0 0 .2rem; font-weight: 650; }
-  .where { color: #555; margin: 0 0 1.6rem; }
-  .says { background: #f4f4f2; border-left: 3px solid #999; padding: .9rem 1.1rem;
-          margin: 0 0 2rem; }
-  .says strong { font-weight: 650; }
-  table { border-collapse: collapse; width: 100%%; margin-bottom: 1rem; }
-  th { text-align: left; font-weight: 650; font-size: .78rem; letter-spacing: .04em;
-       text-transform: uppercase; color: #666; padding: 0 .7rem .5rem 0;
-       border-bottom: 1px solid #ddd; }
-  th.n, td.n { text-align: right; width: 6rem; }
-  td { padding: .65rem .7rem; border-bottom: 1px solid #eee; vertical-align: top; }
-  td.place { font-weight: 550; padding-left: 0; }
-  td.place span { display: block; font-weight: 400; color: #666; font-size: .88rem; }
-  a { color: #1a4f8a; }
-  .bar { display: flex; height: .55rem; border-radius: .3rem; overflow: hidden;
-         min-width: 9rem; }
-  .bar i { display: block; }
-  footer { color: #666; font-size: .85rem; border-top: 1px solid #ddd;
-           padding-top: 1rem; margin-top: 2rem; }
-</style>
+<style>%(style)s</style>
 <h1>Coral City</h1>
 <p class="where">%(count)d places · what anybody measured</p>
 
@@ -359,7 +366,7 @@ def index(places: list[dict]) -> str:
             "m": one["measured"], "d": one["derived"], "c": one["chosen"],
             "bar": bar,
         })
-    return INDEX % {"count": len(places), "rows": "\n  ".join(rows)}
+    return INDEX % {"style": STYLE, "count": len(places), "rows": "\n  ".join(rows)}
 
 
 # ── a dive ───────────────────────────────────────────────────────────────────

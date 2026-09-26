@@ -1,0 +1,30 @@
+{
+ "name": "shushah",
+ "centre": {
+  "latitude": 27.9366,
+  "longitude": 34.9108
+ },
+ "acrossMetres": 2000.0,
+ "fetched": "2026-09-26",
+ "sources": {
+  "habitat": {
+   "file": "habitat.geojson",
+   "polygons": 0,
+   "source": "FWC Unified Florida Reef Tract Map v2.2",
+   "licence": "public"
+  },
+  "photographs": {
+   "directory": "photographs",
+   "photographs": 0,
+   "speciesCounts": "species_counts.json",
+   "source": "iNaturalist",
+   "licence": "per photograph, in photographs/index.json"
+  },
+  "fromSpace": {
+   "file": "sentinel_median_rgb.npy",
+   "scenes": 8,
+   "source": "Copernicus Sentinel-2 L2A via Earth Search",
+   "licence": "Copernicus open data"
+  }
+ }
+}
