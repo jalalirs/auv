@@ -1,0 +1,68 @@
+{
+  "name": "a whole dive at Al Fahal",
+  "note": "Every mission in this repository until now began with the vehicle already at working altitude, which is not where a dive begins. A dive begins at the surface, over the site, with the boat holding station — and the first ten minutes are the ones an operator actually worries about, because the vehicle is going down through the water column being set sideways by a current it cannot measure. A Doppler log has a range; above it there is no bottom track at all, so the descent is dead reckoning on a flight model through exactly the part of the dive where the current is strongest. Then the work. Then home and up, which is the same drift problem in reverse and the one that decides whether the boat has to go and find you.\n\nSo: down to three metres off the bottom over the mark, eighty metres of transect along the reef at two, and back to where it went in. Al Fahal because it is KAUST's own reef, forty minutes from the harbour, and the one their people have actually dived.\n\nThe doubts are the two an operator would name. The current, because the descent is a drift problem and a quarter of a knot over twenty-five metres of water is most of the tolerance. And whether the log holds, because a vehicle that goes down blind arrives somewhere it cannot name, and every leg after it inherits that error.",
+  "place": "al-fahal",
+  "vehicle": "bluerov2",
+  "good": 0.7,
+  "repeats": 2,
+  "water": {
+    "salinityPsu": 40.6,
+    "temperatureC": 28.0,
+    "waterType": "1C",
+    "positioning": {
+      "kind": "none"
+    }
+  },
+  "objective": {
+    "kind": "mission",
+    "timeLimitS": 2700.0,
+    "stages": [
+      {
+        "kind": "descend",
+        "toAltitudeM": 3.0,
+        "bandM": 0.8,
+        "withinM": 6.0,
+        "rateMs": 0.4,
+        "timeLimitS": 600.0
+      },
+      {
+        "kind": "transect",
+        "lengthM": 80.0,
+        "altitudeM": 2.0,
+        "altitudeBandM": 0.6,
+        "headingToleranceDeg": 12.0,
+        "timeLimitS": 1200.0
+      },
+      {
+        "kind": "return",
+        "homeRadiusM": 5.0,
+        "surfaceDepthM": 0.5,
+        "timeLimitS": 720.0
+      }
+    ]
+  },
+  "doubts": {
+    "current": {
+      "still": {
+        "currentMetresPerSecond": 0.0,
+        "currentHeadingDeg": 0
+      },
+      "a tenth": {
+        "currentMetresPerSecond": 0.1,
+        "currentHeadingDeg": 300
+      },
+      "a quarter knot": {
+        "currentMetresPerSecond": 0.13,
+        "currentHeadingDeg": 300
+      }
+    },
+    "the log on the way down": {
+      "it holds": {},
+      "no bottom track": {
+        "fitted": {
+          "dvl": false
+        }
+      }
+    }
+  }
+}
