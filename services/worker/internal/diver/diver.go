@@ -693,21 +693,34 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	// every topic at once. Whatever the mechanism inside DDS, the behaviour is
 	// the one reality already has: nobody starts the controller before the
 	// vehicle is powered.
+	// A dive that was defined with a controller and flown without one is not
+	// a dive that happened. It used to carry on "untended": the vehicle sat
+	// there for its whole duration, the tasks scored what it did, and the
+	// record came back saying the controller achieved nothing — which is
+	// indistinguishable from a controller that flew badly and is the one
+	// thing a benchmark must never confuse. Twenty minutes of card time and
+	// a row on the bench, for a controller that was never started.
+	//
+	// So it fails, and says which half went wrong.
 	if claimed.AutonomyImage != "" {
 		if err := d.awaitVehicle(ctx, simID, log); err != nil {
-			log.Warn("the vehicle never came up; the dive continues untended", "error", err)
+			log.Warn("the vehicle never came up; the controller cannot fly", "error", err)
 			_ = d.platform.Record(ctx, claimed.Run.ID, "autonomy_skipped", nil,
 				map[string]any{"why": err.Error()})
-			claimed.AutonomyImage = ""
+			return "failed", nil, fmt.Sprintf(
+				"this dive was defined with a controller and the vehicle never came up, "+
+					"so nothing could fly it: %v", err)
 		}
 	}
 	if claimed.AutonomyImage != "" {
 		autonomy, err := d.flyer(ctx, claimed, network, vehicleHost, log)
 		if err != nil {
-			log.Warn("the autonomy would not start; the dive continues untended",
-				"error", err)
+			log.Warn("the autonomy would not start", "error", err)
 			_ = d.platform.Record(ctx, claimed.Run.ID, "autonomy_failed", nil,
 				map[string]any{"why": err.Error()})
+			return "failed", nil, fmt.Sprintf(
+				"this dive was defined with a controller and it would not start, "+
+					"so nothing could fly it: %v", err)
 		} else {
 			kept.Autonomy = autonomy
 			_ = writeHandles(briefDir, kept)
@@ -1024,9 +1037,12 @@ func (d *Diver) awaitVehicle(ctx context.Context, simID string, log *slog.Logger
 // dive.
 func (d *Diver) await(ctx context.Context, simID, marker, said string,
 	log *slog.Logger) error {
-	deadline := time.Now().Add(5 * time.Minute)
+	quiet := 5 * time.Minute
+	deadline := time.Now().Add(quiet)
+	cap := time.Now().Add(20 * time.Minute)
+	seen := ""
 
-	for time.Now().Before(deadline) {
+	for time.Now().Before(deadline) && time.Now().Before(cap) {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -1034,6 +1050,17 @@ func (d *Diver) await(ctx context.Context, simID, marker, said string,
 		if err == nil && strings.Contains(output, marker) {
 			log.Info(said)
 			return nil
+		}
+		// Five minutes of *silence*, not five minutes in total. A simulator
+		// opening a reef of seven hundred thousand colonies takes longer than
+		// that and says so the whole way — place_open, spawned, water_begins
+		// — and a deadline that ignores evidence of progress gave up on a
+		// scene that was loading perfectly well, leaving the dive to fly
+		// with no controller. There is still a cap, because a simulator
+		// stuck in a loop also talks.
+		if err == nil && output != seen {
+			seen = output
+			deadline = time.Now().Add(quiet)
 		}
 		if err == nil && strings.Contains(output, `"event": "bridge_unavailable"`) {
 			return fmt.Errorf("the vehicle could not open its side of the boundary")
@@ -1047,7 +1074,8 @@ func (d *Diver) await(ctx context.Context, simID, marker, said string,
 		case <-time.After(2 * time.Second):
 		}
 	}
-	return fmt.Errorf("the simulator did not report %s within five minutes", said)
+	return fmt.Errorf("the simulator did not report %s: nothing new on its output "+
+		"for five minutes, or twenty minutes in all", said)
 }
 
 // keepRecording puts what the dive left in its recording directory into
