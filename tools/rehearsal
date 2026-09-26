@@ -178,9 +178,12 @@ def cost_of(found: dict) -> str:
             ("Of that, the work itself", "%d%%"
              % round(100 * float(cost.get("workingShare") or 0.0))),
             ("On one charge", "%.1f of them" % (cost.get("perCharge") or 0.0)),
+            # The platform says "the clock" or "the battery", article and
+            # all, so this must not add one: it read "held back by the the
+            # clock" on the first real sweep it was pointed at.
             ("In a working day of %.0f h" % (cost.get("workingDayHours") or 0.0),
-             "%.1f, held back by the %s"
-             % (cost.get("perDay") or 0.0, cost.get("heldBackBy") or "clock"))]
+             "%.1f, held back by %s"
+             % (cost.get("perDay") or 0.0, cost.get("heldBackBy") or "the clock"))]
     if cost.get("shipDaysPerWorkingDay"):
         rows.append(("What the weather costs",
                      "%.1f ship days for one working day, at %d%% surviving"

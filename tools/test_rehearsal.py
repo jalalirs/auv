@@ -125,3 +125,14 @@ def test_it_writes_the_page_beside_the_findings(tmp_path):
     tool.sys.argv = ["rehearsal", str(where), "--name", "Al Fahal transect"]
     assert tool.main() == 0
     assert "Al Fahal transect" in (tmp_path / "findings.html").read_text()
+
+
+def test_the_article_is_not_doubled():
+    """The platform says "the clock" and "the battery", article and all.
+    The first real sweep this was pointed at read "held back by the the
+    clock"."""
+    tool = _tool()
+    page = tool.page("x", {**FOUND, "cost": {**FOUND["cost"],
+                                             "heldBackBy": "the clock"}})
+    assert "the the" not in page
+    assert "held back by the clock" in page
