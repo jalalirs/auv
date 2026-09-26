@@ -179,13 +179,31 @@ command_up() {
     command_status
 }
 
+runtime_stamp() {
+    # What is actually inside the image, as one hash.
+    #
+    # It was the tree hash of services/sim-runtime alone, and then the image
+    # started carrying the published SDK as well — because the controller
+    # interface is declared there and the runtime imports it. A hash over
+    # half of what is copied in is the fault this stamp exists to prevent: an
+    # SDK change would have produced an image that swore it was current.
+    #
+    # `git hash-object` rather than shasum or sha1sum, because this is
+    # computed on a Mac and checked on the box and those two do not have the
+    # same tool.
+    local root="$1" runtime sdk
+    runtime="$(git -C "${root}" rev-parse HEAD:services/sim-runtime 2>/dev/null)" || { echo unknown; return; }
+    sdk="$(git -C "${root}" rev-parse HEAD:packages/sdk-python/coral_city 2>/dev/null)" || { echo unknown; return; }
+    printf '%s %s\n' "${runtime}" "${sdk}" | git hash-object --stdin
+}
+
 build_sim() {
     # Stamped with the tree hash of the runtime source, so tools/look can tell
     # whether the image it is about to render with contains the code in this
     # checkout. Without it a stale image is indistinguishable from a change
     # that did nothing.
     local runtime
-    runtime="$(git -C "$(dirname "$0")/.." rev-parse HEAD:services/sim-runtime)"
+    runtime="$(runtime_stamp "$(dirname "$0")/..")"
     on_box "cd ~/${REMOTE_DIR} && docker build -q -f services/sim-runtime/Dockerfile \
         --build-arg CORAL_CITY_RUNTIME=${runtime} \
         -t ${SIM_IMAGE} . | tail -1"

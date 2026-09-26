@@ -34,6 +34,19 @@ set -euo pipefail
 # different seas; that is the comparison the water types exist to make.
 WATER_ASKED="${WATER:-}"
 
+runtime_stamp() {
+    # What is actually inside the sim image, as one hash: the runtime's tree
+    # and the published SDK's, because the image carries both — the
+    # controller interface is declared in the SDK and the runtime imports it.
+    # Must agree exactly with `tools/box`, which stamps it. `git hash-object`
+    # rather than shasum or sha1sum: this is stamped on a Mac and checked
+    # here, and those two do not have the same tool.
+    local root="$1" runtime sdk
+    runtime="$(git -C "${root}" rev-parse HEAD:services/sim-runtime 2>/dev/null)" || { echo unknown; return; }
+    sdk="$(git -C "${root}" rev-parse HEAD:packages/sdk-python/coral_city 2>/dev/null)" || { echo unknown; return; }
+    printf '%s %s\n' "${runtime}" "${sdk}" | git hash-object --stdin
+}
+
 water_of() {
     # Read as JSON, not grepped. `site.json` has more than one "type" in it
     # and the first one down the file is not this one.
@@ -177,7 +190,10 @@ LAMPS
     # behind. A day went into frames that could not have changed, each one
     # read as evidence about a change rather than about the build.
     local want got
-    want="$(git -C "$(dirname "$0")/.." rev-parse HEAD:services/sim-runtime 2>/dev/null || echo unknown)"
+    # The same hash tools/box stamps: the runtime's tree and the SDK's,
+    # because the image carries both and the controller interface lives in
+    # the second one.
+    want="$(runtime_stamp "$(dirname "$0")/..")"
     got="$(docker image inspect "${image}" \
            --format '{{index .Config.Labels "org.coralcity.runtime"}}' 2>/dev/null)"
     if [ "${want}" != "unknown" ] && [ "${got}" != "${want}" ]; then

@@ -7,6 +7,13 @@ and for somebody's own stack talking over ROS 2 — so that nothing a pilot can
 do is something a program cannot, and nothing a program can do is hidden from
 the person watching.
 
+`Observation`, `Command` and `Parameter` are not declared here. They are
+declared once, in the published SDK, and imported by this file — because the
+SDK is what a customer was given and the runtime is what has to honour it.
+They used to be declared in both places, and they had already drifted: the
+observation a customer could see had no sonar on it, which is the one thing a
+controller learns that nobody told it.
+
 A controller also declares what can be changed about it while it runs: each
 parameter with a range and a unit, so that a console can draw it and a hand can
 move it without the controller having to know what a console is.
@@ -17,115 +24,24 @@ z up; wrench as surge, sway, heave, roll, pitch, yaw; metres, radians, seconds.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import pathlib
+import sys
 
 import numpy as np
 
+try:
+    from coral_city.interface import Command, Observation, Parameter
+except ImportError:
+    # Run from the repository rather than from the image, where the build
+    # puts the SDK on the path. Not a fallback copy — the same file, found a
+    # different way. If it is not there either, this raises, because a
+    # runtime that quietly invented its own interface is the fault this file
+    # exists to prevent.
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4]
+                           / "packages" / "sdk-python"))
+    from coral_city.interface import Command, Observation, Parameter
 
-@dataclass
-class Observation:
-    """What the vehicle knows about itself this step."""
-
-    t: float
-    position: np.ndarray          # world, metres; z up, so depth is -z
-    velocity: np.ndarray          # body twist: u v w p q r
-    rotation: np.ndarray          # body to world, 3x3
-    floor: float | None           # the seabed's height under the vehicle, world z
-    on_the_bottom: bool
-
-    # What the sonar last saw, when the vehicle carries one and something came
-    # back. `{"rangeM":, "bearingRad":, "beam":}` for the nearest return, where
-    # the bearing is off the nose and positive to starboard — so turning away
-    # from it is a sign.
-    #
-    # This is the one thing a controller learns that nobody told it. Everything
-    # else it is handed comes from the dive: where it is, what it is for, what
-    # the plan was. A thing in the water that is not in the plan is only ever
-    # going to arrive this way.
-    seen: dict | None = None
-
-    # The whole fan: `{"bearingsRad": [...], "rangesM": [...]}`, where a range
-    # is NaN for a beam that came back with nothing. The nearest return above
-    # is the convenience; this is the instrument.
-    #
-    # A controller steering on the nearest return alone cannot avoid anything
-    # dead ahead: the closest beam flips between the two either side of centre
-    # as the noise moves, the vehicle is told to turn first one way and then
-    # the other, and it drives straight into the thing while chattering. What
-    # it needs is where the *gap* is, which is a question about the fan.
-    sonar: dict | None = None
-
-    @property
-    def depth(self) -> float:
-        return float(-self.position[2])
-
-    @property
-    def altitude(self) -> float | None:
-        return None if self.floor is None else float(self.position[2] - self.floor)
-
-    @property
-    def heading(self) -> float:
-        """Yaw, radians, from the body x axis projected on the horizon."""
-        return float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0]))
-
-    @property
-    def pitch(self) -> float:
-        return float(-np.arcsin(max(-1.0, min(1.0, float(self.rotation[2, 0])))))
-
-    @property
-    def roll(self) -> float:
-        return float(np.arctan2(self.rotation[2, 1], self.rotation[2, 2]))
-
-
-@dataclass
-class Command:
-    """What a controller wants: a wrench, or the thrusters directly.
-
-    A wrench is what most controllers should ask for, because turning it into
-    thruster commands is the vehicle's business. Thruster commands are for a
-    stack that has already done that allocation itself and must not have it
-    redone.
-    """
-
-    wrench: np.ndarray | None = None       # body frame, newtons and newton-metres
-    thrusters: np.ndarray | None = None    # per thruster, in [-1, 1]
-    # What a vehicle that is not moved by thrust is asked for, in its own
-    # terms. A buoyancy glider has no propeller anywhere on it: it is told how
-    # much water to displace and where to put its mass, and its wings turn
-    # falling into going somewhere. There is no wrench to ask for and no
-    # thruster to command, and a platform whose only two answers are those has
-    # quietly decided what kind of vehicle a vehicle is.
-    #
-    # Deliberately a plain mapping. What the actuators are belongs to the
-    # vehicle's package, not to this file, and a helm that had to know the
-    # names would be the same assumption in a different place.
-    actuators: dict | None = None
-
-    @classmethod
-    def nothing(cls) -> "Command":
-        return cls(wrench=np.zeros(6))
-
-    def is_empty(self) -> bool:
-        return self.wrench is None and self.thrusters is None and self.actuators is None
-
-
-@dataclass
-class Parameter:
-    """One thing a hand may move while the controller runs."""
-
-    name: str
-    value: float
-    low: float
-    high: float
-    unit: str = ""
-    says: str = ""
-
-    def set(self, value: float) -> None:
-        self.value = float(min(self.high, max(self.low, float(value))))
-
-    def describe(self) -> dict:
-        return {"name": self.name, "value": round(self.value, 4),
-                "low": self.low, "high": self.high, "unit": self.unit, "says": self.says}
+__all__ = ["Command", "Controller", "Observation", "Parameter"]
 
 
 class Controller:

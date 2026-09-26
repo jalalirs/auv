@@ -2506,10 +2506,15 @@ class Dive:
         if self.seabed is not None:
             floor = self.seabed.under(float(self.position[0]), float(self.position[1]))
         if self.navigation is None:
+            # Nothing between the controller and the truth. Said out loud,
+            # because a controller scored against the truth while steering on
+            # an estimate is a different problem from one holding the truth,
+            # and until now nothing on this side filled the field in at all.
             return Observation(t=self.simulated, position=self.position, velocity=self.velocity,
                                rotation=self.rotation, floor=floor, on_the_bottom=self.on_the_bottom,
                                seen=None if self.sonar is None else self.sonar.nearest(),
-                               sonar=None if self.sonar is None else self.sonar.fan())
+                               sonar=None if self.sonar is None else self.sonar.fan(),
+                               estimated=False)
         believed_floor = None if floor is None else floor + (self.navigation.believed[2] - float(self.position[2]))
         return Observation(t=self.simulated,
                            position=self.navigation.believed.copy(),
@@ -2518,7 +2523,8 @@ class Dive:
                            floor=believed_floor,
                            on_the_bottom=self.on_the_bottom,
                            seen=None if self.sonar is None else self.sonar.nearest(),
-                           sonar=None if self.sonar is None else self.sonar.fan())
+                           sonar=None if self.sonar is None else self.sonar.fan(),
+                           estimated=True)
 
     def step(self) -> None:
         """One step of physics. Everything else is somebody else's schedule."""
