@@ -461,3 +461,18 @@ def test_the_map_shows_what_was_asked_for_even_when_it_went_nowhere():
     assert "10 m</text>" in drawn, drawn[-200:]
     # And the point it was asked for is drawn, so a reader can see the gap.
     assert drawn.count('stroke="#8a2a2a"') >= 1
+
+
+def test_a_thousand_recordings_refused_for_one_reason_is_one_line(tmp_path, capsys):
+    """A round that all predates a change refuses with the same sentence
+    every time, and a thousand copies of one fact is not a report."""
+    tool = _deliver()
+    under = tmp_path / "work"
+    for n in range(5):
+        _recording(under, named=f"old_{n}", place=False)
+    _recording(under, named="good")
+    tool.all_of_them(under, tmp_path / "out")
+    err = capsys.readouterr().err
+    assert err.count("does not say which place") == 1
+    assert "5: " in err
+    assert "old_0, old_1, old_2 and 2 more" in err
