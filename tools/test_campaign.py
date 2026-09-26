@@ -434,3 +434,15 @@ def test_a_sweep_that_does_not_name_a_task_is_still_trusted(tmp_path):
     sweep = {"hours": 0.5, "from": tool.SWEEP, "survives": 0.5}
     said = tool.a_campaign(grid, sweep, vehicles=1, day_hours=10.0, survives=None)
     assert said["workingDays"] == 1
+
+
+def test_a_dive_with_no_duration_is_not_reported_as_no_dive(tmp_path):
+    """Saying "nothing has been flown here" when something was sends
+    somebody to fly a dive that has already been flown."""
+    tool = _tool()
+    grid = tool.cells_over(_a_place(tmp_path), cell_m=25.0, where="all")
+    nothing = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
+    assert "nothing has been flown here" in nothing["cannotSay"]
+    timeless = tool.a_campaign(grid, {"from": tool.FLOWN, "task": "survey"},
+                               vehicles=1, day_hours=10.0, survives=None)
+    assert "does not say how long it took" in timeless["cannotSay"]

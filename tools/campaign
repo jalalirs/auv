@@ -251,8 +251,13 @@ def a_campaign(grid: dict, cost: dict, vehicles: int, day_hours: float,
             "workingDayHours": day_hours}
     hours = cost.get("hours")
     if not hours:
-        said["cannotSay"] = ("nothing has been flown here, so there is no "
-                             "figure for what a cell takes")
+        # Two different facts, and saying the first when the second is
+        # true sends somebody to fly a dive that has already been flown.
+        said["cannotSay"] = (
+            "nothing has been flown here, so there is no figure for what a "
+            "cell takes" if not cost else
+            "the dive this was costed from does not say how long it took, so "
+            "there is no figure for what a cell takes")
         return said
     # And it has to have been a dive that worked a cell. A `reach` that
     # went somewhere and held station for twenty minutes will happily
