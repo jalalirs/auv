@@ -137,3 +137,53 @@ def test_the_water_row_says_what_nobody_set_first(tmp_path):
     (where / "mission.json").write_text(json.dumps({"conditions": {"cameFrom": {
         "counted": {"measured": 0, "derived": 0, "chosen": 2, "assumed": 8}}}}))
     assert tool.a_line("the water", where / "conditions.html") == "8 assumed · 2 chosen"
+
+
+# ── building one, rather than indexing one ───────────────────────────────────
+
+def _a_place(tmp_path, rows=16, across=100.0):
+    place = tmp_path / "somewhere"
+    place.mkdir(exist_ok=True)
+    import numpy as np
+    heights = np.full((rows, rows), -10.0, dtype="<f4")
+    heights.tofile(place / "seabed.f32")
+    (place / "site.json").write_text(json.dumps({
+        "name": "somewhere",
+        "from": {"centre": {"latitude": 24.5, "longitude": -81.4},
+                 "acrossMetres": across, "sampleMetres": 1.0},
+        "mesh": {"heightfield": {"rows": rows, "columns": rows, "file": "seabed.f32"}},
+        "layers": {"coral": "coral.usda"},
+    }))
+    (place / "coral.usda").write_text(
+        'def PointInstancer "Coral" {\n    point3f[] positions = [(0, 0, -9)]\n'
+        '    int[] protoIndices = [0]\n    float3[] scales = [(1,1,1)]\n}\n')
+    return place
+
+
+def test_a_pack_can_be_built_and_not_only_indexed(tmp_path, capsys):
+    """A chain that lives in somebody's shell history is a chain that is
+    run differently the second time."""
+    tool = _tool()
+    place = _a_place(tmp_path)
+    into = tmp_path / "pack"
+    tool.sys.argv = ["pack", str(into), "--for", str(place), "--name", "Somewhere"]
+    assert tool.main() == 0
+    said = capsys.readouterr().out
+    assert "the whole grid" in said
+    assert (into / "campaign" / "campaign.html").is_file()
+    assert (into / "index.html").is_file()
+
+
+def test_a_step_that_refuses_does_not_stop_the_rest(tmp_path, capsys):
+    """A pack is worth having with four of its six pages, and the index
+    says which four."""
+    tool = _tool()
+    place = _a_place(tmp_path)
+    # A place whose reef the deliverable tool refuses — it says nothing
+    # about its prototypes, which is how a restored older place reads.
+    into = tmp_path / "pack"
+    tool.sys.argv = ["pack", str(into), "--for", str(place)]
+    assert tool.main() == 0
+    said = capsys.readouterr().out
+    assert "—" in said, "a refusal was not shown"
+    assert (into / "index.html").is_file()
