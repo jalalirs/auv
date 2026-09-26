@@ -312,3 +312,30 @@ def test_a_survey_writes_what_it_actually_saw(tmp_path):
     drawn = json.loads((tmp_path / "out" / "coverage.geojson").read_text())
     assert sum(1 for f in drawn["features"] if f["properties"]["what"] == "seen") == 2
     assert drawn["features"][0]["geometry"]["type"] == "Polygon"
+
+
+def test_the_report_draws_both_tracks_and_needs_nothing(tmp_path):
+    """One page a funder can open, and it has to survive being emailed."""
+    tool = _deliver()
+    tool.deliver_dive(_recording(tmp_path), tmp_path / "out")
+    page = (tmp_path / "out" / "report.html").read_text()
+    for fetched in ("<script", "http://", "https:/" + "/", "@import", "<link"):
+        assert fetched not in page, fetched
+    # Two paths in the map: where it was, and where it thought it was.
+    assert page.count("<path") == 2
+    assert "where it believed it was" in page
+    assert "0.5 m" in page or "0.5 m" in page.replace("&nbsp;", " ")
+
+
+def test_the_report_scales_both_axes_the_same(tmp_path):
+    """A track drawn on two scales is a track that lies about its shape."""
+    tool = _deliver()
+    poses = [{"position": [0.0, 0.0, -7.0]}, {"position": [100.0, 10.0, -7.0]}]
+    drawn, _ = tool.a_map(poses, {})
+    moves = [one for one in drawn.split('d="')[1].split('"')[0].split(" ")]
+    start = [float(v) for v in moves[0][1:].split(" ") + [moves[1]]] if False else None
+    # The 100 m of easting must be ten times the 10 m of northing on the page.
+    import re as _re
+    pairs = _re.findall(r"[ML]([\d.]+) ([\d.]+)", drawn.split('d="')[1].split('"')[0])
+    (x0, y0), (x1, y1) = [(float(a), float(b)) for a, b in pairs]
+    assert abs(x1 - x0) == pytest.approx(10 * abs(y1 - y0), rel=1e-6)
