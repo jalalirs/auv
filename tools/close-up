@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""Cut a patch of reef at the resolution it was surveyed at.
+
+    tools/close-up looe-key --at 157 7 --across 10
+
+Every place on this platform is a *model* of a reef: a seabed interpolated
+between samples metres apart, with colonies grown onto it from a cover figure.
+That is the right way to build a square kilometre and it is not the only thing
+the evidence supports.
+
+Looe Key was flown by the USGS SQUID-5 in 2022 and the release is a **one
+centimetre** elevation model and a **five millimetre** orthomosaic. At that
+resolution the coral is not something to grow onto the ground — *the coral is
+the ground*. A brain coral is a metre of surveyed surface with the grooves in
+it. A sea fan is not there at all, because a photogrammetric surface cannot
+see through one, and saying so is more honest than putting one back.
+
+So this cuts a patch out of the release and hands it to `tools/make-site` in
+the shape it already reads: a heightfield with its note, and a colour map. The
+place that comes out has no grown reef in it and does not want one. What it
+has is the reef somebody photographed.
+
+**Why it is a patch and not the site.** A kilometre at a centimetre is ten
+thousand million cells. Ten metres is a million, which is twice what a normal
+place carries and is a thing a renderer can hold. The site stays the site;
+this is for the one question the site cannot answer — put a square metre of it
+beside the photograph of that square metre, and see whether the difference is
+the water or the reef.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import pathlib
+import sys
+
+import numpy as np
+
+# The release, and which parts of it this reads.
+DEM = "SQUID5_LKR_2022_DEM-%s.tif"
+ORTHO = "SQUID5_LKR_2022_Orthoaverage-%s.tif"
+
+# How big the colour map is written. Four thousand and ninety-six over ten
+# metres is two and a half millimetres a texel, which is finer than the
+# orthomosaic and therefore free of it: nothing is invented, the source is
+# simply not the limit.
+COLOUR_TEXELS = 4096
+
+
+def metres_per_degree(latitude: float) -> tuple[float, float]:
+    """The same expression every other tool here uses, so the grids line up."""
+    radians = math.radians(latitude)
+    north = 111_132.92 - 559.82 * math.cos(2 * radians) + 1.175 * math.cos(4 * radians)
+    east = 111_412.84 * math.cos(radians) - 93.5 * math.cos(3 * radians)
+    return east, north
+
+
+def on_the_earth(centre: dict, x: float, y: float) -> tuple[float, float]:
+    """Site-local metres to latitude and longitude, the platform's own way."""
+    east, north = metres_per_degree(float(centre["latitude"]))
+    return (float(centre["latitude"]) + y / north,
+            float(centre["longitude"]) + x / east)
+
+
+def which_tile(usgs: pathlib.Path, lon: float, lat: float) -> str | None:
+    """The tile of the release this point falls in, and that opens.
+
+    Checked by opening it, not by reading a manifest. Three of the eight
+    elevation models in this release are truncated downloads and one more was
+    never fetched at all — they are the right size in a listing and raise on
+    the first read. A tool that picks a tile from a filename picks a tile that
+    does not work.
+    """
+    import rasterio
+    from rasterio.warp import transform
+
+    for path in sorted(usgs.glob(DEM % "*")):
+        which = path.stem.rsplit("-", 2)[-2] + "-" + path.stem.rsplit("-", 1)[-1]
+        try:
+            with rasterio.open(path) as dem:
+                xs, ys = transform("EPSG:4326", dem.crs, [lon], [lat])
+                left, bottom, right, top = dem.bounds
+                if not (left <= xs[0] <= right and bottom <= ys[0] <= top):
+                    continue
+                dem.read(1, window=((0, 2), (0, 2)))   # it must actually read
+        except Exception:
+            continue
+        if (usgs / (ORTHO % which)).is_file():
+            return which
+    return None
+
+
+def cut(path: pathlib.Path, lon: float, lat: float, across: float, out: int,
+        bands: int = 1):
+    """A square of `across` metres about a point, resampled to `out` across.
+
+    Read through a window rather than into memory: an orthomosaic here is
+    forty thousand pixels square and a DEM twenty thousand, and the patch
+    wanted out of it is two hundred.
+    """
+    import rasterio
+    from rasterio.warp import transform
+    from rasterio.windows import from_bounds
+
+    with rasterio.open(path) as source:
+        xs, ys = transform("EPSG:4326", source.crs, [lon], [lat])
+        half = across / 2.0
+        window = from_bounds(xs[0] - half, ys[0] - half,
+                             xs[0] + half, ys[0] + half, source.transform)
+        got = source.read(
+            list(range(1, min(bands, source.count) + 1)),
+            window=window, out_shape=(min(bands, source.count), out, out),
+            boundless=True, fill_value=float("nan") if bands == 1 else 0)
+        # North is up in a raster and +y in the world, so the rows flip.
+        got = np.flip(got, axis=1)
+        return got[0] if bands == 1 else np.moveaxis(got, 0, -1)
+
+
+def fill_the_holes(height: np.ndarray) -> tuple[np.ndarray, float]:
+    """A photogrammetric surface has gaps where the water was.
+
+    Where two cameras could not both see the bottom there is no elevation, and
+    a hole in a seabed is a place a vehicle falls through. Filled from the
+    nearest thing known, and how much had to be filled is returned — because
+    a patch that is a third hole is a patch somebody should pick again rather
+    than one to quietly smooth.
+    """
+    missing = ~np.isfinite(height)
+    share = float(missing.mean())
+    if not missing.any():
+        return height, 0.0
+    filled = height.copy()
+    if missing.all():
+        return np.zeros_like(height), 1.0
+    flat = filled.copy()
+    for _ in range(64):
+        blurred = np.nanmean(np.stack([
+            np.roll(flat, 1, 0), np.roll(flat, -1, 0),
+            np.roll(flat, 1, 1), np.roll(flat, -1, 1)]), axis=0)
+        flat = np.where(np.isfinite(flat), flat, blurred)
+        if np.isfinite(flat).all():
+            break
+    return np.nan_to_num(flat, nan=float(np.nanmedian(height))), share
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(
+        description="cut a patch of reef at the resolution it was surveyed at")
+    parse.add_argument("place", help="the place it comes out of, for its centre")
+    parse.add_argument("--at", nargs=2, type=float, required=True,
+                       metavar=("X", "Y"),
+                       help="metres east and north of that place's centre")
+    parse.add_argument("--across", type=float, default=10.0, help="metres")
+    parse.add_argument("--samples", type=int, default=1024,
+                       help="cells along a side of the heightfield")
+    parse.add_argument("--name", default=None)
+    parse.add_argument("--places",
+                       default=str(pathlib.Path.home() / "coral-city" / "places"))
+    parse.add_argument("--reference",
+                       default=str(pathlib.Path.home() / "coral-city" / "reference"))
+    asked = parse.parse_args()
+
+    from PIL import Image
+
+    places = pathlib.Path(asked.places).expanduser()
+    reference = pathlib.Path(asked.reference).expanduser() / asked.place
+    site = json.loads((places / asked.place / "site.json").read_text())
+    centre = site["from"]["centre"]
+    x, y = asked.at
+    lat, lon = on_the_earth(centre, x, y)
+
+    usgs = reference / "usgs"
+    if not usgs.is_dir():
+        raise SystemExit(f"{asked.place} has no survey release at {usgs}")
+    which = which_tile(usgs, lon, lat)
+    if which is None:
+        raise SystemExit(
+            f"nothing in the release covers {x:+.1f}, {y:+.1f} m "
+            f"({lat:.6f}, {lon:.6f}) with both an elevation model that opens "
+            f"and an orthomosaic beside it")
+
+    name = asked.name or f"{asked.place}-{x:+.0f}{y:+.0f}".replace("+", "e").replace("-", "w")
+    into = pathlib.Path(asked.reference).expanduser() / name
+    into.mkdir(parents=True, exist_ok=True)
+
+    height = cut(usgs / (DEM % which), lon, lat, asked.across, asked.samples)
+    height, holes = fill_the_holes(height)
+    colour = cut(usgs / (ORTHO % which), lon, lat, asked.across, COLOUR_TEXELS,
+                 bands=3).astype("uint8")
+
+    (into / "seabed.f32").write_bytes(height.astype("<f4").tobytes())
+    (into / "seabed.json").write_text(json.dumps({
+        "rows": asked.samples, "columns": asked.samples,
+        "acrossMetres": asked.across,
+        "centre": {"latitude": lat, "longitude": lon},
+        "file": "seabed.f32",
+        "format": "little-endian float32, row major, south to north then west to east",
+        # True, and the one place on this platform where it is: this is the
+        # survey, at the survey's own resolution, not an interpolation of it.
+        "surveyed": True,
+        "source": "USGS SQUID-5 Looe Key 2022, DOI 10.5066/P1QRS3SK",
+        "surveys": [{"tile": which, "dem": DEM % which, "ortho": ORTHO % which}],
+        "surveyedFraction": round(1.0 - holes, 4),
+        "sampleMetres": round(asked.across / max(1, asked.samples - 1), 5),
+        "cutFrom": {"place": asked.place, "xM": x, "yM": y},
+        "holesFilled": round(holes, 4),
+        "note": ("a patch of the release at its own resolution. The coral in "
+                 "it is not grown onto the ground — it *is* the ground, "
+                 "because at a centimetre a brain coral is a metre of "
+                 "surveyed surface with the grooves in it. What a "
+                 "photogrammetric surface cannot see it does not have: there "
+                 "are no sea fans here, because two cameras cannot both see "
+                 "through one."),
+    }, indent=2) + "\n")
+    Image.fromarray(colour).save(into / "colour_4096.png")
+
+    deep = -height
+    print(f"  {name}")
+    print(f"    tile {which}, {asked.across:.1f} m across at "
+          f"{100 * asked.across / (asked.samples - 1):.2f} cm a sample")
+    print(f"    depth {deep.min():.3f} to {deep.max():.3f} m, "
+          f"{deep.max() - deep.min():.3f} m of relief")
+    print(f"    {100 * holes:.1f}% of it had no elevation and was filled")
+    print(f"    colour at {1000 * asked.across / COLOUR_TEXELS:.2f} mm a texel")
+    print(f"    {into}")
+    print()
+    print(f"  Build it:  tools/make-site {name} --heights {into / 'seabed.json'} \\")
+    print(f"               --ground {into} --coral 0 --most {asked.samples} --tile 1")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
