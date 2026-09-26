@@ -446,3 +446,70 @@ def test_a_dive_with_no_duration_is_not_reported_as_no_dive(tmp_path):
     timeless = tool.a_campaign(grid, {"from": tool.FLOWN, "task": "survey"},
                                vehicles=1, day_hours=10.0, survives=None)
     assert "does not say how long it took" in timeless["cannotSay"]
+
+
+# ── which cells are the reef ─────────────────────────────────────────────────
+#
+# Al Fahal is three kilometres across and its record says its reef is
+# 269,804 m2 — three per cent of the site. Asked for "cells with colonies in
+# them" it returned 3,418 of 3,600, because four hundred thousand colonies
+# scattered over nine square kilometres put one in almost every cell.
+
+def _scattered(tmp_path, across=100.0, rows=16, per_cell=1):
+    """A place with a colony in every cell and a reef that is a quarter of
+    it, which is the shape of the fault."""
+    place = tmp_path / "scattered"
+    place.mkdir(exist_ok=True)
+    heights = np.full((rows, rows), -10.0, dtype="<f4")
+    heights.tofile(place / "seabed.f32")
+    points = []
+    # One colony in every 25 m cell, and a hundred more in one of them.
+    for x in (-37.5, -12.5, 12.5, 37.5):
+        for y in (-37.5, -12.5, 12.5, 37.5):
+            points.extend([(x, y)] * per_cell)
+    points.extend([(-37.5, -37.5)] * 100)
+    (place / "site.json").write_text(json.dumps({
+        "name": "scattered",
+        "from": {"centre": {"latitude": 24.5, "longitude": -81.4},
+                 "acrossMetres": across, "sampleMetres": 1.0},
+        "mesh": {"heightfield": {"rows": rows, "columns": rows, "file": "seabed.f32"}},
+        "layers": {"coral": "coral.usda"},
+        # One cell of 25 m: 625 m2 of a 10,000 m2 site.
+        "reef": {"colonies": len(points), "reefAreaM2": 625.0},
+    }))
+    (place / "coral.usda").write_text(
+        'def PointInstancer "Coral" {\n    point3f[] positions = [%s]\n'
+        '    int[] protoIndices = [%s]\n    float3[] scales = [%s]\n}\n'
+        % (", ".join("(%.1f, %.1f, -9.0)" % p for p in points),
+           ", ".join("0" for _ in points),
+           ", ".join("(1,1,1)" for _ in points)))
+    return place
+
+
+def test_the_reef_is_what_the_place_says_it_is_not_every_cell_with_a_colony(tmp_path):
+    tool = _tool()
+    grid = tool.cells_over(_scattered(tmp_path), cell_m=25.0, where="reef")
+    # Every one of the sixteen cells holds a colony; the reef is 625 m2,
+    # which is one cell of twenty-five metres — and it is the dense one.
+    assert len(grid["working"]) == 1
+    assert grid["working"][0]["colonies"] == 101
+    assert "own record says its reef is" in grid["reefFrom"]
+
+
+def test_a_place_that_does_not_say_falls_back_and_says_so(tmp_path):
+    tool = _tool()
+    place = _scattered(tmp_path)
+    said = json.loads((place / "site.json").read_text())
+    del said["reef"]["reefAreaM2"]
+    (place / "site.json").write_text(json.dumps(said))
+    grid = tool.cells_over(place, cell_m=25.0, where="reef")
+    assert len(grid["working"]) == 16
+    assert "does not say how much of it is reef" in grid["reefFrom"]
+
+
+def test_where_it_came_from_is_on_the_page(tmp_path):
+    tool = _tool()
+    grid = tool.cells_over(_scattered(tmp_path), cell_m=25.0, where="reef")
+    said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
+    page = tool.page(grid, said, {}, tool.in_lanes(grid["working"]))
+    assert "own record says its reef is" in page
