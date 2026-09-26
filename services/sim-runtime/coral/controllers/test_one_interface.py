@@ -67,3 +67,55 @@ def test_a_dive_says_whether_the_position_it_hands_over_is_an_estimate():
                 lambda kind, **d: None)
     dive.navigation = None
     assert dive.observation().estimated is False
+
+
+# ── whose controller flew ────────────────────────────────────────────────────
+
+class _Bridge:
+    """Just enough of the ROS boundary to make a stack controller."""
+
+    commands_seen = 0
+    commanded = False
+    stack_node = None
+
+    def commands(self):
+        return [0.0] * 8
+
+
+def test_a_deployed_controller_flies_under_its_own_name():
+    """Everything that arrives over ROS 2 arrives as "a stack". Two of
+    somebody's controllers on one bench were both called that."""
+    from controllers.external import StackController
+
+    stack = StackController(_Bridge(), deployed="Hold the depth", slug="hold-depth")
+    assert stack.flying_as() == "Hold the depth"
+    assert stack.describe()["flyingAs"] == "Hold the depth"
+    assert stack.describe()["slug"] == "hold-depth"
+
+
+def test_a_stack_nobody_deployed_names_itself_off_its_ros_node():
+    """Started by hand rather than through the platform — still not "stack"."""
+    from controllers.external import StackController
+
+    bridge = _Bridge()
+    bridge.stack_node = "wall_follower"
+    assert StackController(bridge).flying_as() == "wall_follower"
+
+
+def test_a_stack_that_has_said_nothing_at_all_is_the_slot_it_occupies():
+    from controllers.external import StackController
+
+    assert StackController(_Bridge()).flying_as() == "stack"
+
+
+def test_a_builtin_controller_is_its_own_name():
+    """The helm answers the same question for every controller, so a record
+    never has to know which kind it is holding."""
+    from hydrodynamics import Allocator, Hydrodynamics
+    from controllers import Helm
+
+    package = HERE.parents[3] / "catalog/vehicles/bluerov2/dynamics.json"
+    model = Hydrodynamics.from_package(package)
+    helm = Helm(Allocator(model), 0.005)
+    assert helm.flying_as() == helm.flying.name
+    assert helm.describe()["flyingAs"] == helm.flying.name

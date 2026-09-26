@@ -18,13 +18,22 @@ from .base import Command, Controller, Observation
 
 
 class StackController(Controller):
+    # The slot, not the controller. What is flying has a name of its own and
+    # `deployed` carries it: two of somebody's controllers on one bench were
+    # both called "stack", so neither the record nor a comparison could tell
+    # them apart — which is the one thing a benchmark is for. The name comes
+    # off the dive, because the platform knows what it deployed; the ROS node
+    # the bridge discovered is the fallback, because a stack somebody started
+    # by hand still names itself.
     name = "stack"
     kind = "external"
     says = "An autonomy stack, over ROS 2, admitted against the vehicle's topic contract."
 
-    def __init__(self, bridge) -> None:
+    def __init__(self, bridge, deployed: str = "", slug: str = "") -> None:
         super().__init__()
         self.bridge = bridge
+        self.deployed = str(deployed or "")
+        self.slug = str(slug or "")
         self.declare("patienceS", 1.0, 0.1, 10.0, "s", "how long without a command before the stack is considered gone")
         self._seen = 0
         self._last_at = -1e9
@@ -53,8 +62,19 @@ class StackController(Controller):
         setter = getattr(self.bridge, "set_parameter", None)
         return bool(setter(name, value)) if setter is not None else False
 
+    def flying_as(self) -> str:
+        """What to call what is flying. Never a guess: the name the platform
+        deployed it under, then the node it named itself, then the slot."""
+        return self.deployed or (self.bridge_node() or "") or self.name
+
+    def bridge_node(self) -> str | None:
+        return getattr(self.bridge, "stack_node", None)
+
     def describe(self) -> dict:
         told = super().describe()
+        told["flyingAs"] = self.flying_as()
+        if self.slug:
+            told["slug"] = self.slug
         theirs = getattr(self.bridge, "parameters", None)
         if theirs is not None:
             told["parameters"] = told["parameters"] + list(theirs())

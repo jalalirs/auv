@@ -31,7 +31,8 @@ ROUTE_FLYERS = ("pursue", "wary")
 
 
 class Helm:
-    def __init__(self, allocator, dt: float, bridge=None) -> None:
+    def __init__(self, allocator, dt: float, bridge=None,
+                 deployed: str = "", slug: str = "") -> None:
         self.allocator = allocator
         self.capability = allocator.capability()
         model = allocator.model
@@ -64,7 +65,7 @@ class Helm:
                                        -model.net_buoyancy_n, dt)
         # And the one controller that outranks a hand on the keys.
         self.failsafe = Failsafe(self.capability, model.effective_mass(), -model.net_buoyancy_n, dt)
-        self.stack = None if bridge is None else StackController(bridge)
+        self.stack = None if bridge is None else StackController(bridge, deployed, slug)
         self.controllers: dict[str, Controller] = {
             "hold": self.hold, "manual": self.manual, "pursue": self.pursue,
             "wary": self.wary, "ponder": self.ponder, "asking": self.asking,
@@ -521,9 +522,19 @@ class Helm:
                            for name, count in sorted(self.steps_flown.items(),
                                                      key=lambda kv: -kv[1])}}
 
+    def flying_as(self) -> str:
+        """What is flying, by the name a person would use for it.
+
+        The registry key for somebody's own stack is "stack" — the slot it
+        occupies — and a record that says a dive was flown by "stack" cannot
+        be compared with another dive flown by "stack".
+        """
+        return getattr(self.flying, "flying_as", lambda: self.flying.name)()
+
     def describe(self) -> dict:
         return {
             "flying": self.flying.name,
+            "flyingAs": self.flying_as(),
             "preferred": self.prefer,
             "changes": self.changes,
             "controllers": [c.describe() for c in self.controllers.values()] + [{
