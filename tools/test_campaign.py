@@ -404,3 +404,33 @@ def test_the_picture_has_a_legend_so_red_cannot_be_misread(tmp_path):
     covered = tool.covered_by(_flown(tmp_path, place, [(1, 2)]), grid)
     shown = tool.page(grid, said, {}, tool.in_lanes(grid["working"]), covered)
     assert "planned and missed" in shown and "covered" in shown
+
+
+def test_a_cost_from_a_dive_that_worked_no_ground_is_refused(tmp_path):
+    """A reach that went somewhere and held station will happily multiply
+    out to four working days over ninety-four cells, and every figure in
+    that column would have the wrong name on it."""
+    tool = _tool()
+    grid = tool.cells_over(_a_place(tmp_path), cell_m=25.0, where="all")
+    reach = {"hours": 0.33, "from": tool.FLOWN, "task": "reach"}
+    said = tool.a_campaign(grid, reach, vehicles=1, day_hours=10.0, survives=None)
+    assert "workingDays" not in said
+    assert "does not work a cell" in said["cannotSay"]
+
+
+def test_a_survey_is_a_dive_a_cell_can_be_costed_from(tmp_path):
+    tool = _tool()
+    grid = tool.cells_over(_a_place(tmp_path), cell_m=25.0, where="all")
+    survey = {"hours": 0.5, "from": tool.FLOWN, "task": "survey"}
+    said = tool.a_campaign(grid, survey, vehicles=1, day_hours=10.0, survives=None)
+    assert said["workingDays"] == 1
+
+
+def test_a_sweep_that_does_not_name_a_task_is_still_trusted(tmp_path):
+    """A sweep's cost is over a stated list of doubts on one mission; it
+    does not carry a task kind and must not be refused for that."""
+    tool = _tool()
+    grid = tool.cells_over(_a_place(tmp_path), cell_m=25.0, where="all")
+    sweep = {"hours": 0.5, "from": tool.SWEEP, "survives": 0.5}
+    said = tool.a_campaign(grid, sweep, vehicles=1, day_hours=10.0, survives=None)
+    assert said["workingDays"] == 1
