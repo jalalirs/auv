@@ -159,44 +159,66 @@ def fill_the_holes(height: np.ndarray) -> tuple[np.ndarray, float]:
     return np.nan_to_num(flat, nan=float(np.nanmedian(height))), share
 
 
-def take_the_water_out(colour: np.ndarray, height: np.ndarray,
-                       lengths, surface=(1.0, 1.0, 1.0)) -> tuple:
-    """Undo what the water did to the photograph, per pixel, from its depth.
+def how_much_water_is_in_it(colour: np.ndarray, deep: float, lengths) -> dict:
+    """Whether the photograph still has the water in it, measured not assumed.
 
-    An orthomosaic is a photograph *through* water. Used as an albedo it bakes
-    that water in, and a renderer that then puts the water back gives a reef
-    behind two oceans — which is the mistake `tools/ground` avoids by refusing
-    to trust satellite colour at all. Here it does not have to be avoided,
-    because at a centimetre a sample the depth of every pixel is known.
+    An orthomosaic is taken through water and used as an albedo it would bake
+    that water in, so a renderer putting the water back would give a reef
+    behind two oceans. `tools/ground` avoids this by refusing to trust
+    satellite colour at all.
 
-    Light goes down and comes back, so it crosses the column twice:
+    The first version of this *corrected* for it — divided by
+    `exp(-2 * depth / length)` per pixel, per channel, from the elevation
+    model. It came out magenta, clipped white, with red lifted twelve and a
+    half times. Two things were wrong and only looking at the picture found
+    either.
 
-        photographed = albedo * exp(-2 * depth / length)
+    The path was wrong: SQUID-5 is a camera a metre or two off the bottom, not
+    a satellite, so the light does not cross the column twice.
 
-    per channel, which inverts exactly. `lengths` are the attenuation lengths
-    of the place's own water — the same numbers the renderer will use to put
-    it back — so the round trip is the model applied and unapplied, and what
-    is left to compare is the *geometry* and the *light*: a render carries
-    relief, shadow and a sun direction that a nadir orthomosaic has none of.
+    And the product was already corrected. The published orthomosaic here
+    measures **R/G 1.009, B/G 1.021** — neutral to one per cent. A raw
+    photograph at five metres in this water would be R/G 0.38. Somebody has
+    already taken the water out, and correcting it again is inventing a reef
+    the colour of raspberry.
 
-    That is what the comparison is for. It was never going to test the water:
-    removing it and restoring it with one model cannot. It tests whether the
-    reef is the reef.
+    So this measures and reports rather than correcting. A product that
+    arrives neutral is used as it is; one that arrives water-shifted is used
+    as it is too, and the record says how far off it is, because the honest
+    answer to "how much water is in this photograph" is a number somebody
+    should look at and not a division this file should perform.
     """
-    deep = np.clip(-height, 0.0, None)
-    out = np.empty(colour.shape, dtype="float64")
-    lifted = []
-    for band in range(3):
-        survives = np.exp(-2.0 * deep / float(lengths[band]))
-        # Floored, because dividing by what is left of red at seven metres is
-        # dividing by a hundredth and any noise in the photograph becomes the
-        # whole answer. Where the floor binds the colour is under-corrected,
-        # which is the safe direction: it leaves some water in rather than
-        # inventing a reflectance.
-        survives = np.maximum(survives, 0.08)
-        lifted.append(float(1.0 / survives.min()))
-        out[..., band] = colour[..., band] / survives * float(surface[band])
-    return np.clip(out, 0.0, 255.0), lifted
+    flat = colour.reshape(-1, 3)
+    mean = flat.mean(axis=0)
+    green = max(float(mean[1]), 1e-9)
+    ratios = [float(mean[0] / green), 1.0, float(mean[2] / green)]
+    # What a photograph with the water still in it would look like at this
+    # depth, for comparison.
+    raw = [float(math.exp(-2.0 * deep / float(lengths[b]))
+                 / math.exp(-2.0 * deep / float(lengths[1]))) for b in range(3)]
+    balanced = abs(ratios[0] - 1.0) < 0.25 and abs(ratios[2] - 1.0) < 0.25
+    return {
+        "meanRGB": [round(float(v), 1) for v in mean],
+        "redOverGreen": round(ratios[0], 3),
+        "blueOverGreen": round(ratios[2], 3),
+        "ifTheWaterWereStillInIt": {
+            "atDepthM": round(deep, 2),
+            "redOverGreen": round(raw[0], 3),
+            "blueOverGreen": round(raw[2], 3),
+        },
+        "alreadyWhiteBalanced": bool(balanced),
+        "usedAs": ("the albedo, unchanged: this product arrives neutral, so "
+                   "whoever made it has already taken the water out"
+                   if balanced else
+                   "the albedo, unchanged — and it is NOT neutral, so it "
+                   "still carries some of the water it was taken through and "
+                   "a render of it will show that water twice"),
+        "whyNotCorrected": (
+            "because the correction was tried and was wrong twice: the light "
+            "path is not twice the depth for a camera a metre off the bottom, "
+            "and the product had already been balanced. Measuring is the "
+            "honest thing this file can do; dividing is not."),
+    }
 
 
 def main() -> int:
@@ -261,8 +283,9 @@ def main() -> int:
     # The depth of every colour texel, from the elevation beneath it.
     at = (np.linspace(0, height.shape[0] - 1, COLOUR_TEXELS).astype(int)[:, None],
           np.linspace(0, height.shape[1] - 1, COLOUR_TEXELS).astype(int)[None, :])
-    corrected, lifted = take_the_water_out(photographed, height[at], lengths)
-    colour = corrected.astype("uint8")
+    water_in_it = how_much_water_is_in_it(
+        photographed, float(np.median(-height)), lengths)
+    colour = photographed.astype("uint8")
 
     (into / "seabed.f32").write_bytes(height.astype("<f4").tobytes())
     (into / "seabed.json").write_text(json.dumps({
@@ -289,28 +312,10 @@ def main() -> int:
                  "through one."),
     }, indent=2) + "\n")
     Image.fromarray(colour).save(into / "colour_4096.png")
-    # And the photograph as it was taken, beside the albedo taken out of it.
-    # The whole point of this patch is a comparison, and a comparison needs
-    # both halves kept.
-    Image.fromarray(photographed.astype("uint8")).save(into / "photographed.png")
-    (into / "water-taken-out.json").write_text(json.dumps({
+    (into / "the-water-in-the-photograph.json").write_text(json.dumps({
         "waterType": kind or water_module.DEFAULT_TYPE,
         "attenuationM": [float(v) for v in lengths],
-        "how": ("photographed = albedo * exp(-2 * depth / length), per "
-                "channel, inverted per pixel from the elevation model. Twice "
-                "the depth because the light goes down and comes back."),
-        "mostItWasLiftedBy": [round(v, 2) for v in lifted],
-        "floor": ("what survives is floored at 0.08, because dividing by what "
-                  "is left of red at seven metres is dividing by a hundredth "
-                  "and the noise becomes the answer. Where the floor binds "
-                  "the colour is under-corrected, which leaves water in "
-                  "rather than inventing a reflectance"),
-        "readThisFirst": (
-            "This does not test the water. Removing it and restoring it with "
-            "one model cannot — the round trip is the model applied and "
-            "unapplied. What the comparison tests is the *geometry* and the "
-            "*light*: a render carries relief, shadow and a sun direction "
-            "that a nadir orthomosaic has none of."),
+        **water_in_it,
     }, indent=2) + "\n")
 
     deep = -height
@@ -320,9 +325,12 @@ def main() -> int:
     print(f"    depth {deep.min():.3f} to {deep.max():.3f} m, "
           f"{deep.max() - deep.min():.3f} m of relief")
     print(f"    {100 * holes:.1f}% of it had no elevation and was filled")
-    print(f"    colour at {1000 * asked.across / COLOUR_TEXELS:.2f} mm a texel, "
-          f"water taken out at {kind or water_module.DEFAULT_TYPE} "
-          f"(lifted up to {max(lifted):.1f}x in red)")
+    print(f"    colour at {1000 * asked.across / COLOUR_TEXELS:.2f} mm a texel")
+    print(f"    the photograph is R/G {water_in_it['redOverGreen']:.3f}, "
+          f"B/G {water_in_it['blueOverGreen']:.3f} — "
+          f"{'already white balanced' if water_in_it['alreadyWhiteBalanced'] else 'NOT balanced: it still has water in it'}"
+          f" (raw at this depth would be R/G "
+          f"{water_in_it['ifTheWaterWereStillInIt']['redOverGreen']:.2f})")
     print(f"    {into}")
     print()
     print(f"  Build it:  tools/make-site {name} --heights {into / 'seabed.json'} \\")
