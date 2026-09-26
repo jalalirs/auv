@@ -108,3 +108,102 @@ def test_a_manifest_entry_with_no_size_is_not_fetched(tmp_path):
     (tmp_path / "files.json").write_text(json.dumps(
         [{"name": "a.tif", "url": "https://example.invalid/a", "bytes": None}]))
     assert tool.wanted(tmp_path, None) == []
+
+
+# ── a server that will not resume ────────────────────────────────────────────
+#
+# USGS's does not always. Asked to continue a Looe Key elevation model from
+# 0.46 GB it sent the whole body again, curl appended it, and the file went
+# past its stated 0.77 GB on the way to 1.07 — at which point every further
+# try resumed *that*. Four tries in a row made it worse.
+
+class _Curl:
+    """A fake curl that appends the whole body however it is asked."""
+
+    def __init__(self, where, name, body, fails=0):
+        self.here = where / name
+        self.body = body
+        self.fails = fails
+        self.calls = 0
+
+    def __call__(self, argv, **kw):
+        self.calls += 1
+        import subprocess
+        if self.fails >= self.calls:
+            return subprocess.CompletedProcess(argv, 56)
+        with self.here.open("ab") as out:
+            out.write(self.body)
+        return subprocess.CompletedProcess(argv, 0)
+
+
+def test_a_resume_that_overshoots_is_thrown_away_and_started_again(tmp_path):
+    tool = _tool()
+    where = _a_release(tmp_path, [("thing.bin", 100)])
+    (where / "thing.bin").write_bytes(b"x" * 60)
+    # The server ignores the range and sends all 100 bytes every time: 60 + 100
+    # is too long, and resuming that would only make it longer.
+    tool.subprocess.run = _Curl(where, "thing.bin", b"y" * 100)
+    kind, got = tool.fetch(where, {"name": "thing.bin", "bytes": 100,
+                                   "url": "https://example.invalid/thing.bin"},
+                           say=lambda *a: None)
+    assert (kind, got) == ("complete", 100)
+    # And the spoiled part-file is kept rather than silently deleted.
+    assert (where / "thing.bin.too-long").is_file()
+    assert (where / "thing.bin").read_bytes() == b"y" * 100
+
+
+def test_it_does_not_resume_the_same_overshoot_four_times(tmp_path):
+    """The bug, precisely: the length was checked before the loop and not
+    inside it, so a file that overshot on try one was resumed on tries two,
+    three and four."""
+    tool = _tool()
+    where = _a_release(tmp_path, [("thing.bin", 100)])
+    (where / "thing.bin").write_bytes(b"x" * 60)
+    curl = _Curl(where, "thing.bin", b"y" * 140)     # always too long
+    tool.subprocess.run = curl
+    kind, got = tool.fetch(where, {"name": "thing.bin", "bytes": 100,
+                                   "url": "https://example.invalid/thing.bin"},
+                           say=lambda *a: None)
+    assert kind == "too long"
+    # Every try started from nothing, so the file never grew beyond one body.
+    assert got == 140, "a try resumed an already-too-long file"
+    assert curl.calls == tool.TRIES
+
+
+def test_a_try_that_gains_nothing_and_succeeds_starts_again(tmp_path):
+    """curl content and the file no bigger means the far end answered the
+    range with nothing. Asking again the same way gets the same nothing."""
+    tool = _tool()
+    where = _a_release(tmp_path, [("thing.bin", 100)])
+    (where / "thing.bin").write_bytes(b"x" * 60)
+    tool.subprocess.run = _Curl(where, "thing.bin", b"")
+    kind, got = tool.fetch(where, {"name": "thing.bin", "bytes": 100,
+                                   "url": "https://example.invalid/thing.bin"},
+                           say=lambda *a: None)
+    assert (kind, got) == ("missing", 0)
+    assert (where / "thing.bin.too-long").read_bytes() == b"x" * 60
+
+
+def test_a_dropped_connection_is_still_resumed(tmp_path):
+    """Ordinary. A large transfer over a long link drops, and that is what
+    resuming is for — it must not be confused with a server that will not."""
+    tool = _tool()
+    where = _a_release(tmp_path, [("thing.bin", 100)])
+    (where / "thing.bin").write_bytes(b"x" * 60)
+    curl = _Curl(where, "thing.bin", b"y" * 40, fails=1)
+    tool.subprocess.run = curl
+    kind, got = tool.fetch(where, {"name": "thing.bin", "bytes": 100,
+                                   "url": "https://example.invalid/thing.bin"},
+                           say=lambda *a: None)
+    assert (kind, got) == ("complete", 100)
+    assert not (where / "thing.bin.too-long").exists(), "nothing was thrown away"
+
+
+def test_a_size_is_shown_in_a_unit_that_shows_it(tmp_path):
+    """Everything was printed in GB to two places, so a 3 kB metadata file
+    and a 4 MB one both read "0.00 of 0.00 GB"."""
+    tool = _tool()
+    assert tool.size(3_000) == "3.00 kB"
+    assert tool.size(4_200_000) == "4.20 MB"
+    assert tool.size(1_290_000_000) == "1.29 GB"
+    assert tool.size(512) == "512 B"
