@@ -127,8 +127,23 @@ def cut(path: pathlib.Path, lon: float, lat: float, across: float, out: int,
         # thirty-two kilometres should not need a declaration to be refused.
         if bands == 1:
             got = np.where(np.abs(got) > 1000.0, np.nan, got)
-        # North is up in a raster and +y in the world, so the rows flip.
-        got = np.flip(got, axis=1)
+        # Rows flipped for a heightfield and **not** for a colour map, which
+        # is not an inconsistency — it is the two conventions this platform
+        # already has, and cutting both the same way flips one of them twice.
+        #
+        # A heightfield here is "south to north then west to east", which a
+        # raster is not: north is row zero in a GeoTIFF. So the elevation
+        # flips on the way out of this function.
+        #
+        # A colour map is handed to `make-site` as a raster, north up, and
+        # `make-site` flips it itself on the way into the place — it says so
+        # where it does it, and calls the consequence of getting it wrong "a
+        # reef a mile from where the survey put it". Flipping it here as well
+        # put the photograph upside down on its own geometry, which is not
+        # visible on a patch of reef pavement and is fatal to the one thing
+        # this patch exists for.
+        if bands == 1:
+            got = np.flip(got, axis=1)
         return got[0] if bands == 1 else np.moveaxis(got, 0, -1)
 
 
