@@ -208,9 +208,22 @@ def the_reef(wet: list[dict], site: dict, cell_m: float) -> tuple[list[dict], st
     area = cell_m ** 2
     enough = max(1, int(round(reef_m2 / area)))
     densest = sorted(holding, key=lambda one: -one["colonies"])[:enough]
-    return densest, ("the %d densest cells, which is %s m2 — what this place's "
-                     "own record says its reef is"
-                     % (len(densest), f"{len(densest) * area:,.0f}"))
+    said = ("the %d densest cells, which is %s m2 — what this place's own "
+            "record says its reef is"
+            % (len(densest), f"{len(densest) * area:,.0f}"))
+    # And the two halves of the record held against each other. If the
+    # ground the place calls its reef holds only a tenth of the place's
+    # colonies, then its reef area and its coral layer are not describing
+    # the same reef — which is exactly what the restored Al Fahal does,
+    # and a plan built on either number alone would be wrong.
+    everywhere = sum(one["colonies"] for one in holding)
+    inside = sum(one["colonies"] for one in densest)
+    if everywhere and inside / everywhere < 0.5:
+        said += (". But those cells hold only %d%% of this place's colonies, "
+                 "so its reef area and its coral layer do not describe the "
+                 "same reef — one of the two is wrong and this plan rests on "
+                 "the first" % round(100 * inside / everywhere))
+    return densest, said
 
 
 def in_lanes(working: list[dict]) -> list[dict]:
@@ -595,8 +608,14 @@ def page(grid: dict, said: dict, cost: dict, order: list[dict],
                        % (html.escape(v), html.escape(w)) for v, w in big)
 
     warning = ""
+    if "do not describe the same reef" in (grid.get("reefFrom") or ""):
+        warning += ('<p class="says warn"><strong>This place disagrees with '
+                    'itself.</strong> %s.</p>'
+                    % html.escape(grid["reefFrom"].split(". But ", 1)[1].rstrip(".")))
     if "cannotSay" in said:
-        warning = ('<p class="says warn"><strong>No days here, and that is the '
+        # Appended. It was an assignment, and a page with two things to
+        # warn about showed the second and swallowed the first.
+        warning += ('<p class="says warn"><strong>No days here, and that is the '
                    'point.</strong> %s. Fly one and give it to this with '
                    '<code>--cost</code>.</p>' % html.escape(said["cannotSay"]))
 

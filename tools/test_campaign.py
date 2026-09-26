@@ -513,3 +513,36 @@ def test_where_it_came_from_is_on_the_page(tmp_path):
     said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
     page = tool.page(grid, said, {}, tool.in_lanes(grid["working"]))
     assert "own record says its reef is" in page
+
+
+def test_a_place_that_disagrees_with_itself_is_told_it_does(tmp_path):
+    """The restored Al Fahal says its reef is 269,804 m2 and its coral
+    layer puts nine tenths of its colonies outside that. One of the two is
+    wrong, and a plan built on either alone would be too."""
+    tool = _tool()
+    place = _scattered(tmp_path, per_cell=50)      # the scatter dominates
+    grid = tool.cells_over(place, cell_m=25.0, where="reef")
+    assert "do not describe the same reef" in grid["reefFrom"]
+    said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
+    page = tool.page(grid, said, {}, tool.in_lanes(grid["working"]))
+    assert "This place disagrees with itself" in page
+
+
+def test_a_place_that_agrees_with_itself_is_not_warned(tmp_path):
+    tool = _tool()
+    grid = tool.cells_over(_scattered(tmp_path, per_cell=1), cell_m=25.0, where="reef")
+    assert "do not describe the same reef" not in grid["reefFrom"]
+    said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
+    assert "disagrees with itself" not in tool.page(
+        grid, said, {}, tool.in_lanes(grid["working"]))
+
+
+def test_two_warnings_are_both_shown(tmp_path):
+    """It was an assignment, so a page with two things to warn about
+    showed the second and swallowed the first."""
+    tool = _tool()
+    grid = tool.cells_over(_scattered(tmp_path, per_cell=50), cell_m=25.0, where="reef")
+    said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
+    page = tool.page(grid, said, {}, tool.in_lanes(grid["working"]))
+    assert "This place disagrees with itself" in page
+    assert "No days here" in page
