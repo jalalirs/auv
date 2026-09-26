@@ -42,7 +42,7 @@ FOUND = {
     "madeNoDifference": ["the mooring's position"],
     "cost": {"runs": 24, "survived": 15, "diveEnergyWh": 180.0, "diveHours": 1.4,
              "workingShare": 0.62, "perCharge": 2.3, "workingDayHours": 10.0,
-             "perDay": 2.0, "heldBackBy": "battery", "survives": 0.625,
+             "perDay": 2.0, "heldBackBy": "the battery", "survives": 0.625,
              "shipDaysPerWorkingDay": 1.6},
     "scenariosFlown": [
         {"label": "still · clear", "runs": 3, "survivedRuns": 3, "survived": True,
