@@ -328,6 +328,34 @@ def _read_rows(suite: str) -> list[dict]:
 
 # ── reading it back ──────────────────────────────────────────────────────────
 
+# What a failure is about, by what the platform said when it gave up. A dive
+# that never reached the water is not a controller flying badly, and the two
+# must not be averaged together.
+THE_CONTROLLERS = ("the controller started and then stopped",
+                   "defined with a controller and it would not start",
+                   "defined with a controller and the vehicle never came up")
+
+
+def whose_fault(why: str) -> str:
+    """"theirs" when the reason names the controller, "the platform's"
+    otherwise. Unknown counts as the platform's: attributing a failure to
+    somebody's controller on a guess is the one direction that must not be
+    guessed."""
+    said = (why or "").lower()
+    return "theirs" if any(one in said for one in THE_CONTROLLERS) else "the platform's"
+
+
+def failed_row(dive: dict, parts: list[str], run: dict) -> dict:
+    why = str(run.get("failureReason") or "no reason given")
+    return {"name": dive["name"], "suite": parts[1], "controller": parts[2],
+            "task": parts[3], "score": 0.0, "ended": "failed",
+            "failed": True, "why": why, "fault": whose_fault(why),
+            "seconds": 0.0, "energyWh": 0.0, "driftM": 0.0, "flownBy": "—",
+            "thoughts": 0, "slowestThoughtS": 0.0,
+            "struck": 0, "grounded": 0, "whatItStruck": [],
+            "dive": dive["id"], "run": run["id"]}
+
+
 def flown(platform) -> list[dict]:
     """Every bench dive in the record, as rows."""
     rows = []
@@ -338,8 +366,20 @@ def flown(platform) -> list[dict]:
         if len(parts) != 4:
             continue
         for run in platform.call("GET", f"/api/v1/dives/{dive['id']}/runs").get("runs", []):
-            if run["state"] != "succeeded":
+            if run["state"] not in ("succeeded", "failed"):
                 continue
+            # A failed run is a row too. It used to be skipped, so a
+            # controller whose every dive fell over had no rows at all and
+            # the bench said "nothing on the bench yet" — a bench that hides
+            # failures is a bench that flatters.
+            #
+            # But not every failure is the controller's. A dive the platform
+            # could not start says so, and counting that against somebody's
+            # controller is worse than not showing it: it is a number with
+            # the wrong name on it.
+            if run["state"] == "failed":
+                rows.append(failed_row(dive, parts, run))
+                break
             out = run.get("outcome") or {}
             task_said = out.get("task") or {}
             thought = task_said.get("thought") or {}
@@ -364,6 +404,11 @@ def flown(platform) -> list[dict]:
 
 
 def summarise(rows: list[dict]) -> dict:
+    # A dive the platform could not start is not a zero — it is an absence,
+    # and averaging it in would report somebody's controller as worse than
+    # anything it actually did.
+    rows = [r for r in rows if r.get("fault") != "the platform's"]
+
     def mean(key):
         values = [r[key] for r in rows if r.get(key) is not None]
         return statistics.fmean(values) if values else 0.0
@@ -416,6 +461,19 @@ def command_show(args) -> int:
         ink = "" if flew == whole else AMBER
         line += f"{ink}{f'{flew} of {whole}':>17}{OFF if ink else ''}"
     print(line)
+    # And what fell over, kept apart by whose fault it was. A dive the
+    # platform could not start is not a controller flying badly, and it is
+    # not in the averages below either.
+    for label, fault, ink in (("failed", "theirs", RED),
+                              ("never flew", "the platform's", AMBER)):
+        if not any(r.get("fault") == fault for r in rows):
+            continue
+        line = f"{DIM}{label:<14}{OFF}"
+        for controller in controllers:
+            count = sum(1 for r in rows
+                        if r["controller"] == controller and r.get("fault") == fault)
+            line += f"{ink if count else DIM}{count if count else '—':>17}{OFF}"
+        print(line)
     for label, key, form in (("score", "score", lambda v: f"{v * 100:.1f}%"),
                              ("achieved", "achieved", lambda v: f"{v:.0f}"),
                              ("drift", "driftM", lambda v: f"{v:.2f} m"),

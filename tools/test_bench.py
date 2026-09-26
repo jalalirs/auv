@@ -152,3 +152,56 @@ def test_the_run_says_which_build_it_flew():
     said = tool.built_or_built_by(flying)
     assert "2026-09-03" in said and "2222" in said
     assert tool.built_or_built_by({"builtIn": "pursue"}) == "built in"
+
+
+# ── failures are rows, and whose they are matters ────────────────────────────
+
+def test_a_bench_that_hides_failures_flatters():
+    """A controller whose every dive fell over had no rows at all, and the
+    bench said "nothing on the bench yet"."""
+    tool = _bench()
+    row = tool.failed_row({"id": "d1", "name": "bench · quick · pursue · reach"},
+                          ["bench", "quick", "pursue", "reach"],
+                          {"id": "r1", "failureReason":
+                           "the controller started and then stopped, so nothing flew this dive: boom"})
+    assert row["ended"] == "failed" and row["score"] == 0.0
+    assert row["fault"] == "theirs"
+    assert "boom" in row["why"]
+
+
+def test_a_dive_the_platform_could_not_start_is_not_the_controllers_fault():
+    tool = _bench()
+    assert tool.whose_fault("the simulator could not be started: no such image") \
+        == "the platform's"
+    assert tool.whose_fault("this dive was defined with a controller and it would not "
+                            "start, so nothing could fly it: no such image") == "theirs"
+
+
+def test_an_unknown_reason_is_not_pinned_on_somebody_s_controller():
+    """Attributing a failure to a controller on a guess is the one direction
+    that must not be guessed."""
+    tool = _bench()
+    assert tool.whose_fault("") == "the platform's"
+    assert tool.whose_fault("something nobody has seen before") == "the platform's"
+
+
+def test_a_dive_that_never_flew_is_not_averaged_as_a_zero():
+    tool = _bench()
+    rows = [{"score": 0.8, "energyWh": 4.0, "driftM": 1.0, "seconds": 100.0,
+             "thoughts": 0, "slowestThoughtS": 0.0, "ended": "achieved"},
+            {"score": 0.0, "energyWh": 0.0, "driftM": 0.0, "seconds": 0.0,
+             "thoughts": 0, "slowestThoughtS": 0.0, "ended": "failed",
+             "fault": "the platform's"}]
+    said = tool.summarise(rows)
+    assert said["dives"] == 1
+    assert said["score"] == pytest.approx(0.8)
+
+
+def test_a_controllers_own_failure_is_averaged_as_the_zero_it_is():
+    tool = _bench()
+    rows = [{"score": 0.8, "energyWh": 4.0, "driftM": 1.0, "seconds": 100.0,
+             "thoughts": 0, "slowestThoughtS": 0.0, "ended": "achieved"},
+            {"score": 0.0, "energyWh": 0.0, "driftM": 0.0, "seconds": 0.0,
+             "thoughts": 0, "slowestThoughtS": 0.0, "ended": "failed",
+             "fault": "theirs"}]
+    assert tool.summarise(rows)["score"] == pytest.approx(0.4)
