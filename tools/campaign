@@ -1,0 +1,425 @@
+#!/usr/bin/env python3
+"""A grid of cells, and what it would take to work all of them.
+
+    tools/campaign ~/coral-city/places/looe-key --cell 20
+    tools/campaign ~/coral-city/places/al-fahal --cell 25 --cost run/mission.json
+
+One dive is a demonstration. Nobody at a reef programme has the problem of
+one dive: KCRI is putting two million corals into a hundred hectares by
+2030, Red Sea Global monitors three hundred sites on a repeat cycle, Beacon
+has relocated two hundred and twenty-five thousand colonies by diver, and
+NCW has four hundred sites to visit a second time in a way that can be
+compared with the first. What all four have is **a grid, a fleet and a boat
+calendar**, and no way to turn one into the others.
+
+This turns a place into that arithmetic, off the place's own record — the
+seabed it was built from and the colonies that were planted or surveyed into
+it — and off a dive that was actually flown, rather than off an estimate
+somebody typed.
+
+**It refuses to invent the cost.** Cells times a number nobody measured is a
+spreadsheet, and a spreadsheet about ship time is worse than nothing: it is
+a promise. Give it a flown mission (`mission.json`, from `tools/deliver
+--dive`) or a sweep's findings, and every figure on the page says which of
+those it came from. Give it neither and it will describe the grid and stop
+where the arithmetic would start.
+"""
+
+from __future__ import annotations
+
+import argparse
+import html
+import importlib.machinery
+import importlib.util
+import json
+import math
+import pathlib
+import sys
+
+import numpy as np
+
+HERE = pathlib.Path(__file__).resolve().parent
+
+# Where each figure came from, in the words this page uses. Not the place
+# pages' vocabulary and deliberately so: nothing here is a measurement of a
+# real reef, and the useful distinction is between a number a dive produced
+# and a number somebody supplied.
+FLOWN, PLACE, SWEEP, CHOSEN = "from a flown dive", "from the place", "from a sweep", "chosen"
+
+INK = {FLOWN: "#1a6b2a", PLACE: "#1a4f8a", SWEEP: "#8a5a00", CHOSEN: "#8a2a2a"}
+WASH = {FLOWN: "#e8f4ea", PLACE: "#e9eff6", SWEEP: "#fbf1de", CHOSEN: "#f9e9e9"}
+
+
+def a_tool(name: str):
+    loader = importlib.machinery.SourceFileLoader(name, str(HERE / name))
+    spec = importlib.util.spec_from_loader(name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+# ── the grid ─────────────────────────────────────────────────────────────────
+
+def cells_over(place: pathlib.Path, cell_m: float, where: str) -> dict:
+    """The place, cut into cells, each knowing its depth and its colonies.
+
+    Off the place's own heightfield and its own colony positions, so a cell
+    that is described as twelve metres deep with four hundred colonies in it
+    is describing the reef that would actually be flown.
+    """
+    deliver = a_tool("deliver")
+    site = json.loads((place / "site.json").read_text())
+    came = site.get("from") or {}
+    across = float(came["acrossMetres"])
+    centre = dict(came["centre"], name=site.get("name", "site"))
+
+    field = site["mesh"]["heightfield"]
+    heights = np.fromfile(place / field["file"], dtype="<f4").reshape(
+        field["rows"], field["columns"])
+
+    colonies = deliver.colonies_of(place)
+    at = np.array(colonies["at"], dtype=float) if colonies["at"] else np.zeros((0, 3))
+
+    n = max(1, int(round(across / cell_m)))
+    step = across / n
+    # Row 0 of the heightfield is the south edge, which is the same flip
+    # every raster on this platform needs.
+    made = []
+    for row in range(n):
+        for column in range(n):
+            x0 = -across / 2 + column * step
+            y0 = -across / 2 + row * step
+            # The heightfield samples that fall inside this cell.
+            a = int(row * field["rows"] / n)
+            b = max(a + 1, int((row + 1) * field["rows"] / n))
+            c = int(column * field["columns"] / n)
+            d = max(c + 1, int((column + 1) * field["columns"] / n))
+            patch = heights[a:b, c:d]
+            deepest = float(-patch.min())
+            shallowest = float(-patch.max())
+            mean_depth = float(-patch.mean())
+            # Wet enough to work, rather than wet anywhere. A cell with a
+            # corner in the water is not a cell a vehicle can be flown over,
+            # and counting it would put beach in the boat calendar.
+            wet_share = float(np.count_nonzero(patch < 0.0)) / patch.size
+            inside = 0
+            if len(at):
+                inside = int(np.count_nonzero(
+                    (at[:, 0] >= x0) & (at[:, 0] < x0 + step)
+                    & (at[:, 1] >= y0) & (at[:, 1] < y0 + step)))
+            made.append({
+                "row": row, "column": column,
+                "x": round(x0 + step / 2, 2), "y": round(y0 + step / 2, 2),
+                "depthM": round(mean_depth, 2),
+                "shallowestM": round(shallowest, 2), "deepestM": round(deepest, 2),
+                "wetShare": round(wet_share, 3),
+                "colonies": inside,
+            })
+
+    dry = [one for one in made if one["wetShare"] <= 0.5]
+    wet = [one for one in made if one["wetShare"] > 0.5]
+    if where == "reef":
+        working = [one for one in wet if one["colonies"] > 0]
+    else:
+        working = wet
+    return {"cellM": round(step, 3), "across": n, "cells": made,
+            "wet": len(wet), "dry": len(dry), "working": working,
+            "centre": centre, "acrossMetres": across,
+            "colonies": int(sum(one["colonies"] for one in working))}
+
+
+def in_lanes(working: list[dict]) -> list[dict]:
+    """The order to work them in: up and down the grid, not nearest-first.
+
+    A boat that hops to the densest cell, then the next densest, spends the
+    day moving. Lanes are how ground is actually worked, and they are what
+    makes a day's plan something a coxswain can follow.
+    """
+    ordered = sorted(working, key=lambda one: (one["row"], one["column"]))
+    out = []
+    for row in sorted({one["row"] for one in ordered}):
+        lane = [one for one in ordered if one["row"] == row]
+        out.extend(lane if row % 2 == 0 else list(reversed(lane)))
+    return out
+
+
+# ── what a cell costs ────────────────────────────────────────────────────────
+
+def cost_from(path: pathlib.Path | None) -> dict:
+    """What one cell takes, from something that was flown.
+
+    A mission's own record says what that dive spent and how long it was in
+    the water. A sweep's findings say the same across a stated list of
+    doubts, and only a sweep can say what share of attempts survive, because
+    a sweep flies a list once each — a mission's past runs are whatever
+    happened to be flown, which is not a sample of anything.
+    """
+    if path is None:
+        return {}
+    said = json.loads(path.read_text())
+    # A sweep's findings.
+    if "cost" in said and isinstance(said["cost"], dict):
+        cost = said["cost"]
+        return {"energyWh": cost.get("diveEnergyWh"), "hours": cost.get("diveHours"),
+                "perCharge": cost.get("perCharge"), "perDay": cost.get("perDay"),
+                "heldBackBy": cost.get("heldBackBy"),
+                "survives": cost.get("survives"),
+                "workingDayHours": cost.get("workingDayHours"),
+                "from": SWEEP, "runs": cost.get("runs")}
+    # A single flown mission.
+    task = said.get("task") or {}
+    seconds = said.get("seconds")
+    achieved = task.get("achieved") or {}
+    return {"energyWh": achieved.get("energyWh") or task.get("energyWh"),
+            "hours": None if not seconds else round(float(seconds) / 3600.0, 4),
+            "from": FLOWN, "runs": 1,
+            "coveredM2": None}
+
+
+def a_campaign(grid: dict, cost: dict, vehicles: int, day_hours: float,
+               survives: float | None) -> dict:
+    """Cells, crossed with what a cell costs, into days."""
+    cells = len(grid["working"])
+    said = {"cells": cells, "colonies": grid["colonies"], "vehicles": vehicles,
+            "workingDayHours": day_hours}
+    hours = cost.get("hours")
+    if not hours:
+        said["cannotSay"] = ("nothing has been flown here, so there is no "
+                             "figure for what a cell takes")
+        return said
+    said["hoursPerCell"] = round(float(hours), 3)
+    said["vehicleHours"] = round(cells * float(hours), 1)
+    # A day is what the fleet can do in it, and a fleet is vehicles times
+    # hours — not vehicles times cells, which would let half a dive count.
+    a_day = max(1e-9, day_hours * vehicles)
+    said["workingDays"] = math.ceil(cells * float(hours) / a_day)
+    if cost.get("energyWh"):
+        said["energyWh"] = round(cells * float(cost["energyWh"]), 1)
+    if cost.get("perCharge"):
+        said["charges"] = math.ceil(cells / max(1e-9, float(cost["perCharge"])))
+    share = survives if survives is not None else cost.get("survives")
+    if share:
+        said["survives"] = round(float(share), 3)
+        # What the weather costs: a day of work takes more than a day of ship
+        # time when only some attempts come off.
+        said["shipDays"] = math.ceil(said["workingDays"] / max(1e-9, float(share)))
+    return said
+
+
+# ── the page ─────────────────────────────────────────────────────────────────
+
+PAGE = """<!doctype html>
+<meta charset="utf-8">
+<title>%(name)s — working the whole grid</title>
+<style>%(style)s
+  .grid { display: grid; gap: 1px; margin: 0 0 1rem; max-width: 34rem; }
+  .grid i { display: block; aspect-ratio: 1; }
+</style>
+<h1>%(name)s</h1>
+<p class="where">%(where)s</p>
+
+<p class="says"><strong>What this is.</strong> Not one dive — the whole
+programme. A place cut into cells the size of a day's work, what it takes to
+work all of them, and how many days of ship time that is once the weather
+has its share. Every figure says where it came from, and the ones that need
+a dive to have been flown are absent until one has.</p>
+%(warning)s
+
+<div class="big">%(headline)s</div>
+
+<h2>The ground</h2>
+<figure>%(picture)s<figcaption>%(caption)s</figcaption></figure>
+
+<h2>What it takes</h2>
+<table>
+  <tr><th>What</th><th></th><th>Value</th><th>Where it came from</th></tr>
+  %(rows)s
+</table>
+
+<h2>The order</h2>
+<p class="where">%(order)s</p>
+
+<footer>Built by Coral City from the place's own seabed and colonies, and
+from %(source)s. Cells times a number nobody measured is a promise, not a
+plan — so the arithmetic stops where the evidence does.</footer>
+"""
+
+
+def a_picture(grid: dict) -> tuple[str, str]:
+    """The grid, drawn: worked cells against the rest.
+
+    Small and plain, because the point is the shape of the work — where the
+    reef is in the site and how much of the site it is.
+    """
+    n = grid["across"]
+    by = {(one["row"], one["column"]): one for one in grid["cells"]}
+    working = {(one["row"], one["column"]) for one in grid["working"]}
+    most = max([one["colonies"] for one in grid["working"]] or [1])
+    out = ['<div class="grid" style="grid-template-columns:repeat(%d,1fr)">' % n]
+    # Row 0 is the south edge; a page reads from the north down.
+    for row in range(n - 1, -1, -1):
+        for column in range(n):
+            one = by[(row, column)]
+            if one["wetShare"] <= 0.5:
+                colour = "#efe6d8"                       # land
+            elif (row, column) in working:
+                weight = 0.25 + 0.75 * (one["colonies"] / most if most else 0)
+                colour = "rgba(26,107,42,%.2f)" % weight
+            else:
+                colour = "#dfe7ee"                       # water, nothing to work
+            out.append('<i style="background:%s" title="%.0f m, %d colonies"></i>'
+                       % (colour, one["depthM"], one["colonies"]))
+    out.append("</div>")
+    caption = ("%d cells of %.0f m · %d to work, shaded by how many colonies are in "
+               "them · %d dry, %d wet with nothing to work"
+               % (n * n, grid["cellM"], len(grid["working"]), grid["dry"],
+                  grid["wet"] - len(grid["working"])))
+    return "".join(out), caption
+
+
+def rows_of(said: dict, cost: dict, grid: dict) -> list[tuple]:
+    rows = [("Cells to work", PLACE, "%d of %.0f m" % (said["cells"], grid["cellM"]),
+             "the place's own seabed, wet cells with colonies in them"),
+            ("Colonies in them", PLACE, f"{grid['colonies']:,}",
+             "counted out of the place's own reef")]
+    if "hoursPerCell" in said:
+        rows.append(("A cell takes", cost.get("from", FLOWN),
+                     "%.2f h" % said["hoursPerCell"],
+                     "what the dive actually spent in the water, end to end"))
+        rows.append(("Vehicle hours, all of it", "derived",
+                     "%.0f h" % said["vehicleHours"], "cells times the hour above"))
+    if "energyWh" in said:
+        rows.append(("Energy, all of it", "derived", "%.0f Wh" % said["energyWh"],
+                     "cells times what one dive spent"))
+    if "charges" in said:
+        rows.append(("Battery changes", cost.get("from", FLOWN),
+                     "%d" % said["charges"],
+                     "how many cells fit on a charge, from the vehicle's own capacity"))
+    rows.append(("Vehicles", CHOSEN, "%d" % said["vehicles"], "what the fleet is"))
+    rows.append(("A working day", CHOSEN, "%.0f h" % said["workingDayHours"],
+                 "how long a day on the water is"))
+    if "workingDays" in said:
+        rows.append(("Working days", "derived", "%d" % said["workingDays"],
+                     "the hours above, divided by what the fleet does in a day"))
+    if "survives" in said:
+        rows.append(("Attempts that come off", SWEEP, "%d%%" % round(100 * said["survives"]),
+                     "the share of a sweep's stated doubts the mission survived"))
+        rows.append(("Ship days", "derived", "%d" % said["shipDays"],
+                     "working days, divided by the share above"))
+    return rows
+
+
+def page(grid: dict, said: dict, cost: dict, order: list[dict]) -> str:
+    provenance = a_tool("provenance")
+    ink = dict(INK, derived=provenance.INK["derived"])
+    wash = dict(WASH, derived=provenance.WASH["derived"])
+    centre = grid["centre"]
+    where = ["%.5f, %.5f" % (centre["latitude"], centre["longitude"]),
+             "%.0f m across" % grid["acrossMetres"]]
+
+    big = [("%d" % said["cells"], "cells to work"),
+           ("%s" % f"{grid['colonies']:,}", "colonies in them")]
+    if "workingDays" in said:
+        big.append(("%d" % said["workingDays"], "working days"))
+    if "shipDays" in said:
+        big.append(("%d" % said["shipDays"], "ship days, with the weather"))
+    headline = "".join("<div><b>%s</b><span>%s</span></div>"
+                       % (html.escape(v), html.escape(w)) for v, w in big)
+
+    warning = ""
+    if "cannotSay" in said:
+        warning = ('<p class="says warn"><strong>No days here, and that is the '
+                   'point.</strong> %s. Fly one and give it to this with '
+                   '<code>--cost</code>.</p>' % html.escape(said["cannotSay"]))
+
+    picture, caption = a_picture(grid)
+    rows = "".join(
+        '<tr><td class="what">%s</td>'
+        '<td><span class="tag" style="color:%s;background:%s">%s</span></td>'
+        '<td class="value">%s</td><td class="from">%s</td></tr>'
+        % (html.escape(what), ink.get(kind, "#555"), wash.get(kind, "#eee"),
+           html.escape(kind), html.escape(value), html.escape(whence))
+        for what, kind, value, whence in rows_of(said, cost, grid))
+
+    first = order[:3]
+    order_said = ("Worked in lanes, not nearest-first: a boat that hops to the "
+                  "densest cell and then the next spends the day moving. "
+                  + ("First three: "
+                     + ", ".join("row %d column %d (%.0f m, %d colonies)"
+                                 % (one["row"], one["column"], one["depthM"],
+                                    one["colonies"]) for one in first)
+                     if first else ""))
+    return PAGE % {
+        "style": provenance.STYLE,
+        "name": html.escape(str(centre.get("name", "a place"))),
+        "where": html.escape(" · ".join(where)),
+        "warning": warning, "headline": headline,
+        "picture": picture, "caption": html.escape(caption),
+        "rows": rows, "order": html.escape(order_said),
+        "source": html.escape(cost.get("from", "no flown dive at all")),
+    }
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(
+        description="a grid of cells, and what it would take to work all of them")
+    parse.add_argument("place")
+    parse.add_argument("--cell", type=float, default=20.0, help="cell size in metres")
+    parse.add_argument("--where", choices=("reef", "all"), default="reef",
+                       help="reef: only cells with colonies in them")
+    parse.add_argument("--cost", default=None,
+                       help="a flown mission's mission.json, or a sweep's findings.json")
+    parse.add_argument("--vehicles", type=int, default=1)
+    parse.add_argument("--day-hours", dest="day_hours", type=float, default=10.0)
+    parse.add_argument("--survives", type=float, default=None,
+                       help="share of attempts that come off, if no sweep says")
+    parse.add_argument("--into", default=None)
+    asked = parse.parse_args()
+
+    place = pathlib.Path(asked.place).expanduser()
+    if not (place / "site.json").is_file():
+        print(f"no place at {place}", file=sys.stderr)
+        return 1
+    grid = cells_over(place, asked.cell, asked.where)
+    if not grid["working"]:
+        print(f"  no cells to work in {place.name}", file=sys.stderr)
+        return 1
+    cost = cost_from(None if asked.cost is None
+                     else pathlib.Path(asked.cost).expanduser())
+    said = a_campaign(grid, cost, asked.vehicles, asked.day_hours, asked.survives)
+    order = in_lanes(grid["working"])
+
+    into = pathlib.Path(asked.into).expanduser() if asked.into else place / "campaign"
+    into.mkdir(parents=True, exist_ok=True)
+    deliver = a_tool("deliver")
+    features = [{"type": "Feature",
+                 "properties": {"n": n + 1, "depthM": one["depthM"],
+                                "colonies": one["colonies"]},
+                 "geometry": {"type": "Point", "coordinates": list(reversed(
+                     [round(v, 8) for v in deliver.where_on_earth(
+                         grid["centre"], one["x"], one["y"])]))}}
+                for n, one in enumerate(order)]
+    (into / "cells.geojson").write_text(json.dumps(
+        {"type": "FeatureCollection", "features": features}, indent=1) + "\n")
+    (into / "campaign.json").write_text(json.dumps(
+        {"place": place.name, "grid": {k: v for k, v in grid.items() if k != "cells"},
+         "cost": cost, "campaign": said}, indent=2, default=float) + "\n")
+    (into / "campaign.html").write_text(page(grid, said, cost, order))
+
+    print(f"  {place.name}")
+    print(f"    {said['cells']} cells of {grid['cellM']:.0f} m to work, "
+          f"{grid['colonies']:,} colonies in them")
+    if "workingDays" in said:
+        print(f"    {said['vehicleHours']:.0f} vehicle hours · "
+              f"{said['workingDays']} working days on {said['vehicles']} vehicle(s)"
+              + (f" · {said['shipDays']} ship days with the weather"
+                 if "shipDays" in said else ""))
+    else:
+        print(f"    {said['cannotSay']}")
+    for one in sorted(p.name for p in into.iterdir()):
+        print(f"    {into / one}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

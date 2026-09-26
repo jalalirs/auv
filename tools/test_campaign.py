@@ -1,0 +1,166 @@
+"""A grid of cells, and what it would take to work all of them.
+
+One dive is a demonstration. Nobody at a reef programme has the problem of
+one dive — they have a grid, a fleet and a boat calendar, and no way to turn
+one into the others.
+"""
+
+import importlib.machinery
+import importlib.util
+import json
+import math
+import pathlib
+
+import numpy as np
+import pytest
+
+HERE = pathlib.Path(__file__).resolve().parent
+
+
+def _tool():
+    loader = importlib.machinery.SourceFileLoader("campaign", str(HERE / "campaign"))
+    spec = importlib.util.spec_from_loader("campaign", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def _a_place(tmp_path, across=100.0, rows=16):
+    """A square place: deep in the middle, dry along the north edge."""
+    place = tmp_path / "somewhere"
+    place.mkdir(exist_ok=True)
+    heights = np.full((rows, rows), -10.0, dtype="<f4")
+    heights[rows - rows // 4:, :] = 0.5   # land: the northern quarter
+    heights.tofile(place / "seabed.f32")
+    (place / "site.json").write_text(json.dumps({
+        "name": "somewhere",
+        "from": {"centre": {"latitude": 24.5, "longitude": -81.4},
+                 "acrossMetres": across, "sampleMetres": 1.0},
+        "mesh": {"heightfield": {"rows": rows, "columns": rows,
+                                 "file": "seabed.f32"}},
+        "layers": {"coral": "coral.usda"},
+    }))
+    # Four colonies, all in the south-west quarter.
+    points = ", ".join("(%.1f, %.1f, -9.0)" % (x, y)
+                       for x, y in [(-40, -40), (-38, -41), (-35, -44), (-30, -30)])
+    (place / "coral.usda").write_text(
+        'def PointInstancer "Coral" {\n    point3f[] positions = [%s]\n'
+        '    int[] protoIndices = [0, 0, 0, 0]\n'
+        '    float3[] scales = [(1,1,1), (1,1,1), (1,1,1), (1,1,1)]\n}\n' % points)
+    return place
+
+
+def test_the_grid_comes_off_the_places_own_seabed(tmp_path):
+    tool = _tool()
+    grid = tool.cells_over(_a_place(tmp_path), cell_m=25.0, where="all")
+    assert grid["across"] == 4 and len(grid["cells"]) == 16
+    assert grid["cellM"] == pytest.approx(25.0)
+    # The north edge is land and is not water to work.
+    assert grid["dry"] == 4 and grid["wet"] == 12
+
+
+def test_only_the_cells_with_something_in_them_are_worked(tmp_path):
+    tool = _tool()
+    grid = tool.cells_over(_a_place(tmp_path), cell_m=25.0, where="reef")
+    assert len(grid["working"]) == 1, [c["colonies"] for c in grid["cells"]]
+    assert grid["colonies"] == 4
+    everything = tool.cells_over(_a_place(tmp_path), cell_m=25.0, where="all")
+    assert len(everything["working"]) == 12
+
+
+def test_it_will_not_turn_cells_into_days_without_a_flown_dive(tmp_path):
+    """Cells times a number nobody measured is a promise, not a plan."""
+    tool = _tool()
+    grid = tool.cells_over(_a_place(tmp_path), cell_m=25.0, where="all")
+    said = tool.a_campaign(grid, cost={}, vehicles=1, day_hours=10.0, survives=None)
+    assert "workingDays" not in said
+    assert "nothing has been flown" in said["cannotSay"]
+
+
+def test_a_flown_mission_says_what_a_cell_takes(tmp_path):
+    tool = _tool()
+    flown = tmp_path / "mission.json"
+    flown.write_text(json.dumps({"seconds": 1800.0,
+                                 "task": {"achieved": {"energyWh": 120.0}}}))
+    cost = tool.cost_from(flown)
+    assert cost["hours"] == pytest.approx(0.5)
+    assert cost["from"] == tool.FLOWN
+
+
+def test_a_sweep_says_what_a_cell_takes_and_what_the_weather_costs(tmp_path):
+    """Only a sweep can say the share that survives: it flies a stated list
+    of doubts once each. A mission's past runs are whatever happened to be
+    flown, which is not a sample of anything."""
+    tool = _tool()
+    found = tmp_path / "findings.json"
+    found.write_text(json.dumps({"cost": {"diveHours": 0.5, "diveEnergyWh": 120.0,
+                                          "perCharge": 2.0, "survives": 0.5,
+                                          "runs": 24}}))
+    cost = tool.cost_from(found)
+    assert cost["from"] == tool.SWEEP and cost["survives"] == 0.5
+
+
+def test_days_are_the_fleets_hours_and_not_its_headcount(tmp_path):
+    """Vehicles times cells would let half a dive count as a day's work."""
+    tool = _tool()
+    grid = tool.cells_over(_a_place(tmp_path), cell_m=25.0, where="all")   # 12 cells
+    cost = {"hours": 2.0, "from": tool.FLOWN}
+    one = tool.a_campaign(grid, cost, vehicles=1, day_hours=10.0, survives=None)
+    two = tool.a_campaign(grid, cost, vehicles=2, day_hours=10.0, survives=None)
+    assert one["vehicleHours"] == pytest.approx(24.0)
+    assert one["workingDays"] == 3          # 24 h over 10 h days
+    assert two["workingDays"] == 2          # 24 h over 20 fleet-hours a day
+
+
+def test_the_weather_turns_working_days_into_ship_days(tmp_path):
+    tool = _tool()
+    grid = tool.cells_over(_a_place(tmp_path), cell_m=25.0, where="all")
+    said = tool.a_campaign(grid, {"hours": 2.0, "from": tool.FLOWN},
+                           vehicles=1, day_hours=10.0, survives=0.5)
+    assert said["workingDays"] == 3 and said["shipDays"] == 6, said
+
+
+def test_the_cells_are_worked_in_lanes(tmp_path):
+    """A boat that hops to the densest cell and then the next spends the day
+    moving."""
+    tool = _tool()
+    grid = tool.cells_over(_a_place(tmp_path), cell_m=25.0, where="all")
+    order = tool.in_lanes(grid["working"])
+    rows = [one["row"] for one in order]
+    assert rows == sorted(rows), "the lanes are not worked in order"
+    first = [one for one in order if one["row"] == order[0]["row"]]
+    second = [one for one in order if one["row"] == first[-1]["row"] + 1]
+    assert [c["column"] for c in first] == sorted(c["column"] for c in first)
+    assert [c["column"] for c in second] == sorted(
+        (c["column"] for c in second), reverse=True), "the lane did not turn back"
+
+
+def test_the_page_says_where_every_figure_came_from(tmp_path):
+    tool = _tool()
+    grid = tool.cells_over(_a_place(tmp_path), cell_m=25.0, where="all")
+    cost = {"hours": 2.0, "energyWh": 120.0, "from": tool.SWEEP, "survives": 0.5}
+    said = tool.a_campaign(grid, cost, vehicles=2, day_hours=10.0, survives=0.5)
+    page = tool.page(grid, said, cost, tool.in_lanes(grid["working"]))
+    assert "from the place" in page and "from a sweep" in page and "chosen" in page
+    for fetched in ("<script", "@import", "<link", "src=", 'href="http'):
+        assert fetched not in page, fetched
+    assert "-apple-system" in page
+
+
+def test_the_page_says_so_when_it_cannot_say(tmp_path):
+    tool = _tool()
+    grid = tool.cells_over(_a_place(tmp_path), cell_m=25.0, where="all")
+    said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
+    page = tool.page(grid, said, {}, tool.in_lanes(grid["working"]))
+    assert "No days here, and that is the point" in page
+    assert "working days" not in page.lower().split("what it takes")[0]
+
+
+def test_the_page_is_named_once(tmp_path):
+    """The title said the place, then said "the whole grid" twice."""
+    tool = _tool()
+    grid = tool.cells_over(_a_place(tmp_path), cell_m=25.0, where="all")
+    said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
+    page = tool.page(grid, said, {}, tool.in_lanes(grid["working"]))
+    assert page.count("the whole grid") == 1
+    assert "<h1>somewhere</h1>" in page
