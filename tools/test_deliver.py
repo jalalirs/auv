@@ -308,7 +308,11 @@ def test_a_survey_writes_what_it_actually_saw(tmp_path):
     }
     (into / "manifest.json").write_text(json.dumps(manifest))
     made = tool.deliver_dive(into, tmp_path / "out")
-    assert made["coverage"] == {"cells": 4, "seen": 2, "fraction": 0.5}
+    assert made["coverage"] == {"cells": 4, "seen": 2, "fraction": 0.5,
+                                # An area, not only a fraction: a campaign
+                                # needs to know how many of these it takes
+                                # to cover a cell.
+                                "rectangleM2": 16.0, "seenM2": 8.0}
     drawn = json.loads((tmp_path / "out" / "coverage.geojson").read_text())
     assert sum(1 for f in drawn["features"] if f["properties"]["what"] == "seen") == 2
     assert drawn["features"][0]["geometry"]["type"] == "Polygon"
