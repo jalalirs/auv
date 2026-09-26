@@ -74,6 +74,15 @@ COPY --from=oceansim --chown=1234:1234 /src/oceansim /isaac-sim/extsUser/isaacsi
 # the vehicle in it, integrates the hydrodynamics and reports what happened.
 COPY --chown=1234:1234 services/sim-runtime/coral /isaac-sim/coral
 
+# The published controller SDK, because the interface between a controller
+# and a vehicle is declared there and the runtime imports it. Not a copy of
+# the interface — the same file, so the runtime cannot drift from what a
+# customer was given. It goes beside the runner, which is already on the
+# path, so `import coral_city` works without installing anything. After the
+# runner rather than before it, so that this directory is not something a
+# later COPY has to be trusted to leave alone.
+COPY --chown=1234:1234 packages/sdk-python/coral_city /isaac-sim/coral/coral_city
+
 # Coral City: the application somebody watches a dive in. It is not the editor,
 # and it steps the same dive the headless runner steps — the schedule differs,
 # the physics does not.
