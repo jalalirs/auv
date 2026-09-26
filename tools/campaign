@@ -128,11 +128,12 @@ def cells_over(place: pathlib.Path, cell_m: float, where: str) -> dict:
     dry = [one for one in made if one["wetShare"] <= 0.5]
     wet = [one for one in made if one["wetShare"] > 0.5]
     if where == "reef":
-        working = [one for one in wet if one["colonies"] > 0]
+        working, reef_from = the_reef(wet, site, step)
     else:
-        working = wet
+        working, reef_from = wet, "every cell with water over it"
     return {"cellM": round(step, 3), "across": n, "cells": made,
             "wet": len(wet), "dry": len(dry), "working": working,
+            "reefFrom": reef_from,
             "centre": centre, "acrossMetres": across,
             "colonies": int(sum(one["colonies"] for one in working))}
 
@@ -177,6 +178,39 @@ def by_suitability(working: list[dict], cell_m: float,
         return (0, -density, depth)                # proven, and room left
 
     return sorted(working, key=how_good)
+
+
+def the_reef(wet: list[dict], site: dict, cell_m: float) -> tuple[list[dict], str]:
+    """Which cells are the reef, and it is not "the ones with a colony".
+
+    Al Fahal is three kilometres across and its own record says its reef is
+    269,804 m² — three per cent of the site. Asked for "cells with colonies
+    in them" at fifty metres it returned **3,418 of 3,600**, because four
+    hundred thousand colonies scattered over nine square kilometres put at
+    least one in almost every cell. A programme planned off that would be
+    told to work thirty times the ground there is.
+
+    So the place's own figure decides it. `reefAreaM2` is what the reef
+    was built to be; the cells that *are* the reef are the densest ones
+    whose area comes to that. No threshold to pick and nothing to tune —
+    the answer is calibrated by the record rather than by a constant
+    somebody chose.
+
+    A place that does not say falls back to "has a colony in it", and says
+    so, because that is the best available and the page should not imply
+    better.
+    """
+    reef_m2 = float(((site.get("reef") or {}).get("reefAreaM2")) or 0.0)
+    holding = [one for one in wet if one["colonies"] > 0]
+    if reef_m2 <= 0 or not holding:
+        return holding, ("every cell with a colony in it — this place does not "
+                         "say how much of it is reef")
+    area = cell_m ** 2
+    enough = max(1, int(round(reef_m2 / area)))
+    densest = sorted(holding, key=lambda one: -one["colonies"])[:enough]
+    return densest, ("the %d densest cells, which is %s m2 — what this place's "
+                     "own record says its reef is"
+                     % (len(densest), f"{len(densest) * area:,.0f}"))
 
 
 def in_lanes(working: list[dict]) -> list[dict]:
@@ -479,7 +513,7 @@ def a_picture(grid: dict, covered: dict | None = None) -> tuple[str, str, str]:
 
 def rows_of(said: dict, cost: dict, grid: dict) -> list[tuple]:
     rows = [("Cells to work", PLACE, "%d of %.0f m" % (said["cells"], grid["cellM"]),
-             "the place's own seabed, wet cells with colonies in them"),
+             grid.get("reefFrom") or "the place's own seabed"),
             ("Colonies in them", PLACE, f"{grid['colonies']:,}",
              "counted out of the place's own reef")]
     if "divesPerCell" in said:
