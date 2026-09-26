@@ -171,14 +171,25 @@ def cost_from(path: pathlib.Path | None) -> dict:
     seconds = said.get("seconds")
     achieved = task.get("achieved") or {}
     coverage = said.get("coverage") or {}
+    chart = said.get("bathymetry") or {}
+    # How much ground that dive actually covered, when it said. Without it
+    # a campaign has to assume one dive covers one cell, which is an
+    # assumption wearing the clothes of arithmetic.
+    #
+    # Two instruments can answer, and they answer about different ground.
+    # The camera's coverage is what was *seen* — which is what a photo
+    # survey is for. The multibeam's is what was *sounded*, which is a
+    # wider strip from the same altitude and the right answer when the
+    # product is a chart. The camera wins when both are there, because a
+    # dive that charted more than it photographed has not photographed it.
+    covered, by = coverage.get("seenM2"), "the camera's footprint"
+    if not covered and chart.get("cellsWithASounding"):
+        covered = chart["cellsWithASounding"] * float(chart.get("cellM", 0.5)) ** 2
+        by = "the multibeam's soundings"
     return {"energyWh": achieved.get("energyWh") or task.get("energyWh"),
             "hours": None if not seconds else round(float(seconds) / 3600.0, 4),
             "from": FLOWN, "runs": 1,
-            # How much ground that dive actually covered, when it was a
-            # survey and said so. Without it a campaign has to assume one
-            # dive covers one cell, which is an assumption wearing the
-            # clothes of arithmetic.
-            "coveredM2": coverage.get("seenM2")}
+            "coveredM2": covered, "coveredBy": by if covered else None}
 
 
 def a_campaign(grid: dict, cost: dict, vehicles: int, day_hours: float,
@@ -402,7 +413,9 @@ def rows_of(said: dict, cost: dict, grid: dict) -> list[tuple]:
         rows.append(("Dives a cell takes", said["divesPerCellFrom"],
                      "%.2f" % said["divesPerCell"],
                      ("a cell of %.0f m against the %.0f m2 the flown survey "
-                      "actually covered" % (grid["cellM"], said["coveredM2"]))
+                      "actually covered, by %s"
+                      % (grid["cellM"], said["coveredM2"],
+                         cost.get("coveredBy") or "what it produced"))
                      if said["divesPerCellFrom"] != CHOSEN
                      else "nothing flown here says how much ground a dive covers, "
                           "so one cell is one dive"))
