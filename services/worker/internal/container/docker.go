@@ -411,10 +411,9 @@ func createRequest(spec Spec) map[string]any {
 	}
 
 	request := map[string]any{
-		"Image":      spec.Image,
-		"Cmd":        arguments,
-		"Env":        spec.Env,
-		"WorkingDir": "/work",
+		"Image": spec.Image,
+		"Cmd":   arguments,
+		"Env":   spec.Env,
 		// Not disabled — moded. "none" is what `docker run --network none`
 		// does: no route off the host and no route in, but a loopback, which a
 		// container joining this namespace needs in order to be joining
@@ -424,6 +423,17 @@ func createRequest(spec Spec) map[string]any {
 		// differs, and a dive's two halves talk over it.
 		"NetworkDisabled": false,
 		"HostConfig":      hostConfig,
+	}
+	// Where the process starts, and only when this container was given
+	// somewhere to start. Work that stages its inputs and outputs is run from
+	// `/work` because that is where they are mounted. A dive is not that
+	// shape: it mounts `/dive`, nothing is mounted at `/work`, and asking for
+	// it anyway made Docker invent an empty root-owned directory and drop a
+	// process that runs as 1234 into it — instead of the working directory
+	// the image declares for itself, which is where a simulator resolves its
+	// caches and its logs.
+	if spec.InputsHost != "" || spec.OutputsHost != "" {
+		request["WorkingDir"] = "/work"
 	}
 	if len(entrypoint) > 0 {
 		request["Entrypoint"] = entrypoint
