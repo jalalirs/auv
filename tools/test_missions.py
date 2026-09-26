@@ -83,3 +83,36 @@ def test_thuwal_deep_has_a_dive_that_looks_at_the_bottom():
                if m["objective"]["kind"] in ("transect", "survey", "inspect",
                                              "search")]
     assert benthic, [m["objective"]["kind"] for m in deep]
+
+
+@pytest.mark.parametrize("path", MISSIONS, ids=lambda p: p.stem)
+def test_every_stage_of_a_mission_can_be_flown_too(path):
+    """The check above reads the objective's own kind, and a mission's own
+    kind is "mission" — so every stage inside one went unchecked, which is
+    the silence this file exists to break. A typo in a stage does not fail
+    anywhere; it flies a dive that is not the dive that was written."""
+    said = json.loads(path.read_text())
+    objective = said["objective"]
+    if objective.get("kind") != "mission":
+        return
+    stages = objective.get("stages") or []
+    assert stages, (path.name, "a mission with no stages is not a mission")
+    known = task_kinds()
+    for at, stage in enumerate(stages):
+        assert stage.get("kind") in known, (path.name, at, stage.get("kind"))
+
+
+def test_a_dive_somewhere_is_a_whole_dive():
+    """Every mission here began with the vehicle already at working
+    altitude, which is not where a dive begins. At least one has to go in at
+    the surface, do the work, and come home, or the platform is selling the
+    middle of a dive."""
+    whole = []
+    for path in MISSIONS:
+        objective = json.loads(path.read_text())["objective"]
+        if objective.get("kind") != "mission":
+            continue
+        kinds = [stage.get("kind") for stage in objective.get("stages") or []]
+        if "descend" in kinds and "return" in kinds:
+            whole.append(path.stem)
+    assert whole, "no mission goes in at the surface and comes back up again"

@@ -139,3 +139,29 @@ def test_the_goal_is_stated_in_the_world_and_not_as_a_route():
     assert goal["kind"] == "descend"
     assert goal["altitudeM"] == 2.5 and goal["withinM"] == 4.0
     assert len(goal["over"]) == 2
+
+
+# ── and something has to be able to fly it ───────────────────────────────────
+
+def test_the_planner_knows_what_a_descent_asks_for():
+    """A goal the planner does not recognise produces no route, and the
+    vehicle stays where it is — which for a descent means sitting on the
+    surface for ten minutes and failing a stage nobody could fly."""
+    from controllers.plan import route_for
+
+    task = a_descent(toAltitudeM=3.0, withinM=6.0)
+    legs = route_for(task.goal())
+    assert len(legs) == 1
+    assert legs[0]["altitudeM"] == 3.0
+    assert legs[0]["arriveM"] == pytest.approx(3.0)
+
+
+def test_the_route_does_not_answer_the_question_the_task_is_asking():
+    """The arrival rate is what is being asked of the controller. Writing it
+    into the route would be answering on its behalf — and a leg's speed
+    limit caps the whole approach, when a descent wants sideways quickly and
+    downwards slowly."""
+    from controllers.plan import route_for
+
+    legs = route_for(a_descent(toAltitudeM=3.0, rateMs=0.2).goal())
+    assert "speedMs" not in legs[0]

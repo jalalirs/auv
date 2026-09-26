@@ -234,6 +234,8 @@ def route_for(goal: dict, believed=None, camera_half_angle: float | None = None)
         return _circle(goal)
     if kind == "dock":
         return _dock(goal)
+    if kind == "descend":
+        return _descend(goal)
     # "hold", "wait", and anything this planner does not recognise: stay where
     # you are. A controller that does not know what it was asked should not
     # invent a direction to go in.
@@ -299,6 +301,29 @@ def _go(goal: dict) -> list[dict]:
     if goal.get("radiusM") is not None:
         leg["arriveM"] = max(0.3, float(goal["radiusM"]) * 0.5)
     return leg and [leg] or []
+
+
+def _descend(goal: dict) -> list[dict]:
+    """Down to working altitude, over the mark.
+
+    One leg, and deliberately only that: a place to be and how high off the
+    bottom to be it. How fast to go down is not stated, even though the task
+    scores the arrival rate, because the rate is *what is being asked of the
+    controller* and writing it into the route would be answering the question
+    on its behalf. A leg's speed limit is a limit on the whole approach in
+    any case, and a descent wants the opposite of that — sideways quickly to
+    stay over the mark, downwards slowly to arrive without stirring the
+    bottom.
+    """
+    over = goal.get("over") or [0.0, 0.0]
+    leg = {"x": float(over[0]), "y": float(over[1])}
+    if goal.get("altitudeM") is not None:
+        leg["altitudeM"] = float(goal["altitudeM"])
+    else:
+        leg["depthM"] = float(goal.get("depthM", 5.0))
+    if goal.get("withinM") is not None:
+        leg["arriveM"] = max(0.5, float(goal["withinM"]) * 0.5)
+    return [leg]
 
 
 def _cover(goal: dict, half_angle: float | None) -> list[dict]:
