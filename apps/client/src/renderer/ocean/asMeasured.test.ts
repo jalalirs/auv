@@ -32,6 +32,9 @@ describe("the sea as it was measured", () => {
     }));
     expect(got?.sources.length).toBe(2);
     expect(String(got?.sources[0]?.["from"])).toContain("Spotter");
+    // Named by the field it became, so a run can put the instrument beside
+    // the number instead of beside a word for it.
+    expect(got?.sources.map((one) => one["parameter"])).toContain("temperatureC");
     expect(got?.parameters["significantWaveHeightM"]).toBe(0.7);
   });
 

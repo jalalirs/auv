@@ -39,8 +39,16 @@ import sys
 # this page exists to stop.
 MEASURED, DERIVED, CHOSEN = "measured", "derived", "chosen"
 
-INK = {MEASURED: "#1a6b2a", DERIVED: "#8a5a00", CHOSEN: "#8a2a2a"}
-WASH = {MEASURED: "#e8f4ea", DERIVED: "#fbf1de", CHOSEN: "#f9e9e9"}
+# And a fourth, which only a dive can be. A place is authored: every field of
+# it was filled in by somebody, so there is nothing there that nobody said. A
+# dive is flown against defaults, and a field left empty gets a number anyway
+# — still water, ordinary seawater, a flat surface. That number is not chosen,
+# because nobody chose it, and calling it chosen would be the same collapse
+# this page exists to stop.
+ASSUMED = "assumed"
+
+INK = {MEASURED: "#1a6b2a", DERIVED: "#8a5a00", CHOSEN: "#8a2a2a", ASSUMED: "#555"}
+WASH = {MEASURED: "#e8f4ea", DERIVED: "#fbf1de", CHOSEN: "#f9e9e9", ASSUMED: "#ececec"}
 
 
 def a_row(what: str, kind: str, value: str, whence: str) -> dict:
@@ -196,28 +204,42 @@ PAGE = """<!doctype html>
 <h1>%(name)s</h1>
 <p class="where">%(where)s</p>
 
-<p class="says"><strong>What this page is.</strong> Every number this place
-carries, and whether anybody went and looked. A cover figure that traces to a
-transect can be cited; one that came out of a pipeline cannot, and the
-difference is not visible in a render. It is visible here.</p>
+%(says)s
 
-<div class="key">
-  <div><span class="tag" style="color:%(mi)s;background:%(mw)s">measured</span>
-       somebody surveyed it and this is what they found.</div>
-  <div><span class="tag" style="color:%(di)s;background:%(dw)s">derived</span>
-       arithmetic on something real. Reproducible, not observed.</div>
-  <div><span class="tag" style="color:%(ci)s;background:%(cw)s">chosen</span>
-       a person decided. The reasoning is beside it.</div>
-</div>
+<div class="key">%(key)s</div>
 
 <table>
-  <tr><th>What</th><th></th><th>Value</th><th>Where it came from</th></tr>
+  <tr><th>%(first)s</th><th></th><th>Value</th><th>Where it came from</th></tr>
   %(rows)s
 </table>
 
-<footer>%(counted)s · built by Coral City from this place's own record ·
+<footer>%(counted)s · built by Coral City from %(whose)s own record ·
 %(built)s</footer>
 """
+
+PLACE_SAYS = """<p class="says"><strong>What this page is.</strong> Every number this place
+carries, and whether anybody went and looked. A cover figure that traces to a
+transect can be cited; one that came out of a pipeline cannot, and the
+difference is not visible in a render. It is visible here.</p>"""
+
+DIVE_SAYS = """<p class="says"><strong>What this page is.</strong> The water this dive was
+flown in, claim by claim, and who said so. A run against a measured sea and a
+run against an empty form both report a number for every field; only this says
+which is which. Read the grey rows first — those are the ones nobody set.</p>"""
+
+WORD = {
+    MEASURED: "an instrument read it, at a stated instant.",
+    DERIVED: "arithmetic on something real. Reproducible, not observed.",
+    CHOSEN: "a person decided. The reasoning is beside it.",
+    ASSUMED: "nobody said, so the runtime's own default stood in.",
+}
+
+
+def a_key(kinds) -> str:
+    """The legend, carrying only the words this page actually uses."""
+    return "\n  ".join(
+        '<div><span class="tag" style="color:%s;background:%s">%s</span> %s</div>'
+        % (INK[k], WASH[k], k, WORD[k]) for k in kinds)
 
 ROW = """<tr><td class="what">%(what)s</td>
   <td><span class="tag" style="color:%(ink)s;background:%(wash)s">%(kind)s</span></td>
@@ -235,17 +257,26 @@ def page(site: dict, rows: list[dict]) -> str:
                                               site.get("deepestM", 0)))
     built = ((site.get("builtBy") or {}).get("make-site")
              or (site.get("builtBy") or {}).get("make-tank") or {}).get("at", "")
-    counted = ", ".join(
-        "%d %s" % (sum(1 for r in rows if r["kind"] == k), k)
-        for k in (MEASURED, DERIVED, CHOSEN)
-        if any(r["kind"] == k for r in rows))
+    return sheet(name=site.get("name", "a place"), where=" · ".join(where),
+                 says=PLACE_SAYS, first="What", rows=rows,
+                 kinds=(MEASURED, DERIVED, CHOSEN), whose="this place's",
+                 built=built)
+
+
+def sheet(name: str, where: str, says: str, first: str, rows: list[dict],
+          kinds, whose: str, built: str) -> str:
+    """One table of claims, however it was gathered. A place fills it from
+    `site.json`; a dive fills it from what the runtime said it was flown in."""
+    counted = ", ".join("%d %s" % (sum(1 for r in rows if r["kind"] == k), k)
+                        for k in kinds if any(r["kind"] == k for r in rows))
     return PAGE % {
-        "name": html.escape(site.get("name", "a place")),
-        "where": html.escape(" · ".join(where)),
-        "mi": INK[MEASURED], "mw": WASH[MEASURED],
-        "di": INK[DERIVED], "dw": WASH[DERIVED],
-        "ci": INK[CHOSEN], "cw": WASH[CHOSEN],
+        "name": html.escape(name),
+        "where": html.escape(where),
+        "says": says,
+        "key": a_key(kinds),
+        "first": html.escape(first),
         "counted": html.escape(counted),
+        "whose": html.escape(whose),
         "built": html.escape(built),
         "rows": "\n  ".join(ROW % {
             "what": html.escape(r["what"]),
@@ -332,6 +363,108 @@ def index(places: list[dict]) -> str:
     return INDEX % {"count": len(places), "rows": "\n  ".join(rows)}
 
 
+# ── a dive ───────────────────────────────────────────────────────────────────
+#
+# The same discipline, applied to a run rather than a place. The control plane
+# has always known that conditions are either observed at an instant or
+# constructed by a person, and it refuses the ones whose instant disagrees
+# with their kind — but nothing showed that to anybody, and the runtime threw
+# it away on the way in. A record that says 1025 kg/m3 whether a CTD measured
+# it or the default stood in is not a record of what was flown.
+
+# Field by field, what a reader would call it and how to write it down.
+FIELDS = [
+    ("currentMetresPerSecond", "current", "%.2f m/s"),
+    ("currentHeadingDeg", "current heading", "%.0f° true"),
+    ("visibilityM", "visibility", "%.1f m"),
+    ("waterType", "water type", "Jerlov %s"),
+    ("significantWaveHeightM", "wave height", "%.2f m significant"),
+    ("waveMeanPeriodS", "wave period", "%.1f s"),
+    ("temperatureC", "temperature", "%.1f °C"),
+    ("salinityPsu", "salinity", "%.2f PSU"),
+    ("densityKgM3", "density", "%.1f kg/m³"),
+    ("depthGaugeDensityKgM3", "depth gauge set for", "%.1f kg/m³"),
+]
+
+
+def written(shape: str, value) -> str:
+    """The number as a person writes it, or the word for not having one."""
+    if value is None:
+        return "—"
+    try:
+        return shape % value
+    except TypeError:
+        return str(value)
+
+
+def about_dive(came: dict, said: dict) -> list[dict]:
+    """Every condition this dive was flown in, and who said so."""
+    fields = came.get("fields") or {}
+    rows = []
+    for key, what, shape in FIELDS:
+        told = fields.get(key)
+        if told is None:
+            continue
+        how = told.get("how", ASSUMED)
+        value = written(shape, said.get(key))
+        if how == MEASURED:
+            whence = "measured"
+            if told.get("from"):
+                whence = str(told["from"])
+            if told.get("at"):
+                whence += ", at %s" % told["at"]
+            if told.get("through"):
+                whence += ", through %s" % told["through"]
+        elif how == DERIVED:
+            whence = "%s, from %s" % (told.get("by", "arithmetic"),
+                                      " and ".join(told.get("fromFields") or []))
+        elif how == ASSUMED:
+            # The value is still printed, because it is what the dive was
+            # flown in. What is added is that nobody asked for it.
+            whence = "nobody said — %s" % told.get("instead", "the runtime's default")
+        else:
+            whence = "set on the dive"
+        rows.append(a_row(what, how, value, whence))
+    return rows
+
+
+def a_dive(path: pathlib.Path) -> tuple[dict, dict, str]:
+    """What a dive said about its own conditions, out of whatever it left.
+
+    A log, because that is what a dive always leaves; a record, because that
+    is what the control plane keeps. Either way the two halves are the same:
+    the numbers, and where each of them came from.
+    """
+    text = path.read_text()
+    if path.suffix == ".json":
+        record = json.loads(text)
+        said = record.get("conditions") or {}
+        return said, said.get("cameFrom") or {}, record.get("name", path.stem)
+    came, said, name = {}, {}, path.parent.name
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if event.get("event") == "conditions_from":
+            said = event.get("were") or {}
+            came = event.get("cameFrom") or {}
+    return said, came, name
+
+
+def dive_page(name: str, came: dict, rows: list[dict]) -> str:
+    where = ["conditions %s" % came.get("kind", "constructed")]
+    if came.get("observedAt"):
+        where.append("observed %s" % came["observedAt"])
+    return sheet(name=name, where=" · ".join(where), says=DIVE_SAYS,
+                 first="Condition", rows=rows,
+                 kinds=(MEASURED, DERIVED, CHOSEN, ASSUMED),
+                 whose="the dive's", built="")
+
+
 def one_line(site: dict) -> str:
     """What a place is, in the width of a table cell."""
     came = site.get("from") or {}
@@ -350,16 +483,43 @@ def one_line(site: dict) -> str:
     return " · ".join(said)
 
 
+def dive_of(path: pathlib.Path, root: pathlib.Path) -> int:
+    """One page for one dive. Refuses a dive that never said, rather than
+    drawing a page of assumptions and letting it pass for a record."""
+    if not path.is_file():
+        print(f"  no dive at {path}", file=sys.stderr)
+        return 1
+    said, came, name = a_dive(path)
+    if not came.get("fields"):
+        print(f"  {path} says nothing about where its conditions came from — "
+              "it was flown before the runtime recorded that", file=sys.stderr)
+        return 1
+    rows = about_dive(came, said)
+    into = root / "provenance"
+    into.mkdir(parents=True, exist_ok=True)
+    out = into / ("dive-%s.html" % name)
+    out.write_text(dive_page(name, came, rows))
+    counted = came.get("counted") or {}
+    print("  %-18s %s → %s" % (
+        name, ", ".join("%d %s" % (counted.get(k, 0), k)
+                        for k in (MEASURED, DERIVED, CHOSEN, ASSUMED)), out))
+    return 0
+
+
 def main() -> int:
     parse = argparse.ArgumentParser(
         description="one page per place, saying what anybody measured")
     parse.add_argument("places", nargs="*")
     parse.add_argument("--all", action="store_true")
+    parse.add_argument("--dive", metavar="PATH",
+                       help="a dive's log or record, for the water it was flown in")
     parse.add_argument("--from", dest="root",
                        default=str(pathlib.Path.home() / "coral-city"))
     asked = parse.parse_args()
 
     root = pathlib.Path(asked.root).expanduser()
+    if asked.dive:
+        return dive_of(pathlib.Path(asked.dive).expanduser(), root)
     names = asked.places or (sorted(p.name for p in (root / "places").iterdir()
                                     if (p / "site.json").is_file())
                              if asked.all else [])
