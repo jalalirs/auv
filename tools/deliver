@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import html
 import json
 import math
 import pathlib
@@ -681,6 +682,139 @@ def coverage_file(into: pathlib.Path, geometry: dict, centre: dict) -> dict | No
             "fraction": round(covered / float(rows * columns), 4)}
 
 
+REPORT = """<!doctype html>
+<meta charset="utf-8">
+<title>%(name)s — what this dive produced</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0 auto; padding: 2.5rem 2rem 4rem; max-width: 60rem;
+         font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif;
+         color: #1b1b1b; background: #fff; }
+  h1 { font-size: 1.6rem; margin: 0 0 .2rem; font-weight: 650; }
+  h2 { font-size: 1.05rem; margin: 2.2rem 0 .7rem; font-weight: 650; }
+  .where { color: #555; margin: 0 0 1.6rem; }
+  .says { background: #f4f4f2; border-left: 3px solid #999; padding: .9rem 1.1rem;
+          margin: 0 0 2rem; }
+  .big { display: flex; gap: 2.5rem; flex-wrap: wrap; margin: 0 0 1rem; }
+  .big div { min-width: 8rem; }
+  .big b { display: block; font-size: 1.8rem; font-weight: 650; line-height: 1.1; }
+  .big span { color: #666; font-size: .85rem; }
+  table { border-collapse: collapse; width: 100%%; margin-bottom: 1rem; }
+  th { text-align: left; font-weight: 650; font-size: .78rem; letter-spacing: .04em;
+       text-transform: uppercase; color: #666; padding: 0 .7rem .5rem 0;
+       border-bottom: 1px solid #ddd; }
+  td { padding: .55rem .7rem .55rem 0; border-bottom: 1px solid #eee; vertical-align: top; }
+  td.what { font-weight: 550; width: 18rem; }
+  figure { margin: 0 0 1rem; }
+  figcaption { color: #555; font-size: .88rem; margin-top: .4rem; }
+  .keyline { display: inline-block; width: 1.6rem; height: 0; vertical-align: middle;
+             margin-right: .35rem; }
+  footer { color: #666; font-size: .85rem; border-top: 1px solid #ddd; padding-top: 1rem;
+           margin-top: 2.5rem; }
+  code { font: 12.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+         background: #f2f2f0; padding: .05rem .3rem; border-radius: .2rem; }
+</style>
+<h1>%(name)s</h1>
+<p class="where">%(where)s</p>
+
+<p class="says"><strong>What this is.</strong> One dive, flown in a simulator, and
+everything it produced. The figures below are what happened in a model — the
+reef it was flown over has its own page saying which of <em>its</em> numbers
+anybody measured. What no real vehicle can hand you is on the map: where the
+vehicle actually was, beside where it believed it was.</p>
+
+<div class="big">%(headline)s</div>
+
+<h2>Where it went</h2>
+<figure>%(map)s<figcaption>%(caption)s</figcaption></figure>
+
+<h2>The water it was flown in</h2>
+<table>%(conditions)s</table>
+
+<h2>What is in this folder</h2>
+<table>%(files)s</table>
+
+<footer>Built by Coral City from the dive's own recording. <code>provenance.json</code>
+says what every column is; not one of them is an observation of a real reef.</footer>
+"""
+
+
+def a_map(poses: list[dict], geometry: dict) -> tuple[str, str]:
+    """The track as an SVG, drawn from the numbers rather than rendered.
+
+    Inline and scriptless so the report survives being emailed. Two lines,
+    which is the whole point of the picture: a vehicle on dead reckoning
+    walks away from itself and a plot is the only way anybody sees it.
+    """
+    truth = [(float(p["position"][0]), float(p["position"][1])) for p in poses]
+    believed = [(float(p["believed"][0]), float(p["believed"][1]))
+                for p in poses if p.get("believed")]
+    points = truth + believed
+    for mark in (geometry.get("marks") or []) + (geometry.get("planted") or []):
+        points.append((float(mark["x"]), float(mark["y"])))
+    for corner in geometry.get("rectangle") or []:
+        points.append((float(corner["x"]), float(corner["y"])))
+    if not points:
+        return "", ""
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    width, height = 640, 420
+    pad = 24
+    span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+    # One scale for both axes, because a track drawn on two is a track that
+    # lies about its shape.
+    scale = min((width - 2 * pad) / span, (height - 2 * pad) / span)
+    mid_x, mid_y = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2
+
+    def at(x, y):
+        # y is north, and an SVG's y grows downward.
+        return (width / 2 + (x - mid_x) * scale, height / 2 - (y - mid_y) * scale)
+
+    def path(line):
+        return " ".join(("M" if n == 0 else "L") + "%.1f %.1f" % at(*p)
+                        for n, p in enumerate(line))
+
+    parts = ['<svg viewBox="0 0 %d %d" width="100%%" xmlns="http://www.w3.org/2000/svg" '
+             'style="background:#fbfbf9;border:1px solid #e3e3df">' % (width, height)]
+    for corner in [geometry.get("rectangle")] if geometry.get("rectangle") else []:
+        parts.append('<polygon points="%s" fill="#eef2f6" stroke="#9fb3c8" '
+                     'stroke-dasharray="4 3"/>'
+                     % " ".join("%.1f,%.1f" % at(float(c["x"]), float(c["y"]))
+                                for c in corner))
+    if believed:
+        parts.append('<path d="%s" fill="none" stroke="#c08a21" stroke-width="1.6" '
+                     'stroke-dasharray="5 4"/>' % path(believed))
+    parts.append('<path d="%s" fill="none" stroke="#1b1b1b" stroke-width="1.8"/>'
+                 % path(truth))
+    for mark in geometry.get("marks") or []:
+        x, y = at(float(mark["x"]), float(mark["y"]))
+        parts.append('<circle cx="%.1f" cy="%.1f" r="3" fill="none" stroke="#8a2a2a"/>' % (x, y))
+    for put in geometry.get("planted") or []:
+        x, y = at(float(put["x"]), float(put["y"]))
+        parts.append('<circle cx="%.1f" cy="%.1f" r="2.5" fill="#1a6b2a"/>' % (x, y))
+    if truth:
+        x, y = at(*truth[0])
+        parts.append('<circle cx="%.1f" cy="%.1f" r="4" fill="#fff" stroke="#1b1b1b" '
+                     'stroke-width="1.8"/>' % (x, y))
+    # A bar of known length, because a picture with no scale is a sketch.
+    bar = 10 ** math.floor(math.log10(span / 3.0))
+    if span / bar > 30:
+        bar *= 5
+    parts.append('<line x1="%d" y1="%d" x2="%.1f" y2="%d" stroke="#1b1b1b"/>'
+                 % (pad, height - 14, pad + bar * scale, height - 14))
+    parts.append('<text x="%d" y="%d" font-size="11" fill="#444">%s m</text>'
+                 % (pad, height - 20, ("%g" % bar)))
+    parts.append("</svg>")
+    key = ['<span class="keyline" style="border-top:2px solid #1b1b1b"></span>'
+           "where it actually was"]
+    if believed:
+        key.append('<span class="keyline" style="border-top:2px dashed #c08a21"></span>'
+                   "where it believed it was")
+    if geometry.get("planted"):
+        key.append("● corals as planted, ○ where the plan wanted them")
+    return "".join(parts), " · ".join(key)
+
+
 def mission_provenance(has_planting: bool, has_coverage: bool) -> dict:
     """What each column of a mission's product is. Not one of them is a
     measurement of a real reef, and the file says so first."""
@@ -715,6 +849,91 @@ def mission_provenance(has_planting: bool, has_coverage: bool) -> dict:
     }
 
 
+def the_provenance_tool():
+    """`tools/provenance`, loaded as a module. One page style, one place it
+    is defined; a second copy of it would drift from the first."""
+    import importlib.machinery
+    import importlib.util
+
+    here = pathlib.Path(__file__).resolve().parent / "provenance"
+    loader = importlib.machinery.SourceFileLoader("provenance", str(here))
+    spec = importlib.util.spec_from_loader("provenance", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def rows_for_conditions(came: dict, conditions: dict) -> list[dict]:
+    if not came.get("fields"):
+        return []
+    return the_provenance_tool().about_dive(came, conditions)
+
+
+def report(place: dict, manifest: dict, summary: dict, poses: list[dict],
+           conditions: list[dict]) -> str:
+    """Everything this dive produced, as one page."""
+    prov = the_provenance_tool()
+    task = summary.get("task") or {}
+    geometry = manifest.get("geometry") or {}
+    centre = place.get("centre") or {}
+    where = ["%s at %.5f, %.5f" % (place.get("name", "a place"),
+                                   centre.get("latitude", 0), centre.get("longitude", 0))]
+    if summary.get("seconds"):
+        where.append("%.0f s in the water" % summary["seconds"])
+    positioning = (manifest.get("positioning") or {}).get("kind")
+    if positioning:
+        where.append("navigating by %s" % ("dead reckoning" if positioning == "none"
+                                           else positioning.upper()))
+
+    big = []
+    if task:
+        big.append(("%.0f%%" % (100 * float(task.get("score") or 0.0)),
+                    "of what it was asked for"))
+    track = summary.get("track") or {}
+    if track.get("meanFixErrorM") is not None:
+        big.append(("%.1f m" % track["meanFixErrorM"], "mean navigation error"))
+        big.append(("%.1f m" % track["worstFixErrorM"], "at its worst"))
+    if summary.get("planting"):
+        put = summary["planting"]
+        big.append(("%d / %d" % (put["onTheMark"], put["of"]),
+                    "corals within %.1f m of the mark" % put["toleranceM"]))
+    if summary.get("coverage"):
+        big.append(("%.0f%%" % (100 * summary["coverage"]["fraction"]),
+                    "of the ground actually seen"))
+    headline = "".join("<div><b>%s</b><span>%s</span></div>"
+                       % (html.escape(value), html.escape(what)) for value, what in big)
+
+    drawn, caption = a_map(poses, geometry)
+    rows = "".join(
+        '<tr><td class="what">%s</td><td><span class="tag" '
+        'style="color:%s;background:%s;display:inline-block;padding:.1rem .5rem;'
+        'border-radius:.7rem;font-size:.74rem;font-weight:650;text-transform:uppercase">'
+        '%s</span></td><td>%s</td><td>%s</td></tr>'
+        % (html.escape(r["what"]), prov.INK[r["kind"]], prov.WASH[r["kind"]], r["kind"],
+           html.escape(r["value"]), html.escape(r["from"] or "—"))
+        for r in conditions)
+    files = "".join('<tr><td class="what"><code>%s</code></td><td>%s</td></tr>'
+                    % (html.escape(name), html.escape(WHAT_A_FILE_IS.get(name, "")))
+                    for name in summary.get("files", []))
+    return REPORT % {"name": html.escape(task.get("name") or "A dive"),
+                     "where": html.escape(" · ".join(where)),
+                     "headline": headline, "map": drawn,
+                     "caption": caption, "conditions": rows, "files": files}
+
+
+WHAT_A_FILE_IS = {
+    "track.csv": "every pose: where it was, where it believed it was, and how far apart",
+    "track.geojson": "the same two tracks, in WGS84, to drop on a map",
+    "planting.csv": "every coral: the mark, where it actually went, and the miss",
+    "planting.geojson": "the same, as points",
+    "coverage.geojson": "the ground the camera actually passed over",
+    "conditions.html": "the water it was flown in, and who said so",
+    "mission.json": "the whole result in one object",
+    "provenance.json": "what every column above is",
+    "report.html": "this page",
+}
+
+
 def deliver_dive(recording: pathlib.Path, into: pathlib.Path) -> dict:
     """Turn one flown mission into files somebody can open."""
     manifest = json.loads((recording / "manifest.json").read_text())
@@ -739,17 +958,10 @@ def deliver_dive(recording: pathlib.Path, into: pathlib.Path) -> dict:
     if came.get("fields"):
         # The same page a dive gets from tools/provenance, shipped with the
         # product rather than left on the box.
-        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-        import importlib.machinery
-        import importlib.util
-        here = pathlib.Path(__file__).resolve().parent / "provenance"
-        loader = importlib.machinery.SourceFileLoader("provenance", str(here))
-        spec = importlib.util.spec_from_loader("provenance", loader)
-        prov = importlib.util.module_from_spec(spec)
-        loader.exec_module(prov)
-        rows = prov.about_dive(came, conditions)
+        prov = the_provenance_tool()
         (into / "conditions.html").write_text(
-            prov.dive_page(place.get("name", "the dive"), came, rows))
+            prov.dive_page(place.get("name", "the dive"), came,
+                           prov.about_dive(came, conditions)))
 
     summary = {"place": place, "task": task, "seconds": manifest.get("seconds"),
                "track": track, "planting": planting, "coverage": coverage,
@@ -758,6 +970,10 @@ def deliver_dive(recording: pathlib.Path, into: pathlib.Path) -> dict:
     (into / "mission.json").write_text(json.dumps(summary, indent=2) + "\n")
     (into / "provenance.json").write_text(json.dumps(
         mission_provenance(planting is not None, coverage is not None), indent=2) + "\n")
+    # The one document: the numbers, the map, the water, and what else is in
+    # the folder. A funder is not going to open eight files.
+    (into / "report.html").write_text(
+        report(place, manifest, summary, poses_of(recording), rows_for_conditions(came, conditions)))
     summary["files"] = sorted(p.name for p in into.iterdir())
     summary["into"] = into
     return summary
