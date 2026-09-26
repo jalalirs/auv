@@ -273,13 +273,27 @@ def imagery(into: pathlib.Path, doi: str, fetch_large: bool) -> dict | None:
     total = sum(f["bytes"] or 0 for f in files)
     print(f"  imagery: USGS {doi}: {len(files)} files, {total / 1e9:.1f} GB; "
           f"fetched the {len(small)} small ones")
+    # No generated shell script. There was one, and it said:
+    #
+    #     [ -s NAME ] || curl -sL --retry 3 -A coral-city -o NAME URL
+    #
+    # `-s` is true of any file that is not empty, so a download interrupted
+    # part way left a file the script would never touch again — no resume, no
+    # check of the size it should have been, and a cheerful exit either way.
+    # Looe Key's release came out of it with three of its eight elevation
+    # models truncated and three never fetched, every one of them the right
+    # kind of size in a listing, raising only on the first read months later
+    # when somebody tried to build a place from one.
+    #
+    # `tools/fetch-release` reads the manifest written just above, which
+    # carries each file's exact byte count, resumes what is part way, refuses
+    # to call a short file done, and exits non-zero if anything is still
+    # wrong. That is the whole difference and it is the rule this repository
+    # keeps relearning: a tool that cannot do its job must fail, not report.
     if fetch_large:
-        (where / "fetch-all.sh").write_text(
-            "#!/usr/bin/env bash\n# Fetch every file of the release, resuming.\ncd \"$(dirname \"$0\")\"\n"
-            + "".join(f"[ -s {f['name']} ] || curl -sL --retry 3 -A coral-city -o {f['name']} {f['url']}\n"
-                      for f in files))
-        os.chmod(where / "fetch-all.sh", 0o755)
-        print(f"    wrote usgs/fetch-all.sh to get the rest where there is disk for it")
+        print(f"    {total / 1e9:.1f} GB of it is full-resolution tiles. "
+              f"Fetch them where there is disk, with:")
+        print(f"      tools/fetch-release {where}")
     return {"directory": "usgs", "doi": doi, "files": len(files), "bytes": total,
             "source": "U.S. Geological Survey", "licence": "public domain, credit USGS"}
 
