@@ -320,3 +320,73 @@ def test_the_camera_wins_when_both_instruments_answered(tmp_path):
     cost = tool.cost_from(flown)
     assert cost["coveredM2"] == pytest.approx(300.0)
     assert cost["coveredBy"] == "the camera's footprint"
+
+
+# ── which cell to plant next ─────────────────────────────────────────────────
+#
+# KCRI's gap in their own words: which cell to plant next given depth,
+# substrate and current. Two of those three a place can answer.
+
+def _tmp_place():
+    """A place in a scratch directory, for the tests that do not take one."""
+    import tempfile
+    return _a_place(pathlib.Path(tempfile.mkdtemp()))
+
+
+def _cells(*specs):
+    return [{"row": r, "column": c, "depthM": d, "colonies": n,
+             "x": 0.0, "y": 0.0, "wetShare": 1.0}
+            for r, c, d, n in specs]
+
+
+def test_a_cell_outside_the_planting_band_ranks_below_every_one_inside():
+    """Too shallow and it bleaches and gets broken; too deep and there is
+    not the light."""
+    tool = _tool()
+    order = tool.by_suitability(
+        _cells((0, 0, 1.0, 500), (0, 1, 40.0, 500), (0, 2, 8.0, 10)),
+        cell_m=25.0, band=(3.0, 12.0), room=0.25)
+    assert (order[0]["row"], order[0]["column"]) == (0, 2)
+
+
+def test_where_coral_already_grows_comes_first():
+    """Substrate demonstrated rather than inferred: a cell with colonies in
+    it has hard bottom at a survivable depth, proven by the coral on it."""
+    tool = _tool()
+    order = tool.by_suitability(
+        _cells((0, 0, 8.0, 0), (0, 1, 8.0, 60), (0, 2, 8.0, 5)),
+        cell_m=25.0, band=(3.0, 12.0), room=1.0)
+    assert [one["colonies"] for one in order] == [60, 5, 0]
+
+
+def test_a_cell_that_is_already_full_has_nowhere_to_put_anything():
+    """Not obvious to a spreadsheet, and the reason this is a ranking for
+    planting and not a ranking of reef."""
+    tool = _tool()
+    # 25 m cells are 625 m2; 250 colonies is 0.4 a square metre.
+    order = tool.by_suitability(
+        _cells((0, 0, 8.0, 250), (0, 1, 8.0, 100)),
+        cell_m=25.0, band=(3.0, 12.0), room=0.25)
+    assert order[0]["colonies"] == 100, "the full cell was ranked first"
+    assert order[1]["colonies"] == 250
+
+
+def test_the_page_says_what_it_cannot_rank_on():
+    """Nothing in a place records the current, and a number invented for it
+    would be the kind of claim the rest of this platform refuses."""
+    tool = _tool()
+    grid = tool.cells_over(_tmp_place(), cell_m=25.0, where="all")
+    said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
+    order = tool.by_suitability(grid["working"], grid["cellM"], (3.0, 12.0), 0.25)
+    page = tool.page(grid, said, {}, order, None, "suitability", (3.0, 12.0), 0.25)
+    assert "Where to plant next" in page
+    assert "nothing in the place records it" in page
+    assert "substrate demonstrated rather than inferred" in page
+
+
+def test_lanes_are_still_how_a_survey_is_worked():
+    tool = _tool()
+    grid = tool.cells_over(_tmp_place(), cell_m=25.0, where="all")
+    said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
+    page = tool.page(grid, said, {}, tool.in_lanes(grid["working"]))
+    assert "Worked in lanes" in page and "The order" in page
