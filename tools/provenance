@@ -503,7 +503,7 @@ def one_line(site: dict) -> str:
     return " · ".join(said)
 
 
-def dive_of(path: pathlib.Path, root: pathlib.Path) -> int:
+def dive_of(path: pathlib.Path, into: pathlib.Path) -> int:
     """One page for one dive. Refuses a dive that never said, rather than
     drawing a page of assumptions and letting it pass for a record."""
     if not path.is_file():
@@ -515,7 +515,6 @@ def dive_of(path: pathlib.Path, root: pathlib.Path) -> int:
               "it was flown before the runtime recorded that", file=sys.stderr)
         return 1
     rows = about_dive(came, said)
-    into = root / "provenance"
     into.mkdir(parents=True, exist_ok=True)
     out = into / ("dive-%s.html" % name)
     out.write_text(dive_page(name, came, rows))
@@ -535,11 +534,18 @@ def main() -> int:
                        help="a dive's log or record, for the water it was flown in")
     parse.add_argument("--from", dest="root",
                        default=str(pathlib.Path.home() / "coral-city"))
+    parse.add_argument("--into", default=None,
+                       help="where to write the pages (default: <root>/provenance)")
     asked = parse.parse_args()
 
     root = pathlib.Path(asked.root).expanduser()
+    # Where the pages go. Its own flag, so a page can be written straight
+    # into the pack it belongs to rather than into a directory of every
+    # page this platform has ever printed.
+    into = (pathlib.Path(asked.into).expanduser() if asked.into
+            else root / "provenance")
     if asked.dive:
-        return dive_of(pathlib.Path(asked.dive).expanduser(), root)
+        return dive_of(pathlib.Path(asked.dive).expanduser(), into)
     names = asked.places or (sorted(p.name for p in (root / "places").iterdir()
                                     if (p / "site.json").is_file())
                              if asked.all else [])
@@ -547,7 +553,6 @@ def main() -> int:
         print("name a place, or --all", file=sys.stderr)
         return 1
 
-    into = root / "provenance"
     into.mkdir(parents=True, exist_ok=True)
     made = []
     for name in names:
