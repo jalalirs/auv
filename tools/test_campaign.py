@@ -390,3 +390,17 @@ def test_lanes_are_still_how_a_survey_is_worked():
     said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
     page = tool.page(grid, said, {}, tool.in_lanes(grid["working"]))
     assert "Worked in lanes" in page and "The order" in page
+
+
+def test_the_picture_has_a_legend_so_red_cannot_be_misread(tmp_path):
+    """A whole reef drawn red could be read as a reef in trouble. It means
+    planned and not reached."""
+    tool = _tool()
+    place = _a_place(tmp_path)
+    grid = tool.cells_over(place, cell_m=25.0, where="reef")
+    said = tool.a_campaign(grid, {}, vehicles=1, day_hours=10.0, survives=None)
+    plain = tool.page(grid, said, {}, tool.in_lanes(grid["working"]))
+    assert "to work, darker where there is more coral" in plain
+    covered = tool.covered_by(_flown(tmp_path, place, [(1, 2)]), grid)
+    shown = tool.page(grid, said, {}, tool.in_lanes(grid["working"]), covered)
+    assert "planned and missed" in shown and "covered" in shown
