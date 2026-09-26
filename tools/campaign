@@ -211,18 +211,23 @@ def the_reef(wet: list[dict], site: dict, cell_m: float) -> tuple[list[dict], st
     said = ("the %d densest cells, which is %s m2 — what this place's own "
             "record says its reef is"
             % (len(densest), f"{len(densest) * area:,.0f}"))
-    # And the two halves of the record held against each other. If the
-    # ground the place calls its reef holds only a tenth of the place's
-    # colonies, then its reef area and its coral layer are not describing
-    # the same reef — which is exactly what the restored Al Fahal does,
-    # and a plan built on either number alone would be wrong.
+    # And a check on the cell size, which is the thing this can get wrong.
+    #
+    # A place measures its reef area over five-metre cells; this bins at
+    # whatever size was asked for. Al Fahal's reef is 269,804 m² and at
+    # fifty metres the densest cells covering that much ground hold only a
+    # tenth of its colonies — not because the record disagrees with
+    # itself, but because that reef is not laid out in fifty-metre blocks.
+    # The answer is a smaller cell, and saying so is more use than a
+    # warning about the data.
     everywhere = sum(one["colonies"] for one in holding)
     inside = sum(one["colonies"] for one in densest)
     if everywhere and inside / everywhere < 0.5:
-        said += (". But those cells hold only %d%% of this place's colonies, "
-                 "so its reef area and its coral layer do not describe the "
-                 "same reef — one of the two is wrong and this plan rests on "
-                 "the first" % round(100 * inside / everywhere))
+        said += (". At this cell size those hold only %d%% of the place's "
+                 "colonies, which means its reef is not laid out in %.0f m "
+                 "blocks — the ground is right and the grid is too coarse "
+                 "for it. Try a smaller cell"
+                 % (round(100 * inside / everywhere), cell_m))
     return densest, said
 
 
@@ -608,10 +613,11 @@ def page(grid: dict, said: dict, cost: dict, order: list[dict],
                        % (html.escape(v), html.escape(w)) for v, w in big)
 
     warning = ""
-    if "do not describe the same reef" in (grid.get("reefFrom") or ""):
-        warning += ('<p class="says warn"><strong>This place disagrees with '
-                    'itself.</strong> %s.</p>'
-                    % html.escape(grid["reefFrom"].split(". But ", 1)[1].rstrip(".")))
+    if "too coarse for it" in (grid.get("reefFrom") or ""):
+        warning += ('<p class="says warn"><strong>The grid is too coarse for '
+                    'this reef.</strong> %s.</p>'
+                    % html.escape(grid["reefFrom"].split(". At this cell size ", 1)[1]
+                                  .rstrip(".")))
     if "cannotSay" in said:
         # Appended. It was an assignment, and a page with two things to
         # warn about showed the second and swallowed the first.
