@@ -727,6 +727,7 @@ vehicle actually was, beside where it believed it was.</p>
 
 <h2>Where it went</h2>
 <figure>%(map)s<figcaption>%(caption)s</figcaption></figure>
+%(stills)s
 
 <h2>The water it was flown in</h2>
 <table>%(conditions)s</table>
@@ -815,6 +816,49 @@ def a_map(poses: list[dict], geometry: dict) -> tuple[str, str]:
     return "".join(parts), " · ".join(key)
 
 
+def stills_from(recording: pathlib.Path, into: pathlib.Path, how_many: int = 2) -> list[str]:
+    """A picture or two out of the dive's own video, embedded in the report.
+
+    A funder reads a page, not a folder, and a page about a dive with nothing
+    of the dive on it is a spreadsheet with a headline. Taken with ffmpeg
+    where there is one and skipped where there is not: a report that cannot
+    be produced without a video codec is a report that fails on a laptop.
+    """
+    video = recording / "dive.mp4"
+    if not video.is_file():
+        return []
+    import base64
+    import shutil
+    import subprocess
+    import tempfile
+
+    if shutil.which("ffmpeg") is None:
+        return []
+    kept = []
+    with tempfile.TemporaryDirectory() as scratch:
+        for n in range(how_many):
+            # Spread through the dive rather than taken from the front, where
+            # every mission looks the same: the vehicle at its start point.
+            at = (n + 1) / (how_many + 1)
+            out = pathlib.Path(scratch) / f"still-{n}.jpg"
+            try:
+                length = float(subprocess.run(
+                    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                     "-of", "default=nw=1:nk=1", str(video)],
+                    capture_output=True, text=True, timeout=60).stdout.strip() or 0.0)
+                subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-ss",
+                                "%.2f" % (length * at), "-i", str(video), "-frames:v", "1",
+                                "-vf", "scale=760:-2", "-q:v", "6", str(out)],
+                               check=True, timeout=120)
+            except Exception:
+                return kept
+            if not out.is_file():
+                return kept
+            kept.append("data:image/jpeg;base64,"
+                        + base64.b64encode(out.read_bytes()).decode("ascii"))
+    return kept
+
+
 def mission_provenance(has_planting: bool, has_coverage: bool) -> dict:
     """What each column of a mission's product is. Not one of them is a
     measurement of a real reef, and the file says so first."""
@@ -870,7 +914,7 @@ def rows_for_conditions(came: dict, conditions: dict) -> list[dict]:
 
 
 def report(place: dict, manifest: dict, summary: dict, poses: list[dict],
-           conditions: list[dict]) -> str:
+           conditions: list[dict], stills: list[str] | None = None) -> str:
     """Everything this dive produced, as one page."""
     prov = the_provenance_tool()
     task = summary.get("task") or {}
@@ -915,9 +959,15 @@ def report(place: dict, manifest: dict, summary: dict, poses: list[dict],
     files = "".join('<tr><td class="what"><code>%s</code></td><td>%s</td></tr>'
                     % (html.escape(name), html.escape(WHAT_A_FILE_IS.get(name, "")))
                     for name in summary.get("files", []))
+    pictures = ""
+    if stills:
+        pictures = ("<h2>What it saw</h2>"
+                    + "".join('<figure><img alt="a frame from the dive" src="%s" '
+                              'style="width:100%%;border:1px solid #e3e3df"></figure>' % one
+                              for one in stills))
     return REPORT % {"name": html.escape(task.get("name") or "A dive"),
                      "where": html.escape(" · ".join(where)),
-                     "headline": headline, "map": drawn,
+                     "headline": headline, "map": drawn, "stills": pictures,
                      "caption": caption, "conditions": rows, "files": files}
 
 
@@ -949,7 +999,8 @@ def deliver_dive(recording: pathlib.Path, into: pathlib.Path) -> dict:
     task = manifest.get("task") or {}
     geometry = manifest.get("geometry") or {}
     achieved = task.get("achieved") or {}
-    track = track_files(into, poses_of(recording), centre, manifest.get("positioning"))
+    poses = poses_of(recording)
+    track = track_files(into, poses, centre, manifest.get("positioning"))
     planting = planting_files(into, geometry, achieved, centre)
     coverage = coverage_file(into, geometry, centre)
 
@@ -973,7 +1024,8 @@ def deliver_dive(recording: pathlib.Path, into: pathlib.Path) -> dict:
     # The one document: the numbers, the map, the water, and what else is in
     # the folder. A funder is not going to open eight files.
     (into / "report.html").write_text(
-        report(place, manifest, summary, poses_of(recording), rows_for_conditions(came, conditions)))
+        report(place, manifest, summary, poses, rows_for_conditions(came, conditions),
+               stills_from(recording, into)))
     summary["files"] = sorted(p.name for p in into.iterdir())
     summary["into"] = into
     return summary
