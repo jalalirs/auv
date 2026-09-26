@@ -16,6 +16,8 @@ what a dive gets; only the camera is different, and no physics runs at all.
 
 from __future__ import annotations
 
+import numpy as np
+
 import math
 
 # A fifth of the flight is out of the water, which is enough to read the layout
@@ -433,8 +435,29 @@ class Ladder:
         camera = UsdGeom.Camera.Define(stage, camera_path)
         camera.CreateFocalLengthAttr(18.0)
         camera.CreateClippingRangeAttr(Gf.Vec2f(0.1, 12000.0))
+        # Which way is up in the frame.
+        #
+        # World up, for every view that looks along the bottom — that is what
+        # makes a horizon horizontal.
+        #
+        # Except looking straight down, where it is degenerate: with the eye
+        # directly above the target, an up vector of +Z is parallel to the
+        # direction of view and the camera's roll becomes whatever the
+        # arithmetic happens to produce. `a-square-metre` sits 1.15 m above
+        # its target with a millimetre of horizontal offset, and the frame
+        # came out rotated by an amount nobody chose — which is invisible on
+        # a patch of seabed and fatal to the one thing that view is for,
+        # putting a square metre beside the photograph of that square metre.
+        #
+        # So a near-nadir view takes **north** as up, which is also what an
+        # orthomosaic uses, and the two are then comparable without anybody
+        # having to work out the rotation.
+        towards = np.array(target) - np.array(eye)
+        flat = float(np.hypot(towards[0], towards[1]))
+        straight_down = flat < 0.2 * abs(float(towards[2]))
+        up = Gf.Vec3d(0, 1, 0) if straight_down else Gf.Vec3d(0, 0, 1)
         look = Gf.Matrix4d().SetLookAt(
-            Gf.Vec3d(*eye), Gf.Vec3d(*target), Gf.Vec3d(0, 0, 1)).GetInverse()
+            Gf.Vec3d(*eye), Gf.Vec3d(*target), up).GetInverse()
         moving = UsdGeom.Xformable(camera.GetPrim())
         moving.ClearXformOpOrder()
         moving.AddTransformOp().Set(look)
