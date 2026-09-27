@@ -85,11 +85,26 @@ def test_the_same_task_draws_the_same_water_on_every_machine_and_day():
 
 
 def test_the_suite_does_not_move():
-    """A benchmark whose contents move is not one."""
+    """A benchmark whose contents move is not one.
+
+    It moved once, deliberately, on 27 September 2026: `hold-station` was added to
+    the front of both suites. It had been in neither, which meant the bench
+    contained nothing either of the two controllers anybody had deployed could do —
+    both are station holds — and their 0.0% rows were guaranteed by the suite
+    rather than earned.
+
+    What that cost and what it did not: a **row** is named per task, so every row
+    already in the record is still valid and every head-to-head comparison still
+    holds. What is not comparable across the change is a **suite aggregate** — "of
+    the suite, 3 of 3" and the mean over tasks — because the suite now has one more
+    task in it. Aggregates from before that date are over eight tasks and after it
+    over nine.
+    """
     bench = _bench()
     assert bench.SUITES["standard"] == [
-        "reach", "waypoints", "transect", "survey", "search",
-        "treat", "inspect", "dock"]
+        "hold-station", "reach", "waypoints", "transect", "survey",
+        "search", "treat", "inspect", "dock"]
+    assert bench.SUITES["quick"] == ["hold-station", "reach", "transect", "dock"]
     assert bench.WATER == "gentle"
     assert bench.TECHNOLOGY == "dead-reckoning"
 
@@ -692,3 +707,20 @@ def test_a_trial_flown_twice_is_one_row_and_it_is_the_newer():
     assert "rows: dict[str, dict] = {}" in where
     assert "when <= made[dive[\"name\"]]" in where
     assert "return list(rows.values())" in where
+
+
+def test_the_suites_include_holding_station():
+    """It is the most basic thing a vehicle does, it is the SDK's own first
+    example, and **both controllers anybody has deployed are station holds** — and
+    it was in neither suite. So the bench contained nothing either of them could do
+    and their 0.0% rows were guaranteed by the suite, not earned. A bench whose
+    tasks exclude what its users have written is measuring its own taste."""
+    tool = _bench()
+    for suite, tasks in tool.SUITES.items():
+        assert "hold-station" in tasks, f"the {suite} suite cannot be held station in"
+        # And first, because it is the floor everything else stands on.
+        assert tasks[0] == "hold-station", f"the {suite} suite does not start with it"
+    # Every task a suite names has to exist.
+    for suite, tasks in tool.SUITES.items():
+        for task in tasks:
+            assert task in tool.TASKS, f"the {suite} suite names {task}, which is not a task"
