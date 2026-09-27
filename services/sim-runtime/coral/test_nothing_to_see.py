@@ -145,33 +145,41 @@ def test_asking_whether_a_picture_is_owed_does_not_spend_it(tmp_path):
     assert keeping.owes_a_picture(1.25) is True
 
 
-def test_a_thought_is_charged_what_it_costs_and_nothing_else_is():
-    """Two ways to get this wrong, and the second is the one I shipped first.
+def test_nothing_in_the_runner_paces_a_thinking_controller():
+    """Because the runtime already charges thinking, in the dive's own clock.
 
-    Too little: a dive running six times faster than the clock hands a thought a
-    sixth of the real seconds it takes, which makes the **machine** look fast
-    rather than the controller, and a bench that rewarded whoever ran on the
-    slower box would be measuring the box.
+    `Thinking._deliver` holds a thought until `simulated >= asked_at + took`, so a
+    decision that took a second and a half in reality costs a second and a half of
+    the dive at any rate — "otherwise the same controller on a quicker computer
+    would appear to think for free, and every benchmark would be measuring the
+    machine", in its own words.
 
-    Too much: pacing the whole dive whenever a controller *can* think slowly.
-    `ponder`'s `thinkS` — how long a decision takes, standing in for a model call
-    — **defaults to zero**, so most deliberating dives were charged a second per
-    second for thinking that cost nothing, and a bench row went from three minutes
-    to twenty for no reason.
-
-    The rule is the outstanding thought and only that.
+    A guard was added to these runners on 27 September 2026 believing that charge
+    was missing. It was not, and the coarse version of it moved `ponder`'s quick
+    suite from 48.8% to **23.3%** — a twenty-five point change to a result that was
+    already right. Three runs of one brief agree to every printed digit, so what
+    failed the determinism this module promises was the fix and not the promise.
     """
-    from controllers.helm import Helm  # noqa: F401  (imported for the surface)
-    from controllers.thinking import Thinking  # noqa: F401
-
     said = (pathlib.Path(__file__).resolve().parent / "dive.py").read_text()
     for which in ("def fly_dry(", "def fly("):
         inside = said[said.index(which):]
         inside = inside[:inside.index("\ndef ")] if "\ndef " in inside else inside
-        assert "thinking(dive)" in inside, f"{which} does not ask whether a thought is out"
-        assert "deliberating()" not in inside, (
-            f"{which} still paces on whether a controller *can* think, which "
-            "over-charges every instant decision")
+        assert "deliberating()" not in inside
+        assert "thinking_now()" not in inside
+    # And the reason is written where somebody would otherwise add it back.
+    assert "_deliver" in said
+
+
+def test_the_runtime_charges_a_thought_in_the_dives_own_clock():
+    """The mechanism the runners rely on, held so it cannot quietly go away: the
+    comparison is against simulated time, not against the wall clock."""
+    where = (pathlib.Path(__file__).resolve().parent
+             / "controllers/thinking.py").read_text()
+    inside = where[where.index("def _deliver("):]
+    inside = inside[:inside.index("\n    def ")]
+    assert "now < asked_at + took" in inside, (
+        "a thought is no longer held against the dive's clock, so a faster machine "
+        "now thinks for free")
 
 
 def test_the_two_runners_agree_about_what_paces_a_dive():
@@ -183,7 +191,6 @@ def test_the_two_runners_agree_about_what_paces_a_dive():
         inside = source[source.index(which):]
         inside = inside[:inside.index("\ndef ")] if "\ndef " in inside else inside
         assert "dive.bridge.commanded" in inside, f"{which} ignores an external controller"
-        assert "thinking(dive)" in inside, f"{which} would charge thinking at the wrong rate"
 
 
 def test_an_outstanding_thought_is_what_is_asked_about_not_a_capability():

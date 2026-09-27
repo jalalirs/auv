@@ -667,29 +667,17 @@ def test_flying_the_same_trial_again_saves_a_version_not_a_second_layout():
     assert "if mine is None:" in where
 
 
-def test_a_dry_bench_charges_a_thought_what_it_costs():
-    """Two ways to get this wrong; the second is the one shipped first.
-
-    Too little: a dive running four times faster than the clock gives a thought a
-    quarter of the real seconds it takes, so the same controller on a faster box
-    scores better and the bench measures the box.
-
-    Too much: pacing the whole dive whenever a controller *can* think slowly.
-    `ponder`'s `thinkS` — how long a decision takes, standing in for a model call —
-    defaults to **zero**, so most deliberating dives were charged a second per
-    second for thinking that cost nothing, and a row went from three minutes to
-    twenty for no reason.
-    """
+def test_a_dry_bench_does_not_pace_a_thinking_controller():
+    """The runtime charges thinking already, in the dive's own clock —
+    `Thinking._deliver` holds a thought until `simulated >= asked_at + took`. A
+    guard added here believing otherwise moved `ponder`'s quick suite from 48.8% to
+    23.3%, changing a result that was already right."""
     inside = (HERE / "bench").read_text()
     inside = inside[inside.index("def command_dry("):]
-    # The instant, not the capability.
-    assert "thinking_now()" in inside
+    assert "thinking_now()" not in inside
     assert "deliberating()" not in inside
-    # Charged inside the stepping loop, which is the only place it can be.
-    loop = inside[inside.index("for _ in range(int((seconds"):]
-    assert "wallclock.sleep(owed)" in loop[:900]
-    assert "dive.dt - (wallclock.monotonic() - stepped)" in loop[:900]
-
+    # And the reason is left where somebody would otherwise put it back.
+    assert "_deliver" in inside
 
 def test_a_trial_flown_twice_is_one_row_and_it_is_the_newer():
     """A name is the whole identity of a trial, so two dives under one name are
