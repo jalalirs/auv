@@ -665,3 +665,22 @@ def test_flying_the_same_trial_again_saves_a_version_not_a_second_layout():
     assert 'GET", f"/api/v1/cities/{city_id}/layouts"' in where
     assert 'one.get("slug") == slug' in where
     assert "if mine is None:" in where
+
+
+def test_a_dry_bench_flies_a_thinking_controller_at_real_time():
+    """Or it measures the machine instead of the controller.
+
+    A thought is triggered every `thinks_every` **simulated** seconds and takes
+    real seconds to have, so a dive running four times faster than the clock gives
+    each thought a quarter of the simulated budget it should have — and the same
+    controller on a faster box would score better. The runtime's own shell has
+    always had this guard; a dry bench had none, so every `ponder` row flown by one
+    before 27 September 2026 charged its thinking at the wrong rate.
+    """
+    inside = (HERE / "bench").read_text()
+    inside = inside[inside.index("def command_dry("):]
+    assert "deliberating()" in inside
+    # Paced inside the stepping loop, which is the only place it can be.
+    loop = inside[inside.index("for _ in range(int((seconds"):]
+    assert "if paced:" in loop[:600]
+    assert "wallclock.sleep" in loop[:600]
