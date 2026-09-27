@@ -221,3 +221,46 @@ def test_the_slow_loop_can_say_whether_a_thought_is_outstanding():
     assert slow.busy() is False
     # And what it reports is the same answer, not a second implementation of it.
     assert slow.said()["thinking"] is False
+
+
+def test_a_dive_fits_every_instrument_unless_told_otherwise(tmp_path):
+    """The platform names no list, so nothing it flies loses an instrument."""
+    city = a_place(tmp_path)
+    dive = a_dive(city, initialState={"positionM": [0, 0, -10]})
+    assert dive.fits("imaging_sonar") is True
+    assert dive.fits("multibeam") is True
+    assert dive.fits("anything at all") is True
+
+
+def test_a_dive_told_a_shorter_list_fits_only_that(tmp_path):
+    """What the list is for: a forward-looking sonar costs about four times the rest
+    of a step to ray-march, and a trainer flying three thousand rollouts of a
+    station hold pays that for a fan nobody looks at.
+
+    The distinction, because it is easy to get backwards: this is for instruments
+    that only **report**. Anything that changes what the vehicle *does* — the
+    tether, which drags — is never on this list, because a dive missing one of those
+    is easier than the thing it stands in for. That mistake is exactly what made the
+    SDK's tank flatter every controller tuned in it.
+    """
+    city = a_place(tmp_path)
+    dive = a_dive(city, initialState={"positionM": [0, 0, -10]},
+                  fitSensors=["dvl"])
+    assert dive.fits("dvl") is True
+    assert dive.fits("imaging_sonar") is False
+    assert dive.fits("multibeam") is False
+    # An empty list is a list, not an absence: it means fit nothing.
+    bare = a_dive(city, initialState={"positionM": [0, 0, -10]}, fitSensors=[])
+    assert bare.fits("dvl") is False
+
+
+def test_the_gate_is_asked_before_an_instrument_is_built(tmp_path):
+    """Or it costs what it costs and is then thrown away."""
+    said = (pathlib.Path(__file__).resolve().parent / "runner.py").read_text()
+    for which, kind in (("def switch_on_the_sonar", "imaging_sonar"),
+                        ("def switch_on_the_multibeam", "multibeam")):
+        inside = said[said.index(which):]
+        inside = inside[:inside.index("\n    def ", 10)]
+        assert f'self.fits("{kind}")' in inside, f"{which} does not ask"
+        # Before the instrument is constructed.
+        assert inside.index("self.fits(") < inside.index("(said, seed=")
