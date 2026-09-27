@@ -319,6 +319,15 @@ class Tank:
         problems = self.described.check(type(controller))
         if problems:
             raise ValueError("this controller cannot fly this vehicle: " + "; ".join(problems))
+        # Only the instruments this controller reads.
+        #
+        # The vehicle carries a forward-looking sonar and that costs about four
+        # times the rest of a step to ray-march — a 30-second rollout goes from
+        # 1.16 s to 5.01 s — so a trainer flying three thousand of them pays hours
+        # for a fan nobody looks at. What it does **not** touch is anything that
+        # changes the vehicle: the tether still drags, because a tank without one
+        # is easier than the platform and that is the mistake this just came out of.
+        self.brief["fitSensors"] = sorted(set(type(controller).needs or ()))
         seen = self.reset()
         # What the dive is for, before it is engaged — the same order the platform
         # delivers it in, so a controller that reads the goal behaves the same here.

@@ -74,12 +74,15 @@ def in_one_water(weights: np.ndarray, current, seed_shift: float = 0.0) -> float
     return report.score - 0.3 * report.task["thrusterEffort"]
 
 
-def rollout(weights: np.ndarray, seed_shift: float = 0.0) -> float:
+def at_its_worst(weights: np.ndarray, seed_shift: float = 0.0) -> float:
     """Across every water, scored by its **worst** one.
 
     The mean would let a policy buy a perfect knot with a hopeless calm, which is
     exactly the trade the first one made. What a vehicle needs is to hold in
     whatever it finds, so the score is the weakest water it was tried in.
+
+    Four rollouts, so this is for choosing between a handful of candidates and not
+    for the search itself — see `main`.
     """
     return min(in_one_water(weights, current, seed_shift) for current in WATERS)
 
@@ -94,8 +97,23 @@ def main() -> int:
     began = time.time()
     best_score, best = -1.0, mean.copy()
     for generation in range(GENERATIONS):
+        # One water per generation, cycling, and the same one for every candidate in
+        # it.
+        #
+        # Every candidate in every water would be the obvious thing and it is four
+        # times the work: a rollout costs about five seconds — three quarters of
+        # that is the tether's cable, which is physics and stays — so 24 candidates
+        # over 14 generations in four waters is two and a quarter hours on a laptop,
+        # which is not the "train it on your own machine" this is supposed to be.
+        #
+        # One water per generation keeps the ranking *within* a generation fair,
+        # which is all the cross-entropy method needs, and visits each water three
+        # or four times over the run. A policy that only works in one of them gets
+        # punished in the three generations out of four that are not its favourite.
+        # The final choice is still judged by its worst across all four.
+        water = WATERS[generation % len(WATERS)]
         samples = [mean + spread * rng.standard_normal(shape) for _ in range(POPULATION)]
-        scores = np.array([rollout(w, 0.0) for w in samples])
+        scores = np.array([in_one_water(w, water, 0.0) for w in samples])
         order = np.argsort(-scores)
         elite = np.stack([samples[i] for i in order[:ELITE]])
         mean = elite.mean(axis=0)
@@ -105,15 +123,25 @@ def main() -> int:
         print(f"generation {generation + 1:2d}: best {scores[order[0]]:.3f}  mean {scores.mean():.3f}  "
               f"({time.time() - began:.0f} s)", flush=True)
 
-    final = rollout(mean, 0.0)
-    chosen = mean if final >= best_score - 0.02 else best
+    # Both candidates judged the same way before choosing between them.
+    #
+    # `best_score` is now a **one-water** score and `final` is a worst-of-four, and
+    # comparing them would let a lucky generation in still water beat a policy that
+    # holds everywhere. So each is scored across all four by its worst, which is
+    # eight rollouts and the only place in this file where that matters.
+    for_the_mean = at_its_worst(mean, 0.0)
+    for_the_best = at_its_worst(best, 0.0)
+    final = max(for_the_mean, for_the_best)
+    chosen = mean if for_the_mean >= for_the_best else best
     from hold import StationHold
 
     # Every water, both controllers, because one water is how the last one came to
     # be reported as better than the hand-written hold when it was better in one
     # place and worse in three.
-    print(f"learned: {max(final, best_score):.3f} across all of them, by its worst. "
-          "Water by water, against the hand-written hold:")
+    print(f"learned: {final:.3f} across all four, by its worst — "
+          f"the generations' mean scored {for_the_mean:.3f} and the best single "
+          f"candidate {for_the_best:.3f}. Water by water, against the hand-written "
+          "hold:")
     print(f"  {'water':>16}  {'learned':>9}  {'hand-written':>13}")
     for current in WATERS:
         theirs = Tank("bluerov2", seconds=SECONDS,
