@@ -1138,27 +1138,82 @@ def command_show(args) -> int:
     return 0
 
 
+# What makes two rows the same trial. Not the task alone.
+UNRECORDED = "unrecorded"
+
+
+def conditions_of(row: dict) -> tuple:
+    """The conditions a row was flown under, as a key two rows can be matched on.
+
+    A row written before these were fields has none, and that is *unknown*
+    rather than the default: `named` elides the usual place and the usual hull,
+    so an old row's silence and a new row's default look identical from the
+    name and are not the same claim. Unknown matches only unknown.
+    """
+    if "place" not in row:
+        return (UNRECORDED,)
+    return (row.get("place"), row.get("vehicle"), row.get("water"),
+            bool(row.get("through")))
+
+
+def says_conditions(key: tuple) -> str:
+    if key == (UNRECORDED,):
+        return "conditions never recorded"
+    place, vehicle, water, through = key
+    said = f"{place} on {vehicle} in {water}"
+    return said + (", through things" if through else "")
+
+
 def command_compare(args) -> int:
     rows = rows_for(args)
     # A dive the platform could not start is an absence on both sides. Shown
     # separately below rather than compared: a comparison against a dive
     # that never happened is not a comparison.
-    ours = {r["task"]: r for r in rows
-            if r["controller"] == args.left and r.get("fault") != "the platform's"}
-    theirs = {r["task"]: r for r in rows
-              if r["controller"] == args.right and r.get("fault") != "the platform's"}
+    # Keyed on the task *and the conditions*, not the task alone. This was
+    # `{r["task"]: r for ...}`, which made two rows for one task the same row
+    # whatever reef or water or hull they were flown in — the last one loaded
+    # winning silently — while the header below printed "the same water and the
+    # same seeds", a claim nothing checked. Flying one controller in two waters
+    # is the ordinary case on this bench and it is the case that broke it.
+    def by_trial(who: str) -> dict:
+        out = {}
+        for r in rows:
+            if r["controller"] != who or r.get("fault") == "the platform's":
+                continue
+            out[(r["task"], conditions_of(r))] = r
+        return out
+
+    ours, theirs = by_trial(args.left), by_trial(args.right)
     missing = sorted({r["task"] for r in rows
                       if r["controller"] in (args.left, args.right)
                       and r.get("fault") == "the platform's"})
-    both = [t for t in SUITES[args.suite] if t in ours and t in theirs]
+    shared = sorted(set(ours) & set(theirs),
+                    key=lambda k: (SUITES[args.suite].index(k[0])
+                                   if k[0] in SUITES[args.suite] else 999, k[1]))
+    both = [k for k in shared]
+    # Anything one of them flew under conditions the other did not. Named
+    # rather than dropped: "pursue beat wary on four of nine" is a different
+    # sentence when three of the nine were flown over another reef.
+    apart = sorted({(k[0], k[1]) for k in set(ours) ^ set(theirs)})
     if not both:
         print(f"{args.left} and {args.right} have no task in common on this bench")
         if missing:
             print(f"{AMBER}  {', '.join(missing)} never flew — the platform "
                   f"could not start them{OFF}")
         return 1
+    # What they actually share, said rather than asserted. The old header
+    # claimed "the same water and the same seeds" over rows matched on task
+    # alone, which is the claim it could least support.
+    under = sorted({k[1] for k in both})
     print(f"{BOLD}{args.left}{OFF} against {BOLD}{args.right}{OFF}"
-          f"{DIM} · {len(both)} tasks, the same water and the same seeds{OFF}\n")
+          f"{DIM} · {len(both)} trials, the same seeds, over "
+          + "; ".join(says_conditions(k) for k in under) + f"{OFF}")
+    if apart:
+        print(f"{AMBER}  not compared — only one of them flew these: "
+              + ", ".join(f"{t} ({says_conditions(c)})" for t, c in apart[:6])
+              + (f", and {len(apart) - 6} more" if len(apart) > 6 else "")
+              + f"{OFF}")
+    print()
     # Trimmed to the column, like the table in `show`. Two controllers
     # with twelve-character names ran together into one word:
     # "station-holdlearned-hold".
@@ -1167,8 +1222,9 @@ def command_compare(args) -> int:
 
     print(f"{'':<14}{column(args.left)}{column(args.right)}{'':>4}{'energy':>16}"
           f"{'hit':>10}{'thinking':>12}")
-    for task in both:
-        mine, yours = ours[task], theirs[task]
+    for key in both:
+        task = key[0]
+        mine, yours = ours[key], theirs[key]
         gap = (yours["score"] - mine["score"]) * 100
         ink = GREEN if gap > 1 else RED if gap < -1 else DIM
         # Only where both sides have a number: a hull with no capacity in its

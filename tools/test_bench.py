@@ -249,8 +249,11 @@ def test_a_comparison_leaves_out_dives_that_never_happened(capsys):
     tool.rows_for = lambda args: rows
     assert tool.command_compare(_Args()) == 0
     said = capsys.readouterr().out
-    assert "1 tasks" in said, said
+    assert "1 trials" in said, said
     assert "never flew" in said and "dock" in said
+    # These rows predate place/vehicle/water being fields, so the header must
+    # say their conditions are unknown rather than imply the defaults.
+    assert "conditions never recorded" in said, said
 
 
 def test_a_row_names_the_hull_when_it_is_not_the_usual_one():
@@ -846,3 +849,91 @@ def test_a_controller_whose_name_carries_a_keyword():
         assert flew["controller"] == controller, name
         assert flew["vehicle"] == "remus-100", name
         assert flew["place"] == "looe-key", name
+
+
+# ── a comparison matched on the task alone ───────────────────────────────────
+
+
+class _Compared:
+    """The arguments `command_compare` reads, for the tests below."""
+    suite = "quick"
+    left = "pursue"
+    right = "ponder"
+    here = True
+
+
+# command_compare keyed its rows `{r["task"]: r for r in rows}` and printed
+# "the same water and the same seeds" over them. Flying one controller in two
+# waters is the ordinary case on this bench: the second row replaced the first
+# in the dict, silently, and the header asserted the one thing nothing checked.
+
+def test_two_waters_for_one_task_are_two_trials_not_one(capsys):
+    tool = _bench()
+    common = {"driftM": 1.0, "seconds": 90.0, "thoughts": 0,
+              "slowestThoughtS": 0.0, "struck": 0, "grounded": 0,
+              "ended": "achieved", "vehicle": "bluerov2", "place": "looe-key",
+              "through": False}
+    rows = [
+        {**common, "task": "reach", "controller": "pursue", "score": 0.9,
+         "energyWh": 3.0, "water": "still"},
+        {**common, "task": "reach", "controller": "pursue", "score": 0.2,
+         "energyWh": 9.0, "water": "one-knot"},
+        {**common, "task": "reach", "controller": "ponder", "score": 0.6,
+         "energyWh": 4.0, "water": "still"},
+        {**common, "task": "reach", "controller": "ponder", "score": 0.1,
+         "energyWh": 8.0, "water": "one-knot"},
+    ]
+    tool.rows_for = lambda args: rows
+    assert tool.command_compare(_Compared()) == 0
+    said = capsys.readouterr().out
+    assert "2 trials" in said, said
+    assert "still" in said and "one-knot" in said, said
+
+
+def test_a_trial_only_one_of_them_flew_is_named_not_dropped(capsys):
+    tool = _bench()
+    common = {"driftM": 1.0, "seconds": 90.0, "thoughts": 0,
+              "slowestThoughtS": 0.0, "struck": 0, "grounded": 0,
+              "ended": "achieved", "vehicle": "bluerov2", "through": False}
+    rows = [
+        {**common, "task": "reach", "controller": "pursue", "score": 0.9,
+         "energyWh": 3.0, "water": "still", "place": "looe-key"},
+        {**common, "task": "reach", "controller": "ponder", "score": 0.6,
+         "energyWh": 4.0, "water": "still", "place": "looe-key"},
+        # pursue also flew it over another reef; ponder never did.
+        {**common, "task": "reach", "controller": "pursue", "score": 1.0,
+         "energyWh": 2.0, "water": "still", "place": "al-fahal"},
+    ]
+    tool.rows_for = lambda args: rows
+    assert tool.command_compare(_Compared()) == 0
+    said = capsys.readouterr().out
+    assert "1 trials" in said, said
+    assert "not compared" in said and "al-fahal" in said, said
+
+
+def test_an_unrecorded_row_is_not_matched_with_a_recorded_one(capsys):
+    """Absence is unknown, not the default. `named` elides the usual place, so
+    an old row's silence and a new row's default read the same and are not."""
+    tool = _bench()
+    common = {"driftM": 1.0, "seconds": 90.0, "thoughts": 0,
+              "slowestThoughtS": 0.0, "struck": 0, "grounded": 0,
+              "ended": "achieved"}
+    rows = [
+        {**common, "task": "reach", "controller": "pursue", "score": 0.9,
+         "energyWh": 3.0},                                    # no fields
+        {**common, "task": "reach", "controller": "ponder", "score": 0.6,
+         "energyWh": 4.0, "place": "looe-key", "vehicle": "bluerov2",
+         "water": "still", "through": False},                  # fields
+    ]
+    tool.rows_for = lambda args: rows
+    assert tool.command_compare(_Compared()) == 1, "these are not comparable"
+    said = capsys.readouterr().out
+    assert "no task in common" in said, said
+
+
+def test_conditions_of_treats_absence_as_unknown():
+    tool = _bench()
+    assert tool.conditions_of({}) == (tool.UNRECORDED,)
+    assert tool.conditions_of({"place": "looe-key", "vehicle": "bluerov2",
+                               "water": "still", "through": False}) \
+        == ("looe-key", "bluerov2", "still", False)
