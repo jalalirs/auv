@@ -17,7 +17,7 @@
 
 import { ControllerArt } from "../parts/ControllerArt.js";
 import type { Held } from "./Deck.js";
-import { recordOf } from "./flown.js";
+import { headToHead, recordOf, saidAs } from "./flown.js";
 import { Empty, PageHead, Pill, ago } from "./parts.js";
 
 export function Autonomy({ held }: { held: Held }): React.JSX.Element {
@@ -40,6 +40,12 @@ export function Autonomy({ held }: { held: Held }): React.JSX.Element {
                 ? `${needs.gpuMemoryBytes ? (needs.gpuMemoryBytes / 2 ** 30).toFixed(0) + " GiB of a card" : "a card"}`
                 : "no card";
               const flew = recordOf(name, held.runs);
+              // And against the others, where the dives were the same dives.
+              // The average above is over whatever this one happened to fly, so
+              // it cannot say which controller is better; this can, and only
+              // where the bench flew both over the same task, suite, hull and
+              // reef.
+              const against = headToHead(name, held.controllers.map((one) => one.name), held.runs);
               return (
                 <div className="row" key={slug}>
                   <ControllerArt digest={newest.imageDigest} size={28} />
@@ -61,6 +67,12 @@ export function Autonomy({ held }: { held: Held }): React.JSX.Element {
                     {flew.neverFlew > 0
                       ? ` · ${flew.neverFlew} never flew (the platform could not start them)`
                       : ""}
+                    {against.length === 0 ? null : (
+                      <>
+                        <br />
+                        {against.map((one) => saidAs(one)).join(" · ")}
+                      </>
+                    )}
                   </span>
                   <Pill kind={needs.gpu || newest.wantsGpu ? "busy" : undefined}>{card}</Pill>
                 </div>

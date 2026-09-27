@@ -101,3 +101,120 @@ export function recordOf(name: string, runs: Flight[]): Record_ {
       && one.run.state === "failed" && !theirFault(one.run)).length,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Which of two controllers is better, which is not what an average can say.
+//
+// Every row above averages one controller over the dives it happened to fly.
+// Those are not the same dives: a controller that flew three station holds and
+// a controller that flew three transects have two numbers that cannot be put
+// beside each other, and the page was putting them beside each other. Worse,
+// the higher number belonged to whoever had flown the easier set — so the one
+// thing the page invited you to do was the one thing it could not support.
+//
+// A comparison is a comparison when the dive is the same dive. The bench
+// already guarantees that and says so in the name it gives each row:
+//
+//     bench · <suite> · <controller>[ on <hull>][ over <reef>] · <task>
+//
+// so two rows describe the same trial when the suite, the task, the hull and
+// the reef all match and only the controller differs. The seed follows from the
+// suite and the task, which is what makes the trial repeatable in the first
+// place. Nothing outside the bench is compared: a dive somebody set up by hand
+// has no counterpart and is not pretended to have one.
+
+/** One trial, as a bench row names it. */
+interface Trial {
+  suite: string;
+  task: string;
+  /** The hull and the reef, as the row states them — "" when both are the usual. */
+  over: string;
+}
+
+const PARTS = " · ";
+
+/**
+ * The trial a bench row describes, or nothing if the row is not a bench row.
+ *
+ * The controller's own field carries the hull and the reef when they are not
+ * the usual ones ("pursue on remus-100 over al-fahal"), so what is left of that
+ * field after the controller's name is part of the trial and not part of who
+ * flew it.
+ */
+export function trialOf(name: string): Trial | undefined {
+  const parts = name.split(PARTS);
+  if (parts.length !== 4 || parts[0] !== "bench") return undefined;
+  const [, suite, whose, task] = parts as [string, string, string, string];
+  const said = / (on|over) /.exec(whose);
+  return { suite, task, over: said === null ? "" : whose.slice(said.index + 1) };
+}
+
+const sameTrial = (a: Trial, b: Trial) =>
+  a.suite === b.suite && a.task === b.task && a.over === b.over;
+
+/** How one controller did against another, over the trials they both flew. */
+export interface HeadToHead {
+  /** The other controller, by the name the record holds. */
+  against: string;
+  /** Trials both of them flew and both of them scored. */
+  shared: number;
+  /** Of those, the ones this controller scored higher on. */
+  better: number;
+  /** And the ones neither won, to the third decimal — a tie is a finding. */
+  same: number;
+}
+
+type Scored = { trial: Trial; score: number };
+
+function scoredTrials(name: string, runs: Flight[]): Scored[] {
+  const out: Scored[] = [];
+  for (const one of runs) {
+    if (one.flownBy !== name || one.run.state !== "succeeded") continue;
+    const trial = trialOf(one.name);
+    if (trial === undefined) continue;
+    const score = ((one.run.outcome ?? {}) as { task?: { score?: number } }).task?.score;
+    if (typeof score !== "number") continue;
+    out.push({ trial, score });
+  }
+  return out;
+}
+
+/**
+ * This controller against each of the others, over the trials they share.
+ *
+ * Sorted by how much there is to go on — a controller compared over eight
+ * trials says more than one compared over one — and controllers with nothing in
+ * common are left out rather than reported as a nil-all draw.
+ */
+export function headToHead(name: string, others: string[], runs: Flight[]): HeadToHead[] {
+  const mine = scoredTrials(name, runs);
+  const out: HeadToHead[] = [];
+  for (const against of others) {
+    if (against === name) continue;
+    const theirs = scoredTrials(against, runs);
+    let shared = 0, better = 0, same = 0;
+    for (const one of mine) {
+      const match = theirs.find((two) => sameTrial(one.trial, two.trial));
+      if (match === undefined) continue;
+      shared += 1;
+      // To the third decimal, because two controllers that differ only in
+      // floating-point noise did the same thing and saying otherwise would
+      // make a bench reward rounding.
+      const gap = Math.round((one.score - match.score) * 1000);
+      if (gap > 0) better += 1;
+      else if (gap === 0) same += 1;
+    }
+    if (shared > 0) out.push({ against, shared, better, same });
+  }
+  return out.sort((a, b) => b.shared - a.shared);
+}
+
+/** The head-to-head as the page says it, or nothing when there is nothing to say. */
+export function saidAs(one: HeadToHead): string {
+  if (one.same === one.shared) {
+    return `the same as ${one.against} on all ${one.shared} shared ${
+      one.shared === 1 ? "task" : "tasks"}`;
+  }
+  return `better than ${one.against} on ${one.better} of ${one.shared}${
+    one.same > 0 ? `, level on ${one.same}` : ""}`;
+}
