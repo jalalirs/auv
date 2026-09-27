@@ -95,6 +95,10 @@ THE_USUAL_PLACE = "looe-key"
 # the record was flown through open water.
 THINGS_IN_THE_WAY = 3
 
+# The controller a reference dive is flown by: the floor a written one has to
+# beat, and never the controller being measured.
+THE_FLOOR = "pursue"
+
 # What stands in the water, and how big it is when nobody says.
 #
 # From the runtime's own palette, and a test holds these numbers against it. A
@@ -110,6 +114,46 @@ FRAME = ("nursery-frame", 2.0)
 # Taller than this is not a structure anybody has in the water, and a bench that
 # grew its obstacles until they were unavoidable would be measuring nothing.
 TALLEST_HONEST_FRAME = 6.0
+
+
+def something_in_the_way(objective: dict) -> dict:
+    """A thing the vehicle would actually meet, at the altitude it is holding.
+
+    Two measured failures are behind this, both of them the same failure — a row
+    that said "flown through things" about a dive that passed nothing:
+
+      A frame is 1.2 m tall and a transect holds 3 m of altitude, so three frames
+      on the line are three frames flown a metre and a half over.
+      Choosing the marker post instead fixed the height and broke the width: a
+      post is 0.2 m across, so a vehicle a quarter of a metre wide has to pass
+      within half a metre of its centre to touch it, and measured, none of them
+      did — `struck=0`, and the two controllers tied at 0.407 again.
+
+    So it is the wide thing, given the height it needs: a frame two metres across
+    standing tall enough to reach into the band the task flies in. Refused above
+    six metres, because at that point the arrangement is being grown until
+    nothing could avoid it, which measures the arrangement and not the
+    controller.
+    """
+    kind, radius = FRAME
+    altitude = objective.get("altitudeM")
+    if altitude is None:
+        # No stated altitude: the vehicle holds the depth it started at and the
+        # bottom under it is unknown from here, so the frame is as tall as an
+        # honest one gets and the dive meets it or does not.
+        return {"kind": kind, "radiusM": radius, "heightM": TALLEST_HONEST_FRAME}
+    # Into the band rather than up to it: a vehicle flying the task correctly is
+    # anywhere within the band, and a frame that stopped at its lower edge would
+    # be met only by a dive already flying low.
+    reach = float(altitude) + float(objective.get("altitudeBandM", 0.0)) / 2.0 + 0.3
+    if reach > TALLEST_HONEST_FRAME:
+        raise SystemExit(
+            f"a {objective.get('kind')} holds {altitude:g} m of altitude, so a frame "
+            f"would have to stand {reach:.1f} m to be in its way and the tallest "
+            f"honest one is {TALLEST_HONEST_FRAME:g} m. Nothing anybody has in the "
+            "water would be met by this dive, and a row claiming otherwise would "
+            "make a bench that rewards flying high")
+    return {"kind": kind, "radiusM": radius, "heightM": round(reach, 2)}
 
 
 def something_in_the_way(objective: dict) -> dict:
@@ -174,58 +218,59 @@ def how_far_the_task_goes(objective: dict) -> tuple[float, float]:
                      "there is nowhere to put things that would be in the way")
 
 
-def things_in_the_way(objective: dict, seed: int, ground, begins_at=(0.0, 0.0)) -> dict:
-    """Things standing on the line the task walks, tall enough to be met.
+def things_in_the_way(track, seed: int, ground, objective: dict) -> dict:
+    """Things standing on the path the vehicle actually flies.
 
-    Reef furniture rather than mooring blocks because this is reef work and a
-    frame or a plot marker is what is actually in the way on a restoration site.
-    Which of them it is comes from the altitude the task holds — see
-    `something_in_the_way`, which is where the first two attempts went wrong.
+    This is the fifth version and the first that works, and the four before it
+    all failed the same way — `struck=0`, both controllers to three decimals —
+    because they all placed things on the line the task *states* rather than on
+    the path the vehicle *takes*. Measured, the difference is not small: over a
+    200 m transect in 0.13 m/s of current the vehicle bows about twelve metres to
+    the south of the stated line, so frames placed on that line were passed with
+    five metres to spare.
 
-    Offset from the line by a seeded amount smaller than the thing, so some are
-    dead ahead and some are a near miss. Seeded from the task's own seed, so the
-    two controllers being compared meet the same three in the same places —
-    which is the whole point of a bench.
+    The four things each of those versions had to be told, kept here because each
+    one was a real measurement and none of them was obvious:
 
-    Each one carries the depth of the bottom under it, which is the second thing
-    this got wrong. A thing that lands on the ground and does not say where the
-    ground is **sits at zero** — `world.py` says so plainly — so three posts
-    three metres tall stood from the surface down, in the air above a vehicle
-    fifteen metres under, and a bench would have called that flying through
-    things. `ground` answers where the bottom is at a point, out of the same
-    heightfield the dive itself flies over.
+      A frame is 1.2 m tall and a transect holds 3 m of altitude, so frames on the
+      line are flown over. The height is stated.
+      A marker post is 3 m tall and 0.2 m across, so a vehicle a quarter of a
+      metre wide passes it. The width matters as much as the height.
+      A thing that lands on the ground and does not say where the ground is sits
+      at **zero** — at the surface, in the air above the dive.
+      A task's geometry is relative to where the dive starts; a layout is in the
+      world's own coordinates.
 
-    And `begins_at` is the fourth thing this got wrong, which took four measured
-    runs to see because the first three all looked like geometry. **A task's
-    geometry is relative to where the dive starts and a layout is in the world's
-    own coordinates.** Over a real reef the place decides where the vehicle goes
-    in — an Al Fahal dive starts around (854, -1106) — so three frames placed
-    fifty, a hundred and a hundred and fifty metres from the *origin* are three
-    frames a kilometre and a half behind the vehicle, and `struck` was 0 for the
-    fourth time. Everything below is offset by where the dive actually begins.
+    All four are answered by taking the track. It says where the vehicle goes, at
+    what altitude, over which bottom, in the world's own coordinates — so the
+    things go on it, and there is nothing left to assume.
     """
     import random
 
     thing = something_in_the_way(objective)
-    far_x, far_y = how_far_the_task_goes(objective)
-    reach = math.hypot(far_x, far_y)
-    if reach < 10.0:
-        raise SystemExit(f"a {objective.get('kind')} covers {reach:.0f} m, which is "
-                         "too little ground to put anything in the way of")
-    along = (far_x / reach, far_y / reach)
-    across = (-along[1], along[0])
+    if len(track) < 8:
+        raise SystemExit("the reference dive went nowhere, so there is no path to "
+                         "put anything on — a task nothing flies cannot be flown "
+                         "through things")
     draw = random.Random(f"things/{seed}/{objective.get('kind')}")
-    things = []
-    # Off the line by less than the thing is wide, so every one of them is in
-    # the way of a vehicle flying the line and none is dead centre on it. A fixed
-    # offset in metres was the third version of this bug: 1.2 m is inside a frame
-    # and half a metre outside a post.
+    # Off the track by less than the thing is wide, so each is in the way of a
+    # vehicle flying it and none is exactly on the centre line.
     room = float(thing["radiusM"]) * 0.6
+    things = []
     for i in range(THINGS_IN_THE_WAY):
-        at = reach * (i + 1) / (THINGS_IN_THE_WAY + 1)
+        at = track[int(len(track) * (i + 1) / (THINGS_IN_THE_WAY + 1))]
+        # Across the direction it was travelling there, so the offset moves the
+        # thing sideways out of the track rather than along it.
+        ahead = track[min(len(track) - 1, int(len(track) * (i + 1)
+                                              / (THINGS_IN_THE_WAY + 1)) + 1)]
+        run = math.hypot(ahead[0] - at[0], ahead[1] - at[1])
+        if run < 1e-6:
+            across = (0.0, 1.0)
+        else:
+            across = (-(ahead[1] - at[1]) / run, (ahead[0] - at[0]) / run)
         off = draw.uniform(-room, room)
-        x = round(float(begins_at[0]) + along[0] * at + across[0] * off, 2)
-        y = round(float(begins_at[1]) + along[1] * at + across[1] * off, 2)
+        x = round(float(at[0]) + across[0] * off, 2)
+        y = round(float(at[1]) + across[1] * off, 2)
         # Positive metres down, which is how a layout states it.
         things.append({"id": f"thing-{i + 1}", **thing, "x": x, "y": y,
                        "groundM": round(-float(ground(x, y)), 2)})
@@ -491,54 +536,77 @@ def command_dry(args) -> int:
             # a depth this picked: six metres down is the surface on one reef
             # and inside the bottom on another.
             brief.pop("initialState")
-        dive = Dive(brief,
-                    Body(model), Allocator(model), _pathlib.Path("nowhere.usda"),
-                    lambda kind, **said: None)
-        if args.over:
-            # A real bottom, and the same code that gives a platform dive its
-            # bottom rather than a second one that would agree until it did not.
-            # This is what a dive costs with nothing to see: no renderer, no
-            # stage, no card — and the place's heightfield all the same, which
-            # is what both the multibeam and the imaging sonar march against.
-            #
-            # It matters for what the bench can compare. Over a floor pinned
-            # flat at twelve metres, `wary` is `pursue` with the sonar on and
-            # nothing for the sonar to find, so the two came out identical to
-            # the last decimal — a bench that could not tell apart the one
-            # difference between them. Over a real reef they are two
-            # controllers.
-            if not dive.open_dry():
-                raise SystemExit(f"{args.over} does not describe itself: a place "
-                                 "to fly over needs its site.json and the "
-                                 "heightfield that names")
-        else:
-            dive.floor = -12.0
-            dive.begin_task(objective)
-        if args.through:
-            # Put in after opening, because until the place is open nobody knows
-            # where the dive begins — and a task's geometry is relative to that
-            # while a layout is in the world's own coordinates. Frames placed off
-            # the origin instead sat a kilometre and a half behind an Al Fahal
-            # dive, which is how this read `struck=0` four times while looking
-            # like a geometry problem.
-            from world import World
+        def flown(controller: str, layout=None, tune=()):
+            """One dive, opened the way the arguments ask and flown to the end.
 
-            dive.world = World(things_in_the_way(
-                objective, objective["seed"], bottom, dive.position[:2]))
-        # A controller's own knobs, moved before it flies. Two settings of one
-        # controller are two controllers as far as a bench is concerned, and
-        # the interesting question about a thinking one is what its thinking
-        # costs — which you cannot ask without being able to make it slower.
-        for change in args.tune:
-            name, value = change.split("=", 1)
-            flying = dive.helm.controllers.get(args.controller)
-            if flying is None or not flying.tune(name, float(value)):
-                raise SystemExit(f"{args.controller} has no parameter called {name}")
-        for _ in range(int((seconds + 30.0) / dive.dt)):
-            dive.step()
-            if dive.done:
-                break
-        dive.close()
+            The same function for the reference dive and for the dive being
+            measured, because a reference flown any differently is not a
+            reference — it is a second implementation of the same thing, which
+            agrees until it does not.
+            """
+            said = dict(brief)
+            said["objective"] = dict(objective, controller=controller)
+            dive = Dive(said, Body(model), Allocator(model),
+                        _pathlib.Path("nowhere.usda"), lambda kind, **detail: None)
+            if args.over:
+                # A real bottom, and the same code that gives a platform dive its
+                # bottom rather than a second one that would agree until it did
+                # not. This is what a dive costs with nothing to see: no
+                # renderer, no stage, no card — and the place's heightfield all
+                # the same, which is what both the multibeam and the imaging
+                # sonar march against.
+                if not dive.open_dry():
+                    raise SystemExit(f"{args.over} does not describe itself: a "
+                                     "place to fly over needs its site.json and "
+                                     "the heightfield that names")
+            else:
+                dive.floor = -12.0
+                dive.begin_task(said["objective"])
+            if layout is not None:
+                # Put in after opening: a layout is in the world's own
+                # coordinates and until the place is open nobody knows where the
+                # dive begins.
+                from world import World
+
+                dive.world = World(layout)
+            # A controller's own knobs, moved before it flies. Two settings of
+            # one controller are two controllers as far as a bench is concerned,
+            # and the interesting question about a thinking one is what its
+            # thinking costs — which you cannot ask without being able to make
+            # it slower.
+            for change in tune:
+                name, value = change.split("=", 1)
+                flying = dive.helm.controllers.get(controller)
+                if flying is None or not flying.tune(name, float(value)):
+                    raise SystemExit(f"{controller} has no parameter called {name}")
+            track = []
+            for _ in range(int((seconds + 30.0) / dive.dt)):
+                dive.step()
+                if dive.taken % 200 == 0:
+                    track.append([float(v) for v in dive.position])
+                if dive.done:
+                    break
+            dive.close()
+            return dive, track
+
+        layout = None
+        if args.through:
+            # Where to put things: on the path the vehicle actually flies, found
+            # by flying it once with nothing in the way.
+            #
+            # Four versions of this placed things on the line the task *states*
+            # and all four measured `struck=0` with both controllers identical to
+            # three decimals. Over a 200 m transect in 0.13 m/s of current the
+            # vehicle bows about twelve metres south of that line, so the frames
+            # were passed with five metres to spare.
+            #
+            # The reference is always `pursue` — the floor a written controller
+            # has to beat — and never the controller being measured, because an
+            # arrangement that moved with the controller would not be one
+            # arrangement flown two ways.
+            reference, track = flown(THE_FLOOR)
+            layout = things_in_the_way(track, objective["seed"], bottom, objective)
+        dive, _ = flown(args.controller, layout, args.tune)
         said = dive.task.result() if dive.task else {}
         # Who flew it and what it thought come from the helm, not the task:
         # the task knows what was achieved, the helm knows who was flying and
