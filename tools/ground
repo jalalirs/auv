@@ -112,17 +112,40 @@ def main() -> int:
     merged = list(site["from"].get("surveys") or [])
     if survey is not None:
         merged = merged + [{"name": dem_name, "sampleMetres": 1.0}]
+    step = across / max(1, h2.shape[0] - 1)
+
+    # Everything the place already said about where its ground came from,
+    # carried through. These are the keys make-site reads off this note into
+    # site["from"], and writing the note without them *replaces* them.
+    #
+    # The first version of this block did exactly that. Al Fahal's seabed is
+    # Sentinel-2, Stumpf log-ratio, uncalibrated, optical limit 22 m, and a
+    # quarter of it past the sensor — and a note saying `source: "bathymetry
+    # alone, 5.87 m samples"` would have overwritten the lot on the next
+    # rebuild. Fixing the leak one layer out and opening another one is the
+    # same mistake, so the merge describes itself in its own sentence and
+    # never in somebody else's field.
+    carried = {k: site["from"][k] for k in
+               ("method", "observedAt", "opticalLimitM", "bottomVisibleFraction",
+                "beyondOpticalDepthFraction", "medianDetailM", "toCalibrate",
+                "constructedPastTheSensor", "fittedAgainst")
+               if k in site["from"]}
+    was = site["from"].get("source")
+    if survey is not None:
+        said = (f"{was}, with {dem_name} feathered in at 1 m over "
+                f"{100 * have.mean():.1f}% of the square" if was else
+                f"bathymetry from {len(merged) - 1} survey(s) at {step:.2f} m, "
+                f"with {dem_name} feathered in at 1 m over "
+                f"{100 * have.mean():.1f}% of the square")
+    else:
+        said = was or f"bathymetry alone, {step:.2f} m samples"
     (into / "seabed_1m.json").write_text(json.dumps({
         "rows": n, "columns": n, "acrossMetres": across, "file": "seabed_1m.f32",
         "centre": {"latitude": lat0, "longitude": lon0},
         "surveyed": bool(site["from"].get("surveyed", True)),
-        "surveys": merged,
-        "source": (f"bathymetry from {len(merged) - 1} survey(s) at "
-                   f"{across / max(1, h2.shape[0] - 1):.2f} m, with {dem_name} "
-                   f"feathered in at 1 m over {100 * have.mean():.1f}% of the square"
-                   if survey is not None else
-                   f"bathymetry alone, {across / max(1, h2.shape[0] - 1):.2f} m samples"),
-        "surveyedFraction": round(float(have.mean()), 4),
+        "surveys": merged, "source": said, **carried,
+        "surveyedFraction": (round(float(have.mean()), 4) if survey is not None
+                             else site["from"].get("surveyedFraction")),
         "surveyFraction": round(float(have.mean()), 4), "surveyDatumOffsetM": round(offset, 3),
         "format": "little-endian float32, row major, south to north then west to east"}, indent=1))
 

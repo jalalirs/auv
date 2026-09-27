@@ -338,7 +338,9 @@ def test_the_note_names_the_survey_it_merged():
     """A fraction without a name is not provenance: 11.5% of what?"""
     written = _source("ground")
     assert "dem_name" in written, "the merged DEM's name is never captured"
-    put = written.split('seabed_1m.json")')[1].split("# ── habitat")[0]
+    # Everything that builds the note and writes it, not just the literal:
+    # the name is composed into `source` above the write call.
+    put = written.split("merged = list(")[1].split("# ── habitat")[0]
     assert "dem_name" in put, "the name is captured and then not written down"
 
 
@@ -372,3 +374,35 @@ def test_every_tool_that_writes_a_place_records_the_call():
         assert "record_call" in said, (
             f"tools/{name} writes a place's site.json without "
             f"built.record_call, so tools/rebuild replays the place without it")
+
+
+def test_ground_carries_every_from_key_make_site_would_have_kept():
+    """Fixing a leak one layer out must not open another one.
+
+    make-site reads a fixed list of keys off the heights note into the place's
+    `from`. Writing the note without them replaces them. Al Fahal's seabed is
+    Sentinel-2, Stumpf log-ratio, uncalibrated, optical limit 22 m, with a
+    quarter of it past the sensor — and the first version of this note said
+    `source: "bathymetry alone, 5.87 m samples"`, which would have overwritten
+    every one of those on the next rebuild.
+    """
+    import re
+    made = _source("make-site")
+    # The block that lifts optical/method provenance off the note.
+    block = made.split('**({k: survey_note[k] for k in')[1].split("}),")[0]
+    keys = set(re.findall(r'"([A-Za-z]+)"', block))
+    assert {"method", "opticalLimitM", "toCalibrate"} <= keys, keys
+    put = _source("ground").split('seabed_1m.json")')[1].split("# ── habitat")[0]
+    carried = _source("ground").split("carried = {k: site")[1].split("if k in site")[0]
+    for key in sorted(keys):
+        assert f'"{key}"' in carried, (
+            f"tools/ground drops {key!r}, which make-site would have carried "
+            f"into the place. Rebuilding replaces it with nothing.")
+    assert "**carried" in put, "the carried keys are collected and not written"
+
+
+def test_the_merge_does_not_write_into_someone_elses_field():
+    """`source` belongs to whatever measured the ground, not to the merge."""
+    said = _source("ground")
+    assert 'was = site["from"].get("source")' in said, (
+        "the note builds `source` without reading what the place already said")
