@@ -44,10 +44,17 @@ GREEN, RED, AMBER = "\033[32m", "\033[31m", "\033[33m"
 # The suite. Eight of the eleven tasks: the ones a controller can be judged on
 # rather than the ones that judge the water. Held here rather than taken from a
 # flag, because a benchmark whose contents move is not one.
+# Holding station comes first, in both, and it was in neither.
+#
+# It is the most basic thing a vehicle does, it is the SDK's own first example, and
+# **both controllers anybody has actually deployed are station holds** — so the
+# bench contained nothing either of them could do, and their 0.0% rows were
+# guaranteed by the suite's composition rather than earned. A bench whose tasks
+# exclude what its users have written is measuring its own choice of tasks.
 SUITES = {
-    "standard": ["reach", "waypoints", "transect", "survey", "search",
-                 "treat", "inspect", "dock"],
-    "quick": ["reach", "transect", "dock"],
+    "standard": ["hold-station", "reach", "waypoints", "transect", "survey",
+                 "search", "treat", "inspect", "dock"],
+    "quick": ["hold-station", "reach", "transect", "dock"],
 }
 
 # The conditions the suite is flown in. One water, one fit, so that what is
