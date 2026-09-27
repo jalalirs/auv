@@ -158,7 +158,7 @@ def tall_enough_for(objective: dict) -> tuple[str, float]:
     return min(reaching, key=lambda one: one[1])
 
 
-def things_in_the_way(objective: dict, seed: int) -> dict:
+def things_in_the_way(objective: dict, seed: int, ground) -> dict:
     """Things standing on the line the task walks, tall enough to be met.
 
     Reef furniture rather than mooring blocks because this is reef work and a
@@ -170,6 +170,14 @@ def things_in_the_way(objective: dict, seed: int) -> dict:
     dead ahead and some are a near miss. Seeded from the task's own seed, so the
     two controllers being compared meet the same three in the same places —
     which is the whole point of a bench.
+
+    Each one carries the depth of the bottom under it, which is the second thing
+    this got wrong. A thing that lands on the ground and does not say where the
+    ground is **sits at zero** — `world.py` says so plainly — so three posts
+    three metres tall stood from the surface down, in the air above a vehicle
+    fifteen metres under, and a bench would have called that flying through
+    things. `ground` answers where the bottom is at a point, out of the same
+    heightfield the dive itself flies over.
     """
     import random
 
@@ -186,12 +194,11 @@ def things_in_the_way(objective: dict, seed: int) -> dict:
     for i in range(THINGS_IN_THE_WAY):
         at = reach * (i + 1) / (THINGS_IN_THE_WAY + 1)
         off = draw.uniform(-1.2, 1.2)
-        things.append({
-            "id": f"thing-{i + 1}",
-            "kind": kind,
-            "x": round(along[0] * at + across[0] * off, 2),
-            "y": round(along[1] * at + across[1] * off, 2),
-        })
+        x = round(along[0] * at + across[0] * off, 2)
+        y = round(along[1] * at + across[1] * off, 2)
+        # Positive metres down, which is how a layout states it.
+        things.append({"id": f"thing-{i + 1}", "kind": kind, "x": x, "y": y,
+                       "groundM": round(-float(ground(x, y)), 2)})
     return {"things": things}
 
 
@@ -415,6 +422,24 @@ def command_dry(args) -> int:
         except Exception:
             raise SystemExit(f"{args.over} does not say what place it is: a row "
                              "has to name the reef it was flown over")
+    # Where the bottom is, for standing things on.
+    #
+    # The same heightfield the dive flies over, read here rather than taken from
+    # the dive because a layout has to be complete before the dive exists — the
+    # world is built from the brief in the constructor. Over a flat floor it is
+    # the flat floor, which is the one case where a constant is the truth.
+    THE_FLAT_FLOOR = -12.0
+    bottom = lambda x, y: THE_FLAT_FLOOR
+    if args.over:
+        from runner import Seabed
+
+        seabed = Seabed.of(_pathlib.Path("nowhere.usda"),
+                           _pathlib.Path(args.over).expanduser())
+        if seabed is None:
+            raise SystemExit(f"{args.over} carries no heightfield, so there is no "
+                             "bottom to fly over or to stand anything on")
+        bottom = seabed.under
+
     rows = []
     print(f"{BOLD}{args.suite}{OFF} flown here by {BOLD}{args.controller}{OFF} "
           f"{DIM}· {water_name} · {technology_name} · "
@@ -431,7 +456,7 @@ def command_dry(args) -> int:
                  "objective": objective,
                  "conditions": {**water, **technology}}
         if args.through:
-            brief["layout"] = things_in_the_way(objective, objective["seed"])
+            brief["layout"] = things_in_the_way(objective, objective["seed"], bottom)
         if args.over:
             brief["cityPath"] = str(pathlib.Path(args.over).expanduser())
             # Over a real place the vehicle starts where the place says, not at
