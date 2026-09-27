@@ -146,23 +146,54 @@ def fetch(where: pathlib.Path, one: dict, say=print) -> tuple[str, int]:
     return state_of(where, one)
 
 
-def opens(where: pathlib.Path, name: str) -> bool:
+def a_reader():
+    """Something that can open a GeoTIFF, or nothing.
+
+    `rasterio` for preference and `tifffile` after it, because the second is pure
+    Python and handles BigTIFF — which every one of these is, at 40000 × 40000 — and
+    a box with no GDAL stack is the ordinary case rather than the exception.
+    """
+    try:
+        import rasterio
+
+        def read(path):
+            with rasterio.open(path) as source:
+                source.read(1, window=((0, 2), (0, 2)))
+        return "rasterio", read
+    except ImportError:
+        pass
+    try:
+        import tifffile
+
+        def read(path):
+            with tifffile.TiffFile(path) as source:
+                page = source.pages[0]
+                page.asarray(maxworkers=1)[:2, :2]
+        return "tifffile", read
+    except ImportError:
+        return None, None
+
+
+def opens(where: pathlib.Path, name: str, read=None) -> bool:
     """Whether a raster will actually read, not merely weigh the right amount.
 
-    The size check is the cheap one and catches every truncation. This catches
-    the rest: a file that arrived whole and is corrupt anyway. Skipped
-    silently where rasterio is not installed, because a fetcher that refuses
-    to run without a GIS stack is a fetcher nobody runs.
+    The size check is the cheap one and catches every truncation. This catches the
+    rest: a file that arrived whole and is corrupt anyway.
+
+    It used to return True when no reader was installed — silently, on the
+    reasoning that "a fetcher that refuses to run without a GIS stack is a fetcher
+    nobody runs". That reasoning is still right and the silence was not: the box has
+    no GDAL, so every raster passed without being read, and this tool printed **"all
+    13 complete, and every raster among them opens"** having opened none of them.
+    That sentence was then quoted in the plan as the reason to trust the fetch. It
+    says what it actually did now.
     """
     if not name.lower().endswith((".tif", ".tiff")):
         return True
-    try:
-        import rasterio
-    except ImportError:
+    if read is None:
         return True
     try:
-        with rasterio.open(where / name) as source:
-            source.read(1, window=((0, 2), (0, 2)))
+        read(where / name)
         return True
     except Exception:
         return False
@@ -215,12 +246,17 @@ def main() -> int:
 
     # And say, at the end, what is actually there — because the thing this
     # replaces did not.
+    reader, read = a_reader()
     wrong = []
+    rasters = 0
     for one in files:
         kind, got = state_of(where, one)
         if kind != "complete":
             wrong.append((one["name"], f"{kind}, {got:,} of {one['bytes']:,}"))
-        elif not opens(where, one["name"]):
+            continue
+        if one["name"].lower().endswith((".tif", ".tiff")) and read is not None:
+            rasters += 1
+        if not opens(where, one["name"], read):
             wrong.append((one["name"], "the right size and it does not open"))
     print()
     if wrong:
@@ -228,7 +264,16 @@ def main() -> int:
         for name, why in wrong:
             print(f"    {name}: {why}", file=sys.stderr)
         return 1
-    print(f"  all {len(files)} complete, and every raster among them opens.")
+    # Said exactly, because the version of this that said "every raster among them
+    # opens" whether or not one had been read is how a fetch came to be trusted on
+    # a check that never ran.
+    if read is None:
+        print(f"  all {len(files)} complete. **No raster was opened** — neither "
+              "rasterio nor tifffile is installed here, so only the sizes were "
+              "checked. `pip install tifffile` to read them.")
+    else:
+        print(f"  all {len(files)} complete, and every one of the {rasters} rasters "
+              f"among them opens ({reader}).")
     return 0
 
 
