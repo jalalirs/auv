@@ -342,6 +342,17 @@ class Helm:
         return any(getattr(c, "thinks_every", None) for c in self.controllers.values()
                    if c is self.flying or self.prefer == c.name)
 
+    def thinking_now(self) -> bool:
+        """Whether anything here has a thought outstanding at this instant.
+
+        `deliberating` answers a different and coarser question — whether any
+        controller in play *can* think slowly — and a dive that paced itself on
+        that charged a controller whose decisions are instant as though each one
+        cost a second. `ponder`'s `thinkS` defaults to zero, so that was most of
+        them.
+        """
+        return any(slow.busy() for slow in self.thinking.values())
+
     def tasked(self, goal: dict) -> None:
         """Tell every controller what the dive is for.
 

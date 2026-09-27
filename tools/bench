@@ -773,30 +773,32 @@ def command_dry(args) -> int:
                 flying = dive.helm.controllers.get(controller)
                 if flying is None or not flying.tune(name, float(value)):
                     raise SystemExit(f"{controller} has no parameter called {name}")
-            # A controller that thinks is flown at real time.
+            # While a thought is outstanding, a second of simulated time costs a
+            # second of real time — and nothing else does.
             #
             # Thinking costs real seconds and a thought is triggered every
             # `thinks_every` **simulated** seconds, so a dive running four times
-            # faster than the clock gives each thought a quarter of the simulated
-            # budget it should have — and the same controller on a faster machine
-            # would look better. The runtime's own shell has always had this
-            # guard; a dry bench had none, so every `ponder` row flown here before
-            # 27 September 2026 charged its thinking at the wrong rate.
-            paced = False
-            try:
-                paced = bool(dive.helm.deliberating())
-            except Exception:
-                pass
+            # faster than the clock would give each thought a quarter of the
+            # budget it should have, and the same controller on a faster machine
+            # would look better. But the coarse version of this — pace the whole
+            # dive whenever a controller *can* think slowly — charged a controller
+            # whose decisions are instant as though each one cost a second, and
+            # `ponder`'s `thinkS` defaults to zero, so that was most of them.
             track = []
-            began = wallclock.monotonic()
             for _ in range(int((seconds + 30.0) / dive.dt)):
+                stepped = wallclock.monotonic()
                 dive.step()
                 if dive.taken % 200 == 0:
                     track.append([float(v) for v in dive.position])
-                if paced:
-                    ahead = began + dive.simulated - wallclock.monotonic()
-                    if ahead > 0:
-                        wallclock.sleep(min(ahead, 0.05))
+                thinking = False
+                try:
+                    thinking = bool(dive.helm.thinking_now())
+                except Exception:
+                    pass
+                if thinking:
+                    owed = dive.dt - (wallclock.monotonic() - stepped)
+                    if owed > 0:
+                        wallclock.sleep(owed)
                 if dive.done:
                     break
             dive.close()
