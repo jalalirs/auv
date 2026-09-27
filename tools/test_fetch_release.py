@@ -76,22 +76,52 @@ def test_reference_no_longer_writes_the_script_that_could_not_fail(tmp_path):
     assert "tools/fetch-release" in source
 
 
-def test_a_file_that_weighs_right_and_will_not_open_is_still_wrong(tmp_path, monkeypatch):
+def test_a_file_that_weighs_right_and_will_not_open_is_still_wrong(tmp_path):
     """The size check catches every truncation. This catches the rest: a file
-    that arrived whole and is corrupt anyway."""
+    that arrived whole and is corrupt anyway.
+
+    The reader is passed in, as the one real caller passes it. This test used to
+    branch on whether `rasterio` imported *in the test process* and assert
+    `opens(...) is False` in the else — which `opens` cannot return without a
+    reader, because with none it declines to judge. So the assertion was
+    unreachable wherever rasterio was installed and the test passed only on
+    boxes without it. It went green locally and red on the box an hour after
+    tifffile was installed there, which is the same environment-dependent
+    silence this whole function exists to stop.
+    """
     tool = _tool()
     where = _a_release(tmp_path, [("thing.tif", 4)])
     (where / "thing.tif").write_bytes(b"nope")
-    # With rasterio present this is false; without it, it declines to judge.
-    try:
-        import rasterio  # noqa: F401
-    except ImportError:
-        assert tool.opens(where, "thing.tif") is True
-    else:
-        assert tool.opens(where, "thing.tif") is False
+
+    def refuses(path):
+        raise ValueError("not a TIFF")
+
+    assert tool.opens(where, "thing.tif", refuses) is False
     # Anything that is not a raster is not its business.
     (where / "thing.txt").write_bytes(b"nope")
-    assert tool.opens(where, "thing.txt") is True
+    assert tool.opens(where, "thing.txt", refuses) is True
+
+
+def test_with_no_reader_it_declines_to_judge_rather_than_passing_quietly():
+    """`opens` with no reader returns True — it has not read anything and says
+    so through the caller, which names the reader in the summary. The bug was
+    never this return; it was a summary that called it an opened raster."""
+    tool = _tool()
+    assert tool.opens(pathlib.Path("/nowhere"), "thing.tif", None) is True
+
+
+def test_a_missing_codec_is_not_a_broken_file(tmp_path):
+    """A decoder saying it lacks a codec is not the file saying it is broken.
+    Eight good LZW DEMs were reported corrupt over exactly this."""
+    tool = _tool()
+    where = _a_release(tmp_path, [("thing.tif", 4)])
+    (where / "thing.tif").write_bytes(b"nope")
+
+    def no_codec(path):
+        raise ValueError("requires the imagecodecs package")
+
+    with pytest.raises(tool.Uncheckable):
+        tool.opens(where, "thing.tif", no_codec)
 
 
 def test_only_narrows_the_manifest(tmp_path):
