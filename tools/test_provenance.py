@@ -419,3 +419,18 @@ def test_the_merge_does_not_write_into_someone_elses_field():
     said = _source("ground")
     assert 'was = site["from"].get("source")' in said, (
         "the note builds `source` without reading what the place already said")
+
+
+def test_a_fit_does_not_carry_the_note_asking_for_it():
+    """`toCalibrate` says a calibration is owed. Doing it answers the note.
+
+    Al Fahal's read "ICESat-2 ATL24 crosses this reef; two granules would pin
+    the scale". Twelve passes and 26,726 points later the scale is pinned and
+    the rms is 2.00 m — and carrying that sentence forward unchanged would
+    tell the next reader none of it had happened.
+    """
+    said = _source("fit-depths")
+    assert '"toCalibrate"' in said.split("minus=")[1][:120], (
+        "fit-depths carries toCalibrate past the fit that honoured it")
+    assert '"wasOwed"' in said, (
+        "the note it answered is dropped without saying what it was")

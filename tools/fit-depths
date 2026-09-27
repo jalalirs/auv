@@ -141,8 +141,15 @@ def main() -> int:
         # this note straight into the place's own provenance. `surveyed` and
         # `fittedAgainst` are this tool's to set, so they are excluded and
         # written below.
+        # `toCalibrate` is a standing note that this is still owed — Al
+        # Fahal's read "ICESat-2 ATL24 crosses this reef; two granules would
+        # pin the scale". Carrying it past the fit that honoured it tells the
+        # next reader the calibration has not happened. `fittedAgainst` below
+        # says what was done and how well, which is the answer to it.
         **built.where_the_ground_came_from(
-            site["from"], minus=("surveyed", "fittedAgainst")),
+            site["from"],
+            minus=("surveyed", "fittedAgainst", "toCalibrate")),
+        "wasOwed": site["from"].get("toCalibrate"),
         "surveyed": False,
         "fittedAgainst": {
             "source": "ICESat-2 ATL24 v002 seafloor photons",
