@@ -267,3 +267,29 @@ def test_a_file_that_is_not_a_raster_needs_no_reader():
     tool = _tool()
     assert tool.opens(pathlib.Path("/nowhere"), "notes.xml", None) is True
     assert tool.opens(pathlib.Path("/nowhere"), "cloud.laz", None) is True
+
+
+def test_a_missing_codec_is_not_a_broken_file():
+    """Every one of Looe Key's DEMs is LZW, and `tifffile` without `imagecodecs`
+    raises on all eight. Reporting those as corrupt would send somebody re-fetching
+    9 GB that was already there — worse than not checking at all."""
+    tool = _tool()
+
+    def cannot(path):
+        raise ValueError("<COMPRESSION.LZW: 5> requires the 'imagecodecs' package")
+
+    with pytest.raises(tool.Uncheckable):
+        tool.opens(pathlib.Path("/nowhere"), "dem.tif", cannot)
+
+    def truly_broken(path):
+        raise OSError("not a TIFF")
+
+    assert tool.opens(pathlib.Path("/nowhere"), "dem.tif", truly_broken) is False
+
+
+def test_the_summary_separates_unread_from_unreadable():
+    """Eight rasters opened and eight not decodable is not "sixteen open", and it is
+    not "eight broken" either."""
+    inside = (HERE / "fetch-release").read_text()
+    assert "this reader has no codec for, which says nothing about them" in inside
+    assert "pip install imagecodecs" in inside
