@@ -274,19 +274,27 @@ def main() -> int:
             print(f"nothing at {one}", file=sys.stderr)
             return 1
 
+    # What the reef is called, from the reef. Pointed at a package the directory
+    # is named after a build — `ver_01M2NCG…` — and two builds of one reef would
+    # read as two reefs, which is the mistake this whole tool exists to catch.
+    try:
+        called = json.loads((place / "site.json").read_text())["name"]
+    except Exception:
+        called = place.name
+
     said = the_same_ground(place, asked.cell, asked.where, first, then)
     alike = the_same_way(how_it_was_flown(first), how_it_was_flown(then))
 
     into = pathlib.Path(asked.into).expanduser() if asked.into else then / "against"
     into.mkdir(parents=True, exist_ok=True)
     (into / "again.json").write_text(json.dumps(
-        {"place": place.name,
+        {"place": called,
          "ground": {k: v for k, v in said.items()
                     if k not in ("grid", "hitFirst", "hitThen", "planned")},
          "flownAlike": alike}, indent=2, default=str) + "\n")
-    (into / "again.html").write_text(page(place.name, said, alike))
+    (into / "again.html").write_text(page(called, said, alike))
 
-    print(f"  {place.name}: round two against round one")
+    print(f"  {called}: round two against round one")
     print(f"    {said['inBoth']} cells in both · {said['lostSinceRoundOne']} covered "
           f"then and missed now · {said['newInRoundTwo']} new")
     for one in alike:
