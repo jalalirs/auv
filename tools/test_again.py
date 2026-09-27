@@ -159,3 +159,30 @@ def test_the_page_needs_nothing_to_render(tmp_path):
     for fetched in ("<script", "@import", "<link", "src=", 'href="http'):
         assert fetched not in page, fetched
     assert "-apple-system" in page
+
+
+def test_the_reef_is_named_by_the_reef_not_by_its_folder(tmp_path):
+    """Pointed at a package, the folder is named after a build.
+
+    `ver_01M2NCGTERKN5Q1GQE61R6VGP9` names a build of Looe Key and not Looe
+    Key, so two builds of one reef would head two pages as two reefs — which
+    is the exact confusion this tool exists to catch in somebody else's data.
+    """
+    place = tmp_path / "ver_01M2NCGTERKN5Q1GQE61R6VGP9"
+    place.mkdir()
+    (place / "site.json").write_text(json.dumps({"name": "looe-key"}))
+    inside = (HERE / "again").read_text()
+    # The name is read from the place, and the folder is only the fallback.
+    assert 'json.loads((place / "site.json").read_text())["name"]' in inside
+    assert "called = place.name" in inside
+    assert "place.name" not in inside.split("def main(")[-1].replace(
+        "called = place.name", "")
+
+
+def test_a_place_that_does_not_name_itself_falls_back_to_its_folder(tmp_path):
+    """Better a folder name than no name: a page with no heading is worse than
+    a page headed by a directory, and the refusal belongs to whether the
+    rounds can be compared rather than to what the reef is called."""
+    inside = (HERE / "again").read_text()
+    where = inside.index("called = json.loads")
+    assert "except Exception:" in inside[where:where + 400]
