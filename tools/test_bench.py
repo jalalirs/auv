@@ -6,6 +6,7 @@ things struck". Three of those were reported.
 
 import importlib.machinery
 import importlib.util
+import math
 import pathlib
 import re
 
@@ -371,77 +372,63 @@ def test_a_dry_bench_over_a_place_asks_the_runtime_for_the_bottom():
     assert 'dive.floor = -12.0' in inside, "the flat bottom is still the default"
 
 
-def test_things_stand_on_the_line_the_task_walks():
-    """Not somewhere the vehicle was never going.
+TRACK_EAST = [[100.0 + i * 2.0, -25.0 - i * 0.12, -4.0] for i in range(150)]
 
-    A bench that says "flown through things" while the vehicle passed nothing is
-    worse than one that never claimed it, so the frames are placed off the task's
-    own geometry: three of them, spaced along the line from where the dive starts
-    to the furthest point the task states.
+
+def test_things_stand_on_the_path_the_vehicle_actually_flies():
+    """Four versions placed them on the line the task states and all four
+    measured `struck=0` with both controllers identical to three decimals.
+
+    Over a 200 m transect in 0.13 m/s of current the vehicle bows about twelve
+    metres south of the stated line, so frames on that line were passed with five
+    metres to spare. They go on the flown track instead.
     """
     tool = _bench()
-    reach = {"kind": "reach", "dx": 240.0, "dy": 0.0, "seed": 11}
-    said = tool.things_in_the_way(reach, 11, lambda x, y: -18.0)["things"]
-    assert len(said) == 3
-    # Spaced along the line, at a quarter, a half and three quarters.
-    assert [round(one["x"] / 60.0) for one in said] == [1, 2, 3]
-    # And never further out than the goal.
-    assert all(0 < one["x"] < 240.0 for one in said)
-    # Off the line by less than the thing is wide, so every one of them is in
-    # the way of a vehicle flying the line.
-    assert all(abs(one["y"]) <= 2.0 * 0.6 for one in said)
-    # One kind of thing, wide enough to be in the way, and as tall as an honest
-    # frame gets when the task states no altitude to size it against.
-    assert all(one["kind"] == "nursery-frame" for one in said)
-    assert all(one["heightM"] == 6.0 for one in said)
-
-
-def test_both_controllers_meet_the_same_things():
-    """Which is the whole point of a bench. Seeded from the task's own seed, so
-    two controllers flown at the same task find the same three frames."""
-    tool = _bench()
-    task = {"kind": "transect", "lengthM": 200.0}
     flat = lambda x, y: -18.0
-    assert tool.things_in_the_way(task, 7, flat) == tool.things_in_the_way(task, 7, flat)
-    # And a different task is a different arrangement, not the same one moved.
-    assert tool.things_in_the_way(task, 7, flat) != tool.things_in_the_way(task, 8, flat)
+    said = tool.things_in_the_way(TRACK_EAST, 11, flat,
+                                  {"kind": "transect", "altitudeM": 3.0,
+                                   "altitudeBandM": 0.6})["things"]
+    assert len(said) == 3
+    # Each one is on the track, within the width of the thing itself.
+    for one in said:
+        near = min(math.hypot(one["x"] - p[0], one["y"] - p[1]) for p in TRACK_EAST)
+        assert near <= one["radiusM"], f"{one['id']} is {near:.2f} m off the track"
+    # Spread along it rather than bunched, and in order.
+    assert said[0]["x"] < said[1]["x"] < said[2]["x"]
 
 
-def test_things_are_placed_off_whatever_the_task_calls_its_distance():
-    """Read off the field rather than special-cased by kind: a task whose
-    geometry this did not recognise would drop its frames at the origin."""
+def test_the_things_follow_a_track_that_turns():
+    """Offset across the direction of travel, not across a fixed axis: a task
+    that doubles back would otherwise have its things shifted along the path
+    instead of out of it."""
     tool = _bench()
-    far = tool.how_far_the_task_goes
-    assert far({"kind": "reach", "dx": 250, "dy": 0}) == (250.0, 0.0)
-    assert far({"kind": "transect", "lengthM": 200}) == (200.0, 0.0)
-    assert far({"kind": "return", "awayM": 150}) == (150.0, 0.0)
-    assert far({"kind": "treat", "radiusM": 15}) == (15.0, 0.0)
-    assert far({"kind": "revisit", "marks": [{"dx": 50, "dy": 0},
-                                            {"dx": 30, "dy": 65}]}) == (30.0, 65.0)
+    north = [[50.0, -25.0 + i * 2.0, -4.0] for i in range(150)]
+    said = tool.things_in_the_way(north, 4, lambda x, y: -18.0,
+                                  {"kind": "reach"})["things"]
+    for one in said:
+        near = min(math.hypot(one["x"] - p[0], one["y"] - p[1]) for p in north)
+        assert near <= one["radiusM"]
 
 
-def test_a_task_that_does_not_say_how_far_it_goes_is_refused():
-    """Rather than quietly given frames at the origin, which the vehicle starts
-    inside — a dive that began already touching a frame would score every
-    controller the same and it would be the arrangement's fault."""
+def test_a_reference_dive_that_went_nowhere_is_refused():
+    """A task nothing flies cannot be flown through things, and three frames on
+    top of a stationary vehicle would score every controller the same."""
     tool = _bench()
-    with pytest.raises(SystemExit):
-        tool.things_in_the_way({"kind": "hold"}, 3, lambda x, y: -18.0)
-    # And ground too small to put anything in the way of is refused too.
-    with pytest.raises(SystemExit):
-        tool.things_in_the_way({"kind": "inspect", "dx": 4, "dy": 0}, 3,
-                               lambda x, y: -18.0)
+    with pytest.raises(SystemExit) as refused:
+        tool.things_in_the_way([[0.0, 0.0, -5.0]], 1, lambda x, y: -18.0,
+                               {"kind": "reach"})
+    assert "went nowhere" in str(refused.value)
 
 
-def test_a_row_flown_through_things_says_so():
-    """Because it is not comparable with one flown through open water, and every
-    row already in the record was flown through open water."""
+def test_the_reference_is_the_floor_and_not_the_controller_being_measured():
+    """An arrangement that moved with the controller would not be one
+    arrangement flown two ways, and the comparison would mean nothing."""
     tool = _bench()
-    assert tool.named("quick", "wary", "reach") == "bench · quick · wary · reach"
-    assert tool.named("quick", "wary", "reach", through=True) \
-        == "bench · quick · wary through things · reach"
-    assert tool.named("quick", "wary", "reach", "remus-100", "al-fahal", True) \
-        == "bench · quick · wary on remus-100 over al-fahal through things · reach"
+    assert tool.THE_FLOOR == "pursue"
+    inside = (HERE / "bench").read_text()
+    inside = inside[inside.index("def command_dry("):]
+    assert "flown(THE_FLOOR)" in inside
+    assert "args.controller, layout" in inside
 
 
 def test_the_thing_is_both_tall_enough_and_wide_enough():
@@ -501,26 +488,6 @@ def test_the_palette_here_matches_the_runtime_s_own():
         f"{kind} is {radius:g} m across here and {numbers[0]:g} m in the runtime"
 
 
-def test_a_thing_stands_on_the_bottom_and_not_at_the_surface():
-    """The second thing this got wrong, and it made the whole mechanism a no-op.
-
-    `world.py` gives a thing that lands on the ground and does not say where the
-    ground is a depth of **zero**. Three marker posts three metres tall therefore
-    stood from the surface down, in the air fifteen metres above the vehicle, and
-    the measured result was `struck=0` with `pursue` and `wary` tied to three
-    decimals — a bench reporting a dive flown through things that passed nothing.
-    """
-    tool = _bench()
-    reef = lambda x, y: -18.0 - x / 100.0        # deepening to the east
-    said = tool.things_in_the_way({"kind": "reach", "dx": 300.0, "dy": 0.0}, 5,
-                                  reef)["things"]
-    assert all("groundM" in one for one in said), "a thing with no bottom is at zero"
-    for one in said:
-        assert one["groundM"] == pytest.approx(18.0 + one["x"] / 100.0, abs=0.01)
-    # Positive metres down, the way a layout states it, and never above water.
-    assert all(one["groundM"] > 0 for one in said)
-
-
 def test_the_bottom_comes_from_the_place_the_dive_flies_over():
     """Not from a number this picked. A layout has to be complete before the
     dive exists — the world is built from the brief in the constructor — so the
@@ -533,37 +500,29 @@ def test_the_bottom_comes_from_the_place_the_dive_flies_over():
     assert "THE_FLAT_FLOOR = -12.0" in inside
 
 
-def test_things_are_placed_where_the_dive_begins_not_at_the_origin():
-    """The fourth thing this got wrong, and the one that took four measured runs
-    to see, because the first three all looked like geometry.
 
-    A task's geometry is relative to where the dive starts; a layout is in the
-    world's own coordinates. Over a real reef the place decides where the vehicle
-    goes in — an Al Fahal dive starts around (854, -1106) — so frames placed
-    fifty, a hundred and a hundred and fifty metres from the origin sit a
-    kilometre and a half behind the vehicle. `struck` was 0 and both controllers
-    scored 0.407, four times running.
-    """
+
+def test_a_thing_still_stands_on_the_bottom():
+    """`world.py` gives a thing that lands on the ground and does not say where
+    the ground is a depth of zero — at the surface, in the air above the dive.
+    Measured that way: `struck=0`, both controllers tied at 0.407."""
     tool = _bench()
-    reach = {"kind": "reach", "dx": 240.0, "dy": 0.0}
+    reef = lambda x, y: -18.0 - x / 100.0
+    said = tool.things_in_the_way(TRACK_EAST, 5, reef, {"kind": "reach"})["things"]
+    assert all("groundM" in one for one in said)
+    for one in said:
+        assert one["groundM"] == pytest.approx(18.0 + one["x"] / 100.0, abs=0.01)
+    assert all(one["groundM"] > 0 for one in said)
+
+
+def test_both_controllers_meet_the_same_arrangement():
+    """Seeded from the task's own seed and placed off a reference track flown by
+    the floor controller, so the arrangement is a property of the task and not of
+    whoever is being measured."""
+    tool = _bench()
     flat = lambda x, y: -18.0
-    here = tool.things_in_the_way(reach, 3, flat)["things"]
-    there = tool.things_in_the_way(reach, 3, flat, (854.0, -1106.0))["things"]
-    for near, far in zip(here, there):
-        assert far["x"] == pytest.approx(near["x"] + 854.0, abs=0.02)
-        assert far["y"] == pytest.approx(near["y"] - 1106.0, abs=0.02)
-    # And the bottom is read at the moved position, not at the origin's.
-    deepening = lambda x, y: -10.0 - x / 1000.0
-    moved = tool.things_in_the_way(reach, 3, deepening, (854.0, 0.0))["things"]
-    assert all(one["groundM"] == pytest.approx(10.0 + one["x"] / 1000.0, abs=0.01)
-               for one in moved)
-
-
-def test_the_world_is_put_in_after_the_place_is_open():
-    """Because until it is open nobody knows where the dive begins. The world is
-    built from the brief in the dive's constructor, so a layout computed there
-    could only ever be relative to the origin."""
-    inside = (HERE / "bench").read_text()
-    inside = inside[inside.index("def command_dry("):]
-    assert inside.index("open_dry()") < inside.index("things_in_the_way(")
-    assert "dive.position[:2]" in inside
+    task = {"kind": "transect", "altitudeM": 3.0, "altitudeBandM": 0.6}
+    assert tool.things_in_the_way(TRACK_EAST, 7, flat, task) \
+        == tool.things_in_the_way(TRACK_EAST, 7, flat, task)
+    assert tool.things_in_the_way(TRACK_EAST, 7, flat, task) \
+        != tool.things_in_the_way(TRACK_EAST, 8, flat, task)
