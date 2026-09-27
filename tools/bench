@@ -337,6 +337,35 @@ def named(suite: str, controller: str, task: str, vehicle: str = THE_USUAL_HULL,
     return f"bench · {suite} · {whose} · {task}"
 
 
+def where_it_flew(name: str) -> dict:
+    """Read a row's name back into the conditions it was flown under.
+
+    `named` leaves the defaults out so a name stays short, which means the
+    usual place, the usual hull and the usual water are recorded *nowhere* —
+    they are implied by absence. That is a convention, not a record. A row
+    that says `score: 0.489` and does not say which reef, which hull or which
+    water is not a measurement anybody can repeat, and comparability between a
+    first survey and a second is the thing being sold.
+
+    So every row carries them as fields. This is the one inverse of `named`,
+    so the two cannot drift apart, and the defaults it fills in are the same
+    constants `named` elides.
+    """
+    parts = [p.strip() for p in name.split("·")]
+    whose = parts[2] if len(parts) > 2 else ""
+    flew = {"place": THE_USUAL_PLACE, "vehicle": THE_USUAL_HULL,
+            "water": WATER, "through": False}
+    if " through things" in whose:
+        flew["through"] = True
+        whose = whose.replace(" through things", "")
+    for word, key in ((" in ", "water"), (" over ", "place"), (" on ", "vehicle")):
+        if word in whose:
+            whose, _, said = whose.rpartition(word)
+            flew[key] = said
+    flew["controller"] = whose
+    return flew
+
+
 # The controllers that live inside the runtime. Everything else named on the
 # command line is somebody's own, deployed through the SDK, and is flown by
 # attaching it to the dive rather than by asking the helm for it by name.
@@ -850,6 +879,9 @@ def command_dry(args) -> int:
         rows.append({
             "name": on, "suite": args.suite,
             "controller": on.split("·")[2].strip(), "task": task,
+            # Where and in what, as fields rather than implied by what the
+            # name leaves out. See `where_it_flew`.
+            **{k: v for k, v in where_it_flew(on).items() if k != "controller"},
             "score": said.get("score", 0.0),
             "ended": dive.ended or "time",
             "seconds": said.get("seconds", 0.0),
@@ -993,6 +1025,8 @@ def flown(platform) -> list[dict]:
             made[dive["name"]] = when
             rows[dive["name"]] = ({
                 "name": dive["name"], "suite": parts[1], "controller": parts[2], "task": parts[3],
+                **{k: v for k, v in where_it_flew(dive["name"]).items()
+                   if k != "controller"},
                 "score": task_said.get("score", 0.0),
                 "ended": out.get("ended", "?"),
                 "seconds": task_said.get("seconds", 0.0),

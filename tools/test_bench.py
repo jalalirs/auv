@@ -801,3 +801,48 @@ def test_the_runtime_would_ignore_flat_conditions():
     assert 'conditions.get("parameters")' in said, (
         "the runtime no longer reads conditions from `parameters`, so the bench's "
         "nesting may now be wrong in the other direction")
+
+
+# ── a row says where it flew, not only what scored ───────────────────────────
+# `named` leaves the defaults out so a name stays short, which meant the usual
+# place, hull and water were recorded nowhere — implied by absence. Every row
+# in docs/bench/quick.json said score 0.489 over no reef in no hull. A number
+# with no conditions is not one a second survey can be compared against, and
+# comparability between round one and round two is the thing being sold.
+
+def test_where_it_flew_inverts_named():
+    bench = _bench()
+    for vehicle in (bench.THE_USUAL_HULL, "bluerov2-heavy", "remus-100"):
+        for place in (bench.THE_USUAL_PLACE, "looe-key", "al-fahal"):
+            for water in (bench.WATER, "one-knot"):
+                for through in (False, True):
+                    name = bench.named("quick", "pursue", "reach", vehicle,
+                                       place, through, water)
+                    flew = bench.where_it_flew(name)
+                    assert flew["vehicle"] == vehicle, name
+                    assert flew["place"] == place, name
+                    assert flew["water"] == water, name
+                    assert flew["through"] is through, name
+                    assert flew["controller"] == "pursue", name
+
+
+def test_a_default_is_filled_in_not_left_blank():
+    """The whole point: the elided default becomes a recorded value."""
+    bench = _bench()
+    flew = bench.where_it_flew("bench · quick · ponder · reach")
+    assert flew["place"] == bench.THE_USUAL_PLACE
+    assert flew["vehicle"] == bench.THE_USUAL_HULL
+    assert flew["water"] == bench.WATER
+    assert flew["through"] is False
+
+
+def test_a_controller_whose_name_carries_a_keyword():
+    """`learned-hold` and anything with 'on' or 'in' inside it must survive."""
+    bench = _bench()
+    for controller in ("learned-hold", "onward", "inside-out", "go-around"):
+        name = bench.named("quick", controller, "reach", "remus-100",
+                           "looe-key", False, "one-knot")
+        flew = bench.where_it_flew(name)
+        assert flew["controller"] == controller, name
+        assert flew["vehicle"] == "remus-100", name
+        assert flew["place"] == "looe-key", name
