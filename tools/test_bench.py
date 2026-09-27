@@ -321,3 +321,43 @@ def test_the_bench_refuses_to_run_on_the_box_itself():
     source = (HERE / "matrix").read_text()
     assert "not_on_the_box_itself()" in source.split("class Platform:")[1][:200]
     assert "the box itself" in source
+
+
+def test_the_reef_is_in_the_row_because_two_reefs_are_two_things():
+    """The hull was put in the name for this reason and the reef was not.
+
+    A transect over Looe Key and a transect over Al Fahal are the same task over
+    a four-percent-coral reef in eighteen metres and a Red Sea fore-reef in
+    thirty. Both rows were called "bench · quick · pursue · transect", so the
+    second read as already flown and never ran.
+    """
+    assert tool.named("quick", "pursue", "transect") \
+        == "bench · quick · pursue · transect"
+    assert tool.named("quick", "pursue", "transect", place="looe-key") \
+        == "bench · quick · pursue · transect"
+    assert tool.named("quick", "pursue", "transect", place="al-fahal") \
+        == "bench · quick · pursue over al-fahal · transect"
+    # And both at once, each in its own words.
+    assert tool.named("quick", "pursue", "transect", "remus-100", "al-fahal") \
+        == "bench · quick · pursue on remus-100 over al-fahal · transect"
+
+
+def test_two_reefs_are_two_rows():
+    """The consequence, stated as the thing that was wrong: the names differ."""
+    here = tool.named("standard", "wary", "hold-station", place="looe-key")
+    there = tool.named("standard", "wary", "hold-station", place="shushah")
+    assert here != there
+
+
+def test_a_dry_bench_over_a_place_asks_the_runtime_for_the_bottom():
+    """One implementation of "where is the bottom", not two.
+
+    A dry bench used to pin the floor flat at twelve metres, which is why
+    `wary` — `pursue` with the sonar on — came out identical to `pursue` to the
+    last decimal: there was nothing for the sonar to find. Flown over a real
+    place it asks the same `open_dry` a platform dive asks, so the two cannot
+    drift apart.
+    """
+    inside = (HERE / "bench").read_text()
+    assert "dive.open_dry()" in inside
+    assert 'dive.floor = -12.0' in inside, "the flat bottom is still the default"

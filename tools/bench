@@ -69,9 +69,12 @@ def seed_for(suite: str, task: str) -> int:
 # The hull the suite is flown on unless somebody says otherwise. Named here
 # because a row's name has to say when it was *not* that one.
 THE_USUAL_HULL = "bluerov2"
+# And the reef a bench is flown over unless somebody says otherwise.
+THE_USUAL_PLACE = "looe-key"
 
 
-def named(suite: str, controller: str, task: str, vehicle: str = THE_USUAL_HULL) -> str:
+def named(suite: str, controller: str, task: str, vehicle: str = THE_USUAL_HULL,
+          place: str = THE_USUAL_PLACE) -> str:
     """What a row is called, and it has to name everything being compared.
 
     The hull was not in it. Fly `pursue` on a BlueROV2 and then on a Heavy
@@ -80,10 +83,22 @@ def named(suite: str, controller: str, task: str, vehicle: str = THE_USUAL_HULL)
     reports whichever came back first. A Heavy has eight thrusters and half
     again the surge; that is not the same controller doing better.
 
+    Nor was the reef, for the same reason and with the same consequence. A
+    transect over Looe Key and a transect over Al Fahal are the same task over
+    a four-percent-coral reef in eighteen metres and a Red Sea fore-reef in
+    thirty: a controller holding altitude over one is not doing what a
+    controller holding altitude over the other is doing. Both rows were called
+    "bench · quick · pursue · transect", so the second was reported as already
+    flown and never ran.
+
     Put in the controller's own field rather than as a fifth part, so every
     row already in the record still parses and reads as it did.
     """
-    whose = controller if vehicle == THE_USUAL_HULL else f"{controller} on {vehicle}"
+    whose = controller
+    if vehicle != THE_USUAL_HULL:
+        whose = f"{whose} on {vehicle}"
+    if place != THE_USUAL_PLACE:
+        whose = f"{whose} over {place}"
     return f"bench · {suite} · {whose} · {task}"
 
 
@@ -188,7 +203,7 @@ def command_run(args) -> int:
           f"{DIM}· {built_or_built_by(flying)}"
           f" · {water_name} · {technology_name}{OFF}")
     for task in tasks:
-        name = named(args.suite, args.controller, task, args.vehicle)
+        name = named(args.suite, args.controller, task, args.vehicle, args.place)
         if name in already:
             print(f"{DIM}  {task} — already flown{OFF}")
             continue
@@ -265,23 +280,60 @@ def command_dry(args) -> int:
     model = Hydrodynamics.from_package(package)
     water_name, water = WATERS[WATER]
     technology_name, technology = POSITIONING[TECHNOLOGY]
+    # What the reef is called, from the reef. A row named after the directory a
+    # package happens to sit in would say `ver_01M2NCG…`, which names a build
+    # and not a place, and two builds of one reef would read as two reefs.
+    over = THE_USUAL_PLACE
+    if args.over:
+        try:
+            over = json.loads((pathlib.Path(args.over).expanduser()
+                               / "site.json").read_text())["name"]
+        except Exception:
+            raise SystemExit(f"{args.over} does not say what place it is: a row "
+                             "has to name the reef it was flown over")
     rows = []
     print(f"{BOLD}{args.suite}{OFF} flown here by {BOLD}{args.controller}{OFF} "
-          f"{DIM}· {water_name} · {technology_name} · no simulator{OFF}")
+          f"{DIM}· {water_name} · {technology_name} · "
+          f"{'over ' + over if args.over else 'a flat bottom'} · no simulator{OFF}")
     for task in SUITES[args.suite]:
         objective = dict(TASKS[task])
         objective["controller"] = args.controller
         objective["seed"] = seed_for(args.suite, task)
         seconds = float(objective.get("timeLimitS") or objective.get("seconds") or 600.0)
-        dive = Dive({"durationSeconds": seconds + 60.0,
-                     "initialState": {"positionM": [0.0, 0.0, -6.0]},
-                     "vehiclePath": str(package.parent),
-                     "objective": objective,
-                     "conditions": {**water, **technology}},
+        brief = {"durationSeconds": seconds + 60.0,
+                 "initialState": {"positionM": [0.0, 0.0, -6.0]},
+                 "vehiclePath": str(package.parent),
+                 "objective": objective,
+                 "conditions": {**water, **technology}}
+        if args.over:
+            brief["cityPath"] = str(pathlib.Path(args.over).expanduser())
+            # Over a real place the vehicle starts where the place says, not at
+            # a depth this picked: six metres down is the surface on one reef
+            # and inside the bottom on another.
+            brief.pop("initialState")
+        dive = Dive(brief,
                     Body(model), Allocator(model), _pathlib.Path("nowhere.usda"),
                     lambda kind, **said: None)
-        dive.floor = -12.0
-        dive.begin_task(objective)
+        if args.over:
+            # A real bottom, and the same code that gives a platform dive its
+            # bottom rather than a second one that would agree until it did not.
+            # This is what a dive costs with nothing to see: no renderer, no
+            # stage, no card — and the place's heightfield all the same, which
+            # is what both the multibeam and the imaging sonar march against.
+            #
+            # It matters for what the bench can compare. Over a floor pinned
+            # flat at twelve metres, `wary` is `pursue` with the sonar on and
+            # nothing for the sonar to find, so the two came out identical to
+            # the last decimal — a bench that could not tell apart the one
+            # difference between them. Over a real reef they are two
+            # controllers.
+            if not dive.open_dry():
+                raise SystemExit(f"{args.over} does not describe itself: a place "
+                                 "to fly over needs its site.json and the "
+                                 "heightfield that names")
+        else:
+            dive.floor = -12.0
+            dive.begin_task(objective)
         # A controller's own knobs, moved before it flies. Two settings of one
         # controller are two controllers as far as a bench is concerned, and
         # the interesting question about a thinking one is what its thinking
@@ -306,7 +358,7 @@ def command_dry(args) -> int:
         # The hull here too: `bench dry` takes --vehicle and a dry row that
         # did not name it would collide with the flown one exactly as the
         # flown ones collided with each other.
-        on = named(args.suite, called, task, args.vehicle)
+        on = named(args.suite, called, task, args.vehicle, over)
         rows.append({
             "name": on, "suite": args.suite,
             "controller": on.split("·")[2].strip(), "task": task,
@@ -643,6 +695,10 @@ def main() -> int:
     drying = doing.add_parser("dry", help="fly the suite here, with no simulator")
     drying.add_argument("--controller", required=True)
     drying.add_argument("--vehicle", default="bluerov2")
+    drying.add_argument("--over", default="", metavar="PLACE",
+                        help="a packaged place to fly over, so the bottom is a "
+                             "real bottom and a controller that looks has "
+                             "something to see")
     drying.add_argument("--tune", action="append", default=[], metavar="NAME=VALUE",
                         help="move one of the controller's own parameters")
     drying.add_argument("--as", dest="called", default="",
