@@ -57,6 +57,43 @@ def spread_of(residual):
     return middle, float(np.median(np.abs(residual - middle)) * 1.4826)
 
 
+BANDS = ((0.0, 5.0), (5.0, 10.0), (10.0, 15.0), (15.0, 25.0), (25.0, None))
+
+
+def what_is_left_by_depth(measured, fitted):
+    """The residual by depth band, because one rms hides its own shape.
+
+    Al Fahal fitted to rms 2.00 m from 10.50 m, which reads as solved. It is
+    not: 22,430 of its 26,726 measured depths are in the top five metres, so
+    the line is theirs, and what is left runs +0.62 m there and -16.35 m
+    between fifteen and twenty-five — worse at depth than the seabed it
+    replaced. A controller told to fly a transect at twenty metres is the one
+    who finds out.
+
+    `measured` and `fitted` are negative-down, as everything here is.
+    """
+    import numpy as np
+    left = np.asarray(measured) - np.asarray(fitted)
+    depth = -np.asarray(measured)
+    out = []
+    for near, far in BANDS:
+        inside = (depth >= near) if far is None else ((depth >= near) & (depth < far))
+        if not inside.any():
+            continue
+        out.append({
+            "fromM": near, "toM": far,
+            "points": int(inside.sum()),
+            "medianM": round(float(np.median(left[inside])), 2),
+            "rmsM": round(float(np.sqrt(np.mean(left[inside] ** 2))), 2),
+        })
+    return out
+
+
+def worst_band(bands):
+    """The band furthest out, by median. None when there are no bands."""
+    return max(bands, key=lambda b: abs(b["medianM"]), default=None) or None
+
+
 def main() -> int:
     parse = argparse.ArgumentParser(description="refit a seabed against measured depths")
     parse.add_argument("place")
@@ -109,6 +146,32 @@ def main() -> int:
           f"rms {now_rms:.2f} m")
     print(f"  dropped {int((~keep).sum()):,} of {len(x):,} as outliers")
 
+    # What is left over, by depth, and never only as one number.
+    #
+    # Al Fahal fitted to rms 2.00 m from 10.50 m, which reads as solved. It is
+    # not: 22,430 of its 26,726 measured depths are in the top five metres, so
+    # the line is theirs, and the residual runs -0.62 m there, +3.24 m by ten,
+    # +5.73 m by fifteen and **+16.35 m** between fifteen and twenty-five —
+    # worse at depth than the seabed it replaced. One slope cannot hold a
+    # log-ratio over a range where a tenth of a percent of the points sit at
+    # the far end, and a controller told to fly a transect at twenty metres is
+    # the one who finds out.
+    #
+    # So the bands are printed and recorded beside the rms. A number too good
+    # deserves the same suspicion as one too bad.
+    bands = what_is_left_by_depth(measured, fitted)
+    worst = worst_band(bands)
+    print("  what is left, by depth:")
+    for b in bands:
+        to = "deeper" if b["toM"] is None else f"{b['toM']:.0f} m"
+        print(f"    {b['fromM']:>4.0f} to {to:>7}: {b['points']:>6,} points, "
+              f"median {b['medianM']:+.2f} m, rms {b['rmsM']:.2f} m")
+    if worst and abs(worst["medianM"]) > 3 * max(now_rms, 0.01) / 2:
+        print(f"  the rms is not the whole story: {worst['points']:,} points "
+              f"below {worst['fromM']:.0f} m are still "
+              f"{worst['medianM']:+.2f} m out. One slope does not hold over "
+              f"this range.")
+
     if now_rms >= was_rms:
         print("  the fit does not improve this seabed; leaving it alone",
               file=__import__("sys").stderr)
@@ -159,6 +222,9 @@ def main() -> int:
             "rmsBeforeM": round(was_rms, 2),
             "rmsAfterM": round(now_rms, 2),
             "spreadAfterM": round(now_spread, 2),
+            # Beside the rms, never instead of it: see the note above.
+            "residualByDepth": bands,
+            "worstBandMedianM": (worst or {}).get("medianM"),
             "calibratedBetweenM": [round(-shallowest, 1), round(-deepest, 1)],
             "extrapolatedShare": round(beyond, 3),
             "note": ("derived from Sentinel-2 and rescaled to measured "
