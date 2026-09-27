@@ -174,7 +174,7 @@ def how_far_the_task_goes(objective: dict) -> tuple[float, float]:
                      "there is nowhere to put things that would be in the way")
 
 
-def things_in_the_way(objective: dict, seed: int, ground) -> dict:
+def things_in_the_way(objective: dict, seed: int, ground, begins_at=(0.0, 0.0)) -> dict:
     """Things standing on the line the task walks, tall enough to be met.
 
     Reef furniture rather than mooring blocks because this is reef work and a
@@ -194,6 +194,15 @@ def things_in_the_way(objective: dict, seed: int, ground) -> dict:
     fifteen metres under, and a bench would have called that flying through
     things. `ground` answers where the bottom is at a point, out of the same
     heightfield the dive itself flies over.
+
+    And `begins_at` is the fourth thing this got wrong, which took four measured
+    runs to see because the first three all looked like geometry. **A task's
+    geometry is relative to where the dive starts and a layout is in the world's
+    own coordinates.** Over a real reef the place decides where the vehicle goes
+    in — an Al Fahal dive starts around (854, -1106) — so three frames placed
+    fifty, a hundred and a hundred and fifty metres from the *origin* are three
+    frames a kilometre and a half behind the vehicle, and `struck` was 0 for the
+    fourth time. Everything below is offset by where the dive actually begins.
     """
     import random
 
@@ -215,8 +224,8 @@ def things_in_the_way(objective: dict, seed: int, ground) -> dict:
     for i in range(THINGS_IN_THE_WAY):
         at = reach * (i + 1) / (THINGS_IN_THE_WAY + 1)
         off = draw.uniform(-room, room)
-        x = round(along[0] * at + across[0] * off, 2)
-        y = round(along[1] * at + across[1] * off, 2)
+        x = round(float(begins_at[0]) + along[0] * at + across[0] * off, 2)
+        y = round(float(begins_at[1]) + along[1] * at + across[1] * off, 2)
         # Positive metres down, which is how a layout states it.
         things.append({"id": f"thing-{i + 1}", **thing, "x": x, "y": y,
                        "groundM": round(-float(ground(x, y)), 2)})
@@ -476,8 +485,6 @@ def command_dry(args) -> int:
                  "vehiclePath": str(package.parent),
                  "objective": objective,
                  "conditions": {**water, **technology}}
-        if args.through:
-            brief["layout"] = things_in_the_way(objective, objective["seed"], bottom)
         if args.over:
             brief["cityPath"] = str(pathlib.Path(args.over).expanduser())
             # Over a real place the vehicle starts where the place says, not at
@@ -507,6 +514,17 @@ def command_dry(args) -> int:
         else:
             dive.floor = -12.0
             dive.begin_task(objective)
+        if args.through:
+            # Put in after opening, because until the place is open nobody knows
+            # where the dive begins — and a task's geometry is relative to that
+            # while a layout is in the world's own coordinates. Frames placed off
+            # the origin instead sat a kilometre and a half behind an Al Fahal
+            # dive, which is how this read `struck=0` four times while looking
+            # like a geometry problem.
+            from world import World
+
+            dive.world = World(things_in_the_way(
+                objective, objective["seed"], bottom, dive.position[:2]))
         # A controller's own knobs, moved before it flies. Two settings of one
         # controller are two controllers as far as a bench is concerned, and
         # the interesting question about a thinking one is what its thinking
