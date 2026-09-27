@@ -28,6 +28,9 @@ import argparse
 import json
 import math
 import pathlib
+
+# Next to this script, which is where python looks first.
+import built
 import sys
 
 HABITAT_ORDER = ["Unconsolidated Sediment", "Seagrass (Discontinuous)", "Seagrass (Continuous)",
@@ -125,11 +128,12 @@ def main() -> int:
     # rebuild. Fixing the leak one layer out and opening another one is the
     # same mistake, so the merge describes itself in its own sentence and
     # never in somebody else's field.
-    carried = {k: site["from"][k] for k in
-               ("method", "observedAt", "opticalLimitM", "bottomVisibleFraction",
-                "beyondOpticalDepthFraction", "medianDetailM", "toCalibrate",
-                "constructedPastTheSensor", "fittedAgainst")
-               if k in site["from"]}
+    # One shared list, in tools/built.py, because three tools write a heights
+    # note and each one that omits a key deletes it from the place on the next
+    # rebuild. This writer sets `surveys`, `surveyed`, `source` and the
+    # fraction itself; everything else is passed through.
+    carried = built.where_the_ground_came_from(
+        site["from"], minus=("surveys", "surveyed", "source", "surveyedFraction"))
     was = site["from"].get("source")
     if survey is not None:
         said = (f"{was}, with {dem_name} feathered in at 1 m over "

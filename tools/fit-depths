@@ -28,6 +28,9 @@ import argparse
 import json
 import pathlib
 
+# Next to this script, which is where python looks first.
+import built
+
 # How far past the measured range the fit may be trusted before it is
 # extrapolation. ICESat-2 sees to about 1.5 Secchi depths and no further, so a
 # site with a deep edge will always have some; saying how much is the point.
@@ -130,10 +133,17 @@ def main() -> int:
     (ref / "seabed_fitted.json").write_text(json.dumps({
         "rows": int(corrected.shape[0]), "columns": int(corrected.shape[1]),
         "acrossMetres": across, "file": "seabed_fitted.f32",
-        "surveyed": False,
         "format": ("little-endian float32, row major, south to north then "
                    "west to east"),
         "centre": site["from"]["centre"],
+        # Where this square came from, carried through. A fit rescales a
+        # seabed; it does not replace what measured it, and make-site reads
+        # this note straight into the place's own provenance. `surveyed` and
+        # `fittedAgainst` are this tool's to set, so they are excluded and
+        # written below.
+        **built.where_the_ground_came_from(
+            site["from"], minus=("surveyed", "fittedAgainst")),
+        "surveyed": False,
         "fittedAgainst": {
             "source": "ICESat-2 ATL24 v002 seafloor photons",
             "points": int(len(x)),

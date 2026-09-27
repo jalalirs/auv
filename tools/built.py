@@ -52,3 +52,30 @@ def record_call(site: dict, tool: str) -> dict:
             timespec="seconds"),
     }
     return site
+
+
+# What make-site lifts off a heights note straight into the place's `from`.
+# Kept here because three separate tools write such a note — tools/ground,
+# tools/fit-depths, tools/get-bathymetry — and each one that omits a key
+# *deletes* it from the place on the next rebuild.
+#
+# All three omitted keys, and each was found separately. Al Fahal's seabed is
+# Copernicus Sentinel-2 S2B_T37QDE_20240223T080223_L2A, Stumpf log-ratio,
+# uncalibrated, optical limit 22 m, a quarter of it continued past the sensor.
+# A note that describes what it just did to the square and nothing about where
+# the square came from replaces all of that with its own sentence.
+CARRIED = ("source", "method", "observedAt", "opticalLimitM",
+           "bottomVisibleFraction", "beyondOpticalDepthFraction",
+           "medianDetailM", "toCalibrate", "constructedPastTheSensor",
+           "fittedAgainst", "surveys", "surveyed", "surveyedFraction")
+
+
+def where_the_ground_came_from(site_from: dict, *, minus: tuple = ()) -> dict:
+    """The provenance a heights note has to carry forward from the place.
+
+    `minus` names the keys this writer sets for itself — a fit records its own
+    `fittedAgainst`, a merge its own `surveys` — so the caller's value wins
+    and everything else is passed through untouched.
+    """
+    return {k: site_from[k] for k in CARRIED
+            if k in site_from and k not in minus}

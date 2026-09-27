@@ -376,29 +376,42 @@ def test_every_tool_that_writes_a_place_records_the_call():
             f"built.record_call, so tools/rebuild replays the place without it")
 
 
-def test_ground_carries_every_from_key_make_site_would_have_kept():
-    """Fixing a leak one layer out must not open another one.
-
-    make-site reads a fixed list of keys off the heights note into the place's
-    `from`. Writing the note without them replaces them. Al Fahal's seabed is
-    Sentinel-2, Stumpf log-ratio, uncalibrated, optical limit 22 m, with a
-    quarter of it past the sensor — and the first version of this note said
-    `source: "bathymetry alone, 5.87 m samples"`, which would have overwritten
-    every one of those on the next rebuild.
-    """
+def _keys_make_site_lifts_off_the_note():
+    """make-site's own list of the optical/method keys it reads off a note."""
     import re
     made = _source("make-site")
-    # The block that lifts optical/method provenance off the note.
     block = made.split('**({k: survey_note[k] for k in')[1].split("}),")[0]
-    keys = set(re.findall(r'"([A-Za-z]+)"', block))
-    assert {"method", "opticalLimitM", "toCalibrate"} <= keys, keys
-    put = _source("ground").split('seabed_1m.json")')[1].split("# ── habitat")[0]
-    carried = _source("ground").split("carried = {k: site")[1].split("if k in site")[0]
-    for key in sorted(keys):
-        assert f'"{key}"' in carried, (
-            f"tools/ground drops {key!r}, which make-site would have carried "
-            f"into the place. Rebuilding replaces it with nothing.")
-    assert "**carried" in put, "the carried keys are collected and not written"
+    return set(re.findall(r'"([A-Za-z]+)"', block))
+
+
+def test_the_shared_list_covers_what_make_site_lifts():
+    """One list, in tools/built.py, because three tools write such a note."""
+    import importlib.util, pathlib as _p
+    spec = importlib.util.spec_from_file_location(
+        "built", _p.Path(__file__).parent / "built.py")
+    built = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(built)
+    missing = _keys_make_site_lifts_off_the_note() - set(built.CARRIED)
+    assert not missing, (
+        f"built.CARRIED does not cover {sorted(missing)}, which make-site "
+        f"reads off a heights note. A note without them deletes them.")
+    assert {"source", "method", "opticalLimitM", "toCalibrate"} <= set(built.CARRIED)
+
+
+def test_every_tool_that_writes_a_heights_note_carries_provenance():
+    """tools/ground and tools/fit-depths both write one. Both must carry.
+
+    Al Fahal's seabed is Copernicus Sentinel-2 S2B_T37QDE_20240223T080223_L2A,
+    Stumpf log-ratio, uncalibrated, optical limit 22 m, a quarter of it
+    continued past the sensor. All three tools that write a note over it
+    omitted every one of those, and each omission was found separately — which
+    is what a shared function and one test are for.
+    """
+    for tool in ("ground", "fit-depths"):
+        said = _source(tool)
+        assert "where_the_ground_came_from" in said, (
+            f"tools/{tool} writes a heights note without carrying the place's "
+            f"own provenance forward")
 
 
 def test_the_merge_does_not_write_into_someone_elses_field():
