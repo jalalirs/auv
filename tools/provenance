@@ -74,12 +74,29 @@ def about(site: dict, delivered: dict | None) -> list[dict]:
 
     fitted = came.get("fittedAgainst")
     if fitted:
-        rows.append(a_row(
-            "Its depths", MEASURED,
-            f"RMS {fitted.get('rmsBeforeM')} m before, "
-            f"{fitted.get('rmsAfterM')} m after, over "
-            f"{fitted.get('points'):,} points",
-            fitted.get("source", "")))
+        # DERIVED, not MEASURED. A fit against a laser does not make a
+        # satellite-derived seabed a survey — tools/fit-depths says so in its
+        # own docstring: "a derived seabed with a known error rather than an
+        # unknown one". This row said MEASURED, on the page whose whole job is
+        # to be believed, about the reef sixty-seven of sixty-eight dives are
+        # flown over.
+        #
+        # And the overall RMS is not the number to show alone. Al Fahal's is
+        # 2.00 m and 22,430 of its 26,726 points are in the top five metres, so
+        # that figure is the shallows' and the fit is -16.35 m out below
+        # fifteen. A reader given "2.0 m after" concludes the seabed is good to
+        # two metres everywhere, which is the opposite of what was measured.
+        good_to = fitted.get("calibratedToM")
+        worst = fitted.get("worstBandMedianM")
+        said = (f"RMS {fitted.get('rmsBeforeM')} m before, "
+                f"{fitted.get('rmsAfterM')} m after, over "
+                f"{fitted.get('points'):,} points")
+        if fitted.get("pastThatUncalibrated"):
+            said += (f" — but that is the shallow end: calibrated to "
+                     + (f"{good_to:.0f} m" if good_to else "no depth")
+                     + (f" and {worst:+.1f} m out below it" if worst else ""))
+        rows.append(a_row("Its depths", DERIVED, said,
+                          fitted.get("source", "")))
 
     built = came.get("constructedPastTheSensor")
     if built:

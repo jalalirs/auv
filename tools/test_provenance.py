@@ -434,3 +434,57 @@ def test_a_fit_does_not_carry_the_note_asking_for_it():
         "fit-depths carries toCalibrate past the fit that honoured it")
     assert '"wasOwed"' in said, (
         "the note it answered is dropped without saying what it was")
+
+
+# ── a fitted seabed is derived, and its rms is not the whole story ───────────
+
+def _a_fitted_place(good_to=5.0, worst=-16.35, past=True):
+    return {
+        "name": "al-fahal",
+        "from": {
+            "surveyed": False,
+            "acrossMetres": 3000.0, "sampleMetres": 5.87,
+            "source": "Copernicus Sentinel-2 S2B_T37QDE_20240223T080223_L2A",
+            "fittedAgainst": {
+                "source": "ICESat-2 ATL24 v002 seafloor photons",
+                "points": 26726, "rmsBeforeM": 10.5, "rmsAfterM": 2.0,
+                "calibratedToM": good_to, "worstBandMedianM": worst,
+                "pastThatUncalibrated": past,
+            },
+        },
+        "ground": {}, "reef": {}, "mesh": {"heightfield": {"rows": 512, "columns": 512}},
+    }
+
+
+def _depths_row(site):
+    tool = _tool()
+    for row in tool.about(site, None):
+        if row["what"] == "Its depths":
+            return row
+    raise AssertionError("no depths row on the page")
+
+
+def test_a_fitted_seabed_is_derived_not_measured():
+    """tools/fit-depths says it in its own docstring: a fit gives "a derived
+    seabed with a known error rather than an unknown one". This row said
+    measured, about the reef 67 of 68 dives are flown over."""
+    tool = _tool()
+    row = _depths_row(_a_fitted_place())
+    assert row["kind"] == tool.DERIVED, row
+
+
+def test_the_page_says_how_deep_the_fit_actually_holds():
+    """2.00 m is the shallows' number: 22,430 of 26,726 points are in the top
+    five metres. A reader given "2.0 m after" alone concludes the seabed is
+    good to two metres everywhere."""
+    row = _depths_row(_a_fitted_place())
+    said = row["value"]
+    assert "2.0 m after" in said, said
+    assert "5 m" in said and "16.4" in said, said
+    assert "shallow end" in said, said
+
+
+def test_a_fit_that_holds_everywhere_says_nothing_extra():
+    row = _depths_row(_a_fitted_place(good_to=25.0, worst=-0.4, past=False))
+    assert "shallow end" not in row["value"], row["value"]
+    assert "2.0 m after" in row["value"]
