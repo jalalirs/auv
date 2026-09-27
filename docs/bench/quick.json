@@ -184,5 +184,22 @@
     "struck": 0,
     "grounded": 0,
     "whatItStruck": []
+  },
+  {
+    "name": "bench \u00b7 quick \u00b7 wary in two-knots \u00b7 hold-station",
+    "suite": "quick",
+    "controller": "wary in two-knots",
+    "task": "hold-station",
+    "score": 1.0,
+    "ended": "achieved",
+    "seconds": 300.0,
+    "energyWh": 3.095,
+    "driftM": 0.001,
+    "flownBy": "hold",
+    "thoughts": 0,
+    "slowestThoughtS": 0.0,
+    "struck": 0,
+    "grounded": 0,
+    "whatItStruck": []
   }
 ]
