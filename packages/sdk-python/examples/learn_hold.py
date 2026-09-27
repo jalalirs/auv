@@ -46,12 +46,25 @@ from hold_policy import FEATURES, LinearHold  # noqa: E402
 # So each episode draws a current. A policy that scores well across the set has to
 # work out what to do from what it *sees* rather than from what it was trained in,
 # which is the whole difference between a controller and a constant.
+# Trained in these three, and **reported** in four.
+#
+# Two knots is left out of the training set on purpose, and not because it is hard.
+# It is beyond the vehicle: measured, the hand-written hold scores 0.040 there and
+# the one-knot specialist 0.058, and a BlueROV2's guarded surge is about equal to its
+# drag at one knot already. A worst-of-the-set criterion that includes a water
+# nothing can hold in is a criterion where every candidate scores about zero, so
+# selection stops being about the policy — the first run of this scored generation
+# four at **-0.020** and was choosing between candidates on noise.
+#
+# It is still reported, because "this vehicle cannot hold station at two knots" is a
+# true and useful thing for the bench to say. It is just not something to select a
+# policy on.
 WATERS = (
     (0.0, 0.0),        # still
     (0.13, 0.0),       # a gentle set, which is what the bench flies
     (0.51, 90.0),      # one knot from the east
-    (1.03, 45.0),      # two knots, on the quarter
 )
+BEYOND_IT = ((1.03, 45.0),)      # two knots, on the quarter — reported, not trained
 SECONDS = 30.0
 LATENCY_TICKS = 3           # 150 ms at 20 Hz, about what the live loop has
 POPULATION = 24
@@ -143,7 +156,7 @@ def main() -> int:
           f"candidate {for_the_best:.3f}. Water by water, against the hand-written "
           "hold:")
     print(f"  {'water':>16}  {'learned':>9}  {'hand-written':>13}")
-    for current in WATERS:
+    for current in WATERS + BEYOND_IT:
         theirs = Tank("bluerov2", seconds=SECONDS,
                       task=hold_station(seconds=SECONDS, radius_m=0.5, depth_band_m=0.3),
                       sensed=True, current=current,
@@ -153,7 +166,8 @@ def main() -> int:
                     sensed=True, current=current,
                     latency_ticks=LATENCY_TICKS).run(LinearHold.with_weights(chosen))
         said = f"{current[0]:.2f} m/s @{current[1]:.0f}"
-        print(f"  {said:>16}  {ours.score:9.3f}  {theirs.score:13.3f}")
+        mark = "" if current in WATERS else "  (beyond the vehicle; not trained in)"
+        print(f"  {said:>16}  {ours.score:9.3f}  {theirs.score:13.3f}{mark}")
 
     # Written out as a controller of its own, weights and all, so that the file
     # is the thing that is deployed: no model to fetch, nothing to look up.
