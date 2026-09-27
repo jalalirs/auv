@@ -753,13 +753,21 @@ def main() -> int:
                             "coral is grown, because a density with no source "
                             "is a number somebody will cite as a measurement")
     parse.add_argument("--assemblage",
-                       help="which reef this is: caribbean or red-sea. The "
-                            "shapes are the same everywhere and the mix is "
-                            "not — a gorgonian sea fan is a Caribbean "
-                            "signature and the Red Sea has Acropora tables "
-                            "instead. Everything on this platform was grown "
-                            "from the Caribbean mix until Al Fahal, where "
-                            "sixty-seven of sixty-eight dives happen")
+                       help="which reef this is: caribbean, red-sea, hawaii "
+                            "or deep. The shapes are the same everywhere and "
+                            "the mix is not — a gorgonian sea fan is a "
+                            "Caribbean signature, the Red Sea has Acropora "
+                            "tables instead, and Hawaii has neither: no "
+                            "tables at all and no shallow fans, because an "
+                            "archipelago four thousand kilometres from "
+                            "anywhere has a short species list. Everything on "
+                            "this platform was grown from the Caribbean mix "
+                            "until Al Fahal, where sixty-seven of "
+                            "sixty-eight dives happen. This said "
+                            "\"caribbean or red-sea\" for a fortnight after "
+                            "hawaii and deep were written, so Kāne'ohe was "
+                            "rebuilt with no mix named at all — a help string "
+                            "is the only index of these there is")
     parse.add_argument("--assemblage-from",
                        help="where that mix comes from: the survey and the "
                             "paper. Required with --assemblage, for the same "

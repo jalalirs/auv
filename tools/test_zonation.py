@@ -250,3 +250,26 @@ def test_a_place_says_while_it_is_being_built():
 
     flying = (_p.Path(__file__).resolve().parent / "look").read_text()
     assert "being-built.json" in flying, "tools/look does not refuse a torn place"
+
+
+# ── every mix that exists must be findable ───────────────────────────────────
+# tools/zonation defines caribbean, red-sea, hawaii and deep. make-site's
+# --assemblage takes any string — there is no `choices` — so its help text is
+# the only index of them there is. It said "caribbean or red-sea" for a
+# fortnight after hawaii and deep were written, and Kāne'ohe was rebuilt with
+# no mix named at all because of it: a Pacific reef left with whatever the
+# default draws, when the mix it needed was already in the tree.
+
+def test_the_help_text_names_every_mix():
+    import pathlib
+    import re
+    here = pathlib.Path(__file__).resolve().parent
+    mixes = re.findall(r'ASSEMBLAGES\["([a-z-]+)"\]',
+                       (here / "zonation.py").read_text())
+    assert len(mixes) >= 4, mixes
+    said = (here / "make-site").read_text()
+    told = said.split('"--assemblage",')[1].split('parse.add_argument')[0]
+    for mix in mixes:
+        assert mix in told, (
+            f"--assemblage does not mention {mix!r}, which zonation defines. "
+            f"There is no `choices` to fall back on, so nobody can find it.")
