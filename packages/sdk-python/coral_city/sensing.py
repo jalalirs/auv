@@ -43,7 +43,12 @@ class Navigator:
         self.velocity = np.zeros(3)       # body u v w
         self.xy = np.zeros(2)             # dead-reckoned, from where it started
         self._last_t: float | None = None
-        self.heard = {"depth": False, "imu": False, "dvl": False}
+        self.heard = {"depth": False, "imu": False, "dvl": False, "sonar": False}
+        # The last fan, and its nearest return. None until one arrives, which is
+        # the honest answer for a vehicle that carries no sonar as well as one
+        # whose first sweep has not come back yet.
+        self.fan: dict | None = None
+        self.nearest: dict | None = None
 
     def pressure(self, pascals: float) -> None:
         self.depth = max(0.0, (float(pascals) - SURFACE_PRESSURE_PA) / (self.density * GRAVITY))
@@ -64,6 +69,34 @@ class Navigator:
     def ready(self) -> bool:
         return self.heard["depth"] and self.heard["imu"]
 
+    def sonar_fan(self, bearings, ranges) -> None:
+        """One sweep of a forward-looking sonar, as the vehicle publishes it.
+
+        Kept until the next one, because a fan arrives a few times a second and a
+        controller is asked twenty times a second: the alternative is a controller
+        that sees the water empty on nineteen ticks out of twenty.
+
+        `LaserScan` says "nothing there" with infinity. The interface says it with
+        NaN, because a range that is not a number is easier to be wrong about
+        loudly than one that is ten thousand metres.
+        """
+        import math
+
+        kept, nearest, beam = [], None, None
+        for i, one in enumerate(ranges):
+            value = float(one)
+            if not math.isfinite(value):
+                kept.append(float("nan"))
+                continue
+            kept.append(value)
+            if nearest is None or value < nearest:
+                nearest, beam = value, i
+        self.fan = {"bearingsRad": [float(b) for b in bearings], "rangesM": kept}
+        self.nearest = (None if nearest is None else
+                        {"rangeM": nearest, "bearingRad": float(bearings[beam]),
+                         "beam": int(beam)})
+        self.heard["sonar"] = True
+
     def observation(self, t: float) -> Observation:
         """Advance the dead reckoning to t and hand back what is known."""
         if self._last_t is not None and self.heard["dvl"]:
@@ -77,5 +110,12 @@ class Navigator:
             rotation=self.rotation.copy(),
             floor=None,
             on_the_bottom=False,
+            # What the sonar last saw. The vehicle publishes `/sonar/scan` and
+            # the catalogue declares it; until 27 September 2026 nothing here
+            # listened, so `seen` and `sonar` were always None for a deployed
+            # controller and an obstacle-avoiding one was impossible to write
+            # against this interface — while the runtime's own `wary` had both.
+            seen=self.nearest,
+            sonar=self.fan,
             estimated=True,
         )
