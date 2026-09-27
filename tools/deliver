@@ -1071,6 +1071,7 @@ WHAT_A_FILE_IS = {
     "bathymetry.prj": "what its coordinates mean",
     "conditions.html": "the water it was flown in, and who said so",
     "mission.json": "the whole result in one object",
+    "mission.json": "the whole result in one object",
     "provenance.json": "what every column above is",
     "report.html": "this page",
 }
@@ -1117,7 +1118,12 @@ def deliver_dive(recording: pathlib.Path, into: pathlib.Path) -> dict:
                "track": track, "planting": planting, "coverage": coverage,
                "bathymetry": bathymetry,
                "conditions": conditions,
-               "files": sorted(p.name for p in into.iterdir())}
+               # What the folder *will* hold, not what it holds now. Listing
+               # what is on disk at this moment leaves out the three files
+               # written after this line — including the report itself,
+               # whose whole last section is "what is in this folder".
+               "files": sorted(set(p.name for p in into.iterdir())
+                               | {"mission.json", "provenance.json", "report.html"})}
     (into / "mission.json").write_text(json.dumps(summary, indent=2) + "\n")
     (into / "provenance.json").write_text(json.dumps(
         mission_provenance(planting is not None, coverage is not None,
@@ -1127,7 +1133,11 @@ def deliver_dive(recording: pathlib.Path, into: pathlib.Path) -> dict:
     (into / "report.html").write_text(
         report(place, manifest, summary, poses, rows_for_conditions(came, conditions),
                stills_from(recording, into)))
-    summary["files"] = sorted(p.name for p in into.iterdir())
+    on_disk = sorted(p.name for p in into.iterdir())
+    assert set(summary["files"]) == set(on_disk), (
+        "the report listed %s and the folder holds %s"
+        % (summary["files"], on_disk))
+    summary["files"] = on_disk
     summary["into"] = into
     return summary
 

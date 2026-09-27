@@ -476,3 +476,17 @@ def test_a_thousand_recordings_refused_for_one_reason_is_one_line(tmp_path, caps
     assert err.count("does not say which place") == 1
     assert "5: " in err
     assert "old_0, old_1, old_2 and 2 more" in err
+
+
+def test_the_report_lists_every_file_in_the_folder_including_itself(tmp_path):
+    """Its last section is "what is in this folder", and it was computed
+    before three of them were written — so it left out mission.json,
+    provenance.json and the report itself."""
+    tool = _deliver()
+    made = tool.deliver_dive(_recording(tmp_path), tmp_path / "out")
+    listed = set(made["files"])
+    on_disk = {p.name for p in (tmp_path / "out").iterdir()}
+    assert listed == on_disk
+    page = (tmp_path / "out" / "report.html").read_text()
+    for name in ("report.html", "mission.json", "provenance.json"):
+        assert name in page, name
