@@ -1086,8 +1086,12 @@ class Dive:
             self.helm = Helm(self.allocator, self.dt, bridge=self.bridge,
                              deployed=str(self.brief.get("autonomyName") or ""),
                              slug=str(self.brief.get("autonomySlug") or ""))
+            # And what the dive is for, latched, so a controller that starts
+            # afterwards still hears it.
+            self.bridge.publish_task(self.objective)
             self.say("bridge_open", domain=self.brief.get("rosDomainId"),
-                     publishes=["/depth", "/imu/data", "/dvl/twist"],
+                     publishes=["/depth", "/imu/data", "/dvl/twist",
+                                "/dvl/range", "/sonar/scan", "/task"],
                      subscribes=["/thruster_cmd", "/cmd_vel"])
         except Exception as exc:
             self.say("bridge_unavailable", why=str(exc)[:200])
@@ -1101,8 +1105,20 @@ class Dive:
         deadlocks exactly as that deserves.
         """
         if self.bridge is not None:
+            # The range to the bottom goes over with the rest of it: the same
+            # floor the observation is built from, so what a controller outside
+            # this process is told and what one inside it sees cannot disagree.
+            floor = self.floor
+            if self.seabed is not None:
+                floor = self.seabed.under(float(self.position[0]),
+                                          float(self.position[1]))
+            altitude = None if floor is None else float(self.position[2]) - floor
             self.bridge.publish(self.simulated, self.position, self.velocity,
-                                self.body.model.density, self.rotation)
+                                self.body.model.density, self.rotation,
+                                altitude=altitude,
+                                dvl_range=(self.navigation.dvl_range
+                                           if self.navigation is not None
+                                           else (0.05, 50.0)))
 
     # ── running ──────────────────────────────────────────────────────────────
 
@@ -1601,6 +1617,11 @@ class Dive:
         # back off the brief was a second copy of the truth, and on a dive
         # whose objective was handed in rather than briefed it was empty.
         self.objective = objective
+        # And said again across the boundary, because a mission's stages change
+        # what the dive is for while it is flying. A controller told the first
+        # stage and nothing after would fly the whole mission as its opening leg.
+        if self.bridge is not None:
+            self.bridge.publish_task(objective)
         if not again:
             self.began_at = self.position.copy()
             self.began_rotation = self.rotation.copy()

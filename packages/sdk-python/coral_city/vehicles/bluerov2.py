@@ -273,6 +273,11 @@ DYNAMICS = {
                 "type": "geometry_msgs/msg/TwistWithCovarianceStamped"
             },
             {
+                "topic": "/dvl/range",
+                "type": "sensor_msgs/msg/Range",
+                "note": "The range to the seabed, from the same Doppler log as the twist. Infinity, or outside [min_range, max_range], is no bottom lock \u2014 which is a thing that happens and a controller holding an altitude has to handle. Reef work is altitude work."
+            },
+            {
                 "topic": "/depth",
                 "type": "sensor_msgs/msg/FluidPressure"
             },
@@ -393,6 +398,7 @@ VEHICLE = Vehicle(
         Topic('/camera/image_raw', 'sensor_msgs/msg/Image', ''),
         Topic('/imu/data', 'sensor_msgs/msg/Imu', ''),
         Topic('/dvl/twist', 'geometry_msgs/msg/TwistWithCovarianceStamped', ''),
+        Topic('/dvl/range', 'sensor_msgs/msg/Range', 'The range to the seabed, from the same Doppler log as the twist. Infinity, or outside [min_range, max_range], is no bottom lock — which is a thing that happens and a controller holding an altitude has to handle. Reef work is altitude work.'),
         Topic('/depth', 'sensor_msgs/msg/FluidPressure', ''),
         Topic('/tf', 'tf2_msgs/msg/TFMessage', ''),
         Topic('/sonar/scan', 'sensor_msgs/msg/LaserScan', ''),

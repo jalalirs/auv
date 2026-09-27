@@ -233,6 +233,17 @@ class Tank:
         self.navigator.pressure(SURFACE_PRESSURE_PA + self.model.density * GRAVITY * truth.depth)
         self.navigator.imu(_quaternion(truth.rotation), truth.velocity[3:])
         self.navigator.dvl(truth.velocity[:3])
+        if truth.floor is not None:
+            # The Doppler log's range, through the log's own bounds, so the tank
+            # loses bottom lock exactly where a vehicle would. The bounds come from
+            # the dive's own navigation rather than from the vehicle, because that
+            # is where the runtime keeps them — a log's reach belongs to the fit,
+            # not to the hull.
+            near, far = (0.05, 50.0)
+            if getattr(self.dive, "navigation", None) is not None:
+                near, far = self.dive.navigation.dvl_range
+            self.navigator.bottom(float(truth.position[2]) - float(truth.floor),
+                                  float(near), float(far))
         if truth.sonar is not None:
             # No `or []` anywhere near these: the runtime's fan holds numpy arrays,
             # and `array or []` raises "the truth value of an array with more than
@@ -309,6 +320,9 @@ class Tank:
         if problems:
             raise ValueError("this controller cannot fly this vehicle: " + "; ".join(problems))
         seen = self.reset()
+        # What the dive is for, before it is engaged — the same order the platform
+        # delivers it in, so a controller that reads the goal behaves the same here.
+        controller.tasked(self.task or {})
         controller.engage(seen)
         until = self.seconds if seconds is None else float(seconds)
         while not self.done and self.t < until:

@@ -37,6 +37,9 @@ class Controller:
 
     def __init__(self) -> None:
         self.parameters: dict[str, Parameter] = {}
+        # What the dive is for, once anybody says. Empty rather than None so a
+        # subclass can read `self.goal.get(...)` before being told.
+        self.goal: dict = {}
         from . import vehicles
         self.described = vehicles.load(self.vehicle)
 
@@ -57,6 +60,24 @@ class Controller:
         return True
 
     # ── what a subclass fills in ─────────────────────────────────────────────
+
+    def tasked(self, goal: dict) -> None:
+        """Told what the dive is for, in the world's own coordinates.
+
+        The same hook the runtime's own controllers have, and for the same reason:
+        a controller that plans for itself needs the goal rather than a route, which
+        is the whole of the difference between being driven and being asked. Stored
+        by default, so a subclass that does not care need not override it.
+
+        It arrives before `engage`, latched on `/task`, and **again whenever it
+        changes** — a mission's stages are separate goals, and a controller told the
+        first and nothing after would fly the whole mission as its opening leg.
+
+        Nothing published this until 27 September 2026, so a deployed controller
+        could only hold what somebody had tuned it to: it and the baseline it was
+        being compared against were never answering the same question.
+        """
+        self.goal = dict(goal or {})
 
     def engage(self, seen: Observation) -> None:
         """Told it now has the vehicle, and where the vehicle is."""

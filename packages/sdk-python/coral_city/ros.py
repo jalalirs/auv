@@ -16,6 +16,7 @@ beside a real vehicle's ROS 2 graph.
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 
@@ -55,7 +56,7 @@ class ControllerNode:
         from rcl_interfaces.msg import FloatingPointRange, ParameterDescriptor, SetParametersResult
         from rclpy.node import Node
         from geometry_msgs.msg import Twist, TwistWithCovarianceStamped
-        from sensor_msgs.msg import FluidPressure, Imu, LaserScan
+        from sensor_msgs.msg import FluidPressure, Imu, LaserScan, Range
         from std_msgs.msg import Float64MultiArray
 
         self.controller = controller
@@ -103,6 +104,20 @@ class ControllerNode:
         # interface at all.
         if "imaging_sonar" in self.vehicle.carries:
             self.node.create_subscription(LaserScan, "/sonar/scan", self._on_sonar, 5)
+        if "dvl" in self.vehicle.carries:
+            # The range to the bottom, from the same instrument as the twist. Reef
+            # work is altitude work and a transect is scored on holding one, so a
+            # controller that could not hear this could not fly the task it was
+            # being measured on.
+            self.node.create_subscription(Range, "/dvl/range", self._on_range, 10)
+
+        # What the dive is for, latched, so it arrives whenever this started.
+        from rclpy.qos import DurabilityPolicy, QoSProfile
+        from std_msgs.msg import String
+
+        self.node.create_subscription(
+            String, "/task", self._on_task,
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
 
         # What it acts on.
         self._Twist, self._Floats = Twist, Float64MultiArray
@@ -131,6 +146,24 @@ class ControllerNode:
     def _on_dvl(self, message) -> None:
         v = message.twist.twist.linear
         self.navigator.dvl((v.x, v.y, v.z))
+
+    def _on_task(self, message) -> None:
+        """The dive's objective. Told to the controller whenever it changes."""
+        try:
+            goal = json.loads(message.data)
+        except Exception as exc:
+            self.node.get_logger().warn(f"the task would not read: {exc}")
+            return
+        if not isinstance(goal, dict):
+            return
+        self.controller.tasked(goal)
+        # A controller that settles its targets from the goal should have those
+        # show up as its parameters, the way engagement does.
+        self.sync_parameters()
+
+    def _on_range(self, message) -> None:
+        self.navigator.bottom(float(message.range), float(message.min_range),
+                              float(message.max_range))
 
     def _on_sonar(self, message) -> None:
         """One sweep, with the bearings worked out from the header.

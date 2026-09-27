@@ -133,13 +133,28 @@ def test_a_vehicle_with_no_sonar_says_so_rather_than_seeing_an_empty_sea():
     assert seen.seen is None
 
 
-def test_the_example_does_not_pretend_to_read_the_task():
-    """The runtime's controllers are handed the objective; an SDK controller is
-    not. An example with a `tasked` hook the SDK never calls would look like it
-    worked and quietly fly its default altitude."""
-    source = EXAMPLE.read_text()
-    assert "def tasked(" not in source
-    assert "no `tasked` hook here" in source
+def test_the_example_flies_the_altitude_the_task_asks_for():
+    """A controller that ignored the task would score badly for a reason that has
+    nothing to do with what it is for — and would fly a different path from the
+    baseline it is compared against, which makes the comparison meaningless rather
+    than merely unfair. That is what `avoid`'s first platform row was: `struck 0`
+    against two baselines' 3 of 3, and a closest approach of nineteen metres."""
+    one = a_controller()
+    assert one["altitudeM"] == 3.0                     # its own default
+    one.tasked({"kind": "transect", "altitudeM": 5.0, "speedMs": 0.6})
+    assert one["altitudeM"] == 5.0
+    assert one["speedMs"] == 0.6
+    # And the goal is kept, the way the base class promises.
+    assert one.goal["kind"] == "transect"
+
+
+def test_a_task_that_says_nothing_about_altitude_leaves_the_default():
+    """A goal is not a full configuration; a field it omits is not a zero."""
+    one = a_controller()
+    one.tasked({"kind": "reach", "dx": 40, "dy": 0})
+    assert one["altitudeM"] == 3.0
+    one.tasked({"altitudeM": "not a number"})
+    assert one["altitudeM"] == 3.0, "a field that will not read is left alone"
 
 
 def test_the_side_is_remembered_and_the_bearing_is_not():
@@ -223,3 +238,71 @@ def test_it_goes_round_a_frame_in_the_tank():
     assert tank.dive.world.struck == 0, f"it hit the frame; closest {closest:.2f} m"
     # Clear of the frame itself, not merely not touching it.
     assert closest > frame["radiusM"], f"closest approach {closest:.2f} m"
+
+
+def test_a_controller_is_told_how_far_it_is_to_the_bottom():
+    """Reef work is altitude work, and a transect is *scored* on holding one.
+
+    A Doppler log measures the seabed to get velocity over the ground, so it knows
+    the range to it and every real one reports it. The bridge published the twist
+    and not the range, so `Observation.floor` was always None for anything deployed
+    and a customer's controller could not fly the task it was being scored on.
+    """
+    from coral_city.sensing import GRAVITY, SURFACE_PRESSURE_PA, Navigator
+
+    n = Navigator(density=1025.0)
+    n.pressure(SURFACE_PRESSURE_PA + 1025.0 * GRAVITY * 8.0)      # eight metres down
+    n.imu((1, 0, 0, 0), (0, 0, 0))
+    n.bottom(3.0, 0.05, 50.0)                                      # three metres up
+    seen = n.observation(0.0)
+    assert seen.floor == pytest.approx(-11.0, abs=0.01), "eight down, three up, floor at -11"
+    # And the altitude a controller works with is the difference.
+    assert seen.position[2] - seen.floor == pytest.approx(3.0, abs=0.01)
+
+
+def test_losing_bottom_lock_says_unknown_rather_than_stale():
+    """A controller told a stale floor holds an altitude over where the bottom used
+    to be, and flies into the next head. Outside the log's bounds is no reading."""
+    from coral_city.sensing import GRAVITY, SURFACE_PRESSURE_PA, Navigator
+
+    n = Navigator(density=1025.0)
+    n.pressure(SURFACE_PRESSURE_PA + 1025.0 * GRAVITY * 8.0)
+    n.imu((1, 0, 0, 0), (0, 0, 0))
+    n.bottom(3.0, 0.05, 50.0)
+    assert n.observation(0.0).floor is not None
+    # Over deep water: the bottom is past the log's reach.
+    n.bottom(float("inf"), 0.05, 50.0)
+    assert n.observation(1.0).floor is None
+    # And too close to read is equally no reading.
+    n.bottom(0.01, 0.05, 50.0)
+    assert n.observation(2.0).floor is None
+
+
+def test_the_tank_reports_the_bottom_too():
+    """So an altitude-holding controller can be tried before it is deployed."""
+    sys.path.insert(0, str(HERE.parents[2] / "services/sim-runtime/coral"))
+    from coral_city.tank import Tank
+
+    task = {"kind": "reach", "dx": 10, "dy": 0, "radiusM": 3.0, "timeLimitS": 20}
+    tank = Tank("bluerov2", task=task, seconds=20.0)
+    seen = tank.reset()
+    for _ in range(20):
+        seen, _, _, _ = tank.step(None)
+    truth = tank.dive.observation()
+    if truth.floor is None:
+        # A tank with no seabed has no bottom to report, and says so.
+        assert seen.floor is None
+    else:
+        assert seen.floor is not None, "the tank knows the floor and did not pass it on"
+        assert seen.floor == pytest.approx(truth.floor, abs=0.5)
+
+
+def test_every_vehicle_with_a_doppler_log_declares_the_range():
+    """The contract a customer reads to know what the vehicle sends."""
+    from coral_city import vehicles
+
+    for slug in ("bluerov2", "bluerov2-heavy", "remus-100"):
+        described = vehicles.load(slug)
+        assert "dvl" in described.carries, slug
+        topics = {one.name for one in described.publishes}
+        assert "/dvl/range" in topics, f"{slug} publishes a twist and not a range"

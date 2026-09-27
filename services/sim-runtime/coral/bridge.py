@@ -58,7 +58,7 @@ class Bridge:
 
         import rclpy
         from geometry_msgs.msg import Twist, TwistWithCovarianceStamped
-        from sensor_msgs.msg import FluidPressure, Image, Imu, LaserScan
+        from sensor_msgs.msg import FluidPressure, Image, Imu, LaserScan, Range
         from std_msgs.msg import Float64MultiArray
 
         self._rclpy = rclpy
@@ -105,6 +105,43 @@ class Bridge:
         # the fan as a picture is a rendering problem and belongs to whoever
         # has a renderer.
         self.sonar = self.node.create_publisher(LaserScan, "/sonar/scan", 5)
+        # How far it is to the bottom.
+        #
+        # A Doppler log measures the seabed to work out velocity over the ground,
+        # so it knows the range to it and every real one reports it. This bridge
+        # published the twist and not the range, so nothing outside the runtime
+        # could know its altitude — and reef work is altitude work. A controller
+        # deployed through the SDK could not fly a transect it was being scored
+        # on holding, because the one number the score depends on never crossed
+        # the boundary.
+        #
+        # `Range`, with the log's own bounds, and infinity when the bottom is out
+        # of them. ROS says a reading outside [min, max] is to be discarded; that
+        # is what losing bottom lock is, and a controller has to handle it.
+        self.range = self.node.create_publisher(Range, "/dvl/range", 10)
+        self._Range = Range
+
+        # What the dive is for.
+        #
+        # The runtime's own controllers are handed the objective — `tasked(goal)`
+        # on their base class, "the whole of the difference between being driven
+        # and being asked" — and nothing published it, so a controller outside
+        # this process could not know it. It could only hold whatever somebody had
+        # tuned it to, which means a customer's controller and a baseline were
+        # never answering the same question.
+        #
+        # **Latched**, because the autonomy container starts around the same time
+        # as the dive and a goal published once to nobody is a goal nobody has.
+        # A `String` of JSON rather than a message type: an objective is a small
+        # open document whose fields differ by task, and inventing a message for
+        # each would make adding a task a change to the wire.
+        from rclpy.qos import DurabilityPolicy, QoSProfile
+        from std_msgs.msg import String
+
+        self.task = self.node.create_publisher(
+            String, "/task",
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        self._String = String
         self._LaserScan = LaserScan
 
         # What it acts on. Two ways of saying the same thing: per-thruster for
@@ -205,6 +242,19 @@ class Bridge:
         except Exception:
             pass
 
+    def publish_task(self, goal: dict | None) -> None:
+        """Say what the dive is for, once, to whoever is listening or will be."""
+        try:
+            import json as _json
+
+            told = self._String()
+            told.data = _json.dumps(goal or {}, default=str)
+            self.task.publish(told)
+            with self._lock:
+                self._crossed["/task"] = self._crossed.get("/task", 0) + 1
+        except Exception:
+            pass
+
     def publish_sonar(self, bearings, ranges, near: float, far: float) -> None:
         """One sweep of the fan, as the message a collision avoider expects.
 
@@ -289,8 +339,15 @@ class Bridge:
 
     def publish(self, simulated_seconds: float, position: np.ndarray,
                 velocity: np.ndarray, density: float,
-                rotation: np.ndarray | None = None) -> None:
-        """What the vehicle's sensors report this step."""
+                rotation: np.ndarray | None = None,
+                altitude: float | None = None,
+                dvl_range: tuple[float, float] = (0.05, 50.0)) -> None:
+        """What the vehicle's sensors report this step.
+
+        `altitude` is the true range to the bottom, or None where the place has no
+        bottom under the vehicle. `dvl_range` is the log's own bounds, out of the
+        vehicle's package.
+        """
         stamp = self.node.get_clock().now().to_msg()
 
         # A depth sensor is a pressure sensor: it reports what the water weighs
@@ -328,8 +385,25 @@ class Bridge:
         twist.twist.twist.linear.z = float(velocity[2])
         self.dvl.publish(twist)
 
+        # And the range to the bottom, which is the same instrument.
+        import math
+
+        near, far = float(dvl_range[0]), float(dvl_range[1])
+        told = self._Range()
+        told.header.stamp = stamp
+        told.header.frame_id = "dvl"
+        told.radiation_type = self._Range.ULTRASOUND
+        # A Doppler log's beams are narrow and canted; what it reports is a range
+        # under the vehicle, not a cone to be swept.
+        told.field_of_view = 0.05
+        told.min_range = near
+        told.max_range = far
+        told.range = (math.inf if altitude is None or not math.isfinite(altitude)
+                      else float(altitude))
+        self.range.publish(told)
+
         with self._lock:
-            for name in ("/depth", "/imu/data", "/dvl/twist"):
+            for name in ("/depth", "/imu/data", "/dvl/twist", "/dvl/range"):
                 self._crossed[name] = self._crossed.get(name, 0) + 1
 
     def close(self) -> None:
