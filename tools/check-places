@@ -62,6 +62,13 @@ def water_of(place: pathlib.Path, site: dict) -> tuple[str, str | None]:
         return "no dive", "nothing begins here, so there is nowhere to measure from"
     ground = (site.get("ground") or {}).get("waterBakedFrom")
     if ground is None:
+        # aim-water bakes the camera origin into the ground material, and a
+        # place built by tools/fringing has no reference behind it to make one
+        # from. So there is nothing to aim and no run that would fix it — which
+        # is a fact about a constructed place, not a step somebody skipped.
+        if (site.get("from") or {}).get("constructed") is not None:
+            return "constructed", ("no ground material to bake a medium into; "
+                                   "this reef was built, not surveyed")
         return "NOT BAKED", "tools/aim-water has not been run on it"
     map_file = place / ground.get("file", "")
     if not map_file.is_file():
@@ -118,7 +125,15 @@ def main() -> int:
         said = about(place)
         if said is None:
             continue
-        if said["from"] is None:
+        if not said.get("colonies"):
+            # No reef at all, which is not the same as a reef nobody sourced.
+            # Thuwal Deep is 638 m of bathyal seabed: there is no
+            # zooxanthellate coral down there to have a density, and reporting
+            # it as UNSOURCED read as work outstanding on a place that is
+            # finished. The same trap as Looe Key's "unnamed mix", which was a
+            # surveyed reef being asked which distribution it came from.
+            mark, source = "no reef", "nothing grows at this depth"
+        elif said["from"] is None:
             mark, source = "UNSOURCED", "— nothing recorded —"
             unsourced.append(said["name"])
         else:
