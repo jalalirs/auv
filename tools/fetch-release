@@ -146,6 +146,10 @@ def fetch(where: pathlib.Path, one: dict, say=print) -> tuple[str, int]:
     return state_of(where, one)
 
 
+class Uncheckable(Exception):
+    """This reader cannot decode that file — which says nothing about the file."""
+
+
 def a_reader():
     """Something that can open a GeoTIFF, or nothing.
 
@@ -168,7 +172,17 @@ def a_reader():
         def read(path):
             with tifffile.TiffFile(path) as source:
                 page = source.pages[0]
-                page.asarray(maxworkers=1)[:2, :2]
+                try:
+                    page.asarray(maxworkers=1)[:2, :2]
+                except ValueError as exc:
+                    # "requires the 'imagecodecs' package" is this reader saying it
+                    # has no codec, not the file saying it is broken. Every one of
+                    # these DEMs is LZW, and reporting eight good rasters as corrupt
+                    # because the decoder is missing is worse than not checking: it
+                    # sends somebody re-fetching 9 GB that was already here.
+                    if "imagecodecs" in str(exc):
+                        raise Uncheckable(str(exc)) from exc
+                    raise
         return "tifffile", read
     except ImportError:
         return None, None
@@ -195,7 +209,15 @@ def opens(where: pathlib.Path, name: str, read=None) -> bool:
     try:
         read(where / name)
         return True
-    except Exception:
+    except Uncheckable:
+        # Not read, and not condemned either.
+        return True
+    except Exception as exc:
+        # The same judgement, wherever the reader came from: a decoder saying it
+        # lacks a codec is not the file saying it is broken. Made here rather than
+        # only inside the reader, so swapping the reader cannot lose it.
+        if "imagecodecs" in str(exc) or "requires the" in str(exc):
+            raise Uncheckable(str(exc)) from exc
         return False
 
 
@@ -248,7 +270,7 @@ def main() -> int:
     # replaces did not.
     reader, read = a_reader()
     wrong = []
-    rasters = 0
+    rasters = uncheckable = 0
     for one in files:
         kind, got = state_of(where, one)
         if kind != "complete":
@@ -256,7 +278,12 @@ def main() -> int:
             continue
         if one["name"].lower().endswith((".tif", ".tiff")) and read is not None:
             rasters += 1
-        if not opens(where, one["name"], read):
+        try:
+            good = opens(where, one["name"], read)
+        except Uncheckable:
+            good = True
+            uncheckable += 1
+        if not good:
             wrong.append((one["name"], "the right size and it does not open"))
     print()
     if wrong:
@@ -272,8 +299,14 @@ def main() -> int:
               "rasterio nor tifffile is installed here, so only the sizes were "
               "checked. `pip install tifffile` to read them.")
     else:
-        print(f"  all {len(files)} complete, and every one of the {rasters} rasters "
-              f"among them opens ({reader}).")
+        said = (f"  all {len(files)} complete, and every one of the {rasters} rasters "
+                f"among them opens ({reader}).")
+        if uncheckable:
+            said = (f"  all {len(files)} complete. {rasters - uncheckable} of "
+                    f"{rasters} rasters open ({reader}); the other {uncheckable} "
+                    f"this reader has no codec for, which says nothing about them. "
+                    "`pip install imagecodecs` to read those too.")
+        print(said)
     return 0
 
 
