@@ -114,8 +114,13 @@ class GoAroundThings(Controller):
         again, and again, which is a vehicle going in circles rather than round
         something. That was the first version of this file.
         """
-        bearings = np.asarray(fan.get("bearingsRad") or [], dtype=float)
-        ranges = np.asarray(fan.get("rangesM") or [], dtype=float)
+        # Never `or []` on these: a fan may arrive as numpy arrays — the runtime's
+        # does — and `array or []` raises rather than defaulting.
+        said, got = fan.get("bearingsRad"), fan.get("rangesM")
+        if said is None or got is None:
+            return None
+        bearings = np.asarray(said, dtype=float)
+        ranges = np.asarray(got, dtype=float)
         if bearings.size == 0 or bearings.size != ranges.size:
             return None
         # A beam is open when nothing came back, or what came back is far enough
