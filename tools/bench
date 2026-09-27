@@ -95,12 +95,61 @@ THE_USUAL_PLACE = "looe-key"
 # the record was flown through open water.
 THINGS_IN_THE_WAY = 3
 
-# What stands in the water and how tall it is, from the runtime's own palette.
-# Kept here as a copy of the heights rather than imported, because `world.py`
-# lives in the sim runtime and this tool runs without it on the path — and the
-# test holds this list against that one, so a palette that grew a taller thing
-# does not silently leave this choosing the wrong one.
-STANDING = [("nursery-frame", 1.2), ("marker-post", 3.0)]
+# What stands in the water, and how big it is when nobody says.
+#
+# From the runtime's own palette, and a test holds these numbers against it. A
+# nursery frame is two metres across and 1.2 m tall; a marker post is three
+# metres tall and **0.2 m** across. That combination is why the first two
+# attempts at this failed — the tall thing is thin and the wide thing is short —
+# and it is also why the answer is to state the height rather than to pick a
+# taller kind. A layout may give any thing its own `heightM` and `radiusM`, and a
+# coral tree nursery genuinely is a frame two metres across and three to five
+# metres tall. A marker post genuinely is a stick, and a vehicle that missed one
+# by half a metre was right to.
+FRAME = ("nursery-frame", 2.0)
+# Taller than this is not a structure anybody has in the water, and a bench that
+# grew its obstacles until they were unavoidable would be measuring nothing.
+TALLEST_HONEST_FRAME = 6.0
+
+
+def something_in_the_way(objective: dict) -> dict:
+    """A thing the vehicle would actually meet, at the altitude it is holding.
+
+    Two measured failures are behind this, both of them the same failure — a row
+    that said "flown through things" about a dive that passed nothing:
+
+      A frame is 1.2 m tall and a transect holds 3 m of altitude, so three frames
+      on the line are three frames flown a metre and a half over.
+      Choosing the marker post instead fixed the height and broke the width: a
+      post is 0.2 m across, so a vehicle a quarter of a metre wide has to pass
+      within half a metre of its centre to touch it, and measured, none of them
+      did — `struck=0`, and the two controllers tied at 0.407 again.
+
+    So it is the wide thing, given the height it needs: a frame two metres across
+    standing tall enough to reach into the band the task flies in. Refused above
+    six metres, because at that point the arrangement is being grown until
+    nothing could avoid it, which measures the arrangement and not the
+    controller.
+    """
+    kind, radius = FRAME
+    altitude = objective.get("altitudeM")
+    if altitude is None:
+        # No stated altitude: the vehicle holds the depth it started at and the
+        # bottom under it is unknown from here, so the frame is as tall as an
+        # honest one gets and the dive meets it or does not.
+        return {"kind": kind, "radiusM": radius, "heightM": TALLEST_HONEST_FRAME}
+    # Into the band rather than up to it: a vehicle flying the task correctly is
+    # anywhere within the band, and a frame that stopped at its lower edge would
+    # be met only by a dive already flying low.
+    reach = float(altitude) + float(objective.get("altitudeBandM", 0.0)) / 2.0 + 0.3
+    if reach > TALLEST_HONEST_FRAME:
+        raise SystemExit(
+            f"a {objective.get('kind')} holds {altitude:g} m of altitude, so a frame "
+            f"would have to stand {reach:.1f} m to be in its way and the tallest "
+            f"honest one is {TALLEST_HONEST_FRAME:g} m. Nothing anybody has in the "
+            "water would be met by this dive, and a row claiming otherwise would "
+            "make a bench that rewards flying high")
+    return {"kind": kind, "radiusM": radius, "heightM": round(reach, 2)}
 
 
 def how_far_the_task_goes(objective: dict) -> tuple[float, float]:
@@ -125,46 +174,13 @@ def how_far_the_task_goes(objective: dict) -> tuple[float, float]:
                      "there is nowhere to put things that would be in the way")
 
 
-def tall_enough_for(objective: dict) -> tuple[str, float]:
-    """Something the vehicle would actually meet at the altitude it is holding.
-
-    This is the part that was wrong on the first try. A nursery frame is 1.2 m
-    tall; a transect holds 3 m of altitude. Three frames placed dead on the line
-    are three frames the vehicle flies a metre and a half over, and the bench
-    would have reported "flown through things" about a dive that passed nothing.
-
-    So the thing is chosen by the altitude the task states: the shortest one in
-    the palette that still reaches the vehicle. When nothing reaches, this
-    refuses — a task flown eight metres up over a palette whose tallest post is
-    three has no arrangement that would test seeing, and saying so is the only
-    honest answer.
-    """
-    altitude = objective.get("altitudeM")
-    if altitude is None:
-        # No stated altitude: the vehicle holds the depth it started at, which
-        # the place decides. The tallest thing is the best chance of meeting it.
-        return max(STANDING, key=lambda one: one[1])
-    # Half the band is the room the task allows it to sink into, so a thing that
-    # reaches that far up is in the way of a dive flying the task correctly.
-    room = float(altitude) - float(objective.get("altitudeBandM", 0.0)) / 2.0
-    reaching = [one for one in STANDING if one[1] >= room]
-    if not reaching:
-        tallest = max(STANDING, key=lambda one: one[1])
-        raise SystemExit(
-            f"a {objective.get('kind')} holds {altitude:g} m of altitude and the "
-            f"tallest thing that stands on the bottom is {tallest[0]} at "
-            f"{tallest[1]:g} m. The vehicle would fly over everything, so this "
-            "would report a dive flown through things that passed nothing")
-    return min(reaching, key=lambda one: one[1])
-
-
 def things_in_the_way(objective: dict, seed: int, ground) -> dict:
     """Things standing on the line the task walks, tall enough to be met.
 
     Reef furniture rather than mooring blocks because this is reef work and a
     frame or a plot marker is what is actually in the way on a restoration site.
     Which of them it is comes from the altitude the task holds — see
-    `tall_enough_for`, which is where the first attempt went wrong.
+    `something_in_the_way`, which is where the first two attempts went wrong.
 
     Offset from the line by a seeded amount smaller than the thing, so some are
     dead ahead and some are a near miss. Seeded from the task's own seed, so the
@@ -181,7 +197,7 @@ def things_in_the_way(objective: dict, seed: int, ground) -> dict:
     """
     import random
 
-    kind, _ = tall_enough_for(objective)
+    thing = something_in_the_way(objective)
     far_x, far_y = how_far_the_task_goes(objective)
     reach = math.hypot(far_x, far_y)
     if reach < 10.0:
@@ -191,13 +207,18 @@ def things_in_the_way(objective: dict, seed: int, ground) -> dict:
     across = (-along[1], along[0])
     draw = random.Random(f"things/{seed}/{objective.get('kind')}")
     things = []
+    # Off the line by less than the thing is wide, so every one of them is in
+    # the way of a vehicle flying the line and none is dead centre on it. A fixed
+    # offset in metres was the third version of this bug: 1.2 m is inside a frame
+    # and half a metre outside a post.
+    room = float(thing["radiusM"]) * 0.6
     for i in range(THINGS_IN_THE_WAY):
         at = reach * (i + 1) / (THINGS_IN_THE_WAY + 1)
-        off = draw.uniform(-1.2, 1.2)
+        off = draw.uniform(-room, room)
         x = round(along[0] * at + across[0] * off, 2)
         y = round(along[1] * at + across[1] * off, 2)
         # Positive metres down, which is how a layout states it.
-        things.append({"id": f"thing-{i + 1}", "kind": kind, "x": x, "y": y,
+        things.append({"id": f"thing-{i + 1}", **thing, "x": x, "y": y,
                        "groundM": round(-float(ground(x, y)), 2)})
     return {"things": things}
 
