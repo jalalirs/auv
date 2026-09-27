@@ -143,3 +143,31 @@ def test_asking_whether_a_picture_is_owed_does_not_spend_it(tmp_path):
     assert keeping.owes_a_picture(1.0) is False
     assert keeping.due(1.0) is False
     assert keeping.owes_a_picture(1.25) is True
+
+
+def test_a_thinking_controller_is_flown_at_real_time_even_undrawn():
+    """Otherwise the bench measures the machine instead of the controller.
+
+    Thinking costs real seconds — a model answers in one or two — and a dive
+    running six times faster than the clock charges those as thirty-six. The
+    interactive shell had this guard; the headless runner did not, which mattered
+    the moment the bench started coming through it.
+    """
+    source = (pathlib.Path(__file__).resolve().parent / "dive.py").read_text()
+    inside = source[source.index("def fly_dry("):]
+    inside = inside[:inside.index("\ndef ")]
+    assert "deliberating()" in inside, "an undrawn dive does not ask whether it thinks"
+    # And it is asked before the stepping loop, not inside it.
+    assert inside.index("deliberating()") < inside.index("while not dive.done")
+
+
+def test_the_two_runners_agree_about_what_paces_a_dive():
+    """A dive somebody watches and a dive nobody watches must be paced by the same
+    two things — a controller in another container, and a controller that thinks —
+    or the same brief gives two different answers depending on who is looking."""
+    source = (pathlib.Path(__file__).resolve().parent / "dive.py").read_text()
+    for which in ("def fly_dry(", "def fly("):
+        inside = source[source.index(which):]
+        inside = inside[:inside.index("\ndef ")] if "\ndef " in inside else inside
+        assert "dive.bridge.commanded" in inside, f"{which} ignores an external controller"
+        assert "deliberating()" in inside, f"{which} would charge thinking at the wrong rate"

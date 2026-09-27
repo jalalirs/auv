@@ -203,6 +203,23 @@ def fly_dry(brief: dict, scene, body, allocator) -> int:
     # the vehicle one command every two simulated seconds instead of ten a
     # second — which is not this controller being tested, it is a starved one.
     paced = dive.bridge is not None and dive.bridge.commanded
+    # And a controller that thinks is paced too, whoever it is.
+    #
+    # Thinking costs real seconds — a model answers in one or two — and a dive
+    # running six times faster than the clock charges those as thirty-six. That
+    # does not make a controller look slow; it makes the **machine** look slow,
+    # and a bench that rewarded whoever ran on the slower box would be measuring
+    # the box. The interactive shell had this guard and this runner did not, which
+    # mattered the moment the bench started coming through here.
+    #
+    # Asked once rather than every step: `deliberating` reads the preference the
+    # objective set, which does not change mid-dive, and asking it two hundred
+    # times a second would itself be a cost on the thing being measured.
+    if not paced:
+        try:
+            paced = bool(dive.helm.deliberating())
+        except Exception:
+            pass
     say("running", steps=dive.steps, physicsHz=1.0 / dive.dt,
         seconds=dive.steps * dive.dt, realTime=paced, drawn=False,
         waitedSeconds=waited)
@@ -270,6 +287,14 @@ def fly(app, brief: dict, scene, body, allocator) -> int:
     wait_for_autonomy(dive, brief, update=app.update)
 
     paced = dive.bridge is not None and dive.bridge.commanded
+    # The same two things pace a drawn dive and an undrawn one — a controller in
+    # another container, and a controller that thinks — because otherwise one
+    # brief gives two answers depending on who is looking. See `fly_dry`.
+    if not paced:
+        try:
+            paced = bool(dive.helm.deliberating())
+        except Exception:
+            pass
     say("running", steps=dive.steps, physicsHz=1.0 / dive.dt,
         seconds=dive.steps * dive.dt, realTime=paced)
     began = wallclock.monotonic()
