@@ -741,7 +741,18 @@ def command_dry(args) -> int:
                  "initialState": {"positionM": [0.0, 0.0, -6.0]},
                  "vehiclePath": str(package.parent),
                  "objective": objective,
-                 "conditions": {**water, **technology}}
+                 # Nested, the way the runtime reads them.
+                 #
+                 # This passed them flat — `{"currentMetresPerSecond": …}` — and
+                 # `read_conditions` looks in `conditions["parameters"]`, so **every
+                 # dry row ever flown was flown in still water with no positioning
+                 # fit**, whatever the bench said it had asked for. The `--water`
+                 # flag appeared to do nothing because it did nothing: a matrix of
+                 # four waters came back 100% in all four, which is what put me onto
+                 # it. The platform path builds a conditions object through the API
+                 # and was never affected.
+                 "conditions": {"kind": "constructed", "name": f"the bench · {water_name}",
+                                "parameters": {**water, **technology}}}
         if args.over:
             brief["cityPath"] = str(pathlib.Path(args.over).expanduser())
             # Over a real place the vehicle starts where the place says, not at

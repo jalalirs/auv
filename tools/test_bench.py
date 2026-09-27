@@ -772,3 +772,32 @@ def test_a_dry_row_replaces_the_one_it_re_flew_and_no_other():
     inside = inside[inside.index("def command_dry("):]
     assert 'r["name"] not in flown_now' in inside
     assert 'r["controller"] != called' not in inside
+
+
+def test_a_dry_dive_is_given_its_conditions_the_way_the_runtime_reads_them():
+    """`read_conditions` looks in `conditions["parameters"]`, and this passed them
+    flat — so **every dry row ever flown was flown in still water with no
+    positioning fit**, whatever the bench said it had asked for.
+
+    It surfaced when `--water` arrived and a matrix of four waters came back 100% in
+    all four: the flag appeared to do nothing because it did nothing. The platform
+    path builds a conditions object through the API and was never affected, so the
+    platform rows stand and the dry ones before 27 September 2026 are all still
+    water.
+    """
+    inside = (HERE / "bench").read_text()
+    inside = inside[inside.index("def command_dry("):]
+    assert '"parameters": {**water, **technology}' in inside
+    assert '"conditions": {**water, **technology}' not in inside, "still flat"
+
+
+def test_the_runtime_would_ignore_flat_conditions():
+    """Held against the runtime itself, so this cannot quietly become wrong again if
+    the reader changes."""
+    where = HERE.parent / "services/sim-runtime/coral/runner.py"
+    inside = where.read_text()
+    said = inside[inside.index("def read_conditions("):]
+    said = said[:said.index("\n    def ")]
+    assert 'conditions.get("parameters")' in said, (
+        "the runtime no longer reads conditions from `parameters`, so the bench's "
+        "nesting may now be wrong in the other direction")
