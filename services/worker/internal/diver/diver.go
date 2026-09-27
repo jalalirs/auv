@@ -411,6 +411,15 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	// rather than passed as arguments because it is a page of JSON, and because
 	// a file is something somebody can look at afterwards and see exactly what
 	// was run.
+	// Whether this dive is drawn, decided once.
+	//
+	// It decides two things that must not disagree: which command the simulator
+	// container runs, and what the brief tells the runner. A brief that said
+	// undrawn to a runner launched as the application would be a dive rendering
+	// while its own brief said nothing was watching.
+	watching := claimed.Run.Mode == "interactive"
+	drawn := watching || (recording(claimed) && pictures(claimed))
+
 	brief := map[string]any{
 		"runId":          claimed.Run.ID,
 		"diveId":         claimed.Run.DiveID,
@@ -451,7 +460,7 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		"autonomy": claimed.AutonomyImage != "",
 		// Whether there will be anything to look at. A dive flown for its
 		// numbers is not drawn, and the runner then starts no renderer at all.
-		"drawn": pictures(claimed),
+		"drawn": drawn,
 	}
 	briefDir := filepath.Join(d.workDir, claimed.Run.ID)
 	if err := os.MkdirAll(briefDir, 0o755); err != nil {
@@ -587,24 +596,22 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		Attach: network,
 	}
 
-	// An interactive dive is watched, and the machine it is watched from is not
-	// this one. So the simulator runs Coral City rather than the headless
-	// runner, and the stream is published to the host.
+	// A dive that will be looked at runs Coral City rather than the runner
+	// alone, so its recording can carry frames; one that will not starts no
+	// renderer at all. Both come from `drawn`, decided with the brief above, so
+	// what the container runs and what the brief says cannot disagree.
 	//
-	// It is put on an ordinary network as well as the dive's own, because a
-	// port cannot be published from a network with no route off it. That is the
-	// simulator only: it is ours, and the thing being kept from the outside is
-	// the autonomy, which stays on the internal network and nothing else.
-	watching := claimed.Run.Mode == "interactive"
-	// A dive that is for something records what it sees, and seeing needs the
-	// renderer: a batch dive with a task runs the application headless rather
-	// than the runner alone, so its recording carries frames. It is not
-	// watched, so nothing is published.
-	rendering := watching || (recording(claimed) && pictures(claimed))
+	// An interactive dive is watched from somewhere that is not this machine, so
+	// its stream is published to the host. It is put on an ordinary network as
+	// well as the dive's own, because a port cannot be published from a network
+	// with no route off it. That is the simulator only: it is ours, and the
+	// thing being kept from the outside is the autonomy, which stays on the
+	// internal network and nothing else.
+	//
 	// One port per dive on this host, from the slot the platform gave it; two
 	// simulators sharing a card would otherwise be watched on one port.
 	signal := d.signalPort + claimed.Slot
-	if rendering {
+	if drawn {
 		simulator.Command = []string{"/isaac-sim/kit/kit"}
 		simulator.Args = []string{"/isaac-sim/apps/coral_city.kit", "--no-window"}
 	}
