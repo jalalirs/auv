@@ -757,3 +757,18 @@ def test_both_benches_can_be_told_which_water():
     assert inside.count('"--water"') == 2, "one of the two paths cannot be told"
     assert "WATERS[args.water]" in inside
     assert "WATERS[WATER]" not in inside, "a path still hard-codes the water"
+
+
+def test_a_dry_row_replaces_the_one_it_re_flew_and_no_other():
+    """A row's identity is its whole name, and this replaced by *controller*.
+
+    So flying `pursue` in a second water deleted its first-water rows and the water
+    matrix could never hold more than one column. Found by running it: four rows
+    where there should have been six, the two missing being the pair flown in the
+    default water — which is the one that has no suffix in the name and so is
+    easiest to lose.
+    """
+    inside = (HERE / "bench").read_text()
+    inside = inside[inside.index("def command_dry("):]
+    assert 'r["name"] not in flown_now' in inside
+    assert 'r["controller"] != called' not in inside

@@ -872,7 +872,16 @@ def command_dry(args) -> int:
               f"{DIM}flown by {rows[-1]['flownBy']}{OFF}")
     kept = _bench_file(args.suite)
     called = args.called or args.controller
-    held = [r for r in _read_rows(args.suite) if r["controller"] != called]
+    # Replaced by **name**, not by controller.
+    #
+    # A row's identity is its whole name — the suite, the controller, the hull, the
+    # reef, whether there were things in the water, the water, the task — and this
+    # dropped every row whose *controller* matched, so flying `pursue` in a second
+    # water deleted its first-water rows and the matrix could never accumulate more
+    # than one column. Found by running it: four rows where there should have been
+    # six, and the two missing ones were the pair flown in the default water.
+    flown_now = {r["name"] for r in rows}
+    held = [r for r in _read_rows(args.suite) if r["name"] not in flown_now]
     kept.write_text(json.dumps(held + rows, indent=2))
     print(f"{GREEN}on the bench{OFF}{DIM} · kept in {kept}{OFF}")
     return command_show(args)
