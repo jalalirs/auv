@@ -283,6 +283,11 @@ DYNAMICS = {
                 "type": "geometry_msgs/msg/TwistWithCovarianceStamped"
             },
             {
+                "topic": "/dvl/range",
+                "type": "sensor_msgs/msg/Range",
+                "note": "The range to the seabed, from the same Doppler log as the twist. Infinity, or outside [min_range, max_range], is no bottom lock \u2014 which is a thing that happens and a controller holding an altitude has to handle. Reef work is altitude work."
+            },
+            {
                 "topic": "/depth",
                 "type": "sensor_msgs/msg/FluidPressure"
             },
@@ -396,7 +401,13 @@ DYNAMICS = {
         "lossShare": 0.08
     },
     "power": {
+        "note": "The same pack as the standard BlueROV2, because it is the same battery: the Heavy Retrofit changes the thrusters and the buoyancy and not the enclosure, so 14.8 V and 18 Ah is what this vehicle carries too. Eight T200s draw from it instead of six, which is where the difference in endurance comes from and is already accounted for by the thrusters themselves. Derived, not measured: if somebody weighs a Heavy with the larger pack fitted, this is the number to replace. It had no capacity at all until 27 September 2026, which meant every bench row for this hull reported 0.00 Wh \u2014 not \"unknown\" but \"this controller used no energy\", found by flying it.",
+        "capacityWh": 266.4,
+        "nominalVoltage": 14.8,
         "hotelW": 7.0,
+        "thrusterMaxW": 350.0,
+        "powerExponent": 1.5,
+        "reserveFraction": 0.1,
         "hotelNote": "The base electronics and nothing else: the same electronics, with more to talk to. It was a single lumped figure that stood for the electronics, the sensors and the lights together \u2014 which meant unfitting a Doppler log or switching the lamps off changed the endurance by exactly nothing. Each instrument states its own draw now and they are added to this, so a dive that carries less lasts longer, which is the whole reason to be able to choose."
     },
     "computer": {
@@ -435,6 +446,7 @@ VEHICLE = Vehicle(
         Topic('/camera/image_raw', 'sensor_msgs/msg/Image', ''),
         Topic('/imu/data', 'sensor_msgs/msg/Imu', ''),
         Topic('/dvl/twist', 'geometry_msgs/msg/TwistWithCovarianceStamped', ''),
+        Topic('/dvl/range', 'sensor_msgs/msg/Range', 'The range to the seabed, from the same Doppler log as the twist. Infinity, or outside [min_range, max_range], is no bottom lock — which is a thing that happens and a controller holding an altitude has to handle. Reef work is altitude work.'),
         Topic('/depth', 'sensor_msgs/msg/FluidPressure', ''),
         Topic('/tf', 'tf2_msgs/msg/TFMessage', ''),
         Topic('/sonar/scan', 'sensor_msgs/msg/LaserScan', ''),

@@ -81,19 +81,32 @@ class GoAroundThings(Controller):
     def engage(self, seen: Observation) -> None:
         if self["depthM"] == 0.0:
             self.parameters["depthM"].set(seen.depth)
-        self.parameters["headingDeg"].set(math.degrees(seen.heading))
+        # The heading it was engaged at, unless the task named one.
+        if self.goal.get("headingDeg") is None:
+            self.parameters["headingDeg"].set(math.degrees(seen.heading))
 
-    # There is no `tasked` hook here, and that is not an omission.
-    #
-    # The runtime's own controllers are handed the dive's objective — `tasked(goal)`
-    # on their base class — and an SDK controller is not: nothing publishes the
-    # objective and `Controller` has no hook for it. So this cannot read the
-    # altitude off the task; it is a parameter, and whoever flies it sets it, by
-    # `--tune altitudeM=3` or from the cockpit.
-    #
-    # Worth knowing before comparing this against `pursue` on a transect: the
-    # baseline is told what the dive is for and this is not. The plan records that
-    # asymmetry under item 4.
+    def tasked(self, goal: dict) -> None:
+        """Take the altitude and the heading the dive asks for.
+
+        A controller that ignored the task and flew its own default would score
+        badly for a reason that has nothing to do with what it is for — and worse,
+        it would fly a different path from the baseline it is being compared
+        against, which makes the comparison meaningless rather than merely unfair.
+
+        The goal arrives latched on `/task` before engagement, and again whenever a
+        mission moves to its next stage.
+        """
+        super().tasked(goal)
+        for field, parameter in (("altitudeM", "altitudeM"),
+                                 ("headingDeg", "headingDeg"),
+                                 ("speedMs", "speedMs")):
+            said = self.goal.get(field)
+            if said is None:
+                continue
+            try:
+                self.parameters[parameter].set(float(said))
+            except (TypeError, ValueError):
+                pass
 
     # ── the fan ──────────────────────────────────────────────────────────────
 

@@ -43,12 +43,16 @@ class Navigator:
         self.velocity = np.zeros(3)       # body u v w
         self.xy = np.zeros(2)             # dead-reckoned, from where it started
         self._last_t: float | None = None
-        self.heard = {"depth": False, "imu": False, "dvl": False, "sonar": False}
+        self.heard = {"depth": False, "imu": False, "dvl": False, "sonar": False,
+                      "bottom": False}
         # The last fan, and its nearest return. None until one arrives, which is
         # the honest answer for a vehicle that carries no sonar as well as one
         # whose first sweep has not come back yet.
         self.fan: dict | None = None
         self.nearest: dict | None = None
+        # The seabed's height under the vehicle, world z. None until a Doppler log
+        # reports a range it believes, which is what losing bottom lock looks like.
+        self.floor: float | None = None
 
     def pressure(self, pascals: float) -> None:
         self.depth = max(0.0, (float(pascals) - SURFACE_PRESSURE_PA) / (self.density * GRAVITY))
@@ -100,6 +104,25 @@ class Navigator:
                          "beam": int(beam)})
         self.heard["sonar"] = True
 
+    def bottom(self, range_m: float, near: float, far: float) -> None:
+        """How far it is to the seabed, from the Doppler log that measures it.
+
+        A reading outside the log's own bounds is no reading: that is what losing
+        bottom lock is, and the honest answer is then that the floor is **unknown**
+        rather than wherever it last was. A controller holding altitude over a reef
+        has to know the difference; one told a stale floor flies into the next head.
+        """
+        import math
+
+        if not math.isfinite(range_m) or not (near <= range_m <= far):
+            self.floor = None
+            self.heard["bottom"] = False
+            return
+        # Depth is positive down; the floor is a world z, so it is below the
+        # vehicle by the range.
+        self.floor = -self.depth - float(range_m)
+        self.heard["bottom"] = True
+
     def observation(self, t: float) -> Observation:
         """Advance the dead reckoning to t and hand back what is known."""
         if self._last_t is not None and self.heard["dvl"]:
@@ -111,7 +134,11 @@ class Navigator:
             position=np.array([self.xy[0], self.xy[1], -self.depth]),
             velocity=np.concatenate([self.velocity, self.rates]),
             rotation=self.rotation.copy(),
-            floor=None,
+            # The seabed under the vehicle, from the Doppler log's range. Always
+            # None here until 27 September 2026, because nothing published a range
+            # — so a deployed controller could not hold an altitude, which is the
+            # one thing reef work is scored on.
+            floor=self.floor,
             on_the_bottom=False,
             # What the sonar last saw. The vehicle publishes `/sonar/scan` and
             # the catalogue declares it; until 27 September 2026 nothing here
