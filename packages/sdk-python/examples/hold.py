@@ -41,8 +41,6 @@ class StationHold(Controller):
         self.declare("positionKd", 1.3, 0.0, 6.0, "1/s", "surge and sway against speed over the ground")
         self.declare("positionKi", 0.30, 0.0, 1.5, "1/s³",
                      "surge and sway per metre-second off station: what holds against a current")
-        self.declare("carryM", 20.0, 0.0, 60.0, "m·s",
-                     "how much error it will carry before it stops adding more")
         # The vehicle's own figures, from the catalogue: how heavy it is to
         # accelerate, and how many newtons of heave make it neutral.
         dynamics = self.described.dynamics
@@ -82,7 +80,6 @@ class StationHold(Controller):
         self.last_t = None
 
     def observe(self, seen: Observation) -> Command:
-        most = self.described.most
         # Depth: positive error is too deep; rising closes it.
         error = seen.depth - self["depthM"]
         heave = self.heave_mass * (self["depthKp"] * error - self["depthKd"] * seen.velocity[2]) + self.trim_n
@@ -97,13 +94,22 @@ class StationHold(Controller):
         gap = 0.0 if self.last_t is None else max(0.0, float(seen.t) - self.last_t)
         self.last_t = float(seen.t)
         self.carried += np.array([off_body[0], off_body[1]]) * gap
-        # Capped, and that is not decoration: a vehicle held off station by something
-        # it cannot beat — a current past its thrust, a snagged tether — would
-        # otherwise wind this up without limit and then slam the other way when it
-        # came free.
-        carry = float(self["carryM"])
-        if carry > 0.0:
-            self.carried = np.clip(self.carried, -carry, carry)
+        # Capped at the force the axis can actually deliver, not at a number of
+        # metre-seconds somebody picked.
+        #
+        # This is the runtime's own rule and it is better than a fixed cap for a
+        # reason worth knowing: the integral's job is to supply a force, so the limit
+        # that means something is the force the thrusters have. A cap in metre-seconds
+        # is either loose enough to be no cap or tight enough to stop the integral
+        # before it has done its work — the first value tried here was 6 m·s and it
+        # pinned flat while the vehicle sat 0.58 m off station asking 11 N of a 145 N
+        # envelope.
+        ki = float(self["positionKi"])
+        most = self.described.most
+        if ki > 0.0:
+            reach = np.array([float(most[0]) / (self.surge_mass * ki),
+                              float(most[1]) / (self.sway_mass * ki)])
+            self.carried = np.clip(self.carried, -reach, reach)
         else:
             self.carried[:] = 0.0
         surge = self.surge_mass * (self["positionKp"] * off_body[0]
@@ -112,9 +118,22 @@ class StationHold(Controller):
         sway = self.sway_mass * (self["positionKp"] * off_body[1]
                                  + self["positionKi"] * self.carried[1]
                                  - self["positionKd"] * seen.velocity[1])
+        # And what it is allowed to ask for.
+        #
+        # There is no separate wind-up correction here, and that is deliberate. The
+        # runtime's own hold has one — it takes back the integral for force the
+        # allocator could not deliver — and a version of it was written here and then
+        # removed, because capping `carried` at the axis's own authority above already
+        # keeps it inside what the thrusters can give, and no measurement showed the
+        # extra machinery doing anything: identical scores in all four waters with it
+        # and without, including the one where the vehicle is swept. Two mechanisms
+        # for one problem is how a correct answer gets moved by the fix for it.
+        allowed = np.clip(np.array([surge, sway]),
+                          -np.array([float(most[0]), float(most[1])]),
+                          np.array([float(most[0]), float(most[1])]))
         return Command.wrench_of(
-            surge=max(-most[0], min(most[0], surge)),
-            sway=max(-most[1], min(most[1], sway)),
+            surge=float(allowed[0]),
+            sway=float(allowed[1]),
             heave=max(-most[2], min(most[2], heave)),
             yaw=max(-most[5], min(most[5], yaw)),
         )
