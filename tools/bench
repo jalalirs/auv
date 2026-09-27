@@ -541,7 +541,7 @@ def command_dry(args) -> int:
             # a depth this picked: six metres down is the surface on one reef
             # and inside the bottom on another.
             brief.pop("initialState")
-        def flown(controller: str, layout=None, tune=()):
+        def fly(controller: str, layout=None, tune=()):
             """One dive, opened the way the arguments ask and flown to the end.
 
             The same function for the reference dive and for the dive being
@@ -609,9 +609,9 @@ def command_dry(args) -> int:
             # has to beat — and never the controller being measured, because an
             # arrangement that moved with the controller would not be one
             # arrangement flown two ways.
-            reference, track = flown(THE_FLOOR)
+            reference, track = fly(THE_FLOOR)
             layout = things_in_the_way(track, objective["seed"], bottom, objective)
-        dive, _ = flown(args.controller, layout, args.tune)
+        dive, _ = fly(args.controller, layout, args.tune)
         said = dive.task.result() if dive.task else {}
         # Who flew it and what it thought come from the helm, not the task:
         # the task knows what was achieved, the helm knows who was flying and

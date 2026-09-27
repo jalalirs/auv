@@ -427,8 +427,8 @@ def test_the_reference_is_the_floor_and_not_the_controller_being_measured():
     assert tool.THE_FLOOR == "pursue"
     inside = (HERE / "bench").read_text()
     inside = inside[inside.index("def command_dry("):]
-    assert "flown(THE_FLOOR)" in inside
-    assert "args.controller, layout" in inside
+    assert "fly(THE_FLOOR)" in inside
+    assert "fly(args.controller, layout" in inside
 
 
 def test_the_thing_is_both_tall_enough_and_wide_enough():
