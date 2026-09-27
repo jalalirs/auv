@@ -196,6 +196,15 @@ def command_run(args) -> int:
         # What makes the comparison a comparison: the controller by name, and
         # the same seed for the same task whoever is flying it.
         objective["seed"] = seed_for(args.suite, task)
+        # And what makes it affordable: nobody watches a bench.
+        #
+        # A rendered dive runs at 0.17 times real time and an undrawn one at
+        # fifteen, on the same brief and the same card, and the two write the
+        # same poses file to the byte — so this suite costs about a quarter of
+        # an hour rather than a day, and does not need a GPU. The score comes
+        # from the numbers; if somebody wants to see one of these flights, they
+        # fly it again by hand and get a video.
+        objective["pictures"] = False
         defined = {"name": name, "cityVersionId": city, "vehicleVersionId": vehicle,
                    "conditionsId": conditions["id"], "objective": objective}
         if "builtIn" in flying:

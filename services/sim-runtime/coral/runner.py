@@ -534,6 +534,9 @@ class Dive:
         self.task = None
         # What it leaves behind. Opened with the task, beside the brief.
         self.recorder = None
+        # No stage until somebody opens one, and a dive nobody is watching
+        # never does. None rather than absent, so asking is allowed.
+        self.stage = None
         # Where the water stops. Depth is measured from z = 0 everywhere, so
         # that is the waterline unless a place ships a surface of its own and
         # says otherwise. It used to be None until a place shipped one, which
@@ -564,54 +567,74 @@ class Dive:
 
     # ── setting up ───────────────────────────────────────────────────────────
 
-    def open(self, drawn: bool = False) -> bool:
-        """Load the place and put the vehicle in it. False if it would not open.
+    def open_dry(self) -> bool:
+        """Load the place without drawing it. False if it has no description.
 
-        Drawn only when somebody is watching. The hull and the water surface are
-        tens of megabytes that no batch dive has any use for: the dynamics come
-        from the vehicle's parameters and not from its triangles, so nothing
-        loaded here changes the trajectory by so much as a millimetre. What it
-        changes is whether there is anything to see.
+        A dive is renderered because somebody wants to watch it, not because the
+        physics needs it: nothing a step does asks the stage a question, and both
+        the multibeam and the imaging sonar march their rays against the place's
+        heightfield rather than against its triangles. Measured on the box, the
+        same dive steps 3,900 times a second with no renderer and 33 with one.
+        That is the difference between benching a controller in an hour and
+        benching it in a day, and a bench nobody runs twice is not a bench.
+
+        What the stage was being asked for was the size of the place, and the
+        place already says: its description carries how far across it is and its
+        heightfield carries how deep. Those are better answers than the bounding
+        box, which also enclosed the water plane and every coral.
         """
-        import omni.usd
-        from pxr import Gf, Usd, UsdGeom, UsdPhysics
-
-        context = omni.usd.get_context()
-        context.open_stage(str(self.scene))
-        stage = context.get_stage()
-        if stage is None:
-            self.say("failed", why=f"the place at {self.scene} would not open")
+        city = pathlib.Path(self.brief.get("cityPath", "/dive/city"))
+        described = self.the_place_describes_itself(city)
+        if described is None:
+            self.say("failed", why=f"the place at {city} does not describe itself, "
+                                   "and a dive with nothing to see has nothing "
+                                   "else to go on")
             return False
-        self.stage = stage
-
-        prims = sum(1 for _ in stage.Traverse())
-
-        # What the place is measured in, and how big it is.
-        #
-        # The physics here is in metres and always will be. A USD stage is in
-        # whatever its author chose — centimetres are common — and a scene in
-        # centimetres drawn as though it were metres puts the camera four
-        # centimetres from the vehicle, inside the tank wall. That is what the
-        # first photograph of a lit dive turned out to be. Nothing about the
-        # trajectory changes; only where things are drawn.
-        self.units_per_metre = 1.0 / (UsdGeom.GetStageMetersPerUnit(stage) or 1.0)
-        self.up_axis = UsdGeom.GetStageUpAxis(stage)
-
-        bounds = UsdGeom.BBoxCache(
-            Usd.TimeCode.Default(), [UsdGeom.Tokens.default_]
-        ).ComputeWorldBound(stage.GetPseudoRoot()).ComputeAlignedRange()
-        extent = corner = far = None
-        if not bounds.IsEmpty():
-            metres = lambda v: [round(float(c) / self.units_per_metre, 2) for c in v]
-            extent, corner, far = (metres(bounds.GetSize()),
-                                   metres(bounds.GetMin()), metres(bounds.GetMax()))
+        corner, far, extent = described
+        self.units_per_metre = 1.0
+        self.up_axis = "Z"
         self.bounds = (corner, far)
-
-        self.say("place_open", scene=str(self.scene), prims=prims,
+        self.say("place_open", scene=str(city), prims=0,
                  metresAcross=extent, from_=corner, to=far,
-                 upAxis=str(self.up_axis),
-                 unitsPerMetre=round(self.units_per_metre, 4))
+                 upAxis=self.up_axis, unitsPerMetre=1.0, drawn=False)
+        self.put_the_vehicle_in_the_place(corner, far, extent)
+        # The same two things a drawn dive ends its opening with. Without the
+        # first there is no task, no recorder and no score: the dive flies, the
+        # vehicle holds where it was put, and the record is a vehicle doing
+        # nothing — which is what the first dry dive produced.
+        self.begin_task(self.brief.get("objective"))
+        self.say("vehicle_placed",
+                 position=[round(float(x), 3) for x in self.position])
+        return True
 
+    def the_place_describes_itself(self, city: pathlib.Path):
+        """How big the place is, from the place rather than from its geometry."""
+        import json
+
+        try:
+            said = json.loads((city / "site.json").read_text())
+            across = float(said["from"]["acrossMetres"])
+            field = said["mesh"]["heightfield"]
+            heights = np.fromfile(city / field["file"], dtype="<f4")
+            if heights.size == 0:
+                return None
+        except Exception:
+            return None
+        # The water column is part of the place: a vehicle at the surface is
+        # inside it, so the top is the surface and not the shallowest rock.
+        deep, shallow = float(heights.min()), max(0.0, float(heights.max()))
+        half = across / 2.0
+        corner = [-half, -half, deep]
+        far = [half, half, shallow]
+        return corner, far, [across, across, round(shallow - deep, 2)]
+
+    def put_the_vehicle_in_the_place(self, corner, far, extent) -> None:
+        """The bottom under the vehicle and where the vehicle starts.
+
+        Shared by a dive somebody is watching and a dive nobody is: none of
+        it asks the renderer anything. The place's own heightfield says
+        where the bottom is, and the brief or the place says where to begin.
+        """
         # The floor.
         #
         # The site's own heightfield where it has one, so the bottom is the
@@ -688,6 +711,56 @@ class Dive:
                 self.say("vehicle_outside_the_place",
                          position=[round(float(v), 2) for v in self.position],
                          from_=corner, to=far)
+
+    def open(self, drawn: bool = False) -> bool:
+        """Load the place and put the vehicle in it. False if it would not open.
+
+        Drawn only when somebody is watching. The hull and the water surface are
+        tens of megabytes that no batch dive has any use for: the dynamics come
+        from the vehicle's parameters and not from its triangles, so nothing
+        loaded here changes the trajectory by so much as a millimetre. What it
+        changes is whether there is anything to see.
+        """
+        import omni.usd
+        from pxr import Gf, Usd, UsdGeom, UsdPhysics
+
+        context = omni.usd.get_context()
+        context.open_stage(str(self.scene))
+        stage = context.get_stage()
+        if stage is None:
+            self.say("failed", why=f"the place at {self.scene} would not open")
+            return False
+        self.stage = stage
+
+        prims = sum(1 for _ in stage.Traverse())
+
+        # What the place is measured in, and how big it is.
+        #
+        # The physics here is in metres and always will be. A USD stage is in
+        # whatever its author chose — centimetres are common — and a scene in
+        # centimetres drawn as though it were metres puts the camera four
+        # centimetres from the vehicle, inside the tank wall. That is what the
+        # first photograph of a lit dive turned out to be. Nothing about the
+        # trajectory changes; only where things are drawn.
+        self.units_per_metre = 1.0 / (UsdGeom.GetStageMetersPerUnit(stage) or 1.0)
+        self.up_axis = UsdGeom.GetStageUpAxis(stage)
+
+        bounds = UsdGeom.BBoxCache(
+            Usd.TimeCode.Default(), [UsdGeom.Tokens.default_]
+        ).ComputeWorldBound(stage.GetPseudoRoot()).ComputeAlignedRange()
+        extent = corner = far = None
+        if not bounds.IsEmpty():
+            metres = lambda v: [round(float(c) / self.units_per_metre, 2) for c in v]
+            extent, corner, far = (metres(bounds.GetSize()),
+                                   metres(bounds.GetMin()), metres(bounds.GetMax()))
+        self.bounds = (corner, far)
+
+        self.say("place_open", scene=str(self.scene), prims=prims,
+                 metresAcross=extent, from_=corner, to=far,
+                 upAxis=str(self.up_axis),
+                 unitsPerMetre=round(self.units_per_metre, 4))
+
+        self.put_the_vehicle_in_the_place(corner, far, extent)
 
         # Gravity on, which is the whole point: OceanSim disables it and applies
         # damping instead, and a vehicle with no weight has nothing for buoyancy

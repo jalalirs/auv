@@ -26,6 +26,9 @@ import sys
 
 RENDER_HZ = 60.0
 
+# How often a dive with nothing to record pumps the app anyway, in steps.
+EVERY_SO_OFTEN = 2000
+
 
 def read_brief() -> dict:
     """What the agent asked for."""
@@ -148,6 +151,23 @@ def main() -> int:
         return 2
     scene, body, allocator = prepared
 
+    # A dive nobody is going to look at does not need a renderer.
+    #
+    # Measured on the box, all four on the same brief and the same card: the
+    # shell extension the agent normally launches runs at 0.17x real time, this
+    # runner at 3.3x, this runner rendering only when the recording wants a
+    # frame at 5.2x, and this runner with no renderer started at all at 19.6x.
+    # The trajectories are the same file — identical md5 — because the
+    # dynamics come from the vehicle's parameters and not from its triangles,
+    # and nothing a step does asks the stage a question.
+    #
+    # That is the difference between benching a controller in an hour and
+    # benching it in a day, and it also means a bench needs no GPU. The default
+    # is still drawn, because a dive somebody asked to watch must be watchable;
+    # a bench asks for dry.
+    if not brief.get("drawn", True):
+        return fly_dry(brief, scene, body, allocator)
+
     from isaacsim import SimulationApp
     app = SimulationApp({"headless": brief.get("mode") != "interactive"})
 
@@ -155,6 +175,81 @@ def main() -> int:
         return fly(app, brief, scene, body, allocator)
     finally:
         app.close()
+
+
+def fly_dry(brief: dict, scene, body, allocator) -> int:
+    """Fly it with nothing to see: no Kit, no stage, no frames.
+
+    The same Dive, the same fixed step, the same record — poses, sensors, task,
+    manifest — short only a video, which the manifest says it is short of.
+    """
+    import time as wallclock
+
+    from runner import Dive
+
+    dive = Dive(brief, body, allocator, scene, say)
+    if not dive.open_dry():
+        return 2
+    dive.connect()
+
+    waited = wait_for_autonomy(dive, brief, update=None)
+
+    # What paces it.
+    #
+    # Nothing, when the vehicle is flown by something in this process: the
+    # physics is deterministic and a fixed step, so running flat out and running
+    # slowly produce the same trajectory. But a controller in another container
+    # publishes on the clock on the wall, and a dive that outran it would hand
+    # the vehicle one command every two simulated seconds instead of ten a
+    # second — which is not this controller being tested, it is a starved one.
+    paced = dive.bridge is not None and dive.bridge.commanded
+    say("running", steps=dive.steps, physicsHz=1.0 / dive.dt,
+        seconds=dive.steps * dive.dt, realTime=paced, drawn=False,
+        waitedSeconds=waited)
+    began = wallclock.monotonic()
+
+    while not dive.done:
+        dive.step()
+        if paced:
+            ahead = began + dive.simulated - wallclock.monotonic()
+            if ahead > 0:
+                wallclock.sleep(min(ahead, 0.05))
+
+    dive.close()
+    ran = wallclock.monotonic() - began
+    say("succeeded", simulatedSeconds=round(dive.simulated, 3),
+        wallSeconds=round(ran, 1),
+        timesRealTime=round(dive.simulated / ran, 2) if ran > 0 else None)
+    return 0
+
+
+def wait_for_autonomy(dive, brief: dict, update) -> float:
+    """Give a controller in another container wall-clock time to appear.
+
+    Publishing while it waits, because otherwise neither side can go first: this
+    was waiting for a command, the controller was waiting for a depth reading to
+    respond to, and each was the other's precondition.
+    """
+    import time as wallclock
+
+    waited = float(brief.get("autonomyWaitSeconds", 60.0))
+    if dive.bridge is None:
+        return 0.0
+    deadline = wallclock.monotonic() + waited
+    while not dive.bridge.commanded and wallclock.monotonic() < deadline:
+        dive.publish()
+        if update is not None:
+            update()
+        wallclock.sleep(0.05)
+    took = round(waited - (deadline - wallclock.monotonic()), 2)
+    if dive.bridge.commanded:
+        say("autonomy_ready", waitedSeconds=took)
+    else:
+        # Not a failure. A vehicle nobody commands drifts, and a dive that
+        # recorded that is a real result — it is simply a different one, and
+        # the record says which.
+        say("autonomy_absent", waitedSeconds=waited)
+    return took
 
 
 def fly(app, brief: dict, scene, body, allocator) -> int:
@@ -168,32 +263,11 @@ def fly(app, brief: dict, scene, body, allocator) -> int:
         return 2
     dive.connect()
 
-    # A controller needs wall-clock time to exist in.
-    #
-    # Left to itself the physics runs two thousand steps in well under a second,
-    # and a stack that takes five to start its node would find the dive already
-    # over — reporting, correctly and uselessly, that nothing flew the vehicle.
-    # So a dive with autonomy attached waits for it to appear and then runs at
-    # real time; one without runs as fast as the machine allows, which is the
-    # whole point of batch.
-    waited = float(brief.get("autonomyWaitSeconds", 60.0))
-    if dive.bridge is not None:
-        # Publishing while it waits, because otherwise neither side can go
-        # first: this was waiting for a command, the controller was waiting for
-        # a depth reading to respond to, and each was the other's precondition.
-        deadline = wallclock.monotonic() + waited
-        while not dive.bridge.commanded and wallclock.monotonic() < deadline:
-            dive.publish()
-            app.update()
-            wallclock.sleep(0.05)
-        if dive.bridge.commanded:
-            say("autonomy_ready",
-                waitedSeconds=round(waited - (deadline - wallclock.monotonic()), 2))
-        else:
-            # Not a failure. A vehicle nobody commands drifts, and a dive that
-            # recorded that is a real result — it is simply a different one, and
-            # the record says which.
-            say("autonomy_absent", waitedSeconds=waited)
+    # A controller needs wall-clock time to exist in: left to itself the
+    # physics runs two thousand steps in well under a second, and a stack
+    # that takes five to start its node would find the dive already over —
+    # reporting, correctly and uselessly, that nothing flew the vehicle.
+    wait_for_autonomy(dive, brief, update=app.update)
 
     paced = dive.bridge is not None and dive.bridge.commanded
     say("running", steps=dive.steps, physicsHz=1.0 / dive.dt,
@@ -202,7 +276,17 @@ def fly(app, brief: dict, scene, body, allocator) -> int:
 
     while not dive.done:
         dive.step()
-        if dive.taken % 4 == 0:
+        # Rendered when the recording wants a frame, not every fourth step.
+        # A frame costs upwards of half a second and a step costs a quarter of a
+        # millisecond, so updating every four steps was rendering two hundred
+        # times a second to keep a recording that asked for eight: measured, the
+        # same brief ran 3.3x real time that way and 5.2x this way, and produced
+        # the same poses file to the byte. A dive with no recording still gets
+        # an occasional update, because an app that is never pumped is an app
+        # that looks hung to anything watching the process.
+        wants_a_frame = (dive.recorder is not None
+                         and dive.recorder.due(float(dive.simulated)))
+        if wants_a_frame or dive.taken % EVERY_SO_OFTEN == 0:
             app.update()
         # Paced only when something is flying it. Running ahead of the
         # controller would mean the vehicle experienced a command issued for

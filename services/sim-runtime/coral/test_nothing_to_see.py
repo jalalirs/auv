@@ -1,0 +1,125 @@
+"""A dive nobody is watching.
+
+The renderer was costing the physics a hundred-fold. Measured on the box, the
+same dive steps 3,911 times a second with no renderer and 33 with one — 0.256
+milliseconds a step against something upwards of half a second a frame — and
+nothing a step does asks the stage a question: the fourteen calls a step makes
+are numpy, and both the multibeam and the imaging sonar march their rays
+against the place's heightfield rather than against its triangles.
+
+So a dive can be opened without being drawn. What the stage was being asked for
+was how big the place is, and the place already says, in the same description
+its heightfield comes from.
+"""
+
+import json
+import pathlib
+import sys
+
+import numpy as np
+import pytest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+from hydrodynamics import Allocator, Body, Hydrodynamics
+from runner import Dive
+
+PACKAGE = pathlib.Path(__file__).resolve().parents[3] / "catalog/vehicles/bluerov2/dynamics.json"
+
+
+def a_place(tmp_path, across=1000.0, deep=-30.0, shallow=-4.0, rows=8, columns=8):
+    """A place that describes itself, the way a packaged place does."""
+    heights = np.linspace(deep, shallow, rows * columns).astype("<f4")
+    (tmp_path / "seabed.f32").write_bytes(heights.tobytes())
+    (tmp_path / "site.json").write_text(json.dumps({
+        "from": {"acrossMetres": across},
+        "mesh": {"heightfield": {"rows": rows, "columns": columns,
+                                 "file": "seabed.f32"}},
+    }))
+    return tmp_path
+
+
+def a_dive(city, **brief):
+    model = Hydrodynamics.from_package(PACKAGE)
+    said = {"durationSeconds": 60, "cityPath": str(city)}
+    said.update(brief)
+    return Dive(said, Body(model), Allocator(model), city / "site.usda",
+                lambda kind, **detail: None)
+
+
+def test_the_place_says_how_far_across_it_is(tmp_path):
+    """Not the bounding box of its geometry: the number its author wrote."""
+    city = a_place(tmp_path, across=2400.0)
+    corner, far, extent = a_dive(city).the_place_describes_itself(city)
+    assert extent[0] == extent[1] == 2400.0
+    assert corner[0] == -1200.0 and far[0] == 1200.0
+
+
+def test_the_bottom_comes_from_the_heightfield_and_the_top_from_the_surface(tmp_path):
+    """A vehicle at the surface is inside the place. The shallowest rock is
+    not the top of the water, and a dive that thought so would report every
+    vehicle that came up to breathe as having left the site."""
+    city = a_place(tmp_path, deep=-41.0, shallow=-6.0)
+    corner, far, extent = a_dive(city).the_place_describes_itself(city)
+    assert corner[2] == pytest.approx(-41.0, abs=0.01)
+    assert far[2] == 0.0
+    assert extent[2] == pytest.approx(41.0, abs=0.01)
+
+
+def test_a_place_above_the_water_keeps_its_own_top(tmp_path):
+    """An island in the site is higher than the surface, and the place is that
+    tall. Only the water is a floor under the top, not a ceiling over it."""
+    city = a_place(tmp_path, deep=-30.0, shallow=12.0)
+    _, far, _ = a_dive(city).the_place_describes_itself(city)
+    assert far[2] == pytest.approx(12.0, abs=0.01)
+
+
+def test_a_place_that_does_not_describe_itself_is_not_flown(tmp_path):
+    """Refused rather than guessed. A dive over a place of unknown size would
+    spawn the vehicle somewhere arbitrary and score it against nothing."""
+    said = []
+    model = Hydrodynamics.from_package(PACKAGE)
+    dive = Dive({"durationSeconds": 60, "cityPath": str(tmp_path)},
+                Body(model), Allocator(model), tmp_path / "site.usda",
+                lambda kind, **detail: said.append((kind, detail)))
+    assert dive.open_dry() is False
+    assert any(kind == "failed" for kind, _ in said)
+
+
+def test_opening_dry_finds_the_bottom_under_the_vehicle(tmp_path):
+    """The whole point of the heightfield: the bottom here, not the deepest
+    point in the place. Without it a vehicle holding two metres of altitude
+    over a reef with relief flies two metres over the sand between the heads."""
+    city = a_place(tmp_path, across=1000.0, deep=-30.0, shallow=-4.0, rows=64, columns=64)
+    dive = a_dive(city, initialState={"positionM": [0, 0, -10]})
+    assert dive.open_dry() is True
+    assert dive.seabed is not None
+    here = dive.seabed.under(0.0, 0.0)
+    corner = dive.bounds[0]
+    assert corner[2] <= here <= 0.0
+    # And it is not simply the deepest point.
+    assert here > dive.seabed.under(-490.0, -490.0)
+
+
+def test_a_dry_dive_steps_and_arrives(tmp_path):
+    """It is a dive, not a description of one: it flies, and it finishes."""
+    city = a_place(tmp_path, across=1000.0, rows=32, columns=32)
+    dive = a_dive(city, durationSeconds=20,
+                  initialState={"positionM": [0, 0, -12]})
+    assert dive.open_dry() is True
+    while not dive.done:
+        dive.step()
+    assert dive.simulated == pytest.approx(20.0, abs=1.0)
+    assert dive.steps > 0
+
+
+def test_nothing_a_step_does_asks_the_stage(tmp_path):
+    """The claim the dry path rests on, held against the code: a step that
+    reached for the stage would raise here rather than pass silently and cost a
+    hundredfold in the app."""
+    city = a_place(tmp_path, rows=16, columns=16)
+    dive = a_dive(city, durationSeconds=5, initialState={"positionM": [0, 0, -9]})
+    assert dive.open_dry() is True
+    assert dive.stage is None
+    for _ in range(200):
+        dive.step()
