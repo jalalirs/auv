@@ -178,3 +178,37 @@ describe("one controller against another", () => {
     expect(saidAs(said!)).toBe("better than wary on 1 of 2");
   });
 });
+
+describe("a trial is only the same trial when everything about it matches", () => {
+  it("reads the hull, the reef and the things out of the controller's field", () => {
+    expect(trialOf("bench · quick · pursue through things · reach"))
+      .toEqual({ suite: "quick", task: "reach", over: "through things" });
+    expect(trialOf("bench · quick · pursue on remus-100 over al-fahal through things · reach"))
+      .toEqual({ suite: "quick", task: "reach",
+                 over: "on remus-100 over al-fahal through things" });
+  });
+
+  it("does not compare a dive flown through things with one flown through open water", () => {
+    const both = [
+      { name: "bench · quick · a · reach", flownBy: "a",
+        run: run("succeeded", { task: { score: 0.9 } }, "2026-09-20T10:00:00Z") },
+      { name: "bench · quick · b through things · reach", flownBy: "b",
+        run: run("succeeded", { task: { score: 0.4 } }, "2026-09-20T10:00:00Z") },
+    ];
+    // Nothing in common: one had obstacles and the other did not, and calling
+    // that difference skill is exactly the mistake this guards.
+    expect(headToHead("a", ["b"], both)).toEqual([]);
+  });
+
+  it("compares two controllers that both flew through things", () => {
+    const both = [
+      { name: "bench · quick · a through things · reach", flownBy: "a",
+        run: run("succeeded", { task: { score: 0.9 } }, "2026-09-20T10:00:00Z") },
+      { name: "bench · quick · b through things · reach", flownBy: "b",
+        run: run("succeeded", { task: { score: 0.4 } }, "2026-09-20T10:00:00Z") },
+    ];
+    const [said] = headToHead("a", ["b"], both);
+    expect(said!.shared).toBe(1);
+    expect(said!.better).toBe(1);
+  });
+});

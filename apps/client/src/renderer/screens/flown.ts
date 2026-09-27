@@ -136,16 +136,21 @@ const PARTS = " · ";
 /**
  * The trial a bench row describes, or nothing if the row is not a bench row.
  *
- * The controller's own field carries the hull and the reef when they are not
- * the usual ones ("pursue on remus-100 over al-fahal"), so what is left of that
- * field after the controller's name is part of the trial and not part of who
- * flew it.
+ * The controller's own field carries the hull, the reef, and whether there was
+ * anything in the water when those are not the usual ones — "pursue on
+ * remus-100 over al-fahal through things" — so what is left of that field after
+ * the controller's name is part of the trial and not part of who flew it.
+ *
+ * All three matter and "through" most of all: a dive flown through things and a
+ * dive flown through open water are not the same dive, and reading them as one
+ * trial would compare a controller that had obstacles against one that did not
+ * and call the difference skill.
  */
 export function trialOf(name: string): Trial | undefined {
   const parts = name.split(PARTS);
   if (parts.length !== 4 || parts[0] !== "bench") return undefined;
   const [, suite, whose, task] = parts as [string, string, string, string];
-  const said = / (on|over) /.exec(whose);
+  const said = / (on|over|through) /.exec(whose);
   return { suite, task, over: said === null ? "" : whose.slice(said.index + 1) };
 }
 
