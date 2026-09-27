@@ -33,7 +33,25 @@ from coral_city.tank import Tank  # noqa: E402
 from coral_city.tasks import hold_station  # noqa: E402
 from hold_policy import FEATURES, LinearHold  # noqa: E402
 
-CURRENT = (0.51, 90.0)      # one knot, flowing east
+# The water it learns in, and there is more than one of it on purpose.
+#
+# This trained at one knot from the east and nothing else, and the policy that came
+# out was perfect there and poor everywhere — 1.000 at a knot, 0.210 in a gentle
+# set, 0.139 in still water, against the hand-written hold's 1.000, 1.000, 1.000.
+# It had learned a **bias, not a controller**: told to fight a knot from the east it
+# pushes east whether the knot is there or not, and in calm water it pushes itself
+# off station. "Learned 0.48 against hand-written 0.15" was true only at the one
+# current both had ever been measured in.
+#
+# So each episode draws a current. A policy that scores well across the set has to
+# work out what to do from what it *sees* rather than from what it was trained in,
+# which is the whole difference between a controller and a constant.
+WATERS = (
+    (0.0, 0.0),        # still
+    (0.13, 0.0),       # a gentle set, which is what the bench flies
+    (0.51, 90.0),      # one knot from the east
+    (1.03, 45.0),      # two knots, on the quarter
+)
 SECONDS = 30.0
 LATENCY_TICKS = 3           # 150 ms at 20 Hz, about what the live loop has
 POPULATION = 24
@@ -41,19 +59,29 @@ ELITE = 4
 GENERATIONS = 14
 
 
-def rollout(weights: np.ndarray, seed_shift: float) -> float:
-    """How well these weights hold station: the task's score, less a little
-    for thrust spent, so the cheaper of two holds that both stay put wins."""
+def in_one_water(weights: np.ndarray, current, seed_shift: float = 0.0) -> float:
+    """How well these weights hold station in this water: the task's score, less a
+    little for thrust spent, so the cheaper of two holds that both stay put wins."""
     # Through the sensors and with the live loop's delay, or what is learned
     # holds in the tank and nowhere else — which is what the first policy did:
     # 0.48 here, 0.03 on the platform.
     tank = Tank("bluerov2", start=(seed_shift, 0.0, -7.0), seconds=SECONDS,
                 task=hold_station(seconds=SECONDS, radius_m=0.5, depth_band_m=0.3),
-                sensed=True, current=CURRENT, latency_ticks=LATENCY_TICKS)
+                sensed=True, current=current, latency_ticks=LATENCY_TICKS)
     report = tank.run(LinearHold.with_weights(weights))
     # Thrust is dear: a policy that thrashes is penalised for it, since the
     # thrashing is also what does not survive a delay.
     return report.score - 0.3 * report.task["thrusterEffort"]
+
+
+def rollout(weights: np.ndarray, seed_shift: float = 0.0) -> float:
+    """Across every water, scored by its **worst** one.
+
+    The mean would let a policy buy a perfect knot with a hopeless calm, which is
+    exactly the trade the first one made. What a vehicle needs is to hold in
+    whatever it finds, so the score is the weakest water it was tried in.
+    """
+    return min(in_one_water(weights, current, seed_shift) for current in WATERS)
 
 
 def main() -> int:
@@ -79,14 +107,25 @@ def main() -> int:
 
     final = rollout(mean, 0.0)
     chosen = mean if final >= best_score - 0.02 else best
-    print(f"learned: {max(final, best_score):.3f} in {CURRENT[0]} m/s current; hand-written hold for comparison:")
     from hold import StationHold
-    hand = Tank("bluerov2", seconds=SECONDS, task=hold_station(seconds=SECONDS, radius_m=0.5, depth_band_m=0.3),
-                sensed=True, current=CURRENT, latency_ticks=LATENCY_TICKS).run(StationHold())
-    print(f"  hand-written: score {hand.score:.3f} effort {hand.task['thrusterEffort']:.3f}")
-    learned = Tank("bluerov2", seconds=SECONDS, task=hold_station(seconds=SECONDS, radius_m=0.5, depth_band_m=0.3),
-                   sensed=True, current=CURRENT, latency_ticks=LATENCY_TICKS).run(LinearHold.with_weights(chosen))
-    print(f"  learned:      score {learned.score:.3f} effort {learned.task['thrusterEffort']:.3f}")
+
+    # Every water, both controllers, because one water is how the last one came to
+    # be reported as better than the hand-written hold when it was better in one
+    # place and worse in three.
+    print(f"learned: {max(final, best_score):.3f} across all of them, by its worst. "
+          "Water by water, against the hand-written hold:")
+    print(f"  {'water':>16}  {'learned':>9}  {'hand-written':>13}")
+    for current in WATERS:
+        theirs = Tank("bluerov2", seconds=SECONDS,
+                      task=hold_station(seconds=SECONDS, radius_m=0.5, depth_band_m=0.3),
+                      sensed=True, current=current,
+                      latency_ticks=LATENCY_TICKS).run(StationHold())
+        ours = Tank("bluerov2", seconds=SECONDS,
+                    task=hold_station(seconds=SECONDS, radius_m=0.5, depth_band_m=0.3),
+                    sensed=True, current=current,
+                    latency_ticks=LATENCY_TICKS).run(LinearHold.with_weights(chosen))
+        said = f"{current[0]:.2f} m/s @{current[1]:.0f}"
+        print(f"  {said:>16}  {ours.score:9.3f}  {theirs.score:13.3f}")
 
     # Written out as a controller of its own, weights and all, so that the file
     # is the thing that is deployed: no model to fetch, nothing to look up.
