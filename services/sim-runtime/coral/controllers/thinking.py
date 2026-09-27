@@ -147,6 +147,17 @@ class Thinking:
     def _say(self, why: str) -> None:
         self.trouble = why[:200]
 
+    def busy(self) -> bool:
+        """Whether a thought is outstanding right now.
+
+        What a dive needs in order to charge thinking honestly. A thought that
+        takes two real seconds has to cost two simulated seconds, and a thought
+        that takes none has to cost none — so the question is not whether this
+        controller *can* think slowly but whether it is thinking at this instant.
+        Asked once per step, so it stays an attribute read and a liveness check.
+        """
+        return self._thread is not None and self._thread.is_alive()
+
     # ── what is reported ─────────────────────────────────────────────────────
 
     def said(self) -> dict:
@@ -155,7 +166,7 @@ class Thinking:
             "thoughts": self.thoughts,
             "failures": self.failures,
             "abandoned": self.abandoned,
-            "thinking": self._thread is not None and self._thread.is_alive(),
+            "thinking": self.busy(),
             "lastS": None if latest is None else round(latest, 3),
             "slowestS": None if not self.latencies else round(max(self.latencies), 3),
             "meanS": None if not self.latencies

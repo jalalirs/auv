@@ -145,20 +145,33 @@ def test_asking_whether_a_picture_is_owed_does_not_spend_it(tmp_path):
     assert keeping.owes_a_picture(1.25) is True
 
 
-def test_a_thinking_controller_is_flown_at_real_time_even_undrawn():
-    """Otherwise the bench measures the machine instead of the controller.
+def test_a_thought_is_charged_what_it_costs_and_nothing_else_is():
+    """Two ways to get this wrong, and the second is the one I shipped first.
 
-    Thinking costs real seconds — a model answers in one or two — and a dive
-    running six times faster than the clock charges those as thirty-six. The
-    interactive shell had this guard; the headless runner did not, which mattered
-    the moment the bench started coming through it.
+    Too little: a dive running six times faster than the clock hands a thought a
+    sixth of the real seconds it takes, which makes the **machine** look fast
+    rather than the controller, and a bench that rewarded whoever ran on the
+    slower box would be measuring the box.
+
+    Too much: pacing the whole dive whenever a controller *can* think slowly.
+    `ponder`'s `thinkS` — how long a decision takes, standing in for a model call
+    — **defaults to zero**, so most deliberating dives were charged a second per
+    second for thinking that cost nothing, and a bench row went from three minutes
+    to twenty for no reason.
+
+    The rule is the outstanding thought and only that.
     """
-    source = (pathlib.Path(__file__).resolve().parent / "dive.py").read_text()
-    inside = source[source.index("def fly_dry("):]
-    inside = inside[:inside.index("\ndef ")]
-    assert "deliberating()" in inside, "an undrawn dive does not ask whether it thinks"
-    # And it is asked before the stepping loop, not inside it.
-    assert inside.index("deliberating()") < inside.index("while not dive.done")
+    from controllers.helm import Helm  # noqa: F401  (imported for the surface)
+    from controllers.thinking import Thinking  # noqa: F401
+
+    said = (pathlib.Path(__file__).resolve().parent / "dive.py").read_text()
+    for which in ("def fly_dry(", "def fly("):
+        inside = said[said.index(which):]
+        inside = inside[:inside.index("\ndef ")] if "\ndef " in inside else inside
+        assert "thinking(dive)" in inside, f"{which} does not ask whether a thought is out"
+        assert "deliberating()" not in inside, (
+            f"{which} still paces on whether a controller *can* think, which "
+            "over-charges every instant decision")
 
 
 def test_the_two_runners_agree_about_what_paces_a_dive():
@@ -170,4 +183,35 @@ def test_the_two_runners_agree_about_what_paces_a_dive():
         inside = source[source.index(which):]
         inside = inside[:inside.index("\ndef ")] if "\ndef " in inside else inside
         assert "dive.bridge.commanded" in inside, f"{which} ignores an external controller"
-        assert "deliberating()" in inside, f"{which} would charge thinking at the wrong rate"
+        assert "thinking(dive)" in inside, f"{which} would charge thinking at the wrong rate"
+
+
+def test_an_outstanding_thought_is_what_is_asked_about_not_a_capability():
+    """`deliberating` answers whether a controller *can* think slowly;
+    `thinking_now` answers whether one is thinking at this instant. The dive needs
+    the second, and asking the first is how a controller with instant decisions
+    came to be charged a second per second."""
+    import threading
+    import time as wallclock
+
+    from controllers.thinking import Thinking
+
+    class Instant:
+        name = "instant"
+        thinks_every = 20.0
+
+        def think(self, seen):
+            return None
+
+    slow = Thinking(Instant())
+    assert slow.busy() is False, "nothing has been asked yet"
+    # A thread that is actually running counts; one that has finished does not.
+    held = threading.Event()
+    slow._thread = threading.Thread(target=held.wait, daemon=True)
+    slow._thread.start()
+    assert slow.busy() is True
+    held.set()
+    slow._thread.join(timeout=2.0)
+    assert slow.busy() is False
+    # And what it reports is the same answer, not a second implementation of it.
+    assert slow.said()["thinking"] is False

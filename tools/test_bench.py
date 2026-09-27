@@ -667,23 +667,28 @@ def test_flying_the_same_trial_again_saves_a_version_not_a_second_layout():
     assert "if mine is None:" in where
 
 
-def test_a_dry_bench_flies_a_thinking_controller_at_real_time():
-    """Or it measures the machine instead of the controller.
+def test_a_dry_bench_charges_a_thought_what_it_costs():
+    """Two ways to get this wrong; the second is the one shipped first.
 
-    A thought is triggered every `thinks_every` **simulated** seconds and takes
-    real seconds to have, so a dive running four times faster than the clock gives
-    each thought a quarter of the simulated budget it should have — and the same
-    controller on a faster box would score better. The runtime's own shell has
-    always had this guard; a dry bench had none, so every `ponder` row flown by one
-    before 27 September 2026 charged its thinking at the wrong rate.
+    Too little: a dive running four times faster than the clock gives a thought a
+    quarter of the real seconds it takes, so the same controller on a faster box
+    scores better and the bench measures the box.
+
+    Too much: pacing the whole dive whenever a controller *can* think slowly.
+    `ponder`'s `thinkS` — how long a decision takes, standing in for a model call —
+    defaults to **zero**, so most deliberating dives were charged a second per
+    second for thinking that cost nothing, and a row went from three minutes to
+    twenty for no reason.
     """
     inside = (HERE / "bench").read_text()
     inside = inside[inside.index("def command_dry("):]
-    assert "deliberating()" in inside
-    # Paced inside the stepping loop, which is the only place it can be.
+    # The instant, not the capability.
+    assert "thinking_now()" in inside
+    assert "deliberating()" not in inside
+    # Charged inside the stepping loop, which is the only place it can be.
     loop = inside[inside.index("for _ in range(int((seconds"):]
-    assert "if paced:" in loop[:600]
-    assert "wallclock.sleep" in loop[:600]
+    assert "wallclock.sleep(owed)" in loop[:900]
+    assert "dive.dt - (wallclock.monotonic() - stepped)" in loop[:900]
 
 
 def test_a_trial_flown_twice_is_one_row_and_it_is_the_newer():
