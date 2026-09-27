@@ -135,9 +135,9 @@
     "whatItStruck": []
   },
   {
-    "name": "bench \u00b7 quick \u00b7 wary \u00b7 hold-station",
+    "name": "bench \u00b7 quick \u00b7 pursue in one-knot \u00b7 hold-station",
     "suite": "quick",
-    "controller": "wary",
+    "controller": "pursue in one-knot",
     "task": "hold-station",
     "score": 1.0,
     "ended": "achieved",
@@ -152,9 +152,26 @@
     "whatItStruck": []
   },
   {
-    "name": "bench \u00b7 quick \u00b7 pursue in one-knot \u00b7 hold-station",
+    "name": "bench \u00b7 quick \u00b7 wary in one-knot \u00b7 hold-station",
     "suite": "quick",
-    "controller": "pursue in one-knot",
+    "controller": "wary in one-knot",
+    "task": "hold-station",
+    "score": 1.0,
+    "ended": "achieved",
+    "seconds": 300.0,
+    "energyWh": 3.095,
+    "driftM": 0.001,
+    "flownBy": "hold",
+    "thoughts": 0,
+    "slowestThoughtS": 0.0,
+    "struck": 0,
+    "grounded": 0,
+    "whatItStruck": []
+  },
+  {
+    "name": "bench \u00b7 quick \u00b7 pursue in two-knots \u00b7 hold-station",
+    "suite": "quick",
+    "controller": "pursue in two-knots",
     "task": "hold-station",
     "score": 1.0,
     "ended": "achieved",
