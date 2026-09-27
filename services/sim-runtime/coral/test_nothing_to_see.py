@@ -193,11 +193,10 @@ def test_the_two_runners_agree_about_what_paces_a_dive():
         assert "dive.bridge.commanded" in inside, f"{which} ignores an external controller"
 
 
-def test_an_outstanding_thought_is_what_is_asked_about_not_a_capability():
-    """`deliberating` answers whether a controller *can* think slowly;
-    `thinking_now` answers whether one is thinking at this instant. The dive needs
-    the second, and asking the first is how a controller with instant decisions
-    came to be charged a second per second."""
+def test_the_slow_loop_can_say_whether_a_thought_is_outstanding():
+    """Not used to pace anything — the runtime charges thinking in the dive's own
+    clock and needs no help — but it is what `said()` reports as `thinking`, and
+    one expression in one place is better than the same one written twice."""
     import threading
     import time as wallclock
 
