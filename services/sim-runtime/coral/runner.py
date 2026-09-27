@@ -2165,6 +2165,28 @@ class Dive:
         self.modem = Modem(said, seed=int(self.brief.get("seed", 0)))
         self.say("modem_on", **self.modem.said())
 
+    def fits(self, kind: str) -> bool:
+        """Whether this dive fits that instrument.
+
+        Everything the package declares, unless the brief names a shorter list.
+
+        The distinction the list is for, because it is easy to get backwards: an
+        instrument that **changes what the vehicle does** — the tether, which drags
+        — must always be fitted, or the dive is easier than the thing it stands in
+        for. An instrument that only **reports** changes nothing at all unless
+        something reads it, and a forward-looking sonar costs about four times the
+        rest of a step to ray-march: measured, a 30-second tank rollout goes from
+        1.16 s to 5.01 s for a fan nobody looks at, and a trainer flies three
+        thousand of them.
+
+        So this is opt-in and never inferred: the platform names no list and fits
+        everything. The SDK's tank names what the controller declares it needs.
+        """
+        named = self.brief.get("fitSensors")
+        if named is None:
+            return True
+        return kind in set(named)
+
     def switch_on_the_sonar(self) -> None:
         """Give the vehicle its sonar, if its package says it has one.
 
@@ -2176,6 +2198,9 @@ class Dive:
         import json
 
         from sonar import Sonar
+
+        if not self.fits("imaging_sonar"):
+            return
 
         try:
             described = json.loads((pathlib.Path(self.brief.get("vehiclePath", "/dive/vehicle"))
@@ -2199,6 +2224,9 @@ class Dive:
         import json
 
         from multibeam import Multibeam
+
+        if not self.fits("multibeam"):
+            return
 
         try:
             described = json.loads((pathlib.Path(self.brief.get("vehiclePath", "/dive/vehicle"))
