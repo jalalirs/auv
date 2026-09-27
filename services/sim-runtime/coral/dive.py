@@ -285,7 +285,7 @@ def fly(app, brief: dict, scene, body, allocator) -> int:
         # an occasional update, because an app that is never pumped is an app
         # that looks hung to anything watching the process.
         wants_a_frame = (dive.recorder is not None
-                         and dive.recorder.due(float(dive.simulated)))
+                         and dive.recorder.owes_a_picture(float(dive.simulated)))
         if wants_a_frame or dive.taken % EVERY_SO_OFTEN == 0:
             app.update()
         # Paced only when something is flying it. Running ahead of the
