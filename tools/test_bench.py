@@ -263,7 +263,7 @@ def test_a_dry_row_names_its_hull_too():
     tool = _bench()
     source = (HERE / "bench").read_text()
     inside = source[source.index("def command_dry("):]
-    assert 'named(args.suite, called, task, args.vehicle)' in inside
+    assert 'named(args.suite, called, task, args.vehicle, over)' in inside
 
 
 def test_the_overall_row_lines_up_with_the_columns_above_it(capsys):
@@ -331,6 +331,7 @@ def test_the_reef_is_in_the_row_because_two_reefs_are_two_things():
     thirty. Both rows were called "bench · quick · pursue · transect", so the
     second read as already flown and never ran.
     """
+    tool = _bench()
     assert tool.named("quick", "pursue", "transect") \
         == "bench · quick · pursue · transect"
     assert tool.named("quick", "pursue", "transect", place="looe-key") \
@@ -344,6 +345,7 @@ def test_the_reef_is_in_the_row_because_two_reefs_are_two_things():
 
 def test_two_reefs_are_two_rows():
     """The consequence, stated as the thing that was wrong: the names differ."""
+    tool = _bench()
     here = tool.named("standard", "wary", "hold-station", place="looe-key")
     there = tool.named("standard", "wary", "hold-station", place="shushah")
     assert here != there
