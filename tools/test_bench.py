@@ -684,3 +684,18 @@ def test_a_dry_bench_flies_a_thinking_controller_at_real_time():
     loop = inside[inside.index("for _ in range(int((seconds"):]
     assert "if paced:" in loop[:600]
     assert "wallclock.sleep" in loop[:600]
+
+
+def test_a_trial_flown_twice_is_one_row_and_it_is_the_newer():
+    """A name is the whole identity of a trial, so two dives under one name are
+    the same trial flown twice and what that should mean is *this answer replaces
+    that one*. Both being returned put `station-hold · reach` in the table three
+    times, as three columns, which is a table nobody can read.
+    """
+    inside = (HERE / "bench").read_text()
+    where = inside[inside.index("def flown(platform)"):]
+    where = where[:where.index("\ndef ")]
+    # Keyed by name, and an older dive for a name already held is skipped.
+    assert "rows: dict[str, dict] = {}" in where
+    assert "when <= made[dive[\"name\"]]" in where
+    assert "return list(rows.values())" in where

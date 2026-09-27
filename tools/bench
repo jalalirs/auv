@@ -920,10 +920,26 @@ def failed_row(dive: dict, parts: list[str], run: dict) -> dict:
 
 
 def flown(platform) -> list[dict]:
-    """Every bench dive in the record, as rows."""
-    rows = []
+    """Every bench dive in the record, as rows — one row per name.
+
+    The newest, when a name has been flown more than once.
+
+    A name is the whole identity of a trial: the suite, the controller, the hull,
+    the reef, whether there was anything in the water, and the task. Two dives
+    under one name are the same trial flown twice, and both being returned put the
+    same controller in a table three times — `station-hold · reach` appeared three
+    times, as three columns, which is a table that cannot be read. Re-flying a
+    trial is a legitimate thing to do, and what it should mean is *this answer
+    replaces that one*.
+    """
+    rows: dict[str, dict] = {}
+    made: dict[str, str] = {}
     for dive in platform.call("GET", f"/api/v1/organisations/{platform.org}/dives")["dives"]:
         if not dive["name"].startswith("bench · "):
+            continue
+        # Older than the one already held for this name: nothing to say.
+        when = dive.get("createdAt") or ""
+        if dive["name"] in made and when <= made[dive["name"]]:
             continue
         parts = [p.strip() for p in dive["name"].split("·")]
         if len(parts) != 4:
@@ -941,14 +957,16 @@ def flown(platform) -> list[dict]:
             # controller is worse than not showing it: it is a number with
             # the wrong name on it.
             if run["state"] == "failed":
-                rows.append(failed_row(dive, parts, run))
+                rows[dive["name"]] = failed_row(dive, parts, run)
+                made[dive["name"]] = when
                 break
             out = run.get("outcome") or {}
             task_said = out.get("task") or {}
             thought = task_said.get("thought") or {}
             slowest = max([(t or {}).get("slowestS") or 0.0 for t in thought.values()], default=0.0)
             thoughts = sum([(t or {}).get("thoughts") or 0 for t in thought.values()])
-            rows.append({
+            made[dive["name"]] = when
+            rows[dive["name"]] = ({
                 "name": dive["name"], "suite": parts[1], "controller": parts[2], "task": parts[3],
                 "score": task_said.get("score", 0.0),
                 "ended": out.get("ended", "?"),
@@ -963,7 +981,7 @@ def flown(platform) -> list[dict]:
                 "dive": dive["id"], "run": run["id"],
             })
             break
-    return rows
+    return list(rows.values())
 
 
 def summarise(rows: list[dict]) -> dict:
