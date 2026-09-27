@@ -208,30 +208,32 @@ def fly_dry(brief: dict, scene, body, allocator) -> int:
         waitedSeconds=waited)
     began = wallclock.monotonic()
 
+    # Nothing here paces a controller that thinks, and that is deliberate.
+    #
+    # The runtime already charges thinking, and charges it in the **dive's** clock
+    # rather than the machine's: `Thinking._deliver` holds a thought until
+    # `simulated >= asked_at + took`, so a decision that took a second and a half
+    # in reality costs a second and a half of the dive whatever rate the dive is
+    # running at. Its own words: "otherwise the same controller on a quicker
+    # computer would appear to think for free, and every benchmark would be
+    # measuring the machine."
+    #
+    # A guard was added here on 27 September 2026 believing that charge was
+    # missing. It was not, and the coarse version of the guard — hold the whole
+    # dive to real time whenever a controller *could* think slowly — moved
+    # `ponder`'s quick suite from 48.8% to **23.3%**, a twenty-five point change
+    # to a result that was already right. Three runs of the same brief agree to
+    # every printed digit, so the determinism the module promises does hold; what
+    # broke it was the fix.
     while not dive.done:
-        stepped = wallclock.monotonic()
         dive.step()
         if paced:
             # A controller in another container publishes on the clock on the
-            # wall, so the whole dive is held to it.
+            # wall, so the whole dive is held to it. This one is real: it is about
+            # a process outside the dive, not about thinking.
             ahead = began + dive.simulated - wallclock.monotonic()
             if ahead > 0:
                 wallclock.sleep(min(ahead, 0.05))
-        elif thinking(dive):
-            # And while a thought is outstanding, this second of simulated time
-            # costs a second of real time — no more and no less.
-            #
-            # Thinking costs real seconds, and a dive running six times faster
-            # than the clock would charge those as thirty-six: that does not make
-            # a controller look slow, it makes the **machine** look slow, and a
-            # bench that rewarded whoever ran on the slower box would be measuring
-            # the box. But the coarse version of this guard — pace the whole dive
-            # whenever any controller *can* think slowly — charged a controller
-            # whose decisions are instant as though each cost a second, and
-            # `ponder`'s `thinkS` defaults to zero, so that was most of them.
-            owed = dive.dt - (wallclock.monotonic() - stepped)
-            if owed > 0:
-                wallclock.sleep(owed)
 
     dive.close()
     ran = wallclock.monotonic() - began
@@ -293,7 +295,6 @@ def fly(app, brief: dict, scene, body, allocator) -> int:
     began = wallclock.monotonic()
 
     while not dive.done:
-        stepped = wallclock.monotonic()
         dive.step()
         # Rendered when the recording wants a frame, not every fourth step.
         # A frame costs upwards of half a second and a step costs a quarter of a
@@ -315,24 +316,10 @@ def fly(app, brief: dict, scene, body, allocator) -> int:
             ahead = began + dive.simulated - wallclock.monotonic()
             if ahead > 0:
                 wallclock.sleep(min(ahead, 0.05))
-        elif thinking(dive):
-            # The same rule as `fly_dry`: a thought that is outstanding costs
-            # real seconds, and nothing else does.
-            owed = dive.dt - (wallclock.monotonic() - stepped)
-            if owed > 0:
-                wallclock.sleep(owed)
 
     dive.close()
     say("succeeded", simulatedSeconds=round(dive.simulated, 3))
     return 0
-
-
-def thinking(dive) -> bool:
-    """Whether a thought is outstanding, and never an error if nobody can think."""
-    try:
-        return bool(dive.helm.thinking_now())
-    except Exception:
-        return False
 
 
 if __name__ == "__main__":
