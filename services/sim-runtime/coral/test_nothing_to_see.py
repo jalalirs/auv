@@ -123,3 +123,23 @@ def test_nothing_a_step_does_asks_the_stage(tmp_path):
     assert dive.stage is None
     for _ in range(200):
         dive.step()
+
+
+def test_asking_whether_a_picture_is_owed_does_not_spend_it(tmp_path):
+    """`due` answers and marks in one move, which is right for the caller about
+    to take the picture and wrong for anybody who only wants to know. The
+    headless runner asks in order to decide whether to render, and a render is
+    not a capture: if asking spent the frame, a recording would come out one
+    frame short at every render for the rest of the dive.
+    """
+    from recording import Recorder
+
+    keeping = Recorder(tmp_path, frames_hz=4.0)
+    assert keeping.owes_a_picture(1.0) is True
+    # Asked twice, still owed: nothing has been taken.
+    assert keeping.owes_a_picture(1.0) is True
+    assert keeping.due(1.0) is True
+    # And now it is not owed, because it has been marked taken.
+    assert keeping.owes_a_picture(1.0) is False
+    assert keeping.due(1.0) is False
+    assert keeping.owes_a_picture(1.25) is True

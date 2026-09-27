@@ -86,9 +86,23 @@ class Recorder:
         self._soundings.write(json.dumps(swath) + "\n")
         self.soundings += int(swath.get("beams") or 0)
 
+    def owes_a_picture(self, t: float) -> bool:
+        """Whether a picture is owed at this moment of the dive. Asks only.
+
+        Separate from `due` because `due` answers and marks in one move, which is
+        right for the one caller that is about to take the picture and a trap for
+        anybody who only wants to know. The headless runner asks this to decide
+        when to render at all, and a render is not a capture.
+        """
+        return t - self.last_frame >= self.frame_every
+
     def due(self, t: float) -> bool:
-        """Whether a picture is owed at this moment of the dive."""
-        if t - self.last_frame < self.frame_every:
+        """Whether a picture is owed, and marks it owed no longer.
+
+        For the caller that is about to take it. Anybody else wants
+        `owes_a_picture`.
+        """
+        if not self.owes_a_picture(t):
             return False
         self.last_frame = t
         return True
