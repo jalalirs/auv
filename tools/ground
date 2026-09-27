@@ -74,7 +74,7 @@ def main() -> int:
     have = np.zeros((n, n), dtype=bool)
     offset = 0.0
     if survey is not None:
-        dem, x0, y0 = survey                       # 1 m cells, row 0 south, site metres
+        dem, x0, y0, dem_name = survey             # 1 m cells, row 0 south, site metres
         D = np.full((n, n), np.nan)
         yi = np.round(np.arange(dem.shape[0]) + y0 + across / 2).astype(int)
         xi = np.round(np.arange(dem.shape[1]) + x0 + across / 2).astype(int)
@@ -104,8 +104,25 @@ def main() -> int:
               f"its datum sits {offset:+.2f} m from the bathymetry's")
     h.astype("<f4").tofile(into / "seabed_1m.f32")
     np.save(into / "survey_1m.npy", have)   # where the relief is the survey's, not the grid's
+    # What this square was merged from, named. make-site reads "surveys",
+    # "source" and "surveyedFraction" off this note straight into the place's
+    # own provenance, so anything not written here is lost the moment a place
+    # is rebuilt from these heights: Looe Key's rebuild named no survey at all
+    # and its site said surveys: [] over ground drawn from two of them.
+    merged = list(site["from"].get("surveys") or [])
+    if survey is not None:
+        merged = merged + [{"name": dem_name, "sampleMetres": 1.0}]
     (into / "seabed_1m.json").write_text(json.dumps({
         "rows": n, "columns": n, "acrossMetres": across, "file": "seabed_1m.f32",
+        "centre": {"latitude": lat0, "longitude": lon0},
+        "surveyed": bool(site["from"].get("surveyed", True)),
+        "surveys": merged,
+        "source": (f"bathymetry from {len(merged) - 1} survey(s) at "
+                   f"{across / max(1, h2.shape[0] - 1):.2f} m, with {dem_name} "
+                   f"feathered in at 1 m over {100 * have.mean():.1f}% of the square"
+                   if survey is not None else
+                   f"bathymetry alone, {across / max(1, h2.shape[0] - 1):.2f} m samples"),
+        "surveyedFraction": round(float(have.mean()), 4),
         "surveyFraction": round(float(have.mean()), 4), "surveyDatumOffsetM": round(offset, 3),
         "format": "little-endian float32, row major, south to north then west to east"}, indent=1))
 
@@ -186,7 +203,9 @@ def _save(img, path, Image):
 
 
 def _survey_dem(ref, lat0, lon0, me, mn):
-    """The 1 m quicklook DEM of a USGS release, in site metres, row 0 south."""
+    """The 1 m quicklook DEM of a USGS release, in site metres, row 0 south.
+    Hands back the file it read as well as the grid: a merged heightfield that
+    cannot name the survey it merged is a square somebody will call surveyed."""
     import numpy as np
     candidates = sorted((ref / "usgs").glob("*DEM_1m*.tif")) if (ref / "usgs").exists() else []
     if not candidates:
@@ -201,7 +220,7 @@ def _survey_dem(ref, lat0, lon0, me, mn):
         dem = d.read(1).astype(float)
         dem[dem == d.nodata] = np.nan
         xs, ys = transform(d.crs, "EPSG:4326", [d.bounds.left, d.bounds.right], [d.bounds.bottom, d.bounds.top])
-    return dem[::-1], (xs[0] - lon0) * me, (ys[0] - lat0) * mn
+    return dem[::-1], (xs[0] - lon0) * me, (ys[0] - lat0) * mn, candidates[0].name
 
 
 def _ortho(ref, lat0, lon0, me, mn):

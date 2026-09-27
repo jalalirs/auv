@@ -301,3 +301,42 @@ def test_the_same_holds_for_a_dive_s_conditions():
             assert "nobody said" not in said, row
         if row["kind"] == tool.ASSUMED:
             assert "instrument" not in said and "buoy" not in said, row
+
+
+# ── the heightfield note is a contract between two tools ─────────────────────
+# tools/ground merges a survey DEM into bathymetry and writes a note beside
+# the square; make-site reads that note straight into the place's provenance.
+# The two agreed on nothing: ground wrote "surveyFraction" and make-site read
+# "surveyedFraction", and neither wrote the survey names at all. A rebuilt
+# Looe Key therefore claimed surveyed ground and named no survey for it, which
+# is the precise shape of a laundered measurement.
+
+def _source(name):
+    import pathlib
+    return (pathlib.Path(__file__).parent / name).read_text()
+
+
+def _keys_make_site_reads_off_the_note():
+    """The keys make-site pulls from the heights note into site['from']."""
+    import re
+    said = _source("make-site")
+    return {m for m in re.findall(r'survey_note\.get\("([A-Za-z]+)"', said)}
+
+
+def test_ground_writes_every_key_make_site_reads():
+    wanted = _keys_make_site_reads_off_the_note()
+    assert wanted, "make-site stopped reading the note; this test is stale"
+    written = _source("ground").split('seabed_1m.json")')[1]
+    written = written.split("# ── habitat")[0]
+    for key in sorted(wanted):
+        assert f'"{key}"' in written, (
+            f"tools/ground does not write {key!r}, so a place rebuilt from its "
+            f"heights loses it. make-site reads it off the note.")
+
+
+def test_the_note_names_the_survey_it_merged():
+    """A fraction without a name is not provenance: 11.5% of what?"""
+    written = _source("ground")
+    assert "dem_name" in written, "the merged DEM's name is never captured"
+    put = written.split('seabed_1m.json")')[1].split("# ── habitat")[0]
+    assert "dem_name" in put, "the name is captured and then not written down"
