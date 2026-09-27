@@ -186,3 +186,37 @@ def test_a_place_that_does_not_name_itself_falls_back_to_its_folder(tmp_path):
     inside = (HERE / "again").read_text()
     where = inside.index("called = json.loads")
     assert "except Exception:" in inside[where:where + 400]
+
+
+def test_the_comparison_can_be_written_out_when_the_rounds_overlap():
+    """The first time this ran on two rounds that actually shared ground, it
+    computed the whole comparison and then died writing it.
+
+    `covered_by` hands back `hit` keyed by the cell itself — a `(row, column)`
+    tuple — which is the right shape for drawing a grid and not a shape JSON has.
+    A tuple cannot be an object key, and `json.dumps`'s `default=` never sees it,
+    because that handles values and not keys. Every earlier run had zero cells in
+    common, so nothing had ever reached the line.
+    """
+    tool = _tool()
+    said = {"inBoth": 3, "lostSinceRoundOne": 1, "newInRoundTwo": 2, "neither": 4,
+            "first": {"cellsCovered": 3, "cellsMissed": 1,
+                      "hit": {(0, 0): 2, (1, 4): 5}},
+            "then": {"cellsCovered": 4, "cellsMissed": 0,
+                     "hit": {(0, 0): 1}}}
+    out = {k: tool.counted(v) for k, v in said.items()}
+    # Writable, which is the whole point.
+    json.dumps(out, indent=2)
+    # And the counts survive; only the per-cell map goes.
+    assert out["first"]["cellsCovered"] == 3
+    assert "hit" not in out["first"]
+    assert out["inBoth"] == 3
+
+
+def test_the_page_still_gets_the_cells_it_draws():
+    """The map is dropped from the record and not from the page: a grid with no
+    cells in it is the one thing the page is for."""
+    inside = (HERE / "again").read_text()
+    # The page is handed `said` whole; only the JSON is filtered.
+    assert "page(called, said, alike)" in inside
+    assert "counted(v) for k, v in said.items()" in inside

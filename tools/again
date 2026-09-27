@@ -116,6 +116,24 @@ def the_same_way(first: dict, then: dict) -> list[dict]:
     return out
 
 
+def counted(one):
+    """A round's own numbers, without the map of which cell it touched.
+
+    `covered_by` hands back `hit` keyed by the cell itself — a `(row, column)`
+    tuple — which is the right shape for drawing a grid and not a shape JSON has:
+    a tuple cannot be an object key, and `json.dumps`'s `default=` never sees it
+    because it handles values and not keys. So the first time this tool ran on two
+    rounds that actually overlapped, it computed the whole comparison and then
+    died writing it out. Nothing with no overlap had ever reached this line.
+
+    The counts are what a record of the comparison is for. The map is what the
+    page draws, and the page is handed the whole thing rather than this.
+    """
+    if not isinstance(one, dict):
+        return one
+    return {k: v for k, v in one.items() if k != "hit"}
+
+
 def the_same_ground(place: pathlib.Path, cell_m: float, where: str,
                     first: pathlib.Path, then: pathlib.Path) -> dict:
     """Which cells each round reached, on one grid."""
@@ -289,7 +307,7 @@ def main() -> int:
     into.mkdir(parents=True, exist_ok=True)
     (into / "again.json").write_text(json.dumps(
         {"place": called,
-         "ground": {k: v for k, v in said.items()
+         "ground": {k: counted(v) for k, v in said.items()
                     if k not in ("grid", "hitFirst", "hitThen", "planned")},
          "flownAlike": alike}, indent=2, default=str) + "\n")
     (into / "again.html").write_text(page(called, said, alike))
