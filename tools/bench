@@ -387,6 +387,103 @@ def built_or_built_by(flying: dict) -> str:
 
 # ── flying it ────────────────────────────────────────────────────────────────
 
+def the_track_it_flew(platform, dive_id: str, run_id: str) -> list[list[float]]:
+    """A run's own path, and the bottom under it, out of its recording.
+
+    Both come from the same file. `poses.jsonl` states the vehicle's position and
+    its **altitude** at every pose, so the bottom under a point on the path is
+    `z - altitudeM` — measured by the dive itself rather than read out of the
+    place's heightfield. That matters here: a bench queued from a laptop has no
+    copy of the place, and the thing that needs a bottom to stand on is standing
+    on the path anyway.
+    """
+    import urllib.request
+
+    found = platform.call("GET", f"/api/v1/dives/{dive_id}/runs/{run_id}/artefacts")
+    where = None
+    for one in found.get("artefacts", found.get("files", [])) or []:
+        if str(one.get("name") or one.get("path") or "").endswith("poses.jsonl"):
+            where = one.get("url") or one.get("href") or one.get("downloadUrl")
+            break
+    if where is None:
+        raise SystemExit(
+            f"run {run_id} has no poses.jsonl among its artefacts, so there is no "
+            "path to place anything on. A reference dive that left no track cannot "
+            "be the reference for one flown through things")
+    with urllib.request.urlopen(where, timeout=120) as answer:
+        raw = answer.read().decode("utf-8", "replace")
+    track = []
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        try:
+            said = json.loads(line)
+            at = said["position"]
+            track.append([float(at[0]), float(at[1]), float(at[2]),
+                          float(said.get("altitudeM") or 0.0)])
+        except Exception:
+            continue
+    return track
+
+
+def the_bottom_under(track):
+    """Where the bottom is, from the track that flew over it.
+
+    `z - altitudeM` at the nearest pose. Nearest rather than interpolated because
+    a thing is placed *on* the track, so the nearest pose is within a metre of it
+    and a reef does not change by anything that matters over a metre.
+    """
+    def under(x: float, y: float) -> float:
+        best, at = None, 0.0
+        for one in track:
+            gap = (one[0] - x) ** 2 + (one[1] - y) ** 2
+            if best is None or gap < best:
+                best, at = gap, one[2] - one[3]
+        if best is None:
+            raise SystemExit("the reference dive left no poses, so there is no "
+                             "bottom to stand anything on")
+        return at
+    return under
+
+
+def an_arrangement(platform, city_id: str, name: str, things: dict) -> str:
+    """Save these things as a layout of this place, and return its version.
+
+    A layout is a first-class thing the platform keeps — `POST
+    /api/v1/cities/{cityId}/layouts` starts one and `.../versions` saves it — so a
+    bench arrangement is visible, re-flyable and attributable rather than a private
+    detail of whichever process happened to fly the dive.
+    """
+    made = platform.call("POST", f"/api/v1/cities/{city_id}/layouts",
+                         {"name": name})
+    saved = platform.call("POST", f"/api/v1/layouts/{made['id']}/versions",
+                          {"document": things})
+    return saved["id"]
+
+
+def a_reference(platform, args, city, vehicle, conditions, queue, runtime,
+                task: str, name: str) -> None:
+    """Fly the floor controller over this task through open water, and wait.
+
+    Its only purpose here is to leave a path for the arrangement to be placed off,
+    but it is a perfectly ordinary bench row and is named as one — so it also
+    answers "what does the floor do on this task", and the next controller flown
+    through things on the same task finds it already there.
+    """
+    objective = dict(TASKS[task])
+    objective["seed"] = seed_for(args.suite, task)
+    objective["pictures"] = False
+    objective["controller"] = THE_FLOOR
+    dive = platform.call("POST", f"/api/v1/organisations/{platform.org}/dives",
+                         {"name": name, "cityVersionId": city,
+                          "vehicleVersionId": vehicle,
+                          "conditionsId": conditions["id"], "objective": objective})
+    run = platform.call("POST", f"/api/v1/dives/{dive['id']}/runs",
+                        {"queueId": queue["id"], "mode": "batch",
+                         "runtimeVersion": runtime})
+    mod["wait_for"](platform, [{"dive": dive["id"], "run": run["id"], "name": name}])
+
+
 def command_run(args) -> int:
     platform = Platform()
     tasks = SUITES[args.suite]
@@ -420,8 +517,10 @@ def command_run(args) -> int:
     print(f"{BOLD}{args.suite}{OFF} flown by {BOLD}{args.controller}{OFF} "
           f"{DIM}· {built_or_built_by(flying)}"
           f" · {water_name} · {technology_name}{OFF}")
+    rows = flown(platform) if args.through else []
     for task in tasks:
-        name = named(args.suite, args.controller, task, args.vehicle, args.place)
+        name = named(args.suite, args.controller, task, args.vehicle, args.place,
+                     args.through)
         if name in already:
             print(f"{DIM}  {task} — already flown{OFF}")
             continue
@@ -431,8 +530,9 @@ def command_run(args) -> int:
         objective["seed"] = seed_for(args.suite, task)
         # And what makes it affordable: nobody watches a bench.
         #
-        # A rendered dive runs at 0.17 times real time and an undrawn one at
-        # fifteen, on the same brief and the same card, and the two write the
+        # A rendered dive runs at 0.17 times real time and an undrawn one with
+        # this vehicle's sensors fitted at about four — fifteen with none — on
+        # the same brief and the same card, and the two write the
         # same poses file to the byte — so this suite costs about a quarter of
         # an hour rather than a day, and does not need a GPU. The score comes
         # from the numbers; if somebody wants to see one of these flights, they
@@ -440,6 +540,33 @@ def command_run(args) -> int:
         objective["pictures"] = False
         defined = {"name": name, "cityVersionId": city, "vehicleVersionId": vehicle,
                    "conditionsId": conditions["id"], "objective": objective}
+        if args.through:
+            # The arrangement is placed off a reference dive, and the reference is
+            # the floor controller flying the same task through open water — which
+            # is a bench row in its own right. So it is looked up by its own name
+            # and flown only when it is not already there, and every controller
+            # compared on this task meets the same three frames.
+            was = named(args.suite, THE_FLOOR, task, args.vehicle, args.place)
+            standing = next((r for r in rows if r["name"] == was
+                             and r.get("state") == "succeeded"), None)
+            if standing is None:
+                print(f"{DIM}  {task} — flying {THE_FLOOR} first, to place the "
+                      f"things off where it actually went{OFF}")
+                a_reference(platform, args, city, vehicle, conditions, queue,
+                            runtime, task, was)
+                rows = flown(platform)
+                standing = next((r for r in rows if r["name"] == was
+                                 and r.get("state") == "succeeded"), None)
+            if standing is None:
+                raise SystemExit(
+                    f"the reference dive for {task} did not succeed, so there is "
+                    "no path to place anything on. A row flown through things has "
+                    "to be placed off a flight that happened")
+            track = the_track_it_flew(platform, standing["dive"], standing["run"])
+            things = things_in_the_way(track, objective["seed"],
+                                       the_bottom_under(track), objective)
+            defined["layoutVersionId"] = an_arrangement(
+                platform, args.place, f"{name} — the arrangement", things)
         if "builtIn" in flying:
             objective["controller"] = flying["builtIn"]
         else:
@@ -992,6 +1119,11 @@ def main() -> int:
     running.add_argument("--vehicle", default="bluerov2")
     running.add_argument("--at-once", type=int, default=2)
     running.add_argument("--again", action="store_true", help="re-fly what is already there")
+    running.add_argument("--through", action="store_true",
+                         help="put nursery frames on the path the task walks, so a "
+                              "controller that looks has something to look at. The "
+                              "floor controller flies first and the arrangement is "
+                              "placed off where it actually went")
     running.set_defaults(run=command_run)
 
     drying = doing.add_parser("dry", help="fly the suite here, with no simulator")

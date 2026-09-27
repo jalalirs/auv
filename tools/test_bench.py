@@ -578,3 +578,51 @@ def test_every_hull_the_bench_flies_states_its_capacity():
         + ". The REMUS is the known one — its published energy is not something "
           "this repository has a source for, so it states none rather than a "
           "number somebody made up.")
+
+
+def test_the_bottom_can_be_read_off_the_track_that_flew_over_it():
+    """Which is what lets a bench queued from a laptop put things in the water.
+
+    `poses.jsonl` states the position and the **altitude** at every pose, so the
+    bottom under a point on the path is `z - altitudeM` — measured by the dive
+    rather than read out of the place's heightfield, which a laptop has no copy
+    of. And the thing that needs a bottom is standing on the path anyway.
+    """
+    tool = _bench()
+    # x, y, z, altitude — a reef deepening as it goes east.
+    track = [[float(i), 0.0, -4.0 - i / 100.0, 3.0] for i in range(50)]
+    under = tool.the_bottom_under(track)
+    assert under(0.0, 0.0) == pytest.approx(-7.0, abs=0.01)
+    assert under(49.0, 0.0) == pytest.approx(-7.49, abs=0.01)
+    # Nearest pose, which is within a metre of anything placed on the track.
+    assert under(10.4, 0.2) == pytest.approx(-7.1, abs=0.02)
+
+
+def test_a_reference_with_no_poses_is_refused():
+    """A reference dive that left no track cannot be the reference for one flown
+    through things, and placing three frames at the origin would score every
+    controller the same."""
+    tool = _bench()
+    with pytest.raises(SystemExit) as refused:
+        tool.the_bottom_under([])(0.0, 0.0)
+    assert "no poses" in str(refused.value)
+
+
+def test_the_reference_row_is_a_bench_row_in_its_own_right():
+    """So it is looked up by its own name and flown only when it is not there —
+    and it also answers "what does the floor do on this task"."""
+    inside = (HERE / "bench").read_text()
+    inside = inside[inside.index("def command_run("):]
+    assert "named(args.suite, THE_FLOOR, task, args.vehicle, args.place)" in inside
+    # Reused when it is already flown, rather than flown again per controller.
+    assert 'r["name"] == was' in inside
+    assert "a_reference(platform, args" in inside
+
+
+def test_the_arrangement_is_saved_as_a_layout_of_the_place():
+    """Visible, re-flyable and attributable rather than a private detail of
+    whichever process happened to fly the dive."""
+    inside = (HERE / "bench").read_text()
+    assert '/api/v1/cities/{city_id}/layouts' in inside.replace('f"', '"')
+    assert "/versions" in inside
+    assert 'defined["layoutVersionId"]' in inside
