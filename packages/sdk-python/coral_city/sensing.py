@@ -91,6 +91,9 @@ class Navigator:
             kept.append(value)
             if nearest is None or value < nearest:
                 nearest, beam = value, i
+        # Lists, not whatever arrived: the interface says a fan is two lists of
+        # numbers, and a controller that got arrays from one path and lists from
+        # another would be written against whichever it was tried on first.
         self.fan = {"bearingsRad": [float(b) for b in bearings], "rangesM": kept}
         self.nearest = (None if nearest is None else
                         {"rangeM": nearest, "bearingRad": float(bearings[beam]),

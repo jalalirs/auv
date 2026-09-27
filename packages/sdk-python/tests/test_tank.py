@@ -80,5 +80,42 @@ def test_a_current_is_felt_and_the_hold_fights_it():
     still = Tank("bluerov2", seconds=30.0, task=hold_station(seconds=30), sensed=False).run(StationHold())
     moving = Tank("bluerov2", seconds=30.0, task=hold_station(seconds=30), sensed=False,
                   current=(0.3, 90.0)).run(StationHold())
-    assert moving.score > 0.8, str(moving)
     assert moving.task["thrusterEffort"] > still.task["thrusterEffort"] * 2, "holding in a current costs thrust"
+    # It is felt, and it is not held: the example scores about 0.28 in a third of
+    # a knot. That assertion used to read `> 0.8` and passed, because the tank
+    # fitted the vehicle **no instruments and no tether** — it built the dive with
+    # no `vehiclePath`, so `switch_on_the_tether` and its siblings found no package
+    # to read. A platform dive always has one. So the tank was materially easier
+    # than the thing it exists to stand in for, and "a controller that holds here
+    # holds there" was false in the direction that flatters: a hold tuned here and
+    # deployed drifts.
+    #
+    # Held loosely, because the point is that it is well under the old 0.8 and not
+    # zero — the hold is still working, against more than it used to.
+    assert 0.1 < moving.score < 0.6, str(moving)
+
+
+def test_the_tank_fits_what_the_vehicle_carries():
+    """Which is the whole of the promise: the same class, the same vehicle.
+
+    Without a `vehiclePath` in the brief the dive fits nothing the package declares
+    — no sonar, no CTD, no modem, no **tether** — and a BlueROV2 without its tether
+    is a easier vehicle to fly than the one anybody has. A controller that avoids
+    things could not be tried at all, and one that holds station was tuned against
+    a vehicle that does not exist.
+    """
+    tank = Tank("bluerov2", seconds=5.0, task=hold_station(seconds=5), sensed=False)
+    assert "vehiclePath" in tank.brief
+    assert tank.dive.sonar is not None, "the BlueROV2 declares an imaging sonar"
+    assert tank.dive.tether is not None, "and it is on the end of a tether"
+
+
+def test_a_tank_can_have_things_in_the_water():
+    """Or a controller whose job is not hitting things has nothing to not hit."""
+    frames = [{"id": "one", "kind": "nursery-frame", "x": 6.0, "y": 0.0,
+               "groundM": 12.0, "heightM": 6.0, "radiusM": 2.0}]
+    tank = Tank("bluerov2", seconds=5.0, task=hold_station(seconds=5), things=frames)
+    assert len(tank.dive.world) == 1
+    # And none by default, because a tank with furniture nobody asked for is worse
+    # than an empty one.
+    assert len(Tank("bluerov2", seconds=5.0, task=hold_station(seconds=5)).dive.world) == 0

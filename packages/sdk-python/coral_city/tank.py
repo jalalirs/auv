@@ -114,24 +114,52 @@ class Report:
 class Tank:
     def __init__(self, vehicle: str = "bluerov2", start=(0.0, 0.0, -7.0), seconds: float = 60.0,
                  task: dict | None = None, sensed: bool = True, hz: float = 20.0,
-                 current: tuple[float, float] | None = None, latency_ticks: int = 0) -> None:
+                 current: tuple[float, float] | None = None, latency_ticks: int = 0,
+                 things: list[dict] | None = None) -> None:
         """`current` is (metres per second, heading in degrees the water flows
         towards, from north clockwise); None is still water. `latency_ticks`
         delays every command by that many ticks, as the live loop does — a
-        policy that only holds with no delay will not hold on the platform."""
+        policy that only holds with no delay will not hold on the platform.
+
+        `things` puts obstacles in the water, each `{"kind":, "x":, "y":,
+        "groundM":}` and optionally its own `radiusM` and `heightM` — a
+        `nursery-frame`, a `mooring-block`, a `marker-post`. Without them a
+        controller that avoids things has nothing to avoid, and a tank run says it
+        avoided nothing, which is true and useless.
+        """
         self.latency_ticks = int(latency_ticks)
         hydrodynamics, runner, Helm = _runtime()
         self.described = vehicles.load(vehicle)
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
-            json.dump(self.described.dynamics, handle)
-            path = handle.name
-        try:
-            self.model = hydrodynamics.Hydrodynamics.from_package(path)
-        finally:
-            os.unlink(path)
+        # The vehicle's package, kept as a directory for as long as the tank is.
+        #
+        # It used to be a temp file, read once and deleted — which meant the dive
+        # had no `vehiclePath`, so `switch_on_the_sonar` and its siblings found no
+        # package to read and **fitted no sensors at all**. A tank that fits none
+        # cannot try the one kind of controller that most needs trying before it is
+        # deployed: `coral-city tank` on a sonar controller reported it avoiding
+        # nothing, in an empty sea, with no sonar, and nothing said so.
+        import shutil
+        import weakref
+
+        kept = pathlib.Path(tempfile.mkdtemp(prefix="coral-city-tank-"))
+        (kept / "dynamics.json").write_text(json.dumps(self.described.dynamics))
+        weakref.finalize(self, shutil.rmtree, str(kept), True)
+        self.vehicle_path = kept
+        self.model = hydrodynamics.Hydrodynamics.from_package(kept / "dynamics.json")
         self.body = hydrodynamics.Body(self.model)
         self.allocator = hydrodynamics.Allocator(self.model)
-        self.brief = {"durationSeconds": float(seconds), "initialState": {"positionM": list(start)}}
+        self.brief = {"durationSeconds": float(seconds),
+                      "initialState": {"positionM": list(start)},
+                      # So the dive fits what the vehicle declares it carries.
+                      # A sonar costs about three times as much per step as a bare
+                      # hull, which is the honest price of the vehicle being the
+                      # vehicle: a controller that reads no sonar pays it and does
+                      # not notice, and one that does could not be tried without it.
+                      "vehiclePath": str(kept)}
+        if things:
+            # Something to run into. A tank with nothing in it cannot try a
+            # controller whose whole job is not hitting things.
+            self.brief["layout"] = {"things": list(things)}
         if current is not None:
             self.brief["conditions"] = {"kind": "constructed", "parameters": {
                 "currentMetresPerSecond": float(current[0]), "currentHeadingDeg": float(current[1])}}
@@ -205,9 +233,14 @@ class Tank:
         self.navigator.pressure(SURFACE_PRESSURE_PA + self.model.density * GRAVITY * truth.depth)
         self.navigator.imu(_quaternion(truth.rotation), truth.velocity[3:])
         self.navigator.dvl(truth.velocity[:3])
-        if truth.sonar:
-            self.navigator.sonar_fan(truth.sonar.get("bearingsRad") or [],
-                                     truth.sonar.get("rangesM") or [])
+        if truth.sonar is not None:
+            # No `or []` anywhere near these: the runtime's fan holds numpy arrays,
+            # and `array or []` raises "the truth value of an array with more than
+            # one element is ambiguous" — which is how five tank tests went red.
+            bearings = truth.sonar.get("bearingsRad")
+            ranges = truth.sonar.get("rangesM")
+            if bearings is not None and ranges is not None:
+                self.navigator.sonar_fan(bearings, ranges)
         seen = self.navigator.observation(truth.t)
         # The navigator starts its reckoning at zero; the tank knows where the
         # vehicle was put, as a real one knows where it was launched.
