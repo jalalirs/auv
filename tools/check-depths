@@ -24,6 +24,9 @@ import argparse
 import json
 import pathlib
 
+# Next to this script, which is where python looks first.
+import built
+
 
 def main() -> int:
     parse = argparse.ArgumentParser(description="a seabed against measured depths")
@@ -97,6 +100,9 @@ def main() -> int:
             "note": ("positive means this seabed says shallower than the "
                      "laser measured. Depths along tracks, not a grid."),
         }
+        # A check that writes into the place is a pass over it like any
+        # other, and tools/rebuild replays the place from that record.
+        built.record_call(site, "check-depths")
         (place / "site.json").write_text(json.dumps(site, indent=1))
         print(f"\n  recorded in {place / 'site.json'}")
     return 0

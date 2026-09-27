@@ -24,6 +24,9 @@ import json
 import pathlib
 import shutil
 
+# Next to this script, which is where python looks first.
+import built
+
 
 def life_module():
     """The runtime's own, by path.
@@ -99,6 +102,11 @@ def main() -> int:
         "perSquareMetreFrom": asked.density_from,
         "file": "fauna.json",
     }
+    # Every other pass over a place records its own invocation, and
+    # tools/rebuild replays a place from that record. This one did not, so a
+    # replayed place came back with its coral and its ground and no fish —
+    # the quiet kind of loss, because nothing about the result looks wrong.
+    built.record_call(site, "fauna")
     (place / "site.json").write_text(json.dumps(site, indent=1))
 
     print(f"{site.get('name', place.name)}: {len(fish)} bony fish species, "

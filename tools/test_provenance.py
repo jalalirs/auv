@@ -340,3 +340,35 @@ def test_the_note_names_the_survey_it_merged():
     assert "dem_name" in written, "the merged DEM's name is never captured"
     put = written.split('seabed_1m.json")')[1].split("# ── habitat")[0]
     assert "dem_name" in put, "the name is captured and then not written down"
+
+
+# ── every pass over a place records itself ───────────────────────────────────
+# tools/rebuild replays a place from site.json's builtBy. A pass that writes
+# into the place and does not record its own invocation is therefore silently
+# dropped on replay: Looe Key's fish came from tools/fauna, fauna recorded
+# nothing, and a replayed Looe Key had coral and ground and no fish. Nothing
+# about that result looks wrong, which is what makes it worth a test.
+
+def _tools_that_write_a_place():
+    import pathlib
+    here = pathlib.Path(__file__).parent
+    out = []
+    for f in sorted(here.iterdir()):
+        if f.suffix in (".py", ".pyc") or not f.is_file() or "test" in f.name:
+            continue
+        try:
+            said = f.read_text()
+        except (UnicodeDecodeError, OSError):
+            continue
+        if '"site.json").write_text' in said:
+            out.append((f.name, said))
+    return out
+
+
+def test_every_tool_that_writes_a_place_records_the_call():
+    writers = _tools_that_write_a_place()
+    assert writers, "nothing writes a site.json; this test is stale"
+    for name, said in writers:
+        assert "record_call" in said, (
+            f"tools/{name} writes a place's site.json without "
+            f"built.record_call, so tools/rebuild replays the place without it")
