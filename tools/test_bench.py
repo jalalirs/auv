@@ -628,7 +628,9 @@ def test_the_reference_row_is_a_bench_row_in_its_own_right():
     and it also answers "what does the floor do on this task"."""
     inside = (HERE / "bench").read_text()
     inside = inside[inside.index("def command_run("):]
-    assert "named(args.suite, THE_FLOOR, task, args.vehicle, args.place)" in inside
+    # The floor's own row for this trial — same suite, task, hull, reef and water.
+    assert "named(args.suite, THE_FLOOR, task, args.vehicle, args.place," in inside
+    assert "water=args.water" in inside
     # Reused when it is already flown, rather than flown again per controller.
     # And "flew" means the row is not marked failed: `flown` carries no state
     # field, so asking for state == "succeeded" matched nothing and would have
@@ -724,3 +726,34 @@ def test_the_suites_include_holding_station():
     for suite, tasks in tool.SUITES.items():
         for task in tasks:
             assert task in tool.TASKS, f"the {suite} suite names {task}, which is not a task"
+
+
+def test_the_water_is_in_the_row_because_one_water_is_not_a_bench():
+    """This is the one that nearly published a wrong result.
+
+    `learned-hold` was measured at one knot and beat the hand-written hold 0.48 to
+    0.15 there, and that number has stood since 3 September as the demonstration
+    that training works. Across the water matrix it scores 1.000 at that knot and
+    0.139, 0.210 and 0.058 in the other three, against the hand-written hold's
+    1.000, 1.000, 1.000 and 0.040. It had learned a bias, not a controller — and
+    two rows flown in different water under one name is how nobody would ever find
+    that out.
+    """
+    tool = _bench()
+    assert tool.named("quick", "pursue", "reach") == "bench · quick · pursue · reach"
+    assert tool.named("quick", "pursue", "reach", water=tool.WATER) \
+        == "bench · quick · pursue · reach"
+    assert tool.named("quick", "pursue", "reach", water="one-knot") \
+        == "bench · quick · pursue in one-knot · reach"
+    # And it composes with the rest of what a row is.
+    assert tool.named("quick", "wary", "reach", "remus-100", "al-fahal", True, "two-knots") \
+        == "bench · quick · wary on remus-100 over al-fahal through things in two-knots · reach"
+
+
+def test_both_benches_can_be_told_which_water():
+    """Or the matrix stays something only `tools/matrix` can sweep, and the bench —
+    the thing that compares controllers — keeps measuring one column."""
+    inside = (HERE / "bench").read_text()
+    assert inside.count('"--water"') == 2, "one of the two paths cannot be told"
+    assert "WATERS[args.water]" in inside
+    assert "WATERS[WATER]" not in inside, "a path still hard-codes the water"

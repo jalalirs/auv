@@ -297,7 +297,8 @@ def spent(wh) -> str:
 
 
 def named(suite: str, controller: str, task: str, vehicle: str = THE_USUAL_HULL,
-          place: str = THE_USUAL_PLACE, through: bool = False) -> str:
+          place: str = THE_USUAL_PLACE, through: bool = False,
+          water: str = WATER) -> str:
     """What a row is called, and it has to name everything being compared.
 
     The hull was not in it. Fly `pursue` on a BlueROV2 and then on a Heavy
@@ -305,6 +306,13 @@ def named(suite: str, controller: str, task: str, vehicle: str = THE_USUAL_HULL,
     different things under one name, which the bench then reads as one and
     reports whichever came back first. A Heavy has eight thrusters and half
     again the surge; that is not the same controller doing better.
+
+    Nor is the water, and that one is the reason this bench nearly reported a
+    trained policy as better than a hand-written one. `learned-hold` was measured
+    at one knot and beat the hand-written hold 0.48 to 0.15 there; across the
+    water matrix it scores 1.000 at that knot and 0.139, 0.210 and 0.058 in the
+    other three, against 1.000, 1.000 and 0.040. One water is not a bench, and two
+    rows flown in different water under one name is how you would never find out.
 
     Nor was the reef, for the same reason and with the same consequence. A
     transect over Looe Key and a transect over Al Fahal are the same task over
@@ -324,6 +332,8 @@ def named(suite: str, controller: str, task: str, vehicle: str = THE_USUAL_HULL,
         whose = f"{whose} over {place}"
     if through:
         whose = f"{whose} through things"
+    if water != WATER:
+        whose = f"{whose} in {water}"
     return f"bench · {suite} · {whose} · {task}"
 
 
@@ -554,7 +564,7 @@ def command_run(args) -> int:
     vehicle = mod["newest_version"](platform, "vehicles", args.vehicle)
     queue = platform.call("GET", "/api/v1/queues")["queues"][0]
     runtime = queue["runtimes"][0]
-    water_name, water = WATERS[WATER]
+    water_name, water = WATERS[args.water]
     technology_name, technology = POSITIONING[TECHNOLOGY]
     conditions = platform.call("POST", f"/api/v1/organisations/{platform.org}/conditions", {
         "kind": "constructed", "name": f"the bench · {water_name} · {technology_name}",
@@ -571,7 +581,7 @@ def command_run(args) -> int:
     rows = flown(platform) if args.through else []
     for task in tasks:
         name = named(args.suite, args.controller, task, args.vehicle, args.place,
-                     args.through)
+                     args.through, args.water)
         if name in already:
             print(f"{DIM}  {task} — already flown{OFF}")
             continue
@@ -597,7 +607,8 @@ def command_run(args) -> int:
             # is a bench row in its own right. So it is looked up by its own name
             # and flown only when it is not already there, and every controller
             # compared on this task meets the same three frames.
-            was = named(args.suite, THE_FLOOR, task, args.vehicle, args.place)
+            was = named(args.suite, THE_FLOOR, task, args.vehicle, args.place,
+                        water=args.water)
             # A row that flew. `flown` marks a failure with `failed` and carries no
             # state field at all, so asking for `state == "succeeded"` matched
             # nothing and would have re-flown the reference for every controller
@@ -680,7 +691,7 @@ def command_dry(args) -> int:
 
     package = HERE.parent / "catalog/vehicles" / args.vehicle / "dynamics.json"
     model = Hydrodynamics.from_package(package)
-    water_name, water = WATERS[WATER]
+    water_name, water = WATERS[args.water]
     technology_name, technology = POSITIONING[TECHNOLOGY]
     # What the reef is called, from the reef. A row named after the directory a
     # package happens to sit in would say `ver_01M2NCG…`, which names a build
@@ -823,7 +834,8 @@ def command_dry(args) -> int:
         # The hull here too: `bench dry` takes --vehicle and a dry row that
         # did not name it would collide with the flown one exactly as the
         # flown ones collided with each other.
-        on = named(args.suite, called, task, args.vehicle, over, args.through)
+        on = named(args.suite, called, task, args.vehicle, over, args.through,
+                   args.water)
         rows.append({
             "name": on, "suite": args.suite,
             "controller": on.split("·")[2].strip(), "task": task,
@@ -1197,6 +1209,10 @@ def main() -> int:
                               "than for a comparison; the suite is what a comparison is")
     running.add_argument("--place", default="looe-key")
     running.add_argument("--vehicle", default="bluerov2")
+    running.add_argument("--water", default=WATER, choices=sorted(WATERS),
+                        help="the water to fly it in. One water is not a bench: a "
+                             "policy trained in one is perfect there and poor "
+                             "elsewhere, and this is how you find out")
     running.add_argument("--at-once", type=int, default=2)
     running.add_argument("--again", action="store_true", help="re-fly what is already there")
     running.add_argument("--through", action="store_true",
@@ -1212,6 +1228,10 @@ def main() -> int:
                         help="just these, comma separated, when the question is "
                              "about one task rather than about a suite")
     drying.add_argument("--vehicle", default="bluerov2")
+    drying.add_argument("--water", default=WATER, choices=sorted(WATERS),
+                        help="the water to fly it in. One water is not a bench: a "
+                             "policy trained in one is perfect there and poor "
+                             "elsewhere, and this is how you find out")
     drying.add_argument("--through", action="store_true",
                         help="put nursery frames on the line the task walks, so a "
                              "controller that looks has something to look at")
