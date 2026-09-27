@@ -107,8 +107,15 @@ class Report:
 
     def __str__(self) -> str:
         f = self.final
-        return (f"score {self.score:.3f} over {self.seconds:.0f} s — ended at depth {f['depthM']:.2f} m, "
-                f"heading {f['headingDeg']:.0f}°, {f['offStartM']:.2f} m from where it began")
+        said = (f"score {self.score:.3f} over {self.seconds:.0f} s — ended at depth "
+                f"{f['depthM']:.2f} m, heading {f['headingDeg']:.0f}°, "
+                f"{f['offStartM']:.2f} m from where it began")
+        # And what it believed, when that is a different story — which on a vehicle
+        # with no bottom to lock to, in a current, it always is.
+        drifted = f.get("believedOffStartM")
+        if drifted is not None and abs(drifted - f["offStartM"]) > 0.5:
+            said += f" (it believed {drifted:.2f} m)"
+        return said
 
 
 class Tank:
@@ -339,10 +346,24 @@ class Tank:
         return self.report()
 
     def report(self) -> Report:
-        truth = self.dive.observation()
-        final = {"depthM": round(truth.depth, 3), "headingDeg": round(float(np.degrees(truth.heading)), 1),
-                 "x": round(float(truth.position[0]), 3), "y": round(float(truth.position[1]), 3),
-                 "offStartM": round(float(np.hypot(*(truth.position[:2] - self.origin[:2]))), 3)}
+        # Where it is, and where it thinks it is, and they are not the same number.
+        #
+        # This called `dive.observation()` "truth" and it is not: with navigation
+        # configured it hands back the vehicle's **belief**. The tank has no seabed,
+        # so a Doppler log has no bottom to lock to and the reckoning integrates
+        # through-water velocity — which in a current walks off at the current's own
+        # speed. So a hold that truly sat 0.06 m from where it began was reported as
+        # "11.68 m from where it began", and that sentence is the first thing anybody
+        # reads after `coral-city tank`. It made a correct fix look like a broken one.
+        believed = self.dive.observation()
+        truly = self.dive.position
+        final = {"depthM": round(float(-truly[2]), 3),
+                 "headingDeg": round(float(np.degrees(believed.heading)), 1),
+                 "x": round(float(truly[0]), 3), "y": round(float(truly[1]), 3),
+                 "offStartM": round(float(np.hypot(*(truly[:2] - self.origin[:2]))), 3),
+                 # What the vehicle would say, which is all a real one can tell you.
+                 "believedOffStartM": round(
+                     float(np.hypot(*(believed.position[:2] - self.origin[:2]))), 3)}
         task = self.dive.task
         score = task.score() if task is not None else float("nan")
         return Report(score=score, seconds=self.t, task=task.result() if task is not None else {},
