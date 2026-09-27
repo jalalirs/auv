@@ -277,6 +277,18 @@ def things_in_the_way(track, seed: int, ground, objective: dict) -> dict:
     return {"things": things}
 
 
+def spent(wh) -> str:
+    """What the energy column says, including when it cannot say anything.
+
+    A vehicle whose package states a hotel load and no capacity has no battery to
+    spend from, so there is no number — and printing 0.00 Wh there is not a
+    missing value, it is a false one. Every row for the Heavy and for the REMUS
+    read 0.00 Wh until this, which is the column somebody choosing between two
+    controllers looks at first.
+    """
+    return "—" if wh is None else f"{float(wh):.2f} Wh"
+
+
 def named(suite: str, controller: str, task: str, vehicle: str = THE_USUAL_HULL,
           place: str = THE_USUAL_PLACE, through: bool = False) -> str:
     """What a row is called, and it has to name everything being compared.
@@ -629,7 +641,15 @@ def command_dry(args) -> int:
             "score": said.get("score", 0.0),
             "ended": dive.ended or "time",
             "seconds": said.get("seconds", 0.0),
-            "energyWh": round(dive.battery.spent_wh, 3) if dive.battery else 0.0,
+            # None, not zero, when the vehicle has no battery to spend from.
+            #
+            # `bluerov2-heavy` and `remus-100` carry a hotel load and no capacity
+            # in their packages, so every row for them read **0.00 Wh** — which
+            # does not say "unknown", it says this controller used no energy, and
+            # that is the one column a buyer comparing controllers would reach
+            # for first. Found by flying them: the Heavy and the REMUS both
+            # reported nothing and neither of them is a perpetual motion machine.
+            "energyWh": round(dive.battery.spent_wh, 3) if dive.battery else None,
             "driftM": round(float(dive.navigation.drift(dive.position)), 3)
                       if dive.navigation else 0.0,
             "flownBy": who.get("mostly", "?"),
@@ -645,7 +665,8 @@ def command_dry(args) -> int:
             **hit_by(dive),
         })
         print(f"  {task:<12} {rows[-1]['score'] * 100:5.0f}%  "
-              f"{rows[-1]['driftM']:6.2f} m drift  {rows[-1]['energyWh']:6.2f} Wh  "
+              f"{rows[-1]['driftM']:6.2f} m drift  "
+              f"{spent(rows[-1]['energyWh']):>9}  "
               f"{rows[-1]['struck'] + rows[-1]['grounded']:2d} hit  "
               f"{DIM}flown by {rows[-1]['flownBy']}{OFF}")
     kept = _bench_file(args.suite)
@@ -696,7 +717,7 @@ def failed_row(dive: dict, parts: list[str], run: dict) -> dict:
     return {"name": dive["name"], "suite": parts[1], "controller": parts[2],
             "task": parts[3], "score": 0.0, "ended": "failed",
             "failed": True, "why": why, "fault": whose_fault(why),
-            "seconds": 0.0, "energyWh": 0.0, "driftM": 0.0, "flownBy": "—",
+            "seconds": 0.0, "energyWh": None, "driftM": 0.0, "flownBy": "—",
             "thoughts": 0, "slowestThoughtS": 0.0,
             "struck": 0, "grounded": 0, "whatItStruck": [],
             "dive": dive["id"], "run": run["id"]}
@@ -736,7 +757,7 @@ def flown(platform) -> list[dict]:
                 "score": task_said.get("score", 0.0),
                 "ended": out.get("ended", "?"),
                 "seconds": task_said.get("seconds", 0.0),
-                "energyWh": task_said.get("energyWh", 0.0),
+                "energyWh": task_said.get("energyWh"),
                 "driftM": (out.get("navigation") or {}).get("driftM", 0.0),
                 "flownBy": (task_said.get("flownBy") or {}).get("mostly", "?"),
                 "thoughts": thoughts, "slowestThoughtS": slowest,
@@ -755,10 +776,17 @@ def summarise(rows: list[dict]) -> dict:
     # anything it actually did.
     rows = [r for r in rows if r.get("fault") != "the platform's"]
 
-    def mean(key):
+    def mean(key, none_when_empty: bool = False):
         values = [r[key] for r in rows if r.get(key) is not None]
-        return statistics.fmean(values) if values else 0.0
-    return {"dives": len(rows), "score": mean("score"), "energyWh": mean("energyWh"),
+        if values:
+            return statistics.fmean(values)
+        # Zero is a fine floor for a score nobody earned. It is not a fine
+        # answer for energy nobody measured: a hull with no capacity in its
+        # package has no number, and a mean of nothing printed as 0.00 Wh says
+        # the dive was free.
+        return None if none_when_empty else 0.0
+    return {"dives": len(rows), "score": mean("score"),
+            "energyWh": mean("energyWh", none_when_empty=True),
             "driftM": mean("driftM"), "seconds": mean("seconds"),
             "thoughts": sum(r["thoughts"] for r in rows),
             "slowestThoughtS": max([r["slowestThoughtS"] for r in rows], default=0.0),
@@ -823,7 +851,7 @@ def command_show(args) -> int:
     for label, key, form in (("score", "score", lambda v: f"{v * 100:.1f}%"),
                              ("achieved", "achieved", lambda v: f"{v:.0f}"),
                              ("drift", "driftM", lambda v: f"{v:.2f} m"),
-                             ("energy", "energyWh", lambda v: f"{v:.2f} Wh"),
+                             ("energy", "energyWh", spent),
                              ("in the water", "seconds", lambda v: f"{v:.0f} s"),
                              ("struck", "struck", lambda v: f"{v:.0f}"),
                              ("grounded", "grounded", lambda v: f"{v:.0f}"),
@@ -870,23 +898,32 @@ def command_compare(args) -> int:
         mine, yours = ours[task], theirs[task]
         gap = (yours["score"] - mine["score"]) * 100
         ink = GREEN if gap > 1 else RED if gap < -1 else DIM
-        energy = yours["energyWh"] - mine["energyWh"]
+        # Only where both sides have a number: a hull with no capacity in its
+        # package spends nothing measurable, and a difference against nothing is
+        # not a saving.
+        energy = (None if mine["energyWh"] is None or yours["energyWh"] is None
+                  else yours["energyWh"] - mine["energyWh"])
         # Things struck, which is the column this bench exists for. A
         # controller that scores five points better by driving through a
         # nursery frame has not scored five points better.
         hit = f"{_hit(mine)}/{_hit(yours)}"
         print(f"{task:<14}{mine['score'] * 100:9.0f}%{yours['score'] * 100:9.0f}%"
               f"{ink}{gap:+8.0f}{OFF}"
-              f"{energy:+11.2f} Wh{hit:>10}{yours['slowestThoughtS']:9.2f} s")
+              f"{'—' if energy is None else f'{energy:+.2f} Wh':>14}"
+              f"{hit:>10}{yours['slowestThoughtS']:9.2f} s")
     mine, yours = summarise(list(ours.values())), summarise(list(theirs.values()))
     gap = (yours["score"] - mine["score"]) * 100
+    if mine["energyWh"] is None or yours["energyWh"] is None:
+        overall_energy = "—"
+    else:
+        overall_energy = f"{yours['energyWh'] - mine['energyWh']:+.2f} Wh"
     print()
     if missing:
         print(f"{AMBER}{'never flew':<14}{', '.join(missing)} — the platform could "
               f"not start them, so they are in neither column{OFF}")
     print(f"{BOLD}{'overall':<14}{mine['score'] * 100:9.1f}%{yours['score'] * 100:9.1f}%"
           f"{gap:+8.1f}{OFF}"
-          f"{yours['energyWh'] - mine['energyWh']:+11.2f} Wh"
+          f"{overall_energy:>14}"
           # Right-aligned in the same width as the column above it. It was
           # the pair left-aligned after the Wh, so the overall row read
           # "-5.36 Wh0/0" with the two columns run together.
@@ -910,8 +947,9 @@ def _attribution(mine: dict, yours: dict, left: str, right: str) -> str:
     else:
         better, worse = (right, left) if gap > 0 else (left, right)
         said = f"{better} scores {abs(gap):.1f} points better than {worse}"
-    energy = yours["energyWh"] - mine["energyWh"]
-    if abs(energy) > 0.05:
+    energy = (None if mine["energyWh"] is None or yours["energyWh"] is None
+              else yours["energyWh"] - mine["energyWh"])
+    if energy is not None and abs(energy) > 0.05:
         said += (f". {right} spends {abs(energy):.2f} Wh "
                  f"{'more' if energy > 0 else 'less'} than {left} doing it")
     if yours["thoughts"] or mine["thoughts"]:

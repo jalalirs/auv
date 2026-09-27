@@ -526,3 +526,55 @@ def test_both_controllers_meet_the_same_arrangement():
         == tool.things_in_the_way(TRACK_EAST, 7, flat, task)
     assert tool.things_in_the_way(TRACK_EAST, 7, flat, task) \
         != tool.things_in_the_way(TRACK_EAST, 8, flat, task)
+
+
+def test_a_hull_with_no_battery_says_nothing_rather_than_nothing_spent():
+    """Found by flying the Heavy and the REMUS, and it is a false number rather
+    than a missing one.
+
+    Both packages state a hotel load and no capacity, so there is no battery to
+    spend from and every row for them read **0.00 Wh** — which does not say
+    "unknown", it says this controller used no energy. It is the column somebody
+    choosing between two controllers looks at first, and neither of those
+    vehicles is a perpetual motion machine.
+    """
+    tool = _bench()
+    assert tool.spent(None) == "—"
+    assert tool.spent(0.0) == "0.00 Wh"
+    assert tool.spent(8.884) == "8.88 Wh"
+
+
+def test_a_mean_of_no_energy_is_not_zero_energy():
+    """Zero is a fine floor for a score nobody earned and a false answer for
+    energy nobody measured."""
+    tool = _bench()
+    rows = [{"score": 0.5, "energyWh": None, "driftM": 1.0, "seconds": 10.0,
+             "thoughts": 0, "slowestThoughtS": 0.0, "achieved": 1,
+             "struck": 0, "grounded": 0, "controller": "x",
+             "task": "reach", "flownBy": "x", "state": "succeeded",
+             "ended": "achieved"}]
+    said = tool.summarise(rows)
+    assert said["energyWh"] is None
+    # And a score still floors at zero, because a dive that earned nothing
+    # earned nothing.
+    assert said["score"] == pytest.approx(0.5)
+
+
+def test_every_hull_the_bench_flies_states_its_capacity():
+    """The bench prints an energy column and a campaign costs off endurance, and
+    both need a battery. A hull with a hotel load and no capacity can be flown
+    and cannot be costed, so the gap is named here rather than discovered by a
+    row of dashes."""
+    import json
+
+    without = []
+    for hull in ("bluerov2", "bluerov2-heavy", "remus-100", "seaglider"):
+        power = json.loads((HERE.parent / "catalog/vehicles" / hull
+                            / "dynamics.json").read_text()).get("power") or {}
+        if "capacityWh" not in power:
+            without.append(hull)
+    assert without == ["remus-100"], (
+        "a hull gained or lost a stated capacity: " + repr(without)
+        + ". The REMUS is the known one — its published energy is not something "
+          "this repository has a source for, so it states none rather than a "
+          "number somebody made up.")
