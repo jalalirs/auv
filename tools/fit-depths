@@ -94,6 +94,116 @@ def worst_band(bands):
     return max(bands, key=lambda b: abs(b["medianM"]), default=None) or None
 
 
+def band_weights(measured):
+    """One weight per point, so each depth band counts for as much as another.
+
+    An unweighted fit over Al Fahal is 22,430 points in the top five metres
+    against 56 below fifteen: the line is the shallows' line, and the deep end
+    is whatever falls out. Weighting each band to the same total makes the fit
+    answer to the whole range it claims to cover.
+    """
+    import numpy as np
+    depth = -np.asarray(measured)
+    w = np.ones(len(depth))
+    for near, far in BANDS:
+        inside = (depth >= near) if far is None else ((depth >= near) & (depth < far))
+        if inside.any():
+            w[inside] = 1.0 / float(inside.sum())
+    return w
+
+
+def candidate_fits(said, measured, weights):
+    """The fits worth trying, each as (name, callable).
+
+    A straight line is the right shape for a log-ratio in principle. In
+    practice satellite-derived bathymetry saturates as it approaches its
+    optical limit — Al Fahal's is 22 m — so the claimed depth stops growing
+    while the real one keeps going, and no single slope can hold both ends.
+    A second-order term can, and is still monotone over the range that
+    matters as long as it is checked rather than assumed.
+    """
+    import numpy as np
+    out = [("straight line", np.polyfit(said, measured, 1)),
+           ("straight line, bands balanced",
+            np.polyfit(said, measured, 1, w=np.sqrt(weights)))]
+    if len(said) > 12:
+        out.append(("curved, bands balanced",
+                    np.polyfit(said, measured, 2, w=np.sqrt(weights))))
+    return [(name, np.poly1d(c)) for name, c in out]
+
+
+def rises_with_depth(curve, said):
+    """A fit that is not monotone over the claimed range is not a rescaling.
+
+    A quadratic can turn back on itself, which would make two different real
+    depths out of one claimed depth. Cheap to check and not safe to assume.
+    """
+    import numpy as np
+    grid = np.linspace(float(np.min(said)), float(np.max(said)), 256)
+    step = np.diff(curve(grid))
+    return bool(np.all(step >= 0) or np.all(step <= 0))
+
+
+def how_bad_at_worst(measured, fitted):
+    """The score a fit is chosen on: its furthest band, not its overall rms.
+
+    Choosing on rms is what hid Al Fahal's deep end. The overall number is
+    owned by whichever band has the most points in it, and that is exactly the
+    band that was already fine.
+    """
+    worst = worst_band(what_is_left_by_depth(measured, fitted))
+    return abs(worst["medianM"]) if worst else 0.0
+
+
+# How much better a more complicated shape has to be before it is worth it.
+# Over Al Fahal the curve bought 1.37 m in a band holding 56 points and cost
+# 1.34 m in the band holding 22,430 — a worse seabed everywhere anybody flies,
+# in exchange for a number that still says fifteen metres out. A margin, so
+# that the mechanism for choosing cannot be talked into that trade.
+WORTH_IT_M = 2.0
+WORTH_IT_SHARE = 0.25
+
+# Where a fit stops holding. A band further out than this is not calibrated,
+# whatever the overall rms says.
+HOLDS_WITHIN_M = 3.0
+
+
+def simplest_good_enough(tried):
+    """The simplest shape, unless a longer one is meaningfully better.
+
+    `tried` is (name, curve, worst_band_metres, why_not) in increasing order of
+    complexity. Scoring on the worst band was the right mechanism and it is not
+    a licence to take any improvement at any price.
+    """
+    usable = [t for t in tried if t[2] is not None]
+    if not usable:
+        return None
+    best = usable[0]
+    for other in usable[1:]:
+        gain = abs(best[2]) - abs(other[2])
+        if gain >= WORTH_IT_M and gain >= WORTH_IT_SHARE * abs(best[2]):
+            best = other
+    return best
+
+
+def holds_to(bands):
+    """The depth this fit is good to, and what is past it.
+
+    A seabed rescaled against a laser that only reached ten metres is
+    calibrated to ten metres. Saying so is the difference between a derived
+    seabed with a known limit and one with a number on it.
+    """
+    good = None
+    for band in bands:
+        if abs(band["medianM"]) <= HOLDS_WITHIN_M:
+            good = band["toM"] if band["toM"] is not None else band["fromM"]
+        else:
+            break
+    past = [b for b in bands
+            if abs(b["medianM"]) > HOLDS_WITHIN_M]
+    return good, past
+
+
 def main() -> int:
     parse = argparse.ArgumentParser(description="refit a seabed against measured depths")
     parse.add_argument("place")
@@ -131,15 +241,44 @@ def main() -> int:
     residual = measured - (slope * said + offset)
     middle, spread = spread_of(residual)
     keep = np.abs(residual - middle) < 3 * spread
-    slope, offset = np.polyfit(said[keep], measured[keep], 1)
 
-    fitted = slope * said + offset
+    # Then try each shape and keep the one whose *worst band* is smallest,
+    # rather than the one with the smallest overall rms. Choosing on rms is
+    # what hid Al Fahal's deep end: the summary belongs to whichever band has
+    # the most points, and that was the band already fine.
+    weights = band_weights(measured[keep])
+    tried = []
+    for name, curve in candidate_fits(said[keep], measured[keep], weights):
+        if not rises_with_depth(curve, said[keep]):
+            tried.append((name, curve, None, "turns back on itself"))
+            continue
+        tried.append((name, curve, how_bad_at_worst(measured, curve(said)), None))
+    picked = simplest_good_enough(tried)
+    if picked is None:
+        print("  no fit holds over this range", file=__import__("sys").stderr)
+        return 1
+    chosen, curve, _, _ = picked
+    print("  shapes tried, scored on their worst depth band:")
+    for name, _c, score, why in tried:
+        mark = " <- kept" if name == chosen else ""
+        print(f"    {name:<32} "
+              + (why if why else f"worst band {score:+.2f} m") + mark)
+
+    fitted = curve(said)
+    coefficients = [round(float(c), 6) for c in curve.coefficients]
+    slope = float(curve.coefficients[-2]) if len(curve.coefficients) >= 2 else 1.0
+    offset = float(curve.coefficients[-1])
     now_middle, now_spread = spread_of(measured - fitted)
     now_rms = float(np.sqrt(np.mean((measured - fitted) ** 2)))
 
     print(f"{asked.place}: {len(x):,} measured depths, "
           f"{-measured.max():.1f} to {-measured.min():.1f} m")
-    print(f"  fit: measured = {slope:.4f} x claimed {offset:+.3f}")
+    print(f"  fit: {chosen} — measured = "
+          + " + ".join(f"{c:.4g}·claimed^{len(coefficients) - 1 - i}"
+                       if len(coefficients) - 1 - i > 1 else
+                       (f"{c:.4g}·claimed" if len(coefficients) - 1 - i == 1
+                        else f"{c:.4g}")
+                       for i, c in enumerate(coefficients)))
     print(f"  before: offset {was_middle:+.2f} m, spread {was_spread:.2f} m, "
           f"rms {was_rms:.2f} m")
     print(f"  after:  offset {now_middle:+.2f} m, spread {now_spread:.2f} m, "
@@ -166,18 +305,28 @@ def main() -> int:
         to = "deeper" if b["toM"] is None else f"{b['toM']:.0f} m"
         print(f"    {b['fromM']:>4.0f} to {to:>7}: {b['points']:>6,} points, "
               f"median {b['medianM']:+.2f} m, rms {b['rmsM']:.2f} m")
-    if worst and abs(worst["medianM"]) > 3 * max(now_rms, 0.01) / 2:
-        print(f"  the rms is not the whole story: {worst['points']:,} points "
-              f"below {worst['fromM']:.0f} m are still "
-              f"{worst['medianM']:+.2f} m out. One slope does not hold over "
-              f"this range.")
+    good_to, past = holds_to(bands)
+    if past:
+        deep = sum(b["points"] for b in past)
+        print(f"  this seabed is calibrated to "
+              + (f"{good_to:.0f} m" if good_to else "no depth at all")
+              + f"; below that it is not. {deep:,} of {len(x):,} measured "
+              f"points sit there and the fit is "
+              f"{past[0]['medianM']:+.2f} m out at {past[0]['fromM']:.0f} m.")
+        print(f"  no shape tried fixes it — the claims stop growing while the "
+              f"real depth keeps going, which is what an optical limit looks "
+              f"like from underneath. A deeper truth needs an instrument that "
+              f"went there.")
+    elif worst:
+        print(f"  holds across the whole measured range; worst band "
+              f"{worst['medianM']:+.2f} m at {worst['fromM']:.0f} m")
 
     if now_rms >= was_rms:
         print("  the fit does not improve this seabed; leaving it alone",
               file=__import__("sys").stderr)
         return 1
 
-    corrected = (slope * claims + offset).astype("float32")
+    corrected = curve(claims).astype("float32")
     # Where the fit is extrapolating rather than interpolating, and how much of
     # the site that is. A number that is quietly extrapolated over half a
     # place is not a correction, it is a second guess with a decimal point.
@@ -217,6 +366,12 @@ def main() -> int:
         "fittedAgainst": {
             "source": "ICESat-2 ATL24 v002 seafloor photons",
             "points": int(len(x)),
+            "shape": chosen,
+            "coefficients": coefficients,
+            "chosenOn": ("the worst depth band, not the overall rms: the "
+                         "summary belongs to whichever band holds the most "
+                         "points, and over Al Fahal that was the one already "
+                         "fine"),
             "slope": round(float(slope), 5),
             "offsetM": round(float(offset), 4),
             "rmsBeforeM": round(was_rms, 2),
@@ -225,6 +380,10 @@ def main() -> int:
             # Beside the rms, never instead of it: see the note above.
             "residualByDepth": bands,
             "worstBandMedianM": (worst or {}).get("medianM"),
+            # The number that matters to anybody planning a dive: how deep
+            # this seabed is actually calibrated. Not the overall rms.
+            "calibratedToM": good_to,
+            "pastThatUncalibrated": bool(past),
             "calibratedBetweenM": [round(-shallowest, 1), round(-deepest, 1)],
             "extrapolatedShare": round(beyond, 3),
             "note": ("derived from Sentinel-2 and rescaled to measured "
