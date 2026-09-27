@@ -93,7 +93,14 @@ THE_USUAL_PLACE = "looe-key"
 # It is opt-in and it is in the row's name, because a row flown through things
 # and a row flown through open water are not comparable and every row already in
 # the record was flown through open water.
-FRAMES_IN_THE_WAY = 3
+THINGS_IN_THE_WAY = 3
+
+# What stands in the water and how tall it is, from the runtime's own palette.
+# Kept here as a copy of the heights rather than imported, because `world.py`
+# lives in the sim runtime and this tool runs without it on the path — and the
+# test holds this list against that one, so a palette that grew a taller thing
+# does not silently leave this choosing the wrong one.
+STANDING = [("nursery-frame", 1.2), ("marker-post", 3.0)]
 
 
 def how_far_the_task_goes(objective: dict) -> tuple[float, float]:
@@ -118,21 +125,55 @@ def how_far_the_task_goes(objective: dict) -> tuple[float, float]:
                      "there is nowhere to put things that would be in the way")
 
 
+def tall_enough_for(objective: dict) -> tuple[str, float]:
+    """Something the vehicle would actually meet at the altitude it is holding.
+
+    This is the part that was wrong on the first try. A nursery frame is 1.2 m
+    tall; a transect holds 3 m of altitude. Three frames placed dead on the line
+    are three frames the vehicle flies a metre and a half over, and the bench
+    would have reported "flown through things" about a dive that passed nothing.
+
+    So the thing is chosen by the altitude the task states: the shortest one in
+    the palette that still reaches the vehicle. When nothing reaches, this
+    refuses — a task flown eight metres up over a palette whose tallest post is
+    three has no arrangement that would test seeing, and saying so is the only
+    honest answer.
+    """
+    altitude = objective.get("altitudeM")
+    if altitude is None:
+        # No stated altitude: the vehicle holds the depth it started at, which
+        # the place decides. The tallest thing is the best chance of meeting it.
+        return max(STANDING, key=lambda one: one[1])
+    # Half the band is the room the task allows it to sink into, so a thing that
+    # reaches that far up is in the way of a dive flying the task correctly.
+    room = float(altitude) - float(objective.get("altitudeBandM", 0.0)) / 2.0
+    reaching = [one for one in STANDING if one[1] >= room]
+    if not reaching:
+        tallest = max(STANDING, key=lambda one: one[1])
+        raise SystemExit(
+            f"a {objective.get('kind')} holds {altitude:g} m of altitude and the "
+            f"tallest thing that stands on the bottom is {tallest[0]} at "
+            f"{tallest[1]:g} m. The vehicle would fly over everything, so this "
+            "would report a dive flown through things that passed nothing")
+    return min(reaching, key=lambda one: one[1])
+
+
 def things_in_the_way(objective: dict, seed: int) -> dict:
-    """Frames of coral standing on the line the task walks.
+    """Things standing on the line the task walks, tall enough to be met.
 
-    Nursery frames rather than mooring blocks because this is reef work and a
-    frame is what is actually in the way on a restoration site — and because a
-    frame is two metres across, which a vehicle a quarter of a metre wide has to
-    go round rather than squeeze past.
+    Reef furniture rather than mooring blocks because this is reef work and a
+    frame or a plot marker is what is actually in the way on a restoration site.
+    Which of them it is comes from the altitude the task holds — see
+    `tall_enough_for`, which is where the first attempt went wrong.
 
-    Offset from the line by a seeded amount smaller than the frame, so some are
+    Offset from the line by a seeded amount smaller than the thing, so some are
     dead ahead and some are a near miss. Seeded from the task's own seed, so the
-    two controllers being compared meet the same three frames in the same places
-    — which is the whole point of a bench.
+    two controllers being compared meet the same three in the same places —
+    which is the whole point of a bench.
     """
     import random
 
+    kind, _ = tall_enough_for(objective)
     far_x, far_y = how_far_the_task_goes(objective)
     reach = math.hypot(far_x, far_y)
     if reach < 10.0:
@@ -142,12 +183,12 @@ def things_in_the_way(objective: dict, seed: int) -> dict:
     across = (-along[1], along[0])
     draw = random.Random(f"things/{seed}/{objective.get('kind')}")
     things = []
-    for i in range(FRAMES_IN_THE_WAY):
-        at = reach * (i + 1) / (FRAMES_IN_THE_WAY + 1)
+    for i in range(THINGS_IN_THE_WAY):
+        at = reach * (i + 1) / (THINGS_IN_THE_WAY + 1)
         off = draw.uniform(-1.2, 1.2)
         things.append({
-            "id": f"frame-{i + 1}",
-            "kind": "nursery-frame",
+            "id": f"thing-{i + 1}",
+            "kind": kind,
             "x": round(along[0] * at + across[0] * off, 2),
             "y": round(along[1] * at + across[1] * off, 2),
         })
