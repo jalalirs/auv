@@ -90,9 +90,15 @@ def test_a_current_is_felt_and_the_hold_fights_it():
     # holds there" was false in the direction that flatters: a hold tuned here and
     # deployed drifts.
     #
-    # Held loosely, because the point is that it is well under the old 0.8 and not
-    # zero — the hold is still working, against more than it used to.
-    assert 0.1 < moving.score < 0.6, str(moving)
+    # And it *is* held now, at 0.3 m/s: the hold carries its error, which is what
+    # lets it settle on station rather than wherever its own push balances the drag.
+    # Before that it scored 0.094 at one knot and sat 1.60 m off; it now scores
+    # 0.560 and sits 0.17 m off, measured against the truth and not its estimate.
+    assert moving.score > 0.9, str(moving)
+    # What its own navigation believed, which is a different and larger number: no
+    # seabed in a tank means no bottom lock, so the reckoning walks off at about the
+    # current's speed. A report that showed only that read as a broken hold.
+    assert moving.final["believedOffStartM"] > moving.final["offStartM"] + 1.0
 
 
 def test_the_tank_fits_what_the_vehicle_carries():
