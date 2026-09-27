@@ -520,7 +520,12 @@ def command_dry(args) -> int:
           f"{DIM}· {water_name} · {technology_name} · "
           f"{'over ' + over if args.over else 'a flat bottom'} · "
           f"{'through things' if args.through else 'open water'} · no simulator{OFF}")
-    for task in SUITES[args.suite]:
+    asked = [one.strip() for one in args.tasks.split(",") if one.strip()]
+    for one in asked:
+        if one not in SUITES[args.suite]:
+            raise SystemExit(f"the {args.suite} suite does not fly {one}. It flies: "
+                             f"{', '.join(SUITES[args.suite])}")
+    for task in (asked or SUITES[args.suite]):
         objective = dict(TASKS[task])
         objective["controller"] = args.controller
         objective["seed"] = seed_for(args.suite, task)
@@ -953,6 +958,9 @@ def main() -> int:
 
     drying = doing.add_parser("dry", help="fly the suite here, with no simulator")
     drying.add_argument("--controller", required=True)
+    drying.add_argument("--tasks", default="",
+                        help="just these, comma separated, when the question is "
+                             "about one task rather than about a suite")
     drying.add_argument("--vehicle", default="bluerov2")
     drying.add_argument("--through", action="store_true",
                         help="put nursery frames on the line the task walks, so a "
