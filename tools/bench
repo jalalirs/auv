@@ -666,6 +666,7 @@ def command_dry(args) -> int:
     """
     sys.path.insert(0, str(HERE.parent / "services/sim-runtime/coral"))
     import pathlib as _pathlib
+    import time as wallclock
 
     from hydrodynamics import Allocator, Body, Hydrodynamics
     from runner import Dive
@@ -772,11 +773,30 @@ def command_dry(args) -> int:
                 flying = dive.helm.controllers.get(controller)
                 if flying is None or not flying.tune(name, float(value)):
                     raise SystemExit(f"{controller} has no parameter called {name}")
+            # A controller that thinks is flown at real time.
+            #
+            # Thinking costs real seconds and a thought is triggered every
+            # `thinks_every` **simulated** seconds, so a dive running four times
+            # faster than the clock gives each thought a quarter of the simulated
+            # budget it should have — and the same controller on a faster machine
+            # would look better. The runtime's own shell has always had this
+            # guard; a dry bench had none, so every `ponder` row flown here before
+            # 27 September 2026 charged its thinking at the wrong rate.
+            paced = False
+            try:
+                paced = bool(dive.helm.deliberating())
+            except Exception:
+                pass
             track = []
+            began = wallclock.monotonic()
             for _ in range(int((seconds + 30.0) / dive.dt)):
                 dive.step()
                 if dive.taken % 200 == 0:
                     track.append([float(v) for v in dive.position])
+                if paced:
+                    ahead = began + dive.simulated - wallclock.monotonic()
+                    if ahead > 0:
+                        wallclock.sleep(min(ahead, 0.05))
                 if dive.done:
                     break
             dive.close()
