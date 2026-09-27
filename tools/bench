@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import pathlib
 import statistics
 import sys
@@ -73,8 +74,88 @@ THE_USUAL_HULL = "bluerov2"
 THE_USUAL_PLACE = "looe-key"
 
 
+# What a bench can and cannot tell apart, and the one thing that decides it.
+#
+# `wary` is `pursue` with the imaging sonar on. Flown over a floor pinned flat
+# at twelve metres the two came out identical to the last decimal, and the
+# obvious reading was that a dry bench cannot compare controllers that differ in
+# seeing. That reading was wrong twice over. What a vehicle can run into comes
+# from the brief's **layout** and not from the renderer — `World(brief["layout"])`
+# — so a dive with nothing to see can still have things in the water; and the
+# reason the bench had none was simply that its brief carried no layout.
+#
+# A place package does not ship one either: a survey holds a seabed and its
+# coral, and everything somebody *arranged* — a frame here, a block there — is a
+# separate thing the platform keeps. So for a dry bench the layout is made here,
+# from the task's own geometry, which is the only way to be sure the things are
+# actually in the way rather than somewhere the vehicle was never going.
+#
+# It is opt-in and it is in the row's name, because a row flown through things
+# and a row flown through open water are not comparable and every row already in
+# the record was flown through open water.
+FRAMES_IN_THE_WAY = 3
+
+
+def how_far_the_task_goes(objective: dict) -> tuple[float, float]:
+    """The furthest point the task states, which is the line to put things on.
+
+    Read off whatever that task calls it rather than special-cased by kind: a
+    task that stated its geometry in a field this does not know about would
+    otherwise get its frames dropped in open water behind the vehicle, and a
+    bench that says "flown through things" while the vehicle passed nothing is
+    worse than one that never claimed it.
+    """
+    if "dx" in objective or "dy" in objective:
+        return float(objective.get("dx", 0.0)), float(objective.get("dy", 0.0))
+    marks = objective.get("marks")
+    if isinstance(marks, list) and marks:
+        last = marks[-1]
+        return float(last.get("dx", 0.0)), float(last.get("dy", 0.0))
+    for key in ("lengthM", "widthM", "awayM", "radiusM"):
+        if key in objective:
+            return float(objective[key]), 0.0
+    raise SystemExit(f"a {objective.get('kind')} does not say how far it goes, so "
+                     "there is nowhere to put things that would be in the way")
+
+
+def things_in_the_way(objective: dict, seed: int) -> dict:
+    """Frames of coral standing on the line the task walks.
+
+    Nursery frames rather than mooring blocks because this is reef work and a
+    frame is what is actually in the way on a restoration site — and because a
+    frame is two metres across, which a vehicle a quarter of a metre wide has to
+    go round rather than squeeze past.
+
+    Offset from the line by a seeded amount smaller than the frame, so some are
+    dead ahead and some are a near miss. Seeded from the task's own seed, so the
+    two controllers being compared meet the same three frames in the same places
+    — which is the whole point of a bench.
+    """
+    import random
+
+    far_x, far_y = how_far_the_task_goes(objective)
+    reach = math.hypot(far_x, far_y)
+    if reach < 10.0:
+        raise SystemExit(f"a {objective.get('kind')} covers {reach:.0f} m, which is "
+                         "too little ground to put anything in the way of")
+    along = (far_x / reach, far_y / reach)
+    across = (-along[1], along[0])
+    draw = random.Random(f"things/{seed}/{objective.get('kind')}")
+    things = []
+    for i in range(FRAMES_IN_THE_WAY):
+        at = reach * (i + 1) / (FRAMES_IN_THE_WAY + 1)
+        off = draw.uniform(-1.2, 1.2)
+        things.append({
+            "id": f"frame-{i + 1}",
+            "kind": "nursery-frame",
+            "x": round(along[0] * at + across[0] * off, 2),
+            "y": round(along[1] * at + across[1] * off, 2),
+        })
+    return {"things": things}
+
+
 def named(suite: str, controller: str, task: str, vehicle: str = THE_USUAL_HULL,
-          place: str = THE_USUAL_PLACE) -> str:
+          place: str = THE_USUAL_PLACE, through: bool = False) -> str:
     """What a row is called, and it has to name everything being compared.
 
     The hull was not in it. Fly `pursue` on a BlueROV2 and then on a Heavy
@@ -99,6 +180,8 @@ def named(suite: str, controller: str, task: str, vehicle: str = THE_USUAL_HULL,
         whose = f"{whose} on {vehicle}"
     if place != THE_USUAL_PLACE:
         whose = f"{whose} over {place}"
+    if through:
+        whose = f"{whose} through things"
     return f"bench · {suite} · {whose} · {task}"
 
 
@@ -294,7 +377,8 @@ def command_dry(args) -> int:
     rows = []
     print(f"{BOLD}{args.suite}{OFF} flown here by {BOLD}{args.controller}{OFF} "
           f"{DIM}· {water_name} · {technology_name} · "
-          f"{'over ' + over if args.over else 'a flat bottom'} · no simulator{OFF}")
+          f"{'over ' + over if args.over else 'a flat bottom'} · "
+          f"{'through things' if args.through else 'open water'} · no simulator{OFF}")
     for task in SUITES[args.suite]:
         objective = dict(TASKS[task])
         objective["controller"] = args.controller
@@ -305,6 +389,8 @@ def command_dry(args) -> int:
                  "vehiclePath": str(package.parent),
                  "objective": objective,
                  "conditions": {**water, **technology}}
+        if args.through:
+            brief["layout"] = things_in_the_way(objective, objective["seed"])
         if args.over:
             brief["cityPath"] = str(pathlib.Path(args.over).expanduser())
             # Over a real place the vehicle starts where the place says, not at
@@ -358,7 +444,7 @@ def command_dry(args) -> int:
         # The hull here too: `bench dry` takes --vehicle and a dry row that
         # did not name it would collide with the flown one exactly as the
         # flown ones collided with each other.
-        on = named(args.suite, called, task, args.vehicle, over)
+        on = named(args.suite, called, task, args.vehicle, over, args.through)
         rows.append({
             "name": on, "suite": args.suite,
             "controller": on.split("·")[2].strip(), "task": task,
@@ -695,6 +781,9 @@ def main() -> int:
     drying = doing.add_parser("dry", help="fly the suite here, with no simulator")
     drying.add_argument("--controller", required=True)
     drying.add_argument("--vehicle", default="bluerov2")
+    drying.add_argument("--through", action="store_true",
+                        help="put nursery frames on the line the task walks, so a "
+                             "controller that looks has something to look at")
     drying.add_argument("--over", default="", metavar="PLACE",
                         help="a packaged place to fly over, so the bottom is a "
                              "real bottom and a controller that looks has "
