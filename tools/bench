@@ -461,6 +461,21 @@ def an_arrangement(platform, city_id: str, name: str, things: dict) -> str:
     return saved["id"]
 
 
+def which_place(platform, slug: str) -> str:
+    """The place's own id, which is not its slug and not its version.
+
+    `newest_version` hands back a *version* id, because that is what a dive is
+    defined against. A layout belongs to the place itself — `POST
+    /api/v1/cities/{cityId}/layouts` — so it needs the other one.
+    """
+    listed = platform.call("GET", "/api/v1/cities")["cities"]
+    found = next((one for one in listed if one["slug"] == slug), None)
+    if found is None:
+        raise SystemExit(f"no place called '{slug}'. There is: "
+                         + ", ".join(sorted(one["slug"] for one in listed)))
+    return found["id"]
+
+
 def a_reference(platform, args, city, vehicle, conditions, queue, runtime,
                 task: str, name: str) -> None:
     """Fly the floor controller over this task through open water, and wait.
@@ -547,16 +562,20 @@ def command_run(args) -> int:
             # and flown only when it is not already there, and every controller
             # compared on this task meets the same three frames.
             was = named(args.suite, THE_FLOOR, task, args.vehicle, args.place)
-            standing = next((r for r in rows if r["name"] == was
-                             and r.get("state") == "succeeded"), None)
+            # A row that flew. `flown` marks a failure with `failed` and carries no
+            # state field at all, so asking for `state == "succeeded"` matched
+            # nothing and would have re-flown the reference for every controller
+            # — found by asking the record rather than by assuming its shape.
+            standing = next((r for r in rows
+                             if r["name"] == was and not r.get("failed")), None)
             if standing is None:
                 print(f"{DIM}  {task} — flying {THE_FLOOR} first, to place the "
                       f"things off where it actually went{OFF}")
                 a_reference(platform, args, city, vehicle, conditions, queue,
                             runtime, task, was)
                 rows = flown(platform)
-                standing = next((r for r in rows if r["name"] == was
-                                 and r.get("state") == "succeeded"), None)
+                standing = next((r for r in rows
+                                 if r["name"] == was and not r.get("failed")), None)
             if standing is None:
                 raise SystemExit(
                     f"the reference dive for {task} did not succeed, so there is "
@@ -566,7 +585,8 @@ def command_run(args) -> int:
             things = things_in_the_way(track, objective["seed"],
                                        the_bottom_under(track), objective)
             defined["layoutVersionId"] = an_arrangement(
-                platform, args.place, f"{name} — the arrangement", things)
+                platform, which_place(platform, args.place),
+                f"{name} — the arrangement", things)
         if "builtIn" in flying:
             objective["controller"] = flying["builtIn"]
         else:
