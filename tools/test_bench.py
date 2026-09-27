@@ -263,7 +263,12 @@ def test_a_dry_row_names_its_hull_too():
     tool = _bench()
     source = (HERE / "bench").read_text()
     inside = source[source.index("def command_dry("):]
-    assert 'named(args.suite, called, task, args.vehicle, over)' in inside
+    # What matters is that the hull reaches the name, not the order of the
+    # arguments around it — pinning the whole call meant this failed every time
+    # the name grew a part, which is twice so far and says nothing about hulls.
+    called_it = [line for line in inside.splitlines() if "named(" in line]
+    assert called_it, "command_dry does not name its rows at all"
+    assert any("args.vehicle" in line for line in called_it)
 
 
 def test_the_overall_row_lines_up_with_the_columns_above_it(capsys):
@@ -363,3 +368,70 @@ def test_a_dry_bench_over_a_place_asks_the_runtime_for_the_bottom():
     inside = (HERE / "bench").read_text()
     assert "dive.open_dry()" in inside
     assert 'dive.floor = -12.0' in inside, "the flat bottom is still the default"
+
+
+def test_things_stand_on_the_line_the_task_walks():
+    """Not somewhere the vehicle was never going.
+
+    A bench that says "flown through things" while the vehicle passed nothing is
+    worse than one that never claimed it, so the frames are placed off the task's
+    own geometry: three of them, spaced along the line from where the dive starts
+    to the furthest point the task states.
+    """
+    tool = _bench()
+    reach = {"kind": "reach", "dx": 240.0, "dy": 0.0, "seed": 11}
+    said = tool.things_in_the_way(reach, 11)["things"]
+    assert len(said) == 3
+    # Spaced along the line, at a quarter, a half and three quarters.
+    assert [round(one["x"] / 60.0) for one in said] == [1, 2, 3]
+    # And never further out than the goal.
+    assert all(0 < one["x"] < 240.0 for one in said)
+    # Off the line by less than the frame is wide, so some are dead ahead.
+    assert all(abs(one["y"]) <= 1.2 for one in said)
+    assert all(one["kind"] == "nursery-frame" for one in said)
+
+
+def test_both_controllers_meet_the_same_things():
+    """Which is the whole point of a bench. Seeded from the task's own seed, so
+    two controllers flown at the same task find the same three frames."""
+    tool = _bench()
+    task = {"kind": "transect", "lengthM": 200.0}
+    assert tool.things_in_the_way(task, 7) == tool.things_in_the_way(task, 7)
+    # And a different task is a different arrangement, not the same one moved.
+    assert tool.things_in_the_way(task, 7) != tool.things_in_the_way(task, 8)
+
+
+def test_things_are_placed_off_whatever_the_task_calls_its_distance():
+    """Read off the field rather than special-cased by kind: a task whose
+    geometry this did not recognise would drop its frames at the origin."""
+    tool = _bench()
+    far = tool.how_far_the_task_goes
+    assert far({"kind": "reach", "dx": 250, "dy": 0}) == (250.0, 0.0)
+    assert far({"kind": "transect", "lengthM": 200}) == (200.0, 0.0)
+    assert far({"kind": "return", "awayM": 150}) == (150.0, 0.0)
+    assert far({"kind": "treat", "radiusM": 15}) == (15.0, 0.0)
+    assert far({"kind": "revisit", "marks": [{"dx": 50, "dy": 0},
+                                            {"dx": 30, "dy": 65}]}) == (30.0, 65.0)
+
+
+def test_a_task_that_does_not_say_how_far_it_goes_is_refused():
+    """Rather than quietly given frames at the origin, which the vehicle starts
+    inside — a dive that began already touching a frame would score every
+    controller the same and it would be the arrangement's fault."""
+    tool = _bench()
+    with pytest.raises(SystemExit):
+        tool.things_in_the_way({"kind": "hold"}, 3)
+    # And ground too small to put anything in the way of is refused too.
+    with pytest.raises(SystemExit):
+        tool.things_in_the_way({"kind": "inspect", "dx": 4, "dy": 0}, 3)
+
+
+def test_a_row_flown_through_things_says_so():
+    """Because it is not comparable with one flown through open water, and every
+    row already in the record was flown through open water."""
+    tool = _bench()
+    assert tool.named("quick", "wary", "reach") == "bench · quick · wary · reach"
+    assert tool.named("quick", "wary", "reach", through=True) \
+        == "bench · quick · wary through things · reach"
+    assert tool.named("quick", "wary", "reach", "remus-100", "al-fahal", True) \
+        == "bench · quick · wary on remus-100 over al-fahal through things · reach"
