@@ -799,6 +799,20 @@ func (s *Store) askForScenario(ctx context.Context, conn db.Conn, spec SweepSpec
 	if err != nil {
 		return err
 	}
+	// A rehearsal is measured, not watched.
+	//
+	// A sweep is one mission flown every way it could go wrong — sixteen dives for
+	// eight doubts flown twice — and nobody sits through sixteen. Rendered, each
+	// runs at 0.17 times real time and the sweep is about two days; undrawn it is
+	// about two hours, on no graphics card, and the trajectory is the same file to
+	// the byte. So every scenario says what it is for, and the agent runs the batch
+	// runner rather than the application.
+	//
+	// Set here rather than asked of the mission's author, because this is a property
+	// of sweeping and not of the mission: the same mission flown once by hand, to be
+	// looked at, is drawn. If somebody wants to see the scenario that broke, they
+	// re-fly that one.
+	one.Objective = measuredNotWatched(one.Objective)
 	objective, err := json.Marshal(one.Objective)
 	if err != nil {
 		return fmt.Errorf("encoding what is asked of %q: %w", label, err)
@@ -849,6 +863,26 @@ func (s *Store) askForScenario(ctx context.Context, conn db.Conn, spec SweepSpec
 
 // overlaid is a scenario's changes to the objective, or nothing when it made
 // none — in which case the mission's own stages are used whole.
+// measuredNotWatched marks a scenario's dive as one nobody is going to look at.
+//
+// A sweep is one mission flown every way it could go wrong — sixteen dives for eight
+// doubts flown twice — and nobody sits through sixteen. Rendered, each runs at 0.17
+// times real time and the sweep is about two days; undrawn it is about two hours, on
+// no graphics card, and the trajectory is the same file to the byte. The agent reads
+// this and runs the batch runner rather than the application.
+//
+// A scenario that says otherwise keeps its answer: a doubt is allowed to be about
+// whether anybody can see what happened, and this is not the place to overrule it.
+func measuredNotWatched(objective map[string]json.RawMessage) map[string]json.RawMessage {
+	if objective == nil {
+		objective = map[string]json.RawMessage{}
+	}
+	if _, said := objective["pictures"]; !said {
+		objective["pictures"] = json.RawMessage("false")
+	}
+	return objective
+}
+
 func overlaid(said json.RawMessage) json.RawMessage {
 	if len(said) == 0 || string(said) == "{}" || string(said) == "null" {
 		return nil

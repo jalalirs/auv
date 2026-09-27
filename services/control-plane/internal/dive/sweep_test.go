@@ -444,3 +444,36 @@ func TestWhenNothingIsDecidedItSaysSo(t *testing.T) {
 			found.TurnsOn, found.NothingDecided)
 	}
 }
+
+// A rehearsal is measured, not watched.
+//
+// Sixteen dives for eight doubts flown twice, and nobody sits through sixteen.
+// Rendered, each runs at 0.17 times real time and the sweep is about two days;
+// undrawn it is about two hours on no graphics card, and the trajectory is the same
+// file to the byte. The agent reads `pictures` and runs the batch runner instead of
+// the application.
+func TestASweepsScenariosAreNotDrawn(t *testing.T) {
+	said := measuredNotWatched(map[string]json.RawMessage{
+		"timeLimitS": json.RawMessage(`2400`),
+	})
+	if string(said["pictures"]) != "false" {
+		t.Errorf("a scenario asked to be drawn: pictures = %q", said["pictures"])
+	}
+	if string(said["timeLimitS"]) != "2400" {
+		t.Errorf("it changed what was asked for: %q", said["timeLimitS"])
+	}
+	// An empty objective is still a dive, and still not one anybody watches.
+	if string(measuredNotWatched(nil)["pictures"]) != "false" {
+		t.Error("a scenario with nothing asked of it was left drawn")
+	}
+}
+
+// And a doubt is allowed to be about whether anybody can see what happened.
+func TestAScenarioThatAsksForPicturesKeepsThem(t *testing.T) {
+	said := measuredNotWatched(map[string]json.RawMessage{
+		"pictures": json.RawMessage(`true`),
+	})
+	if string(said["pictures"]) != "true" {
+		t.Errorf("overruled a scenario that asked to be seen: %q", said["pictures"])
+	}
+}
