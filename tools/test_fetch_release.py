@@ -231,3 +231,39 @@ def test_what_is_owed_is_never_negative(tmp_path, capsys):
     tool.main()
     said = capsys.readouterr().out
     assert "130 B owed" in said, said
+
+
+def test_it_does_not_claim_to_have_opened_what_it_could_not():
+    """The sentence this tool prints was quoted in the plan as the reason to trust a
+    22 GB fetch — "all 13 complete, and every raster among them opens" — and the box
+    has no GDAL, so `opens` returned True for every file without reading one. The
+    size check is real; that half of the claim was not."""
+    tool = _tool()
+    # No reader: every raster "opens", because refusing to run without a GIS stack
+    # is worse — but the summary has to say so.
+    assert tool.opens(pathlib.Path("/nowhere"), "a.tif", None) is True
+    inside = (HERE / "fetch-release").read_text()
+    assert "**No raster was opened**" in inside
+    assert "pip install tifffile" in inside
+    # And when there is a reader, the count of what it read is in the sentence.
+    assert "every one of the {rasters} rasters" in inside
+
+
+def test_a_reader_prefers_rasterio_and_accepts_tifffile():
+    """`tifffile` is pure Python and reads BigTIFF, which every one of these is at
+    40000 x 40000. A box with no GDAL is the ordinary case."""
+    tool = _tool()
+    name, read = tool.a_reader()
+    assert name in (None, "rasterio", "tifffile")
+    if name is None:
+        assert read is None
+    else:
+        assert callable(read)
+    inside = (HERE / "fetch-release").read_text()
+    assert inside.index("import rasterio") < inside.index("import tifffile")
+
+
+def test_a_file_that_is_not_a_raster_needs_no_reader():
+    tool = _tool()
+    assert tool.opens(pathlib.Path("/nowhere"), "notes.xml", None) is True
+    assert tool.opens(pathlib.Path("/nowhere"), "cloud.laz", None) is True
