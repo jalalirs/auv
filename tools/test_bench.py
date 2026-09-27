@@ -642,3 +642,26 @@ def test_a_layout_belongs_to_the_place_and_not_to_its_version():
     # The place's own listing, not its versions.
     where = inside[inside.index("def which_place("):]
     assert '"/api/v1/cities"' in where.split("def ", 2)[0] or '"/api/v1/cities")' in where
+
+
+def test_a_row_becomes_something_a_url_can_carry():
+    """One layout per row, named after it, so the two can be put beside each other
+    afterwards by somebody reading the record."""
+    tool = _bench()
+    assert tool.a_slug("bench · quick · wary through things · transect") \
+        == "bench-quick-wary-through-things-transect"
+    assert tool.a_slug("pursue on remus-100 over al-fahal") \
+        == "pursue-on-remus-100-over-al-fahal"
+    assert tool.a_slug("···") == "arrangement"
+    assert len(tool.a_slug("x" * 200)) <= 60
+
+
+def test_flying_the_same_trial_again_saves_a_version_not_a_second_layout():
+    """Two layouts called the same thing is how a record stops being a record."""
+    inside = (HERE / "bench").read_text()
+    where = inside[inside.index("def an_arrangement("):]
+    where = where[:where.index("\ndef ")]
+    # Looks for its own first, and only starts one when there is none.
+    assert 'GET", f"/api/v1/cities/{city_id}/layouts"' in where
+    assert 'one.get("slug") == slug' in where
+    assert "if mine is None:" in where

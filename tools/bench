@@ -446,19 +446,48 @@ def the_bottom_under(track):
     return under
 
 
-def an_arrangement(platform, city_id: str, name: str, things: dict) -> str:
+def an_arrangement(platform, city_id: str, slug: str, name: str, things: dict) -> str:
     """Save these things as a layout of this place, and return its version.
 
     A layout is a first-class thing the platform keeps — `POST
     /api/v1/cities/{cityId}/layouts` starts one and `.../versions` saves it — so a
     bench arrangement is visible, re-flyable and attributable rather than a private
-    detail of whichever process happened to fly the dive.
+    detail of whichever process happened to fly the dive. No publishing step: a
+    dive takes the version id as given.
+
+    The slug is derived from the row, so flying the same trial again saves a new
+    version of the same layout instead of starting a second one with the same
+    name. Two layouts called the same thing is how a record stops being a record.
     """
-    made = platform.call("POST", f"/api/v1/cities/{city_id}/layouts",
-                         {"name": name})
-    saved = platform.call("POST", f"/api/v1/layouts/{made['id']}/versions",
-                          {"document": things})
+    listed = platform.call("GET", f"/api/v1/cities/{city_id}/layouts")
+    mine = next((one for one in listed.get("layouts", [])
+                 if one.get("slug") == slug), None)
+    if mine is None:
+        mine = platform.call("POST", f"/api/v1/cities/{city_id}/layouts",
+                             {"slug": slug, "name": name,
+                              "summary": "Frames on the path the reference dive "
+                                         "flew, so a controller that looks has "
+                                         "something to look at."})
+    saved = platform.call("POST", f"/api/v1/layouts/{mine['id']}/versions",
+                          {"label": "the bench's own arrangement",
+                           "document": things})
     return saved["id"]
+
+
+def a_slug(name: str) -> str:
+    """A row's name as something a URL can carry.
+
+    The row is "bench · quick · wary through things · transect"; the layout it
+    needs is one thing per row, named after it, so the two can be put beside each
+    other afterwards by somebody reading the record.
+    """
+    out = []
+    for ch in name.lower():
+        if ch.isalnum():
+            out.append(ch)
+        elif out and out[-1] != "-":
+            out.append("-")
+    return "".join(out).strip("-")[:60] or "arrangement"
 
 
 def which_place(platform, slug: str) -> str:
@@ -586,7 +615,7 @@ def command_run(args) -> int:
                                        the_bottom_under(track), objective)
             defined["layoutVersionId"] = an_arrangement(
                 platform, which_place(platform, args.place),
-                f"{name} — the arrangement", things)
+                a_slug(name), f"{name} — the arrangement", things)
         if "builtIn" in flying:
             objective["controller"] = flying["builtIn"]
         else:
