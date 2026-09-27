@@ -7,6 +7,7 @@ things struck". Three of those were reported.
 import importlib.machinery
 import importlib.util
 import pathlib
+import re
 
 import pytest
 
@@ -388,7 +389,9 @@ def test_things_stand_on_the_line_the_task_walks():
     assert all(0 < one["x"] < 240.0 for one in said)
     # Off the line by less than the frame is wide, so some are dead ahead.
     assert all(abs(one["y"]) <= 1.2 for one in said)
-    assert all(one["kind"] == "nursery-frame" for one in said)
+    # reach states no altitude, so the tallest thing is the best chance of
+    # meeting the vehicle at whatever depth the place starts it at.
+    assert all(one["kind"] == "marker-post" for one in said)
 
 
 def test_both_controllers_meet_the_same_things():
@@ -435,3 +438,53 @@ def test_a_row_flown_through_things_says_so():
         == "bench · quick · wary through things · reach"
     assert tool.named("quick", "wary", "reach", "remus-100", "al-fahal", True) \
         == "bench · quick · wary on remus-100 over al-fahal through things · reach"
+
+
+def test_the_thing_is_tall_enough_to_be_in_the_way():
+    """The first attempt got this wrong and it is the whole mechanism.
+
+    A nursery frame is 1.2 m tall and a transect holds 3 m of altitude, so three
+    frames dead on the line are three frames the vehicle flies a metre and a half
+    over — and the bench would have said "flown through things" about a dive that
+    passed nothing.
+    """
+    tool = _bench()
+    # A treat flies a metre and a half up: a frame reaches that.
+    assert tool.tall_enough_for(
+        {"kind": "treat", "altitudeM": 1.5, "altitudeBandM": 1.5})[0] == "nursery-frame"
+    # A transect flies three metres up: it needs the post.
+    assert tool.tall_enough_for(
+        {"kind": "transect", "altitudeM": 3.0, "altitudeBandM": 0.6})[0] == "marker-post"
+    # And the shortest that reaches, not simply the tallest there is.
+    assert tool.tall_enough_for({"kind": "treat", "altitudeM": 0.5})[0] == "nursery-frame"
+
+
+def test_a_task_flown_too_high_to_meet_anything_is_refused():
+    """A survey five metres up and a search eight metres up clear every standing
+    thing in the palette. There is no arrangement that would test seeing, and
+    saying so is the only honest answer — a row claiming things it passed over
+    would make a bench that rewards flying high."""
+    tool = _bench()
+    for too_high in ({"kind": "survey", "altitudeM": 5.0, "altitudeBandM": 1.2},
+                     {"kind": "search", "altitudeM": 8.0}):
+        with pytest.raises(SystemExit) as refused:
+            tool.tall_enough_for(too_high)
+        assert "fly over everything" in str(refused.value)
+
+
+def test_the_palette_here_matches_the_runtime_s_own():
+    """This tool runs without the sim runtime on its path, so the heights are
+    copied. A copy that drifted would have this choosing a thing the runtime
+    builds at a different height, and the frames would be the wrong ones."""
+    where = HERE.parent / "services/sim-runtime/coral/world.py"
+    inside = where.read_text()
+    tool = _bench()
+    for kind, height in tool.STANDING:
+        # As `world.py` spells it: Kind("ground", <radius>, <height>, ...)
+        assert f'"{kind}":' in inside, f"{kind} is not in the runtime's palette"
+        said = inside.split(f'"{kind}":', 1)[1].split(")", 1)[0]
+        # Kind("ground", radius, height, "…") — the height is the third field.
+        numbers = [float(one) for one in re.findall(r"-?\d+\.?\d*", said)]
+        assert len(numbers) >= 2, f"cannot read {kind} out of the runtime: {said}"
+        assert numbers[1] == pytest.approx(height), \
+            f"{kind} is {height:g} m here and {numbers[1]:g} m in the runtime"
