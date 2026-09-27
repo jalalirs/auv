@@ -212,3 +212,38 @@ describe("a trial is only the same trial when everything about it matches", () =
     expect(said!.better).toBe(1);
   });
 });
+
+describe("the water is part of the trial", () => {
+  it("reads it out of the controller's field", () => {
+    expect(trialOf("bench · quick · learned-hold in one-knot · hold-station"))
+      .toEqual({ suite: "quick", task: "hold-station", over: "in one-knot" });
+    expect(trialOf("bench · quick · wary on remus-100 over al-fahal through things in two-knots · reach"))
+      .toEqual({ suite: "quick", task: "reach",
+                 over: "on remus-100 over al-fahal through things in two-knots" });
+  });
+
+  it("does not compare a controller in one water against one in another", () => {
+    // This is the comparison that nearly went out: `learned-hold` beat the
+    // hand-written hold 0.48 to 0.15 at one knot, and loses to it in the other
+    // three waters. Reading those as one trial is how nobody would find out.
+    const waters = [
+      { name: "bench · quick · a in one-knot · hold-station", flownBy: "a",
+        run: run("succeeded", { task: { score: 1.0 } }, "2026-09-27T10:00:00Z") },
+      { name: "bench · quick · b · hold-station", flownBy: "b",
+        run: run("succeeded", { task: { score: 1.0 } }, "2026-09-27T10:00:00Z") },
+    ];
+    expect(headToHead("a", ["b"], waters)).toEqual([]);
+  });
+
+  it("compares two controllers flown in the same water", () => {
+    const same = [
+      { name: "bench · quick · a in one-knot · hold-station", flownBy: "a",
+        run: run("succeeded", { task: { score: 1.0 } }, "2026-09-27T10:00:00Z") },
+      { name: "bench · quick · b in one-knot · hold-station", flownBy: "b",
+        run: run("succeeded", { task: { score: 0.1 } }, "2026-09-27T10:00:00Z") },
+    ];
+    const [said] = headToHead("a", ["b"], same);
+    expect(said!.shared).toBe(1);
+    expect(said!.better).toBe(1);
+  });
+});

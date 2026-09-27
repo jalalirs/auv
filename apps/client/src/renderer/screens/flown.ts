@@ -141,16 +141,20 @@ const PARTS = " · ";
  * remus-100 over al-fahal through things" — so what is left of that field after
  * the controller's name is part of the trial and not part of who flew it.
  *
- * All three matter and "through" most of all: a dive flown through things and a
- * dive flown through open water are not the same dive, and reading them as one
- * trial would compare a controller that had obstacles against one that did not
- * and call the difference skill.
+ * All four matter. "through" because a dive flown through things and one flown
+ * through open water are not the same dive, and reading them as one trial would
+ * compare a controller that had obstacles against one that did not and call the
+ * difference skill. And "in", because the water is the one that nearly published a
+ * wrong result: `learned-hold` beat the hand-written hold 0.48 to 0.15 at one knot
+ * and loses to it in still water, in a gentle set and at two knots. A controller
+ * with rows in two waters whose trials read as one would be compared on whichever
+ * water happened to come first.
  */
 export function trialOf(name: string): Trial | undefined {
   const parts = name.split(PARTS);
   if (parts.length !== 4 || parts[0] !== "bench") return undefined;
   const [, suite, whose, task] = parts as [string, string, string, string];
-  const said = / (on|over|through) /.exec(whose);
+  const said = / (on|over|through|in) /.exec(whose);
   return { suite, task, over: said === null ? "" : whose.slice(said.index + 1) };
 }
 
