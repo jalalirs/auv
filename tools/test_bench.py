@@ -615,7 +615,11 @@ def test_the_reference_row_is_a_bench_row_in_its_own_right():
     inside = inside[inside.index("def command_run("):]
     assert "named(args.suite, THE_FLOOR, task, args.vehicle, args.place)" in inside
     # Reused when it is already flown, rather than flown again per controller.
-    assert 'r["name"] == was' in inside
+    # And "flew" means the row is not marked failed: `flown` carries no state
+    # field, so asking for state == "succeeded" matched nothing and would have
+    # re-flown the reference for every single controller.
+    assert 'r["name"] == was and not r.get("failed")' in inside
+    assert '"state"' not in inside.split("def command_run(")[-1].split("def ")[0]
     assert "a_reference(platform, args" in inside
 
 
@@ -626,3 +630,15 @@ def test_the_arrangement_is_saved_as_a_layout_of_the_place():
     assert '/api/v1/cities/{city_id}/layouts' in inside.replace('f"', '"')
     assert "/versions" in inside
     assert 'defined["layoutVersionId"]' in inside
+
+
+def test_a_layout_belongs_to_the_place_and_not_to_its_version():
+    """`newest_version` hands back a version id, because that is what a dive is
+    defined against. A layout belongs to the place itself, so it needs the other
+    one — and the slug is neither."""
+    inside = (HERE / "bench").read_text()
+    assert "def which_place(" in inside
+    assert "which_place(platform, args.place)" in inside
+    # The place's own listing, not its versions.
+    where = inside[inside.index("def which_place("):]
+    assert '"/api/v1/cities"' in where.split("def ", 2)[0] or '"/api/v1/cities")' in where
