@@ -55,7 +55,7 @@ class ControllerNode:
         from rcl_interfaces.msg import FloatingPointRange, ParameterDescriptor, SetParametersResult
         from rclpy.node import Node
         from geometry_msgs.msg import Twist, TwistWithCovarianceStamped
-        from sensor_msgs.msg import FluidPressure, Imu
+        from sensor_msgs.msg import FluidPressure, Imu, LaserScan
         from std_msgs.msg import Float64MultiArray
 
         self.controller = controller
@@ -95,6 +95,14 @@ class ControllerNode:
         self.node.create_subscription(Imu, "/imu/data", self._on_imu, 10)
         if "dvl" in self.vehicle.carries:
             self.node.create_subscription(TwistWithCovarianceStamped, "/dvl/twist", self._on_dvl, 10)
+        # The sonar, when the vehicle declares one. The runtime has published
+        # `/sonar/scan` all along — "the message a collision avoider expects" in
+        # its own words — and nothing here listened, so `Observation.sonar` was
+        # always None for a deployed controller and the one instrument a
+        # controller learns anything from could not be read through this
+        # interface at all.
+        if "imaging_sonar" in self.vehicle.carries:
+            self.node.create_subscription(LaserScan, "/sonar/scan", self._on_sonar, 5)
 
         # What it acts on.
         self._Twist, self._Floats = Twist, Float64MultiArray
@@ -123,6 +131,19 @@ class ControllerNode:
     def _on_dvl(self, message) -> None:
         v = message.twist.twist.linear
         self.navigator.dvl((v.x, v.y, v.z))
+
+    def _on_sonar(self, message) -> None:
+        """One sweep, with the bearings worked out from the header.
+
+        `LaserScan` states the span and the step rather than a bearing per beam,
+        so the bearings are reconstructed here — and from `angle_increment`
+        rather than by dividing the span, because a scan whose last beam is not
+        exactly at `angle_max` is a scan, not an error.
+        """
+        step = float(message.angle_increment)
+        bearings = [float(message.angle_min) + step * i
+                    for i in range(len(message.ranges))]
+        self.navigator.sonar_fan(bearings, message.ranges)
 
     # ── the step ─────────────────────────────────────────────────────────────
 

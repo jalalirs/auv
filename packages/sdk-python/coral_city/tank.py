@@ -192,12 +192,22 @@ class Tank:
                                velocity=self.dive.velocity.copy(),
                                rotation=self.dive.rotation.copy(),
                                floor=truth.floor,
-                               on_the_bottom=truth.on_the_bottom, estimated=False)
+                               on_the_bottom=truth.on_the_bottom,
+                               # The sonar is not navigation: it is what the
+                               # vehicle can see, and it is the same whether the
+                               # position handed over is the truth or an estimate.
+                               # Dropping it here meant a controller that avoids
+                               # things could not be tried in the tank at all.
+                               seen=truth.seen, sonar=truth.sonar,
+                               estimated=False)
         # Through the sensors: pressure, attitude and rates, velocity over the ground.
         from .sensing import GRAVITY, SURFACE_PRESSURE_PA
         self.navigator.pressure(SURFACE_PRESSURE_PA + self.model.density * GRAVITY * truth.depth)
         self.navigator.imu(_quaternion(truth.rotation), truth.velocity[3:])
         self.navigator.dvl(truth.velocity[:3])
+        if truth.sonar:
+            self.navigator.sonar_fan(truth.sonar.get("bearingsRad") or [],
+                                     truth.sonar.get("rangesM") or [])
         seen = self.navigator.observation(truth.t)
         # The navigator starts its reckoning at zero; the tank knows where the
         # vehicle was put, as a real one knows where it was launched.
