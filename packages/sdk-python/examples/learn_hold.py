@@ -46,25 +46,25 @@ from hold_policy import FEATURES, LinearHold  # noqa: E402
 # So each episode draws a current. A policy that scores well across the set has to
 # work out what to do from what it *sees* rather than from what it was trained in,
 # which is the whole difference between a controller and a constant.
-# Trained in these three, and **reported** in four.
+# All four, and the fourth one belongs here.
 #
-# Two knots is left out of the training set on purpose, and not because it is hard.
-# It is beyond the vehicle: measured, the hand-written hold scores 0.040 there and
-# the one-knot specialist 0.058, and a BlueROV2's guarded surge is about equal to its
-# drag at one knot already. A worst-of-the-set criterion that includes a water
-# nothing can hold in is a criterion where every candidate scores about zero, so
-# selection stops being about the policy — the first run of this scored generation
-# four at **-0.020** and was choosing between candidates on noise.
+# Two knots was briefly taken out of this set on the grounds that it is beyond the
+# vehicle — the hand-written hold scores 0.040 there and the one-knot specialist
+# 0.058 — and that was wrong. The runtime's own `pursue` holds station at two knots
+# at **100%**, and at one knot, and in a gentle set, and in still water. The vehicle
+# is not the limit; the SDK's hold example is, and so is anything trained to beat it
+# in one water.
 #
-# It is still reported, because "this vehicle cannot hold station at two knots" is a
-# true and useful thing for the bench to say. It is just not something to select a
-# policy on.
+# Which also disposes of the other half of that argument. An early generation in the
+# hardest water scoring **-0.020** looked like a criterion selecting on noise; it was
+# a first pass with a spread of 8.0 in the water that is hardest, and there is signal
+# to climb towards because something already climbs it.
 WATERS = (
     (0.0, 0.0),        # still
     (0.13, 0.0),       # a gentle set, which is what the bench flies
     (0.51, 90.0),      # one knot from the east
+    (1.03, 45.0),      # two knots, on the quarter — `pursue` holds here, so can this
 )
-BEYOND_IT = ((1.03, 45.0),)      # two knots, on the quarter — reported, not trained
 SECONDS = 30.0
 LATENCY_TICKS = 3           # 150 ms at 20 Hz, about what the live loop has
 POPULATION = 24
@@ -156,7 +156,7 @@ def main() -> int:
           f"candidate {for_the_best:.3f}. Water by water, against the hand-written "
           "hold:")
     print(f"  {'water':>16}  {'learned':>9}  {'hand-written':>13}")
-    for current in WATERS + BEYOND_IT:
+    for current in WATERS:
         theirs = Tank("bluerov2", seconds=SECONDS,
                       task=hold_station(seconds=SECONDS, radius_m=0.5, depth_band_m=0.3),
                       sensed=True, current=current,
@@ -166,8 +166,7 @@ def main() -> int:
                     sensed=True, current=current,
                     latency_ticks=LATENCY_TICKS).run(LinearHold.with_weights(chosen))
         said = f"{current[0]:.2f} m/s @{current[1]:.0f}"
-        mark = "" if current in WATERS else "  (beyond the vehicle; not trained in)"
-        print(f"  {said:>16}  {ours.score:9.3f}  {theirs.score:13.3f}{mark}")
+        print(f"  {said:>16}  {ours.score:9.3f}  {theirs.score:13.3f}")
 
     # Written out as a controller of its own, weights and all, so that the file
     # is the thing that is deployed: no model to fetch, nothing to look up.
