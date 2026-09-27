@@ -12,6 +12,7 @@ import pathlib
 import sys
 
 import numpy as np
+import pytest
 
 HERE = pathlib.Path(__file__).resolve().parent
 # The SDK itself, so the example can import it the way a customer's would.
@@ -139,3 +140,52 @@ def test_the_example_does_not_pretend_to_read_the_task():
     source = EXAMPLE.read_text()
     assert "def tasked(" not in source
     assert "no `tasked` hook here" in source
+
+
+def test_the_side_is_remembered_and_the_bearing_is_not():
+    """The bug the first version of this file had, and it is a subtle one.
+
+    A gap is a bearing **off the nose**. Store one on one tick and apply it on the
+    next — after the vehicle has turned towards it — and it asks for the same turn
+    again, and again: a vehicle going in circles rather than round something. So
+    only which way round is remembered, and the bearing is remeasured from every
+    sweep.
+    """
+    one = a_controller()
+    ranges = [float("nan")] * 32
+    for i in range(12, 20):
+        ranges[i] = 4.0
+    first = one.the_widest_gap(a_fan(ranges))
+    assert first is not None
+    side = 1.0 if first >= 0 else -1.0
+    # Asked again with the same sweep and the side committed, it gives the same
+    # bearing — it is a measurement, not an accumulator.
+    assert one.the_widest_gap(a_fan(ranges), side) == pytest.approx(first)
+    # And the example keeps the side, not the bearing.
+    source = EXAMPLE.read_text()
+    assert "self.committed = 1.0 if gap >= 0 else -1.0" in source
+    assert "wanted = wrap(seen.heading + gap)" in source
+
+
+def test_it_keeps_going_round_the_way_it_started():
+    """A vehicle that changes its mind halfway round a frame passes neither side
+    of it. So an opening on the committed side is taken even when a wider one has
+    opened on the other."""
+    one = a_controller()
+    ranges = [5.0] * 32
+    for i in range(2, 8):                  # a modest opening to port
+        ranges[i] = float("nan")
+    for i in range(20, 32):                # a wider one to starboard
+        ranges[i] = float("nan")
+    # Uncommitted, it takes the wider opening.
+    assert one.the_widest_gap(a_fan(ranges)) > 0
+    # Committed to port, it stays to port.
+    assert one.the_widest_gap(a_fan(ranges), -1.0) < 0
+
+
+def test_a_fan_with_nowhere_open_turns_the_way_it_was_already_going():
+    """Rather than splitting the difference, which is straight ahead."""
+    one = a_controller()
+    blocked = [3.0] * 32
+    assert one.the_widest_gap(a_fan(blocked), 1.0) > 0
+    assert one.the_widest_gap(a_fan(blocked), -1.0) < 0

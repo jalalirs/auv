@@ -73,7 +73,8 @@ class GoAroundThings(Controller):
         self.heave_mass = dynamics["massKg"] + abs(added[2])
         self.yaw_inertia = abs(inertia[8]) + abs(added[5])
         self.trim_n = -self.described.net_buoyancy_n
-        # Which way it went round the last thing, kept until the way is clear.
+        # Which side it went round the last thing — +1 starboard, -1 port — kept
+        # until the way is clear. The side, never the bearing: see `the_widest_gap`.
         self.committed: float | None = None
         self.avoiding = 0
 
@@ -96,11 +97,22 @@ class GoAroundThings(Controller):
 
     # ── the fan ──────────────────────────────────────────────────────────────
 
-    def the_widest_gap(self, fan: dict) -> float | None:
+    def the_widest_gap(self, fan: dict, prefer: float | None = None) -> float | None:
         """The middle of the longest run of beams with nothing close in them.
 
         None when the whole fan is clear, which is the ordinary case and the one
         worth being cheap about.
+
+        `prefer` is the side already committed to — positive for starboard. When
+        there is an opening on that side it is taken even if a wider one has
+        appeared on the other, because a vehicle that changes its mind halfway
+        round a frame passes neither side of it.
+
+        Always measured from **this** sweep. An earlier answer cannot be reused:
+        a gap is a bearing off the nose, so a bearing stored one tick and applied
+        the next — after the vehicle has turned towards it — asks for the same turn
+        again, and again, which is a vehicle going in circles rather than round
+        something. That was the first version of this file.
         """
         bearings = np.asarray(fan.get("bearingsRad") or [], dtype=float)
         ranges = np.asarray(fan.get("rangesM") or [], dtype=float)
@@ -122,18 +134,35 @@ class GoAroundThings(Controller):
             else:
                 run = 0
         if best[1] is None:
-            # Nothing open anywhere: hold what was committed, or turn hard one
-            # way rather than split the difference and drive straight in.
-            return self.committed if self.committed is not None else float(bearings[0])
-        first, last = best[1]
-        return float(bearings[first:last + 1].mean())
+            # Nothing open anywhere: turn hard, to the side already chosen if
+            # there is one, rather than split the difference and drive straight in.
+            edge = float(bearings[-1] if (prefer or 0.0) > 0 else bearings[0])
+            return edge
+        # Every run of open beams, so the committed side can be honoured.
+        runs, run, start = [], 0, 0
+        for i, is_open in enumerate(open_beam):
+            if is_open:
+                if run == 0:
+                    start = i
+                run += 1
+            elif run:
+                runs.append((run, start, i - 1))
+                run = 0
+        if run:
+            runs.append((run, start, len(open_beam) - 1))
+        middles = [(width, float(bearings[a:b + 1].mean())) for width, a, b in runs]
+        if prefer is not None:
+            same = [one for one in middles if (one[1] > 0) == (prefer > 0)]
+            if same:
+                return max(same)[1]
+        return max(middles)[1]
 
     def observe(self, seen: Observation) -> Command:
         most = self.described.most
         wanted = math.radians(self["headingDeg"])
         speed = float(self["speedMs"])
 
-        gap = self.the_widest_gap(seen.sonar) if seen.sonar else None
+        gap = self.the_widest_gap(seen.sonar, self.committed) if seen.sonar else None
         nearest = None
         if seen.seen is not None:
             nearest = float(seen.seen.get("rangeM") or math.inf)
@@ -144,11 +173,12 @@ class GoAroundThings(Controller):
             self.committed = None
         else:
             self.avoiding += 1
-            # Commit to a side. `gap` is off the nose, so it is already the turn
-            # to make; the sign of the first one is what is kept.
-            if self.committed is None or (gap != 0.0 and (gap > 0) == (self.committed > 0)):
-                self.committed = gap
-            wanted = wrap(seen.heading + (self.committed if self.committed is not None else gap))
+            # Commit to a side, once, and keep the side — not the bearing. The
+            # bearing is remeasured every tick from the current sweep; only which
+            # way round is remembered.
+            if self.committed is None:
+                self.committed = 1.0 if gap >= 0 else -1.0
+            wanted = wrap(seen.heading + gap)
             # And ease off, harder the closer it is. A vehicle that keeps its
             # speed while turning out of the way turns into the thing's side.
             if nearest is not None and math.isfinite(nearest):
@@ -178,4 +208,5 @@ class GoAroundThings(Controller):
 
     def status(self) -> dict:
         return {"avoiding": self.avoiding,
-                "committedRad": None if self.committed is None else round(self.committed, 3)}
+                "goingRound": None if self.committed is None
+                              else ("starboard" if self.committed > 0 else "port")}
