@@ -531,3 +531,39 @@ def test_the_bottom_comes_from_the_place_the_dive_flies_over():
     assert "carries no heightfield" in inside
     # And over a flat floor the constant is the truth, not a guess.
     assert "THE_FLAT_FLOOR = -12.0" in inside
+
+
+def test_things_are_placed_where_the_dive_begins_not_at_the_origin():
+    """The fourth thing this got wrong, and the one that took four measured runs
+    to see, because the first three all looked like geometry.
+
+    A task's geometry is relative to where the dive starts; a layout is in the
+    world's own coordinates. Over a real reef the place decides where the vehicle
+    goes in — an Al Fahal dive starts around (854, -1106) — so frames placed
+    fifty, a hundred and a hundred and fifty metres from the origin sit a
+    kilometre and a half behind the vehicle. `struck` was 0 and both controllers
+    scored 0.407, four times running.
+    """
+    tool = _bench()
+    reach = {"kind": "reach", "dx": 240.0, "dy": 0.0}
+    flat = lambda x, y: -18.0
+    here = tool.things_in_the_way(reach, 3, flat)["things"]
+    there = tool.things_in_the_way(reach, 3, flat, (854.0, -1106.0))["things"]
+    for near, far in zip(here, there):
+        assert far["x"] == pytest.approx(near["x"] + 854.0, abs=0.02)
+        assert far["y"] == pytest.approx(near["y"] - 1106.0, abs=0.02)
+    # And the bottom is read at the moved position, not at the origin's.
+    deepening = lambda x, y: -10.0 - x / 1000.0
+    moved = tool.things_in_the_way(reach, 3, deepening, (854.0, 0.0))["things"]
+    assert all(one["groundM"] == pytest.approx(10.0 + one["x"] / 1000.0, abs=0.01)
+               for one in moved)
+
+
+def test_the_world_is_put_in_after_the_place_is_open():
+    """Because until it is open nobody knows where the dive begins. The world is
+    built from the brief in the dive's constructor, so a layout computed there
+    could only ever be relative to the origin."""
+    inside = (HERE / "bench").read_text()
+    inside = inside[inside.index("def command_dry("):]
+    assert inside.index("open_dry()") < inside.index("things_in_the_way(")
+    assert "dive.position[:2]" in inside
