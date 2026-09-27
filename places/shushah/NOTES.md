@@ -38,3 +38,23 @@ Cells the satellite claims at 0.5-3 m are BIMODAL against the laser: p25 0.6 m (
 - Isaac tour washed out at IA and at IB alike. Cause is not the water: the runtime rendered "water_is 1C" both times (site.json's water type is not what the tour renders — as r3 already says, everything is 1C). Cause is the meter: the tour's frame 0 looks down from above on the island (floorAtMiddleM 0.6), reads dark, and `metered` raised ISO 268.9 -> 12000 "out of rounds", then held it for 720 frames over 5-14 m bright sand. 6. For r4: a tour over a place whose middle is land meters on the land; meter on the anchor instead, or cap the meter at a few stops from the depth value.
 - Worked around with CORAL_CITY_ISO=269 via a scratchpad copy of tools/fly-over (~/coral-city/fly-over-pinned on the box). Not a repo change.
 - Second rebuild used --ground with tools/ground's colour_4096.png present, so make-site recorded ground.surveyed=true, colourFrom "orthomosaic from a survey". 7. make-site should not call a satellite-derived colour_4096.png a survey orthomosaic.
+
+## 27 September 2026 — after the box was rebuilt
+
+The teaser at `renders/teaser-2026-09-26.mp4` is the first cut: title cards,
+9.5 s of Blender terrain, 11 s of Isaac dive view. It was rejected for the
+cards and for the resolution.
+
+The replacement is one continuous 1920x1080 descending orbit of the island,
+576 frames at 64 samples, no text of any kind — rendered from
+`flyover_orbit.py`, a variant of `tools/flyover.py` whose `pose()` is a single
+clockwise orbit from the north-east at 780 m out and 420 m up to the
+south-west at 560 m and 150 m, looking at the eastern reef flank throughout.
+The stock `pose()` could not be used: it hangs its flight off the surveyed
+band or the spur-and-groove polygons, and Shushah has neither, so the middle
+of its flight crossed blank terrace.
+
+Two things that had to be true first, both consequences of the home directory
+being lost: Blender was reinstalled at `~/tools/blender-4.5.3-linux-x64`, and
+`reference/shushah` was copied back from the laptop, which is the only place
+the 1 m ground, the habitat raster and `chart_4096.png` still existed.

@@ -449,6 +449,9 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		// itself to real time so the controller has time to exist in; one that
 		// is not runs as fast as the machine allows.
 		"autonomy": claimed.AutonomyImage != "",
+		// Whether there will be anything to look at. A dive flown for its
+		// numbers is not drawn, and the runner then starts no renderer at all.
+		"drawn": pictures(claimed),
 	}
 	briefDir := filepath.Join(d.workDir, claimed.Run.ID)
 	if err := os.MkdirAll(briefDir, 0o755); err != nil {
@@ -597,7 +600,7 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	// renderer: a batch dive with a task runs the application headless rather
 	// than the runner alone, so its recording carries frames. It is not
 	// watched, so nothing is published.
-	rendering := watching || recording(claimed)
+	rendering := watching || (recording(claimed) && pictures(claimed))
 	// One port per dive on this host, from the slot the platform gave it; two
 	// simulators sharing a card would otherwise be watched on one port.
 	signal := d.signalPort + claimed.Slot
@@ -1201,6 +1204,31 @@ func mediaTypeOf(path string) string {
 	default:
 		return "application/octet-stream"
 	}
+}
+
+// pictures says whether anybody is going to look at this dive.
+//
+// A dive that is looked at needs the renderer; a dive that is measured does
+// not, and the difference is most of a day. Measured on the box, the same brief
+// and the same card: the application the agent launches for a rendered dive
+// runs at 0.17x real time, and the runner with no renderer started at all runs
+// at 15x — and the two produce the same poses file to the byte, because the
+// dynamics come from the vehicle's parameters rather than from its triangles.
+// So a bench, which flies eight tasks per controller and wants a score rather
+// than a video, costs about a quarter of an hour instead of a day, and does not
+// need a GPU to do it.
+//
+// The objective says so, because the objective is what a dive is for. Silence
+// means pictures: a dive somebody set up by hand is a dive somebody wants to
+// see, and a bench is the one caller that knows otherwise.
+func pictures(claimed Claimed) bool {
+	var objective struct {
+		Pictures *bool `json:"pictures"`
+	}
+	if len(claimed.Objective) == 0 || json.Unmarshal(claimed.Objective, &objective) != nil {
+		return true
+	}
+	return objective.Pictures == nil || *objective.Pictures
 }
 
 // recording says whether a dive will leave a recording: it does when it is
