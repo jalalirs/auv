@@ -381,7 +381,7 @@ def test_things_stand_on_the_line_the_task_walks():
     """
     tool = _bench()
     reach = {"kind": "reach", "dx": 240.0, "dy": 0.0, "seed": 11}
-    said = tool.things_in_the_way(reach, 11)["things"]
+    said = tool.things_in_the_way(reach, 11, lambda x, y: -18.0)["things"]
     assert len(said) == 3
     # Spaced along the line, at a quarter, a half and three quarters.
     assert [round(one["x"] / 60.0) for one in said] == [1, 2, 3]
@@ -399,9 +399,10 @@ def test_both_controllers_meet_the_same_things():
     two controllers flown at the same task find the same three frames."""
     tool = _bench()
     task = {"kind": "transect", "lengthM": 200.0}
-    assert tool.things_in_the_way(task, 7) == tool.things_in_the_way(task, 7)
+    flat = lambda x, y: -18.0
+    assert tool.things_in_the_way(task, 7, flat) == tool.things_in_the_way(task, 7, flat)
     # And a different task is a different arrangement, not the same one moved.
-    assert tool.things_in_the_way(task, 7) != tool.things_in_the_way(task, 8)
+    assert tool.things_in_the_way(task, 7, flat) != tool.things_in_the_way(task, 8, flat)
 
 
 def test_things_are_placed_off_whatever_the_task_calls_its_distance():
@@ -423,10 +424,11 @@ def test_a_task_that_does_not_say_how_far_it_goes_is_refused():
     controller the same and it would be the arrangement's fault."""
     tool = _bench()
     with pytest.raises(SystemExit):
-        tool.things_in_the_way({"kind": "hold"}, 3)
+        tool.things_in_the_way({"kind": "hold"}, 3, lambda x, y: -18.0)
     # And ground too small to put anything in the way of is refused too.
     with pytest.raises(SystemExit):
-        tool.things_in_the_way({"kind": "inspect", "dx": 4, "dy": 0}, 3)
+        tool.things_in_the_way({"kind": "inspect", "dx": 4, "dy": 0}, 3,
+                               lambda x, y: -18.0)
 
 
 def test_a_row_flown_through_things_says_so():
@@ -488,3 +490,35 @@ def test_the_palette_here_matches_the_runtime_s_own():
         assert len(numbers) >= 2, f"cannot read {kind} out of the runtime: {said}"
         assert numbers[1] == pytest.approx(height), \
             f"{kind} is {height:g} m here and {numbers[1]:g} m in the runtime"
+
+
+def test_a_thing_stands_on_the_bottom_and_not_at_the_surface():
+    """The second thing this got wrong, and it made the whole mechanism a no-op.
+
+    `world.py` gives a thing that lands on the ground and does not say where the
+    ground is a depth of **zero**. Three marker posts three metres tall therefore
+    stood from the surface down, in the air fifteen metres above the vehicle, and
+    the measured result was `struck=0` with `pursue` and `wary` tied to three
+    decimals — a bench reporting a dive flown through things that passed nothing.
+    """
+    tool = _bench()
+    reef = lambda x, y: -18.0 - x / 100.0        # deepening to the east
+    said = tool.things_in_the_way({"kind": "reach", "dx": 300.0, "dy": 0.0}, 5,
+                                  reef)["things"]
+    assert all("groundM" in one for one in said), "a thing with no bottom is at zero"
+    for one in said:
+        assert one["groundM"] == pytest.approx(18.0 + one["x"] / 100.0, abs=0.01)
+    # Positive metres down, the way a layout states it, and never above water.
+    assert all(one["groundM"] > 0 for one in said)
+
+
+def test_the_bottom_comes_from_the_place_the_dive_flies_over():
+    """Not from a number this picked. A layout has to be complete before the
+    dive exists — the world is built from the brief in the constructor — so the
+    bench reads the same heightfield itself, and refuses a place without one."""
+    inside = (HERE / "bench").read_text()
+    inside = inside[inside.index("def command_dry("):]
+    assert "Seabed.of(" in inside
+    assert "carries no heightfield" in inside
+    # And over a flat floor the constant is the truth, not a guess.
+    assert "THE_FLAT_FLOOR = -12.0" in inside
