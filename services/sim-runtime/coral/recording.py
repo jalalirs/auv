@@ -19,6 +19,10 @@ import pathlib
 
 import numpy as np
 
+# A neighbour, imported flat: in this package the directory is the
+# package path, which is why every test here is run from inside it.
+import geography
+
 
 class Recorder:
     # How many pictures a second of the dive the recording keeps.
@@ -180,6 +184,20 @@ class Recorder:
             # written as the encoder closes, and without it nothing will play.
             self.video.stop()
         manifest = self.manifest(dive, camera, closed=True)
+
+        # And the dive's geometry, beside its recording, because the worker
+        # uploads this directory and nothing else ever produced these where the
+        # platform could see them. Best effort on purpose: a recording missing
+        # its track is worth more than a dive that failed at the very end while
+        # writing a file.
+        try:
+            wrote = geography.write_track(self.into, self._site)
+        except Exception as problem:                              # noqa: BLE001
+            wrote = None
+            manifest["trackFailed"] = f"{type(problem).__name__}: {problem}"
+        if wrote:
+            manifest["track"] = wrote
+
         (self.into / "manifest.json").write_text(json.dumps(manifest, indent=2))
         return manifest
 
