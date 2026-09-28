@@ -12,6 +12,20 @@
         "hardware"
       ],
       "port": 8791
+    },
+    {
+      "name": "client",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "CORAL_CITY_UPSTREAM=http://100.76.65.1:18080",
+        "apps/client/node_modules/.bin/vite",
+        "--config",
+        "apps/client/vite.renderer.config.mts",
+        "--port",
+        "5173",
+        "--strictPort"
+      ],
+      "port": 5173
     }
   ]
 }

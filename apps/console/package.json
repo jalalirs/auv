@@ -7,7 +7,7 @@
     "generate": "openapi-typescript ../../packages/contracts/v1/openapi.yaml -o src/api/schema.d.ts",
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "check": "tsc -b --noEmit false --emitDeclarationOnly false && vite build",
+    "check": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

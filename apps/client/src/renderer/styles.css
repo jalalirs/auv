@@ -291,7 +291,18 @@ button.quiet:hover:not(:disabled) { border-color: var(--edge-lit); filter: none;
 
 .ledger { display: flex; flex-direction: column; gap: 6px; }
 .ledger .row {
-  display: grid; grid-template-columns: 1fr auto auto;
+  /* Four things in the row, so four columns.
+   *
+   * This said `1fr auto auto` — three — while the markup put an icon, a name,
+   * a block of numbers and a pill in it. So the pill had no column, wrapped to
+   * an implicit second row, and stretched across the first one; and the `1fr`
+   * sat on the icon's column, where a 28px glyph took 307px and shoved the
+   * name into the middle of the row. Every controller on the Autonomy page
+   * rendered that way.
+   *
+   * The name takes the slack, which is the only thing in the row whose length
+   * is not known in advance. */
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: 16px; align-items: center;
   padding: 11px 14px;
   background: rgba(14, 27, 44, 0.5);

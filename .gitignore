@@ -51,3 +51,12 @@ places/*/reference/*.f32
 places/*/reference/*.npy
 places/*/reference/*_4096.png
 places/*/deliverables/colonies.*
+
+# TypeScript's own build output, which belongs beside nothing.
+#
+# apps/console's `check` script ran `tsc -b --noEmit false`, overriding the
+# noEmit its own tsconfig sets, so every run scattered a .js beside each .tsx
+# in src/ — twelve of them, committed, shadowing the sources they came from.
+# The script no longer does that; this is so the next thing that tries cannot.
+apps/console/tsconfig.tsbuildinfo
+apps/console/src/**/*.js

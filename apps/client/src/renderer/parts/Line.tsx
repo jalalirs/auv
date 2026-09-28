@@ -14,6 +14,25 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { Choice } from "./Picker.js";
 
+/**
+ * What a line says when nothing has been chosen on it yet.
+ *
+ * Exported so its test reads this and not a second copy of it. A rule written
+ * twice is a rule that will be changed once.
+ */
+export function summaryOf(choices: { later?: string }[]): string {
+  const ready = choices.filter((c) => c.later === undefined);
+  const held = choices.filter((c) => c.later !== undefined);
+  const why = new Set(held.map((c) => c.later));
+  return ready.length > 0
+    ? `${ready.length} to choose from`
+    : held.length === 0
+      ? "nothing here yet"
+      : why.size === 1
+        ? `${held.length} here, and ${held.length === 1 ? "it is" : "all are"} held back: ${[...why][0]}`
+        : `${held.length} here, none ready yet`;
+}
+
 export function Line({ label, choices, chosen, onChoose, onOpen, hint }: {
   label: string;
   choices: Choice[];
@@ -83,6 +102,20 @@ export function Line({ label, choices, chosen, onChoose, onOpen, hint }: {
     });
   }, [shown]);
 
+  // What this line says when nothing has been chosen yet.
+  //
+  // It said "N to choose from", counting only what can be chosen — so a line
+  // with four vehicles on it, none of which carries a hull, read
+  // "Choose… / 0 to choose from". Which is true, and tells you nothing: not
+  // that there are four, not that they are all held back for the same reason,
+  // not that the thing to fix is the package rather than the choice. A person
+  // in front of it can only conclude the platform is empty.
+  //
+  // Every vehicle on this platform is in that state right now, so this is the
+  // line standing between somebody and a dive.
+  const ready = choices.filter((c) => c.later === undefined);
+  const summary = summaryOf(choices);
+
   return (
     <div className={`line${open ? " open" : ""}`} ref={root} onKeyDown={keys}>
       <div className="line-label">{label}</div>
@@ -92,8 +125,9 @@ export function Line({ label, choices, chosen, onChoose, onOpen, hint }: {
           ? <img src={picked.picture} alt="" />
           : <span className="line-blank" />)}
         <span className="line-said">
-          <strong>{picked?.name ?? "Choose…"}</strong>
-          <span>{picked?.says ?? `${choices.filter((c) => c.later === undefined).length} to choose from`}</span>
+          <strong>{picked?.name ?? (ready.length === 0 && choices.length > 0
+            ? "Nothing ready" : "Choose…")}</strong>
+          <span>{picked?.says ?? summary}</span>
         </span>
         {picked?.mark}
         <span className="line-chevron" aria-hidden="true">▾</span>
