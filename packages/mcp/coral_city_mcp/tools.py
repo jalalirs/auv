@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import json
 import math
+import re
 import struct
 from typing import Any
 
@@ -312,6 +313,26 @@ def layouts_list(platform: Platform, place: str) -> dict:
             "layouts": [{"id": one["id"], "slug": one.get("slug"),
                          "name": one.get("name")}
                         for one in platform.layouts_of(found["id"])]}
+
+
+def layouts_create(platform: Platform, place: str, name: str,
+                   slug: str = "") -> dict:
+    """Start an arrangement of a place, belonging to whoever asked for it.
+
+    Anybody who can look at a place can have their own scenarios over it. What
+    separates one person's plot from another's is who made it, so this is how an
+    agent gets something it is allowed to change: its own.
+    """
+    found = next((p for p in platform.places()
+                  if p["id"] == place or p.get("slug") == place), None)
+    if found is None:
+        raise Refused(404, "not_found", f"no place {place!r} is granted to you")
+    handle = slug or re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:60]
+    made = platform.request("POST", f"/api/v1/cities/{found['id']}/layouts",
+                            {"slug": handle, "name": name})
+    return {"id": made["id"], "slug": made.get("slug"), "name": made.get("name"),
+            "place": found.get("name"),
+            "note": "yours: layouts_add_line can change this one"}
 
 
 def layouts_get(platform: Platform, layout: str) -> dict:

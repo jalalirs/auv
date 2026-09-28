@@ -30,6 +30,23 @@ const (
 	// CityGrant covers granting or revoking access to a place.
 	CityGrant Action = "city.grant"
 
+	// CityArrange covers making an arrangement of a place that already exists:
+	// a plot, an array of transponders, a plan of work over it.
+	//
+	// Its own action because it is its own act. Saving a layout was CityCreate —
+	// the authority for *founding a place* — so arranging somewhere required the
+	// same role as creating it, and neither a steward of a city nor a
+	// contributor to it could save a layout of their own. Every person on this
+	// platform who is not a platform administrator was refused by the layout
+	// editor in the application, which went unnoticed because the only people
+	// using it were administrators.
+	//
+	// Viewer, because anybody who can look at a place can have their own
+	// scenarios over it, and because what stops one person editing another's is
+	// ownership rather than role: the handler requires the arrangement to be the
+	// caller's own or their institution's.
+	CityArrange Action = "city.arrange"
+
 	// VehicleCreate covers publishing a vehicle. Vehicles are ours, so this
 	// sits at the platform: what a person brings is autonomy, not a hull.
 	VehicleCreate Action = "vehicle.create"
@@ -104,7 +121,8 @@ var requirement = map[Action]struct {
 
 	CityCreate: {RoleAdmin, []ResourceKind{ResourcePlatform}},
 	CityRead:   {RoleViewer, []ResourceKind{ResourceCity}},
-	CityGrant:  {RoleSteward, []ResourceKind{ResourceCity}},
+	CityGrant:   {RoleSteward, []ResourceKind{ResourceCity}},
+	CityArrange: {RoleViewer, []ResourceKind{ResourceCity}},
 
 	VehicleCreate: {RoleAdmin, []ResourceKind{ResourcePlatform}},
 	VehicleRead:   {RoleViewer, []ResourceKind{ResourceVehicle, ResourcePlatform}},

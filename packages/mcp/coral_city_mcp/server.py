@@ -56,6 +56,15 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
          "properties": {"place": {"type": "string", "description": "id or slug"}},
          "required": ["place"]},
         lambda p, place: tools.layouts_list(p, place)),
+    "layouts_create": (
+        "Start your own arrangement of a place. Anybody who can look at a "
+        "place can have their own scenarios over it; you can only change the "
+        "ones you made.",
+        {"type": "object",
+         "properties": {"place": {"type": "string"}, "name": {"type": "string"},
+                        "slug": {"type": "string"}},
+         "required": ["place", "name"]},
+        lambda p, place, name, slug="": tools.layouts_create(p, place, name, slug)),
     "layouts_get": (
         "What is in the water, as one arrangement says: every thing, its kind "
         "and where it is in site metres.",

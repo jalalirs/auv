@@ -140,6 +140,58 @@ func (d *Dependencies) versions(what madeOfAPlace) http.HandlerFunc {
 // Unpublished, like a package, and for the same reason: somebody saving one is
 // part way through, and a half-arranged site or a half-written plan that a
 // dive could already pin would be worse than none.
+
+// cityOf names the place an arrangement belongs to, so that authority over it
+// is authority over that place rather than over the installation.
+//
+// The layout's own id is in the path and its city is not, so this reads it.
+// A resource a caller describes is a resource a caller can lie about, which is
+// why the decision point loads what it needs itself.
+func (d *Dependencies) cityOf(what madeOfAPlace) ResourceOf {
+	return func(r *http.Request) (policy.Resource, error) {
+		found, err := what.read(r.Context(), r.PathValue(what.id))
+		if err != nil {
+			return policy.Resource{}, err
+		}
+		return policy.City(found.CityID), nil
+	}
+}
+
+// itsOwn refuses to save over somebody else's arrangement.
+//
+// This is what lets the role be viewer. Anybody who can look at a place can
+// have their own scenarios over it — that is most of what a shared place is for
+// — and what separates one person's plot from another's is who made it, not
+// what they are allowed to do in general. A steward of the city may still
+// curate anything on it.
+//
+// Refuses in the decision point's own terms rather than with an error of its
+// own, so that the reason a person reads is written the way every other refusal
+// on this platform is written.
+func (d *Dependencies) itsOwn(r *http.Request, what madeOfAPlace) (policy.Decision, error) {
+	found, err := what.read(r.Context(), r.PathValue(what.id))
+	if err != nil {
+		return policy.Decision{}, err
+	}
+	subject, _ := subjectOf(r.Context())
+	if found.CreatedBy == subject.PrincipalID {
+		return policy.Decision{Effect: policy.EffectAllow}, nil
+	}
+	// A steward of the place curates what is on it, including other people's.
+	said, err := d.Authorizer.Decide(r.Context(), subject, policy.CityGrant,
+		policy.City(found.CityID))
+	if err != nil {
+		return policy.Decision{}, err
+	}
+	if said.Effect == policy.EffectAllow {
+		return said, nil
+	}
+	return policy.Decision{
+		Effect: policy.EffectDenyVisible,
+		Reason: "that arrangement is somebody else's; start your own of this place instead",
+	}, nil
+}
+
 func (d *Dependencies) save(what madeOfAPlace) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request saveMadeOfAPlaceRequest
@@ -147,9 +199,18 @@ func (d *Dependencies) save(what madeOfAPlace) http.HandlerFunc {
 			writeError(w, r, err)
 			return
 		}
+		mine, err := d.itsOwn(r, what)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		if mine.Effect != policy.EffectAllow {
+			writeDenied(w, r, mine)
+			return
+		}
 		subject, _ := subjectOf(r.Context())
 		var made catalog.Version
-		err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		err = d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
 			var err error
 			made, err = d.Catalog.CreateDocumentVersion(r.Context(), conn, catalog.VersionSpec{
 				AssetKind: what.kind,
@@ -208,8 +269,8 @@ func (rt *Router) registerMadeOfAPlace() {
 			Action:   policy.CityRead,
 			Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.list(what)})
 		rt.register(Route{Method: "POST", Pattern: "/api/v1/cities/{cityId}/" + what.path,
-			Summary: "start a " + noun + " for this place", Action: policy.CityCreate,
-			Resource: atPlatform(), Handle: d.start(what)})
+			Summary: "start a " + noun + " for this place", Action: policy.CityArrange,
+			Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.start(what)})
 		rt.register(Route{Method: "GET", Pattern: "/api/v1/" + what.path + "/{" + what.id + "}",
 			Summary: "one " + noun, Action: policy.PlatformReadCatalogue,
 			Resource: atPlatform(), Handle: d.read(what)})
@@ -218,8 +279,8 @@ func (rt *Router) registerMadeOfAPlace() {
 			Action:   policy.PlatformReadCatalogue,
 			Resource: atPlatform(), Handle: d.versions(what)})
 		rt.register(Route{Method: "POST", Pattern: "/api/v1/" + what.path + "/{" + what.id + "}/versions",
-			Summary: "save this " + noun, Action: policy.CityCreate,
-			Resource: atPlatform(), Handle: d.save(what)})
+			Summary: "save this " + noun, Action: policy.CityArrange,
+			Resource: d.cityOf(what), Handle: d.save(what)})
 	}
 	// And one only a plan of work has: what it costs.
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/missions/{missionId}/cost",
