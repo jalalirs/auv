@@ -6,6 +6,7 @@ Versioned things that other areas depend on, and which depend on nothing.
 | --- | --- |
 | `contracts/` | The API description. The source of truth for every shape. |
 | `api/` | The TypeScript client generated from it, which the application uses. |
+| `mcp/` | Coral City over MCP: the platform's nouns as tools an agent can call, with every value carrying whether anybody measured it. |
 | `sdk-python/` | The controller SDK: write a controller for a catalogue vehicle, try it in a headless tank, deploy it as autonomy, fly it. |
 
 The dependency direction is one way and enforced: applications, services, and

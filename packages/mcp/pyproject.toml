@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coral-city-mcp"
+version = "0.1.0"
+description = "Coral City over MCP: places, vehicles and dives an agent can drive, with every number marked."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+coral-city-mcp = "coral_city_mcp.server:main"
+
+[tool.setuptools]
+packages = ["coral_city_mcp"]
