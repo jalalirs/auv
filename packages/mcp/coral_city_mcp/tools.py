@@ -11,6 +11,10 @@ the answers are shaped.
 
 from __future__ import annotations
 
+import base64
+import json
+import math
+import struct
 from typing import Any
 
 from .platform import Platform, Refused
@@ -271,3 +275,181 @@ def dives_deliverables(platform: Platform, dive_id: str, run_id: str | None = No
             "tools/deliver from the recording, and nothing uploads the result "
             "to the platform yet")
     return out
+
+
+# ── arranging a place ────────────────────────────────────────────────────────
+#
+# Drawing a line and looking at the result are two operations, not one. This
+# half changes the arrangement and answers with the arrangement; `layouts_chart`
+# draws what is there from the numbers; and rendering what a camera would see
+# from a point in the water is a third thing again, with a GPU behind it and a
+# position and an orientation to be given. Putting a picture in the return of an
+# edit would have made every edit cost what the picture costs.
+
+def _fetch(url: str) -> bytes:
+    import urllib.request
+    with urllib.request.urlopen(url, timeout=120) as answer:
+        return answer.read()
+
+
+def _layout_document(platform: Platform, layout_id: str) -> tuple[dict, dict]:
+    """A layout and the document of its newest version."""
+    layout = platform.request("GET", f"/api/v1/layouts/{layout_id}")
+    versions = platform.request(
+        "GET", f"/api/v1/layouts/{layout_id}/versions")["versions"]
+    newest = _newest(versions)
+    document = (newest or {}).get("document") or {"things": []}
+    return layout, document
+
+
+def layouts_list(platform: Platform, place: str) -> dict:
+    """Every arrangement of a place."""
+    found = next((p for p in platform.places()
+                  if p["id"] == place or p.get("slug") == place), None)
+    if found is None:
+        raise Refused(404, "not_found", f"no place {place!r} is granted to you")
+    return {"place": found.get("name"),
+            "layouts": [{"id": one["id"], "slug": one.get("slug"),
+                         "name": one.get("name")}
+                        for one in platform.layouts_of(found["id"])]}
+
+
+def layouts_get(platform: Platform, layout: str) -> dict:
+    """What is in the water, as the arrangement says."""
+    one, document = _layout_document(platform, layout)
+    things = document.get("things") or []
+    kinds: dict[str, int] = {}
+    for thing in things:
+        kinds[thing.get("kind", "?")] = kinds.get(thing.get("kind", "?"), 0) + 1
+    return {
+        "id": one["id"], "name": one.get("name"),
+        "frame": document.get("frame")
+                 or "metres, origin at the middle of the site, +x east, +y north",
+        "things": len(things), "kinds": kinds,
+        "document": document,
+    }
+
+
+def layouts_add_line(platform: Platform, layout: str,
+                     start: list, end: list, spacing_m: float,
+                     kind: str = "transponder", name: str = "") -> dict:
+    """Put a row of marks along a line, evenly spaced, and save it.
+
+    Returns the arrangement, not a picture. Ask `layouts_chart` for the picture
+    when you want to look — the two are separate so that twenty edits cost
+    twenty edits rather than twenty pictures.
+
+    `start` and `end` are [x, y] in site metres, origin at the middle of the
+    site, +x east and +y north, which is the frame a vehicle's own positions are
+    in. The depth each mark sits at is the place's business, not this one's: a
+    transponder lands on the ground and a buoy floats, and the platform resolves
+    that when the layout is drawn.
+    """
+    if spacing_m <= 0:
+        raise Refused(400, "invalid", "a spacing of metres has to be more than nothing")
+    one, document = _layout_document(platform, layout)
+    things = list(document.get("things") or [])
+
+    x0, y0 = float(start[0]), float(start[1])
+    x1, y1 = float(end[0]), float(end[1])
+    run = math.hypot(x1 - x0, y1 - y0)
+    if run == 0:
+        raise Refused(400, "invalid", "a line needs two different ends")
+    # Both ends included, so a hundred-metre line at twenty-five metres is five
+    # marks and not four: somebody asking for a line between two points means
+    # the points.
+    count = int(run // spacing_m) + 1
+    made = []
+    for at in range(count):
+        part = 0.0 if count == 1 else (at * spacing_m) / run
+        thing = {
+            "id": f"{name or kind}-{at + 1}",
+            "kind": kind,
+            "x": round(x0 + (x1 - x0) * part, 3),
+            "y": round(y0 + (y1 - y0) * part, 3),
+        }
+        things.append(thing)
+        made.append(thing)
+
+    document = dict(document)
+    document["things"] = things
+    document.setdefault(
+        "frame", "metres, origin at the middle of the site, +x east, +y north")
+    saved = platform.request("POST", f"/api/v1/layouts/{layout}/versions", {
+        "label": name or f"a line of {count} {kind}",
+        "document": document,
+    })
+    return {
+        "layout": one.get("name"), "version": saved.get("id"),
+        "added": made, "things": len(things),
+        "lineLengthM": round(run, 2),
+        "note": ("saved as a new version; layouts_chart draws it, and nothing "
+                 "here renders — a camera view is a separate operation with a "
+                 "position and an orientation of its own"),
+    }
+
+
+def layouts_chart(platform: Platform, layout: str) -> dict:
+    """A plan view of the place with the arrangement on it, as a PNG.
+
+    Drawn from the heightfield and the coordinates: no scene, no camera, no
+    GPU. It answers "did my line land where I meant and does it clear the edge
+    of the reef", which is the question an edit needs answered. It cannot answer
+    what anything looks like.
+    """
+    from . import chart as drawing
+
+    one, document = _layout_document(platform, layout)
+    place_id = one.get("cityId") or one.get("placeId")
+    place = next((p for p in platform.places() if p["id"] == place_id), None)
+    if place is None:
+        raise Refused(404, "not_found", "that layout's place is not granted to you")
+
+    version = _newest(platform.versions_of_place(place["id"]))
+    files = {f["path"]: f for f in platform.files(version["id"])} if version else {}
+    if "site.json" not in files:
+        raise Refused(409, "not_published", f"{place.get('name')} has no published package")
+    site = json.loads(_fetch(files["site.json"]["url"]))
+    across = float((site.get("from") or {}).get("acrossMetres") or 1000.0)
+
+    canvas = drawing.Chart(across)
+    field = (site.get("mesh") or {}).get("heightfield") or {}
+    name = field.get("file")
+    if name and name in files:
+        raw = _fetch(files[name]["url"])
+        rows, columns = int(field.get("rows", 0)), int(field.get("columns", 0))
+        if rows and columns and len(raw) >= rows * columns * 4:
+            depths = list(struct.unpack(f"<{rows * columns}f", raw[:rows * columns * 4]))
+            canvas.seabed(depths, rows, columns)
+
+    drew: dict[str, int] = {}
+    for thing in document.get("things") or []:
+        kind = thing.get("kind", "?")
+        colour = drawing.MARKS.get(kind, drawing.OTHER)
+        ends = thing.get("ends") or []
+        corners = thing.get("corners") or []
+        if len(ends) >= 2 and ends[0].get("x") is not None:
+            canvas.line(float(ends[0]["x"]), float(ends[0]["y"]),
+                        float(ends[1]["x"]), float(ends[1]["y"]), colour, width=2)
+        elif len(corners) >= 3:
+            canvas.box(corners, colour)
+        elif thing.get("x") is not None:
+            canvas.disc(float(thing["x"]), float(thing["y"]), 3, colour)
+        else:
+            continue
+        drew[kind] = drew.get(kind, 0) + 1
+
+    bar = canvas.rule()
+    return {
+        "layout": one.get("name"), "place": place.get("name"),
+        "acrossMetres": across,
+        "drew": drew,
+        "scaleBarMetres": bar,
+        "legend": {k: "as " + ("a line" if k == "line" else
+                               "an outline" if k == "cell" else "a dot")
+                   for k in drew},
+        "image": base64.b64encode(canvas.png()).decode(),
+        "note": ("plan view, north up, +x east. Shaded by depth from the "
+                 "place's own heightfield: darker is deeper. This is not a "
+                 "render and says nothing about what anything looks like."),
+    }

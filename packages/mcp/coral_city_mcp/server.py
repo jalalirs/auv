@@ -49,6 +49,49 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
         "The autonomy deployed to this institution.",
         {"type": "object", "properties": {}},
         tools.controllers_list),
+    "layouts_list": (
+        "Every arrangement of a place: where transponders, moorings, plots and "
+        "lines have been laid out on it.",
+        {"type": "object",
+         "properties": {"place": {"type": "string", "description": "id or slug"}},
+         "required": ["place"]},
+        lambda p, place: tools.layouts_list(p, place)),
+    "layouts_get": (
+        "What is in the water, as one arrangement says: every thing, its kind "
+        "and where it is in site metres.",
+        {"type": "object", "properties": {"layout": {"type": "string"}},
+         "required": ["layout"]},
+        lambda p, layout: tools.layouts_get(p, layout)),
+    "layouts_add_line": (
+        "Put a row of marks along a line, evenly spaced, and save it as a new "
+        "version. Coordinates are [x, y] in site metres: origin at the middle "
+        "of the site, +x east, +y north. Returns the arrangement, NOT a "
+        "picture — ask layouts_chart to look at it. Depth is the place's "
+        "business: a transponder lands on the ground, a buoy floats.",
+        {"type": "object",
+         "properties": {
+             "layout": {"type": "string"},
+             "start": {"type": "array", "items": {"type": "number"},
+                       "description": "[x, y] in site metres"},
+             "end": {"type": "array", "items": {"type": "number"},
+                     "description": "[x, y] in site metres"},
+             "spacing_m": {"type": "number"},
+             "kind": {"type": "string",
+                      "description": "transponder, buoy, block, post, ship",
+                      "default": "transponder"},
+             "name": {"type": "string"}},
+         "required": ["layout", "start", "end", "spacing_m"]},
+        lambda p, layout, start, end, spacing_m, kind="transponder", name="":
+            tools.layouts_add_line(p, layout, start, end, spacing_m, kind, name)),
+    "layouts_chart": (
+        "A plan view of the place with the arrangement drawn on it, as a PNG. "
+        "North up, shaded by depth from the place's own heightfield, with a "
+        "scale bar. Cheap: no scene, no camera, no GPU. It answers where "
+        "things are, and cannot answer what they look like — a camera view is "
+        "a separate operation.",
+        {"type": "object", "properties": {"layout": {"type": "string"}},
+         "required": ["layout"]},
+        lambda p, layout: tools.layouts_chart(p, layout)),
     "dives_list": (
         "Dives this institution has defined, newest first.",
         {"type": "object",
@@ -143,8 +186,17 @@ def handle(said: dict, platform: Platform | None,
         except Exception as problem:
             return answer(said, {"isError": True, "content": [{
                 "type": "text", "text": f"{type(problem).__name__}: {problem}"}]})
-        return answer(said, {"content": [
-            {"type": "text", "text": json.dumps(got, indent=1, ensure_ascii=False)}]})
+        # An image comes back as an image. MCP carries pictures, and a chart
+        # handed over as a base64 string inside a JSON blob is a chart nothing
+        # will look at.
+        content: list[dict] = []
+        if isinstance(got, dict) and "image" in got:
+            picture = got.pop("image")
+            content.append({"type": "image", "data": picture,
+                            "mimeType": "image/png"})
+        content.append({"type": "text",
+                        "text": json.dumps(got, indent=1, ensure_ascii=False)})
+        return answer(said, {"content": content})
 
     return answer(said, error={"code": -32601, "message": f"no method {method!r}"})
 
