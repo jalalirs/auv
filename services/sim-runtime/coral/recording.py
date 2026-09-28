@@ -192,7 +192,7 @@ class Recorder:
         # writing a file.
         try:
             wrote = geography.write_track(self.into, self._site)
-        except Exception as problem:                              # noqa: BLE001
+        except Exception as problem:
             wrote = None
             manifest["trackFailed"] = f"{type(problem).__name__}: {problem}"
         if wrote:
