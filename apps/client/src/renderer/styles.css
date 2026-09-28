@@ -1212,7 +1212,9 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 .line-blank { width: 34px; height: 34px; border-radius: 8px; background: rgba(255, 255, 255, 0.04); display: block; }
 .task-art { display: block; width: 34px; height: 34px; flex: none; }
 .card .drawn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 100%; }
-.card .drawn .task-art { width: 64px; height: 64px; opacity: 0.95; }
+/* A drawing is the card's picture when there is no photograph, so it is sized
+ * like one rather than like an icon dropped in the middle of an empty panel. */
+.card .drawn .task-art { width: 108px; height: 108px; opacity: 0.95; }
 .card .drawn span { color: var(--dim); font-size: 11px; }
 .ledger .row .task-art { margin-right: 2px; }
 .task-art-ground { fill: rgba(64, 199, 244, 0.07); stroke: rgba(159, 179, 204, 0.14); }

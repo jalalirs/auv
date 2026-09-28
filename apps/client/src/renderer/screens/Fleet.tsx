@@ -32,6 +32,7 @@ export function Fleet({ held, packages, onOpen }: {
               return (
                 <Card key={one.id} name={one.name} detail={one.summary || "a vehicle"}
                       picture={pkg?.pictureUrl}
+                      art={<VehiclePlan thrusters={thrustersOf(pkg?.dynamics)} size={72} />}
                       specs={[one.manufacturer || "—",
                               pkg?.dynamics ? `${pkg.dynamics.massKg} kg · ${(pkg.dynamics.thrusters as { units?: unknown[] }).units?.length ?? 0} thrusters` : "",
                               pkg?.hull ? "hull" : pkg === null ? "no package" : ""].filter(Boolean)}

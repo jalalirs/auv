@@ -22,6 +22,7 @@ import { Line } from "../parts/Line.js";
 import { ControllerArt } from "../parts/ControllerArt.js";
 import { Plan, type Flying } from "../parts/Plan.js";
 import { PositioningArt } from "../parts/PositioningArt.js";
+import { PlacePlan, VehiclePlan } from "../parts/PlanArt.js";
 import { TaskArt } from "../parts/TaskArt.js";
 import { WaterArt } from "../parts/WaterArt.js";
 import type { Choice } from "../parts/Picker.js";
@@ -330,6 +331,10 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
     const site = pkg?.site;
     return {
       key: one.id, name: one.name, picture: pkg?.pictureUrl,
+      // Same drawing as the card, so a place looks like itself wherever it is
+      // shown. Without it the picker is a column of identical grey squares.
+      art: <PlacePlan deepestM={site?.deepestM}
+                      standing={site?.from?.surveyed === true ? "surveyed" : "derived"} />,
       says: site?.deepestM !== undefined ? `${site.shallowestM?.toFixed(0) ?? "?"}–${site.deepestM.toFixed(0)} m`
         : one.summary?.split(".")[0],
       mark: <PlaceMark place={one} packages={packages} />,
@@ -340,6 +345,7 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
     const pkg = packages.vehicles.get(one.id);
     return {
       key: one.id, name: one.name, picture: pkg?.pictureUrl,
+      art: <VehiclePlan thrusters={thrustersIn(pkg?.dynamics)} />,
       says: [one.manufacturer, pkg?.dynamics ? `${pkg.dynamics.massKg} kg` : undefined].filter(Boolean).join(" · "),
       later: pkg === null ? "no package yet" : pkg !== undefined && pkg.hull === undefined ? "no hull yet" : undefined,
     };
@@ -633,6 +639,15 @@ function PlaceMark({ place, packages }: { place: Held["places"][number]; package
 }
 
 /** A place's card, with today's sea in its corner — for the places page. */
+/** Where a package's thrusters are, whatever shape the dynamics wrote them in. */
+function thrustersIn(dynamics: unknown): { position?: number[]; direction?: number[] }[] {
+  const said = (dynamics ?? {}) as { thrusters?: unknown };
+  const thrusters = said.thrusters as { units?: unknown[] } | unknown[] | undefined;
+  if (Array.isArray(thrusters)) return thrusters as { position?: number[] }[];
+  if (thrusters && Array.isArray(thrusters.units)) return thrusters.units as { position?: number[] }[];
+  return [];
+}
+
 export function PlaceCard({ place, packages, chosen, onChoose, onOpen }: {
   place: Held["places"][number];
   packages: Packages;
@@ -666,6 +681,13 @@ export function PlaceCard({ place, packages, chosen, onChoose, onOpen }: {
   ].filter(Boolean);
   return (
     <Card name={place.name} detail={place.summary || "a place"} picture={pkg?.pictureUrl}
+          // A place with no photograph is drawn from its own section: how deep
+          // it goes, and dashed when the ground is not a survey. PlacePlan has
+          // existed for this since it was written; it was only ever wired to
+          // the catalogue of places nobody has been granted, so Al Fahal — the
+          // reef this platform is named for in every demo — showed a grey
+          // square on the page a buyer opens first.
+          art={<PlacePlan deepestM={site?.deepestM} standing={standing} size={72} />}
           specs={specs} corner={<SeaPill sea={sea} />}
           chosen={chosen} onChoose={onChoose} onOpen={onOpen}
           later={pkg === null ? "no package yet" : undefined} />

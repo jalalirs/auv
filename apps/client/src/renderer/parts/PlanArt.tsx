@@ -39,8 +39,15 @@ export function VehiclePlan({ thrusters, size = 34 }: {
                   fill={MARK} opacity={up >= 0 ? 0.95 : 0.6} />
           : <circle key={i} cx={x} cy={y} r="2.7" fill={INK} />;
       })}
+      {/* No thruster at all is not a missing number, it is a glider: it changes
+          its buoyancy and flies down on its wings. Drawn as the wings, because
+          a question mark says the file is incomplete and the file is right. */}
       {units.length === 0 ? (
-        <text x="20" y="24" textAnchor="middle" fill={HULL} fontSize="9" opacity="0.7">?</text>
+        <g stroke={INK} strokeWidth="1.4" strokeLinecap="round" opacity="0.9">
+          <path d="M13 17 L4 13" />
+          <path d="M27 17 L36 13" />
+          <path d="M20 30 L20 34" />
+        </g>
       ) : null}
     </svg>
   );

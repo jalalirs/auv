@@ -121,9 +121,14 @@ export function Line({ label, choices, chosen, onChoose, onOpen, hint }: {
       <div className="line-label">{label}</div>
       <button type="button" className="line-chosen" aria-haspopup="listbox" aria-expanded={open}
               onClick={() => setOpen((o) => !o)}>
-        {picked?.art ?? (picked?.picture
+        {/* A photograph of the thing beats a drawing of it, and a drawing beats
+            a grey square. This had the first two the other way round, so the
+            moment places were given art the real picture of Looe Key would
+            have been hidden behind a diagram of it. Card has always had this
+            order; Line did not. */}
+        {picked?.picture
           ? <img src={picked.picture} alt="" />
-          : <span className="line-blank" />)}
+          : picked?.art ?? <span className="line-blank" />}
         <span className="line-said">
           <strong>{picked?.name ?? (ready.length === 0 && choices.length > 0
             ? "Nothing ready" : "Choose…")}</strong>
@@ -148,9 +153,9 @@ export function Line({ label, choices, chosen, onChoose, onOpen, hint }: {
                 <div className={`line-row${one.key === chosen ? " chosen" : ""}${at === lit ? " lit" : ""}${one.later ? " later" : ""}`}
                      role="option" aria-selected={one.key === chosen} data-at={at}
                      onMouseEnter={() => setLit(at)} onClick={() => choose(one)}>
-                  {one.art ?? (one.picture
+                  {one.picture
                     ? <img src={one.picture} alt="" loading="lazy" />
-                    : <span className="line-blank" />)}
+                    : one.art ?? <span className="line-blank" />}
                   <span className="line-said">
                     <strong>{one.name}</strong>
                     {one.later ? <em>{one.later}</em> : one.says ? <span>{one.says}</span> : null}
