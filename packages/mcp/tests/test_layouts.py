@@ -142,3 +142,98 @@ def test_ground_above_the_water_is_not_drawn_as_sea():
     canvas.seabed([5.0] * 64, rows=8, columns=8)
     at = (4 * 8 + 4) * 3
     assert tuple(canvas.pixels[at:at + 3]) == chart.DRY
+
+
+# ── the first tool that spends anything ──────────────────────────────────────
+
+class Fleet:
+    """A platform with one place and two vehicles, one of which can fly."""
+
+    def __init__(self):
+        self.asked = []
+
+    def places(self):
+        return [{"id": "cty_1", "slug": "al-fahal", "name": "Al Fahal"}]
+
+    def vehicles(self):
+        return [{"id": "veh_1", "slug": "bluerov2", "name": "BlueROV2"},
+                {"id": "veh_2", "slug": "seaglider", "name": "Seaglider"}]
+
+    def versions_of_place(self, _):
+        return [{"id": "cv", "createdAt": "2026-09-28T00:00:00Z"}]
+
+    def versions_of_vehicle(self, _):
+        return [{"id": "vv", "createdAt": "2026-09-28T00:00:00Z"}]
+
+    def files(self, version):
+        if getattr(self, "hull", True):
+            return [{"path": "BROV_low.usd"}, {"path": "dynamics.json"}]
+        return [{"path": "dynamics.json"}]
+
+    def institution(self):
+        return {"id": "org_1", "name": "Coral City"}
+
+    def queues(self):
+        return [{"id": "q_1", "slug": "box-gpus"}]
+
+    def request(self, method, path, body=None):
+        self.asked.append((path, body))
+        if path.endswith("/conditions"):
+            return {"id": "cond_1"}
+        if path.endswith("/dives"):
+            return {"id": "dive_1"}
+        return {"id": "run_1", "state": "queued"}
+
+
+def test_a_dive_names_the_sea_it_was_flown_in():
+    """Required, not optional: a dive whose water nobody stated cannot be
+    compared with another."""
+    platform = Fleet()
+    said = tools.dives_start(platform, "al-fahal", "bluerov2",
+                             {"kind": "hold-station", "seconds": 60},
+                             water="one-knot")
+    conditions = next(b for p, b in platform.asked if p.endswith("/conditions"))
+    assert conditions["name"] == "one-knot"
+    assert conditions["parameters"]["currentMetresPerSecond"] == 0.51
+    assert said["water"] == "one-knot"
+
+
+def test_water_is_constructed_and_never_dressed_as_a_reading():
+    """Nobody measured a current at Al Fahal today."""
+    platform = Fleet()
+    tools.dives_start(platform, "al-fahal", "bluerov2", {"kind": "reach"})
+    conditions = next(b for p, b in platform.asked if p.endswith("/conditions"))
+    assert conditions["kind"] == "constructed"
+
+
+def test_a_vehicle_with_no_hull_is_refused_before_anything_is_spent():
+    """The refusal has to come before a machine is asked for, and it has to say
+    which tool answers 'which ones can'."""
+    platform = Fleet()
+    platform.hull = False
+    with pytest.raises(Refused) as no:
+        tools.dives_start(platform, "al-fahal", "seaglider", {"kind": "reach"})
+    assert "no hull" in no.value.message
+    assert "vehicles_list" in no.value.message
+    assert platform.asked == [], "it asked the platform for something anyway"
+
+
+def test_pictures_are_off_unless_asked_for():
+    """A drawn dive is a sixth of real time and an undrawn one is fifteen times
+    it, on the same trajectory."""
+    platform = Fleet()
+    said = tools.dives_start(platform, "al-fahal", "bluerov2", {"kind": "reach"})
+    dive = next(b for p, b in platform.asked if p.endswith("/dives"))
+    assert dive["objective"]["pictures"] is False
+    assert said["drawn"] is False
+
+
+def test_the_objective_is_carried_through_whole():
+    platform = Fleet()
+    tools.dives_start(platform, "al-fahal", "bluerov2",
+                      {"kind": "transect", "lengthM": 80, "altitudeM": 2.5},
+                      pictures=True)
+    dive = next(b for p, b in platform.asked if p.endswith("/dives"))
+    assert dive["objective"]["lengthM"] == 80
+    assert dive["objective"]["altitudeM"] == 2.5
+    assert dive["objective"]["pictures"] is True

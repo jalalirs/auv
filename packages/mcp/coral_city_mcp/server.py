@@ -106,6 +106,32 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
         {"type": "object",
          "properties": {"limit": {"type": "integer", "default": 20}}},
         lambda p, limit=20: tools.dives_list(p, limit)),
+    "dives_start": (
+        "Put a dive in the water. THIS SPENDS TIME ON A MACHINE — everything "
+        "else here only reads. A dive names a place, a vehicle, the sea it was "
+        "flown in and what it is for; the sea is required, because a dive whose "
+        "water nobody stated cannot be compared with another. `pictures` "
+        "renders every frame: a drawn dive runs at about a sixth of real time "
+        "and an undrawn one at fifteen times it on the same trajectory, so ask "
+        "for pictures only when somebody is going to look.",
+        {"type": "object",
+         "properties": {
+             "place": {"type": "string"},
+             "vehicle": {"type": "string",
+                         "description": "must have a hull; see vehicles_list"},
+             "objective": {"type": "object",
+                           "description": "what it is for, e.g. "
+                                          "{\"kind\": \"hold-station\", \"seconds\": 120}"},
+             "water": {"type": "string",
+                       "enum": ["still", "gentle", "half-knot", "one-knot"],
+                       "default": "still"},
+             "pictures": {"type": "boolean", "default": False},
+             "name": {"type": "string"}},
+         "required": ["place", "vehicle", "objective"]},
+        lambda p, place, vehicle, objective, water="still", pictures=False,
+               name="", controller="":
+            tools.dives_start(p, place, vehicle, objective, water, controller,
+                              name, pictures)),
     "dives_result": (
         "What a run scored. A run that did not finish comes back as unknown "
         "rather than as a score of zero.",

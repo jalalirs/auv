@@ -474,3 +474,87 @@ def layouts_chart(platform: Platform, layout: str) -> dict:
                  "place's own heightfield: darker is deeper. This is not a "
                  "render and says nothing about what anything looks like."),
     }
+
+
+# ── putting one in the water ─────────────────────────────────────────────────
+
+def dives_start(platform: Platform, place: str, vehicle: str,
+                objective: dict, water: str = "still",
+                controller: str = "", name: str = "",
+                pictures: bool = False) -> dict:
+    """Define a dive and ask for it. The first tool here that spends anything.
+
+    A dive names four things and the platform refuses it without them: the
+    place, pinned to a version; the vehicle, pinned to a version; **the sea it
+    was flown in**; and what it is for. The sea is not optional and that is
+    deliberate — a dive whose water nobody stated is a dive nobody can compare
+    against another.
+
+    `pictures` is the expensive switch. A drawn dive renders every frame and
+    runs at about a sixth of real time; an undrawn one runs at fifteen times it
+    on the same trajectory and produces the same numbers. Ask for pictures when
+    somebody is going to look, and not otherwise.
+    """
+    found = next((p for p in platform.places()
+                  if p["id"] == place or p.get("slug") == place), None)
+    if found is None:
+        raise Refused(404, "not_found", f"no place {place!r} is granted to you")
+    machine = next((v for v in platform.vehicles()
+                    if v["id"] == vehicle or v.get("slug") == vehicle), None)
+    if machine is None:
+        raise Refused(404, "not_found", f"no vehicle {vehicle!r} is granted to you")
+
+    city_version = _newest(platform.versions_of_place(found["id"]))
+    vehicle_version = _newest(platform.versions_of_vehicle(machine["id"]))
+    if city_version is None or vehicle_version is None:
+        raise Refused(409, "not_published", "that place or vehicle has no published package")
+    paths = [f["path"] for f in platform.files(vehicle_version["id"])]
+    if not any(p.lower().endswith((".usd", ".usda", ".usdc", ".usdz")) for p in paths):
+        raise Refused(409, "cannot_fly",
+                      f"{machine.get('name')} has no hull in its published "
+                      f"package, so nothing can be put in the water. "
+                      f"vehicles_list says which can.")
+
+    institution = platform.institution()
+    if institution is None:
+        raise Refused(403, "no_institution", "this session belongs to no institution")
+
+    sea = platform.request(
+        "POST", f"/api/v1/organisations/{institution['id']}/conditions",
+        {"kind": "constructed", "name": water,
+         "parameters": WATERS.get(water, WATERS["still"])})
+
+    dive = platform.request(
+        "POST", f"/api/v1/organisations/{institution['id']}/dives", {
+            "name": name or f"{objective.get('kind', 'a dive')} at {found.get('name')}",
+            "cityVersionId": city_version["id"],
+            "vehicleVersionId": vehicle_version["id"],
+            "conditionsId": sea["id"],
+            "objective": {**objective, "pictures": bool(pictures)},
+        })
+
+    queues = platform.queues()
+    if not queues:
+        raise Refused(409, "no_queue", "no queue is open to this session")
+    run = platform.request("POST", f"/api/v1/dives/{dive['id']}/runs", {
+        "queueId": queues[0]["id"], "mode": "batch", "runtimeVersion": "r1"})
+
+    return {
+        "dive": dive["id"], "run": run["id"], "state": run.get("state"),
+        "place": found.get("name"), "vehicle": machine.get("name"),
+        "water": water, "drawn": bool(pictures),
+        "note": ("queued. dives_result says how it went; a drawn dive runs at "
+                 "about a sixth of real time and an undrawn one at fifteen "
+                 "times it, on the same trajectory"),
+    }
+
+
+# The seas a dive can be asked for, by name. Constructed rather than observed:
+# nobody measured a current at these places today, and a made-up reading
+# dressed as an observation is the one thing this platform will not do.
+WATERS = {
+    "still": {"currentMetresPerSecond": 0.0, "currentHeadingDeg": 0.0},
+    "gentle": {"currentMetresPerSecond": 0.13, "currentHeadingDeg": 45.0},
+    "half-knot": {"currentMetresPerSecond": 0.26, "currentHeadingDeg": 45.0},
+    "one-knot": {"currentMetresPerSecond": 0.51, "currentHeadingDeg": 45.0},
+}
