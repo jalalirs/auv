@@ -243,10 +243,31 @@ def dives_deliverables(platform: Platform, dive_id: str, run_id: str | None = No
         name = (one.get("path") or "").split("/")[-1]
         if name in wanted:
             found[name] = one.get("url")
-    return {
-        "dive": dive_id, "run": run["id"], "files": found,
-        "missing": [w for w in wanted if w not in found],
+    missing = [w for w in wanted if w not in found]
+    raw = {(one.get("path") or "").split("/")[-1]
+           for one in platform.artefacts(dive_id, run["id"])}
+    out = {
+        "dive": dive_id, "run": run["id"], "files": found, "missing": missing,
         "note": ("track.geojson holds where it was and where it believed it "
                  "was as separate features; coverage.geojson is what was "
                  "actually seen, not what was planned"),
     }
+    if missing and raw:
+        # Why they are missing, not just that they are.
+        #
+        # A run's artefacts are its raw recording — poses.jsonl, sensors.jsonl,
+        # task.jsonl. The geometry is made from those by tools/deliver, which
+        # runs on somebody's workstation against a recording on disk, and
+        # nothing uploads what it produces. So the platform holds every number
+        # needed to draw the track and does not hold the track, and an agent
+        # asking for the geometry is asking for a file that was never put
+        # anywhere it could reach.
+        #
+        # Listing six missing filenames without saying that would send it
+        # looking for a permissions problem.
+        out["why_missing"] = (
+            "this run carries its raw recording (" + ", ".join(sorted(raw)[:4]) +
+            ") and not its deliverables: the geometry is produced by "
+            "tools/deliver from the recording, and nothing uploads the result "
+            "to the platform yet")
+    return out
