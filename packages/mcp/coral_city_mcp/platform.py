@@ -175,5 +175,7 @@ class Platform:
     def queues(self) -> list[dict]:
         return self.request("GET", "/api/v1/queues")["queues"]
 
-    def devices(self) -> list[dict]:
-        return self.request("GET", "/api/v1/devices")["devices"]
+    def devices(self, queue: str) -> list[dict]:
+        """The machines a queue has. Devices belong to a queue, not to the
+        platform: there is no /api/v1/devices and asking for one is a 404."""
+        return self.request("GET", f"/api/v1/queues/{queue}/devices")["devices"]
