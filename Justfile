@@ -32,7 +32,7 @@ check:
 # and a linter is not going to improve it.
 check-python:
     uvx ruff@0.14.0 check --config ruff.toml \
-        services/sim-runtime packages/sdk-python tools apps
+        services/sim-runtime packages/sdk-python packages/mcp tools apps
 
 # Run every component's tests.
 test:
@@ -56,12 +56,23 @@ test:
 # `test_energy` and `test_tether` are excluded by default because between them
 # they take a quarter of an hour of honest arithmetic. `just test-python-all`
 # runs those too, and CI should.
+#
+# The SDK's tests and the MCP server's were not in here either — the same way
+# the sim-runtime's four hundred were not, and for the same reason: they were
+# run by hand, so they were run when somebody already suspected something.
+# Running each from its own directory is also what keeps two files of one name
+# in different suites from colliding; pytest names a module by its basename,
+# and tools/ and packages/sdk-python/tests both hold a test_tank.py.
 test-python:
     cd services/sim-runtime/coral && \
         uv run --no-project --with pytest --with numpy --with pillow --with scipy \
             python -m pytest . -q --ignore=./test_energy.py --ignore=./test_tether.py
     cd tools && \
         uv run --no-project --with pytest --with numpy --with pillow --with scipy python -m pytest . -q
+    cd packages/sdk-python && \
+        uv run --no-project --with pytest --with numpy python -m pytest tests -q
+    cd packages/mcp && \
+        uv run --no-project --with pytest python -m pytest tests -q
 
 test-python-all:
     cd services/sim-runtime/coral && \

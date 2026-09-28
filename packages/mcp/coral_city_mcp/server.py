@@ -140,7 +140,7 @@ def handle(said: dict, platform: Platform | None,
                 "type": "text",
                 "text": json.dumps({"refused": no.code, "why": no.message},
                                    indent=1)}]})
-        except Exception as problem:                      # noqa: BLE001
+        except Exception as problem:
             return answer(said, {"isError": True, "content": [{
                 "type": "text", "text": f"{type(problem).__name__}: {problem}"}]})
         return answer(said, {"content": [

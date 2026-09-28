@@ -1,5 +1,12 @@
 """The rule the whole server exists to keep: no naked numbers.
 
+Called test_marking rather than test_provenance because tools/ has a
+test_provenance.py of its own, and pytest names a test module by its
+basename: two files of one name in one run collide and the second never
+gets collected. Which means the whole suite could not be run in one
+command — the sort of thing that is discovered by a green tick on half
+of it.
+
 An assistant asked for a number will produce one. The risk of putting one
 between an operator and a decision is that nothing in the loop knows which
 numbers were measured — and the answer this platform can give, which a wrapper
