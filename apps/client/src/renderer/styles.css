@@ -1212,6 +1212,27 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 .line-blank { width: 34px; height: 34px; border-radius: 8px; background: rgba(255, 255, 255, 0.04); display: block; }
 .task-art { display: block; width: 34px; height: 34px; flex: none; }
 .card .drawn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 100%; }
+/* And in a hero, where the empty rectangle is largest. Centred, with a line
+ * underneath saying what it is a drawing of — a reader should never have to
+ * wonder whether they are looking at a photograph of something strange. */
+/* The hero is 300px tall and lays its content out from the top, which is right
+ * for a caption over a photograph and wrong for a drawing that *is* the
+ * picture: the art sat in a 62px box with 240px of empty panel under it. So a
+ * hero with no photograph in it centres what it does have. */
+.hero:not(.pictured) { align-items: stretch; }
+.hero:not(.pictured) > .said { height: 100%; }
+.drawn-hero {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; height: 100%; min-height: 220px; opacity: 0.9;
+}
+/* `.task-art` pins every drawing to 34px, which is what it should be in a row.
+ * A hero's is the picture, so it says its own size — the same reason the card
+ * overrides it. The svg's own width attribute loses to any of these. */
+.drawn-hero .task-art { width: 176px; height: 176px; }
+.drawn-hero span {
+  color: var(--dim); font-size: 11.5px; letter-spacing: var(--wide);
+}
+
 /* A drawing is the card's picture when there is no photograph, so it is sized
  * like one rather than like an icon dropped in the middle of an empty panel. */
 .card .drawn .task-art { width: 108px; height: 108px; opacity: 0.95; }

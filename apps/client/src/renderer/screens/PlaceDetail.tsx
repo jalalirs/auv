@@ -10,6 +10,7 @@ import type { Layout, Platform } from "@coral-city/api";
 import { useSea } from "../ocean/sea.js";
 import { whereIs } from "../platform/packages.js";
 import type { Held, Packages } from "./Deck.js";
+import { PlacePlan } from "../parts/PlanArt.js";
 import { Credit, Empty, PageHead, Pill, Row, SeaPanel, ago, fixed, useLoadedPicture } from "./parts.js";
 
 export function PlaceDetail({ held, packages, id, platform, onLayOut, onBack }: {
@@ -53,7 +54,17 @@ export function PlaceDetail({ held, packages, id, platform, onLayOut, onBack }: 
         <div className={`hero tall${picture ? " pictured" : ""}`}
              style={picture ? { backgroundImage: `url("${picture}")` } : undefined}>
           <div className="said">
-            {picture ? null : <div className="eyebrow">no picture yet</div>}
+            {/* The same section the card draws, at the size of the picture it
+                stands in for. A hero panel with "no picture yet" written in
+                the corner is the largest empty rectangle on the page. */}
+            {picture ? null : (
+              <div className="drawn-hero">
+                <PlacePlan deepestM={site?.deepestM}
+                           standing={site?.from?.surveyed === true ? "surveyed" : "derived"}
+                           size={168} />
+                <span>no photograph — drawn from its own depths</span>
+              </div>
+            )}
           </div>
         </div>
         <Credit of={pkg?.credit} />

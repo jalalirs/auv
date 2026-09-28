@@ -15,6 +15,7 @@ import type { VehicleDynamics } from "@coral-city/api";
 import { catalogued } from "../catalog/vehicles.js";
 import type { PictureCredit } from "../platform/packages.js";
 import { AXES, derive, thrustersOf, withNumber, withThrust } from "../physics/dynamics.js";
+import { VehiclePlan } from "../parts/PlanArt.js";
 import type { Held, Packages } from "./Deck.js";
 import { Credit, Empty, PageHead, Pill, Row, ThrusterDiagram, fixed, useLoadedPicture } from "./parts.js";
 
@@ -93,7 +94,14 @@ function Explained({ name, summary, dynamics, picture, credit, source, flyable, 
         <section>
           <div className={`hero tall${shown ? " pictured" : ""}`}
                style={shown ? { backgroundImage: `url("${shown}")` } : undefined}>
-            <div className="said">{shown ? null : <div className="eyebrow">no picture yet</div>}</div>
+            <div className="said">
+              {shown ? null : (
+                <div className="drawn-hero">
+                  <VehiclePlan thrusters={now.thrusters.units} size={168} />
+                  <span>no photograph — drawn from where its thrusters are</span>
+                </div>
+              )}
+            </div>
           </div>
           <Credit of={credit} />
           <h2 style={{ marginTop: 22 }}>Thrusters</h2>
