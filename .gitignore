@@ -60,3 +60,8 @@ places/*/deliverables/colonies.*
 # The script no longer does that; this is so the next thing that tries cannot.
 apps/console/tsconfig.tsbuildinfo
 apps/console/src/**/*.js
+
+# Things dropped in the working directory that are not the repository's.
+# The symposium badge landed here and a `git add -A` swept it into a commit
+# about removing leftovers, which is the joke telling itself.
+*.pdf
