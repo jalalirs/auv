@@ -4,14 +4,39 @@ Places, vehicles and dives an agent can drive, with every number marked.
 
 ```
 CORAL_CITY_PLATFORM=http://your-platform:18080 \
-CORAL_CITY_EMAIL=you@example.com \
-CORAL_CITY_SECRET=... \
+CORAL_CITY_SERVICE_FILE=/run/secrets/mcp \
     python -m coral_city_mcp
 ```
 
-Or `CORAL_CITY_TOKEN` instead of the email and secret. Credentials come from the
-environment and never from a tool argument: an agent that can be told a password
-in a prompt is an agent that can be told somebody else's.
+## Getting a credential
+
+An agent authenticates as a **service principal** of its own, not as a person:
+
+```
+docker compose run --rm agent-credential
+```
+
+which writes `principalId:secret` to `/credentials/mcp` and can never show it
+again. The server sends it as `Authorization: Service …`, which is a different
+scheme from a person's `Bearer` session and means a different thing — a session
+expires, and an agent on one would be signing in as a person to renew it.
+
+`CORAL_CITY_SERVICE` takes the credential directly; the `_FILE` form is better,
+because an environment is inherited by every child process and readable by
+anything that can see `/proc`. `CORAL_CITY_EMAIL`/`CORAL_CITY_SECRET` and
+`CORAL_CITY_TOKEN` also work. Credentials never come from a tool argument: an
+agent that can be told a password in a prompt is an agent that can be told
+somebody else's.
+
+**What it holds:** viewer at the institution, and viewer at the platform. The
+second is more than anybody wants to give. Listing the catalogue needs the floor
+role a person gets for being signed in, a service principal deliberately has no
+floor — so a compromised one cannot even discover what places exist — and that
+floor is not storable, because the role enum is
+`('viewer', 'contributor', 'steward', 'admin')`. So the weakest grant that lets
+an agent list places is platform viewer, which on a platform with two
+institutions would let one institution's agent see the other's catalogue. Safe
+on a single-tenant box and not right; the fix is one enum value.
 
 ## The point
 

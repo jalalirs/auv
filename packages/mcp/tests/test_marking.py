@@ -63,3 +63,57 @@ def test_a_bool_is_not_a_number():
 
 def test_the_four_words_are_the_platform_s_own():
     assert set(s.KINDS) == {"measured", "derived", "chosen", "assumed"}
+
+
+# ── how an agent gets in ─────────────────────────────────────────────────────
+
+def test_a_service_credential_uses_its_own_scheme(monkeypatch):
+    """`Authorization: Service <principalId>:<secret>`, not Bearer.
+
+    The platform reads two schemes and they mean different things: Bearer is a
+    person's session and expires, Service is a program's own principal and does
+    not. An agent on a Bearer token would be signing in as a person to renew it.
+    """
+    from coral_city_mcp.platform import Platform
+
+    seen = {}
+
+    def catch(request, timeout=0):
+        seen["auth"] = request.headers.get("Authorization")
+        raise RuntimeError("far enough")
+
+    monkeypatch.setattr("urllib.request.urlopen", catch)
+    with pytest.raises(RuntimeError):
+        Platform("http://x", service="prin_1:secret").request("GET", "/api/v1/me")
+    assert seen["auth"] == "Service prin_1:secret"
+
+    with pytest.raises(RuntimeError):
+        Platform("http://x", token="tok").request("GET", "/api/v1/me")
+    assert seen["auth"] == "Bearer tok"
+
+
+def test_a_credential_can_come_from_a_file(monkeypatch, tmp_path):
+    """An environment is inherited by every child process and readable by
+    anything that can see /proc. The platform writes the worker's credential to
+    a file for the same reason."""
+    from coral_city_mcp.platform import Platform
+
+    where = tmp_path / "mcp"
+    where.write_text("prin_2:from-a-file\n")
+    monkeypatch.setenv("CORAL_CITY_PLATFORM", "http://x")
+    monkeypatch.setenv("CORAL_CITY_SERVICE_FILE", str(where))
+    monkeypatch.delenv("CORAL_CITY_SERVICE", raising=False)
+    platform = Platform.from_environment()
+    assert platform.service == "prin_2:from-a-file"
+    assert platform.token is None
+
+
+def test_a_missing_credential_file_says_which_one(monkeypatch, tmp_path):
+    from coral_city_mcp.platform import Platform, Refused
+
+    monkeypatch.setenv("CORAL_CITY_PLATFORM", "http://x")
+    monkeypatch.setenv("CORAL_CITY_SERVICE_FILE", str(tmp_path / "nope"))
+    monkeypatch.delenv("CORAL_CITY_SERVICE", raising=False)
+    with pytest.raises(Refused) as no:
+        Platform.from_environment()
+    assert "nope" in str(no.value)

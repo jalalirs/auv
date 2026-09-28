@@ -36,7 +36,7 @@ func main() {
 }
 
 func usage() error {
-	return errors.New("usage: migrate up | migrate bootstrap -email … -secret … -name … -organisation …")
+	return errors.New("usage: migrate up | migrate bootstrap -email … -secret … -name … -organisation … | migrate agent -organisation … -name … -credential-file …")
 }
 
 func run(logger *slog.Logger, args []string) error {
@@ -62,9 +62,101 @@ func run(logger *slog.Logger, args []string) error {
 		return up(ctx, logger, pool, settings)
 	case "bootstrap":
 		return bootstrap(ctx, logger, pool, settings, args[1:])
+	case "agent":
+		return agent(ctx, logger, pool, settings, args[1:])
 	default:
 		return usage()
 	}
+}
+
+// agent issues a service principal for a program that reads on somebody's
+// behalf — an MCP server, most immediately, so that an assistant can be pointed
+// at this platform without being handed a person's sign-in secret.
+//
+// A viewer at the institution and nothing more. An agent that can be told a
+// prompt can be told somebody else's prompt, so what it holds has to be the
+// least that answers a question: it reads what the institution has been granted
+// and it changes nothing. Anything an agent should be able to *start* is a
+// second grant, made deliberately, and not the default that arrives with the
+// first one.
+//
+// The credential is shown once and never stored, exactly as the worker's is.
+// A file that already holds one is left alone, because re-running this must not
+// orphan an agent that is already using it.
+func agent(ctx context.Context, logger *slog.Logger, pool *db.Pool, settings config.Config, args []string) error {
+	flags := flag.NewFlagSet("agent", flag.ContinueOnError)
+	orgSlug := flags.String("organisation", "", "the institution it reads for")
+	name := flags.String("name", "mcp", "what to call it in the record")
+	path := flags.String("credential-file", "", "write the credential here")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if *orgSlug == "" || *path == "" {
+		flags.Usage()
+		return errors.New("agent needs -organisation and -credential-file")
+	}
+	if existing, err := os.ReadFile(*path); err == nil && len(bytes.TrimSpace(existing)) > 0 {
+		logger.Info("a credential is already in place", "file", *path)
+		return nil
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("reading %s: %w", *path, err)
+	}
+
+	identities := identity.NewStore(pool, settings.SessionLifetime)
+	authorizer := policy.NewAuthorizer(pool)
+
+	org, err := identities.OrganisationBySlug(ctx, *orgSlug)
+	if err != nil {
+		return fmt.Errorf("finding the institution %q: %w", *orgSlug, err)
+	}
+
+	return pool.InTransaction(ctx, func(conn db.Conn) error {
+		principal, credential, err := identities.CreateServicePrincipal(ctx, conn, *name, org.ID)
+		if err != nil {
+			return err
+		}
+		// Viewer at the institution: it reads that institution's work.
+		if _, err := authorizer.Grant(ctx, conn, policy.GrantSpec{
+			SubjectKind: policy.SubjectPrincipal, SubjectID: principal.ID,
+			ScopeKind: policy.ScopeOrg, ScopeID: org.ID,
+			Role: policy.RoleViewer, CreatedBy: principal.ID,
+		}); err != nil {
+			return err
+		}
+		// And viewer at the platform, which is more than anybody wants to give
+		// and is the least the model can express.
+		//
+		// Listing the catalogue needs RoleAnyone — the floor a person gets for
+		// being signed in — and a service principal deliberately has no floor,
+		// so that a compromised one cannot even discover what places exist.
+		// That is the right decision. But RoleAnyone is not storable: the role
+		// enum is ('viewer', 'contributor', 'steward', 'admin'), so the floor
+		// cannot be granted explicitly either, and the weakest thing that lets
+		// an agent list places is a platform viewer — which on a platform with
+		// two institutions on it would let one institution's agent see the
+		// other's catalogue.
+		//
+		// Single-tenant here, so it is safe today and it is not right. What the
+		// model is missing is a storable role equal to the floor, or a listing
+		// route scoped to an institution. Worth fixing before a second
+		// institution exists, and cheaper than it sounds: one enum value.
+		if _, err := authorizer.Grant(ctx, conn, policy.GrantSpec{
+			SubjectKind: policy.SubjectPrincipal, SubjectID: principal.ID,
+			ScopeKind: policy.ScopePlatform,
+			Role: policy.RoleViewer, CreatedBy: principal.ID,
+		}); err != nil {
+			return err
+		}
+		// Inside the transaction, like the worker's: a write that fails leaves
+		// no principal behind whose credential nobody holds.
+		if err := os.WriteFile(*path, []byte(credential+"\n"), 0o600); err != nil {
+			return fmt.Errorf("writing the credential to %s: %w", *path, err)
+		}
+		logger.Info("issued an agent credential",
+			"principalId", principal.ID, "organisation", org.Slug,
+			"role", "viewer", "file", *path)
+		return nil
+	})
 }
 
 // up applies every migration this build carries and creates any bucket that

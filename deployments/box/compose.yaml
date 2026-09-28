@@ -123,6 +123,33 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # A credential for an agent: a program that reads this institution on
+  # somebody's behalf, so an assistant can be pointed at the platform without
+  # being handed a person's sign-in secret.
+  #
+  # Viewer at the institution and nothing else. Run it deliberately —
+  # `docker compose run --rm agent` — rather than on every `up`, because a
+  # credential that appears without anybody asking is a credential nobody is
+  # keeping track of. Idempotent: a file that already holds one is left alone,
+  # since re-running must not orphan an agent already using it.
+  agent-credential:
+    image: coral-city/control-plane:${CORAL_CITY_IMAGE_TAG:-r1}
+    pull_policy: never
+    profiles: ["tools"]
+    entrypoint: ["/usr/local/bin/migrate"]
+    command:
+      - agent
+      - -organisation=${CORAL_CITY_ADMIN_ORG:?set the institution}
+      - -name=${CORAL_CITY_AGENT_NAME:-mcp}
+      - -credential-file=/credentials/mcp
+    environment: *platform-env
+    volumes:
+      - credentials:/credentials
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
   # Establishing the first administrator cannot go through the API, because
   # until it happens there is nobody to authorise it. Idempotent: an
   # installation that already has one is left alone. It also issues the agent's

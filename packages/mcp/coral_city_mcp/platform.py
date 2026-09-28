@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import urllib.error
 import urllib.request
 from typing import Any
@@ -35,9 +36,19 @@ class Refused(Exception):
 class Platform:
     """A signed-in session."""
 
-    def __init__(self, base: str, token: str | None = None) -> None:
+    def __init__(self, base: str, token: str | None = None,
+                 service: str | None = None) -> None:
         self.base = base.rstrip("/")
         self.token = token
+        # A service credential is a different scheme, not a different token.
+        #
+        # The platform reads `Authorization: Service <principalId>:<secret>`
+        # for a program and `Bearer <token>` for a person's session, and it is
+        # the right way in for an MCP server: long-lived, revocable, attributed
+        # to a principal of its own, and never somebody's sign-in secret. A
+        # session token expires and would have an agent signing in as a person
+        # to renew it.
+        self.service = service
 
     # ── getting in ───────────────────────────────────────────────────────────
 
@@ -61,15 +72,30 @@ class Platform:
         email = os.environ.get("CORAL_CITY_EMAIL")
         secret = os.environ.get("CORAL_CITY_SECRET")
         token = os.environ.get("CORAL_CITY_TOKEN")
+        service = os.environ.get("CORAL_CITY_SERVICE")
+        service_file = os.environ.get("CORAL_CITY_SERVICE_FILE")
         if base is None:
             raise Refused(0, "not_configured",
                           "set CORAL_CITY_PLATFORM to the platform's address")
+        if service_file and not service:
+            # A credential in a file rather than in the environment, because an
+            # environment is inherited by every child process and read by
+            # anything that can see /proc. The platform writes the worker's
+            # this way for the same reason.
+            try:
+                service = pathlib.Path(service_file).read_text().strip()
+            except OSError as why:
+                raise Refused(0, "not_configured",
+                              f"cannot read {service_file}: {why}") from why
+        if service:
+            return cls(base, service=service)
         if token:
             return cls(base, token)
         if not email or not secret:
             raise Refused(0, "not_configured",
-                          "set CORAL_CITY_EMAIL and CORAL_CITY_SECRET, "
-                          "or CORAL_CITY_TOKEN")
+                          "set CORAL_CITY_SERVICE (or CORAL_CITY_SERVICE_FILE) "
+                          "for a service principal, or CORAL_CITY_EMAIL and "
+                          "CORAL_CITY_SECRET, or CORAL_CITY_TOKEN")
         return cls.sign_in(base, email, secret)
 
     # ── asking ───────────────────────────────────────────────────────────────
@@ -80,7 +106,9 @@ class Platform:
         if body is not None:
             data = json.dumps(body).encode()
             headers["content-type"] = "application/json"
-        if self.token:
+        if self.service:
+            headers["authorization"] = f"Service {self.service}"
+        elif self.token:
             headers["authorization"] = f"Bearer {self.token}"
         ask = urllib.request.Request(self.base + path, data=data,
                                      headers=headers, method=method)
