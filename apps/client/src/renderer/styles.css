@@ -885,8 +885,40 @@ table.axes .delta { color: var(--vehicle); font-size: 11.5px; }
 
 .credit { margin: 6px 4px 0; color: var(--dim); font-size: 11px; letter-spacing: var(--wide); }
 .credit a { color: var(--dim); }
-.composer-credit { position: absolute; right: 14px; bottom: 8px; }
-.composer-credit .credit { margin: 0; color: rgba(219, 227, 236, 0.55); }
+/* A credit is one line at the bottom of the picture, not a column up the side
+ * of it.
+ *
+ * This was positioned bottom-right with nothing to stop it growing, and the
+ * Red Sea fringing reef's picture is an ISS photograph whose caption runs four
+ * hundred characters — camera body, lens, which crew took it, which contract
+ * the captioner was on. So it laid itself out 416px wide and 136px tall and
+ * climbed straight up through the depth, the heat stress and the colony count,
+ * two sets of words over each other on the first screen anybody sees.
+ *
+ * Clamped to two lines with the full text on hover. The obligation is to name
+ * the photographer, and naming them in a legible line does that; printing the
+ * lens over the reef's own numbers does not. */
+/* Why the Dive button is not going to do anything, beside the Dive button.
+ *
+ * A title attribute is not an answer here: nobody hovers a disabled control,
+ * and least of all somebody watching this over a stand at a conference. The
+ * pill next to it says "a machine is free", so without this the platform reads
+ * as idle and refusing for no reason. */
+.act .not-yet {
+  max-width: 190px; text-align: right;
+  color: var(--dim); font-size: 11.5px; line-height: 1.35;
+  text-shadow: 0 1px 6px rgba(4, 8, 15, 0.9);
+}
+
+.composer-credit {
+  position: absolute; right: 14px; bottom: 8px;
+  max-width: min(44%, 380px); text-align: right;
+}
+.composer-credit .credit {
+  margin: 0; color: rgba(219, 227, 236, 0.55);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; text-shadow: 0 1px 6px rgba(4, 8, 15, 0.9);
+}
 .composer-credit .credit a { color: inherit; }
 
 /* Over a picture the small labels have to carry themselves: lighter, and lifted off the water. */

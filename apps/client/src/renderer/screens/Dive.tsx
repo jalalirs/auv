@@ -202,6 +202,20 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
   const ready = chosenPlace !== undefined && chosenVehicle !== undefined
     && placePackage !== null && vehiclePackage !== null;
 
+  // Why not, when not. A disabled button with no reason beside it is the same
+  // failure as the vehicle line reading "0 to choose from": it is true, it is
+  // the only thing standing between a person and a dive, and it says nothing
+  // about what to do. Worse here, because the pill next to it says "a machine
+  // is free" — so the platform appears to be idle and refusing.
+  const notYet = asking
+    ? "asking the platform…"
+    : chosenPlace === undefined ? "choose a place first"
+    : chosenVehicle === undefined ? "choose a vehicle first"
+    : placePackage === null ? `${chosenPlace.name} has no published package yet`
+    : vehiclePackage === null ? `${chosenVehicle.name} has no published package yet`
+    : task.unavailable !== undefined ? task.unavailable
+    : undefined;
+
   async function go(): Promise<void> {
     if (!ready || held.institution === undefined) return;
     setAsking(true);
@@ -477,9 +491,12 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
               <Pill kind={free > 0 ? "good" : "bad"}>
                 {free > 0 ? "a machine is free" : "everything is busy"}
               </Pill>
-              <button className="big" disabled={asking || !ready || task.unavailable !== undefined} onClick={() => void go()}>
+              <button className="big" title={notYet ?? "Put a dive in the water"}
+                      disabled={asking || !ready || task.unavailable !== undefined} onClick={() => void go()}>
                 {asking ? "Asking for water…" : "Dive"}
               </button>
+              {notYet === undefined || refusal !== "" ? null
+                : <span className="not-yet">{notYet}</span>}
               <span className="refusal">{refusal}</span>
             </div>
           </div>

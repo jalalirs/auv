@@ -129,8 +129,16 @@ export function Credit({ of }: { of: { title?: string; author?: string; licence?
   if (of === undefined) return null;
   if (of.kind === "render") return <p className="credit">Rendered from the package's own model.</p>;
   const words = [of.author ? `Photograph by ${of.author}` : "Photograph", of.licence].filter(Boolean).join(", ");
+  // The whole credit on hover, because the line itself is clamped to two.
+  //
+  // `author` is meant to be a name and is not always one: the Red Sea fringing
+  // reef's picture is an ISS photograph whose author field carries the entire
+  // caption — camera body, lens, crew, and which contract the captioner was on,
+  // four hundred characters of it. Clamping the line keeps it off the reef's
+  // own numbers; the title keeps the obligation intact, because a credit that
+  // has been truncated away is not a credit.
   return (
-    <p className="credit">
+    <p className="credit" title={words}>
       {of.source ? <a href={of.source} target="_blank" rel="noreferrer">{words}</a> : words}
     </p>
   );
