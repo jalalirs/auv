@@ -124,3 +124,36 @@ def test_the_csv_carries_the_fix_error_per_pose(tmp_path):
     rows = (into / "track.csv").read_text().splitlines()
     assert "fixErrorM" in rows[0] and "altitudeM" in rows[0]
     assert rows[1].endswith("5.0")           # hypot(3, 4)
+
+
+def test_it_reads_the_place_s_own_record_not_the_replay_chart(tmp_path):
+    """Two different things wear the word "site" in this runtime.
+
+    The recorder's `_site` is the coarse chart a replay draws — rows, columns,
+    heights, the coral — assembled for the console, and it carries no latitude
+    at all. The first dive flown with this read that one, got no centre, wrote
+    no track, and reported nothing wrong. It was right not to write one; it was
+    reading the wrong thing.
+    """
+    city = tmp_path / "city"
+    city.mkdir()
+    (city / "site.json").write_text(json.dumps({"from": {"centre": CENTRE}}))
+
+    class Dive:
+        brief = {"cityPath": str(city)}
+
+    said = geography.where_the_place_is(Dive())
+    assert geography.centre_of(said) == CENTRE
+
+    # And the chart a replay gets, which is the thing that was being read.
+    chart = {"rows": 512, "columns": 512, "acrossM": 3000.0, "heights": [],
+             "coral": [], "deepestM": 21.59, "shallowestM": 0.0}
+    assert geography.centre_of(chart) is None
+
+
+def test_a_dive_with_no_package_mounted_does_not_raise(tmp_path):
+    class Dive:
+        brief = {"cityPath": str(tmp_path / "nowhere")}
+
+    assert geography.where_the_place_is(Dive()) is None
+    assert geography.where_the_place_is(object()) is None

@@ -191,7 +191,7 @@ class Recorder:
         # its track is worth more than a dive that failed at the very end while
         # writing a file.
         try:
-            wrote = geography.write_track(self.into, self._site)
+            wrote = geography.write_track(self.into, geography.where_the_place_is(dive))
         except Exception as problem:
             wrote = None
             manifest["trackFailed"] = f"{type(problem).__name__}: {problem}"

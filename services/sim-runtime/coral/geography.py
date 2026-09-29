@@ -69,6 +69,25 @@ def centre_of(site: dict | None) -> dict | None:
     return centre
 
 
+def where_the_place_is(dive) -> dict | None:
+    """The place's own site.json, off the mounted package.
+
+    Not the recorder's `_site`, which is a different thing wearing the same
+    word: that is the coarse chart a replay draws — rows, columns, heights, the
+    coral — assembled for the console and carrying no latitude at all. Asking it
+    where on Earth the dive was gets `None`, which is why the first dive flown
+    with this wrote no track and said nothing was wrong. It was right not to
+    write one; it was reading the wrong thing.
+
+    The package has the real record, at the path the dive was given.
+    """
+    try:
+        city = pathlib.Path(dive.brief.get("cityPath", "/dive/city"))
+        return json.loads((city / "site.json").read_text())
+    except Exception:
+        return None
+
+
 def write_track(into: pathlib.Path, site: dict | None) -> dict | None:
     """Read poses.jsonl back and write track.csv and track.geojson beside it.
 
