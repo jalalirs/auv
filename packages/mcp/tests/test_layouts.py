@@ -237,3 +237,25 @@ def test_the_objective_is_carried_through_whole():
     assert dive["objective"]["lengthM"] == 80
     assert dive["objective"]["altitudeM"] == 2.5
     assert dive["objective"]["pictures"] is True
+
+
+def test_it_asks_for_a_runtime_a_host_offers_not_an_image_tag():
+    """An image tag is not a runtime.
+
+    This sent "r1", which is what the image was built under, and the platform
+    answered "no host on that queue offers the runtime r1". Hosts advertise
+    isaac-6.0.1+oceansim — the engine and the extension that contributes the
+    underwater sensors.
+    """
+    platform = Fleet()
+    tools.dives_start(platform, "al-fahal", "bluerov2", {"kind": "reach"})
+    run = platform.asked[-1][1]
+    assert run["runtimeVersion"] == "isaac-6.0.1+oceansim"
+    assert run["runtimeVersion"] != "r1"
+
+
+def test_the_runtime_can_be_overridden_for_a_platform_that_runs_another(monkeypatch):
+    monkeypatch.setenv("CORAL_CITY_RUNTIME_VERSION", "isaac-7.0.0+oceansim")
+    platform = Fleet()
+    said = tools.dives_start(platform, "al-fahal", "bluerov2", {"kind": "reach"})
+    assert said["runtime"] == "isaac-7.0.0+oceansim"

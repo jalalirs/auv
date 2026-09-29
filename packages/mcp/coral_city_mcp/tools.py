@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import json
 import math
+import os
 import re
 import struct
 from typing import Any
@@ -536,13 +537,23 @@ def dives_start(platform: Platform, place: str, vehicle: str,
     queues = platform.queues()
     if not queues:
         raise Refused(409, "no_queue", "no queue is open to this session")
+
+    # The runtime a host actually offers, not a name that looked like one.
+    #
+    # This sent "r1", which is the *image tag* — and the platform answered "no
+    # host on that queue offers the runtime r1". Hosts advertise
+    # `isaac-6.0.1+oceansim`: the engine and the extension that contributes the
+    # underwater sensors, which is a version of the thing that integrates and
+    # renders, and is not the tag somebody happened to build it under.
+    runtime = os.environ.get("CORAL_CITY_RUNTIME_VERSION", RUNTIME)
     run = platform.request("POST", f"/api/v1/dives/{dive['id']}/runs", {
-        "queueId": queues[0]["id"], "mode": "batch", "runtimeVersion": "r1"})
+        "queueId": queues[0]["id"], "mode": "batch",
+        "runtimeVersion": runtime})
 
     return {
         "dive": dive["id"], "run": run["id"], "state": run.get("state"),
         "place": found.get("name"), "vehicle": machine.get("name"),
-        "water": water, "drawn": bool(pictures),
+        "water": water, "drawn": bool(pictures), "runtime": runtime,
         "note": ("queued. dives_result says how it went; a drawn dive runs at "
                  "about a sixth of real time and an undrawn one at fifteen "
                  "times it, on the same trajectory"),
@@ -552,6 +563,11 @@ def dives_start(platform: Platform, place: str, vehicle: str,
 # The seas a dive can be asked for, by name. Constructed rather than observed:
 # nobody measured a current at these places today, and a made-up reading
 # dressed as an observation is the one thing this platform will not do.
+# What the hosts on this platform run. An image tag is not a runtime: the tag
+# says which build, and this says which engine, so a dive asking for one by tag
+# is refused with "no host on that queue offers the runtime r1".
+RUNTIME = "isaac-6.0.1+oceansim"
+
 WATERS = {
     "still": {"currentMetresPerSecond": 0.0, "currentHeadingDeg": 0.0},
     "gentle": {"currentMetresPerSecond": 0.13, "currentHeadingDeg": 45.0},
