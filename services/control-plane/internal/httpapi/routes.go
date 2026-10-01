@@ -47,6 +47,15 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/me/denials",
 		Summary: "refusals the caller has received", Action: policy.SelfRead,
 		Resource: atPlatform(), Handle: d.readOwnDenials})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/me/tokens",
+		Summary: "the tokens the caller has made for programs", Action: policy.SelfRead,
+		Resource: atPlatform(), Handle: d.listTokens})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/me/tokens",
+		Summary: "make a token for a program to act as the caller", Action: policy.SelfRead,
+		Resource: atPlatform(), Handle: d.createToken})
+	rt.register(Route{Method: "DELETE", Pattern: "/api/v1/me/tokens/{tokenId}",
+		Summary: "revoke one of the caller's tokens", Action: policy.SelfRead,
+		Resource: atPlatform(), Handle: d.revokeToken})
 
 	// Institutions and people.
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations",

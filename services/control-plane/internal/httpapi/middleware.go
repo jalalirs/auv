@@ -117,7 +117,7 @@ func recoverPanics(logger *slog.Logger, next http.Handler) http.Handler {
 // then refuses every route that is not public.
 func (d *Dependencies) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		principal, found, err := d.resolvePrincipal(r)
+		principal, found, via, err := d.resolvePrincipal(r)
 		if err != nil {
 			writeError(w, r, err)
 			return
@@ -139,35 +139,47 @@ func (d *Dependencies) authenticate(next http.Handler) http.Handler {
 				OrgIDs:      orgs,
 				IsService:   principal.Kind == identity.Service,
 			},
+			ViaToken: via,
 		}
 		next.ServeHTTP(w, r.WithContext(withCaller(r.Context(), who)))
 	})
 }
 
-func (d *Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, bool, error) {
+func (d *Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, bool, bool, error) {
 	if header := r.Header.Get("Authorization"); header != "" {
 		scheme, credential, found := strings.Cut(header, " ")
 		if !found {
-			return identity.Principal{}, false, nil
+			return identity.Principal{}, false, false, nil
 		}
 		switch {
+		// A personal token is a Bearer like a session, told apart by its
+		// prefix, because every MCP client and every HTTP library already
+		// knows how to send a Bearer and nothing should have to learn a third
+		// scheme for the thing a person is most likely to paste.
+		case strings.EqualFold(scheme, "Bearer") && strings.HasPrefix(credential, identity.TokenPrefix):
+			principal, err := d.Identity.AuthenticateToken(r.Context(), credential)
+			p, ok, err := resolved(principal, err)
+			return p, ok, ok, err
 		case strings.EqualFold(scheme, "Bearer"):
 			principal, err := d.Identity.AuthenticateSession(r.Context(), credential)
-			return resolved(principal, err)
+			p, ok, err := resolved(principal, err)
+			return p, ok, false, err
 		case strings.EqualFold(scheme, "Service"):
 			principal, err := d.Identity.AuthenticateService(r.Context(), credential)
-			return resolved(principal, err)
+			p, ok, err := resolved(principal, err)
+			return p, ok, false, err
 		default:
-			return identity.Principal{}, false, nil
+			return identity.Principal{}, false, false, nil
 		}
 	}
 
 	cookie, err := r.Cookie(SessionCookie)
 	if err != nil || cookie.Value == "" {
-		return identity.Principal{}, false, nil
+		return identity.Principal{}, false, false, nil
 	}
 	principal, authErr := d.Identity.AuthenticateSession(r.Context(), cookie.Value)
-	return resolved(principal, authErr)
+	p, ok, err := resolved(principal, authErr)
+	return p, ok, false, err
 }
 
 // resolved treats credentials that identify nobody as absence rather than as a

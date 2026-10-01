@@ -15,6 +15,7 @@ type Schemas = components["schemas"];
 export type Problem = Schemas["Problem"]["error"];
 export type Principal = Schemas["Principal"];
 export type Organisation = Schemas["Organisation"];
+export type APIToken = Schemas["APIToken"];
 export type City = Schemas["City"];
 export type Vehicle = Schemas["Vehicle"];
 export type AssetVersion = Schemas["AssetVersion"];
@@ -159,6 +160,26 @@ export class Platform {
 
   me(): Promise<{ principal: Principal; organisations: Organisation[] }> {
     return this.#request("GET", "/api/v1/me");
+  }
+
+  // ── tokens a person makes for programs ─────────────────────────────────────
+  //
+  // For pointing an assistant at the platform without handing it a sign-in
+  // secret. The token is shown once, when it is made, and never again.
+
+  async tokens(): Promise<APIToken[]> {
+    const { tokens } = await this.#request<{ tokens: APIToken[] }>("GET", "/api/v1/me/tokens");
+    return tokens;
+  }
+
+  makeToken(name: string, expiresInDays?: number):
+      Promise<{ apiToken: APIToken; token: string; shownOnce: string }> {
+    return this.#request("POST", "/api/v1/me/tokens",
+      expiresInDays ? { name, expiresInDays } : { name });
+  }
+
+  revokeToken(id: string): Promise<void> {
+    return this.#request("DELETE", `/api/v1/me/tokens/${id}`);
   }
 
   /**

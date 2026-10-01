@@ -306,6 +306,133 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The tokens the caller has made for programs
+         * @description Revoked ones included, so a person can see what they turned off and when. The token itself is never listed — only its first characters.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The caller's tokens, newest first. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            tokens?: components["schemas"]["APIToken"][];
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthenticated"];
+            };
+        };
+        put?: never;
+        /**
+         * Make a token for a program to act as the caller
+         * @description For pointing an assistant at this platform without handing it a sign-in secret. Sent as `Authorization: Bearer cc_…`, it acts as the person who made it, with their grants as they are on every request rather than as they were when it was made. Shown once and never stored.
+         *     Refused when the caller is itself using a token: one that could make another would let a leaked token outlive being revoked.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description What will hold it — "my Claude", "the lab laptop". */
+                        name: string;
+                        /** @description Days until it stops working. Absent is no expiry. */
+                        expiresInDays?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description The token, once. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            apiToken?: components["schemas"]["APIToken"];
+                            /** @description The only time this is ever shown. */
+                            token?: string;
+                            shownOnce?: string;
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthenticated"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/tokens/{tokenId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke one of the caller's tokens
+         * @description Immediately. Revoking somebody else's is indistinguishable from revoking one that does not exist.
+         *
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    tokenId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description It no longer works. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthenticated"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organisations": {
         parameters: {
             query?: never;
@@ -5459,6 +5586,23 @@ export interface components {
             maxGpuHoursDaily: number;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /** @description A token a person made for a program to act as them. Opaque on purpose: it resolves to the person on every request, so revoking it stops it at once and what it can do is always what they can do now.
+         *      */
+        APIToken: {
+            id?: string;
+            principalId?: string;
+            name?: string;
+            /** @description Its first characters, to recognise it without showing it. */
+            prefix?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            expiresAt?: string;
+            /** Format: date-time */
+            lastUsedAt?: string;
+            /** Format: date-time */
+            revokedAt?: string;
         };
         /** @description A recorded refusal, so that "why can I not see this" is answerable from data. */
         Denial: {

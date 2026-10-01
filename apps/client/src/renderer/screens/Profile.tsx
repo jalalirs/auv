@@ -6,6 +6,7 @@ import type { Device, Platform } from "@coral-city/api";
 
 import type { Held } from "./Deck.js";
 import { Empty, Fact, PageHead, Pill } from "./parts.js";
+import { Tokens } from "./Tokens.js";
 
 const LIVE = new Set(["queued", "preparing", "running"]);
 
@@ -98,6 +99,8 @@ export function Profile({ platform, held, free, devices }: {
         )}
         <p className="aside">{inFlight.length === 0 ? "Nothing in flight." : `${inFlight.length} in flight: ${inFlight.map((r) => r.run.state).join(", ")}.`}</p>
       </section>
+
+      <Tokens platform={platform} />
 
       <section>
         <h2>Coming</h2>

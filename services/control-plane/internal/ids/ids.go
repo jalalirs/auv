@@ -23,6 +23,7 @@ const (
 	KindPrincipal    Kind = "prin"
 	KindCredential   Kind = "cred"
 	KindSession      Kind = "sess"
+	KindAPIToken     Kind = "tok"
 	KindBinding      Kind = "bind"
 	KindDenial       Kind = "deny"
 	KindAuditEvent   Kind = "aud"
@@ -55,6 +56,7 @@ const (
 
 var kinds = map[Kind]struct{}{
 	KindOrganisation: {}, KindPrincipal: {}, KindCredential: {}, KindSession: {},
+	KindAPIToken: {},
 	KindBinding: {}, KindDenial: {}, KindAuditEvent: {}, KindObject: {},
 	KindUploadGrant: {}, KindCity: {}, KindLayer: {}, KindVersion: {},
 	KindLayout: {}, KindMission: {},

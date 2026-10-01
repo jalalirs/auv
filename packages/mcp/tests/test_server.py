@@ -135,7 +135,7 @@ def test_without_a_credential_it_says_how_to_get_one():
                            "params": {"name": "places_list"}})
     body = json.loads(said["result"]["content"][0]["text"])
     assert body["refused"] == "unauthenticated"
-    assert "agent-credential" in body["why"]
+    assert "Tokens for your assistant" in body["why"]
 
 
 def test_the_caller_s_credential_is_the_one_used():

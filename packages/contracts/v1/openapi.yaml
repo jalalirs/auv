@@ -208,6 +208,92 @@ paths:
                       $ref: '#/components/schemas/Denial'
         '401':
           $ref: '#/components/responses/Unauthenticated'
+  /api/v1/me/tokens:
+    get:
+      tags: [sessions]
+      summary: The tokens the caller has made for programs
+      description: >
+        Revoked ones included, so a person can see what they turned off and
+        when. The token itself is never listed — only its first characters.
+      responses:
+        '200':
+          description: The caller's tokens, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/APIToken'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    post:
+      tags: [sessions]
+      summary: Make a token for a program to act as the caller
+      description: >
+        For pointing an assistant at this platform without handing it a sign-in
+        secret. Sent as `Authorization: Bearer cc_…`, it acts as the person who
+        made it, with their grants as they are on every request rather than as
+        they were when it was made. Shown once and never stored.
+
+        Refused when the caller is itself using a token: one that could make
+        another would let a leaked token outlive being revoked.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  description: What will hold it — "my Claude", "the lab laptop".
+                expiresInDays:
+                  type: integer
+                  minimum: 1
+                  description: Days until it stops working. Absent is no expiry.
+      responses:
+        '201':
+          description: The token, once.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apiToken:
+                    $ref: '#/components/schemas/APIToken'
+                  token:
+                    type: string
+                    description: The only time this is ever shown.
+                  shownOnce: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/me/tokens/{tokenId}:
+    delete:
+      tags: [sessions]
+      summary: Revoke one of the caller's tokens
+      description: >
+        Immediately. Revoking somebody else's is indistinguishable from revoking
+        one that does not exist.
+      parameters:
+        - name: tokenId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: It no longer works.
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/organisations:
     get:
       tags: [identity]
@@ -4553,6 +4639,23 @@ components:
         maxGpuHoursDaily: { type: number, description: GPU-hours in a day, over every card a dive held. }
         updatedAt: { type: string, format: date-time }
 
+    APIToken:
+      type: object
+      description: >
+        A token a person made for a program to act as them. Opaque on purpose:
+        it resolves to the person on every request, so revoking it stops it at
+        once and what it can do is always what they can do now.
+      properties:
+        id: { type: string }
+        principalId: { type: string }
+        name: { type: string }
+        prefix:
+          type: string
+          description: Its first characters, to recognise it without showing it.
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        lastUsedAt: { type: string, format: date-time }
+        revokedAt: { type: string, format: date-time }
     Denial:
       type: object
       required: [id, occurredAt, action, resourceKind, effect, reason, requestId]

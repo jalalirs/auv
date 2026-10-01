@@ -13,6 +13,7 @@ type contextKey int
 const (
 	decisionKey contextKey = iota
 	principalKey
+	viaTokenKey
 )
 
 // caller is the authenticated actor together with what the decision point
@@ -20,11 +21,23 @@ const (
 type caller struct {
 	Principal identity.Principal
 	Subject   policy.Subject
+	// ViaToken is set when the person is acting through a token they made for
+	// a program, rather than having signed in themselves. Everything they may
+	// do they may do this way, except make or revoke tokens: a token that
+	// could mint another would let a leaked one outlive being revoked.
+	ViaToken bool
 }
 
 func withCaller(ctx context.Context, who caller) context.Context {
 	ctx = context.WithValue(ctx, principalKey, who.Principal)
+	ctx = context.WithValue(ctx, viaTokenKey, who.ViaToken)
 	return reqctx.WithSubject(ctx, who.Subject)
+}
+
+// viaToken reports whether the caller came in through a personal token.
+func viaToken(ctx context.Context) bool {
+	via, _ := ctx.Value(viaTokenKey).(bool)
+	return via
 }
 
 // subjectOf returns the authenticated subject, if the request carried one.

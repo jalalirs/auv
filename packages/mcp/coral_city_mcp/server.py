@@ -328,9 +328,9 @@ def _platform_for(header: str | None) -> tuple[Platform | None, Refused | None]:
     base = os.environ.get("CORAL_CITY_PLATFORM", "http://control-plane:8080")
     if not header:
         return None, Refused(401, "unauthenticated",
-                             "send your own credential: Authorization: Service "
-                             "<principal>:<secret>, from `docker compose run --rm "
-                             "agent-credential`")
+                             "send your own credential: make a token in the Coral "
+                             "City application under Profile → Tokens for your "
+                             "assistant, and send it as Authorization: Bearer cc_…")
     scheme, _, credential = header.partition(" ")
     if scheme.lower() == "service" and credential:
         return Platform(base, service=credential), None
