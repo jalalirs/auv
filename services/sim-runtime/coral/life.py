@@ -269,7 +269,7 @@ class Shoal:
 
     def __init__(self, groups: dict, floor_at, across: float,
                  water_level: float = 0.0, seed: int = 0, about=(0.0, 0.0),
-                 scale: float = 1.0) -> None:
+                 scale: float = 1.0, box=None) -> None:
         self.rng = np.random.default_rng(seed)
         # How much of a reef's distances this water has room for. One on a
         # reef; about a tenth in a one-metre tank, where a damselfish holding
@@ -288,6 +288,12 @@ class Shoal:
         # measuring from the wrong place. They were clipped back off the dive
         # on the first step.
         self.about = np.array([float(about[0]), float(about[1])])
+        # The half-sizes of the water they may use, when it is not square: a
+        # long tank is twice as long as it is wide, and a square the size of
+        # its width leaves half the tank empty. `across` still sizes the
+        # remembered floor, which must cover the box.
+        self.box = (np.array([float(box[0]), float(box[1])]) if box is not None
+                    else np.array([0.49 * self.across, 0.49 * self.across]))
 
         kinds, home, above, school = [], [], [], []
         schools = 0
@@ -300,8 +306,7 @@ class Shoal:
             while put < many:
                 # One school at a time, each with its own patch of reef.
                 size = min(int(self.rng.integers(low, high + 1)), many - put)
-                at = self.about + self.rng.uniform(
-                    -0.45 * across, 0.45 * across, 2)
+                at = self.about + self.rng.uniform(-0.92, 0.92, 2) * self.box
                 held = max(0.2 * self.scale, self.rng.normal(*says["above"]) * self.scale)
                 for _ in range(size):
                     kinds.append(name)
@@ -468,9 +473,8 @@ class Shoal:
         floor = self._floor(self.at[:, :2])
         self.at[:, 2] = np.clip(self.at[:, 2], floor + 0.08 * max(self.scale, 0.3),
                                 self.water_level - 0.3 * max(self.scale, 0.15))
-        edge = 0.49 * self.across
-        self.at[:, :2] = np.clip(self.at[:, :2], self.about - edge,
-                                 self.about + edge)
+        self.at[:, :2] = np.clip(self.at[:, :2], self.about - self.box,
+                                 self.about + self.box)
 
     def seen_from(self, at, looking, half_angle_deg: float = 32.0,
                   reach: float = 12.0) -> dict:

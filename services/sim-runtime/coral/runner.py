@@ -3320,17 +3320,19 @@ class Dive:
             return None
         if self.interior is not None:
             low, high = self.interior
-            across = float(min(high[0] - low[0], high[1] - low[1]))
+            long_, wide = float(high[0] - low[0]), float(high[1] - low[1])
             about = ((float(low[0]) + float(high[0])) / 2, (float(low[1]) + float(high[1])) / 2)
         else:
-            across, about = 1.0, (0.0, 0.0)
+            long_, wide, about = 1.0, 1.0, (0.0, 0.0)
+        across = max(long_, wide)
         shoal = life.Shoal(
             groups,
             lambda x, y: (self.seabed.under(float(x), float(y))
                           if self.seabed is not None else self.floor),
-            across=0.92 * across, water_level=0.0,
+            across=across, water_level=0.0,
             seed=int(self.brief.get("seed", 0)), about=about,
-            scale=float(says.get("scale", 1.0)))
+            scale=float(says.get("scale", 1.0)),
+            box=(0.46 * long_, 0.46 * wide))
         try:
             life.put_them_in(stage, shoal)
         except Exception as bad:

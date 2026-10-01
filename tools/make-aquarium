@@ -33,7 +33,11 @@ import numpy as np
 import coral
 
 # ── the tank ─────────────────────────────────────────────────────────────────
-INSIDE = 1.0           # metres, inside the glass, each way
+# Two cubic metres, as a long tank: 2 m along x, 1 m across, 1 m deep. The
+# first was a 1 m cube, and a vehicle a third of a metre long had nowhere to
+# go in it but round; length is what lets it run, turn and be followed.
+LONG = 2.0             # metres inside the glass, along x
+WIDE = 1.0             # across, along y
 GLASS = 0.012
 FREEBOARD = 0.05       # glass above the water
 FLOOR_Z = -0.95        # inside bottom of the tank
@@ -41,13 +45,16 @@ STAND_H = 0.60
 BOARD = 0.018
 ROOM_FLOOR = FLOOR_Z - GLASS - BOARD - STAND_H
 SAND = 0.055           # mean depth of the sand bed
-GRID = 129             # heightfield samples each way across the inside
+GRID = 257             # heightfield samples each way; the field is square, LONG across, and the tank sits in its middle
 
 # ── what sits on the sand ────────────────────────────────────────────────────
 # Rock first, then coral on the rock: (x, y, radius, height, lean).
-ROCKS = [(-0.24, 0.20, 0.17, 0.24, 0.3), (-0.06, 0.30, 0.11, 0.14, -0.2),
-         (-0.30, -0.12, 0.10, 0.13, 0.1), (0.22, 0.26, 0.10, 0.11, 0.4),
-         (0.05, -0.28, 0.08, 0.09, -0.1), (0.30, -0.18, 0.06, 0.06, 0.0)]
+# A main reef at the back left, an outcrop at the right, open sand between
+# them for the vehicle to fly over.
+ROCKS = [(-0.62, 0.20, 0.22, 0.28, 0.3), (-0.34, 0.28, 0.13, 0.16, -0.2),
+         (-0.75, -0.12, 0.13, 0.15, 0.1), (0.55, 0.24, 0.16, 0.18, 0.4),
+         (0.78, 0.05, 0.10, 0.11, -0.1), (0.10, 0.30, 0.08, 0.08, 0.0),
+         (0.35, -0.25, 0.07, 0.06, 0.2), (-0.15, -0.28, 0.06, 0.05, 0.0)]
 # Kinds and the colours a reef tank's corals are under blue light, which are
 # not the browns of a reef in the sea: these are chosen for being seen.
 # No tables and no encrusting sheets: at this size a table is a flat plate
@@ -56,12 +63,15 @@ CORALS = [("branching", 0.16, "violet"), ("branching", 0.13, "teal"), ("brain", 
           ("finger", 0.12, "orange"), ("massive", 0.09, "lime"), ("plume", 0.18, "purple"),
           ("fan", 0.15, "red"), ("branching", 0.11, "pink"), ("brain", 0.08, "orange"),
           ("finger", 0.10, "violet"), ("sponge", 0.09, "yellow"), ("massive", 0.08, "green"),
-          ("branching", 0.12, "lime"), ("plume", 0.14, "pink"), ("finger", 0.09, "teal")]
+          ("branching", 0.12, "lime"), ("plume", 0.14, "pink"), ("finger", 0.09, "teal"),
+          ("branching", 0.15, "purple"), ("brain", 0.09, "pink"), ("plume", 0.16, "teal"),
+          ("massive", 0.10, "orange"), ("fan", 0.13, "violet"), ("branching", 0.10, "orange"),
+          ("finger", 0.11, "lime"), ("sponge", 0.08, "red")]
 TANK_COLOURS = {"violet": (0.45, 0.25, 0.85), "teal": (0.10, 0.70, 0.66), "green": (0.30, 0.78, 0.30),
                 "pink": (0.95, 0.40, 0.65), "orange": (0.98, 0.52, 0.15), "lime": (0.70, 0.90, 0.20),
                 "purple": (0.60, 0.20, 0.60), "red": (0.85, 0.18, 0.18), "yellow": (0.98, 0.85, 0.25)}
-# Fish a one-metre tank holds: small, and not many.
-FISH = {"damselfish": 9, "wrasse": 3, "butterflyfish": 2, "bottom": 3}
+# Fish two cubic metres hold: small, and not many.
+FISH = {"damselfish": 16, "wrasse": 5, "butterflyfish": 2, "bottom": 5}
 
 
 # ── geometry ─────────────────────────────────────────────────────────────────
@@ -188,11 +198,10 @@ def ground(rng):
 
     The vehicle's floor is this field, so it rests on the rock rather than in
     it; the rock is also drawn as its own mesh, which is what it looks like."""
-    half = INSIDE / 2
-    line = np.linspace(-half, half, GRID)
+    line = np.linspace(-LONG / 2, LONG / 2, GRID)
     X, Y = np.meshgrid(line, line)
     sand = (FLOOR_Z + SAND + 0.006 * np.sin(X * 31 + 0.7 * np.sin(Y * 9)) + 0.004 * np.sin(Y * 23 + 1.3)
-            + 0.02 * (X + half) * 0.4)
+            + 0.015 * np.sin(X * 2.2 + 0.4))
     rock = np.full_like(sand, -9.0)
     for x, y, r, h, lean in ROCKS:
         d = np.hypot(X - x, (Y - y) * (1 + 0.25 * lean))
@@ -202,16 +211,15 @@ def ground(rng):
     return line, sand, rock, heights
 
 
-def field_mesh(line, z, mask=None):
-    n = len(line)
-    X, Y = np.meshgrid(line, line)
+def field_mesh(xs, ys, z):
+    """A grid of heights as triangles; z is indexed [y, x]."""
+    n, m = len(xs), len(ys)
+    X, Y = np.meshgrid(xs, ys)
     p = np.stack([X.ravel(), Y.ravel(), z.ravel()], axis=1)
     faces = []
-    for j in range(n - 1):
+    for j in range(m - 1):
         for i in range(n - 1):
             a = j * n + i
-            if mask is not None and not (mask[j, i] or mask[j, i + 1] or mask[j + 1, i] or mask[j + 1, i + 1]):
-                continue
             faces += [(a, a + 1, a + n + 1), (a, a + n + 1, a + n)]
     return p, np.array(faces)
 
@@ -259,67 +267,75 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
     grey = s.look("Grey", (0.35, 0.36, 0.38), rough=0.5, metal=0.3)
     green = s.look("Status", (0.1, 0.9, 0.3), rough=0.3, emissive=(0.1, 1.2, 0.3))
 
-    half = INSIDE / 2
-    out = half + GLASS
+    hx, hy = LONG / 2, WIDE / 2
+    ox, oy = hx + GLASS, hy + GLASS
     top = FREEBOARD
     bottom = FLOOR_Z - GLASS
 
     # Room: a floor and two walls, open towards the cameras.
-    s.add("Room/Floor", *box((-2.0, -2.2, ROOM_FLOOR - 0.02), (3.5, 2.5, ROOM_FLOOR)), floor)
-    s.add("Room/BackWall", *box((-1.05, -2.2, ROOM_FLOOR), (-1.0, 2.5, ROOM_FLOOR + 2.8)), wall)
-    s.add("Room/SideWall", *box((-1.05, -1.75, ROOM_FLOOR), (3.5, -1.70, ROOM_FLOOR + 2.8)), wall)
+    s.add("Room/Floor", *box((-2.6, -2.2, ROOM_FLOOR - 0.02), (4.0, 3.0, ROOM_FLOOR)), floor)
+    s.add("Room/BackWall", *box((-1.65, -2.2, ROOM_FLOOR), (-1.60, 3.0, ROOM_FLOOR + 2.8)), wall)
+    s.add("Room/SideWall", *box((-1.65, -1.75, ROOM_FLOOR), (4.0, -1.70, ROOM_FLOOR + 2.8)), wall)
 
     # Stand: a steel frame and an oak board.
+    # Two tonnes of water: six legs, not four.
     legs = []
-    for sx in (-1, 1):
+    for cx in (-(ox - 0.02), 0.0, ox - 0.02):
         for sy in (-1, 1):
-            cx, cy = sx * (out - 0.02), sy * (out - 0.02)
-            legs.append(box((cx - 0.02, cy - 0.02, ROOM_FLOOR), (cx + 0.02, cy + 0.02, bottom - BOARD)))
-    for zc in (ROOM_FLOOR + 0.06, bottom - BOARD - 0.02):
+            cy = sy * (oy - 0.02)
+            legs.append(box((cx - 0.025, cy - 0.025, ROOM_FLOOR), (cx + 0.025, cy + 0.025, bottom - BOARD)))
+    for zc in (ROOM_FLOOR + 0.06, bottom - BOARD - 0.025):
         for sy in (-1, 1):
-            legs.append(box((-out, sy * (out - 0.02) - 0.02, zc - 0.02), (out, sy * (out - 0.02) + 0.02, zc + 0.02)))
-        for sx in (-1, 1):
-            legs.append(box((sx * (out - 0.02) - 0.02, -out, zc - 0.02), (sx * (out - 0.02) + 0.02, out, zc + 0.02)))
+            legs.append(box((-ox, sy * (oy - 0.02) - 0.025, zc - 0.025), (ox, sy * (oy - 0.02) + 0.025, zc + 0.025)))
+        for cx in (-(ox - 0.02), 0.0, ox - 0.02):
+            legs.append(box((cx - 0.025, -oy, zc - 0.025), (cx + 0.025, oy, zc + 0.025)))
     s.add("Stand/Frame", *join(*legs), steel)
-    s.add("Stand/Board", *box((-out - 0.01, -out - 0.01, bottom - BOARD), (out + 0.01, out + 0.01, bottom)), oak)
+    s.add("Stand/Board", *box((-ox - 0.01, -oy - 0.01, bottom - BOARD), (ox + 0.01, oy + 0.01, bottom)), oak)
 
     # The glass: five panes, black trim along the top and the bottom.
-    panes = [box((-out, -out, bottom), (out, out, FLOOR_Z)),
-             box((-out, -out, FLOOR_Z), (-half, out, top)), box((half, -out, FLOOR_Z), (out, out, top)),
-             box((-half, -out, FLOOR_Z), (half, -half, top)), box((-half, half, FLOOR_Z), (half, out, top))]
+    panes = [box((-ox, -oy, bottom), (ox, oy, FLOOR_Z)),
+             box((-ox, -oy, FLOOR_Z), (-hx, oy, top)), box((hx, -oy, FLOOR_Z), (ox, oy, top)),
+             box((-hx, -oy, FLOOR_Z), (hx, -hy, top)), box((-hx, hy, FLOOR_Z), (hx, oy, top))]
     s.add("Tank/Glass", *join(*panes), glass)
     rims = []
     for z0, z1 in ((top - 0.025, top), (bottom, bottom + 0.03)):
-        rims += [box((-out - 0.002, -out - 0.002, z0), (out + 0.002, -out + 0.03, z1)),
-                 box((-out - 0.002, out - 0.03, z0), (out + 0.002, out + 0.002, z1)),
-                 box((-out - 0.002, -out, z0), (-out + 0.03, out, z1)),
-                 box((out - 0.03, -out, z0), (out + 0.002, out, z1))]
+        rims += [box((-ox - 0.002, -oy - 0.002, z0), (ox + 0.002, -oy + 0.03, z1)),
+                 box((-ox - 0.002, oy - 0.03, z0), (ox + 0.002, oy + 0.002, z1)),
+                 box((-ox - 0.002, -oy, z0), (-ox + 0.03, oy, z1)),
+                 box((ox - 0.03, -oy, z0), (ox + 0.002, oy, z1))]
+    # A euro-brace across the middle of the top, which a two-metre tank needs.
+    rims.append(box((-0.03, -oy, top - 0.025), (0.03, oy, top)))
     s.add("Tank/Trim", *join(*rims), trim)
     # The water as a body, for looking at the tank from outside. Hidden when
     # the camera is in it: the medium inside is the renderer's, not a box's.
-    s.add("Tank/WaterBody", *box((-half + 0.001, -half + 0.001, FLOOR_Z), (half - 0.001, half - 0.001, -0.002)), water)
+    s.add("Tank/WaterBody", *box((-hx + 0.001, -hy + 0.001, FLOOR_Z), (hx - 0.001, hy - 0.001, -0.002)), water)
 
     # Sand and rock.
     line, sand_z, rock_z, heights = ground(rng)
 
+    def cell(x, y):
+        return (int(np.clip((x + LONG / 2) / LONG * (GRID - 1), 0, GRID - 1)),
+                int(np.clip((y + LONG / 2) / LONG * (GRID - 1), 0, GRID - 1)))
+
     def sand_at(x, y):
-        i = int(np.clip((x + half) / INSIDE * (GRID - 1), 0, GRID - 1))
-        j = int(np.clip((y + half) / INSIDE * (GRID - 1), 0, GRID - 1))
+        i, j = cell(x, y)
         return float(sand_z[j, i])
 
     def ground_at(x, y):
-        i = int(np.clip((x + half) / INSIDE * (GRID - 1), 0, GRID - 1))
-        j = int(np.clip((y + half) / INSIDE * (GRID - 1), 0, GRID - 1))
+        i, j = cell(x, y)
         return float(heights[j, i])
 
-    s.add("Tank/Sand", *field_mesh(line, sand_z), sand, smooth=True)
+    # The sand is drawn only inside the glass; the field runs wider so the
+    # runtime can read it as one square.
+    inside_y = np.flatnonzero(np.abs(line) <= hy + 1e-9)
+    s.add("Tank/Sand", *field_mesh(line, line[inside_y], sand_z[inside_y]), sand, smooth=True)
     for i, (x, y, r, h, lean) in enumerate(ROCKS):
         s.add(f"Tank/Rock{i}", *rock_mesh(rng, x, y, r, h, lean, sand_at), rockl, smooth=True)
 
     # Coral, on the rock where there is rock and on the sand where there is not.
     placed = []
     spots = [(x + rng.uniform(-0.5, 0.5) * r, y + rng.uniform(-0.5, 0.5) * r) for x, y, r, h, lean in ROCKS for _ in range(2)]
-    spots += [(rng.uniform(-0.4, 0.4), rng.uniform(-0.4, 0.4)) for _ in range(6)]
+    spots += [(rng.uniform(-0.85, 0.85), rng.uniform(-0.4, 0.4)) for _ in range(8)]
     for i, (kind, size, colour) in enumerate(CORALS):
         x, y = spots[i % len(spots)]
         p, f = coral.grow_one(kind, rng, size)
@@ -331,8 +347,9 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
         placed.append({"kind": kind, "sizeM": size, "colour": colour, "at": [round(x, 3), round(y, 3)]})
 
     # The pump, on the back glass, and the fan on the rim.
-    s.add("Tank/Pump", *join(cylinder((-half + 0.005, -0.30, -0.35), (-half + 0.07, -0.30, -0.35), 0.03),
-                             cylinder((-half + 0.07, -0.30, -0.35), (-half + 0.10, -0.30, -0.35), 0.015)), black)
+    s.add("Tank/Pump", *join(cylinder((-hx + 0.005, -0.30, -0.35), (-hx + 0.07, -0.30, -0.35), 0.03),
+                             cylinder((-hx + 0.07, -0.30, -0.35), (-hx + 0.10, -0.30, -0.35), 0.015)), black)
+    out = ox
     fan_at = np.array([out + 0.06, 0.0, top + 0.10])
     ring = []
     for k in range(48):
@@ -344,72 +361,79 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
     s.add("Room/Fan", *join(*ring, *blades, cylinder(fan_at + [0.02, 0, 0], fan_at + [0.05, 0, 0], 0.03),
                             box((out - 0.01, -0.03, top - 0.06), (out + 0.10, 0.03, top + 0.02))), black)
 
-    # The gantry, the overhead camera and two LED bars.
-    post_x = -out - 0.12
-    g = [box((post_x - 0.02, sy * 0.55 - 0.02, bottom - BOARD), (post_x + 0.02, sy * 0.55 + 0.02, 1.30)) for sy in (-1, 1)]
-    g.append(box((post_x - 0.02, -0.57, 1.28), (post_x + 0.02, 0.57, 1.32)))
-    g.append(box((post_x, -0.02, 1.26), (0.02, 0.02, 1.30)))
-    for bx in (-0.28, 0.28):
-        g.append(box((bx - 0.01, -0.01, 0.42), (bx + 0.01, 0.01, 1.28)) if bx < 0 else box((bx - 0.01, -0.01, 0.42), (bx + 0.01, 0.01, 1.26)))
+    # The gantry over the middle, the overhead camera on it, and two LED bars
+    # along the tank's length. The camera sits high enough to see both ends.
+    cam_z = 1.45
+    post_y = oy + 0.12
+    g = [box((sx * 0.02 - 0.02, sy * post_y - 0.02, bottom - BOARD), (sx * 0.02 + 0.02, sy * post_y + 0.02, cam_z + 0.15))
+         for sx in (0,) for sy in (-1, 1)]
+    g.append(box((-0.02, -post_y, cam_z + 0.11), (0.02, post_y, cam_z + 0.15)))
+    for by in (-0.25, 0.25):
+        g += [box((sx - 0.01, by - 0.01, 0.42), (sx + 0.01, by + 0.01, cam_z + 0.11)) for sx in (-0.7, 0.7)]
+        g.append(box((-0.72, by - 0.01, cam_z + 0.09), (0.72, by + 0.01, cam_z + 0.11)))
+    g.append(box((-0.02, -0.26, cam_z + 0.09), (0.02, 0.26, cam_z + 0.11)))
     s.add("Rig/Gantry", *join(*g), steel)
-    s.add("Rig/OverheadCamera", *join(box((-0.035, -0.035, 1.17), (0.035, 0.035, 1.26)),
-                                      cylinder((0, 0, 1.17), (0, 0, 1.15), 0.015)), black)
-    s.add("Rig/LedBars", *join(box((-0.32, -0.45, 0.40), (-0.24, 0.45, 0.42)), box((0.24, -0.45, 0.40), (0.32, 0.45, 0.42))), led)
-    for bx in (-0.28, 0.28):
+    s.add("Rig/OverheadCamera", *join(box((-0.035, -0.035, cam_z + 0.02), (0.035, 0.035, cam_z + 0.11)),
+                                      cylinder((0, 0, cam_z + 0.02), (0, 0, cam_z), 0.015)), black)
+    s.add("Rig/LedBars", *join(box((-0.85, -0.29, 0.40), (0.85, -0.21, 0.42)), box((-0.85, 0.21, 0.40), (0.85, 0.29, 0.42))), led)
+    for by in (-0.25, 0.25):
         s.extra.append(
-            '    def RectLight "Led%s"\n    {\n        float inputs:width = 0.08\n        float inputs:height = 0.9\n'
+            '    def RectLight "Led%s"\n    {\n        float inputs:width = 1.7\n        float inputs:height = 0.08\n'
             '        float inputs:intensity = 9000\n        color3f inputs:color = (0.85, 0.92, 1.0)\n'
-            '        double3 xformOp:translate = (%.3f, 0, 0.395)\n        uniform token[] xformOpOrder = ["xformOp:translate"]\n    }\n'
-            % ("West" if bx < 0 else "East", bx))
+            '        double3 xformOp:translate = (0, %.3f, 0.395)\n        uniform token[] xformOpOrder = ["xformOp:translate"]\n    }\n'
+            % ("South" if by < 0 else "North", by))
     # A soft ceiling light for the room.
     s.extra.append('    def RectLight "Ceiling"\n    {\n        float inputs:width = 2.5\n        float inputs:height = 2.5\n'
                    '        float inputs:intensity = 1800\n        color3f inputs:color = (1.0, 0.96, 0.9)\n'
-                   '        double3 xformOp:translate = (0.8, -0.4, %.3f)\n        uniform token[] xformOpOrder = ["xformOp:translate"]\n    }\n'
+                   '        double3 xformOp:translate = (0.5, -0.2, %.3f)\n        uniform token[] xformOpOrder = ["xformOp:translate"]\n    }\n'
                    % (ROOM_FLOOR + 2.75))
 
     # The desk, the DGX Spark, the switch, a monitor and a keyboard.
+    # Beyond the tank's end, against the side wall, so the room camera sees
+    # the tank's long side and the desk in one picture.
     dz = ROOM_FLOOR + 0.75
-    d0, d1 = (0.45, -1.68), (1.85, -1.05)
+    dx = 0.85
+    d0, d1 = (0.45 + dx, -1.68), (1.85 + dx, -1.05)
     parts = [box((d0[0], d0[1], dz - 0.03), (d1[0], d1[1], dz))]
     for lx in (d0[0] + 0.04, d1[0] - 0.04):
         for ly in (d0[1] + 0.04, d1[1] - 0.04):
             parts.append(box((lx - 0.02, ly - 0.02, ROOM_FLOOR), (lx + 0.02, ly + 0.02, dz - 0.03)))
     s.add("Desk/Desk", *join(*parts), desk)
-    s.add("Desk/DgxSpark", *box((1.30, -1.45, dz), (1.45, -1.30, dz + 0.0505)), gold)
-    s.add("Desk/Switch", *box((0.70, -1.40, dz), (0.92, -1.28, dz + 0.035)), black)
-    s.add("Desk/SwitchLights", *join(*[box((0.92, -1.39 + 0.02 * k, dz + 0.012), (0.9225, -1.38 + 0.02 * k, dz + 0.02)) for k in range(5)]), green)
-    s.add("Desk/MonitorStand", *join(box((1.00, -1.62, dz), (1.20, -1.52, dz + 0.01)), box((1.08, -1.60, dz), (1.12, -1.57, dz + 0.32))), grey)
-    s.add("Desk/Monitor", *box((0.82, -1.60, dz + 0.17), (1.38, -1.57, dz + 0.50)), black)
-    s.add("Desk/MonitorScreen", *box((0.835, -1.5705, dz + 0.185), (1.365, -1.568, dz + 0.485)), screen)
-    s.add("Desk/Keyboard", *box((0.95, -1.35, dz), (1.32, -1.22, dz + 0.015)), grey)
+    s.add("Desk/DgxSpark", *box((1.30 + dx, -1.45, dz), (1.45 + dx, -1.30, dz + 0.0505)), gold)
+    s.add("Desk/Switch", *box((0.70 + dx, -1.40, dz), (0.92 + dx, -1.28, dz + 0.035)), black)
+    s.add("Desk/SwitchLights", *join(*[box((0.92 + dx, -1.39 + 0.02 * k, dz + 0.012), (0.9225 + dx, -1.38 + 0.02 * k, dz + 0.02)) for k in range(5)]), green)
+    s.add("Desk/MonitorStand", *join(box((1.00 + dx, -1.62, dz), (1.20 + dx, -1.52, dz + 0.01)), box((1.08 + dx, -1.60, dz), (1.12 + dx, -1.57, dz + 0.32))), grey)
+    s.add("Desk/Monitor", *box((0.82 + dx, -1.60, dz + 0.17), (1.38 + dx, -1.57, dz + 0.50)), black)
+    s.add("Desk/MonitorScreen", *box((0.835 + dx, -1.5705, dz + 0.185), (1.365 + dx, -1.568, dz + 0.485)), screen)
+    s.add("Desk/Keyboard", *box((0.95 + dx, -1.35, dz), (1.32 + dx, -1.22, dz + 0.015)), grey)
 
     # Cables: the tether from the switch over the rim, and the switch to the DGX.
-    tether = list(curve((0.92, -1.32, dz + 0.02), (0.60, -0.62, top + 0.02), -0.25, 18))
-    tether += [(0.45, -0.45, top + 0.03), (0.40, -0.40, top - 0.08)]
+    tether = list(curve((0.92 + dx, -1.32, dz + 0.02), (0.90, -0.62, top + 0.02), -0.25, 18))
+    tether += [(0.85, -oy + 0.02, top + 0.03), (0.80, -hy + 0.10, top - 0.08)]
     s.add("Rig/Tether", *tube(tether, 0.0035), cable)
-    s.add("Desk/Patch", *tube(list(curve((0.92, -1.36, dz + 0.01), (1.30, -1.40, dz + 0.02), -0.01, 8)), 0.003), black)
-    s.add("Rig/CameraCable", *tube([(post_x, 0.0, 1.29), (post_x + 0.03, -0.55, 1.29), (post_x + 0.03, -0.57, bottom),
-                                    (0.6, -1.2, ROOM_FLOOR + 0.01), (0.8, -1.38, dz + 0.01)], 0.003), black)
+    s.add("Desk/Patch", *tube(list(curve((0.92 + dx, -1.36, dz + 0.01), (1.30 + dx, -1.40, dz + 0.02), -0.01, 8)), 0.003), black)
+    s.add("Rig/CameraCable", *tube([(0.03, 0.0, cam_z + 0.12), (0.03, -post_y, cam_z + 0.12), (0.03, -post_y - 0.03, bottom),
+                                    (0.6 + dx, -1.2, ROOM_FLOOR + 0.01), (0.8 + dx, -1.38, dz + 0.01)], 0.003), black)
 
     into.mkdir(parents=True, exist_ok=True)
-    s.write(into / "tank.usda", f"{name}: a 1 m glass tank in a room. Metres, Z up, z = 0 at the water surface. Chosen, not measured.")
+    s.write(into / "tank.usda", f"{name}: a {LONG:g} x {WIDE:g} m glass tank in a room. Metres, Z up, z = 0 at the water surface. Chosen, not measured.")
     heights.astype("<f4").tofile(into / "seabed.f32")
     return {"corals": placed, "lowest": float(heights.min()), "highest": float(heights.max()),
             "meshes": len(s.meshes)}
 
 
 def a_place(name: str, made: dict) -> dict:
-    half = INSIDE / 2
+    hx, hy = LONG / 2, WIDE / 2
     return {
         "name": name,
         "from": {"surveyed": False, "measured": False, "fetched": False,
-                 "source": "chosen: the tank its owner asked for, a 1 m glass cube, and a room built round it",
-                 "acrossMetres": INSIDE, "lengthM": INSIDE, "widthM": INSIDE, "depthM": round(-FLOOR_Z, 3),
-                 "sampleMetres": round(INSIDE / (GRID - 1), 4), "decimatedBy": 1},
+                 "source": "chosen: the tank its owner asked for, two cubic metres as 2 x 1 x 1 m of glass, and a room built round it",
+                 "acrossMetres": LONG, "lengthM": LONG, "widthM": WIDE, "depthM": round(-FLOOR_Z, 3),
+                 "sampleMetres": round(LONG / (GRID - 1), 4), "decimatedBy": 1},
         "datum": "still water; z = 0 is the free surface and depth is negative z",
         "enclosed": True,
         # Inside the glass, which is what the vehicle is kept within.
-        "interior": {"min": [-half, -half, FLOOR_Z], "max": [half, half, 0.0],
+        "interior": {"min": [-hx, -hy, FLOOR_Z], "max": [hx, hy, 0.0],
                      "why": "the glass is a wall: a vehicle stops at it rather than passing through"},
         "deepestM": round(-made["lowest"], 3),
         "shallowestM": round(-made["highest"], 3),
@@ -420,38 +444,41 @@ def a_place(name: str, made: dict) -> dict:
                  "from": "chosen: a reef tank's aquascape, coloured as aquarium corals are under blue light",
                  "colonies_at": made["corals"]},
         "layers": {"terrain": "tank.usda"},
-        "beginAt": [0.15, 0.0, -0.35],
-        "beginBecause": "in open water in the middle of the tank, above the rock, facing the room",
-        "life": {"tank": True, "count": FISH, "scale": 0.12,
-                 "from": "chosen: what a one-metre reef tank holds — chromis, a few wrasse, a pair of butterflies, gobies on the sand"},
+        "beginAt": [0.0, 0.0, -0.4],
+        "beginBecause": "in open water in the middle of the tank, over the sand between the two reefs",
+        "life": {"tank": True, "count": FISH, "scale": 0.14,
+                 "from": "chosen: what a two-cubic-metre reef tank holds — chromis, wrasse, a pair of butterflies, gobies on the sand"},
         "water": {"type": "I", "from": "chosen: a filtered tank is clearer than the open ocean"},
-        # How the cameras sit in a place a metre across. The built-in views are
-        # sized for a reef and every one of them would be outside the glass.
+        # How the cameras sit in a place two metres long. The built-in views
+        # are sized for a reef and every one of them would be outside the glass.
         "cameras": {
-            "chase": {"behind": 0.55, "above": 0.18},
-            "top": {"above": 0.75},
+            "chase": {"behind": 0.7, "above": 0.2},
+            "top": {"above": 0.85},
             "orbit": {"radius": 0.45, "above": 0.12},
             "front": {"ahead": 0.19, "aim": 1.5},
             "down": {"below": 0.07, "aim": 1.0},
             "keepInside": True,
             "fixed": {
-                "room": {"eye": [2.3, 1.45, -0.42], "aim": [0.15, -0.4, -0.7],
+                "room": {"eye": [2.7, 3.0, -0.25], "aim": [0.55, -0.55, -0.75],
                          "what": "the whole bench from the room: tank, stand, rig, desk"},
-                "glass": {"eye": [1.55, 0.0, -0.45], "aim": [0.0, 0.0, -0.5],
-                          "what": "face to the glass, the tank filling the frame"},
-                "overhead": {"eye": [0.0, 0.0, 1.13], "aim": [0.0, 0.0, -0.9], "up": [1.0, 0.0, 0.0],
+                "glass": {"eye": [0.0, 2.15, -0.45], "aim": [0.0, 0.0, -0.5],
+                          "what": "face to the long glass, the tank filling the frame"},
+                "end": {"eye": [2.3, 0.0, -0.45], "aim": [0.0, 0.0, -0.5],
+                        "what": "down the length of the tank from its end, past the fan"},
+                "overhead": {"eye": [0.0, 0.0, 1.43], "aim": [0.0, 0.0, -0.9], "up": [1.0, 0.0, 0.0],
                              "what": "the gantry camera, which is how the tank knows where the vehicle is"},
-                "desk": {"eye": [1.55, -0.55, 0.05], "aim": [1.0, -1.45, -0.75],
+                "desk": {"eye": [2.6, -0.35, -0.25], "aim": [1.95, -1.4, -0.8],
                          "what": "the desk: the DGX Spark, the switch, the tether going to the tank"},
             },
         },
         "rig": {
-            "fan": {"at": [round(INSIDE / 2 + GLASS + 0.06, 3), 0.0, round(FREEBOARD + 0.10, 3)], "blowsTowardsDeg": 270,
-                    "what": "blows across the surface: conditions windMetresPerSecond"},
-            "pump": {"at": [-0.43, -0.30, -0.35], "pushesTowardsDeg": 90,
+            "fan": {"at": [round(LONG / 2 + GLASS + 0.06, 3), 0.0, round(FREEBOARD + 0.10, 3)], "blowsTowardsDeg": 270,
+                    "what": "blows the length of the surface: conditions windMetresPerSecond"},
+            "pump": {"at": [round(-LONG / 2 + 0.07, 3), -0.30, -0.35], "pushesTowardsDeg": 90,
                      "what": "the circulation pump: conditions currentMetresPerSecond"},
-            "overheadCamera": {"at": [0.0, 0.0, 1.15], "lookingDown": True},
-            "computer": {"kind": "dgx-spark", "at": [1.375, -1.375]},
+            "overheadCamera": {"at": [0.0, 0.0, 1.45], "lookingDown": True},
+            "waterTonnes": round(LONG * WIDE * -FLOOR_Z, 2),
+            "computer": {"kind": "dgx-spark", "at": [2.225, -1.375]},
         },
         "ground": {"hardnessFrom": "sand and rock", "colourFrom": "chosen", "surveyed": False},
     }

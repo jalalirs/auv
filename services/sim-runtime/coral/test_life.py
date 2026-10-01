@@ -420,3 +420,17 @@ def test_a_tank_keeps_its_fish_in_the_glass():
     assert np.all(np.abs(shoal.at[:, :2]) <= 0.46 + 1e-9)
     assert np.all(shoal.at[:, 2] < 0.0)
     assert np.all(shoal.at[:, 2] > -0.9)
+
+
+def test_a_long_tank_uses_its_length():
+    """Fish in a 2 x 1 m tank spread along it and stay inside it."""
+    import numpy as np
+    from life import Shoal
+
+    shoal = Shoal({"damselfish": 16, "wrasse": 5}, lambda x, y: -0.9, across=2.0,
+                  water_level=0.0, seed=4, scale=0.14, box=(0.92, 0.46))
+    for _ in range(400):
+        shoal.step(1 / 20)
+    assert np.all(np.abs(shoal.at[:, 0]) <= 0.92 + 1e-9)
+    assert np.all(np.abs(shoal.at[:, 1]) <= 0.46 + 1e-9)
+    assert np.ptp(shoal.at[:, 0]) > 0.6
