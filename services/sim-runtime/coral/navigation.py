@@ -222,7 +222,7 @@ class Navigation:
         if self.down_since is None or self.down_from is None:
             return
         under = float(t) - float(self.down_since)
-        if under < 60.0 or self.bottom_lock or self.kind in ("lbl", "usbl", "beacon"):
+        if under < 60.0 or self.bottom_lock or self.kind in ("lbl", "usbl", "beacon", "camera"):
             return
         drift = np.asarray(position, dtype=float)[:2] - self.believed[:2]
         self.depth_averaged_current = np.array([drift[0] / under, drift[1] / under, 0.0])
@@ -297,6 +297,15 @@ class Navigation:
             # a short-baseline homing transponder actually is.
             self._take(t, position, max(0.05, self.fix_accuracy * max(0.2, away / 10.0)),
                        "a beacon on the dock")
+        elif self.kind == "camera":
+            # A camera over a tank, tracking a tag on the vehicle's lid: the
+            # tank's own positioning system, and the best one on this
+            # platform by two orders of magnitude, because it only has to
+            # work across a metre. It sees the tag only when the tag is in
+            # its picture, which over a tank is everywhere.
+            if self.at is not None and float(np.linalg.norm(self.at[:2] - np.asarray(position, dtype=float)[:2])) > self.reach:
+                return
+            self._take(t, position, self.fix_accuracy, "the overhead camera, tracking the tag on the lid")
         elif self.kind == "usbl":
             # The error is a share of slant range, so where the surface asset
             # actually is decides how good the fix is. Straight overhead is the

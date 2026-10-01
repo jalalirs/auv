@@ -124,15 +124,23 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
                            "description": "what it is for, e.g. "
                                           "{\"kind\": \"hold-station\", \"seconds\": 120}"},
              "water": {"type": "string",
-                       "enum": ["still", "gentle", "half-knot", "one-knot"],
+                       "enum": ["still", "gentle", "half-knot", "one-knot",
+                                "tank-still", "fan-low", "fan-high", "pump", "fan-and-pump"],
+                       "description": "the sea; in a tank, the fan blows across the surface and the pump makes a current",
                        "default": "still"},
              "pictures": {"type": "boolean", "default": False},
+             "views": {"type": "array", "items": {"type": "string"},
+                       "description": "cycle the camera through these, e.g. "
+                                      "[\"room\", \"chase\", \"front\", \"overhead\"]; "
+                                      "places_get lists a place's own views"},
+             "view_every_s": {"type": "number", "default": 4.0,
+                              "description": "seconds of dive on each view"},
              "name": {"type": "string"}},
          "required": ["place", "vehicle", "objective"]},
         lambda p, place, vehicle, objective, water="still", pictures=False,
-               name="", controller="":
+               name="", controller="", views=None, view_every_s=4.0:
             tools.dives_start(p, place, vehicle, objective, water, controller,
-                              name, pictures)),
+                              name, pictures, views, view_every_s)),
     "dives_frame": (
         "What the camera saw at a moment of a dive, as an image — and from "
         "where: the position, heading and camera it was seen from come back "

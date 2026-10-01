@@ -2727,6 +2727,7 @@ class Dive:
     def step(self) -> None:
         """One step of physics. Everything else is somebody else's schedule."""
         self.things_go_wrong()
+        self.take_the_next_view()
         # Where it thinks it is, before anything is asked of it: a controller
         # commands on the estimate it had at the start of the step, which is
         # what one on a real vehicle does.
@@ -2940,6 +2941,25 @@ class Dive:
         # loses its buoyancy and its thrust as it emerges and falls back on
         # its own, which is what a real one does and is worth being able to
         # see happen.
+
+    def take_the_next_view(self) -> None:
+        """Cycle the camera through the views a dive asked for, if it asked.
+
+        A dive nobody is watching has one camera and its video one view; an
+        agent that wants to see a tank from the room and from the vehicle in
+        the same run asks for both, and gets each for a stretch in turn."""
+        asked = (self.brief.get("objective") or {}).get("views")
+        if not isinstance(asked, list) or not asked:
+            return
+        offered = self.views()
+        names = [v for v in asked if isinstance(v, str) and v in offered]
+        if not names:
+            return
+        every = float((self.brief.get("objective") or {}).get("viewEveryS", 4.0) or 4.0)
+        want = names[int(self.simulated // max(0.5, every)) % len(names)]
+        if want != self.view:
+            self.view = want
+            self.say("view", view=want, scheduled=True)
 
     def keep_inside_the_glass(self) -> None:
         """Stop at a tank's walls the way the ground stops it: put back, and

@@ -141,10 +141,23 @@ def places_get(platform: Platform, place_id: str) -> dict:
         },
         "life": (said(life["observations"], MEASURED, life.get("source", "an observation record"),
                       note=f"{life.get('species')} species")
-                 if life.get("observations") else unknown("no observation record for this place")),
-        "water": ((lambda w: said(w["type"], MEASURED, w.get("from", "")) if w.get("from")
+                 if life.get("observations")
+                 else said(life["count"], CHOSEN, life.get("from", "the tank's stocking"))
+                 if life.get("tank") and life.get("count")
+                 else unknown("no observation record for this place")),
+        # A water type somebody chose for a tank is chosen, not measured,
+        # however confidently its "from" is written.
+        "water": ((lambda w: said(w["type"], CHOSEN if str(w.get("from", "")).startswith("chosen")
+                                  else MEASURED, w.get("from", "")) if w.get("from")
                    else said(w.get("type"), ASSUMED, "nobody said"))(site["water"])
                   if site.get("water") else unknown("no Jerlov type recorded")),
+        "enclosed": bool(site.get("enclosed", False)),
+        # Every view a dive here can be asked for: the built-in ones and the
+        # place's own fixed cameras, each with what it shows.
+        "views": {"follow": ["chase", "front", "down", "top", "orbit"],
+                  "fixed": {name: v.get("what", "") for name, v in
+                            ((site.get("cameras") or {}).get("fixed") or {}).items()}},
+        **({"rig": site["rig"]} if site.get("rig") else {}),
     }
 
 
@@ -511,7 +524,8 @@ def layouts_chart(platform: Platform, layout: str) -> dict:
 def dives_start(platform: Platform, place: str, vehicle: str,
                 objective: dict, water: str = "still",
                 controller: str = "", name: str = "",
-                pictures: bool = False) -> dict:
+                pictures: bool = False, views: list | None = None,
+                view_every_s: float = 4.0) -> dict:
     """Define a dive and ask for it. The first tool here that spends anything.
 
     A dive names four things and the platform refuses it without them: the
@@ -524,6 +538,11 @@ def dives_start(platform: Platform, place: str, vehicle: str,
     runs at about a sixth of real time; an undrawn one runs at fifteen times it
     on the same trajectory and produces the same numbers. Ask for pictures when
     somebody is going to look, and not otherwise.
+
+    `views` takes the camera through those views in turn, `view_every_s` each,
+    so one drawn run can be looked at from the room and from the vehicle.
+    Which views a place offers is in places_get; a name it does not offer is
+    skipped by the runtime rather than guessed at.
     """
     found = next((p for p in platform.places()
                   if p["id"] == place or p.get("slug") == place), None)
@@ -560,7 +579,8 @@ def dives_start(platform: Platform, place: str, vehicle: str,
             "cityVersionId": city_version["id"],
             "vehicleVersionId": vehicle_version["id"],
             "conditionsId": sea["id"],
-            "objective": {**objective, "pictures": bool(pictures)},
+            "objective": {**objective, "pictures": bool(pictures),
+                          **({"views": list(views), "viewEveryS": float(view_every_s)} if views else {})},
         })
 
     queues = platform.queues()
@@ -583,6 +603,7 @@ def dives_start(platform: Platform, place: str, vehicle: str,
         "dive": dive["id"], "run": run["id"], "state": run.get("state"),
         "place": found.get("name"), "vehicle": machine.get("name"),
         "water": water, "drawn": bool(pictures), "runtime": runtime,
+        **({"views": list(views), "viewEveryS": float(view_every_s)} if views else {}),
         "note": ("queued. dives_result says how it went; a drawn dive runs at "
                  "about a sixth of real time and an undrawn one at fifteen "
                  "times it, on the same trajectory"),
@@ -607,6 +628,21 @@ WATERS = {
     "half-knot": {"currentMetresPerSecond": 0.26, "currentHeadingDeg": 45.0},
     "one-knot": {"currentMetresPerSecond": 0.51, "currentHeadingDeg": 45.0},
 }
+# A tank's waters: the fan on the rim blows west across the surface and the
+# pump on the back glass pushes east. Clear, filtered water, and the gantry
+# camera fixing the vehicle's position off the tag on its lid — which is what
+# a tank has instead of a Doppler log.
+_TANK = {"waterType": "I", "positioning": {
+    "kind": "camera", "accuracyM": 0.005, "everyS": 0.1,
+    "from": "chosen: a camera 1.2 m over the water tracking an AprilTag on the lid"}}
+WATERS.update({
+    "tank-still": {**_TANK, "currentMetresPerSecond": 0.0, "currentHeadingDeg": 0.0},
+    "fan-low": {**_TANK, "windMetresPerSecond": 2.0, "windHeadingDeg": 270.0},
+    "fan-high": {**_TANK, "windMetresPerSecond": 5.0, "windHeadingDeg": 270.0},
+    "pump": {**_TANK, "currentMetresPerSecond": 0.06, "currentHeadingDeg": 90.0},
+    "fan-and-pump": {**_TANK, "windMetresPerSecond": 4.0, "windHeadingDeg": 270.0,
+                     "currentMetresPerSecond": 0.06, "currentHeadingDeg": 90.0},
+})
 
 
 # ── what the camera saw ──────────────────────────────────────────────────────

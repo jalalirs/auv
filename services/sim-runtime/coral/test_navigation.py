@@ -226,3 +226,17 @@ def test_a_beacon_on_the_dock_gets_better_as_you_close_on_it():
     assert close.navigation.drift(close.position) < 0.6, (
         "a homing beacon at close range is what docking needs and dead reckoning is not")
     assert away > 0.0
+
+
+def test_a_camera_over_a_tank_keeps_the_estimate_on_the_vehicle():
+    """With the overhead camera fixing it ten times a second to five
+    millimetres, a vehicle that cannot dead reckon still knows where it is."""
+    import numpy as np
+    from navigation import Navigation
+
+    nav = Navigation({}, {"kind": "camera", "accuracyM": 0.005, "everyS": 0.1}, seed=1)
+    truth = np.array([0.2, -0.1, -0.4])
+    nav.believed = np.array([0.0, 0.0, -0.4])
+    for i in range(50):
+        nav.maybe_fix(i * 0.1, truth)
+    assert np.linalg.norm(nav.believed[:2] - truth[:2]) < 0.02
