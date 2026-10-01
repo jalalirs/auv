@@ -1,12 +1,10 @@
 {
   "mcpServers": {
     "coral-city": {
-      "command": "python3",
-      "args": ["-m", "coral_city_mcp"],
-      "env": {
-        "PYTHONPATH": "packages/mcp",
-        "CORAL_CITY_PLATFORM": "http://100.76.65.1:18080",
-        "CORAL_CITY_SERVICE_FILE": "${HOME}/.config/coral-city/mcp"
+      "type": "http",
+      "url": "http://100.76.65.1:18083/mcp",
+      "headers": {
+        "Authorization": "Service ${CORAL_CITY_SERVICE}"
       }
     }
   }

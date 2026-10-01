@@ -86,3 +86,72 @@ def test_and_an_unset_one_still_says_what_to_set():
     said = s.handle({"jsonrpc": "2.0", "id": 10, "method": "tools/call",
                      "params": {"name": "places_list"}}, None, None)
     assert "CORAL_CITY_PLATFORM" in said["result"]["content"][0]["text"]
+
+
+# ── over HTTP ────────────────────────────────────────────────────────────────
+
+def _serve():
+    import socket
+    import threading
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    threading.Thread(target=s.serve_http, args=("127.0.0.1", port), daemon=True).start()
+    import time
+    time.sleep(0.3)
+    return f"http://127.0.0.1:{port}"
+
+
+def _post(base, body, auth=None):
+    import urllib.request
+    headers = {"content-type": "application/json"}
+    if auth:
+        headers["authorization"] = auth
+    ask = urllib.request.Request(base + "/mcp", data=json.dumps(body).encode(),
+                                 headers=headers, method="POST")
+    with urllib.request.urlopen(ask, timeout=10) as answer:
+        raw = answer.read()
+        return answer.status, (json.loads(raw) if raw else None)
+
+
+def test_it_lists_its_tools_over_http():
+    base = _serve()
+    status, said = _post(base, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    assert status == 200
+    assert len(said["result"]["tools"]) >= 15
+
+
+def test_a_notification_gets_202_and_no_body():
+    base = _serve()
+    status, said = _post(base, {"jsonrpc": "2.0", "method": "notifications/initialized"})
+    assert status == 202 and said is None
+
+
+def test_without_a_credential_it_says_how_to_get_one():
+    """The server holds none of its own. Each agent brings its own."""
+    base = _serve()
+    _, said = _post(base, {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                           "params": {"name": "places_list"}})
+    body = json.loads(said["result"]["content"][0]["text"])
+    assert body["refused"] == "unauthenticated"
+    assert "agent-credential" in body["why"]
+
+
+def test_the_caller_s_credential_is_the_one_used():
+    """Every agent acts as the principal it was issued as. A shared credential
+    in a server reachable from the whole tailnet would make every agent the
+    same agent."""
+    platform, why = s._platform_for("Service prin_7:secret")
+    assert why is None and platform.service == "prin_7:secret"
+    platform, why = s._platform_for("Bearer tok")
+    assert why is None and platform.token == "tok"
+    platform, why = s._platform_for("Basic Zm9v")
+    assert platform is None and why.code == "unauthenticated"
+
+
+def test_health_answers_for_the_compose_check():
+    import urllib.request
+    base = _serve()
+    with urllib.request.urlopen(base + "/health", timeout=10) as answer:
+        assert json.loads(answer.read())["ok"] is True

@@ -8,6 +8,24 @@ CORAL_CITY_SERVICE_FILE=/run/secrets/mcp \
     python -m coral_city_mcp
 ```
 
+## Over the tailnet
+
+It runs on the box as the `mcp` compose service, on
+`http://100.76.65.1:18083/mcp`. Any agent on the tailnet connects to that with
+its own credential in the header:
+
+```json
+{ "mcpServers": { "coral-city": {
+    "type": "http",
+    "url": "http://100.76.65.1:18083/mcp",
+    "headers": { "Authorization": "Service ${CORAL_CITY_SERVICE}" } } } }
+```
+
+The server holds no credential. It forwards what each caller sends, so every
+agent acts as the principal it was issued as and the platform's grants decide
+what it may do — a shared credential in a server the whole tailnet can reach
+would make every agent the same agent, and the audit log would say so.
+
 ## Getting a credential
 
 An agent authenticates as a **service principal** of its own, not as a person:

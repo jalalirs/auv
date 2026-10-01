@@ -123,6 +123,28 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # The platform's tools for agents, over MCP, on the tailnet.
+  #
+  # Point an assistant at http://<box>:18083/mcp with its own credential in the
+  # Authorization header. The server holds none: it forwards what each caller
+  # sends, so every agent acts as the principal it was issued as and the
+  # platform's grants decide what it may do.
+  mcp:
+    image: coral-city/mcp:${CORAL_CITY_IMAGE_TAG:-r1}
+    pull_policy: never
+    build:
+      context: ../..
+      dockerfile: packages/mcp/Dockerfile
+    environment:
+      CORAL_CITY_PLATFORM: http://control-plane:8080
+      CORAL_CITY_RUNTIME_VERSION: ${CORAL_CITY_RUNTIME_VERSION:-isaac-6.0.1+oceansim}
+    ports:
+      - "${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_MCP_PORT:-18083}:8080"
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    restart: unless-stopped
+
   # A credential for an agent: a program that reads this institution on
   # somebody's behalf, so an assistant can be pointed at the platform without
   # being handed a person's sign-in secret.

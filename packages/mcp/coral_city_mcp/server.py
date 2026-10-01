@@ -16,6 +16,7 @@ else's.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from typing import Any, Callable
 
@@ -279,6 +280,11 @@ def handle(said: dict, platform: Platform | None,
 
 
 def main() -> int:
+    if "--http" in sys.argv:
+        at = sys.argv[sys.argv.index("--http") + 1]
+        host, _, port = at.rpartition(":")
+        serve_http(host or "0.0.0.0", int(port))
+        return 0
     no_session: Refused | None = None
     try:
         platform: Platform | None = Platform.from_environment()
@@ -303,3 +309,84 @@ def main() -> int:
             sys.stdout.write(json.dumps(reply) + "\n")
             sys.stdout.flush()
     return 0
+
+
+# ── over HTTP, for an agent that is not on this machine ──────────────────────
+#
+# MCP's streamable HTTP transport, the part of it a tool server needs: one
+# endpoint, a JSON-RPC message posted to it, the answer in the response. No
+# event stream, because nothing here pushes — every tool answers when asked.
+#
+# The server holds no credential. Each caller sends its own — `Service
+# <principal>:<secret>` or `Bearer <session>` — and it is forwarded to the
+# platform untouched, so every agent acts as the principal it was issued as and
+# the platform's grants decide what it may do. A shared credential baked into a
+# server reachable from the whole tailnet would make every agent the same agent,
+# and the audit log would say so.
+
+def _platform_for(header: str | None) -> tuple[Platform | None, Refused | None]:
+    base = os.environ.get("CORAL_CITY_PLATFORM", "http://control-plane:8080")
+    if not header:
+        return None, Refused(401, "unauthenticated",
+                             "send your own credential: Authorization: Service "
+                             "<principal>:<secret>, from `docker compose run --rm "
+                             "agent-credential`")
+    scheme, _, credential = header.partition(" ")
+    if scheme.lower() == "service" and credential:
+        return Platform(base, service=credential), None
+    if scheme.lower() == "bearer" and credential:
+        return Platform(base, token=credential), None
+    return None, Refused(401, "unauthenticated",
+                         "Authorization must be `Service <principal>:<secret>` "
+                         "or `Bearer <session>`")
+
+
+def serve_http(host: str, port: int) -> None:
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class One(BaseHTTPRequestHandler):
+        def _send(self, status: int, body: object | None) -> None:
+            raw = b"" if body is None else json.dumps(body).encode()
+            self.send_response(status)
+            if body is not None:
+                self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(raw)))
+            self.end_headers()
+            if raw:
+                self.wfile.write(raw)
+
+        def do_GET(self) -> None:
+            if self.path == "/health":
+                self._send(200, {"ok": True, "tools": len(TOOLS)})
+                return
+            # Nothing is pushed, so there is no stream to open.
+            self._send(405, {"error": "POST a JSON-RPC message to /mcp"})
+
+        def do_POST(self) -> None:
+            if self.path.rstrip("/") != "/mcp":
+                self._send(404, {"error": "the endpoint is /mcp"})
+                return
+            length = int(self.headers.get("content-length") or 0)
+            try:
+                said = json.loads(self.rfile.read(length) or b"null")
+            except json.JSONDecodeError:
+                self._send(400, {"jsonrpc": "2.0", "id": None,
+                                 "error": {"code": -32700, "message": "not JSON"}})
+                return
+            platform, why = _platform_for(self.headers.get("authorization"))
+            batch = said if isinstance(said, list) else [said]
+            replies = [r for r in (handle(one, platform, why) for one in batch
+                                   if isinstance(one, dict)) if r is not None]
+            if not replies:
+                self._send(202, None)       # notifications only
+            elif isinstance(said, list):
+                self._send(200, replies)
+            else:
+                self._send(200, replies[0])
+
+        def log_message(self, *_):        # one line per call, not per header
+            pass
+
+    print(f"coral-city MCP on http://{host}:{port}/mcp, {len(TOOLS)} tools",
+          flush=True)
+    ThreadingHTTPServer((host, port), One).serve_forever()
