@@ -278,6 +278,28 @@ class CoralCityShell(omni.ext.IExt):
         else:
             self.began = time.monotonic()
 
+    def _show_the_water_body(self, outside: bool) -> None:
+        """A tank's water drawn as a body when it is looked at from the room.
+
+        From inside, the medium is the renderer's and a box around the camera
+        would only tint it twice; from outside there is nothing else to say
+        that the glass is full."""
+        if getattr(self, "_water_body_shown", None) is outside:
+            return
+        self._water_body_shown = outside
+        try:
+            import omni.usd
+            from pxr import UsdGeom
+
+            stage = omni.usd.get_context().get_stage()
+            if not hasattr(self, "_water_bodies"):
+                self._water_bodies = [p for p in stage.Traverse() if p.GetName() == "WaterBody"]
+            for prim in self._water_bodies:
+                image = UsdGeom.Imageable(prim)
+                image.MakeVisible() if outside else image.MakeInvisible()
+        except Exception:
+            pass
+
     def _follow(self, dive) -> None:
         """Keep the vehicle in shot as it moves, from whichever view was asked.
 
@@ -311,28 +333,49 @@ class CoralCityShell(omni.ext.IExt):
             self._chase_heading += max(-most, min(most, turn * 0.08))
             behind = (math.cos(self._chase_heading), math.sin(self._chase_heading))
             up_world = Gf.Vec3d(0.0, 1.0, 0.0) if dive.up_axis == "Y" else Gf.Vec3d(0.0, 0.0, 1.0)
-            if view == "front":
-                eye = (x + 0.45 * ahead[0], y + 0.45 * ahead[1], z + 0.05)
-                aim = (x + 6.0 * ahead[0], y + 6.0 * ahead[1], z - 0.6)
+            # A place a metre across sizes its own cameras; every distance
+            # below is a reef's unless the place said otherwise.
+            sized = getattr(dive, "place_cameras", None) or {}
+
+            def got(which, key, default):
+                try:
+                    return float((sized.get(which) or {}).get(key, default))
+                except Exception:
+                    return default
+
+            fixed = (sized.get("fixed") or {}).get(view)
+            self._show_the_water_body(fixed is not None)
+            if fixed is not None:
+                # A camera that stays where it was put: in the room, looking
+                # at the tank, whatever the vehicle does.
+                eye = tuple(float(v) for v in fixed["eye"])
+                aim = tuple(float(v) for v in fixed["aim"])
+                up_ours = tuple(float(v) for v in fixed.get("up", (0.0, 0.0, 1.0)))
+                up = dive.drawn_at(up_ours) if fixed.get("up") else up_world
+            elif view == "front":
+                reach, look = got("front", "ahead", 0.45), got("front", "aim", 6.0)
+                eye = (x + reach * ahead[0], y + reach * ahead[1], z + 0.05 * min(1.0, reach / 0.45))
+                aim = (x + look * ahead[0], y + look * ahead[1], z - 0.1 * look)
                 up = up_world
                 up_ours = (0.0, 0.0, 1.0)
             elif view == "down":
                 # The survey camera: under the hull, looking at the bottom, the
                 # vehicle's heading up the screen.
-                eye = (x, y, z - 0.15)
-                aim = (x, y, z - 6.0)
+                eye = (x, y, z - got("down", "below", 0.15))
+                aim = (x, y, z - got("down", "aim", 6.0))
                 up = dive.drawn_at((ahead[0], ahead[1], 0.0))
                 up_ours = (ahead[0], ahead[1], 0.0)
             elif view == "top":
                 # North up, like the chart, so a yaw is a vehicle turning on a
                 # still picture rather than a picture turning around a vehicle.
-                eye = (x, y, z + 14.0)
+                eye = (x, y, z + got("top", "above", 14.0))
                 aim = (x, y, z)
                 up = dive.drawn_at((0.0, 1.0, 0.0))
                 up_ours = (0.0, 1.0, 0.0)
             elif view == "orbit":
                 angle = dive.simulated * 0.25
-                eye = (x + 8.0 * math.cos(angle), y + 8.0 * math.sin(angle), z + 3.0)
+                radius = got("orbit", "radius", 8.0)
+                eye = (x + radius * math.cos(angle), y + radius * math.sin(angle), z + got("orbit", "above", 3.0))
                 aim = (x, y, z)
                 up = up_world
                 up_ours = (0.0, 0.0, 1.0)
@@ -340,10 +383,19 @@ class CoralCityShell(omni.ext.IExt):
                 # Behind and above, kept well under the surface: the first
                 # version sat twenty centimetres below it and the underside of
                 # the water filled the frame.
-                eye = (x - 9.0 * behind[0], y - 9.0 * behind[1], z + 3.2)
+                back = got("chase", "behind", 9.0)
+                eye = (x - back * behind[0], y - back * behind[1], z + got("chase", "above", 3.2))
                 aim = (x, y, z)
                 up = up_world
                 up_ours = (0.0, 0.0, 1.0)
+            inside = getattr(dive, "interior", None)
+            if fixed is None and inside is not None and sized.get("keepInside") and view != "top":
+                # In a tank the camera stays in the water with the vehicle: a
+                # chase camera behind the glass is looking at the glass.
+                low, high = inside
+                eye = (min(max(eye[0], float(low[0]) + 0.02), float(high[0]) - 0.02),
+                       min(max(eye[1], float(low[1]) + 0.02), float(high[1]) - 0.02),
+                       min(max(eye[2], float(low[2]) + 0.03), float(high[2]) - 0.03))
             self._aim.Set(Gf.Matrix4d().SetLookAt(dive.drawn_at(eye), dive.drawn_at(aim), up).GetInverse())
             # Which way the world's own axes fall on the screen, for the little
             # set of axes a console draws in the corner. Worked out here

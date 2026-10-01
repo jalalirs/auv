@@ -466,6 +466,14 @@ class Dive:
         # acts on the vehicle's motion through the water, not over the ground,
         # so a vehicle doing nothing in a current is carried by it.
         self.current = np.zeros(3)
+        # A wind over the surface, in the world frame, metres per second. In a
+        # tank it is a fan; it ripples the surface and drags the top of the
+        # water with it, and nothing below a few centimetres feels it.
+        self.wind = np.zeros(3)
+        # What a place that is a room says about itself: how its cameras sit
+        # and the box of water a vehicle is kept inside. Empty for a reef.
+        self.place_cameras: dict = {}
+        self.interior = None
         self.lamp_intensity = 0.0
         self.lamp_lumens = 0.0
         # How far the snow box reaches from the camera. Four metres: past
@@ -628,6 +636,35 @@ class Dive:
         far = [half, half, shallow]
         return corner, far, [across, across, round(shallow - deep, 2)]
 
+    def read_the_room(self) -> None:
+        """A tank's cameras and walls, from the place.
+
+        Asked of the place, never inferred: a reef has no walls and its views
+        are sized for a reef, and a one-metre tank has glass a vehicle stops
+        at and views that would all be outside it at a reef's distances.
+        """
+        import json
+
+        try:
+            said = json.loads((pathlib.Path(self.brief.get("cityPath", "/dive/city"))
+                               / "site.json").read_text())
+        except Exception:
+            return
+        cameras = said.get("cameras")
+        self.place_cameras = dict(cameras) if isinstance(cameras, dict) else {}
+        inside = said.get("interior")
+        if isinstance(inside, dict) and "min" in inside and "max" in inside:
+            self.interior = (np.array(inside["min"], dtype=float), np.array(inside["max"], dtype=float))
+        if self.place_cameras or self.interior is not None:
+            self.say("room_is", views=self.views(),
+                     interior=None if self.interior is None else
+                     [[round(float(v), 3) for v in self.interior[0]], [round(float(v), 3) for v in self.interior[1]]])
+
+    def views(self) -> list:
+        """The views this dive offers: the built-in ones and the place's own."""
+        fixed = (self.place_cameras.get("fixed") or {}) if self.place_cameras else {}
+        return list(VIEWS) + [name for name in fixed if name not in VIEWS]
+
     def put_the_vehicle_in_the_place(self, corner, far, extent) -> None:
         """The bottom under the vehicle and where the vehicle starts.
 
@@ -644,6 +681,7 @@ class Dive:
         self.seabed = Seabed.of(self.scene, pathlib.Path(
             self.brief.get("cityPath", "/dive/city")))
         self.floor = None if corner is None else float(corner[2])
+        self.read_the_room()
         if self.seabed is not None:
             self.say("seabed_known",
                      samples=[self.seabed.rows, self.seabed.columns],
@@ -1159,7 +1197,7 @@ class Dive:
         the vehicle is. Anything else is ignored rather than guessed at.
         """
         view = said.get("view")
-        if isinstance(view, str) and view in VIEWS:
+        if isinstance(view, str) and view in self.views():
             self.view = view
             self.say("view", view=view)
         engage = said.get("engage")
@@ -1307,6 +1345,10 @@ class Dive:
         heading = float(parameters.get("currentHeadingDeg", 0.0) or 0.0)
         angle = np.radians(90.0 - heading)
         self.current = np.array([speed * np.cos(angle), speed * np.sin(angle), 0.0])
+        # Wind, named like the current by where it blows towards.
+        blows = float(parameters.get("windMetresPerSecond", 0.0) or 0.0)
+        towards = np.radians(90.0 - float(parameters.get("windHeadingDeg", 0.0) or 0.0))
+        self.wind = np.array([blows * np.cos(towards), blows * np.sin(towards), 0.0])
         visibility = parameters.get("visibilityM")
         self.visibility_m = None if visibility in (None, "", 0) else float(visibility)
         named = parameters.get("waterType") or parameters.get("jerlov")
@@ -1319,6 +1361,13 @@ class Dive:
         self.sea_height_m = number("significantWaveHeightM")
         self.sea_period_s = number("waveMeanPeriodS") or number("wavePeakPeriodS")
         self.sea_heading_deg = number("waveHeadingDeg")
+        # A fan over a tank makes ripples, not a sea: centimetres high and a
+        # third of a second apart, running the way it blows. Used only where
+        # the conditions did not state a wave of their own.
+        if blows > 0 and self.sea_height_m is None and self._site_is_enclosed():
+            self.sea_height_m = round(min(0.02, 0.0016 * blows ** 2), 4)
+            self.sea_period_s = round(0.25 + 0.04 * blows, 3)
+            self.sea_heading_deg = float(parameters.get("windHeadingDeg", 0.0) or 0.0)
         self.read_the_water(parameters)
         # What is deployed in this water to fix a position with, if anything.
         # The vehicle's instruments are the vehicle's; this is the water's, and
@@ -2541,7 +2590,7 @@ class Dive:
                         "halfWidthM": round(float(self.half_width), 3),
                         "halfHeightM": round(float(self.half_height), 3),
                         "offsetM": list(self.hull_offset)},
-            "views": list(VIEWS),
+            "views": self.views(),
             "view": self.view,
             "beganAt": [round(float(v), 3) for v in self.began_at],
             "task": None if self.task is None else self.task.describe(),
@@ -2882,6 +2931,7 @@ class Dive:
 
         self.strike()
         self.keep_out_of_things()
+        self.keep_inside_the_glass()
         self.stay_on_the_cable()
 
         # There is no lid on the surface. There used to be, and it was never
@@ -2890,6 +2940,28 @@ class Dive:
         # loses its buoyancy and its thrust as it emerges and falls back on
         # its own, which is what a real one does and is worth being able to
         # see happen.
+
+    def keep_inside_the_glass(self) -> None:
+        """Stop at a tank's walls the way the ground stops it: put back, and
+        the velocity that carried it there taken away. No bounce."""
+        if self.interior is None:
+            return
+        low, high = self.interior
+        reach = float(self.half_width)
+        for axis in (0, 1):
+            lo, hi = float(low[axis]) + reach, float(high[axis]) - reach
+            if self.position[axis] < lo or self.position[axis] > hi:
+                self.position[axis] = min(max(float(self.position[axis]), lo), hi)
+                # The world-frame velocity along that wall's normal, removed in the body frame.
+                normal = np.zeros(3)
+                normal[axis] = 1.0
+                into = self.rotation.T @ normal
+                along = float(np.dot(self.velocity[:3], into))
+                self.velocity[:3] -= along * into
+                if not getattr(self, "_touched_glass", False):
+                    self._touched_glass = True
+                    self.say("touched_the_glass", axis="xy"[axis],
+                             at=[round(float(v), 3) for v in self.position])
 
     # Ground steeper than this is a wall rather than a slope: a vehicle rides
     # over what it can and is stopped by what it cannot. Fifty degrees is well
@@ -3121,11 +3193,25 @@ class Dive:
             return 1000.0
         return max(float(far[0] - corner[0]), float(far[1] - corner[1]))
 
+    # The surface drift a wind drives is about three per cent of the wind, the
+    # oceanographer's rule of thumb, and in a tank it is gone a few centimetres
+    # down. Both are guesses with a shape, and the second is the one a fan and
+    # a dye trace would settle.
+    WIND_DRIFT = 0.03
+    WIND_REACHES_M = 0.06
+
+    def wind_drift(self):
+        """The top of the water dragged along by the wind, where the vehicle is."""
+        if not self.wind.any():
+            return np.zeros(3)
+        depth = max(0.0, float(-self.position[2]) - float(self.half_height))
+        return self.WIND_DRIFT * self.wind * math.exp(-depth / self.WIND_REACHES_M)
+
     def orbital(self):
         """The water's own motion under the waves, where the vehicle is."""
         if self.water is None or not hasattr(self.water, "orbital_here"):
-            return np.zeros(3)
-        return self.water.orbital_here(
+            return self.wind_drift()
+        return self.wind_drift() + self.water.orbital_here(
             float(self.position[0]), float(self.position[1]),
             max(0.0, float(-self.position[2])), self.simulated)
 
@@ -3156,6 +3242,8 @@ class Dive:
             self.say("no_life", why="this place has no record of what lives in it")
             return None
 
+        if says.get("tank"):
+            return self._stock_the_tank(stage, says)
         reef = math.pi * self.STOCKED_TO_M ** 2
         # Only the part of that which is reef rather than sand. The habitat
         # shares are on the place; where they are not, half is the honest
@@ -3195,6 +3283,41 @@ class Dive:
         self.say("life_is", **shoal.said(), stockedToM=self.STOCKED_TO_M,
                  asked=wanted, drawn=how_many,
                  perSquareMetre=says.get("perSquareMetre"))
+        return shoal
+
+    def _stock_the_tank(self, stage, says):
+        """A tank's fish: the number it was stocked with, kept inside the glass.
+
+        A reef's fish are counted from a density over ninety metres and roam
+        tens of metres from home; in a one-metre tank that is every fish
+        through the glass in the first second. So a tank says how many of each
+        it holds, and the shoal is shrunk to the box."""
+        import life
+
+        groups = {str(k): int(v) for k, v in (says.get("count") or {}).items() if int(v) > 0}
+        if not groups:
+            self.say("no_life", why="the tank says it holds no fish")
+            return None
+        if self.interior is not None:
+            low, high = self.interior
+            across = float(min(high[0] - low[0], high[1] - low[1]))
+            about = ((float(low[0]) + float(high[0])) / 2, (float(low[1]) + float(high[1])) / 2)
+        else:
+            across, about = 1.0, (0.0, 0.0)
+        shoal = life.Shoal(
+            groups,
+            lambda x, y: (self.seabed.under(float(x), float(y))
+                          if self.seabed is not None else self.floor),
+            across=0.92 * across, water_level=0.0,
+            seed=int(self.brief.get("seed", 0)), about=about,
+            scale=float(says.get("scale", 1.0)))
+        try:
+            life.put_them_in(stage, shoal)
+        except Exception as bad:
+            self.say("life_failed", why=str(bad)[:200])
+            return None
+        self.say("life_is", **shoal.said(), stockedToM=round(across / 2, 2),
+                 asked=sum(groups.values()), drawn=shoal.of_them, tank=True)
         return shoal
 
     # How far the marine snow reaches from the camera, in metres, and how many

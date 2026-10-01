@@ -1,0 +1,477 @@
+#!/usr/bin/env python3
+"""A glass tank in a room, as a place: where a small vehicle is learnt.
+
+    tools/make-aquarium iocean-tank-1 --into ~/coral-city/places/iocean-tank-1
+
+Not a towing tank (that is tools/make-tank, whose whole point is that nothing
+in it is chosen) and not a reef. This is the bench a person actually has: a
+one-metre cube of glass on a steel stand, sand and rock and a few corals in
+it, a handful of small fish, and around it the room — the desk with the
+computer that flies the vehicle, the switch the tether runs to, a camera on a
+gantry looking down, a fan that can blow across the surface, a pump that
+makes a current, and the light over it all.
+
+Everything here is **chosen**, and the record says so. The tank's size is the
+one the user named; the rest is a plausible room, built so the vehicle can be
+seen from outside the glass as well as through its own camera.
+
+Metres, Z up, z = 0 at the still water surface, origin in the middle of the
+tank, x towards the room's open side, y along the desk.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import pathlib
+import sys
+import time
+
+import numpy as np
+
+import coral
+
+# ── the tank ─────────────────────────────────────────────────────────────────
+INSIDE = 1.0           # metres, inside the glass, each way
+GLASS = 0.012
+FREEBOARD = 0.05       # glass above the water
+FLOOR_Z = -0.95        # inside bottom of the tank
+STAND_H = 0.60
+BOARD = 0.018
+ROOM_FLOOR = FLOOR_Z - GLASS - BOARD - STAND_H
+SAND = 0.055           # mean depth of the sand bed
+GRID = 129             # heightfield samples each way across the inside
+
+# ── what sits on the sand ────────────────────────────────────────────────────
+# Rock first, then coral on the rock: (x, y, radius, height, lean).
+ROCKS = [(-0.24, 0.20, 0.17, 0.24, 0.3), (-0.06, 0.30, 0.11, 0.14, -0.2),
+         (-0.30, -0.12, 0.10, 0.13, 0.1), (0.22, 0.26, 0.10, 0.11, 0.4),
+         (0.05, -0.28, 0.08, 0.09, -0.1), (0.30, -0.18, 0.06, 0.06, 0.0)]
+# Kinds and the colours a reef tank's corals are under blue light, which are
+# not the browns of a reef in the sea: these are chosen for being seen.
+CORALS = [("branching", 0.14, "violet"), ("branching", 0.11, "teal"), ("brain", 0.09, "green"),
+          ("table", 0.13, "pink"), ("finger", 0.10, "orange"), ("massive", 0.08, "lime"),
+          ("plume", 0.16, "purple"), ("fan", 0.14, "red"), ("branching", 0.09, "pink"),
+          ("encrusting", 0.10, "teal"), ("brain", 0.07, "orange"), ("finger", 0.08, "violet"),
+          ("sponge", 0.08, "yellow"), ("massive", 0.07, "green")]
+TANK_COLOURS = {"violet": (0.45, 0.25, 0.85), "teal": (0.10, 0.70, 0.66), "green": (0.30, 0.78, 0.30),
+                "pink": (0.95, 0.40, 0.65), "orange": (0.98, 0.52, 0.15), "lime": (0.70, 0.90, 0.20),
+                "purple": (0.60, 0.20, 0.60), "red": (0.85, 0.18, 0.18), "yellow": (0.98, 0.85, 0.25)}
+# Fish a one-metre tank holds: small, and not many.
+FISH = {"damselfish": 9, "wrasse": 3, "butterflyfish": 2, "bottom": 3}
+
+
+# ── geometry ─────────────────────────────────────────────────────────────────
+
+class Scene:
+    """Meshes and their looks, written out as one USD file."""
+
+    def __init__(self):
+        self.meshes, self.looks, self.extra = [], {}, []
+
+    def look(self, name, colour, rough=0.6, metal=0.0, opacity=1.0, emissive=None, clearcoat=0.0, ior=1.5):
+        self.looks[name] = dict(colour=colour, rough=rough, metal=metal, opacity=opacity,
+                                emissive=emissive, clearcoat=clearcoat, ior=ior)
+        return name
+
+    def add(self, path, points, faces, look, smooth=False):
+        self.meshes.append((path, np.asarray(points, float), np.asarray(faces, int), look, smooth))
+
+    def write(self, where: pathlib.Path, doc: str):
+        out = ['#usda 1.0\n(\n    doc = "%s"\n    defaultPrim = "World"\n    metersPerUnit = 1\n    upAxis = "Z"\n)\n\n'
+               'def Xform "World"\n{\n' % doc.replace('"', "'")]
+        groups: dict = {}
+        for path, p, f, look, smooth in self.meshes:
+            group, name = path.split("/")
+            groups.setdefault(group, []).append((name, p, f, look, smooth))
+        for group, items in groups.items():
+            out.append('    def Xform "%s"\n    {\n' % group)
+            for name, p, f, look, smooth in items:
+                out.append(_mesh(name, p, f, look, smooth))
+            out.append("    }\n")
+        out.extend(self.extra)
+        out.append('    def Scope "Looks"\n    {\n')
+        for name, l in self.looks.items():
+            out.append(_material(name, **l))
+        out.append("    }\n}\n")
+        where.write_text("".join(out))
+
+
+def _mesh(name, p, f, look, smooth):
+    lo, hi = p.min(axis=0), p.max(axis=0)
+    normals = ""
+    if smooth:
+        n = np.zeros_like(p)
+        a, b, c = p[f[:, 0]], p[f[:, 1]], p[f[:, 2]]
+        fn = np.cross(b - a, c - a)
+        for k in range(3):
+            np.add.at(n, f[:, k], fn)
+        n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+        normals = '        normal3f[] normals = [%s] (interpolation = "vertex")\n' % ", ".join(
+            "(%.4f, %.4f, %.4f)" % tuple(v) for v in n)
+    return ('        def Mesh "%s" (prepend apiSchemas = ["MaterialBindingAPI"])\n        {\n'
+            '            uniform token subdivisionScheme = "none"\n            uniform bool doubleSided = 1\n'
+            '            int[] faceVertexCounts = [%s]\n            int[] faceVertexIndices = [%s]\n'
+            '            point3f[] points = [%s]\n%s'
+            '            float3[] extent = [(%.4f, %.4f, %.4f), (%.4f, %.4f, %.4f)]\n'
+            '            rel material:binding = </World/Looks/%s>\n        }\n') % (
+        name, ", ".join(["3"] * len(f)), ", ".join(str(i) for i in f.reshape(-1)),
+        ", ".join("(%.5f, %.5f, %.5f)" % tuple(v) for v in p), normals.replace("        normal3f", "            normal3f"),
+        *lo, *hi, look)
+
+
+def _material(name, colour, rough, metal, opacity, emissive, clearcoat, ior):
+    em = "" if emissive is None else "\n                color3f inputs:emissiveColor = (%.3f, %.3f, %.3f)" % tuple(emissive)
+    return ('        def Material "%s"\n        {\n'
+            '            token outputs:surface.connect = </World/Looks/%s/S.outputs:surface>\n'
+            '            def Shader "S"\n            {\n'
+            '                uniform token info:id = "UsdPreviewSurface"\n'
+            '                color3f inputs:diffuseColor = (%.3f, %.3f, %.3f)\n'
+            '                float inputs:roughness = %.3f\n                float inputs:metallic = %.3f\n'
+            '                float inputs:opacity = %.3f\n                float inputs:clearcoat = %.3f\n'
+            '                float inputs:ior = %.3f%s\n                token outputs:surface\n            }\n        }\n') % (
+        name, name, *colour, rough, metal, opacity, clearcoat, ior, em)
+
+
+def box(lo, hi):
+    """A box with its own vertices per face, so it shades flat."""
+    (x0, y0, z0), (x1, y1, z1) = lo, hi
+    c = np.array([(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0),
+                  (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)])
+    quads = [(0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)]
+    pts, faces = [], []
+    for q in quads:
+        k = len(pts)
+        pts += [c[i] for i in q]
+        faces += [(k, k + 1, k + 2), (k, k + 2, k + 3)]
+    return np.array(pts), np.array(faces)
+
+
+def cylinder(a, b, r, sides=28, caps=True):
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    p, f = coral._cylinder(a, b, r, r, sides)
+    if caps and len(p):
+        k = len(p)
+        p = np.vstack([p, a, b])
+        cap = []
+        for i in range(sides):
+            j = (i + 1) % sides
+            cap += [(k, j, i), (k + 1, sides + i, sides + j)]
+        f = np.vstack([f, np.array(cap)])
+    return p, f
+
+
+def tube(path_points, r, sides=10):
+    """A cable along a polyline."""
+    pieces = [coral._cylinder(np.asarray(a, float), np.asarray(b, float), r, r, sides)
+              for a, b in zip(path_points[:-1], path_points[1:])]
+    return coral._join(pieces)
+
+
+def join(*pieces):
+    return coral._join(list(pieces))
+
+
+def curve(a, b, sag, n=16):
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    t = np.linspace(0, 1, n)[:, None]
+    return a + (b - a) * t - np.array([0, 0, sag]) * (4 * t * (1 - t))
+
+
+# ── the inside ───────────────────────────────────────────────────────────────
+
+def ground(rng):
+    """Sand with ripples, and the rock on it, as one heightfield.
+
+    The vehicle's floor is this field, so it rests on the rock rather than in
+    it; the rock is also drawn as its own mesh, which is what it looks like."""
+    half = INSIDE / 2
+    line = np.linspace(-half, half, GRID)
+    X, Y = np.meshgrid(line, line)
+    sand = (FLOOR_Z + SAND + 0.006 * np.sin(X * 31 + 0.7 * np.sin(Y * 9)) + 0.004 * np.sin(Y * 23 + 1.3)
+            + 0.02 * (X + half) * 0.4)
+    rock = np.full_like(sand, -9.0)
+    for x, y, r, h, lean in ROCKS:
+        d = np.hypot(X - x, (Y - y) * (1 + 0.25 * lean))
+        top = sand + h * np.sqrt(np.clip(1 - (d / r) ** 2, 0, 1)) * (1 + 0.15 * np.sin(X * 47 + Y * 37))
+        rock = np.where(d < r, np.maximum(rock, top), rock)
+    heights = np.maximum(sand, rock)
+    return line, sand, rock, heights
+
+
+def field_mesh(line, z, mask=None):
+    n = len(line)
+    X, Y = np.meshgrid(line, line)
+    p = np.stack([X.ravel(), Y.ravel(), z.ravel()], axis=1)
+    faces = []
+    for j in range(n - 1):
+        for i in range(n - 1):
+            a = j * n + i
+            if mask is not None and not (mask[j, i] or mask[j, i + 1] or mask[j + 1, i] or mask[j + 1, i + 1]):
+                continue
+            faces += [(a, a + 1, a + n + 1), (a, a + n + 1, a + n)]
+    return p, np.array(faces)
+
+
+def rock_mesh(rng, x, y, r, h, lean, sand_at):
+    """Live rock: a squashed, lumpy dome with holes in its silhouette."""
+    rows, sides = 14, 36
+    pts, faces = [], []
+    for i in range(rows + 1):
+        phi = (math.pi / 2) * i / rows
+        for k in range(sides):
+            th = 2 * math.pi * k / sides
+            bump = 1 + 0.22 * math.sin(3 * th + rng.uniform(0, 6)) * math.cos(2 * phi) + rng.normal(0, 0.05)
+            rr = r * math.cos(phi) * bump
+            pts.append((x + rr * math.cos(th), y + rr * math.sin(th) / (1 + 0.25 * lean), h * math.sin(phi) * bump))
+    for i in range(rows):
+        for k in range(sides):
+            a, b = i * sides + k, i * sides + (k + 1) % sides
+            faces += [(a, b, b + sides), (a, b + sides, a + sides)]
+    p = np.array(pts)
+    p[:, 2] += sand_at(x, y) - 0.02
+    p = coral.roughen(p, 0.012, rng, scale=40.0)
+    return p, np.array(faces)
+
+
+def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
+    rng = np.random.default_rng(seed)
+    s = Scene()
+    # Looks.
+    glass = s.look("Glass", (0.85, 0.93, 0.95), rough=0.02, opacity=0.12, clearcoat=1.0, ior=1.52)
+    water = s.look("WaterBody", (0.55, 0.80, 0.85), rough=0.02, opacity=0.18, ior=1.33)
+    trim = s.look("Trim", (0.02, 0.02, 0.02), rough=0.35)
+    steel = s.look("Steel", (0.05, 0.05, 0.055), rough=0.45, metal=0.6)
+    oak = s.look("Oak", (0.55, 0.40, 0.26), rough=0.55)
+    floor = s.look("RoomFloor", (0.62, 0.55, 0.47), rough=0.6)
+    wall = s.look("Wall", (0.82, 0.82, 0.80), rough=0.9)
+    sand = s.look("Sand", (0.86, 0.80, 0.68), rough=0.95)
+    rockl = s.look("LiveRock", (0.52, 0.42, 0.44), rough=0.9)
+    desk = s.look("Desk", (0.93, 0.93, 0.92), rough=0.5)
+    gold = s.look("DgxSpark", (0.78, 0.68, 0.50), rough=0.3, metal=0.9)
+    black = s.look("Device", (0.03, 0.03, 0.035), rough=0.4)
+    screen = s.look("Screen", (0.02, 0.05, 0.10), rough=0.1, emissive=(0.05, 0.25, 0.45))
+    led = s.look("LedPanel", (0.9, 0.95, 1.0), rough=0.3, emissive=(4.0, 4.6, 5.5))
+    cable = s.look("Cable", (0.95, 0.45, 0.05), rough=0.5)
+    grey = s.look("Grey", (0.35, 0.36, 0.38), rough=0.5, metal=0.3)
+    green = s.look("Status", (0.1, 0.9, 0.3), rough=0.3, emissive=(0.1, 1.2, 0.3))
+
+    half = INSIDE / 2
+    out = half + GLASS
+    top = FREEBOARD
+    bottom = FLOOR_Z - GLASS
+
+    # Room: a floor and two walls, open towards the cameras.
+    s.add("Room/Floor", *box((-2.0, -2.2, ROOM_FLOOR - 0.02), (3.5, 2.5, ROOM_FLOOR)), floor)
+    s.add("Room/BackWall", *box((-1.05, -2.2, ROOM_FLOOR), (-1.0, 2.5, ROOM_FLOOR + 2.8)), wall)
+    s.add("Room/SideWall", *box((-1.05, -1.75, ROOM_FLOOR), (3.5, -1.70, ROOM_FLOOR + 2.8)), wall)
+
+    # Stand: a steel frame and an oak board.
+    legs = []
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            cx, cy = sx * (out - 0.02), sy * (out - 0.02)
+            legs.append(box((cx - 0.02, cy - 0.02, ROOM_FLOOR), (cx + 0.02, cy + 0.02, bottom - BOARD)))
+    for zc in (ROOM_FLOOR + 0.06, bottom - BOARD - 0.02):
+        for sy in (-1, 1):
+            legs.append(box((-out, sy * (out - 0.02) - 0.02, zc - 0.02), (out, sy * (out - 0.02) + 0.02, zc + 0.02)))
+        for sx in (-1, 1):
+            legs.append(box((sx * (out - 0.02) - 0.02, -out, zc - 0.02), (sx * (out - 0.02) + 0.02, out, zc + 0.02)))
+    s.add("Stand/Frame", *join(*legs), steel)
+    s.add("Stand/Board", *box((-out - 0.01, -out - 0.01, bottom - BOARD), (out + 0.01, out + 0.01, bottom)), oak)
+
+    # The glass: five panes, black trim along the top and the bottom.
+    panes = [box((-out, -out, bottom), (out, out, FLOOR_Z)),
+             box((-out, -out, FLOOR_Z), (-half, out, top)), box((half, -out, FLOOR_Z), (out, out, top)),
+             box((-half, -out, FLOOR_Z), (half, -half, top)), box((-half, half, FLOOR_Z), (half, out, top))]
+    s.add("Tank/Glass", *join(*panes), glass)
+    rims = []
+    for z0, z1 in ((top - 0.025, top), (bottom, bottom + 0.03)):
+        rims += [box((-out - 0.002, -out - 0.002, z0), (out + 0.002, -out + 0.03, z1)),
+                 box((-out - 0.002, out - 0.03, z0), (out + 0.002, out + 0.002, z1)),
+                 box((-out - 0.002, -out, z0), (-out + 0.03, out, z1)),
+                 box((out - 0.03, -out, z0), (out + 0.002, out, z1))]
+    s.add("Tank/Trim", *join(*rims), trim)
+    # The water as a body, for looking at the tank from outside. Hidden when
+    # the camera is in it: the medium inside is the renderer's, not a box's.
+    s.add("Tank/WaterBody", *box((-half + 0.001, -half + 0.001, FLOOR_Z), (half - 0.001, half - 0.001, -0.002)), water)
+
+    # Sand and rock.
+    line, sand_z, rock_z, heights = ground(rng)
+
+    def sand_at(x, y):
+        i = int(np.clip((x + half) / INSIDE * (GRID - 1), 0, GRID - 1))
+        j = int(np.clip((y + half) / INSIDE * (GRID - 1), 0, GRID - 1))
+        return float(sand_z[j, i])
+
+    def ground_at(x, y):
+        i = int(np.clip((x + half) / INSIDE * (GRID - 1), 0, GRID - 1))
+        j = int(np.clip((y + half) / INSIDE * (GRID - 1), 0, GRID - 1))
+        return float(heights[j, i])
+
+    s.add("Tank/Sand", *field_mesh(line, sand_z), sand, smooth=True)
+    for i, (x, y, r, h, lean) in enumerate(ROCKS):
+        s.add(f"Tank/Rock{i}", *rock_mesh(rng, x, y, r, h, lean, sand_at), rockl, smooth=True)
+
+    # Coral, on the rock where there is rock and on the sand where there is not.
+    placed = []
+    spots = [(x + rng.uniform(-0.5, 0.5) * r, y + rng.uniform(-0.5, 0.5) * r) for x, y, r, h, lean in ROCKS for _ in range(2)]
+    spots += [(rng.uniform(-0.4, 0.4), rng.uniform(-0.4, 0.4)) for _ in range(6)]
+    for i, (kind, size, colour) in enumerate(CORALS):
+        x, y = spots[i % len(spots)]
+        p, f = coral.grow_one(kind, rng, size)
+        if not len(p):
+            continue
+        p = p + np.array([x, y, ground_at(x, y) - 0.01])
+        look = s.look(f"Coral{i}", TANK_COLOURS[colour], rough=0.55)
+        s.add(f"Tank/Coral{i}", p, f, look, smooth=True)
+        placed.append({"kind": kind, "sizeM": size, "colour": colour, "at": [round(x, 3), round(y, 3)]})
+
+    # The pump, on the back glass, and the fan on the rim.
+    s.add("Tank/Pump", *join(cylinder((-half + 0.005, -0.30, -0.35), (-half + 0.07, -0.30, -0.35), 0.03),
+                             cylinder((-half + 0.07, -0.30, -0.35), (-half + 0.10, -0.30, -0.35), 0.015)), black)
+    fan_at = np.array([out + 0.06, 0.0, top + 0.10])
+    ring = []
+    for k in range(48):
+        a0, a1 = 2 * math.pi * k / 48, 2 * math.pi * (k + 1) / 48
+        ring.append(coral._cylinder(fan_at + np.array([0, 0.08 * math.cos(a0), 0.08 * math.sin(a0)]),
+                                    fan_at + np.array([0, 0.08 * math.cos(a1), 0.08 * math.sin(a1)]), 0.004, 0.004, 6))
+    blades = [box(fan_at + np.array([-0.005, -0.065, -0.012]), fan_at + np.array([0.005, 0.065, 0.012]))]
+    blades.append(box(fan_at + np.array([-0.005, -0.012, -0.065]), fan_at + np.array([0.005, 0.012, 0.065])))
+    s.add("Room/Fan", *join(*ring, *blades, cylinder(fan_at + [0.02, 0, 0], fan_at + [0.05, 0, 0], 0.03),
+                            box((out - 0.01, -0.03, top - 0.06), (out + 0.10, 0.03, top + 0.02))), black)
+
+    # The gantry, the overhead camera and two LED bars.
+    post_x = -out - 0.12
+    g = [box((post_x - 0.02, sy * 0.55 - 0.02, bottom - BOARD), (post_x + 0.02, sy * 0.55 + 0.02, 1.30)) for sy in (-1, 1)]
+    g.append(box((post_x - 0.02, -0.57, 1.28), (post_x + 0.02, 0.57, 1.32)))
+    g.append(box((post_x, -0.02, 1.26), (0.02, 0.02, 1.30)))
+    for bx in (-0.28, 0.28):
+        g.append(box((bx - 0.01, -0.01, 0.42), (bx + 0.01, 0.01, 1.28)) if bx < 0 else box((bx - 0.01, -0.01, 0.42), (bx + 0.01, 0.01, 1.26)))
+    s.add("Rig/Gantry", *join(*g), steel)
+    s.add("Rig/OverheadCamera", *join(box((-0.035, -0.035, 1.17), (0.035, 0.035, 1.26)),
+                                      cylinder((0, 0, 1.17), (0, 0, 1.15), 0.015)), black)
+    s.add("Rig/LedBars", *join(box((-0.32, -0.45, 0.40), (-0.24, 0.45, 0.42)), box((0.24, -0.45, 0.40), (0.32, 0.45, 0.42))), led)
+    for bx in (-0.28, 0.28):
+        s.extra.append(
+            '    def RectLight "Led%s"\n    {\n        float inputs:width = 0.08\n        float inputs:height = 0.9\n'
+            '        float inputs:intensity = 9000\n        color3f inputs:color = (0.85, 0.92, 1.0)\n'
+            '        double3 xformOp:translate = (%.3f, 0, 0.395)\n        uniform token[] xformOpOrder = ["xformOp:translate"]\n    }\n'
+            % ("West" if bx < 0 else "East", bx))
+    # A soft ceiling light for the room.
+    s.extra.append('    def RectLight "Ceiling"\n    {\n        float inputs:width = 2.5\n        float inputs:height = 2.5\n'
+                   '        float inputs:intensity = 1800\n        color3f inputs:color = (1.0, 0.96, 0.9)\n'
+                   '        double3 xformOp:translate = (0.8, -0.4, %.3f)\n        uniform token[] xformOpOrder = ["xformOp:translate"]\n    }\n'
+                   % (ROOM_FLOOR + 2.75))
+
+    # The desk, the DGX Spark, the switch, a monitor and a keyboard.
+    dz = ROOM_FLOOR + 0.75
+    d0, d1 = (0.45, -1.68), (1.85, -1.05)
+    parts = [box((d0[0], d0[1], dz - 0.03), (d1[0], d1[1], dz))]
+    for lx in (d0[0] + 0.04, d1[0] - 0.04):
+        for ly in (d0[1] + 0.04, d1[1] - 0.04):
+            parts.append(box((lx - 0.02, ly - 0.02, ROOM_FLOOR), (lx + 0.02, ly + 0.02, dz - 0.03)))
+    s.add("Desk/Desk", *join(*parts), desk)
+    s.add("Desk/DgxSpark", *box((1.30, -1.45, dz), (1.45, -1.30, dz + 0.0505)), gold)
+    s.add("Desk/Switch", *box((0.70, -1.40, dz), (0.92, -1.28, dz + 0.035)), black)
+    s.add("Desk/SwitchLights", *join(*[box((0.92, -1.39 + 0.02 * k, dz + 0.012), (0.9225, -1.38 + 0.02 * k, dz + 0.02)) for k in range(5)]), green)
+    s.add("Desk/MonitorStand", *join(box((1.00, -1.62, dz), (1.20, -1.52, dz + 0.01)), box((1.08, -1.60, dz), (1.12, -1.57, dz + 0.32))), grey)
+    s.add("Desk/Monitor", *box((0.82, -1.60, dz + 0.17), (1.38, -1.57, dz + 0.50)), black)
+    s.add("Desk/MonitorScreen", *box((0.835, -1.5705, dz + 0.185), (1.365, -1.568, dz + 0.485)), screen)
+    s.add("Desk/Keyboard", *box((0.95, -1.35, dz), (1.32, -1.22, dz + 0.015)), grey)
+
+    # Cables: the tether from the switch over the rim, and the switch to the DGX.
+    tether = list(curve((0.92, -1.32, dz + 0.02), (0.60, -0.62, top + 0.02), -0.25, 18))
+    tether += [(0.45, -0.45, top + 0.03), (0.40, -0.40, top - 0.08)]
+    s.add("Rig/Tether", *tube(tether, 0.0035), cable)
+    s.add("Desk/Patch", *tube(list(curve((0.92, -1.36, dz + 0.01), (1.30, -1.40, dz + 0.02), -0.01, 8)), 0.003), black)
+    s.add("Rig/CameraCable", *tube([(post_x, 0.0, 1.29), (post_x + 0.03, -0.55, 1.29), (post_x + 0.03, -0.57, bottom),
+                                    (0.6, -1.2, ROOM_FLOOR + 0.01), (0.8, -1.38, dz + 0.01)], 0.003), black)
+
+    into.mkdir(parents=True, exist_ok=True)
+    s.write(into / "tank.usda", f"{name}: a 1 m glass tank in a room. Metres, Z up, z = 0 at the water surface. Chosen, not measured.")
+    heights.astype("<f4").tofile(into / "seabed.f32")
+    return {"corals": placed, "lowest": float(heights.min()), "highest": float(heights.max()),
+            "meshes": len(s.meshes)}
+
+
+def a_place(name: str, made: dict) -> dict:
+    half = INSIDE / 2
+    return {
+        "name": name,
+        "from": {"surveyed": False, "measured": False, "fetched": False,
+                 "source": "chosen: the tank its owner asked for, a 1 m glass cube, and a room built round it",
+                 "acrossMetres": INSIDE, "lengthM": INSIDE, "widthM": INSIDE, "depthM": round(-FLOOR_Z, 3),
+                 "sampleMetres": round(INSIDE / (GRID - 1), 4), "decimatedBy": 1},
+        "datum": "still water; z = 0 is the free surface and depth is negative z",
+        "enclosed": True,
+        # Inside the glass, which is what the vehicle is kept within.
+        "interior": {"min": [-half, -half, FLOOR_Z], "max": [half, half, 0.0],
+                     "why": "the glass is a wall: a vehicle stops at it rather than passing through"},
+        "deepestM": round(-made["lowest"], 3),
+        "shallowestM": round(-made["highest"], 3),
+        "underwater": 1.0,
+        "mesh": {"heightfield": {"file": "seabed.f32", "rows": GRID, "columns": GRID,
+                                 "what": "the sand and the rock on it, which the vehicle rests on"}},
+        "reef": {"colonies": len(made["corals"]), "prototypes": len(made["corals"]),
+                 "from": "chosen: a reef tank's aquascape, coloured as aquarium corals are under blue light",
+                 "colonies_at": made["corals"]},
+        "layers": {"terrain": "tank.usda"},
+        "beginAt": [0.15, 0.0, -0.35],
+        "beginBecause": "in open water in the middle of the tank, above the rock, facing the room",
+        "life": {"tank": True, "count": FISH, "scale": 0.12,
+                 "from": "chosen: what a one-metre reef tank holds — chromis, a few wrasse, a pair of butterflies, gobies on the sand"},
+        "water": {"type": "I", "from": "chosen: a filtered tank is clearer than the open ocean"},
+        # How the cameras sit in a place a metre across. The built-in views are
+        # sized for a reef and every one of them would be outside the glass.
+        "cameras": {
+            "chase": {"behind": 0.55, "above": 0.18},
+            "top": {"above": 0.75},
+            "orbit": {"radius": 0.45, "above": 0.12},
+            "front": {"ahead": 0.19, "aim": 1.5},
+            "down": {"below": 0.07, "aim": 1.0},
+            "keepInside": True,
+            "fixed": {
+                "room": {"eye": [2.6, 1.7, -0.25], "aim": [0.1, -0.35, -0.75],
+                         "what": "the whole bench from the room: tank, stand, rig, desk"},
+                "glass": {"eye": [1.55, 0.0, -0.45], "aim": [0.0, 0.0, -0.5],
+                          "what": "face to the glass, the tank filling the frame"},
+                "overhead": {"eye": [0.0, 0.0, 1.15], "aim": [0.0, 0.0, -0.9], "up": [1.0, 0.0, 0.0],
+                             "what": "the gantry camera, which is how the tank knows where the vehicle is"},
+                "desk": {"eye": [1.55, -0.55, 0.05], "aim": [1.0, -1.45, -0.75],
+                         "what": "the desk: the DGX Spark, the switch, the tether going to the tank"},
+            },
+        },
+        "rig": {
+            "fan": {"at": [round(INSIDE / 2 + GLASS + 0.06, 3), 0.0, round(FREEBOARD + 0.10, 3)], "blowsTowardsDeg": 270,
+                    "what": "blows across the surface: conditions windMetresPerSecond"},
+            "pump": {"at": [-0.43, -0.30, -0.35], "pushesTowardsDeg": 90,
+                     "what": "the circulation pump: conditions currentMetresPerSecond"},
+            "overheadCamera": {"at": [0.0, 0.0, 1.15], "lookingDown": True},
+            "computer": {"kind": "dgx-spark", "at": [1.375, -1.375]},
+        },
+        "ground": {"hardnessFrom": "sand and rock", "colourFrom": "chosen", "surveyed": False},
+    }
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("name")
+    ap.add_argument("--into", type=pathlib.Path)
+    ap.add_argument("--seed", type=int, default=7)
+    args = ap.parse_args()
+    into = args.into or pathlib.Path.home() / "coral-city" / "places" / args.name
+    t0 = time.time()
+    made = build(args.name, into, args.seed)
+    place = a_place(args.name, made)
+    place["builtBy"] = [{"tool": "make-aquarium", "args": {"name": args.name, "seed": args.seed},
+                         "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}]
+    (into / "site.json").write_text(json.dumps(place, indent=1) + "\n")
+    print(f"{args.name}: {made['meshes']} meshes, {len(made['corals'])} corals, ground {made['lowest']:.3f}..{made['highest']:.3f} m "
+          f"→ {into} in {time.time() - t0:.1f} s")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -54,6 +54,7 @@ const FIN = {
   gloss: c => new THREE.MeshPhysicalMaterial({color:c, roughness:0.32, metalness:0, clearcoat:1, clearcoatRoughness:0.08}),
   satin: c => new THREE.MeshPhysicalMaterial({color:c, roughness:0.55, metalness:0, clearcoat:0.25, clearcoatRoughness:0.35}),
   glass: c => new THREE.MeshPhysicalMaterial({color:c, roughness:0.05, metalness:0.2, clearcoat:1}),
+  glow: c => new THREE.MeshStandardMaterial({color:c, emissive:c, emissiveIntensity:1.5}),
   metal: c => new THREE.MeshPhysicalMaterial({color:c, roughness:0.35, metalness:0.85}),
   // Transmission is a second render pass; a software renderer for stills cannot afford it.
   clear: c => FAST ? new THREE.MeshPhysicalMaterial({color:c, roughness:0.05, metalness:0, opacity:0.22, transparent:true, clearcoat:1, depthWrite:false})
@@ -82,7 +83,13 @@ function fit(){ const v = THREE.MathUtils.degToRad(cam.fov)/2; const h = Math.at
 function view(n){ const v = new THREE.Vector3(...VIEWS[n]).normalize().multiplyScalar(fit()); cam.position.copy(c).add(v); cam.up.set(n==='top'?1:0, n==='top'?0:1, 0); ctl.update(); }
 const bar = document.getElementById('views');
 for (const n of Object.keys(VIEWS)) { const b = document.createElement('button'); b.textContent = n; b.onclick = () => view(n); bar.appendChild(b); }
-view(new URLSearchParams(location.search).get('view') || 'iso');
+const Q = new URLSearchParams(location.search);
+if (Q.get('eye')) {
+  // A camera given in the model's own frame (x, y, z up), as a place's fixed view is.
+  const [ex, ey, ez] = Q.get('eye').split(',').map(Number), [ax, ay, az] = (Q.get('aim') || '0,0,0').split(',').map(Number);
+  cam.fov = Number(Q.get('fov') || 50); cam.updateProjectionMatrix();
+  cam.position.set(ex, ez, -ey); ctl.target.set(ax, az, -ay); cam.up.set(0, 1, 0); ctl.update();
+} else view(Q.get('view') || 'iso');
 addEventListener('resize', () => { cam.aspect = innerWidth/innerHeight; cam.updateProjectionMatrix(); r.setSize(innerWidth, innerHeight); });
 (function loop(){ requestAnimationFrame(loop); ctl.update(); r.render(scene, cam); })();
 </script></body></html>

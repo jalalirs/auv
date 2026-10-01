@@ -402,3 +402,21 @@ def test_a_bottom_sitter_lets_a_vehicle_closer_than_a_jack_does():
     actually on a reef."""
     assert life.GROUPS["bottom"]["wary"] < life.GROUPS["jack"]["wary"]
     assert life.GROUPS["bottom"]["above"][0] < life.GROUPS["parrotfish"]["above"][0]
+
+
+def test_a_tank_keeps_its_fish_in_the_glass():
+    """A one-metre tank's fish stay in the water and inside the glass.
+
+    A reef's distances put a damselfish a metre and a half off the bottom and
+    let it roam six metres from home; shrunk to a tank they must neither leave
+    the box nor break the surface."""
+    import numpy as np
+    from life import Shoal
+
+    shoal = Shoal({"damselfish": 9, "wrasse": 3, "bottom": 3}, lambda x, y: -0.9,
+                  across=0.92, water_level=0.0, seed=3, scale=0.12)
+    for _ in range(600):
+        shoal.step(1 / 20, vehicle=np.array([0.1, 0.0, -0.4]), thrust=0.5)
+    assert np.all(np.abs(shoal.at[:, :2]) <= 0.46 + 1e-9)
+    assert np.all(shoal.at[:, 2] < 0.0)
+    assert np.all(shoal.at[:, 2] > -0.9)

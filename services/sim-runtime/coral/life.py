@@ -268,8 +268,15 @@ class Shoal:
     ELBOW = 2.5
 
     def __init__(self, groups: dict, floor_at, across: float,
-                 water_level: float = 0.0, seed: int = 0, about=(0.0, 0.0)) -> None:
+                 water_level: float = 0.0, seed: int = 0, about=(0.0, 0.0),
+                 scale: float = 1.0) -> None:
         self.rng = np.random.default_rng(seed)
+        # How much of a reef's distances this water has room for. One on a
+        # reef; about a tenth in a one-metre tank, where a damselfish holding
+        # a metre and a half off the bottom would be in the air. Lengths and
+        # speeds are the fish's own and are not scaled: a chromis is nine
+        # centimetres whatever it lives in.
+        self.scale = float(scale)
         self.floor_at = floor_at
         self.across = float(across)
         self.water_level = float(water_level)
@@ -295,7 +302,7 @@ class Shoal:
                 size = min(int(self.rng.integers(low, high + 1)), many - put)
                 at = self.about + self.rng.uniform(
                     -0.45 * across, 0.45 * across, 2)
-                held = max(0.2, self.rng.normal(*says["above"]))
+                held = max(0.2 * self.scale, self.rng.normal(*says["above"]) * self.scale)
                 for _ in range(size):
                     kinds.append(name)
                     home.append(at)
@@ -324,12 +331,13 @@ class Shoal:
             setattr(self, field, np.array(
                 [GROUPS[k][field] for k in self.kinds], dtype="float64"))
         self.roam = np.array([GROUPS[k]["home"] for k in self.kinds],
-                             dtype="float64")
+                             dtype="float64") * self.scale
+        self.wary = self.wary * max(self.scale, 0.25)
 
         self._remember_the_floor()
         self.at = np.zeros((self.of_them, 3))
         if self.of_them:
-            self.at[:, :2] = self.home + self.rng.normal(0, 2.0, (self.of_them, 2))
+            self.at[:, :2] = self.home + self.rng.normal(0, 2.0 * self.scale, (self.of_them, 2))
             self.at[:, 2] = self._floor(self.at[:, :2]) + self.above
         # Which fish are which kind, worked out once: the step needs it every
         # tick and `self.kinds == k` over two thousand strings is not free.
@@ -404,7 +412,7 @@ class Shoal:
                                 gap / far[:, :, None] ** 2, 0.0)
             want[these] += self.APART * np.nan_to_num(push).sum(axis=1)
 
-            near = far < 6.0
+            near = far < 6.0 * self.scale
             many = near.sum(axis=1)
             held = np.maximum(many, 1)[:, None]
             middle = np.where(many[:, None] > 0, near @ at / held, at)
@@ -419,7 +427,7 @@ class Shoal:
         want[:, :2] -= self.HOME * pull[:, None] * adrift
 
         floor = self._floor(self.at[:, :2])
-        wants_z = np.minimum(floor + self.above, self.water_level - 0.5)
+        wants_z = np.minimum(floor + self.above, self.water_level - 0.5 * self.scale)
         want[:, 2] += self.DEPTH * (wants_z - self.at[:, 2])
 
         # ── and the thing coming at it ───────────────────────────────────────
@@ -458,7 +466,8 @@ class Shoal:
 
         # Never inside the ground, and never out of the water.
         floor = self._floor(self.at[:, :2])
-        self.at[:, 2] = np.clip(self.at[:, 2], floor + 0.08, self.water_level - 0.3)
+        self.at[:, 2] = np.clip(self.at[:, 2], floor + 0.08 * max(self.scale, 0.3),
+                                self.water_level - 0.3 * max(self.scale, 0.15))
         edge = 0.49 * self.across
         self.at[:, :2] = np.clip(self.at[:, :2], self.about - edge,
                                  self.about + edge)
