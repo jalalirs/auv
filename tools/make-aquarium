@@ -45,6 +45,9 @@ STAND_H = 0.60
 BOARD = 0.018
 ROOM_FLOOR = FLOOR_Z - GLASS - BOARD - STAND_H
 SAND = 0.055           # mean depth of the sand bed
+# Whether the water is drawn as a translucent box for looking at from the
+# room. Off: a translucent box this size greyed everything inside it.
+WATER_BODY = False
 GRID = 257             # heightfield samples each way; the field is square, LONG across, and the tank sits in its middle
 
 # ── what sits on the sand ────────────────────────────────────────────────────
@@ -253,7 +256,7 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
     # other, so pale glass under a fill light glows and the tank goes milky;
     # dark glass tints what is behind it and only its reflections show.
     glass = s.look("Glass", (0.02, 0.03, 0.03), rough=0.0, opacity=0.06, clearcoat=1.0, ior=1.52)
-    water = s.look("WaterBody", (0.0, 0.05, 0.07), rough=0.0, opacity=0.10, ior=1.33)
+    water = s.look("WaterBody", (0.0, 0.05, 0.07), rough=0.0, opacity=0.04, ior=1.33)
     trim = s.look("Trim", (0.02, 0.02, 0.02), rough=0.35)
     steel = s.look("Steel", (0.05, 0.05, 0.055), rough=0.45, metal=0.6)
     oak = s.look("Oak", (0.55, 0.40, 0.26), rough=0.55)
@@ -313,7 +316,8 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
     s.add("Tank/Trim", *join(*rims), trim)
     # The water as a body, for looking at the tank from outside. Hidden when
     # the camera is in it: the medium inside is the renderer's, not a box's.
-    s.add("Tank/WaterBody", *box((-hx + 0.001, -hy + 0.001, FLOOR_Z), (hx - 0.001, hy - 0.001, -0.002)), water)
+    if WATER_BODY:
+        s.add("Tank/WaterBody", *box((-hx + 0.001, -hy + 0.001, FLOOR_Z), (hx - 0.001, hy - 0.001, -0.002)), water)
 
     # Sand and rock.
     line, sand_z, rock_z, heights = ground(rng)
@@ -384,7 +388,7 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
     for by in (-0.25, 0.25):
         s.extra.append(
             '    def RectLight "Led%s"\n    {\n        float inputs:width = 1.7\n        float inputs:height = 0.08\n'
-            '        float inputs:intensity = 9000\n        color3f inputs:color = (0.85, 0.92, 1.0)\n'
+            '        float inputs:intensity = 3500\n        color3f inputs:color = (0.85, 0.92, 1.0)\n'
             '        double3 xformOp:translate = (0, %.3f, 0.395)\n        uniform token[] xformOpOrder = ["xformOp:translate"]\n    }\n'
             % ("South" if by < 0 else "North", by))
     # A soft ceiling light for the room.
@@ -393,24 +397,31 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
                    '        double3 xformOp:translate = (0.5, -0.2, %.3f)\n        uniform token[] xformOpOrder = ["xformOp:translate"]\n    }\n'
                    % (ROOM_FLOOR + 2.75))
 
+    # The balance matters as much as the amount: the camera exposes for the
+    # brightest thing, and LED bars four times the daylight left every side
+    # surface in the tank dim beside the tops of things.
     # Daylight. A room by day is lit from everywhere at once — windows, sky,
     # the walls throwing it back — and that is why nothing in a daylit room
     # is dark on one side. Without it the only light on the vehicle's flanks
     # was two fill panels, and its black sides rendered as a silhouette
     # however the panels were turned. A dome is that light: even, from every
     # direction, white.
-    s.extra.append('    def DomeLight "Daylight"\n    {\n        float inputs:intensity = 900\n'
+    s.extra.append('    def DomeLight "Daylight"\n    {\n        float inputs:intensity = 2200\n'
                    '        color3f inputs:color = (1.0, 0.98, 0.95)\n    }\n')
 
     # Fill light from the room's side and from the far end, the way a tank is
     # lit to be looked at: the LED bars light the top of what is in the water
     # and nothing of its sides, and a black-sided vehicle lit only from above
     # is a shape with no surface. Soft and wide, aimed at the glass.
-    for name, at, turn in (("FillRoom", (0.0, 2.2, -0.35), "float3 xformOp:rotateXYZ = (-90, 0, 0)"),
-                           ("FillEnd", (2.6, 0.0, -0.35), "float3 xformOp:rotateXYZ = (0, 90, 0)")):
+    # High and angled down, not level behind the cameras: glass is a mirror,
+    # and a bright panel at the camera's height reflected straight back over
+    # the middle of the tank as a grey veil exactly where the vehicle swims.
+    # From up here the reflection lands above the glass.
+    for name, at, turn in (("FillRoom", (0.0, 2.0, 1.1), "float3 xformOp:rotateXYZ = (-53.13, 0, 0)"),
+                           ("FillEnd", (2.4, 0.0, 1.1), "float3 xformOp:rotateXYZ = (0, 53.13, 0)")):
         s.extra.append(
             '    def RectLight "%s"\n    {\n        float inputs:width = 1.8\n        float inputs:height = 1.0\n'
-            '        float inputs:intensity = 1800\n        color3f inputs:color = (1.0, 0.97, 0.92)\n'
+            '        float inputs:intensity = 3000\n        color3f inputs:color = (1.0, 0.97, 0.92)\n'
             '        double3 xformOp:translate = (%.3f, %.3f, %.3f)\n        %s\n'
             '        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]\n    }\n'
             % (name, at[0], at[1], at[2], turn))

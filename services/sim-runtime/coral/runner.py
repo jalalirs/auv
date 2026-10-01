@@ -3275,12 +3275,15 @@ class Dive:
             return None
         described = json.loads((city / "site.json").read_text())
         says = described.get("life")
+        # A tank says how many fish it holds, not what share of a reef's
+        # record each kind is; asked after the reef's question, every tank
+        # was told it had no record of what lives in it and had no fish.
+        if says and says.get("tank"):
+            return self._stock_the_tank(stage, says)
         if not says or not says.get("shares"):
             self.say("no_life", why="this place has no record of what lives in it")
             return None
 
-        if says.get("tank"):
-            return self._stock_the_tank(stage, says)
         reef = math.pi * self.STOCKED_TO_M ** 2
         # Only the part of that which is reef rather than sand. The habitat
         # shares are on the place; where they are not, half is the honest

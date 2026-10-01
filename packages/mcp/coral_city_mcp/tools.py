@@ -668,7 +668,11 @@ WATERS = {
 # pump on the back glass pushes east. Clear, filtered water, and the gantry
 # camera fixing the vehicle's position off the tag on its lid — which is what
 # a tank has instead of a Doppler log.
-_TANK = {"waterType": "I", "positioning": {
+_TANK = {"waterType": "I",
+         # The room is lit; a vehicle's own lamps in a daylit tank only glare
+         # off the glass in front of it.
+         "fitted": {"lights": False},
+         "positioning": {
     "kind": "camera", "accuracyM": 0.005, "everyS": 0.1,
     "from": "chosen: a camera 1.2 m over the water tracking an AprilTag on the lid"}}
 WATERS.update({
