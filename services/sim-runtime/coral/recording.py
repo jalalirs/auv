@@ -190,13 +190,34 @@ class Recorder:
         # platform could see them. Best effort on purpose: a recording missing
         # its track is worth more than a dive that failed at the very end while
         # writing a file.
+        site = geography.where_the_place_is(dive)
         try:
-            wrote = geography.write_track(self.into, geography.where_the_place_is(dive))
+            wrote = geography.write_track(self.into, site)
         except Exception as problem:
             wrote = None
             manifest["trackFailed"] = f"{type(problem).__name__}: {problem}"
         if wrote:
             manifest["track"] = wrote
+
+        # What a survey actually saw, from the grid the task already kept.
+        covered = None
+        task = getattr(dive, "task", None)
+        try:
+            shape = task.geometry() if task is not None and hasattr(task, "geometry") else None
+            covered = geography.write_coverage(self.into, site, shape)
+        except Exception as problem:
+            manifest["coverageFailed"] = f"{type(problem).__name__}: {problem}"
+        if covered:
+            manifest["coverage"] = covered
+
+        # And what each of those numbers is. Written whenever there is a track
+        # to describe, because a dive's geometry without it is two sets of
+        # latitudes nobody can tell apart.
+        if wrote:
+            try:
+                geography.write_provenance(self.into, has_coverage=bool(covered))
+            except Exception as problem:
+                manifest["provenanceFailed"] = f"{type(problem).__name__}: {problem}"
 
         (self.into / "manifest.json").write_text(json.dumps(manifest, indent=2))
         return manifest

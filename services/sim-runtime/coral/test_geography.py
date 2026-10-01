@@ -157,3 +157,61 @@ def test_a_dive_with_no_package_mounted_does_not_raise(tmp_path):
 
     assert geography.where_the_place_is(Dive()) is None
     assert geography.where_the_place_is(object()) is None
+
+
+# ── coverage and provenance, and that they agree with tools/deliver ──────────
+
+def _a_covering(rows=4, columns=6, seen=None):
+    import numpy as np
+    flags = np.zeros((rows, columns), dtype=bool)
+    for r, c in (seen or [(0, 0), (1, 2), (3, 5)]):
+        flags[r, c] = True
+    corners = [{"x": 0.0, "y": 0.0}, {"x": 3.0, "y": 0.0},
+               {"x": 3.0, "y": -2.0}, {"x": 0.0, "y": -2.0}]
+    return {"rectangle": corners,
+            "seen": {"rows": rows, "columns": columns,
+                     "cells": [int(v) for v in np.packbits(flags.ravel())]}}
+
+
+def test_coverage_agrees_with_deliver_cell_for_cell(tmp_path):
+    """The same arithmetic, so a coverage written by the dive and one drawn
+    later from its recording are the same file."""
+    import numpy as np
+    shape = _a_covering()
+    mine = geography.write_coverage(tmp_path, {"from": {"centre": CENTRE}}, shape)
+
+    theirs_dir = tmp_path / "theirs"
+    theirs_dir.mkdir()
+    deliver = _deliver()
+    theirs = deliver.coverage_file(theirs_dir, shape, CENTRE)
+
+    assert mine["seen"] == theirs["seen"] == 3
+    assert mine["fraction"] == theirs["fraction"]
+    assert mine["seenM2"] == theirs["seenM2"]
+    a = json.loads((tmp_path / "coverage.geojson").read_text())
+    b = json.loads((theirs_dir / "coverage.geojson").read_text())
+    assert a == b
+
+
+def test_a_dive_asked_to_cover_nothing_writes_no_coverage(tmp_path):
+    """Coverage of a plot nobody named is not a number."""
+    assert geography.write_coverage(tmp_path, {"from": {"centre": CENTRE}}, None) is None
+    assert geography.write_coverage(tmp_path, {"from": {"centre": CENTRE}}, {}) is None
+    assert not (tmp_path / "coverage.geojson").exists()
+
+
+def test_the_provenance_says_the_same_as_deliver_s():
+    """One wording for what a dive's numbers are. The runtime cannot import the
+    tool — its image does not carry tools/ — so the two are held together here."""
+    deliver = _deliver()
+    for coverage in (False, True):
+        for planting in (False, True):
+            assert geography.provenance(coverage, planting) == \
+                deliver.mission_provenance(planting, coverage)
+
+
+def test_the_provenance_says_first_that_none_of_it_is_a_reef():
+    said = geography.provenance(True)
+    assert "Nothing here is an observation of a real reef" in said["about"]
+    kinds = {c["kind"] for c in said["columns"].values()}
+    assert {"truth", "believed", "derived"} <= kinds

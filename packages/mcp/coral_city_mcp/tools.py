@@ -242,14 +242,20 @@ def dives_deliverables(platform: Platform, dive_id: str, run_id: str | None = No
            else max(runs, key=lambda r: r.get("createdAt") or "", default=None))
     if run is None:
         raise Refused(404, "not_found", "that dive has no such run")
-    wanted = ("track.geojson", "track.csv", "coverage.geojson",
-              "planting.geojson", "colonies.geojson", "provenance.json")
+    # What a dive produces, and not what a place does. This listed
+    # colonies.geojson too, so every dive reported it missing — and a colony
+    # inventory belongs to a reef rather than to one flight over it.
+    # coverage.geojson appears only when the dive was asked to cover a plot,
+    # and planting.geojson only when it was asked to plant.
+    wanted = ("track.geojson", "track.csv", "provenance.json",
+              "coverage.geojson", "planting.geojson")
+    always = ("track.geojson", "track.csv", "provenance.json")
     found = {}
     for one in platform.artefacts(dive_id, run["id"]):
         name = (one.get("path") or "").split("/")[-1]
         if name in wanted:
             found[name] = one.get("url")
-    missing = [w for w in wanted if w not in found]
+    missing = [w for w in always if w not in found]
     raw = {(one.get("path") or "").split("/")[-1]
            for one in platform.artefacts(dive_id, run["id"])}
     out = {

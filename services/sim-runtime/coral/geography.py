@@ -176,3 +176,118 @@ def write_track(into: pathlib.Path, site: dict | None) -> dict | None:
         "worstFixErrorM": round(worst, 3) if believed_count else None,
         "meanFixErrorM": round(total / believed_count, 3) if believed_count else None,
     }
+
+
+# ── what a survey actually saw ───────────────────────────────────────────────
+
+def write_coverage(into: pathlib.Path, site: dict | None, geometry: dict | None) -> dict | None:
+    """The cells the camera's footprint passed over, as ground on the Earth.
+
+    The same arithmetic as tools/deliver's coverage_file, so a coverage drawn
+    from the dive and one drawn later from its recording are the same file. The
+    task already kept the grid — a covering task marks every half-metre cell its
+    footprint falls on — so this only puts it somewhere the platform can hand
+    over. A dive that was not asked to cover anything has no rectangle, and
+    writes nothing: coverage of a plot nobody named is not a number.
+
+    Cells rather than a raster on purpose, as deliver says: the rectangle is
+    stated along the vehicle's own heading, so it is square to the mission and
+    not to north, and an axis-aligned grid of it would be a resampling presented
+    as a measurement.
+    """
+    import numpy as np
+
+    centre = centre_of(site)
+    if centre is None or not geometry:
+        return None
+    seen = geometry.get("seen") or {}
+    corners = geometry.get("rectangle") or []
+    cells, rows, columns = seen.get("cells"), seen.get("rows"), seen.get("columns")
+    if not cells or not rows or not columns or len(corners) != 4:
+        return None
+
+    flags = np.unpackbits(np.array(cells, dtype=np.uint8))[:rows * columns]
+    flags = flags.reshape(rows, columns)
+    origin = np.array([corners[0]["x"], corners[0]["y"]], dtype=float)
+    along = (np.array([corners[1]["x"], corners[1]["y"]], dtype=float) - origin) / columns
+    up = (np.array([corners[3]["x"], corners[3]["y"]], dtype=float) - origin) / rows
+
+    def lonlat(x, y):
+        latitude, longitude = where_on_earth(centre, float(x), float(y))
+        return [round(longitude, 8), round(latitude, 8)]
+
+    features = [{
+        "type": "Feature",
+        "properties": {"what": "the rectangle it was asked to cover"},
+        "geometry": {"type": "Polygon", "coordinates": [[
+            lonlat(c["x"], c["y"]) for c in corners + [corners[0]]]]},
+    }]
+    for row in range(rows):
+        for column in range(columns):
+            if not flags[row, column]:
+                continue
+            at = origin + along * (column + 0.5) + up * (row + 0.5)
+            features.append({"type": "Feature", "properties": {"what": "seen"},
+                             "geometry": {"type": "Point",
+                                          "coordinates": lonlat(at[0], at[1])}})
+    (into / "coverage.geojson").write_text(json.dumps(
+        {"type": "FeatureCollection", "features": features}, indent=1) + "\n")
+
+    covered = int(flags.sum())
+    each = float(np.linalg.norm(along)) * float(np.linalg.norm(up))
+    wide = float(np.linalg.norm(along)) * columns
+    deep = float(np.linalg.norm(up)) * rows
+    return {"cells": int(rows * columns), "seen": covered,
+            "fraction": round(covered / float(rows * columns), 4),
+            "rectangleM2": round(wide * deep, 1),
+            "seenM2": round(covered * each, 1)}
+
+
+# ── what each of those files is ──────────────────────────────────────────────
+
+TRUTH, BELIEVED, PLANNED = "truth", "believed", "planned"
+
+
+def provenance(has_coverage: bool, has_planting: bool = False) -> dict:
+    """What each column of a dive's product is, and that none of it is a reef.
+
+    The same words as tools/deliver's mission_provenance, held against it by a
+    test. A dive that hands over geometry without this is handing over numbers
+    nobody can tell apart: where the vehicle was and where it believed it was
+    are both latitudes, and they are not the same claim.
+    """
+    columns = {
+        "latitude / longitude": {"kind": TRUTH,
+            "from": "where the vehicle was, from the simulator, put on the Earth by "
+                    "inverting the expression the place was sampled with"},
+        "depthM / altitudeM / headingDeg": {"kind": TRUTH, "from": "the simulator's own state"},
+        "believedLatitude / believedLongitude": {"kind": BELIEVED,
+            "from": "the vehicle's navigation — what it would have logged, errors and all"},
+        "fixErrorM": {"kind": "derived",
+            "from": "the distance between the two above. Only a simulator can write this column"},
+    }
+    if has_planting:
+        columns["markLatitude / markLongitude"] = {"kind": PLANNED,
+            "from": "where the plan asked for a coral"}
+        columns["plantedLatitude / plantedLongitude"] = {"kind": TRUTH,
+            "from": "where the coral actually went, which is where the vehicle actually was"}
+        columns["errorM / onTheMark"] = {"kind": "derived",
+            "from": "the distance from the mark, against the tolerance the mission stated"}
+    if has_coverage:
+        columns["coverage.geojson"] = {"kind": TRUTH,
+            "from": "the cells the camera's footprint actually passed over"}
+    return {
+        "about": "A flown mission, in a simulator. Nothing here is an observation of a "
+                 "real reef or a real vehicle: it is what happened in a model whose "
+                 "own provenance is in the place's provenance.json.",
+        "why it is worth having": "Every row carries both where the vehicle was and "
+                                  "where it believed it was. A real vehicle cannot "
+                                  "produce the first column.",
+        "columns": columns,
+    }
+
+
+def write_provenance(into: pathlib.Path, has_coverage: bool,
+                     has_planting: bool = False) -> None:
+    (into / "provenance.json").write_text(
+        json.dumps(provenance(has_coverage, has_planting), indent=1) + "\n")
