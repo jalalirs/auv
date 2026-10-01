@@ -296,3 +296,12 @@ def test_a_dive_refuses_a_plan_its_vehicle_cannot_fly():
     assert refused, "a plan two hundred and fifty metres down was accepted"
     assert any("rated to 100 m" in one for one in refused[0]["why"]), refused
     assert dive.planned_by == "the platform's planner", "and nothing planned in its place"
+
+
+def test_a_leg_is_never_reached_before_the_task_counts_it():
+    """The planner's arrival is inside the task's radius, however small."""
+    from controllers.plan import _inside
+
+    assert _inside(0.08, 0.6, 0.25) <= 0.08
+    assert _inside(1.0, 0.6, 0.25) == 0.6
+    assert _inside(10.0, 0.5, 0.5) == 5.0

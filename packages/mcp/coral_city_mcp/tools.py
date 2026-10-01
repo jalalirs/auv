@@ -233,13 +233,49 @@ def dives_result(platform: Platform, dive_id: str, run_id: str | None = None) ->
                 "score": unknown(f"the run {state}, so nothing was scored"),
                 "note": "a run that did not finish is not a score of zero"}
     artefacts = platform.artefacts(dive_id, run["id"])
+    # The score. This answer used to stop at the list of files, so every run
+    # that finished came back with no score at all, which reads exactly like
+    # a run that scored nothing. The runtime's judge writes it into the run's
+    # outcome, and it is derived: the simulator's own truth, held against
+    # what the task asked for.
+    outcome = run.get("outcome") or {}
+    task = outcome.get("task") or {}
+    if task.get("score") is not None:
+        score = said(task["score"], DERIVED,
+                     f"the runtime's judge of {task.get('kind', 'the task')}, against the simulator's truth",
+                     note=_says_of(task))
+    else:
+        score = unknown("the run finished without a task to judge it by")
+    navigation = outcome.get("navigation") or {}
+    tether = outcome.get("tether") or {}
     return {
         "dive": dive_id, "run": run["id"], "state": state,
+        "score": score,
+        "achieved": task.get("achieved"),
+        "ended": outcome.get("ended"),
+        "flownBy": (task.get("flownBy") or {}).get("mostly"),
+        "seconds": task.get("seconds"),
+        "energyWh": task.get("energyWh"),
+        "struck": outcome.get("hit"),
+        **({"navigation": {"aiding": navigation.get("aiding"), "fixFrom": navigation.get("fixFrom"),
+                           "driftM": navigation.get("driftM"), "travelledM": navigation.get("travelledM")}}
+           if navigation else {}),
+        **({"tether": {"lengthM": tether.get("lengthM"), "taut": tether.get("taut"),
+                       "tensionN": tether.get("tensionN"), "timesHeldBack": tether.get("timesHeldBack")}}
+           if tether else {}),
         "artefacts": [{"path": a.get("path"), "bytes": a.get("sizeBytes")}
                       for a in artefacts],
         "note": "dives_deliverables returns the geometry; every figure in it "
                 "is marked in provenance.json",
     }
+
+
+def _says_of(task: dict) -> str | None:
+    """The task's own sentence about how it went, where it left the pieces."""
+    got = task.get("achieved") or {}
+    if "reached" in got and "of" in got:
+        return f"{got['reached']} of {got['of']} reached"
+    return task.get("says")
 
 
 def dives_deliverables(platform: Platform, dive_id: str, run_id: str | None = None) -> dict:

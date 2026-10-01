@@ -270,13 +270,22 @@ def _visit(goal: dict) -> list[dict]:
         else:
             leg["depthM"] = float(-p[2])
         if arrive is not None:
-            leg["arriveM"] = max(0.25, float(arrive) * 0.6)
+            leg["arriveM"] = _inside(float(arrive), 0.6, 0.25)
         if hold is not None:
             # A second more than asked: a sample taken to the last tenth is a
             # sample that fails on the clock.
             leg["holdS"] = float(hold) + 1.0
         route.append(leg)
     return route
+
+
+def _inside(radius: float, share: float, floor: float) -> float:
+    """How close a leg must come before the planner moves on: a share of what
+    the task counts, never less than a floor sized for a reef — and never more
+    than the task's own radius. A floor of a quarter of a metre against a task
+    that counts eight centimetres sent a tank vehicle to the next mark sixteen
+    centimetres short of every one, and the task never counted a single one."""
+    return min(max(floor, radius * share), radius * 0.8)
 
 
 def _line(goal: dict) -> list[dict]:
@@ -299,7 +308,7 @@ def _go(goal: dict) -> list[dict]:
     elif len(to) > 2:
         leg["depthM"] = float(-to[2])
     if goal.get("radiusM") is not None:
-        leg["arriveM"] = max(0.3, float(goal["radiusM"]) * 0.5)
+        leg["arriveM"] = _inside(float(goal["radiusM"]), 0.5, 0.3)
     return leg and [leg] or []
 
 
@@ -322,7 +331,7 @@ def _descend(goal: dict) -> list[dict]:
     else:
         leg["depthM"] = float(goal.get("depthM", 5.0))
     if goal.get("withinM") is not None:
-        leg["arriveM"] = max(0.5, float(goal["withinM"]) * 0.5)
+        leg["arriveM"] = _inside(float(goal["withinM"]), 0.5, 0.5)
     return [leg]
 
 

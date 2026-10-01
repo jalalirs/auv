@@ -277,3 +277,29 @@ def test_an_undrawn_dive_says_how_to_get_one_that_can_be_seen():
         tools.dives_frame(Undrawn(), "dive_1", 10.0)
     assert no.value.code == "not_drawn"
     assert "pictures=true" in no.value.message
+
+
+# ── dives_result ─────────────────────────────────────────────────────────────
+
+class Scored(Fleet):
+    def runs(self, dive):
+        return [{"id": "run_1", "state": "succeeded", "createdAt": "2026-10-01T00:00:00Z",
+                 "outcome": {"ended": "time", "task": {
+                     "kind": "waypoints", "score": 0.6, "seconds": 48, "energyWh": 0.59,
+                     "flownBy": {"mostly": "pursue"},
+                     "achieved": {"reached": 3, "of": 5, "radiusM": 0.08}},
+                     "navigation": {"aiding": "camera", "driftM": 0.002}}}]
+
+    def artefacts(self, dive, run):
+        return [{"path": "poses.jsonl", "sizeBytes": 10}]
+
+
+def test_a_finished_run_comes_back_with_its_score():
+    """Every finished run used to come back with no score, which reads like a
+    run that scored nothing. The judge's number is there, marked derived."""
+    said = tools.dives_result(Scored(), "dive_1")
+    assert said["score"]["value"] == 0.6
+    assert said["score"]["kind"] == "derived"
+    assert "3 of 5" in said["score"]["note"]
+    assert said["flownBy"] == "pursue"
+    assert said["navigation"]["aiding"] == "camera"

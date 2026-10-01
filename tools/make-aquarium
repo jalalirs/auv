@@ -255,7 +255,9 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
     steel = s.look("Steel", (0.05, 0.05, 0.055), rough=0.45, metal=0.6)
     oak = s.look("Oak", (0.55, 0.40, 0.26), rough=0.55)
     floor = s.look("RoomFloor", (0.62, 0.55, 0.47), rough=0.6)
-    wall = s.look("Wall", (0.82, 0.82, 0.80), rough=0.9)
+    # Mid grey, not white: white walls behind the glass set the camera's
+    # exposure, and everything in the water came out as a silhouette.
+    wall = s.look("Wall", (0.46, 0.48, 0.50), rough=0.9)
     sand = s.look("Sand", (0.86, 0.80, 0.68), rough=0.95)
     rockl = s.look("LiveRock", (0.52, 0.42, 0.44), rough=0.9)
     desk = s.look("Desk", (0.93, 0.93, 0.92), rough=0.5)
@@ -387,6 +389,19 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
                    '        float inputs:intensity = 1800\n        color3f inputs:color = (1.0, 0.96, 0.9)\n'
                    '        double3 xformOp:translate = (0.5, -0.2, %.3f)\n        uniform token[] xformOpOrder = ["xformOp:translate"]\n    }\n'
                    % (ROOM_FLOOR + 2.75))
+
+    # Fill light from the room's side and from the far end, the way a tank is
+    # lit to be looked at: the LED bars light the top of what is in the water
+    # and nothing of its sides, and a black-sided vehicle lit only from above
+    # is a shape with no surface. Soft and wide, aimed at the glass.
+    for name, at, turn in (("FillRoom", (0.0, 2.2, -0.35), "float3 xformOp:rotateXYZ = (-90, 0, 0)"),
+                           ("FillEnd", (2.6, 0.0, -0.35), "float3 xformOp:rotateXYZ = (0, 90, 0)")):
+        s.extra.append(
+            '    def RectLight "%s"\n    {\n        float inputs:width = 1.8\n        float inputs:height = 1.0\n'
+            '        float inputs:intensity = 2600\n        color3f inputs:color = (1.0, 0.97, 0.92)\n'
+            '        double3 xformOp:translate = (%.3f, %.3f, %.3f)\n        %s\n'
+            '        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]\n    }\n'
+            % (name, at[0], at[1], at[2], turn))
 
     # The desk, the DGX Spark, the switch, a monitor and a keyboard.
     # Beyond the tank's end, against the side wall, so the room camera sees
