@@ -2318,13 +2318,30 @@ class Dive:
         asked = (self.brief.get("initialState") or {}).get("tetherOutM")
         if asked is None:
             asked = (self.objective or {}).get("tetherOutM") if isinstance(self.objective, dict) else None
+        # A place that is a room says where its cable comes over the rim and
+        # how much of it is paid out: a tank does not have a ship.
+        rim = None
+        try:
+            rig = json.loads((pathlib.Path(self.brief.get("cityPath", "/dive/city"))
+                              / "site.json").read_text()).get("rig") or {}
+            rim = rig.get("tether") if isinstance(rig.get("tether"), dict) else None
+        except Exception:
+            rim = None
+        if asked is None and rim is not None and rim.get("outM") is not None:
+            asked = float(rim["outM"])
         if asked is not None:
             said["lengthM"] = float(asked)
         if not said or float(said.get("lengthM", 0.0)) <= 0.0:
             return
+        # Where the cable is tied to the vehicle, in its own frame. The middle
+        # of the vehicle when the package does not say.
+        self.tether_attach = np.array(said.get("attachM", [0.0, 0.0, 0.0]), dtype=float)
 
         floating = self.world.of_kind("ship") + self.world.of_kind("buoy")
-        if floating:
+        if rim is not None and rim.get("at") is not None:
+            surface = np.array(rim["at"], dtype=float)
+            where = rim.get("what", "where the place says the cable comes over the rim")
+        elif floating:
             surface = np.array(floating[0].at, dtype=float)
             where = f"the {floating[0].kind} this dive was laid out with"
         else:
@@ -3543,6 +3560,70 @@ class Dive:
         # The lamps are bolted to the vehicle but live at world level, so this
         # is what carries them along.
         self.aim_the_lamps()
+        self.draw_the_tether()
+
+    # How thick the cable is drawn, at least. A five-millimetre tether is a
+    # pixel at three metres and reads as nothing; drawn at its own diameter
+    # and no thinner than this, it reads as a cable.
+    TETHER_DRAWN_AT_LEAST_M = 0.006
+
+    def draw_the_tether(self) -> None:
+        """The cable, where its own solve says it is, from the rim to the stern.
+
+        It was simulated and never drawn, so a vehicle on a tether looked like
+        one on nothing. The shape is the cable model's; the last node is moved
+        to where the cable is actually tied on the hull, and nothing is drawn
+        through the ground or the glass.
+        """
+        if self.tether is None or not self.tether.out or self.tether.shape is None:
+            return
+        try:
+            from pxr import Gf, Sdf, UsdGeom, UsdShade, Vt
+
+            stage = self.stage
+            shape = np.array(self.tether.shape, dtype=float)
+            attach = getattr(self, "tether_attach", np.zeros(3))
+            shape[-1] = self.position + self.rotation @ attach
+            shape[0] = self.tether.at
+            if self.seabed is not None or self.floor is not None:
+                for k in range(1, len(shape) - 1):
+                    bottom = (self.seabed.under(float(shape[k, 0]), float(shape[k, 1]))
+                              if self.seabed is not None else self.floor)
+                    if bottom is not None:
+                        shape[k, 2] = max(float(shape[k, 2]), float(bottom) + 0.004)
+            if self.interior is not None:
+                low, high = self.interior
+                shape[1:-1, 0] = np.clip(shape[1:-1, 0], low[0] + 0.004, high[0] - 0.004)
+                shape[1:-1, 1] = np.clip(shape[1:-1, 1], low[1] + 0.004, high[1] - 0.004)
+            # A smoother line than the solve's twenty nodes: the cable is drawn
+            # through them, not as a chain of straight pieces.
+            t = np.linspace(0, 1, len(shape))
+            fine = np.linspace(0, 1, 6 * len(shape))
+            drawn = np.stack([np.interp(fine, t, shape[:, i]) for i in range(3)], axis=1)
+            points = Vt.Vec3fArray([Gf.Vec3f(*[float(v) for v in self.drawn_at(p)]) for p in drawn])
+            if getattr(self, "_tether_curve", None) is None:
+                curve = UsdGeom.BasisCurves.Define(stage, "/World/Tether")
+                curve.CreateTypeAttr(UsdGeom.Tokens.linear)
+                curve.CreateCurveVertexCountsAttr(Vt.IntArray([len(drawn)]))
+                width = max(self.tether.diameter_m, self.TETHER_DRAWN_AT_LEAST_M) * self.units_per_metre
+                curve.CreateWidthsAttr(Vt.FloatArray([float(width)]))
+                curve.SetWidthsInterpolation(UsdGeom.Tokens.constant)
+                curve.CreateDisplayColorAttr(Vt.Vec3fArray([Gf.Vec3f(0.95, 0.45, 0.05)]))
+                look = UsdShade.Material.Define(stage, "/World/Tether/Look")
+                shader = UsdShade.Shader.Define(stage, "/World/Tether/Look/S")
+                shader.CreateIdAttr("UsdPreviewSurface")
+                shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.95, 0.45, 0.05))
+                shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
+                look.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+                UsdShade.MaterialBindingAPI.Apply(curve.GetPrim()).Bind(look)
+                self._tether_curve = curve
+                self.say("tether_drawn", nodes=int(len(drawn)), widthM=round(float(width / self.units_per_metre), 4),
+                         from_=[round(float(v), 3) for v in shape[0]], to=[round(float(v), 3) for v in shape[-1]])
+            self._tether_curve.GetPointsAttr().Set(points)
+        except Exception as bad:
+            if not getattr(self, "_tether_unseen", False):
+                self._tether_unseen = True
+                self.say("tether_not_drawn", why=str(bad)[:200])
 
     def state(self) -> dict:
         return {

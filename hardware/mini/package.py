@@ -168,7 +168,9 @@ def dynamics():
             "units": units,
         },
         "tether": {"_": "10 m of thin neutrally buoyant twisted pair, data only: the battery powers the vehicle.",
-                   "diameterM": 0.005, "lengthM": 10.0, "weightNPerM": 0.0, "dragNormal": 1.2},
+                   "diameterM": 0.005, "lengthM": 10.0, "weightNPerM": 0.0, "dragNormal": 1.2,
+                   # Tied on at the stern, where it leaves the shell, in the vehicle's frame.
+                   "attachM": cat((S.HULL_TAIL + 2.0, 0.0, S.TETHER_Z))},
         "sensors": [
             {"kind": "underwater_camera", "name": "forward", "position": cat((S.CAMERA_X, 0, 0)), "orientation": [0, 0, 0],
              "focalLengthMm": 21, "widthPx": 1920, "heightPx": 1080, "watts": 2.5,
@@ -309,7 +311,8 @@ def main() -> int:
     rows, dyn, cg = dynamics()
     (PKG / "dynamics.json").write_text(json.dumps(dyn, indent=1, ensure_ascii=False) + "\n")
     (PKG / "README.md").write_text(README)
-    write_usd(cg)
+    if "--no-hull" not in sys.argv:
+        write_usd(cg)
     pic = OUT / "look-quarter.png"
     if pic.exists():
         from PIL import Image

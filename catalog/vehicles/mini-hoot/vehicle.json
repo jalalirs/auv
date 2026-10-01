@@ -412,7 +412,12 @@
       "diameterM": 0.005,
       "lengthM": 10.0,
       "weightNPerM": 0.0,
-      "dragNormal": 1.2
+      "dragNormal": 1.2,
+      "attachM": [
+        -0.1389,
+        -0.0,
+        0.0007
+      ]
     },
     "sensors": [
       {
