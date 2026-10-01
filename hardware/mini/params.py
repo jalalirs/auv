@@ -91,4 +91,6 @@ TETHER_Z = -12.0
 TETHER_HOLE_D = 8.0
 CAMERA_X = FRONT_FACE_X + 6.0
 COVER_COLOUR = "#c8161d"
-CHASSIS_COLOUR = "#151617"
+# A real black plastic, about 4% reflectance. "#151617" was under 1%,
+# darker than velvet, and the flanks rendered as a silhouette in any light.
+CHASSIS_COLOUR = "#3b3d41"

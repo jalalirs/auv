@@ -269,8 +269,8 @@ def write_usd(cg):
     body = [USD_HEAD, '    def Scope "Looks"\n    {\n',
             material("Lid", S.COVER_COLOUR, 0.3, clearcoat=1.0),
             material("Chassis", S.CHASSIS_COLOUR, 0.5, clearcoat=0.3),
-            material("Thruster", "#26292c", 0.45),
-            material("Metal", "#2c2f33", 0.35, metal=0.85),
+            material("Thruster", "#45484c", 0.45),
+            material("Metal", "#4a4d52", 0.35, metal=0.85),
             material("Dome", "#dfe9ef", 0.02, opacity=0.12),
             material("Camera", "#0d0f11", 0.2),
             material("Lens", "#f4f1e6", 0.1, emissive="0.6, 0.58, 0.5"), "    }\n"]

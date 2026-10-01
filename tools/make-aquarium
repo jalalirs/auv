@@ -393,6 +393,15 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
                    '        double3 xformOp:translate = (0.5, -0.2, %.3f)\n        uniform token[] xformOpOrder = ["xformOp:translate"]\n    }\n'
                    % (ROOM_FLOOR + 2.75))
 
+    # Daylight. A room by day is lit from everywhere at once — windows, sky,
+    # the walls throwing it back — and that is why nothing in a daylit room
+    # is dark on one side. Without it the only light on the vehicle's flanks
+    # was two fill panels, and its black sides rendered as a silhouette
+    # however the panels were turned. A dome is that light: even, from every
+    # direction, white.
+    s.extra.append('    def DomeLight "Daylight"\n    {\n        float inputs:intensity = 900\n'
+                   '        color3f inputs:color = (1.0, 0.98, 0.95)\n    }\n')
+
     # Fill light from the room's side and from the far end, the way a tank is
     # lit to be looked at: the LED bars light the top of what is in the water
     # and nothing of its sides, and a black-sided vehicle lit only from above
