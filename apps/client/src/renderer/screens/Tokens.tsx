@@ -70,9 +70,11 @@ export function Tokens({ platform }: { platform: Platform }): React.JSX.Element 
   }, [platform]);
   useEffect(read, [read]);
 
-  let remembered: string | null = null;
-  try { remembered = localStorage.getItem("coral-city.platform"); } catch { /* private window */ }
-  const address = mcpAddressFor(remembered);
+  // From the session itself, not from what was remembered at sign-in. The
+  // desktop application can come in by signing in automatically, which never
+  // writes that key, and the page then offered `https://<the platform>/mcp` — a
+  // placeholder somebody pasted into their assistant as though it were real.
+  const address = mcpAddressFor(platform.address);
 
   const copy = (what: string, text: string) => {
     void navigator.clipboard?.writeText(text).then(() => {

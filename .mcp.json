@@ -4,7 +4,7 @@
       "type": "http",
       "url": "https://jalalirs.tailedf721.ts.net/coral/mcp",
       "headers": {
-        "Authorization": "Bearer ${CORAL_CITY_TOKEN}"
+        "Authorization": "Bearer ${MCP_TOKEN}"
       }
     }
   }

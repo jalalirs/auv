@@ -458,6 +458,7 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
   return (
     <>
       <section>
+        <div className="composer-dock">
         <div className={`composer${picture ? " pictured" : ""}`}
              style={picture ? { backgroundImage: `url("${picture}")` } : undefined}>
           <div className="composer-top">
@@ -508,6 +509,7 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
           </div>
           {placePackage?.credit && placePackage.credit.kind !== "render"
             ? <div className="composer-credit"><Credit of={placePackage.credit} /></div> : null}
+        </div>
         </div>
 
         {/* Asking for a dive in words, beside choosing one from a list.
