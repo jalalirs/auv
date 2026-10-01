@@ -12,6 +12,32 @@ import { Badge } from "./parts.js";
 
 const REMEMBERED = "coral-city.platform";
 
+/**
+ * Why nothing answered, when it can be told.
+ *
+ * In a browser, a page cannot call a platform on another origin that does not
+ * invite it, and the browser reports the refusal to the page exactly as it
+ * reports a machine that is switched off: a failed fetch, and nothing else. So
+ * this said "Nothing answered — is the box awake?" about a box that was awake
+ * and answering, which sends a person to check the wrong thing. The desktop
+ * application is not a page on an origin and never meets this.
+ */
+export function whyNothingAnswered(address: string, here: string | null): string {
+  const unreached = `Nothing answered at ${address}. Is the box awake, and are you on its network?`;
+  if (here === null || here.startsWith("file:")) return unreached;
+  try {
+    const there = new URL(address).origin;
+    const ours = new URL(here).origin;
+    if (there !== ours) {
+      return `This page is at ${ours} and a browser will not let it call ${there}. ` +
+        `Sign in to ${ours} instead — it forwards to the platform — or use the desktop application.`;
+    }
+  } catch {
+    return unreached;
+  }
+  return unreached;
+}
+
 export function SignIn({ onSignedIn }: {
   onSignedIn: (platform: Platform) => void;
 }): React.JSX.Element {
@@ -49,7 +75,7 @@ export function SignIn({ onSignedIn }: {
         onSignedIn(await Platform.signIn(waiting, known, kept));
       } catch (problem) {
         setRefusal(problem instanceof Unreachable
-          ? `Nothing answered at ${waiting}.`
+          ? whyNothingAnswered(waiting, typeof location === "undefined" ? null : location.href)
           : problem instanceof Refused ? problem.message : "That did not work.");
       } finally {
         setTrying(false);
@@ -71,7 +97,7 @@ export function SignIn({ onSignedIn }: {
       // password when their laptop is offline wastes their afternoon.
       setRefusal(
         problem instanceof Unreachable
-          ? `Nothing answered at ${address}. Is the box awake, and are you on its network?`
+          ? whyNothingAnswered(address, typeof location === "undefined" ? null : location.href)
           : problem instanceof Refused
             ? problem.message
             : "That did not work.");

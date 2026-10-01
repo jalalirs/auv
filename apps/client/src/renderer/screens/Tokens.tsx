@@ -16,13 +16,22 @@ import type { APIToken, Platform } from "@coral-city/api";
 
 import { Empty } from "./parts.js";
 
-/** Where the MCP server is, from where the platform is: same host, its port. */
+/**
+ * Where the MCP server is, from where the platform is.
+ *
+ * Two ways in, and the address follows whichever the app was signed into. The
+ * public link — https://<name>.ts.net/coral — serves the platform's API and the
+ * MCP server side by side under one path, so the MCP server is that address with
+ * /mcp on the end. The raw ports on the tailnet put each on its own port, so
+ * there it is the platform's host on 18083.
+ */
 export function mcpAddressFor(platformAddress: string | null): string {
   try {
     const at = new URL(platformAddress ?? "");
-    return `${at.protocol}//${at.hostname}:18083/mcp`;
+    if (at.port === "18080") return `${at.protocol}//${at.hostname}:18083/mcp`;
+    return `${at.origin}${at.pathname.replace(/\/+$/, "")}/mcp`;
   } catch {
-    return "http://<the box>:18083/mcp";
+    return "https://<the platform>/mcp";
   }
 }
 

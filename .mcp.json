@@ -2,9 +2,9 @@
   "mcpServers": {
     "coral-city": {
       "type": "http",
-      "url": "http://100.76.65.1:18083/mcp",
+      "url": "https://jalalirs.tailedf721.ts.net/coral/mcp",
       "headers": {
-        "Authorization": "Service ${CORAL_CITY_SERVICE}"
+        "Authorization": "Bearer ${CORAL_CITY_TOKEN}"
       }
     }
   }

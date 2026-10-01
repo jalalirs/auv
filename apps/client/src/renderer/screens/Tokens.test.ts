@@ -9,14 +9,20 @@ import { describe, expect, it } from "vitest";
 import { mcpAddressFor, mcpConfig } from "./Tokens.js";
 
 describe("the MCP address", () => {
-  it("is the platform's host on the MCP server's port", () => {
+  it("on the public link, is the same path with /mcp on the end", () => {
+    expect(mcpAddressFor("https://jalalirs.tailedf721.ts.net/coral"))
+      .toBe("https://jalalirs.tailedf721.ts.net/coral/mcp");
+    expect(mcpAddressFor("https://jalalirs.tailedf721.ts.net/coral/"))
+      .toBe("https://jalalirs.tailedf721.ts.net/coral/mcp");
+  });
+
+  it("on the tailnet's raw ports, is the platform's host on the MCP server's port", () => {
     expect(mcpAddressFor("http://100.76.65.1:18080")).toBe("http://100.76.65.1:18083/mcp");
-    expect(mcpAddressFor("https://box.tail1234.ts.net:18080/")).toBe("https://box.tail1234.ts.net:18083/mcp");
   });
 
   it("says what to fill in when nobody remembered where the platform is", () => {
-    expect(mcpAddressFor(null)).toContain("<the box>");
-    expect(mcpAddressFor("not a url")).toContain("<the box>");
+    expect(mcpAddressFor(null)).toContain("<the platform>");
+    expect(mcpAddressFor("not a url")).toContain("<the platform>");
   });
 });
 

@@ -183,9 +183,11 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
          "required": ["dive"]},
         lambda p, dive, run=None: tools.dives_result(p, dive, run)),
     "dives_deliverables": (
-        "The geometry a run produced: track.geojson (where it was AND where it "
-        "believed it was, as separate features), coverage.geojson (what was "
-        "actually seen), planting.geojson, and provenance.json.",
+        "The geometry a run produced, with the files' contents inline: "
+        "track.geojson (where it was AND where it believed it was, as separate "
+        "features), coverage.geojson (what was actually seen), planting.geojson, "
+        "and provenance.json (what each of those numbers is). Read the contents, "
+        "not the links — the links point inside the platform's network.",
         {"type": "object",
          "properties": {"dive": {"type": "string"}, "run": {"type": "string"}},
          "required": ["dive"]},

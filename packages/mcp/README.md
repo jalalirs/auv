@@ -8,6 +8,27 @@ CORAL_CITY_SERVICE_FILE=/run/secrets/mcp \
     python -m coral_city_mcp
 ```
 
+## The public link
+
+**https://jalalirs.tailedf721.ts.net/coral/mcp**, through Tailscale Funnel beside
+the other projects served from that name. Make a token in the application —
+Profile → Tokens for your assistant — and it gives you the block to paste:
+
+```json
+{ "mcpServers": { "coral-city": {
+    "type": "http",
+    "url": "https://jalalirs.tailedf721.ts.net/coral/mcp",
+    "headers": { "Authorization": "Bearer cc_…" } } } }
+```
+
+What is public is only the API and this server, behind an edge proxy
+(`deployments/box/edge`) that throttles sign-in per caller and refuses everything
+else. The administration console is not reachable from the internet.
+
+File links the platform hands out point inside its network, so tools that return
+files — `dives_deliverables` — return their **contents**, fetched by this server,
+which runs beside the store.
+
 ## Over the tailnet
 
 It runs on the box as the `mcp` compose service, on

@@ -257,10 +257,32 @@ def dives_deliverables(platform: Platform, dive_id: str, run_id: str | None = No
         if name in wanted:
             found[name] = one.get("url")
     missing = [w for w in always if w not in found]
+
+    # The files themselves, not only links to them.
+    #
+    # A link the platform hands out points at its object store on the tailnet,
+    # so an agent calling from anywhere else is handed a URL it cannot open.
+    # This server runs beside the store, so it fetches them and returns what is
+    # in them. They are small — a track is a few hundred points, a coverage a
+    # few hundred cells — and an agent wants the geometry, not an errand.
+    contents: dict[str, object] = {}
+    for name, url in found.items():
+        try:
+            raw = _fetch(url)
+        except Exception as problem:
+            contents[name] = {"unreadable": f"{type(problem).__name__}: {problem}"}
+            continue
+        if len(raw) > INLINE_LIMIT:
+            contents[name] = {"tooLarge": len(raw), "limit": INLINE_LIMIT}
+        elif name.endswith((".geojson", ".json")):
+            contents[name] = json.loads(raw)
+        else:
+            contents[name] = raw.decode("utf-8", "replace")
     raw = {(one.get("path") or "").split("/")[-1]
            for one in platform.artefacts(dive_id, run["id"])}
     out = {
         "dive": dive_id, "run": run["id"], "files": found, "missing": missing,
+        "contents": contents,
         "note": ("track.geojson holds where it was and where it believed it "
                  "was as separate features; coverage.geojson is what was "
                  "actually seen, not what was planned"),
@@ -570,6 +592,10 @@ def dives_start(platform: Platform, place: str, vehicle: str,
 # The seas a dive can be asked for, by name. Constructed rather than observed:
 # nobody measured a current at these places today, and a made-up reading
 # dressed as an observation is the one thing this platform will not do.
+# How big a file this server will hand over in a tool's answer rather than
+# as a link: enough for any track or coverage a dive produces, short of a video.
+INLINE_LIMIT = 4 * 1024 * 1024
+
 # What the hosts on this platform run. An image tag is not a runtime: the tag
 # says which build, and this says which engine, so a dive asking for one by tag
 # is refused with "no host on that queue offers the runtime r1".
