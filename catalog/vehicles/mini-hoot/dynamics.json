@@ -74,7 +74,7 @@
     "grams": 323.4,
     "displacedCm3": 28.6,
     "kind": "derived",
-    "note": "to leave +20 g"
+    "note": "to leave +20 g, at x = 58 mm so it floats level"
    }
   ]
  },
@@ -84,20 +84,20 @@
   0
  ],
  "centreOfBuoyancyM": [
-  0.0087,
+  0.0,
   -0.0,
   0.0101
  ],
  "inertiaTensor": [
   0.00618,
   -0.0,
-  -0.00018,
+  0.00069,
   -0.0,
-  0.01424,
+  0.01592,
   -0.0,
-  -0.00018,
+  0.00069,
   -0.0,
-  0.01603
+  0.0177
  ],
  "addedMass": {
   "note": "Diagonal, surge sway heave roll pitch yaw. Assumed: the BlueROV2's scaled by displaced volume.",
@@ -142,7 +142,7 @@
    {
     "name": "vertical-front-port",
     "position": [
-     0.0486,
+     0.0391,
      -0.098,
      0.0127
     ],
@@ -155,7 +155,7 @@
    {
     "name": "vertical-front-starboard",
     "position": [
-     0.0486,
+     0.0391,
      0.098,
      0.0127
     ],
@@ -168,7 +168,7 @@
    {
     "name": "vertical-rear-port",
     "position": [
-     -0.0564,
+     -0.0659,
      -0.098,
      0.0127
     ],
@@ -181,7 +181,7 @@
    {
     "name": "vertical-rear-starboard",
     "position": [
-     -0.0564,
+     -0.0659,
      0.098,
      0.0127
     ],
@@ -194,7 +194,7 @@
    {
     "name": "front-port",
     "position": [
-     0.1136,
+     0.1041,
      -0.072,
      -0.0273
     ],
@@ -207,7 +207,7 @@
    {
     "name": "front-starboard",
     "position": [
-     0.1136,
+     0.1041,
      0.072,
      -0.0273
     ],
@@ -220,7 +220,7 @@
    {
     "name": "rear-port",
     "position": [
-     -0.1214,
+     -0.1309,
      -0.062,
      -0.0273
     ],
@@ -233,7 +233,7 @@
    {
     "name": "rear-starboard",
     "position": [
-     -0.1214,
+     -0.1309,
      0.062,
      -0.0273
     ],
@@ -257,7 +257,7 @@
    "kind": "underwater_camera",
    "name": "forward",
    "position": [
-    0.1396,
+    0.1301,
     -0.0,
     0.0127
    ],
@@ -287,7 +287,7 @@
    "kind": "barometer",
    "name": "depth",
    "position": [
-    -0.0964,
+    -0.1059,
     0.02,
     -0.0073
    ],
@@ -341,7 +341,7 @@
     "name": "port",
     "kind": "led",
     "position": [
-     0.0826,
+     0.0731,
      -0.098,
      0.0047
     ],
@@ -359,7 +359,7 @@
     "name": "starboard",
     "kind": "led",
     "position": [
-     0.0826,
+     0.0731,
      0.098,
      0.0047
     ],

@@ -62,7 +62,23 @@ def budget():
     # come up if it dies, small enough not to fight the verticals.
     keep_g = 20.0
     lead = (disp * FRESH - mass - keep_g) / (1 - FRESH / LEAD)
-    rows.append(("lead trim on the belly", lead, lead / LEAD, (-10, 0, -S.HULL_H / 2 + 3), "derived", f"to leave +{keep_g:.0f} g"))
+    # And along the belly where it levels the vehicle: the centre of gravity
+    # straight under the centre of buoyancy. Left at an arbitrary station it
+    # put the buoyancy 8.7 mm ahead of the weight and the first dive in the
+    # tank flew forty degrees nose-up for its whole length. Which is what a
+    # builder does with a strip of wheel weights on the bench: slide it until
+    # the thing floats level.
+    at_x = 0.0
+    for _ in range(4):
+        trial = rows + [("lead", lead, lead / LEAD, (at_x, 0, -S.HULL_H / 2 + 3))]
+        m = sum(r[1] for r in trial)
+        cb_x = sum(r[2] * r[3][0] for r in trial) / sum(r[2] for r in trial)
+        others = sum(r[1] * r[3][0] for r in rows)
+        at_x = (cb_x * m - others) / lead
+    if not (S.HULL_TAIL + 20 <= at_x <= S.HULL_NOSE - 20):
+        raise SystemExit(f"no station on the belly levels it: the lead would have to sit at x = {at_x:.0f} mm")
+    rows.append(("lead trim on the belly", lead, lead / LEAD, (at_x, 0, -S.HULL_H / 2 + 3), "derived",
+                 f"to leave +{keep_g:.0f} g, at x = {at_x:.0f} mm so it floats level"))
     return rows
 
 
