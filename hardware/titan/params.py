@@ -31,7 +31,7 @@ INSIDE_W = BOX_W - 2 * BOX_WALL
 INSIDE_H = BOX_H - LID_T - BOX_WALL
 FLOOR_Z = -BOX_H / 2 + BOX_WALL
 LID_Z = BOX_H / 2 - LID_T
-BOX_X = 0.0
+BOX_X = 2.0                  # the box sits forward, its window 18 mm behind the nose
 
 # ── the thruster: ApisQueen UG500, 36 mm propeller, 47 mm long, 18 g ─────────
 # https://www.underwaterthruster.com/products/apisqueen-uq500-mini-brushless-thruster-motor-small-size-and-light-weight-perfect-for-small-size-rovs/
@@ -170,3 +170,90 @@ CAMERA = (BOX_X + BOX_L / 2 - BOX_WALL - 7.0, 0.0, WINDOW_Z, 25.0, 24.0, 4.0)
 OVERALL_L = (CAPSULE_X + CAPSULE_L / 2) - min(TAIL_X, HORIZ_X - POD_LENGTH / 2)
 OVERALL_W = 2 * (VERT_Y + POD_OD / 2)
 OVERALL_H = (CAPSULE_H / 2 + PORT_DOME_H) - (HORIZ_Z - POD_OD / 2)
+
+
+# ── the moulded form (shape.py) ──────────────────────────────────────────────
+# The first drawing put boxes and cylinders side by side; the Titan is
+# moulded, its arms growing out of the hull into the pods. shape.py draws
+# the outside as one blended form and these are its numbers. Where they
+# replace a number above, the one above is kept only for titan.py's tray,
+# bezel and bought parts.
+HULL_NOSE = 70.0             # x of the nose skin
+HULL_TAIL = -135.0
+HULL_W = 82.0                # the box is 68 wide; 2.5 skin and 4.5 of room each side
+TAIL_W = 66.0                # narrowing aft of TAPER_FROM, as the Titan's does
+TAPER_FROM = -50.0
+HULL_H = 68.0                # the box is 50 tall; the flat crown is what reads as the Titan
+NOSE_CORNER_R = 24.0         # in plan; blunter than a stadium so the box's front corners fit
+TAIL_CORNER_R = 30.0
+TOP_EDGE_R = 16.0
+BELLY_EDGE_R = 17.0
+SKIN = 2.5
+PARTING_Z = 10.0             # red above, black below
+LID_NOSE_X = 50.0            # the red stops short of the black nose, as on the Titan
+
+# Pods: one ring per thruster, moulded into the arm. The bore follows the
+# UG500's guard, so the chassis waits for the thrusters to arrive and be
+# measured; the previous drawing's bolted rings avoided that, at the price
+# of looking bolted.
+BORE_D = DUCT_OD + 1.0
+POD_OD = BORE_D + 5.0
+POD_H = DUCT_LENGTH
+POD_EDGE_R = 2.0
+POD_LIP = 1.8                # the Titan's pods have a proud rim at the top
+SPOKE_W = 3.5
+HUB_D = 16.0
+VERT_X = (40.0, -62.0)
+VERT_Y = 86.0                # open water between hull and pod, so the arms read as arms
+VERT_Z = -1.0
+HORIZ_X = -120.0
+HORIZ_Y = 60.0
+HORIZ_Z = -20.0
+THRUSTERS = [
+    ("vertical-front-port",      (VERT_X[0],  VERT_Y, VERT_Z), (0.0, 0.0, 1.0)),
+    ("vertical-front-starboard", (VERT_X[0], -VERT_Y, VERT_Z), (0.0, 0.0, 1.0)),
+    ("vertical-rear-port",       (VERT_X[1],  VERT_Y, VERT_Z), (0.0, 0.0, 1.0)),
+    ("vertical-rear-starboard",  (VERT_X[1], -VERT_Y, VERT_Z), (0.0, 0.0, 1.0)),
+    ("horizontal-port",          (HORIZ_X,  HORIZ_Y, HORIZ_Z), (1.0, 0.0, 0.0)),
+    ("horizontal-starboard",     (HORIZ_X, -HORIZ_Y, HORIZ_Z), (1.0, 0.0, 0.0)),
+]
+# Arms: tapered and flattened rods from inside the hull's side to each pod,
+# swept forward to the front pods and back to the rear ones.
+ARM_ROOTS = {
+    "vertical-front-port": (12.0, 30.0, -8.0), "vertical-front-starboard": (12.0, 30.0, -8.0),
+    "vertical-rear-port": (-35.0, 30.0, -8.0), "vertical-rear-starboard": (-35.0, 30.0, -8.0),
+}
+ARM_ROOT_R = 14.0
+ARM_TIP_R = 10.0
+ARM_FLATTEN = 1.5
+BLEND_HULL = 10.0            # the fillet where an arm leaves the hull
+BLEND_POD = 6.0
+BLEND_STERN = 8.0
+BLEND_WING = 6.0
+# The tail plate, port half, from the hull's side to the trailing centre.
+WING_Z = PARTING_Z - 3.0     # under the parting line, so its blend never reaches the red
+WING_T = 5.0
+WING_PLAN = [(-80.0, 30.0), (-112.0, 62.0), (-160.0, 78.0), (-163.0, 71.0), (-150.0, 44.0), (-153.0, 0.0)]
+# The scoop on the lid's stern, in side view (x, z), rounded by 4.
+FIN_PROFILE = [(-70.0, 30.0), (-128.0, 30.0), (-131.0, 45.0), (-122.0, 47.0)]
+FIN_W = 24.0
+KNOB_X = -5.0
+KNOB_D = 22.0
+KNOB_H = 5.0
+VENT_D = 3.0
+# The camera: a knurled ring proud of the nose, the window behind it.
+CAM_Z = WINDOW_Z
+RING_OD = 50.0
+RING_PROUD = 3.0
+RING_KNURLS = 48
+NOSE_OPENING_D = 40.0
+# Lights in the front pods' noses, as on the Titan. Empty housings until
+# lights are bought; a tank in a lit room does not need them.
+LIGHT_D = 18.0
+LIGHT_REACH = 32.0
+LIGHT_DZ = -10.0
+TETHER_Z = -8.0
+TETHER_HOLE_D = 8.0
+LID_BOSSES = [(60.0, 25.0), (60.0, -25.0), (-60.0, 24.0), (-60.0, -24.0)]
+COVER_COLOUR = "#c8161d"
+CHASSIS_COLOUR = "#151617"

@@ -65,3 +65,4 @@ apps/console/src/**/*.js
 # The symposium badge landed here and a `git add -A` swept it into a commit
 # about removing leftovers, which is the joke telling itself.
 *.pdf
+catalog/vehicles/mini-hoot/mini-hoot.usd

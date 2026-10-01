@@ -1,0 +1,385 @@
+{
+ "massKg": 2.305,
+ "displacedVolumeM3": 0.00233,
+ "envelope": {
+  "maxDepthM": 10.0,
+  "maxSpeedMs": 0.9,
+  "minAltitudeM": 0.05,
+  "note": "10 m is the tether; the 3\" acrylic tube is rated far deeper. Top speed derived from four horizontals at 45 degrees against the assumed drag."
+ },
+ "hull": {
+  "note": "mini-hoot: the moulded Titan form around a Blue Robotics 3-inch tube whose dome is the nose. Drawn in hardware/mini/shape.py; not yet built.",
+  "dimensionsM": [
+   0.342,
+   0.25,
+   0.135
+  ],
+  "dimensionsFrom": "derived: the bounding box of the drawing, thrusters and dome included",
+  "shape": "A flooded nylon shell: red lid, black chassis, four wing pods on swept arms and four toed-in corner ducts. Bluff, like a Titan, not a fairing."
+ },
+ "provenance": {
+  "note": "Nothing on this vehicle is measured: it has not been built. Mass and buoyancy are summed from the parts in hardware/mini/package.py; hydrodynamic coefficients are the BlueROV2's scaled to this size and are the first thing a tow in the tank should replace.",
+  "budget": [
+   {
+    "part": "cover (printed PA12)",
+    "grams": 109.1,
+    "displacedCm3": 108.0,
+    "kind": "derived",
+    "note": "volume from the drawing"
+   },
+   {
+    "part": "chassis (printed PA12)",
+    "grams": 414.5,
+    "displacedCm3": 410.4,
+    "kind": "derived",
+    "note": "volume from the drawing"
+   },
+   {
+    "part": "3\" tube, two flanges, rear cap, dome",
+    "grams": 640.0,
+    "displacedCm3": 1661.6,
+    "kind": "assumed",
+    "note": "the sealed volume displaces; mass from catalogue weights, not weighed"
+   },
+   {
+    "part": "Pi 5, Navigator, 2 × 4-in-1 ESC, camera, tilt servo, wiring",
+    "grams": 240.0,
+    "displacedCm3": 0.0,
+    "kind": "assumed",
+    "note": "inside the tube"
+   },
+   {
+    "part": "4S1P 21700 pack",
+    "grams": 280.0,
+    "displacedCm3": 0.0,
+    "kind": "assumed",
+    "note": "4 × 70 g cells, low in the tube aft"
+   },
+   {
+    "part": "8 × UG500",
+    "grams": 208.0,
+    "displacedCm3": 96.0,
+    "kind": "assumed",
+    "note": "four at 0, four at -40"
+   },
+   {
+    "part": "penetrators, Bar02, lights, tether stub",
+    "grams": 90.0,
+    "displacedCm3": 25.0,
+    "kind": "assumed",
+    "note": ""
+   },
+   {
+    "part": "lead trim on the belly",
+    "grams": 323.4,
+    "displacedCm3": 28.6,
+    "kind": "derived",
+    "note": "to leave +20 g"
+   }
+  ]
+ },
+ "centreOfGravityM": [
+  0,
+  0,
+  0
+ ],
+ "centreOfBuoyancyM": [
+  0.0087,
+  -0.0,
+  0.0101
+ ],
+ "inertiaTensor": [
+  0.00618,
+  -0.0,
+  -0.00018,
+  -0.0,
+  0.01424,
+  -0.0,
+  -0.00018,
+  -0.0,
+  0.01603
+ ],
+ "addedMass": {
+  "note": "Diagonal, surge sway heave roll pitch yaw. Assumed: the BlueROV2's scaled by displaced volume.",
+  "diagonal": [
+   -1.159,
+   -2.677,
+   -3.071,
+   -0.0079,
+   -0.0079,
+   -0.0079
+  ]
+ },
+ "linearDamping": {
+  "note": "Assumed: the BlueROV2's scaled by frontal area per axis.",
+  "diagonal": [
+   -1.584,
+   -2.474,
+   -2.867,
+   -0.022,
+   -0.022,
+   -0.022
+  ]
+ },
+ "quadraticDamping": {
+  "note": "Assumed: the BlueROV2's scaled by frontal area per axis.",
+  "diagonal": [
+   -7.147,
+   -8.615,
+   -20.475,
+   -0.4862,
+   -0.4862,
+   -0.4862
+  ]
+ },
+ "thrusters": {
+  "note": "Eight ApisQueen UG500. Four vertical in the wing pods give heave, roll and pitch; four horizontal at the hull's corners, toed in at 45 degrees as on the BlueROV2, give surge, sway and yaw. Fully actuated: it can hold a spot against a current from any side.",
+  "model": "ApisQueen UG500",
+  "maxForwardN": 4.0,
+  "maxReverseN": 3.0,
+  "timeConstantS": 0.1,
+  "units": [
+   {
+    "name": "vertical-front-port",
+    "position": [
+     0.0486,
+     -0.098,
+     0.0127
+    ],
+    "direction": [
+     0,
+     0,
+     1
+    ]
+   },
+   {
+    "name": "vertical-front-starboard",
+    "position": [
+     0.0486,
+     0.098,
+     0.0127
+    ],
+    "direction": [
+     0,
+     0,
+     1
+    ]
+   },
+   {
+    "name": "vertical-rear-port",
+    "position": [
+     -0.0564,
+     -0.098,
+     0.0127
+    ],
+    "direction": [
+     0,
+     0,
+     1
+    ]
+   },
+   {
+    "name": "vertical-rear-starboard",
+    "position": [
+     -0.0564,
+     0.098,
+     0.0127
+    ],
+    "direction": [
+     0,
+     0,
+     1
+    ]
+   },
+   {
+    "name": "front-port",
+    "position": [
+     0.1136,
+     -0.072,
+     -0.0273
+    ],
+    "direction": [
+     0.707,
+     0.707,
+     0
+    ]
+   },
+   {
+    "name": "front-starboard",
+    "position": [
+     0.1136,
+     0.072,
+     -0.0273
+    ],
+    "direction": [
+     0.707,
+     -0.707,
+     0
+    ]
+   },
+   {
+    "name": "rear-port",
+    "position": [
+     -0.1214,
+     -0.062,
+     -0.0273
+    ],
+    "direction": [
+     -0.707,
+     0.707,
+     0
+    ]
+   },
+   {
+    "name": "rear-starboard",
+    "position": [
+     -0.1214,
+     0.062,
+     -0.0273
+    ],
+    "direction": [
+     -0.707,
+     -0.707,
+     0
+    ]
+   }
+  ]
+ },
+ "tether": {
+  "_": "10 m of thin neutrally buoyant twisted pair, data only: the battery powers the vehicle.",
+  "diameterM": 0.005,
+  "lengthM": 10.0,
+  "weightNPerM": 0.0,
+  "dragNormal": 1.2
+ },
+ "sensors": [
+  {
+   "kind": "underwater_camera",
+   "name": "forward",
+   "position": [
+    0.1396,
+    -0.0,
+    0.0127
+   ],
+   "orientation": [
+    0,
+    0,
+    0
+   ],
+   "focalLengthMm": 21,
+   "widthPx": 1920,
+   "heightPx": 1080,
+   "watts": 2.5,
+   "wattsNote": "Blue Robotics Low-Light HD USB camera behind the dome, about 80 degrees across; it encodes H.264 itself"
+  },
+  {
+   "kind": "imu",
+   "name": "body",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "watts": 0.2,
+   "wattsNote": "on the Navigator"
+  },
+  {
+   "kind": "barometer",
+   "name": "depth",
+   "position": [
+    -0.0964,
+    0.02,
+    -0.0073
+   ],
+   "watts": 0.05,
+   "wattsNote": "a Bar02 through the rear cap, 0.16 mm resolution"
+  }
+ ],
+ "topicContract": {
+  "note": "What the vehicle publishes and acts on, identical in the simulator and on the bench: the Pi bridges ArduSub to these topics.",
+  "publishes": [
+   {
+    "topic": "/camera/image_raw",
+    "type": "sensor_msgs/msg/Image"
+   },
+   {
+    "topic": "/imu/data",
+    "type": "sensor_msgs/msg/Imu"
+   },
+   {
+    "topic": "/depth",
+    "type": "sensor_msgs/msg/FluidPressure"
+   }
+  ],
+  "subscribes": [
+   {
+    "topic": "/thruster_cmd",
+    "type": "std_msgs/msg/Float64MultiArray",
+    "note": "Eight normalised commands in [-1, 1], in the order the thruster units are listed."
+   },
+   {
+    "topic": "/cmd_vel",
+    "type": "geometry_msgs/msg/Twist",
+    "note": "A body-frame wrench for stacks that would rather not allocate thrust themselves."
+   }
+  ]
+ },
+ "power": {
+  "note": "A 4S1P 21700 pack (Molicel P42A, 4.2 Ah). About two hours at 25 W.",
+  "capacityWh": 60.5,
+  "nominalVoltage": 14.4,
+  "hotelW": 10.5,
+  "thrusterMaxW": 160.0,
+  "powerExponent": 1.5,
+  "reserveFraction": 0.15,
+  "hotelNote": "Pi 5 8 W, Navigator 0.5 W, camera 2 W"
+ },
+ "lights": {
+  "note": "Two small LED lights in the front pods' noses. Assumed: none chosen yet.",
+  "fitted": [
+   {
+    "name": "port",
+    "kind": "led",
+    "position": [
+     0.0826,
+     -0.098,
+     0.0047
+    ],
+    "aim": [
+     1.0,
+     0.0,
+     -0.1
+    ],
+    "lumens": 500.0,
+    "watts": 5.0,
+    "coneDeg": 100.0,
+    "colourK": 5000
+   },
+   {
+    "name": "starboard",
+    "kind": "led",
+    "position": [
+     0.0826,
+     0.098,
+     0.0047
+    ],
+    "aim": [
+     1.0,
+     0.0,
+     -0.1
+    ],
+    "lumens": 500.0,
+    "watts": 5.0,
+    "coneDeg": 100.0,
+    "colourK": 5000
+   }
+  ]
+ },
+ "computer": {
+  "kind": "raspberry-pi-5",
+  "watts": 8.0,
+  "tops": 0.0,
+  "ramGb": 4,
+  "note": "The body: ArduSub on a Navigator keeps it level and at depth at 400 Hz. The brain is a DGX Spark on the far end of the tether."
+ }
+}
