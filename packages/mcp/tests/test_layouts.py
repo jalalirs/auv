@@ -259,3 +259,21 @@ def test_the_runtime_can_be_overridden_for_a_platform_that_runs_another(monkeypa
     platform = Fleet()
     said = tools.dives_start(platform, "al-fahal", "bluerov2", {"kind": "reach"})
     assert said["runtime"] == "isaac-7.0.0+oceansim"
+
+
+# ── dives_frame ──────────────────────────────────────────────────────────────
+
+class Undrawn(Fleet):
+    def runs(self, dive):
+        return [{"id": "run_1", "createdAt": "2026-10-01T00:00:00Z"}]
+
+    def artefacts(self, dive, run):
+        return [{"path": "poses.jsonl", "url": "x"}, {"path": "manifest.json", "url": "x"}]
+
+
+def test_an_undrawn_dive_says_how_to_get_one_that_can_be_seen():
+    """It has its numbers and no pictures, and the refusal names the switch."""
+    with pytest.raises(Refused) as no:
+        tools.dives_frame(Undrawn(), "dive_1", 10.0)
+    assert no.value.code == "not_drawn"
+    assert "pictures=true" in no.value.message

@@ -15,6 +15,7 @@ import base64
 import json
 import math
 import os
+import pathlib
 import re
 import struct
 from typing import Any
@@ -580,3 +581,189 @@ WATERS = {
     "half-knot": {"currentMetresPerSecond": 0.26, "currentHeadingDeg": 45.0},
     "one-knot": {"currentMetresPerSecond": 0.51, "currentHeadingDeg": 45.0},
 }
+
+
+# ── what the camera saw ──────────────────────────────────────────────────────
+
+def _cached(run_id: str, name: str, url: str) -> pathlib.Path:
+    """A run's file, fetched once. Recordings are immutable: a run that has
+    ended never changes, so asking for six frames of one dive should download
+    its video once and not six times."""
+    import tempfile
+    import urllib.request
+
+    where = pathlib.Path(tempfile.gettempdir()) / "coral-city-mcp" / run_id
+    where.mkdir(parents=True, exist_ok=True)
+    path = where / name
+    if not path.exists() or path.stat().st_size == 0:
+        urllib.request.urlretrieve(url, path)
+    return path
+
+
+def dives_frame(platform: Platform, dive_id: str, at_seconds: float,
+                run_id: str | None = None) -> dict:
+    """What the camera saw at a moment of a dive, as an image, and from where.
+
+    Read out of the dive's own video, whose clock is the dive's clock: a frame
+    is captured every eighth of a simulated second and encoded at eight a
+    second, so a moment in the dive is that many seconds into the video.
+
+    Returned with the pose it was seen from — the position, the heading, and
+    the camera — because a picture an agent cannot place is a picture it will
+    describe as though it knew where it was. That is the same rule views_render
+    keeps: the camera comes back beside the image.
+    """
+    import shutil
+    import subprocess
+
+    runs = platform.runs(dive_id)
+    run = (next((r for r in runs if r["id"] == run_id), None) if run_id
+           else max(runs, key=lambda r: r.get("createdAt") or "", default=None))
+    if run is None:
+        raise Refused(404, "not_found", "that dive has no such run")
+    files = {(a.get("path") or "").split("/")[-1]: a
+             for a in platform.artefacts(dive_id, run["id"])}
+    if "dive.mp4" not in files:
+        raise Refused(409, "not_drawn",
+                      "this dive was flown undrawn, so there is nothing to look at: "
+                      "it has its numbers and no pictures. dives_start with "
+                      "pictures=true flies one that can be seen.")
+    if shutil.which("ffmpeg") is None:
+        raise Refused(501, "no_decoder",
+                      "reading a frame out of dive.mp4 needs ffmpeg on the machine "
+                      "this server runs on")
+
+    video = _cached(run["id"], "dive.mp4", files["dive.mp4"]["url"])
+    out = video.parent / f"at-{at_seconds:.3f}.png"
+    if not out.exists():
+        done = subprocess.run(
+            ["ffmpeg", "-loglevel", "error", "-ss", f"{max(0.0, at_seconds):.3f}",
+             "-i", str(video), "-frames:v", "1", "-y", str(out)],
+            capture_output=True, timeout=120)
+        if done.returncode != 0 or not out.exists() or out.stat().st_size == 0:
+            raise Refused(416, "out_of_range",
+                          f"no frame at {at_seconds} s: the dive's video is shorter "
+                          f"than that, or it would not decode")
+
+    # Where it was seen from: the nearest pose in the recording.
+    seen_from = None
+    if "poses.jsonl" in files:
+        poses = _cached(run["id"], "poses.jsonl", files["poses.jsonl"]["url"])
+        best = None
+        with poses.open() as handle:
+            for line in handle:
+                try:
+                    pose = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                t = pose.get("t")
+                if t is None:
+                    continue
+                gap = abs(float(t) - at_seconds)
+                if best is None or gap < best[0]:
+                    best = (gap, pose)
+        if best is not None:
+            pose = best[1]
+            seen_from = {
+                "t": pose.get("t"),
+                "position": pose.get("position"),
+                "headingDeg": pose.get("headingDeg"),
+                "altitudeM": pose.get("altitudeM"),
+                "believed": pose.get("believed"),
+                "camera": pose.get("camera"),
+                "frame": "metres, origin at the middle of the site, +x east, +y north, z up",
+            }
+
+    return {
+        "dive": dive_id, "run": run["id"], "atSeconds": at_seconds,
+        "seenFrom": seen_from,
+        "image": base64.b64encode(out.read_bytes()).decode(),
+        "note": ("a rendered frame from a simulator, not a photograph of a real "
+                 "reef. seenFrom is where the vehicle actually was; `believed` is "
+                 "where it thought it was"),
+    }
+
+
+# ── one mission against everything nobody can promise ────────────────────────
+
+def missions_list(platform: Platform, place: str) -> dict:
+    """A place's plans of work. A sweep flies one of these, not a place."""
+    found = next((p for p in platform.places()
+                  if p["id"] == place or p.get("slug") == place), None)
+    if found is None:
+        raise Refused(404, "not_found", f"no place {place!r} is granted to you")
+    out = []
+    for one in platform.missions_of(found["id"]):
+        versions = platform.request("GET", f"/api/v1/missions/{one['id']}/versions")["versions"]
+        newest = _newest(versions)
+        stages = ((newest or {}).get("document") or {}).get("stages") or []
+        out.append({"id": one["id"], "name": one.get("name"),
+                    "stages": [s.get("kind") for s in stages]})
+    return {"place": found.get("name"), "missions": out}
+
+
+def sweeps_run(platform: Platform, mission: str, vehicle: str,
+               doubts: dict, repeats: int = 2, name: str = "") -> dict:
+    """Fly one mission against every combination of the doubts named.
+
+    This is the tool that is not a demonstration. One dive says a plan worked
+    once in one water. A sweep says which of the things nobody can promise —
+    the current, the mooring thirty metres from where the chart says, the
+    transponder that did not come up — break it, and which one change saves the
+    most of the failures. sweeps_findings reads that answer, and it is readable
+    before the sweep has finished.
+
+    Every combination is flown `repeats` times, because one run of a scenario
+    that goes either way is a coin toss reported as a result.
+    """
+    from . import doubts as catalogue
+
+    try:
+        said = catalogue.asked(doubts)
+    except KeyError as unknown:
+        raise Refused(400, "invalid", unknown.args[0]) from unknown
+    count = catalogue.scenarios(doubts)
+    runs = count * max(1, int(repeats))
+
+    machine = next((v for v in platform.vehicles()
+                    if v["id"] == vehicle or v.get("slug") == vehicle), None)
+    if machine is None:
+        raise Refused(404, "not_found", f"no vehicle {vehicle!r} is granted to you")
+    vehicle_version = _newest(platform.versions_of_vehicle(machine["id"]))
+    mission_version = _newest(
+        platform.request("GET", f"/api/v1/missions/{mission}/versions")["versions"])
+    if vehicle_version is None or mission_version is None:
+        raise Refused(409, "not_published", "that mission or vehicle has no saved version")
+
+    institution = platform.institution()
+    queues = platform.queues()
+    if institution is None or not queues:
+        raise Refused(409, "nowhere_to_fly", "no institution or no queue for this session")
+
+    sweep = platform.request(
+        "POST", f"/api/v1/organisations/{institution['id']}/sweeps", {
+            "name": name or f"a sweep of {count} scenarios",
+            "missionVersionId": mission_version["id"],
+            "vehicleVersionId": vehicle_version["id"],
+            "doubts": said,
+            "repeats": int(repeats),
+            "queueId": queues[0]["id"],
+            "runtimeVersion": os.environ.get("CORAL_CITY_RUNTIME_VERSION", RUNTIME),
+        })
+    return {
+        "sweep": sweep["id"], "scenarios": count, "runs": runs,
+        "vehicle": machine.get("name"),
+        "note": (f"{runs} dives queued — {count} combinations, {repeats} of each. "
+                 "sweeps_findings answers from whatever has flown so far, so it "
+                 "can be read before the sweep finishes"),
+    }
+
+
+def sweeps_findings(platform: Platform, sweep: str) -> dict:
+    """What breaks the mission, and the one change that saves the most of it.
+
+    Ranked by how much each doubt *changes* the outcome, not by how often it was
+    present when the mission failed — the second is misleading, and is the
+    mistake a person reading a table of failures makes first.
+    """
+    return platform.request("GET", f"/api/v1/sweeps/{sweep}/findings")

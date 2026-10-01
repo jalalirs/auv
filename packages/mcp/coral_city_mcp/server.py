@@ -132,6 +132,48 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
                name="", controller="":
             tools.dives_start(p, place, vehicle, objective, water, controller,
                               name, pictures)),
+    "dives_frame": (
+        "What the camera saw at a moment of a dive, as an image — and from "
+        "where: the position, heading and camera it was seen from come back "
+        "beside the picture, because a picture an agent cannot place is one it "
+        "will describe as though it knew. Only a dive flown with pictures=true "
+        "has frames.",
+        {"type": "object",
+         "properties": {"dive": {"type": "string"},
+                        "at_seconds": {"type": "number",
+                                       "description": "seconds into the dive"},
+                        "run": {"type": "string"}},
+         "required": ["dive", "at_seconds"]},
+        lambda p, dive, at_seconds, run=None: tools.dives_frame(p, dive, at_seconds, run)),
+    "missions_list": (
+        "A place's plans of work. A sweep flies a mission, not a place.",
+        {"type": "object", "properties": {"place": {"type": "string"}},
+         "required": ["place"]},
+        lambda p, place: tools.missions_list(p, place)),
+    "sweeps_run": (
+        "Fly one mission against every combination of the doubts named, each "
+        "several times. THIS SPENDS A LOT: scenarios x repeats dives. Doubts "
+        "are named by the app's own catalogue, e.g. "
+        "{\"current\": [\"still\", \"one knot\"], "
+        "\"the mooring\": [\"as drawn\", \"thirty metres off\"]}. "
+        "Dimensions: current, fix, water clarity, trouble, the array, "
+        "the mooring, how long.",
+        {"type": "object",
+         "properties": {"mission": {"type": "string"},
+                        "vehicle": {"type": "string"},
+                        "doubts": {"type": "object"},
+                        "repeats": {"type": "integer", "default": 2},
+                        "name": {"type": "string"}},
+         "required": ["mission", "vehicle", "doubts"]},
+        lambda p, mission, vehicle, doubts, repeats=2, name="":
+            tools.sweeps_run(p, mission, vehicle, doubts, repeats, name)),
+    "sweeps_findings": (
+        "What breaks the mission and the one change that saves the most of it, "
+        "ranked by how much each doubt changes the outcome. Readable before "
+        "the sweep finishes.",
+        {"type": "object", "properties": {"sweep": {"type": "string"}},
+         "required": ["sweep"]},
+        lambda p, sweep: tools.sweeps_findings(p, sweep)),
     "dives_result": (
         "What a run scored. A run that did not finish comes back as unknown "
         "rather than as a score of zero.",

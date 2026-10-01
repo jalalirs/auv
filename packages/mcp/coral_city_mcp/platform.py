@@ -168,9 +168,10 @@ class Platform:
     def layouts_of(self, place: str) -> list[dict]:
         return self.request("GET", f"/api/v1/cities/{place}/layouts")["layouts"]
 
-    def missions_of(self, organisation: str) -> list[dict]:
-        return self.request(
-            "GET", f"/api/v1/organisations/{organisation}/missions")["missions"]
+    def missions_of(self, place: str) -> list[dict]:
+        """A place's plans of work. They belong to the place, like its layouts:
+        there is no list of an institution's missions to ask for."""
+        return self.request("GET", f"/api/v1/cities/{place}/missions")["missions"]
 
     def queues(self) -> list[dict]:
         return self.request("GET", "/api/v1/queues")["queues"]
