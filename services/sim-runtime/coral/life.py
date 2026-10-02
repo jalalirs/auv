@@ -338,6 +338,13 @@ class Shoal:
         self.roam = np.array([GROUPS[k]["home"] for k in self.kinds],
                              dtype="float64") * self.scale
         self.wary = self.wary * max(self.scale, 0.25)
+        # And a tank's pace. A chromis cruises a body length or two a second
+        # in a tank, not the third of a metre a second it covers over a reef;
+        # at reef pace every fish reached the glass in three seconds and was
+        # clipped back, which is a fish shaking in place.
+        self.pace = float(np.clip(np.sqrt(self.scale), 0.3, 1.0))
+        self.cruise = self.cruise * self.pace
+        self.dash = self.dash * self.pace
 
         self._remember_the_floor()
         self.at = np.zeros((self.of_them, 3))
@@ -454,7 +461,23 @@ class Shoal:
         else:
             self.scattered = 0.0
 
+        # ── the glass, felt before it is touched ─────────────────────────────
+        # A fish turns away from a wall it is approaching; it is not stopped
+        # by it. Without this the only wall was the clip below, and a fish
+        # held against it by its own urges vibrated there.
+        near = 0.12 * max(self.scale / 0.14, 0.5) if self.scale < 1.0 else 2.0
+        low, high = self.about - self.box, self.about + self.box
+        for axis in (0, 1):
+            under = np.clip((low[axis] + near - self.at[:, axis]) / near, 0.0, 1.0)
+            over = np.clip((self.at[:, axis] - (high[axis] - near)) / near, 0.0, 1.0)
+            want[:, axis] += 2.5 * (under - over)
+
         # ── and what that comes to ───────────────────────────────────────────
+        # No fish turns harder than it can. Urges summed from a crowd can be
+        # anything; a fish's acceleration is not, and unbounded it jittered.
+        most = 1.6 * self.pace
+        size = np.linalg.norm(want, axis=1, keepdims=True)
+        want = np.where(size > most, want * most / np.maximum(size, 1e-9), want)
         self.going += want * dt
         # A frightened fish can dash; an unfrightened one cruises. This is the
         # whole of the speed model and it is enough: what reads as alarm in a
@@ -475,12 +498,26 @@ class Shoal:
         if not hasattr(self, "beat"):
             self.beat = self.rng.uniform(0, 2 * np.pi, self.of_them)
             self.facing_as = self.going.copy()
-        hz = 1.2 + 2.2 * speed / np.maximum(self.length, 1e-3)
+        # Capped well under what a 24-frame film can show: faster than that a
+        # stroke aliases into a shiver.
+        hz = np.minimum(3.0, 0.9 + 1.4 * speed / np.maximum(self.length, 1e-3))
         self.beat = self.beat + 2 * np.pi * hz * dt
-        # And it turns into where it is going over a third of a second rather
-        # than snapping there, which is how a fish turns.
-        ease = min(1.0, dt / 0.3)
-        self.facing_as = self.facing_as + (self.going - self.facing_as) * ease
+        # A fish keeps swimming. Its body points where it swims, and a body
+        # pointed along a velocity of nearly nothing flips with every nudge —
+        # which is the shiver: so it never idles below a gentle cruise, along
+        # the way it is already facing.
+        ahead = self.facing_as[:, :2] / np.maximum(np.linalg.norm(self.facing_as[:, :2], axis=1, keepdims=True), 1e-9)
+        floor = 0.45 * self.cruise
+        slow = np.maximum(0.0, floor - speed)[:, None]
+        self.going[:, :2] += ahead * slow * min(1.0, 4.0 * dt)
+        # And it turns at a fish's rate, not instantly: at most a few radians
+        # a second, towards where it is going.
+        now = np.arctan2(self.facing_as[:, 1], self.facing_as[:, 0])
+        wanted = np.arctan2(self.going[:, 1], self.going[:, 0])
+        step = np.clip((wanted - now + np.pi) % (2 * np.pi) - np.pi, -2.0 * dt, 2.0 * dt)
+        heading = now + step
+        climb = np.clip(self.going[:, 2], -0.5 * np.linalg.norm(self.going[:, :2], axis=1), 0.5 * np.linalg.norm(self.going[:, :2], axis=1))
+        self.facing_as = np.stack([np.cos(heading), np.sin(heading), climb / np.maximum(speed, 1e-3)], axis=1)
 
         # Never inside the ground, and never out of the water.
         floor = self._floor(self.at[:, :2])

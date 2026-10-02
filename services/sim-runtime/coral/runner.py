@@ -2353,6 +2353,7 @@ class Dive:
         # Where the cable is tied to the vehicle, in its own frame. The middle
         # of the vehicle when the package does not say.
         self.tether_attach = np.array(said.get("attachM", [0.0, 0.0, 0.0]), dtype=float)
+        self.tether_lead_out = float(said.get("leadOutM", 0.0))
 
         floating = self.world.of_kind("ship") + self.world.of_kind("buoy")
         if rim is not None and rim.get("at") is not None:
@@ -3642,8 +3643,19 @@ class Dive:
             stage = self.stage
             shape = np.array(self.tether.shape, dtype=float)
             attach = getattr(self, "tether_attach", np.zeros(3))
-            shape[-1] = self.position + self.rotation @ attach
+            plug = self.position + self.rotation @ attach
+            shape[-1] = plug
             shape[0] = self.tether.at
+            # Out of the plug the way the plug points, before the cable is free
+            # to bend: drawn straight from the crown to the solve's last free
+            # node, the cable cut through the lid whenever the slack lay beside
+            # or below the vehicle.
+            lead = float(getattr(self, "tether_lead_out", 0.0))
+            if lead > 0.0:
+                up = self.rotation @ np.array([0.0, 0.0, 1.0])
+                riser = plug + up * lead
+                over = plug + up * (lead * 2.5)
+                shape = np.vstack([shape[:-1], over, riser, plug])
             if self.seabed is not None or self.floor is not None:
                 for k in range(1, len(shape) - 1):
                     bottom = (self.seabed.under(float(shape[k, 0]), float(shape[k, 1]))
@@ -3657,8 +3669,9 @@ class Dive:
             # Relaxed before it is drawn. The solve's twenty nodes carry its
             # shape and its tension, and drawn as they are a slack cable came
             # out as a zig-zag of straight pieces: a cable is a curve.
+            keep = 3 if lead > 0.0 else 1          # the lead-out stays straight
             for _ in range(6):
-                shape[1:-1] = 0.25 * shape[:-2] + 0.5 * shape[1:-1] + 0.25 * shape[2:]
+                shape[1:-keep] = 0.25 * shape[:-keep - 1] + 0.5 * shape[1:-keep] + 0.25 * shape[2:len(shape) - keep + 1]
             # A smoother line than the solve's twenty nodes: the cable is drawn
             # through them, not as a chain of straight pieces.
             t = np.linspace(0, 1, len(shape))

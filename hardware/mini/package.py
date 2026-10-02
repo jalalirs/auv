@@ -196,8 +196,11 @@ def dynamics():
             "timeConstantS": 0.1,
             "units": units,
         },
-        "tether": {"_": "10 m of thin neutrally buoyant twisted pair, data only: the battery powers the vehicle.",
-                   "diameterM": 0.005, "lengthM": 10.0, "weightNPerM": 0.0, "dragNormal": 1.2,
+        "tether": {"_": "10 m of thin twisted pair, data only: the battery powers the vehicle. Slightly buoyant, as tank tethers are made, so its slack floats above the vehicle instead of sinking across it.",
+                   "diameterM": 0.005, "lengthM": 10.0, "weightNPerM": -0.004, "dragNormal": 1.2,
+                   # Leaves the crown straight up for this far before it is free to bend:
+                   # the strain relief on the plug, which is what keeps it off the lid.
+                   "leadOutM": 0.05,
                    # Tied on at the top, through the knob on the crown, as the
                    # Titan's plug is: a cable pulling from above holds the
                    # vehicle level, one from the stern pitches it.

@@ -260,11 +260,12 @@
   ]
  },
  "tether": {
-  "_": "10 m of thin neutrally buoyant twisted pair, data only: the battery powers the vehicle.",
+  "_": "10 m of thin twisted pair, data only: the battery powers the vehicle. Slightly buoyant, as tank tethers are made, so its slack floats above the vehicle instead of sinking across it.",
   "diameterM": 0.005,
   "lengthM": 10.0,
-  "weightNPerM": 0.0,
+  "weightNPerM": -0.004,
   "dragNormal": 1.2,
+  "leadOutM": 0.05,
   "attachM": [
    -0.0099,
    -0.0,
