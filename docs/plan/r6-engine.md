@@ -183,3 +183,58 @@ services/sim-runtime/coral/
 2. **Warp on the Mac's CPU, for the tests.**
 3. **The regression itself:** the round trip recorded today, to the millimetre,
    before anything moves.
+
+## As built, 2 October
+
+What the first day made of the layout above, and where it differs.
+
+**The schedule** (printed by `dive.engine.order()`, worked out from the
+declarations, never written by hand):
+
+```
+ 1. faults      2. ship        3. light       4. water       5. views
+ 6. navigation  7. ctd         8. quality     9. multibeam  10. sonar
+11. helm       12. thrusters  13. vehicle    14. wash       15. cable
+16. clock      17. fish       18. coral      19. sediment   20. sidescan
+21. tasking    22. bridge     23. record
+```
+
+Everything before the clock senses and decides on the world as the tick found
+it. The vehicle integrates. The wash and the cable follow the vehicle. Then the
+clock moves on, and what follows judges the state the tick produced: the fish,
+the coral, the sediment, the side-scan, the task and the record. Where a loop
+had to be closed, one side reads the start of the tick, and says so. Examples:
+
+- The sonar hears the fish where they were.
+- The sonde reads the sediment as it was.
+- The vehicle feels the cable's last pull.
+
+A declaration that made a loop was refused with the loop named. That happened
+once, to the sonde, and the fix was one word.
+
+**Where it differs from the plan above:**
+
+- **No `sensors/`.** The instruments are systems in `systems/instruments.py`
+  (CTD, sonde, multibeam, sonar) and `systems/sidescan.py`.
+- **No `kernels/` and no Warp yet.** Every system runs in numpy well inside its
+  budget at these sizes: 30 fish or 1,272, a 60-node cable, a few thousand
+  sediment parcels. The sonar's ray-march was the one hot spot, and
+  vectorising it took it from 4.1 to 0.36 ms a tick. Warp is for the grid
+  water and reef-sized sediment, when they come.
+- **No `sheets/`.** The species are `coral/fish_species.py`. Thrusters, tethers
+  and cameras are read from each vehicle's own package, which already was the
+  sheet.
+- **Contact is functions the vehicle calls** (`systems/contact.py`), not yet a
+  system of its own. Every strike now has a place, a speed and an impulse.
+- **`runner.py` keeps the old attribute names** as views onto the world
+  (`_kept`). Everything outside the tick — the console, the drawing, the
+  reports — still reads them. That is the next thing to thin.
+
+**What holds it:** `tools/regress` flies three reference dives:
+
+- the tank round trip in still water;
+- the same round trip with the fan on;
+- Luna's transect at Looe Key.
+
+Every change either leaves all three identical to the last digit, or changes
+them on purpose and re-records them, saying why in its commit.
