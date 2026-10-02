@@ -61,8 +61,8 @@ COLOURS = {
     "bottom": ((0.20, 0.19, 0.15), (0.34, 0.31, 0.24)),
 }
 
-AROUND = 16      # sides to the body
-ALONG = 22       # rings from nose to tail
+AROUND = 20      # sides to the body
+ALONG = 30       # rings from nose to tail
 
 # A tank's fish, which are not a reef's: chromis, wrasse, butterflies and gobies
 # as an aquarium shows them, under white light at arm's length. Each is a back,
@@ -88,20 +88,36 @@ STROKE = 8
 
 
 def body(plan: str, bend: float = 0.0):
-    """One fish, a metre long, facing +x.
+    """One fish, a metre long, nose at +x. See `anatomy`."""
+    points, faces, _ = anatomy(plan, bend)
+    return points, faces
 
-    A tube of elliptical rings whose height and width follow the outline, then
-    a caudal fin and a dorsal fin as flat triangles. Flat fins on purpose: a
-    fin is a membrane a fraction of a millimetre thick, and a fish rendered
-    with a solid wedge for a tail reads as a toy.
+
+def anatomy(plan: str, bend: float = 0.0):
+    """One fish, a metre long, nose at +x, and which part each vertex is.
+
+    A body of elliptical rings whose height and width follow the outline; a
+    forked tail; a dorsal fin along the back and an anal fin under it; two
+    pectoral fins behind the gills; and two eyes. Fins are membranes, so they
+    are thin surfaces drawn from both sides. Parts: 0 body, 1 fin, 2 eye.
     """
     says = PLANS[plan]
-    points, faces = [], []
+    points, faces, parts = [], [], []
 
-    # The outline, nose to tail root. A quarter ellipse into the shoulder and
-    # a taper out of it, which is what a fish looks like from above and from
-    # the side.
+    def add(pts, fcs, part):
+        at = len(points)
+        points.extend(pts)
+        faces.extend([tuple(at + i for i in f) for f in fcs])
+        parts.extend([part] * len(pts))
+
     xs = np.linspace(0.0, 1.0 - says["tail"], ALONG)
+    shoulder = says["nose"] + 0.18
+    fat = np.where(
+        xs < shoulder,
+        np.sqrt(np.maximum(0.0, 1.0 - ((shoulder - xs) / max(shoulder, 1e-6)) ** 2)),
+        (1.0 - (xs - shoulder) / max(1.0 - says["tail"] - shoulder, 1e-6)) ** 0.7)
+    fat = np.clip(fat, 0.05, 1.0)
+
     # The nose is at +x. It was at -x, and `facing` turns +x down the way a
     # fish is going, so every fish on this platform swam tail first.
     def sway(along):
@@ -109,52 +125,82 @@ def body(plan: str, bend: float = 0.0):
         # swings, more towards the tail, as a travelling wave.
         s = np.clip(along, 0.0, 1.0)
         return 0.11 * bend * s ** 2 * np.sin(np.pi * 1.4 * s)
-    shoulder = says["nose"] + 0.18
-    fat = np.where(
-        xs < shoulder,
-        np.sqrt(np.maximum(0.0, 1.0 - ((shoulder - xs) / max(shoulder, 1e-6)) ** 2)),
-        (1.0 - (xs - shoulder) / max(1.0 - says["tail"] - shoulder, 1e-6)) ** 0.7)
-    fat = np.clip(fat, 0.06, 1.0)
 
     turn = np.linspace(0, 2 * np.pi, AROUND, endpoint=False)
+    ring = []
     for i, x in enumerate(xs):
         for a in turn:
-            points.append((0.5 - x,
-                           says["wide"] * fat[i] * np.sin(a) + sway(x),
-                           says["deep"] * fat[i] * np.cos(a)))
+            ring.append((0.5 - x, says["wide"] * fat[i] * np.sin(a) + sway(x), says["deep"] * fat[i] * np.cos(a)))
+    tube = []
     for i in range(ALONG - 1):
         for j in range(AROUND):
             k = (j + 1) % AROUND
-            a = i * AROUND + j
-            b = i * AROUND + k
-            c = (i + 1) * AROUND + j
-            d = (i + 1) * AROUND + k
-            faces.append((a, c, b))
-            faces.append((b, c, d))
+            a, b = i * AROUND + j, i * AROUND + k
+            c, d = (i + 1) * AROUND + j, (i + 1) * AROUND + k
+            tube += [(a, c, b), (b, c, d)]
+    # Close the snout.
+    ring.append((0.5, 0.0, 0.0))
+    tube += [(len(ring) - 1, j, (j + 1) % AROUND) for j in range(AROUND)]
+    add(ring, tube, 0)
 
-    # The tail. Two lobes off the tail root, which is the shape that reads as
-    # a fish from behind as well as from the side.
-    root = 0.5 - xs[-1]
+    def at_body(along, up):
+        """A point on the back (up=1) or belly (up=-1) at a station."""
+        i = int(np.clip(along / (1.0 - says["tail"]) * (ALONG - 1), 0, ALONG - 1))
+        return (0.5 - xs[i], sway(xs[i]), up * says["deep"] * fat[i])
+
+    # A forked tail: two lobes and a notch between them.
+    root = 1.0 - says["tail"]
+    span = says["fin"] * 2.1
+    flick = sway(1.0) + 0.07 * bend
     tip = -0.5
-    span = says["fin"] * 1.9
-    flick = sway(1.0) + 0.06 * bend          # the tail is where the stroke ends
-    at = len(points)
-    points += [(root, sway(xs[-1]), 0.0), (tip, flick, span), (tip, flick, -span),
-               (tip + 0.05, flick * 0.9, 0.18 * span)]
-    faces += [(at, at + 1, at + 3), (at, at + 3, at + 2)]
+    peduncle = says["deep"] * fat[-1]
+    add([(0.5 - root, sway(root), peduncle), (0.5 - root, sway(root), -peduncle),
+         (tip, flick, span), (tip + 0.13, flick * 0.85, 0.0), (tip, flick, -span)],
+        [(0, 2, 3), (1, 3, 4), (0, 3, 1)], 1)
+    # A dorsal fin along the back, high in front and sloping away.
+    fin = []
+    stations = np.linspace(0.22, 0.72, 7)
+    for n, along in enumerate(stations):
+        base = at_body(along, 1)
+        lift = says["fin"] * (1.0 - 0.6 * n / (len(stations) - 1))
+        fin += [base, (base[0] - 0.03, base[1], base[2] + lift)]
+    add(fin, [(2 * n, 2 * n + 2, 2 * n + 1) for n in range(len(stations) - 1)]
+        + [(2 * n + 1, 2 * n + 2, 2 * n + 3) for n in range(len(stations) - 1)], 1)
+    # An anal fin under the back half.
+    fin = []
+    stations = np.linspace(0.5, 0.74, 4)
+    for along in stations:
+        base = at_body(along, -1)
+        fin += [base, (base[0] - 0.04, base[1], base[2] - says["fin"] * 0.7)]
+    add(fin, [(2 * n, 2 * n + 1, 2 * n + 2) for n in range(len(stations) - 1)]
+        + [(2 * n + 1, 2 * n + 3, 2 * n + 2) for n in range(len(stations) - 1)], 1)
+    # Pectoral fins behind the gills, swept back and a little down.
+    i = int(0.24 / (1.0 - says["tail"]) * (ALONG - 1))
+    for side in (1.0, -1.0):
+        y = side * says["wide"] * fat[i]
+        add([(0.5 - xs[i], y, 0.0), (0.5 - xs[i] - 0.03, y, -0.05 * says["deep"] / 0.3),
+             (0.5 - xs[i] - 0.16, y + side * 0.06, -0.02)], [(0, 1, 2)], 1)
+    # And the eyes: a dark ball each side of the head.
+    i = int(0.09 / (1.0 - says["tail"]) * (ALONG - 1))
+    r = 0.035
+    for side in (1.0, -1.0):
+        centre = np.array([0.5 - xs[i], side * says["wide"] * fat[i] * 0.85, says["deep"] * fat[i] * 0.3])
+        ball, cells = [], []
+        for a in range(7):
+            for b in range(10):
+                th, ph = np.pi * a / 6, 2 * np.pi * b / 10
+                ball.append(tuple(centre + r * np.array([np.sin(th) * np.cos(ph), np.sin(th) * np.sin(ph), np.cos(th)])))
+        for a in range(6):
+            for b in range(10):
+                q, w = a * 10 + b, a * 10 + (b + 1) % 10
+                cells += [(q, q + 10, w), (w, q + 10, w + 10)]
+        add(ball, cells, 2)
 
-    # And a dorsal fin, along the back.
-    at = len(points)
-    mid = len(xs) // 2
-    points += [(0.5 - xs[3], sway(xs[3]), says["deep"] * fat[3]),
-               (0.5 - xs[-3], sway(xs[-3]), says["deep"] * fat[-3]),
-               (0.5 - xs[mid], sway(xs[mid]), says["deep"] * fat[mid] + says["fin"])]
-    faces += [(at, at + 2, at + 1)]
-
-    return np.array(points, dtype="float32"), np.array(faces, dtype="int32")
+    return (np.array(points, dtype="float32"), np.array(faces, dtype="int32"),
+            np.array(parts, dtype="int8"))
 
 
-def painted(points, group: str, rng) -> np.ndarray:
+def painted(points, group: str, rng, parts=None) -> np.ndarray:
     """A colour per vertex: dark back, pale belly, and the group's accent where
     it sits on that fish — a band through the eye, a stripe, spots, a tail."""
     back, belly, accent = TANK_COLOURS.get(group, TANK_COLOURS["solitary"])
@@ -175,9 +221,12 @@ def painted(points, group: str, rng) -> np.ndarray:
     elif group == "damselfish":
         mark = along > 0.8
     colour[mark] = accent
-    # And an eye, which is the first thing anybody looks for on a fish.
-    eye = (along < 0.1) & (along > 0.05) & (z > 0.02) & (np.abs(points[:, 1]) > 0.01)
-    colour[eye] = (0.02, 0.02, 0.02)
+    if parts is not None:
+        # Fins carry the body's colour lightened towards the accent, and the
+        # eye is a dark ball with nothing painted on it.
+        fins = parts == 1
+        colour[fins] = 0.5 * colour[fins] + 0.5 * np.asarray(accent)
+        colour[parts == 2] = (0.015, 0.015, 0.02)
     return np.clip(colour, 0.0, 1.0)
 
 

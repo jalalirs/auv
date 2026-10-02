@@ -336,23 +336,40 @@ def field_mesh(xs, ys, z):
 
 
 def rock_mesh(rng, x, y, r, h, lean, sand_at):
-    """Live rock: a squashed, lumpy dome with holes in its silhouette."""
-    rows, sides = 14, 36
-    pts, faces = [], []
+    """Live rock: a lumpy dome, fine enough to be smooth where it is smooth and
+    pitted where it is not. Three octaves of bumps, each a sum of random waves
+    over the surface, so no two rocks share a profile and none shows facets."""
+    rows, sides = 44, 112
+    waves = []
+    for octave, (count, size, depth) in enumerate(((5, 2.0, 0.22), (9, 5.0, 0.08), (14, 12.0, 0.03))):
+        for _ in range(count):
+            direction = rng.normal(size=3)
+            direction /= np.linalg.norm(direction)
+            waves.append((direction * size, rng.uniform(0, 2 * np.pi), depth / np.sqrt(count) * 1.6))
+    pts = []
     for i in range(rows + 1):
         phi = (math.pi / 2) * i / rows
         for k in range(sides):
             th = 2 * math.pi * k / sides
-            bump = 1 + 0.22 * math.sin(3 * th + rng.uniform(0, 6)) * math.cos(2 * phi) + rng.normal(0, 0.05)
-            rr = r * math.cos(phi) * bump
+            unit = np.array([math.cos(phi) * math.cos(th), math.cos(phi) * math.sin(th), math.sin(phi)])
+            bump = 1.0 + sum(a * math.sin(float(d @ unit) + ph) for d, ph, a in waves)
+            # Undercut a little at the foot, which is what makes a rock sit on
+            # sand rather than melt into it.
+            foot = 1.0 - 0.12 * math.exp(-(phi / 0.12) ** 2)
+            rr = r * math.cos(phi) * bump * foot
             pts.append((x + rr * math.cos(th), y + rr * math.sin(th) / (1 + 0.25 * lean), h * math.sin(phi) * bump))
+    faces = []
     for i in range(rows):
         for k in range(sides):
             a, b = i * sides + k, i * sides + (k + 1) % sides
             faces += [(a, b, b + sides), (a, b + sides, a + sides)]
+    # Close the top.
+    top = len(pts)
+    pts.append((x, y, h * (1.0 + sum(a * math.sin(float(d @ np.array([0, 0, 1.0])) + ph) for d, ph, a in waves))))
+    for k in range(sides):
+        faces.append((rows * sides + k, rows * sides + (k + 1) % sides, top))
     p = np.array(pts)
     p[:, 2] += sand_at(x, y) - 0.02
-    p = coral.roughen(p, 0.012, rng, scale=40.0)
     return p, np.array(faces)
 
 

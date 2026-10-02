@@ -548,9 +548,9 @@ def put_them_in(stage, shoal, at: str = "/World/Life") -> None:
       colours = None
       for beat in range(stroke):
         bend = float(np.sin(2.0 * np.pi * beat / stroke))
-        points, faces = fishform.body(fishform.OF_GROUP[kind], bend)
+        points, faces, parts = fishform.anatomy(fishform.OF_GROUP[kind], bend)
         if colours is None:
-            colours = fishform.painted(points, kind, rng)
+            colours = fishform.painted(points, kind, rng, parts)
         mesh = UsdGeom.Mesh.Define(stage, f"{shapes.GetPath()}/Fish_{i}_{beat}")
         # `float(...)` on every component, and it is not decoration.
         #

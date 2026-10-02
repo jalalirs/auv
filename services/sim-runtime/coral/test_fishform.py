@@ -10,8 +10,10 @@ from coral import fishform, life
 def test_a_body_is_a_metre_long_facing_forwards(plan):
     points, _ = fishform.body(plan)
     assert abs(float(np.ptp(points[:, 0])) - 1.0) < 1e-5
-    # Centred on its own length, so scaling it scales about the middle.
-    assert abs(float(points[:, 0].mean())) < 0.2
+    # Centred on its own length, so scaling it scales about the middle. The
+    # extent, not the mean of the vertices: eyes put a hundred of them in the
+    # head without moving the middle of the fish.
+    assert abs(float(points[:, 0].min() + points[:, 0].max()) / 2.0) < 1e-5
 
 
 @pytest.mark.parametrize("plan", sorted(fishform.PLANS))
