@@ -115,3 +115,20 @@ def test_what_lands_on_a_colony_is_counted_against_it():
     world.coral = coral
     SedimentSystem.on_the_coral(world.sediment, coral, np.array([[0.0, 0.0, BED]]), np.array([1e-3]))
     assert world.sediment.on_coral_mg_cm2[0] > 0.0
+
+
+def test_a_sonde_in_the_cloud_reads_it_as_turbidity():
+    """What the vehicle's own wash raised is what its turbidity sensor reads."""
+    from systems.instruments import Quality, QualitySystem
+
+    world = a_world(0.04)
+    world.quality = Quality()
+    world.quality.config = {"everyS": 1.0}
+    QualitySystem().step(world)
+    clear = world.quality.readings[-1]["turbidityNtu"]
+    world.sediment.at = np.tile(world.vehicle.position, (500, 1))
+    world.sediment.grain = np.ones(500, dtype=int)
+    world.sediment.kg = np.full(500, 2e-6)
+    world.clock.simulated += 1.0
+    QualitySystem().step(world)
+    assert world.quality.readings[-1]["turbidityNtu"] > 5 * clear

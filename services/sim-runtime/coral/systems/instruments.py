@@ -136,3 +136,53 @@ class SonarSystem(System):
         instrument.ping(world.clock.simulated, vehicle.position, vehicle.rotation,
                         place.things, place.seabed, walls=place.interior, targets=echoes(world))
         ping.fresh = True
+
+
+class Quality:
+    """What a water-quality sonde reads: turbidity, chlorophyll, pH."""
+
+    def __init__(self) -> None:
+        self.config = None
+        self.readings: list[dict] = []
+        self.last_t = None
+
+
+class QualitySystem(System):
+    """Turbidity, chlorophyll and pH, at the sonde's rate.
+
+    Turbidity is what is hanging in the water round the sonde — the sediment
+    the dive's own wash raised (systems/sediment.py) — as nephelometric units,
+    one per milligram a litre of fine sediment (assumed: the ratio is a
+    property of the particles and is calibrated per site), on top of a clear
+    tank's or reef's half a unit. Chlorophyll and pH are the water's, not the
+    vehicle's doing, and stay at what clear tropical seawater is (assumed:
+    0.2 µg/L and pH 8.1) until a place says otherwise."""
+
+    name = "quality"
+    reads = ("water",)
+    # The sediment as the last tick left it: the sonde reads before the
+    # vehicle moves, and the sediment moves after it.
+    before = ("vehicle", "clock", "sediment")
+    writes = ("quality",)
+
+    NTU_PER_MG_L = 1.0
+    CLEAR_NTU = 0.5
+
+    def step(self, world) -> None:
+        q, now = world.quality, world.clock.simulated
+        if q.config is None:
+            return
+        if q.last_t is not None and now - q.last_t < float(q.config.get("everyS", 1.0)):
+            return
+        q.last_t = now
+        import numpy as np
+
+        sed, at = world.sediment, world.vehicle.position
+        if len(sed.kg):
+            near = np.linalg.norm(sed.at - at[None, :], axis=1) < 0.3
+            mg_per_l = float(sed.kg[near].sum()) * 1e6 / (4.0 / 3.0 * np.pi * 0.3 ** 3 * 1000.0)
+        else:
+            mg_per_l = 0.0
+        q.readings.append({"t": round(now, 2), "turbidityNtu": round(self.CLEAR_NTU + self.NTU_PER_MG_L * mg_per_l, 3),
+                           "chlorophyllUgL": 0.2, "pH": 8.1,
+                           "atM": [round(float(c), 2) for c in at]})

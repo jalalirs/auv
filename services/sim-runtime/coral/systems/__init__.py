@@ -11,7 +11,7 @@ flew before each move.
     water         the water's motion: current, wind drift, the waves' orbits
     views         which camera a dive that asked for several is on
     navigation    where the vehicle believes it is
-    instruments   the CTD, the multibeam and the imaging sonar
+    instruments   the CTD, the water-quality sonde, the multibeam and the imaging sonar
     helm          what the controller commands, on what it knows
     thrusters     what the thrusters actually do with it: failures, the battery
     vehicle       the hull moved by its thrusters, the water and its cable
@@ -21,6 +21,8 @@ flew before each move.
     coral         colonies that stop the vehicle, and break when they should
     tether        the cable: moving, caught on things, failing the dive
     sediment      sand the wash lifts, the water carries and the camera sees through
+    tow           a ship towing: her stern is the tow cable's dry end
+    sidescan      a towfish's side-scan: the seabed either side, by slant range, with shadows
     tasking       the task: planned, scored, and whether the dive is over
     outputs       the ROS 2 bridge and the record
 

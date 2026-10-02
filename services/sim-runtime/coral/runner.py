@@ -1796,6 +1796,7 @@ class Dive:
             self.switch_on_the_modem()
             self.switch_on_the_sonar()
             self.switch_on_the_sidescan()
+            self.switch_on_the_sonde()
             self.switch_on_the_multibeam()
             self.run_out_the_tether()
             self.began_with_wh = (0.0 if self.battery is None else self.battery.remaining_wh)
@@ -2328,6 +2329,20 @@ class Dive:
         if named is None:
             return True
         return kind in set(named)
+
+    def switch_on_the_sonde(self) -> None:
+        """Fit the water-quality sonde, if the vehicle carries one."""
+        import json
+
+        try:
+            described = json.loads((pathlib.Path(self.brief.get("vehiclePath", "/dive/vehicle"))
+                                    / "dynamics.json").read_text())
+        except Exception:
+            return
+        said = next((one for one in described.get("sensors") or [] if one.get("kind") == "water_quality"), None)
+        if said is not None:
+            self.ocean.quality.config = dict(said)
+            self.say("sonde_on", measures=said.get("measures"), everyS=said.get("everyS", 1.0))
 
     def switch_on_the_sidescan(self) -> None:
         """Fit the side-scan, if the vehicle carries one (systems/sidescan.py).
@@ -3431,6 +3446,10 @@ class Dive:
                  # goes with the recording.
                  **({} if not self.ocean.ship.towing else {"tow": self.ocean.ship.said()}),
                  **({} if not self.ocean.sidescan.fitted else {"sidescan": self.ocean.sidescan.said()}),
+                 **({} if not self.ocean.quality.readings else {"waterQuality": {
+                     "readings": len(self.ocean.quality.readings),
+                     "worstTurbidityNtu": max(r["turbidityNtu"] for r in self.ocean.quality.readings),
+                     "readingsEvery": self.ocean.quality.config.get("everyS", 1.0)}}),
                  # The coral it touched and what that did, and its hardest
                  # strike of anything: where, how fast, what impulse.
                  **({} if not len(self.ocean.coral) else {"coral": self.ocean.coral.said()}),

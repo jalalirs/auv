@@ -19,7 +19,7 @@ from systems.light import Light, LightSystem
 from systems.contact import Contacts
 from systems.coral import Colonies, CoralSystem
 from systems.helm import Asked, HelmSystem, Orders
-from systems.instruments import Ctd, CtdSystem, Fresh, MultibeamSystem, SonarSystem
+from systems.instruments import Ctd, CtdSystem, Fresh, MultibeamSystem, Quality, QualitySystem, SonarSystem
 from systems.navigation import NavigationSystem
 from systems.outputs import BridgeSystem, RecordSystem
 from systems.place import Place
@@ -45,6 +45,7 @@ def the_ocean(body, thrusters: int, dt: float) -> World:
     world.put("camera", Camera(), owner="views")
     world.put("navigation", None, owner="navigation")
     world.put("ctd", Ctd(), owner="ctd")
+    world.put("quality", Quality(), owner="quality")
     world.put("multibeam", None, owner="multibeam")
     world.put("swath", Fresh(), owner="multibeam")
     world.put("sonar", None, owner="sonar")
@@ -121,6 +122,7 @@ def the_systems(dive) -> list:
         ViewsSystem(objective, dive.views, say),
         NavigationSystem(dt),
         CtdSystem(),
+        QualitySystem(),
         MultibeamSystem(),
         SonarSystem(),
         HelmSystem(say),
