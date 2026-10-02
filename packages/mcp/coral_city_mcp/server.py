@@ -122,7 +122,12 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
                          "description": "must have a hull; see vehicles_list"},
              "objective": {"type": "object",
                            "description": "what it is for, e.g. "
-                                          "{\"kind\": \"hold-station\", \"seconds\": 120}"},
+                                          "{\"kind\": \"hold-station\", \"seconds\": 120}. It may also say "
+                                          "when the dive is — \"day\": {\"localTimeH\": 20, \"dayLengthS\": 300} "
+                                          "(fish keep that day; a tank's lights follow it) — and, for a "
+                                          "vehicle with no thrusters such as edgetech-2300, the tow that flies "
+                                          "it: \"tow\": {\"speedKn\": 4, \"headingDeg\": 90, \"cableOutM\": 300, "
+                                          "\"frequencykHz\": 120}"},
              "water": {"type": "string",
                        "enum": ["still", "gentle", "half-knot", "one-knot",
                                 "tank-still", "fan-low", "fan-high", "pump", "fan-and-pump"],
