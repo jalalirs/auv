@@ -2923,7 +2923,12 @@ class Dive:
 
         from systems import fish
 
-        parameters = (self.brief.get("conditions") or {}).get("parameters") or {}
+        parameters = dict((self.brief.get("conditions") or {}).get("parameters") or {})
+        # Or the objective says when the dive is, which is how a dive asked
+        # for through the MCP, whose water is a named preset, says it.
+        day = (self.brief.get("objective") or {}).get("day") if isinstance(self.brief.get("objective"), dict) else None
+        if isinstance(day, dict):
+            parameters.update({k: day[k] for k in ("localTimeH", "dayLengthS") if k in day})
         indoors = bool(self.interior is not None or self._site_is_enclosed())
         self.ocean.light.set_for(parameters, indoors)
         self.say("day_is", **self.ocean.light.said())
