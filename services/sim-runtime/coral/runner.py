@@ -2330,6 +2330,24 @@ class Dive:
             return True
         return kind in set(named)
 
+    def keep_the_waterfall(self, into: pathlib.Path) -> None:
+        """Write the side-scan waterfall beside the recording, amber as survey
+        software draws it."""
+        image = self.ocean.sidescan.image()
+        coloured = np.stack([image, (image * 0.75).astype(np.uint8), (image * 0.25).astype(np.uint8)], axis=2)
+        where = pathlib.Path(into) / "sidescan.png"
+        try:
+            import cv2
+            cv2.imwrite(str(where), coloured[:, :, ::-1])
+        except Exception:
+            try:
+                from PIL import Image
+                Image.fromarray(coloured).save(where)
+            except Exception:
+                np.save(pathlib.Path(into) / "sidescan.npy", image)
+                where = pathlib.Path(into) / "sidescan.npy"
+        self.say("sidescan_kept", file=where.name, pings=len(self.ocean.sidescan.rows))
+
     def switch_on_the_sonde(self) -> None:
         """Fit the water-quality sonde, if the vehicle carries one."""
         import json
@@ -3363,6 +3381,10 @@ class Dive:
     def close(self) -> None:
         if self.recorder is not None:
             try:
+                # The side-scan's record goes with the rest of it, as the
+                # image a surveyor would look at (systems/sidescan.py).
+                if self.ocean.sidescan.fitted and self.ocean.sidescan.rows:
+                    self.keep_the_waterfall(self.recorder.into)
                 manifest = self.recorder.close(self, self.camera())
                 self.say("recorded", poses=manifest["poses"], frames=manifest["frames"])
             except Exception as exc:
