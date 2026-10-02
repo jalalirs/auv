@@ -194,15 +194,16 @@ declarations, never written by hand):
 ```
  1. faults      2. ship        3. light       4. water       5. views
  6. navigation  7. ctd         8. quality     9. multibeam  10. sonar
-11. helm       12. thrusters  13. vehicle    14. wash       15. cable
-16. clock      17. fish       18. coral      19. sediment   20. sidescan
+11. helm       12. thrusters  13. vehicle    14. wash       15. clock
+16. cable      17. coral      18. sediment   19. fish       20. sidescan
 21. tasking    22. bridge     23. record
 ```
 
 Everything before the clock senses and decides on the world as the tick found
-it. The vehicle integrates. The wash and the cable follow the vehicle. Then the
-clock moves on, and what follows judges the state the tick produced: the fish,
-the coral, the sediment, the side-scan, the task and the record. Where a loop
+it. The vehicle integrates, and its wash follows it. Then the clock moves on,
+and what follows answers the state the tick produced: the cable to where the
+vehicle now is, the coral to what it was struck by, the sand to the wash, the
+fish to all of it, then the side-scan, the task and the record. Where a loop
 had to be closed, one side reads the start of the tick, and says so. Examples:
 
 - The sonar hears the fish where they were.
