@@ -44,6 +44,7 @@ CELL_M = 0.05
 PULL = 6.0            # how fast a cell in a jet takes up the jet's speed, 1/s
 DECAY = 0.04          # what the unresolved eddies take, a share a second
 JACOBI = 30
+WARM = 12             # passes a step, starting from the last step's pressure
 
 
 class Flow:
@@ -54,6 +55,7 @@ class Flow:
         self.shape = (0, 0, 0)
         self.u = np.zeros((0, 0, 0, 3))
         self.solid = np.zeros((0, 0, 0), dtype=bool)
+        self.p = None
         self.from_ = ("derived: stable fluids (Stam 1999) on a 5 cm grid, driven by the thrusters' jets; "
                       "the decay of unresolved eddies assumed")
 
@@ -104,7 +106,7 @@ def sample(field, g) -> np.ndarray:
     return out
 
 
-def project(u, solid, cell: float, iterations: int = JACOBI) -> np.ndarray:
+def project(u, solid, cell: float, iterations: int = JACOBI, pressure=None):
     """Take the divergence out: solve for the pressure that removes it
     (Jacobi), subtract its gradient; walls and ground let nothing through."""
     u = u.copy()
@@ -117,7 +119,10 @@ def project(u, solid, cell: float, iterations: int = JACOBI) -> np.ndarray:
     # The pressure's Laplacian taken as the divergence of its gradient, both
     # by central differences — the wide stencil, two cells either side — so
     # that subtracting the gradient removes exactly the divergence measured.
-    p = np.zeros_like(div)
+    # From the last step's pressure, when there is one: it barely changes in
+    # a twentieth of a second, and Jacobi from a near answer needs a fraction
+    # of the passes it needs from nothing.
+    p = np.zeros_like(div) if pressure is None else pressure
     for _ in range(iterations):
         q = np.zeros_like(p)
         q[2:, :, :] += p[:-2, :, :]
@@ -136,7 +141,7 @@ def project(u, solid, cell: float, iterations: int = JACOBI) -> np.ndarray:
     u[:, 0, :, 1] = u[:, -1, :, 1] = 0.0
     u[:, :, 0, 2] = u[:, :, -1, 2] = 0.0
     u[solid] = 0.0
-    return u
+    return u, p
 
 
 class FlowSystem(System):
@@ -164,4 +169,4 @@ class FlowSystem(System):
         u = sample(u, back).reshape(u.shape)
         # Slowed, and kept incompressible.
         u *= (1.0 - DECAY * dt)
-        flow.u = project(u, flow.solid, flow.cell)
+        flow.u, flow.p = project(u, flow.solid, flow.cell, iterations=WARM, pressure=flow.p)

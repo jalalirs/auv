@@ -40,7 +40,7 @@ def test_projection_takes_the_divergence_out():
     rng = np.random.default_rng(0)
     u = rng.normal(0, 0.1, (16, 12, 10, 3))
     solid = np.zeros((16, 12, 10), dtype=bool)
-    v = project(u, solid, 0.05, iterations=200)
+    v, _ = project(u, solid, 0.05, iterations=200)
     div = ((v[2:, 1:-1, 1:-1, 0] - v[:-2, 1:-1, 1:-1, 0]) + (v[1:-1, 2:, 1:-1, 1] - v[1:-1, :-2, 1:-1, 1])
            + (v[1:-1, 1:-1, 2:, 2] - v[1:-1, 1:-1, :-2, 2])) / 0.1
     before = ((u[2:, 1:-1, 1:-1, 0] - u[:-2, 1:-1, 1:-1, 0]) + (u[1:-1, 2:, 1:-1, 1] - u[1:-1, :-2, 1:-1, 1])
