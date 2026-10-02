@@ -26,6 +26,30 @@ AIR, WATER = 449.0, 272.0
 RHO = 1025.0
 
 
+def hull_usda() -> str:
+    """A plain sled to draw: a yellow deck over a grey body, two tail fins and
+    the tow bail, at the datasheet's size. Not EdgeTech's machining — its size,
+    its shape and where it is towed from."""
+    def cube(name, size, at, colour):
+        return (f'    def Cube "{name}"\n    {{\n        double size = 1\n'
+                f'        float3 xformOp:scale = ({size[0]}, {size[1]}, {size[2]})\n'
+                f'        double3 xformOp:translate = ({at[0]}, {at[1]}, {at[2]})\n'
+                f'        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]\n'
+                f'        color3f[] primvars:displayColor = [({colour[0]}, {colour[1]}, {colour[2]})]\n    }}\n')
+    out = ['#usda 1.0\n(\n    defaultPrim = "EdgeTech2300"\n    metersPerUnit = 1\n    upAxis = "Z"\n)\n\n'
+           'def Xform "EdgeTech2300"\n{\n']
+    out.append(cube("Body", (L * 0.95, W, H * 0.7), (0.0, 0.0, -H * 0.1), (0.62, 0.64, 0.66)))
+    out.append(cube("Deck", (L * 0.7, W * 0.96, 0.03), (0.15, 0.0, H * 0.27), (0.95, 0.8, 0.1)))
+    for side in (-1, 1):
+        out.append(cube(f"Fin{'Port' if side < 0 else 'Starboard'}", (0.35, 0.02, 0.3),
+                        (-L * 0.42, side * W * 0.4, H * 0.4), (0.08, 0.08, 0.09)))
+        out.append(cube(f"Bail{'Port' if side < 0 else 'Starboard'}", (0.03, 0.03, 0.45),
+                        (0.55, side * 0.12, H * 0.45), (0.8, 0.8, 0.82)))
+    out.append(cube("BailTop", (0.03, 0.27, 0.03), (0.55, 0.0, H * 0.68), (0.8, 0.8, 0.82)))
+    out.append("}\n")
+    return "".join(out)
+
+
 def topic_contract() -> dict:
     """What a towfish says over ROS 2: its attitude and its depth, as the
     BlueROV2's contract states them; and nothing it listens to, because
@@ -83,6 +107,7 @@ def main() -> None:
     }
     INTO.mkdir(parents=True, exist_ok=True)
     (INTO / "dynamics.json").write_text(json.dumps(doc, indent=1, ensure_ascii=False) + "\n")
+    (INTO / "edgetech-2300.usda").write_text(hull_usda())
     (INTO / "README.md").write_text(
         "# EdgeTech 2300\n\nA combined side-scan and sub-bottom towfish, the one KAUST tows. In the catalogue from "
         "EdgeTech's datasheet; drag, added mass and the tow cable are assumed. No thrusters: a dive flies it by "
