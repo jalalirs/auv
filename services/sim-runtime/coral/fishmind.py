@@ -195,8 +195,12 @@ class School:
         self._touching = np.zeros(n, dtype=bool)
         self.fled_at = np.full(n, -np.inf)
         self._flow = np.zeros((n, 3))
-        # Fish the vehicle ran into, and how many times.
+        # Fish the vehicle ran into, and how many times; and strikes by
+        # predators on prey.
         self.bumped = 0
+        self.strikes = 0
+        self._chasing: dict = {}
+        self._chase_gap: dict = {}
         # What the vehicle's camera has seen: each fish once, and how many
         # were in view each time it looked (systems/fish.py counts).
         self.counted: set[int] = set()
@@ -317,6 +321,59 @@ class School:
         beside = np.clip(1.0 - gap / np.maximum(0.4 * reach, 1e-6), 0.0, 1.0)
         return np.maximum(frightened, beside)
 
+    # A predator hunts what is under half its own length, within this many of
+    # its own lengths, and strikes when it closes to half a length. Chosen.
+    PREY_UNDER = 0.5
+    HUNTS_WITHIN_BL = 25.0
+
+    def hunt(self, dt: float) -> None:
+        """Fish that eat fish, and the fish they eat.
+
+        A predator foraging picks out the nearest fish under half its length
+        and makes for it, refreshed every step, so the chase is a chase; a fish
+        a predator is closing on is frightened by the same looming rule as a
+        vehicle (its size, how fast it closes). A predator that closes to half
+        a length has struck: counted, and the prey bolts. Nothing is eaten — a
+        reef's count stays the count a survey is scored against — but what a
+        predator does to a school is what a diver sees on a reef: it tightens,
+        and it runs."""
+        hunters = np.flatnonzero((self.diet == "fish") & (self.mode == FORAGE))
+        if not len(hunters):
+            self._chasing = {}
+            return
+        chasing = {}
+        for h in hunters:
+            reach = self.HUNTS_WITHIN_BL * self.length[h]
+            prey = np.flatnonzero(self.length < self.PREY_UNDER * self.length[h])
+            if not len(prey):
+                continue
+            far = np.linalg.norm(self.at[prey] - self.at[h][None, :], axis=1)
+            near = int(np.argmin(far))
+            if far[near] > reach:
+                continue
+            target = int(prey[near])
+            chasing[int(h)] = target
+            # Make for it: the goal is where it is now.
+            self.goal[h] = self.at[target]
+            self.mode_until[h] = max(self.mode_until[h], self.t + 1.0)
+            # It strikes, or it frightens.
+            if far[near] < 0.5 * self.length[h]:
+                self.strikes += 1
+                self.fear[target] = 1.0
+            else:
+                closing = 0.0
+                was = getattr(self, "_chasing", {}).get(int(h))
+                if was == target and getattr(self, "_chase_gap", {}).get(int(h)) is not None:
+                    closing = (self._chase_gap[int(h)] - far[near]) / max(dt, 1e-6)
+                size = 0.5 * self.length[h]
+                looming = 2.0 * size * max(closing, 0.0) / (far[near] ** 2 + size ** 2)
+                critical = 2.0 * size * self.CLOSING / (self.flight[target] ** 2 + size ** 2)
+                if looming > 0:
+                    afraid = 1.0 / (1.0 + math.exp(-self.STEEP * (math.log(looming) - math.log(critical))))
+                    self.fear[target] = max(self.fear[target], afraid)
+        self._chase_gap = {h: float(np.linalg.norm(self.at[t] - self.at[h])) for h, t in chasing.items()}
+        self._chasing = chasing
+
     def think(self, dt: float, light: float, vehicle, thrust: float, size: float = 0.2) -> None:
         n = self.of_them
         awake = self.awake(light)
@@ -326,6 +383,7 @@ class School:
         # Fear: what is coming at it, fading.
         self.fear *= math.exp(-dt / 4.0)
         self.fear = np.maximum(self.fear, self.threat(dt, vehicle, size, thrust))
+        self.hunt(dt)
         self.scattered = float((self.fear > 0.5).mean()) if n else 0.0
         bolting = (self.fear > 0.5) & (self.mode != FLEE)
         if bolting.any():
@@ -639,6 +697,7 @@ class School:
                 "schools": int(len(np.unique(self.school))) if self.of_them else 0, "scattered": round(self.scattered, 3),
                 "hour": round(float(self.hour), 2), "light": round(float(self.light), 2), "spent": spent,
                 "bumped": int(self.bumped),
+                **({} if not self.strikes else {"predatorStrikes": int(self.strikes)}),
                 **({} if not self.in_view else {
                     "countedByTheCamera": len(self.counted),
                     "inViewMean": round(float(np.mean(self.in_view)), 2),

@@ -247,3 +247,21 @@ def test_murky_water_counts_fewer():
     murky.visibility_m = 2.0
     FishSystem(camera=([0.0, 0.0, 0.0], 0.0, np.radians(35.0))).count(school, V(), murky)
     assert school.counted == set()
+
+
+def test_a_hungry_jack_hunts_chromis_and_they_run():
+    """A predator foraging makes for the nearest fish under half its length;
+    the fish it closes on is frightened by it as by a vehicle."""
+    habitat = fm.Habitat(lambda x, y: -9.0, (0.0, 0.0), 60.0, 0.0)
+    school = fm.School({"caranx_ruber": 1, "chromis_cyanea": 20}, habitat, seed=8)
+    jack = int(np.flatnonzero(school.kinds == "caranx_ruber")[0])
+    chromis = np.flatnonzero(school.kinds == "chromis_cyanea")
+    # Put the jack among the chromis, hungry.
+    school.at[jack] = school.at[chromis].mean(axis=0) + np.array([2.0, 0.0, 0.0])
+    school.hunger[jack] = 1.0
+    fled = np.zeros(len(school.kinds), dtype=bool)
+    for _ in range(600):
+        school.step(0.05, light=(11.0, 1.0))
+        fled |= school.mode == fm.FLEE
+    assert school.strikes > 0 or fled[chromis].mean() > 0.3
+    assert fled[chromis].any(), "the chromis run from it"
