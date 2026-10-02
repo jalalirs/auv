@@ -104,16 +104,20 @@ def echoes(world) -> "np.ndarray | None":
     coral = world.coral
     if coral is not None and len(coral):
         solid = np.flatnonzero(coral.solid())
-        for i in solid:
-            r = float(coral.radius[i])
-            for z in np.arange(coral.at[i, 2] + r, coral.at[i, 2] + coral.height[i] + 1e-9, max(r, 0.02)):
-                parts.append((coral.at[i, 0], coral.at[i, 1], z, r))
+        if len(solid):
+            r = coral.radius[solid]
+            stack = np.maximum(1, np.floor((coral.height[solid] - r) / np.maximum(r, 0.02)).astype(int) + 1)
+            which = np.repeat(np.arange(len(solid)), stack)
+            step = np.arange(len(which)) - np.repeat(np.cumsum(stack) - stack, stack)
+            i = solid[which]
+            z = coral.at[i, 2] + r[which] + step * np.maximum(r[which], 0.02)
+            parts.append(np.column_stack([coral.at[i, 0], coral.at[i, 1], z, r[which]]))
     fish = world.fish
     if fish is not None and fish.of_them:
         big = fish.length >= SMALLEST_FISH_M
-        for (x, y, z), length in zip(fish.at[big], fish.length[big]):
-            parts.append((x, y, z, 0.5 * length))
-    return np.array(parts, dtype=float) if parts else None
+        if big.any():
+            parts.append(np.column_stack([fish.at[big], 0.5 * fish.length[big]]))
+    return np.vstack(parts) if parts else None
 
 
 class SonarSystem(System):

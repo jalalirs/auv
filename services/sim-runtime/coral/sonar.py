@@ -118,6 +118,11 @@ class Sonar:
         origin = np.asarray(position, dtype=float) + rotation @ self.at
 
         out = np.full(self.beams, np.nan)
+        # What swims or stands in the water, sorted into the beams it falls
+        # in once a ping rather than tested by every beam: an imaging sonar
+        # has hundreds of beams and a reef a thousand fish.
+        heard = (_by_beam(origin, rotation, self.bearings(), 0.5 * self.spread(), self.far, targets)
+                 if targets is not None and len(targets) else None)
         for i, bearing in enumerate(self.bearings()):
             way = rotation @ np.array([math.cos(bearing), math.sin(bearing), 0.0])
             far = self.far
@@ -140,10 +145,8 @@ class Sonar:
                 hit = _glass(origin, way, walls)
                 if hit is not None and hit < far:
                     far = hit
-            if targets is not None and len(targets):
-                hit = _in_the_cone(origin, way, far, 0.5 * self.spread(), targets)
-                if hit is not None and hit < far:
-                    far = hit
+            if heard is not None and heard[i] < far:
+                far = float(heard[i])
             if far >= self.far:
                 continue                      # nothing out there
             if far < self.near:
@@ -355,3 +358,32 @@ def _in_the_cone(origin, way, far: float, half_angle: float, targets) -> float |
     if not inside.any():
         return None
     return float(max(0.0, float((np.hypot(ahead[inside], sideways[inside]) - r[inside]).min())))
+
+
+def _by_beam(origin, rotation, bearings, half_angle: float, far: float, targets) -> np.ndarray:
+    """The nearest target each beam hears, as a range per beam (inf for none).
+
+    The same rule as `_in_the_cone`, for every beam at once: a target is heard
+    by a beam when its bearing, give or take what its own size subtends, is
+    within the beam's half-width; and not when it is out of the fan's plane by
+    more than its own size (the fan is flat, as the ground's is)."""
+    targets = np.asarray(targets, dtype=float)
+    local = (targets[:, :3] - origin[None, :]) @ np.asarray(rotation, dtype=float)
+    x, y, z, r = local[:, 0], local[:, 1], local[:, 2], targets[:, 3]
+    level = np.hypot(x, y)
+    keep = (x > 0.0) & (level - r < far) & (np.abs(z) <= r)
+    out = np.full(len(bearings), np.inf)
+    if not keep.any():
+        return out
+    x, y, z, r, level = x[keep], y[keep], z[keep], r[keep], level[keep]
+    bearing = np.arctan2(y, x)
+    reach = np.arctan2(r, np.maximum(level, 1e-9)) + half_angle
+    rng = np.maximum(0.0, np.sqrt(level * level + z * z) - r)
+    first = np.searchsorted(bearings, bearing - reach, side="left")
+    last = np.searchsorted(bearings, bearing + reach, side="right")
+    count = np.maximum(0, last - first)
+    if not count.any():
+        return out
+    beams = np.repeat(first, count) + (np.arange(int(count.sum())) - np.repeat(np.cumsum(count) - count, count))
+    np.minimum.at(out, beams, np.repeat(rng, count))
+    return out

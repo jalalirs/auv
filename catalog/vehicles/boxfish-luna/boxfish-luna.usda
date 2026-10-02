@@ -1,0 +1,121 @@
+#usda 1.0
+(
+    defaultPrim = "BoxfishLuna"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "BoxfishLuna"
+{
+    def Cube "Upper"
+    {
+        double size = 1
+        float3 xformOp:scale = (0.6716, 0.3915, 0.15795)
+        double3 xformOp:translate = (0, 0, 0.0702)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        color3f[] primvars:displayColor = [(0.92, 0.92, 0.9)]
+    }
+    def Cube "Lower"
+    {
+        double size = 1
+        float3 xformOp:scale = (0.6935, 0.34800000000000003, 0.1755)
+        double3 xformOp:translate = (0, 0, -0.07722)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        color3f[] primvars:displayColor = [(0.12, 0.13, 0.15)]
+    }
+    def Cube "Bumper"
+    {
+        double size = 1
+        float3 xformOp:scale = (0.073, 0.3045, 0.0702)
+        double3 xformOp:translate = (0.3358, 0, -0.01755)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        color3f[] primvars:displayColor = [(0.95, 0.45, 0.05)]
+    }
+    def Sphere "Dome"
+    {
+        double radius = 0.07
+        double3 xformOp:translate = (0.34309999999999996, 0, 0.02)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        color3f[] primvars:displayColor = [(0.6, 0.75, 0.85)]
+    }
+    def Cylinder "front_starboard"
+    {
+        double radius = 0.05
+        double height = 0.07
+        uniform token axis = "Z"
+        double3 xformOp:translate = (0.3, 0.17, -0.06)
+        float3 xformOp:rotateXYZ = (0, 90, -45.0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+        color3f[] primvars:displayColor = [(0.08, 0.08, 0.09)]
+    }
+    def Cylinder "front_port"
+    {
+        double radius = 0.05
+        double height = 0.07
+        uniform token axis = "Z"
+        double3 xformOp:translate = (0.3, -0.17, -0.06)
+        float3 xformOp:rotateXYZ = (0, 90, 45.0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+        color3f[] primvars:displayColor = [(0.08, 0.08, 0.09)]
+    }
+    def Cylinder "rear_starboard"
+    {
+        double radius = 0.05
+        double height = 0.07
+        uniform token axis = "Z"
+        double3 xformOp:translate = (-0.3, 0.17, -0.06)
+        float3 xformOp:rotateXYZ = (0, 90, -135.0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+        color3f[] primvars:displayColor = [(0.08, 0.08, 0.09)]
+    }
+    def Cylinder "rear_port"
+    {
+        double radius = 0.05
+        double height = 0.07
+        uniform token axis = "Z"
+        double3 xformOp:translate = (-0.3, -0.17, -0.06)
+        float3 xformOp:rotateXYZ = (0, 90, 135.0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+        color3f[] primvars:displayColor = [(0.08, 0.08, 0.09)]
+    }
+    def Cylinder "vertical_front_starboard"
+    {
+        double radius = 0.05
+        double height = 0.07
+        uniform token axis = "Z"
+        double3 xformOp:translate = (0.22, 0.19, 0.08)
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+        color3f[] primvars:displayColor = [(0.08, 0.08, 0.09)]
+    }
+    def Cylinder "vertical_front_port"
+    {
+        double radius = 0.05
+        double height = 0.07
+        uniform token axis = "Z"
+        double3 xformOp:translate = (0.22, -0.19, 0.08)
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+        color3f[] primvars:displayColor = [(0.08, 0.08, 0.09)]
+    }
+    def Cylinder "vertical_rear_starboard"
+    {
+        double radius = 0.05
+        double height = 0.07
+        uniform token axis = "Z"
+        double3 xformOp:translate = (-0.22, 0.19, 0.08)
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+        color3f[] primvars:displayColor = [(0.08, 0.08, 0.09)]
+    }
+    def Cylinder "vertical_rear_port"
+    {
+        double radius = 0.05
+        double height = 0.07
+        uniform token axis = "Z"
+        double3 xformOp:translate = (-0.22, -0.19, 0.08)
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+        color3f[] primvars:displayColor = [(0.08, 0.08, 0.09)]
+    }
+}
