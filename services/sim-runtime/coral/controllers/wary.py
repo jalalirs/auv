@@ -66,6 +66,16 @@ class WaryController(PursueController):
         self.declare("clearanceM", 0.0, 0.0, 5.0, "m",
                      "half the vehicle's width and a margin: the corridor kept clear "
                      "of anything remembered. Nought leaves it to the beams alone")
+        # The water it may use, when somebody knows it: a tank's inside, a
+        # harbour's quay lines. A detour chosen without it went round a pillar
+        # on the side the glass was, and the vehicle spent two minutes pressed
+        # against the glass trying to reach a point outside the tank.
+        for side, default in (("fenceWestM", -1.0e4), ("fenceEastM", 1.0e4),
+                              ("fenceSouthM", -1.0e4), ("fenceNorthM", 1.0e4)):
+            self.declare(side, default, -1.0e4, 1.0e4, "m",
+                         "where the water it may use ends, in the site's frame")
+        self.declare("viaGiveUpS", 6.0, 1.0, 60.0, "s",
+                     "how long a detour point may go unapproached before another is chosen")
         self.declare("sonarAheadM", 0.0, 0.0, 2.0, "m",
                      "how far ahead of the vehicle's centre its sonar sits, so an echo is put "
                      "where it came from")
@@ -85,6 +95,7 @@ class WaryController(PursueController):
         self.heard: list[tuple[float, float, float]] = []
         self.detours = 0
         self.via = None
+        self.via_best, self.via_since = 0.0, 0.0
         self._last_fan = None
 
     def in_the_way(self, seen: Observation):
@@ -220,15 +231,87 @@ class WaryController(PursueController):
                 out.append((along, off, np.array([x, y])))
         return out
 
+    # The map a detour is planned on: two centimetres a cell, which resolves a
+    # pillar a hand across and is a few thousand cells for a tank.
+    CELL_M = 0.02
+    REPLAN_S = 0.5
+
+    def plan(self, here, goal, wide: float):
+        """A path from here to the goal that keeps the hull clear of everything
+        remembered and inside the fence, or nothing if there is none.
+
+        A grid, every echo grown by the clearance, the fence grown by most of
+        it, and A* across what is left. One point beside the obstacle was not
+        enough: when no single point fitted, the fallback backed away, and it
+        backed away until the dive ran out.
+        """
+        import heapq
+
+        cell = self.CELL_M
+        west, east = float(self["fenceWestM"]), float(self["fenceEastM"])
+        south, north = float(self["fenceSouthM"]), float(self["fenceNorthM"])
+        span = np.array([here, goal])
+        x0, x1 = max(west, span[:, 0].min() - 1.5), min(east, span[:, 0].max() + 1.5)
+        y0, y1 = max(south, span[:, 1].min() - 1.5), min(north, span[:, 1].max() + 1.5)
+        nx, ny = int((x1 - x0) / cell) + 1, int((y1 - y0) / cell) + 1
+        if nx < 2 or ny < 2 or nx * ny > 400000:
+            return None
+        xs = x0 + np.arange(nx) * cell
+        ys = y0 + np.arange(ny) * cell
+        gx, gy = np.meshgrid(xs, ys)
+        blocked = np.zeros((ny, nx), dtype=bool)
+        if self.heard:
+            pts = np.unique(np.round(np.array([(x, y) for _, x, y in self.heard]) / cell).astype(int), axis=0) * cell
+            for x, y in pts:
+                blocked |= (gx - x) ** 2 + (gy - y) ** 2 < wide * wide
+        edge = 0.75 * wide
+        blocked |= (gx < west + edge) | (gx > east - edge) | (gy < south + edge) | (gy > north - edge)
+
+        def index(p):
+            return (int(round((p[1] - y0) / cell)), int(round((p[0] - x0) / cell)))
+
+        start, end = index(here), index(goal)
+        if not (0 <= start[0] < ny and 0 <= start[1] < nx and 0 <= end[0] < ny and 0 <= end[1] < nx):
+            return None
+        # Where it already is and where it is going are allowed, however close
+        # to something they are: a plan that cannot start is no plan.
+        for j, i in (start, end):
+            near = (gx - xs[i]) ** 2 + (gy - ys[j]) ** 2 < (0.6 * wide) ** 2
+            blocked &= ~near
+        steps = [(-1, 0, 1.0), (1, 0, 1.0), (0, -1, 1.0), (0, 1, 1.0),
+                 (-1, -1, 1.414), (-1, 1, 1.414), (1, -1, 1.414), (1, 1, 1.414)]
+        cost = {start: 0.0}
+        came = {}
+        frontier = [(0.0, start)]
+        while frontier:
+            _, at = heapq.heappop(frontier)
+            if at == end:
+                break
+            for dj, di, step in steps:
+                nxt = (at[0] + dj, at[1] + di)
+                if not (0 <= nxt[0] < ny and 0 <= nxt[1] < nx) or blocked[nxt]:
+                    continue
+                c = cost[at] + step
+                if c < cost.get(nxt, 1e18):
+                    cost[nxt] = c
+                    came[nxt] = at
+                    heapq.heappush(frontier, (c + math.hypot(nxt[0] - end[0], nxt[1] - end[1]), nxt))
+        if end not in cost:
+            return None
+        path = [end]
+        while path[-1] != start:
+            path.append(came[path[-1]])
+        path.reverse()
+        return [np.array([xs[i], ys[j]]) for j, i in path]
+
     def detour(self, seen: Observation, command: Command):
         """Round what is remembered in the way of this leg, or nothing to do.
 
-        A point beside the obstacle, reachable by a clear corridor, flown to
-        and then the leg again. Deciding a heading afresh every step dithered
-        for ten seconds in front of a pillar half a metre away; and close in
-        there is no deciding at all, because a Ping2 hears nothing nearer than
-        0.3 m. So the choice is made while the thing is still heard, kept while
-        the way to it stays clear, and made again the moment it does not.
+        When a vehicle-wide corridor along the leg holds something remembered,
+        a path round it is planned on the map and followed a few centimetres
+        at a time, re-planned twice a second as the sonar hears more; when the
+        leg is clear again the route has the vehicle back. No path at all is a
+        reason to stop, not to back away.
         """
         wide = float(self["clearanceM"])
         if wide <= 0.0 or self.at >= len(self.route):
@@ -237,42 +320,27 @@ class WaryController(PursueController):
         here = np.array([float(seen.position[0]), float(seen.position[1])])
         point = self.route[self.at]
         goal = np.array([float(point.get("x", here[0])), float(point.get("y", here[1]))])
-        if self.via is not None:
-            via, leg = self.via
-            if (leg != self.at or float(np.hypot(*(via - here))) < 0.05
-                    or self.in_corridor(here, via, wide)):
-                self.via = None
-            else:
-                return self._fly_to(seen, command, via)
-        flat = goal - here
-        distance = float(np.hypot(*flat))
+        distance = float(np.hypot(*(goal - here)))
         if distance < 1e-6 or not self.heard:
+            self.via = None
             return None
-        u = flat / distance
-        across = np.array([-u[1], u[0]])
         blocking = self.in_corridor(here, goal, wide, float(self["standOffM"]) + 2.0 * wide)
-        if not blocking:
+        if not blocking and self.via is None:
             return None
-        nearest = min(b[0] for b in blocking)
-        cluster = [b for b in blocking if b[0] < nearest + 0.15]
-        centre = np.mean([b[2] for b in cluster], axis=0)
-        lean = float(np.mean([b[1] for b in cluster]))
-        sides = (-1.0, 1.0) if lean > 0 else (1.0, -1.0)     # away from it first
-        chosen = None
-        for ahead in (0.0, -0.1, 0.1):
-            for sign in sides:
-                via = centre + across * sign * (wide + 0.08) + u * ahead
-                fits = all(float(np.hypot(x - via[0], y - via[1])) >= wide for _, x, y in self.heard)
-                if fits and not self.in_corridor(here, via, wide):
-                    chosen = via
-                    break
-            if chosen is not None:
-                break
-        if chosen is None:
-            chosen = here - u * 0.15                      # nowhere fits: back off
-        self.via = (chosen, self.at)
-        self.detours += 1
-        return self._fly_to(seen, command, chosen)
+        if not blocking and self.via is not None and not self.in_corridor(here, goal, wide):
+            self.via = None                          # the leg itself is clear again
+            return None
+        now = float(seen.t)
+        if self.via is None or now - self.via_since >= self.REPLAN_S or self.via[1] != self.at:
+            path = self.plan(here, goal, wide)
+            self.via_since = now
+            if path is None:
+                self.via = (here.copy(), self.at)    # nowhere to go: stay put
+            else:
+                ahead = next((p for p in path if float(np.hypot(*(p - here))) >= 0.12), path[-1])
+                self.via = (ahead, self.at)
+                self.detours += 1
+        return self._fly_to(seen, command, self.via[0])
 
     def _fly_to(self, seen: Observation, command: Command, via) -> Command:
         here = np.array([float(seen.position[0]), float(seen.position[1])])
