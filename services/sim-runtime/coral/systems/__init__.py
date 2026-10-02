@@ -27,4 +27,27 @@ flew before each move.
     outputs       the ROS 2 bridge and the record
 
 `build.py` assembles them for a dive.
+
+**Adding one.** A system is a class with four things and a step:
+
+    class Barnacles(System):
+        name = "barnacles"
+        reads = ("vehicle", "clock")          # after whatever writes these
+        before = ("water",)                   # as the tick found it
+        writes = ("barnacles",)               # yours, and only yours
+        every = 1.0                           # seconds of the dive; None is every tick
+
+        def step(self, world):
+            ...                               # read world.vehicle, write world.barnacles
+
+Then, in build.py, put its part in `the_ocean` with its owner
+(`world.put("barnacles", Barnacles(), owner="barnacles")`) and the system in
+`the_systems`. The engine works out where it runs from what it reads and
+writes, and refuses — naming the loop — a declaration that makes one. Test it
+on its own, against the published numbers it is built from; then run
+tools/regress, which says whether the reference dives still fly the same.
+
+What a system must not do: call another system, write a part it does not
+own, or reach into the dive (`runner.Dive`). What it needs, it reads from the
+world; what others need from it, it writes there.
 """
