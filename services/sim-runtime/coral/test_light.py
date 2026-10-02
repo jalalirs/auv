@@ -2,6 +2,8 @@
 
 import math
 
+import numpy as np
+
 from systems.light import Light, daylight, lamps
 
 
@@ -52,7 +54,9 @@ def test_lamps_follow_the_clock_and_the_room_its_window():
     class Stage:
         def __init__(self):
             self.prims = {"/World/LedSouth": Prim(1000.0), "/World/Daylight": Prim(450.0),
-                          "/World/FillRoom": Prim(1100.0), "/World/Ceiling": Prim(500.0)}
+                          "/World/FillRoom": Prim(1100.0), "/World/Ceiling": Prim(500.0),
+                          "/World/Looks/LedPanel/M": Prim(14000.0),
+                          "/World/Looks/LedPanel/S": Prim(np.array([4.0, 4.6, 5.5]))}
 
         def GetPrimAtPath(self, path):
             return self.prims.get(path)
@@ -64,6 +68,8 @@ def test_lamps_follow_the_clock_and_the_room_its_window():
     assert stage.prims["/World/Daylight"].a.v < 10.0
     assert abs(stage.prims["/World/FillRoom"].a.v - 0.15 * 1100.0) < 1e-6, "the fills dim, not out"
     assert abs(stage.prims["/World/Ceiling"].a.v - 0.15 * 500.0) < 1e-6, "the ceiling too: a night tank is dark"
+    assert stage.prims["/World/Looks/LedPanel/M"].a.v == 0.0, "the bars' glowing faces go off with them"
+    assert not stage.prims["/World/Looks/LedPanel/S"].a.v.any()
     light.set_for({"localTimeH": 13.0}, indoors=True)
     drawn.set(stage, light)
     assert stage.prims["/World/LedSouth"].a.v == 1000.0
