@@ -3142,6 +3142,13 @@ class Dive:
         if getattr(self, "_propellers", None):
             from draw import propellers
             propellers.turn(self._propellers, self.ocean.thrust)
+        # The place's lamps, by the dive's day (draw/light.py). Only in a
+        # room: a reef's light is the water's business (water.py).
+        if self.ocean.light.indoors:
+            from draw import light as drawn_light
+            if getattr(self, "_lamps", None) is None:
+                self._lamps = drawn_light.Lights()
+            self._lamps.set(self.stage, self.ocean.light)
         if len(self.ocean.sediment.kg) or getattr(self, "_sediment_drawn", None) is not None:
             from draw import sediment as drawn_sediment
             self._sediment_drawn = drawn_sediment.draw(self.stage, self.ocean.sediment,

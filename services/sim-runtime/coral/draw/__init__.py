@@ -6,4 +6,6 @@ undrawn computes exactly what a drawn one does.
 
     propellers    each thruster's propeller, turned to where it is in its turn
     coral         a colony the vehicle broke, cut down to a stump
+    sediment      the sand in the water, as flecks
+    light         a tank's lamps and the window's daylight, by the dive's day
 """
