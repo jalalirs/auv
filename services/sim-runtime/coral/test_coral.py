@@ -16,8 +16,11 @@ from systems.vehicle import Vehicle
 
 
 class Body:
+    def __init__(self, mass=4.0):
+        self.mass = mass
+
     def effective_mass(self, submerged=1.0):
-        return np.array([4.0, 4.0, 4.0, 0.1, 0.1, 0.1])
+        return np.array([self.mass, self.mass, self.mass, 0.1, 0.1, 0.1])
 
 
 def a_colony(kind, size=0.16):
@@ -32,14 +35,16 @@ def a_colony(kind, size=0.16):
     c.struck = np.zeros(1, dtype=int)
     c.brushed = np.zeros(1, dtype=int)
     c.worst_stress = np.zeros(1)
+    c.torn_off = np.zeros(1, dtype=bool)
+    c.smothered = np.zeros(1, dtype=int)
     return c
 
 
-def driven_into(kind, speed, size=0.16):
+def driven_into(kind, speed, size=0.16, mass=4.0):
     """A four-kilogram hull driven along x into a colony at the height of its
     middle."""
     coral = a_colony(kind, size)
-    v = Vehicle(Body(), [-0.4, 0.0, -1.0 + 0.5 * size])
+    v = Vehicle(Body(mass), [-0.4, 0.0, -1.0 + 0.5 * size])
     v.half_width, v.half_height = 0.17, 0.06
     v.velocity[0] = speed
     contacts, place, said = Contacts(), Place(), []
@@ -48,7 +53,10 @@ def driven_into(kind, speed, size=0.16):
         pass
 
     world = World()
+    from systems.sediment import Sediment
+
     world.coral, world.contacts, world.clock = coral, contacts, Clock(0.005)
+    world.sediment = Sediment()
     system = CoralSystem(lambda kind, **d: said.append((kind, d)))
     for _ in range(800):
         v.position += v.velocity[:3] * 0.005
@@ -101,3 +109,27 @@ def test_the_stress_is_the_order_the_skeleton_breaks_at():
     strength, which is why it is the speed that matters."""
     stress = stress_of(4.0 * 0.25, 0.16, "branching", 0.16)
     assert 5e6 < stress < 1e8
+
+
+def test_a_brain_coral_is_torn_off_its_rock_by_a_heavy_vehicle_and_not_a_light_one():
+    """The rock under a colony is a tenth as strong as its skeleton (Madin &
+    Connolly 2006): a massive colony does not snap, but a heavy enough blow
+    levers it off its base."""
+    light, _, _, _ = driven_into("brain", 0.4, size=0.1)        # four kilograms, the same colony
+    assert not light.torn_off[0]
+
+    heavy, v, _, said = driven_into("brain", 0.4, size=0.1, mass=40.0)   # Luna-sized, into a ten-centimetre colony
+    assert heavy.torn_off[0]
+    assert any(kind == "coral_torn_off" for kind, _ in said)
+
+
+def test_sand_settling_on_a_colony_smothers_it_past_the_dose():
+    """Harm from about 10 mg/cm² a day (Erftemeijer et al. 2012), as a rate:
+    two milligrams a square centimetre in an hour is 48 a day."""
+    from systems.coral import _judge
+
+    coral, said = a_colony("brain"), []
+    _judge(coral, np.array([2.0]), 3600.0, lambda kind, **d: said.append(kind))
+    assert coral.smothered[0] == 1 and said == ["coral_smothered"]
+    _judge(coral, np.array([3.0]), 3600.0, lambda kind, **d: said.append(kind))
+    assert coral.smothered[0] == 2

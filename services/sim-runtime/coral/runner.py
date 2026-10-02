@@ -3178,7 +3178,7 @@ class Dive:
                                                        getattr(self, "_sediment_drawn", None),
                                                        self.units_per_metre)
         coral = self.ocean.coral
-        if len(coral) and coral.broken.any():
+        if len(coral) and (coral.broken.any() or coral.torn_off.any()):
             from draw import coral as drawn_coral
             if not hasattr(self, "_drawn_broken"):
                 self._drawn_broken = set()

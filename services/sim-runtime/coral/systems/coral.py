@@ -22,9 +22,21 @@ What happens to a colony that is hit depends on what it is:
   **Soft corals, sea fans and sponges** bend out of the way, and are counted as
   brushed rather than struck.
 
-What is not here yet, and is in r6: being torn off the rock whole (Madin and
-Connolly's colony shape factor), sediment settling on a colony and smothering
-it, and the polyps' day.
+  **Any stony colony can be torn off the rock whole.** The reef rock it is
+  cemented to is about a tenth as strong as its skeleton (Madin & Connolly
+  2006), so a blow that a massive colony's skeleton shrugs off can still lever
+  it off its base: the bending moment at the base, over the section modulus of
+  an attachment a quarter of the colony's size across, against 2 MPa
+  (assumed: a tenth of the skeleton's dynamic strength). A torn-off colony
+  lies on its side; the record says so.
+  **What settles on it** (systems/sediment.py) is counted against the dose
+  the coral literature gives: harm from about 10 mg cm⁻² a day, severe past
+  50 (Erftemeijer et al. 2012). Over a dive that lasts minutes, the dose is
+  the rate: what settled, over the fraction of a day it took. Past the first,
+  a colony is smothered and the record says so.
+
+What is not here yet: the polyps' day, and the flow tearing a colony off on
+its own (Madin's colony shape factor against the drag of a storm).
 """
 
 from __future__ import annotations
@@ -48,6 +60,14 @@ CONTACT_TIME = 0.02
 # A branch's radius as a share of its colony's size. Assumed: a sixteen
 # centimetre tank colony has branches about six millimetres thick.
 BRANCH_SHARE = {"branching": 0.04, "finger": 0.08, "table": 0.03}
+# The reef rock a colony is cemented to: a tenth of the skeleton (Madin &
+# Connolly 2006; the figure assumed). Pascals. And how wide the attachment is,
+# as a share of the colony's size.
+SUBSTRATE_STRESS = 2.0e6
+BASE_SHARE = 0.25
+# Sediment, mg cm⁻² a day: where harm begins, and where it is severe.
+SMOTHERS_FROM = 10.0
+SMOTHERS_BADLY = 50.0
 
 
 class Colonies:
@@ -64,6 +84,8 @@ class Colonies:
         self.struck = np.zeros(0, dtype=int)
         self.brushed = np.zeros(0, dtype=int)
         self.worst_stress = np.zeros(0)
+        self.torn_off = np.zeros(0, dtype=bool)
+        self.smothered = np.zeros(0, dtype=int)     # 0 none, 1 harmed, 2 badly
         self.events: list[dict] = []
         self.from_ = "nothing yet"
 
@@ -76,8 +98,9 @@ class Colonies:
         return len(self.size)
 
     def solid(self) -> np.ndarray:
-        """Which colonies stop a vehicle: everything that does not bend."""
-        return np.array([k not in BENDS for k in self.kind], dtype=bool)
+        """Which colonies stop a vehicle: everything that does not bend, and
+        has not been torn off and knocked over."""
+        return np.array([k not in BENDS for k in self.kind], dtype=bool) & ~self.torn_off
 
     def said(self) -> dict:
         broken = np.flatnonzero(self.broken)
@@ -86,6 +109,12 @@ class Colonies:
                 "broken": [{"kind": str(self.kind[i]), "at": [round(float(c), 3) for c in self.at[i]],
                             "sizeM": round(float(self.size[i]), 3), "t": round(float(self.broken_at[i]), 2),
                             "stressMPa": round(float(self.worst_stress[i]) / 1e6, 1)} for i in broken],
+                **({} if not self.torn_off.any() else {"tornOff": [
+                    {"kind": str(self.kind[i]), "at": [round(float(c), 3) for c in self.at[i]]}
+                    for i in np.flatnonzero(self.torn_off)]}),
+                **({} if not self.smothered.any() else {
+                    "smothered": int((self.smothered >= 1).sum()),
+                    "smotheredBadly": int((self.smothered >= 2).sum())}),
                 "from": self.from_}
 
 
@@ -113,9 +142,16 @@ def colonies_of(described: dict, bottom_under) -> Colonies:
     c.struck = np.zeros(n, dtype=int)
     c.brushed = np.zeros(n, dtype=int)
     c.worst_stress = np.zeros(n)
+    c.torn_off = np.zeros(n, dtype=bool)
+    c.smothered = np.zeros(n, dtype=int)
     c.from_ = ("the place's record of its colonies; breaking from Acropora's measured strength "
                "with an assumed branch size and contact time")
     return c
+
+
+def dose_per_day(settled_mg_cm2, seconds: float):
+    """What has settled, as the daily rate the thresholds are given in."""
+    return settled_mg_cm2 / max(seconds / 86400.0, 1.0 / 24.0)
 
 
 def stress_of(impulse_ns: float, height_m: float, kind: str, size_m: float) -> float:
@@ -126,16 +162,28 @@ def stress_of(impulse_ns: float, height_m: float, kind: str, size_m: float) -> f
     return force * lever / (math.pi * r ** 3 / 4.0)
 
 
+def base_stress_of(impulse_ns: float, height_m: float, size_m: float) -> float:
+    """The bending stress a strike puts on the rock a colony is cemented to, Pa."""
+    force = impulse_ns / CONTACT_TIME
+    r = BASE_SHARE * size_m
+    return force * 0.6 * height_m / (math.pi * r ** 3 / 4.0)
+
+
 class CoralSystem(System):
     name = "coral"
     reads = ("contacts", "clock")
+    before = ("sediment",)
     writes = ("coral",)
 
     def __init__(self, say) -> None:
         self.say = say
         self.seen = 0
 
+    def judge_the_sediment(self, world) -> None:
+        _judge(world.coral, world.sediment.on_coral_mg_cm2, world.clock.simulated, self.say)
+
     def step(self, world) -> None:
+        self.judge_the_sediment(world)
         coral, hits = world.coral, world.contacts.coral_hits
         while self.seen < len(hits):
             hit = hits[self.seen]
@@ -146,6 +194,17 @@ class CoralSystem(System):
                 coral.brushed[i] += 1
                 continue
             coral.struck[i] += 1
+            # Torn off whole: the colonies that do not snap first. A branching
+            # colony's branches give long before its base does.
+            if not coral.torn_off[i] and kind not in BENDS and kind not in BREAKS:
+                base = base_stress_of(impulse, float(coral.height[i]), float(coral.size[i]))
+                if base > SUBSTRATE_STRESS:
+                    coral.torn_off[i] = True
+                    event = {"growth": kind, "colony": i, "at": [round(float(c), 3) for c in coral.at[i]],
+                             "baseStressMPa": round(base / 1e6, 2), "impulseNs": round(impulse, 3)}
+                    coral.events.append({"tornOff": True, **event})
+                    self.say("coral_torn_off", **event)
+                    continue
             if kind not in BREAKS or coral.broken[i]:
                 continue
             stress = stress_of(impulse, float(coral.height[i]), kind, float(coral.size[i]))
@@ -159,3 +218,16 @@ class CoralSystem(System):
                          "speedMs": round(float(hit["speedMs"]), 3)}
                 coral.events.append(event)
                 self.say("coral_broken", **event)
+
+
+def _judge(coral, settled, seconds, say):
+    """Smothering, from the dose: once a level is passed, said once."""
+    if settled is None or len(settled) != len(coral):
+        return
+    dose = dose_per_day(np.asarray(settled), seconds)
+    level = np.where(dose >= SMOTHERS_BADLY, 2, np.where(dose >= SMOTHERS_FROM, 1, 0))
+    worse = np.flatnonzero(level > coral.smothered)
+    for i in worse:
+        coral.smothered[i] = level[i]
+        say("coral_smothered", colony=int(i), growth=str(coral.kind[i]),
+            mgCm2PerDay=round(float(dose[i]), 1), badly=bool(level[i] >= 2))
