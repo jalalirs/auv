@@ -3092,6 +3092,11 @@ class Dive:
         if getattr(self, "_propellers", None):
             from draw import propellers
             propellers.turn(self._propellers, self.ocean.thrust)
+        if len(self.ocean.sediment.kg) or getattr(self, "_sediment_drawn", None) is not None:
+            from draw import sediment as drawn_sediment
+            self._sediment_drawn = drawn_sediment.draw(self.stage, self.ocean.sediment,
+                                                       getattr(self, "_sediment_drawn", None),
+                                                       self.units_per_metre)
         coral = self.ocean.coral
         if len(coral) and coral.broken.any():
             from draw import coral as drawn_coral
@@ -3390,6 +3395,9 @@ class Dive:
                  # The coral it touched and what that did, and its hardest
                  # strike of anything: where, how fast, what impulse.
                  **({} if not len(self.ocean.coral) else {"coral": self.ocean.coral.said()}),
+                 # The sand it lifted, where it went, and what it cost the
+                 # camera and the coral.
+                 **({} if not self.ocean.sediment.lifted_kg else {"sediment": self.ocean.sediment.said()}),
                  **({} if self.ocean.contacts.hardest() is None
                     else {"hardestStrike": self.ocean.contacts.hardest()}),
                  day=self.ocean.light.said(),

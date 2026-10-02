@@ -18,6 +18,9 @@ flew before each move.
     contact       the ground, the glass and what is in the water, stopping it
     wash          the jet of water behind every thruster that is pushing
     fish          every fish, each with a mind: schooling, foraging, fleeing
+    coral         colonies that stop the vehicle, and break when they should
+    tether        the cable: moving, caught on things, failing the dive
+    sediment      sand the wash lifts, the water carries and the camera sees through
     tasking       the task: planned, scored, and whether the dive is over
     outputs       the ROS 2 bridge and the record
 

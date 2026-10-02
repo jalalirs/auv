@@ -23,6 +23,7 @@ from systems.instruments import Ctd, CtdSystem, Fresh, MultibeamSystem, SonarSys
 from systems.navigation import NavigationSystem
 from systems.outputs import BridgeSystem, RecordSystem
 from systems.place import Place
+from systems.sediment import Sediment, SedimentSystem
 from systems.tasking import Task, TaskingSystem
 from systems.tether import TetherSystem
 from systems.thrusters import Power, Thrust, ThrustersSystem
@@ -57,6 +58,7 @@ def the_ocean(body, thrusters: int, dt: float) -> World:
     world.put("wash", Wash(), owner="wash")
     world.put("light", Light(), owner="light")
     world.put("coral", Colonies(), owner="coral")
+    world.put("sediment", Sediment(), owner="sediment")
     world.put("fish", None, owner="fish")
     world.put("task", Task(), owner="tasking")
     world.put("bridge", None, owner="bridge")
@@ -111,6 +113,7 @@ def the_systems(dive) -> list:
                      rocks_of(brief), say),
         FishSystem(),
         CoralSystem(say),
+        SedimentSystem(int(brief.get("seed", 0)), say),
         # The clock moves on once the vehicle has: what runs after it judges
         # the state the tick produced, at the time it was produced.
         Tick(after=("vehicle",)),

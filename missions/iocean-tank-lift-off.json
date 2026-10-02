@@ -1,0 +1,31 @@
+{
+ "_": "Down onto the open sand in the middle of the tank and straight back up: the moment a vehicle lifting off a soft bottom drives its wash into the sand, which is when a real one blinds itself. Keel two centimetres off the bed at the bottom of it. Flown by pursue: wary keeps its stand-off from the bottom, which is the point of wary and the opposite of this. Each point a few centimetres on from the last: the planner takes points over one spot to be one stop.",
+ "kind": "waypoints",
+ "controller": "pursue",
+ "radiusM": 0.06,
+ "timeLimitS": 60,
+ "points": [
+  {
+   "dx": 0.1,
+   "dy": -0.05,
+   "depthM": 0.6
+  },
+  {
+   "dx": 0.15,
+   "dy": -0.05,
+   "depthM": 0.8
+  },
+  {
+   "dx": 0.22,
+   "dy": -0.05,
+   "depthM": 0.35
+  }
+ ],
+ "tune": {
+  "pursue": {
+   "cruiseMs": 0.15,
+   "easeM": 0.2,
+   "arriveM": 0.05
+  }
+ }
+}
