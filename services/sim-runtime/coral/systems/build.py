@@ -97,6 +97,36 @@ def weathervanes(brief: dict) -> bool:
         return False
 
 
+def camera_of(dive):
+    """The vehicle's camera, for counting fish: where on the hull, how far it
+    is pitched down, and half its horizontal field of view."""
+    import json
+    import math
+    import pathlib
+
+    try:
+        sensors = json.loads((pathlib.Path(dive.brief.get("vehiclePath", "/dive/vehicle")) / "dynamics.json")
+                             .read_text()).get("sensors") or []
+    except Exception:
+        return None
+    camera = next((s for s in sensors if s.get("kind") == "underwater_camera"), None)
+    if camera is None:
+        return None
+    from tasks import footprint_half_angle
+
+    half = footprint_half_angle(camera) or math.radians(35.0)
+    pitch = math.radians(float((camera.get("orientation") or [0, 0, 0])[1]))
+    return (camera.get("position") or [0.0, 0.0, 0.0], pitch, half)
+
+
+def fish_are_blind() -> bool:
+    """The counterfactual: fish that do not see the vehicle, for measuring
+    what its presence costs a count (tools/count-bias)."""
+    import os
+
+    return os.environ.get("CORAL_CITY_FISH_BLIND", "0") not in ("", "0", "false")
+
+
 def rocks_of(brief: dict) -> dict:
     """The place's rocks, by name, for counting how often a cable goes round
     each."""
@@ -131,7 +161,7 @@ def the_systems(dive) -> list:
         WashSystem(dive.allocator.model.thrusters),
         TetherSystem(dt, tied_on(brief), float(max(dive.capability[0], dive.capability[1])),
                      rocks_of(brief), say),
-        FishSystem(),
+        FishSystem(camera=camera_of(dive), blind=fish_are_blind()),
         CoralSystem(say),
         SedimentSystem(int(brief.get("seed", 0)), say),
         SideScanSystem(int(brief.get("seed", 0))),

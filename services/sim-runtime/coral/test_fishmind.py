@@ -209,3 +209,41 @@ def test_what_they_did_is_said():
     assert said["fish"] == 11 and set(said["spent"]) == {"chromis_viridis", "pseudocheilinus_hexataenia"}
     for budget in said["spent"].values():
         assert abs(sum(budget.values()) - 1.0) < 0.01
+
+
+def test_the_camera_counts_each_fish_once_and_only_what_it_can_see():
+    """A fish ahead and near is counted; one behind is not; one seen twice is
+    one fish (systems/fish.py)."""
+    from systems.fish import FishSystem
+    from systems.sediment import Sediment
+
+    class V:
+        position = np.array([0.0, 0.0, -0.5])
+        rotation = np.eye(3)
+
+    school = fm.School({"chromis_viridis": 3}, a_tank(), seed=1, tank=True)
+    school.at = np.array([[1.0, 0.0, -0.5], [-1.0, 0.0, -0.5], [0.5, 0.05, -0.5]])
+    counter = FishSystem(camera=([0.0, 0.0, 0.0], 0.0, np.radians(35.0)))
+    sediment = Sediment()
+    counter.count(school, V(), sediment)
+    counter.count(school, V(), sediment)
+    assert school.counted == {0, 2}
+    assert school.said()["countedByTheCamera"] == 2
+
+
+def test_murky_water_counts_fewer():
+    """Half of how far the camera can see: a cloud of the vehicle's own sand
+    in front of it hides the fish beyond it."""
+    from systems.fish import FishSystem
+    from systems.sediment import Sediment
+
+    class V:
+        position = np.array([0.0, 0.0, -0.5])
+        rotation = np.eye(3)
+
+    school = fm.School({"chromis_viridis": 1}, a_tank(), seed=1, tank=True)
+    school.at = np.array([[1.5, 0.0, -0.5]])
+    murky = Sediment()
+    murky.visibility_m = 2.0
+    FishSystem(camera=([0.0, 0.0, 0.0], 0.0, np.radians(35.0))).count(school, V(), murky)
+    assert school.counted == set()

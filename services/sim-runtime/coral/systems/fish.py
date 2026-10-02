@@ -39,10 +39,32 @@ REFUGE_OF = {"branching": "branch", "finger": "branch", "table": "branch",
 
 
 class FishSystem(System):
+    """Steps the school, and counts what the vehicle's camera sees of it.
+
+    The count is the point of simulating the fish at all: a survey that
+    counts fish is judged against how many were there, and a vehicle that
+    frightens fish off counts fewer than were there. A fish is counted when it
+    is inside the camera's field of view and near enough to tell what it is —
+    half of how far the camera can see through the water, sediment included,
+    and never more than five metres (assumed). Each fish once, however long it
+    stays in view: `counted` is what a person counting the video would get.
+
+    `blind` is the counterfactual: the same dive, with fish that do not see
+    the vehicle. What the camera counts then, against what it counts when they
+    do, is how much the vehicle's own presence cost the count
+    (tools/count-bias)."""
+
     name = "fish"
-    reads = ("light", "water", "wash", "vehicle", "thrust", "place", "clock")
+    reads = ("light", "water", "wash", "vehicle", "thrust", "place", "clock", "sediment")
     writes = ("fish",)
     every = 0.05
+
+    IDENTIFIED_WITHIN_M = 5.0
+
+    def __init__(self, camera=None, blind: bool = False) -> None:
+        # (where on the hull, pitch down in radians, half the field of view)
+        self.camera = camera
+        self.blind = bool(blind)
 
     def step(self, world) -> None:
         school = world.fish
@@ -52,9 +74,25 @@ class FishSystem(System):
         flow = world.water.flow_at(school.at, world.clock.simulated) + world.wash.at(school.at)
         working = (float(np.clip(np.abs(v.wrench[:3]).sum() / 60.0, 0.0, 1.0))
                    if v.wrench is not None else 0.0)
-        school.step(self.every, vehicle=v.position, thrust=working,
+        school.step(self.every, vehicle=None if self.blind else v.position, thrust=working,
                     light=(world.light.hour, world.light.level), flow=flow,
                     vehicle_size=float(v.half_width))
+        if self.camera is not None:
+            self.count(school, v, world.sediment)
+
+    def count(self, school, v, sediment) -> None:
+        at, pitch, half = self.camera
+        eye = v.position + v.rotation @ np.asarray(at, dtype=float)
+        looking = v.rotation @ np.array([np.cos(pitch), 0.0, -np.sin(pitch)])
+        seeing = self.IDENTIFIED_WITHIN_M
+        if sediment.visibility_m is not None:
+            seeing = min(seeing, 0.5 * float(sediment.visibility_m))
+        off = school.at - eye[None, :]
+        far = np.linalg.norm(off, axis=1)
+        facing = (off @ looking) / np.maximum(far, 1e-9)
+        seen = np.flatnonzero((far < seeing) & (facing > np.cos(half)))
+        school.counted.update(int(i) for i in seen)
+        school.in_view.append(len(seen))
 
 
 def refuges(described: dict, bottom_under, low, high, rng) -> dict:

@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+"""How much a vehicle's own presence costs the fish count it makes.
+
+    tools/count-bias --place looe-key --vehicles mini-hoot,boxfish-luna --seeds 0,1,2
+
+Every survey that counts fish from a vehicle has the same flaw: the fish see
+the vehicle too, and the ones that leave are the ones it does not count. The
+literature measures it with divers and submersibles (Laidig 2013: 57% of fish
+reacted to an ROV; Lindfield 2014: a silent diver counts up to 2.6 times more
+in fished areas) and cannot measure it for a vehicle that has not been built.
+
+This flies the same transect twice on the same seed — once with fish that see
+the vehicle (Hein's looming rule, systems/fish.py) and once with fish that do
+not — and counts what the camera saw each time, each fish once. The second is
+what was there to be counted; the first is what the vehicle got. Their ratio is
+its count bias, and it is a property of the vehicle: its size, its speed, how
+hard its thrusters work, where its camera looks. Undrawn, on this machine.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import pathlib
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "services/sim-runtime/coral"))
+
+
+def fly(place: str, vehicle: str, seed: int, metres: float, blind: bool) -> dict:
+    os.environ["CORAL_CITY_FISH_BLIND"] = "1" if blind else "0"
+    from hydrodynamics import Allocator, Body, Hydrodynamics
+    from runner import Dive
+
+    package = ROOT / "catalog/vehicles" / vehicle / "dynamics.json"
+    model = Hydrodynamics.from_package(package)
+    brief = {"seed": seed, "durationSeconds": 400.0, "vehiclePath": str(package.parent),
+             "objective": {"kind": "reach", "dx": metres, "dy": 0.0, "radiusM": 1.0, "timeLimitS": 380.0},
+             "cityPath": str(pathlib.Path.home() / "coral-city/places" / place),
+             "conditions": {"kind": "constructed", "name": "count-bias", "parameters": {}}}
+    dive = Dive(brief, Body(model), Allocator(model), pathlib.Path("nowhere.usda"), lambda k, **d: None)
+    if not dive.open_dry():
+        raise SystemExit(f"{place} would not open undrawn")
+    while not dive.done:
+        dive.step()
+    said = dive.shoal.said() if dive.shoal is not None else {}
+    return {"counted": said.get("countedByTheCamera", 0), "inViewMean": said.get("inViewMean", 0.0),
+            "bumped": said.get("bumped", 0), "seconds": round(dive.simulated, 1),
+            "arrived": bool((dive.task.result() or {}).get("arrived")) if dive.task else None}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--place", default="looe-key")
+    ap.add_argument("--vehicles", default="mini-hoot,boxfish-luna")
+    ap.add_argument("--seeds", default="0,1,2")
+    ap.add_argument("--metres", type=float, default=25.0)
+    args = ap.parse_args()
+    rows = []
+    for vehicle in args.vehicles.split(","):
+        for seed in (int(s) for s in args.seeds.split(",")):
+            seeing = fly(args.place, vehicle, seed, args.metres, blind=False)
+            blind = fly(args.place, vehicle, seed, args.metres, blind=True)
+            ratio = seeing["counted"] / blind["counted"] if blind["counted"] else None
+            rows.append({"vehicle": vehicle, "seed": seed, "seeing": seeing, "blind": blind,
+                         "countedShare": None if ratio is None else round(ratio, 3)})
+            print(json.dumps(rows[-1]), flush=True)
+    print("\nvehicle          counted (fish see it / fish blind to it)   share of what was there")
+    for vehicle in args.vehicles.split(","):
+        mine = [r for r in rows if r["vehicle"] == vehicle and r["countedShare"] is not None]
+        if not mine:
+            continue
+        a = sum(r["seeing"]["counted"] for r in mine)
+        b = sum(r["blind"]["counted"] for r in mine)
+        print(f"{vehicle:<16} {a:>6} / {b:<6} over {len(mine)} seeds              {a / b:.0%}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

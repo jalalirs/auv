@@ -197,6 +197,10 @@ class School:
         self._flow = np.zeros((n, 3))
         # Fish the vehicle ran into, and how many times.
         self.bumped = 0
+        # What the vehicle's camera has seen: each fish once, and how many
+        # were in view each time it looked (systems/fish.py counts).
+        self.counted: set[int] = set()
+        self.in_view: list[int] = []
         self._sync()
 
     # ── where they live ──────────────────────────────────────────────────────
@@ -634,4 +638,9 @@ class School:
         return {"fish": int(self.of_them), "bySpecies": counted, "byGroup": counted,
                 "schools": int(len(np.unique(self.school))) if self.of_them else 0, "scattered": round(self.scattered, 3),
                 "hour": round(float(self.hour), 2), "light": round(float(self.light), 2), "spent": spent,
-                "bumped": int(self.bumped)}
+                "bumped": int(self.bumped),
+                **({} if not self.in_view else {
+                    "countedByTheCamera": len(self.counted),
+                    "inViewMean": round(float(np.mean(self.in_view)), 2),
+                    "countedBySpecies": {str(k): int(sum(1 for i in self.counted if self.kinds[i] == k))
+                                         for k in self._kinds_present}})}
