@@ -34,10 +34,11 @@ S = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(S)
 
 # Where the navigation sensors sit, in the drawing's frame (sensors.md).
-# Three single-beam echosounders splayed ahead and 45 degrees either side
-# make a three-beam fan the collision avoider can find a gap in; one beam
-# ahead cannot tell left from right.
-PINGS = [("ahead", (88.0, 0.0), 0.0), ("port", (70.0, 34.0), 45.0), ("starboard", (70.0, -34.0), -45.0)]
+# Three single-beam echosounders, ahead and 25 degrees either side: their
+# 25-degree cones touch, so the 75 degrees ahead are heard without a gap.
+# Splayed at 45 they left two blind wedges from 12 to 32 degrees off the
+# nose, and the first tank run met its pillar in one of them.
+PINGS = [("ahead", (88.0, 0.0), 0.0), ("port", (74.0, 30.0), 25.0), ("starboard", (74.0, -30.0), -25.0)]
 PING_Z = -S.HULL_H / 2 - 21.0
 PINGS_AT = (76.0, 0.0, PING_Z)
 DVL_AT = (-20.0, 0.0, -S.HULL_H / 2 - 12.5)
@@ -69,7 +70,7 @@ def budget():
         # less weight in water, both from the makers.
         ("Water Linked DVL A50, under the belly", 170.0, 65.0, DVL_AT, "assumed",
          "the maker's figures, not weighed: 66 x 25 mm; 170 g in air, 105 g in water"),
-        ("3 x Blue Robotics Ping2, under the nose: ahead and 45 degrees either side", 3 * 187.0, 3 * 87.0, PINGS_AT, "assumed",
+        ("3 x Blue Robotics Ping2, under the nose: ahead and 25 degrees either side", 3 * 187.0, 3 * 87.0, PINGS_AT, "assumed",
          "the maker's figures, not weighed: 71 x 47 x 41 mm; 187 g in air, 100 g in water, each"),
     ]
     mass = sum(r[1] for r in rows)
@@ -207,9 +208,9 @@ def dynamics():
             {"kind": "barometer", "name": "depth", "position": cat((-S.TUBE_L / 2 - S.FLANGE_T, -20, -20)), "watts": 0.05,
              "wattsNote": "a Bar02 through the rear cap, 0.16 mm resolution"},
             {"kind": "imaging_sonar", "name": "echosounders", "position": cat((88.0, 0.0, PING_Z)), "orientation": [0, 0, 0],
-             "beams": 3, "horizontalFovDeg": 90, "beamWidthDeg": 25, "verticalFovDeg": 25,
+             "beams": 3, "horizontalFovDeg": 50, "beamWidthDeg": 25, "verticalFovDeg": 25,
              "rangeM": [0.3, 5.0], "pingsPerSecond": 10, "rangeNoiseM": 0.01, "missesShare": 0.05,
-             "note": "Three Blue Robotics Ping2 single-beam echosounders, ahead and 45 degrees either side: 25 degree beams, 115 kHz. Range set to 5 m for a tank (it reaches 100 m); 0.3 m nearest and 1 cm noise are assumed until measured in the tank, where the glass echoes.",
+             "note": "Three Blue Robotics Ping2 single-beam echosounders, ahead and 25 degrees either side so their 25 degree cones touch: 75 degrees ahead without a gap, 115 kHz. Range set to 5 m for a tank (it reaches 100 m); 0.3 m nearest and 1 cm noise are assumed until measured in the tank, where the glass echoes.",
              "watts": 1.5, "wattsNote": "100 mA at 5 V each, typical"},
             {"kind": "dvl", "name": "bottom_track", "position": cat(DVL_AT),
              "note": "Water Linked DVL A50: four beams at 22.5 degrees, 1 MHz, 5 cm to 50 m altitude, 4-15 Hz.",

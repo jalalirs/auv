@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+"""Call one tool on the platform's MCP server, the way an agent would.
+
+    tools/mcp-call dives_result '{"dive": "dive_…"}'
+    tools/mcp-call dives_frame '{"dive": "dive_…", "at_seconds": 10}' --image frame.png
+
+For a shell, when a session's own MCP connection is older than the server
+(a tool added since it connected is not in its list). Reads MCP_TOKEN from the
+repository's .env; the address is CORAL_CITY_MCP or the public link.
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import os
+import pathlib
+import sys
+import urllib.request
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+ADDRESS = os.environ.get("CORAL_CITY_MCP", "https://jalalirs.tailedf721.ts.net/coral/mcp")
+
+
+def token() -> str:
+    if os.environ.get("MCP_TOKEN"):
+        return os.environ["MCP_TOKEN"]
+    for line in (ROOT / ".env").read_text().splitlines():
+        if line.startswith("MCP_TOKEN="):
+            return line.split("=", 1)[1].strip()
+    raise SystemExit("no MCP_TOKEN in the environment or in .env")
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print(__doc__)
+        return 2
+    name = sys.argv[1]
+    arguments = json.loads(sys.argv[2]) if len(sys.argv) > 2 and not sys.argv[2].startswith("--") else {}
+    image = sys.argv[sys.argv.index("--image") + 1] if "--image" in sys.argv else None
+    body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": arguments}}
+    asked = urllib.request.Request(ADDRESS, json.dumps(body).encode(), {
+        "Authorization": "Bearer " + token(), "content-type": "application/json",
+        "accept": "application/json, text/event-stream"})
+    said = json.load(urllib.request.urlopen(asked, timeout=600))
+    if "error" in said:
+        print(json.dumps(said["error"], indent=1))
+        return 1
+    for part in said["result"]["content"]:
+        if part["type"] == "image":
+            if image:
+                pathlib.Path(image).write_bytes(base64.b64decode(part["data"]))
+        else:
+            print(part["text"])
+    return 1 if said["result"].get("isError") else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

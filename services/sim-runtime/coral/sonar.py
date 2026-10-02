@@ -121,9 +121,15 @@ class Sonar:
                     if hit is not None and hit < far:
                         far = hit
             if seabed is not None:
-                hit = _ground(origin, way, self.far, seabed)
-                if hit is not None and hit < far:
-                    far = hit
+                # Across the cone, not down its middle: a beam is 25 degrees
+                # wide and hears a pillar a hand's width off its axis, which a
+                # single ray walked past.
+                half = 0.5 * self.spread()
+                for lean in (0.0, -0.5 * half, 0.5 * half, -half, half):
+                    tilted = rotation @ np.array([math.cos(bearing + lean), math.sin(bearing + lean), 0.0])
+                    hit = _ground(origin, tilted, far, seabed)
+                    if hit is not None and hit < far:
+                        far = hit
             if walls is not None:
                 hit = _glass(origin, way, walls)
                 if hit is not None and hit < far:

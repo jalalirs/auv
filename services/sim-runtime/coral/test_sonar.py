@@ -200,3 +200,48 @@ def test_a_tank_wall_returns_an_echo():
     assert abs(got[1] - 1.0) < 1e-6
     assert abs(got[0] - 0.5 / np.sin(np.radians(45))) < 1e-6
     assert abs(sonar.spread() - np.radians(25)) < 1e-9
+
+
+def test_wary_sees_what_is_ahead_when_the_sides_are_closer():
+    """In a tank the side beams hear the glass first; a pillar dead ahead
+    must still count, and the way round is the side with more water."""
+    import math
+    import numpy as np
+    from controllers.base import Observation
+    from controllers.wary import WaryController
+
+    wary = WaryController(np.full(6, 10.0), np.full(6, 3.0), 0.0, 0.005)
+    wary.tune("standOffM", 0.3)
+    wary.tune("aheadDeg", 40.0)
+    seen = Observation.__new__(Observation)
+    seen.seen = {"rangeM": 0.2, "bearingRad": math.radians(-45), "beam": 0}
+    seen.sonar = {"bearingsRad": np.radians([-45.0, 0.0, 45.0]), "rangesM": np.array([0.4, 0.25, 0.9])}
+    close = wary.in_the_way(seen)
+    assert close is not None and abs(close["rangeM"] - 0.25) < 1e-9
+    assert wary.the_gap(seen, close) > 0
+
+
+def test_wary_remembers_each_ping_once_and_detours_to_the_open_side():
+    """A ping handed over on every control step is one ping; and a pillar
+    remembered across the leg sends the vehicle round its open side."""
+    import math
+    import numpy as np
+    from controllers.base import Observation
+    from controllers.wary import WaryController
+
+    wary = WaryController(np.full(6, 10.0), np.full(6, 3.0), 0.0, 0.005)
+    for name, value in (("standOffM", 0.3), ("clearanceM", 0.24), ("rememberS", 10.0)):
+        wary.tune(name, value)
+    wary.route = [{"x": -0.55, "y": -0.15}]
+    wary.at = 0
+    seen = Observation.__new__(Observation)
+    seen.t = 1.0
+    seen.position = np.array([0.2, -0.15, -0.4])
+    seen.rotation = np.array([[-1.0, 0, 0], [0, -1.0, 0], [0, 0, 1.0]])
+    seen.velocity = np.zeros(6)
+    seen.sonar = {"bearingsRad": np.radians([-25.0, 0.0, 25.0]), "rangesM": np.array([np.nan, 0.5, np.nan])}
+    for _ in range(200):
+        wary.remember(seen)
+    assert len(wary.heard) == 1
+    here = seen.position[:2]
+    assert wary.in_corridor(here, np.array([-0.55, -0.15]), 0.24)

@@ -605,6 +605,19 @@ class Dive:
         self.say("place_open", scene=str(city), prims=0,
                  metresAcross=extent, from_=corner, to=far,
                  upAxis=self.up_axis, unitsPerMetre=1.0, drawn=False)
+        # How big the vehicle is, from its package, since there is no hull
+        # drawn to measure. The default was 0.6 m across, which in a tank a
+        # metre wide is a vehicle that cannot pass anything.
+        try:
+            import json
+            hull = json.loads((pathlib.Path(self.brief.get("vehiclePath", "/dive/vehicle"))
+                               / "dynamics.json").read_text()).get("hull") or {}
+            size = hull.get("dimensionsM")
+            if size and len(size) == 3:
+                self.half_width = max(0.1, max(float(size[0]), float(size[1])) / 2.0)
+                self.half_height = max(0.05, float(size[2]) / 2.0)
+        except Exception:
+            pass
         self.put_the_vehicle_in_the_place(corner, far, extent)
         # The same two things a drawn dive ends its opening with. Without the
         # first there is no task, no recorder and no score: the dive flies, the
@@ -3150,23 +3163,35 @@ class Dive:
         speed = float(np.linalg.norm(flat))
         if speed < 1e-4:
             return
-        ahead = self.position[:2] + (flat / speed) * self.half_width
-        there = self.seabed.under(float(ahead[0]), float(ahead[1]))
+        # Where the hull will meet something: ahead along the way it moves, and
+        # out to its sides. A single probe ahead let a pillar slide down the
+        # vehicle's flank and through its pods without a contact: a hull is as
+        # wide as its arms, not as wide as a point.
+        way = flat / speed
+        side = np.array([-way[1], way[0]])
         keel = float(self.position[2]) - self.half_height
-        if there <= keel:
+        touched = False
+        for along, across in ((1.0, 0.0), (0.7, 0.6), (0.7, -0.6), (0.0, 0.75), (0.0, -0.75)):
+            probe = self.position[:2] + (way * along + side * across) * self.half_width
+            there = self.seabed.under(float(probe[0]), float(probe[1]))
+            if there <= keel:
+                continue
+            facing = self.seabed.normal(float(probe[0]), float(probe[1]))
+            if facing[2] >= self.CLIMBS_UP_TO:
+                continue                    # a slope, not a wall: it may ride up
+            into = facing[:2]
+            length = float(np.linalg.norm(into))
+            if length < 1e-9:
+                continue
+            into = into / length
+            going = float(np.dot(flat, into))
+            if going >= 0.0:
+                continue                    # already leaving the face
+            flat = flat - into * going
+            touched = True
+        if not touched:
             return
-        facing = self.seabed.normal(float(ahead[0]), float(ahead[1]))
-        if facing[2] >= self.CLIMBS_UP_TO:
-            return                      # a slope, not a wall: it may ride up
-        into = facing[:2]
-        length = float(np.linalg.norm(into))
-        if length < 1e-9:
-            return
-        into = into / length
-        going = float(np.dot(flat, into))
-        if going >= 0.0:
-            return                      # already leaving the face
-        moving[:2] = flat - into * going
+        moving[:2] = flat
         self.velocity[:3] = self.rotation.T @ moving
         # Counted once per contact rather than once per step, the same way a
         # world object is: a vehicle pressed against a spur for four seconds

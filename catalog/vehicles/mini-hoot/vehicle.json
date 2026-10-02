@@ -262,7 +262,7 @@
           "note": "the maker's figures, not weighed: 66 x 25 mm; 170 g in air, 105 g in water"
         },
         {
-          "part": "3 x Blue Robotics Ping2, under the nose: ahead and 45 degrees either side",
+          "part": "3 x Blue Robotics Ping2, under the nose: ahead and 25 degrees either side",
           "grams": 561.0,
           "displacedCm3": 261.0,
           "kind": "assumed",
@@ -512,7 +512,7 @@
           0
         ],
         "beams": 3,
-        "horizontalFovDeg": 90,
+        "horizontalFovDeg": 50,
         "beamWidthDeg": 25,
         "verticalFovDeg": 25,
         "rangeM": [
@@ -522,7 +522,7 @@
         "pingsPerSecond": 10,
         "rangeNoiseM": 0.01,
         "missesShare": 0.05,
-        "note": "Three Blue Robotics Ping2 single-beam echosounders, ahead and 45 degrees either side: 25 degree beams, 115 kHz. Range set to 5 m for a tank (it reaches 100 m); 0.3 m nearest and 1 cm noise are assumed until measured in the tank, where the glass echoes.",
+        "note": "Three Blue Robotics Ping2 single-beam echosounders, ahead and 25 degrees either side so their 25 degree cones touch: 75 degrees ahead without a gap, 115 kHz. Range set to 5 m for a tank (it reaches 100 m); 0.3 m nearest and 1 cm noise are assumed until measured in the tank, where the glass echoes.",
         "watts": 1.5,
         "wattsNote": "100 mA at 5 V each, typical"
       },

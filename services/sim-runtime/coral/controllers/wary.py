@@ -61,6 +61,14 @@ class WaryController(PursueController):
                      "how far it turns away at the closest it will get")
         self.declare("slowestShare", 0.25, 0.0, 1.0, "",
                      "how much of its speed it keeps when something is right there")
+        self.declare("rememberS", 8.0, 0.0, 60.0, "s",
+                     "how long an echo is kept once it has left the beams")
+        self.declare("clearanceM", 0.0, 0.0, 5.0, "m",
+                     "half the vehicle's width and a margin: the corridor kept clear "
+                     "of anything remembered. Nought leaves it to the beams alone")
+        self.declare("sonarAheadM", 0.0, 0.0, 2.0, "m",
+                     "how far ahead of the vehicle's centre its sonar sits, so an echo is put "
+                     "where it came from")
         self.declare("commitS", 4.0, 0.0, 30.0, "s",
                      "how long it keeps the way round it chose")
         self.avoided = 0
@@ -69,6 +77,15 @@ class WaryController(PursueController):
         # fifth of a second never finishes a turn.
         self.going = None
         self.chose_at = None
+        # What the sonar has heard, as places in the water, for a while. Three
+        # beams with gaps between them lose a thing the moment the vehicle
+        # turns for it: a pillar thirteen centimetres across fell between the
+        # beams half a second after it was seen, the way looked clear, and the
+        # route took the vehicle straight through it.
+        self.heard: list[tuple[float, float, float]] = []
+        self.detours = 0
+        self.via = None
+        self._last_fan = None
 
     def in_the_way(self, seen: Observation):
         """What the sonar saw that is worth steering around, or nothing.
@@ -82,9 +99,23 @@ class WaryController(PursueController):
         if not said:
             return None
         bearing = float(said.get("bearingRad", 0.0))
-        if abs(bearing) > math.radians(float(self["aheadDeg"])):
-            return None
         near = float(said.get("rangeM", 0.0))
+        # The nearest return *ahead*, not the nearest return and then a check
+        # that it is ahead. In a tank the beams either side hear the side glass
+        # before anything else, so the nearest was always the glass, always
+        # off the nose, and a rock pillar dead ahead never counted: the first
+        # tank round trip flew into it with the sonar pinging the whole way.
+        fan = getattr(seen, "sonar", None)
+        if fan:
+            bearings = np.asarray(fan["bearingsRad"], dtype=float)
+            ranges = np.asarray(fan["rangesM"], dtype=float)
+            ahead = (np.abs(bearings) <= math.radians(float(self["aheadDeg"]))) & np.isfinite(ranges)
+            if not ahead.any():
+                return None
+            at = int(np.flatnonzero(ahead)[np.argmin(ranges[ahead])])
+            near, bearing = float(ranges[at]), float(bearings[at])
+        elif abs(bearing) > math.radians(float(self["aheadDeg"])):
+            return None
         if near <= 0.0 or near > float(self["standOffM"]):
             return None
         return {"rangeM": near, "bearingRad": bearing,
@@ -107,14 +138,19 @@ class WaryController(PursueController):
         bearings = np.asarray(fan["bearingsRad"], dtype=float)
         ranges = np.asarray(fan["rangesM"], dtype=float)
         clear = ~np.isfinite(ranges) | (ranges > float(self["standOffM"]))
-        best, run, start = (0, None), 0, 0
+        # Of two gaps as wide, the one with more water in it: with three beams
+        # the two sides are each a gap of one, and taking the first found sent
+        # the vehicle towards whichever side was listed first, glass or not.
+        room = np.where(np.isfinite(ranges), ranges, np.inf)
+        best, run, start, open_ = (0, None, -1.0), 0, 0, 0.0
         for i, ok in enumerate(clear):
             if ok:
                 if run == 0:
-                    start = i
+                    start, open_ = i, 0.0
                 run += 1
-                if run > best[0]:
-                    best = (run, (start, i))
+                open_ += min(float(room[i]), 1e6)
+                if (run, open_) > (best[0], best[2]):
+                    best = (run, (start, i), open_)
             else:
                 run = 0
         if best[1] is None:
@@ -123,13 +159,146 @@ class WaryController(PursueController):
         first, last = best[1]
         return float((bearings[first] + bearings[last]) / 2.0)
 
+    def remember(self, seen: Observation) -> None:
+        """Every echo close enough to matter, as a point in the world."""
+        fan = getattr(seen, "sonar", None)
+        keep = float(self["rememberS"])
+        now = float(seen.t)
+        # Once per ping, not once per step. The fan is the sonar's last sweep
+        # and it is handed over on every one of two hundred steps a second;
+        # stored each time, ten seconds of memory held one second of echoes
+        # in twenty copies, and a pillar was forgotten a second after it was
+        # last heard.
+        fresh = fan is not None and not (
+            self._last_fan is not None
+            and np.array_equal(np.asarray(fan["rangesM"], dtype=float), self._last_fan, equal_nan=True))
+        if fresh:
+            self._last_fan = np.asarray(fan["rangesM"], dtype=float).copy()
+        if fan and fresh and keep > 0.0:
+            reach = max(1.0, 3.0 * float(self["standOffM"]))
+            for bearing, rangem in zip(np.asarray(fan["bearingsRad"], dtype=float),
+                                       np.asarray(fan["rangesM"], dtype=float)):
+                if np.isfinite(rangem) and rangem < reach:
+                    way = float(seen.heading) + float(bearing)
+                    nose = float(self["sonarAheadM"])
+                    x0 = float(seen.position[0]) + nose * math.cos(float(seen.heading))
+                    y0 = float(seen.position[1]) + nose * math.sin(float(seen.heading))
+                    self.heard.append((now, x0 + float(rangem) * math.cos(way),
+                                       y0 + float(rangem) * math.sin(way)))
+        self.heard = [one for one in self.heard if now - one[0] <= keep][-3000:]
+
+    def blocked(self, seen: Observation, towards: float, reach: float) -> tuple[bool, float]:
+        """Whether a remembered echo is in a vehicle-wide corridor that way, and
+        on which side of it the nearest one is."""
+        wide = float(self["clearanceM"])
+        u = np.array([math.cos(towards), math.sin(towards)])
+        across = np.array([-u[1], u[0]])
+        nearest, side = None, 0.0
+        for _, x, y in self.heard:
+            rel = np.array([x - float(seen.position[0]), y - float(seen.position[1])])
+            along = float(rel @ u)
+            off = float(rel @ across)
+            if 0.0 < along < reach and abs(off) < wide:
+                if nearest is None or along < nearest:
+                    nearest, side = along, off
+        return nearest is not None, side
+
+    def in_corridor(self, here, there, wide: float, reach: float | None = None):
+        """Remembered echoes in a vehicle-wide corridor from here towards there."""
+        flat = np.asarray(there, dtype=float) - here
+        distance = float(np.hypot(*flat))
+        if distance < 1e-6:
+            return []
+        u = flat / distance
+        across = np.array([-u[1], u[0]])
+        reach = distance if reach is None else min(distance, reach)
+        out = []
+        for _, x, y in self.heard:
+            rel = np.array([x, y]) - here
+            along, off = float(rel @ u), float(rel @ across)
+            if 0.0 < along < reach and abs(off) < wide:
+                out.append((along, off, np.array([x, y])))
+        return out
+
+    def detour(self, seen: Observation, command: Command):
+        """Round what is remembered in the way of this leg, or nothing to do.
+
+        A point beside the obstacle, reachable by a clear corridor, flown to
+        and then the leg again. Deciding a heading afresh every step dithered
+        for ten seconds in front of a pillar half a metre away; and close in
+        there is no deciding at all, because a Ping2 hears nothing nearer than
+        0.3 m. So the choice is made while the thing is still heard, kept while
+        the way to it stays clear, and made again the moment it does not.
+        """
+        wide = float(self["clearanceM"])
+        if wide <= 0.0 or self.at >= len(self.route):
+            self.via = None
+            return None
+        here = np.array([float(seen.position[0]), float(seen.position[1])])
+        point = self.route[self.at]
+        goal = np.array([float(point.get("x", here[0])), float(point.get("y", here[1]))])
+        if self.via is not None:
+            via, leg = self.via
+            if (leg != self.at or float(np.hypot(*(via - here))) < 0.05
+                    or self.in_corridor(here, via, wide)):
+                self.via = None
+            else:
+                return self._fly_to(seen, command, via)
+        flat = goal - here
+        distance = float(np.hypot(*flat))
+        if distance < 1e-6 or not self.heard:
+            return None
+        u = flat / distance
+        across = np.array([-u[1], u[0]])
+        blocking = self.in_corridor(here, goal, wide, float(self["standOffM"]) + 2.0 * wide)
+        if not blocking:
+            return None
+        nearest = min(b[0] for b in blocking)
+        cluster = [b for b in blocking if b[0] < nearest + 0.15]
+        centre = np.mean([b[2] for b in cluster], axis=0)
+        lean = float(np.mean([b[1] for b in cluster]))
+        sides = (-1.0, 1.0) if lean > 0 else (1.0, -1.0)     # away from it first
+        chosen = None
+        for ahead in (0.0, -0.1, 0.1):
+            for sign in sides:
+                via = centre + across * sign * (wide + 0.08) + u * ahead
+                fits = all(float(np.hypot(x - via[0], y - via[1])) >= wide for _, x, y in self.heard)
+                if fits and not self.in_corridor(here, via, wide):
+                    chosen = via
+                    break
+            if chosen is not None:
+                break
+        if chosen is None:
+            chosen = here - u * 0.15                      # nowhere fits: back off
+        self.via = (chosen, self.at)
+        self.detours += 1
+        return self._fly_to(seen, command, chosen)
+
+    def _fly_to(self, seen: Observation, command: Command, via) -> Command:
+        here = np.array([float(seen.position[0]), float(seen.position[1])])
+        flat = np.asarray(via, dtype=float) - here
+        distance = float(np.hypot(*flat))
+        towards = math.atan2(float(flat[1]), float(flat[0]))
+        speed = float(self["cruiseMs"]) * min(1.0, distance / max(1e-6, float(self["easeM"])))
+        wanted_body = seen.rotation.T @ (np.array([math.cos(towards), math.sin(towards), 0.0]) * speed)
+        wrench = np.array(command.wrench, dtype=float)
+        wrench[0] = self._newtons(0, self["speedKp"] * (float(wanted_body[0]) - float(seen.velocity[0])))
+        wrench[1] = self._newtons(1, self["speedKp"] * (float(wanted_body[1]) - float(seen.velocity[1])))
+        wrench[5] = self.pilots.hold_heading(seen, towards, self.dt)
+        return Command(wrench=np.clip(wrench, -self.capability, self.capability))
+
     def observe(self, seen: Observation) -> Command:
+        self.remember(seen)
+        planned = super().observe(seen)
+        round_it = self.detour(seen, planned)
+        if round_it is not None:
+            return round_it
         close = self.in_the_way(seen)
         if close is None:
             self.closest = None
             self.going = None
             self.chose_at = None
-            return super().observe(seen)
+            return planned
 
         self.avoided += 1
         self.closest = round(close["rangeM"], 2)
@@ -146,7 +315,7 @@ class WaryController(PursueController):
         # moves sideways as happily as forwards, so turning the nose while
         # still asking for the route's velocity crabs it into the thing with
         # its head turned politely away. It did exactly that.
-        command = super().observe(seen)
+        command = planned
         wrench = np.array(command.wrench, dtype=float)
 
         keep = 1.0 - (1.0 - float(self["slowestShare"])) * close["urgency"]
@@ -166,6 +335,7 @@ class WaryController(PursueController):
     def status(self) -> dict:
         said = super().status()
         said.update({"avoided": self.avoided, "closestM": self.closest,
+                     "detours": self.detours, "remembered": len(self.heard),
                      "goingDeg": None if self.going is None
                      else round(math.degrees(self.going), 1)})
         return said

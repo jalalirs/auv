@@ -57,7 +57,12 @@ GRID = 257             # heightfield samples each way; the field is square, LONG
 ROCKS = [(-0.62, 0.20, 0.22, 0.28, 0.3), (-0.34, 0.28, 0.13, 0.16, -0.2),
          (-0.75, -0.12, 0.13, 0.15, 0.1), (0.55, 0.24, 0.16, 0.18, 0.4),
          (0.78, 0.05, 0.10, 0.11, -0.1), (0.10, 0.30, 0.08, 0.08, 0.0),
-         (0.35, -0.25, 0.07, 0.06, 0.2), (-0.15, -0.28, 0.06, 0.05, 0.0)]
+         (0.35, -0.25, 0.07, 0.06, 0.2), (-0.15, -0.28, 0.06, 0.05, 0.0),
+         # And a pillar: a spire of live rock from the sand to within a hand
+         # of the surface, which every reef tank has one of and which a route
+         # drawn along the tank does not know is there. It is what the
+         # echosounders are for.
+         (-0.30, -0.17, 0.08, 0.70, 0.0)]
 # Kinds and the colours a reef tank's corals are under blue light, which are
 # not the browns of a reef in the sea: these are chosen for being seen.
 # No tables and no encrusting sheets: at this size a table is a flat plate
