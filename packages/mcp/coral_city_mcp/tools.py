@@ -261,13 +261,49 @@ def dives_result(platform: Platform, dive_id: str, run_id: str | None = None) ->
                            "driftM": navigation.get("driftM"), "travelledM": navigation.get("travelledM")}}
            if navigation else {}),
         **({"tether": {"lengthM": tether.get("lengthM"), "taut": tether.get("taut"),
-                       "tensionN": tether.get("tensionN"), "timesHeldBack": tether.get("timesHeldBack")}}
+                       "tensionN": tether.get("tensionN"), "timesHeldBack": tether.get("timesHeldBack"),
+                       **({k: tether[k] for k in ("mostTensionN", "fouled", "why", "winding")
+                           if tether.get(k) is not None})}}
            if tether else {}),
+        **({"reef": _reef_of(outcome)} if _reef_of(outcome) else {}),
         "artefacts": [{"path": a.get("path"), "bytes": a.get("sizeBytes")}
                       for a in artefacts],
         "note": "dives_deliverables returns the geometry; every figure in it "
                 "is marked in provenance.json",
     }
+
+
+def _reef_of(outcome: dict) -> dict:
+    """What the dive did to the place and what lived in it, from the
+    runtime's own account (r6: fish with minds, solid coral, sediment). Each
+    figure says what it is: the runtime counts what happened in the
+    simulation, so the counts are derived; the models behind them carry
+    assumptions, which each part names in its `from`."""
+    out = {}
+    life = outcome.get("life") or {}
+    if life:
+        out["fish"] = said({"present": life.get("fish"), "bySpecies": life.get("bySpecies"),
+                            "struckByTheVehicle": life.get("bumped"), "scatteredAtTheEnd": life.get("scattered"),
+                            "howTheySpentIt": life.get("spent")},
+                           DERIVED, "the fish system: each fish's mind, its species' sheet, and the vehicle "
+                                    "as it saw it (Hein's looming rule; Calovi/Lei swimming)")
+    coral = outcome.get("coral") or {}
+    if coral:
+        out["coral"] = said({"colonies": coral.get("colonies"), "struck": coral.get("struck"),
+                             "brushed": coral.get("brushed"), "broken": coral.get("broken")},
+                            DERIVED, coral.get("from") or "the coral system")
+    sediment = outcome.get("sediment") or {}
+    if sediment:
+        out["sediment"] = said({k: sediment.get(k) for k in ("liftedG", "settledG", "worstVisibilityM",
+                                                             "worstOnACoralMgCm2")},
+                               DERIVED, sediment.get("from") or "the sediment system")
+    if outcome.get("hardestStrike"):
+        out["hardestStrike"] = said(outcome["hardestStrike"], DERIVED,
+                                    "the contact the vehicle took hardest: speed into the surface, and the "
+                                    "impulse to stop it from its effective mass")
+    if outcome.get("day"):
+        out["day"] = outcome["day"]
+    return out
 
 
 def _says_of(task: dict) -> str | None:

@@ -303,3 +303,34 @@ def test_a_finished_run_comes_back_with_its_score():
     assert "3 of 5" in said["score"]["note"]
     assert said["flownBy"] == "pursue"
     assert said["navigation"]["aiding"] == "camera"
+
+
+class OnTheReef(Scored):
+    def runs(self, dive):
+        run = Scored.runs(self, dive)[0]
+        run["outcome"].update({
+            "life": {"fish": 28, "bySpecies": {"chromis_viridis": 12}, "bumped": 1, "scattered": 0.1,
+                     "spent": {"chromis_viridis": {"school": 0.6}}},
+            "coral": {"colonies": 23, "struck": 1, "brushed": 1, "broken": [], "from": "the coral system"},
+            "sediment": {"liftedG": 0.1, "settledG": 0.08, "worstVisibilityM": 9.0,
+                         "worstOnACoralMgCm2": 0.02, "from": "the sediment system"},
+            "hardestStrike": {"what": "coral-16", "speedMs": 0.02, "impulseNs": 0.1},
+            "tether": {"lengthM": 1.8, "taut": False, "tensionN": 0.0, "mostTensionN": 0.14,
+                       "fouled": None, "winding": {"rock-8": 0.1}}})
+        return [run]
+
+
+def test_what_the_dive_did_to_the_reef_comes_back_marked():
+    """The fish it frightened and struck, the coral it touched, the sand it
+    lifted, its hardest strike: each derived, each saying from what."""
+    said = tools.dives_result(OnTheReef(), "dive_1")
+    reef = said["reef"]
+    assert reef["fish"]["value"]["struckByTheVehicle"] == 1 and reef["fish"]["kind"] == "derived"
+    assert reef["coral"]["value"]["struck"] == 1
+    assert reef["sediment"]["value"]["worstVisibilityM"] == 9.0
+    assert reef["hardestStrike"]["value"]["what"] == "coral-16"
+    assert said["tether"]["mostTensionN"] == 0.14
+
+
+def test_a_run_from_before_the_reef_was_alive_has_no_reef_section():
+    assert "reef" not in tools.dives_result(Scored(), "dive_1")
