@@ -44,6 +44,13 @@ CASES = {
     "round-trip-fan": dict(place="iocean-tank-1", vehicle="mini-hoot",
                            mission="iocean-tank-round-trip", seed=3, seconds=160,
                            water=dict(TANK, windMetresPerSecond=2.0, windHeadingDeg=270.0)),
+    # A reef: Boxfish Luna's transect at Looe Key among its 1,272 fish, which
+    # exercises the reef's fish, its sonar against a real heightfield, and a
+    # vehicle four times the size of the tank's.
+    "luna-looe-key": dict(place="looe-key", vehicle="boxfish-luna",
+                          objective={"kind": "reach", "dx": 15.0, "dy": 0.0, "radiusM": 1.0,
+                                     "timeLimitS": 110.0},
+                          seed=0, seconds=120, water={}),
 }
 
 # How often the path is sampled, in steps. Every step would be 32,000 rows a
@@ -57,8 +64,11 @@ def fly(case: dict) -> dict:
 
     package = ROOT / "catalog/vehicles" / case["vehicle"] / "dynamics.json"
     model = Hydrodynamics.from_package(package)
-    objective = json.loads((ROOT / "missions" / f"{case['mission']}.json").read_text())
-    objective.pop("_", None)
+    if "objective" in case:
+        objective = dict(case["objective"])
+    else:
+        objective = json.loads((ROOT / "missions" / f"{case['mission']}.json").read_text())
+        objective.pop("_", None)
     brief = {"seed": case["seed"], "durationSeconds": case["seconds"],
              "vehiclePath": str(package.parent), "objective": objective,
              "cityPath": str(pathlib.Path.home() / "coral-city/places" / case["place"]),
