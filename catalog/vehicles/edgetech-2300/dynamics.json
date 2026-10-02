@@ -96,6 +96,20 @@
   "breakingN": 150000.0,
   "axialStiffnessN": 4000000.0
  },
+ "topicContract": {
+  "note": "A towfish: it reports, and is flown by the ship, not commanded.",
+  "publishes": [
+   {
+    "topic": "/imu/data",
+    "type": "sensor_msgs/msg/Imu"
+   },
+   {
+    "topic": "/depth",
+    "type": "sensor_msgs/msg/FluidPressure"
+   }
+  ],
+  "subscribes": []
+ },
  "sensors": [
   {
    "kind": "side_scan",

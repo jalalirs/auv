@@ -26,6 +26,19 @@ AIR, WATER = 449.0, 272.0
 RHO = 1025.0
 
 
+def topic_contract() -> dict:
+    """What a towfish says over ROS 2: its attitude and its depth, as the
+    BlueROV2's contract states them; and nothing it listens to, because
+    nothing on it can be commanded — the ship flies it."""
+    base = json.loads((ROOT / "catalog/vehicles/bluerov2/dynamics.json").read_text())["topicContract"]
+    keep = {"/imu/data", "/depth"}
+    contract = {k: v for k, v in base.items() if k not in ("publishes", "subscribes")}
+    contract["publishes"] = [t for t in base.get("publishes", []) if t.get("topic") in keep]
+    contract["subscribes"] = []
+    contract["note"] = "A towfish: it reports, and is flown by the ship, not commanded."
+    return contract
+
+
 def main() -> None:
     volume = (AIR - WATER) / RHO
     q = 0.5 * RHO
@@ -53,6 +66,7 @@ def main() -> None:
         "tether": {"_": "The tow cable: single armoured coax (published: digital telemetry over a single coaxial tow cable). Its size and strength are assumed.",
                    "diameterM": 0.0173, "lengthM": 0.0, "weightNPerM": 4.4, "massKgPerM": 0.95, "dragNormal": 1.2,
                    "attachM": [0.55, 0.0, 0.45], "breakingN": 150000.0, "axialStiffnessN": 4.0e6},
+        "topicContract": topic_contract(),
         "sensors": [
             {"kind": "side_scan", "name": "side_scan", "position": [0, 0, -0.2],
              "frequencieskHz": [120, 410, 850], "rangeMBykHz": {"120": 500, "230": 300, "410": 200, "540": 150, "850": 75},
