@@ -29,25 +29,62 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "services/sim-runtime/coral"))
 
 
-def fly(place: str, vehicle: str, seed: int, metres: float, blind: bool) -> dict:
-    os.environ["CORAL_CITY_FISH_BLIND"] = "1" if blind else "0"
+def a_dive(place: str, vehicle: str, seed: int, objective: dict):
     from hydrodynamics import Allocator, Body, Hydrodynamics
     from runner import Dive
 
     package = ROOT / "catalog/vehicles" / vehicle / "dynamics.json"
     model = Hydrodynamics.from_package(package)
     brief = {"seed": seed, "durationSeconds": 400.0, "vehiclePath": str(package.parent),
-             "objective": {"kind": "reach", "dx": metres, "dy": 0.0, "radiusM": 1.0, "timeLimitS": 380.0},
+             # Untethered, both: what is compared is the vehicle, not the
+             # length of its cable.
+             "initialState": {"tetherOutM": 0.0},
+             "objective": objective,
              "cityPath": str(pathlib.Path.home() / "coral-city/places" / place),
              "conditions": {"kind": "constructed", "name": "count-bias", "parameters": {}}}
     dive = Dive(brief, Body(model), Allocator(model), pathlib.Path("nowhere.usda"), lambda k, **d: None)
     if not dive.open_dry():
         raise SystemExit(f"{place} would not open undrawn")
+    return dive
+
+
+def over_the_nearest_school(place: str, seed: int, beyond: float) -> dict:
+    """A transect from where the dive starts, through the nearest school and
+    on past it: a fish survey goes where the fish are."""
+    import numpy as np
+
+    os.environ["CORAL_CITY_FISH_BLIND"] = "1"
+    dive = a_dive(place, "boxfish-luna", seed, {"kind": "hold", "seconds": 1})
+    school, start = dive.shoal, dive.position[:2]
+    best = None
+    for group in np.unique(school.school):
+        members = np.flatnonzero(school.school == group)
+        if len(members) < 4:
+            continue
+        centre = school.at[members, :2].mean(axis=0)
+        far = float(np.linalg.norm(centre - start))
+        if best is None or far < best[0]:
+            best = (far, centre)
+    far, centre = best
+    way = (centre - start) / far
+    reach = way * (far + beyond)
+    # dx ahead, dy to starboard of a vehicle facing +x: starboard is -y.
+    # At a survey's height over the bottom, not at a depth: a reef's spurs
+    # stand up into a fixed depth, and a vehicle held against one counts
+    # nothing either way.
+    return {"kind": "reach", "dx": round(float(reach[0]), 2), "dy": round(float(-reach[1]), 2),
+            "altitudeM": 1.5, "radiusM": 1.5, "timeLimitS": 380.0}
+
+
+def fly(place: str, vehicle: str, seed: int, objective: dict, blind: bool) -> dict:
+    os.environ["CORAL_CITY_FISH_BLIND"] = "1" if blind else "0"
+    dive = a_dive(place, vehicle, seed, objective)
     while not dive.done:
         dive.step()
     said = dive.shoal.said() if dive.shoal is not None else {}
     return {"counted": said.get("countedByTheCamera", 0), "inViewMean": said.get("inViewMean", 0.0),
             "bumped": said.get("bumped", 0), "seconds": round(dive.simulated, 1),
+            "ground": dive.what_it_hit().get("ground"),
             "arrived": bool((dive.task.result() or {}).get("arrived")) if dive.task else None}
 
 
@@ -59,12 +96,14 @@ def main() -> int:
     ap.add_argument("--metres", type=float, default=25.0)
     args = ap.parse_args()
     rows = []
+    transects = {seed: over_the_nearest_school(args.place, seed, 10.0)
+                 for seed in (int(s) for s in args.seeds.split(","))}
     for vehicle in args.vehicles.split(","):
-        for seed in (int(s) for s in args.seeds.split(",")):
-            seeing = fly(args.place, vehicle, seed, args.metres, blind=False)
-            blind = fly(args.place, vehicle, seed, args.metres, blind=True)
+        for seed, objective in transects.items():
+            seeing = fly(args.place, vehicle, seed, objective, blind=False)
+            blind = fly(args.place, vehicle, seed, objective, blind=True)
             ratio = seeing["counted"] / blind["counted"] if blind["counted"] else None
-            rows.append({"vehicle": vehicle, "seed": seed, "seeing": seeing, "blind": blind,
+            rows.append({"vehicle": vehicle, "seed": seed, "transect": objective, "seeing": seeing, "blind": blind,
                          "countedShare": None if ratio is None else round(ratio, 3)})
             print(json.dumps(rows[-1]), flush=True)
     print("\nvehicle          counted (fish see it / fish blind to it)   share of what was there")
