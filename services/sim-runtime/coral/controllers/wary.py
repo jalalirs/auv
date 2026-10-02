@@ -53,7 +53,7 @@ class WaryController(PursueController):
 
     def __init__(self, capability: np.ndarray, mass: np.ndarray, trim_n: float, dt: float) -> None:
         super().__init__(capability, mass, trim_n, dt)
-        self.declare("standOffM", 6.0, 1.0, 30.0, "m",
+        self.declare("standOffM", 6.0, 0.15, 30.0, "m",
                      "how close a return has to be before it is in the way")
         self.declare("aheadDeg", 50.0, 10.0, 90.0, "°",
                      "how far off the nose still counts as ahead")

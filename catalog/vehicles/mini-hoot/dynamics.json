@@ -1,6 +1,6 @@
 {
- "massKg": 2.305,
- "displacedVolumeM3": 0.00233,
+ "massKg": 2.722,
+ "displacedVolumeM3": 0.002748,
  "envelope": {
   "maxDepthM": 10.0,
   "maxSpeedMs": 0.9,
@@ -70,11 +70,25 @@
     "note": ""
    },
    {
-    "part": "lead trim on the belly",
-    "grams": 323.4,
-    "displacedCm3": 28.6,
+    "part": "Water Linked DVL A50, under the belly",
+    "grams": 170.0,
+    "displacedCm3": 65.0,
+    "kind": "assumed",
+    "note": "the maker's figures, not weighed: 66 x 25 mm; 170 g in air, 105 g in water"
+   },
+   {
+    "part": "3 x Blue Robotics Ping2, under the nose: ahead and 45 degrees either side",
+    "grams": 561.0,
+    "displacedCm3": 261.0,
+    "kind": "assumed",
+    "note": "the maker's figures, not weighed: 71 x 47 x 41 mm; 187 g in air, 100 g in water, each"
+   },
+   {
+    "part": "closed-cell foam under the lid (80 kg/m³)",
+    "grams": 9.7,
+    "displacedCm3": 120.7,
     "kind": "derived",
-    "note": "to leave +20 g, at x = 58 mm so it floats level"
+    "note": "to leave +20 g, at x = 34 mm so it floats level"
    }
   ]
  },
@@ -84,30 +98,30 @@
   0
  ],
  "centreOfBuoyancyM": [
-  0.0,
   -0.0,
-  0.0101
+  -0.0,
+  0.0157
  ],
  "inertiaTensor": [
-  0.00618,
+  0.00826,
   -0.0,
-  0.00069,
+  0.00245,
   -0.0,
-  0.01592,
-  -0.0,
-  0.00069,
-  -0.0,
-  0.0177
+  0.02026,
+  0.0,
+  0.00245,
+  0.0,
+  0.02011
  ],
  "addedMass": {
   "note": "Diagonal, surge sway heave roll pitch yaw. Assumed: the BlueROV2's scaled by displaced volume.",
   "diagonal": [
-   -1.159,
-   -2.677,
-   -3.071,
-   -0.0079,
-   -0.0079,
-   -0.0079
+   -1.367,
+   -3.157,
+   -3.622,
+   -0.0094,
+   -0.0094,
+   -0.0094
   ]
  },
  "linearDamping": {
@@ -142,9 +156,9 @@
    {
     "name": "vertical-front-port",
     "position": [
-     0.0391,
+     0.0301,
      -0.098,
-     0.0127
+     0.0243
     ],
     "direction": [
      0,
@@ -155,9 +169,9 @@
    {
     "name": "vertical-front-starboard",
     "position": [
-     0.0391,
+     0.0301,
      0.098,
-     0.0127
+     0.0243
     ],
     "direction": [
      0,
@@ -168,9 +182,9 @@
    {
     "name": "vertical-rear-port",
     "position": [
-     -0.0659,
+     -0.0749,
      -0.098,
-     0.0127
+     0.0243
     ],
     "direction": [
      0,
@@ -181,9 +195,9 @@
    {
     "name": "vertical-rear-starboard",
     "position": [
-     -0.0659,
+     -0.0749,
      0.098,
-     0.0127
+     0.0243
     ],
     "direction": [
      0,
@@ -194,9 +208,9 @@
    {
     "name": "front-port",
     "position": [
-     0.1041,
+     0.0951,
      -0.072,
-     -0.0273
+     -0.0157
     ],
     "direction": [
      0.707,
@@ -207,9 +221,9 @@
    {
     "name": "front-starboard",
     "position": [
-     0.1041,
+     0.0951,
      0.072,
-     -0.0273
+     -0.0157
     ],
     "direction": [
      0.707,
@@ -220,9 +234,9 @@
    {
     "name": "rear-port",
     "position": [
-     -0.1309,
+     -0.1399,
      -0.062,
-     -0.0273
+     -0.0157
     ],
     "direction": [
      -0.707,
@@ -233,9 +247,9 @@
    {
     "name": "rear-starboard",
     "position": [
-     -0.1309,
+     -0.1399,
      0.062,
-     -0.0273
+     -0.0157
     ],
     "direction": [
      -0.707,
@@ -252,9 +266,9 @@
   "weightNPerM": 0.0,
   "dragNormal": 1.2,
   "attachM": [
-   -0.1389,
+   -0.1479,
    -0.0,
-   0.0007
+   0.0123
   ]
  },
  "sensors": [
@@ -262,9 +276,9 @@
    "kind": "underwater_camera",
    "name": "forward",
    "position": [
-    0.1301,
+    0.1211,
     -0.0,
-    0.0127
+    0.0243
    ],
    "orientation": [
     0,
@@ -292,12 +306,52 @@
    "kind": "barometer",
    "name": "depth",
    "position": [
-    -0.1059,
+    -0.1149,
     0.02,
-    -0.0073
+    0.0043
    ],
    "watts": 0.05,
    "wattsNote": "a Bar02 through the rear cap, 0.16 mm resolution"
+  },
+  {
+   "kind": "imaging_sonar",
+   "name": "echosounders",
+   "position": [
+    0.0881,
+    -0.0,
+    -0.0517
+   ],
+   "orientation": [
+    0,
+    0,
+    0
+   ],
+   "beams": 3,
+   "horizontalFovDeg": 90,
+   "beamWidthDeg": 25,
+   "verticalFovDeg": 25,
+   "rangeM": [
+    0.3,
+    5.0
+   ],
+   "pingsPerSecond": 10,
+   "rangeNoiseM": 0.01,
+   "missesShare": 0.05,
+   "note": "Three Blue Robotics Ping2 single-beam echosounders, ahead and 45 degrees either side: 25 degree beams, 115 kHz. Range set to 5 m for a tank (it reaches 100 m); 0.3 m nearest and 1 cm noise are assumed until measured in the tank, where the glass echoes.",
+   "watts": 1.5,
+   "wattsNote": "100 mA at 5 V each, typical"
+  },
+  {
+   "kind": "dvl",
+   "name": "bottom_track",
+   "position": [
+    -0.0199,
+    -0.0,
+    -0.0432
+   ],
+   "note": "Water Linked DVL A50: four beams at 22.5 degrees, 1 MHz, 5 cm to 50 m altitude, 4-15 Hz.",
+   "watts": 4.0,
+   "wattsNote": "assumed: about 4 W"
   }
  ],
  "topicContract": {
@@ -314,6 +368,18 @@
    {
     "topic": "/depth",
     "type": "sensor_msgs/msg/FluidPressure"
+   },
+   {
+    "topic": "/sonar/scan",
+    "type": "sensor_msgs/msg/LaserScan"
+   },
+   {
+    "topic": "/dvl/twist",
+    "type": "geometry_msgs/msg/TwistWithCovarianceStamped"
+   },
+   {
+    "topic": "/dvl/range",
+    "type": "sensor_msgs/msg/Range"
    }
   ],
   "subscribes": [
@@ -346,9 +412,9 @@
     "name": "port",
     "kind": "led",
     "position": [
-     0.0731,
+     0.0641,
      -0.098,
-     0.0047
+     0.0163
     ],
     "aim": [
      1.0,
@@ -364,9 +430,9 @@
     "name": "starboard",
     "kind": "led",
     "position": [
-     0.0731,
+     0.0641,
      0.098,
-     0.0047
+     0.0163
     ],
     "aim": [
      1.0,

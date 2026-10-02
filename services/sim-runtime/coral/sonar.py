@@ -55,6 +55,11 @@ class Sonar:
         self.tall = math.radians(float(said.get("verticalFovDeg", 20.0)))
         self.at = np.array(said.get("position") or [0.0, 0.0, 0.0], dtype=float)
         self.beams = int(said.get("beams", BEAMS))
+        # A beam's own width, when it is not the gap between beams: three
+        # single-beam echosounders splayed forty-five degrees apart are three
+        # 25-degree cones, not one fan of 45-degree ones.
+        width = said.get("beamWidthDeg")
+        self.beam_width = None if width is None else math.radians(float(width))
         self.every = 1.0 / float(said.get("pingsPerSecond", PINGS_PER_SECOND))
 
         # A sonar that returned a clean range every time would be a sonar
@@ -79,6 +84,8 @@ class Sonar:
         rays would have the sonar miss the cable nine times in ten — which is
         not what a sonar does and is the opposite of the point of having one.
         """
+        if self.beam_width is not None:
+            return self.beam_width
         if self.beams < 2:
             return self.wide
         return self.wide / (self.beams - 1)
@@ -92,7 +99,7 @@ class Sonar:
     def due(self, t: float) -> bool:
         return self.last_t is None or (t - self.last_t) >= self.every
 
-    def ping(self, t: float, position, rotation, world=None, seabed=None) -> np.ndarray:
+    def ping(self, t: float, position, rotation, world=None, seabed=None, walls=None) -> np.ndarray:
         """One sweep of the fan: the range along each beam, or NaN for nothing.
 
         The beams are cast from where the sonar is on the hull and along where
@@ -115,6 +122,10 @@ class Sonar:
                         far = hit
             if seabed is not None:
                 hit = _ground(origin, way, self.far, seabed)
+                if hit is not None and hit < far:
+                    far = hit
+            if walls is not None:
+                hit = _glass(origin, way, walls)
                 if hit is not None and hit < far:
                     far = hit
             if far >= self.far:
@@ -162,6 +173,27 @@ class Sonar:
 
 
 # ── what a beam can hit ──────────────────────────────────────────────────────
+
+def _glass(origin: np.ndarray, way: np.ndarray, walls):
+    """Where a beam leaves a tank through its side glass, from inside it.
+
+    A tank's walls are the loudest thing in it: flat, hard and square to the
+    beam. Only the four sides; the floor is the seabed's, and the top is the
+    surface, which a horizontal beam does not reach.
+    """
+    low, high = walls
+    best = None
+    for axis in (0, 1):
+        if way[axis] > 1e-9:
+            t = (float(high[axis]) - float(origin[axis])) / float(way[axis])
+        elif way[axis] < -1e-9:
+            t = (float(low[axis]) - float(origin[axis])) / float(way[axis])
+        else:
+            continue
+        if t >= 0.0 and (best is None or t < best):
+            best = t
+    return best
+
 
 def _hit(thing, origin: np.ndarray, way: np.ndarray, far: float, spread: float = 0.0):
     """Where a beam meets one thing, or nothing.
@@ -253,7 +285,11 @@ def _ground(origin, way, far: float, seabed):
     purpose: half a metre of step and eight bisections is centimetres, which is
     finer than the instrument.
     """
-    step = 0.5
+    # Half a metre, or twice the seabed's own sampling where that is finer: a
+    # tank's rocks are a quarter of a metre across, and a half-metre stride
+    # walked straight over them.
+    across, columns = getattr(seabed, "across", None), getattr(seabed, "columns", None)
+    step = 0.5 if not across or not columns else min(0.5, max(0.01, 2.0 * float(across) / (int(columns) - 1)))
     was = float(origin[2] - seabed.under(float(origin[0]), float(origin[1])))
     t = step
     while t <= far:

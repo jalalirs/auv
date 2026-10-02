@@ -33,9 +33,19 @@ spec = importlib.util.spec_from_file_location("mini_params", HERE / "params.py")
 S = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(S)
 
+# Where the navigation sensors sit, in the drawing's frame (sensors.md).
+# Three single-beam echosounders splayed ahead and 45 degrees either side
+# make a three-beam fan the collision avoider can find a gap in; one beam
+# ahead cannot tell left from right.
+PINGS = [("ahead", (88.0, 0.0), 0.0), ("port", (70.0, 34.0), 45.0), ("starboard", (70.0, -34.0), -45.0)]
+PING_Z = -S.HULL_H / 2 - 21.0
+PINGS_AT = (76.0, 0.0, PING_Z)
+DVL_AT = (-20.0, 0.0, -S.HULL_H / 2 - 12.5)
+
 FRESH = 0.998     # g/cm³
 PA12 = 1.01       # MJF PA12, g/cm³
 LEAD = 11.3
+FOAM = 0.08      # closed-cell PVC foam, g/cm³
 
 
 def budget():
@@ -55,29 +65,47 @@ def budget():
         ("4S1P 21700 pack", 280.0, 0.0, (-55, 0, -22), "assumed", "4 × 70 g cells, low in the tube aft"),
         ("8 × UG500", 8 * S.THRUSTER_MASS_G, 8 * 12.0, (-20, 0, -20), "assumed", "four at 0, four at -40"),
         ("penetrators, Bar02, lights, tether stub", 90.0, 25.0, (-60, 0, -10), "assumed", ""),
+        # The navigation sensors (sensors.md). Displacement is weight in air
+        # less weight in water, both from the makers.
+        ("Water Linked DVL A50, under the belly", 170.0, 65.0, DVL_AT, "assumed",
+         "the maker's figures, not weighed: 66 x 25 mm; 170 g in air, 105 g in water"),
+        ("3 x Blue Robotics Ping2, under the nose: ahead and 45 degrees either side", 3 * 187.0, 3 * 87.0, PINGS_AT, "assumed",
+         "the maker's figures, not weighed: 71 x 47 x 41 mm; 187 g in air, 100 g in water, each"),
     ]
     mass = sum(r[1] for r in rows)
     disp = sum(r[2] for r in rows)
     # Lead on the belly until it floats by a few grams: positive enough to
     # come up if it dies, small enough not to fight the verticals.
     keep_g = 20.0
-    lead = (disp * FRESH - mass - keep_g) / (1 - FRESH / LEAD)
-    # And along the belly where it levels the vehicle: the centre of gravity
-    # straight under the centre of buoyancy. Left at an arbitrary station it
-    # put the buoyancy 8.7 mm ahead of the weight and the first dive in the
-    # tank flew forty degrees nose-up for its whole length. Which is what a
-    # builder does with a strip of wheel weights on the bench: slide it until
-    # the thing floats level.
-    at_x = 0.0
-    for _ in range(4):
-        trial = rows + [("lead", lead, lead / LEAD, (at_x, 0, -S.HULL_H / 2 + 3))]
-        m = sum(r[1] for r in trial)
+    # Trim: lead on the belly if it floats too well, foam under the lid if it
+    # does not. The sensors made it heavy — three echosounders and a DVL are
+    # 200 g in water, all of it low — and the lead this used to ask for went
+    # negative, which is a number and not a part. Foam high up is the honest
+    # answer, and it lifts the centre of buoyancy, which steadies it.
+    want = disp * FRESH - mass - keep_g
+    if want >= 0:
+        name, rho, z = "lead trim on the belly", LEAD, -S.HULL_H / 2 + 3
+        grams = want / (1 - FRESH / LEAD)
+        volume = grams / LEAD
+    else:
+        name, rho, z = "closed-cell foam under the lid (80 kg/m³)", FOAM, S.HULL_H / 2 - 12
+        volume = -want / (FRESH - FOAM)
+        grams = volume * FOAM
+
+    # And along the hull where it levels the vehicle: the weight straight under
+    # the buoyancy. Left at an arbitrary station it flew forty degrees nose-up
+    # in the first tank dive. CG minus CB along x is linear in the station, so
+    # two trials find it; a builder does the same with the part on the bench.
+    def tilt(at_x):
+        trial = rows + [(name, grams, volume, (at_x, 0, z))]
+        cg_x = sum(r[1] * r[3][0] for r in trial) / sum(r[1] for r in trial)
         cb_x = sum(r[2] * r[3][0] for r in trial) / sum(r[2] for r in trial)
-        others = sum(r[1] * r[3][0] for r in rows)
-        at_x = (cb_x * m - others) / lead
+        return cg_x - cb_x
+    a, b = tilt(0.0), tilt(100.0)
+    at_x = 0.0 if abs(b - a) < 1e-12 else -a * 100.0 / (b - a)
     if not (S.HULL_TAIL + 20 <= at_x <= S.HULL_NOSE - 20):
-        raise SystemExit(f"no station on the belly levels it: the lead would have to sit at x = {at_x:.0f} mm")
-    rows.append(("lead trim on the belly", lead, lead / LEAD, (at_x, 0, -S.HULL_H / 2 + 3), "derived",
+        raise SystemExit(f"no station levels it: the {name} would have to sit at x = {at_x:.0f} mm")
+    rows.append((name, grams, volume, (at_x, 0, z), "derived",
                  f"to leave +{keep_g:.0f} g, at x = {at_x:.0f} mm so it floats level"))
     return rows
 
@@ -97,7 +125,7 @@ def inertia(rows, cg_mm):
     """Point masses for the parts, plus each part's own spread as a box."""
     spread = {  # part extents in mm, for its own moment
         0: (240, 110, 50), 1: (310, 250, 110), 2: (275, 89, 89), 3: (120, 60, 40), 4: (80, 45, 45),
-        5: (300, 240, 80), 6: (250, 100, 60), 7: (120, 60, 6),
+        5: (300, 240, 80), 6: (250, 100, 60), 7: (66, 66, 25), 8: (71, 47, 41), 9: (120, 60, 6),
     }
     I = np.zeros((3, 3))
     for i, r in enumerate(rows):
@@ -178,6 +206,14 @@ def dynamics():
             {"kind": "imu", "name": "body", "position": [0, 0, 0], "watts": 0.2, "wattsNote": "on the Navigator"},
             {"kind": "barometer", "name": "depth", "position": cat((-S.TUBE_L / 2 - S.FLANGE_T, -20, -20)), "watts": 0.05,
              "wattsNote": "a Bar02 through the rear cap, 0.16 mm resolution"},
+            {"kind": "imaging_sonar", "name": "echosounders", "position": cat((88.0, 0.0, PING_Z)), "orientation": [0, 0, 0],
+             "beams": 3, "horizontalFovDeg": 90, "beamWidthDeg": 25, "verticalFovDeg": 25,
+             "rangeM": [0.3, 5.0], "pingsPerSecond": 10, "rangeNoiseM": 0.01, "missesShare": 0.05,
+             "note": "Three Blue Robotics Ping2 single-beam echosounders, ahead and 45 degrees either side: 25 degree beams, 115 kHz. Range set to 5 m for a tank (it reaches 100 m); 0.3 m nearest and 1 cm noise are assumed until measured in the tank, where the glass echoes.",
+             "watts": 1.5, "wattsNote": "100 mA at 5 V each, typical"},
+            {"kind": "dvl", "name": "bottom_track", "position": cat(DVL_AT),
+             "note": "Water Linked DVL A50: four beams at 22.5 degrees, 1 MHz, 5 cm to 50 m altitude, 4-15 Hz.",
+             "watts": 4.0, "wattsNote": "assumed: about 4 W"},
         ],
         "topicContract": {
             "note": "What the vehicle publishes and acts on, identical in the simulator and on the bench: the Pi bridges ArduSub to these topics.",
@@ -185,6 +221,9 @@ def dynamics():
                 {"topic": "/camera/image_raw", "type": "sensor_msgs/msg/Image"},
                 {"topic": "/imu/data", "type": "sensor_msgs/msg/Imu"},
                 {"topic": "/depth", "type": "sensor_msgs/msg/FluidPressure"},
+                {"topic": "/sonar/scan", "type": "sensor_msgs/msg/LaserScan"},
+                {"topic": "/dvl/twist", "type": "geometry_msgs/msg/TwistWithCovarianceStamped"},
+                {"topic": "/dvl/range", "type": "sensor_msgs/msg/Range"},
             ],
             "subscribes": [
                 {"topic": "/thruster_cmd", "type": "std_msgs/msg/Float64MultiArray",
@@ -261,6 +300,25 @@ def usd_mesh(name, m, cg, mat):
 """
 
 
+def the_sensors():
+    """The Ping2s and the DVL as shapes, so the pictures show what is fitted."""
+    out = []
+    for name, (x, y), yaw in PINGS:
+        turn = trimesh.transformations.rotation_matrix(math.radians(yaw), [0, 0, 1])
+        body = trimesh.creation.box(extents=(71.0, 47.0, 41.0))
+        face = trimesh.creation.cylinder(radius=17.0, height=4.0,
+                                         transform=trimesh.transformations.rotation_matrix(math.pi / 2, [0, 1, 0]))
+        face.apply_translation((37.5, 0.0, 0.0))
+        for m in (body, face):
+            m.apply_transform(turn)
+            m.apply_translation((x, y, PING_Z))
+        out += [(f"Ping_{name}", body, "Sensor"), (f"PingFace_{name}", face, "SensorFace")]
+    dvl = trimesh.creation.cylinder(radius=33.0, height=25.0, sections=48)
+    dvl.apply_translation(DVL_AT)
+    out.append(("Dvl", dvl, "Sensor"))
+    return out
+
+
 def write_usd(cg):
     looks = {
         "cover": ("Lid", 30000), "chassis": ("Chassis", 50000), "ref-thrusters": ("Thruster", 12000),
@@ -274,6 +332,10 @@ def write_usd(cg):
             material("Dome", "#dfe9ef", 0.02, opacity=0.12),
             material("Camera", "#0d0f11", 0.2),
             material("Lens", "#f4f1e6", 0.1, emissive="0.6, 0.58, 0.5"), "    }\n"]
+    body.append(material("Sensor", "#2a2c30", 0.4, clearcoat=0.5))
+    body.append(material("SensorFace", "#1f6fb2", 0.35))
+    for name, m, mat in the_sensors():
+        body.append(usd_mesh(name, m, cg, mat))
     for part, (mat, faces) in looks.items():
         m = trimesh.load(OUT / f"{part}.stl")
         if len(m.faces) > faces:

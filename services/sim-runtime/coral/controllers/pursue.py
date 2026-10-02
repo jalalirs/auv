@@ -41,8 +41,8 @@ class PursueController(Controller):
         self.pilots = Autopilots(self, mass, capability, trim_n)
         self.declare("cruiseMs", 0.4, 0.05, 1.5, "m/s", "how fast it runs between points")
         self.declare("speedKp", 1.2, 0.1, 6.0, "1/s", "surge per metre per second of speed error")
-        self.declare("easeM", 2.0, 0.2, 20.0, "m", "how far out it starts slowing for the point")
-        self.declare("arriveM", 1.0, 0.1, 10.0, "m", "how close counts as reached")
+        self.declare("easeM", 2.0, 0.05, 20.0, "m", "how far out it starts slowing for the point")
+        self.declare("arriveM", 1.0, 0.02, 10.0, "m", "how close counts as reached")
         self.declare("faceFirstDeg", 45.0, 0.0, 180.0, "°",
                      "turn towards the point before running at it, up to this much off")
         self.route: list[dict] = []

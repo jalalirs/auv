@@ -2424,6 +2424,17 @@ class Dive:
                 self.say("flying_with", controller=named)
             else:
                 self.say("no_such_controller", asked=named)
+        # And how it is set, when the dive says: a stand-off sized for a reef
+        # is wider than a tank, and a dive nobody is steering has no console
+        # to tune it from. Applied once, the same way a console's `tune` is.
+        tuning = (self.brief.get("objective") or {}).get("tune")
+        if isinstance(tuning, dict) and not getattr(self, "_tuned_from_objective", False):
+            self._tuned_from_objective = True
+            for controller, values in tuning.items():
+                for name, value in (values or {}).items():
+                    took = self.helm.tune(str(controller), str(name), float(value))
+                    self.say("tuned" if took else "not_tuned", controller=controller,
+                             parameter=name, value=value, by="the objective")
         # A plan given to the dive is flown as given. Nothing here works out
         # what to do: the document says, and where it came from — a person, a
         # model, another planner — is not this code's business. It is checked
@@ -2768,7 +2779,7 @@ class Dive:
                 self.recorder.sounded(swath)
         if self.sonar is not None and self.sonar.due(self.simulated):
             self.sonar.ping(self.simulated, self.position, self.rotation,
-                            self.world, self.seabed)
+                            self.world, self.seabed, walls=self.interior)
             # And out to whoever is flying, which until now was only ours.
             # A vehicle whose sonar our own controller can read and a
             # customer's cannot is the wrong way round: ours is the reference
@@ -2985,6 +2996,7 @@ class Dive:
             return
         low, high = self.interior
         reach = float(self.half_width)
+        touching = False
         for axis in (0, 1):
             lo, hi = float(low[axis]) + reach, float(high[axis]) - reach
             if self.position[axis] < lo or self.position[axis] > hi:
@@ -2995,10 +3007,16 @@ class Dive:
                 into = self.rotation.T @ normal
                 along = float(np.dot(self.velocity[:3], into))
                 self.velocity[:3] -= along * into
-                if not getattr(self, "_touched_glass", False):
-                    self._touched_glass = True
-                    self.say("touched_the_glass", axis="xy"[axis],
+                # Counted as a strike, once per contact: a vehicle against the
+                # glass of a tank has hit the tank, and leaving it out of the
+                # score made a controller that scraped the glass all the way
+                # round look as clean as one that never touched it.
+                if not getattr(self, "_on_the_glass", False):
+                    self._glass_strikes = getattr(self, "_glass_strikes", 0) + 1
+                    self.say("touched_the_glass", axis="xy"[axis], times=self._glass_strikes,
                              at=[round(float(v), 3) for v in self.position])
+                touching = True
+        self._on_the_glass = touching
 
     # Ground steeper than this is a wall rather than a slope: a vehicle rides
     # over what it can and is stopped by what it cannot. Fifty degrees is well
@@ -3112,7 +3130,8 @@ class Dive:
         """
         return {"things": len(self._struck),
                 "which": sorted(self._struck),
-                "ground": int(self._grounded)}
+                "ground": int(self._grounded),
+                "glass": int(getattr(self, "_glass_strikes", 0))}
 
     def strike(self) -> None:
         """Stop the vehicle against ground it cannot ride over.

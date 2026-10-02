@@ -185,3 +185,18 @@ def test_a_controller_avoids_what_it_was_not_told_about():
     assert wary_closest > blind_closest, (
         f"wary came within {wary_closest:.1f} m and blind within {blind_closest:.1f} m")
     assert wary.helm.controllers["wary"].avoided > 0, "and it should say it saw something"
+
+
+def test_a_tank_wall_returns_an_echo():
+    """Inside a 2 x 1 m tank, a beam straight ahead from the middle hits the
+    end glass a metre away, and one to the side hits the side glass."""
+    import numpy as np
+    from sonar import Sonar
+
+    sonar = Sonar({"beams": 3, "horizontalFovDeg": 90, "beamWidthDeg": 25,
+                   "rangeM": [0.3, 100.0], "rangeNoiseM": 0.0, "missesShare": 0.0})
+    walls = (np.array([-1.0, -0.5, -0.95]), np.array([1.0, 0.5, 0.0]))
+    got = sonar.ping(0.0, np.array([0.0, 0.0, -0.4]), np.eye(3), walls=walls)
+    assert abs(got[1] - 1.0) < 1e-6
+    assert abs(got[0] - 0.5 / np.sin(np.radians(45))) < 1e-6
+    assert abs(sonar.spread() - np.radians(25)) < 1e-9
