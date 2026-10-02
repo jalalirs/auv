@@ -47,6 +47,16 @@ CASES = {
     # A reef: Boxfish Luna's transect at Looe Key among its 1,272 fish, which
     # exercises the reef's fish, its sonar against a real heightfield, and a
     # vehicle four times the size of the tank's.
+    # A tow: the EdgeTech 2300 behind a ship at four knots on sixty metres
+    # of cable over a flat bottom with one boulder, built here (`flat_place`).
+    # Exercises the ship, the cable as a tow, the weathervaning fish and both
+    # of its sonars.
+    "tow-flat": dict(place=":flat", vehicle="edgetech-2300",
+                     objective={"kind": "hold", "seconds": 60.0,
+                                "tow": {"speedKn": 4.0, "headingDeg": 0.0, "cableOutM": 60.0,
+                                        "frequencykHz": 850}},
+                     initial={"positionM": [-60.0, 0.0, -20.0]},
+                     seed=0, seconds=60, water={}),
     "luna-looe-key": dict(place="looe-key", vehicle="boxfish-luna",
                           objective={"kind": "reach", "dx": 15.0, "dy": 0.0, "radiusM": 1.0,
                                      "timeLimitS": 110.0},
@@ -56,6 +66,27 @@ CASES = {
 # How often the path is sampled, in steps. Every step would be 32,000 rows a
 # dive; one in twenty is ten a second, which no change can hide between.
 EVERY = 20
+
+
+def flat_place() -> pathlib.Path:
+    """A flat bottom sixty metres down with one boulder on it, 400 m across:
+    the same every time, built into a temporary folder."""
+    import tempfile
+
+    import numpy as np
+
+    into = pathlib.Path(tempfile.gettempdir()) / "coral-regress-flat"
+    into.mkdir(exist_ok=True)
+    n, across = 201, 400.0
+    x = np.linspace(-across / 2, across / 2, n)
+    X, Y = np.meshgrid(x, x)
+    h = np.full((n, n), -60.0, dtype=np.float32)
+    h[np.hypot(X - 60.0, Y + 25.0) < 4.0] = -57.0
+    h.astype("<f4").tofile(into / "seabed.f32")
+    (into / "site.json").write_text(json.dumps({
+        "name": "flat", "from": {"acrossMetres": across},
+        "mesh": {"heightfield": {"file": "seabed.f32", "rows": n, "columns": n}}}))
+    return into
 
 
 def fly(case: dict) -> dict:
@@ -69,9 +100,12 @@ def fly(case: dict) -> dict:
     else:
         objective = json.loads((ROOT / "missions" / f"{case['mission']}.json").read_text())
         objective.pop("_", None)
+    place = (flat_place() if case["place"] == ":flat"
+             else pathlib.Path.home() / "coral-city/places" / case["place"])
     brief = {"seed": case["seed"], "durationSeconds": case["seconds"],
              "vehiclePath": str(package.parent), "objective": objective,
-             "cityPath": str(pathlib.Path.home() / "coral-city/places" / case["place"]),
+             **({"initialState": case["initial"]} if case.get("initial") else {}),
+             "cityPath": str(place),
              "conditions": {"kind": "constructed", "name": "regression",
                             "parameters": case["water"]}}
     said = []
