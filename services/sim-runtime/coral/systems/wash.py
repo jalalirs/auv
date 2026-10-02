@@ -62,9 +62,23 @@ class Wash:
         self.efflux = np.zeros(0)          # V0, metres a second
         self.diameter = 0.0                # the propellers', metres
         self.from_ = "nothing yet"
+        # The water the vehicle has already stirred, where a grid carries it
+        # on (systems/flow.py); None in open water.
+        self.grid = None
 
     def at(self, points) -> np.ndarray:
-        """The wash's velocity at each of `points` (n, 3), metres a second."""
+        """What the vehicle has done to the water at each of `points`: the jet
+        where a thruster is pushing now, or the grid's lingering water where
+        that is stronger — the wake it left, and the swirl off the glass."""
+        jets = self.jets_at(points)
+        if self.grid is None or not self.grid.on:
+            return jets
+        stirred = self.grid.at(points)
+        stronger = np.linalg.norm(stirred, axis=1) > np.linalg.norm(jets, axis=1)
+        return np.where(stronger[:, None], stirred, jets)
+
+    def jets_at(self, points) -> np.ndarray:
+        """The jets' velocity at each of `points` (n, 3), metres a second."""
         points = np.atleast_2d(np.asarray(points, dtype=float))
         out = np.zeros_like(points)
         live = self.efflux > 1e-6

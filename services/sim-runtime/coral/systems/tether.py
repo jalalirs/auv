@@ -346,7 +346,7 @@ class TetherSystem(System):
     """Moves the cable each tick and decides whether it has fouled."""
 
     name = "cable"
-    reads = ("vehicle", "water", "wash", "place", "clock", "ship")
+    reads = ("vehicle", "water", "wash", "flow", "place", "clock", "ship")
     writes = ("cable",)
 
     # How often it asks whether the cable has fouled. The tightest-path test

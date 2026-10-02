@@ -113,7 +113,7 @@ class Sediment:
 
 class SedimentSystem(System):
     name = "sediment"
-    reads = ("wash", "water", "vehicle", "place", "coral", "clock")
+    reads = ("wash", "flow", "water", "vehicle", "place", "coral", "clock")
     writes = ("sediment",)
     every = 0.05
 

@@ -15,6 +15,7 @@ from engine import Clock, World
 from engine.engine import Tick
 from systems.faults import Faults, FaultsSystem
 from systems.fish import FishSystem
+from systems.flow import Flow, FlowSystem
 from systems.light import Light, LightSystem
 from systems.contact import Contacts
 from systems.coral import Colonies, CoralSystem
@@ -60,6 +61,8 @@ def the_ocean(body, thrusters: int, dt: float) -> World:
     world.put("contacts", Contacts(), owner="vehicle")
     world.put("cable", None, owner="cable")
     world.put("wash", Wash(), owner="wash")
+    world.put("flow", Flow(), owner="flow")
+    world.wash.grid = world.flow
     world.put("light", Light(), owner="light")
     world.put("coral", Colonies(), owner="coral")
     world.put("sediment", Sediment(), owner="sediment")
@@ -161,6 +164,7 @@ def the_systems(dive) -> list:
         ThrustersSystem(dt, float(brief.get("dockWatts", 120.0))),
         VehicleSystem(dt, say, attach=tied_on(brief), weathervanes=weathervanes(brief)),
         WashSystem(dive.allocator.model.thrusters),
+        FlowSystem(),
         TetherSystem(dt, tied_on(brief), float(max(dive.capability[0], dive.capability[1])),
                      rocks_of(brief), say),
         FishSystem(camera=camera_of(dive), blind=fish_are_blind()),

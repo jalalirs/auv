@@ -55,7 +55,7 @@ class FishSystem(System):
     (tools/count-bias)."""
 
     name = "fish"
-    reads = ("light", "water", "wash", "vehicle", "thrust", "place", "clock", "sediment")
+    reads = ("light", "water", "wash", "flow", "vehicle", "thrust", "place", "clock", "sediment")
     writes = ("fish",)
     every = 0.05
 
