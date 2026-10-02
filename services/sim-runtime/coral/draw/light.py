@@ -31,10 +31,18 @@ ON_THE_SCHEDULE = ("/World/LedSouth", "/World/LedNorth",
 FROM_THE_SKY = ("/World/Daylight",)
 WITH_THE_SKY_AT_LEAST = {"/World/Ceiling": 0.15, "/World/FillRoom": 0.15, "/World/FillEnd": 0.15}
 
+# The water's veil — the light it scatters back towards the lens, which the
+# renderer adds as a fog (water.py) — is set once, for the light the place has
+# when the dive opens. It is that light scattered, so it follows that light:
+# the reef lights, or the room's at their least. Left alone it lit everything
+# seen through the water at full day, and a tank at midnight looked like noon.
+VEIL = "/rtx/fog/fogColorIntensity"
+
 
 class Lights:
     def __init__(self) -> None:
         self.found = None          # path -> (intensity attribute, intensity as built)
+        self.veil = None           # the water's veil as the place set it
 
     def find(self, stage) -> None:
         self.found = {}
@@ -47,9 +55,11 @@ class Lights:
             if attribute and attribute.Get() is not None:
                 self.found[one] = (attribute, attribute.Get())
 
-    def set(self, stage, light, say=None) -> None:
+    def set(self, stage, light, say=None, settings=None) -> None:
         if self.found is None:
             self.find(stage)
+            if settings is not None and settings.get(VEIL) is not None:
+                self.veil = float(settings.get(VEIL))
             if say is not None:
                 say("lamps_follow_the_day", lights=sorted("/".join(one) if isinstance(one, tuple) else one
                                                           for one in self.found), hour=round(light.hour, 2))
@@ -61,3 +71,6 @@ class Lights:
             share = max(0.0, min(1.0, share))
             # An intensity is a number; a glowing face's colour is three, scaled alike.
             attribute.Set(float(built) * share if isinstance(built, (int, float)) else built * share)
+        if self.veil is not None:
+            in_the_water = max(light.level, daylight(light.hour), min(WITH_THE_SKY_AT_LEAST.values()))
+            settings.set(VEIL, self.veil * max(0.0, min(1.0, in_the_water)))

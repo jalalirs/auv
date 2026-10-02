@@ -73,3 +73,25 @@ def test_lamps_follow_the_clock_and_the_room_its_window():
     light.set_for({"localTimeH": 13.0}, indoors=True)
     drawn.set(stage, light)
     assert stage.prims["/World/LedSouth"].a.v == 1000.0
+
+
+def test_the_waters_veil_follows_the_light_in_it():
+    """The fog the renderer adds for the water's scattered light dims with the
+    lights at night, to the room's least, and comes back by day."""
+    from draw.light import VEIL, Lights
+
+    class Settings(dict):
+        def set(self, key, value):
+            self[key] = value
+
+    class Stage:
+        def GetPrimAtPath(self, path):
+            return None
+
+    settings, light, drawn = Settings({VEIL: 1.0}), Light(), Lights()
+    light.set_for({"localTimeH": 23.0}, indoors=True)
+    drawn.set(Stage(), light, settings=settings)
+    assert abs(settings[VEIL] - 0.15) < 1e-9
+    light.set_for({"localTimeH": 13.0}, indoors=True)
+    drawn.set(Stage(), light, settings=settings)
+    assert settings[VEIL] == 1.0
