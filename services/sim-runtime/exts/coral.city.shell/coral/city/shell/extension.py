@@ -135,6 +135,8 @@ class CoralCityShell(omni.ext.IExt):
         self._meter_asked = 0
         self._meter_read = 0
         self._meter_passes = 0
+        self._metered_view = None
+        self._iso_for_view: dict = {}
         self._asked_on_pass = 0
         self._meter_saw = ""
         self._aim = None
@@ -597,6 +599,13 @@ class CoralCityShell(omni.ext.IExt):
         # actually in the frame. The exposure that got here was computed from
         # depth, which is a formula and not a light meter, and is why a lamp
         # correct at six hundred metres blows the picture out at six.
+        #
+        # And again for each view the dive cycles to, the first time it is
+        # seen: a camera on the gantry looking down at a lit tank is not
+        # exposed like one behind the vehicle looking into the water, and one
+        # exposure for both blew the overhead view out to white. A view seen
+        # before gets back the exposure it was metered at.
+        self._expose_for_the_view()
         self._meter_the_frame()
 
         if self.tour is not None:
@@ -1040,6 +1049,30 @@ class CoralCityShell(omni.ext.IExt):
     # has plainly been lost.
     PASSES_TO_DEVELOP = 1
     PASSES_TO_GIVE_UP_ON_A_FRAME = 25
+
+    def _expose_for_the_view(self) -> None:
+        dive = self.dive
+        view = getattr(dive, "view", None) if dive is not None else None
+        if view is None or view == getattr(self, "_metered_view", None):
+            return
+        try:
+            import carb
+
+            settings = carb.settings.get_settings()
+            was = getattr(self, "_metered_view", None)
+            if was is not None and self._meter is not None and self._meter.done:
+                self._iso_for_view[was] = settings.get("/rtx/post/tonemap/filmIso")
+            self._metered_view = view
+            if view in self._iso_for_view and self._iso_for_view[view] is not None:
+                settings.set("/rtx/post/tonemap/filmIso", float(self._iso_for_view[view]))
+            elif was is not None:
+                # A view not seen before: meter it, as the dive's first was.
+                self._meter = None
+                self._meter_passes = 0
+        except Exception as exc:
+            if not getattr(self, "_view_exposure_said", False):
+                self._view_exposure_said = True
+                self._say("view_exposure_unavailable", why=str(exc)[:160])
 
     def _meter_the_frame(self) -> None:
         """Set the exposure from the picture, a few times, and then leave it.
