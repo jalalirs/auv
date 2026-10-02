@@ -2966,12 +2966,21 @@ class Dive:
 
         # A tank's water on a grid, so the vehicle's wash lingers after it
         # (systems/flow.py). Open water keeps the analytic jet alone.
-        if self.interior is not None and asked_for("CORAL_CITY_FLOW", 1.0) != 0.0:
+        top = 0.0 if self.water_level is None else float(self.water_level)
+        if asked_for("CORAL_CITY_FLOW", 1.0) == 0.0:
+            pass
+        elif self.interior is not None:
             low, high = self.interior
-            top = 0.0 if self.water_level is None else float(self.water_level)
             self.ocean.flow.set_for([low[0], low[1], low[2]], [high[0], high[1], top], self.ocean.place.bottoms)
+        else:
+            # Open water: a box round the vehicle that follows it.
+            at = np.asarray(self.position, dtype=float)
+            half = np.array([1.5, 1.5, 1.0])
+            self.ocean.flow.set_for(at - half, np.minimum(at + half, [np.inf, np.inf, top]),
+                                    self.ocean.place.bottoms, cell=0.1, follows=True)
+        if self.ocean.flow.on:
             self.say("flow_grid", cells=list(self.ocean.flow.shape), cellM=self.ocean.flow.cell,
-                     from_=self.ocean.flow.from_)
+                     follows=self.ocean.flow.follows, from_=self.ocean.flow.from_)
         # The coral, solid where it is stony (systems/coral.py).
         from systems.coral import colonies_of
         self.ocean.replace("coral", colonies_of(described, bottom_under))

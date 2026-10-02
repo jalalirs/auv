@@ -31,7 +31,11 @@ viscosity. It is the coupling it is for — the vehicle's water reaching the
 fish, the sand and the cable after the vehicle has gone — and the place a GPU
 solver (Warp) slots in when a reef wants a bigger box.
 
-Only in an enclosed place for now: open water keeps the analytic jet alone.
+In a tank the grid is the tank's water. In open water it is a box round the
+vehicle — three metres by three by two, ten-centimetre cells — that follows it,
+shifted a whole cell at a time as the vehicle moves on: what it leaves behind
+is let go, and what it moves into starts still. That is the water the vehicle
+can have stirred in the last few seconds, which is the water that matters.
 """
 
 from __future__ import annotations
@@ -56,19 +60,53 @@ class Flow:
         self.u = np.zeros((0, 0, 0, 3))
         self.solid = np.zeros((0, 0, 0), dtype=bool)
         self.p = None
-        self.from_ = ("derived: stable fluids (Stam 1999) on a 5 cm grid, driven by the thrusters' jets; "
+        self.follows = False
+        self.from_ = ("derived: stable fluids (Stam 1999) on a grid, driven by the thrusters' jets; "
                       "the decay of unresolved eddies assumed")
 
-    def set_for(self, low, high, bottoms) -> None:
-        """A grid over a box of water, with the ground in it solid."""
+    def set_for(self, low, high, bottoms, cell: float = CELL_M, follows: bool = False) -> None:
+        """A grid over a box of water, with the ground in it solid. `follows`:
+        the box goes with the vehicle (open water)."""
         low, high = np.asarray(low, dtype=float), np.asarray(high, dtype=float)
+        self.cell = float(cell)
         n = np.maximum(np.ceil((high - low) / self.cell).astype(int), 2)
         self.low, self.shape = low, tuple(int(k) for k in n)
         self.u = np.zeros(self.shape + (3,))
-        centres = self.centres()
-        floor = bottoms(centres.reshape(-1, 3)).reshape(self.shape)
-        self.solid = centres[..., 2] < floor
+        self.bottoms, self.follows, self.surface = bottoms, bool(follows), float(high[2])
+        self.p = None
+        self.ground()
         self.on = True
+
+    def ground(self) -> None:
+        """Which cells are rock or sand, or above the water."""
+        centres = self.centres()
+        floor = self.bottoms(centres.reshape(-1, 3)).reshape(self.shape)
+        self.solid = (centres[..., 2] < floor) | (centres[..., 2] > self.surface)
+
+    def follow(self, at) -> None:
+        """Keep the vehicle in the middle third of the box, shifting the water
+        a whole number of cells: what is left behind is let go, what is moved
+        into starts still."""
+        middle = self.low + 0.5 * self.cell * np.array(self.shape)
+        off = np.asarray(at, dtype=float) - middle
+        steps = np.where(np.abs(off) > 0.17 * self.cell * np.array(self.shape),
+                         np.round(off / self.cell), 0).astype(int)
+        steps[2] = 0                                  # depth: the box spans the column it is in
+        if not steps.any():
+            return
+        u = self.u
+        for axis in (0, 1):
+            k = int(steps[axis])
+            if k == 0:
+                continue
+            u = np.roll(u, -k, axis=axis)
+            index = [slice(None)] * 4
+            index[axis] = slice(-k, None) if k > 0 else slice(None, -k)
+            u[tuple(index)] = 0.0
+        self.u = u
+        self.low = self.low + steps * self.cell
+        self.p = None
+        self.ground()
 
     def centres(self) -> np.ndarray:
         i, j, k = (np.arange(s) for s in self.shape)
@@ -147,13 +185,19 @@ def project(u, solid, cell: float, iterations: int = JACOBI, pressure=None):
 class FlowSystem(System):
     name = "flow"
     reads = ("place",)
-    before = ("wash",)
+    before = ("wash", "vehicle")
     writes = ("flow",)
     every = 0.05
 
     def step(self, world) -> None:
         flow, wash = world.flow, world.wash
         if not flow.on:
+            return
+        if flow.follows:
+            flow.follow(world.vehicle.position)
+        # Nothing pushing and nothing moving: still water stays still, and
+        # costs nothing to say so.
+        if not wash.efflux.any() and not np.abs(flow.u).max() > 1e-4:
             return
         dt = self.every
         u = flow.u

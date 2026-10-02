@@ -80,3 +80,12 @@ def test_a_tank_steps_in_milliseconds():
     for _ in range(20):
         s.step(w)
     assert (time.perf_counter() - began) / 20 < 0.03
+
+
+def test_in_open_water_the_box_follows_the_vehicle_and_keeps_what_it_stirred():
+    flow = Flow()
+    flow.set_for([-1.5, -1.5, -6.0], [1.5, 1.5, -4.0], lambda p: np.full(len(p), -9.0), cell=0.1, follows=True)
+    flow.u[15, 15, 10] = (0.3, 0.0, 0.0)            # stirred water at about the origin
+    flow.follow([0.8, 0.0, -5.0])                   # the vehicle has moved on 0.8 m
+    assert np.isclose(flow.low[0], -1.5 + 0.8)
+    assert np.isclose(flow.at([[0.05, 0.05, -4.95]])[0][0], 0.3, atol=0.05), "what it stirred is still there"
