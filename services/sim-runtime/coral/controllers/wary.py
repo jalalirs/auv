@@ -170,6 +170,39 @@ class WaryController(PursueController):
         first, last = best[1]
         return float((bearings[first] + bearings[last]) / 2.0)
 
+    def see_through(self, seen: Observation, fan: dict, reach: float) -> None:
+        """Forget what a beam has just looked straight through.
+
+        What is remembered is a wall until it is forgotten, and a fish that
+        crossed a beam is not a wall: it was there for one ping, and kept for
+        ten seconds it was a phantom the vehicle steered round long after it
+        had swum off. So a remembered echo that sits inside a beam this ping,
+        nearer than what the beam now returns (or anywhere in its reach, when
+        it returns nothing), is gone — the beam has seen through where it was.
+        A pillar is not forgotten this way: its echo is where the beam stops.
+        This is what a sonar's occupancy map does with free space."""
+        if not self.heard:
+            return
+        bearings = np.asarray(fan["bearingsRad"], dtype=float)
+        ranges = np.asarray(fan["rangesM"], dtype=float)
+        # Beams that touch: half the spacing either side of each.
+        half = (0.5 * float(np.min(np.diff(np.sort(bearings)))) if len(bearings) > 1
+                else math.radians(12.5))
+        nose = float(self["sonarAheadM"])
+        heading = float(seen.heading)
+        x0 = float(seen.position[0]) + nose * math.cos(heading)
+        y0 = float(seen.position[1]) + nose * math.sin(heading)
+        points = np.array([(x, y) for _, x, y in self.heard])
+        far = np.hypot(points[:, 0] - x0, points[:, 1] - y0)
+        off = np.arctan2(points[:, 1] - y0, points[:, 0] - x0) - heading
+        through = np.zeros(len(points), dtype=bool)
+        for bearing, rangem in zip(bearings, ranges):
+            inside = np.abs((off - bearing + np.pi) % (2 * np.pi) - np.pi) <= 0.8 * half
+            short_of = (rangem - 0.05) if np.isfinite(rangem) else reach
+            through |= inside & (far < short_of)
+        if through.any():
+            self.heard = [one for one, gone in zip(self.heard, through) if not gone]
+
     def remember(self, seen: Observation) -> None:
         """Every echo close enough to matter, as a point in the world."""
         fan = getattr(seen, "sonar", None)
@@ -187,6 +220,7 @@ class WaryController(PursueController):
             self._last_fan = np.asarray(fan["rangesM"], dtype=float).copy()
         if fan and fresh and keep > 0.0:
             reach = max(1.0, 3.0 * float(self["standOffM"]))
+            self.see_through(seen, fan, reach)
             for bearing, rangem in zip(np.asarray(fan["bearingsRad"], dtype=float),
                                        np.asarray(fan["rangesM"], dtype=float)):
                 if np.isfinite(rangem) and rangem < reach:

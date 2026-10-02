@@ -711,6 +711,7 @@ class Dive:
             if size and len(size) == 3:
                 self.half_width = max(0.1, max(float(size[0]), float(size[1])) / 2.0)
                 self.half_height = max(0.05, float(size[2]) / 2.0)
+                self.ocean.vehicle.footprint = (float(size[0]) / 2.0, float(size[1]) / 2.0)
         except Exception:
             pass
         self.put_the_vehicle_in_the_place(corner, far, extent)
@@ -1001,6 +1002,7 @@ class Dive:
                 if size is not None:
                     self.half_height = max(0.05, size[2] / 2.0)
                     self.half_width = max(0.1, max(size[0], size[1]) / 2.0)
+                    self.ocean.vehicle.footprint = (float(size[0]) / 2.0, float(size[1]) / 2.0)
                 # And where it sits relative to the vehicle. The physics has
                 # its origin at the centre of gravity; the geometry has its
                 # origin wherever whoever modelled it put one, and for this

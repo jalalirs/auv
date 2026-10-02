@@ -28,6 +28,7 @@ class Contacts:
         self.grounded = 0                    # times it was stopped by ground it could not ride over
         self.glass = 0                       # times it touched a tank's glass
         self.on_the_glass = False
+        self.clear_for_s = 1e9               # how long since it was last against a face
         self.cable_held = 0                  # times it reached the end of its cable
         self.at_full_scope = False
         # Every strike, with where, how fast into the surface, and the impulse
@@ -79,6 +80,7 @@ def land(v, place, contacts, cable, dt: float, say, coral=None) -> None:
     keep_out_of_coral(v, coral, contacts, say)
     keep_inside_the_glass(v, place, contacts, say)
     stay_on_the_cable(v, cable, contacts, dt, say)
+    contacts.clear_for_s = 0.0 if v.against_the_ground else contacts.clear_for_s + dt
     # There is no lid on the surface. A vehicle that breaks it loses its
     # buoyancy and its thrust as it emerges and falls back on its own, which is
     # what a real one does and is worth being able to see happen.
@@ -147,7 +149,11 @@ def strike(v, place, contacts) -> None:
     taken = float(np.linalg.norm(moving[:2] - flat))
     moving[:2] = flat
     v.velocity[:3] = v.rotation.T @ moving
-    if not v.against_the_ground:
+    # Once a contact: a vehicle scraping along a face for a second struck it
+    # once, not two hundred times — and a scrape that touches and lets go
+    # every other step as it slides is one scrape, so a new strike needs half
+    # a second clear of the last.
+    if not v.against_the_ground and contacts.clear_for_s > 0.5:
         contacts.grounded += 1
         contacts.strike_of("ground", v.position, taken, v)
     v.against_the_ground = True
@@ -222,10 +228,24 @@ def keep_out_of_coral(v, coral, contacts, say) -> None:
         return
     off = v.position[:2][None, :] - coral.at[:, :2]
     far = np.linalg.norm(off, axis=1)
-    reach = coral.radius + float(v.half_width)
+    # The hull's outline from above: an ellipse its length by its beam, turned
+    # with it — a vehicle passing a colony side-on reaches half its beam, not
+    # half its length. A colony meets it where the ellipse, grown by the
+    # colony's radius, holds the colony's middle.
+    length, beam = v.footprint or (float(v.half_width), float(v.half_width))
+    heading = math.atan2(float(v.rotation[1, 0]), float(v.rotation[0, 0]))
+    c, s = math.cos(heading), math.sin(heading)
+    ahead = -(off[:, 0] * c + off[:, 1] * s)
+    aside = -(-off[:, 0] * s + off[:, 1] * c)
+    inside = (ahead / (length + coral.radius)) ** 2 + (aside / (beam + coral.radius)) ** 2 < 1.0
+    # How far out it must be put, along the line between them: where that
+    # line leaves the grown ellipse.
+    angle = np.arctan2(aside, ahead)
+    reach = 1.0 / np.sqrt((np.cos(angle) / (length + coral.radius)) ** 2
+                          + (np.sin(angle) / (beam + coral.radius)) ** 2)
     level = (v.position[2] - v.half_height < coral.at[:, 2] + coral.height) & \
             (v.position[2] + v.half_height > coral.at[:, 2])
-    touching = set(np.flatnonzero((far < reach) & level).tolist())
+    touching = set(np.flatnonzero(inside & level).tolist())
     solid = coral.solid()
     for i in sorted(touching):
         out = off[i] / max(float(far[i]), 1e-9)

@@ -38,6 +38,9 @@ class Vehicle:
         self.against_the_ground = False
         # How hard it was working, last step. What frightens the fish.
         self.wrench = None
+        # Half its length and half its beam, when its hull says: its outline
+        # from above, which is what meets a colony as it passes.
+        self.footprint: tuple[float, float] | None = None
 
     def submerged(self, level) -> float:
         """The share of the hull under the surface, from one to nothing.

@@ -10,6 +10,7 @@ import pathlib
 import sys
 
 import numpy as np
+import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
@@ -245,3 +246,15 @@ def test_wary_remembers_each_ping_once_and_detours_to_the_open_side():
     assert len(wary.heard) == 1
     here = seen.position[:2]
     assert wary.in_corridor(here, np.array([-0.55, -0.15]), 0.24)
+
+
+def test_a_fish_in_the_fan_echoes_and_one_above_it_does_not():
+    """An echosounder hears a fish's swim bladder. The fan is flat, as the
+    ground's is: a fish a quarter of a metre over the beam is not ahead."""
+    sonar = a_sonar(misses=0.0, noise=0.0)
+    ahead = np.array([[1.0, 0.0, -2.0, 0.04]])
+    over = np.array([[1.0, 0.0, -1.75, 0.04]])
+    heard = sonar.ping(0.0, np.array([0.0, 0.0, -2.0]), np.eye(3), targets=ahead)
+    assert np.nanmin(heard) == pytest.approx(0.96 - sonar.at[0], abs=0.05)
+    unheard = a_sonar(misses=0.0, noise=0.0).ping(0.0, np.array([0.0, 0.0, -2.0]), np.eye(3), targets=over)
+    assert not np.isfinite(unheard).any()
