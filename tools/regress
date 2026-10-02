@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""Fly the reference dives undrawn and compare them with how they flew before.
+
+    tools/regress            compare every case with its recording
+    tools/regress --record   fly them and keep what they did as the reference
+    tools/regress round-trip-still   just one case
+
+The engine is being taken apart and put back together (docs/plan/r6-engine.md),
+and every move has to leave the dive exactly as it was. "It still looks right"
+is not that. This flies the same dives on the same seeds and compares the
+vehicle's path, sample by sample, with the path recorded before the move. A
+move that changes nothing changes nothing to the last digit; one that changes
+something says by how much and from when.
+
+The dives fly against the place as it is built on this machine
+(~/coral-city/places/<place>), so a rebuilt place is a new reference: record
+again, and say so in the commit.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import pathlib
+import sys
+import time
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+RUNTIME = ROOT / "services/sim-runtime/coral"
+KEPT = ROOT / "services/sim-runtime/regression"
+sys.path.insert(0, str(RUNTIME))
+
+TANK = {"waterType": "I", "fitted": {"lights": False},
+        "positioning": {"kind": "camera", "accuracyM": 0.005, "everyS": 0.1}}
+
+# What is flown. Each is a dive that exercises something the engine owns: the
+# avoidance and the planner in still water, and the same route with the fan
+# blowing, which moves the vehicle by the surface drift and the sonar by the
+# ripples.
+CASES = {
+    "round-trip-still": dict(place="iocean-tank-1", vehicle="mini-hoot",
+                             mission="iocean-tank-round-trip", seed=0, seconds=160,
+                             water=dict(TANK)),
+    "round-trip-fan": dict(place="iocean-tank-1", vehicle="mini-hoot",
+                           mission="iocean-tank-round-trip", seed=3, seconds=160,
+                           water=dict(TANK, windMetresPerSecond=2.0, windHeadingDeg=270.0)),
+}
+
+# How often the path is sampled, in steps. Every step would be 32,000 rows a
+# dive; one in twenty is ten a second, which no change can hide between.
+EVERY = 20
+
+
+def fly(case: dict) -> dict:
+    from hydrodynamics import Allocator, Body, Hydrodynamics
+    from runner import Dive
+
+    package = ROOT / "catalog/vehicles" / case["vehicle"] / "dynamics.json"
+    model = Hydrodynamics.from_package(package)
+    objective = json.loads((ROOT / "missions" / f"{case['mission']}.json").read_text())
+    objective.pop("_", None)
+    brief = {"seed": case["seed"], "durationSeconds": case["seconds"],
+             "vehiclePath": str(package.parent), "objective": objective,
+             "cityPath": str(pathlib.Path.home() / "coral-city/places" / case["place"]),
+             "conditions": {"kind": "constructed", "name": "regression",
+                            "parameters": case["water"]}}
+    said = []
+    dive = Dive(brief, Body(model), Allocator(model), pathlib.Path("nowhere.usda"),
+                lambda kind, **d: said.append(kind))
+    if not dive.open_dry():
+        raise SystemExit(f"{case['place']} would not open undrawn")
+    path = []
+    began = time.perf_counter()
+    for _ in range(int(case["seconds"] / dive.dt)):
+        dive.step()
+        if dive.taken % EVERY == 0:
+            p, r = dive.position, dive.rotation
+            path.append([round(float(dive.simulated), 4)]
+                        + [float(v) for v in p]
+                        + [math.atan2(float(r[1, 0]), float(r[0, 0]))])
+        if dive.done:
+            break
+    took = time.perf_counter() - began
+    task = dive.task.result() if dive.task else {}
+    return {"path": path, "hit": dive.what_it_hit(), "achieved": task.get("achieved"),
+            "endedAt": round(float(dive.simulated), 4), "said": sorted(set(said)),
+            "secondsTaken": round(took, 1)}
+
+
+def compare(name: str, now: dict, then: dict) -> bool:
+    a, b = then["path"], now["path"]
+    worst, when, first = 0.0, None, None
+    for x, y in zip(a, b):
+        off = math.dist(x[1:4], y[1:4])
+        if off > 0.0 and first is None:
+            first = y[0]
+        if off > worst:
+            worst, when = off, y[0]
+    same = (a == b and now["hit"] == then["hit"] and now["achieved"] == then["achieved"])
+    if same:
+        print(f"{name}: identical — {len(b)} samples, ended {now['endedAt']} s, "
+              f"achieved {now['achieved']}, flown in {now['secondsTaken']} s")
+        return True
+    print(f"{name}: CHANGED")
+    if len(a) != len(b):
+        print(f"  samples {len(a)} -> {len(b)} (ended {then['endedAt']} -> {now['endedAt']} s)")
+    if first is not None:
+        print(f"  first moved at {first} s; worst {worst * 1000:.3f} mm at {when} s")
+    if now["hit"] != then["hit"]:
+        print(f"  hit {then['hit']} -> {now['hit']}")
+    if now["achieved"] != then["achieved"]:
+        print(f"  achieved {then['achieved']} -> {now['achieved']}")
+    return False
+
+
+def main(argv: list[str]) -> int:
+    record = "--record" in argv
+    names = [a for a in argv if not a.startswith("--")] or list(CASES)
+    KEPT.mkdir(parents=True, exist_ok=True)
+    good = True
+    for name in names:
+        now = fly(CASES[name])
+        kept = KEPT / f"{name}.json"
+        if record:
+            kept.write_text(json.dumps(now) + "\n")
+            print(f"{name}: recorded — {len(now['path'])} samples, ended {now['endedAt']} s, "
+                  f"achieved {now['achieved']}, hit {now['hit']}, flown in {now['secondsTaken']} s")
+            continue
+        if not kept.exists():
+            print(f"{name}: nothing recorded to compare with; run with --record")
+            good = False
+            continue
+        good &= compare(name, now, json.loads(kept.read_text()))
+    return 0 if good else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
