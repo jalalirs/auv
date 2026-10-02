@@ -309,6 +309,30 @@ def _ground(origin, way, far: float, seabed):
     # walked straight over them.
     across, columns = getattr(seabed, "across", None), getattr(seabed, "columns", None)
     step = 0.5 if not across or not columns else min(0.5, max(0.01, 2.0 * float(across) / (int(columns) - 1)))
+    many = getattr(seabed, "under_many", None)
+    if many is not None:
+        # Every step of the walk at once, and the first one under the ground:
+        # the same walk, without a Python call a step. The steps are summed
+        # as the loop summed them, so the same stride lands in the same place.
+        count = int(far / step) + 2
+        ts = np.cumsum(np.full(count, step))
+        ts = ts[ts <= far]
+        if not len(ts):
+            return None
+        where = origin[None, :] + way[None, :] * ts[:, None]
+        under = np.flatnonzero(where[:, 2] - many(where[:, 0], where[:, 1]) <= 0.0)
+        if not len(under):
+            return None
+        t = float(ts[under[0]])
+        low, high = t - step, t
+        for _ in range(8):
+            mid = 0.5 * (low + high)
+            where = origin + way * mid
+            if float(where[2] - seabed.under(float(where[0]), float(where[1]))) <= 0.0:
+                high = mid
+            else:
+                low = mid
+        return float(high)
     was = float(origin[2] - seabed.under(float(origin[0]), float(origin[1])))
     t = step
     while t <= far:
