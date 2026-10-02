@@ -82,9 +82,14 @@ def fly(place: str, vehicle: str, seed: int, objective: dict, blind: bool) -> di
     while not dive.done:
         dive.step()
     said = dive.shoal.said() if dive.shoal is not None else {}
+    coral = dive.ocean.coral.said() if len(dive.ocean.coral) else {}
+    sediment = dive.ocean.sediment
     return {"counted": said.get("countedByTheCamera", 0), "inViewMean": said.get("inViewMean", 0.0),
             "bumped": said.get("bumped", 0), "seconds": round(dive.simulated, 1),
             "ground": dive.what_it_hit().get("ground"),
+            "coralStruck": coral.get("struck", 0), "coralBroken": len(coral.get("broken", [])),
+            "sandLiftedG": round(sediment.lifted_kg * 1000.0, 3),
+            "worstVisibilityM": None if sediment.worst_visibility_m is None else round(float(sediment.worst_visibility_m), 2),
             "arrived": bool((dive.task.result() or {}).get("arrived")) if dive.task else None}
 
 
@@ -114,6 +119,17 @@ def main() -> int:
         a = sum(r["seeing"]["counted"] for r in mine)
         b = sum(r["blind"]["counted"] for r in mine)
         print(f"{vehicle:<16} {a:>6} / {b:<6} over {len(mine)} seeds              {a / b:.0%}")
+    # And what it did to the place getting there, from the runs where the fish
+    # could see it: the same transects, the same seeds.
+    print("\nvehicle          fish struck  ground touched  coral struck / broken  sand lifted g  worst visibility m")
+    for vehicle in args.vehicles.split(","):
+        mine = [r["seeing"] for r in rows if r["vehicle"] == vehicle]
+        if not mine:
+            continue
+        seen = [m["worstVisibilityM"] for m in mine if m.get("worstVisibilityM") is not None]
+        print(f"{vehicle:<16} {sum(m['bumped'] for m in mine):>11}  {sum(m['ground'] or 0 for m in mine):>14}"
+              f"  {sum(m.get('coralStruck', 0) for m in mine):>12} / {sum(m.get('coralBroken', 0) for m in mine):<7}"
+              f"  {sum(m.get('sandLiftedG', 0.0) for m in mine):>13.2f}  {min(seen) if seen else float('nan'):>18.1f}")
     return 0
 
 
