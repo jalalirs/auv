@@ -1076,6 +1076,12 @@ class Dive:
             # attenuation length are the ones a lamp finds.
             try:
                 import snow as marine_snow
+                import water as water_module
+
+                # A tank's water is filtered: what marine snow is — the
+                # ocean's aggregates sinking from the top — is not in it.
+                if self.interior is not None:
+                    raise LookupError("a tank's water is filtered; there is no marine snow in it")
 
                 # `water_module`, not `water`: fifteen lines below, `water`
                 # is rebound to a file path, which makes it a local for the
@@ -3172,9 +3178,11 @@ class Dive:
         self._rooted_orientations = orientations
         # And where each stands, in metres, so each can be asked about the
         # water where it is rather than where the vehicle is.
+        # Copied into numpy whole and then indexed — never indexed element by
+        # element in the USD array, for the reason given above: written that
+        # way it sat here at Looe Key and the film never started.
         placed = instancer.GetPositionsAttr().Get()
-        self._rooted_at = (np.array([[float(placed[i][0]), float(placed[i][1]), float(placed[i][2])]
-                                     for i in held]) / self.units_per_metre
+        self._rooted_at = (np.asarray(placed, dtype=float).reshape(-1, 3)[held] / self.units_per_metre
                            if placed is not None and len(placed) and self.up_axis == "Z" else None)
         self.say("sway_is", colonies=int(len(held)),
                  kinds=sorted(k for k, v in sways.items() if v))
