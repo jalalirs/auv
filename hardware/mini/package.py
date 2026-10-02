@@ -198,8 +198,10 @@ def dynamics():
         },
         "tether": {"_": "10 m of thin neutrally buoyant twisted pair, data only: the battery powers the vehicle.",
                    "diameterM": 0.005, "lengthM": 10.0, "weightNPerM": 0.0, "dragNormal": 1.2,
-                   # Tied on at the stern, where it leaves the shell, in the vehicle's frame.
-                   "attachM": cat((S.HULL_TAIL + 2.0, 0.0, S.TETHER_Z))},
+                   # Tied on at the top, through the knob on the crown, as the
+                   # Titan's plug is: a cable pulling from above holds the
+                   # vehicle level, one from the stern pitches it.
+                   "attachM": cat((S.KNOB_X, 0.0, S.HULL_H / 2 + S.KNOB_H))},
         "sensors": [
             {"kind": "underwater_camera", "name": "forward", "position": cat((S.CAMERA_X, 0, 0)), "orientation": [0, 0, 0],
              "focalLengthMm": 21, "widthPx": 1920, "heightPx": 1080, "watts": 2.5,

@@ -266,9 +266,9 @@
   "weightNPerM": 0.0,
   "dragNormal": 1.2,
   "attachM": [
-   -0.1479,
+   -0.0099,
    -0.0,
-   0.0123
+   0.0843
   ]
  },
  "sensors": [
