@@ -173,6 +173,10 @@ class Umbilical:
         for _ in range(4):
             self.hold_together(x, seg, max(2, sweeps // 4), w, compliance, lam)
             self.keep_out(x, place, r)
+            # A cable that floats lies on the surface, it does not leave it:
+            # the surface holds it up the way the bottom holds a heavy one.
+            if level is not None and self.weight_n_per_m < 0.0:
+                x[1:-1, 2] = np.minimum(x[1:-1, 2], level - r)
         self.velocity = (x - was) / dt
         self.velocity[0] = 0.0
         # Friction: a node pressed against something does not slide freely.
