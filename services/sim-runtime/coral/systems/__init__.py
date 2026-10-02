@@ -49,5 +49,8 @@ tools/regress, which says whether the reference dives still fly the same.
 
 What a system must not do: call another system, write a part it does not
 own, or reach into the dive (`runner.Dive`). What it needs, it reads from the
-world; what others need from it, it writes there.
+world; what others need from it, it writes there. The two outputs are the
+exception, and say why in outputs.py: what goes out over ROS 2 and into the
+record has to agree with what the console shows, and both are written once,
+by the dive.
 """
