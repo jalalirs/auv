@@ -520,9 +520,9 @@ def a_place(name: str, made: dict) -> dict:
             "pump": {"at": [round(-LONG / 2 + 0.07, 3), -0.30, -0.35], "pushesTowardsDeg": 90,
                      "what": "the circulation pump: conditions currentMetresPerSecond"},
             # The vehicle's cable comes off the switch, over the rim at the
-            # desk end, and a metre and a half of it is paid out: enough to reach the
+            # desk end, and 1.8 m of it is paid out: enough to reach the
             # far end of the tank, not so much it piles on the sand.
-            "tether": {"at": [0.80, round(-WIDE / 2 + 0.10, 3), round(FREEBOARD - 0.08, 3)], "outM": 1.5,
+            "tether": {"at": [0.80, round(-WIDE / 2 + 0.10, 3), round(FREEBOARD - 0.08, 3)], "outM": 1.8,
                        "what": "over the rim at the desk end of the tank, from the switch"},
             "overheadCamera": {"at": [0.0, 0.0, 1.45], "lookingDown": True},
             "waterTonnes": round(LONG * WIDE * -FLOOR_Z, 2),
