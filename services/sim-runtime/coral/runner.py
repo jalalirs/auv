@@ -3081,7 +3081,8 @@ class Dive:
         instancer, held, turn, phase, stiff = self._rooted
         # The vehicle's wash, where each colony stands (systems/wash.py).
         where = getattr(self, "_rooted_at", None)
-        if where is not None and self.ocean.wash.efflux.any():
+        stirred = self.ocean.wash.efflux.any() or self.ocean.flow.on
+        if where is not None and stirred:
             flow = np.asarray(flow)[None, :] + self.ocean.wash.at(where)[:, :2]
         lean, towards = life.bending(flow, phase + self.simulated * 1.6, stiff)
         w, x, y, z = life.leaning(lean, towards, turn)
