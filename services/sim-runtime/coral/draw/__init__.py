@@ -8,4 +8,5 @@ undrawn computes exactly what a drawn one does.
     coral         a colony the vehicle broke, cut down to a stump
     sediment      the sand in the water, as flecks
     light         a tank's lamps and the window's daylight, by the dive's day
+    tether        the cable, where its own solve says it is
 """

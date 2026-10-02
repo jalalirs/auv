@@ -3184,85 +3184,16 @@ class Dive:
                 self._drawn_broken = set()
             drawn_coral.break_them(self.stage, coral, self._drawn_broken, self.units_per_metre)
 
-    # How thick the cable is drawn, at least. A five-millimetre tether is a
-    # pixel at three metres and reads as nothing; drawn at its own diameter
-    # and no thinner than this, it reads as a cable.
-    TETHER_DRAWN_AT_LEAST_M = 0.006
-
     def draw_the_tether(self) -> None:
-        """The cable, where its own solve says it is, from the rim to the stern.
-
-        It was simulated and never drawn, so a vehicle on a tether looked like
-        one on nothing. The shape is the cable model's; the last node is moved
-        to where the cable is actually tied on the hull, and nothing is drawn
-        through the ground or the glass.
-        """
+        """The cable, where its own solve says it is. See draw/tether.py."""
         if self.tether is None or not self.tether.out or self.tether.shape is None:
             return
-        try:
-            from pxr import Gf, Sdf, UsdGeom, UsdShade, Vt
-
-            stage = self.stage
-            shape = np.array(self.tether.shape, dtype=float)
-            attach = getattr(self, "tether_attach", np.zeros(3))
-            plug = self.position + self.rotation @ attach
-            shape[-1] = plug
-            shape[0] = self.tether.at
-            # Out of the plug the way the plug points, before the cable is free
-            # to bend: drawn straight from the crown to the solve's last free
-            # node, the cable cut through the lid whenever the slack lay beside
-            # or below the vehicle.
-            lead = float(getattr(self, "tether_lead_out", 0.0))
-            if lead > 0.0:
-                up = self.rotation @ np.array([0.0, 0.0, 1.0])
-                riser = plug + up * lead
-                over = plug + up * (lead * 2.5)
-                shape = np.vstack([shape[:-1], over, riser, plug])
-            if self.seabed is not None or self.floor is not None:
-                for k in range(1, len(shape) - 1):
-                    bottom = (self.seabed.under(float(shape[k, 0]), float(shape[k, 1]))
-                              if self.seabed is not None else self.floor)
-                    if bottom is not None:
-                        shape[k, 2] = max(float(shape[k, 2]), float(bottom) + 0.004)
-            if self.interior is not None:
-                low, high = self.interior
-                shape[1:-1, 0] = np.clip(shape[1:-1, 0], low[0] + 0.004, high[0] - 0.004)
-                shape[1:-1, 1] = np.clip(shape[1:-1, 1], low[1] + 0.004, high[1] - 0.004)
-            # Relaxed before it is drawn. The solve's twenty nodes carry its
-            # shape and its tension, and drawn as they are a slack cable came
-            # out as a zig-zag of straight pieces: a cable is a curve.
-            keep = 3 if lead > 0.0 else 1          # the lead-out stays straight
-            for _ in range(6):
-                shape[1:-keep] = 0.25 * shape[:-keep - 1] + 0.5 * shape[1:-keep] + 0.25 * shape[2:len(shape) - keep + 1]
-            # A smoother line than the solve's twenty nodes: the cable is drawn
-            # through them, not as a chain of straight pieces.
-            t = np.linspace(0, 1, len(shape))
-            fine = np.linspace(0, 1, 6 * len(shape))
-            drawn = np.stack([np.interp(fine, t, shape[:, i]) for i in range(3)], axis=1)
-            points = Vt.Vec3fArray([Gf.Vec3f(*[float(v) for v in self.drawn_at(p)]) for p in drawn])
-            if getattr(self, "_tether_curve", None) is None:
-                curve = UsdGeom.BasisCurves.Define(stage, "/World/Tether")
-                curve.CreateTypeAttr(UsdGeom.Tokens.linear)
-                curve.CreateCurveVertexCountsAttr(Vt.IntArray([len(drawn)]))
-                width = max(self.tether.diameter_m, self.TETHER_DRAWN_AT_LEAST_M) * self.units_per_metre
-                curve.CreateWidthsAttr(Vt.FloatArray([float(width)]))
-                curve.SetWidthsInterpolation(UsdGeom.Tokens.constant)
-                curve.CreateDisplayColorAttr(Vt.Vec3fArray([Gf.Vec3f(0.95, 0.45, 0.05)]))
-                look = UsdShade.Material.Define(stage, "/World/Tether/Look")
-                shader = UsdShade.Shader.Define(stage, "/World/Tether/Look/S")
-                shader.CreateIdAttr("UsdPreviewSurface")
-                shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.95, 0.45, 0.05))
-                shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
-                look.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
-                UsdShade.MaterialBindingAPI.Apply(curve.GetPrim()).Bind(look)
-                self._tether_curve = curve
-                self.say("tether_drawn", nodes=int(len(drawn)), widthM=round(float(width / self.units_per_metre), 4),
-                         from_=[round(float(v), 3) for v in shape[0]], to=[round(float(v), 3) for v in shape[-1]])
-            self._tether_curve.GetPointsAttr().Set(points)
-        except Exception as bad:
-            if not getattr(self, "_tether_unseen", False):
-                self._tether_unseen = True
-                self.say("tether_not_drawn", why=str(bad)[:200])
+        if getattr(self, "_tether_drawing", None) is None:
+            from draw.tether import TetherDrawing
+            self._tether_drawing = TetherDrawing(getattr(self, "tether_attach", np.zeros(3)),
+                                                 float(getattr(self, "tether_lead_out", 0.0)),
+                                                 self.units_per_metre, self.say)
+        self._tether_drawing.draw(self.stage, self.tether, self.ocean.vehicle, self.ocean.place, self.drawn_at)
 
     def state(self) -> dict:
         return {

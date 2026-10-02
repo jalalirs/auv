@@ -63,10 +63,10 @@ def _fake_pxr():
     holds.Gf = gf
     holds.Sdf = types.SimpleNamespace(ValueTypeNames=Anything())
     holds.Vt = types.SimpleNamespace(
-        Vec3fArray=list, IntArray=list, QuathArray=list)
+        Vec3fArray=list, IntArray=list, QuathArray=list, FloatArray=list)
     holds.UsdGeom = types.SimpleNamespace(
         PointInstancer=Anything(), Scope=Anything(), Mesh=Anything(),
-        PrimvarsAPI=Anything(), Tokens=Anything())
+        PrimvarsAPI=Anything(), Tokens=Anything(), BasisCurves=Anything())
     holds.UsdShade = types.SimpleNamespace(
         Material=Anything(), Shader=Anything(), MaterialBindingAPI=Anything())
     return holds
@@ -132,3 +132,22 @@ def test_fish_with_minds_are_drawn_by_species_in_the_types_asked_for(without_a_r
     school.step(0.05, light=(11.0, 1.0))
     life.put_them_in(Anything(), school)
     life.move_them(Anything(), school)
+
+
+def test_the_tether_is_drawn_in_the_types_the_renderer_asked_for(without_a_renderer):
+    """draw/tether.py, from a cable's nodes, through the same strict stand-in."""
+    from draw.tether import TetherDrawing
+    from systems.place import Place
+    from systems.tether import Umbilical
+
+    cable = Umbilical({"lengthM": 1.8, "diameterM": 0.005, "weightNPerM": -0.004})
+    cable.start([0.8, -0.4, -0.03], [0.0, 0.0, -0.4])
+
+    class V:
+        position = np.array([0.0, 0.0, -0.4])
+        rotation = np.eye(3)
+
+    said = []
+    drawing = TetherDrawing([0.0, 0.0, 0.08], 0.05, 1.0, lambda kind, **d: said.append(kind))
+    drawing.draw(Anything(), cable, V(), Place(), lambda p: tuple(float(c) for c in p))
+    assert "tether_not_drawn" not in said
