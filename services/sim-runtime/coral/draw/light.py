@@ -4,11 +4,12 @@ Reads    light (systems/light.py): the hour, and the light as a share of full da
 
 The same clock the fish keep. A tank's reef lights follow their schedule —
 on at nine, off at nine, ramped — and the daylight coming into the room
-follows the sun. The fill lights that light the room for the picture go with
-the daylight, down to a sixth so that a night is dark and still readable; the
-ceiling light is left on, because somebody at the bench at night turns it on
-(assumed). A dive started at dusk is drawn at dusk, and the fish in it behave
-as at dusk.
+follows the sun. The room's own lights — the ceiling and the fills that light
+the room for the picture — go with the daylight, down to a sixth so that a
+night is dark and still readable. (The ceiling was once left on all night, on
+the guess that somebody at the bench turns it on; it is the brightest thing in
+the room, and a dusk film with it on never got dark.) A dive started at dusk
+is drawn at dusk, and the fish in it behave as at dusk.
 
 What a lamp is called is the place's business; these are the names
 tools/make-aquarium gives them, and a place without them is left alone.
@@ -22,7 +23,7 @@ from systems.light import daylight
 # window the sky.
 ON_THE_SCHEDULE = ("/World/LedSouth", "/World/LedNorth")
 FROM_THE_SKY = ("/World/Daylight",)
-WITH_THE_SKY_AT_LEAST = {"/World/FillRoom": 0.15, "/World/FillEnd": 0.15}
+WITH_THE_SKY_AT_LEAST = {"/World/Ceiling": 0.15, "/World/FillRoom": 0.15, "/World/FillEnd": 0.15}
 
 
 class Lights:
