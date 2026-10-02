@@ -75,6 +75,9 @@ CORALS = [("branching", 0.16, "violet"), ("branching", 0.13, "teal"), ("brain", 
           ("branching", 0.15, "purple"), ("brain", 0.09, "pink"), ("plume", 0.16, "teal"),
           ("massive", 0.10, "orange"), ("fan", 0.13, "violet"), ("branching", 0.10, "orange"),
           ("finger", 0.11, "lime"), ("sponge", 0.08, "red")]
+# Which polyp surface each stony kind wears (tools/corallite). Soft corals and
+# sponges have none: they are tissue, not skeleton.
+CORALLITE_OF = {"brain": "brain", "massive": "massive", "branching": "branching", "finger": "massive"}
 TANK_COLOURS = {"violet": (0.45, 0.25, 0.85), "teal": (0.10, 0.70, 0.66), "green": (0.30, 0.78, 0.30),
                 "pink": (0.95, 0.40, 0.65), "orange": (0.98, 0.52, 0.15), "lime": (0.70, 0.90, 0.20),
                 "purple": (0.60, 0.20, 0.60), "red": (0.85, 0.18, 0.18), "yellow": (0.98, 0.85, 0.25)}
@@ -90,25 +93,29 @@ class Scene:
     def __init__(self):
         self.meshes, self.looks, self.extra = [], {}, []
 
-    def look(self, name, colour, rough=0.6, metal=0.0, opacity=1.0, emissive=None, clearcoat=0.0, ior=1.5):
+    def look(self, name, colour, rough=0.6, metal=0.0, opacity=1.0, emissive=None, clearcoat=0.0, ior=1.5,
+             mdl=None):
+        """A material. `mdl` is (module, {input: value}) for the renderer that
+        draws the dive; the preview surface beside it is for everything else."""
         self.looks[name] = dict(colour=colour, rough=rough, metal=metal, opacity=opacity,
-                                emissive=emissive, clearcoat=clearcoat, ior=ior)
+                                emissive=emissive, clearcoat=clearcoat, ior=ior, mdl=mdl)
         return name
 
-    def add(self, path, points, faces, look, smooth=False):
-        self.meshes.append((path, np.asarray(points, float), np.asarray(faces, int), look, smooth))
+    def add(self, path, points, faces, look, smooth=False, uv=None):
+        self.meshes.append((path, np.asarray(points, float), np.asarray(faces, int), look, smooth,
+                            None if uv is None else np.asarray(uv, float)))
 
     def write(self, where: pathlib.Path, doc: str):
         out = ['#usda 1.0\n(\n    doc = "%s"\n    defaultPrim = "World"\n    metersPerUnit = 1\n    upAxis = "Z"\n)\n\n'
                'def Xform "World"\n{\n' % doc.replace('"', "'")]
         groups: dict = {}
-        for path, p, f, look, smooth in self.meshes:
+        for path, p, f, look, smooth, uv in self.meshes:
             group, name = path.split("/")
-            groups.setdefault(group, []).append((name, p, f, look, smooth))
+            groups.setdefault(group, []).append((name, p, f, look, smooth, uv))
         for group, items in groups.items():
             out.append('    def Xform "%s"\n    {\n' % group)
-            for name, p, f, look, smooth in items:
-                out.append(_mesh(name, p, f, look, smooth))
+            for name, p, f, look, smooth, uv in items:
+                out.append(_mesh(name, p, f, look, smooth, uv))
             out.append("    }\n")
         out.extend(self.extra)
         out.append('    def Scope "Looks"\n    {\n')
@@ -118,8 +125,10 @@ class Scene:
         where.write_text("".join(out))
 
 
-def _mesh(name, p, f, look, smooth):
+def _mesh(name, p, f, look, smooth, uv=None):
     lo, hi = p.min(axis=0), p.max(axis=0)
+    st = "" if uv is None else ('            texCoord2f[] primvars:st = [%s] (interpolation = "vertex")\n'
+                                % ", ".join("(%.4f, %.4f)" % tuple(v) for v in uv))
     normals = ""
     if smooth:
         n = np.zeros_like(p)
@@ -133,25 +142,119 @@ def _mesh(name, p, f, look, smooth):
     return ('        def Mesh "%s" (prepend apiSchemas = ["MaterialBindingAPI"])\n        {\n'
             '            uniform token subdivisionScheme = "none"\n            uniform bool doubleSided = 1\n'
             '            int[] faceVertexCounts = [%s]\n            int[] faceVertexIndices = [%s]\n'
-            '            point3f[] points = [%s]\n%s'
+            '            point3f[] points = [%s]\n%s%s'
             '            float3[] extent = [(%.4f, %.4f, %.4f), (%.4f, %.4f, %.4f)]\n'
             '            rel material:binding = </World/Looks/%s>\n        }\n') % (
         name, ", ".join(["3"] * len(f)), ", ".join(str(i) for i in f.reshape(-1)),
-        ", ".join("(%.5f, %.5f, %.5f)" % tuple(v) for v in p), normals.replace("        normal3f", "            normal3f"),
+        ", ".join("(%.5f, %.5f, %.5f)" % tuple(v) for v in p), normals.replace("        normal3f", "            normal3f"), st,
         *lo, *hi, look)
 
 
-def _material(name, colour, rough, metal, opacity, emissive, clearcoat, ior):
+def _mdl_input(key, value):
+    if isinstance(value, bool):
+        return "bool inputs:%s = %d" % (key, int(value))
+    if isinstance(value, str):
+        return "asset inputs:%s = @%s@" % (key, value)
+    if isinstance(value, tuple) and len(value) == 3:
+        return "color3f inputs:%s = (%.4f, %.4f, %.4f)" % (key, *value)
+    if isinstance(value, tuple) and len(value) == 2:
+        return "float2 inputs:%s = (%.4f, %.4f)" % (key, *value)
+    return "float inputs:%s = %.4f" % (key, float(value))
+
+
+def _material(name, colour, rough, metal, opacity, emissive, clearcoat, ior, mdl=None):
     em = "" if emissive is None else "\n                color3f inputs:emissiveColor = (%.3f, %.3f, %.3f)" % tuple(emissive)
+    physical = ""
+    if mdl is not None:
+        module, inputs = mdl
+        physical = ('            token outputs:mdl:surface.connect = </World/Looks/%s/M.outputs:out>\n'
+                    '            token outputs:mdl:volume.connect = </World/Looks/%s/M.outputs:out>\n'
+                    '            token outputs:mdl:displacement.connect = </World/Looks/%s/M.outputs:out>\n'
+                    '            def Shader "M"\n            {\n'
+                    '                uniform token info:implementationSource = "sourceAsset"\n'
+                    '                uniform asset info:mdl:sourceAsset = @%s.mdl@\n'
+                    '                uniform token info:mdl:sourceAsset:subIdentifier = "%s"\n%s'
+                    '                token outputs:out\n            }\n') % (
+            name, name, name, module, module,
+            "".join("                %s\n" % _mdl_input(k, v) for k, v in inputs.items()))
     return ('        def Material "%s"\n        {\n'
-            '            token outputs:surface.connect = </World/Looks/%s/S.outputs:surface>\n'
+            '            token outputs:surface.connect = </World/Looks/%s/S.outputs:surface>\n%s'
             '            def Shader "S"\n            {\n'
             '                uniform token info:id = "UsdPreviewSurface"\n'
             '                color3f inputs:diffuseColor = (%.3f, %.3f, %.3f)\n'
             '                float inputs:roughness = %.3f\n                float inputs:metallic = %.3f\n'
             '                float inputs:opacity = %.3f\n                float inputs:clearcoat = %.3f\n'
             '                float inputs:ior = %.3f%s\n                token outputs:surface\n            }\n        }\n') % (
-        name, name, *colour, rough, metal, opacity, clearcoat, ior, em)
+        name, name, physical, *colour, rough, metal, opacity, clearcoat, ior, em)
+
+
+# ── textures, grown rather than fetched ──────────────────────────────────────
+
+def _noise(n: int, rng, slope: float = 2.0) -> np.ndarray:
+    """Tileable fractal noise, 0..1: white noise shaped in frequency, so it
+    wraps at the edges and a texture repeats without a seam."""
+    f = np.fft.fftfreq(n)
+    k = np.sqrt(f[:, None] ** 2 + f[None, :] ** 2)
+    k[0, 0] = 1.0
+    field = np.real(np.fft.ifft2(np.fft.fft2(rng.normal(size=(n, n))) / k ** (slope / 2)))
+    field -= field.min()
+    return field / max(field.max(), 1e-9)
+
+
+def _normal_map(height: np.ndarray, strength: float) -> np.ndarray:
+    gy, gx = np.gradient(height)
+    n = np.dstack([-gx * strength, -gy * strength, np.ones_like(height)])
+    n /= np.linalg.norm(n, axis=2, keepdims=True)
+    return ((n * 0.5 + 0.5) * 255).astype(np.uint8)
+
+
+def textures(into: pathlib.Path, seed: int = 11, n: int = 1024) -> dict:
+    """Sand and live rock as colour, normal and roughness maps.
+
+    Not photographs: noise shaped the way each surface is. Sand is grains, a
+    few shell fragments and a fine ripple; live rock is pitted limestone under
+    patches of pink and purple coralline algae, which is what makes rock in a
+    reef tank look alive rather than like concrete.
+    """
+    from PIL import Image
+
+    rng = np.random.default_rng(seed)
+    out = into / "textures"
+    out.mkdir(parents=True, exist_ok=True)
+    made = {}
+    # Sand.
+    grain = rng.random((n, n))
+    broad = _noise(n, rng, 2.6)
+    shell = rng.random((n, n)) > 0.9985
+    base = np.array([0.80, 0.74, 0.62])
+    albedo = base[None, None, :] * (0.88 + 0.16 * broad[..., None]) * (0.86 + 0.24 * grain[..., None])
+    albedo[shell] = (0.96, 0.94, 0.90)
+    height = 0.6 * _noise(n, rng, 1.2) + 0.4 * grain
+    Image.fromarray((np.clip(albedo, 0, 1) ** (1 / 2.2) * 255).astype(np.uint8)).save(out / "sand_albedo.png")
+    Image.fromarray(_normal_map(height, 6.0)).save(out / "sand_normal.png")
+    Image.fromarray((np.clip(0.82 + 0.15 * grain, 0, 1) * 255).astype(np.uint8)).save(out / "sand_rough.png")
+    made["sand"] = ("textures/sand_albedo.png", "textures/sand_normal.png", "textures/sand_rough.png")
+    # Live rock: grey-brown limestone, darker in its pits, under soft-edged
+    # crusts of coralline algae that are speckled rather than painted on.
+    pits = _noise(n, rng, 1.6)
+    lumps = _noise(n, rng, 3.0)
+    fine = _noise(n, rng, 0.8)
+    algae = _noise(n, rng, 3.2)
+    smooth = lambda v, a, b: np.clip((v - a) / (b - a), 0, 1) ** 2 * (3 - 2 * np.clip((v - a) / (b - a), 0, 1))  # noqa: E731
+    stone = np.array([0.42, 0.38, 0.33])[None, None, :] * (0.7 + 0.45 * lumps[..., None]) * (0.85 + 0.25 * fine[..., None])
+    crust = smooth(algae, 0.55, 0.72)[..., None] * (0.55 + 0.45 * smooth(fine, 0.25, 0.7)[..., None])
+    pink = np.array([0.72, 0.46, 0.56])[None, None, :] * (0.8 + 0.3 * lumps[..., None])
+    purple = np.array([0.42, 0.30, 0.46])[None, None, :]
+    lilac = smooth(1 - algae, 0.78, 0.9)[..., None] * 0.6
+    albedo = stone * (1 - crust - lilac) + pink * crust + purple * lilac
+    hollow = smooth(0.3 - pits, 0.0, 0.12)[..., None]
+    albedo = albedo * (1 - 0.6 * hollow)
+    height = 0.5 * lumps + 0.3 * fine + 0.2 * pits - 0.25 * hollow[..., 0]
+    Image.fromarray((np.clip(albedo, 0, 1) ** (1 / 2.2) * 255).astype(np.uint8)).save(out / "rock_albedo.png")
+    Image.fromarray(_normal_map(height, 16.0)).save(out / "rock_normal.png")
+    Image.fromarray((np.clip(0.72 + 0.2 * pits - 0.15 * crust[..., 0], 0, 1) * 255).astype(np.uint8)).save(out / "rock_rough.png")
+    made["rock"] = ("textures/rock_albedo.png", "textures/rock_normal.png", "textures/rock_rough.png")
+    return made
 
 
 def box(lo, hi):
@@ -260,25 +363,40 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
     # Dark, not pale. A translucent surface's own colour is lit like any
     # other, so pale glass under a fill light glows and the tank goes milky;
     # dark glass tints what is behind it and only its reflections show.
-    glass = s.look("Glass", (0.02, 0.03, 0.03), rough=0.0, opacity=0.06, clearcoat=1.0, ior=1.52)
+    tex = textures(into)
+    pbr = lambda colour, rough=0.5, metal=0.0, **more: ("OmniPBR", dict(  # noqa: E731
+        diffuse_color_constant=tuple(colour), reflection_roughness_constant=rough, metallic_constant=metal, **more))
+    # Real glass: it refracts and it reflects, which is what a tank's front
+    # pane does and what a translucent sheet never could.
+    glass = s.look("Glass", (0.02, 0.03, 0.03), rough=0.0, opacity=0.06, clearcoat=1.0, ior=1.52,
+                   mdl=("OmniGlass", dict(glass_color=(0.94, 0.98, 0.96), glass_ior=1.52, thin_walled=False,
+                                          frosting_roughness=0.0)))
     water = s.look("WaterBody", (0.0, 0.05, 0.07), rough=0.0, opacity=0.04, ior=1.33)
-    trim = s.look("Trim", (0.02, 0.02, 0.02), rough=0.35)
-    steel = s.look("Steel", (0.05, 0.05, 0.055), rough=0.45, metal=0.6)
-    oak = s.look("Oak", (0.55, 0.40, 0.26), rough=0.55)
-    floor = s.look("RoomFloor", (0.62, 0.55, 0.47), rough=0.6)
+    trim = s.look("Trim", (0.02, 0.02, 0.02), rough=0.35, mdl=pbr((0.02, 0.02, 0.02), 0.3))
+    steel = s.look("Steel", (0.05, 0.05, 0.055), rough=0.45, metal=0.6, mdl=pbr((0.06, 0.06, 0.065), 0.35, 0.8))
+    oak = s.look("Oak", (0.55, 0.40, 0.26), rough=0.55, mdl=pbr((0.55, 0.40, 0.26), 0.5))
+    floor = s.look("RoomFloor", (0.32, 0.24, 0.18), rough=0.6, mdl=pbr((0.28, 0.20, 0.14), 0.4))
     # Mid grey, not white: white walls behind the glass set the camera's
     # exposure, and everything in the water came out as a silhouette.
-    wall = s.look("Wall", (0.46, 0.48, 0.50), rough=0.9)
-    sand = s.look("Sand", (0.86, 0.80, 0.68), rough=0.95)
-    rockl = s.look("LiveRock", (0.52, 0.42, 0.44), rough=0.9)
-    desk = s.look("Desk", (0.93, 0.93, 0.92), rough=0.5)
-    gold = s.look("DgxSpark", (0.78, 0.68, 0.50), rough=0.3, metal=0.9)
-    black = s.look("Device", (0.03, 0.03, 0.035), rough=0.4)
-    screen = s.look("Screen", (0.02, 0.05, 0.10), rough=0.1, emissive=(0.05, 0.25, 0.45))
-    led = s.look("LedPanel", (0.9, 0.95, 1.0), rough=0.3, emissive=(4.0, 4.6, 5.5))
-    cable = s.look("Cable", (0.95, 0.45, 0.05), rough=0.5)
-    grey = s.look("Grey", (0.35, 0.36, 0.38), rough=0.5, metal=0.3)
-    green = s.look("Status", (0.1, 0.9, 0.3), rough=0.3, emissive=(0.1, 1.2, 0.3))
+    # A tank is shown in a dim room: the water is the brightest thing in it,
+    # which is what makes a reef tank glow and a lit lab look like a lab.
+    wall = s.look("Wall", (0.20, 0.22, 0.26), rough=0.9, mdl=pbr((0.16, 0.18, 0.22), 0.85))
+    sand = s.look("Sand", (0.86, 0.80, 0.68), rough=0.95, mdl=("OmniPBR", dict(
+        diffuse_texture=tex["sand"][0], normalmap_texture=tex["sand"][1], reflectionroughness_texture=tex["sand"][2],
+        reflection_roughness_texture_influence=1.0, bump_factor=0.6)))
+    rockl = s.look("LiveRock", (0.52, 0.42, 0.44), rough=0.9, mdl=("OmniPBR", dict(
+        diffuse_texture=tex["rock"][0], normalmap_texture=tex["rock"][1], reflectionroughness_texture=tex["rock"][2],
+        reflection_roughness_texture_influence=1.0, bump_factor=1.4)))
+    desk = s.look("Desk", (0.93, 0.93, 0.92), rough=0.5, mdl=pbr((0.90, 0.90, 0.89), 0.35))
+    gold = s.look("DgxSpark", (0.78, 0.68, 0.50), rough=0.3, metal=0.9, mdl=pbr((0.80, 0.68, 0.48), 0.28, 1.0))
+    black = s.look("Device", (0.03, 0.03, 0.035), rough=0.4, mdl=pbr((0.03, 0.03, 0.035), 0.35))
+    glow = lambda colour, nits: ("OmniPBR", dict(diffuse_color_constant=tuple(colour), enable_emission=True,  # noqa: E731
+                                                 emissive_color=tuple(colour), emissive_intensity=nits))
+    screen = s.look("Screen", (0.02, 0.05, 0.10), rough=0.1, emissive=(0.05, 0.25, 0.45), mdl=glow((0.12, 0.45, 0.85), 600))
+    led = s.look("LedPanel", (0.9, 0.95, 1.0), rough=0.3, emissive=(4.0, 4.6, 5.5), mdl=glow((0.72, 0.84, 1.0), 14000))
+    cable = s.look("Cable", (0.95, 0.45, 0.05), rough=0.5, mdl=pbr((0.95, 0.42, 0.04), 0.4))
+    grey = s.look("Grey", (0.35, 0.36, 0.38), rough=0.5, metal=0.3, mdl=pbr((0.35, 0.36, 0.38), 0.4, 0.4))
+    green = s.look("Status", (0.1, 0.9, 0.3), rough=0.3, emissive=(0.1, 1.2, 0.3), mdl=glow((0.1, 1.0, 0.3), 2000))
 
     hx, hy = LONG / 2, WIDE / 2
     ox, oy = hx + GLASS, hy + GLASS
@@ -342,11 +460,24 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
     # The sand is drawn only inside the glass; the field runs wider so the
     # runtime can read it as one square.
     inside_y = np.flatnonzero(np.abs(line) <= hy + 1e-9)
-    s.add("Tank/Sand", *field_mesh(line, line[inside_y], sand_z[inside_y]), sand, smooth=True)
+    sand_points, sand_faces = field_mesh(line, line[inside_y], sand_z[inside_y])
+    s.add("Tank/Sand", sand_points, sand_faces, sand, smooth=True, uv=sand_points[:, :2] * 2.5)
     for i, (x, y, r, h, lean) in enumerate(ROCKS):
-        s.add(f"Tank/Rock{i}", *rock_mesh(rng, x, y, r, h, lean, sand_at), rockl, smooth=True)
+        rock_points, rock_faces = rock_mesh(rng, x, y, r, h, lean, sand_at)
+        # Wrapped round it like a globe: three times round, twice up.
+        around = np.arctan2(rock_points[:, 1] - y, rock_points[:, 0] - x) / (2 * np.pi) + 0.5
+        up = (rock_points[:, 2] - rock_points[:, 2].min()) / max(1e-6, np.ptp(rock_points[:, 2]))
+        scale = max(1.0, 2 * np.pi * r / 0.25)
+        s.add(f"Tank/Rock{i}", rock_points, rock_faces, rockl, smooth=True,
+              uv=np.stack([around * scale, up * max(1.0, h / 0.25)], axis=1))
 
     # Coral, on the rock where there is rock and on the sand where there is not.
+    import corallite
+    coral_tile_m = corallite.TILE_MM / 1000.0
+    coralline = {}
+    for form in sorted(set(CORALLITE_OF.values())):
+        corallite.write(form, into / "textures", pixels=512)
+        coralline[form] = f"textures/corallite_{form}_normal.png"
     placed = []
     spots = [(x + rng.uniform(-0.5, 0.5) * r, y + rng.uniform(-0.5, 0.5) * r) for x, y, r, h, lean in ROCKS for _ in range(2)]
     spots += [(rng.uniform(-0.85, 0.85), rng.uniform(-0.4, 0.4)) for _ in range(8)]
@@ -356,8 +487,30 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
         if not len(p):
             continue
         p = p + np.array([x, y, ground_at(x, y) - 0.01])
-        look = s.look(f"Coral{i}", TANK_COLOURS[colour], rough=0.55)
-        s.add(f"Tank/Coral{i}", p, f, look, smooth=True)
+        tint = TANK_COLOURS[colour]
+        surface = CORALLITE_OF.get(kind)
+        if surface is not None:
+            # Stony coral: its skeleton's surface is the look, so the corallite
+            # normal map — cups, or a brain coral's meandering valleys — and
+            # UVs wrapped round the colony at the map's own scale.
+            look = s.look(f"Coral{i}", tint, rough=0.55, mdl=("OmniPBR", dict(
+                diffuse_color_constant=tuple(tint), reflection_roughness_constant=0.5,
+                normalmap_texture=coralline[surface], bump_factor=1.6)))
+            centre = p.mean(axis=0)
+            around = np.arctan2(p[:, 1] - centre[1], p[:, 0] - centre[0]) / (2 * np.pi) + 0.5
+            tile = coral_tile_m
+            girth = 2 * np.pi * max(0.02, float(np.median(np.hypot(p[:, 0] - centre[0], p[:, 1] - centre[1]))))
+            s.add(f"Tank/Coral{i}", p, f, look, smooth=True,
+                  uv=np.stack([around * girth / tile, (p[:, 2] - p[:, 2].min()) / tile], axis=1))
+        else:
+            # Soft coral and sponge: living tissue a light goes into and comes
+            # back out of coloured, which is why it glows under a reef light.
+            look = s.look(f"Coral{i}", tint, rough=0.55, mdl=("OmniSurface", dict(
+                diffuse_reflection_color=tuple(tint), diffuse_reflection_roughness=0.4,
+                specular_reflection_roughness=0.42, specular_reflection_weight=0.6,
+                subsurface_weight=0.45, subsurface_scattering_color=tuple(tint),
+                subsurface_transmission_color=tuple(min(1.0, c * 1.25 + 0.1) for c in tint), subsurface_scale=0.015)))
+            s.add(f"Tank/Coral{i}", p, f, look, smooth=True)
         placed.append({"kind": kind, "sizeM": size, "colour": colour, "at": [round(x, 3), round(y, 3)]})
 
     # The pump, on the back glass, and the fan on the rim.
@@ -377,15 +530,21 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
 
     # The gantry over the middle, the overhead camera on it, and two LED bars
     # along the tank's length. The camera sits high enough to see both ends.
+    # Its two posts stand at the back corners, not across the middle of the
+    # long glass, where one cut every picture of the tank in half.
     cam_z = 1.45
-    post_y = oy + 0.12
-    g = [box((sx * 0.02 - 0.02, sy * post_y - 0.02, bottom - BOARD), (sx * 0.02 + 0.02, sy * post_y + 0.02, cam_z + 0.15))
-         for sx in (0,) for sy in (-1, 1)]
-    g.append(box((-0.02, -post_y, cam_z + 0.11), (0.02, post_y, cam_z + 0.15)))
+    post_y = -(oy + 0.12)
+    post_x = ox + 0.08
+    g = [box((sx * post_x - 0.02, post_y - 0.02, bottom - BOARD), (sx * post_x + 0.02, post_y + 0.02, cam_z + 0.15))
+         for sx in (-1, 1)]
+    g.append(box((-post_x, post_y - 0.02, cam_z + 0.11), (post_x, post_y + 0.02, cam_z + 0.15)))
+    g.append(box((-0.02, post_y, cam_z + 0.11), (0.02, 0.0, cam_z + 0.15)))
     for by in (-0.25, 0.25):
         g += [box((sx - 0.01, by - 0.01, 0.42), (sx + 0.01, by + 0.01, cam_z + 0.11)) for sx in (-0.7, 0.7)]
         g.append(box((-0.72, by - 0.01, cam_z + 0.09), (0.72, by + 0.01, cam_z + 0.11)))
     g.append(box((-0.02, -0.26, cam_z + 0.09), (0.02, 0.26, cam_z + 0.11)))
+    g.append(box((-0.72, post_y, cam_z + 0.11), (-0.68, -0.25, cam_z + 0.13)))
+    g.append(box((0.68, post_y, cam_z + 0.11), (0.72, -0.25, cam_z + 0.13)))
     s.add("Rig/Gantry", *join(*g), steel)
     s.add("Rig/OverheadCamera", *join(box((-0.035, -0.035, cam_z + 0.02), (0.035, 0.035, cam_z + 0.11)),
                                       cylinder((0, 0, cam_z + 0.02), (0, 0, cam_z), 0.015)), black)
@@ -393,12 +552,12 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
     for by in (-0.25, 0.25):
         s.extra.append(
             '    def RectLight "Led%s"\n    {\n        float inputs:width = 1.7\n        float inputs:height = 0.08\n'
-            '        float inputs:intensity = 3500\n        color3f inputs:color = (0.85, 0.92, 1.0)\n'
+            '        float inputs:intensity = 14000\n        color3f inputs:color = (0.72, 0.84, 1.0)\n'
             '        double3 xformOp:translate = (0, %.3f, 0.395)\n        uniform token[] xformOpOrder = ["xformOp:translate"]\n    }\n'
             % ("South" if by < 0 else "North", by))
     # A soft ceiling light for the room.
     s.extra.append('    def RectLight "Ceiling"\n    {\n        float inputs:width = 2.5\n        float inputs:height = 2.5\n'
-                   '        float inputs:intensity = 1800\n        color3f inputs:color = (1.0, 0.96, 0.9)\n'
+                   '        float inputs:intensity = 500\n        color3f inputs:color = (1.0, 0.96, 0.9)\n'
                    '        double3 xformOp:translate = (0.5, -0.2, %.3f)\n        uniform token[] xformOpOrder = ["xformOp:translate"]\n    }\n'
                    % (ROOM_FLOOR + 2.75))
 
@@ -411,7 +570,7 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
     # was two fill panels, and its black sides rendered as a silhouette
     # however the panels were turned. A dome is that light: even, from every
     # direction, white.
-    s.extra.append('    def DomeLight "Daylight"\n    {\n        float inputs:intensity = 2200\n'
+    s.extra.append('    def DomeLight "Daylight"\n    {\n        float inputs:intensity = 450\n'
                    '        color3f inputs:color = (1.0, 0.98, 0.95)\n    }\n')
 
     # Fill light from the room's side and from the far end, the way a tank is
@@ -426,7 +585,7 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
                            ("FillEnd", (2.4, 0.0, 1.1), "float3 xformOp:rotateXYZ = (0, 53.13, 0)")):
         s.extra.append(
             '    def RectLight "%s"\n    {\n        float inputs:width = 1.8\n        float inputs:height = 1.0\n'
-            '        float inputs:intensity = 3000\n        color3f inputs:color = (1.0, 0.97, 0.92)\n'
+            '        float inputs:intensity = 1100\n        color3f inputs:color = (1.0, 0.97, 0.92)\n'
             '        double3 xformOp:translate = (%.3f, %.3f, %.3f)\n        %s\n'
             '        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]\n    }\n'
             % (name, at[0], at[1], at[2], turn))
@@ -455,7 +614,8 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
     tether += [(0.85, -oy + 0.02, top + 0.03), (0.80, -hy + 0.10, top - 0.08)]
     s.add("Rig/Tether", *tube(tether, 0.0035), cable)
     s.add("Desk/Patch", *tube(list(curve((0.92 + dx, -1.36, dz + 0.01), (1.30 + dx, -1.40, dz + 0.02), -0.01, 8)), 0.003), black)
-    s.add("Rig/CameraCable", *tube([(0.03, 0.0, cam_z + 0.12), (0.03, -post_y, cam_z + 0.12), (0.03, -post_y - 0.03, bottom),
+    s.add("Rig/CameraCable", *tube([(0.03, 0.0, cam_z + 0.12), (0.03, post_y, cam_z + 0.12), (post_x, post_y + 0.03, cam_z + 0.12),
+                                    (post_x + 0.03, post_y + 0.03, bottom),
                                     (0.6 + dx, -1.2, ROOM_FLOOR + 0.01), (0.8 + dx, -1.38, dz + 0.01)], 0.003), black)
 
     into.mkdir(parents=True, exist_ok=True)

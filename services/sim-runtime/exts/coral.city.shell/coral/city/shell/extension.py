@@ -412,6 +412,42 @@ class CoralCityShell(omni.ext.IExt):
             # A camera that will not move is not worth ending a dive over.
             self._aim = None
 
+    def _film(self, dive, viewport) -> None:
+        """Render for people, when the dive asks: path traced, denoised, at the
+        size and rate asked. The real-time renderer is the right one to fly
+        against and the wrong one to show anybody; a film costs minutes per
+        dive and is asked for when somebody is going to watch it."""
+        try:
+            film = dive.film() if hasattr(dive, "film") else {}
+        except Exception:
+            film = {}
+        if not film:
+            return
+        try:
+            import carb
+
+            settings = carb.settings.get_settings()
+            spp = int(film.get("spp", 48))
+            for key, value in (("/rtx/rendermode", "PathTracing"),
+                               ("/rtx/pathtracing/spp", spp),
+                               ("/rtx/pathtracing/totalSpp", spp),
+                               ("/rtx/pathtracing/maxBounces", int(film.get("bounces", 8))),
+                               ("/rtx/pathtracing/maxSpecularAndTransmissionBounces", 12),
+                               ("/rtx/pathtracing/adaptiveSampling/enabled", False),
+                               ("/rtx/pathtracing/optixDenoiser/enabled", True),
+                               ("/rtx/pathtracing/fireflyFilter/enabled", True)):
+                settings.set(key, value)
+            wide, tall = int(film.get("width", 1920)), int(film.get("height", 1080))
+            try:
+                viewport.resolution = (wide, tall)
+            except Exception:
+                viewport.set_texture_resolution((wide, tall))
+            self._film_bitrate = str(film.get("bitrate", "14M"))
+            self._say("filming", renderer="PathTracing", spp=spp, width=wide, height=tall,
+                      fps=film.get("fps"), bitrate=self._film_bitrate)
+        except Exception as exc:
+            self._say("film_unavailable", why=str(exc)[:200])
+
     def _conform_lens(self, wide: int, tall: int) -> None:
         """Match the aperture to the frame, so no conform policy has an opinion.
 
@@ -519,6 +555,7 @@ class CoralCityShell(omni.ext.IExt):
             self._aim = transform.AddTransformOp()
             self._aim.Set(look)
             viewport.camera_path = camera_path
+            self._film(dive, viewport)
             self._open_the_window(camera_path)
             # Read back rather than assumed. Setting it is one line and failing
             # to set it looks exactly the same from here — you get a picture
@@ -952,8 +989,10 @@ class CoralCityShell(omni.ext.IExt):
                 from .stream import Encoder
 
                 fps, into = recorder.video_wanted()
+                rate = getattr(self, "_film_bitrate", None)
                 video = Encoder(wide, tall, fps, say=self._say,
-                                bitrate="900k", peak="1400k", into=into)
+                                bitrate=rate or "900k", peak=(rate and str(int(rate.rstrip("M")) * 3 // 2) + "M") or "1400k",
+                                into=into)
                 recorder.video = video if video.start() else False
             if not recorder.video:
                 return

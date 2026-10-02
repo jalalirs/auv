@@ -938,6 +938,11 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # patch that travels with the vehicle, which is the only part anybody can
     # see anyway.
     caustics = UsdLux.RectLight.Define(stage, "/World/Caustics")
+    # A tank's patch is the tank. Ninety metres of net over a two-metre tank
+    # put a whole cell of the pattern across the floor: no net at all.
+    global CAUSTIC_PATCH_M
+    if enclosed:
+        CAUSTIC_PATCH_M = max(1.0, min(90.0, 1.2 * float(across)))
     caustics.CreateWidthAttr(CAUSTIC_PATCH_M)
     caustics.CreateHeightAttr(CAUSTIC_PATCH_M)
     # A modulation of sunlight, not a second sun.

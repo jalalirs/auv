@@ -334,9 +334,11 @@ def write_usd(cg):
             material("Metal", "#4a4d52", 0.35, metal=0.85),
             material("Dome", "#dfe9ef", 0.02, opacity=0.12),
             material("Camera", "#0d0f11", 0.2),
-            material("Lens", "#f4f1e6", 0.1, emissive="0.6, 0.58, 0.5"), "    }\n"]
-    body.append(material("Sensor", "#2a2c30", 0.4, clearcoat=0.5))
-    body.append(material("SensorFace", "#1f6fb2", 0.35))
+            material("Lens", "#f4f1e6", 0.1, emissive="0.6, 0.58, 0.5"),
+            # Inside the Looks scope with the rest: written after it closed,
+            # they sat at /MiniHoot/Sensor and every sensor was drawn unbound.
+            material("Sensor", "#2a2c30", 0.4, clearcoat=0.5),
+            material("SensorFace", "#1f6fb2", 0.35), "    }\n"]
     for name, m, mat in the_sensors():
         body.append(usd_mesh(name, m, cg, mat))
     for part, (mat, faces) in looks.items():
@@ -350,6 +352,13 @@ def write_usd(cg):
     text = OUT / "mini-hoot.usda"
     text.write_text("".join(body))
     Usd.Stage.Open(str(text)).Export(str(PKG / "mini-hoot.usd"))
+    # And the physical materials beside the preview ones (looks.py).
+    looks = importlib.util.spec_from_file_location("mini_looks", HERE / "looks.py")
+    dressing = importlib.util.module_from_spec(looks)
+    looks.loader.exec_module(dressing)
+    hull = Usd.Stage.Open(str(PKG / "mini-hoot.usd"))
+    dressing.dress(hull)
+    hull.GetRootLayer().Save()
     (PKG / "mini-hoot.usda").unlink(missing_ok=True)
 
 

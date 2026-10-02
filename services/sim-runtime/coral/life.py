@@ -468,6 +468,19 @@ class Shoal:
                 self.going * (hurry / np.maximum(speed, 1e-9))[:, None],
                 self.going)
         self.at = self.at + self.going * dt
+        # The tail beats faster the faster it swims: about two body lengths a
+        # second per beat, with a slow idle stroke even hanging still, which is
+        # what keeps a fish in a tank from looking like a model on a wire.
+        speed = np.linalg.norm(self.going, axis=1)
+        if not hasattr(self, "beat"):
+            self.beat = self.rng.uniform(0, 2 * np.pi, self.of_them)
+            self.facing_as = self.going.copy()
+        hz = 1.2 + 2.2 * speed / np.maximum(self.length, 1e-3)
+        self.beat = self.beat + 2 * np.pi * hz * dt
+        # And it turns into where it is going over a third of a second rather
+        # than snapping there, which is how a fish turns.
+        ease = min(1.0, dt / 0.3)
+        self.facing_as = self.facing_as + (self.going - self.facing_as) * ease
 
         # Never inside the ground, and never out of the water.
         floor = self._floor(self.at[:, :2])
@@ -530,9 +543,15 @@ def put_them_in(stage, shoal, at: str = "/World/Life") -> None:
     shapes = UsdGeom.Scope.Define(stage, f"{at}/Bodies")
 
     prototypes = []
+    stroke = fishform.STROKE
     for i, kind in enumerate(shoal._kinds_present):
-        points, faces = fishform.body(fishform.OF_GROUP[kind])
-        mesh = UsdGeom.Mesh.Define(stage, f"{shapes.GetPath()}/Fish_{i}")
+      colours = None
+      for beat in range(stroke):
+        bend = float(np.sin(2.0 * np.pi * beat / stroke))
+        points, faces = fishform.body(fishform.OF_GROUP[kind], bend)
+        if colours is None:
+            colours = fishform.painted(points, kind, rng)
+        mesh = UsdGeom.Mesh.Define(stage, f"{shapes.GetPath()}/Fish_{i}_{beat}")
         # `float(...)` on every component, and it is not decoration.
         #
         # `Gf.Vec3f(*row)` on a numpy array hands the binding three
@@ -552,26 +571,33 @@ def put_them_in(stage, shoal, at: str = "/World/Life") -> None:
         # Both sides. The fins are single triangles and a one-sided fin is
         # invisible from half the reef.
         mesh.CreateDoubleSidedAttr(True)
-
-        colour = fishform.a_colour(kind, rng)
-        material = UsdShade.Material.Define(stage, f"{looks.GetPath()}/Fish_{i}")
-        shader = UsdShade.Shader.Define(stage, f"{looks.GetPath()}/Fish_{i}/S")
-        shader.CreateIdAttr("UsdPreviewSurface")
-        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
-            Gf.Vec3f(*(float(c) for c in colour)))
-        # Wet, and a fish is wetter than a rock: the flank of a live fish is
-        # the brightest specular on a reef and it is most of how one catches
-        # an eye at ten metres.
-        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.24)
-        shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
-        material.CreateSurfaceOutput().ConnectToSource(
-            shader.ConnectableAPI(), "surface")
+        mesh.CreateSubdivisionSchemeAttr("none")
+        # Painted per vertex, read by the material: a back, a belly and marks.
+        UsdGeom.PrimvarsAPI(mesh.GetPrim()).CreatePrimvar(
+            "displayColor", Sdf.ValueTypeNames.Color3fArray, UsdGeom.Tokens.vertex).Set(
+            Vt.Vec3fArray([Gf.Vec3f(*(float(c) for c in row)) for row in colours]))
+        if beat == 0:
+            material = UsdShade.Material.Define(stage, f"{looks.GetPath()}/Fish_{i}")
+            shader = UsdShade.Shader.Define(stage, f"{looks.GetPath()}/Fish_{i}/S")
+            shader.CreateIdAttr("UsdPreviewSurface")
+            reader = UsdShade.Shader.Define(stage, f"{looks.GetPath()}/Fish_{i}/Painted")
+            reader.CreateIdAttr("UsdPrimvarReader_float3")
+            reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("displayColor")
+            reader.CreateOutput("result", Sdf.ValueTypeNames.Float3)
+            shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
+                reader.ConnectableAPI(), "result")
+            # Wet, and a fish is wetter than a rock: the flank of a live fish
+            # is the brightest specular on a reef.
+            shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.22)
+            shader.CreateInput("clearcoat", Sdf.ValueTypeNames.Float).Set(0.6)
+            shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+            material.CreateSurfaceOutput().ConnectToSource(
+                shader.ConnectableAPI(), "surface")
         UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(material)
         prototypes.append(mesh.GetPath())
 
     instancer.CreatePrototypesRel().SetTargets(prototypes)
-    instancer.CreateProtoIndicesAttr(Vt.IntArray(
-        [shoal._kinds_present.index(k) for k in shoal.kinds]))
+    instancer.CreateProtoIndicesAttr(Vt.IntArray(stroke_indices(shoal)))
     # A fish is the length its group is, and they are not all the same size.
     size = np.array([GROUPS[k]["length"] for k in shoal.kinds])
     size = size * rng.uniform(0.72, 1.3, len(size))
@@ -580,8 +606,21 @@ def put_them_in(stage, shoal, at: str = "/World/Life") -> None:
     move_them(stage, shoal, at)
 
 
+def stroke_indices(shoal) -> list:
+    """Which bent shape each fish is in: its kind, and where it is in its stroke."""
+    from coral import fishform
+
+    stroke = fishform.STROKE
+    phase = getattr(shoal, "beat", None)
+    if phase is None:
+        phase = np.zeros(shoal.of_them)
+    at = (np.floor((phase % (2 * np.pi)) / (2 * np.pi) * stroke).astype(int)) % stroke
+    return [shoal._kinds_present.index(k) * stroke + int(b) for k, b in zip(shoal.kinds, at)]
+
+
 def move_them(stage, shoal, at: str = "/World/Life") -> None:
-    """Put every fish where it is now, and face it where it is going."""
+    """Put every fish where it is now, face it where it is going, and move its
+    tail."""
     from pxr import Gf, UsdGeom, Vt
 
     from coral import fishform
@@ -595,7 +634,8 @@ def move_them(stage, shoal, at: str = "/World/Life") -> None:
         [Gf.Vec3f(float(x), float(y), float(z)) for x, y, z in shoal.at]))
     instancer.CreateOrientationsAttr(Vt.QuathArray(
         [Gf.Quath(*(float(c) for c in fishform.facing(v)))
-         for v in shoal.going]))
+         for v in getattr(shoal, "facing_as", shoal.going)]))
+    instancer.CreateProtoIndicesAttr(Vt.IntArray(stroke_indices(shoal)))
 
 
 # ── and the things that are rooted ───────────────────────────────────────────

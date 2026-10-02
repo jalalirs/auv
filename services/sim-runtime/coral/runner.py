@@ -829,7 +829,11 @@ class Dive:
             water.make(stage, self.say,
                        floor=self.floor if self.floor is not None else -20.0,
                        water_level=0.0,
-                       across=float(extent[0]) if extent else 1000.0,
+                       # A tank's water is its interior, not the room the
+                       # scene's bounds take in: a 7.9 m caustic patch over a
+                       # 2 m tank was one cell of net across the whole floor.
+                       across=(float(self.interior[1][0] - self.interior[0][0]) if self.interior is not None
+                               else float(extent[0]) if extent else 1000.0),
                        working_depth=abs(float(self.position[2])),
                        visibility_m=self.visibility_m,
                        water_type=self.water_type,
@@ -1772,7 +1776,7 @@ class Dive:
                     expected = self.objective.get("timeLimitS") or self.objective.get("seconds")
                 self.recorder = Recorder(pathlib.Path(self.brief.get("recordInto",
                                          str(pathlib.Path(self.brief.get("cityPath", "/dive/city")).parent / "recording"))),
-                                         frames_hz=Recorder.rate_for(expected))
+                                         frames_hz=float(self.film().get("fps") or 0) or Recorder.rate_for(expected))
                 self.recorder.camera = self.camera()
                 self.say("recording", into=str(self.recorder.into))
             except Exception as exc:
@@ -2983,6 +2987,14 @@ class Dive:
         # its own, which is what a real one does and is worth being able to
         # see happen.
 
+    def film(self) -> dict:
+        """What a dive filmed for people rather than for its record asks of
+        the picture: {"fps", "width", "height", "spp", "bitrate"}. Empty for an
+        ordinary dive. It changes nothing that is computed, only how the
+        frames it was going to take anyway are rendered and kept."""
+        asked = (self.brief.get("objective") or {}).get("film")
+        return dict(asked) if isinstance(asked, dict) else {}
+
     def take_the_next_view(self) -> None:
         """Cycle the camera through the views a dive asked for, if it asked.
 
@@ -3642,6 +3654,11 @@ class Dive:
                 low, high = self.interior
                 shape[1:-1, 0] = np.clip(shape[1:-1, 0], low[0] + 0.004, high[0] - 0.004)
                 shape[1:-1, 1] = np.clip(shape[1:-1, 1], low[1] + 0.004, high[1] - 0.004)
+            # Relaxed before it is drawn. The solve's twenty nodes carry its
+            # shape and its tension, and drawn as they are a slack cable came
+            # out as a zig-zag of straight pieces: a cable is a curve.
+            for _ in range(6):
+                shape[1:-1] = 0.25 * shape[:-2] + 0.5 * shape[1:-1] + 0.25 * shape[2:]
             # A smoother line than the solve's twenty nodes: the cable is drawn
             # through them, not as a chain of straight pieces.
             t = np.linspace(0, 1, len(shape))

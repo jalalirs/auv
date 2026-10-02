@@ -61,11 +61,33 @@ COLOURS = {
     "bottom": ((0.20, 0.19, 0.15), (0.34, 0.31, 0.24)),
 }
 
-AROUND = 8       # sides to the body
-ALONG = 11       # rings from nose to tail
+AROUND = 16      # sides to the body
+ALONG = 22       # rings from nose to tail
+
+# A tank's fish, which are not a reef's: chromis, wrasse, butterflies and gobies
+# as an aquarium shows them, under white light at arm's length. Each is a back,
+# a belly and an accent, because almost every fish is darker above than below
+# (countershading) and that gradient is most of what makes one look like a fish
+# rather than a painted toy.
+TANK_COLOURS = {
+    "damselfish": ((0.05, 0.32, 0.55), (0.55, 0.85, 0.88), (0.10, 0.55, 0.70)),     # blue-green chromis
+    "wrasse": ((0.10, 0.45, 0.30), (0.85, 0.80, 0.55), (0.85, 0.30, 0.55)),         # green back, pink stripe
+    "butterflyfish": ((0.95, 0.80, 0.10), (0.98, 0.96, 0.85), (0.05, 0.05, 0.06)),  # yellow, black eye band
+    "bottom": ((0.45, 0.38, 0.30), (0.85, 0.80, 0.70), (0.90, 0.45, 0.15)),         # goby: sand with orange spots
+    "surgeonfish": ((0.05, 0.15, 0.55), (0.30, 0.45, 0.80), (0.95, 0.85, 0.10)),    # blue tang, yellow tail
+    "parrotfish": ((0.10, 0.50, 0.45), (0.60, 0.80, 0.70), (0.90, 0.40, 0.60)),
+    "snapper": ((0.55, 0.45, 0.30), (0.90, 0.85, 0.75), (0.95, 0.85, 0.20)),
+    "jack": ((0.35, 0.42, 0.48), (0.85, 0.88, 0.90), (0.20, 0.30, 0.40)),
+    "solitary": ((0.35, 0.32, 0.25), (0.80, 0.75, 0.65), (0.50, 0.30, 0.20)),
+}
+
+# How many shapes a swimming stroke is drawn as. A body that never bends glides
+# like a toy on a wire; eight bent shapes cycled at the tail-beat rate is a
+# fish swimming, at no cost a renderer notices.
+STROKE = 8
 
 
-def body(plan: str):
+def body(plan: str, bend: float = 0.0):
     """One fish, a metre long, facing +x.
 
     A tube of elliptical rings whose height and width follow the outline, then
@@ -80,6 +102,13 @@ def body(plan: str):
     # a taper out of it, which is what a fish looks like from above and from
     # the side.
     xs = np.linspace(0.0, 1.0 - says["tail"], ALONG)
+    # The nose is at +x. It was at -x, and `facing` turns +x down the way a
+    # fish is going, so every fish on this platform swam tail first.
+    def sway(along):
+        # A carangiform stroke: the front holds still and the back half
+        # swings, more towards the tail, as a travelling wave.
+        s = np.clip(along, 0.0, 1.0)
+        return 0.11 * bend * s ** 2 * np.sin(np.pi * 1.4 * s)
     shoulder = says["nose"] + 0.18
     fat = np.where(
         xs < shoulder,
@@ -90,8 +119,8 @@ def body(plan: str):
     turn = np.linspace(0, 2 * np.pi, AROUND, endpoint=False)
     for i, x in enumerate(xs):
         for a in turn:
-            points.append((x - 0.5,
-                           says["wide"] * fat[i] * np.sin(a),
+            points.append((0.5 - x,
+                           says["wide"] * fat[i] * np.sin(a) + sway(x),
                            says["deep"] * fat[i] * np.cos(a)))
     for i in range(ALONG - 1):
         for j in range(AROUND):
@@ -105,23 +134,51 @@ def body(plan: str):
 
     # The tail. Two lobes off the tail root, which is the shape that reads as
     # a fish from behind as well as from the side.
-    root = xs[-1] - 0.5
-    tip = 0.5
+    root = 0.5 - xs[-1]
+    tip = -0.5
     span = says["fin"] * 1.9
+    flick = sway(1.0) + 0.06 * bend          # the tail is where the stroke ends
     at = len(points)
-    points += [(root, 0.0, 0.0), (tip, 0.0, span), (tip, 0.0, -span),
-               (tip, 0.0, 0.18 * span)]
+    points += [(root, sway(xs[-1]), 0.0), (tip, flick, span), (tip, flick, -span),
+               (tip + 0.05, flick * 0.9, 0.18 * span)]
     faces += [(at, at + 1, at + 3), (at, at + 3, at + 2)]
 
     # And a dorsal fin, along the back.
     at = len(points)
-    points += [(xs[2] - 0.5, 0.0, says["deep"] * fat[2]),
-               (xs[-2] - 0.5, 0.0, says["deep"] * fat[-2]),
-               (xs[len(xs) // 2] - 0.5, 0.0,
-                says["deep"] * fat[len(xs) // 2] + says["fin"])]
+    mid = len(xs) // 2
+    points += [(0.5 - xs[3], sway(xs[3]), says["deep"] * fat[3]),
+               (0.5 - xs[-3], sway(xs[-3]), says["deep"] * fat[-3]),
+               (0.5 - xs[mid], sway(xs[mid]), says["deep"] * fat[mid] + says["fin"])]
     faces += [(at, at + 2, at + 1)]
 
     return np.array(points, dtype="float32"), np.array(faces, dtype="int32")
+
+
+def painted(points, group: str, rng) -> np.ndarray:
+    """A colour per vertex: dark back, pale belly, and the group's accent where
+    it sits on that fish — a band through the eye, a stripe, spots, a tail."""
+    back, belly, accent = TANK_COLOURS.get(group, TANK_COLOURS["solitary"])
+    back, belly, accent = (np.array(c) * rng.uniform(0.9, 1.1) for c in (back, belly, accent))
+    z = points[:, 2]
+    up = np.clip((z - z.min()) / max(1e-6, z.max() - z.min()), 0.0, 1.0)[:, None]
+    colour = belly + (back - belly) * up ** 0.8
+    along = 0.5 - points[:, 0]                       # 0 at the nose, 1 at the tail
+    mark = np.zeros(len(points), dtype=bool)
+    if group == "butterflyfish":
+        mark = (along > 0.12) & (along < 0.2)
+    elif group == "wrasse":
+        mark = np.abs(z - 0.0) < 0.025
+    elif group == "bottom":
+        mark = (np.sin(along * 60.0) * np.sin(z * 90.0)) > 0.75
+    elif group == "surgeonfish":
+        mark = along > 0.82
+    elif group == "damselfish":
+        mark = along > 0.8
+    colour[mark] = accent
+    # And an eye, which is the first thing anybody looks for on a fish.
+    eye = (along < 0.1) & (along > 0.05) & (z > 0.02) & (np.abs(points[:, 1]) > 0.01)
+    colour[eye] = (0.02, 0.02, 0.02)
+    return np.clip(colour, 0.0, 1.0)
 
 
 def a_colour(group: str, rng) -> tuple:

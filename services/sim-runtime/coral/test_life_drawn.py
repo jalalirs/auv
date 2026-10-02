@@ -65,7 +65,8 @@ def _fake_pxr():
     holds.Vt = types.SimpleNamespace(
         Vec3fArray=list, IntArray=list, QuathArray=list)
     holds.UsdGeom = types.SimpleNamespace(
-        PointInstancer=Anything(), Scope=Anything(), Mesh=Anything())
+        PointInstancer=Anything(), Scope=Anything(), Mesh=Anything(),
+        PrimvarsAPI=Anything(), Tokens=Anything())
     holds.UsdShade = types.SimpleNamespace(
         Material=Anything(), Shader=Anything(), MaterialBindingAPI=Anything())
     return holds
