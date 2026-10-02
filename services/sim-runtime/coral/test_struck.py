@@ -40,7 +40,7 @@ def test_a_dive_that_hit_nothing_says_so_rather_than_saying_nothing():
     """A column that is absent when a controller hit nothing and present when
     it did cannot be compared down its length."""
     said = _a_dive().what_it_hit()
-    assert said == {"things": 0, "which": [], "ground": 0, "glass": 0}
+    assert said == {"things": 0, "which": [], "ground": 0, "glass": 0, "coral": 0}
 
 
 def test_each_thing_is_counted_once_however_long_it_was_held_against():

@@ -434,3 +434,12 @@ def test_a_long_tank_uses_its_length():
     assert np.all(np.abs(shoal.at[:, 0]) <= 0.92 + 1e-9)
     assert np.all(np.abs(shoal.at[:, 1]) <= 0.46 + 1e-9)
     assert np.ptp(shoal.at[:, 0]) > 0.6
+
+
+def test_each_colony_bends_in_the_water_where_it_stands():
+    """The one in front of a thruster bends away from it; the one beside it,
+    out of the jet, stands still."""
+    flow = np.array([[0.0, 0.0], [-0.6, 0.0]])
+    lean, towards = life.bending(flow, np.zeros(2), 1.0)
+    assert lean[0] == 0.0 and lean[1] > 0.2
+    assert abs(abs(towards[1]) - np.pi) < 1e-9

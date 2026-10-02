@@ -99,12 +99,18 @@ class Sonar:
     def due(self, t: float) -> bool:
         return self.last_t is None or (t - self.last_t) >= self.every
 
-    def ping(self, t: float, position, rotation, world=None, seabed=None, walls=None) -> np.ndarray:
+    def ping(self, t: float, position, rotation, world=None, seabed=None, walls=None,
+             targets=None) -> np.ndarray:
         """One sweep of the fan: the range along each beam, or NaN for nothing.
 
         The beams are cast from where the sonar is on the hull and along where
         the hull is pointing, because a sonar bolted to the front of a vehicle
         that is pitched down is looking at the bottom.
+
+        `targets` are things that echo but are not ground: (n, 4) of x, y, z
+        and a radius — the coral colonies standing on the rock, and the fish,
+        whose swim bladders are what an echosounder hears. A beam hears one
+        when it is inside the beam's cone.
         """
         self.last_t = t
         self.pings += 1
@@ -132,6 +138,10 @@ class Sonar:
                         far = hit
             if walls is not None:
                 hit = _glass(origin, way, walls)
+                if hit is not None and hit < far:
+                    far = hit
+            if targets is not None and len(targets):
+                hit = _in_the_cone(origin, way, far, 0.5 * self.spread(), targets)
                 if hit is not None and hit < far:
                     far = hit
             if far >= self.far:
@@ -314,3 +324,34 @@ def _ground(origin, way, far: float, seabed):
         was = above
         t += step
     return None
+
+
+def _in_the_cone(origin, way, far: float, half_angle: float, targets) -> float | None:
+    """The nearest of `targets` (x, y, z, radius) the beam hears, as the range
+    to its near side, or nothing.
+
+    Across the beam's width, as the ground is heard (see `ping`): a target
+    counts when its bearing off the beam's axis, less what its own size
+    subtends, is inside the half-angle. Not across its height — the fan is
+    treated as flat, as it has been for the ground, so a colony a quarter of a
+    metre below the vehicle is not an obstacle ahead of it. A Ping2's beam is
+    a cone, and the bottom returns that brings in a shallow tank are the next
+    thing this should model; until then, flat, and said."""
+    targets = np.asarray(targets, dtype=float)
+    off = targets[:, :3] - origin[None, :]
+    ahead = off @ way
+    keep = (ahead > 0.0) & (ahead - targets[:, 3] < far)
+    if not keep.any():
+        return None
+    off, ahead, r = off[keep], ahead[keep], targets[keep, 3]
+    # Out of the fan's plane by more than its own size: unheard.
+    up = np.array([0.0, 0.0, 1.0]) - way * way[2]
+    up /= max(float(np.linalg.norm(up)), 1e-9)
+    height = np.abs(off @ up)
+    across = off - ahead[:, None] * way[None, :] - (off @ up)[:, None] * up[None, :]
+    sideways = np.linalg.norm(across, axis=1)
+    angle = np.arctan2(sideways, ahead) - np.arctan2(r, ahead)
+    inside = (angle <= half_angle) & (height <= r)
+    if not inside.any():
+        return None
+    return float(max(0.0, float((np.hypot(ahead[inside], sideways[inside]) - r[inside]).min())))

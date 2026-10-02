@@ -200,9 +200,70 @@ def anatomy(plan: str, bend: float = 0.0):
             np.array(parts, dtype="int8"))
 
 
+def _sheets():
+    try:
+        from coral import fish_species
+    except ImportError:          # the runtime puts coral/ itself on the path
+        import fish_species
+    return fish_species.SPECIES
+
+
+def plan_of(kind: str) -> str:
+    """The body plan a species or a behaviour group swims under."""
+    sheets = _sheets()
+    if kind in sheets:
+        return sheets[kind]["plan"]
+    return OF_GROUP[kind]
+
+
+def marked(points, mark: str, plan: str) -> tuple[np.ndarray, np.ndarray]:
+    """Where a species' marks are on the body: (accent, edge) masks.
+
+    The marks that name a reef fish at a glance — a clownfish's three white
+    bands, a copperband's bars, a foureye's false eye by its tail, a wrasse's
+    stripes, a tang's tail. `edge` is a thin dark rim, which bands and
+    eyespots have."""
+    x, z = points[:, 0], points[:, 2]
+    along = 0.5 - x                                  # 0 at the nose, 1 at the tail
+    height = np.clip((z - z.min()) / max(1e-6, z.max() - z.min()), 0.0, 1.0)
+    accent = np.zeros(len(points), dtype=bool)
+    edge = np.zeros(len(points), dtype=bool)
+    if mark == "bands":
+        for a, b in ((0.17, 0.25), (0.45, 0.53), (0.80, 0.86)):
+            accent |= (along > a) & (along < b)
+            edge |= ((along > a - 0.015) & (along <= a)) | ((along >= b) & (along < b + 0.015))
+    elif mark == "stripes":
+        if plan == "elongate":
+            accent = (np.abs((height * 6.0) % 1.0 - 0.5) < 0.13) & (along < 0.85)
+        else:
+            accent = np.abs(height - 0.5) < 0.07
+            accent |= along > 0.84
+    elif mark == "bars":
+        accent = (np.sin(along * 2.0 * np.pi * 3.0) > 0.55) & (along > 0.1) & (along < 0.85)
+    elif mark == "tail":
+        accent = along > 0.82
+    elif mark == "eyespot":
+        ring = (along - 0.72) ** 2 + ((height - 0.62) * 0.6) ** 2
+        accent = ring < 0.045 ** 2
+        edge = (ring >= 0.045 ** 2) & (ring < 0.06 ** 2)
+    elif mark == "spots":
+        accent = (np.sin(along * 60.0) * np.sin(z * 90.0)) > 0.75
+    return accent, edge
+
+
 def painted(points, group: str, rng, parts=None) -> np.ndarray:
-    """A colour per vertex: dark back, pale belly, and the group's accent where
-    it sits on that fish — a band through the eye, a stripe, spots, a tail."""
+    """A colour per vertex: dark back, pale belly, and the accent where it sits
+    on that fish — bands, stripes, bars, an eyespot, spots, a tail. A species
+    is painted from its own sheet; a behaviour group from the group's."""
+    sheets = _sheets()
+    if group in sheets:
+        sheet = sheets[group]
+        back, belly, accent = (np.array(c) * rng.uniform(0.95, 1.05) for c in sheet["palette"])
+        colour = _shaded(points, back, belly)
+        marks, rim = marked(points, sheet["mark"], sheet["plan"])
+        colour[marks] = accent
+        colour[rim] = (0.03, 0.03, 0.035)
+        return _finished(colour, accent, parts)
     back, belly, accent = TANK_COLOURS.get(group, TANK_COLOURS["solitary"])
     back, belly, accent = (np.array(c) * rng.uniform(0.9, 1.1) for c in (back, belly, accent))
     z = points[:, 2]
@@ -221,6 +282,16 @@ def painted(points, group: str, rng, parts=None) -> np.ndarray:
     elif group == "damselfish":
         mark = along > 0.8
     colour[mark] = accent
+    return _finished(colour, accent, parts)
+
+
+def _shaded(points, back, belly) -> np.ndarray:
+    z = points[:, 2]
+    up = np.clip((z - z.min()) / max(1e-6, z.max() - z.min()), 0.0, 1.0)[:, None]
+    return belly + (back - belly) * up ** 0.8
+
+
+def _finished(colour, accent, parts) -> np.ndarray:
     if parts is not None:
         # Fins carry the body's colour lightened towards the accent, and the
         # eye is a dark ball with nothing painted on it.

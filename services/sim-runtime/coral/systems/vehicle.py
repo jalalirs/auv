@@ -1,8 +1,9 @@
 """The hull, moved by its thrusters, the water and its cable.
 
 Reads    thrust, the water, the helm (its actuators), the place
-Writes   vehicle (where it is and how it moves), contacts, cable
-Before   the clock: it moves the vehicle from the start of the tick to the end
+Writes   vehicle (where it is and how it moves), contacts
+Before   the clock: it moves the vehicle from the start of the tick to the end;
+         and the cable, whose pull it feels as the cable left it last tick
 
 The forces are hydrodynamics.py: thrust, drag on the motion *through the
 water*, buoyancy and its righting moment, added mass, all for the share of the
@@ -72,12 +73,14 @@ def turn(small: np.ndarray) -> np.ndarray:
 class VehicleSystem(System):
     name = "vehicle"
     reads = ("thrust", "water", "helm", "place")
-    before = ("clock",)
-    writes = ("vehicle", "contacts", "cable")
+    before = ("clock", "cable", "coral")
+    writes = ("vehicle", "contacts")
 
-    def __init__(self, dt: float, say) -> None:
+    def __init__(self, dt: float, say, attach=(0.0, 0.0, 0.0)) -> None:
         self.dt = float(dt)
         self.say = say
+        # Where the cable is tied on the hull, body frame: where its pull acts.
+        self.attach = np.asarray(attach, dtype=float)
 
     def step(self, world) -> None:
         v, water, dt = world.vehicle, world.water, self.dt
@@ -102,14 +105,14 @@ class VehicleSystem(System):
                            depth_m=here, temperature_c=water.temperature_at(here),
                            density=water.density_at(here))
         v.wrench = wrench
-        # And the cable, if there is one out. In the world frame — a tether
-        # does not know which way the vehicle is pointing — so it is turned
-        # into the body before it joins the rest.
+        # And the cable, if there is one out: its pull, in the world frame,
+        # turned into the body, acting where it is tied on — so a cable caught
+        # behind the vehicle holds it back and pitches it (systems/tether.py).
         cable = world.cable
         if cable is not None and cable.out:
-            cable.settle(v.position, water.current)
-            pulled = cable.pull(water.current)
-            wrench[:3] = wrench[:3] + v.rotation.T @ pulled
+            pulled = v.rotation.T @ cable.force
+            wrench[:3] = wrench[:3] + pulled
+            wrench[3:] = wrench[3:] + np.cross(self.attach, pulled)
 
         effective = v.effective if submerged >= 1.0 else body.effective_mass(submerged)
         v.velocity[:3] += (wrench[:3] / effective[:3]) * dt
@@ -118,4 +121,4 @@ class VehicleSystem(System):
         v.rotation = v.rotation @ turn(v.velocity[3:] * dt)
 
         v.against_the_ground = False
-        contact.land(v, world.place, world.contacts, cable, dt, self.say)
+        contact.land(v, world.place, world.contacts, cable, dt, self.say, coral=world.coral)

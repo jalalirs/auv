@@ -1,5 +1,5 @@
 {
- "_": "mini-hoot's round trip of iocean-tank-1: along the north glass to the far end, back along the south glass, and home, at 0.38 m, flown by wary on its three echosounders. Points are ahead (dx) and to starboard (dy) of where it starts, in metres. wary remembers what its echosounders heard for ten seconds and keeps a corridor 0.52 m wide clear of it: the vehicle's 0.34 m length and a margin. Its fence is the tank's inside glass, which the operator knows, so a detour is never chosen on the far side of the glass.",
+ "_": "mini-hoot's round trip of iocean-tank-1: along the north glass to the far end, back along the south glass, and home, at 0.34 m — over the tops of the corals on the rock, which since r6 are solid and stop a vehicle (at 0.38 m its keel met the branching colony by the far end's waypoint) — flown by wary on its three echosounders. Points are ahead (dx) and to starboard (dy) of where it starts, in metres. wary remembers what its echosounders heard for ten seconds and keeps a corridor 0.52 m wide clear of it: the vehicle's 0.34 m length and a margin. Its fence is the tank's inside glass, which the operator knows, so a detour is never chosen on the far side of the glass.",
  "kind": "waypoints",
  "controller": "wary",
  "radiusM": 0.08,
@@ -8,27 +8,27 @@
   {
    "dx": 0.55,
    "dy": 0.15,
-   "depthM": 0.38
+   "depthM": 0.34
   },
   {
    "dx": -0.55,
    "dy": 0.15,
-   "depthM": 0.38
+   "depthM": 0.34
   },
   {
    "dx": -0.55,
    "dy": -0.15,
-   "depthM": 0.38
+   "depthM": 0.34
   },
   {
    "dx": 0.55,
    "dy": -0.15,
-   "depthM": 0.38
+   "depthM": 0.34
   },
   {
    "dx": 0.0,
    "dy": 0.0,
-   "depthM": 0.38
+   "depthM": 0.34
   }
  ],
  "tune": {

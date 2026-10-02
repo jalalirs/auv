@@ -1143,6 +1143,16 @@ def orbital_here(x: float, y: float, depth: float, seconds: float = 0.0):
 
 
 
+def orbital_many(points, seconds: float = 0.0):
+    """`orbital_here` for many points at once, (n, 3) in metres with z up."""
+    import numpy as _np
+
+    points = _np.atleast_2d(_np.asarray(points, dtype=float))
+    if _SEA is None or _SEA.flat:
+        return _np.zeros((len(points), 3))
+    return _SEA.orbital_at_many(points[:, 0], points[:, 1], -points[:, 2], seconds)
+
+
 # How far out the water goes before it is just water.
 #
 # Beyond the seabed there is no geometry, and the renderer's fog is applied per

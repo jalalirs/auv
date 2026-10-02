@@ -7,6 +7,7 @@ declarations (engine/schedule.py), and `tools/regress` holds it to the dives it
 flew before each move.
 
     faults        what the dive was told would go wrong, and when
+    light         the day: the hour, and the sun or a tank's lights
     water         the water's motion: current, wind drift, the waves' orbits
     views         which camera a dive that asked for several is on
     navigation    where the vehicle believes it is
@@ -16,6 +17,7 @@ flew before each move.
     vehicle       the hull moved by its thrusters, the water and its cable
     contact       the ground, the glass and what is in the water, stopping it
     wash          the jet of water behind every thruster that is pushing
+    fish          every fish, each with a mind: schooling, foraging, fleeing
     tasking       the task: planned, scored, and whether the dive is over
     outputs       the ROS 2 bridge and the record
 

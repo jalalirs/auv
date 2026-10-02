@@ -12,6 +12,8 @@ system, because nothing in a dive moves the seabed — yet. When coral breaks
 
 from __future__ import annotations
 
+import numpy as np
+
 
 class Place:
     def __init__(self) -> None:
@@ -19,6 +21,27 @@ class Place:
         self.floor = None
         self.interior = None
         self.things = None
+
+    def bottoms(self, points) -> np.ndarray:
+        """Where the bottom is under each of many points; -inf where there is
+        none."""
+        points = np.atleast_2d(np.asarray(points, dtype=float))
+        if self.seabed is not None:
+            many = getattr(self.seabed, "under_many", None)
+            if many is not None:
+                return many(points[:, 0], points[:, 1])
+            return np.array([self.seabed.under(float(x), float(y)) for x, y in points[:, :2]])
+        return np.full(len(points), -np.inf if self.floor is None else float(self.floor))
+
+    def facing(self, points) -> np.ndarray:
+        """Which way the bottom faces under each of many points, (n, 3)."""
+        points = np.atleast_2d(np.asarray(points, dtype=float))
+        if self.seabed is None:
+            return np.tile([0.0, 0.0, 1.0], (len(points), 1))
+        many = getattr(self.seabed, "normal_many", None)
+        if many is not None:
+            return many(points[:, 0], points[:, 1])
+        return np.array([self.seabed.normal(float(x), float(y)) for x, y in points[:, :2]])
 
     def bottom_under(self, position) -> float | None:
         """Where the bottom is under a point: the heightfield's, or the flat

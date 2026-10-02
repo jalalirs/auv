@@ -81,8 +81,15 @@ CORALLITE_OF = {"brain": "brain", "massive": "massive", "branching": "branching"
 TANK_COLOURS = {"violet": (0.45, 0.25, 0.85), "teal": (0.10, 0.70, 0.66), "green": (0.30, 0.78, 0.30),
                 "pink": (0.95, 0.40, 0.65), "orange": (0.98, 0.52, 0.15), "lime": (0.70, 0.90, 0.20),
                 "purple": (0.60, 0.20, 0.60), "red": (0.85, 0.18, 0.18), "yellow": (0.98, 0.85, 0.25)}
-# Fish two cubic metres hold: small, and not many.
-FISH = {"damselfish": 16, "wrasse": 5, "butterflyfish": 2, "bottom": 5}
+# Fish two cubic metres hold: small, and not many. By species, each with its
+# sheet in services/sim-runtime/coral/fish_species.py: a shoal of chromis over
+# the branching coral, a pair of clownfish in the plume coral that stands for
+# their anemone, a pair of copperbands picking at the rock, six-line wrasse in
+# its crevices, gobies at their burrows in the sand, one yellow tang grazing,
+# and Banggai cardinals, which are out when the lights go off.
+FISH = {"chromis_viridis": 12, "amphiprion_ocellaris": 2, "chelmon_rostratus": 2,
+        "pseudocheilinus_hexataenia": 3, "amblyeleotris_wheeleri": 3,
+        "zebrasoma_flavescens": 1, "pterapogon_kauderni": 5}
 
 
 # ── geometry ─────────────────────────────────────────────────────────────────
@@ -528,7 +535,9 @@ def build(name: str, into: pathlib.Path, seed: int = 7) -> dict:
                 subsurface_weight=0.45, subsurface_scattering_color=tuple(tint),
                 subsurface_transmission_color=tuple(min(1.0, c * 1.25 + 0.1) for c in tint), subsurface_scale=0.015)))
             s.add(f"Tank/Coral{i}", p, f, look, smooth=True)
-        placed.append({"kind": kind, "sizeM": size, "colour": colour, "at": [round(x, 3), round(y, 3)]})
+        placed.append({"kind": kind, "sizeM": size, "colour": colour, "at": [round(x, 3), round(y, 3)],
+                       # Which prim is this colony, so a dive can draw what happened to it.
+                       "prim": f"Tank/Coral{i}"})
 
     # The pump, on the back glass, and the fan on the rim.
     s.add("Tank/Pump", *join(cylinder((-hx + 0.005, -0.30, -0.35), (-hx + 0.07, -0.30, -0.35), 0.03),
@@ -667,7 +676,9 @@ def a_place(name: str, made: dict) -> dict:
         "beginAt": [0.0, 0.0, -0.4],
         "beginBecause": "in open water in the middle of the tank, over the sand between the two reefs",
         "life": {"tank": True, "count": FISH, "scale": 0.14,
-                 "from": "chosen: what a two-cubic-metre reef tank holds — chromis, wrasse, a pair of butterflies, gobies on the sand"},
+                 "from": "chosen: what a two-cubic-metre reef tank holds, by species"},
+        # The live rock, which is where the fish that hide in crevices hide.
+        "rocks": [{"at": [x, y], "radiusM": r, "heightM": h} for x, y, r, h, lean in ROCKS],
         "water": {"type": "I", "from": "chosen: a filtered tank is clearer than the open ocean"},
         # How the cameras sit in a place two metres long. The built-in views
         # are sized for a reef and every one of them would be outside the glass.

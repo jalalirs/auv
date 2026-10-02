@@ -116,3 +116,19 @@ def test_the_stand_in_would_have_caught_it():
     with pytest.raises(TypeError, match="C\\+\\+ signature"):
         StrictlyFloats(np.float32(1.0), 2.0, 3.0)
     StrictlyFloats(1.0, 2.0, 3.0)
+
+
+def a_school_with_minds():
+    import fishmind
+
+    habitat = fishmind.Habitat(lambda x, y: -0.93, (0.0, 0.0), 2.0, 0.0, box=(0.92, 0.46), scale=0.14)
+    return fishmind.School({"amphiprion_ocellaris": 2, "chelmon_rostratus": 2, "chromis_viridis": 6},
+                           habitat, seed=1, tank=True)
+
+
+def test_fish_with_minds_are_drawn_by_species_in_the_types_asked_for(without_a_renderer):
+    """Each species its own shape and its own paint, each fish its own size."""
+    school = a_school_with_minds()
+    school.step(0.05, light=(11.0, 1.0))
+    life.put_them_in(Anything(), school)
+    life.move_them(Anything(), school)

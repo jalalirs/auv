@@ -204,4 +204,4 @@ def test_a_vehicle_cannot_reach_past_its_cable():
     far = float(np.linalg.norm(dive.position[:2] - np.array([0.0, 0.0])))
     assert far <= 40.5, f"it got {far:.1f} m out on forty metres of cable"
     assert far > 35.0, f"it only got {far:.1f} m out, so something else stopped it"
-    assert dive.tether.struck > 0, "and it should have said it reached the end"
+    assert dive.ocean.contacts.cable_held > 0, "and it should have said it reached the end"

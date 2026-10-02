@@ -192,6 +192,24 @@ class Seabed:
             + h[row + 1, column + 1] * fu * fv
         )
 
+    def under_many(self, x, y) -> np.ndarray:
+        """`under` for many points at once: a cable's nodes, a school's fish."""
+        u = np.clip((np.asarray(x, dtype=float) / self.across + 0.5) * (self.columns - 1), 0.0, self.columns - 1.0001)
+        v = np.clip((np.asarray(y, dtype=float) / self.across + 0.5) * (self.rows - 1), 0.0, self.rows - 1.0001)
+        column, row = u.astype(int), v.astype(int)
+        fu, fv = u - column, v - row
+        h = self.heights
+        return (h[row, column] * (1 - fu) * (1 - fv) + h[row, column + 1] * fu * (1 - fv)
+                + h[row + 1, column] * (1 - fu) * fv + h[row + 1, column + 1] * fu * fv).astype(float)
+
+    def normal_many(self, x, y) -> np.ndarray:
+        """`normal` for many points at once, (n, 3)."""
+        x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+        step = self.across / max(1, self.columns - 1)
+        east = self.under_many(x + step, y) - self.under_many(x - step, y)
+        north = self.under_many(x, y + step) - self.under_many(x, y - step)
+        normal = np.column_stack([-east, -north, np.full_like(east, 2.0 * step)])
+        return normal / np.linalg.norm(normal, axis=1, keepdims=True)
 
     def normal(self, x: float, y: float) -> np.ndarray:
         """Which way the bottom faces at a point: a unit vector, z up.
@@ -453,6 +471,7 @@ class Dive:
     _tuned_from_objective = _kept("task", "tuned_from_objective")
     recorder = _kept("record")
     bridge = _kept("bridge")
+    shoal = _kept("fish")
 
     def __init__(self, brief: dict, body, allocator, scene: pathlib.Path,
                  say) -> None:
@@ -695,6 +714,8 @@ class Dive:
         except Exception:
             pass
         self.put_the_vehicle_in_the_place(corner, far, extent)
+        # The fish are in the water whether or not anybody draws them.
+        self.stock_the_place(city)
         # The same two things a drawn dive ends its opening with. Without the
         # first there is no task, no recorder and no score: the dive flies, the
         # vehicle holds where it was put, and the record is a vehicle doing
@@ -927,8 +948,18 @@ class Dive:
                        enclosed=bool(self._site_is_enclosed()))
             self.water = water
 
-            # And what lives in it.
-            self.shoal = self._stock_the_reef(stage, city, extent)
+            # And what lives in it: stocked as in every dive, then drawn.
+            self.stock_the_place(city)
+            if self.shoal is not None:
+                import life
+                try:
+                    life.put_them_in(stage, self.shoal)
+                except Exception as bad:
+                    # Said, not swallowed: a dive that cannot draw its fish is
+                    # still a dive; one that cannot say why is not worth running.
+                    import traceback
+                    self.say("life_failed", why=str(bad)[:200],
+                             where=traceback.format_exc().strip().splitlines()[-2][:160])
 
         # A body of the vehicle's actual mass, at the vehicle's actual place.
         # What is being integrated is the dynamics; a dive that reported a
@@ -2363,7 +2394,7 @@ class Dive:
         """
         import json
 
-        from tether import Tether
+        from systems.tether import Umbilical
 
         said = {}
         try:
@@ -2410,15 +2441,19 @@ class Dive:
             where = ("nothing was drawn at the surface, so the cable runs "
                      "straight up — which is the best case and rarely the day")
 
-        self.tether = Tether(said)
-        self.tether.start(surface, self.position)
-        # Settled properly once, so the dive does not open with a cable that
-        # has not found its shape yet. Three thousand passes of twenty nodes is
-        # nothing to do once and is the difference between a cable that reports
-        # four newtons and the same cable reporting seven: during the dive the
-        # shape is carried and a few passes a step keep it, but the first
-        # second of the record should not be the only wrong part of it.
-        self.tether.settle(self.position, self.current, passes=3000)
+        cable = Umbilical(said)
+        tied = self.position + self.rotation @ self.tether_attach
+        cable.start(surface, tied)
+        # Let it fall where the still water leaves it before the dive starts:
+        # two seconds of the cable's own physics, nothing else moving.
+        still = self.ocean.water
+
+        def calm(points):
+            return still.flow_at(points, 0.0)
+
+        for _ in range(int(2.0 / self.dt)):
+            cable.step(self.dt, tied, calm, self.ocean.place, self.water_level)
+        self.tether = cable
         self.say("tether_out", lengthM=round(self.tether.length_m, 1),
                  diameterM=self.tether.diameter_m,
                  from_=[round(float(v), 1) for v in surface], where=where)
@@ -2811,115 +2846,40 @@ class Dive:
         See systems/water.py."""
         return self.ocean.water.orbital(self.position, self.half_height, self.simulated)
 
-    # How far from where a dive begins the fish are put.
-    #
-    # Not the whole site. A kilometre of seabed at the density this reef
-    # actually holds is tens of thousands of fish, which is both more than can
-    # be drawn and more than a vehicle working one patch will ever see. So the
-    # water around the work is stocked properly and the rest is empty, and the
-    # record says which — an autonomy scored on counting fish has to know where
-    # the counting means anything.
-    STOCKED_TO_M = 90.0
-    MOST_FISH = 1400
-
-    def _stock_the_reef(self, stage, city, extent):
-        """Put the fish this place recorded into the water around the work."""
+    def stock_the_place(self, city: pathlib.Path) -> None:
+        """Set the day, and put in the fish the place says live in it.
+        See systems/light.py and systems/fish.py."""
         import json
-        import math
 
-        import life
+        from systems import fish
 
+        parameters = (self.brief.get("conditions") or {}).get("parameters") or {}
+        indoors = bool(self.interior is not None or self._site_is_enclosed())
+        self.ocean.light.set_for(parameters, indoors)
+        self.say("day_is", **self.ocean.light.said())
+        self.shoal = None
+        try:
+            described = json.loads((city / "site.json").read_text())
+        except Exception:
+            self.say("no_life", why="this place has no record of what lives in it")
+            return
+        seabed, floor = self.seabed, self.floor
+
+        def bottom_under(x, y):
+            return seabed.under(float(x), float(y)) if seabed is not None else floor
+
+        # The coral, solid where it is stony (systems/coral.py).
+        from systems.coral import colonies_of
+        self.ocean.replace("coral", colonies_of(described, bottom_under))
+        if len(self.ocean.coral):
+            self.say("coral_is", colonies=len(self.ocean.coral),
+                     solid=int(self.ocean.coral.solid().sum()), from_=self.ocean.coral.from_)
         if asked_for("CORAL_CITY_LIFE", 1.0) == 0.0:
             self.say("no_life", why="asked for a reef with nothing living in it")
-            return None
-        described = json.loads((city / "site.json").read_text())
-        says = described.get("life")
-        # A tank says how many fish it holds, not what share of a reef's
-        # record each kind is; asked after the reef's question, every tank
-        # was told it had no record of what lives in it and had no fish.
-        if says and says.get("tank"):
-            return self._stock_the_tank(stage, says)
-        if not says or not says.get("shares"):
-            self.say("no_life", why="this place has no record of what lives in it")
-            return None
-
-        reef = math.pi * self.STOCKED_TO_M ** 2
-        # Only the part of that which is reef rather than sand. The habitat
-        # shares are on the place; where they are not, half is the honest
-        # guess and it is written down as one.
-        holds = float(described.get("reef", {}).get("reefFraction", 0.5))
-        wanted = int(reef * holds * float(says.get("perSquareMetre", 0.1)))
-        how_many = min(self.MOST_FISH, wanted)
-
-        groups = {}
-        left = how_many
-        for i, (name, share) in enumerate(sorted(says["shares"].items())):
-            take = (left if i == len(says["shares"]) - 1
-                    else int(round(how_many * float(share))))
-            groups[name] = max(0, min(left, take))
-            left -= groups[name]
-
-        shoal = life.Shoal(
-            {k: v for k, v in groups.items() if v},
-            lambda x, y: (self.seabed.under(float(x), float(y))
-                          if self.seabed is not None else self.floor),
-            across=2.2 * self.STOCKED_TO_M,
-            water_level=0.0,
-            seed=int(self.brief.get("seed", 0)),
-            about=(float(self.position[0]), float(self.position[1])))
-        try:
-            life.put_them_in(stage, shoal)
-        except Exception as bad:
-            # Said, not swallowed. Something above this caught it and carried
-            # on, so the scene built, the app started, and the only sign that
-            # the reef had no fish in it was the absence of a line nobody was
-            # looking for. A dive that cannot draw its fish is still a dive;
-            # one that cannot say why is not worth running.
-            import traceback
-            self.say("life_failed", why=str(bad)[:200],
-                     where=traceback.format_exc().strip().splitlines()[-2][:160])
-            return None
-        self.say("life_is", **shoal.said(), stockedToM=self.STOCKED_TO_M,
-                 asked=wanted, drawn=how_many,
-                 perSquareMetre=says.get("perSquareMetre"))
-        return shoal
-
-    def _stock_the_tank(self, stage, says):
-        """A tank's fish: the number it was stocked with, kept inside the glass.
-
-        A reef's fish are counted from a density over ninety metres and roam
-        tens of metres from home; in a one-metre tank that is every fish
-        through the glass in the first second. So a tank says how many of each
-        it holds, and the shoal is shrunk to the box."""
-        import life
-
-        groups = {str(k): int(v) for k, v in (says.get("count") or {}).items() if int(v) > 0}
-        if not groups:
-            self.say("no_life", why="the tank says it holds no fish")
-            return None
-        if self.interior is not None:
-            low, high = self.interior
-            long_, wide = float(high[0] - low[0]), float(high[1] - low[1])
-            about = ((float(low[0]) + float(high[0])) / 2, (float(low[1]) + float(high[1])) / 2)
-        else:
-            long_, wide, about = 1.0, 1.0, (0.0, 0.0)
-        across = max(long_, wide)
-        shoal = life.Shoal(
-            groups,
-            lambda x, y: (self.seabed.under(float(x), float(y))
-                          if self.seabed is not None else self.floor),
-            across=across, water_level=0.0,
-            seed=int(self.brief.get("seed", 0)), about=about,
-            scale=float(says.get("scale", 1.0)),
-            box=(0.46 * long_, 0.46 * wide))
-        try:
-            life.put_them_in(stage, shoal)
-        except Exception as bad:
-            self.say("life_failed", why=str(bad)[:200])
-            return None
-        self.say("life_is", **shoal.said(), stockedToM=round(across / 2, 2),
-                 asked=sum(groups.values()), drawn=shoal.of_them, tank=True)
-        return shoal
+            return
+        self.shoal = fish.stock(described, bottom_under, self.interior, self.position,
+                                int(self.brief.get("seed", 0)), self.say,
+                                light=(self.ocean.light.hour, self.ocean.light.level))
 
     # How far the marine snow reaches from the camera, in metres, and how many
     # aggregates will be drawn at most.
@@ -3015,6 +2975,10 @@ class Dive:
                 float(self.current[1]) + float(under[1]))
 
         instancer, held, turn, phase, stiff = self._rooted
+        # The vehicle's wash, where each colony stands (systems/wash.py).
+        where = getattr(self, "_rooted_at", None)
+        if where is not None and self.ocean.wash.efflux.any():
+            flow = np.asarray(flow)[None, :] + self.ocean.wash.at(where)[:, :2]
         lean, towards = life.bending(flow, phase + self.simulated * 1.6, stiff)
         w, x, y, z = life.leaning(lean, towards, turn)
         # The array is kept and written into, not rebuilt. There are 83,000
@@ -3092,24 +3056,24 @@ class Dive:
                          for i in held])
         phase = np.linspace(0, 2 * np.pi, len(held), endpoint=False)
         self._rooted_orientations = orientations
+        # And where each stands, in metres, so each can be asked about the
+        # water where it is rather than where the vehicle is.
+        placed = instancer.GetPositionsAttr().Get()
+        self._rooted_at = (np.array([[float(placed[i][0]), float(placed[i][1]), float(placed[i][2])]
+                                     for i in held]) / self.units_per_metre
+                           if placed is not None and len(placed) and self.up_axis == "Z" else None)
         self.say("sway_is", colonies=int(len(held)),
                  kinds=sorted(k for k, v in sways.items() if v))
         return (instancer, held, turn, phase, np.array(stiff))
 
-    def swim(self, dt: float) -> None:
-        """One tick of everything alive.
-
-        The thrust is what frightens them, not the presence of the vehicle: a
-        machine drifting past on a current is a log, and the same machine on
-        full thrusters clears a hundred square metres.
-        """
+    def swim(self, dt: float = 0.0) -> None:
+        """Draw the fish where they are. They swim in the dive itself, on its
+        own clock (systems/fish.py); this only puts the picture where they
+        went."""
         if getattr(self, "shoal", None) is None:
             return
         import life
 
-        working = float(np.clip(np.abs(self.last_wrench[:3]).sum() / 60.0, 0.0, 1.0)) \
-            if getattr(self, "last_wrench", None) is not None else 0.0
-        self.shoal.step(dt, vehicle=self.position, thrust=working)
         life.move_them(self.stage, self.shoal)
 
     def show(self) -> None:
@@ -3126,6 +3090,12 @@ class Dive:
         if getattr(self, "_propellers", None):
             from draw import propellers
             propellers.turn(self._propellers, self.ocean.thrust)
+        coral = self.ocean.coral
+        if len(coral) and coral.broken.any():
+            from draw import coral as drawn_coral
+            if not hasattr(self, "_drawn_broken"):
+                self._drawn_broken = set()
+            drawn_coral.break_them(self.stage, coral, self._drawn_broken, self.units_per_metre)
 
     # How thick the cable is drawn, at least. A five-millimetre tether is a
     # pixel at three metres and reads as nothing; drawn at its own diameter
@@ -3411,6 +3381,19 @@ class Dive:
                  # dive.
                  **({} if self.tether is None or not self.tether.out
                     else {"tether": self.tether.said()}),
+                 # What lived in the water and what it did about the vehicle:
+                 # how each species spent the dive, how many fish it ran into,
+                 # and the day it was flown in.
+                 **({} if self.shoal is None else {"life": self.shoal.said()}),
+                 # The coral it touched and what that did, and its hardest
+                 # strike of anything: where, how fast, what impulse.
+                 **({} if not len(self.ocean.coral) else {"coral": self.ocean.coral.said()}),
+                 **({} if self.ocean.contacts.hardest() is None
+                    else {"hardestStrike": self.ocean.contacts.hardest()}),
+                 day=self.ocean.light.said(),
+                 # And what each part of the engine cost a tick, which is how a
+                 # coupled ocean is held to running.
+                 engine={"msPerTick": self.engine.costs(), "ticks": self.engine.ticks},
                  **({} if result is None else {"task": result}))
         if self.bridge is not None:
             # Whether anything actually flew it. A dive that ran with nobody at

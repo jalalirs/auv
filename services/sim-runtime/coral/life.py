@@ -585,7 +585,7 @@ def put_them_in(stage, shoal, at: str = "/World/Life") -> None:
       colours = None
       for beat in range(stroke):
         bend = float(np.sin(2.0 * np.pi * beat / stroke))
-        points, faces, parts = fishform.anatomy(fishform.OF_GROUP[kind], bend)
+        points, faces, parts = fishform.anatomy(fishform.plan_of(kind), bend)
         if colours is None:
             colours = fishform.painted(points, kind, rng, parts)
         mesh = UsdGeom.Mesh.Define(stage, f"{shapes.GetPath()}/Fish_{i}_{beat}")
@@ -635,9 +635,14 @@ def put_them_in(stage, shoal, at: str = "/World/Life") -> None:
 
     instancer.CreatePrototypesRel().SetTargets(prototypes)
     instancer.CreateProtoIndicesAttr(Vt.IntArray(stroke_indices(shoal)))
-    # A fish is the length its group is, and they are not all the same size.
-    size = np.array([GROUPS[k]["length"] for k in shoal.kinds])
-    size = size * rng.uniform(0.72, 1.3, len(size))
+    # A fish is its own length, when it has one (each fish with a mind was
+    # given one from its species' range); otherwise its group's, give or take.
+    own = getattr(shoal, "length", None)
+    if own is not None and np.ndim(own) == 1 and len(own) == shoal.of_them:
+        size = np.asarray(own, dtype=float)
+    else:
+        size = np.array([GROUPS[k]["length"] for k in shoal.kinds])
+        size = size * rng.uniform(0.72, 1.3, len(size))
     instancer.CreateScalesAttr(Vt.Vec3fArray(
         [Gf.Vec3f(float(s), float(s), float(s)) for s in size]))
     move_them(stage, shoal, at)
@@ -703,6 +708,16 @@ def bending(flow, phase, stiffness=1.0):
 
     Returns the lean in radians and the direction it leans, both as arrays.
     """
+    flow = np.asarray(flow, dtype=float)
+    if flow.ndim == 2:
+        # A flow for each colony: the current and the vehicle's wash where
+        # each one stands, so the one in front of a thruster bends away from
+        # it and the one behind the rock does not.
+        east, north = flow[:, 0], flow[:, 1]
+        speed = np.hypot(east, north)
+        lag = 1.0 + 0.25 * np.sin(phase)
+        lean = np.where(speed < 1e-6, 0.0, np.minimum(MOST, LEAN * speed * stiffness * lag))
+        return lean, np.arctan2(north, east)
     east, north = float(flow[0]), float(flow[1])
     speed = np.hypot(east, north)
     if speed < 1e-6:

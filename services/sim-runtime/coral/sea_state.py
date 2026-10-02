@@ -125,6 +125,24 @@ class SeaState:
             w_vel += speed * math.sin(phi)
         return np.array([u, v, w_vel], dtype=float)
 
+    def orbital_at_many(self, x, y, depth, seconds: float = 0.0):
+        """`orbital_at` for many points at once: arrays in, (n, 3) out. For
+        the fish, of which there can be a thousand."""
+        x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+        z = np.maximum(0.0, np.asarray(depth, dtype=float))
+        out = np.zeros((len(x), 3))
+        for amplitude, w, heading, phase in self.waves:
+            k = w * w / GRAVITY
+            decay = np.exp(-k * z)
+            if not (decay >= 1e-4).any():
+                continue
+            phi = k * (x * math.cos(heading) + y * math.sin(heading)) - w * seconds + phase
+            speed = np.where(decay >= 1e-4, amplitude * w * decay, 0.0)
+            out[:, 0] += speed * np.cos(phi) * math.cos(heading)
+            out[:, 1] += speed * np.cos(phi) * math.sin(heading)
+            out[:, 2] += speed * np.sin(phi)
+        return out
+
     def said(self) -> dict:
         return {"significantHeightM": round(self.height, 2),
                 "peakPeriodS": round(self.period, 1),

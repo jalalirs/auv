@@ -5,4 +5,5 @@ from whatever the world holds. Nothing here changes the dive, so a dive flown
 undrawn computes exactly what a drawn one does.
 
     propellers    each thruster's propeller, turned to where it is in its turn
+    coral         a colony the vehicle broke, cut down to a stump
 """

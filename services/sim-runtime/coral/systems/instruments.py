@@ -7,9 +7,13 @@ how a beam is cast, how noisy it is — are ctd here, multibeam.py and sonar.py.
     ctd          Reads the water.   Writes ctd: the profile of the column.
     multibeam    Reads the place.   Writes multibeam (the instrument) and
                  swath (what it sounded this tick, for the record).
-    sonar        Reads the place.   Writes sonar (the instrument, whose fan
+    sonar        Reads the place; the coral and the fish as they were at the
+                 start of the tick. Writes sonar (the instrument, whose fan
                  the controller reads) and ping (whether it pinged this tick,
-                 for the bridge).
+                 for the bridge). What echoes is the ground, the glass, what
+                 was put in the water, the stony coral, and the fish — an
+                 echosounder hears a fish's swim bladder, which is why a
+                 single-beam on a reef sees obstacles that swim away.
 """
 
 from __future__ import annotations
@@ -85,10 +89,37 @@ class MultibeamSystem(System):
         swath.fresh = True
 
 
+# The smallest fish an echosounder at a few metres picks out of the noise, as a
+# body length. Assumed: a few centimetres of fish is a few millimetres of swim
+# bladder, which is at the limit of a small single-beam.
+SMALLEST_FISH_M = 0.04
+
+
+def echoes(world) -> "np.ndarray | None":
+    """What in the water echoes and is not ground: the stony coral, stacked as
+    spheres up each column, and every fish big enough to hear."""
+    import numpy as np
+
+    parts = []
+    coral = world.coral
+    if coral is not None and len(coral):
+        solid = np.flatnonzero(coral.solid())
+        for i in solid:
+            r = float(coral.radius[i])
+            for z in np.arange(coral.at[i, 2] + r, coral.at[i, 2] + coral.height[i] + 1e-9, max(r, 0.02)):
+                parts.append((coral.at[i, 0], coral.at[i, 1], z, r))
+    fish = world.fish
+    if fish is not None and fish.of_them:
+        big = fish.length >= SMALLEST_FISH_M
+        for (x, y, z), length in zip(fish.at[big], fish.length[big]):
+            parts.append((x, y, z, 0.5 * length))
+    return np.array(parts, dtype=float) if parts else None
+
+
 class SonarSystem(System):
     name = "sonar"
     reads = ("place",)
-    before = ("vehicle", "clock")
+    before = ("vehicle", "clock", "coral", "fish")
     writes = ("sonar", "ping")
 
     def step(self, world) -> None:
@@ -99,5 +130,5 @@ class SonarSystem(System):
             return
         vehicle, place = world.vehicle, world.place
         instrument.ping(world.clock.simulated, vehicle.position, vehicle.rotation,
-                        place.things, place.seabed, walls=place.interior)
+                        place.things, place.seabed, walls=place.interior, targets=echoes(world))
         ping.fresh = True

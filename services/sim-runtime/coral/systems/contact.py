@@ -28,10 +28,32 @@ class Contacts:
         self.grounded = 0                    # times it was stopped by ground it could not ride over
         self.glass = 0                       # times it touched a tank's glass
         self.on_the_glass = False
+        self.cable_held = 0                  # times it reached the end of its cable
+        self.at_full_scope = False
+        # Every strike, with where, how fast into the surface, and the impulse
+        # it took to stop that: what a strike *was*, not only that there was
+        # one. And the coral struck, by colony, for the coral to judge.
+        self.strikes: list[dict] = []
+        self.coral_hits: list[dict] = []
+        self.on_coral: set[int] = set()
+
+    def strike_of(self, what: str, where, into_ms: float, v) -> dict:
+        """Record a strike: its speed into the surface and the impulse to stop
+        it, from the vehicle's effective mass across the flow."""
+        mass = float(np.mean(v.effective[:2]))
+        hit = {"what": what, "at": [round(float(c), 3) for c in where],
+               "speedMs": round(float(into_ms), 4), "impulseNs": round(mass * float(into_ms), 4)}
+        self.strikes.append(hit)
+        return hit
 
     def said(self) -> dict:
         return {"things": len(self.struck), "which": sorted(self.struck),
-                "ground": int(self.grounded), "glass": int(self.glass)}
+                "ground": int(self.grounded), "glass": int(self.glass),
+                "coral": len({h["colony"] for h in self.coral_hits})}
+
+    def hardest(self) -> dict | None:
+        """The hardest strike of the dive."""
+        return max(self.strikes, key=lambda s: s["impulseNs"]) if self.strikes else None
 
 
 # Ground steeper than this is a wall rather than a slope: a vehicle rides over
@@ -41,7 +63,7 @@ class Contacts:
 CLIMBS_UP_TO = math.cos(math.radians(50.0))
 
 
-def land(v, place, contacts, cable, dt: float, say) -> None:
+def land(v, place, contacts, cable, dt: float, say, coral=None) -> None:
     """Stop the vehicle where the ground is: under it, and ahead of it; and
     at the glass, at anything in the water, and at the end of its cable."""
     floor = place.bottom_under(v.position)
@@ -54,8 +76,9 @@ def land(v, place, contacts, cable, dt: float, say) -> None:
             v.on_the_bottom = False
     strike(v, place, contacts)
     keep_out_of_things(v, place, contacts, dt, say)
+    keep_out_of_coral(v, coral, contacts, say)
     keep_inside_the_glass(v, place, contacts, say)
-    stay_on_the_cable(v, cable, dt, say)
+    stay_on_the_cable(v, cable, contacts, dt, say)
     # There is no lid on the surface. A vehicle that breaks it loses its
     # buoyancy and its thrust as it emerges and falls back on its own, which is
     # what a real one does and is worth being able to see happen.
@@ -121,10 +144,12 @@ def strike(v, place, contacts) -> None:
         touched = True
     if not touched:
         return
+    taken = float(np.linalg.norm(moving[:2] - flat))
     moving[:2] = flat
     v.velocity[:3] = v.rotation.T @ moving
     if not v.against_the_ground:
         contacts.grounded += 1
+        contacts.strike_of("ground", v.position, taken, v)
     v.against_the_ground = True
 
 
@@ -150,8 +175,11 @@ def keep_out_of_things(v, place, contacts, dt: float, say) -> None:
         into = float(np.dot(through, out))
         if into < 0.0:
             v.velocity[:3] = v.rotation.T @ (through - out * into)
+    else:
+        into = 0.0
     if struck.id not in contacts.struck:
         contacts.struck.add(struck.id)
+        contacts.strike_of(str(struck.id), allowed, -min(0.0, into) if reach > 1e-9 else 0.0, v)
         say("struck", what=struck.kind, which=struck.id, is_=struck.spec.what,
             where=[round(float(c), 2) for c in allowed])
 
@@ -177,13 +205,49 @@ def keep_inside_the_glass(v, place, contacts, say) -> None:
             v.velocity[:3] -= along * into
             if not contacts.on_the_glass:
                 contacts.glass += 1
+                contacts.strike_of("glass", v.position, abs(along), v)
                 say("touched_the_glass", axis="xy"[axis], times=contacts.glass,
                     at=[round(float(c), 3) for c in v.position])
             touching = True
     contacts.on_the_glass = touching
 
 
-def stay_on_the_cable(v, cable, dt: float, say) -> None:
+def keep_out_of_coral(v, coral, contacts, say) -> None:
+    """Stop the vehicle at a colony as at rock, and tell the coral it was hit.
+
+    A colony is a column of its own width and its height now (a broken one is
+    a stump). One that bends — a soft coral, a fan, a sponge — does not stop
+    the vehicle; it is brushed, and counted."""
+    if coral is None or not len(coral):
+        return
+    off = v.position[:2][None, :] - coral.at[:, :2]
+    far = np.linalg.norm(off, axis=1)
+    reach = coral.radius + float(v.half_width)
+    level = (v.position[2] - v.half_height < coral.at[:, 2] + coral.height) & \
+            (v.position[2] + v.half_height > coral.at[:, 2])
+    touching = set(np.flatnonzero((far < reach) & level).tolist())
+    solid = coral.solid()
+    for i in sorted(touching):
+        out = off[i] / max(float(far[i]), 1e-9)
+        into = 0.0
+        if solid[i]:
+            v.position[:2] = coral.at[i, :2] + out * reach[i]
+            through = v.rotation @ v.velocity[:3]
+            going = float(np.dot(through[:2], out))
+            if going < 0.0:
+                flat = np.array([out[0], out[1], 0.0])
+                v.velocity[:3] = v.rotation.T @ (through - flat * going)
+                into = -going
+        if i not in contacts.on_coral:
+            hit = contacts.strike_of(f"coral-{i}", v.position, into, v)
+            contacts.coral_hits.append({"colony": i, **hit})
+            if solid[i]:
+                say("struck_coral", which=i, growth=str(coral.kind[i]), speedMs=hit["speedMs"],
+                    impulseNs=hit["impulseNs"])
+    contacts.on_coral = touching
+
+
+def stay_on_the_cable(v, cable, contacts, dt: float, say) -> None:
     """A vehicle cannot go further out than there is cable: put back where the
     tether allows, and the motion carrying it further out taken away."""
     if cable is None or not cable.out:
@@ -191,6 +255,7 @@ def stay_on_the_cable(v, cable, dt: float, say) -> None:
     came_from = v.position - (v.rotation @ v.velocity[:3]) * max(1e-3, dt)
     allowed, held = cable.keep_in(v.position, came_from)
     if not held:
+        contacts.at_full_scope = False
         return
     v.position = allowed
     out = allowed - cable.at
@@ -202,7 +267,10 @@ def stay_on_the_cable(v, cable, dt: float, say) -> None:
     away = float(np.dot(through, out))
     if away > 0.0:
         v.velocity[:3] = v.rotation.T @ (through - out * away)
-    if cable.struck == 1:
-        say("tether_taut", lengthM=round(cable.length_m, 1),
-            from_=[round(float(c), 1) for c in cable.at],
-            why="a vehicle cannot go further out than there is cable")
+    if not contacts.at_full_scope:
+        contacts.cable_held += 1
+        if contacts.cable_held == 1:
+            say("tether_taut", lengthM=round(cable.length_m, 1),
+                from_=[round(float(c), 1) for c in cable.at],
+                why="a vehicle cannot go further out than there is cable")
+    contacts.at_full_scope = True

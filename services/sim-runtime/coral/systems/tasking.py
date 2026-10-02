@@ -44,7 +44,8 @@ class Task:
 
 class TaskingSystem(System):
     name = "tasking"
-    reads = ("vehicle", "contacts", "clock", "navigation", "sonar", "helm", "power", "water", "place", "thrust")
+    reads = ("vehicle", "contacts", "clock", "navigation", "sonar", "helm", "power", "water", "place", "thrust",
+             "cable")
     writes = ("task", "orders")
 
     def __init__(self, brief: dict, say, who_should_fly, envelope, camera_half_angle) -> None:
@@ -147,6 +148,12 @@ class TaskingSystem(System):
         because they did not know how long the job would take."""
         stands = world.task
         if stands.ended:
+            return
+        # A vehicle held by its own cable has failed, whatever the task says:
+        # wrapped on a rock, caught and fighting it, or parted.
+        cable = world.cable
+        if cable is not None and getattr(cable, "verdict", None):
+            self.finish(world, f"tether {cable.verdict}")
             return
         task = stands.task
         if task is not None and task.done:

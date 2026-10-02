@@ -31,10 +31,21 @@ literature rather than from taste:
   a fluctuation of its own. That is why a real school looks alive and a
   flock of particles does not.
 
-What a fish sees of the vehicle is distance, approach and noise: a vehicle
-inside the fish's flight distance, closing or thrusting hard, frightens it,
-more so the shyer it is; it bolts for its refuge or away, and comes back
-when the fear has faded.
+What a fish sees of the vehicle is how fast it grows in its view. Wild reef
+fish decide to flee on the looming rate — how fast a threat's angular size
+grows — held back by how big it already looks and by how many of their own
+kind are about them (Hein et al. 2018, twelve species at Moorea, 82–98% of
+escapes predicted). Here that is the shape of the rule, with its threshold set
+so that a vehicle closing at fifteen centimetres a second is half-frightening
+at the species' flight distance (Gotanda 2009, Feary 2011 for the
+distances); the numbers of the rule are chosen, not fitted. A frightened fish
+first turns away for a quarter of a second, then makes for its refuge, and
+comes back when the fear has faded. A noisier vehicle is seen from further.
+
+And they are in the water: carried by whatever the water is doing where they
+are — the current, and the vehicle's own wash — and they turn to face into
+it as fish do. They steer round rock rather than through it, and a fish the
+vehicle runs into is knocked aside and counted.
 """
 
 from __future__ import annotations
@@ -114,14 +125,18 @@ class Habitat:
 class School:
     """Every fish in a place, with a mind each, stepped together."""
 
-    def __init__(self, stock: dict, habitat: Habitat, clock, seed: int = 0) -> None:
+    def __init__(self, stock: dict, habitat: Habitat, clock=None, seed: int = 0, tank: bool = False) -> None:
         self.rng = np.random.default_rng(seed)
         self.habitat = habitat
-        self.clock = clock                       # simulated seconds -> (hour, light)
+        # simulated seconds -> (hour, light), for a school stepped on its own;
+        # a dive hands the light in with each step instead.
+        self.clock = clock
+        self.hour, self.light = 12.0, 1.0
+        self._size = 0.2
         self.t = 0.0
         kinds = []
         for name, many in sorted(stock.items()):
-            kinds += [fish_species.species_of(name)] * int(many)
+            kinds += [fish_species.species_of(name, tank=tank)] * int(many)
         self.kinds = np.array(kinds)
         self.of_them = n = len(kinds)
         self._kinds_present = sorted(set(kinds))
@@ -172,6 +187,16 @@ class School:
         self.beat = self.rng.uniform(0, 2 * np.pi, n)
         self.scattered = 0.0
         self.budget = np.zeros((n, len(MODES)))
+        # The vehicle as each fish last saw it: how far, to work out how fast
+        # it is closing; and when each last bolted.
+        self._gap = np.full(n, np.inf)
+        self._vehicle = None
+        self._was = None
+        self._touching = np.zeros(n, dtype=bool)
+        self.fled_at = np.full(n, -np.inf)
+        self._flow = np.zeros((n, 3))
+        # Fish the vehicle ran into, and how many times.
+        self.bumped = 0
         self._sync()
 
     # ── where they live ──────────────────────────────────────────────────────
@@ -236,25 +261,75 @@ class School:
 
     # ── the mind ─────────────────────────────────────────────────────────────
 
-    def think(self, dt: float, light: float, vehicle, thrust: float) -> None:
+    # The looming rule's shape. CLOSING is the approach speed, metres a
+    # second, at which a vehicle at a fish's flight distance frightens it by
+    # half; STEEP is how sharply fear rises with the log of the looming rate
+    # about that; CROWD is how much a fish surrounded by its own kind is held
+    # back. Chosen, after Hein et al. 2018, not fitted.
+    CLOSING = 0.15
+    STEEP = 3.0
+    CROWD = 0.3
+
+    def threat(self, dt: float, vehicle, size: float, thrust: float) -> np.ndarray:
+        """How frightening the vehicle is to each fish, 0..1, from how fast it
+        is growing in the fish's view."""
+        n = self.of_them
+        if vehicle is None:
+            self._gap[:] = np.inf
+            self._was = None
+            return np.zeros(n)
+        vehicle = np.asarray(vehicle, dtype=float)
+        off = self.at - vehicle[None, :]
+        far = np.maximum(np.linalg.norm(off, axis=1), 1e-6)
+        gap = np.maximum(far - size, 0.01)
+        # How fast the *vehicle* is closing on each fish. Not the gap's own
+        # rate: a fish swimming up to a vehicle that is sitting still makes
+        # it grow in its eye too, and does not bolt from what it is
+        # approaching itself.
+        moving = np.zeros(3) if self._was is None else (vehicle - self._was) / max(dt, 1e-6)
+        self._was = vehicle.copy()
+        closing = (off / far[:, None]) @ moving      # its velocity towards each fish
+        self._gap = gap
+        # Angular size S = 2 atan(R/d), and its rate S' = 2R d'/(d² + R²).
+        looming = 2.0 * size * np.maximum(closing, 0.0) / (gap ** 2 + size ** 2)
+        # Seen from further when it is loud: a vehicle on full thrust clears a
+        # reef that one drifting past does not.
+        reach = self.flight / self.bold * (1.0 + 0.6 * min(1.0, max(0.0, thrust)))
+        critical = 2.0 * size * self.CLOSING / (reach ** 2 + size ** 2)
+        with np.errstate(divide="ignore"):
+            frightened = 1.0 / (1.0 + np.exp(-self.STEEP * (np.log(np.maximum(looming, 1e-9))
+                                                             - np.log(critical))))
+        # Held back by company: the share of its own kind within four body
+        # lengths, up to four of them.
+        company = np.zeros(n)
+        for k, mates in self._of_kind.items():
+            if len(mates) < 2:
+                continue
+            d = np.linalg.norm(self.at[mates][:, None, :] - self.at[mates][None, :, :], axis=2)
+            near = (d < 4.0 * self.length[mates][:, None]).sum(axis=1) - 1
+            company[mates] = np.minimum(1.0, near / 4.0)
+        frightened = frightened * (1.0 - self.CROWD * company)
+        # And uneasy, looming or not, with something that big right beside it.
+        beside = np.clip(1.0 - gap / np.maximum(0.4 * reach, 1e-6), 0.0, 1.0)
+        return np.maximum(frightened, beside)
+
+    def think(self, dt: float, light: float, vehicle, thrust: float, size: float = 0.2) -> None:
         n = self.of_them
         awake = self.awake(light)
         # Hunger rises while it is not feeding and falls while it is.
         feeding = self.mode == FORAGE
         self.hunger = np.clip(self.hunger + dt * np.where(feeding, -1 / 90.0, 1 / 600.0 * awake), 0.0, 1.0)
-        # Fear: what is coming at it, against how bold it is, fading.
+        # Fear: what is coming at it, fading.
         self.fear *= math.exp(-dt / 4.0)
-        threat = np.zeros(n)
-        if vehicle is not None:
-            off = self.at - np.asarray(vehicle, dtype=float)[None, :]
-            far = np.linalg.norm(off, axis=1)
-            reach = self.flight / self.bold * (1.0 + 0.6 * min(1.0, max(0.0, thrust)))
-            # Half-afraid at its flight distance, which is where it goes.
-            threat = np.clip(1.0 - 0.5 * far / np.maximum(reach, 1e-6), 0.0, 1.0)
-        self.fear = np.maximum(self.fear, threat)
+        self.fear = np.maximum(self.fear, self.threat(dt, vehicle, size, thrust))
         self.scattered = float((self.fear > 0.5).mean()) if n else 0.0
+        bolting = (self.fear > 0.5) & (self.mode != FLEE)
+        if bolting.any():
+            # A startle is a kick now, not at the next one due.
+            self.fled_at[bolting] = self.t
+            self.kick_in[bolting] = 0.0
 
-        due = (self.mode_until <= self.t) | ((self.fear > 0.5) & (self.mode != FLEE))
+        due = (self.mode_until <= self.t) | bolting
         if not due.any():
             return
         idx = np.flatnonzero(due)
@@ -317,6 +392,14 @@ class School:
                 xy = home[:2] + self.rng.normal(0, spread, 2)
                 z = None
             xy = hab.inside(np.asarray(xy, dtype=float), 0.04 + 0.5 * self.length[i])
+            # Not inside a rock: somewhere else in the same water, if the
+            # place it picked is a boulder standing higher than it means to be.
+            if m not in (REST, FLEE) and z is None:
+                for _ in range(6):
+                    if float(hab.floor(xy)[0]) < float(self.at[i, 2]) - 0.3 * self.length[i]:
+                        break
+                    xy = hab.inside(self.at[i, :2] + self.rng.normal(0, max(self.home_range[i] * 0.3, 0.1), 2),
+                                    0.04 + 0.5 * self.length[i])
             if z is None:
                 z = float(hab.floor(xy)[0]) + max(0.3 * self.length[i],
                                                   self.rng.normal(self.altitude[i], self.altitude_sd[i]))
@@ -332,6 +415,25 @@ class School:
         to_goal = self.goal[idx, :2] - here
         gap = np.linalg.norm(to_goal, axis=1)
         want = to_goal / np.maximum(gap, 1e-6)[:, None] * np.minimum(1.0, gap / 0.05)[:, None]
+        # A startled fish turns away from the threat first, for the length of
+        # a C-start and the glide after it, and only then makes for shelter.
+        if self._vehicle is not None:
+            startled = (self.mode[idx] == FLEE) & (self.t - self.fled_at[idx] < 0.3)
+            if startled.any():
+                away = here[startled] - self._vehicle[:2]
+                want[startled] = away / np.maximum(np.linalg.norm(away, axis=1, keepdims=True), 1e-6)
+                gap[startled] = np.maximum(gap[startled], 1.0)
+        # And clear of it while frightened: shelter is no use through the
+        # vehicle, and a fish making for its coral goes round what scared it.
+        if self._vehicle is not None:
+            away = here - self._vehicle[:2]
+            far = np.maximum(np.linalg.norm(away, axis=1), 1e-6)
+            near = np.clip(1.0 - far / np.maximum(4.0 * self._size, 0.05), 0.0, 1.0)
+            want += (3.0 * near * np.minimum(1.0, self.fear[idx] * 2.0))[:, None] * away / far[:, None]
+        # Into the water's flow, as fish hold station: the stronger it runs
+        # against what the fish can do, the more it faces into it.
+        flow = self._flow[idx, :2]
+        want -= flow / np.maximum(0.5 * self.burst[idx], 0.02)[:, None]
         # Social: attraction to and alignment with the most influential few
         # neighbours of its own kind — the nearest, inside its range.
         for k in self._kinds_present:
@@ -370,25 +472,63 @@ class School:
                 want[:, axis] -= 1.5 * np.exp(-(high[axis] - here[:, axis]) / reach)
         # And a fluctuation of its own: shy fish dither more.
         noise = self.rng.normal(0, 0.25 / self.bold[idx])
-        aim = np.arctan2(want[:, 1], want[:, 0]) + noise
+        aim = self.round_the_rock(idx, np.arctan2(want[:, 1], want[:, 0]) + noise)
         turn = (aim - self.heading[idx] + np.pi) % (2 * np.pi) - np.pi
         turn = np.clip(turn, -self.turn[idx], self.turn[idx])
         duration = np.clip(self.rng.normal(0.14, 0.03, len(idx)), 0.08, 0.25)
         self.turning[idx] = turn / duration
         self.kicking[idx] = duration
-        awake = np.maximum(self.awake(self.clock(self.t)[1])[idx], 0.25)
+        awake = np.maximum(self.awake(self.light)[idx], 0.25)
         go = self.burst[idx] * VIGOUR[self.mode[idx]] * self.lively[idx] * awake
         # Close to where it wants to be, a fish holds rather than charges.
         go = go * np.clip(gap / np.maximum(4.0 * self.length[idx], 0.04), 0.25, 1.0)
         self.speed[idx] = np.maximum(self.speed[idx], go)
         self.kick_in[idx] = self.rng.gamma(4.0, self.kick_s[idx] * PAUSE[self.mode[idx]] / 4.0)
 
-    def step(self, dt: float, vehicle=None, thrust: float = 0.0) -> None:
+    # Which way round, in radians either side of where it means to go, tried
+    # nearest first.
+    DETOURS = np.array([0.0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.4, -2.4])
+
+    def round_the_rock(self, idx, aim) -> np.ndarray:
+        """The way it means to go, or the nearest way round rock standing in
+        it. A fish goes round a boulder rather than up and over it, and never
+        through it."""
+        hab = self.habitat
+        look = np.maximum(3.0 * self.length[idx], 0.05)
+        clear = self.at[idx, 2] - 0.3 * self.length[idx]
+        chosen = aim.copy()
+        open_ = np.zeros(len(idx), dtype=bool)
+        for turn in self.DETOURS:
+            way = aim + turn
+            probe = self.at[idx, :2] + look[:, None] * np.column_stack([np.cos(way), np.sin(way)])
+            free = (hab.floor(probe) < clear) & ~open_
+            chosen[free] = way[free]
+            open_ |= free
+            if open_.all():
+                break
+        # Boxed in on every side: rise over it.
+        self.goal[idx[~open_], 2] = np.maximum(self.goal[idx[~open_], 2],
+                                               self.at[idx[~open_], 2] + 2.0 * self.length[idx[~open_]])
+        return chosen
+
+    def step(self, dt: float, vehicle=None, thrust: float = 0.0, light=None, flow=None,
+             vehicle_size: float = 0.2) -> None:
+        """One step: think, kick or glide, be carried, and keep out of the
+        rock, the glass and the vehicle.
+
+        `light` is (hour, 0..1) from the dive's day; `flow` is the water's
+        velocity at each fish (n, 3), the current and the wash together."""
         if not self.of_them or dt <= 0:
             return
         self.t += dt
-        hour, light = self.clock(self.t)
-        self.think(dt, light, vehicle, thrust)
+        if light is not None:
+            self.hour, self.light = float(light[0]), float(light[1])
+        elif self.clock is not None:
+            self.hour, self.light = self.clock(self.t)
+        self._flow = np.zeros((self.of_them, 3)) if flow is None else np.asarray(flow, dtype=float)
+        self._vehicle = None if vehicle is None else np.asarray(vehicle, dtype=float)
+        self._size = float(vehicle_size)
+        self.think(dt, self.light, vehicle, thrust, vehicle_size)
         self.kick_in -= dt
         due = np.flatnonzero(self.kick_in <= 0.0)
         if len(due):
@@ -402,8 +542,26 @@ class School:
         dz = self.goal[:, 2] - self.at[:, 2]
         self.vz = np.clip(dz * 1.2, -0.4 * self.speed - 0.01, 0.4 * self.speed + 0.01)
         way = np.column_stack([np.cos(self.heading), np.sin(self.heading)])
+        # Gliding into rock: turned along it to whichever side is open, as at
+        # the glass, rather than lifted over it.
+        ahead = self.at[:, :2] + way * np.maximum(self.speed * dt, 0.5 * self.length)[:, None]
+        rock = self.habitat.floor(ahead) > self.at[:, 2] - 0.2 * self.length
+        if rock.any():
+            idx = np.flatnonzero(rock)
+            left = self.heading[idx] + np.pi / 2
+            right = self.heading[idx] - np.pi / 2
+            reach = np.maximum(self.length[idx], 0.03)[:, None]
+            lf = self.habitat.floor(self.at[idx, :2] + reach * np.column_stack([np.cos(left), np.sin(left)]))
+            rf = self.habitat.floor(self.at[idx, :2] + reach * np.column_stack([np.cos(right), np.sin(right)]))
+            self.heading[idx] = np.where(lf <= rf, self.heading[idx] + 0.6, self.heading[idx] - 0.6)
+            self.speed[idx] *= 0.5
+            way = np.column_stack([np.cos(self.heading), np.sin(self.heading)])
         self.at[:, :2] += way * self.speed[:, None] * dt
         self.at[:, 2] += self.vz * dt
+        # Carried by the water: a fish swims through it, not over the ground.
+        self.at += self._flow * dt
+        if self._vehicle is not None:
+            self.keep_out_of_the_vehicle(vehicle_size)
         hab = self.habitat
         held = hab.inside(self.at[:, :2], 0.5 * self.length)
         hit = np.any(np.abs(held - self.at[:, :2]) > 1e-9, axis=1)
@@ -421,6 +579,26 @@ class School:
         self.beat += 2 * np.pi * np.minimum(hz, 6.0) * dt
         self.budget[np.arange(self.of_them), self.mode] += dt
         self._sync()
+
+    def keep_out_of_the_vehicle(self, size: float) -> None:
+        """A fish the vehicle runs into is knocked aside, frightened, and
+        counted. The vehicle does not feel it: a fish is grams against
+        kilograms, and the impulse is under the noise of its own control."""
+        off = self.at - self._vehicle[None, :]
+        far = np.linalg.norm(off, axis=1)
+        reach = size + 0.5 * self.length
+        inside = far < reach
+        # Once a contact, not once a step: a fish pinned against the hull for
+        # a second was struck once.
+        self.bumped += int((inside & ~self._touching).sum())
+        self._touching = inside
+        if not inside.any():
+            return
+        out = off[inside] / np.maximum(far[inside], 1e-6)[:, None]
+        self.at[inside] = self._vehicle[None, :] + out * reach[inside][:, None]
+        self.heading[inside] = np.arctan2(out[:, 1], out[:, 0])
+        self.speed[inside] = np.maximum(self.speed[inside], self.burst[inside])
+        self.fear[inside] = 1.0
 
     def _sync(self) -> None:
         """The shape the drawing and the record read."""
@@ -453,7 +631,7 @@ class School:
             if total > 0:
                 spent[str(k)] = {m: round(float(self.budget[v][:, i].sum() / total), 3)
                                  for i, m in enumerate(MODES) if self.budget[v][:, i].sum() > 0}
-        hour, light = self.clock(self.t)
         return {"fish": int(self.of_them), "bySpecies": counted, "byGroup": counted,
                 "schools": int(len(np.unique(self.school))) if self.of_them else 0, "scattered": round(self.scattered, 3),
-                "hour": round(float(hour), 2), "light": round(float(light), 2), "spent": spent}
+                "hour": round(float(self.hour), 2), "light": round(float(self.light), 2), "spent": spent,
+                "bumped": int(self.bumped)}

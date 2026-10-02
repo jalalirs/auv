@@ -168,6 +168,14 @@ STANDS_FOR = {
 }
 
 
+# And for a tank whose record counts groups: the species a reef tank keeps.
+STANDS_FOR_IN_A_TANK = {
+    "damselfish": "chromis_viridis", "wrasse": "pseudocheilinus_hexataenia",
+    "butterflyfish": "chelmon_rostratus", "bottom": "amblyeleotris_wheeleri",
+    "surgeonfish": "zebrasoma_flavescens", "solitary": "pterapogon_kauderni",
+}
+
+
 def sheet(name: str) -> dict:
     """A species' sheet, by its own name or by the group it stands for."""
     if name in SPECIES:
@@ -177,5 +185,11 @@ def sheet(name: str) -> dict:
     raise KeyError(f"no fish called {name!r}")
 
 
-def species_of(name: str) -> str:
-    return name if name in SPECIES else STANDS_FOR[name]
+def species_of(name: str, tank: bool = False) -> str:
+    """The species a name means: its own, or the one that stands for its
+    group — a reef tank's, in a tank."""
+    if name in SPECIES:
+        return name
+    if tank and name in STANDS_FOR_IN_A_TANK:
+        return STANDS_FOR_IN_A_TANK[name]
+    return STANDS_FOR[name]
