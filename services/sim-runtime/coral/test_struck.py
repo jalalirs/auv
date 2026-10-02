@@ -26,8 +26,10 @@ def _a_dive():
     what is under test is counting, and counting does not need any of them.
     """
     import runner
+    from systems.build import the_ocean
 
     dive = object.__new__(runner.Dive)
+    dive.ocean = the_ocean(None, 0, 0.005)
     dive._struck = set()
     dive._grounded = 0
     dive.against_the_ground = False

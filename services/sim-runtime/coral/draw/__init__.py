@@ -1,0 +1,8 @@
+"""Drawing: the only code that writes the stage.
+
+Systems compute; this draws what they computed, at the renderer's own rate,
+from whatever the world holds. Nothing here changes the dive, so a dive flown
+undrawn computes exactly what a drawn one does.
+
+    propellers    each thruster's propeller, turned to where it is in its turn
+"""

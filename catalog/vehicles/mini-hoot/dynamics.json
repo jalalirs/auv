@@ -152,6 +152,10 @@
   "maxForwardN": 4.0,
   "maxReverseN": 3.0,
   "timeConstantS": 0.1,
+  "maxRpm": 3600,
+  "rpmFrom": "assumed: ApisQueen do not publish the UG500's speed; a Blue Robotics T200's 3,600 rpm at 16 V",
+  "propellerDiameterM": 0.038,
+  "propellerFrom": "assumed: the largest propeller that turns inside the 44 mm guard",
   "units": [
    {
     "name": "vertical-front-port",

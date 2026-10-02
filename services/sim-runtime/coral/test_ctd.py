@@ -15,30 +15,57 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from runner import Dive
+from systems.build import the_ocean
+from systems.instruments import CtdSystem
 
 
 class Column:
-    """Just the parts of a dive a cast reads."""
+    """Just the parts of a dive the water's column is worked out from."""
 
-    ctd = {"everyS": 1.0, "name": "ctd"}
     salinity_psu = 40.6
     temperature_c = None
     stated_density = None
     temperature_profile = [(0.0, 30.0), (100.0, 22.0), (700.0, 21.0)]
 
-    def __init__(self):
-        self.simulated = 0.0
-        self.position = np.array([12.0, -34.0, 0.0])
-        self.profile = []
-        self.ctd_last_t = None
-
     temperature_at = Dive.temperature_at
     density_at = Dive.density_at
-    read_the_ctd = Dive.read_the_ctd
+
+
+class Cast:
+    """A CTD in a world of its own: the instrument, the water, a vehicle."""
+
+    def __init__(self):
+        self.world = the_ocean(None, 0, 0.05)
+        column = Column()
+        water = self.world.water
+        water.temperature_at, water.density_at = column.temperature_at, column.density_at
+        water.salinity = column.salinity_psu
+        self.world.ctd.config = {"everyS": 1.0, "name": "ctd"}
+        self.world.vehicle.position = np.array([12.0, -34.0, 0.0])
+        self.system = CtdSystem()
+
+    @property
+    def position(self):
+        return self.world.vehicle.position
+
+    @property
+    def profile(self):
+        return self.world.ctd.profile
+
+    @property
+    def simulated(self):
+        return self.world.clock.simulated
+
+    @simulated.setter
+    def simulated(self, t):
+        self.world.clock.simulated = t
+
+    def read_the_ctd(self):
+        self.system.step(self.world)
 
 
 def test_a_cast_reads_the_column_it_is_in():
-    c = Column()
+    c = Cast()
     for depth in (0.0, 50.0, 200.0, 600.0):
         c.position[2] = -depth
         c.simulated += 2.0
@@ -53,7 +80,7 @@ def test_a_cast_reads_the_column_it_is_in():
 def test_it_casts_at_its_own_rate_and_not_every_step():
     """An instrument that sampled every physics step is an instrument nobody
     owns, and a profile with two hundred readings a second is not a profile."""
-    c = Column()
+    c = Cast()
     for _ in range(20):
         c.simulated += 0.05
         c.read_the_ctd()
@@ -63,13 +90,13 @@ def test_it_casts_at_its_own_rate_and_not_every_step():
 def test_a_cast_remembers_where_it_was_taken():
     """A section is the column against distance, so a reading without a place
     is half a reading."""
-    c = Column()
+    c = Cast()
     c.read_the_ctd()
     assert c.profile[0]["atM"] == [12.0, -34.0]
 
 
 def test_a_vehicle_with_no_ctd_takes_no_casts():
-    c = Column()
-    c.ctd = None
+    c = Cast()
+    c.world.ctd.config = None
     c.read_the_ctd()
     assert c.profile == []

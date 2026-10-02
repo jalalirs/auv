@@ -654,8 +654,9 @@ class CoralCityShell(omni.ext.IExt):
             # readbacks a second — which is not fast, it is a stall. Four times
             # is quick and leaves the machine able to do it.
             until = time.monotonic() + 0.02
-            owed = dive.simulated + (self.dive.recorder.frame_every
-                                     if dive.recorder is not None else 1.0)
+            # To the next frame on the recording's grid, exactly.
+            owed = (dive.recorder.next_frame if dive.recorder is not None
+                    else dive.simulated + 1.0)
             # A dive whose controller thinks does not outrun the clock on the
             # wall. Thinking costs real seconds — a model answers in one or two
             # — and if the dive were running at four times real time those
@@ -997,8 +998,15 @@ class CoralCityShell(omni.ext.IExt):
             if not recorder.video:
                 return
             frame = np.frombuffer(bytes_of(buffer, size), dtype=np.uint8).reshape(tall, wide, 4)
-            recorder.video.write(cv2.cvtColor(frame, cv2.COLOR_RGBA2BGRA).tobytes())
-            recorder.captured()
+            pixels = cv2.cvtColor(frame, cv2.COLOR_RGBA2BGRA).tobytes()
+            # As many times as the grid points this frame stands for: once,
+            # unless the drawing fell behind the dive. The video then holds
+            # the picture, as a camera's recording does when it drops frames,
+            # rather than running short.
+            copies = recorder.copies
+            for _ in range(copies):
+                recorder.video.write(pixels)
+            recorder.captured(copies)
         except Exception as exc:
             if not self._complained:
                 self._complained = True

@@ -20,6 +20,11 @@ import pathlib
 
 import numpy as np
 
+from engine import Engine
+from systems import contact
+from systems.build import the_ocean, the_systems
+from systems.helm import observe
+
 # Fixed, and not negotiable: a variable timestep makes two runs of the same seed
 # diverge, and everything the platform claims about a result rests on them not
 # diverging. 200 Hz is comfortably above the vehicle's dynamics and cheap.
@@ -79,19 +84,6 @@ def find_water(root: pathlib.Path) -> pathlib.Path | None:
         if "water" in name or "surface" in name:
             return candidate
     return None
-
-
-def _turn(small: np.ndarray) -> np.ndarray:
-    """The rotation matrix for a small rotation vector, Rodrigues' formula."""
-    angle = float(np.linalg.norm(small))
-    if angle < 1e-12:
-        return np.eye(3)
-    k = small / angle
-    K = np.array([[0.0, -k[2], k[1]], [k[2], 0.0, -k[0]], [-k[1], k[0], 0.0]])
-    R = np.eye(3) + np.sin(angle) * K + (1.0 - np.cos(angle)) * (K @ K)
-    # Renormalise: one Gram-Schmidt pass keeps it orthonormal over a long dive.
-    u, _, vt = np.linalg.svd(R)
-    return u @ vt
 
 
 # The cameras a console may look through. Rendered one at a time: the large
@@ -384,6 +376,23 @@ def aiming(towards):
     ])
 
 
+def _kept(part: str, field: str | None = None):
+    """An attribute of the dive whose value lives in its world.
+
+    The dive's state used to be the dive's attributes, and three thousand
+    lines read and write them by those names: the console, the drawing, the
+    reports, the tests. The state now lives in the world, owned by the system
+    that writes it (systems/), and these are the old names for the new
+    places, so that everything outside the tick keeps working while it is
+    moved out of here a piece at a time.
+    """
+    if field is None:
+        return property(lambda self: self.ocean[part],
+                        lambda self, value: self.ocean.replace(part, value))
+    return property(lambda self: getattr(self.ocean[part], field),
+                    lambda self, value: setattr(self.ocean[part], field, value))
+
+
 class Dive:
     """A vehicle, in a place, being integrated.
 
@@ -392,6 +401,59 @@ class Dive:
     updates the application — whoever is running it decides when to draw.
     """
 
+    # Where each piece of the dive's state lives now: (part, field) of its
+    # world. See `_kept`.
+    simulated = _kept("clock", "simulated")
+    taken = _kept("clock", "taken")
+    position = _kept("vehicle", "position")
+    velocity = _kept("vehicle", "velocity")
+    rotation = _kept("vehicle", "rotation")
+    effective = _kept("vehicle", "effective")
+    half_width = _kept("vehicle", "half_width")
+    half_height = _kept("vehicle", "half_height")
+    on_the_bottom = _kept("vehicle", "on_the_bottom")
+    against_the_ground = _kept("vehicle", "against_the_ground")
+    last_wrench = _kept("vehicle", "wrench")
+    _struck = _kept("contacts", "struck")
+    _grounded = _kept("contacts", "grounded")
+    _glass_strikes = _kept("contacts", "glass")
+    _on_the_glass = _kept("contacts", "on_the_glass")
+    tether = _kept("cable")
+    current = _kept("water", "current")
+    wind = _kept("water", "wind")
+    water = _kept("water", "sea")
+    water_level = _kept("water", "level")
+    salinity_psu = _kept("water", "salinity")
+    seabed = _kept("place", "seabed")
+    floor = _kept("place", "floor")
+    interior = _kept("place", "interior")
+    world = _kept("place", "things")
+    failures = _kept("faults", "failures")
+    dead_thrusters = _kept("faults", "dead")
+    sensors_out_until = _kept("faults", "sensors_out_until")
+    view = _kept("camera", "view")
+    navigation = _kept("navigation")
+    ctd = _kept("ctd", "config")
+    profile = _kept("ctd", "profile")
+    ctd_last_t = _kept("ctd", "last_t")
+    multibeam = _kept("multibeam")
+    sonar = _kept("sonar")
+    helm = _kept("helm")
+    commands = _kept("thrust", "commands")
+    battery = _kept("power", "battery")
+    charging = _kept("power", "charging")
+    task = _kept("task", "task")
+    ended = _kept("task", "ended")
+    task_over = _kept("task", "task_over")
+    attempts = _kept("task", "attempts")
+    route_flying = _kept("task", "route_flying")
+    document = _kept("task", "document")
+    planned_by = _kept("task", "planned_by")
+    _asked_for = _kept("task", "asked_for")
+    _tuned_from_objective = _kept("task", "tuned_from_objective")
+    recorder = _kept("record")
+    bridge = _kept("bridge")
+
     def __init__(self, brief: dict, body, allocator, scene: pathlib.Path,
                  say) -> None:
         self.brief = brief
@@ -399,12 +461,16 @@ class Dive:
         self.allocator = allocator
         self.scene = scene
         self.say = say
+        # Everything the dive is, in the parts its systems own. First, because
+        # every assignment below lands in it.
+        self.ocean = the_ocean(body, len(allocator.model.thrusters), 1.0 / PHYSICS_HZ)
+        self.ocean.thrust.read_the_package(
+            pathlib.Path(brief.get("vehiclePath", "/dive/vehicle")) / "dynamics.json")
 
         self.dt = 1.0 / PHYSICS_HZ
         self.steps = int(brief.get("durationSeconds", 10.0) * PHYSICS_HZ)
         self.taken = 0
         self.simulated = 0.0
-        self.reported = 0.0
 
         self.velocity = np.zeros(6)
         self.rotation = np.eye(3)
@@ -572,6 +638,16 @@ class Dive:
         self.half_width = 0.3
         # Whether it is up against ground it cannot ride over.
         self.against_the_ground = False
+
+        # What the water is at a depth, which is the conditions' business and
+        # read by whatever needs it.
+        self.ocean.water.temperature_at = self.temperature_at
+        self.ocean.water.density_at = self.density_at
+        # And the systems that step it. Built now, not when the place opens,
+        # because opening already asks the task to plan.
+        self.engine = Engine(self.ocean, the_systems(self))
+        self.tasking = next(s for s in self.engine.systems if s.name == "tasking")
+        self.helming = next(s for s in self.engine.systems if s.name == "helm")
 
     # ── setting up ───────────────────────────────────────────────────────────
 
@@ -918,6 +994,19 @@ class Dive:
                         self.hull_offset = [round(v, 4) for v in ours]
                 self.say("hull_drawn", file=hull.name, metresAcross=size,
                          drawnAboveOriginM=self.hull_offset)
+
+            # Its propellers, when the package says how big they are, turned
+            # each frame to where they are in their turn. See draw/propellers.py.
+            self._propellers = None
+            thrust = self.ocean.thrust
+            if thrust.diameter_m and self.up_axis == "Z":
+                from draw import propellers
+                self._propellers = propellers.put_in(stage, self.vehicle_path,
+                                                     self.allocator.model.thrusters,
+                                                     thrust.diameter_m, self.units_per_metre)
+                self.say("propellers_drawn", count=len(self._propellers),
+                         diameterM=thrust.diameter_m, fullRpm=float(thrust.max_rpm.max()),
+                         rpmFrom=thrust.rpm_from)
 
             # The reef. Referenced rather than merged, so the seabed stays one
             # file and the coral stays another — a place is layers, and a
@@ -1418,28 +1507,6 @@ class Dive:
         were = self.conditions_said()
         self.say("conditions_from", were=were, cameFrom=were.pop("cameFrom"))
 
-    def things_go_wrong(self) -> None:
-        """Apply whatever the conditions said would fail, when it said."""
-        for failure in self.failures:
-            if failure.get("done") or self.simulated < failure["at"]:
-                continue
-            failure["done"] = True
-            kind = failure["kind"]
-            if kind == "thruster":
-                which = failure.get("which")
-                dead = (list(range(len(self.commands))) if which is None
-                        else [int(which)] if not isinstance(which, list) else [int(w) for w in which])
-                for one_of_them in dead:
-                    if 0 <= one_of_them < len(self.commands):
-                        self.dead_thrusters.add(one_of_them)
-                self.say("thruster_failed", which=sorted(self.dead_thrusters))
-            elif kind == "sensors":
-                self.sensors_out_until = self.simulated + float(failure.get("forS") or 5.0)
-                self.say("sensors_out", untilS=round(self.sensors_out_until, 1))
-            elif kind == "current":
-                speed = float(failure.get("which") or 0.5)
-                self.current = self.current + np.array([speed, 0.0, 0.0])
-                self.say("gust", currentMs=round(float(np.hypot(*self.current[:2])), 3))
 
     @property
     def sensors_are_out(self) -> bool:
@@ -2178,31 +2245,6 @@ class Dive:
         self.ctd_last_t = None
         self.say("ctd_on", **self.ctd)
 
-    def read_the_ctd(self) -> None:
-        """Take a cast, at the instrument's own rate.
-
-        Kept as a profile rather than only published, because the profile *is*
-        the deliverable: a section flown by a glider comes home as the column
-        against distance, and a monitoring dive that measured the water it
-        worked in can say what the water was.
-        """
-        if self.ctd is None:
-            return
-        if self.ctd_last_t is not None and \
-                (self.simulated - self.ctd_last_t) < self.ctd["everyS"]:
-            return
-        self.ctd_last_t = self.simulated
-        depth = max(0.0, float(-self.position[2]))
-        self.profile.append({
-            "t": round(self.simulated, 2),
-            "depthM": round(depth, 3),
-            "temperatureC": None if self.temperature_at(depth) is None
-            else round(float(self.temperature_at(depth)), 3),
-            "salinityPsu": None if self.salinity_psu in (None, "")
-            else round(float(self.salinity_psu), 3),
-            "densityKgM3": round(float(self.density_at(depth)), 3),
-            "atM": [round(float(self.position[0]), 1), round(float(self.position[1]), 1)],
-        })
 
     def switch_on_the_modem(self) -> None:
         """Give the vehicle its acoustic link, as its package describes it.
@@ -2412,81 +2454,15 @@ class Dive:
                                at_most=200000)
 
     def steer_to_the_task(self) -> None:
-        """Plan a way of doing what the task asks, and fly that.
+        """Plan a way of doing what the task asks, and have the helm carry it
+        out now. See systems/tasking.py.
 
-        The task states a goal and the planner works out a path — which is the
-        line that matters, because until it was drawn the task carried its own
-        solution and every dive measured a route we had supplied. What is here
-        is the platform's own planner (controllers/plan.py); somebody else's
-        controller ignores all of it and is handed the goal and the sensors.
-
-        Re-planned when the goal changes, which for a mission is when its
-        stage does.
-        """
-        if self.task is None:
-            return
-        which = self.task.goal_id()
-        if which == self.route_flying:
-            return
-        from controllers import plan
-
-        goal = self.task.goal()
-        # Every controller is told what the dive is for. One that plans for
-        # itself needs the goal and not a route — that is the whole of the
-        # difference between a vehicle being asked and one being driven.
-        self.helm.tasked(goal)
-        named = self.who_should_fly()
-        if named and named != getattr(self, "_asked_for", None):
-            self._asked_for = named
-            if self.helm.engage(named, self.observation()):
-                self.say("flying_with", controller=named)
-            else:
-                self.say("no_such_controller", asked=named)
-        # And how it is set, when the dive says: a stand-off sized for a reef
-        # is wider than a tank, and a dive nobody is steering has no console
-        # to tune it from. Applied once, the same way a console's `tune` is.
-        tuning = (self.brief.get("objective") or {}).get("tune")
-        if isinstance(tuning, dict) and not getattr(self, "_tuned_from_objective", False):
-            self._tuned_from_objective = True
-            for controller, values in tuning.items():
-                for name, value in (values or {}).items():
-                    took = self.helm.tune(str(controller), str(name), float(value))
-                    self.say("tuned" if took else "not_tuned", controller=controller,
-                             parameter=name, value=value, by="the objective")
-        # A plan given to the dive is flown as given. Nothing here works out
-        # what to do: the document says, and where it came from — a person, a
-        # model, another planner — is not this code's business. It is checked
-        # first, because a plan that names a manoeuvre which does not exist is
-        # a vehicle that stops in the water for no reason anyone can see.
-        # A plan may come with the dive, or ride inside the objective it
-        # satisfies — which is how one reaches a vehicle without the platform
-        # needing a second field for it: the dive says what it wants and how
-        # it means to go about it, together.
-        given = self.brief.get("plan")
-        if not isinstance(given, dict):
-            given = (self.brief.get("objective") or {}).get("plan") \
-                if isinstance(self.brief.get("objective"), dict) else None
-        if isinstance(given, dict) and given.get("manoeuvres"):
-            wrong = plan.what_is_wrong(given, self.envelope())
-            if wrong:
-                self.say("plan_refused", why=wrong[:4])
-                given = None
-            else:
-                self.document = given
-                self.planned_by = str(given.get("by") or "the plan it was given")
-        if not isinstance(getattr(self, "document", None), dict) or given is None:
-            self.document = plan.plan_for(goal, believed=self.believed(),
-                                          camera_half_angle=self.camera_half_angle(),
-                                          named=self.task.kind)
-            self.planned_by = "the platform's planner"
-        route = plan.legs_of(self.document)
-        self.route_flying = which
-        self.helm.fly(route)
-        if route or self.document:
-            self.say("planned", legs=len(route),
-                     manoeuvres=len(self.document.get("manoeuvres", [])),
-                     forTask=self.task.kind, goal=goal.get("kind"),
-                     stage=which, by=self.planned_by)
+        Called from outside the tick — a dive opening, a console carrying the
+        vehicle, a task started again — where nothing will step the helm
+        before somebody looks at it. Inside the tick the orders wait for the
+        helm's own step instead."""
+        self.tasking.plan(self.ocean)
+        self.helming.carry_out(self.helm, self.ocean.orders)
 
     def seed(self) -> int:
         """What makes two dives comparable: the same water, wrong the same way.
@@ -2736,183 +2712,13 @@ class Dive:
 
     def observation(self):
         """What the vehicle knows about itself — not what is true about it.
-
-        The difference is the whole of underwater navigation. A controller is
-        handed where the vehicle believes it is, worked out from its log, its
-        compass and its pressure sensor, and where it believes it is pointing,
-        which is out by whatever the compass is out by. What is actually true
-        stays here, for the tasks to score against and for the console to draw
-        beside it.
-        """
-        from controllers import Observation
-
-        floor = self.floor
-        if self.seabed is not None:
-            floor = self.seabed.under(float(self.position[0]), float(self.position[1]))
-        if self.navigation is None:
-            # Nothing between the controller and the truth. Said out loud,
-            # because a controller scored against the truth while steering on
-            # an estimate is a different problem from one holding the truth,
-            # and until now nothing on this side filled the field in at all.
-            return Observation(t=self.simulated, position=self.position, velocity=self.velocity,
-                               rotation=self.rotation, floor=floor, on_the_bottom=self.on_the_bottom,
-                               seen=None if self.sonar is None else self.sonar.nearest(),
-                               sonar=None if self.sonar is None else self.sonar.fan(),
-                               estimated=False)
-        believed_floor = None if floor is None else floor + (self.navigation.believed[2] - float(self.position[2]))
-        return Observation(t=self.simulated,
-                           position=self.navigation.believed.copy(),
-                           velocity=self.velocity,
-                           rotation=self.navigation.believed_rotation(self.rotation),
-                           floor=believed_floor,
-                           on_the_bottom=self.on_the_bottom,
-                           seen=None if self.sonar is None else self.sonar.nearest(),
-                           sonar=None if self.sonar is None else self.sonar.fan(),
-                           estimated=True)
+        See systems/helm.py."""
+        return observe(self.ocean)
 
     def step(self) -> None:
-        """One step of physics. Everything else is somebody else's schedule."""
-        self.things_go_wrong()
-        self.take_the_next_view()
-        # Where it thinks it is, before anything is asked of it: a controller
-        # commands on the estimate it had at the start of the step, which is
-        # what one on a real vehicle does.
-        if self.navigation is not None:
-            floor = self.floor
-            if self.seabed is not None:
-                floor = self.seabed.under(float(self.position[0]), float(self.position[1]))
-            # What the water is doing, so that a vehicle without a log can be
-            # carried by it without noticing — which is the whole of why an
-            # AUV's position is a guess.
-            self.navigation.current = self.current
-            self.navigation.step(self.simulated, self.position, self.velocity,
-                                 self.rotation, floor, self.dt)
-        # The sonar pings at its own rate, before anything is asked of the
-        # controller: what it commands on is what the instrument last said.
-        self.read_the_ctd()
-        if self.multibeam is not None and self.multibeam.due(self.simulated):
-            swath = self.multibeam.ping(self.simulated, self.position,
-                                        self.rotation, self.seabed)
-            if self.recorder is not None and swath["beams"]:
-                self.recorder.sounded(swath)
-        if self.sonar is not None and self.sonar.due(self.simulated):
-            self.sonar.ping(self.simulated, self.position, self.rotation,
-                            self.world, self.seabed, walls=self.interior)
-            # And out to whoever is flying, which until now was only ours.
-            # A vehicle whose sonar our own controller can read and a
-            # customer's cannot is the wrong way round: ours is the reference
-            # and theirs is the product.
-            if self.bridge is not None:
-                fan = self.sonar.fan()
-                self.bridge.publish_sonar(fan["bearingsRad"], fan["rangesM"],
-                                          self.sonar.near, self.sonar.far)
-        self.commands = self.helm.command(self.observation())
-        # A vehicle that is not moved by thrust is moved by this: the pump and
-        # the sliding mass get a step towards whatever the controller asked
-        # for, before the water is asked what it does about it.
-        if getattr(self.helm, "actuators", None) is not None:
-            self.body.model.ask_actuators(self.helm.actuators, self.dt)
-        if self.dead_thrusters:
-            # A thruster that has failed produces nothing, whatever it is
-            # asked for. The allocator does not know, which is the point: the
-            # vehicle is now asymmetric and the controller has to cope.
-            for one_of_them in self.dead_thrusters:
-                if one_of_them < len(self.commands):
-                    self.commands[one_of_them] = 0.0
-
-        # How much of the hull is under the surface. Everything the water does
-        # — hold it up, slow it down, give the thrusters something to push
-        # against, come along with it — is only true of the part that is in it.
-        submerged = self.submerged()
-
-        # What it cost. A flat battery is a vehicle with no thrusters, which
-        # is a hull doing whatever its buoyancy says.
-        if self.battery is not None:
-            self.battery.draw(self.commands if not self.battery.flat else np.zeros_like(self.commands), self.dt)
-            if self.battery.flat:
-                self.commands = np.zeros_like(self.commands)
-
-        # Drag is on the motion through the water. The current, in the body
-        # frame, is taken off the ground velocity before the water sees it —
-        # and so is the orbital motion of the waves, which is the half of a sea
-        # state that acts on a vehicle rather than on a picture.
-        #
-        # It dies as exp(-kz), so it is real in the top half-wavelength and
-        # gone below that. That is why shallow work stops when the weather
-        # comes up and why a dive at forty metres does not care, and until now
-        # a vehicle at one metre in a two-metre sea felt exactly what one at
-        # sixty felt, which was nothing.
-        through_water = self.velocity.copy()
-        through_water[:3] -= self.rotation.T @ (self.current + self.orbital())
-        # Where the vehicle is, handed to the physics: the water it is actually
-        # floating in and the hull it actually has down there, rather than the
-        # ones it had at the surface.
-        here = float(-self.position[2])
-        wrench = self.body.step(self.rotation, through_water, self.commands, self.dt, submerged,
-                                depth_m=here, temperature_c=self.temperature_at(here),
-                                density=self.density_at(here))
-        # Kept, because how hard the vehicle is working is what frightens the
-        # fish. Nothing else needs it and it is one assignment.
-        self.last_wrench = wrench
-        # And the cable, if there is one out. In the world frame — a tether
-        # does not know which way the vehicle is pointing — so it is turned
-        # into the body before it joins the rest.
-        if self.tether is not None and self.tether.out:
-            self.tether.settle(self.position, self.current)
-            pulled = self.tether.pull(self.current)
-            wrench[:3] = wrench[:3] + self.rotation.T @ pulled
-
-        effective = self.effective if submerged >= 1.0 else self.body.effective_mass(submerged)
-
-        # Semi-implicit Euler at a fixed step. Not because it is the best
-        # integrator but because it is the same integrator every time, which
-        # matters more than accuracy for a result two runs must agree on.
-        self.velocity[:3] += (wrench[:3] / effective[:3]) * self.dt
-        self.velocity[3:] += (wrench[3:] / effective[3:]) * self.dt
-        self.position += self.rotation @ self.velocity[:3] * self.dt
-        # Attitude from the body rates, so that yaw is a heading somebody can
-        # hold and roll and pitch are what the righting moment acts against.
-        # Rodrigues on the small rotation this step; renormalised so a long
-        # dive does not drift off orthonormal.
-        self.rotation = self.rotation @ _turn(self.velocity[3:] * self.dt)
-        self.simulated += self.dt
-        self.taken += 1
-        self.against_the_ground = False
-        self.land()
-        self.charge_at_the_dock()
-        self.steer_to_the_task()
-        self.consider_the_end()
-
-        # Sensors at their own rate rather than every physics step: a real DVL
-        # reports at tens of hertz, not two hundred, and a stack tuned against a
-        # sensor that never lies about its rate will be surprised by one that
-        # does.
-        if self.bridge is not None and self.taken % 10 == 0:
-            self.publish()
-
-        # Once a second of simulated time, not of wall-clock: the report is part
-        # of the run, and a report that depended on how fast the machine was
-        # would make two runs of the same seed produce different records.
-        if self.task is not None:
-            floor = self.floor
-            if self.seabed is not None:
-                floor = self.seabed.under(float(self.position[0]), float(self.position[1]))
-            self.task.step(self.simulated, self.position,
-                           float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0])), floor, self.commands,
-                           believed=None if self.navigation is None else self.navigation.believed,
-                           # Whether the log has the bottom. A descent is
-                           # scored partly on how much of it was flown blind,
-                           # and only the navigation knows.
-                           locked=None if self.navigation is None
-                           else self.navigation.bottom_lock)
-        if self.recorder is not None:
-            self.recorder.step(self)
-        # Every five seconds of simulated time. One a second put four hundred
-        # lines on a five-minute run's record that nobody reads one by one;
-        # the console gets twenty a second over its own channel regardless.
-        if self.simulated - self.reported >= 5.0:
-            self.reported = self.simulated
-            self.say("state", **self.state())
+        """One tick of the dive: every system, in the order their declarations
+        give (print `self.engine.order()` to see it). See engine/."""
+        self.engine.tick()
 
     def pose(self):
         """The hull's transform on this stage: its attitude and its position,
@@ -2949,44 +2755,10 @@ class Dive:
         return self._Gf.Vec3d(x, y, z)
 
     def land(self) -> None:
-        """Stop the vehicle where the ground is: under it, and ahead of it.
-
-        Not a collision solver. Two constraints, resolved by putting the
-        vehicle back where it was allowed to be and taking away the velocity
-        that carried it out, which is what a hard stop against ground does: it
-        does not bounce and it does not keep pushing. A vehicle held down by
-        its thrusters stays down, because the thrust is still applied; it
-        simply cannot go through.
-
-        The floor alone was not enough. Clamping depth and nothing else means
-        a vehicle driven at the rising face of a spur is lifted up it a
-        centimetre at a time — it crosses ground no vehicle could cross,
-        silently, and a controller that did that in the sea would be in
-        pieces. So ground too steep to ride over now stops it.
-        """
-        floor = self.floor
-        if self.seabed is not None:
-            floor = self.seabed.under(float(self.position[0]), float(self.position[1]))
-
-        if floor is not None:
-            bottom = floor + self.half_height
-            if self.position[2] < bottom:
-                self.position[2] = bottom
-                self.settle()
-            else:
-                self.on_the_bottom = False
-
-        self.strike()
-        self.keep_out_of_things()
-        self.keep_inside_the_glass()
-        self.stay_on_the_cable()
-
-        # There is no lid on the surface. There used to be, and it was never
-        # reached, because it was only built for places that ship a water
-        # layer. It is not wanted either: a vehicle that breaks the surface
-        # loses its buoyancy and its thrust as it emerges and falls back on
-        # its own, which is what a real one does and is worth being able to
-        # see happen.
+        """Stop the vehicle where the ground, the glass, the things in the
+        water and the cable say it must stop. See systems/contact.py."""
+        contact.land(self.ocean.vehicle, self.ocean.place, self.ocean.contacts,
+                     self.ocean.cable, self.dt, self.say)
 
     def film(self) -> dict:
         """What a dive filmed for people rather than for its record asks of
@@ -2996,289 +2768,34 @@ class Dive:
         asked = (self.brief.get("objective") or {}).get("film")
         return dict(asked) if isinstance(asked, dict) else {}
 
-    def take_the_next_view(self) -> None:
-        """Cycle the camera through the views a dive asked for, if it asked.
 
-        A dive nobody is watching has one camera and its video one view; an
-        agent that wants to see a tank from the room and from the vehicle in
-        the same run asks for both, and gets each for a stretch in turn."""
-        asked = (self.brief.get("objective") or {}).get("views")
-        if not isinstance(asked, list) or not asked:
-            return
-        offered = self.views()
-        names = [v for v in asked if isinstance(v, str) and v in offered]
-        if not names:
-            return
-        every = float((self.brief.get("objective") or {}).get("viewEveryS", 4.0) or 4.0)
-        want = names[int(self.simulated // max(0.5, every)) % len(names)]
-        if want != self.view:
-            self.view = want
-            self.say("view", view=want, scheduled=True)
 
-    def keep_inside_the_glass(self) -> None:
-        """Stop at a tank's walls the way the ground stops it: put back, and
-        the velocity that carried it there taken away. No bounce."""
-        if self.interior is None:
-            return
-        low, high = self.interior
-        reach = float(self.half_width)
-        touching = False
-        for axis in (0, 1):
-            lo, hi = float(low[axis]) + reach, float(high[axis]) - reach
-            if self.position[axis] < lo or self.position[axis] > hi:
-                self.position[axis] = min(max(float(self.position[axis]), lo), hi)
-                # The world-frame velocity along that wall's normal, removed in the body frame.
-                normal = np.zeros(3)
-                normal[axis] = 1.0
-                into = self.rotation.T @ normal
-                along = float(np.dot(self.velocity[:3], into))
-                self.velocity[:3] -= along * into
-                # Counted as a strike, once per contact: a vehicle against the
-                # glass of a tank has hit the tank, and leaving it out of the
-                # score made a controller that scraped the glass all the way
-                # round look as clean as one that never touched it.
-                if not getattr(self, "_on_the_glass", False):
-                    self._glass_strikes = getattr(self, "_glass_strikes", 0) + 1
-                    self.say("touched_the_glass", axis="xy"[axis], times=self._glass_strikes,
-                             at=[round(float(v), 3) for v in self.position])
-                touching = True
-        self._on_the_glass = touching
 
-    # Ground steeper than this is a wall rather than a slope: a vehicle rides
-    # over what it can and is stopped by what it cannot. Fifty degrees is well
-    # past anything a reef's sand or rubble holds, and short of the near
-    # vertical faces of a spur, which is exactly the line worth drawing.
-    CLIMBS_UP_TO = math.cos(math.radians(50.0))
 
-    def settle(self) -> None:
-        """Take away the motion going into the ground, and leave the rest.
 
-        The ground is a surface, not a lift. Clamping depth and zeroing the
-        descent — which is all this used to do — meant a vehicle pressed onto a
-        slope was carried up it at no cost, gaining height it never worked for.
-        Removing the part of the motion that goes into the surface gives the
-        right answer at every angle without a special case: on a flat bottom
-        the descent stops, on a slope the push turns into travel along the
-        slope and the vehicle keeps only what it did not spend climbing, and
-        on a face near vertical almost nothing of it is left.
-        """
-        facing = (np.array([0.0, 0.0, 1.0]) if self.seabed is None
-                  else self.seabed.normal(float(self.position[0]), float(self.position[1])))
-        moving = self.rotation @ self.velocity[:3]
-        into = float(np.dot(moving, facing))
-        if into < 0.0:
-            self.velocity[:3] = self.rotation.T @ (moving - facing * into)
-        # Ground it is resting on, or a face it is up against. The two mean
-        # different things to whoever is reading: one is a dive that has
-        # landed, the other is a dive that is stuck.
-        self.on_the_bottom = bool(facing[2] > 0.7)
-        if facing[2] <= 0.7:
-            self.against_the_ground = True
-
-    def stay_on_the_cable(self) -> None:
-        """A vehicle cannot go further out than there is cable.
-
-        The taut case, which the cable's own relaxation cannot carry: put it
-        back where the tether allows, and take away the part of its motion that
-        was carrying it further out. The same two constraints the ground and a
-        mooring block apply, for the same reason.
-        """
-        if self.tether is None or not self.tether.out:
-            return
-        came_from = self.position - (self.rotation @ self.velocity[:3]) * max(1e-3, self.dt)
-        allowed, held = self.tether.keep_in(self.position, came_from)
-        if not held:
-            return
-        self.position = allowed
-        out = allowed - self.tether.at
-        far = float(np.linalg.norm(out))
-        if far < 1e-9:
-            return
-        out = out / far
-        through = self.rotation @ self.velocity[:3]
-        away = float(np.dot(through, out))
-        if away > 0.0:
-            self.velocity[:3] = self.rotation.T @ (through - out * away)
-        if self.tether.struck == 1:
-            self.say("tether_taut", lengthM=round(self.tether.length_m, 1),
-                     from_=[round(float(v), 1) for v in self.tether.at],
-                     why="a vehicle cannot go further out than there is cable")
-
-    def keep_out_of_things(self) -> None:
-        """Stop the vehicle against what somebody put in the water.
-
-        The same rule as the ground, and deliberately the same shape: put it
-        back where it was allowed to be and take away the velocity that carried
-        it in. A mooring block is not a wall to slide along and not a spring to
-        bounce off — it is somewhere the vehicle cannot be, and a dive that
-        drove into one has a result that says so.
-        """
-        if not len(self.world):
-            return
-        going = self.rotation @ self.velocity[:3]
-        came_from = self.position - going * max(1e-3, self.dt)
-        allowed, struck = self.world.keep_out(self.position, came_from, self.half_width)
-        if struck is None:
-            return
-        moved = allowed - self.position
-        self.position = allowed
-        # Only the part of the motion that was going into it.
-        flat = np.array([moved[0], moved[1], 0.0])
-        reach = float(np.linalg.norm(flat))
-        if reach > 1e-9:
-            out = flat / reach
-            through = self.rotation @ self.velocity[:3]
-            into = float(np.dot(through, out))
-            if into < 0.0:
-                self.velocity[:3] = self.rotation.T @ (through - out * into)
-        # Once per thing, not once per physics step. A vehicle held against a
-        # frame for four seconds struck it once; four hundred events saying so
-        # is a record nobody can read and a log nobody can ship.
-        if struck.id not in self._struck:
-            self._struck.add(struck.id)
-            self.say("struck", what=struck.kind, which=struck.id,
-                     is_=struck.spec.what,
-                     where=[round(float(v), 2) for v in allowed])
 
     def what_it_hit(self) -> dict:
-        """What this dive struck, for whoever is judging it.
-
-        `tools/bench` asks for it. The benchmark in the plan says a controller
-        is judged on "energy, time, closing navigation error, **things
-        struck**", and things struck was the one of those nothing reported —
-        which is the difference between `wary`, which arrives five metres
-        short and hits nothing, and `pursue`, which arrives exactly and
-        ploughs through three nursery frames. That is the whole question the
-        bench exists to answer and it was the column that was missing.
-
-        Counted once per thing, not once per physics step: a vehicle held
-        against a frame for four seconds struck it once.
-        """
-        return {"things": len(self._struck),
-                "which": sorted(self._struck),
-                "ground": int(self._grounded),
-                "glass": int(getattr(self, "_glass_strikes", 0))}
+        """What this dive struck, for whoever is judging it: things in the
+        water, ground it could not ride over, and a tank's glass, each counted
+        once per contact. `tools/bench` asks for it, because "things struck"
+        is how a controller that arrives short and hits nothing is told apart
+        from one that arrives exactly and ploughs through a nursery frame."""
+        return self.ocean.contacts.said()
 
     def strike(self) -> None:
-        """Stop the vehicle against ground it cannot ride over.
+        """Stop the vehicle against ground it cannot ride over. See
+        systems/contact.py."""
+        contact.strike(self.ocean.vehicle, self.ocean.place, self.ocean.contacts)
 
-        It looks its own half-width ahead along the way it is actually moving,
-        which is where it will meet something before its centre does. If the
-        ground there stands above its keel and faces too steeply to be a slope,
-        the part of its motion going into that face is taken away — the rest is
-        left alone, so a vehicle stopped by a wall still slides along it, which
-        is what happens and what a pilot expects.
-        """
-        if self.seabed is None:
-            return
-        moving = self.rotation @ self.velocity[:3]
-        flat = moving[:2]
-        speed = float(np.linalg.norm(flat))
-        if speed < 1e-4:
-            return
-        # Where the hull will meet something: ahead along the way it moves, and
-        # out to its sides. A single probe ahead let a pillar slide down the
-        # vehicle's flank and through its pods without a contact: a hull is as
-        # wide as its arms, not as wide as a point.
-        way = flat / speed
-        side = np.array([-way[1], way[0]])
-        keel = float(self.position[2]) - self.half_height
-        touched = False
-        for along, across in ((1.0, 0.0), (0.7, 0.6), (0.7, -0.6), (0.0, 0.75), (0.0, -0.75)):
-            probe = self.position[:2] + (way * along + side * across) * self.half_width
-            there = self.seabed.under(float(probe[0]), float(probe[1]))
-            if there <= keel:
-                continue
-            facing = self.seabed.normal(float(probe[0]), float(probe[1]))
-            if facing[2] >= self.CLIMBS_UP_TO:
-                continue                    # a slope, not a wall: it may ride up
-            into = facing[:2]
-            length = float(np.linalg.norm(into))
-            if length < 1e-9:
-                continue
-            into = into / length
-            going = float(np.dot(flat, into))
-            if going >= 0.0:
-                continue                    # already leaving the face
-            flat = flat - into * going
-            touched = True
-        if not touched:
-            return
-        moving[:2] = flat
-        self.velocity[:3] = self.rotation.T @ moving
-        # Counted once per contact rather than once per step, the same way a
-        # world object is: a vehicle pressed against a spur for four seconds
-        # flew into it once.
-        if not self.against_the_ground:
-            self._grounded += 1
-        self.against_the_ground = True
-
-    def charge_at_the_dock(self) -> None:
-        """On the station, the battery fills. That is what a dock is for."""
-        self.charging = False
-        if self.battery is None or self.task is None:
-            return
-        from tasks import Dock, Mission, Wait
-
-        stage = self.task.stage if isinstance(self.task, Mission) else self.task
-        docked = False
-        if isinstance(self.task, Mission):
-            docked = any(one.get("kind") == "dock" and one.get("achieved", {}).get("docked")
-                         for one in self.task.finished)
-        if isinstance(stage, Wait) and docked:
-            self.charging = True
-            self.battery.charge(float(self.brief.get("dockWatts", 120.0)), self.dt)
-        elif isinstance(stage, Dock) and stage.docked:
-            self.charging = True
-            self.battery.charge(float(self.brief.get("dockWatts", 120.0)), self.dt)
 
     def consider_the_end(self) -> None:
         """Every way a dive can be over other than its clock running out.
-
-        A task that is done is a dive that is done: the machine goes back
-        rather than holding station for the rest of an hour somebody asked for
-        because they did not know how long the job would take.
-        """
-        if self.ended:
-            return
-        if self.task is not None and self.task.done:
-            if str(self.brief.get("mode", "batch")) == "interactive":
-                # Somebody is watching. Ending here would take the water away
-                # from them at the exact moment there is something to look at,
-                # and asking for another go would mean another dive and
-                # another scene. The vehicle holds where it is, the console
-                # says how it went, and they can try again or surface.
-                if not self.task_over:
-                    self.task_over = True
-                    self.say("task_over", result=self.task.result(), attempt=self.attempts)
-                return
-            self.finish("failed" if self.task.failed() else "achieved")
-            return
-        if self.battery is not None and self.battery.flat:
-            self.finish("battery")
-            return
-        # The failsafe has taken the vehicle and got it there.
-        decided = self.helm.failsafe.decided
-        if decided == "surface" and self.submerged() < 1.0:
-            self.finish("surfaced")
-        elif decided == "dock" and self.helm.failsafe.pursue.holding:
-            self.finish("home")
+        See systems/tasking.py."""
+        self.tasking.consider_the_end(self.ocean)
 
     def submerged(self) -> float:
-        """The share of the hull under the surface, from one to nothing.
-
-        The hull is treated as a box of its own height, so it goes from wholly
-        under to wholly out over its own depth rather than all at once. Sudden
-        is what makes a surface model unusable: a vehicle that loses all its
-        buoyancy in one step leaves at speed.
-        """
-        if self.water_level is None:
-            return 1.0
-        top_of_hull = float(self.position[2]) + self.half_height
-        if top_of_hull <= self.water_level:
-            return 1.0
-        under = self.water_level - (float(self.position[2]) - self.half_height)
-        return float(max(0.0, min(1.0, under / max(1e-6, 2.0 * self.half_height))))
+        """The share of the hull under the surface. See systems/vehicle.py."""
+        return self.ocean.vehicle.submerged(self.water_level)
 
     def across_metres(self) -> float:
         """How wide this place is, in metres."""
@@ -3287,27 +2804,12 @@ class Dive:
             return 1000.0
         return max(float(far[0] - corner[0]), float(far[1] - corner[1]))
 
-    # The surface drift a wind drives is about three per cent of the wind, the
-    # oceanographer's rule of thumb, and in a tank it is gone a few centimetres
-    # down. Both are guesses with a shape, and the second is the one a fan and
-    # a dye trace would settle.
-    WIND_DRIFT = 0.03
-    WIND_REACHES_M = 0.06
 
-    def wind_drift(self):
-        """The top of the water dragged along by the wind, where the vehicle is."""
-        if not self.wind.any():
-            return np.zeros(3)
-        depth = max(0.0, float(-self.position[2]) - float(self.half_height))
-        return self.WIND_DRIFT * self.wind * math.exp(-depth / self.WIND_REACHES_M)
 
     def orbital(self):
-        """The water's own motion under the waves, where the vehicle is."""
-        if self.water is None or not hasattr(self.water, "orbital_here"):
-            return self.wind_drift()
-        return self.wind_drift() + self.water.orbital_here(
-            float(self.position[0]), float(self.position[1]),
-            max(0.0, float(-self.position[2])), self.simulated)
+        """The water's own motion under the waves, where the vehicle is.
+        See systems/water.py."""
+        return self.ocean.water.orbital(self.position, self.half_height, self.simulated)
 
     # How far from where a dive begins the fish are put.
     #
@@ -3621,6 +3123,9 @@ class Dive:
         # is what carries them along.
         self.aim_the_lamps()
         self.draw_the_tether()
+        if getattr(self, "_propellers", None):
+            from draw import propellers
+            propellers.turn(self._propellers, self.ocean.thrust)
 
     # How thick the cable is drawn, at least. A five-millimetre tether is a
     # pixel at three metres and reads as nothing; drawn at its own diameter
@@ -3730,6 +3235,9 @@ class Dive:
             "flyingAs": self.helm.flying_as(),
             "onTheBottom": self.on_the_bottom,
             "thrust": [round(float(c), 3) for c in self.commands],
+            # How fast each propeller turns, from the command it got: what the
+            # drawing spins them at. The full speed's source is in the hello.
+            "rpm": [int(round(float(r))) for r in self.ocean.thrust.rpm],
             "position": [round(float(x), 4) for x in self.position],
         }
 

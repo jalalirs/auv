@@ -101,3 +101,33 @@ def test_a_place_that_does_not_say_where_it_is_leaves_the_field_empty(tmp_path):
         dive.step()
     dive.close()
     assert json.loads((into / "manifest.json").read_text())["place"] is None
+
+
+def test_the_video_is_as_long_as_the_dive(tmp_path):
+    """Frames on a grid of the dive's clock. Taken one interval after the last,
+    every frame came on the first physics step past it — thirty-five
+    milliseconds, not thirty-three — and a film of a ninety-second dive ran
+    eighty-five."""
+    from recording import Recorder
+
+    keeping = Recorder(tmp_path, frames_hz=30.0)
+    t, dt = 0.0, 0.005
+    while t < 10.0 - 1e-9:
+        if keeping.due(t):
+            keeping.captured(keeping.copies)
+        t += dt
+    assert keeping.frames_taken == 300
+
+
+def test_a_frame_drawn_late_stands_for_the_ones_it_missed(tmp_path):
+    """A drawing that falls behind the dive holds the picture, as a camera's
+    recording does when it drops frames, and the video keeps its length."""
+    from recording import Recorder
+
+    keeping = Recorder(tmp_path, frames_hz=10.0)
+    assert keeping.due(0.0) and keeping.copies == 1
+    keeping.captured(keeping.copies)
+    assert keeping.due(0.55) and keeping.copies == 5      # 0.1 … 0.5
+    keeping.captured(keeping.copies)
+    assert keeping.frames_taken == 6
+    assert keeping.owes_a_picture(0.59) is False and keeping.owes_a_picture(0.6) is True

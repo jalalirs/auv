@@ -10,5 +10,5 @@ requires-python = ">=3.10"
 dependencies = ["numpy>=1.24"]
 
 [tool.setuptools]
-packages = ["coral", "coral.controllers"]
+packages = ["coral", "coral.controllers", "coral.engine", "coral.systems"]
 include-package-data = false

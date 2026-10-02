@@ -78,6 +78,10 @@ class Recorder:
         self.last_pose = -1e9
         self.last_task = -1e9
         self.last_frame = -1e9
+        self.next_frame = 0.0
+        # How many grid points the frame being taken stands for: one, unless
+        # it was taken late. See `due`.
+        self.copies = 1
         self.poses = 0
         self.frames_taken = 0
         self.frame_name: str | None = None
@@ -98,20 +102,33 @@ class Recorder:
         anybody who only wants to know. The headless runner asks this to decide
         when to render at all, and a render is not a capture.
         """
-        return t - self.last_frame >= self.frame_every
+        return t + 1e-9 >= self.next_frame
 
     def due(self, t: float) -> bool:
         """Whether a picture is owed, and marks it owed no longer.
 
         For the caller that is about to take it. Anybody else wants
         `owes_a_picture`.
+
+        Frames are owed on a grid of the dive's clock — at 0, 1/fps, 2/fps —
+        and not at one interval after whenever the last was taken. Measured
+        from the last, every frame came a little late (the physics steps in
+        fives of milliseconds, and the first step past a thirtieth of a second
+        is thirty-five milliseconds on), the video ran 5% fast, and a dive
+        that drew slowly lost whole stretches. On the grid, a frame taken late
+        stands for every grid point it is late for (`copies`), so the video is
+        exactly as long as the dive, and a moment in the dive is at that many
+        seconds in the video — which is what the poses point at.
         """
         if not self.owes_a_picture(t):
             return False
         self.last_frame = t
+        reached = int(math.floor(t / self.frame_every + 1e-9))
+        self.next_frame = (reached + 1) * self.frame_every
+        self.copies = max(1, reached + 1 - self.frames_taken)
         return True
 
-    def captured(self) -> None:
+    def captured(self, copies: int | None = None) -> None:
         """A frame has actually been written into the video.
 
         Counted here rather than when one is owed, because the two are not the
@@ -120,7 +137,7 @@ class Recorder:
         never written is a replay showing the wrong moment. The pose points at
         the frame's place in the video, and the video is played by going to it.
         """
-        self.frames_taken += 1
+        self.frames_taken += max(1, int(copies or 1))
         self.frame_name = f"{self.video_name}#{self.frames_taken - 1}"
 
     def video_wanted(self) -> tuple[int, str]:

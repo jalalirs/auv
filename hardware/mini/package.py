@@ -194,6 +194,13 @@ def dynamics():
             "maxForwardN": S.THRUST_FWD_N,
             "maxReverseN": S.THRUST_REV_N,
             "timeConstantS": 0.1,
+            # How fast the propellers turn at full command, and how big they
+            # are: what the drawing spins, and later what the wash is worked
+            # out from. Neither is published for the UG500.
+            "maxRpm": 3600,
+            "rpmFrom": "assumed: ApisQueen do not publish the UG500's speed; a Blue Robotics T200's 3,600 rpm at 16 V",
+            "propellerDiameterM": round((S.DUCT_OD - 6.0) / 1000.0, 3),
+            "propellerFrom": "assumed: the largest propeller that turns inside the 44 mm guard",
             "units": units,
         },
         "tether": {"_": "10 m of thin twisted pair, data only: the battery powers the vehicle. Slightly buoyant, as tank tethers are made, so its slack floats above the vehicle instead of sinking across it.",
