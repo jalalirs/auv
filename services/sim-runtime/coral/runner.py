@@ -1795,6 +1795,7 @@ class Dive:
             self.switch_on_the_ctd()
             self.switch_on_the_modem()
             self.switch_on_the_sonar()
+            self.switch_on_the_sidescan()
             self.switch_on_the_multibeam()
             self.run_out_the_tether()
             self.began_with_wh = (0.0 if self.battery is None else self.battery.remaining_wh)
@@ -2328,6 +2329,23 @@ class Dive:
             return True
         return kind in set(named)
 
+    def switch_on_the_sidescan(self) -> None:
+        """Fit the side-scan, if the vehicle carries one (systems/sidescan.py).
+        The dive's tow may say which frequency."""
+        import json
+
+        try:
+            described = json.loads((pathlib.Path(self.brief.get("vehiclePath", "/dive/vehicle"))
+                                    / "dynamics.json").read_text())
+        except Exception:
+            return
+        said = next((one for one in described.get("sensors") or [] if one.get("kind") == "side_scan"), None)
+        if said is None:
+            return
+        tow = (self.objective or {}).get("tow") if isinstance(self.objective, dict) else None
+        self.ocean.sidescan.set_for(said, (tow or {}).get("frequencykHz"))
+        self.say("sidescan_on", **{k: v for k, v in self.ocean.sidescan.said().items() if k != "pings"})
+
     def switch_on_the_sonar(self) -> None:
         """Give the vehicle its sonar, if its package says it has one.
 
@@ -2423,6 +2441,12 @@ class Dive:
             asked = float(rim["outM"])
         if asked is not None:
             said["lengthM"] = float(asked)
+        # A tow: the cable is the tow cable, as much as the dive pays out, and
+        # its dry end is the ship's stern (systems/tow.py).
+        tow = (self.objective or {}).get("tow") if isinstance(self.objective, dict) else None
+        if isinstance(tow, dict):
+            said = {**said, **(said.get("tow") or {})}
+            said["lengthM"] = float(tow.get("cableOutM", 50.0))
         if not said or float(said.get("lengthM", 0.0)) <= 0.0:
             return
         # Where the cable is tied to the vehicle, in its own frame. The middle
@@ -2431,7 +2455,18 @@ class Dive:
         self.tether_lead_out = float(said.get("leadOutM", 0.0))
 
         floating = self.world.of_kind("ship") + self.world.of_kind("buoy")
-        if rim is not None and rim.get("at") is not None:
+        if isinstance(tow, dict):
+            # She starts ahead of the fish by most of the cable, steaming
+            # away from it, so the dive opens with the tow already streaming.
+            a = math.radians(float(tow.get("headingDeg", 0.0)))
+            ahead = np.array([math.cos(a), math.sin(a), 0.0]) * 0.8 * said["lengthM"]
+            self.ocean.ship.set_for(tow, self.position + ahead)
+            rim = None
+            floating = []
+            surface = self.ocean.ship.at.copy()
+            where = f"the ship's stern, towing at {self.ocean.ship.speed_kn:g} kn"
+            self.say("towing", **self.ocean.ship.said())
+        elif rim is not None and rim.get("at") is not None:
             surface = np.array(rim["at"], dtype=float)
             where = rim.get("what", "where the place says the cable comes over the rim")
         elif floating:
@@ -3392,6 +3427,10 @@ class Dive:
                  # how each species spent the dive, how many fish it ran into,
                  # and the day it was flown in.
                  **({} if self.shoal is None else {"life": self.shoal.said()}),
+                 # A tow: the ship, and the side-scan's record, whose image
+                 # goes with the recording.
+                 **({} if not self.ocean.ship.towing else {"tow": self.ocean.ship.said()}),
+                 **({} if not self.ocean.sidescan.fitted else {"sidescan": self.ocean.sidescan.said()}),
                  # The coral it touched and what that did, and its hardest
                  # strike of anything: where, how fast, what impulse.
                  **({} if not len(self.ocean.coral) else {"coral": self.ocean.coral.said()}),

@@ -25,7 +25,9 @@ from systems.outputs import BridgeSystem, RecordSystem
 from systems.place import Place
 from systems.sediment import Sediment, SedimentSystem
 from systems.tasking import Task, TaskingSystem
+from systems.sidescan import SideScan, SideScanSystem
 from systems.tether import TetherSystem
+from systems.tow import Ship, ShipSystem
 from systems.thrusters import Power, Thrust, ThrustersSystem
 from systems.vehicle import Vehicle, VehicleSystem
 from systems.wash import Wash, WashSystem
@@ -59,6 +61,8 @@ def the_ocean(body, thrusters: int, dt: float) -> World:
     world.put("light", Light(), owner="light")
     world.put("coral", Colonies(), owner="coral")
     world.put("sediment", Sediment(), owner="sediment")
+    world.put("ship", Ship(), owner="ship")
+    world.put("sidescan", SideScan(), owner="sidescan")
     world.put("fish", None, owner="fish")
     world.put("task", Task(), owner="tasking")
     world.put("bridge", None, owner="bridge")
@@ -77,6 +81,19 @@ def tied_on(brief: dict):
         return np.asarray(said.get("attachM", [0.0, 0.0, 0.0]), dtype=float)
     except Exception:
         return np.zeros(3)
+
+
+def weathervanes(brief: dict) -> bool:
+    """Whether the vehicle has fins that point it into the flow: a towfish."""
+    import json
+    import pathlib
+
+    try:
+        hull = json.loads((pathlib.Path(brief.get("vehiclePath", "/dive/vehicle")) / "dynamics.json")
+                          .read_text()).get("hull") or {}
+        return bool(hull.get("weathervanes"))
+    except Exception:
+        return False
 
 
 def rocks_of(brief: dict) -> dict:
@@ -98,6 +115,7 @@ def the_systems(dive) -> list:
     objective = brief.get("objective") if isinstance(brief.get("objective"), dict) else None
     return [
         FaultsSystem(len(dive.allocator.model.thrusters), say),
+        ShipSystem(dt),
         LightSystem(),
         WaterSystem(say),
         ViewsSystem(objective, dive.views, say),
@@ -107,13 +125,14 @@ def the_systems(dive) -> list:
         SonarSystem(),
         HelmSystem(say),
         ThrustersSystem(dt, float(brief.get("dockWatts", 120.0))),
-        VehicleSystem(dt, say, attach=tied_on(brief)),
+        VehicleSystem(dt, say, attach=tied_on(brief), weathervanes=weathervanes(brief)),
         WashSystem(dive.allocator.model.thrusters),
         TetherSystem(dt, tied_on(brief), float(max(dive.capability[0], dive.capability[1])),
                      rocks_of(brief), say),
         FishSystem(),
         CoralSystem(say),
         SedimentSystem(int(brief.get("seed", 0)), say),
+        SideScanSystem(int(brief.get("seed", 0))),
         # The clock moves on once the vehicle has: what runs after it judges
         # the state the tick produced, at the time it was produced.
         Tick(after=("vehicle",)),

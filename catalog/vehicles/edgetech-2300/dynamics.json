@@ -1,0 +1,181 @@
+{
+ "massKg": 449.0,
+ "displacedVolumeM3": 0.1727,
+ "envelope": {
+  "maxDepthM": 3000.0,
+  "maxSpeedMs": 3.1,
+  "minAltitudeM": 2.0,
+  "note": "Rated to 3,000 m (published). Towed at 2–6 kn; a fish is flown at 10–15% of its range above the bottom (EdgeTech's guidance)."
+ },
+ "hull": {
+  "note": "EdgeTech 2300 combined side-scan and sub-bottom towfish.",
+  "dimensionsM": [
+   2.059,
+   0.817,
+   0.508
+  ],
+  "dimensionsFrom": "published: 205.9 × 81.7 × 50.8 cm (76.3 cm with the rear fins)",
+  "weathervanes": true,
+  "shape": "A flat aluminium sled with a tow bail and two tail fins that point it into the flow."
+ },
+ "provenance": {
+  "note": "Size, weight in air and water, depth rating and the sonars' figures are EdgeTech's published datasheet. Drag, added mass and the tow cable are assumed."
+ },
+ "centreOfGravityM": [
+  0,
+  0,
+  0
+ ],
+ "centreOfBuoyancyM": [
+  0,
+  0,
+  0.08
+ ],
+ "inertiaTensor": [
+  34.63,
+  0,
+  0,
+  0,
+  168.28,
+  0,
+  0,
+  0,
+  183.6
+ ],
+ "addedMass": {
+  "note": "Assumed: half the displaced mass along, the displaced mass across and down; rotational terms small.",
+  "diagonal": [
+   -88.5,
+   -354.0,
+   -531.0,
+   -5.0,
+   -20.0,
+   -20.0
+  ]
+ },
+ "linearDamping": {
+  "note": "Assumed: small; a towfish is all quadratic drag.",
+  "diagonal": [
+   -20.0,
+   -40.0,
+   -60.0,
+   -10.0,
+   -40.0,
+   -40.0
+  ]
+ },
+ "quadraticDamping": {
+  "note": "Assumed: ½ρ·Cd·area, Cd 0.8 nose on and 1.2 side and face on.",
+  "diagonal": [
+   -170.2,
+   -643.3,
+   -1034.6,
+   -80.0,
+   -400.0,
+   -400.0
+  ]
+ },
+ "thrusters": {
+  "note": "None. It is flown by the ship.",
+  "maxForwardN": 0.0,
+  "maxReverseN": 0.0,
+  "units": []
+ },
+ "tether": {
+  "_": "The tow cable: single armoured coax (published: digital telemetry over a single coaxial tow cable). Its size and strength are assumed.",
+  "diameterM": 0.0173,
+  "lengthM": 0.0,
+  "weightNPerM": 4.4,
+  "massKgPerM": 0.95,
+  "dragNormal": 1.2,
+  "attachM": [
+   0.55,
+   0.0,
+   0.45
+  ],
+  "breakingN": 150000.0,
+  "axialStiffnessN": 4000000.0
+ },
+ "sensors": [
+  {
+   "kind": "side_scan",
+   "name": "side_scan",
+   "position": [
+    0,
+    0,
+    -0.2
+   ],
+   "frequencieskHz": [
+    120,
+    410,
+    850
+   ],
+   "rangeMBykHz": {
+    "120": 500,
+    "230": 300,
+    "410": 200,
+    "540": 150,
+    "850": 75
+   },
+   "acrossTrackResolutionMBykHz": {
+    "120": 0.065,
+    "230": 0.03,
+    "410": 0.018,
+    "540": 0.015,
+    "850": 0.01
+   },
+   "horizontalBeamDegBykHz": {
+    "120": 0.68,
+    "230": 0.5,
+    "410": 0.3,
+    "540": 0.26,
+    "850": 0.2
+   },
+   "verticalBeamDeg": 50.0,
+   "depressionDeg": 26.0,
+   "frequencykHz": 410,
+   "binsPerSide": 512,
+   "note": "EdgeTech 2300 side-scan, published figures; the ping is rendered by systems/sidescan.py."
+  },
+  {
+   "kind": "sub_bottom",
+   "name": "sub_bottom",
+   "position": [
+    0,
+    0,
+    -0.25
+   ],
+   "bandkHz": [
+    1,
+    10
+   ],
+   "resolutionM": [
+    0.1,
+    0.3
+   ],
+   "penetrationM": {
+    "coarse sand": 20,
+    "clay": 200
+   },
+   "note": "Four DW-106 transducers and a PVDF array (published). Not yet simulated: it needs what lies under the seabed."
+  },
+  {
+   "kind": "imu",
+   "name": "attitude",
+   "position": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "kind": "barometer",
+   "name": "depth",
+   "position": [
+    0,
+    0,
+    0
+   ]
+  }
+ ]
+}

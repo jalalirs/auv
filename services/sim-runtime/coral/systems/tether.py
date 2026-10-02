@@ -342,7 +342,7 @@ class TetherSystem(System):
     """Moves the cable each tick and decides whether it has fouled."""
 
     name = "cable"
-    reads = ("vehicle", "water", "wash", "place", "clock")
+    reads = ("vehicle", "water", "wash", "place", "clock", "ship")
     writes = ("cable",)
 
     # How often it asks whether the cable has fouled. The tightest-path test
@@ -370,6 +370,9 @@ class TetherSystem(System):
             return
         v, water, wash = world.vehicle, world.water, world.wash
         now = world.clock.simulated
+        # Towed: the dry end is the ship's stern, wherever she has got to.
+        if world.ship.towing:
+            cable.at = world.ship.at.copy()
 
         def flow(points):
             return water.flow_at(points, now) + wash.at(points)

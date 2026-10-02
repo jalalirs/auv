@@ -19,6 +19,8 @@ for a result two runs must agree on.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 from engine import System
@@ -73,15 +75,25 @@ def turn(small: np.ndarray) -> np.ndarray:
     return u @ vt
 
 
+def level_facing(way) -> np.ndarray:
+    """A rotation that points the nose along `way` (horizontal), level."""
+    yaw = math.atan2(float(way[1]), float(way[0]))
+    c, s = math.cos(yaw), math.sin(yaw)
+    return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+
+
 class VehicleSystem(System):
     name = "vehicle"
     reads = ("thrust", "water", "helm", "place")
     before = ("clock", "cable", "coral")
     writes = ("vehicle", "contacts")
 
-    def __init__(self, dt: float, say, attach=(0.0, 0.0, 0.0)) -> None:
+    def __init__(self, dt: float, say, attach=(0.0, 0.0, 0.0), weathervanes: bool = False) -> None:
         self.dt = float(dt)
         self.say = say
+        # A towfish's fins point it into the flow; it has no say in where it
+        # goes, only in how it hangs there.
+        self.weathervanes = bool(weathervanes)
         # Where the cable is tied on the hull, body frame: where its pull acts.
         self.attach = np.asarray(attach, dtype=float)
 
@@ -122,6 +134,21 @@ class VehicleSystem(System):
         v.velocity[3:] += (wrench[3:] / effective[3:]) * dt
         v.position += v.rotation @ v.velocity[:3] * dt
         v.rotation = v.rotation @ turn(v.velocity[3:] * dt)
+        if self.weathervanes:
+            self.into_the_flow(v, water)
 
         v.against_the_ground = False
         contact.land(v, world.place, world.contacts, cable, dt, self.say, coral=world.coral)
+
+    @staticmethod
+    def into_the_flow(v, water) -> None:
+        """Nose into the water going past, level — what a towfish's tail fins
+        do (assumed: at once, and fully). Its velocity is kept; only how it is
+        described in the body frame changes, and it does not spin."""
+        moving = v.rotation @ v.velocity[:3] - water.current
+        if float(np.hypot(moving[0], moving[1])) < 0.1:
+            return
+        world_velocity = v.rotation @ v.velocity[:3]
+        v.rotation = level_facing(moving)
+        v.velocity[:3] = v.rotation.T @ world_velocity
+        v.velocity[3:] = 0.0
