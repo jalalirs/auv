@@ -2347,6 +2347,17 @@ class Dive:
                 np.save(pathlib.Path(into) / "sidescan.npy", image)
                 where = pathlib.Path(into) / "sidescan.npy"
         self.say("sidescan_kept", file=where.name, pings=len(self.ocean.sidescan.rows))
+        if self.ocean.subbottom.traces:
+            section = self.ocean.subbottom.image()
+            try:
+                import cv2
+                cv2.imwrite(str(pathlib.Path(into) / "subbottom.png"), 255 - section)
+            except Exception:
+                try:
+                    from PIL import Image
+                    Image.fromarray(255 - section).save(pathlib.Path(into) / "subbottom.png")
+                except Exception:
+                    np.save(pathlib.Path(into) / "subbottom.npy", section)
 
     def switch_on_the_sonde(self) -> None:
         """Fit the water-quality sonde, if the vehicle carries one."""
@@ -2378,6 +2389,16 @@ class Dive:
         tow = (self.objective or {}).get("tow") if isinstance(self.objective, dict) else None
         self.ocean.sidescan.set_for(said, (tow or {}).get("frequencykHz"))
         self.say("sidescan_on", **{k: v for k, v in self.ocean.sidescan.said().items() if k != "pings"})
+        # And the sub-bottom profiler beside it, against what the place says
+        # lies under it.
+        under = next((one for one in described.get("sensors") or [] if one.get("kind") == "sub_bottom"), None)
+        if under is not None:
+            try:
+                site = json.loads((pathlib.Path(self.brief.get("cityPath", "/dive/city")) / "site.json").read_text())
+            except Exception:
+                site = {}
+            self.ocean.subbottom.set_for(under, site.get("subsurface"))
+            self.say("subbottom_on", **{k: v for k, v in self.ocean.subbottom.said().items() if k != "traces"})
 
     def switch_on_the_sonar(self) -> None:
         """Give the vehicle its sonar, if its package says it has one.
@@ -3411,6 +3432,7 @@ class Dive:
                  # goes with the recording.
                  **({} if not self.ocean.ship.towing else {"tow": self.ocean.ship.said()}),
                  **({} if not self.ocean.sidescan.fitted else {"sidescan": self.ocean.sidescan.said()}),
+                 **({} if not self.ocean.subbottom.fitted else {"subbottom": self.ocean.subbottom.said()}),
                  **({} if not self.ocean.quality.readings else {"waterQuality": {
                      "readings": len(self.ocean.quality.readings),
                      "worstTurbidityNtu": max(r["turbidityNtu"] for r in self.ocean.quality.readings),
