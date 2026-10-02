@@ -133,3 +133,20 @@ def test_sand_settling_on_a_colony_smothers_it_past_the_dose():
     assert coral.smothered[0] == 1 and said == ["coral_smothered"]
     _judge(coral, np.array([3.0]), 3600.0, lambda kind, **d: said.append(kind))
     assert coral.smothered[0] == 2
+
+
+def test_driven_into_the_glass_it_stops_comes_back_a_little_and_the_strike_is_recorded():
+    """r6 item 4: a strike has a place, a speed and an impulse, and a hull that
+    hits something hard under water comes back off it — a little."""
+    from systems.contact import RESTITUTION, keep_inside_the_glass
+
+    v = Vehicle(Body(), [0.95, 0.0, -0.5])
+    v.half_width = 0.1
+    v.velocity[0] = 0.3
+    place, contacts = Place(), Contacts()
+    place.interior = (np.array([-1.0, -0.5, -1.0]), np.array([1.0, 0.5, 0.0]))
+    keep_inside_the_glass(v, place, contacts, lambda *a, **k: None)
+    assert v.position[0] <= 0.9 + 1e-9
+    assert np.isclose(v.velocity[0], -RESTITUTION * 0.3)
+    hit = contacts.strikes[0]
+    assert hit["what"] == "glass" and np.isclose(hit["speedMs"], 0.3) and hit["impulseNs"] > 0

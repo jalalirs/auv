@@ -146,7 +146,9 @@ def test_a_wall_stops_the_vehicle_and_a_slope_does_not():
     dive.velocity[:3] = np.array([0.5, 0.0, 0.0])          # driving at the face
     dive.strike()
     assert dive.against_the_ground, "it should be stopped by ground it cannot climb"
-    assert abs(float(dive.velocity[0])) < 1e-6, "the motion into the wall is taken away"
+    from systems.contact import RESTITUTION
+    assert abs(float(dive.velocity[0]) + RESTITUTION * 0.5) < 1e-6, \
+        "the motion into the wall is turned round, and most of it lost"
 
     # The same vehicle on a one-in-ten slope keeps going.
     slope = a_seabed(lambda x, y: -10.0 + x * 0.1)
@@ -166,7 +168,8 @@ def test_a_vehicle_stopped_by_a_wall_still_slides_along_it():
     dive.position = np.array([-0.4, 0.0, -9.0])
     dive.velocity[:3] = np.array([0.5, 0.4, 0.0])          # into the wall and along it
     dive.strike()
-    assert abs(float(dive.velocity[0])) < 1e-6, "nothing goes into the face"
+    from systems.contact import RESTITUTION
+    assert abs(float(dive.velocity[0]) + RESTITUTION * 0.5) < 1e-6, "nothing goes on into the face"
     assert abs(float(dive.velocity[1]) - 0.4) < 1e-9, "what runs along it is untouched"
 
 

@@ -1,10 +1,12 @@
 """The ground, the glass, what is in the water, and the cable: stopping the hull.
 
-Not a collision solver, yet. Each is a constraint resolved the same way: put
-the vehicle back where it was allowed to be, and take away the part of its
-motion that was carrying it out. That is what a hard stop does — it does not
-bounce and it does not keep pushing — and a vehicle held against a wall still
-slides along it, which is what a pilot expects. Every contact is counted once
+Each is a constraint resolved the same way: put the vehicle back where it was
+allowed to be, and turn round the part of its motion that was carrying it in —
+most of it lost, a quarter of it kept (RESTITUTION), because a hull that hits
+rock under water comes back off it a little and not at all like a ball. The
+rest of its motion is left alone, so a vehicle pressed against a wall still
+slides along it, which is what a pilot expects. Settling onto the bottom is
+the exception: a vehicle landing does not bounce. Every contact is counted once
 per contact, not once per step: a vehicle held against a frame for four
 seconds struck it once.
 
@@ -56,6 +58,12 @@ class Contacts:
         """The hardest strike of the dive."""
         return max(self.strikes, key=lambda s: s["impulseNs"]) if self.strikes else None
 
+
+# How much of its speed into a hard surface a hull keeps, coming back off it.
+# Underwater, little: the water round the hull goes on moving and most of the
+# energy of a knock goes into it and into the hull's own give. A quarter,
+# assumed — the figure a drop test in the tank would settle.
+RESTITUTION = 0.25
 
 # Ground steeper than this is a wall rather than a slope: a vehicle rides over
 # what it can and is stopped by what it cannot. Fifty degrees is well past
@@ -142,7 +150,7 @@ def strike(v, place, contacts) -> None:
         going = float(np.dot(flat, into))
         if going >= 0.0:
             continue                    # already leaving the face
-        flat = flat - into * going
+        flat = flat - into * going * (1.0 + RESTITUTION)
         touched = True
     if not touched:
         return
@@ -180,7 +188,7 @@ def keep_out_of_things(v, place, contacts, dt: float, say) -> None:
         through = v.rotation @ v.velocity[:3]
         into = float(np.dot(through, out))
         if into < 0.0:
-            v.velocity[:3] = v.rotation.T @ (through - out * into)
+            v.velocity[:3] = v.rotation.T @ (through - out * into * (1.0 + RESTITUTION))
     else:
         into = 0.0
     if struck.id not in contacts.struck:
@@ -208,7 +216,7 @@ def keep_inside_the_glass(v, place, contacts, say) -> None:
             normal[axis] = 1.0
             into = v.rotation.T @ normal
             along = float(np.dot(v.velocity[:3], into))
-            v.velocity[:3] -= along * into
+            v.velocity[:3] -= along * into * (1.0 + RESTITUTION)
             if not contacts.on_the_glass:
                 contacts.glass += 1
                 contacts.strike_of("glass", v.position, abs(along), v)
@@ -256,7 +264,7 @@ def keep_out_of_coral(v, coral, contacts, say) -> None:
             going = float(np.dot(through[:2], out))
             if going < 0.0:
                 flat = np.array([out[0], out[1], 0.0])
-                v.velocity[:3] = v.rotation.T @ (through - flat * going)
+                v.velocity[:3] = v.rotation.T @ (through - flat * going * (1.0 + RESTITUTION))
                 into = -going
         if i not in contacts.on_coral:
             hit = contacts.strike_of(f"coral-{i}", v.position, into, v)
