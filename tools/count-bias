@@ -209,7 +209,16 @@ def main() -> int:
     ap.add_argument("--metres", type=float, default=25.0)
     ap.add_argument("--altitude", type=float, default=1.5, help="metres over the bottom the transect is flown at")
     ap.add_argument("--into", type=pathlib.Path, help="write a report a vehicle and one comparing them here")
+    ap.add_argument("--merge", nargs="+", type=pathlib.Path,
+                    help="fly nothing: build the reports from rows other runs printed (split seeds across processes)")
     args = ap.parse_args()
+    if args.merge:
+        rows = [json.loads(line) for f in args.merge for line in f.read_text().splitlines()
+                if line.startswith('{"vehicle"')]
+        rows.sort(key=lambda r: (args.vehicles.split(",").index(r["vehicle"]), r["seed"]))
+        reports(rows, f"{args.place}, {args.altitude:g} m over the bottom", args.into)
+        print(f"{len(rows)} rows → {args.into}")
+        return 0
     rows = []
     transects = {seed: over_the_nearest_school(args.place, seed, 10.0, args.altitude)
                  for seed in (int(s) for s in args.seeds.split(","))}
