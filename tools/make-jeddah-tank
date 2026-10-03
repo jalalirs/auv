@@ -210,7 +210,10 @@ def build(name: str, into: pathlib.Path, seed: int = 11) -> dict:
         reflection_roughness_texture_influence=1.0, bump_factor=0.6)))
     rock = s.look("LiveRock", (0.48, 0.42, 0.42), rough=0.9, mdl=("OmniPBR", dict(
         diffuse_texture=tex["rock"][0], normalmap_texture=tex["rock"][1], reflectionroughness_texture=tex["rock"][2],
-        reflection_roughness_texture_influence=1.0, bump_factor=1.4)))
+        reflection_roughness_texture_influence=1.0, bump_factor=1.4,
+        # The footage's rock is dark and grey under its encrusting life; the
+        # shared texture alone drew it pink and pale.
+        diffuse_tint=(0.50, 0.53, 0.58))))
 
     # The building round it: the floor it stands on, its steel plinth, a
     # mezzanine ring with its railing, and the atrium's ceiling.
@@ -319,13 +322,18 @@ def build(name: str, into: pathlib.Path, seed: int = 11) -> dict:
         s.extra.append(
             '    def RectLight "TankLight%d"\n    {\n        float inputs:width = 1.6\n        float inputs:height = 1.6\n'
             '        float inputs:intensity = 9000\n        color3f inputs:color = (0.82, 0.90, 1.0)\n'
+            '        bool visibleInPrimaryRay = 0\n'
             '        double3 xformOp:translate = (%.3f, %.3f, %.3f)\n        uniform token[] xformOpOrder = ["xformOp:translate"]\n    }\n'
             % (k, 3.6 * math.cos(a), 3.6 * math.sin(a), FREEBOARD + 1.2))
     s.extra.append('    def DomeLight "Daylight"\n    {\n        float inputs:intensity = 700\n'
                    '        color3f inputs:color = (1.0, 0.98, 0.95)\n    }\n')
+    # The hall's fills, a quarter-metre across at sixteen times the radiance
+    # (the same power), and hidden from the camera: at a metre across and in
+    # view they were drawn as two glowing white discs hanging in the atrium.
     for name_, at in (("FillGround", (0.0, -12.0, -10.0)), ("FillMezzanine", (9.0, 8.0, -4.5))):
         s.extra.append(
-            '    def SphereLight "%s"\n    {\n        float inputs:radius = 1.0\n        float inputs:intensity = 4000\n'
+            '    def SphereLight "%s"\n    {\n        float inputs:radius = 0.25\n        float inputs:intensity = 64000\n'
+            '        bool visibleInPrimaryRay = 0\n'
             '        color3f inputs:color = (1.0, 0.97, 0.92)\n        double3 xformOp:translate = (%.3f, %.3f, %.3f)\n'
             '        uniform token[] xformOpOrder = ["xformOp:translate"]\n    }\n' % (name_, *at))
 
