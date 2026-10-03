@@ -111,7 +111,7 @@ def column_and_sand(rng):
     return line, z, phase
 
 
-def column_mesh(phase, rng, around: int = 180):
+def column_mesh(phase, rng, around: int = 360):
     """The column as rock: for each ledge, its wall down to the ledge below
     (or the sand) and its top, lathed round the axis from the same rough
     edges the heightfield has, the wall's face pitted and bulged so that it
@@ -130,7 +130,10 @@ def column_mesh(phase, rng, around: int = 180):
         edge = edge_of(k, theta, phase)
         top = LEDGES[k][1]
         bottom = LEDGES[k + 1][1] if k + 1 < len(LEDGES) else FLOOR_Z - 0.05
-        rows = max(4, int((top - bottom) / 0.25))
+        # Fine enough to hold the bumps below: at 180 round and 25 cm rows
+        # their finest terms were sampled three times a wave round and twice
+        # up it, and came out as vertical ridges that smeared the texture.
+        rows = max(4, int((top - bottom) / 0.1))
         zs = np.linspace(top, bottom, rows)
         ring = []
         uv = []
