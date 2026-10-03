@@ -3053,11 +3053,11 @@ class Dive:
     def the_snow_is_seen_from(self, eye) -> None:
         """Put the box of aggregates on the camera, when it is not the vehicle.
 
-        `stir` puts it on the vehicle, which is where the camera is on a dive.
-        On a tour the camera stands somewhere else, and the box's whole job is
-        near-field: it is drawn dense out to three metres and it holds nothing
-        closer than `NEAREST_M`, so that no particle ever sits nearer than a
-        lens can make sense of.
+        `stir` puts it on the vehicle, which is where the camera is in the
+        front view. In the chase view, or on a tour, the camera stands
+        somewhere else, and the box's whole job is near-field: it is drawn
+        dense out to three metres and draws nothing closer than `NEAREST_M`,
+        so that no particle is ever drawn nearer than a lens can make sense of.
 
         Measured from the wrong point, that guard protects nothing. Thuwal
         Deep's lamp view had an eight-millimetre aggregate nineteen centimetres

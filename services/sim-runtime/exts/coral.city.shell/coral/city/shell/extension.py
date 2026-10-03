@@ -696,6 +696,11 @@ class CoralCityShell(omni.ext.IExt):
         dive.show()
         dive.stir()
         self._follow(dive)
+        # The snow round the camera, not the vehicle: the chase camera is nine
+        # metres behind, and looking at the vehicle's box of snow from outside
+        # it, it saw every floc wrap round from one face to the other.
+        if self._eye is not None:
+            dive.the_snow_is_seen_from(self._eye)
         self.hud.show(dive.state())
         if self.photographs and dive.simulated >= self.photographs[0]:
             self._photograph(round(self.photographs.pop(0), 1))

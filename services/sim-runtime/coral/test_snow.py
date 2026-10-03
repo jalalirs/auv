@@ -148,13 +148,18 @@ def test_they_do_not_all_face_the_same_way():
     assert field.facing.std(axis=0).min() > 0.1, field.facing.std(axis=0)
 
 
-def test_nothing_sits_against_the_lens():
+def drawn_near_the_lens(field, lens):
+    """The largest drawn within the clear half metre of `lens`."""
+    near = np.linalg.norm(field.where() - np.asarray(lens)[None, :], axis=1) < snow.NEAREST_M
+    return float(field.seen()[near].max()) if near.any() else 0.0
+
+
+def test_nothing_is_drawn_against_the_lens():
     field = snow.Snow(reaches_m=3.0, seed=7)
     for step in range(12):
-        field.follow((step * 0.7, 0.0, 0.0))
-        near = np.linalg.norm(
-            field.where() - np.array([step * 0.7, 0.0, 0.0])[None, :], axis=1)
-        assert near.min() >= snow.NEAREST_M - 1e-9, near.min()
+        lens = (step * 0.7, 0.0, 0.0)
+        field.follow(lens)
+        assert drawn_near_the_lens(field, lens) == 0.0
 
 
 def test_the_clear_half_metre_is_round_whoever_is_looking():
@@ -171,16 +176,41 @@ def test_the_clear_half_metre_is_round_whoever_is_looking():
     """
     hull = np.array([10.0, -4.0, -556.0])
     lens = hull + np.array([0.0, 0.0, -1.6])
-
     field = snow.Snow(reaches_m=3.0, seed=11)
     field.follow(hull)
-    # The fault, stated: settled on the hull, the lens is not protected.
-    off_the_glass = np.linalg.norm(field.where() - lens[None, :], axis=1).min()
-
+    assert drawn_near_the_lens(field, lens) > 0.0, "the fault, stated: settled on the hull, the lens is not clear"
     field.follow(lens)
-    now = np.linalg.norm(field.where() - lens[None, :], axis=1).min()
-    assert now >= snow.NEAREST_M - 1e-9, now
-    assert now > off_the_glass
+    assert drawn_near_the_lens(field, lens) == 0.0
+
+
+def test_nothing_appears_or_vanishes_at_full_size():
+    """The flashing in the back of the frame: a floc wrapped from behind the
+    camera to three metres ahead of it, lit by the lamps, appearing whole.
+    Moving on a step at a time, no particle may change its drawn size by more
+    than the step can account for."""
+    field = snow.Snow(reaches_m=3.0, seed=13)
+    step = 0.02
+    field.follow((0.0, 0.0, 0.0))
+    before = field.seen()
+    for k in range(1, 400):
+        field.follow((k * step, 0.0, 0.0))
+        now = field.seen()
+        # A fade over FADES_OVER_M lets a step change a size by step/FADES_OVER_M of
+        # it at most (and the lens's by step/NEAR_FADES_OVER_M).
+        allowed = field.size * step / min(snow.FADES_OVER_M, snow.NEAR_FADES_OVER_M) + 1e-12
+        assert np.all(np.abs(now - before) <= allowed + 1e-9)
+        before = now
+
+
+def test_a_particle_is_only_moved_by_the_water_and_the_wrap():
+    """Nothing is pushed ahead of the lens any more: going forward a little,
+    every particle is exactly where it was unless it wrapped."""
+    field = snow.Snow(reaches_m=3.0, seed=17)
+    field.follow((0.0, 0.0, 0.0))
+    before = field.where().copy()
+    field.follow((0.3, 0.0, 0.0))
+    moved = np.linalg.norm(field.where() - before, axis=1)
+    assert np.all((moved < 1e-9) | (np.abs(moved - 6.0) < 1e-6))
 
 
 def test_less_of_it_gets_to_the_deep():

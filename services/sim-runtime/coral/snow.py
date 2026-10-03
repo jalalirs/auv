@@ -97,6 +97,16 @@ MARTIN_FALLS = 0.858
 # that a frame shows drift rather than rain, which is what the footage shows.
 SINKS_M_PER_S = 0.0006
 
+# How far, inside the box's face and outside the lens's clear half metre, a
+# particle takes to come to its full size. Not popped: the camera's lamps find
+# a two-millimetre floc at three metres, and one that appears there from
+# nothing, wrapped round from behind, is a light switching on in the back of
+# the frame. Grown in over the last half metre, it arrives the way a floc
+# coming out of the murk does. And one that gets to the lens shrinks away
+# rather than being pushed ahead of it.
+FADES_OVER_M = 0.5
+NEAR_FADES_OVER_M = 0.15
+
 
 def how_much_gets_this_deep(depth_m: float | None) -> float:
     """What share of the upper ocean's marine snow is still falling at a depth.
@@ -148,9 +158,10 @@ class Snow:
 
     The box moves and the particles do not: as the camera goes forward, the
     ones that fall out of the back are wrapped round to the front, so the
-    count stays put and no particle is ever created in front of the lens where
-    it would be seen to appear. What the camera passes through is a continuous
-    body of water rather than a cloud that follows it about.
+    count stays put. What the camera passes through is a continuous body of
+    water rather than a cloud that follows it about. A particle only ever
+    moves with the water: how big it is drawn (`seen`) is what fades it in at
+    the box's face and out at the lens.
     """
 
     def __init__(self, reaches_m: float = 4.0, lengths=None, seed: int = 0,
@@ -208,17 +219,21 @@ class Snow:
         # Relative to the box's middle, wrapped into it, and back to the world.
         near = self.at - self.middle[None, :]
         near = (near + self.reaches) % side - self.reaches
-        # And pushed out of the lens's own near field, radially, so nothing
-        # sits closer than a camera can make sense of.
-        far = np.linalg.norm(near, axis=1, keepdims=True)
-        too_close = far[:, 0] < NEAREST_M
-        if too_close.any():
-            direction = near[too_close] / np.maximum(far[too_close], 1e-9)
-            near[too_close] = direction * NEAREST_M
         self.at = near + self.middle[None, :]
 
     def where(self) -> np.ndarray:
         return self.at
+
+    def seen(self) -> np.ndarray:
+        """How big each is drawn: its size, faded in over the last half metre
+        inside the box's face and out within the lens's clear half metre — so
+        that nothing appears or vanishes at full size."""
+        near = self.at - self.middle[None, :]
+        to_the_face = self.reaches - np.abs(near).max(axis=1)
+        to_the_lens = np.linalg.norm(near, axis=1) - NEAREST_M
+        fade = (np.clip(to_the_face / FADES_OVER_M, 0.0, 1.0)
+                * np.clip(to_the_lens / NEAR_FADES_OVER_M, 0.0, 1.0))
+        return self.size * fade
 
 
 # ── drawing it ───────────────────────────────────────────────────────────────
@@ -271,8 +286,6 @@ def draw(stage, field, at: str = "/World/Snow") -> bool:
 
     instancer.CreatePrototypesRel().SetTargets([grain.GetPath()])
     instancer.CreateProtoIndicesAttr(Vt.IntArray([0] * field.count))
-    instancer.CreateScalesAttr(Vt.Vec3fArray(
-        [Gf.Vec3f(float(s), float(s), float(s)) for s in field.size]))
     instancer.CreateOrientationsAttr(Vt.QuathArray(
         [Gf.Quath(float(w), float(x), float(y), float(z))
          for w, x, y, z in field.facing]))
@@ -293,3 +306,5 @@ def move(stage, field, at: str = "/World/Snow") -> None:
     # numpy float32 into Gf.Vec3f raises about a C++ signature nobody wrote.
     instancer.CreatePositionsAttr(Vt.Vec3fArray(
         [Gf.Vec3f(float(x), float(y), float(z)) for x, y, z in field.where()]))
+    instancer.CreateScalesAttr(Vt.Vec3fArray(
+        [Gf.Vec3f(float(s), float(s), float(s)) for s in field.seen()]))
