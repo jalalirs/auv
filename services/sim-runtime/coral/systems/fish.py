@@ -1,6 +1,7 @@
 """The fish: every one in the place, each with a mind (fishmind.py).
 
-Reads    light, the water and the wash, the vehicle and its thrust, the place
+Reads    light, the water and the wash, the vehicle and its thrust, the place,
+         the coral (which the fish swim round)
 Writes   fish: the school — where each fish is, what it is doing, and why
 Every    a twentieth of a second of simulated time
 
@@ -55,7 +56,7 @@ class FishSystem(System):
     (tools/count-bias)."""
 
     name = "fish"
-    reads = ("light", "water", "wash", "flow", "vehicle", "thrust", "place", "clock", "sediment")
+    reads = ("light", "water", "wash", "flow", "vehicle", "thrust", "place", "clock", "sediment", "coral")
     writes = ("fish",)
     every = 0.05
 
@@ -65,11 +66,13 @@ class FishSystem(System):
         # (where on the hull, pitch down in radians, half the field of view)
         self.camera = camera
         self.blind = bool(blind)
+        self._coral_as = None
 
     def step(self, world) -> None:
         school = world.fish
         if school is None:
             return
+        self.know_the_coral(school, world.coral)
         v = world.vehicle
         flow = world.water.flow_at(school.at, world.clock.simulated) + world.wash.at(school.at)
         working = (float(np.clip(np.abs(v.wrench[:3]).sum() / 60.0, 0.0, 1.0))
@@ -95,11 +98,52 @@ class FishSystem(System):
         school.in_view.append(len(seen))
 
 
-def refuges(described: dict, bottom_under, low, high, rng) -> dict:
+    def know_the_coral(self, school, coral) -> None:
+        """Tell the fish where the coral stands, so they go round it; and
+        again round a colony broken or torn off, and nowhere else."""
+        if self._coral_as is None or len(self._coral_as[0]) != len(coral):
+            school.habitat.set_coral(*standing(coral))
+            self._coral_as = (coral.height.copy(), coral.torn_off.copy())
+            return
+        height, torn = self._coral_as
+        changed = np.flatnonzero((coral.height != height) | (coral.torn_off != torn))
+        if not len(changed):
+            return
+        reach = float(coral.radius[changed].max())
+        low = coral.at[changed, :2].min(axis=0) - reach
+        high = coral.at[changed, :2].max(axis=0) + reach
+        school.habitat.clear(low, high)
+        near = coral.near(np.vstack([low, high]), 0.0)
+        school.habitat.stamp(*standing(coral, near))
+        self._coral_as = (coral.height.copy(), coral.torn_off.copy())
+
+
+def standing(coral, which=None):
+    """Where the colonies still standing are, how wide, and how high they
+    reach: what a fish swims round."""
+    which = np.arange(len(coral)) if which is None else np.asarray(which, dtype=int)
+    which = which[~coral.torn_off[which]]
+    return coral.at[which], coral.radius[which], coral.at[which, 2] + coral.height[which]
+
+
+# A reef drawn as a layer has tens of thousands of colonies; this many of them,
+# nearest first, are enough places to hide for the fish that are stocked.
+MOST_REFUGES = 4000
+
+
+def refuges(described: dict, bottom_under, low, high, rng, coral=None) -> dict:
     """The place's hiding places, by kind: from its coral colonies and its
     rocks, and burrows in the open sand between them."""
     found: dict[str, list] = {}
-    for colony in (described.get("reef") or {}).get("colonies_at") or []:
+    listed = (described.get("reef") or {}).get("colonies_at") or []
+    if not listed and coral is not None and len(coral):
+        # The colonies of a reef layer (systems/coral.py), in the stocked water.
+        middle = 0.5 * (np.asarray(low, dtype=float) + np.asarray(high, dtype=float))
+        near = coral.near(middle, float(np.max(np.asarray(high) - middle)))
+        near = near[np.argsort(np.linalg.norm(coral.at[near, :2] - middle, axis=1))][:MOST_REFUGES]
+        listed = [{"kind": str(coral.kind[i]), "at": coral.at[i, :2].tolist(), "sizeM": float(coral.height[i])}
+                  for i in near]
+    for colony in listed:
         kind = REFUGE_OF.get(str(colony.get("kind")))
         at = colony.get("at")
         if kind is None or not at:
@@ -123,7 +167,7 @@ def refuges(described: dict, bottom_under, low, high, rng) -> dict:
     return {k: np.array(v, dtype=float) for k, v in found.items()}
 
 
-def stock(described: dict, bottom_under, interior, begins_at, seed: int, say, light=None):
+def stock(described: dict, bottom_under, interior, begins_at, seed: int, say, light=None, coral=None):
     """The school a place holds, or None, and says which."""
     import fishmind
 
@@ -143,8 +187,11 @@ def stock(described: dict, bottom_under, interior, begins_at, seed: int, say, li
         across = float(max(hi[0] - lo[0], hi[1] - lo[1]))
         habitat = fishmind.Habitat(bottom_under, about, across, water_level=float(hi[2]),
                                    box=0.92 * half, refuges=refuges(described, bottom_under,
-                                                                    about - 0.9 * half, about + 0.9 * half, rng),
+                                                                    about - 0.9 * half, about + 0.9 * half, rng,
+                                                                    coral),
                                    scale=float(says.get("scale", 1.0)))
+        if coral is not None and len(coral):
+            habitat.set_coral(*standing(coral))
         school = fishmind.School(counts, habitat, seed=seed, tank=True)
         if light is not None:
             school.hour, school.light = light
@@ -169,7 +216,9 @@ def stock(described: dict, bottom_under, interior, begins_at, seed: int, say, li
     about = np.asarray(begins_at, dtype=float)[:2]
     span = np.array([0.45, 0.45]) * 2.2 * STOCKED_TO_M
     habitat = fishmind.Habitat(bottom_under, about, 2.2 * STOCKED_TO_M, water_level=0.0,
-                               refuges=refuges(described, bottom_under, about - span, about + span, rng))
+                               refuges=refuges(described, bottom_under, about - span, about + span, rng, coral))
+    if coral is not None and len(coral):
+        habitat.set_coral(*standing(coral))
     school = fishmind.School({k: v for k, v in groups.items() if v}, habitat, seed=seed)
     if light is not None:
         school.hour, school.light = light

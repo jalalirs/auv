@@ -232,10 +232,16 @@ class SedimentSystem(System):
             return
         if sed.on_coral_mg_cm2 is None or len(sed.on_coral_mg_cm2) != len(coral):
             sed.on_coral_mg_cm2 = np.zeros(len(coral))
-        d = np.linalg.norm(where[:, None, :2] - coral.at[None, :, :2], axis=2)
-        landed = d < coral.radius[None, :]
-        area_cm2 = math.pi * (coral.radius * 100.0) ** 2
-        sed.on_coral_mg_cm2 += (landed * kg[:, None]).sum(axis=0) * 1e6 / area_cm2
+        if not len(where):
+            return
+        near = coral.near(where, 0.0)
+        if not len(near):
+            return
+        radius = coral.radius[near]
+        d = np.linalg.norm(where[:, None, :2] - coral.at[None, near, :2], axis=2)
+        landed = d < radius[None, :]
+        area_cm2 = math.pi * (radius * 100.0) ** 2
+        sed.on_coral_mg_cm2[near] += (landed * kg[:, None]).sum(axis=0) * 1e6 / area_cm2
 
     def see(self, sed, v) -> None:
         """How far the camera sees: the attenuation in the water just ahead of

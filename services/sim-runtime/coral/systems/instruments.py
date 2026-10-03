@@ -95,15 +95,17 @@ class MultibeamSystem(System):
 SMALLEST_FISH_M = 0.04
 
 
-def echoes(world) -> "np.ndarray | None":
-    """What in the water echoes and is not ground: the stony coral, stacked as
-    spheres up each column, and every fish big enough to hear."""
+def echoes(world, reach: float = 30.0) -> "np.ndarray | None":
+    """What in the water echoes and is not ground: the stony coral within
+    `reach` of the vehicle, stacked as spheres up each column, and every fish
+    big enough to hear."""
     import numpy as np
 
     parts = []
     coral = world.coral
     if coral is not None and len(coral):
-        solid = np.flatnonzero(coral.solid())
+        near = coral.near(world.vehicle.position[:2], reach)
+        solid = near[coral.solid()[near]]
         if len(solid):
             r = coral.radius[solid]
             stack = np.maximum(1, np.floor((coral.height[solid] - r) / np.maximum(r, 0.02)).astype(int) + 1)
@@ -134,7 +136,8 @@ class SonarSystem(System):
             return
         vehicle, place = world.vehicle, world.place
         instrument.ping(world.clock.simulated, vehicle.position, vehicle.rotation,
-                        place.things, place.seabed, walls=place.interior, targets=echoes(world))
+                        place.things, place.seabed, walls=place.interior,
+                        targets=echoes(world, instrument.far))
         ping.fresh = True
 
 

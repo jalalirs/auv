@@ -44,8 +44,10 @@ comes back when the fear has faded. A noisier vehicle is seen from further.
 
 And they are in the water: carried by whatever the water is doing where they
 are — the current, and the vehicle's own wash — and they turn to face into
-it as fish do. They steer round rock rather than through it, and a fish the
-vehicle runs into is knocked aside and counted.
+it as fish do. They steer round rock and coral rather than through it — save
+a fish going home to shelter in its own branching coral or anemone, which is
+what that coral is to it — and a fish the vehicle runs into is knocked aside
+and counted.
 """
 
 from __future__ import annotations
@@ -64,6 +66,9 @@ MODES = ("rest", "forage", "school", "patrol", "wander", "flee")
 DIURNAL, NOCTURNAL, CREPUSCULAR = range(3)
 ACTIVITY = {"diurnal": DIURNAL, "nocturnal": NOCTURNAL, "crepuscular": CREPUSCULAR}
 REFUGES = ("branch", "crevice", "burrow", "host", "open")
+# The refuges a fish goes into, not beside: among a coral's branches, or an
+# anemone's tentacles.
+INSIDE_THE_COLONY = (REFUGES.index("branch"), REFUGES.index("host"))
 
 # How hard each intention swims, as a share of the species' burst, and how
 # much longer than usual it waits between kicks.
@@ -100,6 +105,82 @@ class Habitat:
                 got = floor_at(float(x), float(y))
                 grid[j, i] = -30.0 if got is None else float(got)
         self._floor = grid
+        self._coral = None          # how high the coral stands, on a finer grid of its own
+
+    def set_coral(self, at, radius, top, most_cells: int = 4_000_000) -> None:
+        """The colonies, as how high each stands over its footprint.
+
+        On a grid of its own, finer than the seabed's: a reef's seabed is
+        known to a metre, and a colony is a few tens of centimetres across.
+        The cell is half the smallest colony's radius, from a centimetre, as
+        fine as `most_cells` allows over the water the fish live in."""
+        radius = np.asarray(radius, dtype=float)
+        if not len(radius):
+            self._coral = None
+            return
+        edge = 0.5 * self.across
+        cell = max(0.01, 0.5 * float(radius.min()), 2.0 * edge / math.sqrt(most_cells))
+        n = int(math.ceil(2.0 * edge / cell))
+        self._coral = (np.full((n, n), -np.inf, dtype=np.float32), self.about - edge, cell)
+        self.stamp(at, radius, top)
+
+    def stamp(self, at, radius, top) -> None:
+        """Stand these colonies on the coral grid: each cell keeps the highest
+        top over it. Colonies of a like width are stamped together."""
+        if self._coral is None:
+            return
+        grid, low, cell = self._coral
+        n = grid.shape[0]
+        at = np.asarray(at, dtype=float).reshape(-1, 3)
+        radius, top = np.asarray(radius, dtype=float), np.asarray(top, dtype=np.float32)
+        middle = np.floor((at[:, :2] - low) / cell).astype(int)
+        span = np.ceil(radius / cell).astype(int)
+        for k in np.unique(span):
+            these = np.flatnonzero(span == k)
+            di, dj = np.meshgrid(np.arange(-k, k + 1), np.arange(-k, k + 1), indexing="ij")
+            di, dj = di.ravel(), dj.ravel()
+            i = middle[these, 0][:, None] + di[None, :]
+            j = middle[these, 1][:, None] + dj[None, :]
+            cx, cy = low[0] + (i + 0.5) * cell, low[1] + (j + 0.5) * cell
+            under = (cx - at[these, 0][:, None]) ** 2 + (cy - at[these, 1][:, None]) ** 2 \
+                <= radius[these][:, None] ** 2
+            under[:, len(di) // 2] = True               # smaller than a cell: its middle one
+            under &= (i >= 0) & (i < n) & (j >= 0) & (j < n)
+            heights = np.broadcast_to(top[these][:, None], under.shape)
+            np.maximum.at(grid, (j[under], i[under]), heights[under])
+
+    def clear(self, low_xy, high_xy) -> None:
+        """No coral over this box, until it is stamped again."""
+        if self._coral is None:
+            return
+        grid, low, cell = self._coral
+        n = grid.shape[0]
+        i0, j0 = np.clip(np.floor((np.asarray(low_xy) - low) / cell).astype(int), 0, n)
+        i1, j1 = np.clip(np.floor((np.asarray(high_xy) - low) / cell).astype(int) + 1, 0, n)
+        grid[j0:j1, i0:i1] = -np.inf
+
+    def coral(self, xy) -> np.ndarray:
+        """How high the coral stands at each of `xy`; -inf where there is none."""
+        xy = np.atleast_2d(xy)
+        if self._coral is None:
+            return np.full(len(xy), -np.inf)
+        grid, low, cell = self._coral
+        n = grid.shape[0]
+        i = np.floor((xy[:, 0] - low[0]) / cell).astype(int)
+        j = np.floor((xy[:, 1] - low[1]) / cell).astype(int)
+        ok = (i >= 0) & (i < n) & (j >= 0) & (j < n)
+        out = np.full(len(xy), -np.inf)
+        out[ok] = grid[j[ok], i[ok]]
+        return out
+
+    def ground(self, xy, inside_the_colony=None) -> np.ndarray:
+        """What a fish cannot swim through: the seabed, and the coral on it —
+        but not for a fish going in among its own coral's branches."""
+        floor = self.floor(xy)
+        coral = self.coral(xy)
+        if inside_the_colony is not None:
+            coral = np.where(inside_the_colony, -np.inf, coral)
+        return np.maximum(floor, coral)
 
     def floor(self, xy) -> np.ndarray:
         xy = np.atleast_2d(xy)
@@ -177,7 +258,7 @@ class School:
         self.goal = self.home.copy()
         self.at = self.home + np.column_stack([self.rng.normal(0, 0.1 * d + 0.02, (n, 2)), np.zeros(n)])
         self.at[:, :2] = habitat.inside(self.at[:, :2], 0.02)
-        self.at[:, 2] = habitat.floor(self.at[:, :2]) + np.maximum(self.altitude, 0.3 * self.length)
+        self.at[:, 2] = habitat.ground(self.at[:, :2]) + np.maximum(self.altitude, 0.3 * self.length)
         self.heading = self.rng.uniform(-np.pi, np.pi, n)
         self.speed = self.burst * 0.3
         self.vz = np.zeros(n)
@@ -446,7 +527,7 @@ class School:
                     xy = pick[:2] + self.rng.normal(0, 0.03, 2)
                 else:
                     xy = home[:2] + self.rng.normal(0, self.home_range[i] * 0.3, 2)
-                z = float(hab.floor(xy)[0]) + max(0.03, 0.6 * self.length[i])
+                z = float(hab.ground(xy)[0]) + max(0.03, 0.6 * self.length[i])
             else:
                 # Plankton picking, wandering, and where a school is heading:
                 # somewhere in its home range, at its height.
@@ -458,12 +539,12 @@ class School:
             # place it picked is a boulder standing higher than it means to be.
             if m not in (REST, FLEE) and z is None:
                 for _ in range(6):
-                    if float(hab.floor(xy)[0]) < float(self.at[i, 2]) - 0.3 * self.length[i]:
+                    if float(hab.ground(xy)[0]) < float(self.at[i, 2]) - 0.3 * self.length[i]:
                         break
                     xy = hab.inside(self.at[i, :2] + self.rng.normal(0, max(self.home_range[i] * 0.3, 0.1), 2),
                                     0.04 + 0.5 * self.length[i])
             if z is None:
-                z = float(hab.floor(xy)[0]) + max(0.3 * self.length[i],
+                z = float(hab.ground(xy)[0]) + max(0.3 * self.length[i],
                                                   self.rng.normal(self.altitude[i], self.altitude_sd[i]))
             goals[n] = (xy[0], xy[1], min(z, hab.water_level - 0.04))
         return goals
@@ -552,10 +633,11 @@ class School:
     DETOURS = np.array([0.0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.4, -2.4])
 
     def round_the_rock(self, idx, aim) -> np.ndarray:
-        """The way it means to go, or the nearest way round rock standing in
-        it. A fish goes round a boulder rather than up and over it, and never
-        through it."""
+        """The way it means to go, or the nearest way round rock or coral
+        standing in it. A fish goes round a boulder rather than up and over
+        it, and never through it."""
         hab = self.habitat
+        sheltering = self.sheltering()[idx]
         look = np.maximum(3.0 * self.length[idx], 0.05)
         clear = self.at[idx, 2] - 0.3 * self.length[idx]
         chosen = aim.copy()
@@ -563,7 +645,7 @@ class School:
         for turn in self.DETOURS:
             way = aim + turn
             probe = self.at[idx, :2] + look[:, None] * np.column_stack([np.cos(way), np.sin(way)])
-            free = (hab.floor(probe) < clear) & ~open_
+            free = (hab.ground(probe, sheltering) < clear) & ~open_
             chosen[free] = way[free]
             open_ |= free
             if open_.all():
@@ -572,6 +654,12 @@ class School:
         self.goal[idx[~open_], 2] = np.maximum(self.goal[idx[~open_], 2],
                                                self.at[idx[~open_], 2] + 2.0 * self.length[idx[~open_]])
         return chosen
+
+    def sheltering(self) -> np.ndarray:
+        """Which fish are going in among their own coral: resting or fleeing,
+        to a branching coral or an anemone."""
+        return (((self.mode == REST) | (self.mode == FLEE))
+                & np.isin(self.refuge_of, INSIDE_THE_COLONY))
 
     def step(self, dt: float, vehicle=None, thrust: float = 0.0, light=None, flow=None,
              vehicle_size: float = 0.2) -> None:
@@ -604,24 +692,38 @@ class School:
         dz = self.goal[:, 2] - self.at[:, 2]
         self.vz = np.clip(dz * 1.2, -0.4 * self.speed - 0.01, 0.4 * self.speed + 0.01)
         way = np.column_stack([np.cos(self.heading), np.sin(self.heading)])
-        # Gliding into rock: turned along it to whichever side is open, as at
-        # the glass, rather than lifted over it.
+        # Gliding into rock or coral: turned along it to whichever side is
+        # open, as at the glass, rather than lifted over it.
+        sheltering = self.sheltering()
         ahead = self.at[:, :2] + way * np.maximum(self.speed * dt, 0.5 * self.length)[:, None]
-        rock = self.habitat.floor(ahead) > self.at[:, 2] - 0.2 * self.length
+        rock = self.habitat.ground(ahead, sheltering) > self.at[:, 2] - 0.2 * self.length
         if rock.any():
             idx = np.flatnonzero(rock)
             left = self.heading[idx] + np.pi / 2
             right = self.heading[idx] - np.pi / 2
             reach = np.maximum(self.length[idx], 0.03)[:, None]
-            lf = self.habitat.floor(self.at[idx, :2] + reach * np.column_stack([np.cos(left), np.sin(left)]))
-            rf = self.habitat.floor(self.at[idx, :2] + reach * np.column_stack([np.cos(right), np.sin(right)]))
+            lf = self.habitat.ground(self.at[idx, :2] + reach * np.column_stack([np.cos(left), np.sin(left)]),
+                                     sheltering[idx])
+            rf = self.habitat.ground(self.at[idx, :2] + reach * np.column_stack([np.cos(right), np.sin(right)]),
+                                     sheltering[idx])
             self.heading[idx] = np.where(lf <= rf, self.heading[idx] + 0.6, self.heading[idx] - 0.6)
             self.speed[idx] *= 0.5
             way = np.column_stack([np.cos(self.heading), np.sin(self.heading)])
+        was = self.at.copy()
         self.at[:, :2] += way * self.speed[:, None] * dt
         self.at[:, 2] += self.vz * dt
         # Carried by the water: a fish swims through it, not over the ground.
         self.at += self._flow * dt
+        # Never into a colony from outside it, swimming or carried: held where
+        # it was, and turned. (One already among the branches — it sheltered
+        # there — is let out.)
+        in_before = self.habitat.coral(was[:, :2]) > was[:, 2] - 0.2 * self.length
+        in_now = self.habitat.coral(self.at[:, :2]) > self.at[:, 2] - 0.2 * self.length
+        into = in_now & ~in_before & ~sheltering
+        if into.any():
+            self.at[into, :2] = was[into, :2]
+            self.heading[into] += np.where(self.rng.random(int(into.sum())) < 0.5, 0.8, -0.8)
+            self.speed[into] *= 0.5
         if self._vehicle is not None:
             self.keep_out_of_the_vehicle(vehicle_size)
         hab = self.habitat
@@ -634,7 +736,9 @@ class School:
             along = way[hit] - normal * np.sum(way[hit] * normal, axis=1, keepdims=True)
             self.heading[hit] = np.arctan2(along[:, 1] + 1e-9, along[:, 0])
             self.at[hit, :2] = held[hit]
-        floor = hab.floor(self.at[:, :2])
+        # Nor down into one from above: the coral's top is ground, to all but
+        # a fish going in among its branches or already there.
+        floor = hab.ground(self.at[:, :2], sheltering | in_before)
         self.at[:, 2] = np.clip(self.at[:, 2], floor + 0.25 * self.length, hab.water_level - 0.03)
         # The tail: quick strokes in a kick, a slow scull in the glide.
         hz = np.where(kicking, 5.0, 0.7 + 0.3 * self.speed / np.maximum(self.length, 1e-3))

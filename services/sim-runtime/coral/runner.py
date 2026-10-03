@@ -2989,7 +2989,7 @@ class Dive:
                      follows=self.ocean.flow.follows, from_=self.ocean.flow.from_)
         # The coral, solid where it is stony (systems/coral.py).
         from systems.coral import colonies_of
-        self.ocean.replace("coral", colonies_of(described, bottom_under))
+        self.ocean.replace("coral", colonies_of(described, bottom_under, city))
         if len(self.ocean.coral):
             self.say("coral_is", colonies=len(self.ocean.coral),
                      solid=int(self.ocean.coral.solid().sum()), from_=self.ocean.coral.from_)
@@ -2998,7 +2998,8 @@ class Dive:
             return
         self.shoal = fish.stock(described, bottom_under, self.interior, self.position,
                                 int(self.brief.get("seed", 0)), self.say,
-                                light=(self.ocean.light.hour, self.ocean.light.level))
+                                light=(self.ocean.light.hour, self.ocean.light.level),
+                                coral=self.ocean.coral)
 
     # How far the marine snow reaches from the camera, in metres, and how many
     # aggregates will be drawn at most.

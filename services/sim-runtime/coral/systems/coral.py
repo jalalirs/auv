@@ -5,7 +5,11 @@ Writes   coral: every colony — where, how big, what kind, and what has
          happened to it
 
 Each colony is a column of its own size standing on the seabed, which is what
-the vehicle meets (systems/contact.py stops it there, as it stops it at rock).
+the vehicle meets (systems/contact.py stops it there, as it stops it at rock)
+and what the fish swim round (fishmind.py). A place lists its colonies in its
+record, or — a surveyed reef of tens of thousands — draws them as one
+instanced layer, and they are read back off that (`colonies_in_the_layer`).
+Whoever asks what is near a point asks `near`, never every colony.
 What happens to a colony that is hit depends on what it is:
 
   **Branching and finger corals** are a skeleton of thin branches, and they
@@ -42,6 +46,7 @@ its own (Madin's colony shape factor against the drag of a storm).
 from __future__ import annotations
 
 import math
+import pathlib
 
 import numpy as np
 
@@ -73,9 +78,13 @@ SMOTHERS_BADLY = 50.0
 class Colonies:
     """Every colony in the place, and its state."""
 
+    # How coarse the index `near` keeps, metres.
+    INDEX_M = 4.0
+
     def __init__(self) -> None:
         self.at = np.zeros((0, 3))          # base, world, metres
-        self.size = np.zeros(0)             # height, metres
+        self.size = np.zeros(0)             # how big, metres: its height, or its width if wider
+        self.wide = None                    # how wide each stands, where the place says
         self.kind = np.array([], dtype=object)
         self.prim = []                      # the drawn colony, when the place names it
         self.height = np.zeros(0)           # what stands now: a stump is half
@@ -88,10 +97,15 @@ class Colonies:
         self.smothered = np.zeros(0, dtype=int)     # 0 none, 1 harmed, 2 badly
         self.events: list[dict] = []
         self.from_ = "nothing yet"
+        self._bends = None
+        self._index = None
 
     @property
     def radius(self) -> np.ndarray:
-        """How wide each stands, as a column: half its size, a little less."""
+        """How wide each stands, as a column: as the place drew it, or half
+        its size, a little less."""
+        if self.wide is not None and len(self.wide) == len(self.size):
+            return self.wide
         return 0.42 * self.size
 
     def __len__(self) -> int:
@@ -100,7 +114,30 @@ class Colonies:
     def solid(self) -> np.ndarray:
         """Which colonies stop a vehicle: everything that does not bend, and
         has not been torn off and knocked over."""
-        return np.array([k not in BENDS for k in self.kind], dtype=bool) & ~self.torn_off
+        if self._bends is None or len(self._bends) != len(self):
+            self._bends = np.isin(self.kind.astype(str), list(BENDS)) if len(self) else np.zeros(0, dtype=bool)
+        return ~self._bends & ~self.torn_off
+
+    def near(self, xy, reach: float) -> np.ndarray:
+        """Which colonies stand within `reach` of `xy` (or of any of several
+        points), by a coarse grid kept once: a reef of eighty thousand asked
+        two hundred times a second cannot be asked whole."""
+        if not len(self):
+            return np.zeros(0, dtype=int)
+        if self._index is None or self._index[0] != len(self):
+            cells = np.floor(self.at[:, :2] / self.INDEX_M).astype(int)
+            order = np.lexsort((cells[:, 1], cells[:, 0]))
+            keys, starts = np.unique(cells[order], axis=0, return_index=True)
+            ends = np.append(starts[1:], len(order))
+            self._index = (len(self), {(int(a), int(b)): order[s:e] for (a, b), s, e in zip(keys, starts, ends)},
+                           float(self.radius.max()))
+        _, index, widest = self._index
+        xy = np.atleast_2d(np.asarray(xy, dtype=float))[:, :2]
+        lo = np.floor((xy.min(axis=0) - reach - widest) / self.INDEX_M).astype(int)
+        hi = np.floor((xy.max(axis=0) + reach + widest) / self.INDEX_M).astype(int)
+        found = [index[(a, b)] for a in range(lo[0], hi[0] + 1) for b in range(lo[1], hi[1] + 1)
+                 if (a, b) in index]
+        return np.sort(np.concatenate(found)) if found else np.zeros(0, dtype=int)
 
     def said(self) -> dict:
         broken = np.flatnonzero(self.broken)
@@ -118,10 +155,14 @@ class Colonies:
                 "from": self.from_}
 
 
-def colonies_of(described: dict, bottom_under) -> Colonies:
-    """The colonies a place's record lists, stood on its seabed."""
-    c = Colonies()
+def colonies_of(described: dict, bottom_under, city=None) -> Colonies:
+    """The colonies a place's record lists, stood on its seabed — or, where
+    it lists none and draws a reef layer, the colonies in that layer."""
     rows = (described.get("reef") or {}).get("colonies_at") or []
+    layer = (described.get("layers") or {}).get("coral")
+    if not rows and city is not None and layer and (city / layer).exists():
+        return colonies_in_the_layer(city / layer, described)
+    c = Colonies()
     at, size, kind, prim = [], [], [], []
     for row in rows:
         if not row.get("at"):
@@ -137,6 +178,14 @@ def colonies_of(described: dict, bottom_under) -> Colonies:
     c.kind = np.array(kind, dtype=object)
     c.prim = prim
     c.height = c.size.copy()
+    _fresh(c, n)
+    c.from_ = ("the place's record of its colonies; breaking from Acropora's measured strength "
+               "with an assumed branch size and contact time")
+    return c
+
+
+def _fresh(c: Colonies, n: int) -> None:
+    """Nothing has happened to any of them yet."""
     c.broken = np.zeros(n, dtype=bool)
     c.broken_at = np.full(n, np.nan)
     c.struck = np.zeros(n, dtype=int)
@@ -144,8 +193,47 @@ def colonies_of(described: dict, bottom_under) -> Colonies:
     c.worst_stress = np.zeros(n)
     c.torn_off = np.zeros(n, dtype=bool)
     c.smothered = np.zeros(n, dtype=int)
-    c.from_ = ("the place's record of its colonies; breaking from Acropora's measured strength "
-               "with an assumed branch size and contact time")
+
+
+def _floats(text: str, name: str, width: int) -> np.ndarray:
+    """One array attribute of a USD text file, as numbers."""
+    import re
+
+    found = re.search(r"\b%s = \[(.*?)\]" % re.escape(name), text, re.S)
+    if not found:
+        return np.zeros((0, width))
+    numbers = np.array(re.findall(r"-?\d+(?:\.\d*)?(?:e-?\d+)?", found.group(1)), dtype=float)
+    return numbers.reshape(-1, width)
+
+
+def colonies_in_the_layer(path, described: dict) -> Colonies:
+    """The colonies a surveyed reef draws as one instanced layer
+    (tools/reef-survey): where each stands, how wide and how tall.
+
+    Every prototype is grown to a unit across and a unit high, so an
+    instance's scale is its size. Which prototypes bend is the record's
+    `swaysWith`; the rest are stony, and stand as massive colonies do
+    (assumed: the survey says stony, head or low, not the growth form)."""
+    text = pathlib.Path(path).read_text()
+    at = _floats(text, "point3f[] positions", 3)
+    which = _floats(text, "int[] protoIndices", 1)[:, 0].astype(int)
+    scales = _floats(text, "float3[] scales", 3)
+    n = min(len(at), len(which), len(scales))
+    c = Colonies()
+    if not n:
+        return c
+    at, which, scales = at[:n], which[:n], scales[:n]
+    sways = (described.get("reef") or {}).get("swaysWith") or {}
+    kind_of = {int(i): str(kind) for kind, ids in sways.items() for i in ids}
+    c.at = at
+    c.wide = scales[:, 0].copy()
+    c.height = scales[:, 2].copy()
+    c.size = np.maximum(2.0 * c.wide, c.height)
+    c.kind = np.array([kind_of.get(int(i), "massive") for i in which], dtype=object)
+    c.prim = []
+    _fresh(c, n)
+    c.from_ = (f"the reef layer {pathlib.Path(path).name}: {n} colonies as the survey drew them"
+               + ("" if sways else "; which bend is not recorded, so all stand as massive (assumed)"))
     return c
 
 

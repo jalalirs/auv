@@ -150,3 +150,43 @@ def test_driven_into_the_glass_it_stops_comes_back_a_little_and_the_strike_is_re
     assert np.isclose(v.velocity[0], -RESTITUTION * 0.3)
     hit = contacts.strikes[0]
     assert hit["what"] == "glass" and np.isclose(hit["speedMs"], 0.3) and hit["impulseNs"] > 0
+
+
+LAYER = """#usda 1.0
+def PointInstancer "Coral"
+{
+    point3f[] positions = [(1, 2, -5.02), (10.5, -3, -6), (40, 40, -7)]
+    int[] protoIndices = [0, 2, 1]
+    float3[] scales = [(0.3, 0.3, 0.2), (0.25, 0.25, 0.9), (1.1, 1.1, 0.4)]
+    quath[] orientations = [(1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0)]
+}
+"""
+
+
+def test_a_reef_drawn_as_a_layer_is_read_back_as_its_colonies(tmp_path):
+    """A surveyed reef lists no colonies; it draws them, prototypes a unit
+    across and a unit high scaled to each. Those are the colonies."""
+    from systems.coral import colonies_of
+
+    (tmp_path / "coral.usda").write_text(LAYER)
+    described = {"layers": {"coral": "coral.usda"}, "reef": {"swaysWith": {"fan": [2]}}}
+    c = colonies_of(described, lambda x, y: -5.0, tmp_path)
+    assert len(c) == 3
+    assert np.allclose(c.at[1], [10.5, -3.0, -6.0])
+    assert np.allclose(c.radius, [0.3, 0.25, 1.1]) and np.allclose(c.height, [0.2, 0.9, 0.4])
+    assert list(c.kind) == ["massive", "fan", "massive"]
+    assert list(c.solid()) == [True, False, True], "a fan bends"
+
+
+def test_near_finds_what_is_near_and_not_the_rest():
+    """Asked about a point, the colonies within reach of it — and the whole
+    reef is never what is asked."""
+    rng = np.random.default_rng(0)
+    c = Colonies()
+    c.at = np.column_stack([rng.uniform(-200, 200, (20000, 2)), np.full(20000, -8.0)])
+    c.size = rng.uniform(0.1, 0.6, 20000)
+    c.kind = np.array(["massive"] * 20000, dtype=object)
+    found = set(c.near([12.0, -7.0], 3.0).tolist())
+    within = np.flatnonzero(np.hypot(c.at[:, 0] - 12.0, c.at[:, 1] + 7.0) < 3.0 + c.radius)
+    assert set(within.tolist()) <= found
+    assert len(found) < 200

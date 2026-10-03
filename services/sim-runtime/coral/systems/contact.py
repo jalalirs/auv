@@ -234,32 +234,36 @@ def keep_out_of_coral(v, coral, contacts, say) -> None:
     the vehicle; it is brushed, and counted."""
     if coral is None or not len(coral):
         return
-    off = v.position[:2][None, :] - coral.at[:, :2]
+    length, beam = v.footprint or (float(v.half_width), float(v.half_width))
+    near = coral.near(v.position[:2], max(length, beam))
+    if not len(near):
+        return
+    off = v.position[:2][None, :] - coral.at[near, :2]
     far = np.linalg.norm(off, axis=1)
+    radius, base, height = coral.radius[near], coral.at[near, 2], coral.height[near]
     # The hull's outline from above: an ellipse its length by its beam, turned
     # with it — a vehicle passing a colony side-on reaches half its beam, not
     # half its length. A colony meets it where the ellipse, grown by the
     # colony's radius, holds the colony's middle.
-    length, beam = v.footprint or (float(v.half_width), float(v.half_width))
     heading = math.atan2(float(v.rotation[1, 0]), float(v.rotation[0, 0]))
     c, s = math.cos(heading), math.sin(heading)
     ahead = -(off[:, 0] * c + off[:, 1] * s)
     aside = -(-off[:, 0] * s + off[:, 1] * c)
-    inside = (ahead / (length + coral.radius)) ** 2 + (aside / (beam + coral.radius)) ** 2 < 1.0
+    inside = (ahead / (length + radius)) ** 2 + (aside / (beam + radius)) ** 2 < 1.0
     # How far out it must be put, along the line between them: where that
     # line leaves the grown ellipse.
     angle = np.arctan2(aside, ahead)
-    reach = 1.0 / np.sqrt((np.cos(angle) / (length + coral.radius)) ** 2
-                          + (np.sin(angle) / (beam + coral.radius)) ** 2)
-    level = (v.position[2] - v.half_height < coral.at[:, 2] + coral.height) & \
-            (v.position[2] + v.half_height > coral.at[:, 2])
-    touching = set(np.flatnonzero(inside & level).tolist())
-    solid = coral.solid()
-    for i in sorted(touching):
-        out = off[i] / max(float(far[i]), 1e-9)
+    reach = 1.0 / np.sqrt((np.cos(angle) / (length + radius)) ** 2
+                          + (np.sin(angle) / (beam + radius)) ** 2)
+    level = (v.position[2] - v.half_height < base + height) & (v.position[2] + v.half_height > base)
+    solid = coral.solid()[near]
+    touching = set(near[inside & level].tolist())
+    for k in np.flatnonzero(inside & level):
+        i = int(near[k])
+        out = off[k] / max(float(far[k]), 1e-9)
         into = 0.0
-        if solid[i]:
-            v.position[:2] = coral.at[i, :2] + out * reach[i]
+        if solid[k]:
+            v.position[:2] = coral.at[i, :2] + out * reach[k]
             through = v.rotation @ v.velocity[:3]
             going = float(np.dot(through[:2], out))
             if going < 0.0:
@@ -269,7 +273,7 @@ def keep_out_of_coral(v, coral, contacts, say) -> None:
         if i not in contacts.on_coral:
             hit = contacts.strike_of(f"coral-{i}", v.position, into, v)
             contacts.coral_hits.append({"colony": i, **hit})
-            if solid[i]:
+            if solid[k]:
                 say("struck_coral", which=i, growth=str(coral.kind[i]), speedMs=hit["speedMs"],
                     impulseNs=hit["impulseNs"])
     contacts.on_coral = touching

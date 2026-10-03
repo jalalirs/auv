@@ -159,6 +159,43 @@ def test_they_go_round_a_rock_and_not_over_it():
     assert over / (16 * 1200) < 0.01
 
 
+def a_tank_of_coral(seed=0):
+    """The test tank with a stand of coral heads across its floor: thirty
+    colonies a quarter of a metre tall, branch refuges in the middle of each."""
+    rng = np.random.default_rng(seed)
+    xy = rng.uniform([-0.8, -0.35], [0.8, 0.35], (30, 2))
+    at = np.column_stack([xy, np.full(30, FLOOR)])
+    habitat = fm.Habitat(lambda x, y: FLOOR, (0.0, 0.0), 2.0, 0.0, box=(0.92, 0.46), scale=0.14,
+                         refuges={"branch": at + [0.0, 0.0, 0.12],
+                                  "crevice": np.array([[0.0, 0.0, FLOOR]])})
+    habitat.set_coral(at, np.full(30, 0.06), np.full(30, FLOOR + 0.25))
+    return habitat
+
+
+def inside_the_coral(school):
+    return school.habitat.coral(school.at[:, :2]) > school.at[:, 2] - 0.2 * school.length
+
+
+def test_they_go_round_coral_and_never_through_it():
+    """A coral head is rock to a fish passing it: round it or over it, never
+    through it."""
+    school = fm.School({"chromis_viridis": 12, "zebrasoma_flavescens": 4}, a_tank_of_coral(), seed=3, tank=True)
+    through = 0
+    for _ in range(int(60 / 0.05)):
+        school.step(0.05, light=(11.0, 1.0))
+        through += int((inside_the_coral(school) & ~school.sheltering()).sum())
+    assert through == 0
+
+
+def test_a_chromis_goes_in_among_its_coral_for_the_night():
+    """Damselfish sleep among the branches of their coral; that is the one
+    way into a colony."""
+    school = fm.School({"chromis_viridis": 12}, a_tank_of_coral(), seed=3, tank=True)
+    for _ in range(int(60 / 0.05)):
+        school.step(0.05, light=(23.0, 0.0))
+    assert inside_the_coral(school).mean() > 0.5
+
+
 def test_a_current_carries_them_and_they_face_into_it():
     """Fish hold station facing into the flow (rheotaxis); in a current too
     strong for them they are carried."""
