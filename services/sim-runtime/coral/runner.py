@@ -185,22 +185,39 @@ class Seabed:
         if not said or not centre or not (city / said["file"]).exists():
             return None
         grid = np.fromfile(city / said["file"], dtype="<f4").reshape(said["rows"], said["columns"])
+        beams = said.get("multibeam")
+        if beams and (city / beams["file"]).exists():
+            beams = np.fromfile(city / beams["file"], dtype="<f4").reshape(beams["rows"], beams["columns"])
+        else:
+            beams = None
         lat0, lon0 = float(centre["latitude"]), float(centre["longitude"])
         east = 111320.0 * np.cos(np.radians(lat0))
         north = 110540.0
         return (grid, (said["west"] - lon0) * east, (said["south"] - lat0) * north,
-                (said["east"] - lon0) * east, (said["north"] - lat0) * north)
+                (said["east"] - lon0) * east, (said["north"] - lat0) * north, beams)
 
     def _beyond(self, x, y):
-        """GEBCO's seabed at many points, bilinear between cell centres."""
-        grid, west, south, east, north = self.around
-        rows, cols = grid.shape
-        u = np.clip((np.asarray(x, dtype=float) - west) / (east - west) * cols - 0.5, 0.0, cols - 1.0001)
-        v = np.clip((np.asarray(y, dtype=float) - south) / (north - south) * rows - 0.5, 0.0, rows - 1.0001)
-        c, r = u.astype(int), v.astype(int)
-        fu, fv = u - c, v - r
-        return (grid[r, c] * (1 - fu) * (1 - fv) + grid[r, c + 1] * fu * (1 - fv)
-                + grid[r + 1, c] * (1 - fu) * fv + grid[r + 1, c + 1] * fu * fv).astype(float)
+        """The seabed past the survey at many points: a ship's multibeam where
+        one has surveyed it, GEBCO where none has — each bilinear between its
+        own cell centres, and multibeam only where all four of its corners
+        were surveyed."""
+        grid, west, south, east, north = self.around[:5]
+        beams = self.around[5] if len(self.around) > 5 else None
+
+        def bilinear(g):
+            rows, cols = g.shape
+            u = np.clip((np.asarray(x, dtype=float) - west) / (east - west) * cols - 0.5, 0.0, cols - 1.0001)
+            v = np.clip((np.asarray(y, dtype=float) - south) / (north - south) * rows - 0.5, 0.0, rows - 1.0001)
+            c, r = u.astype(int), v.astype(int)
+            fu, fv = u - c, v - r
+            return (g[r, c] * (1 - fu) * (1 - fv) + g[r, c + 1] * fu * (1 - fv)
+                    + g[r + 1, c] * (1 - fu) * fv + g[r + 1, c + 1] * fu * fv).astype(float)
+
+        out = bilinear(grid)
+        if beams is not None:
+            surveyed = bilinear(beams)
+            out = np.where(np.isfinite(surveyed), surveyed, out)
+        return out
 
     def _blended(self, x, y, survey):
         """The survey inside its square; GEBCO outside it; the two blended

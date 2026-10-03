@@ -33,3 +33,13 @@ def test_the_edge_is_blended_not_a_step():
 def test_without_surroundings_nothing_changes():
     sb = Seabed(np.full((11, 11), -7.0), 100.0)
     assert sb.under(5000.0, 0.0) == -7.0
+
+
+def test_a_ships_multibeam_is_taken_where_it_was_surveyed():
+    survey = np.full((41, 41), -10.0)
+    gebco = np.full((21, 21), -40.0)
+    beams = np.full((100, 100), np.nan)
+    beams[:, 50:] = -55.0                                 # surveyed: the eastern half
+    sb = Seabed(survey, 400.0, around=(gebco, -5000.0, -5000.0, 5000.0, 5000.0, beams))
+    assert sb.under(3000.0, 0.0) == -55.0
+    assert sb.under(-3000.0, 0.0) == -40.0

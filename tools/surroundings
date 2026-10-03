@@ -15,9 +15,16 @@ Not downloaded whole (7.5 GB): the netCDF is HDF5 with the elevation as one
 contiguous int16 array, so each row of the box is a byte range of the file at
 CEDA's archive, read with HTTP range requests — a few hundred kilobytes a place.
 
+And where ships have surveyed it, the multibeam itself: NOAA NCEI's mosaic of
+the IHO Data Centre for Digital Bathymetry's multibeam (3 arc-seconds, about
+90 m), cut to the same box by its image service. NaN where no ship has been —
+none at all round the Red Sea places, a fifth to a quarter round Looe Key and
+Kaneohe.
+
 Writes into the place: surroundings.f32 (metres, negative under the sea, rows
-south to north, columns west to east), surroundings_tid.u8, and a
-"surroundings" record in site.json saying where it came from.
+south to north, columns west to east), surroundings_tid.u8, multibeam.f32 when
+there is any, and a "surroundings" record in site.json saying where each came
+from.
 """
 
 from __future__ import annotations
@@ -105,6 +112,23 @@ def box_of(url: str, name: str, i0: int, i1: int, j0: int, j1: int) -> np.ndarra
     return np.vstack(rows)
 
 
+MULTIBEAM = "https://gis.ngdc.noaa.gov/arcgis/rest/services/multibeam_mosaic/ImageServer/exportImage"
+
+
+def multibeam(south, north, west, east, cells: int = 240):
+    """The DCDB multibeam mosaic over the box, rows south to north, NaN where
+    no ship has surveyed; None where none has anywhere in it. Raw float32
+    (`bsq`): checked pixel by pixel against the service's own identify."""
+    params = {"bbox": f"{west},{south},{east},{north}", "bboxSR": 4326, "imageSR": 4326, "size": f"{cells},{cells}",
+              "format": "bsq", "pixelType": "F32", "noData": -99999, "interpolation": "RSP_NearestNeighbor", "f": "json"}
+    said = requests.get(MULTIBEAM, params=params, timeout=120).json()
+    raw = requests.get(said["href"], timeout=120).content
+    w, h = said["width"], said["height"]
+    a = np.frombuffer(raw[: w * h * 4], dtype="<f4").reshape(h, w).astype("<f4")[::-1].copy()
+    a[(a == -99999) | ~np.isfinite(a) | (a < -12000) | (a > 100)] = np.nan
+    return None if np.isnan(a).all() else a
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("place", type=pathlib.Path)
@@ -132,6 +156,15 @@ def main(argv=None) -> int:
                  "(see catalogue.ceda.ac.uk), public domain; read by range requests from CEDA's archive"),
         "whatEachCellIs": {TID_MEANS.get(int(k), str(int(k))): round(float(c) / tid.size, 3) for k, c in zip(kinds, counts)},
     }
+    beams = multibeam(site["surroundings"]["south"], site["surroundings"]["north"],
+                      site["surroundings"]["west"], site["surroundings"]["east"])
+    if beams is not None:
+        beams.tofile(args.place / "multibeam.f32")
+        site["surroundings"]["multibeam"] = {
+            "file": "multibeam.f32", "rows": int(beams.shape[0]), "columns": int(beams.shape[1]),
+            "coveredShare": round(float(np.isfinite(beams).mean()), 3),
+            "from": ("measured: NOAA NCEI multibeam bathymetry mosaic (IHO Data Centre for Digital Bathymetry), "
+                     "3 arc-second, through its image service; NaN where no ship has surveyed")}
     (args.place / "site.json").write_text(json.dumps(site, indent=1) + "\n")
     print(f"{args.place.name}: {height.shape[0]} x {height.shape[1]} cells, "
           f"{height.min():.0f}..{height.max():.0f} m, {site['surroundings']['whatEachCellIs']}")
