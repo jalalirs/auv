@@ -66,6 +66,12 @@ CORAL_COLOURS = [(0.62, 0.48, 0.38), (0.48, 0.36, 0.52), (0.70, 0.55, 0.42), (0.
 # Who lives in it, from the footage: the species named in fish_species.py
 # from it, and roughly how many of each a viewer sees — the big schools of
 # seabream counted in the hundreds, the sharks and rays by the handful.
+# The column's dressing, from the footage: arches near the top, then panels
+# with LED strips down to where the rock begins.
+ARCH_Z = -1.4
+ARCHES = 8
+PANELS_FROM, PANELS_TO = 0.5, -3.05
+STRIPS = 14
 FISH = {"rhabdosargus_haffara": 160, "abudefduf_vaigiensis": 60, "platax_teira": 24,
         "acanthopagrus_bifasciatus": 20, "plectorhinchus_gaterinus": 14, "naso_hexacanthus": 10,
         "carcharhinus_melanopterus": 6, "chaetodon_auriga": 6, "pomacanthus_maculosus": 4,
@@ -119,7 +125,8 @@ def column_mesh(phase, rng, around: int = 180):
         faces.append(f + base)
         uvs.append(uv)
 
-    for k in range(len(LEDGES)):
+    # The top tier is not rock but the panels (`build`); rock begins below it.
+    for k in range(1, len(LEDGES)):
         edge = edge_of(k, theta, phase)
         top = LEDGES[k][1]
         bottom = LEDGES[k + 1][1] if k + 1 < len(LEDGES) else FLOOR_Z - 0.05
@@ -244,6 +251,36 @@ def build(name: str, into: pathlib.Path, seed: int = 11) -> dict:
     # The column, drawn as rock.
     cp, cf, cu = column_mesh(phase, rng)
     s.add("Tank/Column", cp, cf, rock, smooth=True, uv=cu)
+
+    # What the footage shows at the column's top, under the surface: a ring of
+    # terracotta arches, and below them dark wooden panels with white LED
+    # strips running down them, before the rock begins.
+    wood = s.look("Wood", (0.18, 0.12, 0.08), rough=0.6, mdl=pbr((0.16, 0.10, 0.07), 0.55))
+    clay = s.look("Terracotta", (0.72, 0.42, 0.26), rough=0.7, mdl=pbr((0.70, 0.40, 0.24), 0.65))
+    strip = s.look("LedStrip", (0.95, 0.95, 0.92), rough=0.3, emissive=(4.0, 4.0, 3.8),
+                   mdl=("OmniPBR", dict(diffuse_color_constant=(0.95, 0.95, 0.92), enable_emission=True,
+                                        emissive_color=(1.0, 0.98, 0.92), emissive_intensity=6000)))
+    panel_r = LEDGES[0][0] + 0.05
+    s.add("Column/Panels", *ring(panel_r - 0.05, panel_r, PANELS_FROM, PANELS_TO, sides=48), wood)
+    strips = []
+    for k in range(STRIPS):
+        a = 2 * math.pi * (k + 0.5) / STRIPS
+        cx, cy = (panel_r + 0.012) * math.cos(a), (panel_r + 0.012) * math.sin(a)
+        strips.append(aq.box((cx - 0.02, cy - 0.02, PANELS_TO + 0.2), (cx + 0.02, cy + 0.02, PANELS_FROM - 0.2)))
+    s.add("Column/LedStrips", *aq.join(*strips), strip)
+    arches = []
+    for k in range(ARCHES):
+        a = 2 * math.pi * k / ARCHES
+        centre = np.array([(panel_r + 0.35) * math.cos(a), (panel_r + 0.35) * math.sin(a), ARCH_Z])
+        along = np.array([-math.sin(a), math.cos(a), 0.0])
+        # An arch: a half-ring standing on two legs, in the plane round the column.
+        bend = [centre + 0.55 * (math.cos(t) * along) + np.array([0, 0, 0.55 * math.sin(t)])
+                for t in np.linspace(0, math.pi, 12)]
+        arches.append(aq.tube(bend, 0.09, sides=10))
+        for side in (-1, 1):
+            foot = centre + side * 0.55 * along
+            arches.append(aq.cylinder(foot - np.array([0, 0, 1.1]), foot, 0.09, sides=10))
+    s.add("Column/Arches", *aq.join(*arches), clay)
 
     # Coral: on the ledges, at the column's foot and among the boulders.
     def ground_at(x, y):
