@@ -95,3 +95,39 @@ def test_the_waters_veil_follows_the_light_in_it():
     light.set_for({"localTimeH": 13.0}, indoors=True)
     drawn.set(Stage(), light, settings=settings)
     assert settings[VEIL] == 1.0
+
+
+def test_the_waters_sun_keeps_the_dives_day():
+    """The sun, the water's dome and the caustics go with the sky: a night
+    dive's sun is out, in a tank's room as on a reef."""
+    import water
+
+    class Attr:
+        def __init__(self):
+            self.value = None
+
+        def Set(self, v):
+            self.value = v
+
+    class Prim:
+        def __init__(self):
+            self.attr = Attr()
+
+        def __bool__(self):
+            return True
+
+        def GetAttribute(self, name):
+            return self.attr
+
+    class Stage:
+        def __init__(self):
+            self.prims = {p: Prim() for p in ("/World/Sun", "/World/Water", "/World/Caustics")}
+
+        def GetPrimAtPath(self, path):
+            return self.prims[path]
+
+    noon, night = Stage(), Stage()
+    water.light_for(noon, 2.0, sky=1.0)
+    water.light_for(night, 2.0, sky=0.0)
+    assert noon.prims["/World/Sun"].attr.value > 0
+    assert all(p.attr.value == 0 for p in night.prims.values())

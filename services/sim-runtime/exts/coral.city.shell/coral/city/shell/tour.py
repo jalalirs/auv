@@ -523,7 +523,8 @@ class Stills:
 
     def __init__(self, across: float, floor_at, say, begin=None,
                  water_level: float | None = None,
-                 sample_metres: float | None = None) -> None:
+                 sample_metres: float | None = None,
+                 fixed: dict | None = None, drawn_at=None) -> None:
         self.across = across
         self.floor_at = floor_at
         self.say = say
@@ -545,6 +546,18 @@ class Stills:
         self.views = [(name, how) for name, how in VIEWS
                       if name != "a-square-metre"
                       or (sample_metres is not None and sample_metres < 0.10)]
+        # Unless the place has cameras of its own. The views above are a
+        # reef's, measured up from the bottom in metres: in a tank a metre deep
+        # every one of them is clamped to the same point under the surface and
+        # came back a flat grey frame. A tank says where its cameras stand —
+        # in the room, at the glass, overhead — and those are its stills.
+        if fixed:
+            self.views = [(name, dict(fixed=True, eye=tuple(map(float, one["eye"])),
+                                      aim=tuple(map(float, one["aim"])),
+                                      up=tuple(map(float, one["up"])) if one.get("up") else None,
+                                      says=one.get("what", name)))
+                          for name, one in fixed.items()]
+        self.drawn_at = drawn_at or (lambda p: p)
         self.frames = len(self.views) * STILL_SETTLE
         self.taken = 0
         self.waiting = False
@@ -616,11 +629,14 @@ class Stills:
             self.placed_for = name
             self.say("stills_view", at=name, says=how["says"], atFrame=self.taken)
 
-        ex, ey = (self.anchor[0] + how["from_anchor"][0],
-                  self.anchor[1] + how["from_anchor"][1])
-        tx, ty = self.anchor[0] + how["at"][0], self.anchor[1] + how["at"][1]
-        eye = (ex, ey, self._height(ex, ey, how["above"]))
-        target = (tx, ty, self._height(tx, ty, how["at_above"]))
+        if how.get("fixed"):
+            eye, target = how["eye"], how["aim"]
+        else:
+            ex, ey = (self.anchor[0] + how["from_anchor"][0],
+                      self.anchor[1] + how["from_anchor"][1])
+            tx, ty = self.anchor[0] + how["at"][0], self.anchor[1] + how["at"][1]
+            eye = (ex, ey, self._height(ex, ey, how["above"]))
+            target = (tx, ty, self._height(tx, ty, how["at_above"]))
         # Kept, because the water is measured from wherever the camera is and
         # on a tour that is not the vehicle.
         self.eye = eye
@@ -656,9 +672,10 @@ class Stills:
         way = (target[0] - eye[0], target[1] - eye[1], target[2] - eye[2])
         flat = math.hypot(way[0], way[1])
         straight_down = flat < 0.05 * abs(way[2])
+        up = how.get("up") or ((0, 1, 0) if straight_down else (0, 0, 1))
         look = Gf.Matrix4d().SetLookAt(
-            Gf.Vec3d(*eye), Gf.Vec3d(*target),
-            Gf.Vec3d(0, 1, 0) if straight_down else Gf.Vec3d(0, 0, 1)).GetInverse()
+            Gf.Vec3d(*self.drawn_at(eye)), Gf.Vec3d(*self.drawn_at(target)),
+            Gf.Vec3d(*self.drawn_at(up))).GetInverse()
         moving = UsdGeom.Xformable(camera.GetPrim())
         moving.ClearXformOpOrder()
         moving.AddTransformOp().Set(look)

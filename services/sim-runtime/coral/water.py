@@ -1443,8 +1443,8 @@ def _water_material(stage, surface) -> None:
     UsdShade.MaterialBindingAPI.Apply(surface.GetPrim()).Bind(material)
 
 
-def light_for(stage, depth: float) -> None:
-    """Set the light to what is left at this depth.
+def light_for(stage, depth: float, sky: float = 1.0) -> None:
+    """Set the light to what is left at this depth, of what the sky gives now.
 
     Called as the vehicle moves, because the light at two metres and the light
     at fifteen are not the same light — and a scene lit once at the surface
@@ -1452,7 +1452,11 @@ def light_for(stage, depth: float) -> None:
     obviously wrong thing an underwater renderer can do.
     """
 
-    left = is_it_deep(max(0.0, depth))
+    # `sky` is the dive's day (systems/light.py): one from mid-morning to
+    # late afternoon, nothing at night. Without it the sun shone at midnight —
+    # into a tank's room too, which is why a night tank's room stayed lit
+    # after every lamp on the schedule had gone out.
+    left = is_it_deep(max(0.0, depth)) * max(0.0, min(1.0, float(sky)))
     # The sun is the key light and everything else is fill. The first balance
     # had the caustics three and a half times the sun and a dome bright enough
     # to fill every shadow, which is a scene with no direction in it — and a

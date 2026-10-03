@@ -260,7 +260,9 @@ class CoralCityShell(omni.ext.IExt):
                 self.tour = Stills(dive.across_metres(), floor_at, self._say,
                                    begin=dive.position,
                                    water_level=dive.water_level,
-                                   sample_metres=sampled)
+                                   sample_metres=sampled,
+                                   fixed=(getattr(dive, "place_cameras", None) or {}).get("fixed"),
+                                   drawn_at=dive.drawn_at)
             else:
                 self.tour = Tour(dive.across_metres(), floor_at, self._say,
                                  begin=dive.position)

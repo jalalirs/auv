@@ -1108,6 +1108,14 @@ class Dive:
                          diameterM=thrust.diameter_m, fullRpm=float(thrust.max_rpm.max()),
                          rpmFrom=thrust.rpm_from)
 
+            # The seabed past the survey, where the place carries it: what the
+            # vehicle already stood on out there, now seen. See
+            # draw/surroundings.py.
+            if self.seabed is not None and self.seabed.around is not None and self.up_axis == "Z":
+                from draw import surroundings
+                cells = surroundings.put_in(stage, self.seabed, self.units_per_metre)
+                self.say("surroundings_drawn", cells=cells, reachM=surroundings.REACH_M)
+
             # The reef. Referenced rather than merged, so the seabed stays one
             # file and the coral stays another — a place is layers, and a
             # thousand colonies is not something to paste into a terrain.
@@ -2973,6 +2981,19 @@ class Dive:
 
 
 
+    def disturbance(self) -> list[dict]:
+        """What this dive did to the place it flew in: fish put to flight and
+        run into, coral struck, broken, smothered and shut, sand lifted, ground
+        touched — each row with what it is and where it came from. See
+        disturbance.py."""
+        import disturbance
+
+        return disturbance.rows(
+            None if self.shoal is None else self.shoal.said(),
+            self.ocean.coral.said() if len(self.ocean.coral) else None,
+            self.ocean.sediment.said() if self.ocean.sediment.lifted_kg else None,
+            self.what_it_hit())
+
     def what_it_hit(self) -> dict:
         """What this dive struck, for whoever is judging it: things in the
         water, ground it could not ride over, and a tank's glass, each counted
@@ -3100,7 +3121,8 @@ class Dive:
         """Move the water. Still caustics are a painted floor."""
         if self.water is not None:
             self.water.drift(self.stage, self.simulated, follow=self.position)
-            self.water.light_for(self.stage, float(-self.position[2]))
+            from systems.light import daylight
+            self.water.light_for(self.stage, float(-self.position[2]), sky=daylight(self.ocean.light.hour))
         # The snow sinks and goes where the water goes, and the box it lives
         # in keeps up with the camera. The particles themselves do not follow
         # the camera — that is the difference between backscatter and a decal
@@ -3566,6 +3588,9 @@ class Dive:
                  **({} if self.ocean.contacts.hardest() is None
                     else {"hardestStrike": self.ocean.contacts.hardest()}),
                  day=self.ocean.light.said(),
+                 # And all of that as one list a report can print, every row
+                 # saying it was computed and from what.
+                 disturbance=self.disturbance(),
                  # And what each part of the engine cost a tick, which is how a
                  # coupled ocean is held to running.
                  engine={"msPerTick": self.engine.costs(), "ticks": self.engine.ticks},
