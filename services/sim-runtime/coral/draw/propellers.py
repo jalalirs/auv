@@ -10,10 +10,12 @@ simulated time.
 
 At full speed a propeller turns sixty times a second, which no film frame
 rate can show as turning: a camera sees a blur, and a frame-by-frame drawing
-of the blades alone would strobe — stand still, or crawl backwards. So each
-propeller also carries the blur a camera would see: a disc as wide as the
-blades, more solid the faster they turn. The blades are drawn where they
-really are; the disc says how fast. Both are honest; neither alone is.
+of the blades would strobe — stand still, crawl backwards, or flash as they
+catch the light in a new place every frame (Luna's stern did, in its first
+film). So the blades are drawn only while a frame can resolve them: while
+they move less than STROBES_FROM_DEG between frames, fading out by
+GONE_BY_DEG. Past that a propeller is the blur a camera sees — a disc as wide
+as the blades, more solid the faster they turn.
 """
 
 from __future__ import annotations
@@ -31,6 +33,12 @@ DISC_SIDES = 32
 # How solid the blur gets at full speed. Not wholly: a real disc of spinning
 # blades is mostly water.
 MOST_BLUR = 0.55
+# How far the blades may turn between one film frame and the next and still be
+# drawn, degrees: a sixth of the gap between blades is where a frame stops
+# showing which way they went.
+STROBES_FROM_DEG = 15.0
+GONE_BY_DEG = 40.0
+FRAME_S = 1.0 / 24.0
 
 
 def blade_mesh(radius: float):
@@ -109,6 +117,20 @@ def blur(rpm: float, most_rpm: float) -> float:
     return MOST_BLUR * min(1.0, abs(float(rpm)) / float(most_rpm))
 
 
+def blades_seen(rpm: float, frame_s: float = FRAME_S) -> float:
+    """How much of the blades a frame shows: all of them while they turn less
+    than STROBES_FROM_DEG a frame, none past GONE_BY_DEG."""
+    step = abs(float(rpm)) / 60.0 * 360.0 * float(frame_s)
+    return float(np.clip((GONE_BY_DEG - step) / (GONE_BY_DEG - STROBES_FROM_DEG), 0.0, 1.0))
+
+
+def disc_seen(rpm: float, most_rpm: float, frame_s: float = FRAME_S) -> float:
+    """How solid the blur is: where the blades are not, and more so the faster
+    they turn."""
+    return blur(rpm, most_rpm) + (1.0 - blades_seen(rpm, frame_s)) * MOST_BLUR * 0.35 * (
+        1.0 - min(1.0, abs(float(rpm)) / max(float(most_rpm), 1e-9)))
+
+
 def put_in(stage, vehicle_path: str, thrusters, diameter_m: float, units_per_metre: float = 1.0):
     """Put a propeller at every thruster, under the vehicle, once.
 
@@ -123,12 +145,27 @@ def put_in(stage, vehicle_path: str, thrusters, diameter_m: float, units_per_met
     UsdGeom.Scope.Define(stage, scope)
     looks = UsdGeom.Scope.Define(stage, f"{scope}/Looks")
 
-    metal = UsdShade.Material.Define(stage, f"{looks.GetPath()}/Blade")
-    shader = UsdShade.Shader.Define(stage, f"{metal.GetPath()}/S")
-    shader.CreateIdAttr("UsdPreviewSurface")
-    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.05, 0.05, 0.055))
-    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.35)
-    metal.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+    def see_through(name, colour, rough, start):
+        """A material whose opacity is set each frame: the preview surface's,
+        and the renderer's beside it, which is what a dive is drawn with."""
+        look = UsdShade.Material.Define(stage, f"{looks.GetPath()}/{name}")
+        preview = UsdShade.Shader.Define(stage, f"{look.GetPath()}/S")
+        preview.CreateIdAttr("UsdPreviewSurface")
+        preview.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*colour))
+        preview.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(rough)
+        opacity = preview.CreateInput("opacity", Sdf.ValueTypeNames.Float)
+        opacity.Set(start)
+        look.CreateSurfaceOutput().ConnectToSource(preview.ConnectableAPI(), "surface")
+        mdl = UsdShade.Shader.Define(stage, f"{look.GetPath()}/M")
+        mdl.SetSourceAsset(Sdf.AssetPath("OmniPBR.mdl"), "mdl")
+        mdl.SetSourceAssetSubIdentifier("OmniPBR", "mdl")
+        mdl.CreateInput("diffuse_color_constant", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*colour))
+        mdl.CreateInput("reflection_roughness_constant", Sdf.ValueTypeNames.Float).Set(rough)
+        mdl.CreateInput("enable_opacity", Sdf.ValueTypeNames.Bool).Set(True)
+        mdl_opacity = mdl.CreateInput("opacity_constant", Sdf.ValueTypeNames.Float)
+        mdl_opacity.Set(start)
+        look.CreateSurfaceOutput("mdl").ConnectToSource(mdl.CreateOutput("out", Sdf.ValueTypeNames.Token))
+        return look, (opacity, mdl_opacity)
 
     def mesh(path, points, faces):
         m = UsdGeom.Mesh.Define(stage, path)
@@ -148,38 +185,25 @@ def put_in(stage, vehicle_path: str, thrusters, diameter_m: float, units_per_met
         holder.AddOrientOp().Set(Gf.Quatf(w, qx, qy, qz))
         spin = holder.AddRotateZOp()
         spin.Set(0.0)
+        # Each propeller's blades and blur have their own materials, because
+        # each is as visible as that propeller is fast.
+        metal, blade_opacity = see_through(f"Blade{i}", (0.05, 0.05, 0.055), 0.35, 1.0)
         body = mesh(f"{scope}/P{i}/Blades", blades, blade_faces)
         UsdShade.MaterialBindingAPI.Apply(body.GetPrim()).Bind(metal)
-
-        # The blur: its own material, because each propeller's is as solid as
-        # that propeller is fast.
-        look = UsdShade.Material.Define(stage, f"{looks.GetPath()}/Blur{i}")
-        preview = UsdShade.Shader.Define(stage, f"{look.GetPath()}/S")
-        preview.CreateIdAttr("UsdPreviewSurface")
-        preview.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.08, 0.08, 0.09))
-        opacity = preview.CreateInput("opacity", Sdf.ValueTypeNames.Float)
-        opacity.Set(0.0)
-        look.CreateSurfaceOutput().ConnectToSource(preview.ConnectableAPI(), "surface")
-        # And the renderer's own, which is what a dive is drawn with: fractional
-        # opacity, which the path tracer honours.
-        mdl = UsdShade.Shader.Define(stage, f"{look.GetPath()}/M")
-        mdl.SetSourceAsset(Sdf.AssetPath("OmniPBR.mdl"), "mdl")
-        mdl.SetSourceAssetSubIdentifier("OmniPBR", "mdl")
-        mdl.CreateInput("diffuse_color_constant", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.08, 0.08, 0.09))
-        mdl.CreateInput("enable_opacity", Sdf.ValueTypeNames.Bool).Set(True)
-        mdl_opacity = mdl.CreateInput("opacity_constant", Sdf.ValueTypeNames.Float)
-        mdl_opacity.Set(0.0)
-        look.CreateSurfaceOutput("mdl").ConnectToSource(mdl.CreateOutput("out", Sdf.ValueTypeNames.Token))
+        look, disc_opacity = see_through(f"Blur{i}", (0.08, 0.08, 0.09), 0.5, 0.0)
         smear = mesh(f"{scope}/P{i}/Blur", disc, disc_faces)
         UsdShade.MaterialBindingAPI.Apply(smear.GetPrim()).Bind(look)
-        handles.append((spin, opacity, mdl_opacity))
+        handles.append((spin, blade_opacity, disc_opacity))
     return handles
 
 
-def turn(handles, thrust) -> None:
-    """Turn each propeller to where it is, and blur it as fast as it goes."""
-    for (spin, opacity, mdl_opacity), angle, rpm, most in zip(handles, thrust.angle, thrust.rpm, thrust.max_rpm):
+def turn(handles, thrust, frame_s: float = FRAME_S) -> None:
+    """Turn each propeller to where it is; show its blades as far as a frame
+    `frame_s` long can resolve them, and its blur as fast as it goes."""
+    for (spin, blade_opacity, disc_opacity), angle, rpm, most in zip(
+            handles, thrust.angle, thrust.rpm, thrust.max_rpm):
         spin.Set(float(math.degrees(angle)))
-        solid = blur(rpm, most)
-        opacity.Set(solid)
-        mdl_opacity.Set(solid)
+        for knob in blade_opacity:
+            knob.Set(blades_seen(rpm, frame_s))
+        for knob in disc_opacity:
+            knob.Set(disc_seen(rpm, most, frame_s))

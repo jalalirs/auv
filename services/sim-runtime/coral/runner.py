@@ -3212,7 +3212,8 @@ class Dive:
         self.draw_the_tether()
         if getattr(self, "_propellers", None):
             from draw import propellers
-            propellers.turn(self._propellers, self.ocean.thrust)
+            fps = float(self.film().get("fps") or 0) or 24.0
+            propellers.turn(self._propellers, self.ocean.thrust, frame_s=1.0 / fps)
         # The place's lamps, by the dive's day (draw/light.py). Only in a
         # room: a reef's light is the water's business (water.py).
         if self.ocean.light.indoors:

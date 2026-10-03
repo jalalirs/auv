@@ -78,3 +78,22 @@ def test_a_propeller_faces_the_way_its_thruster_pushes():
 def test_the_blur_is_nothing_standing_still_and_never_solid():
     assert propellers.blur(0.0, 3600.0) == 0.0
     assert 0.0 < propellers.blur(900.0, 3600.0) < propellers.blur(3600.0, 3600.0) <= 0.6
+
+
+def test_blades_turning_faster_than_a_frame_can_follow_are_not_drawn():
+    """A three-bladed propeller turning 3,600 rpm moves 900 degrees between
+    frames at 24 a second: drawn, its blades land somewhere new each frame and
+    flash. Standing still or creeping they are drawn; turning, the blur is."""
+    assert propellers.blades_seen(0.0) == 1.0
+    assert propellers.blades_seen(30.0) == 1.0             # 7.5 degrees a frame
+    assert propellers.blades_seen(3600.0) == 0.0
+    assert 0.0 < propellers.blades_seen(100.0) < 1.0       # 25 degrees a frame: fading
+    # A faster film resolves faster blades.
+    assert propellers.blades_seen(100.0, frame_s=1 / 120) == 1.0
+
+
+def test_where_the_blades_go_the_blur_comes_in():
+    assert propellers.disc_seen(0.0, 3600.0) == 0.0
+    turning = propellers.disc_seen(200.0, 3600.0)
+    assert propellers.blades_seen(200.0) == 0.0 and turning > 0.15, turning
+    assert propellers.disc_seen(3600.0, 3600.0) <= propellers.MOST_BLUR + 1e-9
