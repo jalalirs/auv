@@ -200,7 +200,19 @@ class Recorder:
             # Finished rather than killed: the index at the front of a video is
             # written as the encoder closes, and without it nothing will play.
             self.video.stop()
+        # Every tick's command, so the dive can be flown again exactly — its
+        # film made afterwards, path-traced, of the run somebody watched live.
+        commanded = _commands(dive)
+        if commanded is not None:
+            np.save(self.into / "commands.npy", commanded)
         manifest = self.manifest(dive, camera, closed=True)
+        if commanded is not None:
+            manifest["files"].append("commands.npy")
+            manifest["commands"] = {"file": "commands.npy", "ticks": int(commanded.shape[0]),
+                                    "thrusters": int(commanded.shape[1]), "dtS": float(dive.dt),
+                                    "seed": dive.brief.get("seed"),
+                                    "replays": "a brief with {\"replay\": {\"commands\": <this file>}} and this seed "
+                                               "flies this dive again, tick for tick"}
 
         # And the dive's geometry, beside its recording, because the worker
         # uploads this directory and nothing else ever produced these where the
@@ -302,6 +314,8 @@ class Recorder:
             "beganAt": [round(float(v), 3) for v in dive.began_at],
             "camera": camera,
             "task": None if dive.task is None else dive.task.result(),
+            # What the vehicle did to the place, for the report's section on it.
+            "disturbance": _disturbance(dive),
             # The water it was flown in and who said so, so that a mission's
             # product carries its conditions rather than pointing at a log.
             "conditions": _conditions(dive),
@@ -315,6 +329,21 @@ class Recorder:
             "closed": closed,
         }
         return manifest
+
+
+def _commands(dive):
+    try:
+        helm = next(one for one in dive.engine.systems if one.name == "helm")
+        return helm.commands()
+    except Exception:
+        return None
+
+
+def _disturbance(dive) -> list | None:
+    try:
+        return dive.disturbance()
+    except Exception:
+        return None
 
 
 def _conditions(dive) -> dict | None:

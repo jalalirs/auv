@@ -145,6 +145,15 @@ def rocks_of(brief: dict) -> dict:
     return {f"rock-{i}": rock["at"][:2] for i, rock in enumerate(site.get("rocks") or [])}
 
 
+def commands_to_replay(brief: dict):
+    """The commands of a dive flown before, when this one is its film:
+    `"replay": {"commands": "<path to that dive's commands.npy>"}`."""
+    asked = brief.get("replay") if isinstance(brief.get("replay"), dict) else None
+    if not asked or not asked.get("commands"):
+        return None
+    return np.load(str(asked["commands"])).astype(float)
+
+
 def the_systems(dive) -> list:
     """The systems a dive runs, built from what the dive says about itself."""
     brief, say, dt = dive.brief, dive.say, dive.dt
@@ -160,7 +169,7 @@ def the_systems(dive) -> list:
         QualitySystem(),
         MultibeamSystem(),
         SonarSystem(),
-        HelmSystem(say),
+        HelmSystem(say, replay=commands_to_replay(brief)),
         ThrustersSystem(dt, float(brief.get("dockWatts", 120.0))),
         VehicleSystem(dt, say, attach=tied_on(brief), weathervanes=weathervanes(brief)),
         WashSystem(dive.allocator.model.thrusters),

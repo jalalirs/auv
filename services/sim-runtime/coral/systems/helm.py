@@ -73,13 +73,38 @@ class HelmSystem(System):
     before = ("vehicle", "clock", "orders")
     writes = ("helm", "asked")
 
-    def __init__(self, say) -> None:
+    def __init__(self, say, replay=None) -> None:
         self.say = say
+        # Every tick's command, kept, so that the dive can be flown again
+        # exactly: a person at the keys or a stack over ROS 2 is not a thing a
+        # second run can ask, but what they commanded is. And a dive given a
+        # recording of them plays it back in place of asking anybody — the same
+        # seed and the same commands are the same dive, which is how a
+        # path-traced film is made of a run that was watched live.
+        self.kept: list = []
+        self.replay = replay
+        self.ticks = 0
 
     def step(self, world) -> None:
+        import numpy as np
+
         helm = world.helm
         self.carry_out(helm, world.orders)
-        world.asked.commands = helm.command(observe(world))
+        if self.replay is not None:
+            # Past the end of what was recorded the vehicle is let go: nothing
+            # was commanded there, because the first dive was over.
+            here = self.replay[self.ticks] if self.ticks < len(self.replay) else np.zeros(self.replay.shape[1])
+            world.asked.commands = np.array(here, dtype=float)
+        else:
+            world.asked.commands = helm.command(observe(world))
+        self.kept.append(np.array(world.asked.commands, dtype=float))
+        self.ticks += 1
+
+    def commands(self):
+        """Every tick's command so far, (ticks, thrusters)."""
+        import numpy as np
+
+        return np.array(self.kept, dtype=float).reshape(len(self.kept), -1)
 
     def carry_out(self, helm, orders) -> None:
         """The orders tasking left, in the order it left them."""
