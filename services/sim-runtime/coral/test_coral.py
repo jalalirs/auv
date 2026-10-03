@@ -190,3 +190,37 @@ def test_near_finds_what_is_near_and_not_the_rest():
     within = np.flatnonzero(np.hypot(c.at[:, 0] - 12.0, c.at[:, 1] + 7.0) < 3.0 + c.radius)
     assert set(within.tolist()) <= found
     assert len(found) < 200
+
+
+def test_polyps_are_out_at_night_and_in_by_day_and_in_when_disturbed():
+    """Stony coral feeds at night; soft coral by day; any closes at a touch or
+    in moving water, and opens again slowly."""
+    from types import SimpleNamespace
+
+    from systems.coral import CoralSystem, _fresh
+
+    c = Colonies()
+    c.at = np.array([[0.0, 0.0, -1.0], [0.3, 0.0, -1.0]])
+    c.size = np.array([0.2, 0.2])
+    c.height = c.size.copy()
+    c.kind = np.array(["brain", "plume"], dtype=object)
+    c.prim = [None, None]
+    _fresh(c, 2)
+    still = SimpleNamespace(efflux=np.zeros(1), at=lambda p: np.zeros((len(p), 3)))
+    world = SimpleNamespace(coral=c, clock=SimpleNamespace(simulated=0.0), light=SimpleNamespace(level=0.0, day_s=240.0),
+                            wash=still, vehicle=SimpleNamespace(position=np.array([5.0, 5.0, -0.5])),
+                            contacts=SimpleNamespace(coral_hits=[]))
+    corals = CoralSystem(lambda *a, **k: None)
+    corals.the_polyps(world)
+    assert c.polyps.tolist() == [1.0, 0.0], "night: the brain coral's out, the soft coral's in"
+    # Touched at night: the brain coral closes within seconds.
+    world.contacts.coral_hits.append({"colony": 0, "impulseNs": 0.1, "speedMs": 0.1})
+    for k in range(1, 9):
+        world.clock.simulated = 0.5 * k
+        corals.the_polyps(world)
+    assert c.polyps[0] < 0.4, "closing within seconds of the touch"
+    # Left alone, it opens again, slowly (the strike stays in the record).
+    for k in range(12, 200):
+        world.clock.simulated = 0.5 * k
+        corals.the_polyps(world)
+    assert c.polyps[0] > 0.6

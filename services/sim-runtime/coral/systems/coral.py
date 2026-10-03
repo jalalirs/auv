@@ -39,8 +39,16 @@ What happens to a colony that is hit depends on what it is:
   the rate: what settled, over the fraction of a day it took. Past the first,
   a colony is smothered and the record says so.
 
-What is not here yet: the polyps' day, and the flow tearing a colony off on
-its own (Madin's colony shape factor against the drag of a storm).
+  **The polyps' day.** A stony coral's polyps come out to feed in the dark
+  and go back in by day; a soft coral's are out by day, its algae working in
+  the light (Sebens & DeRiemer 1977; Lewis & Price 1975). Any polyp goes in
+  at once when it is disturbed — touched, or hit by moving water — and comes
+  back out over minutes. So a vehicle working over a reef at night leaves a
+  trail of closed colonies behind it, and a camera sees it. `polyps` is the
+  share of each colony's polyps out, 0 to 1.
+
+What is not here yet: the flow tearing a colony off on its own (Madin's colony
+shape factor against the drag of a storm).
 """
 
 from __future__ import annotations
@@ -70,6 +78,15 @@ BRANCH_SHARE = {"branching": 0.04, "finger": 0.08, "table": 0.03}
 # as a share of the colony's size.
 SUBSTRATE_STRESS = 2.0e6
 BASE_SHARE = 0.25
+# The polyps. Out in the dark for stony coral, in the light for soft; in at
+# once in water moving faster than DISTURBED_MS round the colony (assumed:
+# polyps close to a diver's fin wash), back out over OUT_OVER_S of the day.
+OUT_IN_THE_LIGHT = {"plume", "soft"}
+NO_POLYPS = {"sponge"}
+DISTURBED_MS = 0.08
+IN_OVER_S = 3.0
+OUT_OVER_DAY = 1.0 / 96.0         # a quarter of an hour of a day
+POLYPS_EVERY_S = 0.5
 # Sediment, mg cm⁻² a day: where harm begins, and where it is severe.
 SMOTHERS_FROM = 10.0
 SMOTHERS_BADLY = 50.0
@@ -152,6 +169,9 @@ class Colonies:
                 **({} if not self.smothered.any() else {
                     "smothered": int((self.smothered >= 1).sum()),
                     "smotheredBadly": int((self.smothered >= 2).sum())}),
+                **({} if not len(getattr(self, "polyps", [])) else {
+                    "polypsOut": round(float(np.mean(self.polyps)), 3),
+                    "disturbed": int(np.isfinite(self.disturbed_at).sum())}),
                 "from": self.from_}
 
 
@@ -193,6 +213,8 @@ def _fresh(c: Colonies, n: int) -> None:
     c.worst_stress = np.zeros(n)
     c.torn_off = np.zeros(n, dtype=bool)
     c.smothered = np.zeros(n, dtype=int)
+    c.polyps = np.zeros(n)
+    c.disturbed_at = np.full(n, -np.inf)
 
 
 def _floats(text: str, name: str, width: int) -> np.ndarray:
@@ -259,19 +281,61 @@ def base_stress_of(impulse_ns: float, height_m: float, size_m: float) -> float:
 
 class CoralSystem(System):
     name = "coral"
-    reads = ("contacts", "clock")
+    reads = ("contacts", "clock", "light", "wash", "vehicle")
     before = ("sediment",)
     writes = ("coral",)
 
     def __init__(self, say) -> None:
         self.say = say
         self.seen = 0
+        self._polyps_at = -np.inf
+
+    def the_polyps(self, world) -> None:
+        """Each colony's polyps towards where the day has them, and in at once
+        where the water round it is moving or it was touched."""
+        coral = world.coral
+        if not len(coral) or not hasattr(coral, "polyps"):
+            return
+        now = world.clock.simulated
+        if now - self._polyps_at < POLYPS_EVERY_S:
+            return
+        dt = POLYPS_EVERY_S if np.isfinite(self._polyps_at) else 0.0
+        self._polyps_at = now
+        light = float(np.clip(world.light.level, 0.0, 1.0))
+        if not hasattr(coral, "_by_day"):
+            kinds = coral.kind.astype(str)
+            coral._by_day = np.isin(kinds, list(OUT_IN_THE_LIGHT))
+            coral._none = np.isin(kinds, list(NO_POLYPS))
+        want = np.where(coral._by_day, light, 1.0 - light)
+        want[coral._none] = 0.0
+        # Moving water round the colonies near the vehicle: the only ones its
+        # wash can reach.
+        near = coral.near(world.vehicle.position[:2], 4.0)
+        if len(near) and world.wash.efflux.any():
+            tops = coral.at[near] + np.column_stack([np.zeros((len(near), 2)), 0.5 * coral.height[near]])
+            moving = np.linalg.norm(world.wash.at(tops), axis=1) > DISTURBED_MS
+            coral.disturbed_at[near[moving]] = now
+        hits = world.contacts.coral_hits
+        touched = [int(h["colony"]) for h in hits[getattr(self, "_touches_seen", 0):]]
+        self._touches_seen = len(hits)
+        if touched:
+            coral.disturbed_at[touched] = now
+        shut = (now - coral.disturbed_at) < 5.0
+        want[shut] = 0.0
+        if dt <= 0.0:
+            coral.polyps = want.copy()
+            return
+        day = max(float(getattr(world.light, "day_s", 86400.0)), 1.0)
+        going_in = want < coral.polyps
+        rate = np.where(going_in, dt / IN_OVER_S, dt / (OUT_OVER_DAY * day))
+        coral.polyps += (want - coral.polyps) * np.clip(rate, 0.0, 1.0)
 
     def judge_the_sediment(self, world) -> None:
         _judge(world.coral, world.sediment.on_coral_mg_cm2, world.clock.simulated, self.say)
 
     def step(self, world) -> None:
         self.judge_the_sediment(world)
+        self.the_polyps(world)
         coral, hits = world.coral, world.contacts.coral_hits
         while self.seen < len(hits):
             hit = hits[self.seen]
