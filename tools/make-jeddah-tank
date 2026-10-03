@@ -1,0 +1,301 @@
+#!/usr/bin/env python3
+"""The Jeddah airport tank, as a place: a ten-metre cylinder of Red Sea water.
+
+    tools/make-jeddah-tank jeddah-airport-tank --into ~/coral-city/places/jeddah-airport-tank
+
+King Abdulaziz International Airport, Terminal 1: a cylindrical aquarium
+fourteen metres tall and ten across, its glass thirty centimetres thick, a
+million litres of Red Sea water and some two thousand animals of sixty-five
+Red Sea species (the airport's and the press's published figures, 2023–24).
+Round a column of rock that stands up out of the water in the middle.
+
+What is **published** is the size: the cylinder, its glass, its volume. What
+is **read off footage** (two phone videos from the airport floor, 3 October
+2026) is the rest: the column stepping down in ledges, coral on them, sand and
+boulders round its foot, which fish, and roughly how many of each. What is
+**chosen** is everything a camera does not show plainly — the ledges' heights,
+the coral's kinds and places — and the record says which is which.
+
+The runtime keeps everything inside round glass (systems/glass.py): the
+interior carries `round`. Metres, Z up, z = 0 at the water surface, origin on
+the tank's axis.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.machinery
+import importlib.util
+import json
+import math
+import pathlib
+import sys
+import time
+
+import numpy as np
+
+HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+_loader = importlib.machinery.SourceFileLoader("make_aquarium", str(HERE / "make-aquarium"))
+_spec = importlib.util.spec_from_loader("make_aquarium", _loader)
+aq = importlib.util.module_from_spec(_spec)
+_loader.exec_module(aq)
+import coral  # noqa: E402
+
+# ── the tank: published ──────────────────────────────────────────────────────
+RADIUS = 5.0              # inside the glass: ten metres across
+GLASS = 0.30
+FREEBOARD = 0.40
+FLOOR_Z = -13.4           # the sand: fourteen metres of tank less the base and the freeboard
+BASE_Z = -14.4            # the airport floor the tank stands on
+
+# ── what the footage shows, and what is chosen to fill it in ─────────────────
+GRID = 401                # heightfield samples each way over the tank's square
+ACROSS = 2 * RADIUS + 0.4
+# The column: ledges stepping down from the top, (outer radius, height). Each
+# ring of the column out to its radius stands at its height; the top stands
+# out of the water.
+LEDGES = [(1.9, 0.6), (2.25, -3.0), (2.65, -6.0), (3.05, -9.5), (3.45, -12.2)]
+BOULDERS = [(3.9, 0.3, 0.55, 0.9), (4.1, 1.5, 0.40, 0.6), (3.8, 2.6, 0.65, 1.0), (4.2, 3.7, 0.35, 0.5),
+            (3.9, 4.6, 0.50, 0.8), (4.0, 5.6, 0.45, 0.7)]          # (radius from axis, angle, r, height)
+CORAL_KINDS = [("branching", 0.55), ("massive", 0.7), ("brain", 0.5), ("table", 0.8), ("plume", 0.6),
+               ("fan", 0.9), ("finger", 0.45), ("sponge", 0.35), ("encrusting", 0.5)]
+CORAL_COLOURS = [(0.62, 0.48, 0.38), (0.48, 0.36, 0.52), (0.70, 0.55, 0.42), (0.40, 0.52, 0.42),
+                 (0.78, 0.50, 0.52), (0.55, 0.45, 0.30), (0.35, 0.40, 0.55), (0.80, 0.70, 0.45)]
+# Who lives in it, from the footage: the species named in fish_species.py
+# from it, and roughly how many of each a viewer sees — the big schools of
+# seabream counted in the hundreds, the sharks and rays by the handful.
+FISH = {"rhabdosargus_haffara": 160, "abudefduf_vaigiensis": 60, "platax_teira": 24,
+        "acanthopagrus_bifasciatus": 20, "plectorhinchus_gaterinus": 14, "naso_hexacanthus": 10,
+        "carcharhinus_melanopterus": 6, "chaetodon_auriga": 6, "pomacanthus_maculosus": 4,
+        "aetobatus_ocellatus": 3, "epinephelus_lanceolatus": 2}
+
+
+def column_and_sand(rng):
+    """The column, its ledges, the sand and the boulders, as one heightfield."""
+    line = np.linspace(-ACROSS / 2, ACROSS / 2, GRID)
+    X, Y = np.meshgrid(line, line)
+    r, theta = np.hypot(X, Y), np.arctan2(Y, X)
+    sand = FLOOR_Z + 0.04 * np.sin(X * 3.1 + 0.6 * np.sin(Y * 1.7)) + 0.03 * np.sin(Y * 2.3 + 1.1)
+    z = sand.copy()
+    phase = rng.uniform(0, 2 * np.pi, (len(LEDGES), 2))
+    # From the outside in, so that each ledge stands on the one below it.
+    for k in range(len(LEDGES) - 1, -1, -1):
+        reach, height = LEDGES[k]
+        edge = reach * (1.0 + 0.07 * np.sin(3 * theta + phase[k, 0]) + 0.05 * np.sin(7 * theta + phase[k, 1]))
+        rough = 0.12 * np.sin(X * 5.3 + k) * np.sin(Y * 4.7 - k) + 0.06 * np.sin(theta * 13 + k)
+        z = np.where(r < edge, np.maximum(z, height + rough), z)
+    for at, angle, rad, h in BOULDERS:
+        bx, by = at * math.cos(angle), at * math.sin(angle)
+        d = np.hypot(X - bx, Y - by)
+        top = sand + h * np.sqrt(np.clip(1 - (d / rad) ** 2, 0, 1)) * (1 + 0.12 * np.sin(X * 9 + Y * 7))
+        z = np.where(d < rad, np.maximum(z, top), z)
+    return line, z
+
+
+def ring(r_in, r_out, z0, z1, sides=160):
+    """A thick-walled cylinder: inner and outer walls, top and bottom rims."""
+    a = np.linspace(0, 2 * np.pi, sides, endpoint=False)
+    pts = []
+    for rr in (r_in, r_out):
+        for zz in (z0, z1):
+            pts += [(rr * math.cos(t), rr * math.sin(t), zz) for t in a]
+    pts = np.array(pts)
+    n = sides
+    faces = []
+    for i in range(n):
+        j = (i + 1) % n
+        ib, it, ob, ot = i, n + i, 2 * n + i, 3 * n + i
+        jb, jt, ob2, ot2 = j, n + j, 2 * n + j, 3 * n + j
+        faces += [(ib, jt, jb), (ib, it, jt)]            # inner wall
+        faces += [(ob, ob2, ot2), (ob, ot2, ot)]         # outer wall
+        faces += [(it, ot, ot2), (it, ot2, jt)]          # top rim
+        faces += [(ib, jb, ob2), (ib, ob2, ob)]          # bottom rim
+    return pts, np.array(faces)
+
+
+def build(name: str, into: pathlib.Path, seed: int = 11) -> dict:
+    rng = np.random.default_rng(seed)
+    s = aq.Scene()
+    tex = aq.textures(into)
+    pbr = lambda colour, rough=0.5, metal=0.0, **more: ("OmniPBR", dict(  # noqa: E731
+        diffuse_color_constant=tuple(colour), reflection_roughness_constant=rough, metallic_constant=metal, **more))
+    glass = s.look("Glass", (0.02, 0.03, 0.03), rough=0.0, opacity=0.06, clearcoat=1.0, ior=1.49,
+                   mdl=("OmniGlass", dict(glass_color=(0.93, 0.97, 0.96), glass_ior=1.49, thin_walled=False,
+                                          frosting_roughness=0.0)))
+    steel = s.look("Steel", (0.55, 0.56, 0.58), rough=0.3, metal=0.9, mdl=pbr((0.6, 0.6, 0.62), 0.25, 1.0))
+    marble = s.look("Marble", (0.86, 0.85, 0.82), rough=0.25, mdl=pbr((0.85, 0.84, 0.80), 0.18))
+    darkstone = s.look("DarkStone", (0.30, 0.30, 0.32), rough=0.35, mdl=pbr((0.28, 0.28, 0.30), 0.3))
+    ceiling = s.look("Ceiling", (0.92, 0.90, 0.86), rough=0.6, mdl=pbr((0.90, 0.88, 0.84), 0.6))
+    sand = s.look("Sand", (0.86, 0.82, 0.72), rough=0.95, mdl=("OmniPBR", dict(
+        diffuse_texture=tex["sand"][0], normalmap_texture=tex["sand"][1], reflectionroughness_texture=tex["sand"][2],
+        reflection_roughness_texture_influence=1.0, bump_factor=0.6)))
+    rock = s.look("LiveRock", (0.48, 0.42, 0.42), rough=0.9, mdl=("OmniPBR", dict(
+        diffuse_texture=tex["rock"][0], normalmap_texture=tex["rock"][1], reflectionroughness_texture=tex["rock"][2],
+        reflection_roughness_texture_influence=1.0, bump_factor=1.4)))
+
+    # The building round it: the floor it stands on, its steel plinth, a
+    # mezzanine ring with its railing, and the atrium's ceiling.
+    s.add("Hall/Floor", *aq.box((-30, -30, BASE_Z - 0.05), (30, 30, BASE_Z)), marble)
+    s.add("Tank/Plinth", *ring(RADIUS, RADIUS + GLASS + 0.35, BASE_Z, FLOOR_Z - 0.2), steel)
+    s.add("Tank/Base", *ring(0.0, RADIUS, BASE_Z, FLOOR_Z - 0.2), darkstone)
+    s.add("Hall/Mezzanine", *ring(6.6, 14.0, -7.5, -7.2), marble)
+    s.add("Hall/Railing", *ring(6.6, 6.64, -7.2, -6.1), glass)
+    s.add("Hall/RailingTop", *ring(6.58, 6.68, -6.12, -6.06), steel)
+    s.add("Hall/Ceiling", *ring(6.0, 16.0, 2.6, 2.9), ceiling)
+    s.add("Tank/Glass", *ring(RADIUS, RADIUS + GLASS, FLOOR_Z - 0.2, FREEBOARD), glass)
+    s.add("Tank/Rim", *ring(RADIUS - 0.05, RADIUS + GLASS + 0.05, FREEBOARD, FREEBOARD + 0.15), steel)
+
+    # The column and the sand: one heightfield, drawn inside the glass, the
+    # rock wrapped round the column and the sand laid flat.
+    line, heights = column_and_sand(rng)
+    pts, faces = aq.field_mesh(line, line, heights)
+    inside = np.hypot(pts[:, 0], pts[:, 1]) < RADIUS + 0.02
+    keep = inside[faces].all(axis=1)
+    faces = faces[keep]
+    is_rock = (pts[:, 2] > FLOOR_Z + 0.25)
+    rocky = is_rock[faces].any(axis=1)
+    for name_, part, look in (("Sand", ~rocky, sand), ("Column", rocky, rock)):
+        f = faces[part]
+        used = np.unique(f)
+        index = -np.ones(len(pts), dtype=int)
+        index[used] = np.arange(len(used))
+        p = pts[used]
+        if look is rock:
+            around = (np.arctan2(p[:, 1], p[:, 0]) / (2 * np.pi) + 0.5) * 2 * np.pi * 3.0 / 1.5
+            uv = np.stack([around, p[:, 2] / 1.5], axis=1)
+        else:
+            uv = p[:, :2] * 0.6
+        s.add(f"Tank/{name_}", p, index[f], look, smooth=True, uv=uv)
+
+    # Coral: on the ledges, at the column's foot and among the boulders.
+    def ground_at(x, y):
+        i = int(np.clip((x + ACROSS / 2) / ACROSS * (GRID - 1), 0, GRID - 1))
+        j = int(np.clip((y + ACROSS / 2) / ACROSS * (GRID - 1), 0, GRID - 1))
+        return float(heights[j, i])
+
+    placed = []
+    spots = []
+    for k in range(1, len(LEDGES)):
+        inner, outer = LEDGES[k - 1][0], LEDGES[k][0]
+        for _ in range(26 if k < len(LEDGES) - 1 else 22):
+            a = rng.uniform(0, 2 * np.pi)
+            rr = rng.uniform(inner + 0.15, outer - 0.05)
+            spots.append((rr * math.cos(a), rr * math.sin(a)))
+    for _ in range(14):
+        a = rng.uniform(0, 2 * np.pi)
+        rr = rng.uniform(LEDGES[-1][0] + 0.1, RADIUS - 0.6)
+        spots.append((rr * math.cos(a), rr * math.sin(a)))
+    for i, (x, y) in enumerate(spots):
+        kind, size = CORAL_KINDS[int(rng.integers(len(CORAL_KINDS)))]
+        size *= rng.uniform(0.6, 1.2)
+        p, f = coral.grow_one(kind, rng, size)
+        if not len(p):
+            continue
+        p = p + np.array([x, y, ground_at(x, y) - 0.02])
+        tint = CORAL_COLOURS[int(rng.integers(len(CORAL_COLOURS)))]
+        look = s.look(f"Coral{i}", tint, rough=0.6, mdl=pbr(tint, 0.55))
+        s.add(f"Tank/Coral{i}", p, f, look, smooth=True)
+        placed.append({"kind": kind, "sizeM": round(float(size), 3), "at": [round(x, 3), round(y, 3)],
+                       "prim": f"Tank/Coral{i}"})
+
+    # Light: over the water from the tank's top, and the atrium's daylight.
+    for k in range(6):
+        a = 2 * math.pi * k / 6
+        s.extra.append(
+            '    def RectLight "TankLight%d"\n    {\n        float inputs:width = 1.6\n        float inputs:height = 1.6\n'
+            '        float inputs:intensity = 9000\n        color3f inputs:color = (0.82, 0.90, 1.0)\n'
+            '        double3 xformOp:translate = (%.3f, %.3f, %.3f)\n        uniform token[] xformOpOrder = ["xformOp:translate"]\n    }\n'
+            % (k, 3.6 * math.cos(a), 3.6 * math.sin(a), FREEBOARD + 1.2))
+    s.extra.append('    def DomeLight "Daylight"\n    {\n        float inputs:intensity = 700\n'
+                   '        color3f inputs:color = (1.0, 0.98, 0.95)\n    }\n')
+    for name_, at in (("FillGround", (0.0, -12.0, -10.0)), ("FillMezzanine", (9.0, 8.0, -4.5))):
+        s.extra.append(
+            '    def SphereLight "%s"\n    {\n        float inputs:radius = 1.0\n        float inputs:intensity = 4000\n'
+            '        color3f inputs:color = (1.0, 0.97, 0.92)\n        double3 xformOp:translate = (%.3f, %.3f, %.3f)\n'
+            '        uniform token[] xformOpOrder = ["xformOp:translate"]\n    }\n' % (name_, *at))
+
+    into.mkdir(parents=True, exist_ok=True)
+    s.write(into / "tank.usda", f"{name}: the Jeddah airport tank, a {2 * RADIUS:g} m cylinder of Red Sea water. "
+                                "Metres, Z up, z = 0 at the water surface.")
+    heights.astype("<f4").tofile(into / "seabed.f32")
+    return {"corals": placed, "lowest": float(heights.min()), "highest": float(heights.max()),
+            "meshes": len(s.meshes)}
+
+
+def a_place(name: str, made: dict) -> dict:
+    return {
+        "name": name,
+        "from": {"surveyed": False, "measured": False, "fetched": True,
+                 "source": ("published: King Abdulaziz International Airport Terminal 1's aquarium, a cylinder 14 m tall and "
+                            "10 m across, 30 cm glass, 1,000,000 L of Red Sea water, ~2,000 animals of 65 species "
+                            "(KAIA and press, 2023-24); read off two phone videos of it (3 October 2026): the column and its "
+                            "ledges, the sand, which fish and roughly how many; chosen: the ledges' heights, the coral"),
+                 "acrossMetres": ACROSS, "radiusM": RADIUS, "depthM": round(-FLOOR_Z, 2),
+                 "sampleMetres": round(ACROSS / (GRID - 1), 4), "decimatedBy": 1},
+        "datum": "still water; z = 0 is the free surface and depth is negative z",
+        "enclosed": True,
+        "interior": {"min": [-RADIUS, -RADIUS, FLOOR_Z], "max": [RADIUS, RADIUS, 0.0],
+                     "round": {"centre": [0.0, 0.0], "radiusM": RADIUS},
+                     "why": "the glass is a wall, and it is round: a vehicle stops at it rather than passing through"},
+        "deepestM": round(-made["lowest"], 3),
+        "shallowestM": round(max(0.0, -made["highest"]), 3),
+        "underwater": 1.0,
+        "mesh": {"heightfield": {"file": "seabed.f32", "rows": GRID, "columns": GRID,
+                                 "what": "the sand, the boulders and the column with its ledges"}},
+        "reef": {"colonies": len(made["corals"]), "prototypes": len(made["corals"]),
+                 "from": "chosen: colonies on the column's ledges and at its foot, as the footage shows coral there",
+                 "colonies_at": made["corals"]},
+        "layers": {"terrain": "tank.usda"},
+        "beginAt": [0.0, -4.0, -8.0],
+        "beginBecause": "in the ring of water between the column and the glass, halfway down",
+        "life": {"tank": True, "count": FISH, "scale": 0.6,
+                 "from": "read off the footage: the species named in it and roughly how many of each are seen"},
+        "rocks": [{"at": [round(at * math.cos(a), 3), round(at * math.sin(a), 3)], "radiusM": r, "heightM": h}
+                  for at, a, r, h in BOULDERS],
+        "water": {"type": "I", "from": "chosen: a public aquarium's filtered seawater"},
+        "cameras": {
+            "chase": {"behind": 2.5, "above": 0.8},
+            "top": {"above": 4.0},
+            "orbit": {"radius": 1.6, "above": 0.4},
+            "front": {"ahead": 0.4, "aim": 4.0},
+            "down": {"below": 0.15, "aim": 2.0},
+            "keepInside": True,
+            "fixed": {
+                "ground": {"eye": [0.0, -10.5, -12.6], "aim": [0.0, 0.0, -8.0],
+                           "what": "from the airport floor, looking up the tank"},
+                "glass": {"eye": [0.0, -5.9, -10.0], "aim": [0.0, 0.0, -10.0],
+                          "what": "at the glass, at the height of the lower ledges"},
+                "mezzanine": {"eye": [6.9, -6.9, -5.6], "aim": [0.0, 0.0, -6.5],
+                              "what": "from the mezzanine railing, halfway up"},
+                "overhead": {"eye": [0.0, 0.0, 9.0], "aim": [0.0, 0.0, -6.0], "up": [0.0, 1.0, 0.0],
+                             "what": "down into the tank from the atrium"},
+            },
+        },
+        "rig": {"tether": {"at": [0.0, -4.7, round(FREEBOARD - 0.1, 2)], "outM": 18.0,
+                           "what": "over the rim on the hall side"},
+                "waterTonnes": round(math.pi * RADIUS ** 2 * -FLOOR_Z * 1.025, 0)},
+        "ground": {"hardnessFrom": "sand and rock", "colourFrom": "chosen", "surveyed": False},
+    }
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("name")
+    ap.add_argument("--into", type=pathlib.Path)
+    ap.add_argument("--seed", type=int, default=11)
+    args = ap.parse_args()
+    into = args.into or pathlib.Path.home() / "coral-city" / "places" / args.name
+    t0 = time.time()
+    made = build(args.name, into, args.seed)
+    place = a_place(args.name, made)
+    place["builtBy"] = [{"tool": "make-jeddah-tank", "args": {"name": args.name, "seed": args.seed},
+                         "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}]
+    (into / "site.json").write_text(json.dumps(place, indent=1) + "\n")
+    print(f"{args.name}: {made['meshes']} meshes, {len(made['corals'])} corals, ground {made['lowest']:.2f}..{made['highest']:.2f} m "
+          f"→ {into} in {time.time() - t0:.1f} s")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

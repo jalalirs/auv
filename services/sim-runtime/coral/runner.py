@@ -2981,11 +2981,11 @@ class Dive:
         elif self.interior is not None:
             low, high = self.interior
             # Five centimetres a cell in a bench tank; coarser in a big one,
-            # so the grid stays a few hundred thousand cells (the Jeddah
+            # so the grid stays under a hundred thousand cells (the Jeddah
             # tank is ten metres across and fourteen deep).
             extent = float(max(high[0] - low[0], high[1] - low[1], top - low[2]))
             self.ocean.flow.set_for([low[0], low[1], low[2]], [high[0], high[1], top], self.ocean.place.bottoms,
-                                    cell=max(0.05, extent / 60.0), circle=getattr(self.interior, "round", None))
+                                    cell=max(0.05, extent / 45.0), circle=getattr(self.interior, "round", None))
         else:
             # Open water: a box round the vehicle that follows it.
             at = np.asarray(self.position, dtype=float)
