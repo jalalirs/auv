@@ -68,13 +68,15 @@ def over_the_nearest_school(place: str, seed: int, beyond: float, altitude: floa
             best = (far, centre)
     far, centre = best
     way = (centre - start) / far
-    reach = way * (far + beyond)
-    # dx ahead, dy to starboard of a vehicle facing +x: starboard is -y.
-    # At a survey's height over the bottom, not at a depth: a reef's spurs
-    # stand up into a fixed depth, and a vehicle held against one counts
-    # nothing either way.
-    return {"kind": "reach", "dx": round(float(reach[0]), 2), "dy": round(float(-reach[1]), 2),
-            "altitudeM": altitude, "radiusM": 1.5, "timeLimitS": 380.0}
+    # A transect, not a reach: a reach flies to a point at the depth it began
+    # and ignores any altitude, which is how every count until 3 October was
+    # flown at the starting depth while saying 1.5 m over the bottom. A
+    # transect holds its height over the bottom along the line, as a survey
+    # does — a reef's spurs stand up into a fixed depth, and a vehicle held
+    # against one counts nothing either way.
+    return {"kind": "transect", "headingDeg": round(float(np.degrees(np.arctan2(way[1], way[0]))), 2),
+            "lengthM": round(float(far + beyond), 2), "altitudeM": altitude, "altitudeBandM": 0.3,
+            "timeLimitS": 380.0}
 
 
 def fly(place: str, vehicle: str, seed: int, objective: dict, blind: bool) -> dict:
@@ -91,32 +93,43 @@ def fly(place: str, vehicle: str, seed: int, objective: dict, blind: bool) -> di
             "coralStruck": coral.get("struck", 0), "coralBroken": len(coral.get("broken", [])),
             "sandLiftedG": round(sediment.lifted_kg * 1000.0, 3),
             "worstVisibilityM": None if sediment.worst_visibility_m is None else round(float(sediment.worst_visibility_m), 2),
-            "arrived": bool((dive.task.result() or {}).get("arrived")) if dive.task else None,
+            # How much of the line was flown at its height, on its heading.
+            "inBand": (dive.task.result() or {}).get("score") if dive.task else None,
             "disturbance": dive.disturbance()}
 
 
 def together(per_seed: list[list[dict]]) -> list[dict]:
-    """One vehicle's disturbance over its seeds: each row summed, with the
-    range it took from seed to seed. "of N" units are summed too, so a share
-    stays a share of what was there across all of them."""
+    """One vehicle's disturbance over its seeds. Counts are summed; a worst
+    visibility is the worst of them and a most-settled the most; and a
+    population ("of N") the same on every seed is said once, not summed."""
     import re
 
     out: dict[str, dict] = {}
     for rows in per_seed:
         for r in rows:
-            one = out.setdefault(r["what"], dict(r, value=0.0, seen=[], of=0))
-            one["value"] += float(r["value"])
+            one = out.setdefault(r["what"], dict(r, seen=[], of=[]))
             one["seen"].append(float(r["value"]))
             m = re.match(r"of (\d+)", r.get("unit", ""))
             if m:
-                one["of"] += int(m.group(1))
+                one["of"].append(int(m.group(1)))
     rows = []
     for one in out.values():
-        low, high = min(one["seen"]), max(one["seen"])
-        unit = f"of {one['of']}" if one["of"] else one["unit"]
-        value = round(one["value"], 2) if isinstance(one["value"], float) and one["value"] % 1 else int(one["value"])
+        seen = one["seen"]
+        if one["what"].startswith("worst"):
+            value, how = min(seen), "the worst of"
+        elif one["what"].startswith("most"):
+            value, how = max(seen), "the most of"
+        else:
+            value, how = sum(seen), "summed over"
+        if one["of"] and len(set(one["of"])) == 1:
+            unit = f"of {one['of'][0]} each time"
+        elif one["of"]:
+            unit = f"of {sum(one['of'])}"
+        else:
+            unit = one["unit"]
+        value = int(value) if float(value).is_integer() else round(value, 3)
         rows.append({"what": one["what"], "value": value, "kind": one["kind"], "from": one["from"],
-                     "unit": f"{unit} over {len(one['seen'])} seeds (each {low:g}–{high:g})"})
+                     "unit": f"{unit}, {how} {len(seen)} seeds (each {min(seen):g}–{max(seen):g})"})
     return rows
 
 

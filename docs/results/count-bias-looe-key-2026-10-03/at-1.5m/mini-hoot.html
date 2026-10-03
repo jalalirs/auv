@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>mini-hoot at looe-key, 1.5 m over the bottom — what it did and what it missed</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0 auto; padding: 2.5rem 2rem 4rem; max-width: 60rem;
+         font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif;
+         color: #1b1b1b; background: #fff; }
+  h1 { font-size: 1.65rem; margin: 0 0 .2rem; font-weight: 650; }
+  h2 { font-size: 1.05rem; margin: 2.2rem 0 .7rem; font-weight: 650; }
+  h3 { font-size: .95rem; margin: 1.4rem 0 .5rem; font-weight: 650; }
+  h3 .where { display: inline; margin: 0; font-weight: 400; }
+  .quiet { color: #666; }
+  .where { color: #555; margin: 0 0 1.6rem; }
+  .says { background: #f4f4f2; border-left: 3px solid #999; padding: .9rem 1.1rem;
+          margin: 0 0 2rem; }
+  .says strong { font-weight: 650; }
+  .warn { border-left-color: #8a5a00; background: #fbf1de; }
+  table { border-collapse: collapse; width: 100%%; margin-bottom: 1rem; }
+  th { text-align: left; font-weight: 650; font-size: .78rem; letter-spacing: .04em;
+       text-transform: uppercase; color: #666; padding: 0 .7rem .5rem 0;
+       border-bottom: 1px solid #ddd; }
+  th.n, td.n { text-align: right; width: 6rem; }
+  td { padding: .65rem .7rem .65rem 0; border-bottom: 1px solid #eee;
+       vertical-align: top; }
+  td.what { font-weight: 550; width: 16rem; }
+  td.value { width: 13rem; }
+  td.from { color: #444; font-size: .9rem; }
+  td.place { font-weight: 550; padding-left: 0; }
+  td.place span { display: block; font-weight: 400; color: #666; font-size: .88rem; }
+  a { color: #1a4f8a; }
+  .tag { display: inline-block; padding: .1rem .5rem; border-radius: .7rem;
+         font-size: .74rem; font-weight: 650; letter-spacing: .03em;
+         text-transform: uppercase; white-space: nowrap; }
+  .key { display: flex; gap: 1.4rem; flex-wrap: wrap; margin: 0 0 2rem;
+         font-size: .88rem; color: #444; }
+  .key div { max-width: 17rem; }
+  .bar { display: flex; height: .55rem; border-radius: .3rem; overflow: hidden;
+         min-width: 9rem; background: #eee; }
+  .bar i { display: block; }
+  .big { display: flex; gap: 2.5rem; flex-wrap: wrap; margin: 0 0 1.4rem; }
+  .big div { min-width: 8rem; }
+  .big b { display: block; font-size: 1.8rem; font-weight: 650; line-height: 1.1; }
+  .big span { color: #666; font-size: .85rem; }
+  figure { margin: 0 0 1rem; }
+  figcaption { color: #555; font-size: .88rem; margin-top: .4rem; }
+  footer { color: #666; font-size: .85rem; border-top: 1px solid #ddd;
+           padding-top: 1rem; margin-top: 2.5rem; }
+  code { font: 12.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+         background: #f2f2f0; padding: .05rem .3rem; border-radius: .2rem; }
+</style>
+<h1>mini-hoot</h1>
+<p class="where">looe-key, 1.5 m over the bottom · the same transects, 11 seeds, flown undrawn</p>
+
+<p class="says"><strong>What this is.</strong> The same survey flown by
+each vehicle on the same seeds, twice a seed: once with fish that see the vehicle and
+once with fish that cannot. The second is what was there to be counted; the first is
+what the vehicle got. Beside it, what the vehicle did to the reef on the way. Every
+figure is what a model computed, and says from what.</p>
+<h2>What it did to the reef</h2><table><tr><td class="what">fish put to flight by the vehicle</td><td><b>269</b> of 1272 each time, summed over 11 seeds (each 8–76)</td><td><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span></td><td class="from">derived: Hein et al. 2018&#x27;s looming rule — a fish bolts when the vehicle grows in its view faster than a threshold set by its species&#x27; flight initiation distance (fish_species.py); the threshold&#x27;s steepness is assumed</td></tr><tr><td class="what">fish the vehicle ran into</td><td><b>1</b> fish, summed over 11 seeds (each 0–1)</td><td><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span></td><td class="from">derived: the hull&#x27;s swept box against each fish&#x27;s body, counted once per contact</td></tr><tr><td class="what">colonies struck</td><td><b>1</b> of 83055 each time, summed over 11 seeds (each 0–1)</td><td><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span></td><td class="from">derived: the hull against each colony&#x27;s solid; the reef layer coral.usda: 83055 colonies as the survey drew them; which bend is not recorded, so all stand as massive (assumed)</td></tr><tr><td class="what">colonies brushed</td><td><b>0</b> colonies, summed over 11 seeds (each 0–0)</td><td><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span></td><td class="from">derived: the hull inside a colony&#x27;s reach without striking its skeleton; the reef layer coral.usda: 83055 colonies as the survey drew them; which bend is not recorded, so all stand as massive (assumed)</td></tr><tr><td class="what">colonies broken</td><td><b>0</b> colonies, summed over 11 seeds (each 0–0)</td><td><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span></td><td class="from">derived: bending stress against the skeleton&#x27;s strength; the reef layer coral.usda: 83055 colonies as the survey drew them; which bend is not recorded, so all stand as massive (assumed)</td></tr><tr><td class="what">colonies torn off their rock</td><td><b>0</b> colonies, summed over 11 seeds (each 0–0)</td><td><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span></td><td class="from">derived: the force on a massive colony against its attachment, assumed a tenth of the skeleton&#x27;s strength (Madin et al. 2014 for the substrate)</td></tr><tr><td class="what">colonies that shut their polyps</td><td><b>1</b> colonies, summed over 11 seeds (each 0–1)</td><td><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span></td><td class="from">derived: polyps withdraw when the wash passes 8 cm/s or the hull touches, and reopen over a quarter-hour of the day; both figures assumed from aquarium accounts</td></tr><tr><td class="what">sand lifted</td><td><b>0</b> g, summed over 11 seeds (each 0–0)</td><td><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span></td><td class="from">derived: Soulsby–Whitehouse thresholds, Partheniades erosion, Ferguson–Church settling, under the vehicle&#x27;s wash; bed friction, erodibility and the bed&#x27;s grains assumed</td></tr><tr><td class="what">sand settled again</td><td><b>0</b> g, summed over 11 seeds (each 0–0)</td><td><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span></td><td class="from">derived: Soulsby–Whitehouse thresholds, Partheniades erosion, Ferguson–Church settling, under the vehicle&#x27;s wash; bed friction, erodibility and the bed&#x27;s grains assumed</td></tr><tr><td class="what">worst visibility in front of the camera</td><td><b>32</b> m, the worst of 11 seeds (each 32–32)</td><td><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span></td><td class="from">derived: Soulsby–Whitehouse thresholds, Partheniades erosion, Ferguson–Church settling, under the vehicle&#x27;s wash; bed friction, erodibility and the bed&#x27;s grains assumed; visibility from the suspended mass by Davies-Colley&#x27;s beam attenuation</td></tr><tr><td class="what">times it touched the ground</td><td><b>0</b> contacts, summed over 11 seeds (each 0–0)</td><td><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span></td><td class="from">derived: the hull against the place&#x27;s seabed, counted once per contact</td></tr></table><h2>How far its presence biased what it counted</h2><table><tr><td class="what">share of the fish there that the camera counted</td><td><b>81%</b> 255 of 315 over 11 seeds (95% interval 68%–89%)</td><td><span class="tag" style="color:#8a5a00;background:#fbf1de">derived</span></td><td class="from">derived: the same dive flown twice on one seed, once with fish that see the vehicle and once with fish blind to it; each fish counted once when the camera first sees it</td></tr></table>
+
+<footer>Built by tools/count-bias. Not one figure here is an observation of a real reef.</footer>

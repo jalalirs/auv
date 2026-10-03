@@ -1,5 +1,13 @@
 # How much the vehicle's presence cost its fish count: Looe Key, 2 October 2026
 
+> **Correction, 3 October.** These transects were not flown 1.5 m off the
+> bottom. `tools/count-bias` asked for them as `reach` objectives, and a reach
+> flies to a point at the depth it began, ignoring `altitudeM`. They were flown
+> at the dive's starting depth, whatever height over the reef that put them.
+> The shares below are what they are for that flight; the height is not. The
+> count is redone as held-height transects in
+> `count-bias-looe-key-2026-10-03.md`.
+
 `tools/count-bias --place looe-key --vehicles mini-hoot,boxfish-luna --seeds 0,1,2,3`, then `--seeds 4,…,11`
 
 | vehicle | counted, fish see it / fish blind to it | share of what was there | 95% interval |

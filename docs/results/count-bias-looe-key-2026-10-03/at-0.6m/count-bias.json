@@ -1,0 +1,416 @@
+{
+ "place": "looe-key, 0.6 m over the bottom",
+ "vehicles": {
+  "mini-hoot": {
+   "countedShare": {
+    "what": "share of the fish there that the camera counted",
+    "value": 0.952,
+    "unit": "258 of 271 over 11 seeds (95% interval 75%\u2013111%)",
+    "kind": "derived",
+    "from": "derived: the same dive flown twice on one seed, once with fish that see the vehicle and once with fish blind to it; each fish counted once when the camera first sees it"
+   },
+   "interval": [
+    0.752,
+    1.113
+   ],
+   "disturbance": [
+    {
+     "what": "fish put to flight by the vehicle",
+     "value": 275,
+     "kind": "derived",
+     "from": "derived: Hein et al. 2018's looming rule \u2014 a fish bolts when the vehicle grows in its view faster than a threshold set by its species' flight initiation distance (fish_species.py); the threshold's steepness is assumed",
+     "unit": "of 1272 each time, summed over 11 seeds (each 6\u201375)"
+    },
+    {
+     "what": "fish the vehicle ran into",
+     "value": 3,
+     "kind": "derived",
+     "from": "derived: the hull's swept box against each fish's body, counted once per contact",
+     "unit": "fish, summed over 11 seeds (each 0\u20132)"
+    },
+    {
+     "what": "colonies struck",
+     "value": 10,
+     "kind": "derived",
+     "from": "derived: the hull against each colony's solid; the reef layer coral.usda: 83055 colonies as the survey drew them; which bend is not recorded, so all stand as massive (assumed)",
+     "unit": "of 83055 each time, summed over 11 seeds (each 0\u20133)"
+    },
+    {
+     "what": "colonies brushed",
+     "value": 0,
+     "kind": "derived",
+     "from": "derived: the hull inside a colony's reach without striking its skeleton; the reef layer coral.usda: 83055 colonies as the survey drew them; which bend is not recorded, so all stand as massive (assumed)",
+     "unit": "colonies, summed over 11 seeds (each 0\u20130)"
+    },
+    {
+     "what": "colonies broken",
+     "value": 0,
+     "kind": "derived",
+     "from": "derived: bending stress against the skeleton's strength; the reef layer coral.usda: 83055 colonies as the survey drew them; which bend is not recorded, so all stand as massive (assumed)",
+     "unit": "colonies, summed over 11 seeds (each 0\u20130)"
+    },
+    {
+     "what": "colonies torn off their rock",
+     "value": 0,
+     "kind": "derived",
+     "from": "derived: the force on a massive colony against its attachment, assumed a tenth of the skeleton's strength (Madin et al. 2014 for the substrate)",
+     "unit": "colonies, summed over 11 seeds (each 0\u20130)"
+    },
+    {
+     "what": "colonies that shut their polyps",
+     "value": 10,
+     "kind": "derived",
+     "from": "derived: polyps withdraw when the wash passes 8 cm/s or the hull touches, and reopen over a quarter-hour of the day; both figures assumed from aquarium accounts",
+     "unit": "colonies, summed over 11 seeds (each 0\u20133)"
+    },
+    {
+     "what": "sand lifted",
+     "value": 0,
+     "kind": "derived",
+     "from": "derived: Soulsby\u2013Whitehouse thresholds, Partheniades erosion, Ferguson\u2013Church settling, under the vehicle's wash; bed friction, erodibility and the bed's grains assumed",
+     "unit": "g, summed over 11 seeds (each 0\u20130)"
+    },
+    {
+     "what": "sand settled again",
+     "value": 0,
+     "kind": "derived",
+     "from": "derived: Soulsby\u2013Whitehouse thresholds, Partheniades erosion, Ferguson\u2013Church settling, under the vehicle's wash; bed friction, erodibility and the bed's grains assumed",
+     "unit": "g, summed over 11 seeds (each 0\u20130)"
+    },
+    {
+     "what": "worst visibility in front of the camera",
+     "value": 32,
+     "kind": "derived",
+     "from": "derived: Soulsby\u2013Whitehouse thresholds, Partheniades erosion, Ferguson\u2013Church settling, under the vehicle's wash; bed friction, erodibility and the bed's grains assumed; visibility from the suspended mass by Davies-Colley's beam attenuation",
+     "unit": "m, the worst of 11 seeds (each 32\u201332)"
+    },
+    {
+     "what": "times it touched the ground",
+     "value": 0,
+     "kind": "derived",
+     "from": "derived: the hull against the place's seabed, counted once per contact",
+     "unit": "contacts, summed over 11 seeds (each 0\u20130)"
+    }
+   ],
+   "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+   ],
+   "transects": [
+    {
+     "kind": "transect",
+     "headingDeg": 125.06,
+     "lengthM": 16.06,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": -71.34,
+     "lengthM": 16.28,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": -28.37,
+     "lengthM": 31.33,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": 50.46,
+     "lengthM": 21.66,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": 55.14,
+     "lengthM": 16.99,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": 152.33,
+     "lengthM": 21.94,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": 115.09,
+     "lengthM": 29.03,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": 18.6,
+     "lengthM": 24.35,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": 8.87,
+     "lengthM": 18.12,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": -173.18,
+     "lengthM": 27.72,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": 32.48,
+     "lengthM": 25.68,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    }
+   ]
+  },
+  "boxfish-luna": {
+   "countedShare": {
+    "what": "share of the fish there that the camera counted",
+    "value": 0.813,
+    "unit": "269 of 331 over 11 seeds (95% interval 58%\u201395%)",
+    "kind": "derived",
+    "from": "derived: the same dive flown twice on one seed, once with fish that see the vehicle and once with fish blind to it; each fish counted once when the camera first sees it"
+   },
+   "interval": [
+    0.579,
+    0.954
+   ],
+   "disturbance": [
+    {
+     "what": "fish put to flight by the vehicle",
+     "value": 385,
+     "kind": "derived",
+     "from": "derived: Hein et al. 2018's looming rule \u2014 a fish bolts when the vehicle grows in its view faster than a threshold set by its species' flight initiation distance (fish_species.py); the threshold's steepness is assumed",
+     "unit": "of 1272 each time, summed over 11 seeds (each 7\u201387)"
+    },
+    {
+     "what": "fish the vehicle ran into",
+     "value": 10,
+     "kind": "derived",
+     "from": "derived: the hull's swept box against each fish's body, counted once per contact",
+     "unit": "fish, summed over 11 seeds (each 0\u20138)"
+    },
+    {
+     "what": "colonies struck",
+     "value": 31,
+     "kind": "derived",
+     "from": "derived: the hull against each colony's solid; the reef layer coral.usda: 83055 colonies as the survey drew them; which bend is not recorded, so all stand as massive (assumed)",
+     "unit": "of 83055 each time, summed over 11 seeds (each 1\u20135)"
+    },
+    {
+     "what": "colonies brushed",
+     "value": 0,
+     "kind": "derived",
+     "from": "derived: the hull inside a colony's reach without striking its skeleton; the reef layer coral.usda: 83055 colonies as the survey drew them; which bend is not recorded, so all stand as massive (assumed)",
+     "unit": "colonies, summed over 11 seeds (each 0\u20130)"
+    },
+    {
+     "what": "colonies broken",
+     "value": 0,
+     "kind": "derived",
+     "from": "derived: bending stress against the skeleton's strength; the reef layer coral.usda: 83055 colonies as the survey drew them; which bend is not recorded, so all stand as massive (assumed)",
+     "unit": "colonies, summed over 11 seeds (each 0\u20130)"
+    },
+    {
+     "what": "colonies torn off their rock",
+     "value": 0,
+     "kind": "derived",
+     "from": "derived: the force on a massive colony against its attachment, assumed a tenth of the skeleton's strength (Madin et al. 2014 for the substrate)",
+     "unit": "colonies, summed over 11 seeds (each 0\u20130)"
+    },
+    {
+     "what": "colonies smothered",
+     "value": 1,
+     "kind": "derived",
+     "from": "derived: settled sediment against 10 mg/cm\u00b2 a day, where harm to coral begins, and 50, where it is severe (Erftemeijer et al. 2012)",
+     "unit": "colonies, summed over 1 seeds (each 1\u20131)"
+    },
+    {
+     "what": "of them badly",
+     "value": 0,
+     "kind": "derived",
+     "from": "derived: settled sediment against 10 mg/cm\u00b2 a day, where harm to coral begins, and 50, where it is severe (Erftemeijer et al. 2012)",
+     "unit": "colonies, summed over 1 seeds (each 0\u20130)"
+    },
+    {
+     "what": "colonies that shut their polyps",
+     "value": 292,
+     "kind": "derived",
+     "from": "derived: polyps withdraw when the wash passes 8 cm/s or the hull touches, and reopen over a quarter-hour of the day; both figures assumed from aquarium accounts",
+     "unit": "colonies, summed over 11 seeds (each 18\u201343)"
+    },
+    {
+     "what": "sand lifted",
+     "value": 3.1,
+     "kind": "derived",
+     "from": "derived: Soulsby\u2013Whitehouse thresholds, Partheniades erosion, Ferguson\u2013Church settling, under the vehicle's wash; bed friction, erodibility and the bed's grains assumed",
+     "unit": "g, summed over 11 seeds (each 0.02\u20130.93)"
+    },
+    {
+     "what": "sand settled again",
+     "value": 3.1,
+     "kind": "derived",
+     "from": "derived: Soulsby\u2013Whitehouse thresholds, Partheniades erosion, Ferguson\u2013Church settling, under the vehicle's wash; bed friction, erodibility and the bed's grains assumed",
+     "unit": "g, summed over 11 seeds (each 0.02\u20130.94)"
+    },
+    {
+     "what": "most settled on one colony",
+     "value": 0.475,
+     "kind": "derived",
+     "from": "derived: Soulsby\u2013Whitehouse thresholds, Partheniades erosion, Ferguson\u2013Church settling, under the vehicle's wash; bed friction, erodibility and the bed's grains assumed",
+     "unit": "mg/cm\u00b2, the most of 11 seeds (each 0\u20130.475)"
+    },
+    {
+     "what": "worst visibility in front of the camera",
+     "value": 32,
+     "kind": "derived",
+     "from": "derived: Soulsby\u2013Whitehouse thresholds, Partheniades erosion, Ferguson\u2013Church settling, under the vehicle's wash; bed friction, erodibility and the bed's grains assumed; visibility from the suspended mass by Davies-Colley's beam attenuation",
+     "unit": "m, the worst of 11 seeds (each 32\u201332)"
+    },
+    {
+     "what": "times it touched the ground",
+     "value": 0,
+     "kind": "derived",
+     "from": "derived: the hull against the place's seabed, counted once per contact",
+     "unit": "contacts, summed over 11 seeds (each 0\u20130)"
+    }
+   ],
+   "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+   ],
+   "transects": [
+    {
+     "kind": "transect",
+     "headingDeg": 125.06,
+     "lengthM": 16.06,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": -71.34,
+     "lengthM": 16.28,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": -28.37,
+     "lengthM": 31.33,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": 50.46,
+     "lengthM": 21.66,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": 55.14,
+     "lengthM": 16.99,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": 152.33,
+     "lengthM": 21.94,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": 115.09,
+     "lengthM": 29.03,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": 18.6,
+     "lengthM": 24.35,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": 8.87,
+     "lengthM": 18.12,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": -173.18,
+     "lengthM": 27.72,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    },
+    {
+     "kind": "transect",
+     "headingDeg": 32.48,
+     "lengthM": 25.68,
+     "altitudeM": 0.6,
+     "altitudeBandM": 0.3,
+     "timeLimitS": 380.0
+    }
+   ]
+  }
+ }
+}
