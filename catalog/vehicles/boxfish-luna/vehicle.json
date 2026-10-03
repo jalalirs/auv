@@ -4,116 +4,116 @@
   "massKg": 25.0,
   "netBuoyancyN": 0.249,
   "capability": [
-    145.642,
-    145.642,
-    206.0,
-    39.14,
-    45.32,
-    68.452
+    248.305,
+    161.72,
+    180.981,
+    58.149,
+    78.234,
+    24.6
   ],
   "thrusters": [
     {
-      "name": "front-starboard",
+      "name": "front-starboard-upper",
       "position": [
-        0.3,
-        0.17,
-        -0.06
+        0.195,
+        0.15,
+        0.103
       ],
       "direction": [
-        0.707,
-        -0.707,
-        0.0
+        0.6124,
+        0.6124,
+        -0.5
       ]
     },
     {
-      "name": "front-port",
+      "name": "front-starboard-lower",
       "position": [
-        0.3,
-        -0.17,
-        -0.06
+        0.195,
+        0.15,
+        -0.113
       ],
       "direction": [
-        0.707,
-        0.707,
-        0.0
+        0.6124,
+        0.6124,
+        0.5
       ]
     },
     {
-      "name": "rear-starboard",
+      "name": "front-port-upper",
+      "position": [
+        0.195,
+        -0.15,
+        0.103
+      ],
+      "direction": [
+        0.6124,
+        -0.6124,
+        -0.5
+      ]
+    },
+    {
+      "name": "front-port-lower",
+      "position": [
+        0.195,
+        -0.15,
+        -0.113
+      ],
+      "direction": [
+        0.6124,
+        -0.6124,
+        0.5
+      ]
+    },
+    {
+      "name": "rear-starboard-upper",
       "position": [
         -0.3,
-        0.17,
-        -0.06
+        0.15,
+        0.103
       ],
       "direction": [
-        -0.707,
-        -0.707,
-        0.0
+        -0.6124,
+        0.6124,
+        -0.5
       ]
     },
     {
-      "name": "rear-port",
+      "name": "rear-starboard-lower",
       "position": [
         -0.3,
-        -0.17,
-        -0.06
+        0.15,
+        -0.113
       ],
       "direction": [
-        -0.707,
-        0.707,
-        0.0
+        -0.6124,
+        0.6124,
+        0.5
       ]
     },
     {
-      "name": "vertical-front-starboard",
+      "name": "rear-port-upper",
       "position": [
-        0.22,
-        0.19,
-        0.08
+        -0.3,
+        -0.15,
+        0.103
       ],
       "direction": [
-        0.0,
-        0.0,
-        1.0
+        -0.6124,
+        -0.6124,
+        -0.5
       ]
     },
     {
-      "name": "vertical-front-port",
+      "name": "rear-port-lower",
       "position": [
-        0.22,
-        -0.19,
-        0.08
+        -0.3,
+        -0.15,
+        -0.113
       ],
       "direction": [
-        0.0,
-        0.0,
-        1.0
-      ]
-    },
-    {
-      "name": "vertical-rear-starboard",
-      "position": [
-        -0.22,
-        0.19,
-        0.08
-      ],
-      "direction": [
-        0.0,
-        0.0,
-        1.0
-      ]
-    },
-    {
-      "name": "vertical-rear-port",
-      "position": [
-        -0.22,
-        -0.19,
-        0.08
-      ],
-      "direction": [
-        0.0,
-        0.0,
-        1.0
+        -0.6124,
+        -0.6124,
+        0.5
       ]
     }
   ],
@@ -226,7 +226,7 @@
         0.351
       ],
       "dimensionsFrom": "published: 730 \u00d7 435 \u00d7 351 mm",
-      "shape": "A rounded box, white over dark grey, an acrylic dome forward over the main camera, eight vectored thrusters. The drawn hull is plain; its size and layout are what matter."
+      "shape": "A yellow cylindrical pressure hull lying fore and aft in a black frame of two end plates, an acrylic dome on its nose over the main camera, yellow-and-carbon tubes along the top and carbon skids under it, a ducted thruster at each corner of each end plate, a lamp either side of the dome. Drawn from Boxfish's photographs (hardware/luna/shape.py)."
     },
     "provenance": {
       "note": "Size, mass, thruster count, sensors, battery and depth ratings are Boxfish's published figures. Thruster positions and figures, every hydrodynamic coefficient, the lenses and the colours are assumed (see hardware/luna/package.py), and are what a tow test replaces."
@@ -286,7 +286,7 @@
       ]
     },
     "thrusters": {
-      "note": "Eight 3D-vectored thrusters (published). Their layout and figures are not published: a T200's 51.5 N forward and 40 N reverse, four horizontals toed in at 45 degrees and four verticals (assumed).",
+      "note": "Eight 3D-vectored thrusters (published), one at each corner of the two end plates (photographed). Which way each points is not published or visible: toed out 45 degrees and tilted 30 degrees towards the middle (assumed; tilted out along the corner it would have a tenth of the roll authority). A T200's 51.5 N forward and 40 N reverse (assumed).",
       "model": "assumed T200-class",
       "maxForwardN": 51.5,
       "maxReverseN": 40.0,
@@ -297,107 +297,107 @@
       "propellerFrom": "assumed: a T200's 76 mm propeller",
       "units": [
         {
-          "name": "front-starboard",
+          "name": "front-starboard-upper",
           "position": [
-            0.3,
-            0.17,
-            -0.06
+            0.195,
+            0.15,
+            0.103
           ],
           "direction": [
-            0.707,
-            -0.707,
-            0
+            0.6124,
+            0.6124,
+            -0.5
           ]
         },
         {
-          "name": "front-port",
+          "name": "front-starboard-lower",
           "position": [
-            0.3,
-            -0.17,
-            -0.06
+            0.195,
+            0.15,
+            -0.113
           ],
           "direction": [
-            0.707,
-            0.707,
-            0
+            0.6124,
+            0.6124,
+            0.5
           ]
         },
         {
-          "name": "rear-starboard",
+          "name": "front-port-upper",
+          "position": [
+            0.195,
+            -0.15,
+            0.103
+          ],
+          "direction": [
+            0.6124,
+            -0.6124,
+            -0.5
+          ]
+        },
+        {
+          "name": "front-port-lower",
+          "position": [
+            0.195,
+            -0.15,
+            -0.113
+          ],
+          "direction": [
+            0.6124,
+            -0.6124,
+            0.5
+          ]
+        },
+        {
+          "name": "rear-starboard-upper",
           "position": [
             -0.3,
-            0.17,
-            -0.06
+            0.15,
+            0.103
           ],
           "direction": [
-            -0.707,
-            -0.707,
-            0
+            -0.6124,
+            0.6124,
+            -0.5
           ]
         },
         {
-          "name": "rear-port",
+          "name": "rear-starboard-lower",
           "position": [
             -0.3,
-            -0.17,
-            -0.06
+            0.15,
+            -0.113
           ],
           "direction": [
-            -0.707,
-            0.707,
-            0
+            -0.6124,
+            0.6124,
+            0.5
           ]
         },
         {
-          "name": "vertical-front-starboard",
+          "name": "rear-port-upper",
           "position": [
-            0.22,
-            0.19,
-            0.08
+            -0.3,
+            -0.15,
+            0.103
           ],
           "direction": [
-            0,
-            0,
-            1
+            -0.6124,
+            -0.6124,
+            -0.5
           ]
         },
         {
-          "name": "vertical-front-port",
+          "name": "rear-port-lower",
           "position": [
-            0.22,
-            -0.19,
-            0.08
+            -0.3,
+            -0.15,
+            -0.113
           ],
           "direction": [
-            0,
-            0,
-            1
-          ]
-        },
-        {
-          "name": "vertical-rear-starboard",
-          "position": [
-            -0.22,
-            0.19,
-            0.08
-          ],
-          "direction": [
-            0,
-            0,
-            1
-          ]
-        },
-        {
-          "name": "vertical-rear-port",
-          "position": [
-            -0.22,
-            -0.19,
-            0.08
-          ],
-          "direction": [
-            0,
-            0,
-            1
+            -0.6124,
+            -0.6124,
+            0.5
           ]
         }
       ]
@@ -422,9 +422,9 @@
         "kind": "underwater_camera",
         "name": "forward",
         "position": [
-          0.36,
+          0.3,
           0.0,
-          0.02
+          -0.005
         ],
         "orientation": [
           0,
@@ -611,7 +611,7 @@
       "reserveFraction": 0.15
     },
     "lights": {
-      "note": "20,000 lumens, high CRI, dimmable (published), as two lamps either side of the dome.",
+      "note": "20,000 lumens, high CRI, dimmable (published), as two lamps either side of the dome (photographed).",
       "fitted": [
         {
           "name": "port",
@@ -621,9 +621,9 @@
           "coneDeg": 120.0,
           "colourK": 5600,
           "position": [
-            0.33,
-            -0.18,
-            0.05
+            0.275,
+            -0.17,
+            -0.005
           ],
           "aim": [
             1.0,
@@ -639,9 +639,9 @@
           "coneDeg": 120.0,
           "colourK": 5600,
           "position": [
-            0.33,
-            0.18,
-            0.05
+            0.275,
+            0.17,
+            -0.005
           ],
           "aim": [
             1.0,
