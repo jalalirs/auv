@@ -138,6 +138,21 @@ def inertia(rows, cg_mm):
     return I
 
 
+def quadratic(scaled_diagonal: list) -> dict:
+    """The quadratic drag: surge, sway and heave from mini-hoot's own hull
+    (the .usd this file writes), the rotations scaled from the BlueROV2
+    (hardware/hull_coefficients.py says why). Scaled throughout when there
+    is no hull yet to read."""
+    sys.path.insert(0, str(HERE.parent))
+    import hull_coefficients
+
+    got = hull_coefficients.drag_for(PKG / "mini-hoot.usd")
+    if got is None:
+        return {"note": "Assumed: the BlueROV2's scaled by frontal area per axis.", "diagonal": scaled_diagonal}
+    drag, note = got
+    return {"note": note, "diagonal": [round(-abs(d), 3) for d in drag] + list(scaled_diagonal[3:])}
+
+
 def dynamics():
     rows = budget()
     mass_g = sum(r[1] for r in rows)
@@ -187,7 +202,7 @@ def dynamics():
         "inertiaTensor": [round(float(v), 5) for v in I.reshape(-1)],
         "addedMass": {"note": "Diagonal, surge sway heave roll pitch yaw. Assumed: the BlueROV2's scaled by displaced volume.", "diagonal": am},
         "linearDamping": {"note": "Assumed: the BlueROV2's scaled by frontal area per axis.", "diagonal": lin},
-        "quadraticDamping": {"note": "Assumed: the BlueROV2's scaled by frontal area per axis.", "diagonal": quad},
+        "quadraticDamping": quadratic(quad),
         "thrusters": {
             "note": "Eight ApisQueen UG500. Four vertical in the wing pods give heave, roll and pitch; four horizontal at the hull's corners, toed in at 45 degrees as on the BlueROV2, give surge, sway and yaw. Fully actuated: it can hold a spot against a current from any side.",
             "model": "ApisQueen UG500",

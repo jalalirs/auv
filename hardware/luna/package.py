@@ -31,6 +31,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import pathlib
+import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 _spec = importlib.util.spec_from_file_location("luna_shape", pathlib.Path(__file__).parent / "shape.py")
@@ -89,7 +90,24 @@ def sensors() -> list[dict]:
     ]
 
 
+def quadratic(scaled_diagonal: list) -> dict:
+    """The quadratic drag: surge, sway and heave from the hull drawn by
+    shape.py, the rotations scaled from the BlueROV2 (hardware/hull_coefficients.py
+    says why)."""
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    import hull_coefficients
+
+    got = hull_coefficients.drag_for(INTO / "boxfish-luna.usd")
+    if got is None:
+        return {"note": "Assumed: the BlueROV2's, scaled by frontal area per axis.", "diagonal": scaled_diagonal}
+    drag, note = got
+    return {"note": note, "diagonal": [round(-abs(d), 3) for d in drag] + list(scaled_diagonal[3:])}
+
+
 def main() -> None:
+    INTO.mkdir(parents=True, exist_ok=True)
+    (INTO / "boxfish-luna.usda").unlink(missing_ok=True)      # the plain box it replaces
+    shape.build().save(INTO / "boxfish-luna.usd")
     base = json.loads(BASE.read_text())
     coefficients = scaled(base)
     Ixx = MASS / 12 * (W * W + H * H)
@@ -111,8 +129,7 @@ def main() -> None:
                       "diagonal": coefficients["addedMass"]},
         "linearDamping": {"note": "Assumed: the BlueROV2's, scaled by frontal area per axis.",
                           "diagonal": coefficients["linearDamping"]},
-        "quadraticDamping": {"note": "Assumed: the BlueROV2's, scaled by frontal area per axis.",
-                             "diagonal": coefficients["quadraticDamping"]},
+        "quadraticDamping": quadratic(coefficients["quadraticDamping"]),
         "thrusters": {"note": "Eight 3D-vectored thrusters (published), one at each corner of the two end plates (photographed). Which way each points is not published or visible: toed out 45 degrees and tilted 30 degrees towards the middle (assumed; tilted out along the corner it would have a tenth of the roll authority). A T200's 51.5 N forward and 40 N reverse (assumed).",
                       "model": "assumed T200-class", "maxForwardN": 51.5, "maxReverseN": 40.0, "timeConstantS": 0.2,
                       "maxRpm": 3600, "rpmFrom": "assumed: a Blue Robotics T200's 3,600 rpm at 16 V",
@@ -135,8 +152,6 @@ def main() -> None:
     }
     INTO.mkdir(parents=True, exist_ok=True)
     (INTO / "dynamics.json").write_text(json.dumps(doc, indent=1, ensure_ascii=False) + "\n")
-    (INTO / "boxfish-luna.usda").unlink(missing_ok=True)      # the plain box it replaces
-    shape.build().save(INTO / "boxfish-luna.usd")
     (INTO / "README.md").write_text(
         "# Boxfish Luna\n\nA hovering reef AUV that can also be flown on a fibre tether: built for the repeat visual "
         "survey of reef and fish that reef programmes ask for. In the catalogue as a reference vehicle, from Boxfish's "

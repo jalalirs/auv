@@ -136,11 +136,11 @@
   ]
  },
  "quadraticDamping": {
-  "note": "Assumed: the BlueROV2's scaled by frontal area per axis.",
+  "note": "Surge, sway and heave derived from the hull (hardware/hull_coefficients.py): its silhouette on each axis, [0.0281, 0.041, 0.0557] m^2, by Hoerner's bluff-body drag coefficients [0.859, 0.895, 1.087]; checked against the BlueROV2 (docs/results/hull-coefficients-2026-10-03.md). Roll, pitch and yaw are the BlueROV2's scaled (assumed): estimated from a hull they come out five to twenty times under what was measured.",
   "diagonal": [
-   -7.147,
-   -8.615,
-   -20.475,
+   -12.357,
+   -18.818,
+   -31.029,
    -0.4862,
    -0.4862,
    -0.4862

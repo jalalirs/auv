@@ -398,6 +398,14 @@ class CoralCityShell(omni.ext.IExt):
                 eye = (min(max(eye[0], float(low[0]) + 0.02), float(high[0]) - 0.02),
                        min(max(eye[1], float(low[1]) + 0.02), float(high[1]) - 0.02),
                        min(max(eye[2], float(low[2]) + 0.03), float(high[2]) - 0.03))
+                round_glass = getattr(inside, "round", None)
+                if round_glass is not None:
+                    cx, cy, r = round_glass
+                    dx, dy = eye[0] - cx, eye[1] - cy
+                    far = math.hypot(dx, dy)
+                    if far > r - 0.05:
+                        k = (r - 0.05) / max(far, 1e-9)
+                        eye = (cx + dx * k, cy + dy * k, eye[2])
             self._aim.Set(Gf.Matrix4d().SetLookAt(dive.drawn_at(eye), dive.drawn_at(aim), up).GetInverse())
             # Which way the world's own axes fall on the screen, for the little
             # set of axes a console draws in the corner. Worked out here
