@@ -153,10 +153,14 @@ class Seabed:
     a reef by a controller reading a staircase will chase the steps.
     """
 
-    def __init__(self, heights, across: float) -> None:
+    def __init__(self, heights, across: float, around=None) -> None:
         self.heights = heights
         self.across = across
         self.rows, self.columns = heights.shape
+        # GEBCO round the survey (tools/surroundings): (heights, west, south,
+        # east, north in local metres), or None — and then the edge of the
+        # survey stands in for everything past it, as it always did.
+        self.around = around
 
     @classmethod
     def of(cls, site: pathlib.Path, city: pathlib.Path):
@@ -168,9 +172,48 @@ class Seabed:
             field = described["mesh"]["heightfield"]
             raw = np.fromfile(city / field["file"], dtype="<f4")
             heights = raw.reshape(field["rows"], field["columns"])
-            return cls(heights, float(described["from"]["acrossMetres"]))
+            return cls(heights, float(described["from"]["acrossMetres"]), cls._around(described, city))
         except Exception:
             return None
+
+    @staticmethod
+    def _around(described: dict, city: pathlib.Path):
+        """The place's surroundings in its own frame: metres east and north of
+        its centre, the GEBCO grid's cell centres at the middle of each cell."""
+        said = described.get("surroundings")
+        centre = (described.get("from") or {}).get("centre")
+        if not said or not centre or not (city / said["file"]).exists():
+            return None
+        grid = np.fromfile(city / said["file"], dtype="<f4").reshape(said["rows"], said["columns"])
+        lat0, lon0 = float(centre["latitude"]), float(centre["longitude"])
+        east = 111320.0 * np.cos(np.radians(lat0))
+        north = 110540.0
+        return (grid, (said["west"] - lon0) * east, (said["south"] - lat0) * north,
+                (said["east"] - lon0) * east, (said["north"] - lat0) * north)
+
+    def _beyond(self, x, y):
+        """GEBCO's seabed at many points, bilinear between cell centres."""
+        grid, west, south, east, north = self.around
+        rows, cols = grid.shape
+        u = np.clip((np.asarray(x, dtype=float) - west) / (east - west) * cols - 0.5, 0.0, cols - 1.0001)
+        v = np.clip((np.asarray(y, dtype=float) - south) / (north - south) * rows - 0.5, 0.0, rows - 1.0001)
+        c, r = u.astype(int), v.astype(int)
+        fu, fv = u - c, v - r
+        return (grid[r, c] * (1 - fu) * (1 - fv) + grid[r, c + 1] * fu * (1 - fv)
+                + grid[r + 1, c] * (1 - fu) * fv + grid[r + 1, c + 1] * fu * fv).astype(float)
+
+    def _blended(self, x, y, survey):
+        """The survey inside its square; GEBCO outside it; the two blended
+        over the survey's outermost twentieth, so the edge is not a step."""
+        if self.around is None:
+            return survey
+        half = 0.5 * self.across
+        band = 0.05 * self.across
+        out = np.maximum(np.abs(np.asarray(x, dtype=float)), np.abs(np.asarray(y, dtype=float)))
+        w = np.clip((half - out) / band, 0.0, 1.0)
+        if np.all(w >= 1.0):
+            return survey
+        return w * survey + (1.0 - w) * self._beyond(x, y)
 
     def under(self, x: float, y: float) -> float:
         """The height of the bottom at a point, in metres."""
@@ -185,12 +228,15 @@ class Seabed:
         column, row = int(u), int(v)
         fu, fv = u - column, v - row
         h = self.heights
-        return float(
+        survey = float(
             h[row, column] * (1 - fu) * (1 - fv)
             + h[row, column + 1] * fu * (1 - fv)
             + h[row + 1, column] * (1 - fu) * fv
             + h[row + 1, column + 1] * fu * fv
         )
+        if self.around is None or max(abs(x), abs(y)) < 0.45 * self.across:
+            return survey
+        return float(self._blended(np.array([x]), np.array([y]), np.array([survey]))[0])
 
     def under_many(self, x, y) -> np.ndarray:
         """`under` for many points at once: a cable's nodes, a school's fish."""
@@ -199,8 +245,9 @@ class Seabed:
         column, row = u.astype(int), v.astype(int)
         fu, fv = u - column, v - row
         h = self.heights
-        return (h[row, column] * (1 - fu) * (1 - fv) + h[row, column + 1] * fu * (1 - fv)
-                + h[row + 1, column] * (1 - fu) * fv + h[row + 1, column + 1] * fu * fv).astype(float)
+        survey = (h[row, column] * (1 - fu) * (1 - fv) + h[row, column + 1] * fu * (1 - fv)
+                  + h[row + 1, column] * (1 - fu) * fv + h[row + 1, column + 1] * fu * fv).astype(float)
+        return self._blended(x, y, survey)
 
     def normal_many(self, x, y) -> np.ndarray:
         """`normal` for many points at once, (n, 3)."""
