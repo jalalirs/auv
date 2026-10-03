@@ -288,6 +288,9 @@ class School:
         self._was = None
         self._touching = np.zeros(n, dtype=bool)
         self.fled_at = np.full(n, -np.inf)
+        # Which fish the vehicle itself put to flight, at least once: the
+        # disturbance a survey reports, apart from a predator's chase.
+        self.fled_the_vehicle = np.zeros(n, dtype=bool)
         self._flow = np.zeros((n, 3))
         # Fish the vehicle ran into, and how many times; and strikes by
         # predators on prey.
@@ -476,7 +479,9 @@ class School:
         self.hunger = np.clip(self.hunger + dt * np.where(feeding, -1 / 90.0, 1 / 600.0 * awake), 0.0, 1.0)
         # Fear: what is coming at it, fading.
         self.fear *= math.exp(-dt / 4.0)
-        self.fear = np.maximum(self.fear, self.threat(dt, vehicle, size, thrust))
+        frightened = self.threat(dt, vehicle, size, thrust)
+        self.fled_the_vehicle |= frightened > 0.5
+        self.fear = np.maximum(self.fear, frightened)
         self.hunt(dt)
         self.scattered = float((self.fear > 0.5).mean()) if n else 0.0
         bolting = (self.fear > 0.5) & (self.mode != FLEE)
@@ -819,6 +824,10 @@ class School:
                 "schools": int(len(np.unique(self.school))) if self.of_them else 0, "scattered": round(self.scattered, 3),
                 "hour": round(float(self.hour), 2), "light": round(float(self.light), 2), "spent": spent,
                 "bumped": int(self.bumped),
+                "fledTheVehicle": int(self.fled_the_vehicle.sum()),
+                **({} if not self.fled_the_vehicle.any() else {"fledTheVehicleBySpecies": {
+                    str(k): int((self.fled_the_vehicle & (self.kinds == k)).sum())
+                    for k in np.unique(self.kinds[self.fled_the_vehicle])}}),
                 **({} if not self.strikes else {"predatorStrikes": int(self.strikes)}),
                 **({} if not self.in_view else {
                     "countedByTheCamera": len(self.counted),

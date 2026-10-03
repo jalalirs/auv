@@ -20,6 +20,7 @@ hard its thrusters work, where its camera looks. Undrawn, on this machine.
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 import pathlib
@@ -48,7 +49,7 @@ def a_dive(place: str, vehicle: str, seed: int, objective: dict):
     return dive
 
 
-def over_the_nearest_school(place: str, seed: int, beyond: float) -> dict:
+def over_the_nearest_school(place: str, seed: int, beyond: float, altitude: float = 1.5) -> dict:
     """A transect from where the dive starts, through the nearest school and
     on past it: a fish survey goes where the fish are."""
     import numpy as np
@@ -73,7 +74,7 @@ def over_the_nearest_school(place: str, seed: int, beyond: float) -> dict:
     # stand up into a fixed depth, and a vehicle held against one counts
     # nothing either way.
     return {"kind": "reach", "dx": round(float(reach[0]), 2), "dy": round(float(-reach[1]), 2),
-            "altitudeM": 1.5, "radiusM": 1.5, "timeLimitS": 380.0}
+            "altitudeM": altitude, "radiusM": 1.5, "timeLimitS": 380.0}
 
 
 def fly(place: str, vehicle: str, seed: int, objective: dict, blind: bool) -> dict:
@@ -90,7 +91,114 @@ def fly(place: str, vehicle: str, seed: int, objective: dict, blind: bool) -> di
             "coralStruck": coral.get("struck", 0), "coralBroken": len(coral.get("broken", [])),
             "sandLiftedG": round(sediment.lifted_kg * 1000.0, 3),
             "worstVisibilityM": None if sediment.worst_visibility_m is None else round(float(sediment.worst_visibility_m), 2),
-            "arrived": bool((dive.task.result() or {}).get("arrived")) if dive.task else None}
+            "arrived": bool((dive.task.result() or {}).get("arrived")) if dive.task else None,
+            "disturbance": dive.disturbance()}
+
+
+def together(per_seed: list[list[dict]]) -> list[dict]:
+    """One vehicle's disturbance over its seeds: each row summed, with the
+    range it took from seed to seed. "of N" units are summed too, so a share
+    stays a share of what was there across all of them."""
+    import re
+
+    out: dict[str, dict] = {}
+    for rows in per_seed:
+        for r in rows:
+            one = out.setdefault(r["what"], dict(r, value=0.0, seen=[], of=0))
+            one["value"] += float(r["value"])
+            one["seen"].append(float(r["value"]))
+            m = re.match(r"of (\d+)", r.get("unit", ""))
+            if m:
+                one["of"] += int(m.group(1))
+    rows = []
+    for one in out.values():
+        low, high = min(one["seen"]), max(one["seen"])
+        unit = f"of {one['of']}" if one["of"] else one["unit"]
+        value = round(one["value"], 2) if isinstance(one["value"], float) and one["value"] % 1 else int(one["value"])
+        rows.append({"what": one["what"], "value": value, "kind": one["kind"], "from": one["from"],
+                     "unit": f"{unit} over {len(one['seen'])} seeds (each {low:g}–{high:g})"})
+    return rows
+
+
+def interval(pairs: list[tuple[int, int]], draws: int = 4000, seed: int = 0) -> tuple[float, float]:
+    """A 95% bootstrap interval for the share counted, resampling seeds."""
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    a = np.array(pairs, dtype=float)
+    picks = rng.integers(0, len(a), size=(draws, len(a)))
+    seeing, blind = a[picks, 0].sum(axis=1), a[picks, 1].sum(axis=1)
+    shares = seeing[blind > 0] / blind[blind > 0]
+    return float(np.percentile(shares, 2.5)), float(np.percentile(shares, 97.5))
+
+
+def reports(rows: list[dict], place: str, into: pathlib.Path) -> None:
+    """One page a vehicle, and one putting them side by side: what each did to
+    the reef and how far it biased its own count, every figure tagged."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import importlib.machinery
+    import importlib.util
+
+    import disturbance
+
+    def tool(name):
+        loader = importlib.machinery.SourceFileLoader(name.replace("-", "_"), str(ROOT / "tools" / name))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        return module
+
+    deliver, prov = tool("deliver"), tool("provenance")
+    into.mkdir(parents=True, exist_ok=True)
+    summary = {}
+    for vehicle in dict.fromkeys(r["vehicle"] for r in rows):
+        mine = [r for r in rows if r["vehicle"] == vehicle and r["blind"]["counted"]]
+        if not mine:
+            continue
+        pairs = [(r["seeing"]["counted"], r["blind"]["counted"]) for r in mine]
+        share = disturbance.counted_share(sum(a for a, _ in pairs), sum(b for _, b in pairs))
+        low, high = interval(pairs)
+        share["unit"] += f" over {len(mine)} seeds (95% interval {low:.0%}–{high:.0%})"
+        reef = together([r["seeing"]["disturbance"] for r in mine])
+        summary[vehicle] = {"countedShare": share, "interval": [round(low, 3), round(high, 3)],
+                            "disturbance": reef, "seeds": [r["seed"] for r in mine],
+                            "transects": [r["transect"] for r in mine]}
+        body = deliver.disturbance_section(reef, share, prov)
+        (into / f"{vehicle}.html").write_text(prov.frame(
+            title=f"{vehicle} at {place} — what it did and what it missed", name=html.escape(vehicle),
+            where=html.escape(f"{place} · the same transects, {len(mine)} seeds, flown undrawn"),
+            says=SAYS, body=body,
+            footer="Built by tools/count-bias. Not one figure here is an observation of a real reef."))
+    (into / "count-bias.json").write_text(json.dumps({"place": place, "vehicles": summary}, indent=1) + "\n")
+    # And side by side, which is the comparison the report exists for.
+    names = list(summary)
+    whats = list(dict.fromkeys(r["what"] for v in summary.values() for r in v["disturbance"]))
+    head = "".join(f"<th>{html.escape(n)}</th>" for n in names)
+
+    def cell(vehicle, what):
+        got = [r for r in summary[vehicle]["disturbance"] if r["what"] == what]
+        return f"<td>{got[0]['value']:g}</td>" if got else "<td>—</td>"
+
+    lines = [f"<tr><td class=\"what\">share of the fish there that the camera counted</td>"
+             + "".join(f"<td><b>{summary[n]['countedShare']['value']:.0%}</b> "
+                       f"({summary[n]['interval'][0]:.0%}–{summary[n]['interval'][1]:.0%})</td>" for n in names)
+             + "</tr>"]
+    lines += [f"<tr><td class=\"what\">{html.escape(w)}</td>" + "".join(cell(n, w) for n in names) + "</tr>"
+              for w in whats]
+    (into / "compare.html").write_text(prov.frame(
+        title=f"{' and '.join(names)} at {place}", name=html.escape(" and ".join(names)),
+        where=html.escape(f"{place} · the same transects and seeds for each"), says=SAYS,
+        body=f"<table><tr><th></th>{head}</tr>{''.join(lines)}</table>"
+             + "".join(f'<p><a href="{html.escape(n)}.html">{html.escape(n)}: every figure and where it came from</a></p>'
+                       for n in names),
+        footer="Built by tools/count-bias. Not one figure here is an observation of a real reef."))
+
+
+SAYS = """<p class="says"><strong>What this is.</strong> The same survey flown by
+each vehicle on the same seeds, twice a seed: once with fish that see the vehicle and
+once with fish that cannot. The second is what was there to be counted; the first is
+what the vehicle got. Beside it, what the vehicle did to the reef on the way. Every
+figure is what a model computed, and says from what.</p>"""
 
 
 def main() -> int:
@@ -99,9 +207,11 @@ def main() -> int:
     ap.add_argument("--vehicles", default="mini-hoot,boxfish-luna")
     ap.add_argument("--seeds", default="0,1,2")
     ap.add_argument("--metres", type=float, default=25.0)
+    ap.add_argument("--altitude", type=float, default=1.5, help="metres over the bottom the transect is flown at")
+    ap.add_argument("--into", type=pathlib.Path, help="write a report a vehicle and one comparing them here")
     args = ap.parse_args()
     rows = []
-    transects = {seed: over_the_nearest_school(args.place, seed, 10.0)
+    transects = {seed: over_the_nearest_school(args.place, seed, 10.0, args.altitude)
                  for seed in (int(s) for s in args.seeds.split(","))}
     for vehicle in args.vehicles.split(","):
         for seed, objective in transects.items():
@@ -130,6 +240,9 @@ def main() -> int:
         print(f"{vehicle:<16} {sum(m['bumped'] for m in mine):>11}  {sum(m['ground'] or 0 for m in mine):>14}"
               f"  {sum(m.get('coralStruck', 0) for m in mine):>12} / {sum(m.get('coralBroken', 0) for m in mine):<7}"
               f"  {sum(m.get('sandLiftedG', 0.0) for m in mine):>13.2f}  {min(seen) if seen else float('nan'):>18.1f}")
+    if args.into:
+        reports(rows, f"{args.place}, {args.altitude:g} m over the bottom", args.into)
+        print(f"\nreports in {args.into}: compare.html, " + ", ".join(f"{v}.html" for v in args.vehicles.split(",")))
     return 0
 
 

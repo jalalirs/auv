@@ -2991,7 +2991,7 @@ class Dive:
         return disturbance.rows(
             None if self.shoal is None else self.shoal.said(),
             self.ocean.coral.said() if len(self.ocean.coral) else None,
-            self.ocean.sediment.said() if self.ocean.sediment.lifted_kg else None,
+            self.ocean.sediment.said(),
             self.what_it_hit())
 
     def what_it_hit(self) -> dict:

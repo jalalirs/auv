@@ -490,3 +490,28 @@ def test_the_report_lists_every_file_in_the_folder_including_itself(tmp_path):
     page = (tmp_path / "out" / "report.html").read_text()
     for name in ("report.html", "mission.json", "provenance.json"):
         assert name in page, name
+
+
+def test_the_report_says_what_the_vehicle_did_to_the_reef(tmp_path):
+    """The disturbance rows a dive recorded, each tagged; and the count bias
+    said to be unmeasured rather than left out."""
+    tool = _deliver()
+    recording = _recording(tmp_path)
+    manifest = json.loads((recording / "manifest.json").read_text())
+    manifest["disturbance"] = [
+        {"what": "fish put to flight by the vehicle", "value": 7, "unit": "of 40", "kind": "derived",
+         "from": "derived: Hein's looming rule"},
+        {"what": "sand lifted", "value": 3.5, "unit": "g", "kind": "derived", "from": "derived: Shields"}]
+    (recording / "manifest.json").write_text(json.dumps(manifest))
+    tool.deliver_dive(recording, tmp_path / "out")
+    page = (tmp_path / "out" / "report.html").read_text()
+    assert "What it did to the reef" in page
+    assert "<b>7</b> of 40" in page and "<b>3.5</b> g" in page
+    assert "Not measured on this dive" in page
+
+
+def test_a_dive_flown_with_its_twin_reports_its_count_bias():
+    tool = _deliver()
+    page = tool.disturbance_section([], {"what": "share of the fish there that the camera counted",
+                                         "value": 0.78, "unit": "39 of 50", "kind": "derived", "from": "the twin"})
+    assert "<b>78%</b> 39 of 50" in page and "Not measured" not in page
