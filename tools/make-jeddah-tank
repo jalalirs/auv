@@ -137,10 +137,24 @@ def column_mesh(phase, rng, around: int = 360):
         zs = np.linspace(top, bottom, rows)
         ring = []
         uv = []
+        # Bulges and pits on the wall face: rock, not a lathe. Many waves in
+        # every direction at random phases, larger for longer ones, so no one
+        # of them shows: three regular terms were tried first and drew the
+        # column as a screw thread of diagonal grooves. Whole numbers of waves
+        # round, so the face closes on itself without a seam.
+        # Directions drawn evenly round the compass of the face and lengths
+        # log-evenly from 4 m to 30 cm; drawing waves-round and waves-up
+        # separately leaned most of them upright and the rock ran in drips.
+        waves = 48
+        reach = np.exp(rng.uniform(np.log(1.5), np.log(20.0), waves))   # radians a metre
+        towards = rng.uniform(0.0, np.pi, waves)
+        m = np.maximum(1, np.round(reach * np.abs(np.cos(towards)) * LEDGES[k][0])).astype(int)
+        w = reach * np.sin(towards) * np.sign(np.cos(towards) + 1e-9)
+        a = 1.0 / np.maximum(reach, 1.0) ** 1.3
+        a *= 0.06 / np.sqrt(0.5 * (a ** 2).sum())            # 6 cm, one standard deviation
+        phi = rng.uniform(0, 2 * np.pi, waves)
         for i, z in enumerate(zs):
-            # Bulges and pits on the wall face: rock, not a lathe.
-            bump = (0.10 * np.sin(theta * 11 + z * 3.1 + k) * np.sin(z * 2.3 + theta * 5)
-                    + 0.05 * np.sin(theta * 29 + z * 7.0) + 0.03 * np.sin(theta * 53 + z * 13.0 + 2.0))
+            bump = (a[:, None] * np.sin(m[:, None] * theta[None, :] + w[:, None] * z + phi[:, None])).sum(axis=0)
             rr = edge * (1.0 + 0.02 * np.sin(z * 4.0 + k)) + bump
             ring.append(np.column_stack([rr * np.cos(theta), rr * np.sin(theta), np.full(len(theta), z)]))
             uv.append(np.column_stack([(theta + np.pi) * LEDGES[k][0] / 1.5, np.full(len(theta), z / 1.5)]))
