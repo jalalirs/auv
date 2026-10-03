@@ -254,6 +254,8 @@ JSON
         -e CORAL_CITY_VOLUME="${VOLUME:-}" \
         -e CORAL_CITY_SHOW_DISTANCE="${SHOW_DISTANCE:-}" \
         -e CORAL_CITY_LIFE="${LIFE:-1}" \
+        -e CORAL_CITY_HOUR="${HOUR:-}" \
+        -e CORAL_CITY_LIGHTS_OFF="${LIGHTS_OFF:-}" \
         -e CORAL_CITY_LAMP_INTENSITY="${LAMP_INTENSITY:-}" \
         -e CORAL_CITY_TOUR_INTO=/dive/frames \
         -v "${here}:/dive:rw" \

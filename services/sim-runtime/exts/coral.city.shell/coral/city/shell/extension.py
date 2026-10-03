@@ -918,6 +918,18 @@ class CoralCityShell(omni.ext.IExt):
             # eight-rung ladder of light changes came back with eight identical
             # frames.
             dive.stir()
+            # The place's own lights, by the dive's day: a still asked for at
+            # an hour is drawn at it.
+            if dive.ocean.light.indoors:
+                from draw import light as drawn_light
+                if getattr(dive, "_lamps", None) is None:
+                    dive._lamps = drawn_light.Lights()
+                try:
+                    import carb
+                    knobs = carb.settings.get_settings()
+                except ImportError:
+                    knobs = None
+                dive._lamps.set(dive.stage, dive.ocean.light, dive.say, knobs)
             self.tour.place(dive.stage, viewport)
             # The water is measured from the camera, and on a tour the camera
             # is not the vehicle. `stir` puts it on the vehicle because that is

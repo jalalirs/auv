@@ -52,7 +52,11 @@ class Light:
 
     def set_for(self, parameters: dict, indoors: bool) -> None:
         """From the dive's conditions and whether the place is a room."""
-        self.starts_at_h = float(parameters.get("localTimeH", 11.0)) % 24.0
+        # CORAL_CITY_HOUR sets the hour from outside a dive's brief: how a
+        # still of a place at night is asked for (tools/look).
+        import os
+        hour = os.environ.get("CORAL_CITY_HOUR")
+        self.starts_at_h = float(hour if hour else parameters.get("localTimeH", 11.0)) % 24.0
         self.day_s = max(1.0, float(parameters.get("dayLengthS", 86400.0)))
         self.indoors = bool(indoors)
         self.from_ = ("assumed: a reef tank's lights, on at nine and off at nine with half-hour ramps"
