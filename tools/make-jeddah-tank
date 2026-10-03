@@ -58,8 +58,9 @@ ACROSS = 2 * RADIUS + 0.4
 LEDGES = [(1.9, 0.6), (2.25, -3.0), (2.65, -6.0), (3.05, -9.5), (3.45, -12.2)]
 BOULDERS = [(3.9, 0.3, 0.55, 0.9), (4.1, 1.5, 0.40, 0.6), (3.8, 2.6, 0.65, 1.0), (4.2, 3.7, 0.35, 0.5),
             (3.9, 4.6, 0.50, 0.8), (4.0, 5.6, 0.45, 0.7)]          # (radius from axis, angle, r, height)
-CORAL_KINDS = [("branching", 0.55), ("massive", 0.7), ("brain", 0.5), ("table", 0.8), ("plume", 0.6),
-               ("fan", 0.9), ("finger", 0.45), ("sponge", 0.35), ("encrusting", 0.5)]
+CORAL_KINDS = [("branching", 0.55), ("massive", 0.7), ("brain", 0.5), ("plume", 0.6), ("fan", 0.9),
+               ("finger", 0.45), ("sponge", 0.35), ("encrusting", 0.5), ("branching", 0.4), ("massive", 0.5),
+               ("table", 0.45)]
 CORAL_COLOURS = [(0.62, 0.48, 0.38), (0.48, 0.36, 0.52), (0.70, 0.55, 0.42), (0.40, 0.52, 0.42),
                  (0.78, 0.50, 0.52), (0.55, 0.45, 0.30), (0.35, 0.40, 0.55), (0.80, 0.70, 0.45)]
 # Who lives in it, from the footage: the species named in fish_species.py
@@ -71,8 +72,22 @@ FISH = {"rhabdosargus_haffara": 160, "abudefduf_vaigiensis": 60, "platax_teira":
         "aetobatus_ocellatus": 3, "epinephelus_lanceolatus": 2}
 
 
+def edge_of(k, theta, phase):
+    """How far out ledge k reaches, all round: rough, not a circle."""
+    reach = LEDGES[k][0]
+    return reach * (1.0 + 0.07 * np.sin(3 * theta + phase[k, 0]) + 0.05 * np.sin(7 * theta + phase[k, 1]))
+
+
+def top_of(k, x, y, theta):
+    """Ledge k's surface: its height, with lumps."""
+    return LEDGES[k][1] + 0.12 * np.sin(x * 5.3 + k) * np.sin(y * 4.7 - k) + 0.06 * np.sin(theta * 13 + k)
+
+
 def column_and_sand(rng):
-    """The column, its ledges, the sand and the boulders, as one heightfield."""
+    """The column, its ledges, the sand and the boulders, as one heightfield:
+    what the vehicle and the fish meet. What is drawn of the column is its own
+    mesh (`column_mesh`), from the same edges: a heightfield cannot draw a
+    wall, and drawn from it the column was streaks and gaps."""
     line = np.linspace(-ACROSS / 2, ACROSS / 2, GRID)
     X, Y = np.meshgrid(line, line)
     r, theta = np.hypot(X, Y), np.arctan2(Y, X)
@@ -81,16 +96,72 @@ def column_and_sand(rng):
     phase = rng.uniform(0, 2 * np.pi, (len(LEDGES), 2))
     # From the outside in, so that each ledge stands on the one below it.
     for k in range(len(LEDGES) - 1, -1, -1):
-        reach, height = LEDGES[k]
-        edge = reach * (1.0 + 0.07 * np.sin(3 * theta + phase[k, 0]) + 0.05 * np.sin(7 * theta + phase[k, 1]))
-        rough = 0.12 * np.sin(X * 5.3 + k) * np.sin(Y * 4.7 - k) + 0.06 * np.sin(theta * 13 + k)
-        z = np.where(r < edge, np.maximum(z, height + rough), z)
+        z = np.where(r < edge_of(k, theta, phase), np.maximum(z, top_of(k, X, Y, theta)), z)
     for at, angle, rad, h in BOULDERS:
         bx, by = at * math.cos(angle), at * math.sin(angle)
         d = np.hypot(X - bx, Y - by)
         top = sand + h * np.sqrt(np.clip(1 - (d / rad) ** 2, 0, 1)) * (1 + 0.12 * np.sin(X * 9 + Y * 7))
         z = np.where(d < rad, np.maximum(z, top), z)
-    return line, z
+    return line, z, phase
+
+
+def column_mesh(phase, rng, around: int = 180):
+    """The column as rock: for each ledge, its wall down to the ledge below
+    (or the sand) and its top, lathed round the axis from the same rough
+    edges the heightfield has, the wall's face pitted and bulged so that it
+    reads as stacked rock and not as a turned post."""
+    theta = np.linspace(-np.pi, np.pi, around, endpoint=False)
+    pts, faces, uvs = [], [], []
+
+    def add(p, f, uv):
+        base = sum(len(x) for x in pts)
+        pts.append(p)
+        faces.append(f + base)
+        uvs.append(uv)
+
+    for k in range(len(LEDGES)):
+        edge = edge_of(k, theta, phase)
+        top = LEDGES[k][1]
+        bottom = LEDGES[k + 1][1] if k + 1 < len(LEDGES) else FLOOR_Z - 0.05
+        rows = max(4, int((top - bottom) / 0.25))
+        zs = np.linspace(top, bottom, rows)
+        ring = []
+        uv = []
+        for i, z in enumerate(zs):
+            # Bulges and pits on the wall face: rock, not a lathe.
+            bump = (0.10 * np.sin(theta * 11 + z * 3.1 + k) * np.sin(z * 2.3 + theta * 5)
+                    + 0.05 * np.sin(theta * 29 + z * 7.0) + 0.03 * np.sin(theta * 53 + z * 13.0 + 2.0))
+            rr = edge * (1.0 + 0.02 * np.sin(z * 4.0 + k)) + bump
+            ring.append(np.column_stack([rr * np.cos(theta), rr * np.sin(theta), np.full(len(theta), z)]))
+            uv.append(np.column_stack([(theta + np.pi) * LEDGES[k][0] / 1.5, np.full(len(theta), z / 1.5)]))
+        p = np.vstack(ring)
+        f = []
+        n = len(theta)
+        for i in range(rows - 1):
+            for j in range(n):
+                a, b = i * n + j, i * n + (j + 1) % n
+                c, d = (i + 1) * n + j, (i + 1) * n + (j + 1) % n
+                f += [(a, c, b), (b, c, d)]
+        add(p, np.array(f), np.vstack(uv))
+        # The ledge's top: from the edge of the tier above in to this one's.
+        inner = edge_of(k - 1, theta, phase) * 0.9 if k > 0 else np.zeros_like(theta)
+        steps = 6
+        ring, uv = [], []
+        for i in range(steps + 1):
+            t = i / steps
+            rr = inner + (edge - inner) * t
+            x, y = rr * np.cos(theta), rr * np.sin(theta)
+            ring.append(np.column_stack([x, y, top_of(k, x, y, theta)]))
+            uv.append(np.column_stack([x / 1.5, y / 1.5]))
+        p = np.vstack(ring)
+        f = []
+        for i in range(steps):
+            for j in range(n):
+                a, b = i * n + j, i * n + (j + 1) % n
+                c, d = (i + 1) * n + j, (i + 1) * n + (j + 1) % n
+                f += [(a, c, b), (b, c, d)]
+        add(p, np.array(f), np.vstack(uv))
+    return np.vstack(pts), np.vstack(faces), np.vstack(uvs)
 
 
 def ring(r_in, r_out, z0, z1, sides=160):
@@ -148,25 +219,31 @@ def build(name: str, into: pathlib.Path, seed: int = 11) -> dict:
 
     # The column and the sand: one heightfield, drawn inside the glass, the
     # rock wrapped round the column and the sand laid flat.
-    line, heights = column_and_sand(rng)
+    line, heights, phase = column_and_sand(rng)
+    # The sand and the boulders, from the heightfield: the ring between the
+    # column's foot and the glass.
     pts, faces = aq.field_mesh(line, line, heights)
-    inside = np.hypot(pts[:, 0], pts[:, 1]) < RADIUS + 0.02
-    keep = inside[faces].all(axis=1)
-    faces = faces[keep]
-    is_rock = (pts[:, 2] > FLOOR_Z + 0.25)
-    rocky = is_rock[faces].any(axis=1)
-    for name_, part, look in (("Sand", ~rocky, sand), ("Column", rocky, rock)):
-        f = faces[part]
-        used = np.unique(f)
-        index = -np.ones(len(pts), dtype=int)
-        index[used] = np.arange(len(used))
-        p = pts[used]
-        if look is rock:
-            around = (np.arctan2(p[:, 1], p[:, 0]) / (2 * np.pi) + 0.5) * 2 * np.pi * 3.0 / 1.5
-            uv = np.stack([around, p[:, 2] / 1.5], axis=1)
-        else:
-            uv = p[:, :2] * 0.6
-        s.add(f"Tank/{name_}", p, index[f], look, smooth=True, uv=uv)
+    r = np.hypot(pts[:, 0], pts[:, 1])
+    theta = np.arctan2(pts[:, 1], pts[:, 0])
+    foot = edge_of(len(LEDGES) - 1, theta, phase)
+    keep = ((r < RADIUS + 0.02) & (r > foot - 0.15))[faces].all(axis=1)
+    f = faces[keep]
+    used = np.unique(f)
+    index = -np.ones(len(pts), dtype=int)
+    index[used] = np.arange(len(used))
+    p = pts[used]
+    tri = index[f]
+    boulder = (p[tri][:, :, 2] > FLOOR_Z + 0.2).any(axis=1)
+    for name_, part, look, scale in (("Sand", ~boulder, sand, 0.6), ("Boulders", boulder, rock, 0.7)):
+        g = tri[part]
+        keep_pts = np.unique(g)
+        again = -np.ones(len(p), dtype=int)
+        again[keep_pts] = np.arange(len(keep_pts))
+        q = p[keep_pts]
+        s.add(f"Tank/{name_}", q, again[g], look, smooth=True, uv=q[:, :2] * scale)
+    # The column, drawn as rock.
+    cp, cf, cu = column_mesh(phase, rng)
+    s.add("Tank/Column", cp, cf, rock, smooth=True, uv=cu)
 
     # Coral: on the ledges, at the column's foot and among the boulders.
     def ground_at(x, y):
