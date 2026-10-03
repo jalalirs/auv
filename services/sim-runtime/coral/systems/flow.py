@@ -49,6 +49,7 @@ PULL = 6.0            # how fast a cell in a jet takes up the jet's speed, 1/s
 DECAY = 0.04          # what the unresolved eddies take, a share a second
 JACOBI = 30
 WARM = 12             # passes a step, starting from the last step's pressure
+ON_WARP_FROM = 50_000  # cells: a grid this big is stepped on Warp when Warp is there
 
 
 class Flow:
@@ -207,6 +208,17 @@ class FlowSystem(System):
             return
         dt = self.every
         u = flow.u
+        # A big grid on Warp (systems/flow_warp.py): the box's GPU, or a
+        # laptop's CPU, the same arithmetic in single precision. A small one
+        # stays here, in double, which is what the regression dives are held to.
+        if u.shape[0] * u.shape[1] * u.shape[2] >= ON_WARP_FROM:
+            from systems import flow_warp
+            if flow_warp.available():
+                jets = (wash.jets_at(flow.centres().reshape(-1, 3)).reshape(u.shape)
+                        if wash.efflux.any() else None)
+                flow.u, flow.p = flow_warp.step(u, jets, flow.solid, flow.p, flow.cell, dt,
+                                                PULL, DECAY, WARM)
+                return
         # Driven: towards the jets where they run.
         if wash.efflux.any():
             centres = flow.centres().reshape(-1, 3)
