@@ -66,3 +66,4 @@ apps/console/src/**/*.js
 # about removing leftovers, which is the joke telling itself.
 *.pdf
 catalog/vehicles/mini-hoot/mini-hoot.usd
+data/videos/

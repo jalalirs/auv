@@ -765,7 +765,10 @@ class Dive:
         self.place_cameras = dict(cameras) if isinstance(cameras, dict) else {}
         inside = said.get("interior")
         if isinstance(inside, dict) and "min" in inside and "max" in inside:
-            self.interior = (np.array(inside["min"], dtype=float), np.array(inside["max"], dtype=float))
+            from systems.glass import Glass
+            circle = inside.get("round")
+            self.interior = Glass(inside["min"], inside["max"],
+                                  None if not circle else (*circle["centre"], circle["radiusM"]))
         if self.place_cameras or self.interior is not None:
             self.say("room_is", views=self.views(),
                      interior=None if self.interior is None else
@@ -2977,7 +2980,12 @@ class Dive:
             pass
         elif self.interior is not None:
             low, high = self.interior
-            self.ocean.flow.set_for([low[0], low[1], low[2]], [high[0], high[1], top], self.ocean.place.bottoms)
+            # Five centimetres a cell in a bench tank; coarser in a big one,
+            # so the grid stays a few hundred thousand cells (the Jeddah
+            # tank is ten metres across and fourteen deep).
+            extent = float(max(high[0] - low[0], high[1] - low[1], top - low[2]))
+            self.ocean.flow.set_for([low[0], low[1], low[2]], [high[0], high[1], top], self.ocean.place.bottoms,
+                                    cell=max(0.05, extent / 60.0), circle=getattr(self.interior, "round", None))
         else:
             # Open water: a box round the vehicle that follows it.
             at = np.asarray(self.position, dtype=float)
@@ -2999,7 +3007,17 @@ class Dive:
         self.shoal = fish.stock(described, bottom_under, self.interior, self.position,
                                 int(self.brief.get("seed", 0)), self.say,
                                 light=(self.ocean.light.hour, self.ocean.light.level),
-                                coral=self.ocean.coral)
+                                coral=self.ocean.coral, counted=self.what_was_recorded(city, described))
+
+    def what_was_recorded(self, city, described: dict):
+        """The place's own species list (tools/fauna), or None."""
+        named = (described.get("life") or {}).get("file")
+        if not named or not (city / named).exists():
+            return None
+        try:
+            return json.loads((city / named).read_text())
+        except Exception:
+            return None
 
     # How far the marine snow reaches from the camera, in metres, and how many
     # aggregates will be drawn at most.

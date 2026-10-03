@@ -81,15 +81,18 @@ CORALLITE_OF = {"brain": "brain", "massive": "massive", "branching": "branching"
 TANK_COLOURS = {"violet": (0.45, 0.25, 0.85), "teal": (0.10, 0.70, 0.66), "green": (0.30, 0.78, 0.30),
                 "pink": (0.95, 0.40, 0.65), "orange": (0.98, 0.52, 0.15), "lime": (0.70, 0.90, 0.20),
                 "purple": (0.60, 0.20, 0.60), "red": (0.85, 0.18, 0.18), "yellow": (0.98, 0.85, 0.25)}
-# Fish two cubic metres hold: small, and not many. By species, each with its
-# sheet in services/sim-runtime/coral/fish_species.py: a shoal of chromis over
-# the branching coral, a pair of clownfish in the plume coral that stands for
-# their anemone, a pair of copperbands picking at the rock, six-line wrasse in
-# its crevices, gobies at their burrows in the sand, one yellow tang grazing,
-# and Banggai cardinals, which are out when the lights go off.
-FISH = {"chromis_viridis": 12, "amphiprion_ocellaris": 2, "chelmon_rostratus": 2,
-        "pseudocheilinus_hexataenia": 3, "amblyeleotris_wheeleri": 3,
-        "zebrasoma_flavescens": 1, "pterapogon_kauderni": 5}
+# Fish two cubic metres hold: small, not many, and the Red Sea's — the sea
+# this tank stands beside, and the one the Jeddah airport tank holds. By
+# species, each with its sheet in services/sim-runtime/coral/fish_species.py:
+# a shoal of chromis over the branching coral (Chromis viridis is a Red Sea
+# fish too), anthias hanging over the rock, half-and-half chromis by the coral
+# heads, a pair of Red Sea anemonefish in the plume coral that stands for
+# their anemone, sulfur damsels each over its patch, a pair of exquisite
+# butterflyfish picking at the coral, two juvenile sergeants, and shrimpgobies
+# at their burrows in the sand.
+FISH = {"chromis_viridis": 10, "pseudanthias_squamipinnis": 6, "pycnochromis_dimidiatus": 4,
+        "amphiprion_bicinctus": 2, "pomacentrus_sulfureus": 2, "chaetodon_austriacus": 2,
+        "abudefduf_vaigiensis": 2, "amblyeleotris_steinitzi": 3}
 
 
 # ── geometry ─────────────────────────────────────────────────────────────────

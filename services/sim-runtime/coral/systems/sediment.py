@@ -155,9 +155,9 @@ class SedimentSystem(System):
         cells = np.column_stack([gx.ravel(), gy.ravel()])
         bed = place.bottoms(np.column_stack([cells, np.zeros(len(cells))]))
         if place.interior is not None:
-            low, high = place.interior
-            keep = (cells[:, 0] > low[0]) & (cells[:, 0] < high[0]) & (cells[:, 1] > low[1]) & (cells[:, 1] < high[1])
-            cells, bed = cells[keep], bed[keep]
+            from systems.glass import held_in
+            _, outside, _ = held_in(cells, place.interior)
+            cells, bed = cells[~outside], bed[~outside]
         over = np.column_stack([cells, bed + 0.01])
         u = np.linalg.norm(wash.at(over), axis=1)
         tau = RHO * FRICTION_C * u * u
@@ -213,9 +213,8 @@ class SedimentSystem(System):
         sed.at = sed.at + (flow - np.column_stack([np.zeros((len(falls), 2)), falls])) * dt \
             + self.rng.normal(0.0, 1.0, sed.at.shape) * spread[:, None]
         if place.interior is not None:
-            low, high = place.interior
-            sed.at[:, 0] = np.clip(sed.at[:, 0], low[0], high[0])
-            sed.at[:, 1] = np.clip(sed.at[:, 1], low[1], high[1])
+            from systems.glass import held_in
+            sed.at[:, :2] = held_in(sed.at, place.interior)[0]
         sed.at[:, 2] = np.minimum(sed.at[:, 2], water.level - 0.005)
         bed = place.bottoms(sed.at)
         down = sed.at[:, 2] <= bed

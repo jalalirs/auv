@@ -562,8 +562,9 @@ class Shoal:
 def put_them_in(stage, shoal, at: str = "/World/Life") -> None:
     """Write the shoal into the stage as one instancer, once.
 
-    One prototype per behaviour group, which is one shape and one colour each.
-    Not one per fish: a couple of thousand meshes is a couple of thousand prims
+    One prototype per species and stroke: a scanned fish where the species has
+    one (coral/fauna, tools/fish-models/build) with its photograph on it, a
+    grown one painted from its sheet where it has not. Not one per fish: a couple of thousand meshes is a couple of thousand prims
     for the renderer to think about every frame, and the whole reason a reef is
     a point instancer is that it is not that.
     """
@@ -583,11 +584,15 @@ def put_them_in(stage, shoal, at: str = "/World/Life") -> None:
     stroke = fishform.STROKE
     for i, kind in enumerate(shoal._kinds_present):
       colours = None
+      model = fishform.scanned(kind)
       for beat in range(stroke):
         bend = float(np.sin(2.0 * np.pi * beat / stroke))
-        points, faces, parts = fishform.anatomy(fishform.plan_of(kind), bend)
-        if colours is None:
-            colours = fishform.painted(points, kind, rng, parts)
+        if model is not None:
+            points, faces = fishform.swum(model, bend), model["faces"]
+        else:
+            points, faces, parts = fishform.anatomy(kind, bend)
+            if colours is None:
+                colours = fishform.painted(points, kind, rng, parts)
         mesh = UsdGeom.Mesh.Define(stage, f"{shapes.GetPath()}/Fish_{i}_{beat}")
         # `float(...)` on every component, and it is not decoration.
         #
@@ -609,6 +614,16 @@ def put_them_in(stage, shoal, at: str = "/World/Life") -> None:
         # invisible from half the reef.
         mesh.CreateDoubleSidedAttr(True)
         mesh.CreateSubdivisionSchemeAttr("none")
+        if model is not None:
+            # Its photograph, by the UVs it was baked with.
+            UsdGeom.PrimvarsAPI(mesh.GetPrim()).CreatePrimvar(
+                "st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.vertex).Set(
+                Vt.Vec2fArray([Gf.Vec2f(float(u), float(v)) for u, v in model["uv"]]))
+            if beat == 0:
+                material = _photographed(stage, f"{looks.GetPath()}/Fish_{i}", model["texture"])
+            UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(material)
+            prototypes.append(mesh.GetPath())
+            continue
         # Painted per vertex, read by the material: a back, a belly and marks.
         UsdGeom.PrimvarsAPI(mesh.GetPrim()).CreatePrimvar(
             "displayColor", Sdf.ValueTypeNames.Color3fArray, UsdGeom.Tokens.vertex).Set(
@@ -646,6 +661,31 @@ def put_them_in(stage, shoal, at: str = "/World/Life") -> None:
     instancer.CreateScalesAttr(Vt.Vec3fArray(
         [Gf.Vec3f(float(s), float(s), float(s)) for s in size]))
     move_them(stage, shoal, at)
+
+
+def _photographed(stage, path: str, texture: str):
+    """A material that is a fish's own photograph: its texture through its
+    UVs, wet as a live fish's flank is."""
+    from pxr import Sdf, UsdShade
+
+    material = UsdShade.Material.Define(stage, path)
+    shader = UsdShade.Shader.Define(stage, f"{path}/S")
+    shader.CreateIdAttr("UsdPreviewSurface")
+    reader = UsdShade.Shader.Define(stage, f"{path}/St")
+    reader.CreateIdAttr("UsdPrimvarReader_float2")
+    reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
+    reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
+    picture = UsdShade.Shader.Define(stage, f"{path}/Photo")
+    picture.CreateIdAttr("UsdUVTexture")
+    picture.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(texture)
+    picture.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set("sRGB")
+    picture.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(reader.ConnectableAPI(), "result")
+    picture.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(picture.ConnectableAPI(), "rgb")
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.3)
+    shader.CreateInput("clearcoat", Sdf.ValueTypeNames.Float).Set(0.5)
+    material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+    return material
 
 
 def stroke_indices(shoal) -> list:

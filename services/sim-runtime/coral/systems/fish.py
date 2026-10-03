@@ -167,7 +167,8 @@ def refuges(described: dict, bottom_under, low, high, rng, coral=None) -> dict:
     return {k: np.array(v, dtype=float) for k, v in found.items()}
 
 
-def stock(described: dict, bottom_under, interior, begins_at, seed: int, say, light=None, coral=None):
+def stock(described: dict, bottom_under, interior, begins_at, seed: int, say, light=None, coral=None,
+          counted=None):
     """The school a place holds, or None, and says which."""
     import fishmind
 
@@ -185,8 +186,11 @@ def stock(described: dict, bottom_under, interior, begins_at, seed: int, say, li
         about = (lo[:2] + hi[:2]) / 2.0
         half = (hi[:2] - lo[:2]) / 2.0
         across = float(max(hi[0] - lo[0], hi[1] - lo[1]))
+        circle = getattr(interior, "round", None)
         habitat = fishmind.Habitat(bottom_under, about, across, water_level=float(hi[2]),
-                                   box=0.92 * half, refuges=refuges(described, bottom_under,
+                                   box=0.92 * half, circle=None if circle is None else
+                                   (circle[0], circle[1], 0.96 * circle[2]),
+                                   refuges=refuges(described, bottom_under,
                                                                     about - 0.9 * half, about + 0.9 * half, rng,
                                                                     coral),
                                    scale=float(says.get("scale", 1.0)))
@@ -219,10 +223,18 @@ def stock(described: dict, bottom_under, interior, begins_at, seed: int, say, li
                                refuges=refuges(described, bottom_under, about - span, about + span, rng, coral))
     if coral is not None and len(coral):
         habitat.set_coral(*standing(coral))
-    school = fishmind.School({k: v for k, v in groups.items() if v}, habitat, seed=seed)
+    # Each group as the species the place's own record saw, where the record
+    # has any with a sheet (fish_species.recorded).
+    import fish_species
+    import life as life_module
+
+    by = fish_species.recorded(counted, life_module.group_of)
+    kinds = fish_species.split({k: v for k, v in groups.items() if v}, by)
+    school = fishmind.School(kinds, habitat, seed=seed)
     if light is not None:
         school.hour, school.light = light
     say("life_is", **school.said(), refuges={k: len(v) for k, v in habitat.refuges.items()},
         stockedToM=STOCKED_TO_M, asked=wanted, drawn=how_many,
-        perSquareMetre=says.get("perSquareMetre"))
+        perSquareMetre=says.get("perSquareMetre"),
+        asRecorded={g: [k for k, _ in v] for g, v in by.items()})
     return school

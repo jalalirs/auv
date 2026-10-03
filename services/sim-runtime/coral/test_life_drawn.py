@@ -58,12 +58,12 @@ class Anything:
 
 def _fake_pxr():
     gf = types.SimpleNamespace(Vec3f=StrictlyFloats, Quath=StrictlyFloats,
-                               Vec3h=StrictlyFloats)
+                               Vec3h=StrictlyFloats, Vec2f=StrictlyFloats)
     holds = types.ModuleType("pxr")
     holds.Gf = gf
     holds.Sdf = types.SimpleNamespace(ValueTypeNames=Anything())
     holds.Vt = types.SimpleNamespace(
-        Vec3fArray=list, IntArray=list, QuathArray=list, FloatArray=list)
+        Vec3fArray=list, IntArray=list, QuathArray=list, FloatArray=list, Vec2fArray=list)
     holds.UsdGeom = types.SimpleNamespace(
         PointInstancer=Anything(), Scope=Anything(), Mesh=Anything(),
         PrimvarsAPI=Anything(), Tokens=Anything(), BasisCurves=Anything())
@@ -132,6 +132,34 @@ def test_fish_with_minds_are_drawn_by_species_in_the_types_asked_for(without_a_r
     school.step(0.05, light=(11.0, 1.0))
     life.put_them_in(Anything(), school)
     life.move_them(Anything(), school)
+
+
+def test_a_scanned_fish_is_drawn_with_its_photograph_in_the_types_asked_for(without_a_renderer):
+    """A species with a scan in coral/fauna is drawn from it: its points bent
+    by the stroke, its UVs, its texture."""
+    import fishmind
+
+    from coral import fishform
+
+    if fishform.scanned("plectorhinchus_gaterinus") is None:
+        pytest.skip("no scan built here (tools/fish-models/build)")
+    habitat = fishmind.Habitat(lambda x, y: -9.0, (0.0, 0.0), 20.0, 0.0)
+    school = fishmind.School({"plectorhinchus_gaterinus": 3, "chaetodon_auriga": 2}, habitat, seed=1)
+    school.step(0.05, light=(11.0, 1.0))
+    life.put_them_in(Anything(), school)
+    life.move_them(Anything(), school)
+
+
+def test_a_scanned_fish_swims_from_the_tail_not_the_head():
+    from coral import fishform
+
+    model = fishform.scanned("plectorhinchus_gaterinus")
+    if model is None:
+        pytest.skip("no scan built here")
+    still, bent = fishform.swum(model, 0.0), fishform.swum(model, 1.0)
+    moved = np.abs(bent[:, 1] - still[:, 1])
+    head, tail = model["points"][:, 0] > 0.3, model["points"][:, 0] < -0.3
+    assert moved[head].max() < 0.01 < moved[tail].max()
 
 
 def test_the_tether_is_drawn_in_the_types_the_renderer_asked_for(without_a_renderer):

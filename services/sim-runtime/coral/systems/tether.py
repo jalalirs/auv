@@ -265,12 +265,10 @@ class Umbilical:
                     inner[wall[still_in], :2] += side[still_in] * (2.0 * r)
             touching[1:-1][idx] = True
         if place.interior is not None:
-            low, high = place.interior
-            for axis in (0, 1):
-                lo, hi = float(low[axis]) + r, float(high[axis]) - r
-                over = (inner[:, axis] < lo) | (inner[:, axis] > hi)
-                touching[1:-1] |= over
-                inner[:, axis] = np.clip(inner[:, axis], lo, hi)
+            from systems.glass import held_in
+            held, over, _ = held_in(inner, place.interior, r)
+            touching[1:-1] |= over
+            inner[:, :2] = held
         x[1:-1] = inner
         self.touching = touching
 

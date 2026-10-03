@@ -1,0 +1,11 @@
+{
+ "species": "carcharhinus_melanopterus",
+ "model": "Blacktip Reef Shark",
+ "standsFor": "the same species",
+ "licence": "CC-BY 4.0",
+ "author": "Lais.Marques",
+ "url": "https://sketchfab.com/3d-models/a52bb96c5a0c4157b49982471f8902b0",
+ "via": "Objaverse (allenai/objaverse, Hugging Face), the Sketchfab file as published",
+ "faces": 6011,
+ "points": 4169
+}

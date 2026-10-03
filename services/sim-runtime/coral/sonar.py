@@ -200,18 +200,11 @@ def _glass(origin: np.ndarray, way: np.ndarray, walls):
     beam. Only the four sides; the floor is the seabed's, and the top is the
     surface, which a horizontal beam does not reach.
     """
-    low, high = walls
-    best = None
-    for axis in (0, 1):
-        if way[axis] > 1e-9:
-            t = (float(high[axis]) - float(origin[axis])) / float(way[axis])
-        elif way[axis] < -1e-9:
-            t = (float(low[axis]) - float(origin[axis])) / float(way[axis])
-        else:
-            continue
-        if t >= 0.0 and (best is None or t < best):
-            best = t
-    return best
+    try:
+        from systems.glass import out_through
+    except ImportError:
+        from coral.systems.glass import out_through
+    return out_through(origin, way, walls)
 
 
 def _hit(thing, origin: np.ndarray, way: np.ndarray, far: float, spread: float = 0.0):

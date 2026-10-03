@@ -88,8 +88,10 @@ class Habitat:
     there is glass, the surface, and the places they can hide."""
 
     def __init__(self, floor_at, about, across: float, water_level: float = 0.0,
-                 box=None, refuges: dict | None = None, scale: float = 1.0) -> None:
+                 box=None, refuges: dict | None = None, scale: float = 1.0, circle=None) -> None:
         self.about = np.asarray(about, dtype=float)
+        # A round tank's glass: (centre x, centre y, radius), inside the box.
+        self.circle = None if circle is None else tuple(float(v) for v in circle)
         self.across = float(across)
         self.water_level = float(water_level)
         self.box = None if box is None else np.asarray(box, dtype=float)
@@ -195,12 +197,23 @@ class Habitat:
                 + (g[j + 1, i] * (1 - fu) + g[j + 1, i + 1] * fu) * fv)
 
     def inside(self, xy, margin: float = 0.0) -> np.ndarray:
-        """Clamp to where water is: the glass, or the stocked square."""
+        """Clamp to where water is: the glass — square or round — or the
+        stocked square."""
         half = self.box if self.box is not None else np.array([0.49 * self.across] * 2)
         margin = np.asarray(margin, dtype=float)
-        if margin.ndim:
-            margin = margin[:, None]
-        return np.clip(xy, self.about - half + margin, self.about + half - margin)
+        m = margin[:, None] if margin.ndim else margin
+        held = np.clip(xy, self.about - half + m, self.about + half - m)
+        if self.circle is not None:
+            cx, cy, r = self.circle
+            many = np.atleast_2d(held).astype(float)
+            off = many - np.array([cx, cy])
+            far = np.linalg.norm(off, axis=1)
+            limit = r - (margin if margin.ndim else np.full(len(many), float(margin)))
+            beyond = far > limit
+            if beyond.any():
+                many[beyond] = np.array([cx, cy]) + off[beyond] / far[beyond][:, None] * limit[beyond][:, None]
+            held = many if np.ndim(xy) > 1 else many[0]
+        return held
 
 
 class School:
@@ -613,6 +626,11 @@ class School:
             for axis in (0, 1):
                 want[:, axis] += 1.5 * np.exp(-(here[:, axis] - low[axis]) / reach)
                 want[:, axis] -= 1.5 * np.exp(-(high[axis] - here[:, axis]) / reach)
+            if hab.circle is not None:
+                cx, cy, r = hab.circle
+                off = here[:, :2] - np.array([cx, cy])
+                far = np.maximum(np.linalg.norm(off, axis=1), 1e-9)
+                want[:, :2] -= (1.5 * np.exp(-(r - far) / reach) / far)[:, None] * off
         # And a fluctuation of its own: shy fish dither more.
         noise = self.rng.normal(0, 0.25 / self.bold[idx])
         aim = self.round_the_rock(idx, np.arctan2(want[:, 1], want[:, 0]) + noise)

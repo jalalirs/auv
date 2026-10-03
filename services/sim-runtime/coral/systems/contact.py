@@ -205,24 +205,24 @@ def keep_inside_the_glass(v, place, contacts, say) -> None:
     that never touched it."""
     if place.interior is None:
         return
-    low, high = place.interior
+    from systems.glass import held_in
+
     reach = float(v.half_width)
-    touching = False
-    for axis in (0, 1):
-        lo, hi = float(low[axis]) + reach, float(high[axis]) - reach
-        if v.position[axis] < lo or v.position[axis] > hi:
-            v.position[axis] = min(max(float(v.position[axis]), lo), hi)
-            normal = np.zeros(3)
-            normal[axis] = 1.0
-            into = v.rotation.T @ normal
-            along = float(np.dot(v.velocity[:3], into))
+    held, out, inward = held_in(v.position[None, :2], place.interior, reach)
+    touching = bool(out[0])
+    if touching:
+        v.position[:2] = held[0]
+        normal = np.array([inward[0, 0], inward[0, 1], 0.0])
+        normal /= max(float(np.linalg.norm(normal)), 1e-12)
+        into = v.rotation.T @ normal
+        along = float(np.dot(v.velocity[:3], into))
+        if along < 0.0:
             v.velocity[:3] -= along * into * (1.0 + RESTITUTION)
-            if not contacts.on_the_glass:
-                contacts.glass += 1
-                contacts.strike_of("glass", v.position, abs(along), v)
-                say("touched_the_glass", axis="xy"[axis], times=contacts.glass,
-                    at=[round(float(c), 3) for c in v.position])
-            touching = True
+        if not contacts.on_the_glass:
+            contacts.glass += 1
+            contacts.strike_of("glass", v.position, abs(along), v)
+            say("touched_the_glass", axis="x" if abs(normal[0]) >= abs(normal[1]) else "y", times=contacts.glass,
+                at=[round(float(c), 3) for c in v.position])
     contacts.on_the_glass = touching
 
 

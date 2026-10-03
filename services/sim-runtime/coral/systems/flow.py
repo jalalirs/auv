@@ -64,9 +64,11 @@ class Flow:
         self.from_ = ("derived: stable fluids (Stam 1999) on a grid, driven by the thrusters' jets; "
                       "the decay of unresolved eddies assumed")
 
-    def set_for(self, low, high, bottoms, cell: float = CELL_M, follows: bool = False) -> None:
+    def set_for(self, low, high, bottoms, cell: float = CELL_M, follows: bool = False, circle=None) -> None:
         """A grid over a box of water, with the ground in it solid. `follows`:
-        the box goes with the vehicle (open water)."""
+        the box goes with the vehicle (open water). `circle`: a round tank's
+        glass, (x, y, radius), outside which is solid too."""
+        self.circle = None if circle is None else tuple(float(v) for v in circle)
         low, high = np.asarray(low, dtype=float), np.asarray(high, dtype=float)
         self.cell = float(cell)
         n = np.maximum(np.ceil((high - low) / self.cell).astype(int), 2)
@@ -82,6 +84,10 @@ class Flow:
         centres = self.centres()
         floor = self.bottoms(centres.reshape(-1, 3)).reshape(self.shape)
         self.solid = (centres[..., 2] < floor) | (centres[..., 2] > self.surface)
+        circle = getattr(self, "circle", None)
+        if circle is not None:
+            cx, cy, r = circle
+            self.solid |= np.hypot(centres[..., 0] - cx, centres[..., 1] - cy) > r
 
     def follow(self, at) -> None:
         """Keep the vehicle in the middle third of the box, shifting the water

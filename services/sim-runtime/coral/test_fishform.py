@@ -31,10 +31,14 @@ def test_the_plans_are_actually_different_shapes():
 
 
 def test_a_fish_is_taller_than_it_is_wide():
-    """Almost all of them are. A body of revolution reads as a sausage."""
+    """Almost all of them are. A body of revolution reads as a sausage. A ray
+    is the one that is not: it is flat, and wider than it is anything."""
     for plan in fishform.PLANS:
         points, _ = fishform.body(plan)
-        assert np.ptp(points[:, 2]) > np.ptp(points[:, 1])
+        if plan == "ray":
+            assert np.ptp(points[:, 1]) > 5 * np.ptp(points[:, 2])
+        else:
+            assert np.ptp(points[:, 2]) > np.ptp(points[:, 1])
 
 
 def test_every_group_has_a_plan_and_a_colour():
