@@ -71,6 +71,15 @@ class Waypoints(Task):
         right = (ahead[1], -ahead[0])
         self.points: list[np.ndarray] = []
         for point in objective.get("points", [{"dx": 8, "dy": 0}, {"dx": 8, "dy": 8}, {"dx": 0, "dy": 8}, {"dx": 0, "dy": 0}]):
+            # A point drawn on the chart — `x` and `y` in the place's frame, or
+            # `over` a thing in its arrangement — is that point, wherever the
+            # dive began; `dx` and `dy` are ahead of and to starboard of it.
+            if isinstance(point, dict) and (point.get("over") is not None
+                                            or (point.get("x") is not None and point.get("y") is not None)):
+                where = self.somewhere(point)
+                if where is not None:
+                    self.points.append(where)
+                    continue
             dx, dy = float(point.get("dx", 0.0)), float(point.get("dy", 0.0))
             depth = point.get("depthM")
             z = -float(depth) if depth is not None else float(self.began_at[2])
@@ -147,6 +156,20 @@ class Transect(Task):
         # begins, which is also what it was before for a dive of one stage.
         self.stated_heading = objective.get("headingDeg") is not None
         self.from_at: np.ndarray | None = None
+        # A line drawn on the chart: `from` and `to` in the place's frame. It
+        # is that line — its heading, its length, and its start — wherever the
+        # vehicle is when the leg begins; getting to its start is the route's
+        # business (the goal below begins there).
+        drawn = [self.somewhere(objective.get(end)) if isinstance(objective.get(end), dict) else None
+                 for end in ("from", "to")]
+        if drawn[0] is not None and drawn[1] is not None:
+            run = drawn[1][:2] - drawn[0][:2]
+            if float(np.hypot(*run)) > 1e-6:
+                self.length = float(np.hypot(*run))
+                self.ahead_xy = run / self.length
+                self.line_heading = math.atan2(self.ahead_xy[1], self.ahead_xy[0])
+                self.stated_heading = True
+                self.from_at = drawn[0][:2].copy()
         self.along = 0.0
         self.good = 0.0
         self.last_along: float | None = None

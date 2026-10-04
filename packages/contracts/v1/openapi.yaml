@@ -2199,6 +2199,28 @@ paths:
               schema: { $ref: '#/components/schemas/Layout' }
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v1/layouts/{layoutId}/archive:
+    post:
+      tags: [places]
+      summary: Archive this arrangement
+      description: >
+        Takes it out of the listings without erasing it: a run that pinned a
+        version of it goes on saying what it flew. Its author may archive it,
+        or a steward of the place. Archiving what is already archived is no
+        error.
+      parameters:
+        - name: layoutId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: It is archived; the record, with when.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/layouts/{layoutId}/versions:
     get:
       tags: [places]
@@ -2473,6 +2495,28 @@ paths:
               schema: { $ref: '#/components/schemas/Cost' }
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v1/missions/{missionId}/archive:
+    post:
+      tags: [places]
+      summary: Archive this plan of work
+      description: >
+        Takes it out of the listings without erasing it: a run that pinned a
+        version of it goes on saying what it flew. Its author may archive it,
+        or a steward of the place. Archiving what is already archived is no
+        error.
+      parameters:
+        - name: missionId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: It is archived; the record, with when.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/missions/{missionId}/versions:
     get:
       tags: [places]

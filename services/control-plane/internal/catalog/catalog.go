@@ -561,6 +561,27 @@ func (m madeOfAPlace) ofCity(ctx context.Context, pool *db.Pool, cityID string) 
 	return found, rows.Err()
 }
 
+// retire takes one out of the listings without erasing it: the runs that flew
+// it still say what they flew. Retiring what is already retired is no error.
+func (m madeOfAPlace) retire(ctx context.Context, conn db.Conn, id string) (MadeOfAPlace, error) {
+	if _, err := conn.Exec(ctx, `UPDATE `+m.table+` SET retired_at = now()
+		WHERE id = $1 AND retired_at IS NULL`, id); err != nil {
+		return MadeOfAPlace{}, fmt.Errorf("retiring a %s: %w", m.what, err)
+	}
+	found, err := m.scan(conn.QueryRow(ctx, m.selectFrom()+` WHERE id = $1`, id))
+	return found, db.Translate(err)
+}
+
+// RetireLayout archives an arrangement.
+func (s *Store) RetireLayout(ctx context.Context, conn db.Conn, id string) (Layout, error) {
+	return layouts.retire(ctx, conn, id)
+}
+
+// RetireMission archives a plan of work.
+func (s *Store) RetireMission(ctx context.Context, conn db.Conn, id string) (Mission, error) {
+	return missions.retire(ctx, conn, id)
+}
+
 // CreateLayout records an arrangement of a place.
 func (s *Store) CreateLayout(ctx context.Context, conn db.Conn, spec LayoutSpec) (Layout, error) {
 	return layouts.create(ctx, conn, spec)

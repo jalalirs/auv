@@ -49,6 +49,7 @@ type madeOfAPlace struct {
 	create func(context.Context, db.Conn, catalog.MadeOfAPlaceSpec) (catalog.MadeOfAPlace, error)
 	read   func(context.Context, string) (catalog.MadeOfAPlace, error)
 	ofCity func(context.Context, string) ([]catalog.MadeOfAPlace, error)
+	retire func(context.Context, db.Conn, string) (catalog.MadeOfAPlace, error)
 }
 
 func (d *Dependencies) layoutsAre() madeOfAPlace {
@@ -59,6 +60,7 @@ func (d *Dependencies) layoutsAre() madeOfAPlace {
 		},
 		read:   d.Catalog.Layout,
 		ofCity: d.Catalog.LayoutsOf,
+		retire: d.Catalog.RetireLayout,
 	}
 }
 
@@ -70,6 +72,7 @@ func (d *Dependencies) missionsAre() madeOfAPlace {
 		},
 		read:   d.Catalog.Mission,
 		ofCity: d.Catalog.MissionsOf,
+		retire: d.Catalog.RetireMission,
 	}
 }
 
@@ -229,6 +232,34 @@ func (d *Dependencies) save(what madeOfAPlace) http.HandlerFunc {
 	}
 }
 
+// archive takes one out of the listings, by its author or the place's
+// steward, as saving a version of it is. Archived rather than deleted: a run
+// that pinned a version of it must go on saying what it flew.
+func (d *Dependencies) archive(what madeOfAPlace) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		mine, err := d.itsOwn(r, what)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		if mine.Effect != policy.EffectAllow {
+			writeDenied(w, r, mine)
+			return
+		}
+		var retired catalog.MadeOfAPlace
+		err = d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+			var err error
+			retired, err = what.retire(r.Context(), conn, r.PathValue(what.id))
+			return err
+		})
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, retired)
+	}
+}
+
 // cost says what a plan of work takes, from the last time somebody flew it.
 //
 // From the record rather than from the arithmetic of its stages: a plan that
@@ -281,6 +312,9 @@ func (rt *Router) registerMadeOfAPlace() {
 		rt.register(Route{Method: "POST", Pattern: "/api/v1/" + what.path + "/{" + what.id + "}/versions",
 			Summary: "save this " + noun, Action: policy.CityArrange,
 			Resource: d.cityOf(what), Handle: d.save(what)})
+		rt.register(Route{Method: "POST", Pattern: "/api/v1/" + what.path + "/{" + what.id + "}/archive",
+			Summary: "archive this " + noun + ": out of the listings, kept in the record",
+			Action:  policy.CityArrange, Resource: d.cityOf(what), Handle: d.archive(what)})
 	}
 	// And one only a plan of work has: what it costs.
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/missions/{missionId}/cost",

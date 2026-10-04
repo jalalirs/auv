@@ -319,6 +319,15 @@ export class Platform {
       { label, document });
   }
 
+  /** Out of the listings, kept in the record: a run that flew it still says what it flew. */
+  async archiveMission(id: string): Promise<Mission> {
+    return this.#request<Mission>("POST", `/api/v1/missions/${id}/archive`);
+  }
+
+  async archiveLayout(id: string): Promise<Layout> {
+    return this.#request<Layout>("POST", `/api/v1/layouts/${id}/archive`);
+  }
+
   async versionsOfVehicle(vehicle: string): Promise<AssetVersion[]> {
     const { versions } = await this.#request<{ versions: AssetVersion[] }>(
       "GET", `/api/v1/vehicles/${vehicle}/versions`);

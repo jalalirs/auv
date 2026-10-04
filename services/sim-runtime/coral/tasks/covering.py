@@ -47,6 +47,12 @@ class Survey(Task):
         # of a rectangle laid out ahead of wherever the vehicle happened to
         # start and aimed by whatever heading it happened to have.
         box = None if self.over is None else self.box_of(self.over)
+        # Or a rectangle drawn on the chart for this survey alone: `area` as
+        # its corners in the place's frame. The same box, without having to
+        # lay a plot in the arrangement first.
+        area = objective.get("area")
+        if box is None and isinstance(area, list) and len(area) >= 2:
+            box = self.box_of(type("Area", (), {"corners": [(float(c["x"]), float(c["y"])) for c in area]})())
         if box is not None:
             middle, east, north = box
             self.width, self.height = east, north
