@@ -233,7 +233,7 @@
   "mostDeg": 13.6,
   "rateDegPerS": 30.0,
   "rateFrom": "assumed: Prestero gives the limit, not the rate",
-  "from": "Prestero (2001), as reproduced in Psarhadi's AUV_model.py: Y_uudr 9.64 kg/(m·rad), N_uudr -6.15 kg/rad, so the fins act 6.15/9.64 = 0.638 m behind the centre; the 13.6° limit is Prestero's, unverified here"
+  "from": "Prestero (2001), as the same three reproductions print it: Y_uudr 9.64 kg/(m·rad), N_uudr -6.15 kg/rad, so the fins act 0.638 m behind the centre, which is the thesis's own x_fin; the 13.6° limit is also the thesis's (read in a search excerpt)"
  },
  "bodyLift": {
   "note": "Body lift and Munk moment as the hull slips, and the added-mass cross terms as it turns, Prestero (2001). In his z-down frame; the same numbers hold in this z-up one.",
@@ -245,7 +245,7 @@
   "Muw": 24.0,
   "Zuq": -5.22,
   "Muq": -2.0,
-  "from": "Prestero (2001), as reproduced in Psarhadi's AUV_model.py (the thesis itself could not be read): body lift and Munk moment Y_uv, N_uv, Z_uw, M_uw; added-mass cross terms Y_ur, N_ur, Z_uq, M_uq"
+  "from": "Prestero (2001). The thesis could not be opened on any mirror (4 October 2026); these are as three independent reproductions of its tables print them, and agree: Psarhadi's AUV_model.py, Vandervaeren's Coef_Remus.h (moos-ivp-marineswarm) and Ariza's REMUS.m. Shi et al. (2019) differ in Y_ur, N_uv and N_ur, and look miscopied."
  },
  "envelope": {
   "maxDepthM": 100.0,

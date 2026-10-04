@@ -26,10 +26,17 @@ Sway, not fitted, is within 6 % of what was measured. Heave sits well under thei
 
 **The BlueROV2 Heavy only** (`catalog/vehicles/bluerov2-heavy/panels.json`). That is the open frame it was checked on.
 
-Mini-hoot and Boxfish Luna stay on their hull coefficients. With the one wake share fitted on an open frame, mini-hoot's closed moulded hull comes out at about twice its silhouette's drag (26 against 12 N in surge at 1 m/s). A closed body's wake is not an open frame's, and nothing measured decides between the two. A tow test or CFD of a closed hull would. The standard BlueROV2 has no mesh.
+Mini-hoot and Boxfish Luna stay on their hull coefficients. With the one wake share fitted on an open frame, mini-hoot's closed moulded hull comes out at about twice its silhouette's drag (26 against 12 N in surge at 1 m/s). A closed body's wake is not an open frame's. For a closed hull, though, the silhouette estimate is the measured one: its drag coefficients are Hoerner's tow-tank and wind-tunnel measurements of closed bluff bodies, by length over width. So each kind of hull is flown on the model checked against its own kind: open frames on panels (Li et al.), closed hulls on Hoerner's silhouettes. A tow test of mini-hoot itself would still beat both. The standard BlueROV2 has no mesh.
+
+## Tried and not taken: a wake from measured tandem bodies
+
+Fitting the wake share once was meant to be replaced by measurement. Tandem circular cylinders (Alam et al. 2003, Re 6.5×10⁴) keep no drag closer than about 3.5 diameters behind another, 0.23 at 4.5 and 0.30 at 9. Each shielded panel was given that, by how far it sits behind the part shielding it, over that part's width. Nothing was fitted.
+
+On the Heavy this gives 23.7 N of surge at 1 m/s and 17.2 N of sway at 0.6 m/s, against Li et al.'s measured 45 and 30: about half. A long two-dimensional cylinder's wake recovers far more slowly than the wake of a short member in an open frame, which water reaches from every side. So the cylinder data does not carry over, and the fitted share, which does reproduce the measurement, stays. No measured drag for a small closed-hull hovering vehicle could be found either (searched 4 October: SUR-II, WIEVLE and ODIN-III report only CFD), which leaves Hoerner's closed bodies as the reference for closed hulls.
 
 ## Sources
 
 - Li, Q., Cao, Y., Li, B., Ingram, D. M., Kiprakis, A. (2020). Numerical modelling and experimental testing of the hydrodynamic characteristics for an open-frame remotely operated vehicle. *J. Mar. Sci. Eng.* 8, 688.
 - Wu, C.-J. (2018). *6-DoF Modelling and Control of a Remotely Operated Vehicle*. Flinders University.
 - Hoerner, S. F. (1965). *Fluid-Dynamic Drag*.
+- Alam, M. M., Moriya, M., Takai, K., Sakamoto, H. (2003). Fluctuating fluid forces acting on two circular cylinders in a tandem arrangement at a subcritical Reynolds number. *J. Wind Eng. Ind. Aerodyn.* 91, 139–154.
