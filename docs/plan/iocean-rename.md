@@ -54,15 +54,23 @@ These are names only people see, and nothing depends on them:
 - **The switches.** The runtime, the Kit extension, the SDK, the MCP server, `tools/look`, `fly-over`, `count-bias`, `mcp-call`, `publish` and `e2e` read `IOCEAN_*`. Each entry point gives any `CORAL_CITY_*` it is handed to the `IOCEAN_*` name, unless that is set, so the new name wins and the old one works.
 - **The client.** Its dev settings read `VITE_IOCEAN_*` and `IOCEAN_UPSTREAM`, falling back to the old names.
 
-**Phase 3, still to do, with you at the keyboard:**
+**Phase 3 is done**, switched over on the box on 4 October with about a minute of downtime and no data moved:
 
-- **The MCP server's name.** `coral-city` becomes `iocean`, in your Claude configuration, and the MCP Python package `coral_city_mcp` with it.
-- **The box's deployment settings.** The `CORAL_CITY_*` names in `deployments/*/compose.yaml`, the box's `.env`, `tools/box`, `tools/uav`, `tools/matrix` and `tools/clear-check-data`, and the Go services' config readers. The worker still hands the runtime `CORAL_CITY_SEED`, `CORAL_CITY_BRIEF` and the model settings; the runtime carries them.
-- **The image.** The `CORAL_CITY_RUNTIME` build argument and the `org.coralcity.runtime` label.
-- **The Kit app and extension.** `coral_city.kit` and `coral.city.shell`.
-- **Container names.** `coral-sim-run_*` and `coral-look`.
-- **Data directories.** `~/coral-city/...` and `~/.config/coral-city`, with a symlink from each old path.
-- **The client's data folder.** The Electron `setName`, with its settings moved across.
-- **The pip distribution names.** `coral-city`, `coral-city-runtime` and `coral-city-mcp`.
-- **The public path.** `/coral` behind the Tailscale Funnel; the funnel's config is never replaced.
-- **File names.** `coral-city.svg` and `coral_city.png`.
+- **Settings.** The Go services carry `CORAL_CITY_*` to `IOCEAN_*` at startup. The compose files, the box's `.env` (backed up as `.env.before-iocean-2026-10-04`) and the box tools say `IOCEAN_*`.
+- **The platform.** It runs as the compose project `iocean` (containers `iocean-*`, images `iocean/*`), on the volumes it had (`coral-city_record`, `coral-city_registry`, `coral-city_credentials`), pinned by name.
+- **The runtime.** The image is labelled `org.iocean.runtime`; the Kit app is `iocean.kit` and the extension `iocean.shell`, with Python package `iocean_shell`. Worker containers and networks are `iocean-*`.
+- **Sign-in.** The session cookie is `iocean_session`, with `coral_session` still honoured; the auth realm is `iocean`.
+- **Data folders.** `~/iocean` and `~/.config/iocean` on the Mac and on the box, each with a symlink from the old path.
+- **The client.** It is named `iocean`, with appId `com.iocean.client`, and copies its settings across from the old "Coral City" folder once.
+- **pip distributions.** `iocean`, `iocean-runtime` and `iocean-mcp`. The `coral-city` command still works.
+- **The MCP server.** Its package is `iocean_mcp`, and it calls itself `iocean` at `https://jalalirs.tailedf721.ts.net/iocean/mcp`. `/coral` still answers beside it; nothing on the funnel was removed. `.mcp.json` names it `iocean`.
+- **Brand files.** `iocean.*`. The loading picture says iocean and OCEAN ROBOTICS DIGITAL TWIN.
+
+**Kept on purpose:**
+
+- **The npm workspace scope `@coral-city/*`.** Renaming it means regenerating the lockfile with pnpm.
+- **The client's saved-setting keys (`coral-city.place`, …).** Renaming them would forget your choices.
+- **The format ids `coral-city/layout/v1` and `coral-city/mission/v1`.** They are written into stored records.
+- **The Postgres role and database `coral`.**
+- **`/var/lib/coral-city` on the box.** It is root's and unused, since the work folder is set in `.env`.
+- **The `/coral` funnel path.** It stays so existing links keep working. It can go once nothing uses it, which needs `tailscale funnel --set-path /coral off` — your call, never `--https=443 off`.

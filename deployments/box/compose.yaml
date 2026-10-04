@@ -124,7 +124,7 @@ services:
     restart: "no"
 
   # The part that faces the internet: the API and the MCP server, behind
-  # Tailscale Funnel at https://jalalirs.tailedf721.ts.net/coral. Sign-in is
+  # Tailscale Funnel at https://jalalirs.tailedf721.ts.net/iocean. Sign-in is
   # throttled per address and nothing else — not the console — is reachable.
   edge:
     image: nginx:1.27-alpine

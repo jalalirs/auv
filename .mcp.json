@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "coral-city": {
+    "iocean": {
       "type": "http",
-      "url": "https://jalalirs.tailedf721.ts.net/coral/mcp",
+      "url": "https://jalalirs.tailedf721.ts.net/iocean/mcp",
       "headers": {
         "Authorization": "Bearer ${MCP_TOKEN}"
       }

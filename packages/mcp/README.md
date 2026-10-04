@@ -10,14 +10,14 @@ IOCEAN_SERVICE_FILE=/run/secrets/mcp \
 
 ## The public link
 
-**https://jalalirs.tailedf721.ts.net/coral/mcp**, through Tailscale Funnel beside
+**https://jalalirs.tailedf721.ts.net/iocean/mcp**, through Tailscale Funnel beside
 the other projects served from that name. Make a token in the application —
 Profile → Tokens for your assistant — and it gives you the block to paste:
 
 ```json
 { "mcpServers": { "iocean": {
     "type": "http",
-    "url": "https://jalalirs.tailedf721.ts.net/coral/mcp",
+    "url": "https://jalalirs.tailedf721.ts.net/iocean/mcp",
     "headers": { "Authorization": "Bearer cc_…" } } } }
 ```
 
