@@ -11,8 +11,8 @@ was built around was closed to exactly the people whose controllers are
 supposed to be the point — somebody outside this repository could fly a
 BlueROV2 and could not fly a Seaglider at all.
 
-    coral-city check examples/sawtooth.py
-    coral-city tank examples/sawtooth.py --task profile --trace
+    iocean check examples/sawtooth.py
+    iocean tank examples/sawtooth.py --task profile --trace
 
 What to expect: a dive cycle measured in tens of minutes rather than seconds.
 The pump moves a few cubic centimetres a second and the vehicle takes as long
@@ -31,7 +31,7 @@ class Sawtooth(Controller):
     vehicle = "seaglider"
     # The third form. A hull with no propeller takes neither a wrench nor
     # thruster commands; it takes its own actuators, by the names its package
-    # declares — `coral-city vehicles` says which, and what their limits are.
+    # declares — `iocean vehicles` says which, and what their limits are.
     commands = "actuators"
     needs = ("ctd",)
 

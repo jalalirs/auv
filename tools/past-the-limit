@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Give a seabed shape where the sensor that measured it went blind.
 
-    tools/past-the-limit ~/coral-city/reference/al-fahal/seabed_fitted.json
+    tools/past-the-limit ~/iocean/reference/al-fahal/seabed_fitted.json
 
 Satellite-derived bathymetry works by how much light comes back off the
 bottom, so it stops working at a depth that depends on the water. Past that

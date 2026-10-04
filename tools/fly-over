@@ -23,7 +23,7 @@ how="${2:-1}"
 # a bad trade.
 collect_only=""
 [ "${place}" = "--collect" ] && { collect_only=1; place=""; }
-CITY="${HOME}/coral-city"
+CITY="${HOME}/iocean"
 work="${CITY}/work"
 
 # How many frames have been written. Its own function because `ls` of an empty
@@ -85,7 +85,7 @@ docker run -d --name coral-tour --gpus '"device=0"' \
     -v "${city}:/dive/city:ro" \
     -v "${vehicle}:/dive/vehicle:ro" \
     --entrypoint /isaac-sim/kit/kit \
-    "${image}" /isaac-sim/apps/coral_city.kit --no-window >/dev/null
+    "${image}" /isaac-sim/apps/iocean.kit --no-window >/dev/null
 fi
 
 # Opening a hundred million triangles takes minutes, and the flight itself is

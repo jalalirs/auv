@@ -119,8 +119,8 @@ var requirement = map[Action]struct {
 	OrgRead:       {RoleViewer, []ResourceKind{ResourceOrg}},
 	OrgAdminister: {RoleAdmin, []ResourceKind{ResourceOrg}},
 
-	CityCreate: {RoleAdmin, []ResourceKind{ResourcePlatform}},
-	CityRead:   {RoleViewer, []ResourceKind{ResourceCity}},
+	CityCreate:  {RoleAdmin, []ResourceKind{ResourcePlatform}},
+	CityRead:    {RoleViewer, []ResourceKind{ResourceCity}},
 	CityGrant:   {RoleSteward, []ResourceKind{ResourceCity}},
 	CityArrange: {RoleViewer, []ResourceKind{ResourceCity}},
 

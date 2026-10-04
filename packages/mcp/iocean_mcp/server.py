@@ -6,7 +6,7 @@ installed before a customer's assistant can reach the platform is a dependency
 between us and the sale.
 
     IOCEAN_PLATFORM=http://... IOCEAN_EMAIL=... IOCEAN_SECRET=... \
-        python -m coral_city_mcp
+        python -m iocean_mcp
 
 Credentials come from the environment and never from a tool argument: an agent
 that can be told a password in a prompt is an agent that can be told somebody
@@ -243,7 +243,7 @@ def handle(said: dict, platform: Platform | None,
         return answer(said, {
             "protocolVersion": VERSION,
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "coral-city", "version": "0.1.0"},
+            "serverInfo": {"name": "iocean", "version": "0.1.0"},
             "instructions": (
                 "iocean: underwater vehicles, real reefs, and dives whose "
                 "every number says who measured it. Values arrive as "
@@ -420,6 +420,6 @@ def serve_http(host: str, port: int) -> None:
         def log_message(self, *_):        # one line per call, not per header
             pass
 
-    print(f"coral-city MCP on http://{host}:{port}/mcp, {len(TOOLS)} tools",
+    print(f"iocean MCP on http://{host}:{port}/mcp, {len(TOOLS)} tools",
           flush=True)
     ThreadingHTTPServer((host, port), One).serve_forever()

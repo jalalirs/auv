@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Put the camera's white balance on a finished sheet.
 
-    tools/balance-sheet ~/coral-city/work/looks/looe-key-1C
+    tools/balance-sheet ~/iocean/work/looks/looe-key-1C
 
 The runtime measures the cast off its own settled frame and writes the gains
 into the log as `camera_balances`. This reads them back and applies them to

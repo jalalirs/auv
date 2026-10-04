@@ -5,8 +5,8 @@ The Smithsonian has photogrammetry of its coral type specimens, published CC0,
 scale in metres, no account needed to download. This finds them and puts them
 where a place's reference can see them.
 
-    tools/scans ~/coral-city/reference/looe-key
-    tools/scans ~/coral-city/reference/looe-key --only branching --dry-run
+    tools/scans ~/iocean/reference/looe-key
+    tools/scans ~/iocean/reference/looe-key --only branching --dry-run
 
 Searching needs a key for api.data.gov. DEMO_KEY works and is rate limited to
 about thirty requests an hour, which is enough because each growth form is one

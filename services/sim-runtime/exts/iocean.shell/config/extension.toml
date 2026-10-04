@@ -12,4 +12,4 @@ authors = ["iocean"]
 "omni.kit.uiapp" = {}
 
 [[python.module]]
-name = "coral.city.shell"
+name = "iocean_shell"

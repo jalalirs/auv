@@ -3,7 +3,7 @@
 Named `provenance` rather than `said` because the package exports the
 function `said` from it, and a module and a function of one name means the
 package's own __init__ shadows one with the other — which it did, and the
-first thing that noticed was `from coral_city_mcp import said` returning a
+first thing that noticed was `from iocean_mcp import said` returning a
 function where a module was wanted. The platform already calls this
 provenance everywhere else; so does this.
 

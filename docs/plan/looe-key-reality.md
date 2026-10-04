@@ -112,7 +112,7 @@ From the photographs and the orthomosaic, not from a general idea of a reef:
 
 | tool | what it does |
 | --- | --- |
-| `tools/reference` | fetches the record above into `~/coral-city/reference/<place>/`, licences beside it |
+| `tools/reference` | fetches the record above into `~/iocean/reference/<place>/`, licences beside it |
 | `tools/ground` | the 1 m heightfield with the survey merged in, habitat classes, colour and chart maps |
 | `tools/terrain-flyover` | Blender on the box flies that ground dry; `uav terrain <place>` |
 | `tools/benthos` | every colony standing on the surveyed seabed, from the 1 cm DEM and the 5 mm orthomosaic |

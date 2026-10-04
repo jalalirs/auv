@@ -22,8 +22,8 @@ thing while chattering.
 **And it commits.** Once it has picked a side it keeps it until the way is clear,
 because a vehicle that reconsiders every fifth of a second never finishes a turn.
 
-    coral-city tank examples/avoid.py --task transect --trace
-    coral-city deploy examples/avoid.py --slug avoid --name "Go around things"
+    iocean tank examples/avoid.py --task transect --trace
+    iocean deploy examples/avoid.py --slug avoid --name "Go around things"
 
 Flown against the baselines with frames actually in the way:
 

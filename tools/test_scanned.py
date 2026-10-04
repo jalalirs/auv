@@ -16,7 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import scanned
 
-REFERENCE = pathlib.Path.home() / "coral-city" / "reference" / "looe-key"
+REFERENCE = pathlib.Path.home() / "iocean" / "reference" / "looe-key"
 
 # Found the way the code finds it, not by a filename spelled out here. The
 # specimen was called `usnm_58_orbicella_coronata.glb` until tools/scans

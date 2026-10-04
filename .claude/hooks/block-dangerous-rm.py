@@ -37,7 +37,7 @@ IS_RECURSIVE = re.compile(r"(?:^|\s)-[a-zA-Z]*[rR]|--recursive")
 
 # Paths that must never be the target of one.
 # A home directory, a filesystem root, or one whole tree directly inside a
-# home — ~/code and ~/coral-city are entire bodies of work, and nothing
+# home — ~/code and ~/iocean are entire bodies of work, and nothing
 # routine deletes one. Anything deeper is ordinary housekeeping and allowed.
 HOME = r"(?:~|\$HOME|\$\{HOME\}|/home/[^/\s]+|/Users/[^/\s]+)"
 FORBIDDEN = re.compile(r"^(?:%s/?|/|/home/?|/Users/?|%s/[^/\s]+/?)$"

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 
-from coral_city_mcp import provenance as s
+from iocean_mcp import provenance as s
 
 
 def test_a_value_needs_a_kind_we_recognise():
@@ -74,7 +74,7 @@ def test_a_service_credential_uses_its_own_scheme(monkeypatch):
     person's session and expires, Service is a program's own principal and does
     not. An agent on a Bearer token would be signing in as a person to renew it.
     """
-    from coral_city_mcp.platform import Platform
+    from iocean_mcp.platform import Platform
 
     seen = {}
 
@@ -96,7 +96,7 @@ def test_a_credential_can_come_from_a_file(monkeypatch, tmp_path):
     """An environment is inherited by every child process and readable by
     anything that can see /proc. The platform writes the worker's credential to
     a file for the same reason."""
-    from coral_city_mcp.platform import Platform
+    from iocean_mcp.platform import Platform
 
     where = tmp_path / "mcp"
     where.write_text("prin_2:from-a-file\n")
@@ -109,7 +109,7 @@ def test_a_credential_can_come_from_a_file(monkeypatch, tmp_path):
 
 
 def test_a_missing_credential_file_says_which_one(monkeypatch, tmp_path):
-    from coral_city_mcp.platform import Platform, Refused
+    from iocean_mcp.platform import Platform, Refused
 
     monkeypatch.setenv("IOCEAN_PLATFORM", "http://x")
     monkeypatch.setenv("IOCEAN_SERVICE_FILE", str(tmp_path / "nope"))

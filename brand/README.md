@@ -1,6 +1,6 @@
 # The iocean mark
 
-`coral-city.svg` is the source. Everything else is rendered from it, so there is
+`iocean.svg` is the source. Everything else is rendered from it, so there is
 one drawing and not several that drift apart.
 
 A coral, growing from the floor, and one warm mark above it in the water. The
@@ -14,7 +14,7 @@ it stops being legible somewhere around thirty-two.
 
 ## Rendering it
 
-    rsvg-convert -w 256 -h 256 brand/coral-city.svg -o brand/coral-city-256.png
+    rsvg-convert -w 256 -h 256 brand/iocean.svg -o brand/iocean-256.png
 
 The rendered files are committed rather than generated during a build, so that
 building the runtime image does not need a drawing toolchain in it.
@@ -22,7 +22,7 @@ building the runtime image does not need a drawing toolchain in it.
 | where | what it is |
 | --- | --- |
 | `services/sim-runtime/apps/coral_city.png` | the application's window icon |
-| `apps/console/public/coral-city.svg` | the console's tab icon |
+| `apps/console/public/iocean.svg` | the console's tab icon |
 
 ## One thing to know before editing it
 

@@ -41,7 +41,7 @@ def a_dive(place: str, vehicle: str, seed: int, objective: dict):
              # length of its cable.
              "initialState": {"tetherOutM": 0.0},
              "objective": objective,
-             "cityPath": str(pathlib.Path.home() / "coral-city/places" / place),
+             "cityPath": str(pathlib.Path.home() / "iocean/places" / place),
              "conditions": {"kind": "constructed", "name": "count-bias", "parameters": {}}}
     dive = Dive(brief, Body(model), Allocator(model), pathlib.Path("nowhere.usda"), lambda k, **d: None)
     if not dive.open_dry():

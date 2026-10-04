@@ -16,8 +16,8 @@ import math
 
 import pytest
 
-from coral_city_mcp import chart, tools
-from coral_city_mcp.platform import Refused
+from iocean_mcp import chart, tools
+from iocean_mcp.platform import Refused
 
 
 class Arranged:

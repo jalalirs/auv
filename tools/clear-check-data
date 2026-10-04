@@ -120,7 +120,7 @@ EOSQL
 
 count() {
     LC_ALL=C ssh "$GPU_HOST" "cd ~/${REMOTE_DIR}/deployments/box && \
-        pw=\$(sed -n 's/^CORAL_CITY_DATABASE_PASSWORD=//p' .env) && \
+        pw=\$(sed -n 's/^IOCEAN_DATABASE_PASSWORD=//p' .env) && \
         docker compose --env-file .env exec -T -e PGPASSWORD=\"\$pw\" record \
             psql -U coral -d coral -tAc \"$1\"" 2>/dev/null | tr -d '[:space:]'
 }
@@ -139,7 +139,7 @@ fi
 
 printf '\n\033[1mRemoving\033[0m\n'
 printf '%s' "$SQL" | LC_ALL=C ssh "$GPU_HOST" "cd ~/${REMOTE_DIR}/deployments/box && \
-    pw=\$(sed -n 's/^CORAL_CITY_DATABASE_PASSWORD=//p' .env) && \
+    pw=\$(sed -n 's/^IOCEAN_DATABASE_PASSWORD=//p' .env) && \
     docker compose --env-file .env exec -T -e PGPASSWORD=\"\$pw\" record \
         psql -U coral -d coral -v ON_ERROR_STOP=1 -q" \
     && printf '  done\n' || { printf '  refused; nothing was removed\n' >&2; exit 1; }

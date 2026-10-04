@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The Jeddah airport tank, as a place: a ten-metre cylinder of Red Sea water.
 
-    tools/make-jeddah-tank jeddah-airport-tank --into ~/coral-city/places/jeddah-airport-tank
+    tools/make-jeddah-tank jeddah-airport-tank --into ~/iocean/places/jeddah-airport-tank
 
 King Abdulaziz International Airport, Terminal 1: a cylindrical aquarium
 fourteen metres tall and ten across, its glass thirty centimetres thick, a
@@ -427,7 +427,7 @@ def main() -> int:
     ap.add_argument("--into", type=pathlib.Path)
     ap.add_argument("--seed", type=int, default=11)
     args = ap.parse_args()
-    into = args.into or pathlib.Path.home() / "coral-city" / "places" / args.name
+    into = args.into or pathlib.Path.home() / "iocean" / "places" / args.name
     t0 = time.time()
     made = build(args.name, into, args.seed)
     place = a_place(args.name, made)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """What lives at a place, from what somebody recorded there.
 
-    tools/fauna ~/coral-city/places/al-fahal ~/coral-city/reference/al-fahal
+    tools/fauna ~/iocean/places/al-fahal ~/iocean/reference/al-fahal
 
 Separate from tools/reef-survey on purpose. What is on the seabed and what
 swims over it are two different questions with two different sources: a

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build a place again exactly the way it was built the first time.
 
-    tools/rebuild ~/coral-city/places/looe-key
-    tools/rebuild ~/coral-city/places/*            # all of them
+    tools/rebuild ~/iocean/places/looe-key
+    tools/rebuild ~/iocean/places/*            # all of them
 
 Every place is made by a chain of hand-typed commands — `make-site` with a
 dozen arguments, then `reef-survey`, then `fauna`, then `aim-water` — and

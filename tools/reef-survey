@@ -7,7 +7,7 @@ says in site.json where a dive on this reef should begin. The grown reef the
 place used to carry is replaced, not merged: a colony is either where the survey
 saw one or it is not there.
 
-    tools/reef-survey ~/coral-city/places/looe-key ~/coral-city/reference/looe-key
+    tools/reef-survey ~/iocean/places/looe-key ~/iocean/reference/looe-key
 
 The layer is a point instancer over a few dozen prototypes, the same shape the
 grown reef used, so the runtime that draws it does not change. Prototypes are

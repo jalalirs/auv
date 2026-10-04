@@ -42,7 +42,7 @@ import urllib.request
 import numpy as np
 
 WFS = "https://allencoralatlas.org/geoserver/ows"
-AGENT = "coral-city reference corpus (https://github.com/jalalirs/auv)"
+AGENT = "iocean reference corpus (https://github.com/jalalirs/auv)"
 
 # The Atlas's benthic classes, onto the habitat codes this platform already
 # uses for a survey's polygons — so a place mapped by the Atlas and a place
@@ -165,7 +165,7 @@ def main() -> int:
     parse.add_argument("--across", type=float, default=1000.0, help="metres")
     parse.add_argument("--texels", type=int, default=4096)
     parse.add_argument("--into",
-                       default=str(pathlib.Path.home() / "coral-city" / "reference"))
+                       default=str(pathlib.Path.home() / "iocean" / "reference"))
     asked = parse.parse_args()
 
     into = pathlib.Path(asked.into).expanduser() / asked.name

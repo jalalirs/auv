@@ -174,12 +174,12 @@ def not_on_the_box_itself() -> None:
 class Platform:
     def __init__(self) -> None:
         not_on_the_box_itself()
-        env = on_box(f"grep -E '^CORAL_CITY_(ADMIN_EMAIL|ADMIN_SECRET|BIND_ADDRESS)=' "
+        env = on_box(f"grep -E '^IOCEAN_(ADMIN_EMAIL|ADMIN_SECRET|BIND_ADDRESS)=' "
                      f"~/{REMOTE}/deployments/box/.env")
         said = dict(line.split("=", 1) for line in env.splitlines() if "=" in line)
-        self.where = f"http://{said.get('CORAL_CITY_BIND_ADDRESS', '127.0.0.1')}:18080"
+        self.where = f"http://{said.get('IOCEAN_BIND_ADDRESS', '127.0.0.1')}:18080"
         # Kept, because a session does not last as long as a matrix does.
-        self.who = (said["CORAL_CITY_ADMIN_EMAIL"], said["CORAL_CITY_ADMIN_SECRET"])
+        self.who = (said["IOCEAN_ADMIN_EMAIL"], said["IOCEAN_ADMIN_SECRET"])
         self.token = ""
         self.sign_in()
         me = self.call("GET", "/api/v1/me")

@@ -146,11 +146,11 @@ def main() -> int:
     parse.add_argument("--most", type=int, default=60,
                        help="granules to try, smallest first")
     parse.add_argument("--places",
-                       default=str(pathlib.Path.home() / "coral-city" / "places"))
+                       default=str(pathlib.Path.home() / "iocean" / "places"))
     parse.add_argument("--into",
-                       default=str(pathlib.Path.home() / "coral-city" / "reference"))
+                       default=str(pathlib.Path.home() / "iocean" / "reference"))
     parse.add_argument("--cache",
-                       default=str(pathlib.Path.home() / "coral-city" / "source" / "icesat"))
+                       default=str(pathlib.Path.home() / "iocean" / "source" / "icesat"))
     asked = parse.parse_args()
 
     import numpy as np

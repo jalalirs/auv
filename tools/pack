@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Everything a place has produced, as one page with links.
 
-    tools/pack ~/coral-city/deliverables/looe-key
+    tools/pack ~/iocean/deliverables/looe-key
 
 By the end of a programme there are a lot of pages: what anybody measured
 about the reef, what each dive produced, what the day turns on, what the

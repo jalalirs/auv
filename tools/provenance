@@ -584,7 +584,7 @@ def main() -> int:
     parse.add_argument("--dive", metavar="PATH",
                        help="a dive's log or record, for the water it was flown in")
     parse.add_argument("--from", dest="root",
-                       default=str(pathlib.Path.home() / "coral-city"))
+                       default=str(pathlib.Path.home() / "iocean"))
     parse.add_argument("--into", default=None,
                        help="where to write the pages (default: <root>/provenance)")
     asked = parse.parse_args()

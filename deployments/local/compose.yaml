@@ -1,4 +1,4 @@
-name: coral-city-local
+name: iocean-local
 
 # The development stack is the production shape at development size: the same
 # control plane, the same worker, the same record, and the same object store.
@@ -6,15 +6,15 @@ name: coral-city-local
 # production, because a stand-in would hide exactly the problems worth finding.
 
 x-platform-env: &platform-env
-  CORAL_CITY_DATABASE_URL: postgres://coral:coral@record:5432/coral?sslmode=disable
-  CORAL_CITY_STORAGE_ENDPOINT: storage:9000
+  IOCEAN_DATABASE_URL: postgres://coral:coral@record:5432/coral?sslmode=disable
+  IOCEAN_STORAGE_ENDPOINT: storage:9000
   # A presigned URL is signed over its host, so it must name the address the
   # client will actually use — which for a browser or a developer's machine is
   # not the address inside the container network.
-  CORAL_CITY_STORAGE_PUBLIC_ENDPOINT: ${CORAL_CITY_STORAGE_PUBLIC_ENDPOINT:-localhost:19000}
-  CORAL_CITY_STORAGE_ACCESS_KEY: ${CORAL_CITY_STORAGE_ACCESS_KEY:-coral-development}
-  CORAL_CITY_STORAGE_SECRET_KEY: ${CORAL_CITY_STORAGE_SECRET_KEY:-coral-development-secret}
-  CORAL_CITY_STORAGE_BUCKET_PREFIX: coral
+  IOCEAN_STORAGE_PUBLIC_ENDPOINT: ${IOCEAN_STORAGE_PUBLIC_ENDPOINT:-localhost:19000}
+  IOCEAN_STORAGE_ACCESS_KEY: ${IOCEAN_STORAGE_ACCESS_KEY:-coral-development}
+  IOCEAN_STORAGE_SECRET_KEY: ${IOCEAN_STORAGE_SECRET_KEY:-coral-development-secret}
+  IOCEAN_STORAGE_BUCKET_PREFIX: coral
 
 services:
   record:
@@ -38,12 +38,12 @@ services:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
-      MINIO_ROOT_USER: ${CORAL_CITY_STORAGE_ACCESS_KEY:-coral-development}
-      MINIO_ROOT_PASSWORD: ${CORAL_CITY_STORAGE_SECRET_KEY:-coral-development-secret}
+      MINIO_ROOT_USER: ${IOCEAN_STORAGE_ACCESS_KEY:-coral-development}
+      MINIO_ROOT_PASSWORD: ${IOCEAN_STORAGE_SECRET_KEY:-coral-development-secret}
     volumes:
       - storage:/data
     ports:
-      - "127.0.0.1:${CORAL_CITY_STORAGE_PORT:-19000}:9000"
+      - "127.0.0.1:${IOCEAN_STORAGE_PORT:-19000}:9000"
     healthcheck:
       test: ["CMD-SHELL", "mc ready local || exit 1"]
       interval: 3s
@@ -54,7 +54,7 @@ services:
   # Applying the schema is a deliberate act, never something a serving process
   # does on startup. The control plane waits for this to finish.
   migrate:
-    image: coral-city/control-plane:r1
+    image: iocean/control-plane:r1
     pull_policy: never
     entrypoint: ["/usr/local/bin/migrate"]
     command: ["up"]
@@ -75,16 +75,16 @@ services:
   # The credentials below are development defaults. The GPU and production
   # deployments require them to be supplied.
   bootstrap:
-    image: coral-city/control-plane:r1
+    image: iocean/control-plane:r1
     pull_policy: never
     entrypoint: ["/usr/local/bin/migrate"]
     command:
       - bootstrap
-      - -email=${CORAL_CITY_ADMIN_EMAIL:-admin@coral.local}
-      - -secret=${CORAL_CITY_ADMIN_SECRET:-development-secret}
-      - -name=${CORAL_CITY_ADMIN_NAME:-Development Administrator}
-      - -organisation=${CORAL_CITY_ADMIN_ORG:-coral}
-      - -organisation-name=${CORAL_CITY_ADMIN_ORG_NAME:-iocean}
+      - -email=${IOCEAN_ADMIN_EMAIL:-admin@coral.local}
+      - -secret=${IOCEAN_ADMIN_SECRET:-development-secret}
+      - -name=${IOCEAN_ADMIN_NAME:-Development Administrator}
+      - -organisation=${IOCEAN_ADMIN_ORG:-coral}
+      - -organisation-name=${IOCEAN_ADMIN_ORG_NAME:-iocean}
       - -target=local-docker
       - -worker-credential-file=/credentials/worker
     environment: *platform-env
@@ -96,43 +96,43 @@ services:
     restart: "no"
 
   control-plane:
-    image: coral-city/control-plane:r1
+    image: iocean/control-plane:r1
     build:
       context: ../..
       dockerfile: services/control-plane/Dockerfile
       args:
-        VERSION: ${CORAL_CITY_VERSION:-development}
-        COMMIT: ${CORAL_CITY_COMMIT:-unknown}
-        BUILT_AT: ${CORAL_CITY_BUILT_AT:-unknown}
+        VERSION: ${IOCEAN_VERSION:-development}
+        COMMIT: ${IOCEAN_COMMIT:-unknown}
+        BUILT_AT: ${IOCEAN_BUILT_AT:-unknown}
     environment:
       <<: *platform-env
-      CORAL_CITY_HTTP_ADDRESS: :8080
+      IOCEAN_HTTP_ADDRESS: :8080
     # Published on loopback so that development tooling and the end-to-end
     # check can reach the API directly. The web container reaches it over the
     # compose network and does not need this.
     ports:
-      - "127.0.0.1:${CORAL_CITY_API_PORT:-18089}:8080"
+      - "127.0.0.1:${IOCEAN_API_PORT:-18089}:8080"
     depends_on:
       bootstrap:
         condition: service_completed_successfully
     restart: unless-stopped
 
   worker:
-    image: coral-city/worker:r1
+    image: iocean/worker:r1
     build:
       context: ../..
       dockerfile: services/worker/Dockerfile
     environment:
-      CORAL_CITY_CONTROL_PLANE_URL: http://control-plane:8080
-      CORAL_CITY_WORKER_CREDENTIAL_FILE: /credentials/worker
-      CORAL_CITY_WORKER_TARGET: ${CORAL_CITY_WORKER_TARGET:-local-docker}
-      CORAL_CITY_WORKER_WORKDIR: /work
+      IOCEAN_CONTROL_PLANE_URL: http://control-plane:8080
+      IOCEAN_WORKER_CREDENTIAL_FILE: /credentials/worker
+      IOCEAN_WORKER_TARGET: ${IOCEAN_WORKER_TARGET:-local-docker}
+      IOCEAN_WORKER_WORKDIR: /work
       # A bind mount is resolved by the container runtime on the host, so the
       # worker must know the host path of the directory it stages into.
-      CORAL_CITY_WORKER_HOST_WORKDIR: ${CORAL_CITY_WORKER_HOST_WORKDIR:-/tmp/coral-city-work}
+      IOCEAN_WORKER_HOST_WORKDIR: ${IOCEAN_WORKER_HOST_WORKDIR:-/tmp/iocean-work}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${CORAL_CITY_WORKER_HOST_WORKDIR:-/tmp/coral-city-work}:/work
+      - ${IOCEAN_WORKER_HOST_WORKDIR:-/tmp/iocean-work}:/work
       - credentials:/credentials:ro
     # The worker drives the host's container runtime, so it runs as the user
     # that may use that socket.
@@ -144,5 +144,11 @@ services:
 
 volumes:
   record:
+    # Named as it was before the rename, so the data in it is kept.
+    name: coral-city-local_record
   storage:
+    # Named as it was before the rename, so the data in it is kept.
+    name: coral-city-local_storage
   credentials:
+    # Named as it was before the rename, so the data in it is kept.
+    name: coral-city-local_credentials

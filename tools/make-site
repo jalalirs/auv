@@ -801,7 +801,7 @@ def main() -> int:
     parse.add_argument("--tile", type=float, default=10.0,
                        help="metres the seabed texture repeats over")
     parse.add_argument("--into",
-                       default=str(pathlib.Path.home() / "coral-city" / "places"))
+                       default=str(pathlib.Path.home() / "iocean" / "places"))
     asked = parse.parse_args()
     if asked.assemblage and not asked.assemblage_from:
         parse.error("--assemblage needs --assemblage-from: say which survey "
@@ -1183,7 +1183,7 @@ def main() -> int:
                 Image.open(asked.photograph).convert("RGB"), dtype="float64")
         # A place's own corpus, if it has one. Where it holds a scan of a
         # colony, the reef stands scans rather than grown shapes.
-        corpus = pathlib.Path.home() / "coral-city" / "reference" / asked.name
+        corpus = pathlib.Path.home() / "iocean" / "reference" / asked.name
         reef = grow_reef.plant(where, height, asked.across, asked.seed, asked.coral,
                                cover_from=asked.cover_from,
                                assemblage=asked.assemblage,

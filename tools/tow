@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tow a hull down the tank and put a number on its drag.
 
-    tools/tow catalog/vehicles/bluerov2 --in ~/coral-city/places/mhl-tank
+    tools/tow catalog/vehicles/bluerov2 --in ~/iocean/places/mhl-tank
 
 Fossen's six degrees of freedom are implemented in this platform and not one
 coefficient has ever been checked against anything. They came in as a table —

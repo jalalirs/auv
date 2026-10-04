@@ -20,7 +20,7 @@ import { Empty } from "./parts.js";
  * Where the MCP server is, from where the platform is.
  *
  * Two ways in, and the address follows whichever the app was signed into. The
- * public link — https://<name>.ts.net/coral — serves the platform's API and the
+ * public link — https://<name>.ts.net/iocean — serves the platform's API and the
  * MCP server side by side under one path, so the MCP server is that address with
  * /mcp on the end. The raw ports on the tailnet put each on its own port, so
  * there it is the platform's host on 18083.
@@ -39,7 +39,7 @@ export function mcpAddressFor(platformAddress: string | null): string {
 export function mcpConfig(address: string, token: string): string {
   return JSON.stringify({
     mcpServers: {
-      "coral-city": {
+      "iocean": {
         type: "http",
         url: address,
         headers: { Authorization: `Bearer ${token}` },

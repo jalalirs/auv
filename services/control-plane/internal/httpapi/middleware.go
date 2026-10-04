@@ -16,7 +16,19 @@ import (
 // SessionCookie is where a browser keeps its session token. It is read by the
 // server and never by script, so a cross-site scripting flaw cannot exfiltrate
 // a session.
-const SessionCookie = "coral_session"
+const SessionCookie = "iocean_session"
+
+// OldSessionCookie is the name the session was kept under before the rename;
+// a browser signed in then is still signed in (docs/plan/iocean-rename.md).
+const OldSessionCookie = "coral_session"
+
+// sessionCookie is the caller's session cookie under either name, the new first.
+func sessionCookie(r *http.Request) (*http.Cookie, error) {
+	if cookie, err := r.Cookie(SessionCookie); err == nil && cookie.Value != "" {
+		return cookie, nil
+	}
+	return r.Cookie(OldSessionCookie)
+}
 
 // withRequestID gives every request an identifier that ties together every
 // record written while serving it: audit events, denials, admissions, and
@@ -173,7 +185,7 @@ func (d *Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, bo
 		}
 	}
 
-	cookie, err := r.Cookie(SessionCookie)
+	cookie, err := sessionCookie(r)
 	if err != nil || cookie.Value == "" {
 		return identity.Principal{}, false, false, nil
 	}

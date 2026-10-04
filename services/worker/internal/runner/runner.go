@@ -100,12 +100,12 @@ func (r *Runner) Run(ctx context.Context, lease *controlplane.Lease) error {
 		Image:       lease.Job.ImageDigest,
 		Command:     lease.Job.Command,
 		Args:        lease.Job.Args,
-		Env:         []string{"CORAL_CITY_JOB_ID=" + lease.Job.ID},
+		Env:         []string{"IOCEAN_JOB_ID=" + lease.Job.ID},
 		InputsHost:  r.hostPath(inputs),
 		OutputsHost: r.hostPath(outputs),
 		MemoryBytes: lease.Job.RequestMemoryBytes,
 		CPUs:        lease.Job.RequestCPU,
-		Name:        "coral-" + lease.AttemptID,
+		Name:        "iocean-" + lease.AttemptID,
 		Network:     lease.Job.Egress == "internet",
 	})
 	if err != nil {

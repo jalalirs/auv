@@ -168,7 +168,7 @@ def main() -> int:
     # eleven megabyte .f32 into the source tree, which is both a second origin
     # for the same bytes and enough to stop a deploy.
     parse.add_argument("--into",
-                       default=str(pathlib.Path.home() / "coral-city"
+                       default=str(pathlib.Path.home() / "iocean"
                                    / "source" / "bathymetry"))
     parse.add_argument("--from", dest="source", default="auto",
                        choices=("auto", "noaa", "gmrt"),

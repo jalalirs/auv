@@ -382,7 +382,7 @@ def test_a_real_record_is_mostly_placed(place, most):
     import json
     import pathlib as _pathlib
 
-    counted = _pathlib.Path.home() / "coral-city" / "reference" / place / "species_counts.json"
+    counted = _pathlib.Path.home() / "iocean" / "reference" / place / "species_counts.json"
     if not counted.is_file():
         pytest.skip(f"no species record fetched for {place}")
     got = life.how_much_was_placed(json.loads(counted.read_text()))

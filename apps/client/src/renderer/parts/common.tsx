@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import mark from "../../../assets/coral-city.svg";
+import mark from "../../../assets/iocean.svg";
 
 /**
  * A picture's address, once the picture behind it has actually loaded.

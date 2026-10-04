@@ -6,6 +6,7 @@
 // the platform has stopped being a platform.
 
 import { app, BrowserWindow, nativeImage, shell } from "electron";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -52,10 +53,13 @@ function open(): void {
   void window.loadFile(path.join(here, "../renderer/index.html"));
 }
 
-// The old name, on purpose: it names the folder this machine keeps the
-// application's settings in, and changing it would forget them. It moves with
-// the rest of the names outside the repository (docs/plan/iocean-rename.md).
-app.setName("Coral City");
+// The name names the folder this machine keeps the application's settings in
+// — the platform it signs in to, the last place and vehicle chosen. It was
+// "Coral City", and a machine that ran it then has its settings there: they
+// are copied across once, before anything is read, so nobody is asked again.
+// The old folder is left where it was.
+app.setName("iocean");
+carryTheOldSettings(path.join(app.getPath("appData"), "Coral City"), app.getPath("userData"));
 
 void app.whenReady().then(() => {
   // A packaged application carries its icon in its bundle; one run from a
@@ -72,3 +76,11 @@ void app.whenReady().then(() => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
+
+function carryTheOldSettings(old: string, current: string): void {
+  try {
+    if (fs.existsSync(old) && !fs.existsSync(current)) fs.cpSync(old, current, { recursive: true });
+  } catch (error) {
+    console.warn(`iocean could not carry its settings over from ${old}:`, error);
+  }
+}

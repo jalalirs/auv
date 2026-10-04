@@ -14,7 +14,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /srv
-COPY packages/mcp/coral_city_mcp /srv/coral_city_mcp
+COPY packages/mcp/iocean_mcp /srv/iocean_mcp
 
 # The app's doubt catalogue is read by a test, not by the server; nothing else
 # from the repository belongs in here.
@@ -25,4 +25,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=4)"
 
-ENTRYPOINT ["python", "-m", "coral_city_mcp", "--http", "0.0.0.0:8080"]
+ENTRYPOINT ["python", "-m", "iocean_mcp", "--http", "0.0.0.0:8080"]

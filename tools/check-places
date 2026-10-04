@@ -2,7 +2,7 @@
 """What every place claims, and whether it can back it up.
 
     tools/check-places
-    tools/check-places ~/coral-city/places
+    tools/check-places ~/iocean/places
 
 A reef's density is the number most likely to be quoted out of a render and
 the least likely to be questioned. Looe Key holds 83,055 colonies a square
@@ -105,7 +105,7 @@ def water_of(place: pathlib.Path, site: dict) -> tuple[str, str | None]:
 
 def main() -> int:
     where = pathlib.Path(sys.argv[1] if len(sys.argv) > 1
-                         else pathlib.Path.home() / "coral-city" / "places")
+                         else pathlib.Path.home() / "iocean" / "places")
     if not where.is_dir():
         print(f"no places at {where}", file=sys.stderr)
         return 2

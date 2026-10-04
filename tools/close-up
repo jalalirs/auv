@@ -248,9 +248,9 @@ def main() -> int:
                        help="cells along a side of the heightfield")
     parse.add_argument("--name", default=None)
     parse.add_argument("--places",
-                       default=str(pathlib.Path.home() / "coral-city" / "places"))
+                       default=str(pathlib.Path.home() / "iocean" / "places"))
     parse.add_argument("--reference",
-                       default=str(pathlib.Path.home() / "coral-city" / "reference"))
+                       default=str(pathlib.Path.home() / "iocean" / "reference"))
     asked = parse.parse_args()
 
     from PIL import Image

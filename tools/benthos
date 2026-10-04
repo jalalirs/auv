@@ -7,7 +7,7 @@ its colour. This walks the survey's tiles and writes a list of them — where,
 how wide, how tall, what colour — so that a reef can be rebuilt from what is
 there rather than from a distribution.
 
-    tools/benthos ~/coral-city/reference/looe-key --site ~/coral-city/places/looe-key
+    tools/benthos ~/iocean/reference/looe-key --site ~/iocean/places/looe-key
 
 Reads the 1 cm DEM tiles (and the 5 mm orthomosaic tiles beside them) at 2 cm,
 which is fine enough to hold a fist-sized Siderastrea and coarse enough to run

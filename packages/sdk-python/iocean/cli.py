@@ -1,4 +1,4 @@
-"""`coral-city`: check, try, fly, deploy, dive."""
+"""`iocean`: check, try, fly, deploy, dive."""
 
 from __future__ import annotations
 
@@ -212,7 +212,7 @@ def cmd_fetch(args) -> int:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="coral-city", description="Write a controller, try it, deploy it, fly it.")
+    parser = argparse.ArgumentParser(prog="iocean", description="Write a controller, try it, deploy it, fly it.")
     parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="command", required=True)
 

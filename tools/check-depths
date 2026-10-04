@@ -32,9 +32,9 @@ def main() -> int:
     parse = argparse.ArgumentParser(description="a seabed against measured depths")
     parse.add_argument("place")
     parse.add_argument("--places",
-                       default=str(pathlib.Path.home() / "coral-city" / "places"))
+                       default=str(pathlib.Path.home() / "iocean" / "places"))
     parse.add_argument("--reference",
-                       default=str(pathlib.Path.home() / "coral-city" / "reference"))
+                       default=str(pathlib.Path.home() / "iocean" / "reference"))
     parse.add_argument("--record", action="store_true",
                        help="write the answer into the place's site.json")
     asked = parse.parse_args()

@@ -21,7 +21,7 @@ would give it — dead-reckoned position, depth from pressure — through the sa
 navigator the live node uses. `sensed=False` hands it the truth, which is a
 kindness the sea will not extend.
 
-Needs the runtime installed (`pip install coral-city[tank]`), or the repository
+Needs the runtime installed (`pip install iocean[tank]`), or the repository
 checked out beside this package.
 """
 
@@ -63,7 +63,7 @@ def _runtime():
             import runner
             from controllers import Helm
             return hydrodynamics, runner, Helm
-    raise ImportError("the tank needs the iocean runtime: pip install 'coral-city[tank]', "
+    raise ImportError("the tank needs the iocean runtime: pip install 'iocean[tank]', "
                       "or set IOCEAN_RUNTIME to services/sim-runtime/coral")
 
 
@@ -143,12 +143,12 @@ class Tank:
         # had no `vehiclePath`, so `switch_on_the_sonar` and its siblings found no
         # package to read and **fitted no sensors at all**. A tank that fits none
         # cannot try the one kind of controller that most needs trying before it is
-        # deployed: `coral-city tank` on a sonar controller reported it avoiding
+        # deployed: `iocean tank` on a sonar controller reported it avoiding
         # nothing, in an empty sea, with no sonar, and nothing said so.
         import shutil
         import weakref
 
-        kept = pathlib.Path(tempfile.mkdtemp(prefix="coral-city-tank-"))
+        kept = pathlib.Path(tempfile.mkdtemp(prefix="iocean-tank-"))
         (kept / "dynamics.json").write_text(json.dumps(self.described.dynamics))
         weakref.finalize(self, shutil.rmtree, str(kept), True)
         self.vehicle_path = kept
@@ -298,7 +298,7 @@ class Tank:
             # and saying so is better than quietly doing nothing.
             raise ValueError(
                 "this vehicle has no thrusters: command its actuators instead, "
-                "with Command.actuators_of(...). `coral-city vehicles` says which.")
+                "with Command.actuators_of(...). `iocean vehicles` says which.")
         else:
             wrench = np.zeros(6) if acted.wrench is None else np.asarray(acted.wrench, dtype=float)
             self.bridge.say(self.allocator.allocate(self.dive.helm.guard(wrench)))
@@ -354,7 +354,7 @@ class Tank:
         # through-water velocity — which in a current walks off at the current's own
         # speed. So a hold that truly sat 0.06 m from where it began was reported as
         # "11.68 m from where it began", and that sentence is the first thing anybody
-        # reads after `coral-city tank`. It made a correct fix look like a broken one.
+        # reads after `iocean tank`. It made a correct fix look like a broken one.
         believed = self.dive.observation()
         truly = self.dive.position
         final = {"depthM": round(float(-truly[2]), 3),

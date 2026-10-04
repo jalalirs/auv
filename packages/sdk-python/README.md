@@ -1,4 +1,4 @@
-# coral-city — the controller SDK
+# iocean — the controller SDK
 
 Write a controller for a vehicle in the catalogue, try it in a tank on your own
 machine, put it on the platform, and fly it from the console. One class does
@@ -40,9 +40,9 @@ will get. `examples/hold.py` is a station hold written this way.
 
 ```bash
 pip install -e 'packages/sdk-python[tank,dev]'    # from the repository
-coral-city vehicles
-coral-city check examples/hold.py
-coral-city tank examples/hold.py --task hold --trace
+iocean vehicles
+iocean check examples/hold.py
+iocean tank examples/hold.py --task hold --trace
 ```
 
 The tank is the runtime's own hydrodynamics and helm, stepped headless without
@@ -73,10 +73,10 @@ print(tank.report())
 
 ```bash
 ./tools/box tunnel                              # in another terminal: the API and registry, on localhost
-coral-city sign-in --api http://localhost:18080
-coral-city deploy examples/hold.py --slug hold --name "Station hold" \
+iocean sign-in --api http://localhost:18080
+iocean deploy examples/hold.py --slug hold --name "Station hold" \
     --push-to localhost:18081 --pulled-from 127.0.0.1:18081
-coral-city dive --stack hold --place looe-key --vehicle bluerov2
+iocean dive --stack hold --place looe-key --vehicle bluerov2
 ```
 
 `deploy` builds an image on the ROS 2 distribution with the SDK and your file
@@ -105,7 +105,7 @@ hertz, looking down for a survey — and the platform keeps the recording as
 the run's artefacts. Fetch it:
 
 ```bash
-coral-city fetch <diveId> <runId> --into recording
+iocean fetch <diveId> <runId> --into recording
 ```
 
 `manifest.json` says what is there and how the task ended; `poses.jsonl`
@@ -119,9 +119,9 @@ A run pins its place, vehicle, water, controller, seed and runtime, so it can
 be had again:
 
 ```bash
-coral-city dive --place looe-key --vehicle bluerov2 --task hold --seed 42
-coral-city dive --again <diveId>/<runId>          # the same run, exactly
-coral-city compare <diveId> <runA> <runB>          # the largest difference in position
+iocean dive --place looe-key --vehicle bluerov2 --task hold --seed 42
+iocean dive --again <diveId>/<runId>          # the same run, exactly
+iocean compare <diveId> <runA> <runB>          # the largest difference in position
 ```
 
 ## What is generated

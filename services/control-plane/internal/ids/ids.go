@@ -57,7 +57,7 @@ const (
 var kinds = map[Kind]struct{}{
 	KindOrganisation: {}, KindPrincipal: {}, KindCredential: {}, KindSession: {},
 	KindAPIToken: {},
-	KindBinding: {}, KindDenial: {}, KindAuditEvent: {}, KindObject: {},
+	KindBinding:  {}, KindDenial: {}, KindAuditEvent: {}, KindObject: {},
 	KindUploadGrant: {}, KindCity: {}, KindLayer: {}, KindVersion: {},
 	KindLayout: {}, KindMission: {},
 	KindTarget: {}, KindJob: {}, KindAttempt: {}, KindJobEvent: {},

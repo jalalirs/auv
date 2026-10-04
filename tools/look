@@ -15,7 +15,7 @@
 #   tools/look                       # the five real places
 #   tools/look al-fahal looe-key     # or the ones named
 #
-# Frames land in ~/coral-city/work/looks/<place>/ and the sheet beside them.
+# Frames land in ~/iocean/work/looks/<place>/ and the sheet beside them.
 
 set -euo pipefail
 
@@ -61,7 +61,7 @@ except Exception:
 PLACES=("$@")
 [ ${#PLACES[@]} -eq 0 ] && PLACES=(al-fahal looe-key kaneohe red-sea thuwal-deep)
 
-CITY="${HOME}/coral-city"
+CITY="${HOME}/iocean"
 work="${CITY}/work"
 looks="${work}/looks"
 # One working directory per place, not one shared by all of them.
@@ -195,7 +195,7 @@ LAMPS
     # the second one.
     want="$(runtime_stamp "$(dirname "$0")/..")"
     got="$(docker image inspect "${image}" \
-           --format '{{index .Config.Labels "org.coralcity.runtime"}}' 2>/dev/null)"
+           --format '{{index .Config.Labels "org.iocean.runtime"}}' 2>/dev/null)"
     if [ "${want}" != "unknown" ] && [ "${got}" != "${want}" ]; then
         echo "  the runtime in ${image} is not the one in this checkout." >&2
         echo "    image:    ${got:-unstamped}" >&2
@@ -233,8 +233,8 @@ LAMPS
 JSON
     chmod 666 "${here}/dive.json"
 
-    docker rm -f coral-look >/dev/null 2>&1 || true
-    docker run -d --name coral-look --gpus '"device=0"' \
+    docker rm -f iocean-look >/dev/null 2>&1 || true
+    docker run -d --name iocean-look --gpus '"device=0"' \
         -e ACCEPT_EULA=Y -e PRIVACY_CONSENT=Y -e ROS_LOG_DIR=/tmp/ros \
         -e IOCEAN_SEED=1 \
         -e IOCEAN_BRIEF=/dive/dive.json \
@@ -262,7 +262,7 @@ JSON
         -v "${city}:/dive/city:ro" \
         -v "${vehicle}:/dive/vehicle:ro" \
         --entrypoint /isaac-sim/kit/kit \
-        "${image}" /isaac-sim/apps/coral_city.kit --no-window >/dev/null
+        "${image}" /isaac-sim/apps/iocean.kit --no-window >/dev/null
 
     # Opening the scene takes minutes; four stills after that take seconds.
     local n=0
@@ -273,9 +273,9 @@ JSON
         sleep 10
         n="$(find "${here}/frames" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
         printf '\r  %s frames' "${n}"
-        docker logs coral-look 2>&1 | grep -q '"event": "tour_done"' && { finished=1; break; }
-        docker logs coral-look 2>&1 | grep -qE '"event": "(tour_failed|failed)"' && break
-        docker ps --format '{{.Names}}' | grep -q '^coral-look$' || break
+        docker logs iocean-look 2>&1 | grep -q '"event": "tour_done"' && { finished=1; break; }
+        docker logs iocean-look 2>&1 | grep -qE '"event": "(tour_failed|failed)"' && break
+        docker ps --format '{{.Names}}' | grep -q '^iocean-look$' || break
     done
     printf '\n'
 
@@ -283,8 +283,8 @@ JSON
     # stopped here rather than left to time out. Reading it after it is gone is
     # how the previous run's log gets read as though it were this one, which is
     # a whole afternoon of conclusions about code that never ran.
-    docker logs coral-look > "${here}/look.log" 2>&1 || true
-    docker rm -f coral-look >/dev/null 2>&1 || true
+    docker logs iocean-look > "${here}/look.log" 2>&1 || true
+    docker rm -f iocean-look >/dev/null 2>&1 || true
     [ -n "${finished}" ] || echo "  the tour did not report finishing" >&2
     # And it has to be the build the working tree has, not whatever the box
     # happened to be running. A warning is not enough here: a stale image looks

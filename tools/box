@@ -35,8 +35,8 @@ GPU_HOST="${AUV_GPU_HOST:-jalalirs@100.76.65.1}"
 REMOTE_DIR="${AUV_REMOTE_DIR:-code/auv}"
 COMPOSE="cd ~/${REMOTE_DIR}/deployments/box && docker compose --env-file .env"
 
-API_PORT="${CORAL_CITY_API_PORT:-18080}"
-REGISTRY_PORT="${CORAL_CITY_REGISTRY_PORT:-18081}"
+API_PORT="${IOCEAN_API_PORT:-18080}"
+REGISTRY_PORT="${IOCEAN_REGISTRY_PORT:-18081}"
 # Where the platform listens, on the box. Loopback by default, because a
 # platform reachable from every network a machine happens to be on is a
 # platform somebody else can find. Set it to one address — a Tailscale address,
@@ -49,10 +49,10 @@ INTERNAL="127.0.0.1"
 # Where the simulation runtime lives. Through the registry, so that it survives
 # anything that tidies up local tags, and so that a second host needs only to
 # pull rather than to build twenty-one gigabytes of it.
-SIM_IMAGE="${INTERNAL}:${REGISTRY_PORT}/sim-runtime:${CORAL_CITY_IMAGE_TAG:-r1}"
-CONSOLE_PORT="${CORAL_CITY_CONSOLE_PORT:-18082}"
-STORAGE_PORT="${CORAL_CITY_STORAGE_PORT:-19000}"
-STORAGE_CONSOLE_PORT="${CORAL_CITY_STORAGE_CONSOLE_PORT:-19001}"
+SIM_IMAGE="${INTERNAL}:${REGISTRY_PORT}/sim-runtime:${IOCEAN_IMAGE_TAG:-r1}"
+CONSOLE_PORT="${IOCEAN_CONSOLE_PORT:-18082}"
+STORAGE_PORT="${IOCEAN_STORAGE_PORT:-19000}"
+STORAGE_CONSOLE_PORT="${IOCEAN_STORAGE_CONSOLE_PORT:-19001}"
 
 on_box() { LC_ALL=C ssh "${GPU_HOST}" "export LC_ALL=C LANG=C; $*"; }
 
@@ -65,7 +65,7 @@ on_box() { LC_ALL=C ssh "${GPU_HOST}" "export LC_ALL=C LANG=C; $*"; }
 # that was false.
 bind_address() {
     local said
-    said="$(on_box "sed -n 's/^CORAL_CITY_BIND_ADDRESS=//p' ~/${REMOTE_DIR}/deployments/box/.env" 2>/dev/null || true)"
+    said="$(on_box "sed -n 's/^IOCEAN_BIND_ADDRESS=//p' ~/${REMOTE_DIR}/deployments/box/.env" 2>/dev/null || true)"
     printf '%s' "${said:-127.0.0.1}"
 }
 on_box_tty() { LC_ALL=C ssh -t "${GPU_HOST}" "export LC_ALL=C LANG=C; $*"; }
@@ -110,14 +110,14 @@ command_init() {
         sk=\$(openssl rand -hex 32) && \
         ak=coral-\$(openssl rand -hex 8) && \
         admin=\$(openssl rand -hex 24) && \
-        sed -e \"s|^CORAL_CITY_DATABASE_PASSWORD=.*|CORAL_CITY_DATABASE_PASSWORD=\$db|\" \
-            -e \"s|^CORAL_CITY_STORAGE_ACCESS_KEY=.*|CORAL_CITY_STORAGE_ACCESS_KEY=\$ak|\" \
-            -e \"s|^CORAL_CITY_STORAGE_SECRET_KEY=.*|CORAL_CITY_STORAGE_SECRET_KEY=\$sk|\" \
-            -e \"s|^CORAL_CITY_ADMIN_SECRET=.*|CORAL_CITY_ADMIN_SECRET=\$admin|\" \
-            -e \"s|^CORAL_CITY_ADMIN_EMAIL=.*|CORAL_CITY_ADMIN_EMAIL=${email}|\" \
-            -e \"s|^CORAL_CITY_ADMIN_NAME=.*|CORAL_CITY_ADMIN_NAME=${name}|\" \
-            -e \"s|^CORAL_CITY_ADMIN_ORG=.*|CORAL_CITY_ADMIN_ORG=${org}|\" \
-            -e \"s|^CORAL_CITY_ADMIN_ORG_NAME=.*|CORAL_CITY_ADMIN_ORG_NAME=${org_name}|\" \
+        sed -e \"s|^IOCEAN_DATABASE_PASSWORD=.*|IOCEAN_DATABASE_PASSWORD=\$db|\" \
+            -e \"s|^IOCEAN_STORAGE_ACCESS_KEY=.*|IOCEAN_STORAGE_ACCESS_KEY=\$ak|\" \
+            -e \"s|^IOCEAN_STORAGE_SECRET_KEY=.*|IOCEAN_STORAGE_SECRET_KEY=\$sk|\" \
+            -e \"s|^IOCEAN_ADMIN_SECRET=.*|IOCEAN_ADMIN_SECRET=\$admin|\" \
+            -e \"s|^IOCEAN_ADMIN_EMAIL=.*|IOCEAN_ADMIN_EMAIL=${email}|\" \
+            -e \"s|^IOCEAN_ADMIN_NAME=.*|IOCEAN_ADMIN_NAME=${name}|\" \
+            -e \"s|^IOCEAN_ADMIN_ORG=.*|IOCEAN_ADMIN_ORG=${org}|\" \
+            -e \"s|^IOCEAN_ADMIN_ORG_NAME=.*|IOCEAN_ADMIN_ORG_NAME=${org_name}|\" \
             .env.example > .env && \
         chmod 600 .env"
 
@@ -125,7 +125,7 @@ command_init() {
     # Read rather than sourced: this file is compose's format, not the shell's,
     # and a value with a space in it is legal there and a command here.
     on_box "cd ~/${REMOTE_DIR}/deployments/box && \
-        for key in CORAL_CITY_STORAGE_PATH CORAL_CITY_AGENT_HOST_WORKDIR; do \
+        for key in IOCEAN_STORAGE_PATH IOCEAN_AGENT_HOST_WORKDIR; do \
             path=\$(sed -n \"s/^\$key=//p\" .env | tr -d '\"'); \
             mkdir -p \"\$path\" && printf '  %-34s %s\\n' \"\$key\" \"\$path\"; \
         done"
@@ -136,7 +136,7 @@ command_init() {
 }
 
 command_secret() {
-    on_box "grep -E '^CORAL_CITY_ADMIN_(EMAIL|SECRET)=' ~/${REMOTE_DIR}/deployments/box/.env" \
+    on_box "grep -E '^IOCEAN_ADMIN_(EMAIL|SECRET)=' ~/${REMOTE_DIR}/deployments/box/.env" \
         || die "no .env on the box — run ./tools/box init first"
 }
 
@@ -205,7 +205,7 @@ build_sim() {
     local runtime
     runtime="$(runtime_stamp "$(dirname "$0")/..")"
     on_box "cd ~/${REMOTE_DIR} && docker build -q -f services/sim-runtime/Dockerfile \
-        --build-arg CORAL_CITY_RUNTIME=${runtime} \
+        --build-arg IOCEAN_RUNTIME=${runtime} \
         -t ${SIM_IMAGE} . | tail -1"
     say "Publishing it to the registry…"
     on_box "docker push --quiet ${SIM_IMAGE}"
@@ -251,8 +251,8 @@ command_logs() {
 command_tidy() {
     say "Sweeping the end-to-end script's litter out of the record…"
     scp -q "${REPO_ROOT}/deployments/box/tidy.sql" "${GPU_HOST}:/tmp/coral-tidy.sql"
-    on_box "docker cp /tmp/coral-tidy.sql coral-city-record-1:/tmp/tidy.sql && \
-        docker exec coral-city-record-1 psql -U coral -d coral -v ON_ERROR_STOP=1 -f /tmp/tidy.sql \
+    on_box "docker cp /tmp/coral-tidy.sql iocean-record-1:/tmp/tidy.sql && \
+        docker exec iocean-record-1 psql -U coral -d coral -v ON_ERROR_STOP=1 -f /tmp/tidy.sql \
         | grep -Ev '^(BEGIN|SET|CREATE|SELECT [0-9]|COMMIT|DELETE 0)\$' && rm -f /tmp/coral-tidy.sql"
 }
 
@@ -262,8 +262,8 @@ command_tidy() {
 command_clean_dives() {
     say "Clearing every dive and run from the record…"
     scp -q "${REPO_ROOT}/deployments/box/clean-dives.sql" "${GPU_HOST}:/tmp/coral-clean.sql"
-    on_box "docker cp /tmp/coral-clean.sql coral-city-record-1:/tmp/clean.sql && \
-        docker exec coral-city-record-1 psql -U coral -d coral -v ON_ERROR_STOP=1 -f /tmp/clean.sql \
+    on_box "docker cp /tmp/coral-clean.sql iocean-record-1:/tmp/clean.sql && \
+        docker exec iocean-record-1 psql -U coral -d coral -v ON_ERROR_STOP=1 -f /tmp/clean.sql \
         | grep -Ev '^(BEGIN|SET|COMMIT|DELETE [0-9]+)\$' && rm -f /tmp/coral-clean.sql"
 }
 
@@ -286,8 +286,8 @@ command_forget_dives() {
         cat "${REPO_ROOT}/deployments/box/forget-dives.sql"
     } > /tmp/coral-forget.sql
     scp -q /tmp/coral-forget.sql "${GPU_HOST}:/tmp/coral-forget.sql"
-    on_box "docker cp /tmp/coral-forget.sql coral-city-record-1:/tmp/forget.sql && \
-        docker exec coral-city-record-1 psql -U coral -d coral -v ON_ERROR_STOP=1 -f /tmp/forget.sql \
+    on_box "docker cp /tmp/coral-forget.sql iocean-record-1:/tmp/forget.sql && \
+        docker exec iocean-record-1 psql -U coral -d coral -v ON_ERROR_STOP=1 -f /tmp/forget.sql \
         | grep -Ev '^(BEGIN|SET|CREATE TABLE|DROP TABLE|INSERT 0 1|COMMIT|DELETE [0-9]+)\$' && rm -f /tmp/coral-forget.sql"
     rm -f /tmp/coral-forget.sql
 }

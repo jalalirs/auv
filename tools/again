@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Round two, and whether it can be compared with round one.
 
-    tools/again ~/coral-city/places/looe-key --first round-1 --then round-2
+    tools/again ~/iocean/places/looe-key --first round-1 --then round-2
 
 A repeat survey is only worth flying if it can be held against the last
 one. NCW covered four hundred sites in 2024–25 and the next thing they need

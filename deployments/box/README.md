@@ -86,7 +86,7 @@ something that already works.
 
 ## Stored bytes, from outside
 
-A presigned URL is signed over the host it names, so `CORAL_CITY_STORAGE_PUBLIC_ENDPOINT`
+A presigned URL is signed over the host it names, so `IOCEAN_STORAGE_PUBLIC_ENDPOINT`
 must be the address a client will actually use. The loopback works for a
 console reached through a tunnel and for nothing else: a client on a laptop
 across the tailnet asked for a place's picture and got a URL only the box could
@@ -114,10 +114,10 @@ which needs a model to ask. Three settings, and the platform is fine without
 any of them:
 
 ```
-CORAL_CITY_MODEL_URL=https://api.fuse.humainaic.com/v1/chat/completions
-CORAL_CITY_MODEL_KEY=...
-CORAL_CITY_MODEL=MiniMaxAI/MiniMax-M3
-CORAL_CITY_MODEL_MAX_TOKENS=12000         # optional; this is the default
+IOCEAN_MODEL_URL=https://api.fuse.humainaic.com/v1/chat/completions
+IOCEAN_MODEL_KEY=...
+IOCEAN_MODEL=MiniMaxAI/MiniMax-M3
+IOCEAN_MODEL_MAX_TOKENS=12000         # optional; this is the default
 ```
 
 Two shapes of endpoint are understood, and which one is in front of us is read

@@ -105,7 +105,7 @@ func TestACommandReplacesTheImagesEntrypoint(t *testing.T) {
 	asked := createRequest(Spec{
 		Image:   "sim",
 		Command: []string{"/isaac-sim/kit/kit"},
-		Args:    []string{"/isaac-sim/apps/coral_city.kit", "--no-window"},
+		Args:    []string{"/isaac-sim/apps/iocean.kit", "--no-window"},
 	})
 
 	entrypoint, named := asked["Entrypoint"].([]string)

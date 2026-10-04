@@ -143,7 +143,7 @@ class Command:
 
             Command.actuators_of(buoyancyCm3=180.0, massAtM=0.012)
 
-        The names are the vehicle package's, so `coral-city vehicles` is how
+        The names are the vehicle package's, so `iocean vehicles` is how
         you find out what a hull will answer to.
         """
         return cls(actuators={name: float(value) for name, value in asked.items()})

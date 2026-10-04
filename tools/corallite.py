@@ -11,7 +11,7 @@ There is no CC0 photograph of a corallite surface to tile, so this makes one:
 a height field and the normal map that falls out of it, per growth form, with
 the corallite sizes taken from the genera that build these reefs.
 
-    tools/corallite massive --into ~/coral-city/places/looe-key/textures
+    tools/corallite massive --into ~/iocean/places/looe-key/textures
 
 Tileable. Seeds are replicated across the eight neighbouring copies of the tile
 before the distance field is taken, so the pattern wraps without a seam, which

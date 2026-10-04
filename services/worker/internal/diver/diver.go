@@ -525,7 +525,7 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	// What a successor would need to take this dive over, filled in as the
 	// pieces come up and written beside the brief.
 	kept := handles{Claimed: claimed, BriefDir: briefDir}
-	network, err := d.runtime.CreateNetwork(ctx, "coral-dive-"+claimed.Run.ID)
+	network, err := d.runtime.CreateNetwork(ctx, "iocean-dive-"+claimed.Run.ID)
 	if err != nil {
 		return "failed", nil, fmt.Sprintf("the dive's network could not be created: %v", err)
 	}
@@ -546,7 +546,7 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	// Where the autonomy will find the vehicle. Docker resolves a container's
 	// name on the network it is attached to, so this is an address on the
 	// dive's network and nowhere else.
-	vehicleHost := "coral-sim-" + claimed.Run.ID
+	vehicleHost := "iocean-sim-" + claimed.Run.ID
 
 	// Whether this dive asked to be flown by something that has to ask a
 	// model. Everything an institution submits runs with no route off its own
@@ -559,8 +559,8 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	wantsAModel := flyWithNeedsAModel(claimed.Objective)
 	modelEnv := []string{}
 	if wantsAModel {
-		for _, name := range []string{"CORAL_CITY_MODEL_URL", "CORAL_CITY_MODEL",
-			"CORAL_CITY_MODEL_KEY", "CORAL_CITY_MODEL_MAX_TOKENS"} {
+		for _, name := range []string{"IOCEAN_MODEL_URL", "IOCEAN_MODEL",
+			"IOCEAN_MODEL_KEY", "IOCEAN_MODEL_MAX_TOKENS"} {
 			if value := os.Getenv(name); value != "" {
 				modelEnv = append(modelEnv, name+"="+value)
 			}
@@ -599,8 +599,8 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 			// Same seed and same packages is the same run. Everything the
 			// platform claims about a result rests on the simulator honouring
 			// this rather than drawing its own.
-			"CORAL_CITY_SEED=" + fmt.Sprint(claimed.Run.Seed),
-			"CORAL_CITY_BRIEF=/dive/dive.json",
+			"IOCEAN_SEED=" + fmt.Sprint(claimed.Run.Seed),
+			"IOCEAN_BRIEF=/dive/dive.json",
 		}...),
 		// A simulator writes shader and asset caches all over its own
 		// installation and cannot start without somewhere to put them.
@@ -634,14 +634,14 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	signal := d.signalPort + claimed.Slot
 	if drawn {
 		simulator.Command = []string{"/isaac-sim/kit/kit"}
-		simulator.Args = []string{"/isaac-sim/apps/coral_city.kit", "--no-window"}
+		simulator.Args = []string{"/isaac-sim/apps/iocean.kit", "--no-window"}
 	}
 	if watching {
 		// Told the port rather than carrying it, so that what the host
 		// publishes, what the run recorded, and what the dive listens on are
 		// one number decided in one place.
 		simulator.Env = append(simulator.Env,
-			fmt.Sprintf("CORAL_CITY_WATCH_PORT=%d", signal))
+			fmt.Sprintf("IOCEAN_WATCH_PORT=%d", signal))
 		simulator.Attach = "bridge"
 		simulator.Publish = []container.Port{{Number: signal, Protocol: "tcp"}}
 	}
@@ -953,7 +953,7 @@ func (d *Diver) flyer(ctx context.Context, claimed Claimed, network, vehicleHost
 
 	spec := container.Spec{
 		Image: image,
-		Name:  "coral-autonomy-" + claimed.Run.ID,
+		Name:  "iocean-autonomy-" + claimed.Run.ID,
 		Env: []string{
 			// The same domain as the vehicle, so they hear each other; a domain
 			// of their own, so no other dive on this host does.

@@ -92,9 +92,9 @@ COPY --chown=1234:1234 packages/sdk-python/coral_city /isaac-sim/coral/coral_cit
 # Both go where Kit already looks: applications in apps, extensions in extsUser
 # under a directory named for the extension. Owned by the image's user, because
 # Kit writes bytecode into an extension directory it has loaded.
-COPY --chown=1234:1234 services/sim-runtime/apps/coral_city.kit /isaac-sim/apps/coral_city.kit
-COPY --chown=1234:1234 services/sim-runtime/apps/coral_city.png /isaac-sim/apps/coral_city.png
-COPY --chown=1234:1234 services/sim-runtime/exts/coral.city.shell /isaac-sim/extsUser/coral.city.shell
+COPY --chown=1234:1234 services/sim-runtime/apps/iocean.kit /isaac-sim/apps/iocean.kit
+COPY --chown=1234:1234 services/sim-runtime/apps/iocean.png /isaac-sim/apps/iocean.png
+COPY --chown=1234:1234 services/sim-runtime/exts/iocean.shell /isaac-sim/extsUser/iocean.shell
 
 # Which runtime is actually inside this image.
 #
@@ -108,8 +108,8 @@ COPY --chown=1234:1234 services/sim-runtime/exts/coral.city.shell /isaac-sim/ext
 # The tree hash of `services/sim-runtime`, not the commit: it changes when the
 # runtime changes and not when anything else does, so a docs commit does not
 # make every image look stale.
-ARG CORAL_CITY_RUNTIME=unknown
-LABEL org.coralcity.runtime=$CORAL_CITY_RUNTIME
+ARG IOCEAN_RUNTIME=unknown
+LABEL org.iocean.runtime=$IOCEAN_RUNTIME
 
 USER 1234:1234
 WORKDIR /isaac-sim

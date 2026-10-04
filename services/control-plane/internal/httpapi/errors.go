@@ -46,7 +46,7 @@ func writeJSON(w http.ResponseWriter, r *http.Request, status int, body any) {
 }
 
 func writeUnauthenticated(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("WWW-Authenticate", `Bearer realm="coral-city"`)
+	w.Header().Set("WWW-Authenticate", `Bearer realm="iocean"`)
 	writeProblem(w, r, http.StatusUnauthorized, "unauthenticated",
 		"sign in to use this", nil)
 }

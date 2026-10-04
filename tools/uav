@@ -59,15 +59,15 @@ remote_env() { on_box "sed -n 's/^$1=//p' ~/${REMOTE_DIR}/deployments/box/.env";
 
 platform() {
     local bind port
-    bind="$(remote_env CORAL_CITY_BIND_ADDRESS)"
-    port="$(remote_env CORAL_CITY_API_PORT)"
+    bind="$(remote_env IOCEAN_BIND_ADDRESS)"
+    port="$(remote_env IOCEAN_API_PORT)"
     printf 'http://%s:%s' "${bind:-127.0.0.1}" "${port:-18080}"
 }
 
 token() {
     local email secret answer
-    email="$(remote_env CORAL_CITY_ADMIN_EMAIL)"
-    secret="$(remote_env CORAL_CITY_ADMIN_SECRET)"
+    email="$(remote_env IOCEAN_ADMIN_EMAIL)"
+    secret="$(remote_env IOCEAN_ADMIN_SECRET)"
     answer="$(curl --silent --max-time 15 -X POST "$(platform)/api/v1/sessions" \
         -H 'content-type: application/json' \
         -d "{\"email\":\"${email}\",\"secret\":\"${secret}\"}")"
@@ -113,7 +113,7 @@ command_deploy() {
 
 # What the agent has been doing.
 command_agent() {
-    on_box "docker logs --tail ${1:-25} coral-city-agent-1 2>&1" | python3 -c '
+    on_box "docker logs --tail ${1:-25} iocean-agent-1 2>&1" | python3 -c '
 import json, sys
 for line in sys.stdin:
     try:
@@ -130,9 +130,9 @@ command_status() { "${HERE}/box" status; }
 command_logs()   { "${HERE}/box" logs "${1:-}"; }
 command_check()  {
     on_box "cd ~/${REMOTE_DIR} \
-        && export CORAL_CITY_API=$(platform) \
-        && export CORAL_CITY_ADMIN_EMAIL=\$(sed -n 's/^CORAL_CITY_ADMIN_EMAIL=//p' deployments/box/.env) \
-        && export CORAL_CITY_ADMIN_SECRET=\$(sed -n 's/^CORAL_CITY_ADMIN_SECRET=//p' deployments/box/.env) \
+        && export IOCEAN_API=$(platform) \
+        && export IOCEAN_ADMIN_EMAIL=\$(sed -n 's/^IOCEAN_ADMIN_EMAIL=//p' deployments/box/.env) \
+        && export IOCEAN_ADMIN_SECRET=\$(sed -n 's/^IOCEAN_ADMIN_SECRET=//p' deployments/box/.env) \
         && ./tools/e2e"
 }
 command_clean() { "${HERE}/clear-check-data" "${1:---confirm}"; }
@@ -253,8 +253,8 @@ command_frames() {
     local seconds="${1:-12}"
     TOKEN="${TOKEN:-$(token)}"
     local host port
-    host="$(remote_env CORAL_CITY_STREAM_HOST)"
-    port="$(remote_env CORAL_CITY_STREAM_SIGNAL_PORT)"
+    host="$(remote_env IOCEAN_STREAM_HOST)"
+    port="$(remote_env IOCEAN_STREAM_SIGNAL_PORT)"
     host="${host:-127.0.0.1}"; port="${port:-18100}"
     bold "watching ws://${host}:${port}/watch for ${seconds}s"
     mise exec -- node --input-type=module -e "
@@ -285,8 +285,8 @@ setTimeout(() => {
 command_fly() {
     local keys="${1:-SPACE}" seconds="${2:-6}"
     local host port
-    host="$(remote_env CORAL_CITY_STREAM_HOST)"; host="${host:-127.0.0.1}"
-    port="$(remote_env CORAL_CITY_STREAM_SIGNAL_PORT)"; port="${port:-18100}"
+    host="$(remote_env IOCEAN_STREAM_HOST)"; host="${host:-127.0.0.1}"
+    port="$(remote_env IOCEAN_STREAM_SIGNAL_PORT)"; port="${port:-18100}"
     bold "holding ${keys} for ${seconds}s"
     mise exec -- node --input-type=module -e "
 const held = '${keys}'.split(',').filter(Boolean);
@@ -411,7 +411,7 @@ command_exposure() {
     on_box "~/${REMOTE_DIR}/tools/fly-over ${1:-} ladder" | sed "s/^/  /"
     local into="${ROOT}/.uav-exposure"
     rm -rf "${into}"; mkdir -p "${into}"
-    on_box "cd ~/coral-city/work/tour/frames && tar cf - ." | tar xf - -C "${into}"
+    on_box "cd ~/iocean/work/tour/frames && tar cf - ." | tar xf - -C "${into}"
     "${HERE}/contact-sheet" "${into}" "${ROOT}/.uav-exposure.png"
     bold "${ROOT}/.uav-exposure.png"
 }
@@ -427,7 +427,7 @@ command_exposure() {
 # answered wrong.
 command_map() {
     on_box "~/${REMOTE_DIR}/tools/fly-over ${1:-}" | sed "s/^/  /"
-    on_box "cat ~/coral-city/work/tour/tour.mp4" > "${ROOT}/.uav-map.mp4"
+    on_box "cat ~/iocean/work/tour/tour.mp4" > "${ROOT}/.uav-map.mp4"
     [ -s "${ROOT}/.uav-map.mp4" ] || die "no video came back"
     bold "${ROOT}/.uav-map.mp4"
 }

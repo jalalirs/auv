@@ -5,8 +5,8 @@ a vehicle. It asks for a wrench in newtons and lets the vehicle allocate it,
 sizes its gains by the vehicle's own mass, and feeds forward the trim the
 catalogue declares — the three things the runtime's own hold does.
 
-    coral-city tank examples/hold.py --task hold --trace
-    coral-city deploy examples/hold.py --slug hold --name "Depth and heading hold"
+    iocean tank examples/hold.py --task hold --trace
+    iocean deploy examples/hold.py --slug hold --name "Depth and heading hold"
 """
 
 from __future__ import annotations

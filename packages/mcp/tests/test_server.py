@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import json
 
-from coral_city_mcp import server as s
-from coral_city_mcp.platform import Refused
+from iocean_mcp import server as s
+from iocean_mcp.platform import Refused
 
 
 def test_it_introduces_itself_with_the_rule():

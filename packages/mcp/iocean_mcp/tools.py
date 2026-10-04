@@ -758,7 +758,7 @@ def _cached(run_id: str, name: str, url: str) -> pathlib.Path:
     import tempfile
     import urllib.request
 
-    where = pathlib.Path(tempfile.gettempdir()) / "coral-city-mcp" / run_id
+    where = pathlib.Path(tempfile.gettempdir()) / "iocean-mcp" / run_id
     where.mkdir(parents=True, exist_ok=True)
     path = where / name
     if not path.exists() or path.stat().st_size == 0:

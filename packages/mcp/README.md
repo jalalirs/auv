@@ -5,7 +5,7 @@ Places, vehicles and dives an agent can drive, with every number marked.
 ```
 IOCEAN_PLATFORM=http://your-platform:18080 \
 IOCEAN_SERVICE_FILE=/run/secrets/mcp \
-    python -m coral_city_mcp
+    python -m iocean_mcp
 ```
 
 ## The public link
@@ -15,7 +15,7 @@ the other projects served from that name. Make a token in the application —
 Profile → Tokens for your assistant — and it gives you the block to paste:
 
 ```json
-{ "mcpServers": { "coral-city": {
+{ "mcpServers": { "iocean": {
     "type": "http",
     "url": "https://jalalirs.tailedf721.ts.net/coral/mcp",
     "headers": { "Authorization": "Bearer cc_…" } } } }
@@ -36,7 +36,7 @@ It runs on the box as the `mcp` compose service, on
 its own credential in the header:
 
 ```json
-{ "mcpServers": { "coral-city": {
+{ "mcpServers": { "iocean": {
     "type": "http",
     "url": "http://100.76.65.1:18083/mcp",
     "headers": { "Authorization": "Service ${IOCEAN_SERVICE}" } } } }

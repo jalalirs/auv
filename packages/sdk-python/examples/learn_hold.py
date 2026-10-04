@@ -13,8 +13,8 @@ scored against the hand-written hold — done once by us so it is known to work.
 A network in place of the matrix is the same path with more parameters.
 
     python3 examples/learn_hold.py            # trains, writes examples/learned_hold.py
-    coral-city tank examples/learned_hold.py --task hold --current 0.51 90
-    coral-city deploy examples/learned_hold.py --slug learned-hold
+    iocean tank examples/learned_hold.py --task hold --current 0.51 90
+    iocean deploy examples/learned_hold.py --slug learned-hold
 """
 
 from __future__ import annotations

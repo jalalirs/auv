@@ -21,8 +21,8 @@ deployment requires real ones.
 The worker drives the host's container runtime through its socket, so a bind
 mount it asks for is resolved by the daemon on the host rather than inside the
 worker. That is why it is told both where it stages work
-(`CORAL_CITY_WORKER_WORKDIR`) and what that same directory is called on the host
-(`CORAL_CITY_WORKER_HOST_WORKDIR`): the two are different strings for one
+(`IOCEAN_WORKER_WORKDIR`) and what that same directory is called on the host
+(`IOCEAN_WORKER_HOST_WORKDIR`): the two are different strings for one
 directory, and a job would read an empty one if they were confused.
 
 ## Ports

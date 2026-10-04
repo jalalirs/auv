@@ -359,7 +359,7 @@ func (d Drafter) Draft(ctx context.Context, said string, from From, envelope Env
 		if strings.TrimSpace(answer) == "" && reply.Choices[0].Message.Reasoning != "" {
 			return Read{Missed: []string{said},
 				Why: "the model spent its whole answer thinking and never got to the plan; " +
-					"give it more room with CORAL_CITY_MODEL_MAX_TOKENS"}, nil
+					"give it more room with IOCEAN_MODEL_MAX_TOKENS"}, nil
 		}
 	default:
 		return Read{Missed: []string{said}, Why: "the model did not answer with a plan"}, nil

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A glass tank in a room, as a place: where a small vehicle is learnt.
 
-    tools/make-aquarium iocean-tank-1 --into ~/coral-city/places/iocean-tank-1
+    tools/make-aquarium iocean-tank-1 --into ~/iocean/places/iocean-tank-1
 
 Not a towing tank (that is tools/make-tank, whose whole point is that nothing
 in it is chosen) and not a reef. This is the bench a person actually has: a
@@ -732,7 +732,7 @@ def main() -> int:
     ap.add_argument("--into", type=pathlib.Path)
     ap.add_argument("--seed", type=int, default=7)
     args = ap.parse_args()
-    into = args.into or pathlib.Path.home() / "coral-city" / "places" / args.name
+    into = args.into or pathlib.Path.home() / "iocean" / "places" / args.name
     t0 = time.time()
     made = build(args.name, into, args.seed)
     place = a_place(args.name, made)

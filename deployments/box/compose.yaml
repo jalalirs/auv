@@ -1,4 +1,4 @@
-name: coral-city
+name: iocean
 
 # The box is the environment.
 #
@@ -17,8 +17,8 @@ name: coral-city
 # is the portability that matters, and the portability a manifest would not buy.
 
 x-platform-env: &platform-env
-  CORAL_CITY_DATABASE_URL: postgres://coral:${CORAL_CITY_DATABASE_PASSWORD:?set a database password}@record:5432/coral?sslmode=disable
-  CORAL_CITY_STORAGE_ENDPOINT: storage:9000
+  IOCEAN_DATABASE_URL: postgres://coral:${IOCEAN_DATABASE_PASSWORD:?set a database password}@record:5432/coral?sslmode=disable
+  IOCEAN_STORAGE_ENDPOINT: storage:9000
   # A presigned URL is signed over the host it names, so it must carry the
   # address the client will actually use. Inside this network that is
   # `storage`; to anything outside it is whatever the operator publishes.
@@ -27,25 +27,25 @@ x-platform-env: &platform-env
   # platform hands it. Before this it was the loopback, and every picture and
   # site record a client asked for was signed over a host only the box could
   # reach.
-  CORAL_CITY_STORAGE_PUBLIC_ENDPOINT: ${CORAL_CITY_STORAGE_PUBLIC_ENDPOINT:-${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_STORAGE_PORT:-19000}}
-  CORAL_CITY_STORAGE_ACCESS_KEY: ${CORAL_CITY_STORAGE_ACCESS_KEY:?set a storage access key}
-  CORAL_CITY_STORAGE_SECRET_KEY: ${CORAL_CITY_STORAGE_SECRET_KEY:?set a storage secret key}
-  CORAL_CITY_STORAGE_BUCKET_PREFIX: coral
+  IOCEAN_STORAGE_PUBLIC_ENDPOINT: ${IOCEAN_STORAGE_PUBLIC_ENDPOINT:-${IOCEAN_BIND_ADDRESS:-127.0.0.1}:${IOCEAN_STORAGE_PORT:-19000}}
+  IOCEAN_STORAGE_ACCESS_KEY: ${IOCEAN_STORAGE_ACCESS_KEY:?set a storage access key}
+  IOCEAN_STORAGE_SECRET_KEY: ${IOCEAN_STORAGE_SECRET_KEY:?set a storage secret key}
+  IOCEAN_STORAGE_BUCKET_PREFIX: coral
   # A model this platform may ask to draft a plan from words, and the key to
   # ask with. Both empty unless the operator sets them, which is not an error:
   # drafting then says plainly that there is nothing to ask. They are named
   # here rather than passed wholesale, because a service should receive the
   # secrets it needs and not every secret the machine holds.
-  CORAL_CITY_MODEL_URL: ${CORAL_CITY_MODEL_URL:-}
-  CORAL_CITY_MODEL_KEY: ${CORAL_CITY_MODEL_KEY:-}
-  CORAL_CITY_MODEL: ${CORAL_CITY_MODEL:-}
+  IOCEAN_MODEL_URL: ${IOCEAN_MODEL_URL:-}
+  IOCEAN_MODEL_KEY: ${IOCEAN_MODEL_KEY:-}
+  IOCEAN_MODEL: ${IOCEAN_MODEL:-}
 
 services:
   record:
     image: imresamu/postgis:17-3.5@sha256:35fe7dceda62bfe7d2965b0ba78d915ff9f901b5e0466d633ecc58421b5b5210
     environment:
       POSTGRES_USER: coral
-      POSTGRES_PASSWORD: ${CORAL_CITY_DATABASE_PASSWORD:?set a database password}
+      POSTGRES_PASSWORD: ${IOCEAN_DATABASE_PASSWORD:?set a database password}
       POSTGRES_DB: coral
     volumes:
       - record:/var/lib/postgresql/data
@@ -63,18 +63,18 @@ services:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
-      MINIO_ROOT_USER: ${CORAL_CITY_STORAGE_ACCESS_KEY:?set a storage access key}
-      MINIO_ROOT_PASSWORD: ${CORAL_CITY_STORAGE_SECRET_KEY:?set a storage secret key}
+      MINIO_ROOT_USER: ${IOCEAN_STORAGE_ACCESS_KEY:?set a storage access key}
+      MINIO_ROOT_PASSWORD: ${IOCEAN_STORAGE_SECRET_KEY:?set a storage secret key}
     volumes:
       # An operator-chosen path, because cities, vehicles and recorded dives
       # grow without bound and this host's root filesystem is shared with other
       # people's work. Docker cannot bound a named volume, so the bound is
       # whichever filesystem this path sits on: point it somewhere with room,
       # and somewhere whose exhaustion is this platform's problem alone.
-      - ${CORAL_CITY_STORAGE_PATH:?set a path for stored bytes, on a filesystem with room}:/data
+      - ${IOCEAN_STORAGE_PATH:?set a path for stored bytes, on a filesystem with room}:/data
     ports:
-      - "${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_STORAGE_PORT:-19000}:9000"
-      - "127.0.0.1:${CORAL_CITY_STORAGE_CONSOLE_PORT:-19001}:9001"
+      - "${IOCEAN_BIND_ADDRESS:-127.0.0.1}:${IOCEAN_STORAGE_PORT:-19000}:9000"
+      - "127.0.0.1:${IOCEAN_STORAGE_CONSOLE_PORT:-19001}:9001"
     healthcheck:
       test: ["CMD-SHELL", "mc ready local || exit 1"]
       interval: 5s
@@ -97,7 +97,7 @@ services:
     volumes:
       - registry:/var/lib/registry
     ports:
-      - "127.0.0.1:${CORAL_CITY_REGISTRY_PORT:-18081}:5000"
+      - "127.0.0.1:${IOCEAN_REGISTRY_PORT:-18081}:5000"
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:5000/v2/ || exit 1"]
       interval: 10s
@@ -111,7 +111,7 @@ services:
   # Applying the schema is a deliberate act, never something a serving process
   # does on the way up.
   migrate:
-    image: coral-city/control-plane:${CORAL_CITY_IMAGE_TAG:-r1}
+    image: iocean/control-plane:${IOCEAN_IMAGE_TAG:-r1}
     pull_policy: never
     entrypoint: ["/usr/local/bin/migrate"]
     command: ["up"]
@@ -132,7 +132,7 @@ services:
       - ./edge/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./edge/proxied.conf:/etc/nginx/proxied.conf:ro
     ports:
-      - "${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_EDGE_PORT:-18084}:8080"
+      - "${IOCEAN_BIND_ADDRESS:-127.0.0.1}:${IOCEAN_EDGE_PORT:-18084}:8080"
     depends_on:
       control-plane:
         condition: service_healthy
@@ -147,16 +147,16 @@ services:
   # sends, so every agent acts as the principal it was issued as and the
   # platform's grants decide what it may do.
   mcp:
-    image: coral-city/mcp:${CORAL_CITY_IMAGE_TAG:-r1}
+    image: iocean/mcp:${IOCEAN_IMAGE_TAG:-r1}
     pull_policy: never
     build:
       context: ../..
       dockerfile: packages/mcp/Dockerfile
     environment:
-      CORAL_CITY_PLATFORM: http://control-plane:8080
-      CORAL_CITY_RUNTIME_VERSION: ${CORAL_CITY_RUNTIME_VERSION:-isaac-6.0.1+oceansim}
+      IOCEAN_PLATFORM: http://control-plane:8080
+      IOCEAN_RUNTIME_VERSION: ${IOCEAN_RUNTIME_VERSION:-isaac-6.0.1+oceansim}
     ports:
-      - "${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_MCP_PORT:-18083}:8080"
+      - "${IOCEAN_BIND_ADDRESS:-127.0.0.1}:${IOCEAN_MCP_PORT:-18083}:8080"
     depends_on:
       control-plane:
         condition: service_healthy
@@ -172,14 +172,14 @@ services:
   # keeping track of. Idempotent: a file that already holds one is left alone,
   # since re-running must not orphan an agent already using it.
   agent-credential:
-    image: coral-city/control-plane:${CORAL_CITY_IMAGE_TAG:-r1}
+    image: iocean/control-plane:${IOCEAN_IMAGE_TAG:-r1}
     pull_policy: never
     profiles: ["tools"]
     entrypoint: ["/usr/local/bin/migrate"]
     command:
       - agent
-      - -organisation=${CORAL_CITY_ADMIN_ORG:?set the institution}
-      - -name=${CORAL_CITY_AGENT_NAME:-mcp}
+      - -organisation=${IOCEAN_ADMIN_ORG:?set the institution}
+      - -name=${IOCEAN_AGENT_NAME:-mcp}
       - -credential-file=/credentials/mcp
     environment: *platform-env
     volumes:
@@ -195,17 +195,17 @@ services:
   # credential, which cannot be recovered once created and is therefore written
   # to a volume the agent reads.
   bootstrap:
-    image: coral-city/control-plane:${CORAL_CITY_IMAGE_TAG:-r1}
+    image: iocean/control-plane:${IOCEAN_IMAGE_TAG:-r1}
     pull_policy: never
     entrypoint: ["/usr/local/bin/migrate"]
     command:
       - bootstrap
-      - -email=${CORAL_CITY_ADMIN_EMAIL:?set the first administrator's email}
-      - -secret=${CORAL_CITY_ADMIN_SECRET:?set the first administrator's secret}
-      - -name=${CORAL_CITY_ADMIN_NAME:?set the first administrator's name}
-      - -organisation=${CORAL_CITY_ADMIN_ORG:?set the first institution}
-      - -organisation-name=${CORAL_CITY_ADMIN_ORG_NAME:-iocean}
-      - -target=${CORAL_CITY_AGENT_TARGET:-box}
+      - -email=${IOCEAN_ADMIN_EMAIL:?set the first administrator's email}
+      - -secret=${IOCEAN_ADMIN_SECRET:?set the first administrator's secret}
+      - -name=${IOCEAN_ADMIN_NAME:?set the first administrator's name}
+      - -organisation=${IOCEAN_ADMIN_ORG:?set the first institution}
+      - -organisation-name=${IOCEAN_ADMIN_ORG_NAME:-iocean}
+      - -target=${IOCEAN_AGENT_TARGET:-box}
       - -worker-credential-file=/credentials/worker
     environment: *platform-env
     volumes:
@@ -216,7 +216,7 @@ services:
     restart: "no"
 
   control-plane:
-    image: coral-city/control-plane:${CORAL_CITY_IMAGE_TAG:-r1}
+    image: iocean/control-plane:${IOCEAN_IMAGE_TAG:-r1}
     pull_policy: never
     # Built here rather than streamed from a developer's machine: this host has
     # a checkout, a builder, and the right architecture, and cross-building an
@@ -226,18 +226,18 @@ services:
       context: ../..
       dockerfile: services/control-plane/Dockerfile
       args:
-        VERSION: ${CORAL_CITY_VERSION:-development}
-        COMMIT: ${CORAL_CITY_COMMIT:-unknown}
-        BUILT_AT: ${CORAL_CITY_BUILT_AT:-unknown}
+        VERSION: ${IOCEAN_VERSION:-development}
+        COMMIT: ${IOCEAN_COMMIT:-unknown}
+        BUILT_AT: ${IOCEAN_BUILT_AT:-unknown}
     environment:
       <<: *platform-env
-      CORAL_CITY_HTTP_ADDRESS: :8080
+      IOCEAN_HTTP_ADDRESS: :8080
       # Sessions travel over the tailnet rather than TLS on this host, so the
       # secure attribute would make the cookie unusable rather than safer. It
       # goes back on the moment there is a certificate.
-      CORAL_CITY_SECURE_COOKIES: ${CORAL_CITY_SECURE_COOKIES:-false}
+      IOCEAN_SECURE_COOKIES: ${IOCEAN_SECURE_COOKIES:-false}
     ports:
-      - "${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_API_PORT:-18080}:8080"
+      - "${IOCEAN_BIND_ADDRESS:-127.0.0.1}:${IOCEAN_API_PORT:-18080}:8080"
     depends_on:
       bootstrap:
         condition: service_completed_successfully
@@ -252,39 +252,39 @@ services:
   # see, because a bind mount is resolved by the daemon on the host and not
   # inside this container.
   agent:
-    image: coral-city/worker:${CORAL_CITY_IMAGE_TAG:-r1}
+    image: iocean/worker:${IOCEAN_IMAGE_TAG:-r1}
     pull_policy: never
     build:
       context: ../..
       dockerfile: services/worker/Dockerfile
     environment:
-      CORAL_CITY_CONTROL_PLANE_URL: http://control-plane:8080
-      CORAL_CITY_WORKER_CREDENTIAL_FILE: /credentials/worker
-      CORAL_CITY_WORKER_TARGET: ${CORAL_CITY_AGENT_TARGET:-box}
-      CORAL_CITY_WORKER_WORKDIR: /work
-      CORAL_CITY_WORKER_HOST_WORKDIR: ${CORAL_CITY_AGENT_HOST_WORKDIR:-/var/lib/coral-city/work}
+      IOCEAN_CONTROL_PLANE_URL: http://control-plane:8080
+      IOCEAN_WORKER_CREDENTIAL_FILE: /credentials/worker
+      IOCEAN_WORKER_TARGET: ${IOCEAN_AGENT_TARGET:-box}
+      IOCEAN_WORKER_WORKDIR: /work
+      IOCEAN_WORKER_HOST_WORKDIR: ${IOCEAN_AGENT_HOST_WORKDIR:-/var/lib/iocean/work}
       # What a dive is simulated in. A property of this host rather than of the
       # platform: what it has, and what its GPUs can run.
-      CORAL_CITY_SIM_IMAGE: ${CORAL_CITY_SIM_IMAGE:-127.0.0.1:18081/sim-runtime:r1}
+      IOCEAN_SIM_IMAGE: ${IOCEAN_SIM_IMAGE:-127.0.0.1:18081/sim-runtime:r1}
       # What this host reports it can simulate in, every time it asks for work.
       # Whoever asks for a dive names a runtime, and cannot know what is
       # installed on a machine in a rack — so the machine says.
-      CORAL_CITY_RUNTIME_VERSION: ${CORAL_CITY_RUNTIME_VERSION:-isaac-6.0.1+oceansim}
+      IOCEAN_RUNTIME_VERSION: ${IOCEAN_RUNTIME_VERSION:-isaac-6.0.1+oceansim}
       # Where somebody watching an interactive dive connects. The address of
       # this machine as the people who use it reach it — which this host knows
       # and the control plane does not.
-      CORAL_CITY_STREAM_HOST: ${CORAL_CITY_STREAM_HOST:-127.0.0.1}
+      IOCEAN_STREAM_HOST: ${IOCEAN_STREAM_HOST:-127.0.0.1}
       # A model a dive may be flown by, passed on to the dives that ask to be.
       # Only those: a dive that does not name a controller which needs one gets
       # no network and no key, which is what every dive an institution submits
       # is and should stay.
-      CORAL_CITY_MODEL_URL: ${CORAL_CITY_MODEL_URL:-}
-      CORAL_CITY_MODEL_KEY: ${CORAL_CITY_MODEL_KEY:-}
-      CORAL_CITY_MODEL: ${CORAL_CITY_MODEL:-}
-      CORAL_CITY_MODEL_MAX_TOKENS: ${CORAL_CITY_MODEL_MAX_TOKENS:-}
+      IOCEAN_MODEL_URL: ${IOCEAN_MODEL_URL:-}
+      IOCEAN_MODEL_KEY: ${IOCEAN_MODEL_KEY:-}
+      IOCEAN_MODEL: ${IOCEAN_MODEL:-}
+      IOCEAN_MODEL_MAX_TOKENS: ${IOCEAN_MODEL_MAX_TOKENS:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${CORAL_CITY_AGENT_HOST_WORKDIR:-/var/lib/coral-city/work}:/work
+      - ${IOCEAN_AGENT_HOST_WORKDIR:-/var/lib/iocean/work}:/work
       - credentials:/credentials:ro
     user: "0:0"
     depends_on:
@@ -302,7 +302,7 @@ services:
   # administration screen pretend to be a product is how the first attempt at
   # this went wrong.
   console:
-    image: coral-city/console:${CORAL_CITY_IMAGE_TAG:-r1}
+    image: iocean/console:${IOCEAN_IMAGE_TAG:-r1}
     pull_policy: never
     build:
       context: ../..
@@ -311,7 +311,7 @@ services:
       control-plane:
         condition: service_healthy
     ports:
-      - "${CORAL_CITY_BIND_ADDRESS:-127.0.0.1}:${CORAL_CITY_CONSOLE_PORT:-18082}:8080"
+      - "${IOCEAN_BIND_ADDRESS:-127.0.0.1}:${IOCEAN_CONSOLE_PORT:-18082}:8080"
     deploy:
       resources:
         limits: { cpus: "1", memory: 512M }
@@ -319,5 +319,11 @@ services:
 
 volumes:
   record:
+    # Named as it was before the rename, so the data in it is kept.
+    name: coral-city_record
   registry:
+    # Named as it was before the rename, so the data in it is kept.
+    name: coral-city_registry
   credentials:
+    # Named as it was before the rename, so the data in it is kept.
+    name: coral-city_credentials

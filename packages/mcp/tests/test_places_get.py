@@ -16,8 +16,8 @@ from __future__ import annotations
 import json
 import pathlib
 
-from coral_city_mcp import provenance
-from coral_city_mcp import tools
+from iocean_mcp import provenance
+from iocean_mcp import tools
 
 HERE = pathlib.Path(__file__).resolve().parent
 SITE = json.loads((HERE / "from-the-box" / "al-fahal.site.json").read_text())

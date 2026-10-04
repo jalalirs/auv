@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bake a place's water into a map, measured from where dives begin.
 
-    tools/aim-water ~/coral-city/places/looe-key
+    tools/aim-water ~/iocean/places/looe-key
 
 The medium in `coral_ground.mdl` needs to know where the camera is, and in
 this renderer an MDL material parameter takes the value it was **built** with

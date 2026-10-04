@@ -16,7 +16,7 @@ tools/reference, and produces what a renderer needs to show the ground as it is:
   chart_4096.png            the same, depth-tinted and contoured every 2 m,
                             for reading the terrain rather than admiring it
 
-    tools/ground ~/coral-city/places/looe-key ~/coral-city/reference/looe-key
+    tools/ground ~/iocean/places/looe-key ~/iocean/reference/looe-key
 
 Row 0 of every array is south. The PNGs are saved the way a map is read, north
 at the top, so that in a renderer v = 0 is the south edge.

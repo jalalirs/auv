@@ -10,10 +10,10 @@ import { mcpAddressFor, mcpConfig } from "./Tokens.js";
 
 describe("the MCP address", () => {
   it("on the public link, is the same path with /mcp on the end", () => {
-    expect(mcpAddressFor("https://jalalirs.tailedf721.ts.net/coral"))
-      .toBe("https://jalalirs.tailedf721.ts.net/coral/mcp");
-    expect(mcpAddressFor("https://jalalirs.tailedf721.ts.net/coral/"))
-      .toBe("https://jalalirs.tailedf721.ts.net/coral/mcp");
+    expect(mcpAddressFor("https://jalalirs.tailedf721.ts.net/iocean"))
+      .toBe("https://jalalirs.tailedf721.ts.net/iocean/mcp");
+    expect(mcpAddressFor("https://jalalirs.tailedf721.ts.net/iocean/"))
+      .toBe("https://jalalirs.tailedf721.ts.net/iocean/mcp");
   });
 
   it("on the tailnet's raw ports, is the platform's host on the MCP server's port", () => {
@@ -29,7 +29,7 @@ describe("the MCP address", () => {
 describe("the block to paste", () => {
   it("is an HTTP server with the token as a Bearer", () => {
     const said = JSON.parse(mcpConfig("http://h:18083/mcp", "cc_abc"));
-    const server = said.mcpServers["coral-city"];
+    const server = said.mcpServers["iocean"];
     expect(server.type).toBe("http");
     expect(server.url).toBe("http://h:18083/mcp");
     expect(server.headers.Authorization).toBe("Bearer cc_abc");

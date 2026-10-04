@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """How much of its own colour the seabed keeps, against how far away it is.
 
-    tools/cue ~/coral-city/places/looe-key ~/coral-city/work/looks/looe-key-1C
+    tools/cue ~/iocean/places/looe-key ~/iocean/work/looks/looe-key-1C
 
 Depth cueing is a statement about *distance*: near surfaces keep their colour,
 far ones become the water. Every earlier version of this measured rows of the
@@ -85,7 +85,7 @@ def camera_for(view: str, site: dict, grid, across: float):
     """
     sys.path.insert(0, str(
         pathlib.Path(__file__).resolve().parent.parent / "services"
-        / "sim-runtime" / "exts" / "coral.city.shell" / "coral" / "city" / "shell"))
+        / "sim-runtime" / "exts" / "iocean.shell" / "iocean_shell"))
     import tour as flying
 
     how = dict(flying.VIEWS)[view]

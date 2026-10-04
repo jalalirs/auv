@@ -32,7 +32,7 @@ class Hud:
 
     def __init__(self) -> None:
         self.window = ui.Window(
-            "coral-city-hud",
+            "iocean-hud",
             width=360, height=260,
             flags=(ui.WINDOW_FLAGS_NO_TITLE_BAR | ui.WINDOW_FLAGS_NO_RESIZE
                    | ui.WINDOW_FLAGS_NO_SCROLLBAR | ui.WINDOW_FLAGS_NO_MOVE

@@ -46,12 +46,17 @@ func (d *Dependencies) signIn(w http.ResponseWriter, r *http.Request) {
 
 // signOut ends the caller's own sign-in.
 func (d *Dependencies) signOut(w http.ResponseWriter, r *http.Request) {
-	if cookie, err := r.Cookie(SessionCookie); err == nil && cookie.Value != "" {
+	if cookie, err := sessionCookie(r); err == nil && cookie.Value != "" {
 		if err := d.Identity.RevokeSession(r.Context(), cookie.Value); err != nil {
 			writeError(w, r, err)
 			return
 		}
 	}
+	// And the old name's, so signing out of a session kept under it ends it.
+	http.SetCookie(w, &http.Cookie{
+		Name: OldSessionCookie, Value: "", Path: "/", Expires: time.Unix(0, 0),
+		HttpOnly: true, Secure: d.SecureCookies, SameSite: http.SameSiteLaxMode,
+	})
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookie,
 		Value:    "",

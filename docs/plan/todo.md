@@ -115,7 +115,7 @@ runs headless against a batch dive with a score coming back.
 
 *Where it stands:* done, and verified on the box (3 September). The package
 is `packages/sdk-python` (`pip install -e 'packages/sdk-python[tank,dev]'`,
-command `coral-city`): a `Controller` base with the runtime's own
+command `iocean`): a `Controller` base with the runtime's own
 Observation, Command and declared parameters; vehicle descriptions generated
 from the catalogue with thrusters, sensors, topics and capability, and a
 `check` that refuses a controller for a vehicle it cannot fly; a `Navigator`
@@ -123,9 +123,9 @@ that turns pressure, attitude and DVL velocity into an observation, used by
 the live node and the tank alike; a headless `Tank` on the runtime's physics
 with gym-style `reset`/`step` and tasks that score in [0, 1] (`HoldStation`,
 `ReachDepth`); a ROS 2 node that declares each tunable as a parameter with a
-range; a platform client; and `coral-city deploy` — image on ros:jazzy with
+range; a platform client; and `iocean deploy` — image on ros:jazzy with
 the SDK inside, pushed, registered by digest as the institution's autonomy —
-followed by `coral-city dive`. The example station hold scores 1.0 in the tank
+followed by `iocean dive`. The example station hold scores 1.0 in the tank
 through its sensors, flew a batch dive on Looe Key (943 commands in ten
 seconds), and on an interactive dive the console channel showed it flying
 with its eight tunables beside the runtime's, and moving `depthM` took the
@@ -208,7 +208,7 @@ ledger. The two placed dives ran side by side on DDS domains 1 and 2.
 What changed. A dive's needs are assembled at admission from its parts — the
 simulator's by mode (measured on the box: 20 GiB of card, 4 processors, 16
 GiB for interactive; 16, 4, 12 for batch), the controller's from its stack's
-declaration (`coral-city deploy --gpu-memory 8G --cpus 2 --memory 4G`), with
+declaration (`iocean deploy --gpu-memory 8G --cpus 2 --memory 4G`), with
 the request able to override — and copied onto the run. A run holds an
 allocation, `dive.hold`, one row per part per card; a device may carry parts
 of several runs when its memory allows, so the one-run-per-device index is
@@ -377,7 +377,7 @@ agent puts every file into storage the way every other file the platform
 holds goes — declared by digest, checked, then named — and records each as an
 artefact of the run; the run's outcome says how many. Whoever may read the
 dive may list them, each with a link that fetches it, and the SDK fetches a
-whole recording with `coral-city fetch`. The Dives page offers Replay on a
+whole recording with `iocean fetch`. The Dives page offers Replay on a
 run that recorded: the frame nearest the moment beside the chart with the
 track up to that moment, scrubbed or played.
 
@@ -674,7 +674,7 @@ hold in 0.3 m/s keeps station with more than twice the thruster effort of
 still water. The renderer scales its fog to the visibility asked for. The
 dive page has a fifth column, "In water that is", with still water, a gentle
 set, one knot, two knots, and one knot murky; the chart draws the current as
-an arrow with its speed; the SDK's tank and `coral-city dive` take
+an arrow with its speed; the SDK's tank and `iocean dive` take
 `--current` and `--visibility`. Not yet: observed currents from the place's
 data, a shear with depth, and the water drawn moving.
 
@@ -776,9 +776,9 @@ the roadmap always wanted.
 **Done when:** two runs of one seed leave the same trajectory, and a
 difference between controllers is shown as a difference between tracks.
 
-*Where it stands:* the command line has it (3 September): `coral-city dive
---seed N`, `coral-city dive --again <dive>/<run>` to run one exactly again,
-and `coral-city compare <dive> <runA> <runB>` to hold two recordings' poses
+*Where it stands:* the command line has it (3 September): `iocean dive
+--seed N`, `iocean dive --again <dive>/<run>` to run one exactly again,
+and `iocean compare <dive> <runA> <runB>` to hold two recordings' poses
 against each other and report the largest difference in position. Verified
 on the box: a hold-station dive in a gentle current, seed 42, run twice —
 323 poses each, the largest difference in position 0.0000 m, identical to the

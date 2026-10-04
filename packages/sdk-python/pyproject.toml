@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "coral-city"
+name = "iocean"
 version = "0.1.0"
 description = "Write a controller for an iocean vehicle, run it in a tank or a dive, and deploy it."
 readme = "README.md"
@@ -12,7 +12,7 @@ dependencies = ["numpy>=1.24"]
 
 [project.optional-dependencies]
 # The headless tank runs the runtime's own physics, without Isaac Sim.
-tank = ["coral-city-runtime"]
+tank = ["iocean-runtime"]
 dev = ["pytest"]
 
 [project.scripts]

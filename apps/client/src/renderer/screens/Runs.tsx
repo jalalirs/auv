@@ -233,7 +233,7 @@ function Trials({ runs }: { runs: Held["runs"] }): React.JSX.Element {
   if (trials.length === 0) {
     return (
       <Empty title="Nothing flown twice yet">
-        Run the same dive again — from the app, or with <code>coral-city dive --again</code> —
+        Run the same dive again — from the app, or with <code>iocean dive --again</code> —
         and its runs are gathered here as a mean and a spread.
       </Empty>
     );

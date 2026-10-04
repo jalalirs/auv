@@ -20,8 +20,8 @@ because nothing in it knows about a simulator, a real vehicle.
             heave = 20.0 * (seen.depth - self["depthM"]) - 30.0 * seen.velocity[2]
             return Command.wrench_of(heave=heave)
 
-Then `coral-city tank hold.py` to try it, `coral-city deploy hold.py` to put it
-on the platform, and `coral-city dive` to fly it there.
+Then `iocean tank hold.py` to try it, `iocean deploy hold.py` to put it
+on the platform, and `iocean dive` to fly it there.
 """
 
 from . import names  # noqa: F401  — the old CORAL_CITY_ settings, given their IOCEAN_ names

@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/jalalirs/auv/services/control-plane/internal/names"
 	"log/slog"
 	"net/http"
 	"os"
@@ -36,6 +37,7 @@ var (
 )
 
 func main() {
+	names.Carry() // the old CORAL_CITY_ settings, given their IOCEAN_ names
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	// Components that cannot be handed a logger — the transport's last-resort
 	// error path among them — still have to be able to say what went wrong.

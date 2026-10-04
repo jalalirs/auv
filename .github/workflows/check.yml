@@ -58,7 +58,7 @@ jobs:
 
       - name: Start the platform
         run: |
-          mkdir -p /tmp/coral-city-work
+          mkdir -p /tmp/iocean-work
           docker compose -f deployments/local/compose.yaml build control-plane web worker
           docker compose -f deployments/local/compose.yaml up --detach --wait
 

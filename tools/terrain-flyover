@@ -11,7 +11,7 @@
 # what the ground is, what stands on it, and what the water does to both.
 #
 # Wants the ground built first: tools/reference then tools/ground, on this
-# machine, into ~/coral-city/reference/<place>. That directory is synced to the
+# machine, into ~/iocean/reference/<place>. That directory is synced to the
 # box, Blender renders there on the GPUs, the frames are encoded there, and the
 # video comes back here as .uav-terrain.mp4.
 #
@@ -44,7 +44,7 @@ for arg in "$@"; do
 done
 [ -n "${place}" ] || { echo "which place?" >&2; exit 2; }
 
-ground="${HOME}/coral-city/reference/${place}"
+ground="${HOME}/iocean/reference/${place}"
 for need in seabed_1m.f32 seabed_1m.json habitat_4096.npy "${colour}"; do
     [ -f "${ground}/${need}" ] || { echo "no ${need} in ${ground}; run tools/ground first" >&2; exit 1; }
 done
@@ -55,16 +55,16 @@ esac
 on_box() { LC_ALL=C ssh "${GPU_HOST}" "export LC_ALL=C LANG=C; $*"; }
 
 echo "syncing the ground to the box"
-on_box "mkdir -p ~/coral-city/reference/${place}"
+on_box "mkdir -p ~/iocean/reference/${place}"
 rsync -az --include='seabed_1m.*' --include='habitat_4096.npy' --include='survey_1m.npy' \
     --include='*_4096.png' --include='colonies.json' --include='assets/***' --exclude='*' \
-    "${ground}/" "${GPU_HOST}:coral-city/reference/${place}/"
-scp -q "${HERE}/flyover.py" "${HERE}/flyover_corals.py" "${HERE}/flyover_water.py" "${GPU_HOST}:coral-city/reference/${place}/"
+    "${ground}/" "${GPU_HOST}:iocean/reference/${place}/"
+scp -q "${HERE}/flyover.py" "${HERE}/flyover_corals.py" "${HERE}/flyover_water.py" "${GPU_HOST}:iocean/reference/${place}/"
 
 name="${layers//,/-}"
-out="coral-city/reference/${place}/flyover-${name}"
+out="iocean/reference/${place}/flyover-${name}"
 echo "rendering ${name}: ${frames} frames at ${exaggeration}x vertical, ${colour}"
-on_box "rm -rf ${out} && mkdir -p ${out} && cd coral-city/reference/${place} && \
+on_box "rm -rf ${out} && mkdir -p ${out} && cd iocean/reference/${place} && \
     ${BLENDER} -b -P flyover.py -- . ~/${out} ${frames} ${exaggeration} ${colour} ${layers} > ~/${out}/render.log 2>&1; \
     grep -E 'reef band|RENDER_DONE|Traceback|Error' ~/${out}/render.log | tail -4"
 on_box "ffmpeg -y -loglevel error -framerate 24 -pattern_type glob -i '${out}/frames/frame_*.png' \

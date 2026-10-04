@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Platform } from "@coral-city/api";
 
 import boot from "../../../assets/boot.jpg";
-import mark from "../../../assets/coral-city.svg";
+import mark from "../../../assets/iocean.svg";
 import { readHeld, usePackages, type Held, type Packages } from "../platform/held.js";
 import { Autonomy } from "./Autonomy.js";
 import { Dive } from "./Dive.js";

@@ -68,8 +68,8 @@ whose system Python refuses packages, make a virtual environment and run them
 with its interpreter:
 
 ```bash
-python3 -m venv ~/coral-city/venv && ~/coral-city/venv/bin/pip install numpy scipy pillow rasterio
-~/coral-city/venv/bin/python tools/reference looe-key 24.54586 -81.4072 --cremp-site "Looe Key" --usgs-doi 10.5066/P1QRS3SK
-~/coral-city/venv/bin/python tools/ground ~/coral-city/places/looe-key ~/coral-city/reference/looe-key
+python3 -m venv ~/iocean/venv && ~/iocean/venv/bin/pip install numpy scipy pillow rasterio
+~/iocean/venv/bin/python tools/reference looe-key 24.54586 -81.4072 --cremp-site "Looe Key" --usgs-doi 10.5066/P1QRS3SK
+~/iocean/venv/bin/python tools/ground ~/iocean/places/looe-key ~/iocean/reference/looe-key
 tools/terrain-flyover looe-key
 ```

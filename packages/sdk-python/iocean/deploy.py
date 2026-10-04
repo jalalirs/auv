@@ -23,7 +23,7 @@ from .loading import controller_from
 from .platform import Platform
 
 DOCKERFILE = """\
-# Built by `coral-city deploy`. The controller and the SDK ride on the ROS 2
+# Built by `iocean deploy`. The controller and the SDK ride on the ROS 2
 # distribution; nothing of the platform's is inside.
 FROM ros:jazzy-ros-core
 

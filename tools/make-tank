@@ -235,7 +235,7 @@ def main() -> int:
     # platform had measured it.
     parse.add_argument("--from", dest="source", required=True,
                        help="where the three dimensions came from")
-    parse.add_argument("--into", default=str(pathlib.Path.home() / "coral-city" / "places"))
+    parse.add_argument("--into", default=str(pathlib.Path.home() / "iocean" / "places"))
     asked = parse.parse_args()
 
     for what, value in (("long", asked.long), ("wide", asked.wide),

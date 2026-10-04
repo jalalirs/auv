@@ -15,6 +15,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/jalalirs/auv/services/control-plane/internal/names"
 	"log/slog"
 	"os"
 	"time"
@@ -28,6 +29,7 @@ import (
 )
 
 func main() {
+	names.Carry() // the old CORAL_CITY_ settings, given their IOCEAN_ names
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	if err := run(logger, os.Args[1:]); err != nil {
 		logger.Error("migration stopped", "error", err)
@@ -143,7 +145,7 @@ func agent(ctx context.Context, logger *slog.Logger, pool *db.Pool, settings con
 		if _, err := authorizer.Grant(ctx, conn, policy.GrantSpec{
 			SubjectKind: policy.SubjectPrincipal, SubjectID: principal.ID,
 			ScopeKind: policy.ScopePlatform,
-			Role: policy.RoleViewer, CreatedBy: principal.ID,
+			Role:      policy.RoleViewer, CreatedBy: principal.ID,
 		}); err != nil {
 			return err
 		}

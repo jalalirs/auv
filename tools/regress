@@ -13,7 +13,7 @@ move that changes nothing changes nothing to the last digit; one that changes
 something says by how much and from when.
 
 The dives fly against the place as it is built on this machine
-(~/coral-city/places/<place>), so a rebuilt place is a new reference: record
+(~/iocean/places/<place>), so a rebuilt place is a new reference: record
 again, and say so in the commit.
 """
 
@@ -101,7 +101,7 @@ def fly(case: dict) -> dict:
         objective = json.loads((ROOT / "missions" / f"{case['mission']}.json").read_text())
         objective.pop("_", None)
     place = (flat_place() if case["place"] == ":flat"
-             else pathlib.Path.home() / "coral-city/places" / case["place"])
+             else pathlib.Path.home() / "iocean/places" / case["place"])
     brief = {"seed": case["seed"], "durationSeconds": case["seconds"],
              "vehiclePath": str(package.parent), "objective": objective,
              **({"initialState": case["initial"]} if case.get("initial") else {}),

@@ -12,7 +12,7 @@ import re
 
 import pytest
 
-from coral_city_mcp import doubts
+from iocean_mcp import doubts
 
 APP = (pathlib.Path(__file__).resolve().parents[3]
        / "apps/client/src/renderer/catalog/doubts.ts")

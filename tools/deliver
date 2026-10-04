@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn a place into the things a marine department actually asks for.
 
-    tools/deliver ~/coral-city/places/looe-key
+    tools/deliver ~/iocean/places/looe-key
 
 A score and a video is not a deliverable. What a reef scientist asks for is a
 colony inventory they can open in a spreadsheet, points they can drop on a

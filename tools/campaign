@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """A grid of cells, and what it would take to work all of them.
 
-    tools/campaign ~/coral-city/places/looe-key --cell 20
-    tools/campaign ~/coral-city/places/al-fahal --cell 25 --cost run/mission.json
+    tools/campaign ~/iocean/places/looe-key --cell 20
+    tools/campaign ~/iocean/places/al-fahal --cell 25 --cost run/mission.json
 
 One dive is a demonstration. Nobody at a reef programme has the problem of
 one dive: KCRI is putting two million corals into a hundred hectares by

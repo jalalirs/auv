@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/jalalirs/auv/services/worker/internal/names"
 	"io"
 	"log/slog"
 	"net/http"
@@ -32,6 +33,7 @@ import (
 )
 
 func main() {
+	names.Carry() // the old CORAL_CITY_ settings, given their IOCEAN_ names
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	if err := run(logger); err != nil {
 		logger.Error("worker stopped", "error", err)

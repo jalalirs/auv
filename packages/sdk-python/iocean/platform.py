@@ -4,7 +4,7 @@ Enough of the API to publish a controller and fly it: sign in, find a vehicle
 and a place, register an autonomy stack, define a dive, run it, and wait for
 what it said. Plain urllib, so the SDK depends on nothing to talk to it.
 
-A session is kept in ~/.config/coral-city/session.json by `coral-city sign-in`
+A session is kept in ~/.config/iocean/session.json by `iocean sign-in`
 and read by everything else; IOCEAN_API and IOCEAN_TOKEN override it.
 """
 
@@ -17,7 +17,7 @@ import time
 import urllib.error
 import urllib.request
 
-SESSION = pathlib.Path(os.environ.get("XDG_CONFIG_HOME", pathlib.Path.home() / ".config")) / "coral-city" / "session.json"
+SESSION = pathlib.Path(os.environ.get("XDG_CONFIG_HOME", pathlib.Path.home() / ".config")) / "iocean" / "session.json"
 
 
 class Refused(Exception):
@@ -42,7 +42,7 @@ class Platform:
         if SESSION.exists():
             kept = json.loads(SESSION.read_text())
             return cls(api or kept["api"], token or kept["token"])
-        raise SystemExit("not signed in: run `coral-city sign-in` first, or set IOCEAN_API and IOCEAN_TOKEN")
+        raise SystemExit("not signed in: run `iocean sign-in` first, or set IOCEAN_API and IOCEAN_TOKEN")
 
     def sign_in(self, email: str, secret: str) -> str:
         answer = self.call("POST", "/api/v1/sessions", {"email": email, "secret": secret})

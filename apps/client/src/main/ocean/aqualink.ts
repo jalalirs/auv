@@ -12,7 +12,7 @@ import path from "node:path";
 
 import { AqualinkReader, type ListedSite, type SiteListStore } from "../../shared/aqualink.js";
 
-const AGENT = "coral-city client";
+const AGENT = "iocean client";
 
 class FileStore implements SiteListStore {
   #file: string;

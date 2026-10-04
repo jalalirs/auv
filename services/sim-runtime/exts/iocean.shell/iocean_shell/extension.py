@@ -196,7 +196,7 @@ class CoralCityShell(omni.ext.IExt):
         # Subscribed before anything is loaded, so that a failure to open has
         # somewhere to be reported rather than a black window.
         self.update = (omni.kit.app.get_app().get_update_event_stream()
-                       .create_subscription_to_pop(self._frame, name="coral.city.dive"))
+                       .create_subscription_to_pop(self._frame, name="iocean.dive"))
 
         try:
             self._open()
@@ -944,7 +944,7 @@ class CoralCityShell(omni.ext.IExt):
             # metres away, and the medium stays behind.
             eye = getattr(self.tour, "eye", None)
             if eye is not None:
-                from coral import water
+                import water
                 water.tell_the_water_where_the_camera_is(dive.stage, eye)
                 # And the marine snow, for the same reason and with a sharper
                 # edge: the snow box is near-field, and the half-metre it
@@ -1128,7 +1128,7 @@ class CoralCityShell(omni.ext.IExt):
             try:
                 import carb
 
-                from coral import water
+                import water
                 water._say_what_the_renderer_has(
                     carb.settings.get_settings(), self._say, "/rtx")
             except Exception as exc:
@@ -1155,7 +1155,7 @@ class CoralCityShell(omni.ext.IExt):
             from omni.kit.viewport.utility import capture_viewport_to_file, get_active_viewport
 
             if self._meter is None:
-                from coral import metering
+                import metering
                 was = carb.settings.get_settings().get("/rtx/post/tonemap/filmIso")
                 self._meter = metering.Meter(float(was or 100.0))
             viewport = get_active_viewport()
@@ -1239,7 +1239,7 @@ class CoralCityShell(omni.ext.IExt):
             # frame is what the camera is actually seeing, and the balance
             # that neutralises it is one calculation. Luminance is held, so it
             # does not disturb the exposure that just settled.
-            from coral import metering as _metering
+            import metering as _metering
             if self._meter.done and self._balance == (1.0, 1.0, 1.0):
                 # IOCEAN_BALANCE pins the gains, the same way
                 # IOCEAN_ISO pins the exposure: three numbers, so a

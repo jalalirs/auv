@@ -36,7 +36,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT = "coral-city reference corpus (https://github.com/jalalirs/auv)"
+AGENT = "iocean reference corpus (https://github.com/jalalirs/auv)"
 
 
 def get(url: str, timeout: int = 120, data: bytes | None = None, headers=None) -> bytes:
@@ -275,7 +275,7 @@ def imagery(into: pathlib.Path, doi: str, fetch_large: bool) -> dict | None:
           f"fetched the {len(small)} small ones")
     # No generated shell script. There was one, and it said:
     #
-    #     [ -s NAME ] || curl -sL --retry 3 -A coral-city -o NAME URL
+    #     [ -s NAME ] || curl -sL --retry 3 -A iocean -o NAME URL
     #
     # `-s` is true of any file that is not empty, so a download interrupted
     # part way left a file the script would never touch again — no resume, no
@@ -364,7 +364,7 @@ def main() -> int:
                        help="write a script that fetches the whole USGS release")
     parse.add_argument("--scenes", type=int, default=8)
     parse.add_argument("--cloud", type=float, default=8.0, help="max cloud cover percent")
-    parse.add_argument("--into", default=str(pathlib.Path.home() / "coral-city" / "reference"))
+    parse.add_argument("--into", default=str(pathlib.Path.home() / "iocean" / "reference"))
     asked = parse.parse_args()
 
     into = pathlib.Path(asked.into) / asked.name

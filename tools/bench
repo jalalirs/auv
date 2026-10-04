@@ -382,7 +382,7 @@ def deployed(platform, slug: str) -> dict | None:
     our own baselines is ranking the wrong thing.
 
     The newest build of that slug, not the first the listing happens to hand
-    back. Every `coral-city deploy` registers another build under the same
+    back. Every `iocean deploy` registers another build under the same
     handle — `learned-hold` already has two — and benching whichever came
     back first means a change verified against the build it replaced. That
     exact mistake has been made here before, with dives rather than stacks.
@@ -412,7 +412,7 @@ def whose(platform, slug: str) -> dict:
             f"no controller called '{slug}'. Built in: {', '.join(BUILT_IN)}."
             + (f" Deployed here: {theirs}." if theirs else
                " Nothing has been deployed to this organisation; "
-               "`coral-city deploy` puts one there."))
+               "`iocean deploy` puts one there."))
     return {"stack": stack}
 
 

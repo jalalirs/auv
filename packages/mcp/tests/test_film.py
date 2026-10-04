@@ -2,8 +2,8 @@
 
 import pytest
 
-from coral_city_mcp import tools
-from coral_city_mcp.tools import Refused
+from iocean_mcp import tools
+from iocean_mcp.tools import Refused
 
 
 class Platform:

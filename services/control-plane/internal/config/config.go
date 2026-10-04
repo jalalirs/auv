@@ -74,21 +74,21 @@ type Config struct {
 // their absence is reported rather than guessed at.
 func Load() (Config, error) {
 	config := Config{
-		Address:             valueOrDefault("CORAL_CITY_HTTP_ADDRESS", defaultAddress),
-		StorageRegion:       valueOrDefault("CORAL_CITY_STORAGE_REGION", "us-east-1"),
-		StorageBucketPrefix: os.Getenv("CORAL_CITY_STORAGE_BUCKET_PREFIX"),
+		Address:             valueOrDefault("IOCEAN_HTTP_ADDRESS", defaultAddress),
+		StorageRegion:       valueOrDefault("IOCEAN_STORAGE_REGION", "us-east-1"),
+		StorageBucketPrefix: os.Getenv("IOCEAN_STORAGE_BUCKET_PREFIX"),
 		// Where a client reaches storage, when that differs from where this
 		// process does. A presigned URL is signed over its host.
-		StoragePublicEndpoint: os.Getenv("CORAL_CITY_STORAGE_PUBLIC_ENDPOINT"),
+		StoragePublicEndpoint: os.Getenv("IOCEAN_STORAGE_PUBLIC_ENDPOINT"),
 
-		ModelURL: os.Getenv("CORAL_CITY_MODEL_URL"),
-		ModelKey: os.Getenv("CORAL_CITY_MODEL_KEY"),
-		Model:    valueOrDefault("CORAL_CITY_MODEL", ""),
+		ModelURL: os.Getenv("IOCEAN_MODEL_URL"),
+		ModelKey: os.Getenv("IOCEAN_MODEL_KEY"),
+		Model:    valueOrDefault("IOCEAN_MODEL", ""),
 	}
 	// A model that reasons before it answers spends most of its budget
 	// thinking; cut short, it returns the thinking and no plan at all, which
 	// looks exactly like a model that cannot plan.
-	tokens, err := number("CORAL_CITY_MODEL_MAX_TOKENS", 12000)
+	tokens, err := number("IOCEAN_MODEL_MAX_TOKENS", 12000)
 	if err != nil {
 		return Config{}, err
 	}
@@ -98,10 +98,10 @@ func Load() (Config, error) {
 		name        string
 		destination *string
 	}{
-		{"CORAL_CITY_DATABASE_URL", &config.DatabaseURL},
-		{"CORAL_CITY_STORAGE_ENDPOINT", &config.StorageEndpoint},
-		{"CORAL_CITY_STORAGE_ACCESS_KEY", &config.StorageAccessKey},
-		{"CORAL_CITY_STORAGE_SECRET_KEY", &config.StorageSecretKey},
+		{"IOCEAN_DATABASE_URL", &config.DatabaseURL},
+		{"IOCEAN_STORAGE_ENDPOINT", &config.StorageEndpoint},
+		{"IOCEAN_STORAGE_ACCESS_KEY", &config.StorageAccessKey},
+		{"IOCEAN_STORAGE_SECRET_KEY", &config.StorageSecretKey},
 	}
 	for _, setting := range required {
 		value := os.Getenv(setting.name)
@@ -116,16 +116,16 @@ func Load() (Config, error) {
 		fallback    time.Duration
 		destination *time.Duration
 	}{
-		{"CORAL_CITY_HTTP_READ_HEADER_TIMEOUT", defaultReadHeaderTimeout, &config.ReadHeaderTimeout},
-		{"CORAL_CITY_HTTP_READ_TIMEOUT", defaultReadTimeout, &config.ReadTimeout},
-		{"CORAL_CITY_HTTP_WRITE_TIMEOUT", defaultWriteTimeout, &config.WriteTimeout},
-		{"CORAL_CITY_HTTP_IDLE_TIMEOUT", defaultIdleTimeout, &config.IdleTimeout},
-		{"CORAL_CITY_SHUTDOWN_TIMEOUT", defaultShutdownTimeout, &config.ShutdownTimeout},
-		{"CORAL_CITY_SESSION_LIFETIME", defaultSessionLifetime, &config.SessionLifetime},
-		{"CORAL_CITY_UPLOAD_GRANT_LIFETIME", defaultUploadGrantLifetime, &config.UploadGrantLifetime},
-		{"CORAL_CITY_PRESIGN_LIFETIME", defaultPresignLifetime, &config.PresignLifetime},
-		{"CORAL_CITY_LEASE_DURATION", defaultLeaseDuration, &config.LeaseDuration},
-		{"CORAL_CITY_REAPER_INTERVAL", defaultReaperInterval, &config.ReaperInterval},
+		{"IOCEAN_HTTP_READ_HEADER_TIMEOUT", defaultReadHeaderTimeout, &config.ReadHeaderTimeout},
+		{"IOCEAN_HTTP_READ_TIMEOUT", defaultReadTimeout, &config.ReadTimeout},
+		{"IOCEAN_HTTP_WRITE_TIMEOUT", defaultWriteTimeout, &config.WriteTimeout},
+		{"IOCEAN_HTTP_IDLE_TIMEOUT", defaultIdleTimeout, &config.IdleTimeout},
+		{"IOCEAN_SHUTDOWN_TIMEOUT", defaultShutdownTimeout, &config.ShutdownTimeout},
+		{"IOCEAN_SESSION_LIFETIME", defaultSessionLifetime, &config.SessionLifetime},
+		{"IOCEAN_UPLOAD_GRANT_LIFETIME", defaultUploadGrantLifetime, &config.UploadGrantLifetime},
+		{"IOCEAN_PRESIGN_LIFETIME", defaultPresignLifetime, &config.PresignLifetime},
+		{"IOCEAN_LEASE_DURATION", defaultLeaseDuration, &config.LeaseDuration},
+		{"IOCEAN_REAPER_INTERVAL", defaultReaperInterval, &config.ReaperInterval},
 	}
 	for _, setting := range durations {
 		value, err := duration(setting.name, setting.fallback)
@@ -135,27 +135,27 @@ func Load() (Config, error) {
 		*setting.destination = value
 	}
 
-	connections, err := number("CORAL_CITY_DATABASE_CONNECTIONS", defaultDatabaseConnections)
+	connections, err := number("IOCEAN_DATABASE_CONNECTIONS", defaultDatabaseConnections)
 	if err != nil {
 		return Config{}, err
 	}
 	config.DatabaseConnections = int32(connections)
 
-	attempts, err := number("CORAL_CITY_MAX_ATTEMPTS", defaultMaxAttempts)
+	attempts, err := number("IOCEAN_MAX_ATTEMPTS", defaultMaxAttempts)
 	if err != nil {
 		return Config{}, err
 	}
 	config.MaxAttempts = attempts
 
-	maxObject, err := number64("CORAL_CITY_MAX_OBJECT_BYTES", defaultMaxObjectBytes)
+	maxObject, err := number64("IOCEAN_MAX_OBJECT_BYTES", defaultMaxObjectBytes)
 	if err != nil {
 		return Config{}, err
 	}
 	config.MaxObjectBytes = maxObject
 
-	config.StorageUseTLS = boolean("CORAL_CITY_STORAGE_USE_TLS", false)
-	config.StoragePublicUseTLS = boolean("CORAL_CITY_STORAGE_PUBLIC_USE_TLS", config.StorageUseTLS)
-	config.SecureCookies = boolean("CORAL_CITY_SECURE_COOKIES", false)
+	config.StorageUseTLS = boolean("IOCEAN_STORAGE_USE_TLS", false)
+	config.StoragePublicUseTLS = boolean("IOCEAN_STORAGE_PUBLIC_USE_TLS", config.StorageUseTLS)
+	config.SecureCookies = boolean("IOCEAN_SECURE_COOKIES", false)
 
 	return config, nil
 }

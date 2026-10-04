@@ -11,7 +11,7 @@ package registry. Every choice here follows from that:
 - every container declares a processor and memory limit, so that neither a
   reconstruction job nor the platform that admitted it can take the machine
   down;
-- stored bytes go to `CORAL_CITY_STORAGE_PATH`, a path the operator chooses on a
+- stored bytes go to `IOCEAN_STORAGE_PATH`, a path the operator chooses on a
   filesystem with room, because Docker cannot bound a named volume and growth
   here must not become somebody else's outage;
 - images are built on a developer's machine for this host's architecture and
@@ -26,14 +26,14 @@ credential that ships in a file is not a credential.
 
 | Variable | Meaning |
 | --- | --- |
-| `CORAL_CITY_DATABASE_PASSWORD` | the record's password |
-| `CORAL_CITY_STORAGE_ACCESS_KEY` | the object store's access key |
-| `CORAL_CITY_STORAGE_SECRET_KEY` | the object store's secret key |
-| `CORAL_CITY_STORAGE_PATH` | where stored bytes live, on a filesystem with room |
-| `CORAL_CITY_ADMIN_EMAIL` | the first administrator |
-| `CORAL_CITY_ADMIN_SECRET` | their sign-in secret |
-| `CORAL_CITY_ADMIN_NAME` | their display name |
-| `CORAL_CITY_ADMIN_ORG` | the first institution's short name |
+| `IOCEAN_DATABASE_PASSWORD` | the record's password |
+| `IOCEAN_STORAGE_ACCESS_KEY` | the object store's access key |
+| `IOCEAN_STORAGE_SECRET_KEY` | the object store's secret key |
+| `IOCEAN_STORAGE_PATH` | where stored bytes live, on a filesystem with room |
+| `IOCEAN_ADMIN_EMAIL` | the first administrator |
+| `IOCEAN_ADMIN_SECRET` | their sign-in secret |
+| `IOCEAN_ADMIN_NAME` | their display name |
+| `IOCEAN_ADMIN_ORG` | the first institution's short name |
 
 ## Deploying
 
