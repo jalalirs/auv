@@ -22,7 +22,7 @@ and why the science that comes back is a profile.
 
 from __future__ import annotations
 
-from coral_city import Command, Controller, Observation
+from iocean import Command, Controller, Observation
 
 
 class Sawtooth(Controller):

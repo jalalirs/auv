@@ -23,15 +23,15 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE.parents[3] / "packages" / "sdk-python"))
 
-import coral_city  # noqa: E402
+import iocean  # noqa: E402
 from controllers import base  # noqa: E402
 
 
 def test_the_runtime_and_the_sdk_hold_the_same_classes():
     """Not equal, not equivalent: the same object, out of one file."""
-    assert base.Observation is coral_city.Observation
-    assert base.Command is coral_city.Command
-    assert base.Parameter is coral_city.Parameter
+    assert base.Observation is iocean.Observation
+    assert base.Command is iocean.Command
+    assert base.Parameter is iocean.Parameter
 
 
 def test_the_observation_carries_what_a_controller_has_to_see():

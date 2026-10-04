@@ -91,10 +91,10 @@ class AskingController(Controller):
         self.declare("temperature", 0.2, 0.0, 2.0, "",
                      "How much the model is allowed to vary its answer.")
 
-        self.url = os.environ.get("CORAL_CITY_MODEL_URL", "")
-        self.model = os.environ.get("CORAL_CITY_MODEL", "")
-        self.key = os.environ.get("CORAL_CITY_MODEL_KEY", "")
-        self.max_tokens = int(os.environ.get("CORAL_CITY_MODEL_MAX_TOKENS", "4000"))
+        self.url = os.environ.get("IOCEAN_MODEL_URL", "")
+        self.model = os.environ.get("IOCEAN_MODEL", "")
+        self.key = os.environ.get("IOCEAN_MODEL_KEY", "")
+        self.max_tokens = int(os.environ.get("IOCEAN_MODEL_MAX_TOKENS", "4000"))
 
         # What it cost and how often it was wrong. Beside the score, because a
         # controller that thinks for a second a step is a different proposition

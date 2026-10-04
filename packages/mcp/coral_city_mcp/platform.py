@@ -68,15 +68,15 @@ class Platform:
         told somebody else's, and the whole point of the grants this platform
         already has is that a session is a person.
         """
-        base = os.environ.get("CORAL_CITY_PLATFORM")
-        email = os.environ.get("CORAL_CITY_EMAIL")
-        secret = os.environ.get("CORAL_CITY_SECRET")
-        token = os.environ.get("CORAL_CITY_TOKEN")
-        service = os.environ.get("CORAL_CITY_SERVICE")
-        service_file = os.environ.get("CORAL_CITY_SERVICE_FILE")
+        base = os.environ.get("IOCEAN_PLATFORM")
+        email = os.environ.get("IOCEAN_EMAIL")
+        secret = os.environ.get("IOCEAN_SECRET")
+        token = os.environ.get("IOCEAN_TOKEN")
+        service = os.environ.get("IOCEAN_SERVICE")
+        service_file = os.environ.get("IOCEAN_SERVICE_FILE")
         if base is None:
             raise Refused(0, "not_configured",
-                          "set CORAL_CITY_PLATFORM to the platform's address")
+                          "set IOCEAN_PLATFORM to the platform's address")
         if service_file and not service:
             # A credential in a file rather than in the environment, because an
             # environment is inherited by every child process and read by
@@ -93,9 +93,9 @@ class Platform:
             return cls(base, token)
         if not email or not secret:
             raise Refused(0, "not_configured",
-                          "set CORAL_CITY_SERVICE (or CORAL_CITY_SERVICE_FILE) "
-                          "for a service principal, or CORAL_CITY_EMAIL and "
-                          "CORAL_CITY_SECRET, or CORAL_CITY_TOKEN")
+                          "set IOCEAN_SERVICE (or IOCEAN_SERVICE_FILE) "
+                          "for a service principal, or IOCEAN_EMAIL and "
+                          "IOCEAN_SECRET, or IOCEAN_TOKEN")
         return cls.sign_in(base, email, secret)
 
     # ── asking ───────────────────────────────────────────────────────────────

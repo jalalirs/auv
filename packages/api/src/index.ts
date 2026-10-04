@@ -1,4 +1,4 @@
-// Talking to a iocean platform from somewhere else.
+// Talking to an iocean platform from somewhere else.
 //
 // The console talks to the platform it is served from, so its session is a
 // cookie and no token is ever handed to script. This is the other case: an

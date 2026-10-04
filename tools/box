@@ -193,7 +193,7 @@ runtime_stamp() {
     # same tool.
     local root="$1" runtime sdk
     runtime="$(git -C "${root}" rev-parse HEAD:services/sim-runtime 2>/dev/null)" || { echo unknown; return; }
-    sdk="$(git -C "${root}" rev-parse HEAD:packages/sdk-python/coral_city 2>/dev/null)" || { echo unknown; return; }
+    sdk="$(git -C "${root}" rev-parse HEAD:packages/sdk-python/iocean 2>/dev/null)$(git -C "${root}" rev-parse HEAD:packages/sdk-python/coral_city 2>/dev/null)" || { echo unknown; return; }
     printf '%s %s\n' "${runtime}" "${sdk}" | git hash-object --stdin
 }
 

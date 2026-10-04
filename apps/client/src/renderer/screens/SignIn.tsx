@@ -51,9 +51,9 @@ export function SignIn({ onSignedIn }: {
   // application does not begin with typing a forty-eight character secret.
   // The file is not in the repository and never should be; without it these are
   // empty and the form behaves as it will for everybody else.
-  const waiting = import.meta.env.VITE_CORAL_CITY_PLATFORM as string | undefined;
-  const known = import.meta.env.VITE_CORAL_CITY_EMAIL as string | undefined;
-  const kept = import.meta.env.VITE_CORAL_CITY_SECRET as string | undefined;
+  const waiting = (import.meta.env.VITE_IOCEAN_PLATFORM ?? import.meta.env.VITE_CORAL_CITY_PLATFORM) as string | undefined;
+  const known = (import.meta.env.VITE_IOCEAN_EMAIL ?? import.meta.env.VITE_CORAL_CITY_EMAIL) as string | undefined;
+  const kept = (import.meta.env.VITE_IOCEAN_SECRET ?? import.meta.env.VITE_CORAL_CITY_SECRET) as string | undefined;
 
   useEffect(() => {
     setAddress(waiting ?? localStorage.getItem(REMEMBERED) ?? "http://127.0.0.1:18080");

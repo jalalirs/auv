@@ -85,7 +85,7 @@ export function Autonomy({ held }: { held: Held }): React.JSX.Element {
       <section>
         <h2>Deploying one</h2>
         <Empty title="From the SDK" soon="one command">
-          <code>pip install -e packages/sdk-python</code>, write a class against <code>coral_city.Controller</code>,
+          <code>pip install -e packages/sdk-python</code>, write a class against <code>iocean.Controller</code>,
           try it in the tank with <code>coral-city tank</code>, then <code>coral-city deploy your.py --slug name</code>.
           A controller that is a model says what it needs with <code>--gpu-memory 8G</code>, and the scheduler places the dive where both it and the simulator fit.
         </Empty>

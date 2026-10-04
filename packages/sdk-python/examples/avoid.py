@@ -36,7 +36,7 @@ import math
 
 import numpy as np
 
-from coral_city import Command, Controller, Observation
+from iocean import Command, Controller, Observation
 
 
 def wrap(angle: float) -> float:

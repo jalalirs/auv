@@ -3,8 +3,8 @@
 Places, vehicles and dives an agent can drive, with every number marked.
 
 ```
-CORAL_CITY_PLATFORM=http://your-platform:18080 \
-CORAL_CITY_SERVICE_FILE=/run/secrets/mcp \
+IOCEAN_PLATFORM=http://your-platform:18080 \
+IOCEAN_SERVICE_FILE=/run/secrets/mcp \
     python -m coral_city_mcp
 ```
 
@@ -39,7 +39,7 @@ its own credential in the header:
 { "mcpServers": { "coral-city": {
     "type": "http",
     "url": "http://100.76.65.1:18083/mcp",
-    "headers": { "Authorization": "Service ${CORAL_CITY_SERVICE}" } } } }
+    "headers": { "Authorization": "Service ${IOCEAN_SERVICE}" } } } }
 ```
 
 The server holds no credential. It forwards what each caller sends, so every
@@ -60,10 +60,10 @@ again. The server sends it as `Authorization: Service …`, which is a different
 scheme from a person's `Bearer` session and means a different thing — a session
 expires, and an agent on one would be signing in as a person to renew it.
 
-`CORAL_CITY_SERVICE` takes the credential directly; the `_FILE` form is better,
+`IOCEAN_SERVICE` takes the credential directly; the `_FILE` form is better,
 because an environment is inherited by every child process and readable by
-anything that can see `/proc`. `CORAL_CITY_EMAIL`/`CORAL_CITY_SECRET` and
-`CORAL_CITY_TOKEN` also work. Credentials never come from a tool argument: an
+anything that can see `/proc`. `IOCEAN_EMAIL`/`IOCEAN_SECRET` and
+`IOCEAN_TOKEN` also work. Credentials never come from a tool argument: an
 agent that can be told a password in a prompt is an agent that can be told
 somebody else's.
 

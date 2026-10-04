@@ -260,11 +260,11 @@ def _ask_a_model(asked: str, at, heading: float):
     it is flown, and a plan that fails them is dropped rather than repaired,
     because a plan nobody can read is worse than no plan.
 
-    Configured with CORAL_CITY_MODEL_URL and CORAL_CITY_MODEL_KEY. Untested
+    Configured with IOCEAN_MODEL_URL and IOCEAN_MODEL_KEY. Untested
     against a live model — there is no key on this platform yet — so it is
     written to fail quietly back to the reader that always works.
     """
-    url, key = os.environ.get("CORAL_CITY_MODEL_URL"), os.environ.get("CORAL_CITY_MODEL_KEY")
+    url, key = os.environ.get("IOCEAN_MODEL_URL"), os.environ.get("IOCEAN_MODEL_KEY")
     if not url or not key:
         return None
     import json
@@ -281,7 +281,7 @@ def _ask_a_model(asked: str, at, heading: float):
         f"heading {math.degrees(heading):.0f} degrees, where x is north and y is east. "
         "Metres throughout. Say nothing but the JSON."
     )
-    body = json.dumps({"model": os.environ.get("CORAL_CITY_MODEL", "claude-sonnet-5"),
+    body = json.dumps({"model": os.environ.get("IOCEAN_MODEL", "claude-sonnet-5"),
                        "max_tokens": 2000,
                        "system": told,
                        "messages": [{"role": "user", "content": asked}]}).encode()
@@ -297,7 +297,7 @@ def _ask_a_model(asked: str, at, heading: float):
         return {"plan": None, "read": [], "missed": [asked],
                 "why": f"the model did not answer with a plan: {str(trouble)[:120]}"}
     document.setdefault("describedBy", planning.DESCRIBED_BY)
-    document["by"] = f"a model: {os.environ.get('CORAL_CITY_MODEL', 'unnamed')}"
+    document["by"] = f"a model: {os.environ.get('IOCEAN_MODEL', 'unnamed')}"
     wrong = planning.what_is_wrong(document)
     if wrong:
         return {"plan": None, "read": [], "missed": [asked],

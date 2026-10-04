@@ -43,7 +43,7 @@ runtime_stamp() {
     # here, and those two do not have the same tool.
     local root="$1" runtime sdk
     runtime="$(git -C "${root}" rev-parse HEAD:services/sim-runtime 2>/dev/null)" || { echo unknown; return; }
-    sdk="$(git -C "${root}" rev-parse HEAD:packages/sdk-python/coral_city 2>/dev/null)" || { echo unknown; return; }
+    sdk="$(git -C "${root}" rev-parse HEAD:packages/sdk-python/iocean 2>/dev/null)$(git -C "${root}" rev-parse HEAD:packages/sdk-python/coral_city 2>/dev/null)" || { echo unknown; return; }
     printf '%s %s\n' "${runtime}" "${sdk}" | git hash-object --stdin
 }
 
@@ -236,28 +236,28 @@ JSON
     docker rm -f coral-look >/dev/null 2>&1 || true
     docker run -d --name coral-look --gpus '"device=0"' \
         -e ACCEPT_EULA=Y -e PRIVACY_CONSENT=Y -e ROS_LOG_DIR=/tmp/ros \
-        -e CORAL_CITY_SEED=1 \
-        -e CORAL_CITY_BRIEF=/dive/dive.json \
-        -e CORAL_CITY_TOUR=stills \
-        -e CORAL_CITY_LAMP_CONE="${LAMP_CONE:-0}" \
-        -e CORAL_CITY_TEST_LAMP="${TEST_LAMP:-}" \
-        -e CORAL_CITY_LAMP_SIZE="${LAMP_SIZE:-0.08}" \
-        -e CORAL_CITY_TWIN="${TWIN:-}" \
-        -e CORAL_CITY_CLEAR="${CLEAR:-0}" \
-        -e CORAL_CITY_ISO="${ISO:-}" \
-        -e CORAL_CITY_METER="${METER:-1}" \
-        -e CORAL_CITY_SETTINGS="${SETTINGS:-0}" \
-        -e CORAL_CITY_VEIL="${VEIL:-}" \
-        -e CORAL_CITY_BALANCE="${BALANCE:-}" \
-        -e CORAL_CITY_PAINT_HORIZON="${PAINT_HORIZON:-}" \
-        -e CORAL_CITY_CAUSTIC_STRENGTH="${CAUSTICS:-}" \
-        -e CORAL_CITY_VOLUME="${VOLUME:-}" \
-        -e CORAL_CITY_SHOW_DISTANCE="${SHOW_DISTANCE:-}" \
-        -e CORAL_CITY_LIFE="${LIFE:-1}" \
-        -e CORAL_CITY_HOUR="${HOUR:-}" \
-        -e CORAL_CITY_LIGHTS_OFF="${LIGHTS_OFF:-}" \
-        -e CORAL_CITY_LAMP_INTENSITY="${LAMP_INTENSITY:-}" \
-        -e CORAL_CITY_TOUR_INTO=/dive/frames \
+        -e IOCEAN_SEED=1 \
+        -e IOCEAN_BRIEF=/dive/dive.json \
+        -e IOCEAN_TOUR=stills \
+        -e IOCEAN_LAMP_CONE="${LAMP_CONE:-0}" \
+        -e IOCEAN_TEST_LAMP="${TEST_LAMP:-}" \
+        -e IOCEAN_LAMP_SIZE="${LAMP_SIZE:-0.08}" \
+        -e IOCEAN_TWIN="${TWIN:-}" \
+        -e IOCEAN_CLEAR="${CLEAR:-0}" \
+        -e IOCEAN_ISO="${ISO:-}" \
+        -e IOCEAN_METER="${METER:-1}" \
+        -e IOCEAN_SETTINGS="${SETTINGS:-0}" \
+        -e IOCEAN_VEIL="${VEIL:-}" \
+        -e IOCEAN_BALANCE="${BALANCE:-}" \
+        -e IOCEAN_PAINT_HORIZON="${PAINT_HORIZON:-}" \
+        -e IOCEAN_CAUSTIC_STRENGTH="${CAUSTICS:-}" \
+        -e IOCEAN_VOLUME="${VOLUME:-}" \
+        -e IOCEAN_SHOW_DISTANCE="${SHOW_DISTANCE:-}" \
+        -e IOCEAN_LIFE="${LIFE:-1}" \
+        -e IOCEAN_HOUR="${HOUR:-}" \
+        -e IOCEAN_LIGHTS_OFF="${LIGHTS_OFF:-}" \
+        -e IOCEAN_LAMP_INTENSITY="${LAMP_INTENSITY:-}" \
+        -e IOCEAN_TOUR_INTO=/dive/frames \
         -v "${here}:/dive:rw" \
         -v "${city}:/dive/city:ro" \
         -v "${vehicle}:/dive/vehicle:ro" \

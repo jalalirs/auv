@@ -15,7 +15,7 @@ here, deliberately: a capability the SDK worked out for itself would be a
 second implementation of the arithmetic the runtime uses to fly the thing,
 and two implementations of one idea agree until they do not.
 
-Point `CORAL_CITY_VEHICLES` at a directory of packages and they load by
+Point `IOCEAN_VEHICLES` at a directory of packages and they load by
 slug like any other — and if you are signed in to a platform that has the
 hull, the card comes off its published package without your having the
 package at all. That last part needed no new endpoint: the card is a file
@@ -60,8 +60,8 @@ def a_vehicle(card: dict) -> Vehicle:
 
 
 def where_to_look() -> list[pathlib.Path]:
-    """Directories of vehicle packages, from `CORAL_CITY_VEHICLES`."""
-    said = os.environ.get("CORAL_CITY_VEHICLES", "")
+    """Directories of vehicle packages, from `IOCEAN_VEHICLES`."""
+    said = os.environ.get("IOCEAN_VEHICLES", "")
     return [pathlib.Path(one).expanduser() for one in said.split(os.pathsep) if one]
 
 
@@ -128,5 +128,5 @@ def from_a_package(slug: str, known: dict) -> Vehicle:
         f"no vehicle '{slug}'. Published with this SDK: {ours}."
         + (f" Looked for a package carrying its own vehicle.json in: {looked}."
            if looked else
-           " A hull of your own is found by pointing CORAL_CITY_VEHICLES at the"
+           " A hull of your own is found by pointing IOCEAN_VEHICLES at the"
            " directory its package is in.")) from None

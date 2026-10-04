@@ -14,8 +14,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from coral_city import Command  # noqa: E402
-from coral_city.vehicles import ALL  # noqa: E402
+from iocean import Command  # noqa: E402
+from iocean.vehicles import ALL  # noqa: E402
 
 
 def the_example(name):

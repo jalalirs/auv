@@ -31,12 +31,12 @@ RUN apt-get update \\
  && apt-get install -y --no-install-recommends python3-numpy \\
  && rm -rf /var/lib/apt/lists/*
 
-COPY sdk/coral_city /opt/coral_city_sdk/coral_city
+COPY sdk/iocean /opt/coral_city_sdk/iocean
 COPY controller.py /opt/controller/controller.py
 ENV PYTHONPATH=/opt/coral_city_sdk:/opt/controller
 ENV PYTHONUNBUFFERED=1
 
-ENTRYPOINT ["/bin/bash", "-lc", "source /opt/ros/jazzy/setup.bash && exec python3 -m coral_city.ros controller:{cls} --rate {rate}"]
+ENTRYPOINT ["/bin/bash", "-lc", "source /opt/ros/jazzy/setup.bash && exec python3 -m iocean.ros controller:{cls} --rate {rate}"]
 """
 
 
@@ -44,7 +44,7 @@ def build_context(controller_path: pathlib.Path, class_name: str, rate_hz: float
     sdk = pathlib.Path(__file__).resolve().parent
     out.mkdir(parents=True, exist_ok=True)
     shutil.copy(controller_path, out / "controller.py")
-    shutil.copytree(sdk, out / "sdk" / "coral_city", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    shutil.copytree(sdk, out / "sdk" / "iocean", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     (out / "Dockerfile").write_text(DOCKERFILE.format(cls=class_name, rate=rate_hz))
 
 

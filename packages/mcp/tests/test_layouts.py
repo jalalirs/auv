@@ -255,7 +255,7 @@ def test_it_asks_for_a_runtime_a_host_offers_not_an_image_tag():
 
 
 def test_the_runtime_can_be_overridden_for_a_platform_that_runs_another(monkeypatch):
-    monkeypatch.setenv("CORAL_CITY_RUNTIME_VERSION", "isaac-7.0.0+oceansim")
+    monkeypatch.setenv("IOCEAN_RUNTIME_VERSION", "isaac-7.0.0+oceansim")
     platform = Fleet()
     said = tools.dives_start(platform, "al-fahal", "bluerov2", {"kind": "reach"})
     assert said["runtime"] == "isaac-7.0.0+oceansim"

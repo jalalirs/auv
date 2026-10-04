@@ -76,11 +76,11 @@ docker rm -f coral-tour >/dev/null 2>&1 || true
 docker run -d --name coral-tour --gpus '"device=0"' \
     -e ACCEPT_EULA=Y -e PRIVACY_CONSENT=Y \
     -e ROS_LOG_DIR=/tmp/ros \
-    -e CORAL_CITY_SEED=1 \
-    -e CORAL_CITY_BRIEF=/dive/dive.json \
-    -e CORAL_CITY_TOUR="${how}" \
-    -e CORAL_CITY_TWIN="${TWIN:-}" \
-    -e CORAL_CITY_TOUR_INTO=/dive/frames \
+    -e IOCEAN_SEED=1 \
+    -e IOCEAN_BRIEF=/dive/dive.json \
+    -e IOCEAN_TOUR="${how}" \
+    -e IOCEAN_TWIN="${TWIN:-}" \
+    -e IOCEAN_TOUR_INTO=/dive/frames \
     -v "${here}:/dive:rw" \
     -v "${city}:/dive/city:ro" \
     -v "${vehicle}:/dive/vehicle:ro" \

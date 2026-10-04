@@ -47,7 +47,7 @@ def _runtime():
     candidates = []
     for up in here.parents:
         candidates.append(up / "services" / "sim-runtime" / "coral")
-    env = os.environ.get("CORAL_CITY_RUNTIME")
+    env = os.environ.get("IOCEAN_RUNTIME")
     if env:
         candidates.insert(0, pathlib.Path(env))
     try:
@@ -64,7 +64,7 @@ def _runtime():
             from controllers import Helm
             return hydrodynamics, runner, Helm
     raise ImportError("the tank needs the iocean runtime: pip install 'coral-city[tank]', "
-                      "or set CORAL_CITY_RUNTIME to services/sim-runtime/coral")
+                      "or set IOCEAN_RUNTIME to services/sim-runtime/coral")
 
 
 class _Bridge:

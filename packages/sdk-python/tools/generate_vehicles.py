@@ -19,7 +19,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 CATALOG = ROOT / "catalog" / "vehicles"
 RUNTIME = ROOT / "services" / "sim-runtime" / "coral"
-OUT = ROOT / "packages" / "sdk-python" / "coral_city" / "vehicles"
+OUT = ROOT / "packages" / "sdk-python" / "iocean" / "vehicles"
 
 sys.path.insert(0, str(RUNTIME))
 from hydrodynamics import Allocator, Hydrodynamics  # noqa: E402
@@ -149,7 +149,7 @@ def main() -> int:
         "        return ALL[slug]",
         "    except KeyError:",
         "        # Not one of ours. A customer's own hull is found by the",
-        "        # card its package carries; see coral_city/catalogue.py.",
+        "        # card its package carries; see iocean/catalogue.py.",
         "        from ..catalogue import from_a_package",
         "",
         "        return from_a_package(slug, ALL)",
@@ -161,7 +161,7 @@ def main() -> int:
     ]
     (OUT / "__init__.py").write_text("\n".join(index))
     for slug, module in written:
-        print(f"{slug} -> coral_city/vehicles/{module}.py")
+        print(f"{slug} -> iocean/vehicles/{module}.py")
     return 0
 
 

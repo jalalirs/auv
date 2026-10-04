@@ -63,11 +63,11 @@ class Lights:
             if say is not None:
                 say("lamps_follow_the_day", lights=sorted("/".join(one) if isinstance(one, tuple) else one
                                                           for one in self.found), hour=round(light.hour, 2))
-        # CORAL_CITY_LIGHTS_OFF: lights to hold at nothing, by any part of
+        # IOCEAN_LIGHTS_OFF: lights to hold at nothing, by any part of
         # their path — how the light that keeps a room bright is found, one
         # still a light (tools/look).
         import os
-        off = [w for w in os.environ.get("CORAL_CITY_LIGHTS_OFF", "").split(",") if w]
+        off = [w for w in os.environ.get("IOCEAN_LIGHTS_OFF", "").split(",") if w]
         for one, (attribute, built) in self.found.items():
             name = "/".join(one) if isinstance(one, tuple) else one
             if any(w in name for w in off):

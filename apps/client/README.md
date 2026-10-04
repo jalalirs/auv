@@ -17,10 +17,10 @@ account you were granted things under.
 
 ## Looking at it in a browser while building it
 
-    CORAL_CITY_UPSTREAM=http://100.76.65.1:18080 VITE_CORAL_CITY_PLATFORM=http://localhost:5173 \
+    IOCEAN_UPSTREAM=http://100.76.65.1:18080 VITE_IOCEAN_PLATFORM=http://localhost:5173 \
       mise exec -- pnpm --filter @coral-city/client exec vite --config vite.renderer.config.mts
 
-The dev server forwards `/api` to the platform named by `CORAL_CITY_UPSTREAM`,
+The dev server forwards `/api` to the platform named by `IOCEAN_UPSTREAM`,
 because a browser will not let a page on one origin call a platform on
 another. The page then signs in to its own address. Without a preload bridge
 the sea is read from Aqualink directly; everything else is as in the

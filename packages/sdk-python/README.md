@@ -8,7 +8,7 @@ that would fly the real vehicle.
 ## A controller
 
 ```python
-from coral_city import Controller, Command
+from iocean import Controller, Command
 
 class Hold(Controller):
     name = "hold"
@@ -59,8 +59,8 @@ does exactly that, finding a linear hold's weights in a current by the
 cross-entropy method and writing them out as a controller to deploy:
 
 ```python
-from coral_city.tank import Tank
-from coral_city.tasks import ReachDepth
+from iocean.tank import Tank
+from iocean.tasks import ReachDepth
 
 tank = Tank("bluerov2", task=ReachDepth(9.0))
 seen = tank.reset()
@@ -91,7 +91,7 @@ commanded, and where the vehicle ended up. `--interactive` keeps it up for the
 console, where the controller's tunables appear as sliders beside the
 runtime's own.
 
-Live, the controller runs as a ROS 2 node (`python3 -m coral_city.ros
+Live, the controller runs as a ROS 2 node (`python3 -m iocean.ros
 module:Class`): it subscribes to `/depth`, `/imu/data` and `/dvl/twist`,
 publishes `/cmd_vel` or `/thruster_cmd`, and declares each tunable as a
 parameter with a floating-point range. Any ROS 2 tool can move them; the
@@ -126,7 +126,7 @@ coral-city compare <diveId> <runA> <runB>          # the largest difference in p
 
 ## What is generated
 
-`coral_city/vehicles/*.py` come from `catalog/vehicles/*/dynamics.json`:
+`iocean/vehicles/*.py` come from `catalog/vehicles/*/dynamics.json`:
 
 ```bash
 python3 packages/sdk-python/tools/generate_vehicles.py

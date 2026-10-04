@@ -6,6 +6,8 @@ import { defineConfig } from "vite";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+const upstream = process.env.IOCEAN_UPSTREAM ?? process.env.CORAL_CITY_UPSTREAM;
+
 export default defineConfig({
   plugins: [react()],
   root: resolve(here, "src/renderer"),
@@ -26,9 +28,10 @@ export default defineConfig({
   // will not let a page on one origin call a platform on another, and the
   // packaged application has no such problem because it is not a page on an
   // origin. So the dev server forwards the API to whichever platform
-  // CORAL_CITY_UPSTREAM names, and the page signs in to the dev server's own
-  // address. Nothing of this is in the built application.
-  server: process.env.CORAL_CITY_UPSTREAM === undefined ? undefined : {
-    proxy: { "/api": { target: process.env.CORAL_CITY_UPSTREAM, changeOrigin: true } },
+  // IOCEAN_UPSTREAM names (CORAL_CITY_UPSTREAM, its old name, still works),
+  // and the page signs in to the dev server's own address. Nothing of this is
+  // in the built application.
+  server: upstream === undefined ? undefined : {
+    proxy: { "/api": { target: upstream, changeOrigin: true } },
   },
 });

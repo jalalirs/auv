@@ -30,7 +30,7 @@ import sys
 import numpy as np
 
 try:
-    from coral_city.interface import Command, Observation, Parameter
+    from iocean.interface import Command, Observation, Parameter
 except ImportError:
     # Run from the repository rather than from the image, where the build
     # puts the SDK on the path. Not a fallback copy — the same file, found a
@@ -39,7 +39,7 @@ except ImportError:
     # exists to prevent.
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4]
                            / "packages" / "sdk-python"))
-    from coral_city.interface import Command, Observation, Parameter
+    from iocean.interface import Command, Observation, Parameter
 
 __all__ = ["Command", "Controller", "Observation", "Parameter"]
 

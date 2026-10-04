@@ -1,7 +1,7 @@
 """What a controller is.
 
 The interface is the runtime's own — literally: `Observation`, `Command` and
-`Parameter` are declared once, in `coral_city.interface`, and the simulation
+`Parameter` are declared once, in `iocean.interface`, and the simulation
 runtime imports that same file. A controller written here is not an
 approximation of one that runs on the platform; it is one. The differences
 are in what fills the observation: on a dive, sensors; in the tank, the

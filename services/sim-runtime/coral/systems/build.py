@@ -129,7 +129,7 @@ def fish_are_blind() -> bool:
     what its presence costs a count (tools/count-bias)."""
     import os
 
-    return os.environ.get("CORAL_CITY_FISH_BLIND", "0") not in ("", "0", "false")
+    return os.environ.get("IOCEAN_FISH_BLIND", "0") not in ("", "0", "false")
 
 
 def rocks_of(brief: dict) -> dict:

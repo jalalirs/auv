@@ -3,7 +3,7 @@
 // From docs/plan/todo.md, item 4. Each says what it asks of the vehicle, what
 // it is judged on, and the objective the dive is defined with — the document
 // the runtime evaluates as the dive runs, measured from where the dive begins.
-// The numbers here are the composer's defaults; the SDK's `coral_city.tasks`
+// The numbers here are the composer's defaults; the SDK's `iocean.tasks`
 // spells the same fields for a script.
 
 export interface Task {

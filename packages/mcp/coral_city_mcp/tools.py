@@ -666,7 +666,7 @@ def dives_start(platform: Platform, place: str, vehicle: str,
     # `isaac-6.0.1+oceansim`: the engine and the extension that contributes the
     # underwater sensors, which is a version of the thing that integrates and
     # renders, and is not the tag somebody happened to build it under.
-    runtime = os.environ.get("CORAL_CITY_RUNTIME_VERSION", RUNTIME)
+    runtime = os.environ.get("IOCEAN_RUNTIME_VERSION", RUNTIME)
     run = platform.request("POST", f"/api/v1/dives/{dive['id']}/runs", {
         "queueId": queues[0]["id"], "mode": "batch",
         "runtimeVersion": runtime})
@@ -914,7 +914,7 @@ def sweeps_run(platform: Platform, mission: str, vehicle: str,
             "doubts": said,
             "repeats": int(repeats),
             "queueId": queues[0]["id"],
-            "runtimeVersion": os.environ.get("CORAL_CITY_RUNTIME_VERSION", RUNTIME),
+            "runtimeVersion": os.environ.get("IOCEAN_RUNTIME_VERSION", RUNTIME),
         })
     return {
         "sweep": sweep["id"], "scenarios": count, "runs": runs,

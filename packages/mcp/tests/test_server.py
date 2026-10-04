@@ -43,7 +43,7 @@ def test_calling_without_a_session_says_what_to_set():
     said = s.handle({"jsonrpc": "2.0", "id": 4, "method": "tools/call",
                      "params": {"name": "places_list"}}, None)
     assert said["result"]["isError"] is True
-    assert "CORAL_CITY_PLATFORM" in said["result"]["content"][0]["text"]
+    assert "IOCEAN_PLATFORM" in said["result"]["content"][0]["text"]
 
 
 def test_a_refusal_comes_back_as_content_not_as_a_crash():
@@ -68,8 +68,8 @@ def test_initialized_is_a_notification_and_gets_no_reply():
 def test_a_rejected_credential_is_not_reported_as_an_unset_one():
     """Two different problems with two different fixes.
 
-    This told every caller to "set CORAL_CITY_PLATFORM and either
-    CORAL_CITY_TOKEN or CORAL_CITY_EMAIL/SECRET" whatever had happened —
+    This told every caller to "set IOCEAN_PLATFORM and either
+    IOCEAN_TOKEN or IOCEAN_EMAIL/SECRET" whatever had happened —
     including when all three were set and the platform had rejected them, which
     is an instruction to do the thing that was already done.
     """
@@ -79,13 +79,13 @@ def test_a_rejected_credential_is_not_reported_as_an_unset_one():
     body = json.loads(said["result"]["content"][0]["text"])
     assert body["refused"] == "bad_credentials"
     assert "do not match" in body["why"]
-    assert "CORAL_CITY_PLATFORM" not in body["why"]
+    assert "IOCEAN_PLATFORM" not in body["why"]
 
 
 def test_and_an_unset_one_still_says_what_to_set():
     said = s.handle({"jsonrpc": "2.0", "id": 10, "method": "tools/call",
                      "params": {"name": "places_list"}}, None, None)
-    assert "CORAL_CITY_PLATFORM" in said["result"]["content"][0]["text"]
+    assert "IOCEAN_PLATFORM" in said["result"]["content"][0]["text"]
 
 
 # ── over HTTP ────────────────────────────────────────────────────────────────

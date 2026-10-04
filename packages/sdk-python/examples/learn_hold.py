@@ -29,8 +29,8 @@ import numpy as np
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from coral_city.tank import Tank  # noqa: E402
-from coral_city.tasks import hold_station  # noqa: E402
+from iocean.tank import Tank  # noqa: E402
+from iocean.tasks import hold_station  # noqa: E402
 from hold_policy import FEATURES, LinearHold  # noqa: E402
 
 # The water it learns in, and there is more than one of it on purpose.

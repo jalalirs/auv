@@ -7,7 +7,7 @@ answers. Its tunables are ROS parameters with ranges, so the platform's
 console — or any ROS 2 tool — can list and move them without the controller
 knowing that a console exists.
 
-    python3 -m coral_city.ros my_module:MyController
+    python3 -m iocean.ros my_module:MyController
 
 Nothing here is a simulator arrangement. The topics are the vehicle's
 contract, the parameters are plain rclpy, and the same process would run
@@ -241,7 +241,7 @@ def load_controller(spec: str) -> Controller:
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if not argv:
-        print("usage: python3 -m coral_city.ros module[:Class] [--rate HZ]", file=sys.stderr)
+        print("usage: python3 -m iocean.ros module[:Class] [--rate HZ]", file=sys.stderr)
         return 2
     rate = 20.0
     if "--rate" in argv:

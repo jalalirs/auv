@@ -13,7 +13,7 @@ import math
 
 import numpy as np
 
-from coral_city import Command, Controller, Observation
+from iocean import Command, Controller, Observation
 
 FEATURES = ("ahead", "starboard", "deep", "turned", "u", "v", "w", "r", "one")
 

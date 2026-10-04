@@ -18,6 +18,8 @@ import math
 import os
 import pathlib
 
+import names  # noqa: F401,E402  — the old CORAL_CITY_ switches, given their IOCEAN_ names
+
 import numpy as np
 
 from engine import Engine
@@ -2092,11 +2094,11 @@ class Dive:
             # which is a typeless prim this renderer's traversal apparently
             # does not go through.
             light = UsdLux.RectLight.Define(stage, f"/World/Lamp_{name}")
-            across = asked_for("CORAL_CITY_LAMP_SIZE", 0.08)
+            across = asked_for("IOCEAN_LAMP_SIZE", 0.08)
             light.CreateWidthAttr(across)
             light.CreateHeightAttr(across)
             lumens = float(one.get("lumens", 1500.0))
-            nits = asked_for("CORAL_CITY_LAMP_INTENSITY",
+            nits = asked_for("IOCEAN_LAMP_INTENSITY",
                              lamp_nits(lumens, across))
             light.CreateIntensityAttr(nits)
             self.lamp_intensity, self.lamp_lumens = float(nits), lumens
@@ -2117,7 +2119,7 @@ class Dive:
             # that this renderer honours, it goes back — behind this switch, so
             # that the next person can tell in one run whether it is the cone
             # again.
-            if os.environ.get("CORAL_CITY_LAMP_CONE", "0") == "1":
+            if os.environ.get("IOCEAN_LAMP_CONE", "0") == "1":
                 shaping = UsdLux.ShapingAPI.Apply(light.GetPrim())
                 shaping.CreateShapingConeAngleAttr(float(one.get("coneDeg", 120.0)) / 2.0)
                 shaping.CreateShapingConeSoftnessAttr(0.45)
@@ -2189,7 +2191,7 @@ class Dive:
         # above the value in the scene. A readback that recomputes is not a
         # readback.
         self.say("lamps_made",
-                 acrossM=asked_for("CORAL_CITY_LAMP_SIZE", 0.08),
+                 acrossM=asked_for("IOCEAN_LAMP_SIZE", 0.08),
                  intensity=round(float(self.lamp_intensity), 1),
                  lumensEach=round(float(self.lamp_lumens), 1))
         self.say("lamps_at", where=where,
@@ -2201,11 +2203,11 @@ class Dive:
         # light from a local source here, or something about hanging one under
         # the vehicle stops it. One of those is a five-minute fix and this says
         # which.
-        if asked_for("CORAL_CITY_TEST_LAMP") is not None:
+        if asked_for("IOCEAN_TEST_LAMP") is not None:
             probe = UsdLux.RectLight.Define(stage, "/World/TestLamp")
             probe.CreateWidthAttr(0.3)
             probe.CreateHeightAttr(0.3)
-            probe.CreateIntensityAttr(asked_for("CORAL_CITY_TEST_LAMP", 0.0))
+            probe.CreateIntensityAttr(asked_for("IOCEAN_TEST_LAMP", 0.0))
             probe.CreateColorAttr(Gf.Vec3f(1.0, 0.35, 0.35))
             probe.CreateNormalizeAttr(False)
             UsdGeom.Xformable(probe.GetPrim()).AddTranslateOp().Set(
@@ -2216,7 +2218,7 @@ class Dive:
                      at=[round(float(self.position[0]) + 0.4, 2),
                          round(float(self.position[1]), 2),
                          round(float(self.position[2]) + 0.3, 2)],
-                     intensity=asked_for("CORAL_CITY_TEST_LAMP", 0.0))
+                     intensity=asked_for("IOCEAN_TEST_LAMP", 0.0))
 
         self.say("lamps_on", lamps=self.lamps,
                  watts=round(self.lamp_watts, 1),
@@ -3061,7 +3063,7 @@ class Dive:
         # A tank's water on a grid, so the vehicle's wash lingers after it
         # (systems/flow.py). Open water keeps the analytic jet alone.
         top = 0.0 if self.water_level is None else float(self.water_level)
-        if asked_for("CORAL_CITY_FLOW", 1.0) == 0.0:
+        if asked_for("IOCEAN_FLOW", 1.0) == 0.0:
             pass
         elif self.interior is not None:
             low, high = self.interior
@@ -3086,7 +3088,7 @@ class Dive:
         if len(self.ocean.coral):
             self.say("coral_is", colonies=len(self.ocean.coral),
                      solid=int(self.ocean.coral.solid().sum()), from_=self.ocean.coral.from_)
-        if asked_for("CORAL_CITY_LIFE", 1.0) == 0.0:
+        if asked_for("IOCEAN_LIFE", 1.0) == 0.0:
             self.say("no_life", why="asked for a reef with nothing living in it")
             return
         self.shoal = fish.stock(described, bottom_under, self.interior, self.position,
@@ -3187,7 +3189,7 @@ class Dive:
         seconds, and it is already computed here because it acts on the hull
         as well. A reef whose gorgonians are still is a reef nobody believes.
         """
-        if self._rooted is None or asked_for("CORAL_CITY_LIFE", 1.0) == 0.0:
+        if self._rooted is None or asked_for("IOCEAN_LIFE", 1.0) == 0.0:
             return
         import life
         from pxr import Gf, Vt

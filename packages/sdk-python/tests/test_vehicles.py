@@ -1,6 +1,6 @@
 import pytest
 
-from coral_city import Controller, vehicles
+from iocean import Controller, vehicles
 
 
 def test_the_catalogue_is_described():

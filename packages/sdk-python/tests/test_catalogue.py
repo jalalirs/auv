@@ -16,8 +16,8 @@ import sys
 
 import pytest
 
-from coral_city import Controller, vehicles
-from coral_city.catalogue import a_vehicle, from_a_package
+from iocean import Controller, vehicles
+from iocean.catalogue import a_vehicle, from_a_package
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 
@@ -47,7 +47,7 @@ def test_ours_still_load_without_looking_anywhere():
 
 def test_a_hull_that_is_not_ours_loads_from_its_own_package(tmp_path, monkeypatch):
     a_package(tmp_path)
-    monkeypatch.setenv("CORAL_CITY_VEHICLES", str(tmp_path))
+    monkeypatch.setenv("IOCEAN_VEHICLES", str(tmp_path))
     theirs = vehicles.load("their-hull")
     assert theirs.name == "Their hull"
     assert theirs.mass_kg == 22.0
@@ -59,7 +59,7 @@ def test_a_controller_can_name_a_hull_that_is_not_ours(tmp_path, monkeypatch):
     """The check that refuses a controller its vehicle cannot fly has to be
     able to see the vehicle first."""
     a_package(tmp_path)
-    monkeypatch.setenv("CORAL_CITY_VEHICLES", str(tmp_path))
+    monkeypatch.setenv("IOCEAN_VEHICLES", str(tmp_path))
 
     class Theirs(Controller):
         vehicle = "their-hull"
@@ -76,14 +76,14 @@ def test_a_card_with_no_capability_is_refused_rather_than_guessed(tmp_path, monk
     implementation of the arithmetic the runtime uses to fly the thing."""
     without = {k: v for k, v in A_CARD.items() if k != "capability"}
     a_package(tmp_path, without)
-    monkeypatch.setenv("CORAL_CITY_VEHICLES", str(tmp_path))
+    monkeypatch.setenv("IOCEAN_VEHICLES", str(tmp_path))
     with pytest.raises(ValueError) as raised:
         vehicles.load("their-hull")
     assert "generate_vehicles.py --package" in str(raised.value)
 
 
 def test_a_vehicle_nobody_has_says_where_it_looked(tmp_path, monkeypatch):
-    monkeypatch.setenv("CORAL_CITY_VEHICLES", str(tmp_path))
+    monkeypatch.setenv("IOCEAN_VEHICLES", str(tmp_path))
     with pytest.raises(KeyError) as raised:
         vehicles.load("nobodys-hull")
     said = str(raised.value)
@@ -91,10 +91,10 @@ def test_a_vehicle_nobody_has_says_where_it_looked(tmp_path, monkeypatch):
 
 
 def test_with_nowhere_to_look_it_says_how_to_point_it(monkeypatch):
-    monkeypatch.delenv("CORAL_CITY_VEHICLES", raising=False)
+    monkeypatch.delenv("IOCEAN_VEHICLES", raising=False)
     with pytest.raises(KeyError) as raised:
         vehicles.load("nobodys-hull")
-    assert "CORAL_CITY_VEHICLES" in str(raised.value)
+    assert "IOCEAN_VEHICLES" in str(raised.value)
 
 
 def test_the_card_a_package_carries_is_written_by_the_runtime(tmp_path):
@@ -149,8 +149,8 @@ class _Platform:
 
 
 def _pretend(monkeypatch, platform, body=None):
-    import coral_city.catalogue as catalogue
-    import coral_city.platform as real
+    import iocean.catalogue as catalogue
+    import iocean.platform as real
 
     monkeypatch.setattr(real.Platform, "from_session",
                         classmethod(lambda cls: platform))
@@ -171,7 +171,7 @@ def _pretend(monkeypatch, platform, body=None):
 
 
 def test_a_hull_comes_off_the_platform_when_it_is_not_on_disk(monkeypatch):
-    monkeypatch.delenv("CORAL_CITY_VEHICLES", raising=False)
+    monkeypatch.delenv("IOCEAN_VEHICLES", raising=False)
     catalogue = _pretend(monkeypatch,
                          _Platform([{"path": "vehicle.json", "url": "https://x/1"}]),
                          body=A_CARD)
@@ -181,20 +181,20 @@ def test_a_hull_comes_off_the_platform_when_it_is_not_on_disk(monkeypatch):
 def test_a_package_on_disk_wins_over_a_round_trip(tmp_path, monkeypatch):
     """Cheaper, and the one you are working on."""
     a_package(tmp_path, {**A_CARD, "name": "The one on disk"})
-    monkeypatch.setenv("CORAL_CITY_VEHICLES", str(tmp_path))
+    monkeypatch.setenv("IOCEAN_VEHICLES", str(tmp_path))
     catalogue = _pretend(monkeypatch, _Platform([]))
     assert catalogue.from_a_package("their-hull", {}).name == "The one on disk"
 
 
 def test_a_package_with_no_card_is_not_a_vehicle_the_sdk_can_describe(monkeypatch):
-    monkeypatch.delenv("CORAL_CITY_VEHICLES", raising=False)
+    monkeypatch.delenv("IOCEAN_VEHICLES", raising=False)
     catalogue = _pretend(monkeypatch, _Platform([{"path": "dynamics.json",
                                                   "url": "https://x/1"}]))
     assert catalogue.from_the_platform("their-hull") is None
 
 
 def test_nothing_published_means_nothing_to_fly(monkeypatch):
-    monkeypatch.delenv("CORAL_CITY_VEHICLES", raising=False)
+    monkeypatch.delenv("IOCEAN_VEHICLES", raising=False)
     catalogue = _pretend(monkeypatch, _Platform(
         [{"path": "vehicle.json", "url": "https://x/1"}],
         versions=[{"id": "ver_1", "ordinal": 1}]))
@@ -204,11 +204,11 @@ def test_nothing_published_means_nothing_to_fly(monkeypatch):
 def test_not_being_signed_in_is_not_an_error_here(monkeypatch):
     """It is the third place looked; the error that matters is the one
     raised after all three."""
-    monkeypatch.delenv("CORAL_CITY_VEHICLES", raising=False)
-    monkeypatch.delenv("CORAL_CITY_API", raising=False)
-    monkeypatch.delenv("CORAL_CITY_TOKEN", raising=False)
-    import coral_city.catalogue as catalogue
-    import coral_city.platform as real
+    monkeypatch.delenv("IOCEAN_VEHICLES", raising=False)
+    monkeypatch.delenv("IOCEAN_API", raising=False)
+    monkeypatch.delenv("IOCEAN_TOKEN", raising=False)
+    import iocean.catalogue as catalogue
+    import iocean.platform as real
     monkeypatch.setattr(real, "SESSION", pathlib.Path("/nowhere/at/all"))
     assert catalogue.from_the_platform("their-hull") is None
     with pytest.raises(KeyError):

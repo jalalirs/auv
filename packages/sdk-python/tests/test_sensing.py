@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 
-from coral_city.sensing import GRAVITY, SURFACE_PRESSURE_PA, Navigator, rotation_of
+from iocean.sensing import GRAVITY, SURFACE_PRESSURE_PA, Navigator, rotation_of
 
 
 def test_depth_comes_from_pressure():

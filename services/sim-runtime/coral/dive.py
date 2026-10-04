@@ -24,6 +24,8 @@ import pathlib
 import random
 import sys
 
+import names  # noqa: F401,E402  — the old CORAL_CITY_ switches, given their IOCEAN_ names
+
 RENDER_HZ = 60.0
 
 # How often a dive with nothing to record pumps the app anyway, in steps.
@@ -32,7 +34,7 @@ EVERY_SO_OFTEN = 2000
 
 def read_brief() -> dict:
     """What the agent asked for."""
-    path = os.environ.get("CORAL_CITY_BRIEF", "/dive/dive.json")
+    path = os.environ.get("IOCEAN_BRIEF", "/dive/dive.json")
     return json.loads(pathlib.Path(path).read_text())
 
 
@@ -72,7 +74,7 @@ def say_what_computed_this(say) -> None:
 
     say("physics", version=PHYSICS, is_=PHYSICS_IS)
     try:
-        beside = pathlib.Path(os.environ.get("CORAL_CITY_BRIEF", "/dive/dive.json")).parent
+        beside = pathlib.Path(os.environ.get("IOCEAN_BRIEF", "/dive/dive.json")).parent
         (beside / "computed.json").write_text(json.dumps(
             {"physicsVersion": PHYSICS, "is": PHYSICS_IS}))
     except OSError as trouble:

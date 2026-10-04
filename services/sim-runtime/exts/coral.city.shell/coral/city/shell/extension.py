@@ -106,6 +106,11 @@ class CoralCityShell(omni.ext.IExt):
     """The dive, and everything a person sees of it."""
 
     def on_startup(self, extension_id: str) -> None:
+        # The switches are IOCEAN_* now; an agent configured before the rename
+        # still sends CORAL_CITY_*, and they are given their new names first —
+        # here, because three are read before the runtime (coral/names.py) is.
+        for name in [one for one in os.environ if one.startswith("CORAL_CITY_")]:
+            os.environ.setdefault("IOCEAN_" + name[len("CORAL_CITY_"):], os.environ[name])
         self.dive = None
         self.hud = None
         self.update = None
@@ -165,15 +170,15 @@ class CoralCityShell(omni.ext.IExt):
             signal.signal(signal.SIGTERM, lambda *_: setattr(self, "_asked_to_stop", True))
         except Exception as exc:
             carb.log_warn(f"iocean will not hear a stop: {exc}")
-        self._watch_port = int(os.environ.get("CORAL_CITY_WATCH_PORT", "18102"))
+        self._watch_port = int(os.environ.get("IOCEAN_WATCH_PORT", "18102"))
         # Flying over the place to look at it, rather than diving in it. Same
         # place, same water, same light — only the camera differs, and no
         # physics runs at all.
         self.tour = None
         # "1" flies the path; "ladder" holds still and steps the exposure.
-        self._touring = os.environ.get("CORAL_CITY_TOUR") or ""
+        self._touring = os.environ.get("IOCEAN_TOUR") or ""
         self._tour_into = pathlib.Path(
-            os.environ.get("CORAL_CITY_TOUR_INTO", "/dive/tour"))
+            os.environ.get("IOCEAN_TOUR_INTO", "/dive/tour"))
 
         if str(CORAL) not in sys.path:
             sys.path.insert(0, str(CORAL))
@@ -205,7 +210,7 @@ class CoralCityShell(omni.ext.IExt):
         from dive import prepare, seed_everything
         from runner import Dive
 
-        brief_path = os.environ.get("CORAL_CITY_BRIEF", "/dive/dive.json")
+        brief_path = os.environ.get("IOCEAN_BRIEF", "/dive/dive.json")
         brief = json.loads(pathlib.Path(brief_path).read_text())
         seed_everything(int(brief.get("seed", 0)))
         self.brief = brief
@@ -1115,7 +1120,7 @@ class CoralCityShell(omni.ext.IExt):
         if self._meter is not None and self._meter.done:
             return
         self._meter_passes += 1
-        if os.environ.get("CORAL_CITY_SETTINGS") == "1" and not self._said_settings:
+        if os.environ.get("IOCEAN_SETTINGS") == "1" and not self._said_settings:
             # Late, and on purpose. Asked at dive open, the renderer has not
             # started and every /rtx key is one this code invented; asked from
             # the frame loop, it is what the renderer actually has.
@@ -1128,7 +1133,7 @@ class CoralCityShell(omni.ext.IExt):
                     carb.settings.get_settings(), self._say, "/rtx")
             except Exception as exc:
                 self._say("settings_unavailable", why=str(exc)[:200])
-        if os.environ.get("CORAL_CITY_METER", "1") == "0":
+        if os.environ.get("IOCEAN_METER", "1") == "0":
             return
 
         # A few updates for the scene to resolve. Kit spends the start of a run
@@ -1159,7 +1164,7 @@ class CoralCityShell(omni.ext.IExt):
 
             shot = self._tour_into / ".metering.png" if self._tour_into is not None \
                 else pathlib.Path(os.environ.get(
-                    "CORAL_CITY_BRIEF", "/dive/dive.json")).parent / ".metering.png"
+                    "IOCEAN_BRIEF", "/dive/dive.json")).parent / ".metering.png"
 
             if not self._metering:
                 # An update between asking and reading: the capture is written
@@ -1236,14 +1241,14 @@ class CoralCityShell(omni.ext.IExt):
             # does not disturb the exposure that just settled.
             from coral import metering as _metering
             if self._meter.done and self._balance == (1.0, 1.0, 1.0):
-                # CORAL_CITY_BALANCE pins the gains, the same way
-                # CORAL_CITY_ISO pins the exposure: three numbers, so a
+                # IOCEAN_BALANCE pins the gains, the same way
+                # IOCEAN_ISO pins the exposure: three numbers, so a
                 # question about this stage gets answered in one run rather
                 # than in an afternoon of "that change did nothing". Pinning
                 # it to 1,1,1 turns the stage on and asks it to do nothing,
                 # which is the only way to find out whether turning it on is
                 # itself a change.
-                pinned = os.environ.get("CORAL_CITY_BALANCE", "")
+                pinned = os.environ.get("IOCEAN_BALANCE", "")
                 if pinned:
                     self._balance = tuple(
                         float(one) for one in pinned.split(","))[:3]
@@ -1305,7 +1310,7 @@ class CoralCityShell(omni.ext.IExt):
             if viewport is None:
                 return
             where = pathlib.Path(
-                os.environ.get("CORAL_CITY_BRIEF", "/dive/dive.json")).parent
+                os.environ.get("IOCEAN_BRIEF", "/dive/dive.json")).parent
             path = where / f"frame-{at:g}s.png"
             capture_viewport_to_file(viewport, str(path))
             self._say("photograph", at=at, path=str(path))

@@ -106,7 +106,7 @@ def test_a_deployed_controller_can_actually_see_the_sonar():
     """
     import math
 
-    from coral_city.sensing import Navigator
+    from iocean.sensing import Navigator
 
     n = Navigator()
     # As `LaserScan` sends it: infinity for a beam that came back with nothing.
@@ -125,7 +125,7 @@ def test_a_deployed_controller_can_actually_see_the_sonar():
 def test_a_vehicle_with_no_sonar_says_so_rather_than_seeing_an_empty_sea():
     """None, not an empty fan: a controller told the water is clear would fly
     into things, and a controller told nothing is known can refuse."""
-    from coral_city.sensing import Navigator
+    from iocean.sensing import Navigator
 
     n = Navigator()
     seen = n.observation(0.0)
@@ -218,7 +218,7 @@ def test_it_goes_round_a_frame_in_the_tank():
     import math
 
     sys.path.insert(0, str(HERE.parents[2] / "services/sim-runtime/coral"))
-    from coral_city.tank import Tank
+    from iocean.tank import Tank
 
     one = a_controller()
     frame = {"id": "one", "kind": "nursery-frame", "x": 14.0, "y": 0.6,
@@ -248,7 +248,7 @@ def test_a_controller_is_told_how_far_it_is_to_the_bottom():
     and not the range, so `Observation.floor` was always None for anything deployed
     and a customer's controller could not fly the task it was being scored on.
     """
-    from coral_city.sensing import GRAVITY, SURFACE_PRESSURE_PA, Navigator
+    from iocean.sensing import GRAVITY, SURFACE_PRESSURE_PA, Navigator
 
     n = Navigator(density=1025.0)
     n.pressure(SURFACE_PRESSURE_PA + 1025.0 * GRAVITY * 8.0)      # eight metres down
@@ -263,7 +263,7 @@ def test_a_controller_is_told_how_far_it_is_to_the_bottom():
 def test_losing_bottom_lock_says_unknown_rather_than_stale():
     """A controller told a stale floor holds an altitude over where the bottom used
     to be, and flies into the next head. Outside the log's bounds is no reading."""
-    from coral_city.sensing import GRAVITY, SURFACE_PRESSURE_PA, Navigator
+    from iocean.sensing import GRAVITY, SURFACE_PRESSURE_PA, Navigator
 
     n = Navigator(density=1025.0)
     n.pressure(SURFACE_PRESSURE_PA + 1025.0 * GRAVITY * 8.0)
@@ -281,7 +281,7 @@ def test_losing_bottom_lock_says_unknown_rather_than_stale():
 def test_the_tank_reports_the_bottom_too():
     """So an altitude-holding controller can be tried before it is deployed."""
     sys.path.insert(0, str(HERE.parents[2] / "services/sim-runtime/coral"))
-    from coral_city.tank import Tank
+    from iocean.tank import Tank
 
     task = {"kind": "reach", "dx": 10, "dy": 0, "radiusM": 3.0, "timeLimitS": 20}
     tank = Tank("bluerov2", task=task, seconds=20.0)
@@ -299,7 +299,7 @@ def test_the_tank_reports_the_bottom_too():
 
 def test_every_vehicle_with_a_doppler_log_declares_the_range():
     """The contract a customer reads to know what the vehicle sends."""
-    from coral_city import vehicles
+    from iocean import vehicles
 
     for slug in ("bluerov2", "bluerov2-heavy", "remus-100"):
         described = vehicles.load(slug)

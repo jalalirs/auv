@@ -305,8 +305,8 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # rebuilt a dozen times against a picture that never changed, and twice the
     # reason turned out to be that the code under test was not the code that
     # ran. Nothing below is worth reading if this line is not in the log.
-    say("water_begins", build=BUILD, twin=os.environ.get("CORAL_CITY_TWIN") or None,
-        lampSize=os.environ.get("CORAL_CITY_LAMP_SIZE") or None)
+    say("water_begins", build=BUILD, twin=os.environ.get("IOCEAN_TWIN") or None,
+        lampSize=os.environ.get("IOCEAN_LAMP_SIZE") or None)
 
     # How much daylight is left where this dive is happening. Wanted by both the
     # lights and the camera, so it is worked out once.
@@ -361,7 +361,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # argument against a control that was not connected.
     #
     # The real ones are `filmIso` and `exposureTime`, and
-    # CORAL_CITY_SETTINGS=1 prints the whole tree from inside the frame loop,
+    # IOCEAN_SETTINGS=1 prints the whole tree from inside the frame loop,
     # which is where it has to be asked: before the renderer starts, every key
     # under /rtx is one this code invented.
     settings.set("/rtx/post/histogram/enabled", False)
@@ -396,14 +396,14 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # a formula over depth knows nothing about the lamps, which is why a lamp
     # correct at six hundred metres blew the frame out at six.
     #
-    # CORAL_CITY_ISO pins it, which is how a question about the exposure gets
+    # IOCEAN_ISO pins it, which is how a question about the exposure gets
     # answered in one run instead of an afternoon of "that change did nothing".
     from coral.runner import asked_for
-    iso = asked_for("CORAL_CITY_ISO", min(9000.0, 140.0 / max(left, 0.05)))
+    iso = asked_for("IOCEAN_ISO", min(9000.0, 140.0 / max(left, 0.05)))
     settings.set("/rtx/post/tonemap/filmIso", float(iso))
     say("camera_is", filmIso=round(float(iso), 1), fNumber=4.5,
-        exposureTime=1 / 60.0, pinned=asked_for("CORAL_CITY_ISO") is not None)
-    if os.environ.get("CORAL_CITY_SETTINGS") == "1":
+        exposureTime=1 / 60.0, pinned=asked_for("IOCEAN_ISO") is not None)
+    if os.environ.get("IOCEAN_SETTINGS") == "1":
         _say_what_the_renderer_has(settings, say)
 
     # ── the water ────────────────────────────────────────────────────────────
@@ -443,7 +443,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # picture of the reef itself needs the scattering out of the way. The
     # seabed, the coral and the light are exactly what a dive gets; what goes
     # is the medium between them and the camera.
-    if os.environ.get("CORAL_CITY_CLEAR") == "1":
+    if os.environ.get("IOCEAN_CLEAR") == "1":
         say("water_cleared", why="showing the reef rather than the water over it")
         _clear = True
     else:
@@ -535,7 +535,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # the log said so while the default said otherwise. `asked_for` in the
     # runner documents this exact trap for numbers; this is the same trap for
     # a flag.
-    volume = (os.environ.get("CORAL_CITY_VOLUME") or "0") != "0"
+    volume = (os.environ.get("IOCEAN_VOLUME") or "0") != "0"
     settings.set("/rtx/raytracing/globalVolumetricEffects/enabled",
                  bool(volume and not _clear))
     if volume and not _clear:
@@ -598,7 +598,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # It was 0.55, measured off an exposure ladder — which was honest, and was
     # one number standing in for two facts that move independently.
     #
-    # CORAL_CITY_VEIL pins it, the same way CORAL_CITY_ISO pins the exposure:
+    # IOCEAN_VEIL pins it, the same way IOCEAN_ISO pins the exposure:
     # a question about one number gets answered in one run rather than in an
     # afternoon of "that change did nothing".
     # The floor of four tenths was wrong, and the deep is where it showed.
@@ -618,7 +618,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # where VEIL_BY_LAMP used to be: a floor here is a floor over the whole
     # sky, because this fog does not know where the lamps are.
     from coral.runner import asked_for
-    veil = asked_for("CORAL_CITY_VEIL", VEIL_STRENGTH * left)
+    veil = asked_for("IOCEAN_VEIL", VEIL_STRENGTH * left)
     # Not clamped at one. This fog adds veiling light rather than blending
     # towards it, so "how much" is a brightness and not a fraction, and the
     # distance at which a thing is lost is the distance at which the light in
@@ -639,7 +639,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # water, and infinitely deep water is the veiling colour at full strength.
     # So that is what it is painted.
     nothing = [float(min(1.0, one * max(0.0, veil))) for one in veiling]
-    if os.environ.get("CORAL_CITY_PAINT_HORIZON") == "1":
+    if os.environ.get("IOCEAN_PAINT_HORIZON") == "1":
         nothing = [1.0, 0.5, 0.0]
     settings.set("/rtx/post/backgroundZeroAlpha/backgroundDefaultColor", nothing)
     settings.set("/rtx/post/backgroundZeroAlpha/enabled", True)
@@ -861,7 +861,7 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # whether it is what fills the top of the frame. Three were painted — the
     # horizon wall, the sea surface, the background — and none of them showed.
     # This is what is left.
-    if os.environ.get("CORAL_CITY_PAINT_HORIZON") == "1":
+    if os.environ.get("IOCEAN_PAINT_HORIZON") == "1":
         sky.CreateColorAttr(Gf.Vec3f(1.0, 0.45, 0.0))
 
     # ── the surface, from below ──────────────────────────────────────────────
@@ -997,13 +997,13 @@ def make(stage, say, floor: float, water_level: float = 0.0,
             Image.fromarray(caustic_net.as_texture(lit)).save(where)
             pattern = str(where)
             global _NET, _NET_STRENGTH
-            # CORAL_CITY_CAUSTIC_STRENGTH pins it, the same way the exposure
+            # IOCEAN_CAUSTIC_STRENGTH pins it, the same way the exposure
             # and the veil are pinned: a question about one number gets
             # answered in one run rather than by argument.
             from coral.runner import asked_for as _asked
             _NET = str(where)
             _NET_STRENGTH = float(
-                _asked("CORAL_CITY_CAUSTIC_STRENGTH", CAUSTIC_STRENGTH))
+                _asked("IOCEAN_CAUSTIC_STRENGTH", CAUSTIC_STRENGTH))
             say("caustics_made", fromTheSea=True,
                 patchM=CAUSTIC_PATCH_M, atDepthM=round(float(working_depth), 1),
                 contrast=round(float(lit.std()), 3),
@@ -1029,9 +1029,9 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # difference between them has now been ruled out one at a time: type, size,
     # brightness, cone, parenting, the scope above it. What is left is *where
     # in the code it is made*, which should not matter and is the only thing
-    # not yet tested. CORAL_CITY_TWIN steps it from an exact copy of the
+    # not yet tested. IOCEAN_TWIN steps it from an exact copy of the
     # caustics towards a lamp, one attribute at a time.
-    twin = os.environ.get("CORAL_CITY_TWIN")
+    twin = os.environ.get("IOCEAN_TWIN")
     if twin:
         step = int(twin)
         second = UsdLux.RectLight.Define(stage, "/World/CausticsTwin")
@@ -1273,13 +1273,13 @@ def _horizon(stage, water_level: float, lowest: float, veiling, veil: float,
     # horizon is then continuous because both sides of it are the same
     # calculation.
     colour = Gf.Vec3f(0.0, 0.0, 0.0)
-    # CORAL_CITY_PAINT_HORIZON makes this wall a colour nothing else in the
+    # IOCEAN_PAINT_HORIZON makes this wall a colour nothing else in the
     # scene is, so the pixels it actually owns can be pointed at. Geometry
     # says it should be a thin strip — from six metres down, the top of a wall
     # nine hundred metres away subtends about a third of a degree — and a band
     # a hundred pixels tall is therefore something else. Worth being able to
     # ask rather than reason about.
-    if os.environ.get("CORAL_CITY_PAINT_HORIZON") == "1":
+    if os.environ.get("IOCEAN_PAINT_HORIZON") == "1":
         colour = Gf.Vec3f(1.0, 0.0, 1.0)
     material = UsdShade.Material.Define(stage, "/World/Looks/Horizon")
     shader = UsdShade.Shader.Define(stage, "/World/Looks/Horizon/Surface")
@@ -1301,7 +1301,7 @@ def _horizon(stage, water_level: float, lowest: float, veiling, veil: float,
         # that does it, and it is the same rule as `water_begins`: a tool that
         # cannot do its job must fail, and a diagnostic that says nothing about
         # itself is a diagnostic nobody can trust the answer of.
-        "painted": os.environ.get("CORAL_CITY_PAINT_HORIZON") == "1",
+        "painted": os.environ.get("IOCEAN_PAINT_HORIZON") == "1",
         "radius": round(float(radius), 1),
         "topZ": round(top, 2),
         "bottomZ": round(bottom, 2),
@@ -1435,7 +1435,7 @@ def _water_material(stage, surface) -> None:
     # and the diagnostic said "the surface is not here" about a surface that
     # was. A paint that is overwritten is indistinguishable from a paint that
     # was never applied.
-    if os.environ.get("CORAL_CITY_PAINT_HORIZON") == "1":
+    if os.environ.get("IOCEAN_PAINT_HORIZON") == "1":
         shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(
             Gf.Vec3f(0.0, 1.0, 1.0))
         shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(1.0)
@@ -1543,7 +1543,7 @@ def _say_what_the_renderer_has(settings, say, under: str = "/rtx/post") -> None:
     never connected to anything, and every argument about the lamps was an
     argument against a control that did nothing.
 
-    CORAL_CITY_SETTINGS=1 and read the log. It is cheap and it is the only way
+    IOCEAN_SETTINGS=1 and read the log. It is cheap and it is the only way
     to tell a setting that is ignored from a setting that is wrong.
     """
     def walk(branch: str, depth: int = 0):
@@ -1668,11 +1668,11 @@ def put_the_water_in_the_materials(stage, veiling, lengths, veil: float,
             continue
         if not prim.GetAttribute("inputs:eye"):
             continue
-        # A shader cannot print. CORAL_CITY_SHOW_DISTANCE paints what it
+        # A shader cannot print. IOCEAN_SHOW_DISTANCE paints what it
         # thinks the distance to the camera is instead of the ground, in
         # metres, white at the number given. It is the only way to find out.
         import os as _os
-        shown = _os.environ.get("CORAL_CITY_SHOW_DISTANCE", "")
+        shown = _os.environ.get("IOCEAN_SHOW_DISTANCE", "")
         # The camera, set here and not only per frame.
         #
         # An MDL parameter is baked when the material compiles, and the

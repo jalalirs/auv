@@ -6,7 +6,7 @@
 
 For a shell, when a session's own MCP connection is older than the server
 (a tool added since it connected is not in its list). Reads MCP_TOKEN from the
-repository's .env; the address is CORAL_CITY_MCP or the public link.
+repository's .env; the address is IOCEAN_MCP or the public link.
 """
 
 from __future__ import annotations
@@ -19,7 +19,8 @@ import sys
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-ADDRESS = os.environ.get("CORAL_CITY_MCP", "https://jalalirs.tailedf721.ts.net/coral/mcp")
+ADDRESS = (os.environ.get("IOCEAN_MCP") or os.environ.get("CORAL_CITY_MCP")
+           or "https://jalalirs.tailedf721.ts.net/coral/mcp")
 
 
 def token() -> str:

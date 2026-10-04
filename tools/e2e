@@ -9,9 +9,15 @@
 #
 # Usage:
 #   ./tools/e2e                       # against the local deployment
-#   CORAL_CITY_API=… ./tools/e2e      # against another deployment
+#   IOCEAN_API=… ./tools/e2e      # against another deployment
 
 set -euo pipefail
+
+# The old names still work: each CORAL_CITY_X given is IOCEAN_X unless that is
+# set (docs/plan/iocean-rename.md).
+while IFS='=' read -r _name _; do
+    case "$_name" in CORAL_CITY_*) _new="IOCEAN_${_name#CORAL_CITY_}"; [ -n "${!_new+x}" ] || export "$_new=${!_name}" ;; esac
+done < <(env)
 
 # Brace expansion off, because every body this script sends is JSON.
 #
@@ -35,9 +41,9 @@ set -euo pipefail
 # Nothing here wants brace expansion for anything, so it goes off.
 set +B
 
-API="${CORAL_CITY_API:-http://localhost:18080}"
-ADMIN_EMAIL="${CORAL_CITY_ADMIN_EMAIL:-admin@coral.local}"
-ADMIN_SECRET="${CORAL_CITY_ADMIN_SECRET:-development-secret}"
+API="${IOCEAN_API:-http://localhost:18080}"
+ADMIN_EMAIL="${IOCEAN_ADMIN_EMAIL:-admin@coral.local}"
+ADMIN_SECRET="${IOCEAN_ADMIN_SECRET:-development-secret}"
 
 passed=0
 failed=0

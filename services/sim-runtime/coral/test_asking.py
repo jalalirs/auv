@@ -27,7 +27,7 @@ GOAL = {"kind": "go", "to": [100.0, 0.0, -8.0], "radiusM": 2.0}
 
 def a_controller(envelope=None, **environment):
     import os
-    for key in ("CORAL_CITY_MODEL_URL", "CORAL_CITY_MODEL", "CORAL_CITY_MODEL_KEY"):
+    for key in ("IOCEAN_MODEL_URL", "IOCEAN_MODEL", "IOCEAN_MODEL_KEY"):
         os.environ.pop(key, None)
     os.environ.update(environment)
     asking = AskingController(np.full(6, 50.0), np.full(6, 12.0), 1.5, 0.005,
@@ -64,8 +64,8 @@ def test_with_no_model_configured_it_says_so_and_flies_nothing():
 
 def test_a_plan_beyond_the_vehicle_is_refused_and_said_out_loud():
     asking = a_controller(envelope={"maxDepthM": 100.0},
-                          CORAL_CITY_MODEL_URL="http://nowhere/chat/completions",
-                          CORAL_CITY_MODEL="pretend")
+                          IOCEAN_MODEL_URL="http://nowhere/chat/completions",
+                          IOCEAN_MODEL="pretend")
     asking._call = lambda said: (json.dumps({
         "plan": "much too deep",
         "manoeuvres": [{"id": "m1", "kind": "goto",
@@ -78,8 +78,8 @@ def test_a_plan_beyond_the_vehicle_is_refused_and_said_out_loud():
 
 
 def test_a_model_that_answers_with_prose_is_refused_not_flown():
-    asking = a_controller(CORAL_CITY_MODEL_URL="http://nowhere/chat/completions",
-                          CORAL_CITY_MODEL="pretend")
+    asking = a_controller(IOCEAN_MODEL_URL="http://nowhere/chat/completions",
+                          IOCEAN_MODEL="pretend")
     asking._call = lambda said: ("I would head roughly north-east for a bit.", {})
     assert asking._ask(GOAL, seen_at()) is None
     assert "the model did not answer with a plan" in asking.said()["couldNot"]
@@ -87,8 +87,8 @@ def test_a_model_that_answers_with_prose_is_refused_not_flown():
 
 def test_a_model_that_cannot_be_reached_leaves_the_last_plan_flying():
     """A model having a bad minute must not put the vehicle into the seabed."""
-    asking = a_controller(CORAL_CITY_MODEL_URL="http://nowhere/chat/completions",
-                          CORAL_CITY_MODEL="pretend")
+    asking = a_controller(IOCEAN_MODEL_URL="http://nowhere/chat/completions",
+                          IOCEAN_MODEL="pretend")
     good = {"plan": "fine", "manoeuvres": [
         {"id": "m1", "kind": "goto", "at": {"x": 50.0, "y": 0.0, "depthM": 8.0}}]}
     asking._call = lambda said: (json.dumps(good), {"prompt_tokens": 10, "completion_tokens": 20})
@@ -109,8 +109,8 @@ def test_a_model_that_cannot_be_reached_leaves_the_last_plan_flying():
 def test_what_the_thinking_cost_is_recorded_beside_the_score():
     """A controller that is five per cent better and a second a step slower is
     not obviously better, and the record should not make you guess."""
-    asking = a_controller(CORAL_CITY_MODEL_URL="http://nowhere/chat/completions",
-                          CORAL_CITY_MODEL="minimax-m3")
+    asking = a_controller(IOCEAN_MODEL_URL="http://nowhere/chat/completions",
+                          IOCEAN_MODEL="minimax-m3")
     good = {"plan": "fine", "manoeuvres": [
         {"id": "m1", "kind": "goto", "at": {"x": 50.0, "y": 0.0, "depthM": 8.0}}]}
     asking._call = lambda said: (json.dumps(good),
@@ -145,8 +145,8 @@ def test_it_says_how_long_it_needs_and_is_believed():
 def test_a_model_is_credited_with_its_own_plan():
     """The dive records who flew it and who planned it, and a model's plan
     flown by this was being recorded as the platform's trigonometry."""
-    asking = a_controller(CORAL_CITY_MODEL_URL="http://nowhere/chat/completions",
-                          CORAL_CITY_MODEL="minimax-m3")
+    asking = a_controller(IOCEAN_MODEL_URL="http://nowhere/chat/completions",
+                          IOCEAN_MODEL="minimax-m3")
     assert "minimax-m3" in asking.planned_by
     assert "platform" not in asking.planned_by
     assert "no model" in a_controller().planned_by

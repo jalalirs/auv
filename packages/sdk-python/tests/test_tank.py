@@ -8,9 +8,9 @@ import pytest
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "examples"))
 
-from coral_city import Command, Controller  # noqa: E402
-from coral_city.tank import Tank  # noqa: E402
-from coral_city.tasks import hold_station, waypoints  # noqa: E402
+from iocean import Command, Controller  # noqa: E402
+from iocean.tank import Tank  # noqa: E402
+from iocean.tasks import hold_station, waypoints  # noqa: E402
 from hold import StationHold  # noqa: E402
 
 

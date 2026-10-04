@@ -19,7 +19,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 [ -f "${REPO_ROOT}/.env" ] && { set -a; . "${REPO_ROOT}/.env"; set +a; }
 
-API="${CORAL_CITY_API:-http://localhost:18080}"
+# The old names still work: each CORAL_CITY_X given is IOCEAN_X unless that is
+# set (docs/plan/iocean-rename.md).
+while IFS='=' read -r _name _; do
+    case "$_name" in CORAL_CITY_*) _new="IOCEAN_${_name#CORAL_CITY_}"; [ -n "${!_new+x}" ] || export "$_new=${!_name}" ;; esac
+done < <(env)
+
+API="${IOCEAN_API:-http://localhost:18080}"
 KIND="${1:?say whether this is a city or a vehicle}"
 SLUG="${2:?name the place or vehicle by its handle}"
 SOURCE="${3:?give the directory to publish}"
@@ -54,12 +60,12 @@ try: print(document$1)
 except Exception: print('')
 "; }
 
-TOKEN="${CORAL_CITY_TOKEN:-}"
+TOKEN="${IOCEAN_TOKEN:-}"
 if [ -z "$TOKEN" ]; then
-    [ -n "${CORAL_CITY_ADMIN_EMAIL:-}" ] && [ -n "${CORAL_CITY_ADMIN_SECRET:-}" ] \
-        || die "set CORAL_CITY_ADMIN_EMAIL and CORAL_CITY_ADMIN_SECRET, or CORAL_CITY_TOKEN"
+    [ -n "${IOCEAN_ADMIN_EMAIL:-}" ] && [ -n "${IOCEAN_ADMIN_SECRET:-}" ] \
+        || die "set IOCEAN_ADMIN_EMAIL and IOCEAN_ADMIN_SECRET, or IOCEAN_TOKEN"
     TOKEN=$(curl -sS -X POST "$API/api/v1/sessions" -H 'content-type: application/json' \
-        -d "{\"email\":\"$CORAL_CITY_ADMIN_EMAIL\",\"secret\":\"$CORAL_CITY_ADMIN_SECRET\"}" \
+        -d "{\"email\":\"$IOCEAN_ADMIN_EMAIL\",\"secret\":\"$IOCEAN_ADMIN_SECRET\"}" \
         | json "['token']")
     [ -n "$TOKEN" ] || die "could not sign in"
 fi

@@ -5,7 +5,7 @@ of it — initialize, tools/list, tools/call — and a dependency that has to be
 installed before a customer's assistant can reach the platform is a dependency
 between us and the sale.
 
-    CORAL_CITY_PLATFORM=http://... CORAL_CITY_EMAIL=... CORAL_CITY_SECRET=... \
+    IOCEAN_PLATFORM=http://... IOCEAN_EMAIL=... IOCEAN_SECRET=... \
         python -m coral_city_mcp
 
 Credentials come from the environment and never from a tool argument: an agent
@@ -269,8 +269,8 @@ def handle(said: dict, platform: Platform | None,
         if platform is None:
             # Why there is no session, not a recital of what to set.
             #
-            # This said "set CORAL_CITY_PLATFORM and either CORAL_CITY_TOKEN or
-            # CORAL_CITY_EMAIL/SECRET" whatever had happened — including when
+            # This said "set IOCEAN_PLATFORM and either IOCEAN_TOKEN or
+            # IOCEAN_EMAIL/SECRET" whatever had happened — including when
             # all three were set and the platform had rejected them, which
             # tells an agent to do the thing it already did. The same failure
             # as a vehicle line reading "0 to choose from".
@@ -281,8 +281,8 @@ def handle(said: dict, platform: Platform | None,
                           ) if no_session is not None else answer(said, {
                 "isError": True, "content": [{
                     "type": "text",
-                    "text": "not signed in: set CORAL_CITY_PLATFORM and either "
-                            "CORAL_CITY_TOKEN or CORAL_CITY_EMAIL/SECRET"}]})
+                    "text": "not signed in: set IOCEAN_PLATFORM and either "
+                            "IOCEAN_TOKEN or IOCEAN_EMAIL/SECRET"}]})
         _, _, run = TOOLS[name]
         try:
             got = run(platform, **(asked.get("arguments") or {}))
@@ -358,7 +358,7 @@ def main() -> int:
 # and the audit log would say so.
 
 def _platform_for(header: str | None) -> tuple[Platform | None, Refused | None]:
-    base = os.environ.get("CORAL_CITY_PLATFORM", "http://control-plane:8080")
+    base = os.environ.get("IOCEAN_PLATFORM", "http://control-plane:8080")
     if not header:
         return None, Refused(401, "unauthenticated",
                              "send your own credential: make a token in the Coral "

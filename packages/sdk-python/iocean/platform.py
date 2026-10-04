@@ -5,7 +5,7 @@ and a place, register an autonomy stack, define a dive, run it, and wait for
 what it said. Plain urllib, so the SDK depends on nothing to talk to it.
 
 A session is kept in ~/.config/coral-city/session.json by `coral-city sign-in`
-and read by everything else; CORAL_CITY_API and CORAL_CITY_TOKEN override it.
+and read by everything else; IOCEAN_API and IOCEAN_TOKEN override it.
 """
 
 from __future__ import annotations
@@ -35,14 +35,14 @@ class Platform:
 
     @classmethod
     def from_session(cls) -> "Platform":
-        api = os.environ.get("CORAL_CITY_API")
-        token = os.environ.get("CORAL_CITY_TOKEN")
+        api = os.environ.get("IOCEAN_API")
+        token = os.environ.get("IOCEAN_TOKEN")
         if api and token:
             return cls(api, token)
         if SESSION.exists():
             kept = json.loads(SESSION.read_text())
             return cls(api or kept["api"], token or kept["token"])
-        raise SystemExit("not signed in: run `coral-city sign-in` first, or set CORAL_CITY_API and CORAL_CITY_TOKEN")
+        raise SystemExit("not signed in: run `coral-city sign-in` first, or set IOCEAN_API and IOCEAN_TOKEN")
 
     def sign_in(self, email: str, secret: str) -> str:
         answer = self.call("POST", "/api/v1/sessions", {"email": email, "secret": secret})

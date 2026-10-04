@@ -1,4 +1,4 @@
-# Renaming Coral City to iocean: scope, for approval
+# Renaming Coral City to iocean
 
 You said on 3 October 2026 that iocean replaces Coral City everywhere. The old name is in about 1,300 lines across about 300 files, and some of them are names other things depend on. So the rename goes in three phases, from no risk to real risk. Each phase is a separate yes.
 
@@ -40,3 +40,29 @@ These are names only people see, and nothing depends on them:
 - **Published package versions.** They are immutable; new versions carry the new name.
 
 **Recommendation:** phase 1 now; phase 2 with the next runtime deploy; phase 3 when you choose a quiet hour, with you at the keyboard for the Claude configuration line and the funnel.
+
+## Where it stands, 4 October 2026
+
+**Phase 1 is done.** Every name people read says iocean, with three things kept back on purpose:
+
+- the Electron app's `setName`, which names the folder its settings live in;
+- the dated result write-ups in `docs/results`;
+- generated place outputs.
+
+**Phase 2 is done.**
+- **The SDK.** It is `iocean`. `coral_city` is a shim whose import hook answers every `coral_city.X` with the module `iocean.X` itself, so old controllers get the same classes, not copies. Both commands, `iocean` and `coral-city`, work.
+- **The switches.** The runtime, the Kit extension, the SDK, the MCP server, `tools/look`, `fly-over`, `count-bias`, `mcp-call`, `publish` and `e2e` read `IOCEAN_*`. Each entry point gives any `CORAL_CITY_*` it is handed to the `IOCEAN_*` name, unless that is set, so the new name wins and the old one works.
+- **The client.** Its dev settings read `VITE_IOCEAN_*` and `IOCEAN_UPSTREAM`, falling back to the old names.
+
+**Phase 3, still to do, with you at the keyboard:**
+
+- **The MCP server's name.** `coral-city` becomes `iocean`, in your Claude configuration, and the MCP Python package `coral_city_mcp` with it.
+- **The box's deployment settings.** The `CORAL_CITY_*` names in `deployments/*/compose.yaml`, the box's `.env`, `tools/box`, `tools/uav`, `tools/matrix` and `tools/clear-check-data`, and the Go services' config readers. The worker still hands the runtime `CORAL_CITY_SEED`, `CORAL_CITY_BRIEF` and the model settings; the runtime carries them.
+- **The image.** The `CORAL_CITY_RUNTIME` build argument and the `org.coralcity.runtime` label.
+- **The Kit app and extension.** `coral_city.kit` and `coral.city.shell`.
+- **Container names.** `coral-sim-run_*` and `coral-look`.
+- **Data directories.** `~/coral-city/...` and `~/.config/coral-city`, with a symlink from each old path.
+- **The client's data folder.** The Electron `setName`, with its settings moved across.
+- **The pip distribution names.** `coral-city`, `coral-city-runtime` and `coral-city-mcp`.
+- **The public path.** `/coral` behind the Tailscale Funnel; the funnel's config is never replaced.
+- **File names.** `coral-city.svg` and `coral_city.png`.

@@ -22,7 +22,7 @@ def load(slug: str) -> Vehicle:
         return ALL[slug]
     except KeyError:
         # Not one of ours. A customer's own hull is found by the
-        # card its package carries; see coral_city/catalogue.py.
+        # card its package carries; see iocean/catalogue.py.
         from ..catalogue import from_a_package
 
         return from_a_package(slug, ALL)

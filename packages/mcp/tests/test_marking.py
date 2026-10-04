@@ -100,9 +100,9 @@ def test_a_credential_can_come_from_a_file(monkeypatch, tmp_path):
 
     where = tmp_path / "mcp"
     where.write_text("prin_2:from-a-file\n")
-    monkeypatch.setenv("CORAL_CITY_PLATFORM", "http://x")
-    monkeypatch.setenv("CORAL_CITY_SERVICE_FILE", str(where))
-    monkeypatch.delenv("CORAL_CITY_SERVICE", raising=False)
+    monkeypatch.setenv("IOCEAN_PLATFORM", "http://x")
+    monkeypatch.setenv("IOCEAN_SERVICE_FILE", str(where))
+    monkeypatch.delenv("IOCEAN_SERVICE", raising=False)
     platform = Platform.from_environment()
     assert platform.service == "prin_2:from-a-file"
     assert platform.token is None
@@ -111,9 +111,9 @@ def test_a_credential_can_come_from_a_file(monkeypatch, tmp_path):
 def test_a_missing_credential_file_says_which_one(monkeypatch, tmp_path):
     from coral_city_mcp.platform import Platform, Refused
 
-    monkeypatch.setenv("CORAL_CITY_PLATFORM", "http://x")
-    monkeypatch.setenv("CORAL_CITY_SERVICE_FILE", str(tmp_path / "nope"))
-    monkeypatch.delenv("CORAL_CITY_SERVICE", raising=False)
+    monkeypatch.setenv("IOCEAN_PLATFORM", "http://x")
+    monkeypatch.setenv("IOCEAN_SERVICE_FILE", str(tmp_path / "nope"))
+    monkeypatch.delenv("IOCEAN_SERVICE", raising=False)
     with pytest.raises(Refused) as no:
         Platform.from_environment()
     assert "nope" in str(no.value)

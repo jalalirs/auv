@@ -78,9 +78,11 @@ COPY --chown=1234:1234 services/sim-runtime/coral /isaac-sim/coral
 # and a vehicle is declared there and the runtime imports it. Not a copy of
 # the interface — the same file, so the runtime cannot drift from what a
 # customer was given. It goes beside the runner, which is already on the
-# path, so `import coral_city` works without installing anything. After the
+# path, so `import iocean` works without installing anything. After the
 # runner rather than before it, so that this directory is not something a
 # later COPY has to be trusted to leave alone.
+COPY --chown=1234:1234 packages/sdk-python/iocean /isaac-sim/coral/iocean
+# And its old name, for controllers written as `import coral_city`.
 COPY --chown=1234:1234 packages/sdk-python/coral_city /isaac-sim/coral/coral_city
 
 # iocean: the application somebody watches a dive in. It is not the editor,

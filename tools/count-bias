@@ -54,7 +54,7 @@ def over_the_nearest_school(place: str, seed: int, beyond: float, altitude: floa
     on past it: a fish survey goes where the fish are."""
     import numpy as np
 
-    os.environ["CORAL_CITY_FISH_BLIND"] = "1"
+    os.environ["IOCEAN_FISH_BLIND"] = "1"
     dive = a_dive(place, "boxfish-luna", seed, {"kind": "hold", "seconds": 1})
     school, start = dive.shoal, dive.position[:2]
     best = None
@@ -80,7 +80,7 @@ def over_the_nearest_school(place: str, seed: int, beyond: float, altitude: floa
 
 
 def fly(place: str, vehicle: str, seed: int, objective: dict, blind: bool) -> dict:
-    os.environ["CORAL_CITY_FISH_BLIND"] = "1" if blind else "0"
+    os.environ["IOCEAN_FISH_BLIND"] = "1" if blind else "0"
     dive = a_dive(place, vehicle, seed, objective)
     while not dive.done:
         dive.step()
