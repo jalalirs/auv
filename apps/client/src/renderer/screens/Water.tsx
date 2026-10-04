@@ -213,7 +213,12 @@ export function Water({ platform, stream, onSurface }: {
           const offered = (said as unknown as { video?: { codec?: string | null } }).video;
           if (video.current === undefined && offered?.codec === "h264" && canDecode()
               && canvas.current !== null) {
-            video.current = decodeInto(canvas.current, () => setFrames((n) => n + 1));
+            video.current = decodeInto(() => canvas.current, () => setFrames((n) => n + 1), () => {
+              // Black out of the decoder: pictures instead, which draw.
+              video.current?.close();
+              video.current = undefined;
+              socket?.send(JSON.stringify({ want: "jpeg" }));
+            });
             socket?.send(JSON.stringify({ want: "h264" }));
           }
           return;

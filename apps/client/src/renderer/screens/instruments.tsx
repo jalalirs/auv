@@ -9,7 +9,7 @@
 // worse than one that has fewer of them, because the whole purpose of the thing
 // is to be believed about what happened.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { HOW_TO } from "../catalog/tasks.js";
 import type { Manoeuvre } from "../parts/Plan.js";
@@ -340,12 +340,27 @@ export function Instruments({ reading, topics, held, history, frames, onLeave, o
  * once, and the reading that comes back is the controller's, so what the
  * slider shows is what the vehicle is actually flying on.
  */
+const FOLDED = "iocean.controllers.folded";
+
 function ControllerPanel({ helm, onTune, onHoldHere, onEngage }: {
   helm: Helm | undefined;
   onTune: (controller: string, name: string, value: number) => void;
   onHoldHere: () => void;
   onEngage: (controller: string) => void;
 }): React.JSX.Element {
+  // Which cards somebody folded, by their own hand and only by it: folding
+  // on a hand-over is exactly what the note below forbids. Remembered here.
+  const [folded, setFolded] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(FOLDED) ?? "[]") as string[]); } catch { return new Set(); }
+  });
+  const fold = (name: string): void => {
+    setFolded((was) => {
+      const next = new Set(was);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      try { localStorage.setItem(FOLDED, JSON.stringify([...next])); } catch { /* still folds */ }
+      return next;
+    });
+  };
   if (helm === undefined) return <p className="none">The vehicle has not said who flies it.</p>;
   // Nothing here changes shape with who is flying. Every controller is shown
   // the same way all the time — its rows, its sliders — and a hand-over moves
@@ -358,13 +373,15 @@ function ControllerPanel({ helm, onTune, onHoldHere, onEngage }: {
         const flying = one.name === helm.flying;
         const status = one.status ?? {};
         return (
-          <section key={one.name} className={`controller${flying ? " flying" : ""}`}>
-            <header>
+          <section key={one.name} className={`controller${flying ? " flying" : ""}${folded.has(one.name) ? " folded" : ""}`}>
+            <header role="button" tabIndex={0} aria-expanded={!folded.has(one.name)} onClick={() => fold(one.name)}
+                    onKeyDown={(e) => { if (e.key === "Enter") fold(one.name); }}
+                    title={folded.has(one.name) ? "Show what it is and what can be moved" : "Fold it to its name"}>
               <span className="dot" />
-              <strong>{one.name}</strong>
+              <strong><span className="chevron" aria-hidden>{folded.has(one.name) ? "▸" : "▾"}</span>{one.name}</strong>
               <em>{flying ? "flying" : one.kind}</em>
             </header>
-            <p className="says">{one.says}</p>
+            {folded.has(one.name) ? null : <p className="says">{one.says}</p>}
             {one.name !== "helm" ? (
               <div className="station">
                 <span>{flying ? "has the vehicle"
@@ -382,7 +399,7 @@ function ControllerPanel({ helm, onTune, onHoldHere, onEngage }: {
                 <button className="quiet small" onClick={onHoldHere}>Hold here</button>
               </div>
             ) : null}
-            {one.parameters.map((p) => (
+            {folded.has(one.name) ? null : one.parameters.map((p) => (
               <label key={p.name} className="tunable" title={p.says}>
                 <span>{p.name}</span>
                 <input type="range" min={p.low} max={p.high} step={(p.high - p.low) / 200}
@@ -402,18 +419,34 @@ function fmt(value: unknown, digits = 2): string {
   return typeof value === "number" ? value.toFixed(digits) : "—";
 }
 
+/**
+ * A section of the dive's side panels, folded by its title. Whether each is
+ * open is remembered on this machine, so the panels somebody does not use stay
+ * out of the way on the next dive too.
+ */
 function Panel({ name, note, children }: {
   name: string;
   note?: string;
   children: React.ReactNode;
 }): React.JSX.Element {
+  const key = `iocean.panel.${name}`;
+  const [open, setOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem(key) !== "closed"; } catch { return true; }
+  });
+  const toggle = (): void => {
+    setOpen((was) => {
+      try { localStorage.setItem(key, was ? "closed" : "open"); } catch { /* not kept; still folds */ }
+      return !was;
+    });
+  };
   return (
-    <section className="panel-box">
-      <h3>
-        {name}
+    <section className={open ? "panel-box" : "panel-box folded"}>
+      <h3 role="button" tabIndex={0} aria-expanded={open} onClick={toggle}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}>
+        <span className="fold-name"><span className="chevron" aria-hidden>{open ? "▾" : "▸"}</span>{name}</span>
         {note === undefined ? null : <span>{note}</span>}
       </h3>
-      <div className="body">{children}</div>
+      {open ? <div className="body">{children}</div> : null}
     </section>
   );
 }

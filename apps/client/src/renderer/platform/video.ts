@@ -26,9 +26,21 @@ export interface Video {
   said(): { frames: number; waited: number; bytes: number };
 }
 
-export function decodeInto(canvas: HTMLCanvasElement, onFrame: () => void): Video {
-  const ink = canvas.getContext("2d");
-  let started = false;         // a stream must begin at a keyframe or not at all
+/**
+ * Decodes into whichever canvas is on the page *now*, asked of `target` each
+ * frame. It was handed the element itself, once, when the dive said hello —
+ * and React replaces that element whenever the layout around it changes, so
+ * the decoder went on drawing every frame into a canvas nobody could see while
+ * the one on the page stayed black, and the frame count kept climbing.
+ */
+export function decodeInto(target: () => HTMLCanvasElement | null, onFrame: () => void,
+                           onBlack?: () => void): Video {
+  let started = false;
+  // Frames that came out of the decoder and drew nothing: three looks at the
+  // middle of the picture, a second apart, all of them pure black, and the
+  // watcher is told — a decoder that runs and draws black is worse than none,
+  // because it looks like a dive with the lights off.
+  let blackLooks = 0;         // a stream must begin at a keyframe or not at all
   let frames = 0;
   let waited = 0;
   let bytes = 0;
@@ -36,10 +48,19 @@ export function decodeInto(canvas: HTMLCanvasElement, onFrame: () => void): Vide
   const decoder = new VideoDecoder({
     output: (frame) => {
       try {
-        if (ink !== null) {
+        const canvas = target();
+        const ink = canvas?.getContext("2d") ?? null;
+        if (canvas !== null && ink !== null) {
           if (canvas.width !== frame.displayWidth) canvas.width = frame.displayWidth;
           if (canvas.height !== frame.displayHeight) canvas.height = frame.displayHeight;
           ink.drawImage(frame, 0, 0);
+          if (onBlack !== undefined && frames % 30 === 29) {
+            const middle = ink.getImageData(Math.floor(canvas.width / 2) - 4, Math.floor(canvas.height / 2) - 4, 8, 8).data;
+            let lit = false;
+            for (let i = 0; i < middle.length; i += 4) if (middle[i]! + middle[i + 1]! + middle[i + 2]! > 0) { lit = true; break; }
+            blackLooks = lit ? 0 : blackLooks + 1;
+            if (blackLooks >= 3) { blackLooks = 0; onBlack(); }
+          }
         }
         frames += 1;
         onFrame();

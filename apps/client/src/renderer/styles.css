@@ -470,6 +470,12 @@ input:focus { border-color: var(--coral); }
   background: rgba(19, 37, 58, 0.5);
 }
 .panel-box h3 span { text-transform: none; letter-spacing: 0; color: var(--dim); font-weight: 400; }
+.panel-box h3 { cursor: pointer; }
+.panel-box h3:hover { color: var(--ink, #dbe7f3); }
+.panel-box h3 .fold-name { display: inline-flex; align-items: baseline; gap: 6px; color: inherit;
+  text-transform: uppercase; letter-spacing: 0.09em; font-weight: 600; }
+.panel-box h3 .chevron { display: inline-block; width: 0.8em; color: var(--dim); }
+.panel-box.folded h3 { border-bottom: none; }
 .panel-box .body { padding: 11px 12px 13px; }
 .none { margin: 0; color: var(--dim); font-size: 12.5px; }
 
@@ -1609,3 +1615,7 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 .ledger .row.token .token-prefix { color: var(--dim); font-size: 12px; }
 .ledger .row.token.revoked { opacity: 0.5; }
 .ledger .row.token.revoked strong { text-decoration: line-through; }
+
+/* A controller card folds by its header, by hand. */
+.controller header { cursor: pointer; }
+.controller header .chevron { display: inline-block; width: 0.9em; color: var(--dim); font-weight: 400; }
