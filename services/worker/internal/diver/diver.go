@@ -16,8 +16,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -473,6 +475,25 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 	// reports taking a photograph, and there is no photograph.
 	if err := os.Chown(briefDir, runtimeUser, runtimeUser); err != nil {
 		log.Warn("the simulator may not be able to write beside its brief", "error", err)
+	}
+	// The film of a run flown before plays back what that run commanded
+	// rather than asking anybody, and ends where it did. The commands are
+	// the one file of another run a run is handed, and the control plane
+	// decides whether it is.
+	if replayer, ok := d.platform.(Replayer); ok {
+		url, found, err := replayer.RunReplay(ctx, claimed.Run.ID)
+		if err != nil {
+			return "failed", nil, fmt.Sprintf("could not ask for the commands this film replays: %v", err)
+		}
+		if found {
+			if err := fetchTo(ctx, url, filepath.Join(briefDir, "replay", "commands.npy")); err != nil {
+				return "failed", nil, fmt.Sprintf("could not fetch the commands this film replays: %v", err)
+			}
+			brief["replay"] = map[string]any{"commands": "/dive/replay/commands.npy"}
+			// As long as the run it films was, which the runtime knows and
+			// this does not: it ends itself when the commands run out.
+			brief["durationSeconds"] = anHour
+		}
 	}
 	encoded, err := json.MarshalIndent(brief, "", "  ")
 	if err != nil {
@@ -1236,6 +1257,40 @@ func pictures(claimed Claimed) bool {
 		return true
 	}
 	return objective.Pictures == nil || *objective.Pictures
+}
+
+// Replayer is what a platform offers when it can hand a run the commands of
+// the run it films. Optional, so a platform that cannot is still a platform.
+type Replayer interface {
+	RunReplay(ctx context.Context, runID string) (url string, found bool, err error)
+}
+
+// fetchTo writes what a signed URL serves to a file, making its directory.
+func fetchTo(ctx context.Context, url, path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("%s answered %s", url, response.Status)
+	}
+	out, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, response.Body); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // recording says whether a dive will leave a recording: it does when it is

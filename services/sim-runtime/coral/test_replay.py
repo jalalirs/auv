@@ -34,3 +34,12 @@ def test_other_commands_fly_another_dive(tmp_path):
     np.save(tmp_path / "commands.npy", -commands)
     again, _ = flown(city, seed=4, replay={"commands": str(tmp_path / "commands.npy")})
     assert not np.allclose(again, track)
+
+
+def test_a_replay_ends_where_its_commands_do(tmp_path):
+    city = a_place(tmp_path)
+    track, commands = flown(city, seed=4)
+    np.save(tmp_path / "commands.npy", commands[:1500])
+    again, _ = flown(city, seed=4, replay={"commands": str(tmp_path / "commands.npy")})
+    assert len(again) == 1500
+    assert np.array_equal(again, track[:1500])

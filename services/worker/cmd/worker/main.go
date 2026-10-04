@@ -179,6 +179,10 @@ func (p *platform) RunPackages(ctx context.Context, runID string) (diver.Package
 	return convert(city), convert(vehicle), nil
 }
 
+func (p *platform) RunReplay(ctx context.Context, runID string) (string, bool, error) {
+	return p.client.RunReplay(ctx, runID)
+}
+
 func convert(contents controlplane.PackageContents) diver.Package {
 	files := make([]cache.File, 0, len(contents.Files))
 	for _, file := range contents.Files {

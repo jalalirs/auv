@@ -45,7 +45,7 @@ class Task:
 class TaskingSystem(System):
     name = "tasking"
     reads = ("vehicle", "contacts", "clock", "navigation", "sonar", "helm", "power", "water", "place", "thrust",
-             "cable")
+             "cable", "asked")
     writes = ("task", "orders")
 
     def __init__(self, brief: dict, say, who_should_fly, envelope, camera_half_angle) -> None:
@@ -148,6 +148,11 @@ class TaskingSystem(System):
         because they did not know how long the job would take."""
         stands = world.task
         if stands.ended:
+            return
+        # A film of a dive flown before ends where that dive did: when the
+        # commands it recorded run out (systems/helm.py).
+        if world.asked.replay_over:
+            self.finish(world, "replayed")
             return
         # A vehicle held by its own cable has failed, whatever the task says:
         # wrapped on a rock, caught and fighting it, or parted.

@@ -267,6 +267,9 @@ func (rt *Router) registerAll() {
 	// there is no way to hand a GPU back at all — a request could be made and
 	// never withdrawn, and every one of them held a device until its lease ran
 	// out, whether or not anybody was still there.
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/dives/{diveId}/runs/{runId}/film",
+		Summary: "the path-traced film of a run, flown again from its commands", Action: policy.RunRequest,
+		Resource: fromPath(policy.ResourceDive, "diveId"), Handle: d.filmRun})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/dives/{diveId}/runs/{runId}/cancel",
 		Summary: "end a dive, or withdraw a request for one", Action: policy.RunRequest,
 		Resource: fromPath(policy.ResourceDive, "diveId"), Handle: d.cancelRun})

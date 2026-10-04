@@ -1346,6 +1346,50 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/dives/{diveId}/runs/{runId}/film:
+    post:
+      tags: [dives]
+      summary: The path-traced film of a run, flown again from its commands
+      description: >
+        A film cannot be rendered while somebody flies, and whoever flew cannot
+        be asked to fly the same dive twice. What they commanded can be: the
+        runtime keeps every tick's command (commands.npy), and a dive given them
+        plays them back. This defines a new dive whose every determinant is
+        copied from the record of the one in the path — place and vehicle
+        versions, water, arrangement, starting state, objective — with pictures
+        on, no controller, and replayOf naming the run, and runs it on the
+        original's seed and runtime. Only a run that succeeded and kept its
+        commands can be filmed.
+      parameters:
+        - name: diveId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                queueId: { type: string, description: "where to run it; the original's queue when left out" }
+                film: { type: object, description: "{fps, width, height, spp, bitrate}" }
+                views: { type: array, items: { type: string } }
+                viewEveryS: { type: number }
+      responses:
+        '202':
+          description: The film's dive and its run, queued.
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/dives/{diveId}/runs/{runId}/events:
     get:
       tags: [dives]

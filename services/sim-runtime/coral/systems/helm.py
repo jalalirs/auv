@@ -65,6 +65,9 @@ def observe(world, sensors_out: bool = False):
 class Asked:
     def __init__(self, commands) -> None:
         self.commands = commands
+        # A dive flown from a recording of another's commands has had the
+        # last of them: it is over where that one was.
+        self.replay_over = False
 
 
 class HelmSystem(System):
@@ -99,6 +102,7 @@ class HelmSystem(System):
             world.asked.commands = helm.command(observe(world))
         self.kept.append(np.array(world.asked.commands, dtype=float))
         self.ticks += 1
+        world.asked.replay_over = self.replay is not None and self.ticks >= len(self.replay)
 
     def commands(self):
         """Every tick's command so far, (ticks, thrusters)."""

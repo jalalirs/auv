@@ -593,6 +593,24 @@ func (d *Dependencies) runPackages(w http.ResponseWriter, r *http.Request) {
 		}
 		answer[name] = map[string]any{"versionId": versionID, "files": fetchable}
 	}
+	// And, for the film of a run flown before, the commands that run recorded:
+	// the one file of another run a run may read (see film.go).
+	if objectID, ok, err := d.replayFor(r, runID); err != nil {
+		writeError(w, r, err)
+		return
+	} else if ok {
+		object, err := d.Objects.Object(r.Context(), objectID)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		url, err := d.Objects.ReadURL(r.Context(), object, ReplayFile, storage.Internal)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		answer["replay"] = map[string]any{"path": ReplayFile, "url": url}
+	}
 	writeJSON(w, r, http.StatusOK, answer)
 }
 

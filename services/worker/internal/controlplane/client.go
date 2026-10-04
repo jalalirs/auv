@@ -318,6 +318,24 @@ func (c *Client) RunPackages(ctx context.Context, runID string) (city, vehicle P
 	return answer.City, answer.Vehicle, nil
 }
 
+// RunReplay asks whether a run is the film of another and, if it is, where the
+// commands that run recorded can be fetched.
+func (c *Client) RunReplay(ctx context.Context, runID string) (url string, found bool, err error) {
+	var answer struct {
+		Replay *struct {
+			URL string `json:"url"`
+		} `json:"replay"`
+	}
+	if _, err := c.call(ctx, http.MethodGet,
+		"/api/v1/runs/"+runID+"/packages", nil, &answer); err != nil {
+		return "", false, err
+	}
+	if answer.Replay == nil || answer.Replay.URL == "" {
+		return "", false, nil
+	}
+	return answer.Replay.URL, true, nil
+}
+
 // PackageContents is one package and the files in it.
 type PackageContents struct {
 	VersionID string        `json:"versionId"`

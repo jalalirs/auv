@@ -146,6 +146,24 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
                name="", controller="", views=None, view_every_s=4.0:
             tools.dives_start(p, place, vehicle, objective, water, controller,
                               name, pictures, views, view_every_s)),
+    "dives_film": (
+        "The path-traced film of a run already flown — one watched live, or "
+        "flown by a controller, or flown undrawn for its numbers. THIS SPENDS "
+        "TIME ON A MACHINE. The run is flown again from the commands it "
+        "recorded, on its seed: the same dive, tick for tick, with pictures. "
+        "Only a run that succeeded and kept its commands (flown on or after "
+        "4 October 2026) can be filmed.",
+        {"type": "object",
+         "properties": {"dive": {"type": "string"},
+                        "run": {"type": "string",
+                                "description": "the run to film; the dive's latest when left out"},
+                        "views": {"type": "array", "items": {"type": "string"}},
+                        "view_every_s": {"type": "number", "default": 6.0},
+                        "film": {"type": "object",
+                                 "description": "{fps, width, height, spp, bitrate}; 24 fps 1280x720 16 spp when left out"}},
+         "required": ["dive"]},
+        lambda p, dive, run=None, views=None, view_every_s=6.0, film=None:
+            tools.dives_film(p, dive, run, views, view_every_s, film)),
     "dives_frame": (
         "What the camera saw at a moment of a dive, as an image — and from "
         "where: the position, heading and camera it was seen from come back "

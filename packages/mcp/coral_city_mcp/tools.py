@@ -682,6 +682,34 @@ def dives_start(platform: Platform, place: str, vehicle: str,
     }
 
 
+def dives_film(platform: Platform, dive_id: str, run_id: str | None = None,
+               views: list | None = None, view_every_s: float = 6.0,
+               film: dict | None = None) -> dict:
+    """The path-traced film of a run already flown.
+
+    A film cannot be made while somebody flies — a path-traced frame takes
+    seconds — and whoever flew cannot be asked to fly it again. What they
+    commanded can be: the platform defines a new dive copied from the record
+    of this one, and flies it on the same seed from the commands the run kept.
+    Everything that makes it the same dive is copied by the platform, not
+    here, so nothing an agent passes can make it a different one.
+    """
+    runs = platform.runs(dive_id)
+    if not runs:
+        raise Refused(404, "not_found", "that dive has never been flown")
+    run = (next((r for r in runs if r["id"] == run_id), None) if run_id
+           else max(runs, key=lambda r: r.get("createdAt") or ""))
+    if run is None:
+        raise Refused(404, "not_found", f"no run {run_id!r} on that dive")
+    body = {**({"views": list(views), "viewEveryS": float(view_every_s)} if views else {}),
+            **({"film": film} if film else {})}
+    made = platform.request("POST", f"/api/v1/dives/{dive_id}/runs/{run['id']}/film", body)
+    return {"dive": made["dive"]["id"], "run": made["run"]["id"], "state": made["run"].get("state"),
+            "filmOf": run["id"], "seed": made["run"].get("seed"),
+            "note": ("queued: the run flown again from its commands, drawn. dives_result on the new dive "
+                     "says how it went; the film is about a sixth of real time to make")}
+
+
 # The seas a dive can be asked for, by name. Constructed rather than observed:
 # nobody measured a current at these places today, and a made-up reading
 # dressed as an observation is the one thing this platform will not do.
