@@ -40,7 +40,27 @@ def carry_the_record_forward(site: dict, was: pathlib.Path) -> dict:
     keep = site.setdefault("builtBy", {})
     for tool, call in before.items():
         keep.setdefault(tool, call)
+    # And what those later tools wrote about the place, beside the files they
+    # left in it. `tools/surroundings` writes a "surroundings" record and the
+    # fauna step a "life" one; a rebuild left their files in the folder and
+    # took their records out of site.json, so the place still had its GEBCO
+    # seabed and its fish on disk and no longer said so. Shushah, 4 October.
+    try:
+        whole = json.loads(was.read_text())
+    except (OSError, ValueError):
+        return site
+    for key in LATER:
+        record = whole.get(key)
+        if key in site or not isinstance(record, dict):
+            continue
+        named = [record.get(k) for k in ("file", "tidFile") if record.get(k)]
+        if all((was.parent / name).exists() for name in named):
+            site[key] = record
     return site
+
+
+# The site.json records written by tools that run after make-site.
+LATER = ("surroundings", "life")
 
 
 def record_call(site: dict, tool: str) -> dict:

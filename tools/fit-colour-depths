@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+"""Refit a derived seabed on its colour and its reef map, against measured depths.
+
+    tools/fit-colour-depths shushah            say how well it would do
+    tools/fit-colour-depths shushah --write    and write the seabed
+
+`tools/fit-depths` rescales a satellite-derived seabed with one curve: the
+claimed depth in, the measured depth out. That is right when the claim is a
+good shape at the wrong scale, and wrong when two different bottoms give the
+same claim. At Shushah they do. Stumpf's log-ratio reads the bright 14 m sand
+terrace like the bright 1 m reef flat, so no curve of the claim alone can put
+both where they are, and the one fitted put the flat at five metres.
+
+What tells them apart is already here: the colour itself (the blue, green and
+red that came back, not only their ratio) and the Allen Coral Atlas's map of
+which ground is reef flat, crest and slope. So this fits the measured depth on
+all of them at once — the claimed depth, the log-ratio, the log of each band,
+and which geomorphic class the ground is — by least squares against the
+ICESat-2 ATL24 seafloor photons, the way satellite-derived bathymetry has
+been trained on ICESat-2 since it flew (Ma et al. 2020; Babbel et al. 2021).
+
+It is checked the way a fit has to be checked when the truth comes in tracks:
+by holding out 200 m blocks of the site in turn and predicting them from the
+rest, so a photon is never scored against a line drawn through its own track.
+That held-out error is what is reported and recorded, by depth, beside the
+error of the single curve on the same blocks.
+
+Where the colour says nothing — deeper than the bottom shows, or land — the
+seabed is the one `fit-depths` wrote, and the record says how much of the site
+that is.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import pathlib
+import sys
+
+import numpy as np
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import built  # noqa: E402
+
+BLOCK_M = 200.0
+BEYOND_M = 3.0
+
+
+def metres_per_degree(latitude: float) -> tuple[float, float]:
+    r = math.radians(latitude)
+    north = 111_132.92 - 559.82 * math.cos(2 * r) + 1.175 * math.cos(4 * r)
+    east = 111_412.84 * math.cos(r) - 93.5 * math.cos(3 * r)
+    return east, north
+
+
+def classes_on(grid: int, across: float, centre: dict, geomorphic: dict) -> tuple[np.ndarray, list[str]]:
+    """The geomorphic map rasterised onto the seabed's grid: 0 unmapped, then
+    one code per class, south to north then west to east like the seabed."""
+    from matplotlib.path import Path
+    east, north = metres_per_degree(centre["latitude"])
+    names = sorted({f["properties"]["class_name"] for f in geomorphic["features"]})
+    at = (np.arange(grid) / (grid - 1) - 0.5) * across
+    X, Y = np.meshgrid(at, at)
+    cells = np.stack([X.ravel(), Y.ravel()], 1)
+    out = np.zeros((grid, grid), dtype=int)
+    for f in geomorphic["features"]:
+        code = names.index(f["properties"]["class_name"]) + 1
+        shape = f["geometry"]
+        polygons = shape["coordinates"] if shape["type"] == "MultiPolygon" else [shape["coordinates"]]
+        for polygon in polygons:
+            ring = np.asarray(polygon[0], dtype=float)
+            xy = np.stack([(ring[:, 0] - centre["longitude"]) * east,
+                           (ring[:, 1] - centre["latitude"]) * north], 1)
+            out[Path(xy).contains_points(cells).reshape(grid, grid)] = code
+    return out, names
+
+
+def colour_on(grid: int, rgb: np.ndarray) -> np.ndarray:
+    """The median scene's colour on the seabed's grid (the scene's row 0 is north)."""
+    m = rgb.shape[0]
+    rows = np.clip(np.round((1.0 - np.arange(grid) / (grid - 1)) * (m - 1)).astype(int), 0, m - 1)
+    cols = np.clip(np.round(np.arange(grid) / (grid - 1) * (m - 1)).astype(int), 0, m - 1)
+    return rgb[rows][:, cols].astype(float)
+
+
+def features(claimed, colour, cls, n_classes):
+    """What the fit is on, for any set of cells: claimed depth, the log-ratio,
+    the log of each band, and the class as one column each."""
+    blue, green, red = (np.maximum(colour[..., k], 1e-4) for k in (2, 1, 0))
+    columns = [np.ones_like(claimed), claimed, np.log(1000 * blue) / np.log(1000 * green),
+               np.log(blue), np.log(green), np.log(red)]
+    columns += [(cls == k).astype(float) for k in range(1, n_classes + 1)]
+    return np.stack(columns, axis=-1)
+
+
+def by_depth(measured, predicted):
+    bands = []
+    for low, high in ((0, 2), (2, 5), (5, 10), (10, 15), (15, 25), (25, None)):
+        depth = -measured
+        inside = (depth >= low) & ((depth < high) if high is not None else True)
+        if inside.sum() < 20:
+            continue
+        e = predicted[inside] - measured[inside]
+        bands.append({"fromM": low, "toM": high, "points": int(inside.sum()),
+                      "medianM": round(float(np.median(e)), 2), "rmsM": round(float(np.sqrt(np.mean(e ** 2))), 2)})
+    return bands
+
+
+def held_out(F, measured, blocks):
+    """Each block predicted by a fit to the others."""
+    out = np.full(len(measured), np.nan)
+    for block in np.unique(blocks):
+        test = blocks == block
+        coefficients, *_ = np.linalg.lstsq(F[~test], measured[~test], rcond=None)
+        out[test] = F[test] @ coefficients
+    return out
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parse.add_argument("place")
+    parse.add_argument("--reference", default=str(pathlib.Path.home() / "iocean" / "reference"))
+    parse.add_argument("--write", action="store_true")
+    asked = parse.parse_args()
+
+    ref = pathlib.Path(asked.reference) / asked.place
+    said = json.loads((ref / f"{asked.place}.json").read_text())
+    grid = int(round(math.sqrt((ref / f"{asked.place}.f32").stat().st_size / 4)))
+    claimed = np.fromfile(ref / f"{asked.place}.f32", dtype="<f4").reshape(grid, grid).astype(float)
+    fitted_note = json.loads((ref / "seabed_fitted.json").read_text())
+    fitted = np.fromfile(ref / "seabed_fitted.f32", dtype="<f4").reshape(grid, grid)
+    across = float(said["acrossMetres"])
+    centre = said["centre"] if isinstance(said["centre"], dict) else json.loads(said["centre"])
+    cls, names = classes_on(grid, across, centre, json.loads((ref / "coral-atlas-geomorphic.geojson").read_text()))
+    colour = colour_on(grid, np.load(ref / "sentinel_median_rgb.npy"))
+    every = features(claimed, colour, cls, len(names))
+
+    points = np.load(ref / "icesat_depths.npy")
+    x, y, measured = points[:, 0], points[:, 1], points[:, 2]
+    i = np.clip(np.round((y / across + 0.5) * (grid - 1)).astype(int), 0, grid - 1)
+    j = np.clip(np.round((x / across + 0.5) * (grid - 1)).astype(int), 0, grid - 1)
+    usable = ((np.abs(x) < across / 2) & (np.abs(y) < across / 2) & (measured < -0.2)
+              & np.all(colour[i, j] > 0, axis=-1) & np.isfinite(claimed[i, j]))
+    x, y, measured, i, j = x[usable], y[usable], measured[usable], i[usable], j[usable]
+    F = every[i, j]
+    blocks = (np.floor((x + across / 2) / BLOCK_M) * 1000 + np.floor((y + across / 2) / BLOCK_M)).astype(int)
+
+    curve = held_out(F[:, :2], measured, blocks)
+    colour_fit = held_out(F, measured, blocks)
+    rms = lambda e: float(np.sqrt(np.mean(e ** 2)))  # noqa: E731
+    print(f"{asked.place}: {len(measured):,} measured depths in {len(np.unique(blocks))} blocks of {BLOCK_M:.0f} m")
+    print(f"  held out, one curve of the claim:     rms {rms(curve - measured):.2f} m")
+    print(f"  held out, colour and reef map:        rms {rms(colour_fit - measured):.2f} m")
+    bands = by_depth(measured, colour_fit)
+    for b in bands:
+        to = "deeper" if b["toM"] is None else f"{b['toM']} m"
+        print(f"    {b['fromM']:>3} to {to:>6}: {b['points']:>5} points, median {b['medianM']:+.2f}, rms {b['rmsM']:.2f}")
+
+    coefficients, *_ = np.linalg.lstsq(F, measured, rcond=None)
+    heights = every @ coefficients
+    deepest, shallowest = float(measured.min()), float(measured.max())
+    # Where the colour is the bottom's: inside what was measured, and not land.
+    # Land is what the earlier fit restored above water *and* the reef map
+    # does not call reef: Shushah's flat is shallow and bright enough in the
+    # near infrared to have been restored as island with the island itself,
+    # and the reef map is what knows it is under the sea.
+    land = (fitted >= 0.0) & (cls == 0)
+    seen = np.all(colour > 0, axis=-1) & (heights > deepest - BEYOND_M) & (heights < 0.5) & ~land
+    # Reef the colour cannot speak for stays awash rather than dry.
+    out = np.where(seen, np.minimum(heights, -0.1), fitted)
+    out = np.where(~seen & ~land & (out >= 0.0), -0.3, out).astype("float32")
+    # The reef flat, as each says it.
+    flat = np.isin(cls, [names.index(n) + 1 for n in names if "Flat" in n])
+    print(f"  reef cells the earlier fit had as dry land: {int(((fitted >= 0) & (cls > 0)).sum()):,}")
+    print(f"  reef flat: was {-np.median(fitted[flat]):.1f} m deep, now {-np.median(out[flat]):.1f} m "
+          f"(ICESat-2 on it: {-np.median(measured[np.isin(cls[i, j], [names.index(n) + 1 for n in names if 'Flat' in n])]):.1f} m)")
+    print(f"  {seen.mean():.0%} of the site from the colour; the rest as fit-depths left it")
+    if not asked.write:
+        print("\n  nothing written. Pass --write to keep it.")
+        return 0
+
+    out.tofile(ref / "seabed_colour.f32")
+    note = {k: v for k, v in fitted_note.items() if k not in ("file", "fittedAgainst")}
+    note.update({
+        "file": "seabed_colour.f32",
+        "fittedAgainst": {
+            "source": "ICESat-2 ATL24 v002 seafloor photons",
+            "points": int(len(measured)),
+            "on": ["the claimed depth", "ln(1000 B)/ln(1000 G)", "ln B", "ln G", "ln R"]
+                  + [f"Allen Coral Atlas geomorphic class: {n}" for n in names],
+            "coefficients": [round(float(c), 5) for c in coefficients],
+            "heldOut": f"blocks of {BLOCK_M:.0f} m, each predicted from a fit to the others",
+            "rmsHeldOutM": round(rms(colour_fit - measured), 2),
+            "rmsHeldOutOneCurveM": round(rms(curve - measured), 2),
+            "residualByDepth": bands,
+            "calibratedBetweenM": [round(-shallowest, 1), round(-deepest, 1)],
+            "fromColourShare": round(float(seen.mean()), 3),
+            "elsewhere": "the seabed tools/fit-depths wrote (one curve of the claim), where the colour is not the bottom's",
+            "note": ("derived from Sentinel-2's colour and the Allen Coral Atlas's reef map, fitted to measured depths. "
+                     "Not a survey: a derived seabed with a known, held-out error."),
+        },
+    })
+    (ref / "seabed_colour.json").write_text(json.dumps(note, indent=1))
+    print(f"\n  written to {ref / 'seabed_colour.f32'}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
