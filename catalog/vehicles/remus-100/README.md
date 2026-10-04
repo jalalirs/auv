@@ -19,4 +19,6 @@ whose force depends on the speed of the water over them, and the allocator does
 not model control surfaces. The vehicle is catalogued so that its physics can
 be read and compared, and it becomes flyable when control surfaces are.
 
-No hull package yet either.
+The hull is drawn: `remus-100.usd`, by `hardware/remus/shape.py` from
+Prestero's Myring profile and fin area (4 October 2026), and `picture.jpg` is a
+render of it. Drawn is not flyable: that waits on control surfaces.

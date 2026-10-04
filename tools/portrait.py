@@ -104,5 +104,9 @@ co = bpy.data.objects.new("Cam", cam); scene.collection.objects.link(co); scene.
 co.location = centre + Vector((-1.15, -1.55, 0.7)) * size * 1.35
 co.rotation_euler = (centre - co.location).to_track_quat("-Z", "Y").to_euler()
 
+# Exposed for the vehicle, not the floor: at Blender's default the ground the
+# lights fall on burns to white and a yellow hull bleaches to cream.
+scene.view_settings.exposure = -1.3
+
 bpy.ops.render.render(write_still=True)
 print("PORTRAIT_DONE")

@@ -18,36 +18,15 @@ from __future__ import annotations
 
 import json
 import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 INTO = ROOT / "catalog/vehicles/edgetech-2300"
 L, W, H = 2.059, 0.817, 0.508
 AIR, WATER = 449.0, 272.0
 RHO = 1025.0
-
-
-def hull_usda() -> str:
-    """A plain sled to draw: a yellow deck over a grey body, two tail fins and
-    the tow bail, at the datasheet's size. Not EdgeTech's machining — its size,
-    its shape and where it is towed from."""
-    def cube(name, size, at, colour):
-        return (f'    def Cube "{name}"\n    {{\n        double size = 1\n'
-                f'        float3 xformOp:scale = ({size[0]}, {size[1]}, {size[2]})\n'
-                f'        double3 xformOp:translate = ({at[0]}, {at[1]}, {at[2]})\n'
-                f'        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]\n'
-                f'        color3f[] primvars:displayColor = [({colour[0]}, {colour[1]}, {colour[2]})]\n    }}\n')
-    out = ['#usda 1.0\n(\n    defaultPrim = "EdgeTech2300"\n    metersPerUnit = 1\n    upAxis = "Z"\n)\n\n'
-           'def Xform "EdgeTech2300"\n{\n']
-    out.append(cube("Body", (L * 0.95, W, H * 0.7), (0.0, 0.0, -H * 0.1), (0.62, 0.64, 0.66)))
-    out.append(cube("Deck", (L * 0.7, W * 0.96, 0.03), (0.15, 0.0, H * 0.27), (0.95, 0.8, 0.1)))
-    for side in (-1, 1):
-        out.append(cube(f"Fin{'Port' if side < 0 else 'Starboard'}", (0.35, 0.02, 0.3),
-                        (-L * 0.42, side * W * 0.4, H * 0.4), (0.08, 0.08, 0.09)))
-        out.append(cube(f"Bail{'Port' if side < 0 else 'Starboard'}", (0.03, 0.03, 0.45),
-                        (0.55, side * 0.12, H * 0.45), (0.8, 0.8, 0.82)))
-    out.append(cube("BailTop", (0.03, 0.27, 0.03), (0.55, 0.0, H * 0.68), (0.8, 0.8, 0.82)))
-    out.append("}\n")
-    return "".join(out)
 
 
 def topic_contract() -> dict:
@@ -76,7 +55,7 @@ def main() -> None:
         "hull": {"note": "EdgeTech 2300 combined side-scan and sub-bottom towfish.",
                  "dimensionsM": [L, W, H], "dimensionsFrom": "published: 205.9 × 81.7 × 50.8 cm (76.3 cm with the rear fins)",
                  "weathervanes": True,
-                 "shape": "A flat aluminium sled with a tow bail and two tail fins that point it into the flow."},
+                 "shape": "A wide, flat towbody, rounded, with its nose and tail drawn in, a tow bail on its back and two tail fins that point it into the flow (hardware/towfish/shape.py)."},
         "provenance": {"note": "Size, weight in air and water, depth rating and the sonars' figures are EdgeTech's published datasheet. Drag, added mass and the tow cable are assumed."},
         "centreOfGravityM": [0, 0, 0], "centreOfBuoyancyM": [0, 0, 0.08],
         "inertiaTensor": [round(AIR / 12 * (W * W + H * H), 2), 0, 0, 0, round(AIR / 12 * (L * L + H * H), 2), 0, 0, 0,
@@ -107,7 +86,10 @@ def main() -> None:
     }
     INTO.mkdir(parents=True, exist_ok=True)
     (INTO / "dynamics.json").write_text(json.dumps(doc, indent=1, ensure_ascii=False) + "\n")
-    (INTO / "edgetech-2300.usda").write_text(hull_usda())
+    # The hull, drawn by shape.py at the datasheet's size.
+    import shape
+    (INTO / "edgetech-2300.usda").unlink(missing_ok=True)
+    shape.build().save(INTO / "edgetech-2300.usd")
     (INTO / "README.md").write_text(
         "# EdgeTech 2300\n\nA combined side-scan and sub-bottom towfish, the one KAUST tows. In the catalogue from "
         "EdgeTech's datasheet; drag, added mass and the tow cable are assumed. No thrusters: a dive flies it by "

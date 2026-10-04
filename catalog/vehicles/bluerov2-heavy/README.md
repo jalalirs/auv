@@ -19,8 +19,16 @@ Two of the linear damping terms — sway and yaw — were not identified separat
 in that work and are carried here as small non-zero values so that every axis
 is damped. They are the least trustworthy numbers in this file.
 
-## What is missing
+## The hull
 
-No hull package yet: this vehicle has parameters and no USD, so it can be
-understood on the fleet page and not yet flown. A hull drawn to the frame
-dimensions is the work that makes it flyable.
+`bluerov2-heavy.usd` is drawn by `hardware/bluerov2_heavy/shape.py` on 4 October
+2026: the standard frame's published 457 × 254 mm side, the electronics and
+battery tubes, buoyancy, lamps, and the eight T200s exactly where the thruster
+table above puts them, so the drawing, the propellers a dive turns and the
+physics agree. `picture.jpg` is a render of it.
+
+The horizontals are drawn at +0.085 m, above the centre of gravity, because
+that is what the thruster table says. Whether that is right depends on Wu's
+frame — where its origin is and which way its z points — and is not yet
+checked against the source: the real vehicle carries its horizontals low, but
+its centre of gravity is low too.

@@ -16,7 +16,7 @@
   ],
   "dimensionsFrom": "published: 205.9 × 81.7 × 50.8 cm (76.3 cm with the rear fins)",
   "weathervanes": true,
-  "shape": "A flat aluminium sled with a tow bail and two tail fins that point it into the flow."
+  "shape": "A wide, flat towbody, rounded, with its nose and tail drawn in, a tow bail on its back and two tail fins that point it into the flow (hardware/towfish/shape.py)."
  },
  "provenance": {
   "note": "Size, weight in air and water, depth rating and the sonars' figures are EdgeTech's published datasheet. Drag, added mass and the tow cable are assumed."
