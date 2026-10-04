@@ -12,6 +12,7 @@ says a vehicle can do is what the runtime will let it do.
 from __future__ import annotations
 
 import json
+import pprint
 import pathlib
 import re
 import sys
@@ -102,7 +103,9 @@ def main() -> int:
             "",
             "from ..vehicle import Sensor, Thruster, Topic, Vehicle",
             "",
-            f"DYNAMICS = {json.dumps(document, indent=4)}",
+            # Python, not JSON: a package that says `true` or `null` was
+            # written into this module as a name nothing defines.
+            f"DYNAMICS = {pprint.pformat(document, indent=1, width=110, sort_dicts=False)}",
             "",
             "VEHICLE = Vehicle(",
             f"    slug={slug!r},",

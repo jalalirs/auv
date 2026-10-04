@@ -2,422 +2,188 @@
 
 from ..vehicle import Sensor, Thruster, Topic, Vehicle
 
-DYNAMICS = {
-    "massKg": 13.5,
-    "displacedVolumeM3": 0.0134,
-    "centreOfGravityM": [
-        0,
-        0,
-        0
-    ],
-    "centreOfBuoyancyM": [
-        0,
-        0,
-        0.01
-    ],
-    "inertiaTensor": [
-        0.26,
-        0,
-        0,
-        0,
-        0.23,
-        0,
-        0,
-        0,
-        0.37
-    ],
-    "addedMass": {
-        "note": "Diagonal of the 6x6 added-mass matrix, surge, sway, heave, roll, pitch, yaw, negative by the convention that they oppose acceleration. From Wu (2018), identified for the heavy configuration.",
-        "diagonal": [
-            -6.36,
-            -7.12,
-            -18.68,
-            -0.189,
-            -0.135,
-            -0.222
-        ]
-    },
-    "linearDamping": {
-        "note": "First-order drag, Wu (2018). Sway and roll and yaw were not separately identified there and are carried as small values rather than zero, so that the model is damped on every axis.",
-        "diagonal": [
-            -13.7,
-            -4.0,
-            -33.0,
-            -0.05,
-            -0.8,
-            -0.1
-        ]
-    },
-    "quadraticDamping": {
-        "note": "Second-order drag, Wu (2018).",
-        "diagonal": [
-            -141.0,
-            -217.0,
-            -190.0,
-            -1.19,
-            -0.47,
-            -1.5
-        ]
-    },
-    "thrusters": {
-        "note": "The eight-thruster heavy configuration: four vectored horizontals at 45 degrees as on the standard frame, and four verticals at the corners instead of two, which is what gives the heavy frame roll and pitch authority. Positions are metres from the centre of gravity; directions are unit vectors in the body frame.",
-        "model": "BlueRobotics T200",
-        "maxForwardN": 51.5,
-        "maxReverseN": 40.0,
-        "timeConstantS": 0.2,
-        "units": [
-            {
-                "name": "front-right",
-                "position": [
-                    0.156,
-                    0.111,
-                    0.085
-                ],
-                "direction": [
-                    0.707,
-                    -0.707,
-                    0
-                ]
-            },
-            {
-                "name": "front-left",
-                "position": [
-                    0.156,
-                    -0.111,
-                    0.085
-                ],
-                "direction": [
-                    0.707,
-                    0.707,
-                    0
-                ]
-            },
-            {
-                "name": "rear-right",
-                "position": [
-                    -0.156,
-                    0.111,
-                    0.085
-                ],
-                "direction": [
-                    -0.707,
-                    -0.707,
-                    0
-                ]
-            },
-            {
-                "name": "rear-left",
-                "position": [
-                    -0.156,
-                    -0.111,
-                    0.085
-                ],
-                "direction": [
-                    -0.707,
-                    0.707,
-                    0
-                ]
-            },
-            {
-                "name": "vertical-front-right",
-                "position": [
-                    0.12,
-                    0.218,
-                    0
-                ],
-                "direction": [
-                    0,
-                    0,
-                    1
-                ]
-            },
-            {
-                "name": "vertical-front-left",
-                "position": [
-                    0.12,
-                    -0.218,
-                    0
-                ],
-                "direction": [
-                    0,
-                    0,
-                    1
-                ]
-            },
-            {
-                "name": "vertical-rear-right",
-                "position": [
-                    -0.12,
-                    0.218,
-                    0
-                ],
-                "direction": [
-                    0,
-                    0,
-                    1
-                ]
-            },
-            {
-                "name": "vertical-rear-left",
-                "position": [
-                    -0.12,
-                    -0.218,
-                    0
-                ],
-                "direction": [
-                    0,
-                    0,
-                    1
-                ]
-            }
-        ]
-    },
-    "tether": {
-        "_": "The same Fathom Slim cable: 7.6 mm, made very slightly buoyant in seawater on purpose \u2014 one that is not spends the dive dragging the vehicle down. A heavier vehicle does not get a heavier tether; it gets the same one and minds it less.",
-        "diameterM": 0.0076,
-        "lengthM": 100.0,
-        "weightNPerM": -0.02,
-        "dragNormal": 1.2
-    },
-    "sensors": [
-        {
-            "kind": "underwater_camera",
-            "name": "forward",
-            "position": [
-                0.3,
-                0,
-                0.1
-            ],
-            "orientation": [
-                0,
-                0,
-                0
-            ],
-            "focalLengthMm": 21,
-            "widthPx": 1280,
-            "heightPx": 720,
-            "watts": 2.5,
-            "wattsNote": "a machine-vision camera and its housing"
-        },
-        {
-            "kind": "imaging_sonar",
-            "name": "forward_looking",
-            "position": [
-                0.3,
-                0,
-                0.3
-            ],
-            "orientation": [
-                0,
-                0,
-                0
-            ],
-            "rangeM": [
-                0.5,
-                10.0
-            ],
-            "horizontalFovDeg": 130,
-            "verticalFovDeg": 20,
-            "watts": 18.0,
-            "wattsNote": "a Blueprint Oculus, which is most of what a small ROV's hotel load is when it is on"
-        },
-        {
-            "kind": "dvl",
-            "name": "bottom_track",
-            "position": [
-                0,
-                0,
-                -0.05
-            ],
-            "watts": 4.0,
-            "wattsNote": "a Nortek DVL1000, averaged over its ping"
-        },
-        {
-            "kind": "imu",
-            "name": "body",
-            "position": [
-                0,
-                0,
-                0
-            ],
-            "watts": 0.5,
-            "wattsNote": "a MEMS unit; a fibre-optic gyro is ten times this"
-        },
-        {
-            "kind": "barometer",
-            "name": "depth",
-            "position": [
-                0,
-                0,
-                0
-            ],
-            "watts": 0.1,
-            "wattsNote": "a pressure sensor, which costs nothing"
-        },
-        {
-            "kind": "ctd",
-            "name": "ctd",
-            "position": [
-                0.0,
-                0.0,
-                0.0
-            ],
-            "everyS": 1.0,
-            "note": "Conductivity, temperature and depth. The instrument every oceanographic vehicle carries and the reason a glider section is worth flying.",
-            "watts": 0.35,
-            "wattsNote": "a pumped SBE 49, which is why gliders can carry one"
-        }
-    ],
-    "topicContract": {
-        "publishes": [
-            {
-                "topic": "/camera/image_raw",
-                "type": "sensor_msgs/msg/Image"
-            },
-            {
-                "topic": "/imu/data",
-                "type": "sensor_msgs/msg/Imu"
-            },
-            {
-                "topic": "/dvl/twist",
-                "type": "geometry_msgs/msg/TwistWithCovarianceStamped"
-            },
-            {
-                "topic": "/dvl/range",
-                "type": "sensor_msgs/msg/Range",
-                "note": "The range to the seabed, from the same Doppler log as the twist. Infinity, or outside [min_range, max_range], is no bottom lock \u2014 which is a thing that happens and a controller holding an altitude has to handle. Reef work is altitude work."
-            },
-            {
-                "topic": "/depth",
-                "type": "sensor_msgs/msg/FluidPressure"
-            },
-            {
-                "topic": "/tf",
-                "type": "tf2_msgs/msg/TFMessage"
-            },
-            {
-                "topic": "/sonar/scan",
-                "type": "sensor_msgs/msg/LaserScan"
-            },
-            {
-                "topic": "/ctd",
-                "type": "sensor_msgs/msg/FluidPressure"
-            }
-        ],
-        "subscribes": [
-            {
-                "topic": "/thruster_cmd",
-                "type": "std_msgs/msg/Float64MultiArray",
-                "note": "Eight normalised commands in [-1, 1], in the order the thruster units are listed."
-            },
-            {
-                "topic": "/cmd_vel",
-                "type": "geometry_msgs/msg/Twist",
-                "note": "A body-frame wrench for stacks that would rather not allocate thrust themselves."
-            }
-        ]
-    },
-    "lights": {
-        "note": "Four Lumens, which is the Heavy's usual fit.",
-        "fitted": [
-            {
-                "name": "port-fore",
-                "kind": "lumen",
-                "position": [
-                    0.24,
-                    -0.18,
-                    0.1
-                ],
-                "aim": [
-                    1.0,
-                    0.0,
-                    -0.15
-                ],
-                "lumens": 1500.0,
-                "watts": 15.0,
-                "coneDeg": 135.0,
-                "colourK": 6000
-            },
-            {
-                "name": "starboard-fore",
-                "kind": "lumen",
-                "position": [
-                    0.24,
-                    0.18,
-                    0.1
-                ],
-                "aim": [
-                    1.0,
-                    0.0,
-                    -0.15
-                ],
-                "lumens": 1500.0,
-                "watts": 15.0,
-                "coneDeg": 135.0,
-                "colourK": 6000
-            },
-            {
-                "name": "port-aft",
-                "kind": "lumen",
-                "position": [
-                    0.05,
-                    -0.18,
-                    0.1
-                ],
-                "aim": [
-                    1.0,
-                    0.0,
-                    -0.15
-                ],
-                "lumens": 1500.0,
-                "watts": 15.0,
-                "coneDeg": 135.0,
-                "colourK": 6000
-            },
-            {
-                "name": "starboard-aft",
-                "kind": "lumen",
-                "position": [
-                    0.05,
-                    0.18,
-                    0.1
-                ],
-                "aim": [
-                    1.0,
-                    0.0,
-                    -0.15
-                ],
-                "lumens": 1500.0,
-                "watts": 15.0,
-                "coneDeg": 135.0,
-                "colourK": 6000
-            }
-        ]
-    },
-    "modem": {
-        "note": "The same micro-modem class link as the BlueROV2.",
-        "bitsPerSecond": 2400.0,
-        "rangeM": 2000.0,
-        "lossShare": 0.08
-    },
-    "power": {
-        "note": "The same pack as the standard BlueROV2, because it is the same battery: the Heavy Retrofit changes the thrusters and the buoyancy and not the enclosure, so 14.8 V and 18 Ah is what this vehicle carries too. Eight T200s draw from it instead of six, which is where the difference in endurance comes from and is already accounted for by the thrusters themselves. Derived, not measured: if somebody weighs a Heavy with the larger pack fitted, this is the number to replace. It had no capacity at all until 27 September 2026, which meant every bench row for this hull reported 0.00 Wh \u2014 not \"unknown\" but \"this controller used no energy\", found by flying it.",
-        "capacityWh": 266.4,
-        "nominalVoltage": 14.8,
-        "hotelW": 7.0,
-        "thrusterMaxW": 350.0,
-        "powerExponent": 1.5,
-        "reserveFraction": 0.1,
-        "hotelNote": "The base electronics and nothing else: the same electronics, with more to talk to. It was a single lumped figure that stood for the electronics, the sensors and the lights together \u2014 which meant unfitting a Doppler log or switching the lamps off changed the endurance by exactly nothing. Each instrument states its own draw now and they are added to this, so a dive that carries less lasts longer, which is the whole reason to be able to choose."
-    },
-    "computer": {
-        "kind": "jetson-orin-nx",
-        "watts": 25.0,
-        "tops": 100.0,
-        "ramGb": 16,
-        "note": "The machine somebody fits when they mean to run vision. Twenty-five watts against a base of seven: the computer is three times the rest of the electronics, and an eight-hour mission spends two hundred watt-hours thinking."
-    }
-}
+DYNAMICS = {'massKg': 13.5,
+ 'displacedVolumeM3': 0.0134,
+ 'centreOfGravityM': [0, 0, 0],
+ 'centreOfBuoyancyM': [0, 0, 0.01],
+ 'inertiaTensor': [0.26, 0, 0, 0, 0.23, 0, 0, 0, 0.37],
+ 'addedMass': {'note': 'Diagonal of the 6x6 added-mass matrix, surge, sway, heave, roll, pitch, yaw, '
+                       'negative by the convention that they oppose acceleration. From Wu (2018), identified '
+                       'for the heavy configuration.',
+               'diagonal': [-6.36, -7.12, -18.68, -0.189, -0.135, -0.222]},
+ 'linearDamping': {'note': 'First-order drag, Wu (2018). Sway and roll and yaw were not separately '
+                           'identified there and are carried as small values rather than zero, so that the '
+                           'model is damped on every axis.',
+                   'diagonal': [-13.7, -4.0, -33.0, -0.05, -0.8, -0.1]},
+ 'quadraticDamping': {'note': 'Second-order drag, Wu (2018).',
+                      'diagonal': [-141.0, -217.0, -190.0, -1.19, -0.47, -1.5]},
+ 'thrusters': {'note': 'The eight-thruster heavy configuration: four vectored horizontals at 45 degrees as '
+                       'on the standard frame, and four verticals at the corners instead of two, which is '
+                       'what gives the heavy frame roll and pitch authority. Positions are metres from the '
+                       'centre of gravity; directions are unit vectors in the body frame.',
+               'model': 'BlueRobotics T200',
+               'maxForwardN': 51.5,
+               'maxReverseN': 40.0,
+               'timeConstantS': 0.2,
+               'units': [{'name': 'front-right',
+                          'position': [0.156, 0.111, 0.085],
+                          'direction': [0.707, -0.707, 0]},
+                         {'name': 'front-left',
+                          'position': [0.156, -0.111, 0.085],
+                          'direction': [0.707, 0.707, 0]},
+                         {'name': 'rear-right',
+                          'position': [-0.156, 0.111, 0.085],
+                          'direction': [-0.707, -0.707, 0]},
+                         {'name': 'rear-left',
+                          'position': [-0.156, -0.111, 0.085],
+                          'direction': [-0.707, 0.707, 0]},
+                         {'name': 'vertical-front-right',
+                          'position': [0.12, 0.218, 0],
+                          'direction': [0, 0, 1]},
+                         {'name': 'vertical-front-left',
+                          'position': [0.12, -0.218, 0],
+                          'direction': [0, 0, 1]},
+                         {'name': 'vertical-rear-right',
+                          'position': [-0.12, 0.218, 0],
+                          'direction': [0, 0, 1]},
+                         {'name': 'vertical-rear-left',
+                          'position': [-0.12, -0.218, 0],
+                          'direction': [0, 0, 1]}]},
+ 'tether': {'_': 'The same Fathom Slim cable: 7.6 mm, made very slightly buoyant in seawater on purpose — '
+                 'one that is not spends the dive dragging the vehicle down. A heavier vehicle does not get '
+                 'a heavier tether; it gets the same one and minds it less.',
+            'diameterM': 0.0076,
+            'lengthM': 100.0,
+            'weightNPerM': -0.02,
+            'dragNormal': 1.2},
+ 'sensors': [{'kind': 'underwater_camera',
+              'name': 'forward',
+              'position': [0.3, 0, 0.1],
+              'orientation': [0, 0, 0],
+              'focalLengthMm': 21,
+              'widthPx': 1280,
+              'heightPx': 720,
+              'watts': 2.5,
+              'wattsNote': 'a machine-vision camera and its housing'},
+             {'kind': 'imaging_sonar',
+              'name': 'forward_looking',
+              'position': [0.3, 0, 0.3],
+              'orientation': [0, 0, 0],
+              'rangeM': [0.5, 10.0],
+              'horizontalFovDeg': 130,
+              'verticalFovDeg': 20,
+              'watts': 18.0,
+              'wattsNote': "a Blueprint Oculus, which is most of what a small ROV's hotel load is when it is "
+                           'on'},
+             {'kind': 'dvl',
+              'name': 'bottom_track',
+              'position': [0, 0, -0.05],
+              'watts': 4.0,
+              'wattsNote': 'a Nortek DVL1000, averaged over its ping'},
+             {'kind': 'imu',
+              'name': 'body',
+              'position': [0, 0, 0],
+              'watts': 0.5,
+              'wattsNote': 'a MEMS unit; a fibre-optic gyro is ten times this'},
+             {'kind': 'barometer',
+              'name': 'depth',
+              'position': [0, 0, 0],
+              'watts': 0.1,
+              'wattsNote': 'a pressure sensor, which costs nothing'},
+             {'kind': 'ctd',
+              'name': 'ctd',
+              'position': [0.0, 0.0, 0.0],
+              'everyS': 1.0,
+              'note': 'Conductivity, temperature and depth. The instrument every oceanographic vehicle '
+                      'carries and the reason a glider section is worth flying.',
+              'watts': 0.35,
+              'wattsNote': 'a pumped SBE 49, which is why gliders can carry one'}],
+ 'topicContract': {'publishes': [{'topic': '/camera/image_raw', 'type': 'sensor_msgs/msg/Image'},
+                                 {'topic': '/imu/data', 'type': 'sensor_msgs/msg/Imu'},
+                                 {'topic': '/dvl/twist',
+                                  'type': 'geometry_msgs/msg/TwistWithCovarianceStamped'},
+                                 {'topic': '/dvl/range',
+                                  'type': 'sensor_msgs/msg/Range',
+                                  'note': 'The range to the seabed, from the same Doppler log as the twist. '
+                                          'Infinity, or outside [min_range, max_range], is no bottom lock — '
+                                          'which is a thing that happens and a controller holding an '
+                                          'altitude has to handle. Reef work is altitude work.'},
+                                 {'topic': '/depth', 'type': 'sensor_msgs/msg/FluidPressure'},
+                                 {'topic': '/tf', 'type': 'tf2_msgs/msg/TFMessage'},
+                                 {'topic': '/sonar/scan', 'type': 'sensor_msgs/msg/LaserScan'},
+                                 {'topic': '/ctd', 'type': 'sensor_msgs/msg/FluidPressure'}],
+                   'subscribes': [{'topic': '/thruster_cmd',
+                                   'type': 'std_msgs/msg/Float64MultiArray',
+                                   'note': 'Eight normalised commands in [-1, 1], in the order the thruster '
+                                           'units are listed.'},
+                                  {'topic': '/cmd_vel',
+                                   'type': 'geometry_msgs/msg/Twist',
+                                   'note': 'A body-frame wrench for stacks that would rather not allocate '
+                                           'thrust themselves.'}]},
+ 'lights': {'note': "Four Lumens, which is the Heavy's usual fit.",
+            'fitted': [{'name': 'port-fore',
+                        'kind': 'lumen',
+                        'position': [0.24, -0.18, 0.1],
+                        'aim': [1.0, 0.0, -0.15],
+                        'lumens': 1500.0,
+                        'watts': 15.0,
+                        'coneDeg': 135.0,
+                        'colourK': 6000},
+                       {'name': 'starboard-fore',
+                        'kind': 'lumen',
+                        'position': [0.24, 0.18, 0.1],
+                        'aim': [1.0, 0.0, -0.15],
+                        'lumens': 1500.0,
+                        'watts': 15.0,
+                        'coneDeg': 135.0,
+                        'colourK': 6000},
+                       {'name': 'port-aft',
+                        'kind': 'lumen',
+                        'position': [0.05, -0.18, 0.1],
+                        'aim': [1.0, 0.0, -0.15],
+                        'lumens': 1500.0,
+                        'watts': 15.0,
+                        'coneDeg': 135.0,
+                        'colourK': 6000},
+                       {'name': 'starboard-aft',
+                        'kind': 'lumen',
+                        'position': [0.05, 0.18, 0.1],
+                        'aim': [1.0, 0.0, -0.15],
+                        'lumens': 1500.0,
+                        'watts': 15.0,
+                        'coneDeg': 135.0,
+                        'colourK': 6000}]},
+ 'modem': {'note': 'The same micro-modem class link as the BlueROV2.',
+           'bitsPerSecond': 2400.0,
+           'rangeM': 2000.0,
+           'lossShare': 0.08},
+ 'power': {'note': 'The same pack as the standard BlueROV2, because it is the same battery: the Heavy '
+                   'Retrofit changes the thrusters and the buoyancy and not the enclosure, so 14.8 V and 18 '
+                   'Ah is what this vehicle carries too. Eight T200s draw from it instead of six, which is '
+                   'where the difference in endurance comes from and is already accounted for by the '
+                   'thrusters themselves. Derived, not measured: if somebody weighs a Heavy with the larger '
+                   'pack fitted, this is the number to replace. It had no capacity at all until 27 September '
+                   '2026, which meant every bench row for this hull reported 0.00 Wh — not "unknown" but '
+                   '"this controller used no energy", found by flying it.',
+           'capacityWh': 266.4,
+           'nominalVoltage': 14.8,
+           'hotelW': 7.0,
+           'thrusterMaxW': 350.0,
+           'powerExponent': 1.5,
+           'reserveFraction': 0.1,
+           'hotelNote': 'The base electronics and nothing else: the same electronics, with more to talk to. '
+                        'It was a single lumped figure that stood for the electronics, the sensors and the '
+                        'lights together — which meant unfitting a Doppler log or switching the lamps off '
+                        'changed the endurance by exactly nothing. Each instrument states its own draw now '
+                        'and they are added to this, so a dive that carries less lasts longer, which is the '
+                        'whole reason to be able to choose.'},
+ 'computer': {'kind': 'jetson-orin-nx',
+              'watts': 25.0,
+              'tops': 100.0,
+              'ramGb': 16,
+              'note': 'The machine somebody fits when they mean to run vision. Twenty-five watts against a '
+                      'base of seven: the computer is three times the rest of the electronics, and an '
+                      'eight-hour mission spends two hundred watt-hours thinking.'}}
 
 VEHICLE = Vehicle(
     slug='bluerov2-heavy',
