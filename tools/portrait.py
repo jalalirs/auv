@@ -45,6 +45,22 @@ scene.view_settings.view_transform = "AgX"
 
 bpy.ops.wm.usd_import(filepath=str(model), import_cameras=False, import_lights=False)
 meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
+
+# A part with a colour and no material — a package drawn with displayColor, as
+# the towfish's is — imports white. Give it a plain material of its own colour,
+# read from the attribute the importer keeps it in.
+for one in meshes:
+    if any(slot.material is not None for slot in one.material_slots):
+        continue
+    said = one.data.color_attributes.get("displayColor") if hasattr(one.data, "color_attributes") else None
+    if said is None or len(said.data) == 0:
+        continue
+    r, g, b = (sum(c.color[i] for c in said.data) / len(said.data) for i in range(3))
+    look = bpy.data.materials.new(f"{one.name}Colour"); look.use_nodes = True
+    shader = look.node_tree.nodes["Principled BSDF"]
+    shader.inputs["Base Color"].default_value = (r, g, b, 1.0)
+    shader.inputs["Roughness"].default_value = 0.45
+    one.data.materials.append(look)
 if not meshes:
     raise SystemExit(f"{model} has no meshes")
 
