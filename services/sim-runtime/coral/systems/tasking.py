@@ -86,6 +86,12 @@ class TaskingSystem(System):
         from controllers import plan
 
         goal = task.goal()
+        # And what the chart says is in the way, when the mission says: a
+        # controller that plans its own route keeps clear of it before any
+        # sensor confirms it.
+        hazards = (getattr(task, "objective", None) or {}).get("hazards") or (self.brief.get("objective") or {}).get("hazards")
+        if hazards:
+            goal = dict(goal, hazards=list(hazards))
         # Every controller is told what the dive is for. One that plans for
         # itself needs the goal and not a route — that is the whole of the
         # difference between a vehicle being asked and one being driven.

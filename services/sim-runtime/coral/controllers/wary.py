@@ -93,6 +93,12 @@ class WaryController(PursueController):
         # beams half a second after it was seen, the way looked clear, and the
         # route took the vehicle straight through it.
         self.heard: list[tuple[float, float, float]] = []
+        # What the chart says is there, which no ping need confirm: the
+        # mission's `hazards`, kept as echoes that never fade. A brain colony
+        # on a rock beside the route stands under the echosounders' beams,
+        # and a controller that waited to hear it brushed it on two seeds in
+        # eight. Marked with an infinite time so nothing forgets them.
+        self.known: list[tuple[float, float, float]] = []
         self.detours = 0
         self.via = None
         self.via_best, self.via_since = 0.0, 0.0
@@ -201,7 +207,14 @@ class WaryController(PursueController):
             short_of = (rangem - 0.05) if np.isfinite(rangem) else reach
             through |= inside & (far < short_of)
         if through.any():
-            self.heard = [one for one, gone in zip(self.heard, through) if not gone]
+            self.heard = [one for one, gone in zip(self.heard, through) if not gone or one[0] == math.inf]
+
+    def tasked(self, goal: dict) -> None:
+        """Take the chart's hazards from the goal: points in the site's frame
+        the route must keep its corridor clear of, as if heard already."""
+        super().tasked(goal)
+        self.known = [(math.inf, float(h["x"]), float(h["y"])) for h in (goal.get("hazards") or [])]
+        self.heard = [one for one in self.heard if one[0] != math.inf] + self.known
 
     def remember(self, seen: Observation) -> None:
         """Every echo close enough to matter, as a point in the world."""
@@ -230,7 +243,7 @@ class WaryController(PursueController):
                     y0 = float(seen.position[1]) + nose * math.sin(float(seen.heading))
                     self.heard.append((now, x0 + float(rangem) * math.cos(way),
                                        y0 + float(rangem) * math.sin(way)))
-        self.heard = [one for one in self.heard if now - one[0] <= keep][-3000:]
+        self.heard = [one for one in self.heard if one[0] != math.inf and now - one[0] <= keep][-3000:] + self.known
 
     def blocked(self, seen: Observation, towards: float, reach: float) -> tuple[bool, float]:
         """Whether a remembered echo is in a vehicle-wide corridor that way, and
