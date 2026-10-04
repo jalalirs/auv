@@ -33,6 +33,11 @@ class Mission(Task):
         self.stopped_early = False
 
     @property
+    def flies_through(self) -> bool:
+        """A mission can be flown without stopping when every stage of it can."""
+        return bool(self.stages) and all(getattr(one, "flies_through", False) for one in self.stages)
+
+    @property
     def stage(self) -> Task | None:
         return self.stages[self.at] if self.at < len(self.stages) else None
 

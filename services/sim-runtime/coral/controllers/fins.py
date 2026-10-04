@@ -1,0 +1,191 @@
+"""Flying a torpedo: one propeller, and fins that only work while it moves.
+
+A vehicle like the REMUS 100 has no way to push sideways or straight up. It
+steers the way a fish does, by going forward and leaning the water off its
+tail: the rudder turns it, the stern planes pitch it, and the pitch is what
+takes it up or down. Stop the propeller and the fins stop answering, because
+the force on a fin is the square of the speed through the water times its
+angle — so a torpedo cannot hold a station, cannot turn on the spot, and a
+point it is told to reach is a point it passes through.
+
+So this flies the same route the planner draws for every other vehicle, in
+those terms:
+
+  speed    the propeller holds a cruising speed through the water
+  heading  the rudder turns it towards the next point, damped on the yaw rate
+  depth    a nose-down angle in proportion to how much deeper it should be,
+           which the stern planes hold, damped on the pitch rate
+
+and at the end of the route it keeps going: it circles the last point, which
+is what a torpedo waiting for somebody does.
+
+A point closer than the vehicle can turn is a point it orbits for ever. So a
+leg counts as reached where the planner said, or — once the vehicle is within
+its own turning circle of the point and getting further away — as passed: its
+closest approach was as close as it was going to get without a loop, and the
+task, which judges where the vehicle really is, says whether that was enough.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+
+from .base import Command, Controller, Observation
+
+
+def wrap(angle: float) -> float:
+    return (angle + math.pi) % (2 * math.pi) - math.pi
+
+
+class FinsController(Controller):
+    """A route, flown on a propeller and four fins."""
+
+    name = "fins"
+    kind = "builtin"
+    says = "Flies a torpedo: holds a speed on its propeller and steers and dives on its fins."
+
+    def __init__(self, dt: float, mass_kg: float, drag: tuple[float, float],
+                 most_forward_n: float, fin_most_rad: float) -> None:
+        super().__init__()
+        self.dt = dt
+        # What the speed loop multiplies an acceleration by, and what the water
+        # takes back at a speed: the hull's own, from its package.
+        self.mass = float(mass_kg)
+        self.drag_linear, self.drag_quadratic = (float(drag[0]), float(drag[1]))
+        self.most_forward = max(1e-6, float(most_forward_n))
+        self.fin_most = float(fin_most_rad)
+        d = self.declare
+        # The gains are not anybody's measurement. They are chosen so a REMUS
+        # 100 at cruise turns and dives without overshooting much, and they are
+        # parameters so a controller somebody writes can be compared with them.
+        d("cruiseMs", 1.5, 0.3, 2.6, "m/s", "the speed it runs at through the water")
+        d("speedKp", 0.5, 0.05, 4.0, "1/s", "propeller push per m/s short of the speed")
+        d("headingKp", 1.0, 0.0, 6.0, "rad/rad", "rudder per radian of heading error")
+        d("yawRateKd", 2.0, 0.0, 10.0, "rad/(rad/s)", "rudder per rad/s of yaw rate")
+        d("depthKp", 0.1, 0.0, 1.0, "rad/m", "nose-down per metre too shallow")
+        d("depthKi", 0.01, 0.0, 0.2, "rad/(m·s)", "nose-down per metre-second too shallow: the trim a buoyant hull needs")
+        d("pitchMostDeg", 25.0, 5.0, 45.0, "°", "the steepest it dives or climbs")
+        d("pitchKp", 1.5, 0.0, 8.0, "rad/rad", "stern planes per radian of pitch error")
+        d("pitchRateKd", 1.0, 0.0, 10.0, "rad/(rad/s)", "stern planes per rad/s of pitch rate")
+        d("arriveM", 5.0, 0.5, 50.0, "m", "how close counts as reached, when the route does not say")
+        d("turnRateMostDegS", 10.0, 1.0, 60.0, "°/s", "the tightest it is expected to turn")
+        self.route: list[dict] = []
+        self.at = 0
+        self.legs_done = 0
+        self.holding = True
+        self.distance = 0.0
+        self.depth_wanted: float | None = None
+        self.circling = False
+        # Metre-seconds too shallow, kept: what a hull that floats needs leaned
+        # against, which a proportional loop alone leaves as an offset.
+        self.depth_owed = 0.0
+        # The nearest it has been to the point it is going to.
+        self.closest = math.inf
+
+    # ── what it is told ──────────────────────────────────────────────────────
+
+    def steer(self, route) -> None:
+        self.route = [dict(point) for point in (route or [])]
+        self.at = 0
+        self.legs_done = 0
+        self.holding = not self.route
+        self.circling = False
+        self.closest = math.inf
+
+    def engage(self, seen: Observation) -> None:
+        if self.depth_wanted is None:
+            self.depth_wanted = seen.depth
+
+    def wants_back(self, seen: Observation) -> bool:
+        return False
+
+    def delivered(self, asked, given) -> None:
+        return None
+
+    def limit(self, authority) -> None:
+        return None
+
+    # ── the flying ───────────────────────────────────────────────────────────
+
+    def _turning_m(self) -> float:
+        """The radius of the tightest circle it is expected to fly at cruise."""
+        return float(self["cruiseMs"]) / math.radians(float(self["turnRateMostDegS"]))
+
+    def _reached(self, point: dict) -> bool:
+        """Close enough, or past its closest approach inside its turning circle."""
+        asked = float(point.get("arriveM", self["arriveM"]))
+        if self.distance <= asked:
+            return True
+        passing = self.closest < 1.5 * self._turning_m() and self.distance > self.closest + 0.5
+        self.closest = min(self.closest, self.distance)
+        return passing
+
+    def _depth_for(self, seen: Observation, point: dict | None) -> float:
+        if point is not None and point.get("depthM") is not None:
+            return float(point["depthM"])
+        altitude = None if point is None else point.get("altitudeM")
+        if altitude is not None and seen.floor is not None:
+            return float(-(seen.floor + float(altitude)))
+        return self.depth_wanted if self.depth_wanted is not None else seen.depth
+
+    def observe(self, seen: Observation) -> Command:
+        point = self.route[self.at] if self.at < len(self.route) else None
+        if point is not None:
+            target = np.array([float(point.get("x", seen.position[0])),
+                               float(point.get("y", seen.position[1]))])
+            flat = target - seen.position[:2]
+            self.distance = float(np.hypot(*flat))
+            if self._reached(point):
+                self.closest = math.inf
+                self.at += 1
+                self.legs_done += 1
+                self.depth_wanted = self._depth_for(seen, point)
+                return self.observe(seen)
+            self.holding = False
+        else:
+            # The route is done. A torpedo cannot stop, so it circles where the
+            # route ended — aiming at the point it has passed is a circle.
+            self.holding = True
+            self.circling = bool(self.route)
+            last = self.route[-1] if self.route else None
+            target = (np.array([float(last.get("x", seen.position[0])), float(last.get("y", seen.position[1]))])
+                      if last is not None else seen.position[:2] + 10.0 * np.array(
+                          [math.cos(seen.heading), math.sin(seen.heading)]))
+            flat = target - seen.position[:2]
+            self.distance = float(np.hypot(*flat))
+        heading_wanted = math.atan2(float(flat[1]), float(flat[0]))
+        depth_wanted = self._depth_for(seen, point)
+
+        u = float(seen.velocity[0])
+        q, r = float(seen.velocity[4]), float(seen.velocity[5])
+        cruise = float(self["cruiseMs"])
+
+        # Speed: the drag at cruise, and a push in proportion to what is short.
+        push = (self.drag_linear * cruise + self.drag_quadratic * cruise * cruise
+                + self.mass * float(self["speedKp"]) * (cruise - u))
+        propeller = float(np.clip(push / self.most_forward, -1.0, 1.0))
+
+        # Heading, on the rudder. A positive rudder turns it to port (yaw up).
+        error = wrap(heading_wanted - seen.heading)
+        rudder = float(self["headingKp"]) * error - float(self["yawRateKd"]) * r
+
+        # Depth, through pitch, on the stern planes. Nose-down is positive
+        # pitch in this z-up frame, and a positive plane angle pushes the tail
+        # down, which lifts the nose.
+        nose_down = math.asin(float(np.clip(-seen.rotation[2, 0], -1.0, 1.0)))
+        most = math.radians(float(self["pitchMostDeg"]))
+        short = depth_wanted - seen.depth
+        self.depth_owed = float(np.clip(self.depth_owed + short * self.dt, -30.0, 30.0))
+        wanted = float(np.clip(float(self["depthKp"]) * short + float(self["depthKi"]) * self.depth_owed,
+                               -most, most))
+        planes = float(self["pitchKp"]) * (nose_down - wanted) + float(self["pitchRateKd"]) * q
+
+        return Command(thrusters=np.array([propeller]),
+                       actuators={"rudderRad": float(np.clip(rudder, -self.fin_most, self.fin_most)),
+                                  "sternRad": float(np.clip(planes, -self.fin_most, self.fin_most))})
+
+    def status(self) -> dict:
+        return {"leg": self.at, "of": len(self.route), "legsDone": self.legs_done,
+                "circling": self.circling, "nextM": round(self.distance, 1)}

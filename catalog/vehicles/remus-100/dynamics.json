@@ -56,7 +56,7 @@
   ]
  },
  "thrusters": {
-  "note": "A torpedo: one propeller on the axis and four fins. Only the propeller is a thruster in the sense this platform allocates; the fins steer by deflection at speed, which the allocator does not model yet. Until it does, this vehicle can go forward and cannot turn.",
+  "note": "A torpedo: one propeller on the axis, and four fins that steer it (see `fins`). The propeller is the only thruster; the fins are actuators the fins controller moves.",
   "model": "REMUS 100 propeller",
   "maxForwardN": 15.0,
   "maxReverseN": 5.0,
@@ -163,7 +163,7 @@
     0.0,
     -0.08
    ],
-   "note": "a downward swath, for survey. The forward sonar is for avoiding things; this is for charting the bottom \u2014 and charting the bottom is what this vehicle is for.",
+   "note": "a downward swath, for survey. The forward sonar is for avoiding things; this is for charting the bottom — and charting the bottom is what this vehicle is for.",
    "watts": 28.0,
    "topic": "/multibeam/soundings"
   }
@@ -181,7 +181,7 @@
    {
     "topic": "/dvl/range",
     "type": "sensor_msgs/msg/Range",
-    "note": "The range to the seabed, from the same Doppler log as the twist. Infinity, or outside [min_range, max_range], is no bottom lock \u2014 which is a thing that happens and a controller holding an altitude has to handle. Reef work is altitude work."
+    "note": "The range to the seabed, from the same Doppler log as the twist. Infinity, or outside [min_range, max_range], is no bottom lock — which is a thing that happens and a controller holding an altitude has to handle. Reef work is altitude work."
    },
    {
     "topic": "/depth",
@@ -212,7 +212,7 @@
  },
  "power": {
   "hotelW": 9.0,
-  "hotelNote": "The base electronics and nothing else: the vehicle computer and its housekeeping. It was a single lumped figure that stood for the electronics, the sensors and the lights together \u2014 which meant unfitting a Doppler log or switching the lamps off changed the endurance by exactly nothing. Each instrument states its own draw now and they are added to this, so a dive that carries less lasts longer, which is the whole reason to be able to choose."
+  "hotelNote": "The base electronics and nothing else: the vehicle computer and its housekeeping. It was a single lumped figure that stood for the electronics, the sensors and the lights together — which meant unfitting a Doppler log or switching the lamps off changed the endurance by exactly nothing. Each instrument states its own draw now and they are added to this, so a dive that carries less lasts longer, which is the whole reason to be able to choose."
  },
  "computer": {
   "kind": "vehicle-computer",
@@ -220,5 +220,37 @@
   "tops": 0.0,
   "ramGb": 8,
   "note": "A survey AUV's own computer: navigation, logging, and the payload."
+ },
+ "commandedIn": "fins",
+ "fins": {
+  "note": "Two rudders and two stern planes, Prestero (2001). The lift is per pair, per u|u| and per radian of deflection; it acts at the fins, so the turning moment is its arm about the centre.",
+  "liftPerU2Rad": 9.64,
+  "positionM": [
+   -0.638,
+   0.0,
+   0.0
+  ],
+  "mostDeg": 13.6,
+  "rateDegPerS": 30.0,
+  "rateFrom": "assumed: Prestero gives the limit, not the rate",
+  "from": "Prestero (2001), as reproduced in Psarhadi's AUV_model.py: Y_uudr 9.64 kg/(m·rad), N_uudr -6.15 kg/rad, so the fins act 6.15/9.64 = 0.638 m behind the centre; the 13.6° limit is Prestero's, unverified here"
+ },
+ "bodyLift": {
+  "note": "Body lift and Munk moment as the hull slips, and the added-mass cross terms as it turns, Prestero (2001). In his z-down frame; the same numbers hold in this z-up one.",
+  "Yuv": -28.6,
+  "Nuv": -24.0,
+  "Yur": 5.22,
+  "Nur": -2.0,
+  "Zuw": -28.6,
+  "Muw": 24.0,
+  "Zuq": -5.22,
+  "Muq": -2.0,
+  "from": "Prestero (2001), as reproduced in Psarhadi's AUV_model.py (the thesis itself could not be read): body lift and Munk moment Y_uv, N_uv, Z_uw, M_uw; added-mass cross terms Y_ur, N_ur, Z_uq, M_uq"
+ },
+ "envelope": {
+  "maxDepthM": 100.0,
+  "maxSpeedMs": 2.6,
+  "cruiseMs": 1.5,
+  "note": "REMUS 100: rated to 100 m, 2.6 m/s at most, cruising at about 1.5 (Hydroid)."
  }
 }

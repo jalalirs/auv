@@ -1905,12 +1905,17 @@ class Dive:
         # flown badly. A glider asked to hold station does not hold it poorly;
         # it falls out of the water column while the clock runs, and the result
         # is a score nobody can read and a day nobody gets back.
-        if self.task is not None and getattr(self.task, "needs_hover", False) \
-                and not self.body.model.can_hover:
+        torpedo = getattr(self.body.model, "commanded_in", "") == "fins"
+        if self.task is not None and not self.body.model.can_hover \
+                and (not getattr(self.task, "flies_through", False) if torpedo
+                     else getattr(self.task, "needs_hover", False)):
             self.say("task_refused", task=self.task.kind,
-                     why=("this vehicle has no thrusters and cannot hold a position "
+                     why=("this vehicle steers on fins that only work while it moves, "
+                          "so it cannot stop and hold a position" if torpedo else
+                          "this vehicle has no thrusters and cannot hold a position "
                           "or a depth; it is flown by buoyancy and wings"),
-                     instead=["profile", "section"])
+                     instead=(["waypoints", "transect", "survey", "reach"] if torpedo
+                              else ["profile", "section"]))
             self.task = None
             return
         # Before anything else: can this hull even be made neutral here?
@@ -3061,7 +3066,7 @@ class Dive:
             return seabed.under(float(x), float(y)) if seabed is not None else floor
 
         # A tank's water on a grid, so the vehicle's wash lingers after it
-        # (systems/flow.py). Open water keeps the analytic jet alone.
+        # (systems/flow.py); in open water, a box of it that follows the vehicle.
         top = 0.0 if self.water_level is None else float(self.water_level)
         if asked_for("IOCEAN_FLOW", 1.0) == 0.0:
             pass
@@ -3074,11 +3079,16 @@ class Dive:
             self.ocean.flow.set_for([low[0], low[1], low[2]], [high[0], high[1], top], self.ocean.place.bottoms,
                                     cell=max(0.05, extent / 45.0), circle=getattr(self.interior, "round", None))
         else:
-            # Open water: a box round the vehicle that follows it.
+            # Open water: a box round the vehicle that follows it — two hull
+            # lengths each way, and never less than three metres by three by
+            # two. A REMUS is a metre and a half long and its wake is longer
+            # than the box a BlueROV2 needs; the cells grow with the box, so a
+            # big vehicle's grid costs what a small one's does.
             at = np.asarray(self.position, dtype=float)
-            half = np.array([1.5, 1.5, 1.0])
+            across = max(1.5, 4.0 * float(self.half_width))
+            half = np.array([across, across, max(1.0, 4.0 * float(self.half_height))])
             self.ocean.flow.set_for(at - half, np.minimum(at + half, [np.inf, np.inf, top]),
-                                    self.ocean.place.bottoms, cell=0.1, follows=True)
+                                    self.ocean.place.bottoms, cell=0.1 * across / 1.5, follows=True)
         if self.ocean.flow.on:
             self.say("flow_grid", cells=list(self.ocean.flow.shape), cellM=self.ocean.flow.cell,
                      follows=self.ocean.flow.follows, from_=self.ocean.flow.from_)

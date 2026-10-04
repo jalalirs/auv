@@ -195,6 +195,26 @@ class Hydrodynamics:
     # which is every vehicle here so far.
     wings: dict = field(default_factory=dict)
 
+    # The fins, for a torpedo. Each fin pair makes a sideways force of
+    # `liftPerU2Rad` × u|u| × its angle, acting where the fins are — so the
+    # turning comes out of where they sit rather than being a separate number
+    # with its own sign to get wrong. Empty for a vehicle without them.
+    fins: dict = field(default_factory=dict)
+    # And the hull's own lift and Munk moment as it slips sideways through the
+    # water — what makes a torpedo's turn a turn rather than a skid. Bilinear
+    # in the forward speed (Prestero's Y_uv, N_uv, Y_ur, N_ur and their pitch
+    # twins); the coefficients are the same in this z-up frame as in the
+    # z-down one they are published in, because the one is the other turned
+    # half round its long axis.
+    body_lift: dict = field(default_factory=dict)
+    # Where the fins have got to, rudder then stern planes, in radians: they
+    # move at a rate, like everything else that is asked for.
+    fin_rad: np.ndarray = field(default_factory=lambda: np.zeros(2))
+    # The hull as panels (panels.py), when the package carries them: the drag
+    # then comes from the water meeting each panel rather than from the
+    # quadratic terms, which are kept only for what the panels miss in a turn.
+    panels: object = None
+
     @property
     def can_hover(self) -> bool:
         """Whether this vehicle can stop and stay somewhere.
@@ -203,7 +223,9 @@ class Hydrodynamics:
         no way to hold a position and no way to hold a depth, and one that
         stops flying falls. It is not a matter of doing it badly.
         """
-        return len(self.thrusters) > 0
+        # A torpedo has a propeller, and it still cannot: its fins only answer
+        # while it moves, and a propeller on the axis cannot push it up.
+        return len(self.thrusters) > 0 and self.commanded_in != "fins"
 
     @classmethod
     def from_package(cls, path: str | pathlib.Path, density: float = DENSITY_SEAWATER
@@ -219,7 +241,10 @@ class Hydrodynamics:
         hull = document.get("hull", {})
         tensor = np.array(document.get("inertiaTensor", [0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1]), dtype=float)
         inertia = np.abs(tensor.reshape(3, 3).diagonal()) if tensor.size == 9 else np.abs(tensor[:3])
+        from panels import Panels
+
         return cls(
+            panels=Panels.of(pathlib.Path(path).parent),
             inertia=inertia,
             mass_kg=float(document["massKg"]),
             displaced_volume_m3=float(document["displacedVolumeM3"]),
@@ -241,6 +266,8 @@ class Hydrodynamics:
             ],
             density=density,
             wings=dict(document.get("wings", {}) or {}),
+            fins=dict(document.get("fins", {}) or {}),
+            body_lift=dict(document.get("bodyLift", {}) or {}),
             commanded_in=str(document.get("commandedIn", "wrench")),
             actuators=dict(document.get("actuators", {}) or {}),
             attitude_guard=float(hull.get("attitudeGuard", 0.5)),
@@ -282,6 +309,14 @@ class Hydrodynamics:
         mass that sets pitch and roll.
         """
         if not demand:
+            return
+        if self.commanded_in == "fins":
+            most = math.radians(float(self.fins.get("mostDeg", 15.0)))
+            step = math.radians(float(self.fins.get("rateDegPerS", 30.0))) * max(0.0, float(dt))
+            for k, key in enumerate(("rudderRad", "sternRad")):
+                wanted = max(-most, min(most, float(demand.get(key, self.fin_rad[k]))))
+                now = float(self.fin_rad[k])
+                self.fin_rad[k] = now + max(-step, min(step, wanted - now))
             return
         limits = self.actuators or {}
         low, high = limits.get("vbdCcRange", [-400.0, 400.0])
@@ -425,7 +460,8 @@ class Body:
                   + np.cross(self.model.centre_of_buoyancy, buoyancy))
         return weight + buoyancy, moment
 
-    def damping(self, velocity: np.ndarray, submerged: float = 1.0) -> np.ndarray:
+    def damping(self, velocity: np.ndarray, submerged: float = 1.0, water_at=None,
+                density: float | None = None) -> np.ndarray:
         """Drag, as a wrench in the body frame.
 
         Linear drag dominates at the speeds a survey ROV works at; quadratic
@@ -435,10 +471,18 @@ class Body:
         depth change.
         """
         linear = self.model.linear_damping * velocity
-        quadratic = self.model.quadratic_damping * np.abs(velocity) * velocity
-        # Air is not water. A hull out of the water keeps its momentum instead
-        # of being stopped by a drag a thousand times what the air can offer.
-        return -(linear + quadratic) * float(submerged)
+        panels = self.model.panels
+        if panels is None:
+            quadratic = self.model.quadratic_damping * np.abs(velocity) * velocity
+            # Air is not water. A hull out of the water keeps its momentum instead
+            # of being stopped by a drag a thousand times what the air can offer.
+            return -(linear + quadratic) * float(submerged)
+        rho = self.model.density if density is None else float(density)
+        pushed = panels.wrench(velocity, rho, water_at)
+        # What the package says a turn costs beyond what the panels see.
+        more = np.maximum(0.0, self.model.quadratic_damping[3:] - panels.rotation_quadratic)
+        pushed[3:] -= more * np.abs(velocity[3:]) * velocity[3:]
+        return (pushed - linear) * float(submerged)
 
     def effective_mass(self, submerged: float = 1.0) -> np.ndarray:
         """How heavy the body is to accelerate, water included.
@@ -526,10 +570,47 @@ class Body:
         force = lift * across - drag * along
         return np.concatenate([force, np.zeros(3)])
 
+    def steering(self, velocity: np.ndarray, submerged: float = 1.0) -> np.ndarray:
+        """What the fins and the hull's own lift do, in the body frame.
+
+        A fin's force is the square of the speed through the water times its
+        angle, so it is nothing at rest: a torpedo that stops cannot steer.
+        The rudder pair pushes the tail sideways and the stern planes push it
+        up or down; the turn is that force's moment about the centre, which is
+        why it is computed at the fins rather than given as a turning number.
+
+        The hull's lift is the other half of a turn. A slender body slipping
+        sideways makes lift and a Munk moment that tries to turn it further,
+        and its rotation makes forces that damp the turn; without them a
+        rudder makes a vehicle skid round rather than fly round.
+        """
+        u, v, w = float(velocity[0]), float(velocity[1]), float(velocity[2])
+        q, r = float(velocity[4]), float(velocity[5])
+        wrench = np.zeros(6)
+        fins = self.model.fins
+        if fins:
+            lift = float(fins.get("liftPerU2Rad", 0.0)) * u * abs(u)
+            at = np.asarray(fins.get("positionM", [-0.6, 0.0, 0.0]), dtype=float)
+            rudder, stern = float(self.model.fin_rad[0]), float(self.model.fin_rad[1])
+            # A positive rudder pushes the tail to starboard (-y), which turns
+            # the nose to port; a positive plane pushes the tail down (-z),
+            # which lifts the nose.
+            force = np.array([0.0, -lift * rudder, -lift * stern])
+            wrench[:3] += force
+            wrench[3:] += np.cross(at, force)
+        body = self.model.body_lift
+        if body:
+            g = lambda key: float(body.get(key, 0.0))  # noqa: E731
+            wrench[1] += g("Yuv") * u * v + g("Yur") * u * r
+            wrench[5] += g("Nuv") * u * v + g("Nur") * u * r
+            wrench[2] += g("Zuw") * u * w + g("Zuq") * u * q
+            wrench[4] += g("Muw") * u * w + g("Muq") * u * q
+        return wrench * float(submerged)
+
     def step(self, rotation: np.ndarray, velocity: np.ndarray,
              commands: np.ndarray, dt: float, submerged: float = 1.0,
              depth_m: float = 0.0, temperature_c: float | None = None,
-             density: float | None = None) -> np.ndarray:
+             density: float | None = None, water_at=None) -> np.ndarray:
         """Everything the water and the thrusters do this step, as one wrench.
 
         `velocity` is the body-frame twist: linear then angular.
@@ -548,10 +629,12 @@ class Body:
 
         force, moment = self.restoring(rotation, submerged, depth_m, temperature_c, density)
         wrench = np.concatenate([force, moment])
-        wrench = wrench + self.damping(velocity, submerged)
+        wrench = wrench + self.damping(velocity, submerged, water_at, density)
         if self.model.wings:
             wrench = wrench + self.lift_and_drag(
                 velocity, self.model.density if density is None else density, submerged)
+        if self.model.fins or self.model.body_lift:
+            wrench = wrench + self.steering(velocity, submerged)
         if len(self.model.thrusters) > 0:
             wrench = wrench + self.thrust(commands, submerged)
         return wrench

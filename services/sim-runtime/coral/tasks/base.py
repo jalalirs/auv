@@ -56,6 +56,11 @@ class Task:
     # falls out of the water column, and a dive that lets it try is a dive
     # that has wasted somebody's day proving something arithmetic.
     needs_hover = True
+    # Whether it can be flown without ever stopping: passing through points,
+    # running lines and lanes. A torpedo can do these and nothing else — it
+    # has a propeller, so it is not a glider, but its fins only steer while it
+    # moves, so it cannot be asked to arrive and stay.
+    flies_through = False
 
     def __init__(self, objective: dict, began_at, heading: float,
                  world=None, **ignored) -> None:

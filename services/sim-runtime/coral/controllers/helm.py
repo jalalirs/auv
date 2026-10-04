@@ -12,6 +12,8 @@ is not a mode anybody wants, and a pilot who has taken hold has said which wins.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 from .base import Command, Controller, Observation, Parameter
@@ -84,9 +86,27 @@ class Helm:
             self.controllers = {"glide": self.glide, "failsafe": self.failsafe}
             if self.stack is not None:
                 self.controllers["stack"] = self.stack
+        # A torpedo the same way: one propeller and fins, flown by the one
+        # controller that speaks fins. Hold and the route-flyers command a
+        # wrench a propeller on the axis cannot give.
+        self.fins = None
+        if getattr(model, "commanded_in", "wrench") == "fins":
+            from .fins import FinsController
+
+            fins = getattr(model, "fins", {}) or {}
+            self.fins = FinsController(
+                dt, float(model.effective_mass()[0]),
+                (float(model.linear_damping[0]), float(model.quadratic_damping[0])),
+                max((t.max_forward_n for t in model.thrusters), default=1.0),
+                math.radians(float(fins.get("mostDeg", 15.0))))
+            self.controllers = {"fins": self.fins, "failsafe": self.failsafe}
+            if self.stack is not None:
+                self.controllers["stack"] = self.stack
+        # Whatever flies this hull on its own: the glide, the fins, or the hold.
+        self.own = self.glide if self.glide is not None else self.fins
         if self.stack is not None:
             self.controllers["stack"] = self.stack
-        self.flying: Controller = self.hold if self.glide is None else self.glide
+        self.flying: Controller = self.hold if self.own is None else self.own
         self.steps_flown: dict[str, int] = {}
         # A slow loop for each controller that wants one, started the first
         # time it has the vehicle. Most never will.
@@ -325,6 +345,8 @@ class Helm:
             flyer = self.controllers.get(name)
             if flyer is not None:
                 flyer.steer(route)
+        if self.fins is not None:
+            self.fins.steer(route)
         self.flying_the_route = bool(route)
 
     def the_route_flyer(self) -> Controller:
@@ -398,8 +420,8 @@ class Helm:
         # stops being where the vehicle is. A fix that lands after arrival
         # moves the vehicle's idea of itself, and the hold would sit at the
         # old place for the rest of the dive believing it had arrived.
-        if self.glide is not None:
-            return self.glide
+        if self.own is not None:
+            return self.own
         flyer = self.the_route_flyer()
         if self.flying_the_route and (not flyer.holding or flyer.wants_back(seen)):
             return flyer
@@ -423,7 +445,7 @@ class Helm:
         """Thruster commands for this step, from whoever has the vehicle."""
         if not self.engaged:
             # The first step of the dive: whatever flies this hull takes it.
-            first = self.hold if self.glide is None else self.glide
+            first = self.hold if self.own is None else self.own
             first.engage(seen)
             self._hand_over(first, seen)
         chosen = self._choose(seen)
@@ -451,7 +473,10 @@ class Helm:
         # glider flies at twenty to forty-five degrees of pitch on purpose, and
         # a rule that holds lean under thirty would stop it flying at all.
         self.actuators = asked.actuators
-        if asked.actuators is not None:
+        # Fins and a propeller come together: the fins as actuators, the
+        # propeller as a thruster command. Only a vehicle with nothing but
+        # actuators gets its thrusters zeroed.
+        if asked.actuators is not None and asked.thrusters is None:
             return np.zeros(len(self.allocator.matrix[0]) if len(self.allocator.matrix) else 0)
         if asked.thrusters is not None:
             return np.clip(asked.thrusters, -1.0, 1.0)

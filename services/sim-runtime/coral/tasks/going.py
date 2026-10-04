@@ -61,6 +61,7 @@ class HoldStation(Task):
 
 class Waypoints(Task):
     kind = "waypoints"
+    flies_through = True
     name = "Waypoints"
 
     def __init__(self, objective, began_at, heading, **extra) -> None:
@@ -130,6 +131,7 @@ class Waypoints(Task):
 
 class Transect(Task):
     kind = "transect"
+    flies_through = True
     name = "Transect"
 
     def __init__(self, objective, began_at, heading, **extra) -> None:
@@ -234,6 +236,7 @@ class Reach(Task):
     """
 
     kind = "reach"
+    flies_through = True
     name = "Reach a point"
 
     def __init__(self, objective, began_at, heading, **extra) -> None:
@@ -502,6 +505,7 @@ class Descend(Task):
 
 class Return(Task):
     kind = "return"
+    flies_through = True
     name = "Return"
 
     def __init__(self, objective, began_at, heading, **extra) -> None:

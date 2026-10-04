@@ -50,6 +50,8 @@ class GlideController(Controller):
         d("pitchM", 0.025, 0.0, 0.05, "m", "how far the mass slides to set the glide angle")
         d("rollM", 0.012, 0.0, 0.03, "m", "how far it rolls to turn")
         d("headingKp", 0.6, 0.0, 4.0, "1/rad", "roll per radian of heading error")
+        d("turnAboveBottomM", 3.0, 0.0, 50.0, "m",
+          "the altimeter's turn: climb when the bottom is this close, whatever the band says")
         # Which way it is going. A glider is always doing one or the other:
         # there is no third state where it holds still.
         self.descending = True
@@ -57,6 +59,7 @@ class GlideController(Controller):
         self.heading_wanted: float | None = None
         self.deepest = 0.0
         self.shallowest = 1e9
+        self.toward: np.ndarray | None = None
 
     def engage(self, seen: Observation) -> None:
         self.heading_wanted = seen.heading if self.heading_wanted is None else self.heading_wanted
@@ -73,6 +76,13 @@ class GlideController(Controller):
         if isinstance(band, (list, tuple)) and len(band) == 2:
             self.tune("climbToM", float(min(band)))
             self.tune("diveToM", float(max(band)))
+        # Where a section goes. Taken from the goal, because nothing else told
+        # the glider: the planner draws routes for the controllers that follow
+        # them, and a glider was left holding whatever heading it was launched
+        # on — a section south flown due east, 0 m along it in half an hour.
+        to = goal.get("to")
+        self.toward = (np.asarray(to[:2], dtype=float)
+                       if isinstance(to, (list, tuple)) and len(to) >= 2 else None)
 
     def observe(self, seen: Observation) -> Command:
         depth = seen.depth
@@ -80,7 +90,12 @@ class GlideController(Controller):
         self.shallowest = min(self.shallowest, depth)
         # The turn, at the ends of the band. One counted leg is half a
         # sawtooth, because that is the unit a glider's science comes in.
-        if self.descending and depth >= float(self["diveToM"]):
+        # Or at the bottom, when the bottom comes first. A real glider turns on
+        # its altimeter; one that only knew its band dived into the sand of
+        # any water shallower than the band and stayed there, still descending.
+        near_bottom = (seen.floor is not None
+                       and float(seen.position[2]) - float(seen.floor) < float(self["turnAboveBottomM"]))
+        if self.descending and (depth >= float(self["diveToM"]) or near_bottom or seen.on_the_bottom):
             self.descending = False
             self.legs += 1
         elif not self.descending and depth <= float(self["climbToM"]):
@@ -96,6 +111,10 @@ class GlideController(Controller):
         pitch = slide if self.descending else -slide
 
         roll = 0.0
+        if self.toward is not None:
+            way = self.toward - seen.position[:2]
+            if float(np.hypot(*way)) > 1.0:
+                self.heading_wanted = math.atan2(float(way[1]), float(way[0]))
         if self.heading_wanted is not None:
             error = wrap(self.heading_wanted - seen.heading)
             roll = float(np.clip(error * float(self["headingKp"]),

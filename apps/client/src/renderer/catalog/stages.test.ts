@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { drawnInto, geometryOf, legsOf, snap, wattsOf, type Hull, type Stage } from "./stages.js";
+import { driftRisks, drawnInto, geometryOf, legsOf, snap, wattsOf, type Hull, type Stage } from "./stages.js";
 
 const launch = { x: 0, y: 0 };
 
@@ -74,6 +74,15 @@ describe("the plan, stage by stage", () => {
     ]);
     expect(drew?.runs).toBe(3);
     expect(drew?.watts).toBeCloseTo(44.5, 0);
+  });
+  it("warns where the drift with no fix outgrows a stage's radius", () => {
+    const route: Stage[] = [{ kind: "waypoints", radiusM: 1, points: [{ x: 30, y: 0 }] },
+                            { kind: "waypoints", radiusM: 8, points: [{ x: 60, y: 0 }] }];
+    const risks = driftRisks(route, legsOf(route, [], launch, LUNA));
+    // 30 m flown is 0.7 m of drift, inside 1 m; 60 m is 1.4 m, inside 8 m.
+    expect(risks).toEqual([]);
+    const far: Stage[] = [{ kind: "waypoints", radiusM: 1, points: [{ x: 100, y: 0 }] }];
+    expect(driftRisks(far, legsOf(far, [], launch, LUNA))[0]?.stage).toBe(0);
   });
   it("rounds to the place's scale", () => {
     expect(snap(1.23456, 2)).toBeCloseTo(1.235);

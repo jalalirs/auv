@@ -43,11 +43,19 @@ import numpy as np
 from engine import System
 
 RHO = 1025.0
-GRAIN_RHO = 2650.0
+# Carbonate grains, not quartz: the middle of what Prager, Southard &
+# Vivoni-Gallart (1996) measured for reef and lagoon sands, 2.50 to 2.77 g/cm³
+# (skeletal fragments are lighter than the aragonite they are made of).
+GRAIN_RHO = 2730.0
+# And they move sooner than the Soulsby–Whitehouse curve says, which is a fit
+# to quartz. Prager et al. put four carbonate sands in a flume (ooids, two
+# skeletal sands and a patch-reef sand, 0.5 to 0.7 mm): their thresholds were
+# 0.70, 0.73, 1.05 and 0.70 of the curve's for the same grains, 0.80 on average.
+CARBONATE_THRESHOLD = 0.80
 NU = 1.05e-6               # kinematic viscosity of seawater, m²/s
 G = 9.80665
 FRICTION_C = 0.005         # bed friction coefficient, assumed
-ERODES_M = 5e-4            # kg m⁻² s⁻¹, assumed
+ERODES_M = 5e-4            # kg m⁻² s⁻¹, assumed: no erosion rate has been measured for reef carbonate
 PARCEL_KG = 2e-6           # two milligrams a parcel
 MOST_PARCELS = 6000
 
@@ -59,11 +67,12 @@ def settling(d: float) -> float:
 
 
 def critical(d: float) -> float:
-    """Soulsby–Whitehouse critical shear stress for a grain size, Pa."""
+    """Critical shear stress for a carbonate grain, Pa: Soulsby–Whitehouse,
+    brought down to what Prager et al. (1996) measured for carbonate sands."""
     r = (GRAIN_RHO - RHO) / RHO
     dstar = d * (G * r / NU ** 2) ** (1.0 / 3.0)
     shields = 0.30 / (1.0 + 1.2 * dstar) + 0.055 * (1.0 - math.exp(-0.020 * dstar))
-    return shields * (GRAIN_RHO - RHO) * G * d
+    return CARBONATE_THRESHOLD * shields * (GRAIN_RHO - RHO) * G * d
 
 
 class Grain:
@@ -135,9 +144,9 @@ class SedimentSystem(System):
         sed, wash, water, v, place = world.sediment, world.wash, world.water, world.vehicle, world.place
         dt = self.every
         if sed.from_ == "nothing yet":
-            sed.from_ = ("derived: Soulsby–Whitehouse thresholds, Partheniades erosion, Ferguson–Church "
-                         "settling, under the vehicle's wash; bed friction, erodibility and the bed's grains "
-                         "assumed")
+            sed.from_ = ("derived: Soulsby–Whitehouse thresholds scaled to carbonate sand as Prager et al. "
+                         "(1996) measured it, Partheniades erosion, Ferguson–Church settling, under the "
+                         "vehicle's wash; bed friction, the erosion rate and the bed's grain sizes assumed")
         if place.seabed is not None or place.floor is not None:
             self.lift(sed, wash, v, place, dt)
         if len(sed.kg):

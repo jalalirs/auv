@@ -340,6 +340,27 @@ export function extentOf(stages: Stage[], things: Drawn[], legs: Leg[]): P[] {
   return points;
 }
 
+/** How far dead reckoning drifts, as a share of the distance flown. Measured
+ *  once: Boxfish Luna, flown with nothing overhead at Looe Key on 4 October
+ *  2026, was 4.8 m out after 203 m. */
+export const DRIFT_SHARE = 4.8 / 203;
+
+/** The stages that ask to be met closer than the vehicle will know where it is,
+ *  flying with no fix: the drift by the end of each, against its radius. */
+export function driftRisks(stages: Stage[], legs: Leg[]): { stage: number; radiusM: number; driftM: number }[] {
+  const out: { stage: number; radiusM: number; driftM: number }[] = [];
+  let flown = 0;
+  stages.forEach((stage, i) => {
+    flown += legs[i]?.metres ?? 0;
+    const fallback = stage.kind === "reach" ? 0.5 : stage.kind === "waypoints" || stage.kind === "revisit" ? 1 : undefined;
+    if (fallback === undefined) return;
+    const radiusM = typeof stage["radiusM"] === "number" ? Number(stage["radiusM"]) : fallback;
+    const driftM = flown * DRIFT_SHARE;
+    if (driftM > radiusM) out.push({ stage: i, radiusM, driftM });
+  });
+  return out;
+}
+
 /** The speed pursue's loop and the hull's drag agree on at cruise: the loop
  *  pushes in proportion to what it is short of, the drag pushes back. */
 export function settledMs(hull: Hull, pilot: Pilot = PURSUE): number {

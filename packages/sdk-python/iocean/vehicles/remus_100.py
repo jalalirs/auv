@@ -15,10 +15,8 @@ DYNAMICS = {'massKg': 30.48,
                    'diagonal': [-0.5, -1.0, -1.0, -0.01, -0.5, -0.5]},
  'quadraticDamping': {'note': 'Cross-flow and axial drag coefficients from Prestero (2001).',
                       'diagonal': [-1.62, -1310.0, -1310.0, -0.13, -188.0, -188.0]},
- 'thrusters': {'note': 'A torpedo: one propeller on the axis and four fins. Only the propeller is a thruster '
-                       'in the sense this platform allocates; the fins steer by deflection at speed, which '
-                       'the allocator does not model yet. Until it does, this vehicle can go forward and '
-                       'cannot turn.',
+ 'thrusters': {'note': 'A torpedo: one propeller on the axis, and four fins that steer it (see `fins`). The '
+                       'propeller is the only thruster; the fins are actuators the fins controller moves.',
                'model': 'REMUS 100 propeller',
                'maxForwardN': 15.0,
                'maxReverseN': 5.0,
@@ -100,7 +98,36 @@ DYNAMICS = {'massKg': 30.48,
               'watts': 12.0,
               'tops': 0.0,
               'ramGb': 8,
-              'note': "A survey AUV's own computer: navigation, logging, and the payload."}}
+              'note': "A survey AUV's own computer: navigation, logging, and the payload."},
+ 'commandedIn': 'fins',
+ 'fins': {'note': 'Two rudders and two stern planes, Prestero (2001). The lift is per pair, per u|u| and per '
+                  'radian of deflection; it acts at the fins, so the turning moment is its arm about the '
+                  'centre.',
+          'liftPerU2Rad': 9.64,
+          'positionM': [-0.638, 0.0, 0.0],
+          'mostDeg': 13.6,
+          'rateDegPerS': 30.0,
+          'rateFrom': 'assumed: Prestero gives the limit, not the rate',
+          'from': "Prestero (2001), as reproduced in Psarhadi's AUV_model.py: Y_uudr 9.64 kg/(m·rad), N_uudr "
+                  '-6.15 kg/rad, so the fins act 6.15/9.64 = 0.638 m behind the centre; the 13.6° limit is '
+                  "Prestero's, unverified here"},
+ 'bodyLift': {'note': 'Body lift and Munk moment as the hull slips, and the added-mass cross terms as it '
+                      'turns, Prestero (2001). In his z-down frame; the same numbers hold in this z-up one.',
+              'Yuv': -28.6,
+              'Nuv': -24.0,
+              'Yur': 5.22,
+              'Nur': -2.0,
+              'Zuw': -28.6,
+              'Muw': 24.0,
+              'Zuq': -5.22,
+              'Muq': -2.0,
+              'from': "Prestero (2001), as reproduced in Psarhadi's AUV_model.py (the thesis itself could "
+                      'not be read): body lift and Munk moment Y_uv, N_uv, Z_uw, M_uw; added-mass cross '
+                      'terms Y_ur, N_ur, Z_uq, M_uq'},
+ 'envelope': {'maxDepthM': 100.0,
+              'maxSpeedMs': 2.6,
+              'cruiseMs': 1.5,
+              'note': 'REMUS 100: rated to 100 m, 2.6 m/s at most, cruising at about 1.5 (Hydroid).'}}
 
 VEHICLE = Vehicle(
     slug='remus-100',

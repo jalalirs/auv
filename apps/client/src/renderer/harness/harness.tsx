@@ -72,6 +72,7 @@ addMission("city_tank", "Round the tank", [
   { kind: "return", timeLimitS: 120 },
 ]);
 addMission("city_looe", "The September plot round", [
+  { kind: "waypoints", radiusM: 2, timeLimitS: 900, points: [{ x: 120, y: -40 }, { x: 60, y: 20 }] },
   { kind: "transect", altitudeM: 2, from: { x: 120, y: -40 }, to: { x: 60, y: 20 }, timeLimitS: 600 },
   { kind: "survey", over: "cell-b7", altitudeM: 2, swathM: 4, timeLimitS: 1500 },
   { kind: "inspect", over: "frame-3", radiusM: 6, timeLimitS: 600 },

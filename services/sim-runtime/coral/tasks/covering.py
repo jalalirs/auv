@@ -25,6 +25,7 @@ class Survey(Task):
     wants = ("camera",)
     stops_a_mission = False
     kind = "survey"
+    flies_through = True
     name = "Survey"
 
     CELL = 0.5

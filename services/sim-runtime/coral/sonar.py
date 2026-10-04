@@ -128,7 +128,7 @@ class Sonar:
             far = self.far
             if world is not None:
                 for thing in world.things:
-                    hit = _hit(thing, origin, way, far, self.spread())
+                    hit = _hit(thing, origin, way, far, self.spread(), 0.5 * self.tall)
                     if hit is not None and hit < far:
                         far = hit
             if seabed is not None:
@@ -207,19 +207,26 @@ def _glass(origin: np.ndarray, way: np.ndarray, walls):
     return out_through(origin, way, walls)
 
 
-def _hit(thing, origin: np.ndarray, way: np.ndarray, far: float, spread: float = 0.0):
+def _hit(thing, origin: np.ndarray, way: np.ndarray, far: float, spread: float = 0.0,
+         half_tall: float = 0.0):
     """Where a beam meets one thing, or nothing.
 
     Cylinders for what stands at a point, a run of capsules for what spans
     between two, and nothing at all for a plot drawn on a chart — a boundary
     is not a thing that returns sound.
+
+    A beam is a fan, not a ray: `half_tall` is half its vertical opening, and
+    a thing anywhere inside it answers. Tested down the middle only, a frame a
+    metre below a vehicle that pitched five degrees nose-up was never heard —
+    and one that pitched five degrees down was, which is how a sign error in
+    the thrusters' height passed for a sonar working.
     """
     curve = getattr(thing, "curve", None)
     if curve is not None:
         best = None
         radius = float(getattr(thing, "radius", 0.05))
         for a, b in zip(curve, curve[1:]):
-            at = _segment(origin, way, np.asarray(a), np.asarray(b), radius, far, spread)
+            at = _segment(origin, way, np.asarray(a), np.asarray(b), radius, far, spread, half_tall)
             if at is not None and (best is None or at < best):
                 best = at
         return best
@@ -227,11 +234,11 @@ def _hit(thing, origin: np.ndarray, way: np.ndarray, far: float, spread: float =
     if at is None:
         return None                       # a plot on the chart returns nothing
     return _cylinder(origin, way, np.asarray(at), float(thing.radius),
-                     float(thing.low), float(thing.high), far, spread)
+                     float(thing.low), float(thing.high), far, spread, half_tall)
 
 
 def _cylinder(origin, way, at, radius: float, low: float, high: float, far: float,
-              spread: float = 0.0):
+              spread: float = 0.0, half_tall: float = 0.0):
     """Where a beam meets an upright cylinder, as a distance along the beam."""
     # In the horizontal plane it is a circle; the vertical extent is a check.
     d = np.array([way[0], way[1]])
@@ -253,12 +260,15 @@ def _cylinder(origin, way, at, radius: float, low: float, high: float, far: floa
         if t <= 0.0 or t > far:
             continue
         z = float(origin[2] + way[2] * t)
-        if low <= z <= high:
+        # How far above and below the middle of the fan it reaches by here.
+        reach = t * math.tan(half_tall)
+        if low - reach <= z <= high + reach:
             return float(t)
     return None
 
 
-def _segment(origin, way, a, b, radius: float, far: float, spread: float = 0.0):
+def _segment(origin, way, a, b, radius: float, far: float, spread: float = 0.0,
+             half_tall: float = 0.0):
     """Where a beam meets a capsule between two points.
 
     Not exact: the closest approach between the beam and the segment, taken as
@@ -285,8 +295,11 @@ def _segment(origin, way, a, b, radius: float, far: float, spread: float = 0.0):
     t = float((np.asarray(a) + u * s - origin) @ way / A)
     if t <= 0.0 or t > far:
         return None
-    apart = float(np.linalg.norm(origin + way * t - (a + u * s)))
-    return t if apart <= radius + 0.5 * spread * t else None
+    off = origin + way * t - (a + u * s)
+    across = float(np.hypot(off[0], off[1]))
+    up = abs(float(off[2]))
+    return t if (across <= radius + 0.5 * spread * t
+                 and up <= radius + t * math.tan(half_tall)) else None
 
 
 def _ground(origin, way, far: float, seabed):

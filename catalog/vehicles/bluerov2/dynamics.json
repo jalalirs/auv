@@ -14,7 +14,7 @@
    0.254
   ],
   "dimensionsFrom": "Blue Robotics' published dimensions for the BlueROV2 in its standard six-thruster configuration, 457 x 338 x 254 mm. Read, not fetched, and not measured off a vehicle. The Heavy configuration is a different hull and this package is not it: it has six thrusters, which is the standard.",
-  "shape": "An open polymer frame carrying two horizontal cylinders \u2014 the electronics enclosure and the battery \u2014 with six thrusters hanging off it. Not a fairing. Its drag is form drag off bluff bodies and not skin friction, which is why a flat-plate friction line is the wrong thing to check it against."
+  "shape": "An open polymer frame carrying two horizontal cylinders — the electronics enclosure and the battery — with six thrusters hanging off it. Not a fairing. Its drag is form drag off bluff bodies and not skin friction, which is why a flat-plate friction line is the wrong thing to check it against."
  },
  "centreOfGravityM": [
   0,
@@ -82,7 +82,7 @@
     "position": [
      0.156,
      0.111,
-     0.085
+     -0.085
     ],
     "direction": [
      0.707,
@@ -95,7 +95,7 @@
     "position": [
      0.156,
      -0.111,
-     0.085
+     -0.085
     ],
     "direction": [
      0.707,
@@ -108,7 +108,7 @@
     "position": [
      -0.156,
      0.111,
-     0.085
+     -0.085
     ],
     "direction": [
      -0.707,
@@ -121,7 +121,7 @@
     "position": [
      -0.156,
      -0.111,
-     0.085
+     -0.085
     ],
     "direction": [
      -0.707,
@@ -155,10 +155,11 @@
      1
     ]
    }
-  ]
+  ],
+  "positionsFrom": "Wu (2018) Table 4.2 and von Benzon et al. (2022) Table A1, both z-down: the horizontals are 85 mm below the centre of gravity, so -0.085 in this z-up frame (it was +0.085 until 4 October 2026, a sign carried over from the z-down source). Their y is to starboard and this frame's is to port, so the names 'right' and 'left' here are the sources' and sit on the other side; the layout is mirror-symmetric, so the physics is the same either way."
  },
  "tether": {
-  "_": "The Fathom Slim tether Blue Robotics ships with it: 7.6 mm, and made very slightly buoyant in seawater on purpose \u2014 a tether that is not spends the dive dragging the vehicle down.",
+  "_": "The Fathom Slim tether Blue Robotics ships with it: 7.6 mm, and made very slightly buoyant in seawater on purpose — a tether that is not spends the dive dragging the vehicle down.",
   "diameterM": 0.0076,
   "lengthM": 100.0,
   "weightNPerM": -0.02,
@@ -271,7 +272,7 @@
    {
     "topic": "/dvl/range",
     "type": "sensor_msgs/msg/Range",
-    "note": "The range to the seabed, from the same Doppler log as the twist. Infinity, or outside [min_range, max_range], is no bottom lock \u2014 which is a thing that happens and a controller holding an altitude has to handle. Reef work is altitude work."
+    "note": "The range to the seabed, from the same Doppler log as the twist. Infinity, or outside [min_range, max_range], is no bottom lock — which is a thing that happens and a controller holding an altitude has to handle. Reef work is altitude work."
    },
    {
     "topic": "/depth",
@@ -311,7 +312,7 @@
   "thrusterMaxW": 350.0,
   "powerExponent": 1.5,
   "reserveFraction": 0.1,
-  "hotelNote": "The base electronics and nothing else: a Pixhawk, a Raspberry Pi and the tether interface. It was a single lumped figure that stood for the electronics, the sensors and the lights together \u2014 which meant unfitting a Doppler log or switching the lamps off changed the endurance by exactly nothing. Each instrument states its own draw now and they are added to this, so a dive that carries less lasts longer, which is the whole reason to be able to choose."
+  "hotelNote": "The base electronics and nothing else: a Pixhawk, a Raspberry Pi and the tether interface. It was a single lumped figure that stood for the electronics, the sensors and the lights together — which meant unfitting a Doppler log or switching the lamps off changed the endurance by exactly nothing. Each instrument states its own draw now and they are added to this, so a dive that carries less lasts longer, which is the whole reason to be able to choose."
  },
  "lights": {
   "note": "Blue Robotics Lumen Subsea Lights, which is what a BlueROV2 carries. 1500 lumens each at 15 W, a 135 degree beam in water, mounted either side of the camera and aimed where it looks. Two is the stock fit; the Heavy takes four.",
@@ -355,7 +356,7 @@
   ]
  },
  "modem": {
-  "note": "An acoustic modem, because underwater there is no radio. These are a WHOI micro-modem class link at a few hundred metres: a couple of kilobits a second, two thirds of a second per kilometre each way, and packets that go missing when the range is long. It is what shapes autonomy more than anything else on this list \u2014 a vehicle that could ask the ship whenever it was unsure would be a different vehicle from the ones anybody builds.",
+  "note": "An acoustic modem, because underwater there is no radio. These are a WHOI micro-modem class link at a few hundred metres: a couple of kilobits a second, two thirds of a second per kilometre each way, and packets that go missing when the range is long. It is what shapes autonomy more than anything else on this list — a vehicle that could ask the ship whenever it was unsure would be a different vehicle from the ones anybody builds.",
   "bitsPerSecond": 2400.0,
   "rangeM": 2000.0,
   "lossShare": 0.08

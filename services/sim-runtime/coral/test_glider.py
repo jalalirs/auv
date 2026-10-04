@@ -287,3 +287,35 @@ def test_a_section_that_arrives_with_nothing_in_it_is_not_a_section():
     assert proper.detail()["profiles"] >= 7
     assert proper.score() > 0.85
     assert proper.score() > sparse.score()
+
+
+def a_glide_controller():
+    from controllers.glide import GlideController
+    from controllers.base import Observation
+    return GlideController(0.1), Observation
+
+
+def test_a_section_steers_for_where_it_goes():
+    """The planner draws routes for the controllers that follow them, and a
+    glider was left on its launch heading: a section south flown due east."""
+    glide, Observation = a_glide_controller()
+    seen = Observation(t=0.0, position=np.array([0.0, 0.0, -20.0]), velocity=np.zeros(6),
+                       rotation=np.eye(3), floor=-500.0)
+    glide.engage(seen)
+    glide.tasked({"kind": "section", "to": [0.0, -1000.0], "bandM": [10.0, 200.0]})
+    command = glide.observe(seen)
+    assert abs(glide.heading_wanted - (-math.pi / 2)) < 1e-6
+    assert command.actuators["rollM"] != 0.0, "and leans to turn towards it"
+
+
+def test_it_turns_at_the_bottom_when_the_bottom_comes_first():
+    """The altimeter's turn: water shallower than the band is still water a
+    glider can work in, rather than sand it dives into and stays in."""
+    glide, Observation = a_glide_controller()
+    glide.tasked({"kind": "profile", "bandM": [5.0, 200.0]})
+    seen = Observation(t=0.0, position=np.array([0.0, 0.0, -28.0]), velocity=np.zeros(6),
+                       rotation=np.eye(3), floor=-30.0)
+    glide.engage(seen)
+    command = glide.observe(seen)
+    assert not glide.descending
+    assert command.actuators["vbdCc"] > 0.0, "light, to climb"

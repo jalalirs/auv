@@ -18,7 +18,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { AssetVersion, Cost, Mission, Platform } from "@coral-city/api";
 
 import { DOUBTS } from "../catalog/doubts.js";
-import { extentOf, hullOf, legsOf, type Drawn, type P, type Stage } from "../catalog/stages.js";
+import { driftRisks, DRIFT_SHARE, extentOf, hullOf, legsOf, type Drawn, type P, type Stage } from "../catalog/stages.js";
 import { groundOf, SiteChart, type Frame, type Ground, type Thing } from "../parts/SiteChart.js";
 import { drawStages } from "../parts/StagesLayer.js";
 import { newestOf } from "../platform/packages.js";
@@ -147,6 +147,9 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
   [stages, legs, things, launch.x, launch.y]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { water, decided, doubts, scenarios } = useMemo(() => split(picked), [picked]);
+  // A tank is watched by its camera whatever is picked; open water is not.
+  const enclosed = Boolean((pkg?.site as { enclosed?: boolean } | undefined)?.enclosed);
+  const risks = !enclosed && (picked["fix"] ?? []).includes("nothing") ? driftRisks(stages, legs) : [];
   const once = scenarios === 0 && Object.keys(decided).length === 0;
   const runs = once ? 1 : Math.max(1, scenarios) * repeats;
   const stack = held.stacks.find((s) => s.id === flownBy);
@@ -227,6 +230,15 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
               <SiteChart ground={ground} things={things} faintThings overlay={overlay} redraw={stages} cursor="default"
                          key={chosen?.mission.id} fit={extentOf(stages, things as unknown as Drawn[], legs)} />
             </div>
+            {risks.length > 0 ? (
+              <p className="warn">
+                With nothing overhead it navigates by dead reckoning, which drifted {(DRIFT_SHARE * 100).toFixed(1)}% of
+                the distance flown when it was measured. By stage {risks[0]!.stage + 1} that is about{" "}
+                {risks[0]!.driftM.toFixed(risks[0]!.driftM < 10 ? 1 : 0)} m, wider than its {risks[0]!.radiusM} m radius
+                {risks.length > 1 ? `, and ${risks.length - 1} more stage${risks.length > 2 ? "s" : ""} after it` : ""}:
+                it will believe it is there and miss. Widen the radius, or give it a fix.
+              </p>
+            ) : null}
             {chosen ? (
               <p className="quiet">
                 {stages.length} {stages.length === 1 ? "stage" : "stages"} ·{" "}
