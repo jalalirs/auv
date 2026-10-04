@@ -19,11 +19,22 @@ export interface Held {
   places: City[];
   vehicles: Vehicle[];
   queues: Queue[];
-  runs: { dive: string; name: string; flownBy: string; run: Run }[];
+  runs: HeldRun[];
   /** The autonomy this institution has deployed, newest first, every build. */
   stacks: AutonomyStack[];
   /** The same as controllers: one per slug, its newest build first. */
   controllers: Controller[];
+}
+
+/** One run, with the dive that defined it: what it was called, who flew it,
+ *  and the versions of the place and vehicle it was flown with. */
+export interface HeldRun {
+  dive: string;
+  name: string;
+  flownBy: string;
+  run: Run;
+  vehicleVersion?: string;
+  placeVersion?: string;
 }
 
 /** A controller somebody deployed, across its builds. */
@@ -68,7 +79,7 @@ export async function readHeld(platform: Platform, keep?: Held): Promise<Held> {
   // Every dive this institution has defined, and what became of each. The
   // platform keeps runs under the dive that defined them, so gathering them
   // is the client's job and not a missing endpoint.
-  let runs: { dive: string; name: string; flownBy: string; run: Run }[] = [];
+  let runs: HeldRun[] = [];
   let stacks: AutonomyStack[] = [];
   if (institution !== undefined) {
     stacks = (await platform.autonomy(institution.id).catch((): AutonomyStack[] => []))
@@ -90,11 +101,12 @@ export async function readHeld(platform: Platform, keep?: Held): Promise<Held> {
       dive.autonomyStackId
         ? (stacks.find((s) => s.id === dive.autonomyStackId)?.name ?? "a stack since gone")
         : "by hand";
-    const gathered: { dive: string; name: string; flownBy: string; run: Run }[] = [];
+    const gathered: HeldRun[] = [];
     for (let at = 0; at < dives.length; at += 24) {
       const batch = await Promise.all(dives.slice(at, at + 24).map(async (dive) =>
         (await platform.runs(dive.id).catch((): Run[] => []))
-          .map((run) => ({ dive: dive.id, name: dive.name, run, flownBy: named(dive) }))));
+          .map((run) => ({ dive: dive.id, name: dive.name, run, flownBy: named(dive),
+                           vehicleVersion: dive.vehicleVersionId, placeVersion: dive.cityVersionId }))));
       gathered.push(...batch.flat());
     }
     runs = gathered.sort((a, b) => (a.run.requestedAt < b.run.requestedAt ? 1 : -1));

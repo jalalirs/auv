@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { drawnInto, energyWh, geometryOf, legsOf, snap, type Stage } from "./stages.js";
+import { drawnInto, geometryOf, legsOf, snap, wattsOf, type Hull, type Stage } from "./stages.js";
 
 const launch = { x: 0, y: 0 };
 
@@ -25,7 +25,31 @@ describe("a stage drawn on the chart", () => {
   });
 });
 
-describe("what the plan costs", () => {
+// Two hulls as their packages give them: mass with surge added mass, and surge drag.
+const MINI_HOOT: Hull = { massKg: 2.722 + 1.367, linear: 1.584, quadratic: 12.357 };
+const LUNA: Hull = { massKg: 25 + 12.148, linear: 7.167, quadratic: 54.609 };
+
+describe("how long the plan takes", () => {
+  // Flown on the box, undrawn, by pursue, on 4 October 2026.
+  const within = (said: number, flown: number) => expect(Math.abs(said - flown) / flown).toBeLessThan(0.1);
+  it("matches a tank route flown in 59.7 s", () => {
+    const [leg] = legsOf([{ kind: "waypoints", radiusM: 0.08, points: [
+      { x: 0.55, y: 0.15 }, { x: -0.55, y: 0.15 }, { x: -0.55, y: -0.15 }] }], [], launch, MINI_HOOT);
+    within(leg!.flyS, 59.7);
+  });
+  it("matches three sides of a tank square flown in 59.9 s", () => {
+    const [leg] = legsOf([{ kind: "waypoints", radiusM: 0.1, points: [
+      { x: 0.4, y: 0.3 }, { x: -0.4, y: 0.3 }, { x: -0.4, y: -0.3 }] }], [], launch, MINI_HOOT);
+    within(leg!.flyS, 59.9);
+  });
+  it("matches Luna's 30 m leg, which settled at 0.27 m/s rather than the 0.4 it asked for", () => {
+    const start = { x: 115, y: -25 };
+    const [leg] = legsOf([{ kind: "waypoints", radiusM: 1, points: [{ x: 145, y: -25 }] }], [], start, LUNA);
+    within(leg!.flyS, 117);
+  });
+});
+
+describe("the plan, stage by stage", () => {
   const stages: Stage[] = [
     { kind: "waypoints", points: [{ x: 30, y: 0 }, { x: 30, y: 40 }], timeLimitS: 600 },
     { kind: "hold-station", seconds: 120 },
@@ -33,17 +57,23 @@ describe("what the plan costs", () => {
     { kind: "return", timeLimitS: 300 },
   ];
   it("flies each stage from where the last one left it", () => {
-    const legs = legsOf(stages, [], launch, 0.5);
-    expect(legs[0]!.metres).toBe(70);
+    const legs = legsOf(stages, [], launch, LUNA);
     expect(legs[1]!.flyS).toBe(120);
-    // Four lanes of twenty metres and three steps of five, from the corner it is already at.
-    expect(legs[2]!.metres).toBe(95);
+    expect(legs[1]!.from).toEqual({ x: 30, y: 40 });
     expect(legs[3]!.from).toEqual(legs[2]!.to);
     expect(legs[3]!.to).toEqual(launch);
+    expect(legs[0]!.allowS).toBe(600);
   });
-  it("spends the hotel load all day and the drag only while moving", () => {
-    const legs = legsOf([{ kind: "hold-station", seconds: 3600 }], [], launch, 0.5);
-    expect(energyWh(legs, 0.5, 10, 12)).toBeCloseTo(10);
+  it("takes a vehicle's watts from the middle of what its runs drew", () => {
+    const drew = wattsOf([
+      { task: { energyWh: 0.709, seconds: 59.7 } },
+      { energyWh: 1.237, seconds: 100.1 },
+      { task: { energyWh: 20.431, seconds: 900 } },
+      { task: { seconds: 30 } },
+      undefined,
+    ]);
+    expect(drew?.runs).toBe(3);
+    expect(drew?.watts).toBeCloseTo(44.5, 0);
   });
   it("rounds to the place's scale", () => {
     expect(snap(1.23456, 2)).toBeCloseTo(1.235);

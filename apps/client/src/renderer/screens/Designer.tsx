@@ -18,7 +18,7 @@ import type { AssetVersion, Layout, Mission, Platform } from "@coral-city/api";
 
 import { TASKS, type Task } from "../catalog/tasks.js";
 import {
-  drawMode, drawnInto, drawPrompt, energyWh, extentOf, geometryOf, legsOf, snap,
+  drawMode, drawnInto, drawPrompt, extentOf, floorWatts, geometryOf, hullOf, legsOf, settledMs, snap, wattsOf,
   type Drawn, type P, type Stage,
 } from "../catalog/stages.js";
 import { centreOf, groundOf, SiteChart, type Frame, type Ground, type Thing } from "../parts/SiteChart.js";
@@ -98,7 +98,10 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
   const [drawing, setDrawing] = useState<P[] | undefined>();
   const [placingLaunch, setPlacingLaunch] = useState(false);
   const [under, setUnder] = useState<number | undefined>();
-  const [checkWith, setCheckWith] = useState<string>(() => held.vehicles[0]?.id ?? "");
+  // Which vehicle the estimate is for: chosen, or the one last flown here.
+  const [picked, setPicked] = useState<string | undefined>();
+  const [placeVersions, setPlaceVersions] = useState<Set<string>>(new Set());
+  const [vehicleOf, setVehicleOf] = useState<Map<string, string>>(new Map());
   const [saying, setSaying] = useState("");
   const [trouble, setTrouble] = useState("");
 
@@ -112,6 +115,16 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
     return () => { stale = true; };
   }, [platform, mission]);
 
+  // Which vehicle each run flew: a run names a version, and the estimate wants
+  // every run of a vehicle, whichever version of it.
+  useEffect(() => {
+    let stale = false;
+    void Promise.all(held.vehicles.map(async (one) =>
+      (await platform.versionsOfVehicle(one.id).catch((): AssetVersion[] => [])).map((v) => [v.id, one.id] as const)))
+      .then((pairs) => { if (!stale) setVehicleOf(new Map(pairs.flat())); });
+    return () => { stale = true; };
+  }, [platform, held.vehicles]);
+
   // The place, pinned, and every arrangement of it with what it holds.
   useEffect(() => {
     let stale = false;
@@ -122,6 +135,7 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
       ]);
       if (stale) return;
       setCityVersion(newestOf(cities)?.id ?? "");
+      setPlaceVersions(new Set(cities.map((one) => one.id)));
       setLayouts(made);
       const newest = new Map<string, AssetVersion>();
       for (const one of made) {
@@ -184,22 +198,26 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
   const begin = pkg?.site?.beginAt;
   const launch = launchAt(plan, drawn, { x: Number(begin?.[0] ?? 0), y: Number(begin?.[1] ?? 0) });
 
-  // The vehicle it is checked against: its cruise, hotel load and drag.
+  // The vehicle it is checked against, and how it flies: pursue in this hull.
+  const lastHere = held.runs.find((r) => placeVersions.has(r.placeVersion ?? "") && vehicleOf.has(r.vehicleVersion ?? ""));
+  const checkWith = picked ?? (lastHere ? vehicleOf.get(lastHere.vehicleVersion!)! : held.vehicles[0]?.id ?? "");
   const vehicle = packages.vehicles.get(checkWith) ?? undefined;
   const dyn = vehicle?.dynamics as unknown as {
     power?: { capacityWh?: number; hotelW?: number; reserveFraction?: number };
-    envelope?: { maxSpeedMs?: number };
-    quadraticDamping?: { diagonal?: number[] } | number[];
   } | undefined;
-  const cruise = Math.max(0.1, 0.5 * (dyn?.envelope?.maxSpeedMs ?? 1.0));
-  const quad = Array.isArray(dyn?.quadraticDamping) ? dyn!.quadraticDamping[0] ?? 0
-    : (dyn?.quadraticDamping as { diagonal?: number[] } | undefined)?.diagonal?.[0] ?? 0;
-  const legs = useMemo(() => legsOf(plan.stages, drawn, launch, cruise),
-    [plan.stages, drawn, launch.x, launch.y, cruise]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hull = useMemo(() => hullOf(vehicle?.dynamics), [vehicle]);
+  const legs = useMemo(() => legsOf(plan.stages, drawn, launch, hull),
+    [plan.stages, drawn, launch.x, launch.y, hull]); // eslint-disable-line react-hooks/exhaustive-deps
   const flyS = legs.reduce((s, l) => s + l.flyS, 0);
   const allowS = legs.reduce((s, l) => s + l.allowS, 0);
   const usableWh = (dyn?.power?.capacityWh ?? 0) * (1 - (dyn?.power?.reserveFraction ?? 0.1));
-  const spentWh = dyn?.power?.hotelW !== undefined ? energyWh(legs, cruise, dyn.power.hotelW, quad) : undefined;
+  // What it draws: the middle of what its runs here drew, or anywhere if it
+  // has not flown here; a floor from its hull when it has never flown.
+  const ofIt = held.runs.filter((r) => vehicleOf.get(r.vehicleVersion ?? "") === checkWith);
+  const here = ofIt.filter((r) => placeVersions.has(r.placeVersion ?? ""));
+  const drew = wattsOf((here.length ? here : ofIt).map((r) => r.run.outcome as Record<string, unknown> | undefined));
+  const watts = drew?.watts ?? (dyn?.power?.hotelW !== undefined ? floorWatts(hull, dyn.power.hotelW) : undefined);
+  const spentWh = watts !== undefined ? (watts * flyS) / 3600 : undefined;
 
   const at = plan.stages[chosen];
   const mode = at ? drawMode(at.kind) : "none";
@@ -386,6 +404,8 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
                   <small>
                     {one.over ? `over ${one.over.slice(0, 22)}` : geo?.drawn ? "drawn on the chart" : drawMode(one.kind) === "none" ? "where it is" : "not drawn yet"}
                     {leg ? ` · ${leg.metres < 1000 ? `${leg.metres.toFixed(leg.metres < 10 ? 1 : 0)} m` : `${(leg.metres / 1000).toFixed(1)} km`} · ${minutes(leg.flyS)}` : ""}
+                    {/* The runtime stops a stage at its allowance, unfinished. */}
+                    {leg && leg.flyS > leg.allowS ? <span className="warn"> — stopped at {minutes(leg.allowS)}</span> : null}
                   </small>
                 </span>
               </div>
@@ -458,21 +478,29 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
 
           <div className="estimate">
             <h3>Checked against</h3>
-            <select value={checkWith} onChange={(e) => setCheckWith(e.target.value)}>
+            <select value={checkWith} onChange={(e) => setPicked(e.target.value)}>
               {held.vehicles.map((one) => <option key={one.id} value={one.id}>{one.name}</option>)}
             </select>
             <p>
-              <b>{minutes(flyS)}</b> of flying at {cruise.toFixed(cruise < 1 ? 2 : 1)} m/s
+              <b>{minutes(flyS)}</b> of flying
               {allowS > flyS ? <> · {minutes(allowS)} allowed</> : <span className="warn"> · more than the {minutes(allowS)} allowed</span>}
             </p>
             {spentWh !== undefined && usableWh > 0 ? (
               <p>
+                {drew ? null : "at least "}
                 <b>{spentWh < 1 ? spentWh.toFixed(2) : spentWh < 10 ? spentWh.toFixed(1) : Math.round(spentWh)} Wh</b> of {Math.round(usableWh)} usable
                 {" "}({(100 * spentWh) / usableWh < 1 ? "under 1" : Math.round((100 * spentWh) / usableWh)}%)
                 {spentWh > usableWh ? <span className="warn"> — more than the battery holds</span> : null}
               </p>
             ) : <p className="quiet">This vehicle&rsquo;s package does not say its battery.</p>}
-            <p className="quiet">Estimated from the drawing: hotel load all day, drag at cruise while moving. A flown run says what it really cost.</p>
+            <p className="quiet">
+              Flown the way the pursue controller flies it: turning to face each point, easing off
+              near it, at the {settledMs(hull).toFixed(2)} m/s this hull settles at.{" "}
+              {drew
+                ? <>Battery at the {Math.round(drew.watts)} W it drew in the middle of its {drew.runs} run{drew.runs === 1 ? "" : "s"}{here.length ? " here" : " elsewhere"}.</>
+                : <>It has not flown yet, so the battery is a floor — hotel load and drag; flown runs have drawn two to three times that.</>}
+              {" "}Not counted: walls, a tether caught on something, a current, and how far its idea of where it is drifts.
+            </p>
           </div>
 
           {editing ? (

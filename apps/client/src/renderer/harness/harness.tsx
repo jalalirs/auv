@@ -79,10 +79,10 @@ addMission("city_looe", "The September plot round", [
 ], { from: "ship-1" });
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
-const runOf = (id: string, name: string, h: number, extra: Doc = {}) => ({
-  dive: `dive_${id}`, name, flownBy: "Harness",
+const runOf = (id: string, name: string, h: number, extra: Doc = {}, vehicle = "veh_mini", place = "city_tank") => ({
+  dive: `dive_${id}`, name, flownBy: "Harness", vehicleVersion: `${vehicle}-v1`, placeVersion: `${place}-v1`,
   run: { id, state: "succeeded", mode: "batch", requestedAt: hoursAgo(h), physicsVersion: 3,
-         outcome: { task: { name: "Waypoints", score: 0.92, done: true } }, ...extra },
+         outcome: { task: { name: "Waypoints", score: 0.92, done: true, energyWh: 0.709, seconds: 59.7 } }, ...extra },
 });
 const delay = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(v), 30));
 const said: string[] = [];
@@ -128,7 +128,7 @@ const held = {
     runOf("run_1", "Round the tank · mini-hoot", 1, { mode: "interactive" }),
     runOf("run_2", "Round the tank ~ October 4 · still", 1.5, { sweepId: "sweep_a" }),
     runOf("run_3", "Round the tank ~ October 4 · gentle", 1.6, { sweepId: "sweep_a" }),
-    runOf("run_4", "The September plot round · Boxfish Luna", 26, { state: "failed", outcome: undefined }),
+    runOf("run_4", "The September plot round · Boxfish Luna", 26, { state: "failed", outcome: undefined }, "veh_luna", "city_looe"),
   ], stacks: [], controllers: [],
 } as unknown as Held;
 
@@ -141,10 +141,10 @@ async function packagesOf(): Promise<Packages> {
       files: [{ path: site.mesh.heightfield.file, url: `./harness/fixtures/${p.fixture}/${site.mesh.heightfield.file}` }],
     });
   }
-  const vehicles = new Map([
-    ["veh_mini", { dynamics: { power: { capacityWh: 60.5, hotelW: 10.5, reserveFraction: 0.15 }, envelope: { maxSpeedMs: 0.9 }, quadraticDamping: { diagonal: [12.4, 18.8, 31.0] } } }],
-    ["veh_luna", { dynamics: { power: { capacityWh: 600, hotelW: 25, reserveFraction: 0.15 }, envelope: { maxSpeedMs: 1.0 }, quadraticDamping: { diagonal: [54.6, 105.6, 123.5] } } }],
-  ]);
+  const vehicles = new Map();
+  for (const [id, slug] of [["veh_mini", "mini-hoot"], ["veh_luna", "boxfish-luna"]] as const) {
+    vehicles.set(id, { version: { id: `${id}-v1` }, dynamics: await (await fetch(`./harness/fixtures/${slug}/dynamics.json`)).json() });
+  }
   return { places: placePackages, vehicles } as unknown as Packages;
 }
 

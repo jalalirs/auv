@@ -152,71 +152,177 @@ export function drawnInto(stage: Stage, clicks: P[]): Stage {
   return out;
 }
 
-function dist(a: P, b: P): number { return Math.hypot(b.x - a.x, b.y - a.y); }
 
-/** Where a stage leaves the vehicle, and how far it flies doing it. */
-export function flown(stage: Stage, things: Drawn[], from: P, launch: P): { to: P; metres: number; holdS: number } {
+// ── how it is flown ──────────────────────────────────────────────────────────
+//
+// The estimate flies the plan the way the runtime's planner and its pursue
+// controller do, rather than dividing metres by a speed: the planner turns
+// each stage into points and how close counts as there; pursue turns to face
+// each point, runs at it with a speed that eases off over the last two metres,
+// and its speed loop is proportional only, so it settles below the speed it
+// asks for by however much the hull's drag takes. Reckoning at half the top
+// speed said four seconds for a tank route that flew in sixty.
+//
+// Everything below is pursue's own declared settings and the hull's own
+// package, except the turn rate, which is fitted: 0.2 rad/s put the arrivals
+// of three runs flown on the box (mini-hoot twice in the tank, Boxfish Luna on
+// a 30 m leg at Looe Key) within about 5% of when they happened. What it does
+// not know: walls, a tether caught on a rock, a current, and how far the
+// vehicle's own idea of where it is has drifted.
+
+/** How pursue flies: its declared settings, and the fitted turn rate. */
+export interface Pilot { cruiseMs: number; easeM: number; speedKp: number; faceFirstDeg: number; turnRadS: number; arriveM: number }
+export const PURSUE: Pilot = { cruiseMs: 0.4, easeM: 2.0, speedKp: 1.2, faceFirstDeg: 45, turnRadS: 0.2, arriveM: 1.0 };
+
+/** The hull as the speed loop meets it, from the vehicle's package. */
+export interface Hull {
+  /** Mass and surge added mass, kg: what the loop multiplies an acceleration by. */
+  massKg: number;
+  /** Surge drag, N per m/s and N per (m/s)². */
+  linear: number;
+  quadratic: number;
+}
+
+/** A hull read out of a vehicle's dynamics; a mid-sized one when it says nothing. */
+export function hullOf(dynamics: unknown): Hull {
+  const d = (dynamics ?? {}) as Record<string, unknown>;
+  const first = (key: string): number => {
+    const v = d[key];
+    const list = Array.isArray(v) ? v : (v as { diagonal?: number[] } | undefined)?.diagonal;
+    return Math.abs(Number(list?.[0] ?? 0));
+  };
+  const mass = Number(d["massKg"] ?? 0);
+  if (!(mass > 0)) return { massKg: 30, linear: 5, quadratic: 40 };
+  return { massKg: mass + first("addedMass"), linear: first("linearDamping"), quadratic: first("quadraticDamping") };
+}
+
+/** What the planner makes of one stage: points in order, how close counts as
+ *  each, a speed limit if it sets one, and time spent still. */
+interface Route { points: P[]; arriveM: number; speedMs?: number; holdS: number }
+
+/** plan.py's `_inside`: a share of what the task counts, never under a floor,
+ *  never more than most of the task's own radius. */
+function inside(radius: number, share: number, floor: number): number {
+  return Math.min(Math.max(floor, radius * share), radius * 0.8);
+}
+
+/** Lanes across a rectangle, from its corner nearest the vehicle. */
+function lanes(area: P[], spacing: number, from: P): P[] {
+  const west = area[0]!.x, east = area[1]!.x, south = area[0]!.y, north = area[2]!.y;
+  const startX = Math.abs(from.x - west) <= Math.abs(from.x - east) ? west : east;
+  const startY = Math.abs(from.y - south) <= Math.abs(from.y - north) ? south : north;
+  const count = Math.max(1, Math.ceil(Math.abs(north - south) / spacing));
+  const step = (north - south) / count * (startY === south ? 1 : -1);
+  const out: P[] = [];
+  let x = startX;
+  for (let k = 0; k <= count; k++) {
+    const y = startY + k * step;
+    const other = x === west ? east : west;
+    out.push({ x, y }, { x: other, y });
+    x = other;
+  }
+  return out;
+}
+
+function routeOf(stage: Stage, things: Drawn[], from: P, launch: P): Route {
   const g = geometryOf(stage, things, from);
+  const num = (key: string, fallback: number) => (typeof stage[key] === "number" ? Number(stage[key]) : fallback);
   switch (stage.kind) {
     case "waypoints":
+      return { points: g.route ?? [], arriveM: inside(num("radiusM", 1.0), 0.6, 0.25), holdS: 0 };
     case "revisit": {
-      let at = from, metres = 0;
-      for (const p of g.route ?? []) { metres += dist(at, p); at = p; }
-      const hold = stage.kind === "revisit" ? Number(stage["holdS"] ?? 0) * (g.route?.length ?? 0) : 0;
-      return { to: at, metres, holdS: hold };
+      const marks = g.route ?? [];
+      return { points: marks, arriveM: inside(num("radiusM", 1.0), 0.6, 0.25), holdS: (num("holdS", 0) + 1) * marks.length };
     }
-    case "transect": {
-      const [a, b] = g.line!;
-      return { to: b, metres: (g.drawn ? dist(from, a) : 0) + dist(a, b), holdS: 0 };
-    }
-    case "survey": {
-      const area = g.area!;
-      const w = Math.abs(area[1]!.x - area[0]!.x), h = Math.abs(area[2]!.y - area[1]!.y);
-      const swath = Math.max(0.05, Number(stage["swathM"] ?? 3));
-      const lanes = Math.max(1, Math.ceil(h / swath));
-      // Lanes run east-west and step north-south, from the nearest corner;
-      // an odd number of them ends on the other side.
-      const start = area.reduce((best, c) => (dist(from, c) < dist(from, best) ? c : best), area[0]!);
-      const west = area[0]!.x, east = area[1]!.x, south = area[0]!.y, north = area[2]!.y;
-      const otherX = start.x === west ? east : west;
-      const otherY = start.y === south ? north : south;
-      const end = { x: lanes % 2 === 1 ? otherX : start.x, y: otherY };
-      return { to: end, metres: dist(from, start) + lanes * w + (lanes - 1) * swath, holdS: 0 };
-    }
+    case "transect":
+      return { points: g.line ? [...g.line] : [], arriveM: PURSUE.arriveM, holdS: 0 };
+    case "survey":
+      return { points: lanes(g.area!, Math.max(1, num("swathM", 3) * 0.85), from), arriveM: PURSUE.arriveM, holdS: 0 };
     case "inspect": {
-      const r = g.ring ?? 0;
-      return { to: g.point!, metres: Math.max(0, dist(from, g.point!) - r) + 2 * Math.PI * r, holdS: 0 };
+      const r = g.ring ?? num("radiusM", 3), c = g.point!;
+      const points = Array.from({ length: 25 }, (_, k) => ({ x: c.x + r * Math.cos((Math.PI * k) / 12), y: c.y + r * Math.sin((Math.PI * k) / 12) }));
+      return { points, arriveM: Math.max(0.4, r * 0.2), holdS: 0 };
     }
     case "treat": {
-      const r = g.ring ?? 0, reach = Math.max(0.1, Number(stage["reachM"] ?? 1.5));
-      return { to: g.point!, metres: dist(from, g.point!) + (Math.PI * r * r) / (2 * reach), holdS: 0 };
+      const r = g.ring ?? num("radiusM", 5), c = g.point!;
+      const square = box([{ x: c.x - r, y: c.y - r }, { x: c.x + r, y: c.y + r }]);
+      return { points: [c, ...lanes(square, Math.max(1, num("reachM", 1) * 1.6), c)], arriveM: PURSUE.arriveM, holdS: 0 };
     }
     case "reach":
+      return { points: [g.point!], arriveM: inside(num("radiusM", 0.5), 0.5, 0.3), holdS: 0 };
     case "dock":
-      return { to: g.point!, metres: dist(from, g.point!), holdS: 0 };
+      return { points: [g.point!], arriveM: 0.2, speedMs: 0.125, holdS: 0 };
     case "return":
-      return { to: launch, metres: dist(from, launch), holdS: 0 };
+      return { points: [launch], arriveM: PURSUE.arriveM, holdS: 0 };
     case "hold-station":
-      return { to: from, metres: 0, holdS: Number(stage["seconds"] ?? 300) };
+      return { points: [], arriveM: 0, holdS: num("seconds", 300) };
     case "wait":
-      return { to: from, metres: 0, holdS: Number(stage["seconds"] ?? 0) };
+      return { points: [], arriveM: 0, holdS: num("seconds", 0) };
     default:
-      return { to: from, metres: 0, holdS: 0 };
+      return { points: [], arriveM: 0, holdS: 0 };
   }
 }
 
-/** One stage's share of the day. */
-export interface Leg { from: P; to: P; metres: number; flyS: number; allowS: number }
+/** Where the vehicle is, which way it points, and how fast it is going. */
+interface Flying { at: P; heading: number; speed: number }
 
-/** The whole plan, stage by stage, from the launch, at a cruising speed. */
-export function legsOf(stages: Stage[], things: Drawn[], launch: P, cruiseMs: number): Leg[] {
-  let at = launch;
+/** Pursue along a route, a tenth of a second at a time: turn towards the
+ *  point, ease off near it, and the speed the loop and the drag agree on. */
+function pursue(state: Flying, route: Route, pilot: Pilot, hull: Hull): { seconds: number; metres: number; movingS: number } {
+  const dt = 0.1;
+  const cruise = Math.min(pilot.cruiseMs, route.speedMs ?? pilot.cruiseMs);
+  const face = (pilot.faceFirstDeg * Math.PI) / 180;
+  let seconds = 0, metres = 0, movingS = 0;
+  for (const target of route.points) {
+    // A day of steps is the most any one point gets: a point the vehicle
+    // cannot settle on is not a reason to stop drawing.
+    for (let steps = 0; steps < 200_000; steps++) {
+      const dx = target.x - state.at.x, dy = target.y - state.at.y;
+      const d = Math.hypot(dx, dy);
+      if (d <= route.arriveM) break;
+      const bearing = Math.atan2(dy, dx);
+      let off = bearing - state.heading;
+      off = Math.atan2(Math.sin(off), Math.cos(off));
+      const turn = Math.max(-pilot.turnRadS * dt, Math.min(pilot.turnRadS * dt, off));
+      state.heading += turn;
+      const easing = Math.max(0, 1 - Math.abs(off - turn) / face);
+      const wanted = cruise * Math.min(1, d / pilot.easeM) * easing;
+      const v = state.speed;
+      const force = pilot.speedKp * hull.massKg * (wanted - v) - (hull.linear * v + hull.quadratic * v * Math.abs(v));
+      state.speed = v + (force / hull.massKg) * dt;
+      const moved = Math.min(d, Math.max(0, state.speed) * dt);
+      state.at = { x: state.at.x + (moved * dx) / d, y: state.at.y + (moved * dy) / d };
+      metres += moved;
+      seconds += dt;
+      if (state.speed > 0.02) movingS += dt;
+    }
+  }
+  return { seconds: seconds + route.holdS, metres, movingS };
+}
+
+/** One stage's share of the day. */
+export interface Leg {
+  from: P;
+  to: P;
+  metres: number;
+  /** How long it takes, flown as pursue flies it. */
+  flyS: number;
+  /** How long the plan allows it. */
+  allowS: number;
+}
+
+/** The whole plan, stage by stage, from the launch, flown by `pilot` in `hull`. */
+export function legsOf(stages: Stage[], things: Drawn[], launch: P, hull: Hull, pilot: Pilot = PURSUE): Leg[] {
+  const state: Flying = { at: launch, heading: 0, speed: 0 };
   return stages.map((stage) => {
-    const { to, metres, holdS } = flown(stage, things, at, launch);
-    const leg = { from: at, to, metres, flyS: metres / Math.max(0.01, cruiseMs) + holdS,
-                  allowS: Number(stage["timeLimitS"] ?? stage["seconds"] ?? 300) };
-    at = to;
-    return leg;
+    const from = state.at;
+    const route = routeOf(stage, things, from, launch);
+    const { seconds, metres } = pursue(state, route, pilot, hull);
+    // Where the stage leaves it is its last point, not wherever "close
+    // enough" happened to be — the next stage is drawn from there.
+    const to = route.points.length ? route.points[route.points.length - 1]! : from;
+    state.at = to;
+    return { from, to, metres, flyS: seconds, allowS: Number(stage["timeLimitS"] ?? stage["seconds"] ?? 300) };
   });
 }
 
@@ -234,14 +340,40 @@ export function extentOf(stages: Stage[], things: Drawn[], legs: Leg[]): P[] {
   return points;
 }
 
-/** What a vehicle spends flying it: the hotel load for the whole time and the
- * drag's power at cruise (quadratic surge damping times the speed cubed, over a
- * thruster efficiency, assumed 0.3) for the time spent moving. */
-export function energyWh(legs: Leg[], cruiseMs: number, hotelW: number, surgeQuad: number): number {
-  const moving = legs.reduce((s, l) => s + l.metres / Math.max(0.01, cruiseMs), 0);
-  const total = legs.reduce((s, l) => s + l.flyS, 0);
-  const drag = (Math.abs(surgeQuad) * cruiseMs ** 3) / 0.3;
-  return (hotelW * total + drag * moving) / 3600;
+/** The speed pursue's loop and the hull's drag agree on at cruise: the loop
+ *  pushes in proportion to what it is short of, the drag pushes back. */
+export function settledMs(hull: Hull, pilot: Pilot = PURSUE): number {
+  const k = pilot.speedKp * hull.massKg, c = pilot.cruiseMs;
+  // k (c - v) = linear v + quadratic v², solved for v.
+  const a = hull.quadratic, b = hull.linear + k;
+  return a > 0 ? (-b + Math.sqrt(b * b + 4 * a * k * c)) / (2 * a) : (k * c) / b;
+}
+
+/** The least a vehicle can draw flying at its settled speed: the hotel load and
+ *  the drag's power through a propeller a third efficient. Flown runs have drawn
+ *  two to three times this — holding depth and heading costs more than moving. */
+export function floorWatts(hull: Hull, hotelW: number, pilot: Pilot = PURSUE): number {
+  const v = settledMs(hull, pilot);
+  return hotelW + ((hull.linear * v + hull.quadratic * v * v) * v) / 0.3;
+}
+
+/** What one run of a vehicle drew, on average, in watts: its energy over its
+ *  time, from the runs that say both. */
+export function wattsOf(outcomes: (Record<string, unknown> | undefined)[]): { watts: number; runs: number } | undefined {
+  const each: number[] = [];
+  for (const outcome of outcomes) {
+    if (!outcome) continue;
+    const task = outcome["task"] as Record<string, unknown> | undefined;
+    const battery = outcome["battery"] as Record<string, unknown> | undefined;
+    const wh = Number(task?.["energyWh"] ?? outcome["energyWh"] ?? battery?.["spentWh"] ?? NaN);
+    const s = Number(task?.["seconds"] ?? outcome["seconds"] ?? NaN);
+    if (wh > 0 && s > 5) each.push((wh * 3600) / s);
+  }
+  if (each.length === 0) return undefined;
+  each.sort((a, b) => a - b);
+  // The middle one: a run that sat on the bottom with its thrusters off, or
+  // spent a minute pinned to the glass, is not what the next one will draw.
+  return { watts: each[Math.floor(each.length / 2)]!, runs: each.length };
 }
 
 /** Rounded to the place's scale: a centimetre in a tank, a metre on a reef. */

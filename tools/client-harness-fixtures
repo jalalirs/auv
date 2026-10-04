@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# The client's development harness draws real places: copy two of them in.
+# The client's development harness draws real places and flies real hulls:
+# copy two places and two vehicles' dynamics in.
 #
 #   tools/client-harness-fixtures
 #
@@ -12,5 +13,9 @@ mkdir -p "${into}"
 for place in iocean-tank-1 looe-key; do
     mkdir -p "${into}/${place}"
     cp "${HOME}/iocean/places/${place}/site.json" "${HOME}/iocean/places/${place}/seabed.f32" "${into}/${place}/"
+done
+for vehicle in mini-hoot boxfish-luna; do
+    mkdir -p "${into}/${vehicle}"
+    cp "${here}/catalog/vehicles/${vehicle}/dynamics.json" "${into}/${vehicle}/"
 done
 echo "fixtures in ${into}"
