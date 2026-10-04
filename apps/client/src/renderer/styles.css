@@ -1619,3 +1619,164 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 /* A controller card folds by its header, by hand. */
 .controller header { cursor: pointer; }
 .controller header .chevron { display: inline-block; width: 0.9em; color: var(--dim); font-weight: 400; }
+
+/* ── The mission designer ─────────────────────────────────────────────────────
+ *
+ * The place's chart is the page: a palette on the left to add work from, the
+ * chart in the middle with every stage drawn where it happens, and on the right
+ * the work in order, the chosen stage's numbers, and what the whole day costs.
+ * Read until Edit; the vehicle colour is the stage being worked on.
+ */
+.designer {
+  display: grid; grid-template-columns: 196px 1fr 272px;
+  gap: 1px; background: var(--edge);
+  border: 1px solid var(--edge); border-radius: 10px; overflow: hidden;
+  height: calc(100vh - 190px); min-height: 520px;
+}
+.designer > * { background: var(--shelf); padding: 12px; overflow-y: auto; }
+.designer h3 {
+  font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--dim); margin: 16px 0 8px; font-weight: 500;
+}
+.designer h3:first-child { margin-top: 0; }
+.designer select {
+  width: 100%; background: var(--deep); border: 1px solid var(--edge);
+  color: var(--plain); border-radius: 8px; padding: 7px 9px; font: inherit; font-size: 13px;
+}
+.designer .said { margin: 0 0 4px; font-size: 13px; }
+.designer .hint { color: var(--vehicle); font-size: 12px; margin: 6px 0 0; }
+.designer .palette .quiet { font-size: 11.5px; line-height: 1.45; margin: 6px 0 0; }
+.designer .tool {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; margin-bottom: 3px;
+  background: transparent; border: 1px solid transparent; color: var(--plain);
+  padding: 4px 6px; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.designer .tool:hover { background: var(--raised); }
+.designer .tool .mark { width: 22px; height: 22px; flex: 0 0 22px; opacity: .85; }
+.designer .tool .mark svg { width: 100%; height: 100%; }
+
+.designer .chart { position: relative; padding: 0; background: var(--deep); overflow: hidden; }
+.designer .chart canvas { display: block; width: 100%; height: 100%; }
+.designer .readout {
+  position: absolute; left: 10px; bottom: 10px; right: 10px;
+  background: rgba(4, 8, 15, .84); border: 1px solid var(--edge);
+  border-radius: 7px; padding: 6px 10px;
+  font-family: ui-monospace, monospace; font-size: 11.5px;
+  display: flex; align-items: center; gap: 14px;
+}
+.designer .readout b { color: var(--plain); font-variant-numeric: tabular-nums; }
+.designer .readout .resolves { color: var(--vehicle); flex: 1; }
+.designer .readout .finish { font-size: 11.5px; padding: 3px 10px; }
+.designer .no-chart { position: absolute; top: 40%; width: 100%; text-align: center; color: var(--faint); }
+
+.designer .stages .stage {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 4px;
+  padding: 7px 9px; border-radius: 8px; cursor: pointer;
+  border: 1px solid transparent; background: var(--raised);
+}
+.designer .stages .stage:hover { border-color: var(--edge-lit); }
+.designer .stages .stage.on { border-color: var(--vehicle); }
+.designer .stages .ordinal {
+  width: 20px; height: 20px; flex: 0 0 20px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--deep); font-size: 11px; font-weight: 600; color: var(--plain);
+}
+.designer .stages .stage.on .ordinal { color: var(--vehicle); }
+.designer .stages .what { display: flex; flex-direction: column; min-width: 0; }
+.designer .stages .what strong { font-size: 13px; font-weight: 500; }
+.designer .stages .what small { color: var(--faint); font-size: 11.5px; }
+
+.designer .detail { margin-top: 10px; padding-top: 4px; border-top: 1px solid var(--edge); }
+.designer .draw { width: 100%; margin-bottom: 8px; }
+.designer .draw.on { border-color: var(--vehicle); color: var(--vehicle); }
+.designer .number { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.designer .number span { font-size: 12.5px; color: var(--faint); flex: 1; }
+.designer .number em { font-style: normal; font-size: 11px; color: var(--dim); width: 14px; }
+.designer .number select { width: 130px; font-size: 12px; padding: 4px 6px; }
+.designer .number input {
+  width: 84px; background: var(--deep); border: 1px solid var(--edge);
+  color: var(--plain); border-radius: 6px; padding: 4px 7px;
+  font-family: ui-monospace, monospace; font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.designer .number input:disabled { color: var(--faint); border-color: transparent; background: transparent; }
+.designer .acts { display: flex; gap: 6px; margin-top: 6px; }
+.designer .acts button { flex: 1; font-size: 12px; padding: 5px; }
+.designer .estimate { margin-top: 14px; padding-top: 4px; border-top: 1px solid var(--edge); }
+.designer .estimate p { font-size: 12.5px; margin: 8px 0 0; line-height: 1.45; }
+.designer .estimate .quiet { font-size: 11.5px; }
+.designer .warn { color: var(--vehicle); }
+.designer .save { width: 100%; margin-top: 14px; }
+.designer .trouble { color: var(--vehicle); font-size: 12.5px; }
+.designer-acts { display: inline-flex; align-items: center; gap: 8px; }
+
+@media (max-width: 1000px) {
+  .designer { grid-template-columns: 1fr; height: auto; }
+  .designer .chart { height: 60vh; }
+}
+
+/* The mission library: a table, because a plan's facts line up. */
+.library table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.library th {
+  text-align: left; font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--dim); font-weight: 500; padding: 0 10px 8px;
+}
+.library td { padding: 10px; border-top: 1px solid var(--edge); vertical-align: middle; color: var(--faint); }
+.library td.what { cursor: pointer; color: var(--plain); }
+.library td.what strong { display: block; font-weight: 500; }
+.library td.what small {
+  display: block; color: var(--faint); font-size: 12px; margin-top: 2px;
+  max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.library tr:hover td { background: var(--shelf); }
+.library .row-acts { white-space: nowrap; text-align: right; }
+.library .row-acts button { font-size: 12px; padding: 4px 10px; margin-left: 4px; }
+.library .row-acts .quiet { font-size: 12px; margin-right: 6px; }
+.library .naming { margin-top: 18px; }
+
+/* ── Fly ──────────────────────────────────────────────────────────────────────
+ *
+ * The plan on the left, small, as it was drawn; the day's doubts on the right;
+ * and one button whose words say whether this is one dive or a sweep.
+ */
+.fly { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; gap: 18px; align-items: start; }
+.fly .what { display: flex; flex-direction: column; gap: 10px; }
+.fly label { display: flex; flex-direction: column; gap: 4px; }
+.fly label > span {
+  font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
+}
+.fly select {
+  width: 100%; background: var(--deep); border: 1px solid var(--edge);
+  color: var(--plain); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 13px;
+}
+.fly .preview {
+  aspect-ratio: 1; border: 1px solid var(--edge); border-radius: 10px; overflow: hidden; background: var(--deep);
+}
+.fly .preview canvas { display: block; width: 100%; height: 100%; }
+.fly .what .quiet { font-size: 12.5px; margin: 0; }
+.fly .what a { color: var(--coral); cursor: pointer; }
+.fly .day h2 { margin-top: 0; }
+.fly .day > .quiet { font-size: 12.5px; margin: -4px 0 12px; }
+.fly .doubt.set { border-color: var(--edge); }
+.fly .doubt.on { border-color: var(--vehicle); }
+.fly .doubt .state { color: var(--dim); font-size: 11px; margin-top: 4px; }
+.fly .doubt.on .state { color: var(--vehicle); }
+.fly .go {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 14px 16px; border: 1px solid var(--edge); border-radius: 10px; background: var(--shelf);
+}
+.fly .go label { flex-direction: row; align-items: center; gap: 8px; }
+.fly .go label > span { font-size: 11px; }
+.fly .go select { width: auto; }
+.fly .go .check { font-size: 13px; color: var(--plain); }
+.fly .go .quiet { flex: 1; font-size: 12.5px; }
+.fly .trouble { grid-column: 1 / -1; color: var(--vehicle); }
+@media (max-width: 900px) { .fly { grid-template-columns: 1fr; } }
+
+/* ── One chart of a place, with its own zoom ─────────────────────────────── */
+.site-chart { position: relative; width: 100%; height: 100%; min-height: 0; }
+.site-chart canvas { display: block; width: 100%; height: 100%; }
+.site-chart .zoom { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
+.site-chart .zoom button {
+  font-size: 12px; padding: 3px 8px; min-width: 28px;
+  background: rgba(10, 18, 24, .78); border-color: var(--edge); color: var(--plain); border-radius: 6px; font-weight: 500;
+}
+.designer .number { flex-direction: row; }

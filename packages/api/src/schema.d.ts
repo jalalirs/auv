@@ -1915,6 +1915,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dives/{diveId}/runs/{runId}/film": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The path-traced film of a run, flown again from its commands
+         * @description A film cannot be rendered while somebody flies, and whoever flew cannot be asked to fly the same dive twice. What they commanded can be: the runtime keeps every tick's command (commands.npy), and a dive given them plays them back. This defines a new dive whose every determinant is copied from the record of the one in the path — place and vehicle versions, water, arrangement, starting state, objective — with pictures on, no controller, and replayOf naming the run, and runs it on the original's seed and runtime. Only a run that succeeded and kept its commands can be filmed.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    diveId: string;
+                    runId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** @description where to run it; the original's queue when left out */
+                        queueId?: string;
+                        /** @description {fps, width, height, spp, bitrate} */
+                        film?: Record<string, never>;
+                        views?: string[];
+                        viewEveryS?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description The film's dive and its run, queued. */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dives/{diveId}/runs/{runId}/events": {
         parameters: {
             query?: never;
@@ -3120,6 +3175,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/layouts/{layoutId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive this arrangement
+         * @description Takes it out of the listings without erasing it: a run that pinned a version of it goes on saying what it flew. Its author may archive it, or a steward of the place. Archiving what is already archived is no error.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    layoutId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description It is archived; the record, with when. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/layouts/{layoutId}/versions": {
         parameters: {
             query?: never;
@@ -3529,6 +3626,48 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/missions/{missionId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive this plan of work
+         * @description Takes it out of the listings without erasing it: a run that pinned a version of it goes on saying what it flew. Its author may archive it, or a steward of the place. Archiving what is already archived is no error.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    missionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description It is archived; the record, with when. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -5363,6 +5502,8 @@ export interface components {
             scenario?: {
                 [key: string]: unknown;
             };
+            /** @description The sweep this run is one of, when it is one; a run flown on its own has none. */
+            sweepId?: string;
             deviceId?: string | null;
             gpuShare: number;
             needs?: components["schemas"]["Needs"];

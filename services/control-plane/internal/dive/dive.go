@@ -571,13 +571,21 @@ func composeFrom(ctx context.Context, conn db.Conn, spec DiveSpec) (DiveSpec, er
 			string(spec.InitialState) == "null") {
 		spec.InitialState = json.RawMessage(`{"launch":` + string(said.Launch) + `}`)
 	}
-	if len(spec.Objective) == 0 || string(spec.Objective) == "{}" {
-		stages, err := json.Marshal(said.Stages)
-		if err != nil {
-			return spec, fmt.Errorf("%w: that mission's stages cannot be read", domain.ErrInvalid)
-		}
-		spec.Objective = json.RawMessage(`{"kind":"mission","stages":` + string(stages) + `}`)
+	// The mission's stages are the objective; what the caller said — who
+	// flies it, whether it is drawn — is laid over them. It used to stand
+	// instead of them: a dive of a mission flown by a built-in controller
+	// passed `{"controller": …}`, and flew that, with no stages at all.
+	stages, err := json.Marshal(said.Stages)
+	if err != nil {
+		return spec, fmt.Errorf("%w: that mission's stages cannot be read", domain.ErrInvalid)
 	}
+	composed := json.RawMessage(`{"kind":"mission","stages":` + string(stages) + `}`)
+	if len(spec.Objective) != 0 && string(spec.Objective) != "{}" && string(spec.Objective) != "null" {
+		if composed, err = layOver(composed, spec.Objective); err != nil {
+			return spec, err
+		}
+	}
+	spec.Objective = composed
 	return spec, nil
 }
 

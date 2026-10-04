@@ -19,8 +19,10 @@ import { Autonomy } from "./Autonomy.js";
 import { Dive } from "./Dive.js";
 import { Fleet } from "./Fleet.js";
 import { LayingOut } from "./Layout.js";
-import { Missions, Planning } from "./Missions.js";
-import { Sweeps, Swept } from "./Sweeps.js";
+import { Designer } from "./Designer.js";
+import { Fly } from "./Fly.js";
+import { Missions } from "./Missions.js";
+import { Swept } from "./Sweeps.js";
 import { PlaceDetail } from "./PlaceDetail.js";
 import { Places } from "./Places.js";
 import { Profile } from "./Profile.js";
@@ -32,6 +34,8 @@ export type { Held, Packages };
 
 /** Where in the application somebody is. Detail pages carry what they are of. */
 export type Where =
+  // Flying: a plan of work once or under doubts; a single task is "dive".
+  | { page: "fly"; mission?: string }
   | { page: "dive" }
   | { page: "places" }
   | { page: "place"; id: string }
@@ -45,7 +49,6 @@ export type Where =
   | { page: "missions" }
   | { page: "mission"; id: string; place: string }
   // The rehearsal: a plan against everything nobody can promise about it.
-  | { page: "sweeps" }
   | { page: "sweep"; id: string }
   | { page: "fleet" }
   | { page: "vehicle"; id?: string; slug?: string }
@@ -57,26 +60,17 @@ export type Where =
 type Rail = Where["page"];
 
 const PAGES: { key: Rail; name: string; count?: (held: Held) => number; is: (where: Where) => boolean }[] = [
-  { key: "dive", name: "Dive", is: (w) => w.page === "dive" },
-  { key: "places", name: "Places", count: (h) => h.places.length,
-    is: (w) => w.page === "places" || w.page === "place" || w.page === "layout" },
+  { key: "fly", name: "Fly", is: (w) => w.page === "fly" || w.page === "dive" },
   { key: "missions", name: "Missions",
     is: (w) => w.page === "missions" || w.page === "mission" },
-  { key: "sweeps", name: "Sweeps",
-    is: (w) => w.page === "sweeps" || w.page === "sweep" },
+  { key: "places", name: "Places", count: (h) => h.places.length,
+    is: (w) => w.page === "places" || w.page === "place" || w.page === "layout" },
+  { key: "runs", name: "Results", count: (h) => h.runs.length,
+    is: (w) => w.page === "runs" || w.page === "sweep" || w.page === "replay" },
   { key: "fleet", name: "Fleet", count: (h) => h.vehicles.length, is: (w) => w.page === "fleet" || w.page === "vehicle" },
   { key: "autonomy", name: "Autonomy", is: (w) => w.page === "autonomy" },
-  { key: "runs", name: "Dives", count: (h) => h.runs.length, is: (w) => w.page === "runs" },
 ];
 
-// Nothing is "not yet" any more, and the list is kept empty rather than
-// deleted because the discipline is the point: a tab that has been "not yet"
-// for weeks is not a roadmap, it is a decision nobody made sitting where a
-// person can see it.
-//
-// Three came off it. **Conditions** was a library of weather, and water turned
-// out to belong to the thing it is water for — a mission states the sea it is
-// flown in, and a sweep states the seas it is doubted against, and neither
 // wants a curated list of currents somebody made once. **Recordings** was a
 // list of what dives produced, and a recording belongs to the dive that made
 // it, which is where anybody looks. **Sweeps** came off by being built.
@@ -86,7 +80,7 @@ export function Deck({ platform, onDiving }: {
   platform: Platform;
   onDiving: (dive: string, run: string) => void;
 }): React.JSX.Element {
-  const [where, setWhere] = useState<Where>({ page: "dive" });
+  const [where, setWhere] = useState<Where>({ page: "fly" });
   const [held, setHeld] = useState<Held | undefined>();
   const [trouble, setTrouble] = useState("");
   const packages = usePackages(platform, held);
@@ -179,7 +173,13 @@ export function Deck({ platform, onDiving }: {
       </nav>
 
       <main>
-        {where.page === "dive" ? (
+        {where.page === "fly" ? (
+          <Fly platform={platform} held={held} packages={packages} mission={where.mission}
+               onDiving={onDiving} onChanged={read}
+               onSwept={(id) => setWhere({ page: "sweep", id })}
+               onSingleTask={() => setWhere({ page: "dive" })}
+               onDesign={(id, place) => setWhere({ page: "mission", id, place })} />
+        ) : where.page === "dive" ? (
           <Dive platform={platform} held={held} packages={packages} free={free} devices={devices}
                 onDiving={onDiving} onChanged={read} onOpen={setWhere} />
         ) : where.page === "places" ? (
@@ -195,16 +195,14 @@ export function Deck({ platform, onDiving }: {
                      onBack={() => setWhere({ page: "place", id: where.place })} />
         ) : where.page === "missions" ? (
           <Missions platform={platform} held={held}
-                    onOpen={(id, place) => setWhere({ page: "mission", id, place })} />
+                    onOpen={(id, place) => setWhere({ page: "mission", id, place })}
+                    onFly={(id) => setWhere({ page: "fly", mission: id })} />
         ) : where.page === "mission" ? (
-          <Planning platform={platform} held={held} mission={where.id} place={where.place}
-                    onBack={() => setWhere({ page: "missions" })} />
-        ) : where.page === "sweeps" ? (
-          <Sweeps platform={platform} held={held} onChanged={read}
-                  onOpen={(id) => setWhere({ page: "sweep", id })} />
+          <Designer platform={platform} held={held} packages={packages} mission={where.id} place={where.place}
+                    onBack={() => setWhere({ page: "missions" })}
+                    onFly={(id) => setWhere({ page: "fly", mission: id })} />
         ) : where.page === "sweep" ? (
-          <Swept platform={platform} sweep={where.id}
-                 onBack={() => setWhere({ page: "sweeps" })} />
+          <Swept platform={platform} sweep={where.id} onBack={() => setWhere({ page: "runs" })} />
         ) : where.page === "fleet" ? (
           <Fleet held={held} packages={packages}
                  onOpen={(of) => setWhere({ page: "vehicle", ...of })} />
@@ -215,7 +213,8 @@ export function Deck({ platform, onDiving }: {
           <Autonomy held={held} />
         ) : where.page === "runs" ? (
           <Runs platform={platform} held={held} onChanged={read}
-                onReplay={(dive, run) => setWhere({ page: "replay", dive, run })} />
+                onReplay={(dive, run) => setWhere({ page: "replay", dive, run })}
+                onSweep={(id) => setWhere({ page: "sweep", id })} />
         ) : where.page === "replay" ? (
           <Replay platform={platform} dive={where.dive} run={where.run}
                   onBack={() => setWhere({ page: "runs" })} />

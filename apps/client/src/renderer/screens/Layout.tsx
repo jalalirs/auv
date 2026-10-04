@@ -15,17 +15,18 @@
 // more than the size of the palette, and each further tool is a landing rule
 // and a glyph once the chain holds.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { Layout as LayoutRecord, LayoutDocument, Platform } from "@coral-city/api";
+import { centreOf, groundAt, groundOf, SiteChart, type Frame, type Ground, type Thing as Charted } from "../parts/SiteChart.js";
 import type { PlacePackage } from "../platform/packages.js";
 import { Empty, PageHead, Pill } from "./parts.js";
 
 /** One end of something, or one thing. */
 interface Point { x: number; y: number; z?: number; groundM?: number }
 
-/** One thing in the water, as the document carries it. */
-interface Thing extends Point {
+/** One thing in the water, as the document carries it (the chart's own shape). */
+interface Thing extends Point, Omit<Charted, "x" | "y" | "z" | "groundM" | "ends"> {
   id: string;
   kind: string;
   /** Both ends, for something that spans. */
@@ -92,59 +93,6 @@ const DESCRIBED_BY = "coral-city/layout/v1";
 // each of them has to guess is a frame three of them will get wrong.
 const FRAME = "metres, origin at the middle of the site, +x east, +y north";
 
-/** The seabed, read from the package's own heightfield. */
-interface Ground {
-  rows: number;
-  columns: number;
-  acrossM: number;
-  depth: Float32Array;
-}
-
-async function groundOf(pkg: PlacePackage | undefined): Promise<Ground | undefined> {
-  const field = pkg?.site?.mesh?.heightfield;
-  const across = pkg?.site?.from?.acrossMetres;
-  if (!field || !across) return undefined;
-  const file = pkg.files.find((f) => f.path === field.file);
-  if (!file) return undefined;
-  const bytes = await (await fetch(file.url)).arrayBuffer();
-  const heights = new Float32Array(bytes);
-  // Heights are metres above the surface, so depth is the other way round.
-  const depth = new Float32Array(heights.length);
-  for (let i = 0; i < heights.length; i++) depth[i] = -heights[i]!;
-  return { rows: field.rows, columns: field.columns, acrossM: across, depth };
-}
-
-/** How deep the ground is at a point, in the frame everything else uses.
- *
- * The one frame: metres, origin at the middle of the site, +x east, +y north —
- * the same coordinates the vehicle's own positions are in, so a transponder
- * drawn here and a vehicle flown there are talking about one place. The
- * heightfield runs south to north then west to east, which the site's own note
- * says and the runtime reads the same way; this is that sampling, in
- * TypeScript.
- */
-function groundAt(ground: Ground, x: number, y: number): number {
-  const { rows, columns, acrossM, depth } = ground;
-  const fx = Math.min(columns - 1.001, Math.max(0, (x / acrossM + 0.5) * (columns - 1)));
-  const fy = Math.min(rows - 1.001, Math.max(0, (y / acrossM + 0.5) * (rows - 1)));
-  const x0 = Math.floor(fx), y0 = Math.floor(fy);
-  const tx = fx - x0, ty = fy - y0;
-  const at = (cx: number, cy: number) => depth[cy * columns + cx] ?? 0;
-  return at(x0, y0) * (1 - tx) * (1 - ty) + at(x0 + 1, y0) * tx * (1 - ty)
-       + at(x0, y0 + 1) * (1 - tx) * ty + at(x0 + 1, y0 + 1) * tx * ty;
-}
-
-/** Where a pointer is, in that frame. Nothing when it is off the site. */
-function pointerAt(box: DOMRect, ground: Ground, clientX: number, clientY: number) {
-  const side = Math.min(box.width, box.height);
-  const padX = (box.width - side) / 2, padY = (box.height - side) / 2;
-  const half = ground.acrossM / 2;
-  const x = ((clientX - box.left - padX) / side) * ground.acrossM - half;
-  const y = (1 - (clientY - box.top - padY) / side) * ground.acrossM - half;
-  if (Math.abs(x) > half || Math.abs(y) > half) return undefined;
-  return { x, y };
-}
-
 /** A name that will not collide with the one made a millisecond ago. */
 function named(kind: string): string {
   return `${kind}-${Date.now().toString(36)}-${Math.floor(Math.random() * 4096).toString(36)}`;
@@ -159,20 +107,6 @@ function landed(lands: Lands, ground: Ground, x: number, y: number): Point {
   // depth under it is still worth keeping, because that is what decides
   // whether a line from it can reach.
   return { ...at, z: lands === "surface" ? 0 : Math.round(-deep * 10) / 10 };
-}
-
-/** One point on a thing, for picking it and drawing it. */
-function centreOf(thing: Thing): { x: number; y: number } {
-  if (thing.ends?.length === 2) {
-    return { x: (thing.ends[0]!.x + thing.ends[1]!.x) / 2,
-             y: (thing.ends[0]!.y + thing.ends[1]!.y) / 2 };
-  }
-  if (thing.corners?.length) {
-    const xs = thing.corners.map((c) => c.x), ys = thing.corners.map((c) => c.y);
-    return { x: (Math.min(...xs) + Math.max(...xs)) / 2,
-             y: (Math.min(...ys) + Math.max(...ys)) / 2 };
-  }
-  return { x: thing.x, y: thing.y };
 }
 
 /** What the listing says about a thing, which is not always one depth. */
@@ -252,7 +186,6 @@ export function LayoutEditor({ platform, pkg, layout, onBack }: {
   const [under, setUnder] = useState<number | undefined>();
   const [saving, setSaving] = useState("");
   const [trouble, setTrouble] = useState("");
-  const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => { void groundOf(pkg).then(setGround); }, [pkg]);
 
@@ -268,11 +201,8 @@ export function LayoutEditor({ platform, pkg, layout, onBack }: {
     return () => { stale = true; };
   }, [platform, layout.id]);
 
-  const place = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
-    const box = canvas.current?.getBoundingClientRect();
-    if (!box || !ground) return;
-    const where = pointerAt(box, ground, event.clientX, event.clientY);
-    if (!where) return;
+  const place = useCallback((where: { x: number; y: number }) => {
+    if (!ground) return;
     const { x, y } = where;
 
     if (tool === undefined) {
@@ -305,104 +235,15 @@ export function LayoutEditor({ platform, pkg, layout, onBack }: {
     setChosen(made.id);
   }, [ground, things, tool, first]);
 
-  const watch = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
-    const box = canvas.current?.getBoundingClientRect();
-    if (!box || !ground) { setUnder(undefined); return; }
-    const where = pointerAt(box, ground, event.clientX, event.clientY);
-    setUnder(where === undefined ? undefined : groundAt(ground, where.x, where.y));
-  }, [ground]);
-
-  // The chart, drawn from the survey: pale in the shallows, deep blue off the
-  // edge, the way a chart is.
-  useEffect(() => {
-    const element = canvas.current;
-    if (!element || !ground) return;
-    const ratio = window.devicePixelRatio || 1;
-    const box = element.getBoundingClientRect();
-    element.width = box.width * ratio;
-    element.height = box.height * ratio;
-    const g = element.getContext("2d");
-    if (!g) return;
-    g.setTransform(ratio, 0, 0, ratio, 0, 0);
-    g.clearRect(0, 0, box.width, box.height);
-
-    const side = Math.min(box.width, box.height);
-    const padX = (box.width - side) / 2, padY = (box.height - side) / 2;
-    const step = Math.max(1, Math.round(side / 260));
-    for (let py = 0; py < side; py += step) {
-      for (let px = 0; px < side; px += step) {
-        const deep = groundAt(ground, (px / side - 0.5) * ground.acrossM,
-                              (0.5 - py / side) * ground.acrossM);
-        const t = Math.min(1, Math.max(0, deep / 30));
-        const shade = deep < 0.2
-          ? "rgb(216,201,168)"
-          : `rgb(${Math.round(238 - 210 * t)},${Math.round(226 - 140 * t)},${Math.round(190 - 80 * t)})`;
-        g.fillStyle = shade;
-        g.fillRect(padX + px, padY + py, step, step);
-      }
-    }
-
-    const toX = (m: number) => padX + (m / ground.acrossM + 0.5) * side;
-    const toY = (m: number) => padY + (0.5 - m / ground.acrossM) * side;
-    // Drawn as what it is. A line shown as a dot at its middle is a line
-    // nobody can see the run of, and a plot shown as a dot is a plot nobody
-    // can see the extent of — which is the whole reason for drawing it.
-    for (const thing of things) {
-      const on = thing.id === chosen;
-      g.lineWidth = on ? 2.6 : 1.6;
-      g.strokeStyle = on ? "#c25a15" : "#10222a";
-      g.fillStyle = "rgba(255,255,255,.9)";
-
-      if (thing.corners?.length) {
-        g.beginPath();
-        thing.corners.forEach((c, i) =>
-          i === 0 ? g.moveTo(toX(c.x), toY(c.y)) : g.lineTo(toX(c.x), toY(c.y)));
-        g.closePath();
-        g.fillStyle = on ? "rgba(194,90,21,.18)" : "rgba(16,34,42,.12)";
-        g.fill();
-        g.setLineDash([6, 4]);
-        g.stroke();
-        g.setLineDash([]);
-        continue;
-      }
-
-      if (thing.ends?.length === 2) {
-        const [a, b] = thing.ends as [Point, Point];
-        g.beginPath();
-        g.moveTo(toX(a.x), toY(a.y));
-        g.lineTo(toX(b.x), toY(b.y));
-        g.stroke();
-        for (const end of [a, b]) {
-          g.beginPath();
-          g.arc(toX(end.x), toY(end.y), 3.5, 0, Math.PI * 2);
-          g.fillStyle = on ? "#c25a15" : "#10222a";
-          g.fill();
-        }
-        continue;
-      }
-
-      g.beginPath();
-      g.arc(toX(thing.x), toY(thing.y), on ? 7 : 5.5, 0, Math.PI * 2);
-      g.fill();
-      g.stroke();
-      // Something floating is drawn hollow: it is not on the bottom the
-      // chart is showing, and a ship drawn like a transponder reads as one.
-      if (TOOLS[thing.kind]?.lands === "surface") {
-        g.beginPath();
-        g.arc(toX(thing.x), toY(thing.y), on ? 10 : 8.5, 0, Math.PI * 2);
-        g.stroke();
-      }
-    }
-
-    // The click that has happened, while the one that finishes it has not.
-    if (first) {
-      g.beginPath();
-      g.arc(toX(first.x), toY(first.y), 4, 0, Math.PI * 2);
-      g.strokeStyle = "#c25a15";
-      g.lineWidth = 2;
-      g.stroke();
-    }
-  }, [ground, things, chosen, first]);
+  // The click that has happened, while the one that finishes it has not.
+  const pending = useCallback((g: CanvasRenderingContext2D, frame: Frame) => {
+    if (!first) return;
+    g.beginPath();
+    g.arc(frame.toX(first.x), frame.toY(first.y), 4, 0, Math.PI * 2);
+    g.strokeStyle = "#c25a15";
+    g.lineWidth = 2;
+    g.stroke();
+  }, [first]);
 
   const save = useCallback(async () => {
     setSaving("saving"); setTrouble("");
@@ -449,8 +290,10 @@ export function LayoutEditor({ platform, pkg, layout, onBack }: {
         </div>
 
         <div className="chart">
-          <canvas ref={canvas} onClick={place} onMouseMove={watch}
-                  onMouseLeave={() => setUnder(undefined)} />
+          <SiteChart ground={ground} things={things as Charted[]} chosen={chosen}
+                     fit={(things as Charted[]).flatMap((t) => t.corners ?? t.ends ?? [centreOf(t)])}
+                     overlay={pending} onPick={place}
+                     onHover={(_, depth) => setUnder(depth)} />
           <div className="readout">
             <span>ground <b>{under === undefined ? "—" : `${under.toFixed(1)} m`}</b></span>
             <span className="resolves">

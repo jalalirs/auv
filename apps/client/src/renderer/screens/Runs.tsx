@@ -1,10 +1,15 @@
 // What has been run, and what became of it.
+//
+// One list for a dive flown once and a plan flown every way the day could go:
+// a sweep is a row of its own, its runs folded under it, because a hundred
+// runs of one question listed one by one bury the dives somebody flew by hand.
 
 import { useState } from "react";
 
-import type { Platform } from "@coral-city/api";
+import type { Platform, Sweep } from "@coral-city/api";
 
 import type { Held } from "./Deck.js";
+import { useSweeps } from "./Sweeps.js";
 import { Empty, PageHead, Pill, ago } from "./parts.js";
 
 const LIVE = new Set(["queued", "preparing", "running"]);
@@ -51,21 +56,30 @@ function NotOneTable({ runs, of }: { runs: Held["runs"]; of: string }): React.JS
   );
 }
 
-export function Runs({ platform, held, onChanged, onReplay }: {
+type Entry =
+  | { at: string; run: Held["runs"][number]; sweep?: undefined }
+  | { at: string; sweep: Sweep; run?: undefined };
+
+export function Runs({ platform, held, onChanged, onReplay, onSweep }: {
   platform: Platform;
   held: Held;
   onChanged: () => void;
   onReplay: (dive: string, run: string) => void;
+  onSweep: (sweep: string) => void;
 }): React.JSX.Element {
   const [ending, setEnding] = useState<string | undefined>();
+  const sweeps = useSweeps(platform, held);
   // A record with a matrix in it is a record somebody has to find one row of.
   const [sift, setSift] = useState("");
   const [showing, setShowing] = useState(60);
   const words = sift.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const shown = words.length === 0 ? held.runs : held.runs.filter(({ name, flownBy }) => {
-    const said = `${name} ${flownBy}`.toLowerCase();
-    return words.every((word) => said.includes(word));
-  });
+  const matches = (said: string) => words.every((word) => said.toLowerCase().includes(word));
+  const entries: Entry[] = [
+    ...held.runs.filter(({ run }) => !run.sweepId).map((one) => ({ at: one.run.requestedAt, run: one })),
+    ...sweeps.map((sweep) => ({ at: sweep.createdAt, sweep })),
+  ].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+  const shown = words.length === 0 ? entries : entries.filter((e) =>
+    e.run ? matches(`${e.run.name} ${e.run.flownBy}`) : matches(`${e.sweep.name} sweep`));
 
   async function end(dive: string, run: string): Promise<void> {
     setEnding(run);
@@ -81,8 +95,8 @@ export function Runs({ platform, held, onChanged, onReplay }: {
 
   return (
     <>
-      <PageHead title="Dives"
-        says="Every run pins its place, its vehicle, its water, its seed and the runtime that produced it — which is what makes running the same thing twice mean something." />
+      <PageHead title="Results"
+        says="Every run pins its place, its vehicle, its water, its seed and the runtime that produced it — which is what makes running the same thing twice mean something. A sweep is one plan flown every way the day could go; its runs are under it." />
 
       {outstanding.length > 0 && (
         <section>
@@ -108,37 +122,36 @@ export function Runs({ platform, held, onChanged, onReplay }: {
 
       <section>
         <h2>All of them</h2>
-        {held.runs.length > 12 ? (
+        {entries.length > 12 ? (
           <div className="sift">
             <input value={sift} onChange={(e) => setSift(e.target.value)}
-                   placeholder={`Search ${held.runs.length} runs — a task, a water, a technology…`} />
-            <span>{shown.length === held.runs.length
-              ? `${held.runs.length} runs`
-              : `${shown.length} of ${held.runs.length}`}</span>
+                   placeholder={`Search ${entries.length} — a task, a water, a technology, "sweep"…`} />
+            <span>{shown.length === entries.length ? `${entries.length}` : `${shown.length} of ${entries.length}`}</span>
           </div>
         ) : null}
-        {held.runs.length === 0 ? (
+        {entries.length === 0 ? (
           <Empty title="Nothing has been run yet">
             Dives appear here as soon as you ask for one.
           </Empty>
         ) : (
           <div className="ledger runs">
-            {shown.slice(0, showing).map(({ dive, name, flownBy, run }) => (
-              <div className="row" key={run.id}>
+            {shown.slice(0, showing).map((entry) => entry.sweep ? (
+              <div className="row swept" key={entry.sweep.id}>
                 <div className="who">
-                  <strong>{name}</strong>
-                  <span className="when">{meta(name, flownBy, run)}</span>
+                  <strong>{entry.sweep.name}</strong>
+                  <span className="when">
+                    swept · {entry.sweep.flown ?? 0} of {entry.sweep.runs ?? 0} flown
+                    {entry.sweep.flying ? ` · ${entry.sweep.flying} in the water` : ""} · {ago(entry.sweep.createdAt)}
+                  </span>
                 </div>
-                <Result outcome={run.outcome} />
-                {recorded(run) ? (
-                  <button className="quiet small" onClick={() => onReplay(dive, run.id)}>Replay</button>
-                ) : <span />}
-                <Pill kind={run.state === "succeeded" ? "good"
-                  : LIVE.has(run.state) ? "busy"
-                  : run.state === "failed" ? "bad" : undefined}>
-                  {run.state === "succeeded" && run.outcome?.["surfaced"] === true ? "surfaced" : run.state}
+                <span className="result" />
+                <button className="quiet small" onClick={() => onSweep(entry.sweep.id)}>Read it</button>
+                <Pill kind={entry.sweep.flying ? "busy" : (entry.sweep.flown ?? 0) >= (entry.sweep.runs ?? 0) ? "good" : undefined}>
+                  {entry.sweep.flying ? "sweeping" : (entry.sweep.flown ?? 0) >= (entry.sweep.runs ?? 0) ? "swept" : "waiting"}
                 </Pill>
               </div>
+            ) : (
+              <RunRow key={entry.run.run.id} one={entry.run} onReplay={onReplay} />
             ))}
             {shown.length > showing ? (
               <button className="quiet more" onClick={() => setShowing(showing + 100)}>
@@ -166,6 +179,30 @@ export function Runs({ platform, held, onChanged, onReplay }: {
         <Compared runs={held.runs} />
       </section>
     </>
+  );
+}
+
+/** One run, flown on its own. */
+function RunRow({ one: { dive, name, flownBy, run }, onReplay }: {
+  one: Held["runs"][number];
+  onReplay: (dive: string, run: string) => void;
+}): React.JSX.Element {
+  return (
+    <div className="row">
+      <div className="who">
+        <strong>{name}</strong>
+        <span className="when">{meta(name, flownBy, run)}</span>
+      </div>
+      <Result outcome={run.outcome} />
+      {recorded(run) ? (
+        <button className="quiet small" onClick={() => onReplay(dive, run.id)}>Replay</button>
+      ) : <span />}
+      <Pill kind={run.state === "succeeded" ? "good"
+        : LIVE.has(run.state) ? "busy"
+        : run.state === "failed" ? "bad" : undefined}>
+        {run.state === "succeeded" && run.outcome?.["surfaced"] === true ? "surfaced" : run.state}
+      </Pill>
+    </div>
   );
 }
 

@@ -67,3 +67,6 @@ apps/console/src/**/*.js
 *.pdf
 catalog/vehicles/mini-hoot/mini-hoot.usd
 data/videos/
+
+# The client harness copies real places in (tools/client-harness-fixtures).
+apps/client/src/renderer/harness/fixtures/

@@ -1,247 +1,36 @@
-// A mission against everything that could go wrong with it.
+// What a mission did against everything that could go wrong with it.
 //
-// This is the rehearsal, and it is the screen the whole application has been
-// building towards: lay out a site, plan the work over it, then ask what
-// breaks it — and be told what to do about Tuesday.
+// Asking for a sweep is Fly's now — a sweep is a dive with doubts ticked — so
+// this file is the reading: the list of what has been swept, and one sweep's
+// answer.
 //
 // What comes back is a paragraph and a small table. It was a grid of numbers
 // once and nobody could read it: seventy-two rows of scores, every one of them
 // true and none of them an answer. The reading matters more than the running,
 // so the reading is what this page is.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import type { AssetVersion, Cost, Findings, Mission, Platform, Sweep } from "@coral-city/api";
+import type { Cost, Findings, Platform, Sweep } from "@coral-city/api";
 
-import { DOUBTS, doubtsFrom, scenariosIn } from "../catalog/doubts.js";
-import { newestOf } from "../platform/packages.js";
 import type { Held } from "./Deck.js";
-import { Empty, PageHead, Pill, Row, ago } from "./parts.js";
+import { Empty, PageHead, Pill, Row } from "./parts.js";
 
-/** How long a sweep will take, when the mission has been flown before. */
-function willTake(cost: Cost | undefined, scenarios: number, machines: number): string | undefined {
-  if (cost === undefined || !cost.hours || scenarios === 0) return undefined;
-  const hours = (cost.hours * scenarios) / Math.max(1, machines);
-  return hours < 1.5 ? `${Math.round(hours * 60)} minutes of machine time`
-    : `${hours.toFixed(hours < 10 ? 1 : 0)} hours of machine time on ${machines} machine${machines === 1 ? "" : "s"}`;
-}
-
-// ── the list, and asking for one ─────────────────────────────────────────────
-
-export function Sweeps({ platform, held, onOpen, onChanged }: {
-  platform: Platform;
-  held: Held;
-  onOpen: (sweep: string) => void;
-  onChanged: () => void;
-}): React.JSX.Element {
+/** Every sweep, newest first, kept fresh while somebody is looking. */
+/** Every sweep the institution has asked for, newest first, kept fresh while
+ *  somebody is looking — they fly for hours and the counts move. */
+export function useSweeps(platform: Platform, held: Held): Sweep[] {
   const [sweeps, setSweeps] = useState<Sweep[]>([]);
-  const [missions, setMissions] = useState<{ mission: Mission; version: AssetVersion; place: string }[]>([]);
-  const [mission, setMission] = useState<string>("");
-  const [vehicle, setVehicle] = useState<string>(() => held.vehicles[0]?.id ?? "");
-  const [picked, setPicked] = useState<Record<string, string[]>>({
-    current: ["still", "half knot"], fix: ["array", "nothing"],
-  });
-  // Three: enough that one unlucky seed cannot carry a dimension on its own.
-  const [repeats, setRepeats] = useState(3);
-  const [cost, setCost] = useState<Cost | undefined>();
-  const [asking, setAsking] = useState(false);
-  const [trouble, setTrouble] = useState("");
-
   const read = useCallback(() => {
     if (held.institution === undefined) return;
     void platform.sweepsOf(held.institution.id).then(setSweeps).catch(() => undefined);
   }, [platform, held.institution]);
   useEffect(read, [read]);
-  // Kept fresh while somebody is watching one fly.
   useEffect(() => {
     const again = setInterval(read, 15_000);
     return () => clearInterval(again);
   }, [read]);
-
-  // Every plan of work that has something saved: a sweep doubts a mission.
-  useEffect(() => {
-    let stale = false;
-    void (async () => {
-      const found: { mission: Mission; version: AssetVersion; place: string }[] = [];
-      for (const where of held.places) {
-        for (const one of await platform.missionsOf(where.id).catch((): Mission[] => [])) {
-          const saved = await platform.versionsOfMission(one.id).catch((): AssetVersion[] => []);
-          if (saved[0] !== undefined) found.push({ mission: one, version: saved[0], place: where.id });
-        }
-      }
-      if (stale) return;
-      setMissions(found);
-      if (found[0] !== undefined) setMission((was) => was || found[0]!.mission.id);
-    })();
-    return () => { stale = true; };
-  }, [platform, held.places]);
-
-  // What this plan has cost before, so the page can say what the sweep will
-  // take before somebody asks for ninety dives.
-  useEffect(() => {
-    if (mission === "") { setCost(undefined); return; }
-    let stale = false;
-    void platform.missionCost(mission)
-      .then((one) => { if (!stale) setCost(one); })
-      .catch(() => { if (!stale) setCost(undefined); });
-    return () => { stale = true; };
-  }, [platform, mission]);
-
-  const scenarios = useMemo(() => scenariosIn(picked), [picked]);
-  const chosen = missions.find((one) => one.mission.id === mission);
-  const takes = willTake(cost, scenarios * repeats, held.queues[0]?.devices ?? 1);
-
-  async function go(): Promise<void> {
-    const queue = held.queues[0];
-    if (held.institution === undefined || chosen === undefined || queue === undefined) return;
-    setAsking(true); setTrouble("");
-    try {
-      // The published version, not the vehicle: a sweep pins bytes, the way a
-      // dive does, so that ninety runs are ninety runs of one vehicle even if
-      // somebody publishes a newer one while they fly.
-      const published = newestOf(await platform.versionsOfVehicle(vehicle));
-      if (published === undefined) {
-        setTrouble("That vehicle has no published package yet.");
-        return;
-      }
-      const made = await platform.startSweep(held.institution.id, {
-        name: `${chosen.mission.name} ~ ${new Date().toLocaleDateString(undefined,
-          { day: "numeric", month: "long" })}`,
-        missionVersionId: chosen.version.id,
-        vehicleVersionId: published.id,
-        doubts: doubtsFrom(picked) as never,
-        repeats,
-        queueId: queue.id,
-        runtimeVersion: queue.runtimes?.[0] ?? "",
-      });
-      onChanged();
-      onOpen(made.id);
-    } catch (thrown) {
-      setTrouble(thrown instanceof Error ? thrown.message : "it would not start");
-    } finally {
-      setAsking(false);
-    }
-  }
-
-  return (
-    <>
-      <PageHead title="Sweeps"
-                says="A mission against everything nobody can promise about it: which of them break it, what fixes the most of them, and what the weather costs."
-                aside={<Pill>{sweeps.length} {sweeps.length === 1 ? "sweep" : "sweeps"}</Pill>} />
-
-      <section>
-        <h2>Ask one</h2>
-        {missions.length === 0 ? (
-          <p className="quiet">
-            A sweep doubts a plan of work, so there has to be one first —
-            Missions, then come back.
-          </p>
-        ) : (
-          <div className="sweeping">
-            <div className="of">
-              <label>
-                <span>The plan</span>
-                <select value={mission} onChange={(e) => setMission(e.target.value)}>
-                  {missions.map(({ mission: one, place }) => (
-                    <option key={one.id} value={one.id}>
-                      {one.name} · {held.places.find((p) => p.id === place)?.name ?? ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>Flown in</span>
-                <select value={vehicle} onChange={(e) => setVehicle(e.target.value)}>
-                  {held.vehicles.map((one) => (
-                    <option key={one.id} value={one.id}>{one.name}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>Each scenario, how many times</span>
-                <select value={repeats} onChange={(e) => setRepeats(Number(e.target.value))}>
-                  {[1, 3, 5, 10].map((one) => (
-                    <option key={one} value={one}>
-                      {one === 1 ? "once — a coin flip looks like a finding" : `${one} times`}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="doubts">
-              {DOUBTS.map((doubt) => {
-                const on = picked[doubt.key] ?? [];
-                return (
-                  <div key={doubt.key} className={on.length > 1 ? "doubt on" : "doubt"}>
-                    <strong>{doubt.name}</strong>
-                    <small>{doubt.says}</small>
-                    <div className="settings">
-                      {doubt.settings.map((one) => (
-                        <button key={one.key} type="button"
-                                className={on.includes(one.key) ? "setting on" : "setting"}
-                                aria-pressed={on.includes(one.key)}
-                                onClick={() => setPicked((was) => {
-                                  const had = was[doubt.key] ?? [];
-                                  return { ...was, [doubt.key]: had.includes(one.key)
-                                    ? had.filter((k) => k !== one.key) : [...had, one.key] };
-                                })}>
-                          {one.name}
-                        </button>
-                      ))}
-                    </div>
-                    {on.length === 1 ? (
-                      <small className="quiet">
-                        One setting is a decision, not a doubt — pick another, or none.
-                      </small>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="acts">
-              <span className="quiet">
-                {scenarios === 0 ? "Nothing is in doubt yet."
-                  : `${scenarios} scenarios × ${repeats} = ${scenarios * repeats} runs${takes ? ` · about ${takes}` : ""}.`}
-                {cost === undefined || cost.notEnough
-                  ? scenarios > 0 ? " This plan has not been flown before, so how long it will take is not known." : ""
-                  : ""}
-              </span>
-              <button className="big" disabled={asking || scenarios < 2 || chosen === undefined}
-                      onClick={() => void go()}>
-                {asking ? "Asking for water…" : "Sweep it"}
-              </button>
-            </div>
-            {trouble ? <p className="trouble">{trouble}</p> : null}
-          </div>
-        )}
-      </section>
-
-      <section>
-        <h2>What has been swept</h2>
-        {sweeps.length === 0 ? (
-          <Empty title="Nothing swept yet">
-            A sweep flies one plan every way the doubts could resolve, and comes
-            back with the one change that saves the most of them.
-          </Empty>
-        ) : (
-          <div className="rows">
-            {sweeps.map((one) => (
-              <button key={one.id} type="button" className="row open"
-                      onClick={() => onOpen(one.id)}>
-                <span className="what">{one.name}</span>
-                <span className="quiet">
-                  {one.flown ?? 0} of {one.runs ?? 0} flown
-                  {one.flying ? ` · ${one.flying} in the water` : ""} · {ago(one.createdAt)}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-    </>
-  );
+  return sweeps;
 }
 
 // ── reading one ──────────────────────────────────────────────────────────────

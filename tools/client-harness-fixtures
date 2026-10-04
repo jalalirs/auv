@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# The client's development harness draws real places: copy two of them in.
+#
+#   tools/client-harness-fixtures
+#
+# Copied from ~/iocean/places into apps/client/src/renderer/harness/fixtures,
+# which is gitignored: the seabeds are a megabyte and already published.
+set -euo pipefail
+here="$(cd "$(dirname "$0")/.." && pwd)"
+into="${here}/apps/client/src/renderer/harness/fixtures"
+mkdir -p "${into}"
+for place in iocean-tank-1 looe-key; do
+    mkdir -p "${into}/${place}"
+    cp "${HOME}/iocean/places/${place}/site.json" "${HOME}/iocean/places/${place}/seabed.f32" "${into}/${place}/"
+done
+echo "fixtures in ${into}"

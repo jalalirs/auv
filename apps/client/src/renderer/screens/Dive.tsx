@@ -53,7 +53,7 @@ function minutesOf(stages: { timeLimitS?: number; seconds?: number }[]): string 
 interface Flyable { mission: Mission; version: AssetVersion; place: string }
 
 /** The controller a person is: keys, with the hold beneath them. */
-const MANUAL = "manual";
+export const MANUAL = "manual";
 // The water that was measured rather than chosen. Its own key, because it is
 // not one of the composed ones and must not be stored as if it were.
 const MEASURED = "as-measured";
@@ -78,7 +78,7 @@ const ASKING_LOOKS_LIKE =
  * They are here so that the comparison the bench makes at the command line can
  * be made by hand as well: the same task, the same water, two controllers.
  */
-const BUILT_IN: { key: string; name: string; says: string }[] = [
+export const BUILT_IN: { key: string; name: string; says: string }[] = [
   { key: "pursue", name: "The platform's planner",
     says: "Works out a route for the task and flies it. The floor a written controller has to beat." },
   { key: "wary", name: "The planner, with its eyes open",

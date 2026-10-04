@@ -4471,6 +4471,9 @@ components:
             north-east at half a knot, no Doppler log, murky water — and every
             run in it is the same mission under one of them. Free-form on
             purpose: a doubt is whatever somebody could not promise.
+        sweepId:
+          type: string
+          description: The sweep this run is one of, when it is one; a run flown on its own has none.
         deviceId: { type: string, nullable: true }
         gpuShare: { type: number }
         needs:
