@@ -1,7 +1,7 @@
 """Hold a depth.
 
 Written as it would be for the vehicle rather than for a simulator. It links
-against nothing of Coral City's, imports nothing from it, and would not behave
+against nothing of iocean's, imports nothing from it, and would not behave
 differently if the water were real — which is the point of the whole platform:
 the same binary should run in a tank and in the sea.
 

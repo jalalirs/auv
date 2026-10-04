@@ -1,7 +1,7 @@
 // Signing in to a platform.
 //
 // The address is asked for rather than assumed, because the platform is
-// somebody's own box and there is no such thing as the one true Coral City. It
+// somebody's own box and there is no such thing as the one true iocean. It
 // is remembered between launches; the password never is.
 
 import { useEffect, useRef, useState } from "react";

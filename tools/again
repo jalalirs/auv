@@ -178,7 +178,7 @@ PAGE_BODY = """%(verdict)s
   %(rows)s
 </table>"""
 
-PAGE_FOOTER = """Built by Coral City from what each round's missions produced. A
+PAGE_FOOTER = """Built by iocean from what each round's missions produced. A
 round flown differently from the last will read as change on the reef, and
 that is the most expensive mistake a monitoring programme can make: it is
 invisible, and it is in the direction of a finding."""

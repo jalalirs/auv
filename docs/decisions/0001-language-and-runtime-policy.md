@@ -5,7 +5,7 @@
 
 ## Context
 
-Coral City spans a cloud product, browser visualization, robotics, simulation,
+iocean spans a cloud product, browser visualization, robotics, simulation,
 edge operation, and scientific software. One language cannot serve every area
 well, but an unconstrained mix would make the product difficult to understand
 and operate. Python must not become the default architecture merely because

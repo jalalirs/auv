@@ -32,6 +32,9 @@ import pathlib
 import sys
 import time
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import built  # noqa: E402
+
 import numpy as np
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -428,8 +431,8 @@ def main() -> int:
     t0 = time.time()
     made = build(args.name, into, args.seed)
     place = a_place(args.name, made)
-    place["builtBy"] = [{"tool": "make-jeddah-tank", "args": {"name": args.name, "seed": args.seed},
-                         "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}]
+    # How it was called, so tools/rebuild can make it again.
+    built.record_call(place, "make-jeddah-tank")
     (into / "site.json").write_text(json.dumps(place, indent=1) + "\n")
     print(f"{args.name}: {made['meshes']} meshes, {len(made['corals'])} corals, ground {made['lowest']:.2f}..{made['highest']:.2f} m "
           f"→ {into} in {time.time() - t0:.1f} s")

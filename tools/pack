@@ -158,7 +158,7 @@ PAGE_BODY = """<table>
   %(rows)s
 </table>"""
 
-PAGE_FOOTER = """%(counted)s · built by Coral City from what is in this folder."""
+PAGE_FOOTER = """%(counted)s · built by iocean from what is in this folder."""
 
 
 def find(where: pathlib.Path, filename: str) -> list[pathlib.Path]:

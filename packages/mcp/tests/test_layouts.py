@@ -171,7 +171,7 @@ class Fleet:
         return [{"path": "dynamics.json"}]
 
     def institution(self):
-        return {"id": "org_1", "name": "Coral City"}
+        return {"id": "org_1", "name": "iocean"}
 
     def queues(self):
         return [{"id": "q_1", "slug": "box-gpus"}]

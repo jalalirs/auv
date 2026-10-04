@@ -239,7 +239,7 @@ export material coral_ground(
     ]]
 )
 [[
-    anno::display_name("Coral City seabed"),
+    anno::display_name("iocean seabed"),
     anno::description("A site colour map at low frequency, a tiled surface at "
                       "high frequency, and neither pretending to be the other.")
 ]]

@@ -30,7 +30,7 @@ export function Badge({ under }: { under?: string }): React.JSX.Element {
     <div className="badge">
       <img src={mark} alt="" />
       <div>
-        <h1>Coral City</h1>
+        <h1>iocean</h1>
         {under === undefined ? null : <p>{under}</p>}
       </div>
     </div>

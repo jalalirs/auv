@@ -1,4 +1,4 @@
-# Coral City over MCP, for agents that are not on this machine.
+# iocean over MCP, for agents that are not on this machine.
 #
 # No Python dependencies — the server speaks the protocol and HTTP with the
 # standard library — and one system one: ffmpeg, because dives_frame reads a

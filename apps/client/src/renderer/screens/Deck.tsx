@@ -1,4 +1,4 @@
-// Coral City, once you are in.
+// iocean, once you are in.
 //
 // A rail down the side and a page beside it. What is on the rail is what this
 // platform is made of — places, vehicles, autonomy, dives — so the shape of the
@@ -132,7 +132,7 @@ export function Deck({ platform, onDiving }: {
         <img className="boot-art" src={boot} alt="" />
         <div className="badge-big">
           <img src={mark} alt="" />
-          <strong>Coral City</strong>
+          <strong>iocean</strong>
         </div>
         <div className="tide" />
         <p className="note">{trouble || "Reading the platform…"}</p>
@@ -152,7 +152,7 @@ export function Deck({ platform, onDiving }: {
       <nav>
         <div className="here">
           <img src={mark} alt="" />
-          <strong>Coral City</strong>
+          <strong>iocean</strong>
         </div>
 
         {PAGES.map((one) => (

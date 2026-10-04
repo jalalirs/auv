@@ -1,4 +1,4 @@
-# The Coral City mark
+# The iocean mark
 
 `coral-city.svg` is the source. Everything else is rendered from it, so there is
 one drawing and not several that drift apart.

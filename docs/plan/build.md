@@ -36,7 +36,7 @@ exists. The rest is the platform.
 | **M3** | The vehicle behaves like a submarine | the ROV holds depth against real buoyancy, gravity on | 3–4d |
 | **M4** | A dive runs end to end | submit → GPU claimed → sim runs → telemetry → replay reproduces it | 4d |
 | **M5** | Autonomy plugs in | a container we did not write holds 2 m depth over ROS 2 | 3d |
-| **M6** | The client | Coral City opens with no trace of Isaac Sim's editor | 1w |
+| **M6** | The client | iocean opens with no trace of Isaac Sim's editor | 1w |
 | **M7** | Batch | one dive × 200 conditions, headless, scored | 3d |
 
 M3 carries the risk: everything else is plumbing, that is physics that has to

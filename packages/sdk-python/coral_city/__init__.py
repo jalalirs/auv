@@ -1,4 +1,4 @@
-"""Coral City's controller SDK.
+"""iocean's controller SDK.
 
 A controller is a class: it is handed what the vehicle knows about itself and
 answers with what it wants the vehicle to do, and it declares what a hand may

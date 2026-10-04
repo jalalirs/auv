@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end check against a running Coral City deployment.
+# End-to-end check against a running iocean deployment.
 #
 # This exercises the journey a person actually takes and the invariants the
 # platform promises: that access is decided in one place, that an asset nobody
@@ -141,7 +141,7 @@ print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())
 step "The deployment answers"
 
 check "the build identifies itself" \
-    "$(api '' GET /api/v1/platform | json "['name']")" "Coral City"
+    "$(api '' GET /api/v1/platform | json "['name']")" "iocean"
 check "it reports itself ready" "$(status '' GET /health/ready)" "200"
 check "it reports itself live" "$(status '' GET /health/live)" "200"
 

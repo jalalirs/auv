@@ -108,7 +108,7 @@ class Encoder:
                     stdout=None if self.into is not None else subprocess.PIPE,
                     stderr=subprocess.PIPE, bufsize=0)
             except Exception as exc:
-                carb.log_warn(f"Coral City could not start {codec}: {exc}")
+                carb.log_warn(f"iocean could not start {codec}: {exc}")
                 continue
             # It may still fail on the first frame — an encoder session it
             # cannot get, a driver that will not have it — and the reader

@@ -1,4 +1,4 @@
-"""mini-hoot as a Coral City vehicle package.
+"""mini-hoot as a iocean vehicle package.
 
     hardware/.venv/bin/python hardware/mini/shape.py     # the meshes first
     hardware/.venv/bin/python hardware/mini/package.py   → catalog/vehicles/mini-hoot/

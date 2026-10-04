@@ -1,4 +1,4 @@
-// Coral City, from the outside in.
+// iocean, from the outside in.
 //
 // Four states and no more, because that is how many the thing actually has: you
 // are signed out, you are on the deck, you are waiting for water, or you are in

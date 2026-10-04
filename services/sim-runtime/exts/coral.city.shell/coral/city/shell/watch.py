@@ -86,7 +86,7 @@ class Watch:
                 try:
                     await socket.send_str(json.dumps(self.on_hello()))
                 except Exception as exc:
-                    carb.log_warn(f"Coral City could not greet a watcher: {exc}")
+                    carb.log_warn(f"iocean could not greet a watcher: {exc}")
             # One sender per watcher, fed a queue that holds only the newest
             # frame. Sending straight from the capture callback put every
             # frame on the wire as its own coroutine, and on a link slower
@@ -160,7 +160,7 @@ class Watch:
                                             "place", "found", "reset", "retry")):
                 self.on_message(said)
         except Exception as exc:
-            carb.log_warn(f"Coral City could not read what was asked: {exc}")
+            carb.log_warn(f"iocean could not read what was asked: {exc}")
 
     # ── sending ──────────────────────────────────────────────────────────────
 

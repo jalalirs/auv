@@ -89,7 +89,7 @@ run:
     docker compose -f {{compose}} build control-plane worker
     docker compose -f {{compose}} up -d
     @echo
-    @echo "Coral City is at http://localhost:${CORAL_CITY_WEB_PORT:-18090}"
+    @echo "iocean is at http://localhost:${CORAL_CITY_WEB_PORT:-18090}"
     @echo "Sign in with ${CORAL_CITY_ADMIN_EMAIL:-admin@coral.local} / ${CORAL_CITY_ADMIN_SECRET:-development-secret}"
 
 # Follow what the local platform is doing.

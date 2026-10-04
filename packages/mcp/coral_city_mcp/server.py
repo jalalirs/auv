@@ -1,4 +1,4 @@
-"""Coral City over MCP, on stdio.
+"""iocean over MCP, on stdio.
 
 Speaks the protocol directly rather than through a framework. There is not much
 of it — initialize, tools/list, tools/call — and a dependency that has to be
@@ -245,7 +245,7 @@ def handle(said: dict, platform: Platform | None,
             "capabilities": {"tools": {}},
             "serverInfo": {"name": "coral-city", "version": "0.1.0"},
             "instructions": (
-                "Coral City: underwater vehicles, real reefs, and dives whose "
+                "iocean: underwater vehicles, real reefs, and dives whose "
                 "every number says who measured it. Values arrive as "
                 "{value, kind, from} where kind is measured, derived, chosen or "
                 "assumed. Report the kind with the number — a derived figure "

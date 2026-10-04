@@ -1,4 +1,4 @@
-# Packaging Coral City for macOS.
+# Packaging iocean for macOS.
 #
 # Signed and notarised with the team's own Developer ID. Nothing about that
 # identity is written here: the certificate lives in a keychain and the
@@ -6,8 +6,8 @@
 # certificate that has to be revoked. Without them this still produces a working
 # unsigned application, which is what you want while building it.
 appId: com.coralcity.client
-productName: Coral City
-copyright: Coral City
+productName: iocean
+copyright: iocean
 
 directories:
   output: release
@@ -29,7 +29,7 @@ mac:
   entitlementsInherit: assets/entitlements.plist
 
 dmg:
-  title: Coral City
+  title: iocean
   # Nothing but the application and the place to put it.
   contents:
     - { x: 150, y: 190, type: file }

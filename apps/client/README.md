@@ -1,4 +1,4 @@
-# Coral City
+# iocean
 
 The application. It runs on your machine, signs in to a platform, and dives.
 

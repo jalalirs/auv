@@ -1,4 +1,4 @@
-"""Coral City, running.
+"""iocean, running.
 
 The application starts, this reads the brief the agent wrote, opens the place,
 puts the vehicle in it and steps the same dive the headless runner steps. The
@@ -164,7 +164,7 @@ class CoralCityShell(omni.ext.IExt):
             import signal
             signal.signal(signal.SIGTERM, lambda *_: setattr(self, "_asked_to_stop", True))
         except Exception as exc:
-            carb.log_warn(f"Coral City will not hear a stop: {exc}")
+            carb.log_warn(f"iocean will not hear a stop: {exc}")
         self._watch_port = int(os.environ.get("CORAL_CITY_WATCH_PORT", "18102"))
         # Flying over the place to look at it, rather than diving in it. Same
         # place, same water, same light — only the camera differs, and no
@@ -186,7 +186,7 @@ class CoralCityShell(omni.ext.IExt):
         except Exception as exc:
             # A dive nobody can fly by hand is still a dive. Autonomy does not
             # need a keyboard.
-            carb.log_warn(f"Coral City has no keyboard: {exc}")
+            carb.log_warn(f"iocean has no keyboard: {exc}")
 
         # Subscribed before anything is loaded, so that a failure to open has
         # somewhere to be reported rather than a black window.
@@ -196,7 +196,7 @@ class CoralCityShell(omni.ext.IExt):
         try:
             self._open()
         except Exception as exc:  # a shell that dies silently is worse than one that says so
-            carb.log_error(f"Coral City could not open the dive: {exc}")
+            carb.log_error(f"iocean could not open the dive: {exc}")
             self.hud.opened("this dive would not open", str(exc)[:120])
 
     # ── opening ──────────────────────────────────────────────────────────────
@@ -576,7 +576,7 @@ class CoralCityShell(omni.ext.IExt):
                       looking_through=str(viewport.camera_path),
                       eye=[round(float(v), 2) for v in from_])
         except Exception as exc:
-            carb.log_warn(f"Coral City could not place the camera: {exc}")
+            carb.log_warn(f"iocean could not place the camera: {exc}")
 
     # ── running ──────────────────────────────────────────────────────────────
 
@@ -602,7 +602,7 @@ class CoralCityShell(omni.ext.IExt):
                 try:
                     omni.kit.app.get_app().post_quit()
                 except Exception as exc:
-                    carb.log_warn(f"Coral City could not quit: {exc}")
+                    carb.log_warn(f"iocean could not quit: {exc}")
             return
 
         # Before anything else, and only at the start: expose for what is
@@ -753,7 +753,7 @@ class CoralCityShell(omni.ext.IExt):
                                on_want=self._wanted)
             self._every = 1.0 / max(1, FRAMES_PER_SECOND)
         except Exception as exc:
-            carb.log_warn(f"Coral City cannot be watched from elsewhere: {exc}")
+            carb.log_warn(f"iocean cannot be watched from elsewhere: {exc}")
             self._say("watch_unavailable", why=str(exc)[:200])
 
     def _greeting(self) -> dict:
@@ -844,7 +844,7 @@ class CoralCityShell(omni.ext.IExt):
             self._capturing = False
             if not self._complained:
                 self._complained = True
-                carb.log_error(f"Coral City could not ask for a frame: {exc}")
+                carb.log_error(f"iocean could not ask for a frame: {exc}")
                 self._say("frames_unavailable", why=str(exc)[:200])
 
     def _encode(self, buffer, size, wide, tall, fmt=None) -> None:
@@ -895,7 +895,7 @@ class CoralCityShell(omni.ext.IExt):
             # a second writes its own haystack.
             if not self._complained:
                 self._complained = True
-                carb.log_error(f"Coral City could not encode a frame: {exc}")
+                carb.log_error(f"iocean could not encode a frame: {exc}")
                 self._say("frames_unavailable", why=str(exc)[:200])
 
     def _fly_the_tour(self, dive) -> None:
@@ -978,7 +978,7 @@ class CoralCityShell(omni.ext.IExt):
                 self._say("tour_flying", frames=self.tour.taken)
         except Exception as exc:
             self.tour.waiting = False
-            carb.log_error(f"Coral City could not fly the tour: {exc}")
+            carb.log_error(f"iocean could not fly the tour: {exc}")
             self._say("tour_failed", why=str(exc)[:200])
             self.finished = True
 
@@ -1009,7 +1009,7 @@ class CoralCityShell(omni.ext.IExt):
             self._recording_frame = False
             if not self._complained:
                 self._complained = True
-                carb.log_warn(f"Coral City could not record a frame: {exc}")
+                carb.log_warn(f"iocean could not record a frame: {exc}")
 
     def _recorded(self, buffer, size, wide, tall, fmt=None) -> None:
         """A captured frame, into the recording's video."""
@@ -1046,7 +1046,7 @@ class CoralCityShell(omni.ext.IExt):
         except Exception as exc:
             if not self._complained:
                 self._complained = True
-                carb.log_warn(f"Coral City could not record a frame: {exc}")
+                carb.log_warn(f"iocean could not record a frame: {exc}")
 
     # ── the light meter ──────────────────────────────────────────────────────
 
@@ -1310,7 +1310,7 @@ class CoralCityShell(omni.ext.IExt):
             capture_viewport_to_file(viewport, str(path))
             self._say("photograph", at=at, path=str(path))
         except Exception as exc:
-            carb.log_warn(f"Coral City could not photograph the dive: {exc}")
+            carb.log_warn(f"iocean could not photograph the dive: {exc}")
 
     # ── reporting ────────────────────────────────────────────────────────────
 

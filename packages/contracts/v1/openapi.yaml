@@ -1,11 +1,11 @@
 openapi: 3.1.0
 
 info:
-  title: Coral City platform API
+  title: iocean platform API
   version: "1.0.0"
   summary: A hub for oceanic engineering and science.
   description: |
-    Coral City holds one shared, governed record of the ocean, lets people enter
+    iocean holds one shared, governed record of the ocean, lets people enter
     specific places at survey fidelity, merges live observation with simulation,
     and lets any institution run its own work against that world.
 

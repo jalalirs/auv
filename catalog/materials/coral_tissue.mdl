@@ -211,7 +211,7 @@ export material coral_tissue(
         anno::in_group("Water")
     ]])
 [[
-    anno::display_name("Coral City living coral"),
+    anno::display_name("iocean living coral"),
     anno::description("Translucent tissue over white aragonite, with "
                       "corallites and a stand-in for fluorescence.")
 ]]

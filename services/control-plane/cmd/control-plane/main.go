@@ -1,4 +1,4 @@
-// Command control-plane serves the Coral City platform API.
+// Command control-plane serves the iocean platform API.
 //
 // It owns identity, governance, places, layers, provenance, work, and the
 // record of all of it. It runs no scientific work itself: workers lease that.

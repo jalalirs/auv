@@ -204,7 +204,7 @@ services:
       - -secret=${CORAL_CITY_ADMIN_SECRET:?set the first administrator's secret}
       - -name=${CORAL_CITY_ADMIN_NAME:?set the first administrator's name}
       - -organisation=${CORAL_CITY_ADMIN_ORG:?set the first institution}
-      - -organisation-name=${CORAL_CITY_ADMIN_ORG_NAME:-Coral City}
+      - -organisation-name=${CORAL_CITY_ADMIN_ORG_NAME:-iocean}
       - -target=${CORAL_CITY_AGENT_TARGET:-box}
       - -worker-credential-file=/credentials/worker
     environment: *platform-env

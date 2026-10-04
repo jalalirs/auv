@@ -1,4 +1,4 @@
-# Coral City over MCP
+# iocean over MCP
 
 Places, vehicles and dives an agent can drive, with every number marked.
 

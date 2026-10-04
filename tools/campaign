@@ -479,7 +479,7 @@ PAGE_BODY = """%(warning)s
 <h2>%(order_head)s</h2>
 <p class="where">%(order)s</p>"""
 
-PAGE_FOOTER = """Built by Coral City from the place's own seabed and colonies, and
+PAGE_FOOTER = """Built by iocean from the place's own seabed and colonies, and
 from %(source)s. Cells times a number nobody measured is a promise, not a
 plan — so the arithmetic stops where the evidence does."""
 

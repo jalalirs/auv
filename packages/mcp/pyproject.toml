@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "coral-city-mcp"
 version = "0.1.0"
-description = "Coral City over MCP: places, vehicles and dives an agent can drive, with every number marked."
+description = "iocean over MCP: places, vehicles and dives an agent can drive, with every number marked."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []

@@ -1,4 +1,4 @@
-"""Coral City, for agents."""
+"""iocean, for agents."""
 
 from .platform import Platform, Refused
 from .provenance import said, unknown

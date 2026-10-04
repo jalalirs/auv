@@ -2,7 +2,7 @@
 
 An autonomy stack, written the way somebody bringing their own would write it.
 
-It imports nothing from Coral City and knows nothing about a simulator. It
+It imports nothing from iocean and knows nothing about a simulator. It
 subscribes to `/depth`, works the depth out of the pressure the way it would
 from a real sensor, and publishes six thruster commands on `/thruster_cmd`.
 The same container would fly a real BlueROV2.

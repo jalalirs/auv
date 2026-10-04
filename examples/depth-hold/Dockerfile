@@ -2,7 +2,7 @@
 # build it.
 #
 # Built on the ROS 2 distribution rather than on anything of ours: it has no
-# dependency on Coral City, cannot import from it, and the platform runs it as
+# dependency on iocean, cannot import from it, and the platform runs it as
 # untrusted code — no docker socket, no host network, egress denied.
 FROM ros:jazzy-ros-core
 

@@ -617,7 +617,7 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		Attach: network,
 	}
 
-	// A dive that will be looked at runs Coral City rather than the runner
+	// A dive that will be looked at runs iocean rather than the runner
 	// alone, so its recording can carry frames; one that will not starts no
 	// renderer at all. Both come from `drawn`, decided with the brief above, so
 	// what the container runs and what the brief says cannot disagree.

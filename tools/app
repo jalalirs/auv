@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the Coral City application, from anywhere.
+# Start the iocean application, from anywhere.
 #
 #   ./tools/app          build and open it
 #   ./tools/app dev      the renderer alone in a browser, against the box

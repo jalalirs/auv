@@ -462,7 +462,7 @@ package; the dive page opens on the place you are about to dive; the
 application carries its own icon and opens on its own image, not Electron's.
 
 **Done when:** the dock shows the coral, the first thing on screen is the
-Coral City image, and no card on the dive page says "no picture yet" for a
+iocean image, and no card on the dive page says "no picture yet" for a
 place that has been rendered.
 
 *Where it stands:* the dive page is one composer over the place's picture,

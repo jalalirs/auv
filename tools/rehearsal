@@ -234,7 +234,7 @@ def page(name: str, found: dict) -> str:
             "cost": cost_of(found),
             "scenarios": scenarios_of(found),
         },
-        footer="Built by Coral City from the sweep's own findings. A doubt "
+        footer="Built by iocean from the sweep's own findings. A doubt "
                "whose scenarios could all have gone either way is named and "
                "not ranked.")
 

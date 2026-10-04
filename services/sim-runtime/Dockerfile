@@ -83,7 +83,7 @@ COPY --chown=1234:1234 services/sim-runtime/coral /isaac-sim/coral
 # later COPY has to be trusted to leave alone.
 COPY --chown=1234:1234 packages/sdk-python/coral_city /isaac-sim/coral/coral_city
 
-# Coral City: the application somebody watches a dive in. It is not the editor,
+# iocean: the application somebody watches a dive in. It is not the editor,
 # and it steps the same dive the headless runner steps — the schedule differs,
 # the physics does not.
 #

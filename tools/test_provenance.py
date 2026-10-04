@@ -362,9 +362,14 @@ def _tools_that_write_a_place():
             said = f.read_text()
         except (UnicodeDecodeError, OSError):
             continue
-        if '"site.json").write_text' in said:
+        if '"site.json").write_text' in said and f.name not in SCRATCH:
             out.append((f.name, said))
     return out
+
+
+# Tools that write a site.json that is not a place: nothing rebuilds it, so it
+# has no call to record.
+SCRATCH = {"regress": "a flat seabed in the temp directory for the tow case, made afresh every run"}
 
 
 def test_every_tool_that_writes_a_place_records_the_call():

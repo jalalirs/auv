@@ -38,6 +38,9 @@ import sys
 import numpy as np
 import requests
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import built  # noqa: E402
+
 GEBCO = "https://dap.ceda.ac.uk/bodc/gebco/global/gebco_2026"
 ELEVATION = f"{GEBCO}/ice_surface_elevation/netcdf/GEBCO_2026.nc"
 TID = f"{GEBCO}/type_identifier_grid/netcdf/gebco_2026_tid.nc"
@@ -165,6 +168,8 @@ def main(argv=None) -> int:
             "coveredShare": round(float(np.isfinite(beams).mean()), 3),
             "from": ("measured: NOAA NCEI multibeam bathymetry mosaic (IHO Data Centre for Digital Bathymetry), "
                      "3 arc-second, through its image service; NaN where no ship has surveyed")}
+    # How it was called, so tools/rebuild fetches the surroundings again.
+    built.record_call(site, "surroundings")
     (args.place / "site.json").write_text(json.dumps(site, indent=1) + "\n")
     print(f"{args.place.name}: {height.shape[0]} x {height.shape[1]} cells, "
           f"{height.min():.0f}..{height.max():.0f} m, {site['surroundings']['whatEachCellIs']}")

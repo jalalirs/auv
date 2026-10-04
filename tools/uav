@@ -12,7 +12,7 @@
 #   uav logs [service]      follow a service
 #   uav agent [lines]       what the agent has been doing
 #
-#   uav app [open|close]    build and open Coral City on this machine
+#   uav app [open|close]    build and open iocean on this machine
 #   uav dive [mode]         ask for a dive; interactive unless told otherwise
 #   uav runs                recent runs, and what became of them
 #   uav watch [run]         what a dive reported, as it reported it
@@ -156,7 +156,7 @@ command_app() {
         || die "the application would not build"
     ( cd "${ROOT}/apps/client" && mise exec -- npx electron . \
         > "${ROOT}/.uav-app.log" 2>&1 & )
-    bold "Coral City"
+    bold "iocean"
     dim  "$(platform)"
 }
 

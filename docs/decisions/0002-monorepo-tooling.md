@@ -5,7 +5,7 @@
 
 ## Context
 
-Coral City is one product containing applications, services, contracts,
+iocean is one product containing applications, services, contracts,
 workflows, integrations, and deployment definitions. Development must behave
 consistently on a Mac, the GPU box, and continuous integration without hiding
 language-native tools or forcing every component into a JavaScript build graph.

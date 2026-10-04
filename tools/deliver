@@ -215,7 +215,7 @@ def provenance(site: dict) -> dict:  # noqa: C901
     surveyed_sizes = reef.get("sizesAre") == "surveyed"
     return {
         "place": site.get("name"),
-        "madeBy": "Coral City",
+        "madeBy": "iocean",
         "readThisFirst": (
             "These are simulation outputs. The seabed is a real survey. "
             + ("Every colony listed here is one a survey detected, at the "
@@ -1092,7 +1092,7 @@ def report(place: dict, manifest: dict, summary: dict, poses: list[dict],
                             "reef": disturbance_section(manifest.get("disturbance"),
                                                         manifest.get("countedShare"), prov),
                             "conditions": rows, "files": files},
-        footer="Built by Coral City from the dive's own recording. "
+        footer="Built by iocean from the dive's own recording. "
                "<code>provenance.json</code> says what every column is; not one "
                "of them is an observation of a real reef.")
 

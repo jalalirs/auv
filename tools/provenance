@@ -358,7 +358,7 @@ def sheet(name: str, where: str, says: str, first: str, rows: list[dict],
     return frame(
         title=html.escape(name) + " — what anybody measured",
         name=html.escape(name), where=html.escape(where), says=says,
-        footer="%s · built by Coral City from %s own record%s"
+        footer="%s · built by iocean from %s own record%s"
                % (html.escape(counted), html.escape(whose),
                   (" · " + html.escape(built)) if built else ""),
         body=BODY % {
@@ -412,11 +412,11 @@ def index(places: list[dict]) -> str:
             "bar": bar,
         })
     return frame(
-        title="Coral City — what anybody measured", name="Coral City",
+        title="iocean — what anybody measured", name="iocean",
         where="%d places · what anybody measured" % len(places),
         says=INDEX_SAYS,
         body=INDEX_BODY % {"rows": "\n  ".join(rows)},
-        footer="Built by Coral City from each place's own record. Nothing on "
+        footer="Built by iocean from each place's own record. Nothing on "
                "this page was typed by hand.")
 
 

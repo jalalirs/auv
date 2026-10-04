@@ -1,6 +1,6 @@
-# Coral City
+# iocean
 
-Coral City is a hub for oceanic engineering and science. This repository is its
+iocean is a hub for oceanic engineering and science. This repository is its
 monorepo.
 
 It holds one shared, governed record of the ocean; lets people enter specific
@@ -69,7 +69,7 @@ scenario, permanently. The database refuses to record otherwise.
 | `tools/` | Human entry points for repository operations |
 
 A directory appears here only when it holds something. There is no `projects/`
-layer: Coral City is the project.
+layer: iocean is the project.
 
 ## Running it
 
@@ -103,7 +103,7 @@ just reset    # stop it and discard everything it holds
 - Work supplied by an organisation is untrusted: no network, no capabilities, no
   way to gain privileges, a read-only root, and the resources it was admitted
   for.
-- Scientific solvers run behind adapters and never define Coral City APIs.
+- Scientific solvers run behind adapters and never define iocean APIs.
 - Vehicle safety and low-latency control will remain local to the field edge.
 
 ## Where this is

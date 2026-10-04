@@ -18,13 +18,13 @@ works in the sea.
 | | Where | Does |
 |---|---|---|
 | **Body** | inside the vehicle | sensors, thrusters, attitude and depth hold at 400 Hz, surfaces by itself if the tether goes quiet |
-| **Brain** | DGX Spark, on the home network | vision, autonomy, your Coral City controller at 20–50 Hz over the tether, and training in the simulator |
+| **Brain** | DGX Spark, on the home network | vision, autonomy, your iocean controller at 20–50 Hz over the tether, and training in the simulator |
 
 The tether runs to a small switch beside the tank and from there to the
 DGX on a cable (not Wi-Fi), about a millisecond each way. If the link is
 slow or lost, the body's own loop keeps it level, at depth, and surfaces it.
 
-The topics between body and brain are Coral City's SDK contract, so a
+The topics between body and brain are iocean's SDK contract, so a
 controller flown in the simulator runs on the DGX unchanged.
 
 ## The vehicle

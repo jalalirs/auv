@@ -5,7 +5,7 @@
 
 ## Context
 
-Coral City is a hub for oceanic engineering and science. It holds one shared
+iocean is a hub for oceanic engineering and science. It holds one shared
 record of the ocean, lets people enter specific places at survey fidelity,
 merges live observation with simulation, and lets organisations run their own
 jobs, scenarios, and autonomy software against that world.

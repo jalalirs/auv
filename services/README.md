@@ -1,6 +1,6 @@
 # Services
 
-Long-running Coral City processes.
+Long-running iocean processes.
 
 | Service | What it owns |
 | --- | --- |

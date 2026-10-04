@@ -87,7 +87,7 @@ warn_if_out_of_step() {
 }
 
 command_init() {
-    local email="" name="" org="coral" org_name="Coral City"
+    local email="" name="" org="coral" org_name="iocean"
     while [ $# -gt 0 ]; do
         case "$1" in
             -email|--email) email="$2"; shift 2 ;;

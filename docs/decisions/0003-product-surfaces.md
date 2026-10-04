@@ -5,7 +5,7 @@
 
 ## Context
 
-Coral City must support scientists exploring a digital twin, robotics teams
+iocean must support scientists exploring a digital twin, robotics teams
 running GPU simulation, and field operators working through unreliable
 connectivity. It may be deployed as a hosted service, inside an institution, or
 in a hybrid arrangement. The product must support multiple concurrent users
@@ -20,7 +20,7 @@ without assigning a permanent GPU to every account.
 
 ## Decision
 
-- The primary Coral City interface is a cloud-based web application.
+- The primary iocean interface is a cloud-based web application.
 - Browser-native 3D presents the reef atlas, environmental state, mission
   results, and other interactive scientific views that do not require an Isaac
   render process.
@@ -35,7 +35,7 @@ without assigning a permanent GPU to every account.
 - Electron is not part of the product architecture.
 - Immediate vehicle safety and emergency control remain at the field edge and
   never depend on cloud or GPU connectivity.
-- Coral City is an independent product. External orchestration products are not
+- iocean is an independent product. External orchestration products are not
   assumed dependencies and are not part of its architecture.
 
 ## Consequences

@@ -1,9 +1,9 @@
 [package]
 version = "0.1.0"
-title = "Coral City shell"
+title = "iocean shell"
 description = "The dive, and everything a person sees of it"
 category = "simulation"
-authors = ["Coral City"]
+authors = ["iocean"]
 
 [dependencies]
 "omni.ui" = {}

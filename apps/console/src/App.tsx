@@ -77,7 +77,7 @@ export function App() {
     <div className="shell">
       <aside className="rail">
         <div className="mark">
-          <h1>Coral City</h1>
+          <h1>iocean</h1>
           <p>control plane</p>
         </div>
         <nav>
@@ -147,7 +147,7 @@ function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   return (
     <div className="signin">
       <form onSubmit={submit}>
-        <h1>Coral City</h1>
+        <h1>iocean</h1>
         <p className="lede">The control plane. Resources and governance.</p>
 
         <label htmlFor="email">Address</label>

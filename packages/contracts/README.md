@@ -1,6 +1,6 @@
 # Contracts
 
-The versioned description of everything Coral City exposes.
+The versioned description of everything iocean exposes.
 
 This package is the source of truth for the shapes the platform accepts and
 returns. It depends on nothing: not on the services that implement it, not on

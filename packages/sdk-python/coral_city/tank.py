@@ -63,7 +63,7 @@ def _runtime():
             import runner
             from controllers import Helm
             return hydrodynamics, runner, Helm
-    raise ImportError("the tank needs the Coral City runtime: pip install 'coral-city[tank]', "
+    raise ImportError("the tank needs the iocean runtime: pip install 'coral-city[tank]', "
                       "or set CORAL_CITY_RUNTIME to services/sim-runtime/coral")
 
 

@@ -1,4 +1,4 @@
-// Coral City, on somebody's own machine.
+// iocean, on somebody's own machine.
 //
 // This process owns the window, answers the few things the window may ask it
 // for, and nothing else. No CUDA here, no ROS, no world data — that is the
@@ -52,6 +52,9 @@ function open(): void {
   void window.loadFile(path.join(here, "../renderer/index.html"));
 }
 
+// The old name, on purpose: it names the folder this machine keeps the
+// application's settings in, and changing it would forget them. It moves with
+// the rest of the names outside the repository (docs/plan/iocean-rename.md).
 app.setName("Coral City");
 
 void app.whenReady().then(() => {
