@@ -290,12 +290,15 @@ def _reef_of(outcome: dict) -> dict:
     coral = outcome.get("coral") or {}
     if coral:
         out["coral"] = said({"colonies": coral.get("colonies"), "struck": coral.get("struck"),
-                             "brushed": coral.get("brushed"), "broken": coral.get("broken")},
+                             "brushed": coral.get("brushed"), "broken": coral.get("broken"),
+                             **{k: coral[k] for k in ("tornOff", "smothered", "smotheredBadly",
+                                                      "smotheredOver", "worstSmothered") if k in coral}},
                             DERIVED, coral.get("from") or "the coral system")
     sediment = outcome.get("sediment") or {}
     if sediment:
-        out["sediment"] = said({k: sediment.get(k) for k in ("liftedG", "settledG", "worstVisibilityM",
-                                                             "worstOnACoralMgCm2")},
+        out["sediment"] = said({k: sediment.get(k) for k in ("liftedG", "settledG", "dredgedKg", "inTheWaterG",
+                                                             "worstVisibilityM", "worstOnACoralMgCm2")
+                                if k in sediment},
                                DERIVED, sediment.get("from") or "the sediment system")
     if outcome.get("hardestStrike"):
         out["hardestStrike"] = said(outcome["hardestStrike"], DERIVED,

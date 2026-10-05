@@ -67,3 +67,19 @@ def test_the_plume_settles_down_current_and_not_up():
     assert dose[0] > 0.0, "the colony down-current is dosed"
     assert dose[1] == 0.0, "the colony up-current is not"
     assert sed.said()["dredgedKg"] > 0
+
+
+def test_the_record_says_where_the_smothering_reached():
+    from systems.coral import _judge
+
+    ocean = a_reef_and_a_dredger()
+    system = SedimentSystem(0, lambda *a, **k: None)
+    for _ in range(int(300 / 0.05)):
+        system.step(ocean)
+        ocean.clock.simulated += 0.05
+    _judge(ocean.coral, ocean.sediment.on_coral_mg_cm2, 300.0, lambda *a, **k: None)
+    said = ocean.coral.said()
+    assert said["smothered"] == 1
+    assert said["smotheredOver"] == {"from": [60.0, 0.0], "to": [60.0, 0.0]}
+    assert said["worstSmothered"][0]["at"][:2] == [60.0, 0.0]
+    assert said["worstSmothered"][0]["mgCm2PerDay"] > 0

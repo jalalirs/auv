@@ -166,13 +166,27 @@ class Colonies:
                 **({} if not self.torn_off.any() else {"tornOff": [
                     {"kind": str(self.kind[i]), "at": [round(float(c), 3) for c in self.at[i]]}
                     for i in np.flatnonzero(self.torn_off)]}),
-                **({} if not self.smothered.any() else {
-                    "smothered": int((self.smothered >= 1).sum()),
-                    "smotheredBadly": int((self.smothered >= 2).sum())}),
+                **({} if not self.smothered.any() else self._smothering()),
                 **({} if not len(getattr(self, "polyps", [])) else {
                     "polypsOut": round(float(np.mean(self.polyps)), 3),
                     "disturbed": int(np.isfinite(self.disturbed_at).sum())}),
                 "from": self.from_}
+
+    def _smothering(self) -> dict:
+        """How many were smothered, over how much of the reef, and the worst.
+
+        A count alone does not say whether a plume buried the few colonies
+        under the dredger or dusted a kilometre of reef, which is the whole
+        question a dredging permit asks."""
+        hit = np.flatnonzero(self.smothered >= 1)
+        dose = getattr(self, "dose", None)
+        worst = hit if dose is None else hit[np.argsort(-dose[hit])][:5]
+        return {"smothered": int(len(hit)), "smotheredBadly": int((self.smothered >= 2).sum()),
+                "smotheredOver": {"from": [round(float(v), 1) for v in self.at[hit, :2].min(axis=0)],
+                                  "to": [round(float(v), 1) for v in self.at[hit, :2].max(axis=0)]},
+                "worstSmothered": [{"at": [round(float(c), 1) for c in self.at[i]],
+                                    **({} if dose is None else {"mgCm2PerDay": round(float(dose[i]), 1)})}
+                                   for i in worst]}
 
 
 def colonies_of(described: dict, bottom_under, city=None) -> Colonies:
@@ -377,6 +391,7 @@ def _judge(coral, settled, seconds, say):
     if settled is None or len(settled) != len(coral):
         return
     dose = dose_per_day(np.asarray(settled), seconds)
+    coral.dose = dose
     level = np.where(dose >= SMOTHERS_BADLY, 2, np.where(dose >= SMOTHERS_FROM, 1, 0))
     worse = np.flatnonzero(level > coral.smothered)
     for i in worse:
