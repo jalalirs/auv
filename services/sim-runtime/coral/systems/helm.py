@@ -16,6 +16,8 @@ command: the helm is the only thing that changes the helm.
 
 from __future__ import annotations
 
+import numpy as np
+
 from engine import System
 
 
@@ -24,6 +26,38 @@ class Orders:
 
     def __init__(self) -> None:
         self.waiting: list[tuple] = []
+
+
+# A Janus DVL's four beams leave the vehicle at thirty degrees off vertical,
+# so they meet the bottom this far out per metre of altitude.
+BEAM_SPREAD = 0.58
+
+
+def what_the_altimeter_sees(world, position, floor):
+    """The bottom as the vehicle's altimeter or DVL measures it: the first
+    thing under it, which over a reef is the top of a colony, not the sand.
+
+    It used to be the sand. A Luna asked for three metres over a reef whose
+    massive colonies stand four metres tall held three metres over the sand,
+    which put it among the colonies: the route-only controller pushed on one
+    for twenty minutes, and the wary one sidestepped colony after colony at
+    a tenth of a metre a second. An instrument that measures range to the
+    first return cannot be flown that way, so neither can this."""
+    coral = getattr(world, "coral", None)
+    if floor is None or coral is None or not len(coral):
+        return floor
+    above = float(position[2]) - float(floor)
+    if above <= 0.0:
+        return floor
+    reach = max(0.3, BEAM_SPREAD * above)
+    near = coral.near(position[:2], reach)
+    if not len(near):
+        return floor
+    flat = np.hypot(coral.at[near, 0] - position[0], coral.at[near, 1] - position[1]) - coral.radius[near]
+    under = near[flat <= reach]
+    tops = coral.at[under, 2] + coral.height[under]
+    tops = tops[tops < float(position[2])]
+    return float(max(floor, tops.max())) if len(tops) else floor
 
 
 def observe(world, sensors_out: bool = False):
@@ -39,7 +73,7 @@ def observe(world, sensors_out: bool = False):
     from controllers import Observation
 
     vehicle, navigator, sonar = world.vehicle, world.navigation, world.sonar
-    floor = world.place.bottom_under(vehicle.position)
+    floor = what_the_altimeter_sees(world, vehicle.position, world.place.bottom_under(vehicle.position))
     t = world.clock.simulated
     if navigator is None:
         # Nothing between the controller and the truth. Said out loud,
