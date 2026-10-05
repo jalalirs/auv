@@ -26,6 +26,18 @@
         "--strictPort"
       ],
       "port": 5173
+    },
+    {
+      "name": "deck",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8792",
+        "--directory",
+        "forum-deck"
+      ],
+      "port": 8792
     }
   ]
 }

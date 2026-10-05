@@ -1,0 +1,246 @@
+#!/usr/bin/env python3
+"""A dredger's plume over a place, with nobody diving: where it goes, what it
+settles on, and how much, as a film seen from above and a sheet of numbers.
+
+    hardware/.venv/bin/python tools/plume ~/iocean/places-box/red-sea \\
+        --at 200,-150 --rate 20 --fines 0.4 --release-depth 6 \\
+        --current 0.15,290 --hours 6 --out ~/iocean/forum/plume
+
+The physics is the dive's own (services/sim-runtime/coral/systems/sediment.py):
+the same parcels let go at the overflow, carried by the same current and
+mixing, settled on the same colonies and judged per day against the same
+Erftemeijer thresholds. What is left out is the vehicle, which is what lets it
+run for a working shift instead of a dive. It steps every second rather than
+every twentieth: a parcel moves fifteen centimetres a step in a 0.15 m/s
+current, and the mixing is a random walk that scales with the square root of
+the step.
+
+What it does not have: the dynamic plume. A hopper's overflow is a dense
+mixture that drops towards the bed as a density current before the water
+takes it; here every parcel is passive from the moment it is let go, so the
+sand lands further down-current, and less of it right under the hull, than a
+real overflow's would.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import pathlib
+import subprocess
+import sys
+
+import numpy as np
+
+CORAL = pathlib.Path(__file__).resolve().parents[1] / "services" / "sim-runtime" / "coral"
+sys.path.insert(0, str(CORAL))
+
+
+def the_ocean(place_dir: pathlib.Path, dredger: dict, current):
+    from engine import Clock
+    from runner import Seabed
+    from systems.coral import colonies_in_the_layer
+    from systems.place import Place
+    from systems.sediment import Sediment
+    from systems.vehicle import Vehicle
+    from systems.wash import Wash
+    from systems.water import Water
+    from world import World
+
+    class Body:
+        def effective_mass(self, submerged=1.0):
+            return np.ones(6)
+
+    class Ocean:
+        pass
+
+    described = json.loads((place_dir / "site.json").read_text())
+    o = Ocean()
+    o.clock, o.place, o.water, o.sediment = Clock(1.0), Place(), Water(), Sediment()
+    o.place.seabed = Seabed.of(place_dir / "seabed.usda", place_dir)
+    o.place.things = World({"things": [dredger]})
+    o.place.things.on_this_seabed(lambda x, y: o.place.seabed.under(float(x), float(y)))
+    o.water.current = np.array(current, dtype=float)
+    # Nobody diving: a vehicle a long way off on the surface, with no wash.
+    o.vehicle = Vehicle(Body(), [1e4, 1e4, -0.5])
+    o.wash = Wash()
+    layer = (described.get("layers") or {}).get("coral", "coral.usda")
+    o.coral = colonies_in_the_layer(place_dir / layer, described)
+    return o, described
+
+
+def column_load(sed, now, edges_x, edges_y):
+    """What is hanging over each cell, g/m², from the puffs: each one's mass
+    spread by its own width (sediment._puff_m)."""
+    from scipy.ndimage import gaussian_filter
+    from systems.sediment import _puff_m
+
+    if not len(sed.kg):
+        return np.zeros((len(edges_y) - 1, len(edges_x) - 1))
+    cell = float(edges_x[1] - edges_x[0])
+    load = np.zeros((len(edges_y) - 1, len(edges_x) - 1))
+    wide = _puff_m(np.maximum(now - np.nan_to_num(sed.born, nan=now), 0.0))
+    # Puffs in a few bands of width, each blurred by its own width.
+    for low, high in ((0, 6), (6, 12), (12, 25), (25, 1e9)):
+        pick = (wide >= low) & (wide < high)
+        if not pick.any():
+            continue
+        h, _, _ = np.histogram2d(sed.at[pick, 1], sed.at[pick, 0], bins=[edges_y, edges_x],
+                                 weights=sed.kg[pick] * 1000.0)
+        load += gaussian_filter(h / cell ** 2, float(np.median(wide[pick])) / cell)
+    return load
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("place")
+    ap.add_argument("--at", default="200,-150")
+    ap.add_argument("--rate", type=float, default=20.0, help="kg/s lost at the overflow")
+    ap.add_argument("--fines", type=float, default=0.4)
+    ap.add_argument("--release-depth", type=float, default=6.0)
+    ap.add_argument("--current", default="0.15,290", help="m/s, towards degrees from north")
+    ap.add_argument("--hours", type=float, default=6.0)
+    ap.add_argument("--frame-s", type=float, default=120.0)
+    ap.add_argument("--region", default=None, help="x0,x1,y0,y1 in metres")
+    ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--out", required=True)
+    asked = ap.parse_args()
+
+    from systems.coral import SMOTHERS_BADLY, SMOTHERS_FROM, dose_per_day
+    from systems.sediment import SedimentSystem
+
+    out = pathlib.Path(asked.out).expanduser()
+    (out / "frames").mkdir(parents=True, exist_ok=True)
+    x0, y0 = (float(v) for v in asked.at.split(","))
+    speed, towards = (float(v) for v in asked.current.split(","))
+    current = (speed * math.sin(math.radians(towards)), speed * math.cos(math.radians(towards)), 0.0)
+    dredger = {"id": "dredger-1", "kind": "dredger", "x": x0, "y": y0, "releaseKgPerS": asked.rate,
+               "finesShare": asked.fines, "releaseDepthM": asked.release_depth}
+    ocean, described = the_ocean(pathlib.Path(asked.place).expanduser(), dredger, current)
+    system = SedimentSystem(asked.seed, lambda *a, **k: None)
+    system.every = 1.0
+
+    if asked.region:
+        rx0, rx1, ry0, ry1 = (float(v) for v in asked.region.split(","))
+    else:
+        reach = speed * asked.hours * 3600.0
+        ux, uy = current[0] / max(speed, 1e-9), current[1] / max(speed, 1e-9)
+        far = min(reach, 450.0)
+        cx, cy = x0 + ux * far / 2.0, y0 + uy * far / 2.0
+        half = max(160.0, far / 2.0 + 90.0)
+        rx0, rx1, ry0, ry1 = cx - half * 16 / 9, cx + half * 16 / 9, cy - half, cy + half
+    corner, across = -500.0, 1000.0
+    rx0, rx1 = max(rx0, corner), min(rx1, corner + across)
+    ry0, ry1 = max(ry0, corner), min(ry1, corner + across)
+
+    coral = ocean.coral
+    inside = ((coral.at[:, 0] > rx0) & (coral.at[:, 0] < rx1) & (coral.at[:, 1] > ry0) & (coral.at[:, 1] < ry1))
+    shown = np.flatnonzero(inside)
+    cell = 2.0
+    ex, ey = np.arange(rx0, rx1 + cell, cell), np.arange(ry0, ry1 + cell, cell)
+    gx, gy = np.meshgrid((ex[:-1] + ex[1:]) / 2, (ey[:-1] + ey[1:]) / 2)
+    depth = -ocean.place.seabed.under_many(gx.ravel(), gy.ravel()).reshape(gx.shape)
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LightSource, LinearSegmentedColormap, LogNorm
+
+    ink, paper, sand = "#0d1b24", "#e9edef", "#c9b991"
+    # Deep is dark, shallow is light: the shading is of height, -40 m to the surface.
+    sea = LinearSegmentedColormap.from_list("sea", ["#08161f", "#123447", "#245a6e", "#3d7d8c"])
+    silt = LinearSegmentedColormap.from_list("silt", ["#d9c9a3", "#b08a52", "#7a5228"])
+    shade = LightSource(azdeg=315, altdeg=40).shade(-depth, cmap=sea, vert_exag=6, blend_mode="soft",
+                                                     vmin=-40, vmax=0)
+
+    seconds = int(asked.hours * 3600)
+    every = int(asked.frame_s)
+    frames, timeline = 0, []
+    for k in range(seconds + 1):
+        if k:
+            system.step(ocean)
+            ocean.clock.simulated += 1.0
+        if k % every:
+            continue
+        now = ocean.clock.simulated
+        sed = ocean.sediment
+        settled = sed.on_coral_mg_cm2 if sed.on_coral_mg_cm2 is not None else np.zeros(len(coral))
+        dose = dose_per_day(settled, max(now, 1.0))
+        harmed, badly = int((dose >= SMOTHERS_FROM).sum()), int((dose >= SMOTHERS_BADLY).sum())
+        timeline.append({"t": now, "dredgedT": round(sed.dredged_kg / 1000, 2),
+                         "settledT": round(sed.settled_kg / 1000, 2),
+                         "inTheWaterT": round(float(sed.kg.sum()) / 1000, 2),
+                         "harmed": harmed, "badly": badly})
+
+        fig = plt.figure(figsize=(12.8, 7.2), dpi=100, facecolor=ink)
+        ax = fig.add_axes([0, 0.07, 1, 0.93])
+        ax.set_facecolor(ink)
+        ax.imshow(shade, origin="lower", extent=(rx0, rx1, ry0, ry1), interpolation="bilinear")
+        d = dose[shown]
+        quiet = d < SMOTHERS_FROM
+        ax.scatter(coral.at[shown[quiet], 0], coral.at[shown[quiet], 1], s=0.15, c="#cfe0d8", alpha=0.3,
+                   linewidths=0)
+        for low, high, colour in ((SMOTHERS_FROM, SMOTHERS_BADLY, "#f2a33a"), (SMOTHERS_BADLY, np.inf, "#e4572e")):
+            pick = (d >= low) & (d < high)
+            ax.scatter(coral.at[shown[pick], 0], coral.at[shown[pick], 1], s=1.2, c=colour, linewidths=0)
+        load = column_load(sed, now, ex, ey)
+        if load.max() > 0.5:
+            masked = np.ma.masked_less(load, 0.5)
+            ax.imshow(masked, origin="lower", extent=(rx0, rx1, ry0, ry1), cmap=silt, alpha=0.75,
+                      norm=LogNorm(vmin=0.5, vmax=max(50.0, float(load.max()))), interpolation="bilinear")
+        ax.scatter([x0], [y0], s=260, marker="s", c="#f4f1ea", edgecolors=ink, linewidths=2, zorder=5)
+        ax.annotate("dredger", (x0, y0), xytext=(10, 10), textcoords="offset points", color=paper, fontsize=13)
+        # The current, and a scale.
+        ox, oy = rx0 + 90, ry1 - 60
+        ax.annotate("", xy=(ox + current[0] / speed * 45, oy + current[1] / speed * 45), xytext=(ox, oy),
+                    arrowprops=dict(arrowstyle="-|>", color=paper, lw=2.2), annotation_clip=False)
+        ax.text(ox, oy - 30, f"current {speed:.2f} m/s", color=paper, fontsize=12, ha="center", va="top")
+        ax.plot([rx1 - 140, rx1 - 40], [ry0 + 30, ry0 + 30], color=paper, lw=3)
+        ax.text(rx1 - 90, ry0 + 38, "100 m", color=paper, fontsize=12, ha="center")
+        h, m = int(now // 3600), int(now % 3600 // 60)
+        fig.text(0.02, 0.035, f"{h}:{m:02d} into the shift   ·   {sed.dredged_kg / 1000:.0f} t lost at the overflow"
+                 f"   ·   {harmed:,} colonies over {SMOTHERS_FROM:.0f} mg/cm²/day, {badly:,} over {SMOTHERS_BADLY:.0f}",
+                 color=paper, fontsize=14, va="center")
+        ax.set_xlim(rx0, rx1)
+        ax.set_ylim(ry0, ry1)
+        ax.set_aspect("equal")
+        ax.axis("off")
+        fig.savefig(out / "frames" / f"f{frames:04d}.png", facecolor=ink)
+        plt.close(fig)
+        frames += 1
+        print(f"{h}:{m:02d} dredged {sed.dredged_kg / 1000:.1f} t, settled {sed.settled_kg / 1000:.1f} t, "
+              f"{harmed} harmed, {badly} badly", flush=True)
+
+    settled = ocean.sediment.on_coral_mg_cm2
+    if settled is None:
+        settled = np.zeros(len(coral))
+    dose = dose_per_day(settled, float(seconds))
+    hit = np.flatnonzero(dose >= SMOTHERS_FROM)
+    reach = (np.hypot(coral.at[hit, 0] - x0, coral.at[hit, 1] - y0) if len(hit) else np.zeros(0))
+    sheet = {
+        "about": "A dredging plume over a place with nobody diving: tools/plume, the dive's own sediment physics.",
+        "place": described.get("name"), "dredger": dredger,
+        "current": {"speedMs": speed, "towardsDeg": towards},
+        "hours": asked.hours,
+        "dredgedT": round(ocean.sediment.dredged_kg / 1000, 1),
+        "settledT": round(ocean.sediment.settled_kg / 1000, 1),
+        "colonies": int(len(coral)),
+        "over10MgCm2Day": int(len(hit)), "over50MgCm2Day": int((dose >= SMOTHERS_BADLY).sum()),
+        "farthestHarmedM": round(float(reach.max()), 0) if len(reach) else None,
+        "harmedWithin": {f"{r}m": int((reach <= r).sum()) for r in (50, 100, 200, 300)},
+        "worstMgCm2Day": round(float(dose.max()), 1),
+        "kinds": {"dredgedT": "derived", "rate and fines": "assumed (Becker et al. 2015 range)",
+                  "thresholds": "Erftemeijer et al. 2012", "colonies": described.get("reef", {}).get("from", "")},
+        "timeline": timeline,
+    }
+    (out / "plume.json").write_text(json.dumps(sheet, indent=1) + "\n")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-framerate", "12", "-i", str(out / "frames" / "f%04d.png"),
+                    "-c:v", "libx264", "-crf", "24", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                    str(out / "plume.mp4")], check=True)
+    print(json.dumps({k: v for k, v in sheet.items() if k != "timeline"}, indent=1))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

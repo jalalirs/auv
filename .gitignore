@@ -75,3 +75,6 @@ apps/client/src/renderer/harness/fixtures/
 docs/summit.html
 docs/summit_curl.sh
 docs/summit*
+
+# The forum deck: films and pictures, and a pitch that is not for a public repo.
+forum-deck/
