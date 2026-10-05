@@ -116,6 +116,8 @@ export interface Thing {
   ends?: { x: number; y: number; z?: number; groundM?: number }[];
   slack?: number;
   corners?: { x: number; y: number }[];
+  /** Laid along the bottom: a pipeline's route. */
+  route?: { x: number; y: number }[];
 }
 
 /** The kinds that float, drawn hollow: they are not on the bottom the chart shows. */
@@ -123,6 +125,7 @@ const FLOATS = new Set(["ship", "buoy"]);
 
 /** One point on a thing, for picking it and drawing it. */
 export function centreOf(thing: Thing): { x: number; y: number } {
+  if (thing.route?.length) return thing.route[Math.floor(thing.route.length / 2)]!;
   if (thing.ends?.length === 2) {
     return { x: (thing.ends[0]!.x + thing.ends[1]!.x) / 2, y: (thing.ends[0]!.y + thing.ends[1]!.y) / 2 };
   }
@@ -184,6 +187,14 @@ export function drawThings(g: CanvasRenderingContext2D, frame: Frame, things: Th
       g.setLineDash([6, 4]);
       g.stroke();
       g.setLineDash([]);
+      continue;
+    }
+    if (thing.route && thing.route.length >= 2) {
+      g.beginPath();
+      thing.route.forEach((p, i) => (i === 0 ? g.moveTo(toX(p.x), toY(p.y)) : g.lineTo(toX(p.x), toY(p.y))));
+      g.lineWidth = on ? 4 : 3;
+      g.strokeStyle = on ? "#c25a15" : "#8a5a1e";
+      g.stroke();
       continue;
     }
     if (thing.ends?.length === 2) {

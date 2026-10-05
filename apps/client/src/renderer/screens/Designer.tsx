@@ -415,23 +415,23 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
           {at !== undefined ? (
             <div className="detail">
               <h3>{nameOf(at.kind)} · stage {chosen + 1}</h3>
-              {editing && mode !== "none" ? (
+              {editing && mode !== "none" && mode !== "thing" ? (
                 <button type="button" className={drawing !== undefined ? "draw on" : "draw"}
                         onClick={() => setDrawing(drawing === undefined ? [] : undefined)}>
                   {drawing !== undefined ? "Stop drawing" : geometryOf(at, drawn, legs[chosen]?.from ?? launch).drawn ? "Draw it again" : "Draw it"}
                 </button>
               ) : null}
-              {editing && (mode === "point" || mode === "area") && drawn.length > 0 ? (
+              {editing && (mode === "point" || mode === "area" || mode === "thing") && drawn.length > 0 ? (
                 <label className="number">
-                  <span>or over</span>
+                  <span>{mode === "thing" ? "follows" : "or over"}</span>
                   <select value={String(at.over ?? "")}
                           onChange={(e) => {
                             const over = e.target.value;
                             const { over: _o, ...rest } = at;
                             setStage(chosen, over ? { ...rest, over } as Stage : rest as Stage);
                           }}>
-                    <option value="">nothing drawn</option>
-                    {drawn.filter((one) => mode !== "area" || one.corners?.length).map((one) => (
+                    <option value="">{mode === "thing" ? "choose one" : "nothing drawn"}</option>
+                    {drawn.filter((one) => (mode !== "area" || one.corners?.length) && (mode !== "thing" || one.route?.length)).map((one) => (
                       <option key={one.id} value={one.id}>{one.kind} · {one.id.slice(0, 16)}</option>
                     ))}
                   </select>

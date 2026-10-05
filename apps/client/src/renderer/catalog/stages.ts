@@ -14,7 +14,7 @@ export interface P { x: number; y: number }
 export type Stage = Record<string, unknown> & { kind: string; over?: string };
 
 /** Something laid out in the mission's arrangement, as far as a stage needs it. */
-export interface Drawn { id: string; kind: string; x: number; y: number; corners?: P[]; ends?: P[] }
+export interface Drawn { id: string; kind: string; x: number; y: number; corners?: P[]; ends?: P[]; route?: P[] }
 
 /**
  * How a stage is drawn on the chart:
@@ -23,8 +23,9 @@ export interface Drawn { id: string; kind: string; x: number; y: number; corners
  *   area   two clicks, opposite corners (a survey)
  *   point  one click (reach, inspect, treat, dock)
  *   none   it happens where the vehicle already is (hold, wait, return)
+ *   thing  it is pointed at something laid out, not drawn (follow a pipeline)
  */
-export type DrawMode = "route" | "line" | "area" | "point" | "none";
+export type DrawMode = "route" | "line" | "area" | "point" | "none" | "thing";
 
 interface Shape { mode: DrawMode; field?: string; ring?: string }
 
@@ -37,6 +38,7 @@ const SHAPES: Record<string, Shape> = {
   inspect: { mode: "point", field: "target", ring: "radiusM" },
   treat: { mode: "point", field: "centre", ring: "radiusM" },
   dock: { mode: "point", field: "dock" },
+  follow: { mode: "thing" },
 };
 
 export function drawMode(kind: string): DrawMode {
@@ -50,6 +52,7 @@ export function drawPrompt(kind: string, clicked: number): string {
     case "line": return clicked === 0 ? "click where the line starts" : "click where it ends";
     case "area": return clicked === 0 ? "click one corner" : "click the opposite corner";
     case "point": return "click where";
+    case "thing": return "choose what it follows, in the arrangement";
     default: return "this stage happens where the vehicle already is";
   }
 }
@@ -103,6 +106,10 @@ export function geometryOf(stage: Stage, things: Drawn[], from: P): Geometry {
       if (over?.corners?.length) return { area: box(over.corners), drawn: true };
       const w = Number(stage["widthM"] ?? 20), h = Number(stage["heightM"] ?? 10);
       return { area: [from, { x: from.x + w, y: from.y }, { x: from.x + w, y: from.y - h }, { x: from.x, y: from.y - h }], drawn: false };
+    }
+    case "thing": {
+      // Along what it follows, as laid.
+      return { route: over?.route ?? over?.ends ?? [], drawn: Boolean(over) };
     }
     case "point": {
       const said = stage[shape.field!];
@@ -250,6 +257,13 @@ function routeOf(stage: Stage, things: Drawn[], from: P, launch: P): Route {
     }
     case "reach":
       return { points: [g.point!], arriveM: inside(num("radiusM", 0.5), 0.5, 0.3), holdS: 0 };
+    case "follow": {
+      // From whichever end is nearer, every point of its route.
+      const along = g.route ?? [];
+      const near = along.length && Math.hypot(along[0]!.x - from.x, along[0]!.y - from.y)
+        > Math.hypot(along[along.length - 1]!.x - from.x, along[along.length - 1]!.y - from.y);
+      return { points: near ? [...along].reverse() : along, arriveM: 2.0, holdS: 0 };
+    }
     case "dock":
       return { points: [g.point!], arriveM: 0.2, speedMs: 0.125, holdS: 0 };
     case "return":

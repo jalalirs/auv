@@ -62,9 +62,14 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("example")
     ap.add_argument("--fly", action="store_true", help="ask for each dive's run")
+    ap.add_argument("--cancel", nargs=2, metavar=("DIVE", "RUN"), help="end a run instead")
     asked = ap.parse_args()
     said = json.loads(pathlib.Path(asked.example).read_text())
     t = token()
+    if asked.cancel:
+        call("POST", f"/api/v1/dives/{asked.cancel[0]}/runs/{asked.cancel[1]}/cancel", token=t)
+        print("cancelled")
+        return 0
     org = call("GET", "/api/v1/me", token=t)["organisations"][0]["id"]
 
     city = by_slug(call("GET", "/api/v1/cities", token=t)["cities"], said["place"])
@@ -110,7 +115,10 @@ def main() -> int:
         dive = call("POST", f"/api/v1/organisations/{org}/dives",
                     {"name": one["name"], "missionVersionId": mission_version["id"],
                      "vehicleVersionId": vv["id"], "conditionsId": conditions["id"],
-                     "objective": one.get("objective", {})}, token=t)
+                     # Undrawn unless the dive asks for pictures: a drawn dive
+                     # runs at a sixth of real time, an undrawn one at fifteen
+                     # times it, on the same trajectory.
+                     "objective": {"pictures": False, **one.get("objective", {})}}, token=t)
         run = call("POST", f"/api/v1/dives/{dive['id']}/runs",
                    {"queueId": queue["id"], "mode": "batch", "runtimeVersion": queue["runtimes"][0]}, token=t)
         print(f"dive {one['name']}: {dive['id']} run {run['id']}")

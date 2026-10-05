@@ -17,6 +17,7 @@ import { Designer } from "../screens/Designer.js";
 import { Fly } from "../screens/Fly.js";
 import { Missions } from "../screens/Missions.js";
 import { Runs } from "../screens/Runs.js";
+import { LayoutEditor } from "../screens/Layout.js";
 
 const now = () => new Date().toISOString();
 let counter = 0;
@@ -97,6 +98,13 @@ const platform = {
     store.missions.set(missionId, { mission: { id: missionId, ...asked, summary: "", cityId: city }, place: city, versions: [] });
     return delay(store.missions.get(missionId)!.mission);
   },
+  saveLayout: (layoutId: string, document: Doc, label = "") => {
+    const one = store.layouts.get(layoutId)!;
+    const version = { id: id("version"), ordinal: one.versions.length + 1, createdAt: now(), document, label };
+    one.versions.push(version);
+    said.push(`saved layout ${layoutId} v${version.ordinal}: ${JSON.stringify(document)}`);
+    return delay(version);
+  },
   saveMission: (missionId: string, document: Doc, label = "") => {
     const one = store.missions.get(missionId)!;
     const version = { id: id("version"), ordinal: one.versions.length + 1, createdAt: now(), document, label };
@@ -161,7 +169,7 @@ function Harness({ packages }: { packages: Packages }) {
     <div className="deck">
       <nav>
         <div className="here"><strong>harness</strong></div>
-        {["missions", "designer", "fly", "results"].map((page) => (
+        {["missions", "designer", "fly", "results", "layout"].map((page) => (
           <a key={page} aria-current={where.page === page ? "page" : undefined} onClick={() => setWhere((w) => ({ ...w, page }))}>{page}</a>
         ))}
       </nav>
@@ -173,6 +181,10 @@ function Harness({ packages }: { packages: Packages }) {
           <Designer platform={p} held={held} packages={packages} mission={where.mission!} place={where.place!}
                     onBack={() => setWhere((w) => ({ ...w, page: "missions" }))}
                     onFly={(mission) => setWhere((w) => ({ ...w, page: "fly", mission }))} />
+        ) : where.page === "layout" ? (
+          <LayoutEditor platform={p} pkg={packages.places.get(where.place ?? "city_tank") as never}
+                        layout={[...store.layouts.values()].find((l) => l.place === (where.place ?? "city_tank"))!.layout as never}
+                        onBack={() => setWhere((w) => ({ ...w, page: "missions" }))} />
         ) : where.page === "results" ? (
           <Runs platform={p} held={held} onChanged={() => undefined}
                 onReplay={(d, r) => said.push(`replay ${d} ${r}`)} onSweep={(s) => said.push(`read sweep ${s}`)} />

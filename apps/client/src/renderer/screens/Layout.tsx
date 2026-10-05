@@ -31,6 +31,8 @@ interface Thing extends Point, Omit<Charted, "x" | "y" | "z" | "groundM" | "ends
   kind: string;
   /** Both ends, for something that spans. */
   ends?: Point[];
+  /** The route, for something laid along the bottom. */
+  route?: { x: number; y: number }[];
   /** How much longer than the gap the line is: 0 is taut. */
   slack?: number;
   /** The outline, for a plot drawn on the chart. */
@@ -44,8 +46,10 @@ interface Thing extends Point, Omit<Charted, "x" | "y" | "z" | "groundM" | "ends
  *   surface  floats: depth zero, and the body hangs down
  *   span     two ends, each landed by its own rule, a line between them
  *   region   an area on the chart, which is not in the water at all
+ *   laid     a route along the bottom, clicked point by point: a pipeline,
+ *            which the runtime rests on the seabed and lets bridge the hollows
  */
-type Lands = "ground" | "surface" | "span" | "region";
+type Lands = "ground" | "surface" | "span" | "region" | "laid";
 
 interface Tool {
   name: string;
@@ -73,6 +77,8 @@ const TOOLS: Record<string, Tool> = {
   "mooring-line": { name: "Mooring line", lands: "span", endsOn: ["ground", "surface"],
     slack: 0.02,
     says: (d) => `one end on the bottom at ${d.toFixed(1)} m, the other at the surface` },
+  pipeline: { name: "Pipeline", lands: "laid",
+    says: () => "laid along the bottom: click its route, double-click the last point; it rests on the high ground and bridges the hollows" },
   "restoration-cell": { name: "Restoration cell", lands: "region",
     says: () => "a plot on the chart — something to work inside, not something to hit" },
 };
@@ -83,6 +89,7 @@ const GROUPS: { title: string; lands: Lands }[] = [
   { title: "Sits on the ground", lands: "ground" },
   { title: "Floats", lands: "surface" },
   { title: "Runs between two points", lands: "span" },
+  { title: "Laid along the bottom", lands: "laid" },
   { title: "Drawn on the chart", lands: "region" },
 ];
 
@@ -111,6 +118,10 @@ function landed(lands: Lands, ground: Ground, x: number, y: number): Point {
 
 /** What the listing says about a thing, which is not always one depth. */
 function saysOf(thing: Thing): string {
+  if (thing.route && thing.route.length >= 2) {
+    const r = thing.route;
+    return `${Math.round(r.slice(1).reduce((s, p, i) => s + Math.hypot(p.x - r[i]!.x, p.y - r[i]!.y), 0))} m long`;
+  }
   if (thing.ends?.length === 2) {
     const [a, b] = thing.ends as [Point, Point];
     return `${Math.round(Math.hypot(b.x - a.x, b.y - a.y))} m long`;
@@ -183,6 +194,8 @@ export function LayoutEditor({ platform, pkg, layout, onBack }: {
   const [chosen, setChosen] = useState<string | undefined>();
   // The first click of a two-click tool, while the second has not happened.
   const [first, setFirst] = useState<{ x: number; y: number } | undefined>();
+  // A route being clicked out, for something laid along the bottom.
+  const [route, setRoute] = useState<{ x: number; y: number }[]>([]);
   const [under, setUnder] = useState<number | undefined>();
   const [saving, setSaving] = useState("");
   const [trouble, setTrouble] = useState("");
@@ -213,6 +226,12 @@ export function LayoutEditor({ platform, pkg, layout, onBack }: {
     }
     const what = TOOLS[tool]!;
 
+    // A route: every click is a point, and a double-click ends it.
+    if (what.lands === "laid") {
+      setRoute((was) => [...was, { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 }]);
+      return;
+    }
+
     // Two-click tools: a line needs both its ends and a plot needs two corners,
     // so the first click is remembered and the second makes the thing. Shown
     // on the chart while it is half-drawn, because a tool that silently
@@ -235,15 +254,35 @@ export function LayoutEditor({ platform, pkg, layout, onBack }: {
     setChosen(made.id);
   }, [ground, things, tool, first]);
 
+  // A route finished: a double-click has already clicked its last point.
+  const finishRoute = useCallback(() => {
+    if (!tool || TOOLS[tool]?.lands !== "laid") return;
+    const kept = route.filter((p, i) => i === 0 || p.x !== route[i - 1]!.x || p.y !== route[i - 1]!.y);
+    setRoute([]);
+    if (kept.length < 2) return;
+    const middle = kept[Math.floor(kept.length / 2)]!;
+    const made: Thing = { id: named(tool), kind: tool, x: middle.x, y: middle.y, route: kept,
+                          radiusM: 0.16, bendRadiusM: 150 } as Thing;
+    setThings((was) => [...was, made]);
+    setChosen(made.id);
+  }, [tool, route]);
+
   // The click that has happened, while the one that finishes it has not.
   const pending = useCallback((g: CanvasRenderingContext2D, frame: Frame) => {
+    if (route.length) {
+      g.beginPath();
+      route.forEach((p, i) => (i === 0 ? g.moveTo(frame.toX(p.x), frame.toY(p.y)) : g.lineTo(frame.toX(p.x), frame.toY(p.y))));
+      g.strokeStyle = "#c25a15";
+      g.lineWidth = 2;
+      g.stroke();
+    }
     if (!first) return;
     g.beginPath();
     g.arc(frame.toX(first.x), frame.toY(first.y), 4, 0, Math.PI * 2);
     g.strokeStyle = "#c25a15";
     g.lineWidth = 2;
     g.stroke();
-  }, [first]);
+  }, [first, route]);
 
   const save = useCallback(async () => {
     setSaving("saving"); setTrouble("");
@@ -277,7 +316,7 @@ export function LayoutEditor({ platform, pkg, layout, onBack }: {
                 .map(([key, what]) => (
                   <button key={key} type="button" className={tool === key ? "tool on" : "tool"}
                           aria-pressed={tool === key}
-                          onClick={() => { setFirst(undefined); setTool(tool === key ? undefined : key); }}>
+                          onClick={() => { setFirst(undefined); setRoute([]); setTool(tool === key ? undefined : key); }}>
                     {what.name}
                   </button>
                 ))}
@@ -292,7 +331,7 @@ export function LayoutEditor({ platform, pkg, layout, onBack }: {
         <div className="chart">
           <SiteChart ground={ground} things={things as Charted[]} chosen={chosen}
                      fit={(things as Charted[]).flatMap((t) => t.corners ?? t.ends ?? [centreOf(t)])}
-                     overlay={pending} onPick={place}
+                     overlay={pending} redraw={route} onPick={place} onDoublePick={finishRoute}
                      onHover={(_, depth) => setUnder(depth)} />
           <div className="readout">
             <span>ground <b>{under === undefined ? "—" : `${under.toFixed(1)} m`}</b></span>

@@ -84,6 +84,12 @@ describe("the plan, stage by stage", () => {
     const far: Stage[] = [{ kind: "waypoints", radiusM: 1, points: [{ x: 100, y: 0 }] }];
     expect(driftRisks(far, legsOf(far, [], launch, LUNA))[0]?.stage).toBe(0);
   });
+  it("follows a pipeline along its route, from the nearer end", () => {
+    const pipe = { id: "pipe-1", kind: "pipeline", x: 50, y: 0, route: [{ x: 0, y: 0 }, { x: 100, y: 0 }] };
+    const [leg] = legsOf([{ kind: "follow", over: "pipe-1" }], [pipe], { x: 110, y: 0 }, LUNA);
+    expect(leg!.to).toEqual({ x: 0, y: 0 });
+    expect(leg!.metres).toBeGreaterThan(105);
+  });
   it("rounds to the place's scale", () => {
     expect(snap(1.23456, 2)).toBeCloseTo(1.235);
     expect(snap(123.4, 1000)).toBe(123);
