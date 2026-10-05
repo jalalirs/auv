@@ -180,12 +180,11 @@ class QualitySystem(System):
         q.last_t = now
         import numpy as np
 
+        from systems.sediment import hanging
+
         sed, at = world.sediment, world.vehicle.position
-        if len(sed.kg):
-            near = np.linalg.norm(sed.at - at[None, :], axis=1) < 0.3
-            mg_per_l = float(sed.kg[near].sum()) * 1e6 / (4.0 / 3.0 * np.pi * 0.3 ** 3 * 1000.0)
-        else:
-            mg_per_l = 0.0
+        # kg/m³ is g/L; a thousand mg in each.
+        mg_per_l = float(hanging(sed, at, now, 0.3).sum()) * 1000.0
         q.readings.append({"t": round(now, 2), "turbidityNtu": round(self.CLEAR_NTU + self.NTU_PER_MG_L * mg_per_l, 3),
                            "chlorophyllUgL": 0.2, "pH": 8.1,
                            "atM": [round(float(c), 2) for c in at]})

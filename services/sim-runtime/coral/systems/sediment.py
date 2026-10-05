@@ -76,6 +76,13 @@ DREDGE_FINES = 0.4         # of what it loses, the share that is silt (assumed)
 DREDGE_PARCELS_A_STEP = 2
 AMBIENT_KH = 0.05          # m²/s, horizontal eddy diffusivity, open water (Okubo 1971 at ~100 m)
 AMBIENT_KV = 1e-3          # m²/s, vertical, coastal water (assumed)
+# A dredged parcel stands for a puff of the plume, not a lump: half a
+# kilogram landing whole on one colony read as 50 mg/cm², every colony one
+# parcel touched was "badly smothered", and 13,281 of them were. Each is
+# spread over a puff that starts this wide and grows by the same eddy
+# diffusivity that walks it (a puff-particle model: de Haan & Rotach 1998).
+PUFF_FROM_M = 3.0
+PUFF_TALL_FROM_M = 1.0     # and this tall (assumed), growing by AMBIENT_KV
 
 
 def settling(d: float) -> float:
@@ -113,11 +120,46 @@ def wash_origin_over(wash, points) -> np.ndarray:
     return wash.origin[np.argmin(d, axis=1), :2]
 
 
+def _puff_m(age):
+    """How wide a dredged parcel's puff has grown, m; NaN for a lifted grain."""
+    return np.sqrt(PUFF_FROM_M ** 2 + 2.0 * AMBIENT_KH * np.asarray(age, dtype=float))
+
+
+def hanging(sed, point, now: float, reach: float) -> np.ndarray:
+    """What is in the water at `point`, kg/m³ of each grain: the lifted grains
+    within `reach`, and every dredged puff as a Gaussian of its own size.
+
+    Counting only parcels within reach, a sonde in the middle of a dredging
+    plume read clear water: half-kilogram parcels a few metres apart are
+    almost never within thirty centimetres of anything."""
+    out = np.zeros(len(GRAINS))
+    if not len(sed.kg):
+        return out
+    born = sed.born if len(getattr(sed, "born", ())) == len(sed.kg) else np.full(len(sed.kg), np.nan)
+    puff = np.isfinite(born)
+    d = sed.at - np.asarray(point, dtype=float)[None, :]
+    close = ~puff & (np.linalg.norm(d, axis=1) < reach)
+    if close.any():
+        np.add.at(out, sed.grain[close], sed.kg[close] / (4.0 / 3.0 * math.pi * reach ** 3))
+    if puff.any():
+        age = np.maximum(float(now) - born[puff], 0.0)
+        wide = _puff_m(age)
+        tall = np.sqrt(PUFF_TALL_FROM_M ** 2 + 2.0 * AMBIENT_KV * age)
+        dp = d[puff]
+        c = sed.kg[puff] / ((2.0 * math.pi) ** 1.5 * wide ** 2 * tall) * np.exp(
+            -(dp[:, 0] ** 2 + dp[:, 1] ** 2) / (2.0 * wide ** 2) - dp[:, 2] ** 2 / (2.0 * tall ** 2))
+        np.add.at(out, sed.grain[puff], c)
+    return out
+
+
 class Sediment:
     def __init__(self) -> None:
         self.at = np.zeros((0, 3))
         self.grain = np.zeros(0, dtype=int)
         self.kg = np.zeros(0)
+        # When each parcel was let go, for a dredged one; NaN for a grain the
+        # vehicle lifted, which lands where it lands.
+        self.born = np.zeros(0)
         self.lifted_kg = 0.0
         self.settled_kg = 0.0
         self.most_in_water = 0
@@ -169,11 +211,11 @@ class SedimentSystem(System):
                          "vehicle's wash; bed friction, the erosion rate and the bed's grain sizes assumed")
         if place.seabed is not None or place.floor is not None:
             self.lift(sed, wash, v, place, dt)
-        self.dredge(sed, place, water, dt)
+        self.dredge(sed, place, water, dt, world.clock.simulated)
         if len(sed.kg):
             self.carry(sed, wash, water, place, dt, world.clock.simulated, world.coral)
         sed.most_in_water = max(sed.most_in_water, len(sed.kg))
-        self.see(sed, v)
+        self.see(sed, v, world.clock.simulated)
 
     def lift(self, sed, wash, v, place, dt) -> None:
         """Erode the bed under the wash, as parcels of grains."""
@@ -209,15 +251,16 @@ class SedimentSystem(System):
             sed.at = np.vstack([sed.at, where])
             sed.grain = np.concatenate([sed.grain, np.full(len(where), k)])
             sed.kg = np.concatenate([sed.kg, np.full(len(where), PARCEL_KG)])
+            sed.born = np.concatenate([sed.born, np.full(len(where), np.nan)])
         if len(sed.kg) > MOST_PARCELS:
             keep = slice(len(sed.kg) - MOST_PARCELS, None)
-            sed.at, sed.grain, sed.kg = sed.at[keep], sed.grain[keep], sed.kg[keep]
+            sed.at, sed.grain, sed.kg, sed.born = sed.at[keep], sed.grain[keep], sed.kg[keep], sed.born[keep]
             if not self.warned:
                 self.warned = True
                 self.say("sediment_capped", parcels=MOST_PARCELS,
                          why="more sand in the water than is followed; the oldest is let go")
 
-    def dredge(self, sed, place, water, dt) -> None:
+    def dredge(self, sed, place, water, dt, now=0.0) -> None:
         """What every dredger in the water loses this step, as parcels at its
         overflow: sand and silt by its share, spread over its hull's width."""
         world = getattr(place, "things", None)
@@ -240,11 +283,12 @@ class SedimentSystem(System):
             sed.at = np.vstack([sed.at, at])
             sed.grain = np.concatenate([sed.grain, grain])
             sed.kg = np.concatenate([sed.kg, kg])
+            sed.born = np.concatenate([sed.born, np.full(n, float(now))])
             sed.lifted_kg += rate * dt
             sed.dredged_kg = getattr(sed, "dredged_kg", 0.0) + rate * dt
         if len(sed.kg) > MOST_PARCELS:
             keep = slice(len(sed.kg) - MOST_PARCELS, None)
-            sed.at, sed.grain, sed.kg = sed.at[keep], sed.grain[keep], sed.kg[keep]
+            sed.at, sed.grain, sed.kg, sed.born = sed.at[keep], sed.grain[keep], sed.kg[keep], sed.born[keep]
 
     def carry(self, sed, wash, water, place, dt, now, coral) -> None:
         """Carried by the water and the wash, mixed, falling; back on the bed
@@ -292,19 +336,35 @@ class SedimentSystem(System):
         down = sed.at[:, 2] <= bed
         if down.any():
             sed.settled_kg += float(sed.kg[down].sum())
-            self.on_the_coral(sed, coral, sed.at[down], sed.kg[down])
+            self.on_the_coral(sed, coral, sed.at[down], sed.kg[down],
+                              spread=_puff_m(now - sed.born[down]))
             keep = ~down
-            sed.at, sed.grain, sed.kg = sed.at[keep], sed.grain[keep], sed.kg[keep]
+            sed.at, sed.grain, sed.kg, sed.born = sed.at[keep], sed.grain[keep], sed.kg[keep], sed.born[keep]
 
     @staticmethod
-    def on_the_coral(sed, coral, where, kg) -> None:
-        """What lands within a colony's reach settles on it."""
+    def on_the_coral(sed, coral, where, kg, spread=None) -> None:
+        """What lands within a colony's reach settles on it; a puff (a
+        dredged parcel) settles as a Gaussian over its own width."""
         if coral is None or not len(coral):
             return
         if sed.on_coral_mg_cm2 is None or len(sed.on_coral_mg_cm2) != len(coral):
             sed.on_coral_mg_cm2 = np.zeros(len(coral))
         if not len(where):
             return
+        if spread is not None:
+            puff = np.isfinite(spread)
+            for k in np.flatnonzero(puff):
+                sigma = float(spread[k])
+                near = coral.near(where[k], 3.0 * sigma)
+                if not len(near):
+                    continue
+                d2 = ((coral.at[near, :2] - where[k, :2]) ** 2).sum(axis=1)
+                # kg per m², as mg per cm²: ×1e6 mg/kg, ÷1e4 cm²/m².
+                sed.on_coral_mg_cm2[near] += (float(kg[k]) / (2.0 * math.pi * sigma ** 2)
+                                              * np.exp(-d2 / (2.0 * sigma ** 2)) * 100.0)
+            where, kg = where[~puff], kg[~puff]
+            if not len(where):
+                return
         near = coral.near(where, 0.0)
         if not len(near):
             return
@@ -314,17 +374,13 @@ class SedimentSystem(System):
         area_cm2 = math.pi * (radius * 100.0) ** 2
         sed.on_coral_mg_cm2[near] += (landed * kg[:, None]).sum(axis=0) * 1e6 / area_cm2
 
-    def see(self, sed, v) -> None:
+    def see(self, sed, v, now: float = 0.0) -> None:
         """How far the camera sees: the attenuation in the water just ahead of
         it, the water's own plus what is hanging there."""
         ahead = v.position + v.rotation @ np.array([0.25, 0.0, 0.0])
-        if len(sed.kg):
-            near = np.linalg.norm(sed.at - ahead[None, :], axis=1) < 0.25
-            volume = 4.0 / 3.0 * math.pi * 0.25 ** 3
-            grams = np.array([sed.kg[near & (sed.grain == k)].sum() for k in range(len(GRAINS))]) * 1000.0
-            added = sum(g / volume * grain.attenuation for g, grain in zip(grams, GRAINS))
-        else:
-            added = 0.0
+        # g/m³ of each grain, times what a gram in a cubic metre takes out.
+        grams = hanging(sed, ahead, now, 0.25) * 1000.0
+        added = sum(g * grain.attenuation for g, grain in zip(grams, GRAINS))
         sed.visibility_m = 4.8 / (self.CLEAR + added)
         sed.worst_visibility_m = (sed.visibility_m if sed.worst_visibility_m is None
                                   else min(sed.worst_visibility_m, sed.visibility_m))

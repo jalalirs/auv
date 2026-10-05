@@ -33,6 +33,16 @@ class Orders:
 BEAM_SPREAD = 0.58
 
 
+# What a controller can ask of a vehicle other than its thrusters, in the
+# order a recording keeps them (hydrodynamics.ask_actuators).
+ACTUATOR_KEYS = ("rudderRad", "sternRad", "vbdCc", "pitchM", "rollM")
+
+
+def thrusters_of(helm) -> int:
+    matrix = getattr(getattr(helm, "allocator", None), "matrix", None)
+    return len(matrix[0]) if matrix is not None and len(matrix) else 0
+
+
 def what_the_altimeter_sees(world, position, floor):
     """The bottom as the vehicle's altimeter or DVL measures it: the first
     thing under it, which over a reef is the top of a colony, not the sand.
@@ -119,6 +129,11 @@ class HelmSystem(System):
         # seed and the same commands are the same dive, which is how a
         # path-traced film is made of a run that was watched live.
         self.kept: list = []
+        # And what it asked of fins, a pump or a moving mass, in the same
+        # tick. Without them a film of a REMUS flew with its fins amidships:
+        # it left the pipeline in the first twenty-five seconds and spent the
+        # rest of its film over coral the dive it copied never went near.
+        self.kept_moved: list = []
         self.replay = replay
         self.ticks = 0
 
@@ -131,18 +146,34 @@ class HelmSystem(System):
             # Past the end of what was recorded the vehicle is let go: nothing
             # was commanded there, because the first dive was over.
             here = self.replay[self.ticks] if self.ticks < len(self.replay) else np.zeros(self.replay.shape[1])
+            pushed = thrusters_of(helm)
+            moved = here[pushed:] if len(here) == pushed + len(ACTUATOR_KEYS) else ()
+            here = here[:pushed] if len(moved) else here
             world.asked.commands = np.array(here, dtype=float)
+            helm.actuators = ({k: float(v) for k, v in zip(ACTUATOR_KEYS, moved) if np.isfinite(v)}
+                              or None) if len(moved) else None
         else:
             world.asked.commands = helm.command(observe(world))
         self.kept.append(np.array(world.asked.commands, dtype=float))
+        asked = getattr(helm, "actuators", None)
+        if asked or self.kept_moved:
+            if not self.kept_moved and len(self.kept) > 1:
+                self.kept_moved = [np.full(len(ACTUATOR_KEYS), np.nan)] * (len(self.kept) - 1)
+            self.kept_moved.append(np.array([float((asked or {}).get(k, np.nan)) for k in ACTUATOR_KEYS]))
         self.ticks += 1
         world.asked.replay_over = self.replay is not None and self.ticks >= len(self.replay)
 
     def commands(self):
-        """Every tick's command so far, (ticks, thrusters)."""
-        import numpy as np
+        """Every tick's command so far, (ticks, thrusters), and then one
+        column for each of ACTUATOR_KEYS when anything was asked of them
+        (NaN where it was not)."""
+        pushed = np.array(self.kept, dtype=float).reshape(len(self.kept), -1)
+        if not self.kept_moved:
+            return pushed
+        return np.hstack([pushed, np.array(self.kept_moved, dtype=float)])
 
-        return np.array(self.kept, dtype=float).reshape(len(self.kept), -1)
+    def actuator_columns(self) -> tuple:
+        return ACTUATOR_KEYS if self.kept_moved else ()
 
     def carry_out(self, helm, orders) -> None:
         """The orders tasking left, in the order it left them."""

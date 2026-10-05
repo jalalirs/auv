@@ -83,3 +83,41 @@ def test_the_record_says_where_the_smothering_reached():
     assert said["smotheredOver"] == {"from": [60.0, 0.0], "to": [60.0, 0.0]}
     assert said["worstSmothered"][0]["at"][:2] == [60.0, 0.0]
     assert said["worstSmothered"][0]["mgCm2PerDay"] > 0
+
+
+def test_a_puff_lands_spread_and_its_mass_is_kept():
+    """Half a kilogram is not a lump on one colony: it is a puff, and over a
+    carpet of colonies a metre apart what they catch adds back to what fell."""
+    from systems.sediment import PUFF_FROM_M
+
+    c = Colonies()
+    xs, ys = np.meshgrid(np.arange(-30.0, 31.0), np.arange(-30.0, 31.0))
+    c.at = np.column_stack([xs.ravel(), ys.ravel(), np.full(xs.size, BED)])
+    c.size = np.full(xs.size, 0.5)
+    c.kind = np.array(["massive"] * xs.size, dtype=object)
+    c.prim = [None] * xs.size
+    c.height = c.size.copy()
+    _fresh(c, xs.size)
+    sed = Sediment()
+    SedimentSystem.on_the_coral(sed, c, np.array([[0.0, 0.0, BED]]), np.array([0.5]),
+                                spread=np.array([PUFF_FROM_M]))
+    caught_kg = (sed.on_coral_mg_cm2 / 100.0).sum() * 1.0        # each stands for a square metre
+    assert abs(caught_kg - 0.5) < 0.01
+    assert sed.on_coral_mg_cm2.max() < 1.0, "spread, not a 50 mg/cm² lump"
+
+
+def test_a_sonde_in_the_plume_reads_it():
+    """Down-current of the dredger and in the plume's height, the water is not
+    clear; up-current it is."""
+    from systems.sediment import hanging
+
+    ocean = a_reef_and_a_dredger()
+    system = SedimentSystem(0, lambda *a, **k: None)
+    for _ in range(int(300 / 0.05)):
+        system.step(ocean)
+        ocean.clock.simulated += 0.05
+    sed, now = ocean.sediment, ocean.clock.simulated
+    down = hanging(sed, [40.0, 0.0, -5.0], now, 0.3).sum() * 1000.0     # mg/L
+    up = hanging(sed, [-40.0, 0.0, -5.0], now, 0.3).sum() * 1000.0
+    assert down > 1.0, down
+    assert up < 1e-6, up

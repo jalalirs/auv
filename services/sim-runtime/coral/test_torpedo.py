@@ -100,3 +100,36 @@ def test_it_flies_a_route_round_a_corner_on_its_fins():
             break
     done = dive.task.result()["achieved"]["stages"][0]
     assert done["achieved"]["reached"] == 3, done
+
+
+def test_a_film_of_it_flies_its_fins_too(tmp_path):
+    """Flown again from its recording, a REMUS turns where it turned: the
+    recording keeps the fins as well as the propeller."""
+    import numpy as np
+
+    objective = {"kind": "mission", "stages": [{"kind": "waypoints", "radiusM": 8, "timeLimitS": 120,
+                 "points": [{"x": 40, "y": 0, "depthM": 10}, {"x": 40, "y": 60, "depthM": 12}]}]}
+
+    def fly(**more):
+        from runner import Dive
+        model = a_torpedo()
+        brief = {"durationSeconds": 90.0, "initialState": {"positionM": [0, 0, -10]},
+                 "conditions": {"kind": "constructed", "parameters": {}}, "objective": objective, **more}
+        dive = Dive(brief, Body(model), Allocator(model), pathlib.Path("nowhere.usda"), lambda kind, **d: None)
+        dive.begin_task(objective)
+        track = []
+        for _ in range(int(90 / dive.dt)):
+            dive.step()
+            track.append(np.array(dive.position, dtype=float))
+            if dive.done:
+                break
+        helm = next(s for s in dive.engine.systems if s.name == "helm")
+        return np.array(track), helm
+
+    track, helm = fly()
+    assert helm.actuator_columns(), "the fins were recorded"
+    np.save(tmp_path / "commands.npy", helm.commands())
+    again, _ = fly(replay={"commands": str(tmp_path / "commands.npy")})
+    n = min(len(again), len(track))
+    assert np.abs(track[-1, :2] - track[0, :2]).max() > 20.0
+    assert np.allclose(again[:n], track[:n], atol=1e-6), np.abs(again[:n] - track[:n]).max()

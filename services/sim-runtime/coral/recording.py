@@ -208,8 +208,11 @@ class Recorder:
         manifest = self.manifest(dive, camera, closed=True)
         if commanded is not None:
             manifest["files"].append("commands.npy")
+            moved = _actuator_columns(dive)
             manifest["commands"] = {"file": "commands.npy", "ticks": int(commanded.shape[0]),
-                                    "thrusters": int(commanded.shape[1]), "dtS": float(dive.dt),
+                                    "thrusters": int(commanded.shape[1]) - len(moved),
+                                    **({"actuators": list(moved)} if moved else {}),
+                                    "dtS": float(dive.dt),
                                     "seed": dive.brief.get("seed"),
                                     "replays": "a brief with {\"replay\": {\"commands\": <this file>}} and this seed "
                                                "flies this dive again, tick for tick"}
@@ -329,6 +332,14 @@ class Recorder:
             "closed": closed,
         }
         return manifest
+
+
+def _actuator_columns(dive) -> tuple:
+    try:
+        helm = next(one for one in dive.engine.systems if one.name == "helm")
+        return tuple(helm.actuator_columns())
+    except Exception:
+        return ()
 
 
 def _commands(dive):
