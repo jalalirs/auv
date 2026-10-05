@@ -98,3 +98,27 @@ def test_no_launch_is_no_opinion():
     placed = Placed(a_site())
     assert placed.launch_from(None) is None
     assert placed.launch_from({}) is None
+
+
+def test_a_launch_puts_the_vehicle_there(tmp_path):
+    """Worked out, said, and applied: the vehicle starts where the mission launches it."""
+    import json as _json
+    import pathlib as _p
+
+    import numpy as _np
+    # A flat place two hundred metres across, thirty deep.
+    _np.full((101, 101), -30.0, dtype="<f4").tofile(tmp_path / "seabed.f32")
+    (tmp_path / "site.json").write_text(_json.dumps({
+        "name": "flat", "from": {"acrossMetres": 200.0},
+        "mesh": {"heightfield": {"file": "seabed.f32", "rows": 101, "columns": 101}}}))
+    from hydrodynamics import Allocator, Body, Hydrodynamics
+    from runner import Dive
+    package = _p.Path(__file__).resolve().parents[3] / "catalog/vehicles/bluerov2"
+    model = Hydrodynamics.from_package(package / "dynamics.json")
+    brief = {"durationSeconds": 10, "vehiclePath": str(package), "cityPath": str(tmp_path),
+             "initialState": {"launch": {"x": -10.0, "y": -40.0}},
+             "conditions": {"kind": "constructed", "parameters": {}},
+             "objective": {"kind": "hold-station", "seconds": 5}}
+    dive = Dive(brief, Body(model), Allocator(model), _p.Path("nowhere.usda"), lambda kind, **said: None)
+    assert dive.open_dry()
+    assert round(float(dive.position[0])) == -10 and round(float(dive.position[1])) == -40, dive.position

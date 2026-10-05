@@ -50,6 +50,10 @@ class FollowLine(Task):
             self.at = np.concatenate([[0.0], np.cumsum(step)])
             self.seen = np.zeros(len(self.line), dtype=bool)
         self.spans = list(getattr(self.over, "spans", []) or [])
+        # Which end it is flown towards, once the route is drawn: the inspection
+        # is over when that end has been seen, rather than circling at it until
+        # the clock runs out for the few metres seen badly on the way down.
+        self.far_end: int | None = None
 
     def judge(self, elapsed, position, heading, floor) -> None:
         if self.line is not None:
@@ -57,7 +61,8 @@ class FollowLine(Task):
             above = position[2] - self.line[:, 2]
             looking = (flat <= self.half_swath) & (above > 0.0) & (np.abs(above - self.altitude) <= self.band)
             self.seen |= looking
-        if self.line is None or self.seen.all() or elapsed >= self.limit:
+        far_seen = self.far_end is not None and bool(self.seen[self.far_end])
+        if self.line is None or self.seen.all() or far_seen or elapsed >= self.limit:
             self.done = True
 
     def length(self) -> float:
@@ -116,8 +121,10 @@ class FollowLine(Task):
             points = points.copy()
             points[:, :2] += side * self.offset
         here = self.believed if self.believed is not None else self.began_at
-        if np.linalg.norm(points[-1, :2] - here[:2]) < np.linalg.norm(points[0, :2] - here[:2]):
+        backwards = np.linalg.norm(points[-1, :2] - here[:2]) < np.linalg.norm(points[0, :2] - here[:2])
+        if backwards:
             points = points[::-1]
+        self.far_end = 0 if backwards else len(self.line) - 1
         return [[float(p[0]), float(p[1]), float(p[2])] for p in points]
 
     def geometry(self) -> dict:

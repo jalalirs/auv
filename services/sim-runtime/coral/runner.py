@@ -893,6 +893,12 @@ class Dive:
         # transit out to the work and back was neither flown nor counted.
         if asked is None:
             asked = self.launch_from((self.brief.get("initialState") or {}).get("launch"))
+            # And put there. A position in the brief is applied when the dive
+            # is built; a launch was worked out, said, and never applied, so
+            # every mission's launch point left the vehicle where the place
+            # put it.
+            if asked is not None:
+                self.position = np.array(asked, dtype=float)
 
         if asked is None:
             # What the place says, if it says anything. The middle of a site is

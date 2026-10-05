@@ -19,11 +19,15 @@ those terms:
 and at the end of the route it keeps going: it circles the last point, which
 is what a torpedo waiting for somebody does.
 
-A point closer than the vehicle can turn is a point it orbits for ever. So a
-leg counts as reached where the planner said, or — once the vehicle is within
-its own turning circle of the point and getting further away — as passed: its
-closest approach was as close as it was going to get without a loop, and the
-task, which judges where the vehicle really is, says whether that was enough.
+It flies lines, not points. Chasing a point ten metres ahead with a circle
+of eight it can turn on is a vehicle that overshoots every point and loops
+back for it; a torpedo's guidance is line of sight instead (Fossen,
+*Handbook of Marine Craft Hydrodynamics and Motion Control*, ch. 12): it aims
+at a spot on the line from the last point to the next, a lookahead ahead of
+where it is along it, so the error across the line closes smoothly. A leg is
+done when the vehicle has come level with its end, near enough, or has passed
+it; the task, which judges where the vehicle really is, says whether that was
+close enough.
 """
 
 from __future__ import annotations
@@ -67,7 +71,10 @@ class FinsController(Controller):
         d("depthKp", 0.1, 0.0, 1.0, "rad/m", "nose-down per metre too shallow")
         d("depthKi", 0.01, 0.0, 0.2, "rad/(m·s)", "nose-down per metre-second too shallow: the trim a buoyant hull needs")
         d("pitchMostDeg", 25.0, 5.0, 45.0, "°", "the steepest it dives or climbs")
-        d("clearanceM", 1.5, 0.3, 20.0, "m", "the least height over the bottom it will hold, by its altimeter")
+        d("clearanceM", 3.0, 0.3, 20.0, "m",
+          "the least height over the bottom it will hold, by its altimeter: over a reef the colonies stand a metre or two above it")
+        d("lookaheadM", 18.0, 2.0, 200.0, "m",
+          "how far along the line it aims: about twice the circle it can turn on")
         d("pitchKp", 1.5, 0.0, 8.0, "rad/rad", "stern planes per radian of pitch error")
         d("pitchRateKd", 1.0, 0.0, 10.0, "rad/(rad/s)", "stern planes per rad/s of pitch rate")
         d("arriveM", 5.0, 0.5, 50.0, "m", "how close counts as reached, when the route does not say")
@@ -84,11 +91,13 @@ class FinsController(Controller):
         self.depth_owed = 0.0
         # The nearest it has been to the point it is going to.
         self.closest = math.inf
+        self.leg_from: np.ndarray | None = None
 
     # ── what it is told ──────────────────────────────────────────────────────
 
     def steer(self, route) -> None:
         self.route = [dict(point) for point in (route or [])]
+        self.leg_from = None
         self.at = 0
         self.legs_done = 0
         self.holding = not self.route
@@ -136,15 +145,28 @@ class FinsController(Controller):
         if point is not None:
             target = np.array([float(point.get("x", seen.position[0])),
                                float(point.get("y", seen.position[1]))])
+            if self.leg_from is None:
+                self.leg_from = seen.position[:2].copy()
             flat = target - seen.position[:2]
             self.distance = float(np.hypot(*flat))
-            if self._reached(point):
+            leg = target - self.leg_from
+            length = float(np.hypot(*leg))
+            along_leg = leg / length if length > 1e-6 else flat / max(1e-6, self.distance)
+            done_along = float(np.dot(seen.position[:2] - self.leg_from, along_leg))
+            asked = float(point.get("arriveM", self["arriveM"]))
+            if self.distance <= asked or (length > 1e-6 and done_along >= length - asked) or self._reached(point):
                 self.closest = math.inf
+                self.leg_from = target
                 self.at += 1
                 self.legs_done += 1
                 self.depth_wanted = self._depth_for(seen, point)
                 return self.observe(seen)
             self.holding = False
+            # Line of sight: a spot on the line, a lookahead past where the
+            # vehicle is level with along it.
+            ahead = float(self["lookaheadM"])
+            aim = self.leg_from + along_leg * min(length, max(0.0, done_along) + ahead)
+            flat = aim - seen.position[:2]
         else:
             # The route is done. A torpedo cannot stop, so it circles where the
             # route ended — aiming at the point it has passed is a circle.
