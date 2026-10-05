@@ -148,8 +148,15 @@ class Habitat:
                 <= radius[these][:, None] ** 2
             under[:, len(di) // 2] = True               # smaller than a cell: its middle one
             under &= (i >= 0) & (i < n) & (j >= 0) & (j < n)
-            heights = np.broadcast_to(top[these][:, None], under.shape)
-            np.maximum.at(grid, (j[under], i[under]), heights[under])
+            heights = np.broadcast_to(top[these][:, None], under.shape)[under]
+            # The highest top over each cell, without np.maximum.at (twelve
+            # seconds for a reef of a million colonies): sorted lowest first,
+            # each cell's last write is its tallest, against what was there.
+            cells = j[under] * n + i[under]
+            order = np.argsort(heights, kind="stable")
+            cells, heights = cells[order], heights[order]
+            flat = grid.reshape(-1)
+            flat[cells] = np.maximum(flat[cells], heights)
 
     def clear(self, low_xy, high_xy) -> None:
         """No coral over this box, until it is stamped again."""

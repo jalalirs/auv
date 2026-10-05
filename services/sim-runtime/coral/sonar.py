@@ -302,6 +302,51 @@ def _segment(origin, way, a, b, radius: float, far: float, spread: float = 0.0,
                  and up <= radius + t * math.tan(half_tall)) else None
 
 
+def _ground_many(origin, ways, far: float, seabed):
+    """`_ground` for many beams from one origin at once: the range to the
+    bottom along each of `ways` (n, 3), NaN where it does not reach it.
+
+    The same walk and the same bisection as one beam at a time, so the same
+    ranges to the last digit, with one call to the seabed for all the beams'
+    steps instead of one per beam. A multibeam's 256 beams were 256 walks a
+    ping, and over a reef they were a third of a dive's time.
+    """
+    ways = np.asarray(ways, dtype=float)
+    n = len(ways)
+    out = np.full(n, np.nan)
+    many = getattr(seabed, "under_many", None)
+    if many is None or n == 0:
+        for i, way in enumerate(ways):
+            got = _ground(origin, way, far, seabed)
+            out[i] = np.nan if got is None else got
+        return out
+    across, columns = getattr(seabed, "across", None), getattr(seabed, "columns", None)
+    step = 0.5 if not across or not columns else min(0.5, max(0.01, 2.0 * float(across) / (int(columns) - 1)))
+    count = int(far / step) + 2
+    ts = np.cumsum(np.full(count, step))
+    ts = ts[ts <= far]
+    if not len(ts):
+        return out
+    where = origin[None, None, :] + ways[:, None, :] * ts[None, :, None]          # (n, k, 3)
+    flat = where.reshape(-1, 3)
+    below = (flat[:, 2] - many(flat[:, 0], flat[:, 1]) <= 0.0).reshape(n, len(ts))
+    hits = below.any(axis=1)
+    if not hits.any():
+        return out
+    first = np.argmax(below, axis=1)
+    rows = np.flatnonzero(hits)
+    high = ts[first[rows]]
+    low = high - step
+    for _ in range(8):
+        mid = 0.5 * (low + high)
+        at = origin[None, :] + ways[rows] * mid[:, None]
+        under = at[:, 2] - np.array([seabed.under(float(x), float(y)) for x, y in at[:, :2]]) <= 0.0
+        high = np.where(under, mid, high)
+        low = np.where(under, low, mid)
+    out[rows] = high
+    return out
+
+
 def _ground(origin, way, far: float, seabed):
     """Where a beam meets the bottom, by walking along it.
 

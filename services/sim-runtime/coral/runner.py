@@ -1251,6 +1251,11 @@ class Dive:
         elif said.get("at"):
             given = [float(v) for v in said["at"]]
             where = given if len(given) == 3 else [given[0], given[1], 0.0]
+        elif said.get("x") is not None and said.get("y") is not None:
+            # A point on the chart, as the designer writes it: {x, y} in the
+            # place's frame. It wrote that and this read only `at`, so every
+            # launch point drawn in the app was dropped and the place chose.
+            where = [float(said["x"]), float(said["y"]), 0.0]
         if where is None:
             return None
 

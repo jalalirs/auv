@@ -113,7 +113,7 @@ class Multibeam:
         has to correct for and the reason attitude is logged beside every
         ping.
         """
-        from sonar import _ground
+        from sonar import _ground_many
 
         self.last_t = t
         self.pings += 1
@@ -123,10 +123,14 @@ class Multibeam:
         across = rotation[:, 1]             # starboard
 
         xs, ys, depths, angles, offsets = [], [], [], [], []
-        for angle in self.angles():
-            way = math.cos(angle) * down + math.sin(angle) * across
-            way = way / max(1e-9, float(np.linalg.norm(way)))
-            far = _ground(origin, way, self.far, seabed) if seabed is not None else None
+        fan = list(self.angles())
+        ways = [math.cos(a) * down + math.sin(a) * across for a in fan]
+        ways = np.array([w / max(1e-9, float(np.linalg.norm(w))) for w in ways])
+        # Every beam walked at once (sonar._ground_many): the same ranges.
+        ranges = (_ground_many(origin, ways, self.far, seabed) if seabed is not None
+                  else np.full(len(fan), np.nan))
+        for angle, way, reach in zip(fan, ways, ranges):
+            far = None if not np.isfinite(reach) else float(reach)
             if far is None or far < self.near:
                 self.dropped += 1
                 continue

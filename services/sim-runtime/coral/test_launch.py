@@ -65,6 +65,13 @@ def test_a_launch_may_be_a_point():
     assert round(where[0]) == 12 and round(where[1]) == 34, where
 
 
+def test_a_launch_point_as_the_designer_draws_it():
+    """{x, y} on the chart, which is what the app's designer writes."""
+    placed = Placed(a_site())
+    where = placed.launch_from({"x": -10.0, "y": -40.0})
+    assert round(where[0]) == -10 and round(where[1]) == -40, where
+
+
 def test_it_does_not_launch_into_the_seabed():
     """A ship moored in four metres does not put a vehicle into the sand."""
     placed = Placed(a_site(), floor=-4.0)
