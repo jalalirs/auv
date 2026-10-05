@@ -7,6 +7,7 @@
 package container
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -532,16 +533,72 @@ func (r *Runtime) Logs(ctx context.Context, id string, lines int) (string, error
 	}
 	defer response.Close()
 
-	// Generous rather than tight: at about two hundred bytes a line this is
-	// forty thousand lines, and a dive that says more than that has a problem
-	// of its own. Truncation takes the end, which is where the result is, so
-	// the limit is set where it will not be reached rather than where it is
-	// merely unlikely to be.
-	raw, err := io.ReadAll(io.LimitReader(response, 8<<20))
-	if err != nil {
-		return "", fmt.Errorf("reading container output: %w", err)
+	// Generous rather than tight, and the end of it, which is where the result
+	// is. This used to say the same and do the opposite: it read the first
+	// eight megabytes, and a dredging dive that reported each of 93,598
+	// smothered colonies lost its own ending — the platform recorded the run
+	// as having finished with no task to judge it by.
+	return tailOf(response, KeptOutputBytes)
+}
+
+// KeptOutputBytes is how much of the end of a container's output is kept.
+const KeptOutputBytes = 64 << 20
+
+// tailOf reads a container's whole output and keeps the last `keep` bytes of
+// what the program wrote, unframing as it goes (see demultiplex), and cut at
+// a line so that the first line kept is whole.
+func tailOf(r io.Reader, keep int) (string, error) {
+	in := bufio.NewReaderSize(r, 64<<10)
+	kept := &tail{most: keep}
+	head, err := in.Peek(8)
+	framed := err == nil && head[0] <= 2 && head[1] == 0 && head[2] == 0 && head[3] == 0
+	if !framed {
+		if _, err := io.Copy(kept, in); err != nil {
+			return "", fmt.Errorf("reading container output: %w", err)
+		}
+		return kept.String(), nil
 	}
-	return demultiplex(raw), nil
+	header := make([]byte, 8)
+	for {
+		if _, err := io.ReadFull(in, header); err != nil {
+			break // the end, or a header cut short: what came before stands
+		}
+		length := int64(binary.BigEndian.Uint32(header[4:8]))
+		if _, err := io.CopyN(kept, in, length); err != nil {
+			break // a frame cut short: keep the bytes that were there
+		}
+	}
+	return kept.String(), nil
+}
+
+// tail holds the last `most` bytes written to it.
+type tail struct {
+	most int
+	buf  []byte
+	cut  bool
+}
+
+func (t *tail) Write(p []byte) (int, error) {
+	t.buf = append(t.buf, p...)
+	if len(t.buf) > 2*t.most {
+		t.buf = append(t.buf[:0], t.buf[len(t.buf)-t.most:]...)
+		t.cut = true
+	}
+	return len(p), nil
+}
+
+func (t *tail) String() string {
+	out := t.buf
+	if len(out) > t.most {
+		out = out[len(out)-t.most:]
+		t.cut = true
+	}
+	if t.cut {
+		if i := bytes.IndexByte(out, '\n'); i >= 0 {
+			out = out[i+1:]
+		}
+	}
+	return string(out)
 }
 
 // demultiplex removes the eight-byte stream framing the runtime adds when a

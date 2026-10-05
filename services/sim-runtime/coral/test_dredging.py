@@ -121,3 +121,23 @@ def test_a_sonde_in_the_plume_reads_it():
     up = hanging(sed, [-40.0, 0.0, -5.0], now, 0.3).sum() * 1000.0
     assert down > 1.0, down
     assert up < 1e-6, up
+
+
+def test_a_reef_smothered_wholesale_is_counted_not_named():
+    """Past the first few, smothered colonies are said as a count, not one by one."""
+    from systems.coral import SMOTHERED_BY_NAME, _judge
+
+    c = Colonies()
+    n = 500
+    c.at = np.column_stack([np.arange(n, dtype=float), np.zeros(n), np.full(n, BED)])
+    c.size = np.full(n, 1.0)
+    c.kind = np.array(["massive"] * n, dtype=object)
+    c.prim = [None] * n
+    c.height = c.size.copy()
+    _fresh(c, n)
+    said = []
+    _judge(c, np.full(n, 100.0), 3600.0, lambda kind, **d: said.append(kind))
+    _judge(c, np.full(n, 100.0), 3610.0, lambda kind, **d: said.append(kind))
+    assert said.count("coral_smothered") == SMOTHERED_BY_NAME
+    assert said.count("coral_smothering") == 1
+    assert c.said()["smothered"] == n

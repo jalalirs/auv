@@ -1,7 +1,9 @@
 package container
 
 import (
+	"bytes"
 	"encoding/binary"
+	"strings"
 	"testing"
 )
 
@@ -142,5 +144,42 @@ func TestADiveRunsFromTheDirectoryItsImageDeclares(t *testing.T) {
 	staged := createRequest(Spec{Image: "tool", InputsHost: "/host/in", OutputsHost: "/host/out"})
 	if where, _ := staged["WorkingDir"].(string); where != "/work" {
 		t.Errorf("staged work did not start where its inputs are: %v", staged["WorkingDir"])
+	}
+}
+
+// A dive that says a great deal still has its ending kept: the result is the
+// last thing it says.
+func TestTheEndOfALongOutputIsKept(t *testing.T) {
+	var raw bytes.Buffer
+	frame := func(payload string) {
+		header := make([]byte, 8)
+		header[0] = 1
+		binary.BigEndian.PutUint32(header[4:], uint32(len(payload)))
+		raw.Write(header)
+		raw.WriteString(payload)
+	}
+	for i := 0; i < 20000; i++ {
+		frame("{\"event\": \"coral_smothered\", \"colony\": 12345}\n")
+	}
+	frame("{\"event\": \"settled\", \"t\": 2700}\n")
+	got, err := tailOf(&raw, 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(got, "{\"event\": \"settled\", \"t\": 2700}\n") {
+		t.Fatalf("the ending was lost: ...%q", got[max(0, len(got)-80):])
+	}
+	if len(got) > 4096 || !strings.HasPrefix(got, "{") {
+		t.Fatalf("kept %d bytes, starting %q", len(got), got[:20])
+	}
+}
+
+func TestUnframedOutputKeepsItsEndToo(t *testing.T) {
+	got, err := tailOf(strings.NewReader(strings.Repeat("noise\n", 1000)+"the end\n"), 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(got, "the end\n") || len(got) > 64 {
+		t.Fatalf("got %q", got)
 	}
 }

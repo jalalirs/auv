@@ -386,6 +386,13 @@ class CoralSystem(System):
                 self.say("coral_broken", **event)
 
 
+# Each smothered colony is said by name up to this many; past it, how many
+# and where, at most once a SMOTHERING_SAID_EVERY_S. A dredging dive said all
+# 93,598 by name, and the record kept the names and lost the dive's ending.
+SMOTHERED_BY_NAME = 25
+SMOTHERING_SAID_EVERY_S = 60.0
+
+
 def _judge(coral, settled, seconds, say):
     """Smothering, from the dose: once a level is passed, said once."""
     if settled is None or len(settled) != len(coral):
@@ -394,7 +401,15 @@ def _judge(coral, settled, seconds, say):
     coral.dose = dose
     level = np.where(dose >= SMOTHERS_BADLY, 2, np.where(dose >= SMOTHERS_FROM, 1, 0))
     worse = np.flatnonzero(level > coral.smothered)
-    for i in worse:
-        coral.smothered[i] = level[i]
+    if not len(worse):
+        return
+    named = getattr(coral, "named_smothered", 0)
+    for i in worse[:max(0, SMOTHERED_BY_NAME - named)]:
         say("coral_smothered", colony=int(i), growth=str(coral.kind[i]),
             mgCm2PerDay=round(float(dose[i]), 1), badly=bool(level[i] >= 2))
+    coral.named_smothered = min(SMOTHERED_BY_NAME, named + len(worse))
+    coral.smothered[worse] = level[worse]
+    if named + len(worse) > SMOTHERED_BY_NAME and \
+            seconds - getattr(coral, "smothering_said_at", -np.inf) >= SMOTHERING_SAID_EVERY_S:
+        coral.smothering_said_at = seconds
+        say("coral_smothering", **coral._smothering())
