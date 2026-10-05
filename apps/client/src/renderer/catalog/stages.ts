@@ -178,8 +178,21 @@ export function drawnInto(stage: Stage, clicks: P[]): Stage {
 // vehicle's own idea of where it is has drifted.
 
 /** How pursue flies: its declared settings, and the fitted turn rate. */
-export interface Pilot { cruiseMs: number; easeM: number; speedKp: number; faceFirstDeg: number; turnRadS: number; arriveM: number }
+export interface Pilot { cruiseMs: number; easeM: number; speedKp: number; faceFirstDeg: number; turnRadS: number; arriveM: number;
+  /** Flies at its cruise and turns while it does: a vehicle steered by fins
+   *  cannot stop to face a point, and its propeller is held at a speed. */
+  holdsSpeed?: boolean }
 export const PURSUE: Pilot = { cruiseMs: 0.4, easeM: 2.0, speedKp: 1.2, faceFirstDeg: 45, turnRadS: 0.2, arriveM: 1.0 };
+/** controllers/fins.py's own: 1.5 m/s, ten degrees a second at most, a leg
+ *  done within five metres. A REMUS estimated as if it were pursue was put
+ *  at twenty minutes for a pipeline it follows in five. */
+export const FINS: Pilot = { cruiseMs: 1.5, easeM: 0.01, speedKp: 1.2, faceFirstDeg: 180,
+  turnRadS: (10 * Math.PI) / 180, arriveM: 5.0, holdsSpeed: true };
+
+/** Which pilot flies a vehicle, from how its package says it is commanded. */
+export function pilotOf(dynamics: unknown): Pilot {
+  return (dynamics as { commandedIn?: string } | undefined)?.commandedIn === "fins" ? FINS : PURSUE;
+}
 
 /** The hull as the speed loop meets it, from the vehicle's package. */
 export interface Hull {
@@ -303,7 +316,7 @@ function pursue(state: Flying, route: Route, pilot: Pilot, hull: Hull): { second
       const wanted = cruise * Math.min(1, d / pilot.easeM) * easing;
       const v = state.speed;
       const force = pilot.speedKp * hull.massKg * (wanted - v) - (hull.linear * v + hull.quadratic * v * Math.abs(v));
-      state.speed = v + (force / hull.massKg) * dt;
+      state.speed = pilot.holdsSpeed ? wanted : v + (force / hull.massKg) * dt;
       const moved = Math.min(d, Math.max(0, state.speed) * dt);
       state.at = { x: state.at.x + (moved * dx) / d, y: state.at.y + (moved * dy) / d };
       metres += moved;
@@ -378,6 +391,7 @@ export function driftRisks(stages: Stage[], legs: Leg[]): { stage: number; radiu
 /** The speed pursue's loop and the hull's drag agree on at cruise: the loop
  *  pushes in proportion to what it is short of, the drag pushes back. */
 export function settledMs(hull: Hull, pilot: Pilot = PURSUE): number {
+  if (pilot.holdsSpeed) return pilot.cruiseMs;
   const k = pilot.speedKp * hull.massKg, c = pilot.cruiseMs;
   // k (c - v) = linear v + quadratic v², solved for v.
   const a = hull.quadratic, b = hull.linear + k;

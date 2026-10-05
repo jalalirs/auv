@@ -18,7 +18,7 @@ import type { AssetVersion, Layout, Mission, Platform } from "@coral-city/api";
 
 import { TASKS, type Task } from "../catalog/tasks.js";
 import {
-  drawMode, drawnInto, drawPrompt, extentOf, floorWatts, geometryOf, hullOf, legsOf, settledMs, snap, wattsOf,
+  drawMode, drawnInto, drawPrompt, extentOf, floorWatts, geometryOf, hullOf, legsOf, pilotOf, settledMs, snap, wattsOf,
   type Drawn, type P, type Stage,
 } from "../catalog/stages.js";
 import { centreOf, groundOf, SiteChart, type Frame, type Ground, type Thing } from "../parts/SiteChart.js";
@@ -206,8 +206,9 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
     power?: { capacityWh?: number; hotelW?: number; reserveFraction?: number };
   } | undefined;
   const hull = useMemo(() => hullOf(vehicle?.dynamics), [vehicle]);
-  const legs = useMemo(() => legsOf(plan.stages, drawn, launch, hull),
-    [plan.stages, drawn, launch.x, launch.y, hull]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pilot = useMemo(() => pilotOf(vehicle?.dynamics), [vehicle]);
+  const legs = useMemo(() => legsOf(plan.stages, drawn, launch, hull, pilot),
+    [plan.stages, drawn, launch.x, launch.y, hull, pilot]); // eslint-disable-line react-hooks/exhaustive-deps
   const flyS = legs.reduce((s, l) => s + l.flyS, 0);
   const allowS = legs.reduce((s, l) => s + l.allowS, 0);
   const usableWh = (dyn?.power?.capacityWh ?? 0) * (1 - (dyn?.power?.reserveFraction ?? 0.1));
@@ -216,7 +217,7 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
   const ofIt = held.runs.filter((r) => vehicleOf.get(r.vehicleVersion ?? "") === checkWith);
   const here = ofIt.filter((r) => placeVersions.has(r.placeVersion ?? ""));
   const drew = wattsOf((here.length ? here : ofIt).map((r) => r.run.outcome as Record<string, unknown> | undefined));
-  const watts = drew?.watts ?? (dyn?.power?.hotelW !== undefined ? floorWatts(hull, dyn.power.hotelW) : undefined);
+  const watts = drew?.watts ?? (dyn?.power?.hotelW !== undefined ? floorWatts(hull, dyn.power.hotelW, pilot) : undefined);
   const spentWh = watts !== undefined ? (watts * flyS) / 3600 : undefined;
 
   const at = plan.stages[chosen];
@@ -494,8 +495,10 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
               </p>
             ) : <p className="quiet">This vehicle&rsquo;s package does not say its battery.</p>}
             <p className="quiet">
-              Flown the way the pursue controller flies it: turning to face each point, easing off
-              near it, at the {settledMs(hull).toFixed(2)} m/s this hull settles at.{" "}
+              {pilot.holdsSpeed
+                ? <>Flown the way the fins controller flies it: turning while it goes, at most ten degrees a second, at {settledMs(hull, pilot).toFixed(1)} m/s.{" "}</>
+                : <>Flown the way the pursue controller flies it: turning to face each point, easing off
+                  near it, at the {settledMs(hull).toFixed(2)} m/s this hull settles at.{" "}</>}
               {drew
                 ? <>Battery at the {Math.round(drew.watts)} W it drew in the middle of its {drew.runs} run{drew.runs === 1 ? "" : "s"}{here.length ? " here" : " elsewhere"}.</>
                 : <>It has not flown yet, so the battery is a floor — hotel load and drag; flown runs have drawn two to three times that.</>}

@@ -20,10 +20,14 @@ import json
 import os
 import pathlib
 import sys
+import time
 import urllib.error
 import urllib.request
 
 API = os.environ.get("IOCEAN_API", "http://localhost:18080")
+# Whether to wait for a dive slot when the institution's quota is full,
+# rather than give up on the dives not yet asked for.
+WAIT = False
 
 
 def call(method: str, path: str, body=None, token: str = "") -> dict:
@@ -32,12 +36,22 @@ def call(method: str, path: str, body=None, token: str = "") -> dict:
     request.add_header("content-type", "application/json")
     if token:
         request.add_header("authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(request, timeout=60) as answer:
-            text = answer.read().decode()
-            return json.loads(text) if text else {}
-    except urllib.error.HTTPError as failed:
-        raise SystemExit(f"{method} {path}: {failed.code} {failed.read().decode()[:400]}")
+    while True:
+        try:
+            with urllib.request.urlopen(request, timeout=60) as answer:
+                text = answer.read().decode()
+                return json.loads(text) if text else {}
+        except urllib.error.HTTPError as failed:
+            said = failed.read().decode()[:400]
+            if WAIT and failed.code == 429 and "quota" in said:
+                print("  the quota is full; waiting a minute for a dive to land", flush=True)
+                time.sleep(60)
+                request = urllib.request.Request(API + path, data=data, method=method)
+                request.add_header("content-type", "application/json")
+                if token:
+                    request.add_header("authorization", f"Bearer {token}")
+                continue
+            raise SystemExit(f"{method} {path}: {failed.code} {said}")
 
 
 def token() -> str:
@@ -63,7 +77,10 @@ def main() -> int:
     ap.add_argument("example")
     ap.add_argument("--fly", action="store_true", help="ask for each dive's run")
     ap.add_argument("--cancel", nargs=2, metavar=("DIVE", "RUN"), help="end a run instead")
+    ap.add_argument("--wait", action="store_true", help="wait for a dive slot when the quota is full")
     asked = ap.parse_args()
+    global WAIT
+    WAIT = asked.wait
     said = json.loads(pathlib.Path(asked.example).read_text())
     t = token()
     if asked.cancel:

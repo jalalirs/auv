@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { driftRisks, drawnInto, geometryOf, legsOf, snap, wattsOf, type Hull, type Stage } from "./stages.js";
+import { driftRisks, drawnInto, FINS, geometryOf, legsOf, pilotOf, PURSUE, snap, wattsOf, type Hull, type Stage } from "./stages.js";
 
 const launch = { x: 0, y: 0 };
 
@@ -93,5 +93,21 @@ describe("the plan, stage by stage", () => {
   it("rounds to the place's scale", () => {
     expect(snap(1.23456, 2)).toBeCloseTo(1.235);
     expect(snap(123.4, 1000)).toBe(123);
+  });
+});
+
+describe("a vehicle steered by fins", () => {
+  it("is estimated as the fins controller flies it, not as pursue", () => {
+    expect(pilotOf({ commandedIn: "fins" })).toBe(FINS);
+    expect(pilotOf({ commandedIn: "wrench" })).toBe(PURSUE);
+    // The pipeline landfall: 452 m, flown by a REMUS in 308 s on the box.
+    const pipe = { id: "pipeline-1", kind: "pipeline", x: 150, y: -20,
+                   route: [{ x: 0, y: -40 }, { x: 150, y: -20 }, { x: 450, y: 0 }] };
+    const remus: Hull = { massKg: 36, linear: 0, quadratic: 4 };
+    const legs = legsOf([{ kind: "follow", over: "pipeline-1", timeLimitS: 1500 }], [pipe as never],
+                        { x: -10, y: -40 }, remus, FINS);
+    const flyS = legs.reduce((s, l) => s + l.flyS, 0);
+    expect(flyS).toBeGreaterThan(250);
+    expect(flyS).toBeLessThan(420);
   });
 });

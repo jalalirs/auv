@@ -1,0 +1,33 @@
+{
+  "_": "Promo comparison (docs/plan/forum-2026-10.md): the same route at Al Fahal through a row of coral-nursery frames, flown by the route-only controller (pursue) and by the one that reads its sonar (wary). Same place, water, vehicle and seed; only the controller changes.",
+  "place": "al-fahal",
+  "layout": {
+    "slug": "nursery-row-al-fahal",
+    "name": "A row of nursery frames across the route",
+    "summary": "Three coral-nursery frames, 6 m tall and 3 m across, standing shoulder to shoulder across a 55 m route.",
+    "things": [
+      {"id": "frame-1", "kind": "nursery-frame", "x": -318, "y": -235, "z": -12.96, "radiusM": 1.5, "heightM": 6.0},
+      {"id": "frame-2", "kind": "nursery-frame", "x": -318, "y": -232, "z": -13.1, "radiusM": 1.5, "heightM": 6.0},
+      {"id": "frame-3", "kind": "nursery-frame", "x": -318, "y": -229, "z": -13.1, "radiusM": 1.5, "heightM": 6.0}
+    ]
+  },
+  "mission": {
+    "slug": "through-the-nursery-row",
+    "name": "Across the nursery row",
+    "launch": {"x": -352, "y": -232},
+    "stages": [
+      {"kind": "waypoints", "radiusM": 2, "timeLimitS": 300,
+       "points": [{"x": -336, "y": -232, "depthM": 9}, {"x": -300, "y": -232, "depthM": 9}, {"x": -288, "y": -232, "depthM": 8}]}
+    ]
+  },
+  "dives": [
+    {"name": "Nursery row, flown by pursue (route only)", "vehicle": "boxfish-luna",
+     "waterName": "still, USBL from the boat",
+     "water": {"currentMetresPerSecond": 0.0, "currentHeadingDeg": 0, "positioning": {"kind": "usbl", "accuracyM": 1.0, "everyS": 2.0}},
+     "objective": {"controller": "pursue", "seed": 4242, "pictures": true, "views": ["chase"], "viewEveryS": 600}},
+    {"name": "Nursery row, flown by wary (sonar)", "vehicle": "boxfish-luna",
+     "waterName": "still, USBL from the boat",
+     "water": {"currentMetresPerSecond": 0.0, "currentHeadingDeg": 0, "positioning": {"kind": "usbl", "accuracyM": 1.0, "everyS": 2.0}},
+     "objective": {"controller": "wary", "seed": 4242, "pictures": true, "views": ["chase"], "viewEveryS": 600}}
+  ]
+}

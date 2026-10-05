@@ -18,7 +18,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { AssetVersion, Cost, Mission, Platform } from "@coral-city/api";
 
 import { DOUBTS } from "../catalog/doubts.js";
-import { driftRisks, DRIFT_SHARE, extentOf, hullOf, legsOf, type Drawn, type P, type Stage } from "../catalog/stages.js";
+import { driftRisks, DRIFT_SHARE, extentOf, hullOf, legsOf, pilotOf, type Drawn, type P, type Stage } from "../catalog/stages.js";
 import { groundOf, SiteChart, type Frame, type Ground, type Thing } from "../parts/SiteChart.js";
 import { drawStages } from "../parts/StagesLayer.js";
 import { newestOf } from "../platform/packages.js";
@@ -140,8 +140,9 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
   const launch: P = typeof plan?.launch?.x === "number" && typeof plan?.launch?.y === "number"
     ? { x: plan.launch.x, y: plan.launch.y } : { x: Number(begin?.[0] ?? 0), y: Number(begin?.[1] ?? 0) };
   const hull = useMemo(() => hullOf(packages.vehicles.get(vehicle)?.dynamics), [packages, vehicle]);
-  const legs = useMemo(() => legsOf(stages, things as unknown as Drawn[], launch, hull),
-    [stages, things, launch.x, launch.y, hull]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pilot = useMemo(() => pilotOf(packages.vehicles.get(vehicle)?.dynamics), [packages, vehicle]);
+  const legs = useMemo(() => legsOf(stages, things as unknown as Drawn[], launch, hull, pilot),
+    [stages, things, launch.x, launch.y, hull, pilot]); // eslint-disable-line react-hooks/exhaustive-deps
   const overlay = useCallback((g: CanvasRenderingContext2D, frame: Frame) =>
     drawStages(g, frame, stages, legs, things as unknown as Drawn[], undefined, launch),
   [stages, legs, things, launch.x, launch.y]); // eslint-disable-line react-hooks/exhaustive-deps

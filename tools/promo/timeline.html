@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>iocean promo</title>
+<style>
+:root{--ink:#0b141b;--paper:#f3f1ec;--text:#1d2329;--muted:#6b7378;--coral:#e4572e;--amber:#f2a33a;--sea:#7fb4c1;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;--sans:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1920px;height:1080px;overflow:hidden;background:#000}
+.scene{position:absolute;inset:0;opacity:0;overflow:hidden}
+.full{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform-origin:50% 50%}
+.card{background:var(--paper);display:flex;align-items:center;justify-content:center;text-align:center}
+.card h1{font-family:var(--serif);font-weight:400;font-size:84px;line-height:1.18;color:var(--text);letter-spacing:-.005em}
+.dark{background:var(--ink)}
+.cap{position:absolute;left:120px;bottom:96px;color:#f4f6f3;font-family:var(--serif);font-size:54px;line-height:1.15;
+  text-shadow:0 2px 18px rgba(0,0,0,.55);max-width:1400px}
+.cap small{display:block;font-family:var(--sans);font-size:24px;letter-spacing:.02em;color:rgba(244,246,243,.82);margin-top:14px;text-shadow:0 1px 8px rgba(0,0,0,.6)}
+.shade{position:absolute;inset:0;background:linear-gradient(0deg,rgba(5,12,18,.75) 0%,rgba(5,12,18,0) 45%)}
+.window{position:absolute;left:50%;top:46%;width:1600px;height:900px;margin:-450px 0 0 -800px;border-radius:16px;overflow:hidden;
+  box-shadow:0 40px 120px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.06);transform-origin:50% 50%;background:#0b141b}
+.window video{width:100%;height:100%;display:block}
+.uicap{position:absolute;left:50%;bottom:40px;transform:translateX(-50%);white-space:nowrap;text-align:center;color:#eef1ec;font-family:var(--serif);font-size:40px;
+  background:rgba(8,16,22,.86);padding:14px 34px;border-radius:999px;box-shadow:0 10px 40px rgba(0,0,0,.4);z-index:5}
+.nums{position:absolute;right:110px;bottom:110px;display:flex;flex-direction:column;gap:26px;text-align:right}
+.num b{display:block;font-family:var(--serif);font-weight:400;font-size:84px;line-height:1;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.5)}
+.num span{display:block;font-family:var(--sans);font-size:24px;color:rgba(244,246,243,.85);margin-top:6px;text-shadow:0 1px 8px rgba(0,0,0,.6)}
+.split{position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;gap:6px;background:#000}
+.split>div{position:relative;overflow:hidden}
+.split video{width:100%;height:100%;object-fit:cover}
+.tag{position:absolute;left:40px;top:36px;font-family:var(--sans);font-size:26px;font-weight:600;color:#fff;
+  background:rgba(11,20,27,.72);padding:10px 18px;border-radius:999px}
+.count{position:absolute;left:40px;bottom:40px;font-family:var(--serif);font-size:64px;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.6)}
+.count span{font-family:var(--sans);font-size:24px;display:block;color:rgba(255,255,255,.85)}
+.prov{background:var(--paper);padding:150px 200px}
+.prov h2{font-family:var(--serif);font-weight:400;font-size:72px;color:var(--text)}
+.row{display:grid;grid-template-columns:520px 520px 220px;align-items:center;font-family:var(--sans);font-size:34px;color:var(--text);
+  padding:26px 0;border-bottom:1px solid #d9dcd6}
+.row:first-of-type{margin-top:60px}
+.row .v{font-family:var(--serif);font-size:44px}
+.pill{font-size:22px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;padding:6px 16px;border-radius:999px;justify-self:start}
+.measured{background:#d7ebe0;color:#1d5b3b}.derived{background:#dde8f0;color:#1f4f6e}.chosen{background:#f3e6cf;color:#7a5216}.assumed{background:#f5dcd5;color:#8a2f17}
+.grid6{position:absolute;left:150px;right:150px;top:170px;display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
+.grid6 div{height:330px;border-radius:14px;overflow:hidden;background:#dfe3e6}
+.grid6 img{width:100%;height:100%;object-fit:cover}
+.flow{position:absolute;left:0;right:0;top:300px;display:flex;justify-content:center;gap:120px;align-items:center}
+.node{width:380px;height:220px;border-radius:20px;border:1px solid #2b4a5b;background:#10222d;color:#eef1ec;display:flex;flex-direction:column;
+  justify-content:center;align-items:center;font-family:var(--sans);font-size:30px;text-align:center;gap:10px}
+.node b{font-family:var(--serif);font-weight:400;font-size:44px}
+.node span{font-size:22px;color:#9fb3bb}
+.wire{position:absolute;top:410px;height:2px;background:#2b4a5b}
+.dot{position:absolute;top:403px;width:16px;height:16px;border-radius:50%;background:var(--coral);box-shadow:0 0 18px var(--coral)}
+.facts{position:absolute;left:0;right:0;top:640px;display:flex;justify-content:center;gap:70px;font-family:var(--sans);color:#eef1ec}
+.facts div{text-align:center}
+.facts b{display:block;font-family:var(--serif);font-weight:400;font-size:64px}
+.facts span{font-size:24px;color:#9fb3bb}
+.big{font-family:var(--serif);font-weight:400;color:var(--text)}
+</style>
+</head>
+<body>
+
+<!-- 1 opening -->
+<div class="scene" id="open">
+  <video class="full" src="assets/reef_alfahal.mp4" muted preload="auto"></video>
+  <div class="shade"></div>
+  <div class="cap" id="open-cap" style="bottom:120px"><span style="font-size:120px;letter-spacing:.01em">iocean</span>
+    <small>Boxfish Luna over Al Fahal reef, Red Sea · among fish of Red Sea species · simulated</small></div>
+</div>
+
+<div class="scene card" id="card1"><h1>Rehearse the underwater job<br>before the boat leaves.</h1></div>
+
+<!-- 3 the place -->
+<div class="scene" id="place">
+  <img class="full" id="place-map" src="assets/shushah.jpg" style="object-fit:cover">
+  <video class="full" id="place-film" src="assets/reef_shushah.mp4" muted preload="auto" style="opacity:0"></video>
+  <div class="shade"></div>
+  <div class="cap">Real Saudi seabeds and reefs, colony by colony.
+    <small>Shushah Island · seabed fitted to 7,149 ICESat-2 depths · 1.7 million colonies · its own recorded fish</small></div>
+</div>
+
+<div class="scene card" id="card2"><h1>Draw the job.</h1></div>
+
+<div class="scene dark" id="ui-layout"><div class="window"><video src="assets/layout.mp4" muted preload="auto"></video></div>
+  <div class="uicap">Lay out what is on the seabed: a pipeline, a dredger, a nursery.</div></div>
+
+<div class="scene dark" id="ui-designer"><div class="window"><video src="assets/designer.mp4" muted preload="auto"></video></div>
+  <div class="uicap">Plan it against the vehicle you will send.</div></div>
+
+<div class="scene card" id="card3"><h1>Ask what could go differently.</h1></div>
+
+<div class="scene dark" id="ui-fly"><div class="window"><video src="assets/fly.mp4" muted preload="auto"></video></div>
+  <div class="uicap">Every doubt becomes a dive: four currents, four dives.</div></div>
+
+<!-- remote processing -->
+<div class="scene dark" id="remote">
+  <div class="flow">
+    <div class="node"><b>Your desk</b><span>the app, a laptop</span></div>
+    <div class="node"><b>iocean</b><span>the platform: places, vehicles, runs</span></div>
+    <div class="node"><b>GPU hosts</b><span>the ocean, simulated</span></div>
+  </div>
+  <div class="wire" style="left:530px;width:120px"></div><div class="wire" style="left:1150px;width:120px"></div>
+  <div class="dot" id="dot1"></div><div class="dot" id="dot2"></div>
+  <div class="facts">
+    <div><b>15×</b><span>faster than real time, flown for the numbers</span></div>
+    <div><b>Films</b><span>path-traced on the hosts, not on your laptop</span></div>
+    <div><b>Every number</b><span>comes back with where it came from</span></div>
+  </div>
+  <div class="uicap" style="bottom:90px;font-size:48px">Flown remotely, on GPU hosts.</div>
+</div>
+
+<div class="scene dark" id="ui-results"><div class="window"><video src="assets/results.mp4" muted preload="auto"></video></div>
+  <div class="uicap">Queued, flown, back — while you plan the next one.</div></div>
+
+<!-- the pipeline -->
+<div class="scene" id="pipe">
+  <video class="full" src="assets/pipeline.mp4" muted preload="auto"></video>
+  <div class="shade"></div>
+  <div class="cap" style="max-width:1000px">A pipeline landfall, inspected.<small>REMUS 100 following the line at 4.5 m · Red Sea fringing reef (constructed) · USBL from the ship</small></div>
+  <div class="nums">
+    <div class="num" id="n1"><b>452 / 452 m</b><span>of the line seen</span></div>
+    <div class="num" id="n2"><b>3 / 3</b><span>free spans seen</span></div>
+    <div class="num" id="n3"><b>0</b><span>of 1,096,027 colonies struck</span></div>
+  </div>
+</div>
+
+<div class="scene card" id="card4"><h1>Change one thing.</h1></div>
+
+<div class="scene" id="split">
+  <div class="split">
+    <div><video src="assets/nursery_pursue.mp4" muted preload="auto"></video><div class="tag">Flies the route</div>
+      <div class="count" id="c1"></div></div>
+    <div><video src="assets/nursery_wary.mp4" muted preload="auto"></video><div class="tag">Reads its sonar</div>
+      <div class="count" id="c2"></div></div>
+  </div>
+  <div class="uicap" style="bottom:120px;font-size:46px;text-shadow:0 2px 14px rgba(0,0,0,.7)">Same reef, same water, same seed. Only the controller changes.</div>
+</div>
+
+<div class="scene" id="plume">
+  <video class="full" src="assets/plume.mp4" muted preload="auto" style="object-fit:contain;background:#0d1b24"></video>
+  <div class="cap" style="bottom:auto;top:90px;left:120px">…and what the job does to the place.
+    <small>A dredger 200 m off the reef, six hours, 0.15 m/s onshore · judged against Erftemeijer et al. 2012</small></div>
+</div>
+
+<div class="scene prov" id="prov">
+  <h2>Every number says where it came from.</h2>
+  <div class="row" id="r1"><span>Pipeline seen</span><span class="v">452 of 452 m</span><span class="pill derived">derived</span></div>
+  <div class="row" id="r2"><span>Water clarity off Thuwal</span><span class="v">Kd 0.05–0.12 m⁻¹</span><span class="pill measured">measured</span></div>
+  <div class="row" id="r3"><span>Survey altitude</span><span class="v">4.5 m</span><span class="pill chosen">chosen</span></div>
+  <div class="row" id="r4"><span>Dredger overflow loss</span><span class="v">20 kg/s</span><span class="pill assumed">assumed</span></div>
+</div>
+
+<div class="scene card" id="vehicles" style="align-items:flex-start">
+  <div style="position:absolute;top:70px;left:0;right:0;text-align:center"><span class="big" style="font-size:64px">Bring your vehicle.</span></div>
+  <div class="grid6">
+    <div><img src="assets/remus-100.jpg"></div><div><img src="assets/seaglider.jpg"></div><div><img src="assets/bluerov2-heavy.jpg"></div>
+    <div><img src="assets/edgetech-2300.jpg"></div><div><img src="assets/boxfish-luna.jpg"></div><div><img src="assets/mini-hoot.jpg"></div>
+  </div>
+  <div style="position:absolute;bottom:70px;left:0;right:0;text-align:center;font-family:var(--sans);font-size:28px;color:var(--muted)">
+    Built from the maker's sheet: hull, thrusters or fins, sensors, battery — and your own controller.</div>
+</div>
+
+<div class="scene" id="tank">
+  <video class="full" src="assets/minihoot.mp4" muted preload="auto"></video>
+  <div class="shade"></div>
+  <div class="cap">From a test tank to the open reef.<small>mini-hoot on its tether in a 2 m tank, its drag measured in a numerical tow tank</small></div>
+</div>
+
+<div class="scene card" id="end">
+  <div><div class="big" style="font-size:150px;letter-spacing:.01em">iocean</div>
+    <div class="big" style="font-size:52px;margin-top:24px;color:#3b4850">Rehearse it first.</div>
+    <div style="font-family:var(--sans);font-size:24px;color:var(--muted);margin-top:60px">Saudi Maritime &amp; Logistics Congress · Jeddah · October 2026</div></div>
+</div>
+
+<script>
+// ── the timeline ─────────────────────────────────────────────────────────────
+// Each scene: when it starts and ends (seconds), and what it does in between.
+// Scenes overlap by FADE so one dissolves into the next.
+const FADE = 0.6;
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = k => 0.5 - 0.5 * Math.cos(Math.PI * clamp(k));
+const ramp = (t, a, b) => ease((t - a) / (b - a));
+const $ = id => document.getElementById(id);
+
+// Zoom keyframes for a window: [time, scale, x, y] — x, y the point of the
+// recording (0..1) brought towards the centre.
+function zoom(el, t, keys) {
+  let k = keys[0];
+  for (let i = 0; i < keys.length - 1; i++) {
+    const [t0, s0, x0, y0] = keys[i], [t1, s1, x1, y1] = keys[i + 1];
+    if (t >= t0 && t <= t1) { const e = ease((t - t0) / (t1 - t0)); k = [t, s0 + (s1 - s0) * e, x0 + (x1 - x0) * e, y0 + (y1 - y0) * e]; break; }
+    if (t > t1) k = keys[i + 1];
+  }
+  const [, s, x, y] = k;
+  el.style.transform = `translate(${(0.5 - x) * 1600 * (s - 1)}px, ${(0.5 - y) * 900 * (s - 1)}px) scale(${s})`;
+}
+
+const SCENES = [
+  { id: "open", a: 0, b: 7.5, video: { el: "#open video", from: 6, rate: 1 },
+    run: (t, el) => { el.querySelector("video").style.transform = `scale(${1.08 - 0.06 * t / 7.5})`;
+      $("open-cap").style.opacity = ramp(t, 1.4, 2.6) * (1 - ramp(t, 6.2, 7.2)); } },
+  { id: "card1", a: 7.0, b: 11.5, run: (t, el) => { el.querySelector("h1").style.transform = `translateY(${12 * (1 - ramp(t, 0, 1.2))}px)`; } },
+  { id: "place", a: 11.0, b: 19.5, video: { el: "#place-film", from: 20, rate: 1, start: 3.0 },
+    run: (t) => { $("place-map").style.transform = `scale(${1 + 0.9 * ramp(t, 0, 3.6)})`;
+      $("place-map").style.transformOrigin = "60% 55%";
+      $("place-film").style.opacity = ramp(t, 3.0, 4.0);
+      $("place-film").style.transform = `scale(${1.04 - 0.04 * ramp(t, 3, 8.5)})`;
+      $("place").querySelector(".cap").style.opacity = ramp(t, 4.2, 5.2); } },
+  { id: "card2", a: 19.0, b: 22.5 },
+  { id: "ui-layout", a: 22.0, b: 32.5, video: { el: "#ui-layout video", from: 0, rate: 1.15 },
+    run: (t, el) => zoom(el.querySelector(".window"), t, [[0, 0.94, .5, .5], [1.5, 0.94, .5, .5], [3.5, 1.45, .52, .5], [8.5, 1.45, .56, .5], [10.5, 1.1, .5, .5]]) },
+  { id: "ui-designer", a: 32.0, b: 41.0, video: { el: "#ui-designer video", from: 0, rate: 1.0 },
+    run: (t, el) => zoom(el.querySelector(".window"), t, [[0, 0.94, .5, .5], [1.2, 1.25, .45, .4], [4.5, 1.6, .8, .3], [7.5, 1.6, .8, .3], [9, 1.15, .7, .2]]) },
+  { id: "card3", a: 40.5, b: 44.0 },
+  { id: "ui-fly", a: 43.5, b: 53.0, video: { el: "#ui-fly video", from: 0, rate: 1.2 },
+    run: (t, el) => zoom(el.querySelector(".window"), t, [[0, 0.94, .5, .5], [1.0, 1.5, .55, .22], [4.5, 1.5, .55, .22], [6.5, 1.35, .72, .85], [9.5, 1.35, .75, .9]]) },
+  { id: "remote", a: 52.5, b: 59.0,
+    run: (t) => { const k = (t * 0.55) % 1, j = (t * 0.55 + 0.5) % 1;
+      $("dot1").style.left = (530 + 104 * k) + "px"; $("dot2").style.left = (1150 + 104 * j) + "px";
+      document.querySelectorAll("#remote .facts div").forEach((d, i) => d.style.opacity = ramp(t, 1.2 + i * 0.7, 2.0 + i * 0.7)); } },
+  { id: "ui-results", a: 58.5, b: 65.0, video: { el: "#ui-results video", from: 0, rate: 1.0 },
+    run: (t, el) => zoom(el.querySelector(".window"), t, [[0, 0.94, .5, .5], [1.0, 1.35, .45, .22], [6.5, 1.35, .45, .25]]) },
+  { id: "pipe", a: 64.5, b: 75.0, video: { el: "#pipe video", from: 40, rate: 1.4 },
+    run: (t) => { ["n1", "n2", "n3"].forEach((n, i) => $(n).style.opacity = ramp(t, 2.5 + i * 1.1, 3.3 + i * 1.1));
+      $("pipe").querySelector(".cap").style.opacity = ramp(t, 0.8, 1.8); } },
+  { id: "card4", a: 74.5, b: 78.0 },
+  { id: "split", a: 77.5, b: 88.0, videos: [{ el: "#split video", from: 0, rate: 3 }, { el: "#split div:nth-child(2) video", from: 0, rate: 3 }],
+    run: (t) => { $("split").querySelector(".uicap").style.opacity = ramp(t, 0.8, 1.8) * (1 - ramp(t, 6, 7)); counters(t); } },
+  { id: "plume", a: 87.5, b: 95.0, video: { el: "#plume video", from: 0, rate: 2.0 },
+    run: (t, el) => { $("plume").querySelector(".cap").style.opacity = ramp(t, 0.8, 1.8);
+      el.querySelector("video").style.transform = `scale(${1.0 + 0.08 * ramp(t, 0, 7.5)})`; } },
+  { id: "prov", a: 94.5, b: 100.5,
+    run: (t) => ["r1", "r2", "r3", "r4"].forEach((r, i) => { $(r).style.opacity = ramp(t, 0.8 + i * 0.6, 1.4 + i * 0.6);
+      $(r).style.transform = `translateY(${16 * (1 - ramp(t, 0.8 + i * 0.6, 1.4 + i * 0.6))}px)`; }) },
+  { id: "vehicles", a: 100.0, b: 104.5,
+    run: (t) => document.querySelectorAll("#vehicles .grid6 div").forEach((d, i) => { d.style.opacity = ramp(t, 0.3 + i * 0.22, 0.9 + i * 0.22);
+      d.style.transform = `scale(${0.96 + 0.04 * ramp(t, 0.3 + i * 0.22, 0.9 + i * 0.22)})`; }) },
+  { id: "tank", a: 104.0, b: 109.5, video: { el: "#tank video", from: 8, rate: 1 },
+    run: (t) => { $("tank").querySelector(".cap").style.opacity = ramp(t, 0.6, 1.6); } },
+  { id: "end", a: 109.0, b: 116.0, run: (t, el) => { el.firstElementChild.style.opacity = ramp(t, 0.4, 1.6); } },
+];
+const DURATION = 116.0;
+
+// What each controller struck, as it happened: [seconds into the clip, total].
+window.STRIKES = { pursue: [], wary: [] };
+function counters(t) {
+  const upTo = (list, clipS) => list.filter(([s]) => s <= clipS).reduce((n, [, k]) => Math.max(n, k), 0);
+  const clipS = t * 3;
+  $("c1").innerHTML = `${upTo(STRIKES.pursue, clipS)}<span>frames struck</span>`;
+  $("c2").innerHTML = `${upTo(STRIKES.wary, clipS)}<span>frames struck</span>`;
+}
+
+function videosOf(scene) {
+  const out = [];
+  for (const v of [scene.video, ...(scene.videos || [])].filter(Boolean)) {
+    document.querySelectorAll(v.el).forEach((el, i) => { if (i === 0 || scene.videos) out.push([el, v]); });
+  }
+  return out;
+}
+
+window.renderAt = async function (T) {
+  const waits = [];
+  for (const scene of SCENES) {
+    const el = $(scene.id);
+    const on = T >= scene.a - 1e-6 && T <= scene.b + 1e-6;
+    const fadeIn = scene.a === 0 ? 1 : ramp(T, scene.a, scene.a + FADE);
+    const fadeOut = 1 - ramp(T, scene.b - FADE, scene.b);
+    el.style.opacity = on ? Math.min(fadeIn, fadeOut) : 0;
+    el.style.visibility = on ? "visible" : "hidden";
+    // A scene that dissolves in over the last one sits above it.
+    el.style.zIndex = on ? String(1 + SCENES.indexOf(scene)) : "0";
+    if (!on) continue;
+    const t = T - scene.a;
+    if (scene.run) scene.run(t, el);
+    for (const [video, v] of videosOf(scene)) {
+      const local = Math.max(0, t - (v.start || 0));
+      const want = Math.min((video.duration || 1e9) - 0.05, v.from + local * v.rate);
+      if (Math.abs(video.currentTime - want) > 0.001) {
+        waits.push(new Promise(res => { const done = () => { video.removeEventListener("seeked", done); res(); };
+          video.addEventListener("seeked", done); setTimeout(done, 15000); video.currentTime = want; }));
+      }
+    }
+  }
+  await Promise.all(waits);
+  return true;
+};
+window.DURATION = DURATION;
+window.ready = Promise.all([...document.querySelectorAll("video")].map(v => v.readyState >= 1 ? 0 :
+  new Promise(r => { v.addEventListener("loadedmetadata", r); v.addEventListener("error", r); setTimeout(r, 8000); })));
+</script>
+</body>
+</html>
