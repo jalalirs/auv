@@ -125,7 +125,11 @@ class FollowLine(Task):
         if backwards:
             points = points[::-1]
         self.far_end = 0 if backwards else len(self.line) - 1
-        return [[float(p[0]), float(p[1]), float(p[2])] for p in points]
+        # At the height asked for above the line itself, as a pipe tracker
+        # holds it, not above whatever the altimeter sees: over a fore-reef
+        # the altimeter sees colony tops, and a REMUS keeping 4.5 m over them
+        # rode too high over the pipe for the camera and missed a span.
+        return [[float(p[0]), float(p[1]), float(p[2]) + self.altitude] for p in points]
 
     def geometry(self) -> dict:
         if self.line is None:
@@ -133,5 +137,4 @@ class FollowLine(Task):
         return {"route": [{"x": float(p[0]), "y": float(p[1])} for p in self.line[::20]]}
 
     def goal(self) -> dict:
-        return {"kind": "visit", "points": self.route_points(), "altitudeM": self.altitude,
-                "radiusM": 2.0}
+        return {"kind": "visit", "points": self.route_points(), "radiusM": 2.0}

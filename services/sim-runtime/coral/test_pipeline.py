@@ -81,3 +81,20 @@ def test_flying_beside_it_out_of_view_sees_nothing():
     for k, x in enumerate(np.arange(0.0, 100.5, 0.5)):
         task.step(float(k), np.array([x, 10.0, -18.0]), 0.0, -20.0, np.zeros(1))
     assert task.seen_m() == 0.0 and task.score() == 0.0
+
+
+def test_it_is_followed_at_its_own_height_plus_the_altitude():
+    """The route rides the line: each point the altitude above the pipe there,
+    not an altitude over whatever the altimeter sees."""
+    from tasks import task_for
+
+    world = World({"things": [{"id": "pipe-1", "kind": "pipeline",
+                               "route": [{"x": 0, "y": 0}, {"x": 60, "y": 0}]}]})
+    world.on_this_seabed(lambda x, y: -10.0 - 0.1 * x)
+    task = task_for({"kind": "follow", "over": "pipe-1", "altitudeM": 3.0, "swathM": 3.0},
+                    np.array([0.0, 0.0, -2.0]), 0.0, world=world)
+    goal = task.goal()
+    assert "altitudeM" not in goal
+    for x, y, z in goal["points"]:
+        k = int(np.argmin(np.hypot(task.line[:, 0] - x, task.line[:, 1] - y)))
+        assert abs(z - (task.line[k, 2] + 3.0)) < 1e-9
