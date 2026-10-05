@@ -67,12 +67,21 @@ def main(paths: list[str]) -> int:
     for path in paths:
         text = pathlib.Path(path).read_text(encoding="utf-8", errors="ignore")
         got = from_next_data(text) or from_text(text)
+        # The page's own furniture: a form's placeholder, and the card of
+        # whoever saved it, which says nothing about where they work.
+        got = [one for one in got if one["name"] != "First name Last name"
+               and (one["title"] or one["organisation"])]
+        # Saved by tools/forum-search as summit_search_<keyword>.html.
+        found = re.search(r"summit_search_(.+)\.html$", path)
         print(f"{path}: {len(got)} people")
         for one in got:
-            people.setdefault(one["name"].lower(), one)
+            kept = people.setdefault(one["name"].lower(), {**one, "matched": ""})
+            if found:
+                words = set(filter(None, kept["matched"].split(";"))) | {found.group(1)}
+                kept["matched"] = ";".join(sorted(words))
     INTO.mkdir(parents=True, exist_ok=True)
     with open(INTO / "people.csv", "w", newline="") as out:
-        writer = csv.DictWriter(out, fieldnames=["name", "title", "organisation"])
+        writer = csv.DictWriter(out, fieldnames=["name", "title", "organisation", "matched"])
         writer.writeheader()
         writer.writerows(sorted(people.values(), key=lambda p: (p["organisation"].lower(), p["name"].lower())))
     companies: dict[str, int] = {}

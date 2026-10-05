@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Search the congress's attendees by keyword, with your own logged-in curl.
+#
+#   tools/forum-search docs/summit_curl.sh
+#
+# The attendee list is 14,052 people and a page shows thirty. What matters is
+# the few hundred who work on what the platform does, so this asks the app's
+# own search, one keyword at a time, saving each page as
+# docs/summit_search_<keyword>.html (ignored by git), and then reads them all
+# into ~/iocean/forum/people.csv with the keywords each person matched.
+#
+# Your curl carries your session, so you run this, not anybody else.
+set -euo pipefail
+CURL="${1:?the curl file with your session, e.g. docs/summit_curl.sh}"
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+SPEAKERS='RXZlbnRWaWV3XzI4OTA3MzI='
+ATTENDEES='RXZlbnRWaWV3XzEyNjQ0NTA='
+WORDS=(subsea offshore ROV AUV underwater survey hydrographic geophysical inspection pipeline
+       dredging marine-environment environment coral reef ocean oceanography
+       Aramco NEOM "Red Sea Global" KAUST KAU KACST Mawani port
+       Kongsberg Exail Sercel Fugro Oceaneering Saab "Teledyne" DNV "Lloyd" ABS
+       robotics autonomous "digital twin" simulation research sustainability ESG)
+for word in "${WORDS[@]}"; do
+    safe=$(printf '%s' "$word" | tr ' ' '-' )
+    query=$(python3 -c "import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))" "$word")
+    sed -e "s#people/${SPEAKERS}#people/${ATTENDEES}#" -e "s#people/${ATTENDEES}'#people/${ATTENDEES}?search=${query}'#" "$CURL" \
+        | bash 2>/dev/null > "$HERE/docs/summit_search_${safe}.html"
+    sleep 1
+done
+python3 "$HERE/tools/forum-people" "$HERE"/docs/summit_search_*.html
