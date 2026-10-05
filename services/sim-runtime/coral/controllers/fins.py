@@ -67,6 +67,7 @@ class FinsController(Controller):
         d("depthKp", 0.1, 0.0, 1.0, "rad/m", "nose-down per metre too shallow")
         d("depthKi", 0.01, 0.0, 0.2, "rad/(m·s)", "nose-down per metre-second too shallow: the trim a buoyant hull needs")
         d("pitchMostDeg", 25.0, 5.0, 45.0, "°", "the steepest it dives or climbs")
+        d("clearanceM", 1.5, 0.3, 20.0, "m", "the least height over the bottom it will hold, by its altimeter")
         d("pitchKp", 1.5, 0.0, 8.0, "rad/rad", "stern planes per radian of pitch error")
         d("pitchRateKd", 1.0, 0.0, 10.0, "rad/(rad/s)", "stern planes per rad/s of pitch rate")
         d("arriveM", 5.0, 0.5, 50.0, "m", "how close counts as reached, when the route does not say")
@@ -176,8 +177,18 @@ class FinsController(Controller):
         # down, which lifts the nose.
         nose_down = math.asin(float(np.clip(-seen.rotation[2, 0], -1.0, 1.0)))
         most = math.radians(float(self["pitchMostDeg"]))
+        # Never nearer the bottom than the altimeter allows: a torpedo over a
+        # reef that holds a depth while the reef rises into it is a torpedo in
+        # the coral, and a real one pulls up on its altimeter.
+        if seen.floor is not None:
+            deepest_safe = float(-(seen.floor + float(self["clearanceM"])))
+            depth_wanted = min(depth_wanted, deepest_safe)
         short = depth_wanted - seen.depth
-        self.depth_owed = float(np.clip(self.depth_owed + short * self.dt, -30.0, 30.0))
+        # Only owed near the depth asked for. Summed all the way down from the
+        # surface, it had built a lean that carried the vehicle four metres past
+        # its depth and into the colonies under it.
+        if abs(short) < 1.0:
+            self.depth_owed = float(np.clip(self.depth_owed + short * self.dt, -30.0, 30.0))
         wanted = float(np.clip(float(self["depthKp"]) * short + float(self["depthKi"]) * self.depth_owed,
                                -most, most))
         planes = float(self["pitchKp"]) * (nose_down - wanted) + float(self["pitchRateKd"]) * q
