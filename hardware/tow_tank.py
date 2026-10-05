@@ -96,7 +96,7 @@ def shape(said: str) -> tuple[np.ndarray, float]:
 # ── the water ────────────────────────────────────────────────────────────────
 
 def run(body: str, re: float, u: float, blockage: float, flows: float, measure: float, smag: float,
-        regularised: bool = False) -> dict:
+        regularised: bool = False, down: float = 4.0) -> dict:
     sys.path.insert(0, "/w")
     try:
         import warp as wp
@@ -121,8 +121,8 @@ def run(body: str, re: float, u: float, blockage: float, flows: float, measure: 
     side = int(math.ceil(math.sqrt(frontal / blockage)))
     side = max(side, max(by, bz) + 16)
     ny = nz = side + (side % 2)
-    up, down = int(1.5 * length), int(4.0 * length)
-    nx = up + bx + down
+    up, behind = int(1.5 * length), int(down * length)
+    nx = up + bx + behind
     mask = np.zeros((nx, ny, nz), dtype=np.int32)
     y0, z0 = (ny - by) // 2, (nz - bz) // 2
     mask[up:up + bx, y0:y0 + by, z0:z0 + bz] = solid
@@ -303,13 +303,15 @@ def main() -> int:
     r.add_argument("--flows", type=float, default=3.0, help="flow-throughs of the tank to run")
     r.add_argument("--measure", type=float, default=1.0, help="of which, flow-throughs averaged at the end")
     r.add_argument("--smagorinsky", type=float, default=0.17)
+    r.add_argument("--down", type=float, default=4.0,
+                   help="hull lengths of tank behind it; fewer fits a finer hull in less memory")
     r.add_argument("--regularised", action="store_true",
                    help="Latt & Chopard's collision: stabler, but it put a sphere 30 % over its measured drag")
     a = ap.parse_args()
     if a.what == "voxels":
         voxels(a.hull, a.out, a.axis, a.cells)
     else:
-        run(a.body, a.re, a.u, a.blockage, a.flows, a.measure, a.smagorinsky, a.regularised)
+        run(a.body, a.re, a.u, a.blockage, a.flows, a.measure, a.smagorinsky, a.regularised, a.down)
     return 0
 
 
