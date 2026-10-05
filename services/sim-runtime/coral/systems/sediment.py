@@ -26,6 +26,13 @@ Here it is the standard chain, each step a published relation:
   cubic metre (assumed: 0.3 m²/g for silt, 0.01 for sand), on top of the
   water's own; horizontal visibility is about 4.8 over the attenuation
   (Zaneveld & Pegau 2003).
+  **A dredger** (a "dredger" in the layout) loses sediment at its overflow
+  all the time it works: `releaseKgPerS` (default 20, assumed), `finesShare`
+  of it silt, at `releaseDepthM` under its keel. The sand falls near it and
+  the silt goes where the current takes it. What settles on the colonies is
+  judged per day like anything else, so a dive of an hour says what a day of
+  dredging at that rate would do.
+
   **What it does to the coral.** What settles on a colony, in milligrams per
   square centimetre, against the thresholds the coral literature gives: harm
   begins about 10 mg cm⁻² a day and is severe past 50 (Erftemeijer et al. 2012;
@@ -57,7 +64,18 @@ G = 9.80665
 FRICTION_C = 0.005         # bed friction coefficient, assumed
 ERODES_M = 5e-4            # kg m⁻² s⁻¹, assumed: no erosion rate has been measured for reef carbonate
 PARCEL_KG = 2e-6           # two milligrams a parcel
-MOST_PARCELS = 6000
+MOST_PARCELS = 60000
+
+# What a dredger loses to the water, when its layout entry does not say.
+# A trailing suction hopper dredger overflowing loses fines at its keel, and
+# the rate is the number every dredging plume study argues about: tens of
+# kilograms a second is the order reported (Becker et al. 2015, J. Environ.
+# Manage. 149:282, a review of dredging plume sources). Assumed, and said so.
+DREDGE_KG_PER_S = 20.0
+DREDGE_FINES = 0.4         # of what it loses, the share that is silt (assumed)
+DREDGE_PARCELS_A_STEP = 2
+AMBIENT_KH = 0.05          # m²/s, horizontal eddy diffusivity, open water (Okubo 1971 at ~100 m)
+AMBIENT_KV = 1e-3          # m²/s, vertical, coastal water (assumed)
 
 
 def settling(d: float) -> float:
@@ -107,9 +125,11 @@ class Sediment:
         self.worst_visibility_m = None
         self.on_coral_mg_cm2 = None       # what has settled on each colony
         self.from_ = "nothing yet"
+        self.dredged_kg = 0.0
 
     def said(self) -> dict:
         return {"liftedG": round(self.lifted_kg * 1000.0, 2), "settledG": round(self.settled_kg * 1000.0, 2),
+                **({"dredgedKg": round(self.dredged_kg, 1)} if getattr(self, "dredged_kg", 0.0) else {}),
                 "inTheWaterG": round(float(self.kg.sum()) * 1000.0, 2), "mostParcels": self.most_in_water,
                 "visibilityM": None if self.visibility_m is None else round(self.visibility_m, 2),
                 "worstVisibilityM": None if self.worst_visibility_m is None else round(self.worst_visibility_m, 2),
@@ -149,6 +169,7 @@ class SedimentSystem(System):
                          "vehicle's wash; bed friction, the erosion rate and the bed's grain sizes assumed")
         if place.seabed is not None or place.floor is not None:
             self.lift(sed, wash, v, place, dt)
+        self.dredge(sed, place, water, dt)
         if len(sed.kg):
             self.carry(sed, wash, water, place, dt, world.clock.simulated, world.coral)
         sed.most_in_water = max(sed.most_in_water, len(sed.kg))
@@ -196,6 +217,35 @@ class SedimentSystem(System):
                 self.say("sediment_capped", parcels=MOST_PARCELS,
                          why="more sand in the water than is followed; the oldest is let go")
 
+    def dredge(self, sed, place, water, dt) -> None:
+        """What every dredger in the water loses this step, as parcels at its
+        overflow: sand and silt by its share, spread over its hull's width."""
+        world = getattr(place, "things", None)
+        if world is None:
+            return
+        for one in world.of_kind("dredger"):
+            said = one.said
+            rate = float(said.get("releaseKgPerS", DREDGE_KG_PER_S))
+            fines = float(said.get("finesShare", DREDGE_FINES))
+            depth = float(said.get("releaseDepthM", 6.0))
+            if rate <= 0.0:
+                continue
+            n = DREDGE_PARCELS_A_STEP
+            at = np.repeat(np.array([[float(one.at[0]), float(one.at[1]), water.level - depth]]), n, axis=0)
+            at[:, :2] += self.rng.normal(0.0, 0.5 * float(one.radius), (n, 2))
+            bed = place.bottoms(at)
+            at[:, 2] = np.maximum(at[:, 2], bed + 0.2)
+            grain = (self.rng.random(n) < fines).astype(int)       # 1 is the silt
+            kg = np.full(n, rate * dt / n)
+            sed.at = np.vstack([sed.at, at])
+            sed.grain = np.concatenate([sed.grain, grain])
+            sed.kg = np.concatenate([sed.kg, kg])
+            sed.lifted_kg += rate * dt
+            sed.dredged_kg = getattr(sed, "dredged_kg", 0.0) + rate * dt
+        if len(sed.kg) > MOST_PARCELS:
+            keep = slice(len(sed.kg) - MOST_PARCELS, None)
+            sed.at, sed.grain, sed.kg = sed.at[keep], sed.grain[keep], sed.kg[keep]
+
     def carry(self, sed, wash, water, place, dt, now, coral) -> None:
         """Carried by the water and the wash, mixed, falling; back on the bed
         where it lands."""
@@ -221,6 +271,19 @@ class SedimentSystem(System):
         spread = np.sqrt(2.0 * (1e-5 + 0.02 * speed * 0.04) * dt)
         sed.at = sed.at + (flow - np.column_stack([np.zeros((len(falls), 2)), falls])) * dt \
             + self.rng.normal(0.0, 1.0, sed.at.shape) * spread[:, None]
+        # And the sea's own mixing, in open water: without it a dredger's plume
+        # an hour old was a metre wide. Horizontally Okubo's (1971) diffusion
+        # diagram at a hundred metres' scale, vertically a coastal value; both
+        # assumed for a place that has not measured its own. A tank's water is
+        # mixed by its grid and its jets, as before.
+        if place.interior is None and len(sed.at):
+            sed.at[:, :2] += self.rng.normal(0.0, math.sqrt(2.0 * AMBIENT_KH * dt), (len(sed.at), 2))
+            # Damped towards the bed, where the eddies are smaller than the
+            # height they would carry a grain: nothing at the bed, all of it
+            # a metre up. Undamped, it walked the silt a vehicle had just
+            # lifted straight back into the sand.
+            up = np.clip(sed.at[:, 2] - place.bottoms(sed.at), 0.0, 1.0)
+            sed.at[:, 2] += self.rng.normal(0.0, 1.0, len(sed.at)) * np.sqrt(2.0 * AMBIENT_KV * up * dt)
         if place.interior is not None:
             from systems.glass import held_in
             sed.at[:, :2] = held_in(sed.at, place.interior)[0]

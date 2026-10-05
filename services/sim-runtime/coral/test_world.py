@@ -172,6 +172,7 @@ def test_every_kind_in_the_palette_builds_and_describes_itself():
         "restoration-cell": {"corners": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0},
                                          {"x": 10.0, "y": 10.0}]},
         "pipeline":      {"route": [{"x": 0.0, "y": 0.0}, {"x": 30.0, "y": 0.0}]},
+        "dredger":       {"x": 1.0, "y": 2.0},
     }
     assert set(drawn) == set(KINDS), "a kind in the palette nobody drew here"
     world = World({"things": [dict(said, id=kind, kind=kind)

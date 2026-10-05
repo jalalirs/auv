@@ -71,6 +71,7 @@ KINDS = {
     "mooring-line":     Kind("span",    0.05, 0.0,  "a line between two points"),
     "restoration-cell": Kind("region",  0.0,  0.0,  "a plot somebody works inside"),
     "pipeline":         Kind("laid",    0.16, 0.0,  "a pipeline laid on the seabed"),
+    "dredger":          Kind("surface", 12.0, 7.0,  "a dredger working; what it loses is a plume"),
 }
 DEFAULT = Kind("ground", 0.6, 1.0, "something")
 

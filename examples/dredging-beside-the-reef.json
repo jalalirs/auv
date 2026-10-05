@@ -1,0 +1,28 @@
+{
+  "_": "Ports example for the forum (docs/plan/forum-2026-10.md): a dredger working on the sand terrace in front of a fringing reef, its overflow plume carried onto the reef by an onshore current, and a vehicle sent across the plume to see what the reef sees. What settles on each colony is judged per day against Erftemeijer et al. (2012).",
+  "place": "red-sea",
+  "layout": {
+    "slug": "dredging-beside-the-reef",
+    "name": "A dredger on the terrace in front of the reef",
+    "summary": "A trailing suction hopper dredger deepening the sand terrace at 25 m, two hundred metres off the fore-reef, losing 20 kg/s at its overflow.",
+    "things": [
+      {"id": "dredger-1", "kind": "dredger", "x": 200, "y": -150, "z": 0,
+       "releaseKgPerS": 20.0, "finesShare": 0.4, "releaseDepthM": 6.0}
+    ]
+  },
+  "mission": {
+    "slug": "dredging-plume-monitoring",
+    "name": "Across the plume, over the reef",
+    "launch": {"x": 40, "y": -200},
+    "stages": [
+      {"kind": "hold-station", "seconds": 1500},
+      {"kind": "transect", "from": {"x": 40, "y": -200}, "to": {"x": 40, "y": 20}, "altitudeM": 2.0, "timeLimitS": 1200}
+    ]
+  },
+  "dives": [
+    {"name": "Dredging beside the reef: Luna across the plume", "vehicle": "boxfish-luna",
+     "waterName": "an onshore set of 0.15 m/s towards 290°, USBL from the ship",
+     "water": {"currentMetresPerSecond": 0.15, "currentHeadingDeg": 290,
+               "positioning": {"kind": "usbl", "accuracyM": 1.0, "everyS": 2.0}}}
+  ]
+}
