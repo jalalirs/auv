@@ -121,7 +121,7 @@ export interface Thing {
 }
 
 /** The kinds that float, drawn hollow: they are not on the bottom the chart shows. */
-const FLOATS = new Set(["ship", "buoy"]);
+const FLOATS = new Set(["ship", "buoy", "dredger"]);
 
 /** One point on a thing, for picking it and drawing it. */
 export function centreOf(thing: Thing): { x: number; y: number } {

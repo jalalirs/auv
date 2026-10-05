@@ -74,6 +74,8 @@ const TOOLS: Record<string, Tool> = {
     says: () => "holding station at the surface, three metres of hull under it" },
   buoy: { name: "Buoy", lands: "surface",
     says: () => "on the surface" },
+  dredger: { name: "Dredger", lands: "surface",
+    says: () => "working at the surface, losing 20 kg/s at its overflow: a plume the current carries" },
   "mooring-line": { name: "Mooring line", lands: "span", endsOn: ["ground", "surface"],
     slack: 0.02,
     says: (d) => `one end on the bottom at ${d.toFixed(1)} m, the other at the surface` },
