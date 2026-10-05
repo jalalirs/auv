@@ -22,6 +22,7 @@ import http.server
 import pathlib
 import shutil
 import subprocess
+import sys
 import threading
 
 from playwright.sync_api import sync_playwright
@@ -107,6 +108,8 @@ def main() -> int:
     ap.add_argument("--end", type=float, default=None)
     ap.add_argument("--stills", default=None, help="seconds, comma separated: write PNGs of those moments only")
     ap.add_argument("--out", default=str(ROOT / "iocean-promo.mp4"))
+    ap.add_argument("--workers", type=int, default=4, help="browsers rendering parts of it at once")
+    ap.add_argument("--frames", default=None, help="a:b — render only frames a..b-1 into frames/ (a worker)")
     asked = ap.parse_args()
 
     shutil.copy(HERE / "timeline.html", ROOT / "timeline.html")
@@ -126,19 +129,39 @@ def main() -> int:
                 print("still", s, flush=True)
             browser.close()
             return 0
-        if frames.exists():
-            shutil.rmtree(frames)
-        frames.mkdir()
         end = asked.end if asked.end is not None else duration
         n = int(round((end - asked.start) * asked.fps))
-        for k in range(n):
+        if asked.frames is None and asked.workers > 1:
+            browser.close()
+            if frames.exists():
+                shutil.rmtree(frames)
+            frames.mkdir()
+            share = -(-n // asked.workers)
+            jobs = [subprocess.Popen([sys.executable, __file__, "--fps", f"{asked.fps:g}", "--start", f"{asked.start}",
+                                      "--end", f"{end}", "--frames", f"{a}:{min(n, a + share)}"])
+                    for a in range(0, n, share)]
+            if any(job.wait() for job in jobs):
+                raise SystemExit("a worker failed")
+            return encode(asked, n)
+        if asked.frames is None:
+            if frames.exists():
+                shutil.rmtree(frames)
+            frames.mkdir()
+        first, last = (int(v) for v in asked.frames.split(":")) if asked.frames else (0, n)
+        for k in range(first, last):
             t = asked.start + k / asked.fps
             page.evaluate(f"window.renderAt({t:.5f})")
             page.screenshot(path=str(frames / f"f{k:05d}.jpg"), type="jpeg", quality=94)
             if k % 150 == 0:
                 print(f"{t:6.1f} s of {end:.0f}", flush=True)
         browser.close()
+    if asked.frames:
+        return 0
+    return encode(asked, n)
 
+
+def encode(asked, n: int) -> int:
+    frames = ROOT / "frames"
     silent = ROOT / "silent.mp4"
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-framerate", f"{asked.fps:g}", "-i", str(frames / "f%05d.jpg"),
                     "-c:v", "libx264", "-preset", "slow", "-crf", "17", "-pix_fmt", "yuv420p",

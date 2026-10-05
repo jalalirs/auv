@@ -71,7 +71,8 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#000}
 
 <!-- 3 the place -->
 <div class="scene" id="place">
-  <img class="full" id="place-map" src="assets/shushah.jpg" style="object-fit:cover">
+  <div class="full" style="background:#0d1b24"></div>
+  <img class="full" id="place-map" src="assets/shushah.jpg" style="object-fit:contain;background:#0d1b24">
   <video class="full" id="place-film" src="assets/reef_shushah.mp4" muted preload="auto" style="opacity:0"></video>
   <div class="shade"></div>
   <div class="cap">Real Saudi seabeds and reefs, colony by colony.
@@ -200,30 +201,29 @@ const SCENES = [
       $("open-cap").style.opacity = ramp(t, 1.4, 2.6) * (1 - ramp(t, 6.2, 7.2)); } },
   { id: "card1", a: 7.0, b: 11.5, run: (t, el) => { el.querySelector("h1").style.transform = `translateY(${12 * (1 - ramp(t, 0, 1.2))}px)`; } },
   { id: "place", a: 11.0, b: 19.5, video: { el: "#place-film", from: 20, rate: 1, start: 3.0 },
-    run: (t) => { $("place-map").style.transform = `scale(${1 + 0.9 * ramp(t, 0, 3.6)})`;
-      $("place-map").style.transformOrigin = "60% 55%";
+    run: (t) => { $("place-map").style.transform = `scale(${1 + 0.08 * ramp(t, 0, 4)})`;
       $("place-film").style.opacity = ramp(t, 3.0, 4.0);
       $("place-film").style.transform = `scale(${1.04 - 0.04 * ramp(t, 3, 8.5)})`;
       $("place").querySelector(".cap").style.opacity = ramp(t, 4.2, 5.2); } },
   { id: "card2", a: 19.0, b: 22.5 },
   { id: "ui-layout", a: 22.0, b: 32.5, video: { el: "#ui-layout video", from: 0, rate: 1.15 },
     run: (t, el) => zoom(el.querySelector(".window"), t, [[0, 0.94, .5, .5], [1.5, 0.94, .5, .5], [3.5, 1.45, .52, .5], [8.5, 1.45, .56, .5], [10.5, 1.1, .5, .5]]) },
-  { id: "ui-designer", a: 32.0, b: 41.0, video: { el: "#ui-designer video", from: 0, rate: 1.0 },
+  { id: "ui-designer", a: 32.0, b: 41.0, video: { el: "#ui-designer video", from: 0, rate: 1.06 },
     run: (t, el) => zoom(el.querySelector(".window"), t, [[0, 0.94, .5, .5], [1.2, 1.25, .45, .4], [4.5, 1.6, .8, .3], [7.5, 1.6, .8, .3], [9, 1.15, .7, .2]]) },
   { id: "card3", a: 40.5, b: 44.0 },
-  { id: "ui-fly", a: 43.5, b: 53.0, video: { el: "#ui-fly video", from: 0, rate: 1.2 },
-    run: (t, el) => zoom(el.querySelector(".window"), t, [[0, 0.94, .5, .5], [1.0, 1.5, .55, .22], [4.5, 1.5, .55, .22], [6.5, 1.35, .72, .85], [9.5, 1.35, .75, .9]]) },
+  { id: "ui-fly", a: 43.5, b: 53.0, video: { el: "#ui-fly video", from: 0, rate: 1.45 },
+    run: (t, el) => zoom(el.querySelector(".window"), t, [[0, 0.94, .5, .5], [1.0, 1.5, .55, .22], [4.0, 1.5, .55, .22], [5.2, 1.5, .66, .22], [6.6, 1.5, .66, .22], [7.8, 1.35, .75, .88], [9.5, 1.35, .78, .9]]) },
   { id: "remote", a: 52.5, b: 59.0,
     run: (t) => { const k = (t * 0.55) % 1, j = (t * 0.55 + 0.5) % 1;
       $("dot1").style.left = (530 + 104 * k) + "px"; $("dot2").style.left = (1150 + 104 * j) + "px";
       document.querySelectorAll("#remote .facts div").forEach((d, i) => d.style.opacity = ramp(t, 1.2 + i * 0.7, 2.0 + i * 0.7)); } },
-  { id: "ui-results", a: 58.5, b: 65.0, video: { el: "#ui-results video", from: 0, rate: 1.0 },
-    run: (t, el) => zoom(el.querySelector(".window"), t, [[0, 0.94, .5, .5], [1.0, 1.35, .45, .22], [6.5, 1.35, .45, .25]]) },
-  { id: "pipe", a: 64.5, b: 75.0, video: { el: "#pipe video", from: 40, rate: 1.4 },
+  { id: "ui-results", a: 58.5, b: 65.0, video: { el: "#ui-results video", from: 0, rate: 1.25 },
+    run: (t, el) => zoom(el.querySelector(".window"), t, [[0, 0.94, .5, .5], [1.0, 1.22, .52, .3], [6.5, 1.22, .52, .32]]) },
+  { id: "pipe", a: 64.5, b: 75.0, video: { el: "#pipe video", from: 125, rate: 1.6 },
     run: (t) => { ["n1", "n2", "n3"].forEach((n, i) => $(n).style.opacity = ramp(t, 2.5 + i * 1.1, 3.3 + i * 1.1));
       $("pipe").querySelector(".cap").style.opacity = ramp(t, 0.8, 1.8); } },
   { id: "card4", a: 74.5, b: 78.0 },
-  { id: "split", a: 77.5, b: 88.0, videos: [{ el: "#split video", from: 0, rate: 3 }, { el: "#split div:nth-child(2) video", from: 0, rate: 3 }],
+  { id: "split", a: 77.5, b: 88.0, videos: [{ el: "#split video", from: 100, rate: 3.6 }, { el: "#split div:nth-child(2) video", from: 100, rate: 3.6 }],
     run: (t) => { $("split").querySelector(".uicap").style.opacity = ramp(t, 0.8, 1.8) * (1 - ramp(t, 6, 7)); counters(t); } },
   { id: "plume", a: 87.5, b: 95.0, video: { el: "#plume video", from: 0, rate: 2.0 },
     run: (t, el) => { $("plume").querySelector(".cap").style.opacity = ramp(t, 0.8, 1.8);
@@ -241,10 +241,12 @@ const SCENES = [
 const DURATION = 116.0;
 
 // What each controller struck, as it happened: [seconds into the clip, total].
-window.STRIKES = { pursue: [], wary: [] };
+// From the runs' own events (5 October): pursue struck frame-2 at 125.1 s and
+// frame-1 at 135.1 s; wary struck nothing.
+window.STRIKES = { pursue: [[125.1, 1], [135.1, 2]], wary: [] };
 function counters(t) {
   const upTo = (list, clipS) => list.filter(([s]) => s <= clipS).reduce((n, [, k]) => Math.max(n, k), 0);
-  const clipS = t * 3;
+  const clipS = 100 + t * 3.6;
   $("c1").innerHTML = `${upTo(STRIKES.pursue, clipS)}<span>frames struck</span>`;
   $("c2").innerHTML = `${upTo(STRIKES.wary, clipS)}<span>frames struck</span>`;
 }
@@ -272,6 +274,7 @@ window.renderAt = async function (T) {
     const t = T - scene.a;
     if (scene.run) scene.run(t, el);
     for (const [video, v] of videosOf(scene)) {
+      if (video.error || video.networkState === 3 || video.readyState === 0) continue;
       const local = Math.max(0, t - (v.start || 0));
       const want = Math.min((video.duration || 1e9) - 0.05, v.from + local * v.rate);
       if (Math.abs(video.currentTime - want) > 0.001) {

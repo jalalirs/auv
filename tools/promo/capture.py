@@ -193,6 +193,9 @@ def fly(browser) -> None:
     # Still is what the plan says; three more currents make it a doubt.
     for label in ("A gentle set", "Half a knot", "One knot"):
         s.click(f"button:has-text('{label}')", seconds=0.35)
+    # The ship overhead with its USBL, in place of nothing.
+    s.click("button:has-text('A ship with USBL')", seconds=0.35)
+    s.click("button:has-text('Nothing overhead')", seconds=0.35)
     s.hold(0.5)
     s.scroll("main", 1400, 1.4)
     s.hold(0.3)
