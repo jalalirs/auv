@@ -1,0 +1,26 @@
+{
+  "_": "Offshore example for the forum (docs/plan/forum-2026-10.md): a pipeline landfall across a fringing reef, inspected for free spans by an AUV along its whole length and by a tethered ROV near the shore.",
+  "place": "red-sea",
+  "layout": {
+    "slug": "pipeline-landfall",
+    "name": "A pipeline landfall across the reef",
+    "summary": "A 0.32 m steel line from the fore-reef out across the spur-and-groove slope, the sand terrace and the outer slope to 34 m.",
+    "things": [
+      {"id": "pipeline-1", "kind": "pipeline", "x": 175, "y": -20, "radiusM": 0.16, "bendRadiusM": 150,
+       "route": [{"x": -100, "y": -40}, {"x": 150, "y": -20}, {"x": 450, "y": 0}]}
+    ]
+  },
+  "mission": {
+    "slug": "pipeline-landfall-inspection",
+    "name": "Inspect the landfall for free spans",
+    "stages": [
+      {"kind": "follow", "over": "pipeline-1", "altitudeM": 3.0, "altitudeBandM": 1.5, "swathM": 8.0, "timeLimitS": 1800}
+    ]
+  },
+  "dives": [
+    {"name": "Pipeline landfall: REMUS 100 along the line", "vehicle": "remus-100",
+     "waterName": "a gentle set along the coast, USBL from the ship",
+     "water": {"currentMetresPerSecond": 0.15, "currentHeadingDeg": 30,
+               "positioning": {"kind": "usbl", "accuracyM": 1.0, "everyS": 2.0}}}
+  ]
+}

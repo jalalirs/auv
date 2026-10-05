@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""Set up a worked example on the platform from one file, and fly it.
+
+    IOCEAN_API=http://100.76.65.1:18080 tools/example examples/pipeline-landfall.json [--fly]
+
+An example is a place, an arrangement of it, a mission over that arrangement,
+and the dives that fly it: the same four things the app makes by hand, written
+down once so that an example can be made again, changed, and shown. The file
+says them; this makes them (reusing an arrangement or mission of the same
+handle, as a new version) and, with --fly, asks for each dive's run.
+
+Signs in as the deployment does: IOCEAN_TOKEN, or IOCEAN_ADMIN_EMAIL and
+IOCEAN_ADMIN_SECRET from the box's own environment.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import pathlib
+import sys
+import urllib.error
+import urllib.request
+
+API = os.environ.get("IOCEAN_API", "http://localhost:18080")
+
+
+def call(method: str, path: str, body=None, token: str = "") -> dict:
+    data = None if body is None else json.dumps(body).encode()
+    request = urllib.request.Request(API + path, data=data, method=method)
+    request.add_header("content-type", "application/json")
+    if token:
+        request.add_header("authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(request, timeout=60) as answer:
+            text = answer.read().decode()
+            return json.loads(text) if text else {}
+    except urllib.error.HTTPError as failed:
+        raise SystemExit(f"{method} {path}: {failed.code} {failed.read().decode()[:400]}")
+
+
+def token() -> str:
+    if os.environ.get("IOCEAN_TOKEN"):
+        return os.environ["IOCEAN_TOKEN"]
+    email, secret = os.environ.get("IOCEAN_ADMIN_EMAIL"), os.environ.get("IOCEAN_ADMIN_SECRET")
+    if not (email and secret):
+        raise SystemExit("set IOCEAN_TOKEN, or IOCEAN_ADMIN_EMAIL and IOCEAN_ADMIN_SECRET")
+    return call("POST", "/api/v1/sessions", {"email": email, "secret": secret})["token"]
+
+
+def newest_published(versions: list[dict]) -> dict:
+    published = [v for v in versions if v.get("publishedAt")] or versions
+    return max(published, key=lambda v: v.get("ordinal", 0))
+
+
+def by_slug(listing: list[dict], slug: str) -> dict | None:
+    return next((one for one in listing if one.get("slug") == slug), None)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("example")
+    ap.add_argument("--fly", action="store_true", help="ask for each dive's run")
+    asked = ap.parse_args()
+    said = json.loads(pathlib.Path(asked.example).read_text())
+    t = token()
+    org = call("GET", "/api/v1/me", token=t)["organisations"][0]["id"]
+
+    city = by_slug(call("GET", "/api/v1/cities", token=t)["cities"], said["place"])
+    if city is None:
+        raise SystemExit(f"no place {said['place']}")
+    city_version = newest_published(call("GET", f"/api/v1/cities/{city['id']}/versions", token=t)["versions"])
+
+    lay = said["layout"]
+    layout = by_slug(call("GET", f"/api/v1/cities/{city['id']}/layouts", token=t).get("layouts", []), lay["slug"]) \
+        or call("POST", f"/api/v1/cities/{city['id']}/layouts",
+                {"slug": lay["slug"], "name": lay["name"], "summary": lay.get("summary", "")}, token=t)
+    layout_version = call("POST", f"/api/v1/layouts/{layout['id']}/versions",
+                          {"label": lay.get("label", ""), "document": {
+                              "describedBy": "coral-city/layout/v1",
+                              "frame": "metres, origin at the middle of the site, +x east, +y north",
+                              "things": lay["things"]}}, token=t)
+    print(f"layout {lay['slug']} v{layout_version.get('ordinal')}")
+
+    mis = said["mission"]
+    mission = by_slug(call("GET", f"/api/v1/cities/{city['id']}/missions", token=t).get("missions", []), mis["slug"]) \
+        or call("POST", f"/api/v1/cities/{city['id']}/missions",
+                {"slug": mis["slug"], "name": mis["name"], "summary": mis.get("summary", "")}, token=t)
+    document = {"describedBy": "coral-city/mission/v1", "cityVersionId": city_version["id"],
+                "layoutVersionId": layout_version["id"], "stages": mis["stages"]}
+    if mis.get("launch"):
+        document["launch"] = mis["launch"]
+    mission_version = call("POST", f"/api/v1/missions/{mission['id']}/versions",
+                           {"label": mis.get("label", ""), "document": document}, token=t)
+    print(f"mission {mis['slug']} v{mission_version.get('ordinal')} ({mission_version['id']})")
+
+    if not asked.fly:
+        return 0
+    queue = call("GET", "/api/v1/queues", token=t)["queues"][0]
+    vehicles = call("GET", "/api/v1/vehicles", token=t)["vehicles"]
+    for one in said.get("dives", []):
+        vehicle = by_slug(vehicles, one["vehicle"])
+        if vehicle is None:
+            raise SystemExit(f"no vehicle {one['vehicle']}")
+        vv = newest_published(call("GET", f"/api/v1/vehicles/{vehicle['id']}/versions", token=t)["versions"])
+        conditions = call("POST", f"/api/v1/organisations/{org}/conditions",
+                          {"kind": "constructed", "name": one.get("waterName", "constructed"),
+                           "parameters": one.get("water", {})}, token=t)
+        dive = call("POST", f"/api/v1/organisations/{org}/dives",
+                    {"name": one["name"], "missionVersionId": mission_version["id"],
+                     "vehicleVersionId": vv["id"], "conditionsId": conditions["id"],
+                     "objective": one.get("objective", {})}, token=t)
+        run = call("POST", f"/api/v1/dives/{dive['id']}/runs",
+                   {"queueId": queue["id"], "mode": "batch", "runtimeVersion": queue["runtimes"][0]}, token=t)
+        print(f"dive {one['name']}: {dive['id']} run {run['id']}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

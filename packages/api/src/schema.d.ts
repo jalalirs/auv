@@ -5438,6 +5438,15 @@ export interface components {
                 /** @description How much longer the line is than the gap it spans, as a fraction. Zero is taut and straight. A line with slack in it hangs as a catenary, and the middle of a hundred-metre span with five per cent of slack is fourteen metres below the straight line between its ends — which is the part a vehicle flies into.
                  *      */
                 slack?: number;
+                /** @description The way something laid along the bottom runs: a pipeline or a cable, as points in order. Its height is not drawn: the runtime rests it on the seabed under the whole route and its own stiffness, so it lies on the high ground and bridges the low — the free spans an inspection looks for.
+                 *      */
+                route?: {
+                    x: number;
+                    y: number;
+                }[];
+                /** @description How tightly what is laid can bend, metres. Steel line pipe bends elastically to a few hundred diameters.
+                 *      */
+                bendRadiusM?: number;
                 /** @description The outline of a plot drawn on the chart. Not in the water: a boundary is a thing a task points at, not a thing to run into.
                  *      */
                 corners?: {

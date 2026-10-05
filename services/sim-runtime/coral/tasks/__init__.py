@@ -7,6 +7,7 @@ about any other task. What they are grouped by is what the score means —
   `going`      getting somewhere and staying there: a position and a tolerance
   `covering`   covering ground or water: a fraction of something
   `working`    doing something to something: a count of things
+  `inspecting` looking along something long: a length seen, and its faults
   `mission`    several of the above in sequence
 
 This module is the only thing outside the package anyone imports: the names,
@@ -20,6 +21,7 @@ from .base import Task, footprint_half_angle, wrap
 from .covering import Profile, Search, Section, Survey
 from .going import (Descend, Dock, HoldStation, Reach, Return, Transect,
                     Waypoints, Wait)
+from .inspecting import FollowLine
 from .mission import Mission, Unavailable
 from .working import Inspect, Monitor, Outplant, Revisit, Treat
 
@@ -29,12 +31,12 @@ TASKS = {
     "descend": Descend,
     "survey": Survey, "search": Search, "profile": Profile, "section": Section,
     "treat": Treat, "outplant": Outplant, "monitor": Monitor,
-    "inspect": Inspect, "revisit": Revisit,
+    "inspect": Inspect, "revisit": Revisit, "follow": FollowLine,
 }
 KINDS = tuple(TASKS) + ("mission",)
 
 __all__ = ["KINDS", "TASKS", "Task", "footprint_half_angle", "task_for", "wrap",
-           "Descend", "Dock", "HoldStation", "Inspect", "Mission", "Monitor", "Outplant",
+           "Descend", "Dock", "FollowLine", "HoldStation", "Inspect", "Mission", "Monitor", "Outplant",
            "Profile", "Reach", "Return", "Revisit", "Search", "Section",
            "Survey", "Transect", "Treat", "Unavailable", "Wait", "Waypoints"]
 

@@ -4373,6 +4373,25 @@ components:
                   with five per cent of slack is fourteen metres below the
                   straight line between its ends — which is the part a vehicle
                   flies into.
+              route:
+                type: array
+                description: >
+                  The way something laid along the bottom runs: a pipeline or a
+                  cable, as points in order. Its height is not drawn: the
+                  runtime rests it on the seabed under the whole route and its
+                  own stiffness, so it lies on the high ground and bridges the
+                  low — the free spans an inspection looks for.
+                items:
+                  type: object
+                  properties:
+                    x: { type: number }
+                    y: { type: number }
+                  required: [x, y]
+              bendRadiusM:
+                type: number
+                description: >
+                  How tightly what is laid can bend, metres. Steel line pipe
+                  bends elastically to a few hundred diameters.
               corners:
                 type: array
                 description: >

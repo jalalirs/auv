@@ -866,6 +866,15 @@ class Dive:
             self.say("seabed_known",
                      samples=[self.seabed.rows, self.seabed.columns],
                      acrossM=self.seabed.across)
+        # What lies along the bottom rests on it: a pipeline on the high
+        # ground, bridging the low (world.Laid). Once, now the bottom is known.
+        floor_here = 0.0 if self.floor is None else float(self.floor)
+        self.world.on_this_seabed(
+            (lambda x, y: self.seabed.under(float(x), float(y))) if self.seabed is not None
+            else (lambda x, y: floor_here))
+        for one in self.world.of_kind("pipeline"):
+            self.say("a_pipeline_laid", which=one.id, **{k: v for k, v in one.described().items()
+                                                         if k in ("lengthM", "freeSpans", "longestSpanM")})
 
         # Where a dive begins.
         #
@@ -1117,6 +1126,13 @@ class Dive:
                 from draw import surroundings
                 cells = surroundings.put_in(stage, self.seabed, self.units_per_metre)
                 self.say("surroundings_drawn", cells=cells, reachM=surroundings.REACH_M)
+
+            # What somebody laid out: frames, posts, lines, a pipeline resting
+            # on the high ground. Physics only until now. See draw/things.py.
+            if self.world.things and self.up_axis == "Z":
+                from draw import things as drawn_things
+                count = drawn_things.put_in(stage, self.world, self.units_per_metre)
+                self.say("layout_drawn", things=count)
 
             # The reef. Referenced rather than merged, so the seabed stays one
             # file and the coral stays another — a place is layers, and a

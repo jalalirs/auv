@@ -70,3 +70,8 @@ data/videos/
 
 # The client harness copies real places in (tools/client-harness-fixtures).
 apps/client/src/renderer/harness/fixtures/
+
+# The event app: page dumps and a curl with a live session in it. Never committed (the repo is public).
+docs/summit.html
+docs/summit_curl.sh
+docs/summit*

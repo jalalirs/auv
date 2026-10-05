@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""People and companies out of a saved event-app page.
+
+    tools/forum-people docs/summit_attendees.html [more pages...]
+
+Reads pages saved from the congress's event app (Swapcard), whether saved from
+the browser after scrolling to the bottom or fetched with curl, and writes
+what it finds to ~/iocean/forum/: people.csv (name, title, organisation) and
+companies.csv. Outside the repository on purpose: the repository is public and
+these are people.
+"""
+
+from __future__ import annotations
+
+import csv
+import html
+import json
+import pathlib
+import re
+import sys
+
+INTO = pathlib.Path.home() / "iocean" / "forum"
+
+
+def from_next_data(text: str) -> list[dict]:
+    """The page's own data, when it carries it (a Next.js page does)."""
+    found = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', text, re.S)
+    if not found:
+        return []
+    people: list[dict] = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            first, last = node.get("firstName"), node.get("lastName")
+            if isinstance(first, str) and isinstance(last, str):
+                people.append({"name": f"{first} {last}".strip(),
+                               "title": node.get("jobTitle") or "",
+                               "organisation": node.get("organization") or node.get("organisation") or ""})
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    try:
+        walk(json.loads(found.group(1)))
+    except ValueError:
+        return []
+    return people
+
+
+def from_text(text: str) -> list[dict]:
+    """The page as a reader sees it: name, title, organisation, in threes,
+    after the list's own heading."""
+    text = re.sub(r"(?s)<script.*?</script>|<style.*?</style>", "", text)
+    lines = [l.strip() for l in html.unescape(re.sub(r"<[^>]+>", "\n", text)).split("\n") if l.strip()]
+    for heading in ("Attendees", "Speakers", "People"):
+        if heading in lines:
+            lines = lines[lines.index(heading) + 1:]
+            break
+    lines = [l for l in lines if l not in ("Default", "Connect", "Message", "View profile", "Bookmark")]
+    return [{"name": a, "title": b, "organisation": c} for a, b, c in zip(lines[0::3], lines[1::3], lines[2::3])]
+
+
+def main(paths: list[str]) -> int:
+    people: dict[str, dict] = {}
+    for path in paths:
+        text = pathlib.Path(path).read_text(encoding="utf-8", errors="ignore")
+        got = from_next_data(text) or from_text(text)
+        print(f"{path}: {len(got)} people")
+        for one in got:
+            people.setdefault(one["name"].lower(), one)
+    INTO.mkdir(parents=True, exist_ok=True)
+    with open(INTO / "people.csv", "w", newline="") as out:
+        writer = csv.DictWriter(out, fieldnames=["name", "title", "organisation"])
+        writer.writeheader()
+        writer.writerows(sorted(people.values(), key=lambda p: (p["organisation"].lower(), p["name"].lower())))
+    companies: dict[str, int] = {}
+    for one in people.values():
+        companies[one["organisation"]] = companies.get(one["organisation"], 0) + 1
+    with open(INTO / "companies.csv", "w", newline="") as out:
+        writer = csv.writer(out)
+        writer.writerow(["organisation", "people"])
+        writer.writerows(sorted(companies.items(), key=lambda kv: -kv[1]))
+    print(f"{len(people)} people from {len(companies)} organisations -> {INTO}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

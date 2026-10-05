@@ -47,6 +47,9 @@ import numpy as np
 #             that hangs by however much slack it was given.
 #   region    An area drawn on the chart. Nothing to run into: a boundary is a
 #             thing a task points at, not a thing in the water.
+#   laid      A route along the bottom, lying on it: a pipeline or a cable.
+#             Where it is depends on the seabed under the whole of it, so it is
+#             settled once the seabed is known (World.on_this_seabed).
 
 
 class Kind:
@@ -67,6 +70,7 @@ KINDS = {
     "ship":             Kind("surface", 6.0,  3.0,  "a ship holding station"),
     "mooring-line":     Kind("span",    0.05, 0.0,  "a line between two points"),
     "restoration-cell": Kind("region",  0.0,  0.0,  "a plot somebody works inside"),
+    "pipeline":         Kind("laid",    0.16, 0.0,  "a pipeline laid on the seabed"),
 }
 DEFAULT = Kind("ground", 0.6, 1.0, "something")
 
@@ -144,6 +148,8 @@ class Thing:
         lands = KINDS.get(str(said.get("kind") or ""), DEFAULT).lands
         if lands == "span":
             return Spanning(said)
+        if lands == "laid":
+            return Laid(said)
         if lands == "region":
             return Region(said)
         return Standing(said)
@@ -353,6 +359,103 @@ class Spanning(Thing):
         return said
 
 
+class Laid(Spanning):
+    """A pipeline on the bottom: where the seabed and its own stiffness put it.
+
+    A pipe is not a line between two points and it does not follow every
+    hollow either. It rests on the high ground and bridges the low, because it
+    can only bend so tightly; where it bridges, it is off the bottom with
+    nothing under it. Those are its free spans, and a free span long enough
+    vibrates in a current until it fatigues, which is why a pipeline is
+    inspected at all (DNV-RP-F105).
+
+    So its height is the seabed along its route closed from above by a curve
+    of its bending radius: dilate the profile by a parabola of that radius,
+    then erode it by the same. What is left above the seabed is a span.
+    """
+
+    __slots__ = ("route", "bend_m", "spans", "step")
+
+    def __init__(self, said: dict) -> None:
+        route = said.get("route") or said.get("ends") or []
+        said = dict(said)
+        said["ends"] = [route[0], route[-1]] if len(route) >= 2 else route
+        super().__init__(said)
+        self.route = [np.array([float(p.get("x", 0.0)), float(p.get("y", 0.0))]) for p in route]
+        # What it can bend to, metres. Steel line pipe bends elastically to a
+        # few hundred diameters; 150 m for a 0.32 m line is assumed, and the
+        # package of a real line would say its own.
+        self.bend_m = float(said.get("bendRadiusM", 150.0))
+        self.step = float(said.get("stepM", 1.0))
+        self.spans: list[dict] = []
+        if len(self.route) >= 2:
+            self.curve = [np.array([p[0], p[1], self.a[2] + self.radius]) for p in self.route]
+
+    def along(self) -> tuple[np.ndarray, np.ndarray]:
+        """Points every `step` metres along the route, and how far along each is."""
+        points, at = [self.route[0]], [0.0]
+        for one, two in zip(self.route, self.route[1:]):
+            leg = float(np.linalg.norm(two - one))
+            n = max(1, int(math.ceil(leg / self.step)))
+            for k in range(1, n + 1):
+                points.append(one + (two - one) * (k / n))
+                at.append(at[-1] + leg / n)
+        return np.array(points), np.array(at)
+
+    def lay(self, ground) -> None:
+        """Rest it on this seabed: `ground(x, y)` is the bottom's height there."""
+        if len(self.route) < 2:
+            return
+        flat, at = self.along()
+        bottom = np.array([float(ground(x, y)) for x, y in flat])
+        # Closed by a parabola of the bending radius: up, then back down.
+        reach = int(min(len(at), max(2, math.ceil(math.sqrt(2.0 * self.bend_m * 2.0) / self.step))))
+        lifted = bottom.copy()
+        for k in range(1, reach):
+            sag = (k * self.step) ** 2 / (2.0 * self.bend_m)
+            lifted[k:] = np.maximum(lifted[k:], bottom[:-k] - sag)
+            lifted[:-k] = np.maximum(lifted[:-k], bottom[k:] - sag)
+        rests = lifted.copy()
+        for k in range(1, reach):
+            sag = (k * self.step) ** 2 / (2.0 * self.bend_m)
+            rests[k:] = np.minimum(rests[k:], lifted[:-k] + sag)
+            rests[:-k] = np.minimum(rests[:-k], lifted[k:] + sag)
+        rests = np.maximum(rests, bottom)
+        self.curve = [np.array([x, y, z + self.radius]) for (x, y), z in zip(flat, rests)]
+        self.a, self.b = self.curve[0].copy(), self.curve[-1].copy()
+        # Its spans: where it is more than five centimetres off the bottom.
+        gap = rests - bottom
+        off = gap > 0.05
+        self.spans = []
+        k = 0
+        while k < len(off):
+            if not off[k]:
+                k += 1
+                continue
+            first = k
+            while k < len(off) and off[k]:
+                k += 1
+            self.spans.append({"fromM": round(float(at[first]), 1), "toM": round(float(at[k - 1]), 1),
+                               "lengthM": round(float(at[k - 1] - at[first]), 1),
+                               "mostGapM": round(float(gap[first:k].max()), 2),
+                               "x": round(float(flat[(first + k - 1) // 2][0]), 1),
+                               "y": round(float(flat[(first + k - 1) // 2][1]), 1)})
+
+    def lean(self, current, passes: int = 2500, nodes: int = 24) -> None:
+        # A pipe is not moved by the water the way a line is: it weighs down.
+        self.leaned_by = 0.0
+
+    def length(self) -> float:
+        return float(sum(np.linalg.norm(two[:2] - one[:2]) for one, two in zip(self.curve, self.curve[1:])))
+
+    def described(self) -> dict:
+        said = super().described()
+        said.update({"lengthM": round(self.length(), 1), "bendRadiusM": self.bend_m,
+                     "freeSpans": len(self.spans),
+                     "longestSpanM": max((one["lengthM"] for one in self.spans), default=0.0)})
+        return said
+
+
 class Region(Thing):
     """An area drawn on the chart. A plot, not an obstacle.
 
@@ -482,6 +585,13 @@ class World:
         for one in self.things:
             if isinstance(one, Spanning):
                 one.lean(current)
+
+    def on_this_seabed(self, ground) -> None:
+        """Tell the world what the bottom is. Only what lies along it cares:
+        a pipeline rests on the high ground and spans the low (Laid)."""
+        for one in self.things:
+            if isinstance(one, Laid):
+                one.lay(ground)
 
     def of_kind(self, kind: str) -> list[Thing]:
         return [one for one in self.things if one.kind == kind]
