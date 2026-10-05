@@ -1,0 +1,116 @@
+{
+ "note": "Hulls towed in the numerical tow tank (hardware/tow_tank.py) on the box's GPU, 4-5 October 2026: D3Q19 lattice Boltzmann, Smagorinsky LES, regularised collision, Re 5e4 (mini-hoot sway 2e4: the 5e4 run went unstable), 3 flow-throughs with the last averaged, 4-5 % blockage, uncorrected.",
+ "checked": "against what was measured: the BlueROV2 Heavy's surge 51.3 N at 1 m/s against Li et al.'s 45 N (+14 %), its sway 26.1 N at 0.6 m/s against 30 N (-13 %); a cube +21 % and a sphere +32 % over Hoerner's. On the one real vehicle the solver is within about 14 % and not biased one way, so hulls are taken uncorrected, to about 15 %",
+ "vehicles": {
+  "bluerov2-heavy": {
+   "surge": {
+    "dragCoefficient": 1.3105,
+    "frontalM2": 0.07643,
+    "reynolds": 50000.0,
+    "quadraticNPerMs2": 51.33,
+    "blockage": 0.0397,
+    "cells": [
+     718,
+     290,
+     290
+    ],
+    "pitchM": 0.00479
+   },
+   "sway": {
+    "dragCoefficient": 1.2376,
+    "frontalM2": 0.11449,
+    "reynolds": 50000.0,
+    "quadraticNPerMs2": 72.62,
+    "blockage": 0.0494,
+    "cells": [
+     734,
+     318,
+     318
+    ],
+    "pitchM": 0.00479
+   }
+  },
+  "mini-hoot": {
+   "surge": {
+    "dragCoefficient": 0.6794,
+    "frontalM2": 0.02849,
+    "reynolds": 50000.0,
+    "quadraticNPerMs2": 9.92,
+    "blockage": 0.0395,
+    "cells": [
+     630,
+     238,
+     238
+    ],
+    "pitchM": 0.00357
+   },
+   "heave": {
+    "dragCoefficient": 1.0053,
+    "frontalM2": 0.05771,
+    "reynolds": 50000.0,
+    "quadraticNPerMs2": 29.73,
+    "blockage": 0.0397,
+    "cells": [
+     580,
+     338,
+     338
+    ],
+    "pitchM": 0.00357
+   },
+   "sway": {
+    "dragCoefficient": 0.8569,
+    "frontalM2": 0.04197,
+    "reynolds": 20000.0,
+    "quadraticNPerMs2": 18.43,
+    "blockage": 0.0397,
+    "cells": [
+     604,
+     288,
+     288
+    ],
+    "pitchM": 0.00357
+   }
+  },
+  "boxfish-luna": {
+   "sway": {
+    "dragCoefficient": 0.9368,
+    "frontalM2": 0.21777,
+    "reynolds": 50000.0,
+    "quadraticNPerMs2": 104.55,
+    "blockage": 0.0495,
+    "cells": [
+     688,
+     324,
+     324
+    ],
+    "pitchM": 0.00647
+   },
+   "heave": {
+    "dragCoefficient": 0.9348,
+    "frontalM2": 0.23561,
+    "reynolds": 50000.0,
+    "quadraticNPerMs2": 112.88,
+    "blockage": 0.0498,
+    "cells": [
+     676,
+     336,
+     336
+    ],
+    "pitchM": 0.00647
+   },
+   "surge": {
+    "dragCoefficient": 0.896,
+    "frontalM2": 0.1295,
+    "reynolds": 50000.0,
+    "quadraticNPerMs2": 59.47,
+    "blockage": 0.04,
+    "cells": [
+     734,
+     278,
+     278
+    ],
+    "pitchM": 0.00647
+   }
+  }
+ }
+}

@@ -97,7 +97,7 @@ def quadratic(scaled_diagonal: list) -> dict:
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
     import hull_coefficients
 
-    got = hull_coefficients.drag_for(INTO / "boxfish-luna.usd")
+    got = hull_coefficients.towed_for("boxfish-luna") or hull_coefficients.drag_for(INTO / "boxfish-luna.usd")
     if got is None:
         return {"note": "Assumed: the BlueROV2's, scaled by frontal area per axis.", "diagonal": scaled_diagonal}
     drag, note = got

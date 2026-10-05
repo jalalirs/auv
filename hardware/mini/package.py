@@ -146,7 +146,7 @@ def quadratic(scaled_diagonal: list) -> dict:
     sys.path.insert(0, str(HERE.parent))
     import hull_coefficients
 
-    got = hull_coefficients.drag_for(PKG / "mini-hoot.usd")
+    got = hull_coefficients.towed_for("mini-hoot") or hull_coefficients.drag_for(PKG / "mini-hoot.usd")
     if got is None:
         return {"note": "Assumed: the BlueROV2's scaled by frontal area per axis.", "diagonal": scaled_diagonal}
     drag, note = got

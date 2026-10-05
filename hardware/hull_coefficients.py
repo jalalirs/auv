@@ -184,6 +184,27 @@ def coefficients(v, f, centre=None, cell: float = CELL_M, rho: float = RHO) -> d
 TAKEN = "translational quadratic drag"
 
 
+TOWED = pathlib.Path(__file__).parent / "towed.json"
+
+
+def towed_for(slug: str):
+    """What the numerical tow tank (hardware/tow_tank.py) made of a vehicle's
+    hull: the quadratic drag in surge, sway and heave, N/(m/s)^2, and a note.
+    None until it has been towed on all three."""
+    if not TOWED.exists():
+        return None
+    said = json.loads(TOWED.read_text())
+    one = said.get("vehicles", {}).get(slug)
+    if not one or any(axis not in one for axis in ("surge", "sway", "heave")):
+        return None
+    drag = [float(one[axis]["quadraticNPerMs2"]) for axis in ("surge", "sway", "heave")]
+    note = ("Surge, sway and heave from the hull towed in a numerical tow tank (hardware/tow_tank.py: lattice "
+            "Boltzmann with a Smagorinsky model, Maskell's blockage correction), which reproduced a cube's and a "
+            f"sphere's measured drag and the BlueROV2's measured by Li et al. (2020): {said.get('checked', '')}. "
+            "Roll, pitch and yaw are the BlueROV2's scaled (assumed).")
+    return drag, note
+
+
 def drag_for(hull, centre=None, rho: float = RHO):
     """What a package takes from its hull: the quadratic drag in surge, sway
     and heave, N/(m/s)^2, and a note saying where it came from. None when the

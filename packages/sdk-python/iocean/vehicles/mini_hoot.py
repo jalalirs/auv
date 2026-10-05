@@ -80,13 +80,16 @@ DYNAMICS = {'massKg': 2.722,
                'diagonal': [-1.367, -3.157, -3.622, -0.0094, -0.0094, -0.0094]},
  'linearDamping': {'note': "Assumed: the BlueROV2's scaled by frontal area per axis.",
                    'diagonal': [-1.584, -2.474, -2.867, -0.022, -0.022, -0.022]},
- 'quadraticDamping': {'note': 'Surge, sway and heave derived from the hull (hardware/hull_coefficients.py): '
-                              "its silhouette on each axis, [0.0281, 0.041, 0.0557] m^2, by Hoerner's "
-                              'bluff-body drag coefficients [0.859, 0.895, 1.087]; checked against the '
-                              'BlueROV2 (docs/results/hull-coefficients-2026-10-03.md). Roll, pitch and yaw '
-                              "are the BlueROV2's scaled (assumed): estimated from a hull they come out five "
-                              'to twenty times under what was measured.',
-                      'diagonal': [-12.357, -18.818, -31.029, -0.4862, -0.4862, -0.4862]},
+ 'quadraticDamping': {'note': 'Surge, sway and heave from the hull towed in a numerical tow tank '
+                              "(hardware/tow_tank.py: lattice Boltzmann with a Smagorinsky model, Maskell's "
+                              "blockage correction), which reproduced a cube's and a sphere's measured drag "
+                              "and the BlueROV2's measured by Li et al. (2020): against what was measured: "
+                              "the BlueROV2 Heavy's surge 51.3 N at 1 m/s against Li et al.'s 45 N (+14 %), "
+                              'its sway 26.1 N at 0.6 m/s against 30 N (-13 %); a cube +21 % and a sphere '
+                              "+32 % over Hoerner's. On the one real vehicle the solver is within about 14 % "
+                              'and not biased one way, so hulls are taken uncorrected, to about 15 %. Roll, '
+                              "pitch and yaw are the BlueROV2's scaled (assumed).",
+                      'diagonal': [-9.92, -18.43, -29.73, -0.4862, -0.4862, -0.4862]},
  'thrusters': {'note': 'Eight ApisQueen UG500. Four vertical in the wing pods give heave, roll and pitch; '
                        "four horizontal at the hull's corners, toed in at 45 degrees as on the BlueROV2, "
                        'give surge, sway and yaw. Fully actuated: it can hold a spot against a current from '
