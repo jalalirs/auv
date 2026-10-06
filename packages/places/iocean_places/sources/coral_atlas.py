@@ -16,7 +16,7 @@ import numpy as np
 
 from ..grid import Grid, metres_per_degree
 from ..layer import Layer, Provenance
-from . import where
+from . import fetched, where
 
 # Drawn in this order where polygons overlap, so the more particular one wins:
 # sand is the background of a reef and coral the exception.
@@ -54,11 +54,16 @@ class CoralAtlas:
     gives = ("geomorphic", "benthic")
 
     def __init__(self, path: str | None = None, geomorphic: str = "coral-atlas-geomorphic.geojson",
-                 benthic: str = "coral-atlas-benthic.geojson") -> None:
-        self.path, self.files = path, {"geomorphic": geomorphic, "benthic": benthic}
+                 benthic: str = "coral-atlas-benthic.geojson", fetch: bool = True) -> None:
+        self.path, self.files, self.fetch = path, {"geomorphic": geomorphic, "benthic": benthic}, bool(fetch)
 
     def layers(self, grid: Grid, cache=None) -> list[Layer]:
         folder = where(self.path, cache)
+        if not any((folder / f).is_file() for f in self.files.values()) and self.fetch:
+            from ..fetch.coral_atlas import main
+            folder.mkdir(parents=True, exist_ok=True)
+            fetched(self.name, main, [folder.name, grid.latitude, grid.longitude, "--across", grid.across,
+                                      "--into", folder.parent])
         out = []
         for quantity, file in self.files.items():
             if not (folder / file).is_file():

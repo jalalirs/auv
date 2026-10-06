@@ -14,7 +14,7 @@ import numpy as np
 
 from ..grid import Grid, metres_per_degree
 from ..layer import Layer, Provenance, Soundings
-from . import gridded, where
+from . import fetched, gridded, where
 
 
 class IceSat2:
@@ -22,9 +22,10 @@ class IceSat2:
     gives = ("depth",)
 
     def __init__(self, path: str | None = None, file: str = "icesat_depths.npy", note: str = "icesat.json",
-                 centre: list[float] | None = None, reach: float = 15.0, slope: float = 0.1) -> None:
+                 centre: list[float] | None = None, reach: float = 15.0, slope: float = 0.1,
+                 most: int = 60, fetch: bool = True) -> None:
         self.path, self.file, self.note, self.centre = path, file, note, centre
-        self.reach, self.slope = float(reach), float(slope)
+        self.reach, self.slope, self.most, self.fetch = float(reach), float(slope), int(most), bool(fetch)
 
     def _fetched_for(self, folder, grid: Grid) -> tuple[float, float]:
         """The centre the photons' metres are measured from: as given, else
@@ -40,6 +41,14 @@ class IceSat2:
 
     def soundings(self, grid: Grid, cache=None) -> list[Soundings]:
         folder = where(self.path, cache)
+        if not (folder / self.file).is_file() and self.fetch:
+            # Fetched for this grid's middle, so the photons' metres are from it.
+            # Needs NASA_TOKEN (an Earthdata Login token) in the environment or .env.
+            from ..fetch.icesat import main
+            folder.mkdir(parents=True, exist_ok=True)
+            fetched(self.name, main, [folder.name, "--centre", grid.latitude, grid.longitude,
+                                      "--across", grid.across, "--most", self.most, "--into", folder.parent])
+            self.centre = self.centre or [grid.latitude, grid.longitude]
         points = np.load(folder / self.file)
         said = json.loads((folder / self.note).read_text()) if (folder / self.note).is_file() else {}
         x, y = points[:, 0].astype(float), points[:, 1].astype(float)

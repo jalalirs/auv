@@ -19,7 +19,7 @@ import numpy as np
 
 from ..grid import Grid
 from ..layer import Layer, Provenance
-from . import note_of, where
+from . import fetched, note_of, where
 
 
 def _cut_to(grid: Grid, bbox) -> bool:
@@ -55,11 +55,17 @@ class Sentinel2Median:
     gives = ("red", "green", "blue")
 
     def __init__(self, path: str | None = None, file: str = "sentinel_median_rgb.npy",
-                 note: str = "sentinel.json") -> None:
+                 note: str = "sentinel.json", scenes: int = 8, cloud: float = 8.0, fetch: bool = True) -> None:
         self.path, self.file, self.note = path, file, note
+        self.scenes, self.cloud, self.fetch = int(scenes), float(cloud), bool(fetch)
 
     def layers(self, grid: Grid, cache=None) -> list[Layer]:
         folder = where(self.path, cache)
+        if not (folder / self.file).is_file() and self.fetch:
+            from ..fetch.sentinel_median import from_space
+            folder.mkdir(parents=True, exist_ok=True)
+            if from_space(folder, grid.bounds(), self.scenes, self.cloud) is None:
+                raise ValueError(f"{self.name}: no clear Sentinel-2 scenes could be read over this square")
         rgb = np.load(folder / self.file)
         said = json.loads((folder / self.note).read_text())
         colour = picture_on(grid, rgb, said["bbox"])
@@ -75,12 +81,21 @@ class Stumpf:
     name = "sentinel2-stumpf"
     gives = ("depth", "land")
 
-    def __init__(self, path: str | None = None, place: str | None = None, error: float = 10.0) -> None:
+    def __init__(self, path: str | None = None, place: str | None = None, error: float = 10.0,
+                 samples: int = 512, since: str = "2022-01-01T00:00:00Z", cloud: float = 3.0,
+                 deep: float = 60.0, fetch: bool = True) -> None:
         self.path, self.place, self.error = path, place, float(error)
+        self.samples, self.since, self.cloud, self.deep, self.fetch = int(samples), since, float(cloud), float(deep), bool(fetch)
 
     def layers(self, grid: Grid, cache=None) -> list[Layer]:
         folder = where(self.path, cache)
         name = self.place or folder.name
+        if not (folder / f"{name}.json").is_file() and self.fetch:
+            from ..fetch.get_reef import main
+            folder.mkdir(parents=True, exist_ok=True)
+            fetched(self.name, main, [name, grid.latitude, grid.longitude, "--across", grid.across,
+                                      "--samples", self.samples, "--since", self.since, "--cloud", self.cloud,
+                                      "--deep", self.deep, "--into", folder])
         said = json.loads((folder / f"{name}.json").read_text())
         field = said["heightfield"]
         height = np.fromfile(folder / field["file"], dtype="<f4").reshape(field["rows"], field["columns"])

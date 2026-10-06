@@ -33,6 +33,19 @@ def note_of(said: dict) -> dict:
     return {k: said[k] for k in NOTE_KEYS if k in said}
 
 
+def fetched(what: str, run, argv: list) -> None:
+    """Run a fetch's command line; a refusal or a failure is an error that
+    says which source could not be fetched and why."""
+    try:
+        done = run([str(a) for a in argv])
+    except SystemExit as stopped:
+        if stopped.code not in (0, None):
+            raise ValueError(f"{what}: {stopped.code}") from None
+        return
+    if done not in (0, None):
+        raise ValueError(f"{what}: the fetch failed (exit {done}); its output above says why")
+
+
 class Source(Protocol):
     """`layers` are on the grid; a source of measurements at points also has
     `soundings`, which models are fitted and checked against."""

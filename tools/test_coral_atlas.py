@@ -15,6 +15,8 @@ import numpy as np
 import pytest
 
 HERE = pathlib.Path(__file__).resolve().parent
+# The atlas fetch lives in the places module now; tools/coral-atlas is its command line.
+ATLAS_SOURCE = HERE.parent / "packages" / "places" / "iocean_places" / "fetch" / "coral_atlas.py"
 
 
 def _atlas():
@@ -86,7 +88,7 @@ def test_coral_and_algae_being_one_class_is_said_out_loud():
     """Sentinel-2 cannot separate living coral from the algae on and beside
     it, so that number is an upper bound on coral cover and not a measurement
     of it."""
-    source = (HERE / "coral-atlas").read_text()
+    source = ATLAS_SOURCE.read_text()
     assert "upper bound on coral cover" in source
     assert "readThisFirst" in source
 
@@ -95,7 +97,7 @@ def test_a_page_is_not_an_answer():
     """A WFS will silently give you a page rather than the answer, and a
     habitat map missing its eastern half looks exactly like a reef that
     stops."""
-    source = (HERE / "coral-atlas").read_text()
+    source = ATLAS_SOURCE.read_text()
     assert "numberMatched" in source
     assert "this is a" in source and "page, not the answer" in source
 
@@ -131,7 +133,7 @@ def test_the_shares_reported_are_of_the_site_and_not_of_the_polygons():
     one-kilometre site with reef polygons a kilometre across, Kāne'ohe's
     areas added up to 2.24 km² "of 1.00" — which is not a share of anything
     and was being printed as one."""
-    source = (HERE / "coral-atlas").read_text()
+    source = ATLAS_SOURCE.read_text()
     assert "onSiteShare" in source
     assert "unmappedShare" in source
     # And the shares come off the raster, which is clipped to the site.
@@ -171,6 +173,6 @@ def test_two_atlas_classes_sharing_a_habitat_code_are_still_counted_apart():
     Microalgal Mats at 22.9%, which are the same 22.9%."""
     atlas = _atlas()
     assert atlas.AS_HABITAT["Sand"] == atlas.AS_HABITAT["Microalgal Mats"]
-    source = (HERE / "coral-atlas").read_text()
+    source = ATLAS_SOURCE.read_text()
     assert "Painted twice, on purpose" in source
     assert "which are\n        # the same 22.9%." in source

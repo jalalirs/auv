@@ -61,12 +61,24 @@ class Gebco:
     name = "gebco"
     gives = ("depth",)
 
-    def __init__(self, path: str | None = None, multibeam: bool = True) -> None:
-        self.path, self.multibeam = path, bool(multibeam)
+    def __init__(self, path: str | None = None, multibeam: bool = True, halfDegrees: float = 0.1,  # noqa: N803
+                 fetch: bool = True) -> None:
+        self.path, self.multibeam, self.half, self.fetch = path, bool(multibeam), float(halfDegrees), bool(fetch)
 
     def layers(self, grid: Grid, cache=None) -> list[Layer]:
         folder = where(self.path, cache)
-        said = json.loads((folder / "site.json").read_text())["surroundings"]
+        # A place keeps the record in its site.json; a reference folder in surroundings.json.
+        if (folder / "site.json").is_file() and "surroundings" in json.loads((folder / "site.json").read_text()):
+            said = json.loads((folder / "site.json").read_text())["surroundings"]
+        else:
+            if not (folder / "surroundings.json").is_file():
+                if not self.fetch:
+                    raise ValueError(f"{self.name}: no surroundings in {folder}, and fetching is off")
+                from ..fetch.gebco import fetch_box
+                folder.mkdir(parents=True, exist_ok=True)
+                record = fetch_box(grid.latitude, grid.longitude, self.half, folder)
+                (folder / "surroundings.json").write_text(json.dumps(record, indent=1) + "\n")
+            said = json.loads((folder / "surroundings.json").read_text())
         rows, cols = said["rows"], said["columns"]
         height = np.fromfile(folder / said["file"], dtype="<f4").reshape(rows, cols)
         tid = np.fromfile(folder / said["tidFile"], dtype="u1").reshape(rows, cols)

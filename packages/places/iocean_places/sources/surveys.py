@@ -18,21 +18,28 @@ import numpy as np
 
 from ..grid import Grid, metres_per_degree
 from ..layer import Layer, Provenance
-from . import note_of, where
+from . import fetched, note_of, where
 
 
 class Bathymetry:
     name = "bathymetry"
     gives = ("depth",)
 
-    def __init__(self, path: str | None = None, place: str | None = None, error: float = 1.0) -> None:
+    def __init__(self, path: str | None = None, place: str | None = None, error: float = 1.0,
+                 samples: int = 512, service: str = "auto", fetch: bool = True) -> None:
         self.path, self.place, self.error = path, place, float(error)
+        self.samples, self.service, self.fetch = int(samples), service, bool(fetch)
 
     def layers(self, grid: Grid, cache=None) -> list[Layer]:
         from scipy import ndimage
 
         folder = where(self.path, cache)
         name = self.place or folder.name
+        if not (folder / f"{name}.json").is_file() and self.fetch:
+            from ..fetch.bathymetry import main
+            folder.mkdir(parents=True, exist_ok=True)
+            fetched(self.name, main, [name, grid.latitude, grid.longitude, "--across", grid.across,
+                                      "--samples", self.samples, "--from", self.service, "--into", folder])
         said = json.loads((folder / f"{name}.json").read_text())
         field = said["heightfield"]
         height = np.fromfile(folder / field["file"], dtype="<f4").reshape(field["rows"], field["columns"])
