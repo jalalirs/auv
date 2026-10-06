@@ -8,7 +8,7 @@
   ],
   "models": [
     {"use": "curve-depth", "as": "curve", "depth": "stumpf.depth", "truth": "icesat.depth.points",
-     "keepWet": false}
+     "land": "stumpf.land"}
   ],
   "scene": {"depth": ["curve.depth", "gebco.depth"], "featherCells": 0}
 }

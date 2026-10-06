@@ -2,6 +2,10 @@
 """Build a place from whatever data there is: the places module's front door.
 
     tools/places build recipe.json --into ~/iocean/places/<name>
+    tools/places build recipe.json --into DIR --cache REF --record ~/iocean/places/<name>
+
+With --record, the call is written into that place's site.json under
+`builtBy.places`, so tools/rebuild builds the seabed again before make-site.
 
 See packages/places/README.md for what a recipe says.
 """
@@ -13,5 +17,28 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "packages" 
 
 from iocean_places.__main__ import main  # noqa: E402
 
+
+def recorded(argv: list[str]) -> int:
+    """Run, then write the call (less --record) into the place it builds for."""
+    import json
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import built
+
+    if "--record" not in argv:
+        return main(argv)
+    at = argv.index("--record")
+    place = pathlib.Path(argv[at + 1]).expanduser()
+    rest = argv[:at] + argv[at + 2:]
+    done = main(rest)
+    if done == 0:
+        site_file = place / "site.json"
+        site = json.loads(site_file.read_text())
+        sys.argv = [sys.argv[0], *argv]
+        built.record_call(site, "places")
+        site_file.write_text(json.dumps(site, indent=2) + "\n")
+    return done
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(recorded(sys.argv[1:]))

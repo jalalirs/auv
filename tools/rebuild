@@ -40,7 +40,9 @@ import sys
 # from different things. A tank has no reef to survey, nothing to swim over,
 # and no medium to bake from where the dive begins, so the rest of the chain
 # simply has no record to replay for it.
-IN_ORDER = ["make-site", "make-tank", "reef-survey", "fauna", "aim-water"]
+# `places` (the places module) comes first where a place has one: it builds the
+# seabed make-site's --heights reads.
+IN_ORDER = ["places", "make-site", "make-tank", "reef-survey", "fauna", "aim-water"]
 
 HERE = pathlib.Path(__file__).resolve().parent
 
