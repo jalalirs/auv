@@ -111,21 +111,21 @@ const SPEC = [
   { kind: "film", id: "intro", src: "reef_alfahal.mp4", dur: 8.0, from: 8, rate: 1, push: [1.06, 1.0],
     panel: `<span class="k">Introducing</span><span class="t" style="font-size:150px;line-height:1">iOcean</span><span class="s">A unified digital twin for marine operations</span>`, at: [1.0, 7.4] },
   { kind: "film", id: "coupled", src: "reef_alfahal.mp4", dur: 8.5, from: 25, rate: 1, push: [1.05, 1.0],
-    panel: `<span class="t">One digital twin of the sea</span><span class="s">the place, what is built in it and what works in it — simulated together,<br>each acting on the others, so a job can be rehearsed before anyone goes to sea</span>`, at: [0.8, 7.9] },
+    panel: `<span class="t">One digital twin of the sea</span><span class="s">the place, what is built in it and what works in it, simulated together<br>and each acting on the others, so a job can be rehearsed before anyone goes to sea</span>`, at: [0.8, 7.9] },
   { kind: "html", id: "built", dur: 11.0, cls: "sea", html: SEA + `
       <div style="position:absolute;top:80px;left:0;right:0;text-align:center;font-family:var(--sans);font-size:24px;letter-spacing:.2em;text-transform:uppercase;font-weight:650;color:var(--sea)">How it is built</div>
       <div class="info">
         <div class="ip" id="ip1"><svg id="ring" viewBox="0 0 520 440"></svg>
-          <h4>Coupled physics</h4><p>Isaac Sim, PhysX and our own GPU solvers — every system acting on the others</p></div>
+          <h4>Coupled physics</h4><p>Isaac Sim, PhysX and our own GPU solvers, every system acting on the others</p></div>
         <div class="ip" id="ip2"><div class="stack"><img src="${A}shushah.jpg">
             <span class="src" style="top:20px">Sentinel-2 colour</span><span class="src" style="top:76px">ICESat-2 laser depths</span>
             <span class="src" style="top:132px">Allen Coral Atlas</span><span class="src" style="top:188px">GEBCO beyond the site</span></div>
-          <h4>Real seabeds</h4><p>Built from satellites, laser altimetry and surveys — and your own data</p></div>
+          <h4>Real seabeds</h4><p>Built from satellites, laser altimetry and surveys, and your own data</p></div>
         <div class="ip" id="ip3"><div class="trace">
             <div class="tv">±1.28 m</div><div class="tl">depth error at Shushah</div><span class="tk">derived</span>
             <svg viewBox="0 0 400 120" style="width:400px;height:120px;display:block;margin:18px auto 0"><path id="tracepath" d="M200 0 C200 60, 200 60, 200 120" stroke="#7fb4c1" stroke-width="2" fill="none" stroke-dasharray="6 6"/></svg>
             <div class="from">7,149 ICESat-2 depths, held out</div></div>
-          <h4>A source for every number</h4><p>Measured, derived, chosen or assumed — and from what</p></div>
+          <h4>A source for every number</h4><p>Measured, derived, chosen or assumed, and from what</p></div>
       </div>`,
     run: (t, el) => { contours(el.querySelector("svg"), T_NOW);
       ["ip1", "ip2", "ip3"].forEach((id, i) => { const e = $(id); e.style.opacity = ramp(t, 0.6 + i * 2.2, 1.6 + i * 2.2);
@@ -142,7 +142,7 @@ const SPEC = [
       <div style="position:absolute;top:90px;left:0;right:0;text-align:center">
         <div style="font-family:var(--sans);font-size:24px;letter-spacing:.2em;text-transform:uppercase;font-weight:650;color:var(--sea)">Phase one</div>
         <div style="font-family:var(--serif);font-size:96px;color:#eef3f1;margin-top:10px">iOcean Robotics</div>
-        <div style="font-family:var(--sans);font-size:30px;color:#a9c3ca;margin-top:12px">Design, test and fly underwater vehicles in real seas — before the boat leaves.</div></div>
+        <div style="font-family:var(--sans);font-size:30px;color:#a9c3ca;margin-top:12px">Design, test and fly underwater vehicles in real seas, before the boat leaves.</div></div>
       <div class="comps">
         ${[["Places", "real seabeds and reefs", 1], ["Vehicles", "hull, thrusters, sensors, battery", 1], ["Controllers", "yours, through our SDK", 1],
            ["Missions", "lay out and plan the job", 1], ["Sweeps", "everything that could go differently", 1], ["Remote runs", "flown on GPU hosts", 1],
@@ -164,17 +164,17 @@ const SPEC = [
       <div class="sub">REMUS 100 · Seaglider · BlueROV2 Heavy · EdgeTech 2300 · Boxfish Luna · our mini-hoot</div>`,
     run: (t, el) => el.querySelectorAll(".grid6 div").forEach((d, i) => { d.style.opacity = ramp(t, 0.5 + i * 0.25, 1.1 + i * 0.25); }) },
   { kind: "words", id: "job", dur: 5.0, lines: [["One job, end to end:", 0.5], ["a pipeline landfall, inspected for free spans.", 1.8]] },
-  { kind: "ui", id: "layout", src: "layout.mp4", dur: 13.0, rate: 1.0, top: "Built · Missions — lay the pipeline on the seabed.",
+  { kind: "ui", id: "layout", src: "layout.mp4", dur: 13.0, rate: 1.0, top: "Built · Missions: lay the pipeline on the seabed.",
     keys: [[0, 0.92, .5, .5], [1.7, 0.92, .5, .5], [4.0, 1.4, .52, .5], [9.8, 1.4, .56, .5], [12.1, 1.05, .5, .5]] },
   { kind: "ui", id: "designer", src: "designer.mp4", dur: 11.0, rate: 1.0, top: "Plan it against the vehicle you will send: a REMUS 100, five minutes.",
     keys: [[0, 0.92, .5, .5], [1.3, 1.25, .45, .45], [4.8, 1.55, .8, .35], [8.0, 1.55, .8, .35], [9.5, 1.1, .7, .3]] },
-  { kind: "ui", id: "fly", src: "fly.mp4", dur: 15.0, rate: 1.0, top: "Built · Sweeps — four currents, one dive each.",
+  { kind: "ui", id: "fly", src: "fly.mp4", dur: 15.0, rate: 1.0, top: "Built · Sweeps: four currents, one dive each.",
     keys: [[0, 0.92, .5, .5], [1.4, 1.5, .55, .25], [5.8, 1.5, .55, .25], [7.5, 1.5, .66, .25], [9.6, 1.5, .66, .25], [11.3, 1.35, .75, .88], [13.8, 1.35, .78, .9]] },
-  { kind: "ui", id: "results", src: "results.mp4", dur: 9.5, rate: 1.0, top: "Built · Remote runs — flown on GPU hosts, in parallel, and back.",
+  { kind: "ui", id: "results", src: "results.mp4", dur: 9.5, rate: 1.0, top: "Built · Remote runs: flown on GPU hosts, in parallel, and back.",
     keys: [[0, 0.92, .5, .5], [1.2, 1.2, .52, .32], [9.5, 1.2, .52, .35]] },
   { kind: "film", id: "pipe", src: "pipeline.mp4", dur: 12.0, from: 125, rate: 1.4, push: [1.0, 1.0],
     nums: [["452 / 452 m", "of the line seen"], ["3 / 3", "free spans seen"], ["0", "of 1,096,027 colonies struck"]], numsAt: 1.5, numsGap: 1.6,
-    top: "Built · Results — the REMUS following the line, as flown." },
+    top: "Built · Results: the REMUS following the line, as flown." },
   { kind: "html", id: "prov", dur: 10.5, cls: "paper", html: `
       <div class="ctitle"><span style="font-family:var(--sans);font-size:24px;letter-spacing:.2em;text-transform:uppercase;font-weight:650;color:var(--sea-2);display:block;margin-bottom:12px">This job's numbers</span>Each says where it came from.</div>
       <div class="rows" style="top:330px">
@@ -201,7 +201,7 @@ const SPEC = [
   { kind: "html", id: "split", dur: 13.0, html: `
       <div class="split"><div><video src="${A}nursery_pursue.mp4" muted preload="auto"></video><div class="tag">Controller A · flies the route</div><div class="count" id="c1n"></div></div>
         <div><video src="${A}nursery_wary.mp4" muted preload="auto"></video><div class="tag">Controller B · reads its sonar</div><div class="count" id="c2n"></div></div></div>
-      <div class="top" id="splittop">The same vehicle, reef, water and seed — two controllers.</div>`,
+      <div class="top" id="splittop">The same vehicle, reef, water and seed. Two controllers.</div>`,
     videos: [{ sel: "video", from: 100, rate: 3.0 }],
     run: (t) => { $("splittop").style.opacity = ramp(t, 0.6, 1.4); strikes(t, 100, 3.0); } },
   // ── 6. roadmap ──
