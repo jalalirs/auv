@@ -1,0 +1,2 @@
+[console_scripts]
+iocean-mcp = iocean_mcp.server:main

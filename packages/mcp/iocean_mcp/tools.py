@@ -62,15 +62,15 @@ def _error_at_begin(platform: Platform, place: dict, site: dict) -> float | None
     url = next((one["url"] for one in platform.files(version["id"]) if one["path"] == cells["error"]), None)
     if url is None:
         return None
+    import math
+    import struct
     import urllib.request
-    import numpy as np
+    rows, columns = field["rows"], field["columns"]
+    row = min(max(round((begin[1] / across + 0.5) * (rows - 1)), 0), rows - 1)
+    col = min(max(round((begin[0] / across + 0.5) * (columns - 1)), 0), columns - 1)
     with urllib.request.urlopen(url, timeout=60) as answer:
-        error = np.frombuffer(answer.read(), dtype="<f4").reshape(field["rows"], field["columns"])
-    n = field["rows"] - 1
-    row = int(np.clip(round((begin[1] / across + 0.5) * n), 0, n))
-    col = int(np.clip(round((begin[0] / across + 0.5) * (field["columns"] - 1)), 0, field["columns"] - 1))
-    value = float(error[row, col])
-    return round(value, 2) if np.isfinite(value) else None
+        (value,) = struct.unpack_from("<f", answer.read(), 4 * (row * columns + col))
+    return round(value, 2) if math.isfinite(value) else None
 
 
 # ── looking ──────────────────────────────────────────────────────────────────
