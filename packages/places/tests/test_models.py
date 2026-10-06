@@ -118,3 +118,28 @@ def test_a_model_asked_for_something_nobody_made(tmp_path):
     recipe = Recipe.of({**RECIPE, "models": [{**RECIPE["models"][0], "truth": "lidar.depth.points"}]})
     with pytest.raises(ValueError, match="nothing called 'lidar.depth.points'"):
         build(recipe, tmp_path / "place", reference(tmp_path / "ref"))
+
+
+def test_a_fit_does_not_make_dry_land_of_water(tmp_path):
+    """A line whose offset lifts the shallowest claims above the surface
+    (Al Fahal's did): with keepWet those cells stay awash; without it the
+    place is rebuilt as it was."""
+    folder = reference(tmp_path / "ref")
+    claim = np.fromfile(folder / "test.f32", dtype="<f4").reshape(41, 41)
+    # A claim stretched and offset as Al Fahal's was (measured = 0.4 claim + 2.8),
+    # and a patch away from the tracks the satellite read as barely under water.
+    stretched = 2.5 * TRUE - 7.0
+    patch = (X > 150) & (Y < -150)
+    np.where(ISLAND, 0.6, np.where(patch, -1.0, stretched)).astype("<f4").tofile(folder / "test.f32")
+    for keep, top in ((True, -0.3), (False, None)):
+        model = {**RECIPE["models"][0], "keepWet": keep}
+        model.pop("reef")
+        recipe = Recipe.of({**RECIPE, "models": [model]})
+        products = products_of(recipe, folder)
+        said, _ = run_models(recipe, products)
+        water = products["curve.depth"].value[~ISLAND]
+        if top is None:
+            assert said["curve"]["driedCells"] > 0 and water.max() > 0
+        else:
+            assert said["curve"]["keptWetCells"] > 0 and water.max() <= top
+    claim.tofile(folder / "test.f32")

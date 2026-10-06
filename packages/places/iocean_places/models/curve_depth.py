@@ -186,15 +186,19 @@ class CurveDepth:
     """`depth`: the claimed depth layer; `truth`: measured soundings; `land`
     (optional): a layer that is 1 on land, kept at its claimed height;
     `reef` (optional): a layer of classes, where land the reef map calls reef
-    is awash instead."""
+    is awash instead. `keepWet`: a cell the claim has under water stays under
+    water. A line fitted to depths of half a metre and more says nothing about
+    the surface, and Al Fahal's (+2.96 m offset) put 32 hectares of its reef
+    flat up to three metres above the sea; off only to rebuild a place as it
+    was built."""
 
     name = "curve-depth"
     gives = ("depth",)
 
     def __init__(self, depth: str, truth: str, land: str | None = None, reef: str | None = None,
-                 kind: str = "derived") -> None:
+                 kind: str = "derived", keepWet: bool = True) -> None:  # noqa: N803 - the recipe's key
         self.inputs = {"depth": depth, "truth": truth, "land": land, "reef": reef}
-        self.kind = kind
+        self.kind, self.keep_wet = kind, bool(keepWet)
 
     def run(self, grid: Grid, take) -> tuple[list[Layer], dict]:
         claims = take(self.inputs["depth"]).value
@@ -223,6 +227,9 @@ class CurveDepth:
             awash = land & (take(self.inputs["reef"]).codes() > 0)
         value = np.where(land & ~awash, claims, value)
         value = np.where(awash, np.float32(AWASH_M), value).astype("float32")
+        wet = ~land & (claims <= 0.0) & (value > AWASH_M)
+        if self.keep_wet:
+            value = np.where(wet, np.float32(AWASH_M), value).astype("float32")
 
         deepest, shallowest = float(measured.min()), float(measured.max())
         corrected = value[~land]
@@ -236,6 +243,7 @@ class CurveDepth:
             "residualByDepth": bands, "calibratedToM": good_to, "pastThatUncalibrated": bool(past),
             "calibratedBetweenM": [round(-shallowest, 1), round(-deepest, 1)], "extrapolatedShare": round(beyond, 3),
             "landKeptCells": int((land & ~awash).sum()), "awashCells": int(awash.sum()),
+            ("keptWetCells" if self.keep_wet else "driedCells"): int(wet.sum()),
             "note": "derived from a satellite claim rescaled to measured depths. Not a survey: a derived seabed with a known, held-out error.",
         }
         cited = Provenance(self.name, self.kind,

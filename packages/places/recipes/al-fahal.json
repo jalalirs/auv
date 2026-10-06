@@ -1,0 +1,14 @@
+{
+  "name": "al-fahal",
+  "site": {"centre": [22.284, 38.962], "acrossM": 3000, "cells": 512},
+  "sources": [
+    {"use": "sentinel2-stumpf", "as": "stumpf", "place": "al-fahal"},
+    {"use": "icesat2", "as": "icesat"},
+    {"use": "gebco", "path": "~/iocean/places/al-fahal"}
+  ],
+  "models": [
+    {"use": "curve-depth", "as": "curve", "depth": "stumpf.depth", "truth": "icesat.depth.points",
+     "keepWet": false}
+  ],
+  "scene": {"depth": ["curve.depth", "gebco.depth"], "featherCells": 0}
+}
