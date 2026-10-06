@@ -24,12 +24,16 @@ KINDS = ("measured", "derived", "chosen", "assumed")
 class Provenance:
     """Where a layer's numbers came from: which source, what kind of number
     (measured, derived, chosen or assumed, as everywhere on this platform),
-    and the citation a person would follow."""
+    and the citation a person would follow. `note` is what the source's own
+    record said about where its numbers came from (a satellite scene, the
+    method, how much of the bottom it saw), carried into the place's record
+    so a rebuild never deletes it."""
 
     source: str
     kind: str
     citation: str
     licence: str = ""
+    note: dict = field(default_factory=dict, compare=False, hash=False)
 
     def __post_init__(self) -> None:
         if self.kind not in KINDS:

@@ -246,7 +246,12 @@ class CurveDepth:
             ("keptWetCells" if self.keep_wet else "driedCells"): int(wet.sum()),
             "note": "derived from a satellite claim rescaled to measured depths. Not a survey: a derived seabed with a known, held-out error.",
         }
+        claim = take(self.inputs["depth"]).provenance[0]
+        # The claim's own record, carried; less what was owed, which this fit answers.
+        note = {k: v for k, v in claim.note.items() if k != "toCalibrate"}
+        if "toCalibrate" in claim.note:
+            record["wasOwed"] = claim.note["toCalibrate"]
         cited = Provenance(self.name, self.kind,
-                           f"{take(self.inputs['depth']).provenance[0].source} rescaled by a {chosen} to "
-                           f"{truth.provenance.source}, held-out rms {error:.2f} m")
+                           f"{claim.source} rescaled by a {chosen} to "
+                           f"{truth.provenance.source}, held-out rms {error:.2f} m", note=note)
         return [Layer.of(grid, "depth", value, error, cited)], record

@@ -32,7 +32,7 @@ def reference(folder: pathlib.Path, seed: int = 3, wobble: float = 0.0) -> pathl
     claim.tofile(folder / "test.f32")
     (folder / "test.json").write_text(json.dumps({
         "name": "test", "method": "Stumpf", "source": "Copernicus Sentinel-2 TEST", "observedAt": "2026-01-01",
-        "centre": centre, "acrossMetres": GRID.across,
+        "opticalLimitM": 22.0, "toCalibrate": "two granules would pin the scale", "centre": centre, "acrossMetres": GRID.across,
         "heightfield": {"rows": GRID.cells, "columns": GRID.cells, "file": "test.f32"}}))
     (folder / "reference.json").write_text(json.dumps({"centre": centre}))
     # tools/reference: the median colour, row 0 north, cut to the square;
@@ -112,6 +112,10 @@ def test_a_place_from_the_reference_folder(tmp_path):
     models = site["from"]["models"]
     assert models["colour"]["rmsHeldOutM"] < models["curve"]["rmsHeldOutM"], "the colour knows what the claim got wrong"
     assert site["beginAt"][2] < 0, "a dive begins under water"
+    # What the satellite's own note said, carried, or make-site deletes it from the place.
+    assert note["source"] == "Copernicus Sentinel-2 TEST" and note["method"] == "Stumpf"
+    assert note["observedAt"] == "2026-01-01" and note["opticalLimitM"] == 22.0
+    assert "toCalibrate" not in note and site["from"]["models"]["colour"]["wasOwed"]
 
 
 def test_a_model_asked_for_something_nobody_made(tmp_path):

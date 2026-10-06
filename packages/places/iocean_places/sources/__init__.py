@@ -20,6 +20,18 @@ from ..grid import Grid
 from ..layer import Layer, Provenance, Soundings
 
 
+# What a source's own record says about where its ground came from, carried
+# into the place's record under the same keys (tools/built.py CARRIED, less the
+# ones a build sets itself). A note without one of these deletes it from the
+# place on the next rebuild: Al Fahal lost its scene and method that way.
+NOTE_KEYS = ("source", "method", "observedAt", "opticalLimitM", "bottomVisibleFraction",
+             "beyondOpticalDepthFraction", "medianDetailM", "toCalibrate", "constructedPastTheSensor")
+
+
+def note_of(said: dict) -> dict:
+    return {k: said[k] for k in NOTE_KEYS if k in said}
+
+
 class Source(Protocol):
     """`layers` are on the grid; a source of measurements at points also has
     `soundings`, which models are fitted and checked against."""

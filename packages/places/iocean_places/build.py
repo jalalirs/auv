@@ -103,7 +103,12 @@ def build(recipe: Recipe, into: pathlib.Path, cache: pathlib.Path | None = None)
     leading = max((n for n in models if models[n]["model"] in by_share),
                   key=lambda n: by_share[models[n]["model"]], default=None)
     centre = {"latitude": recipe.grid.latitude, "longitude": recipe.grid.longitude}
+    # What the source that made most of the seabed said about itself, under the
+    # keys the place's record has always carried it in.
+    shares = {k: float((depth.source == k).mean()) for k in range(len(depth.provenance))}
+    first = depth.provenance[max(shares, key=shares.get)] if shares else None
     note = {
+        **(first.note if first else {}),
         "rows": recipe.grid.cells, "columns": recipe.grid.cells, "acrossMetres": recipe.grid.across,
         "file": mesh["heightfield"]["file"], "format": mesh["heightfield"]["format"], "centre": centre,
         "surveyed": measured >= 0.5, "surveyedFraction": round(measured, 4),

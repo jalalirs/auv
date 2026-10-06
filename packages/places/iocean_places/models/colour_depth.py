@@ -122,8 +122,12 @@ class ColourDepth:
             "note": ("derived from the colour and the reef map, fitted to measured depths. "
                      "Not a survey: a derived seabed with a known, held-out error."),
         }
+        claim = take(self.inputs["depth"]).provenance[0]
+        note = {k: v for k, v in claim.note.items() if k != "toCalibrate"}
+        if "toCalibrate" in claim.note:
+            record["wasOwed"] = claim.note["toCalibrate"]
         cited = Provenance(self.name, "derived",
                            f"{', '.join(sorted({take(self.inputs[b]).provenance[0].source for b in ('red', 'green', 'blue')}))}"
                            f" colour and the {reef_map.provenance[0].source} reef map, fitted to "
-                           f"{truth.provenance.source}, held-out rms {error:.2f} m")
+                           f"{truth.provenance.source}, held-out rms {error:.2f} m", note=note)
         return [Layer.of(grid, "depth", value, error, cited)], record

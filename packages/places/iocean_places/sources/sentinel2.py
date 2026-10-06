@@ -19,7 +19,7 @@ import numpy as np
 
 from ..grid import Grid
 from ..layer import Layer, Provenance
-from . import where
+from . import note_of, where
 
 
 def _cut_to(grid: Grid, bbox) -> bool:
@@ -97,7 +97,7 @@ class Stumpf:
                     f"({said.get('observedAt', 'date not recorded')}); the depth scaled to the reef's own "
                     "geomorphology, not to anything measured")
         return [Layer.of(grid, "depth", height, self.error, Provenance(self.name, "derived", citation,
-                                                                       "Copernicus open data")),
+                                                                       "Copernicus open data", note_of(said))),
                 Layer.of(grid, "land", land, 0.0,
                          Provenance(self.name, "derived", f"near infrared above 0.03 in {said.get('source')}",
                                     "Copernicus open data"))]
