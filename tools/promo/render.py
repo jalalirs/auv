@@ -110,16 +110,17 @@ def main() -> int:
     ap.add_argument("--stills", default=None, help="seconds, comma separated: write PNGs of those moments only")
     ap.add_argument("--out", default=str(ROOT / "iocean-promo.mp4"))
     ap.add_argument("--workers", type=int, default=4, help="browsers rendering parts of it at once")
+    ap.add_argument("--timeline", default="timeline.html", help="which timeline in tools/promo")
     ap.add_argument("--frames", default=None, help="a:b — render only frames a..b-1 into frames/ (a worker)")
     asked = ap.parse_args()
 
-    shutil.copy(HERE / "timeline.html", ROOT / "timeline.html")
+    shutil.copy(HERE / asked.timeline, ROOT / asked.timeline)
     port = serve()
     frames = ROOT / "frames"
     with sync_playwright() as p:
         browser = p.chromium.launch(channel="chrome", args=["--autoplay-policy=no-user-gesture-required"])
         page = browser.new_page(viewport={"width": 1920, "height": 1080}, device_scale_factor=1)
-        page.goto(f"http://127.0.0.1:{port}/timeline.html", wait_until="domcontentloaded", timeout=120000)
+        page.goto(f"http://127.0.0.1:{port}/{asked.timeline}", wait_until="domcontentloaded", timeout=120000)
         page.evaluate("window.ready")
         duration = page.evaluate("window.DURATION")
         if asked.stills:
@@ -138,7 +139,7 @@ def main() -> int:
                 shutil.rmtree(frames)
             frames.mkdir()
             share = -(-n // asked.workers)
-            jobs = [subprocess.Popen([sys.executable, __file__, "--fps", f"{asked.fps:g}", "--start", f"{asked.start}",
+            jobs = [subprocess.Popen([sys.executable, __file__, "--timeline", asked.timeline, "--fps", f"{asked.fps:g}", "--start", f"{asked.start}",
                                       "--end", f"{end}", "--frames", f"{a}:{min(n, a + share)}"])
                     for a in range(0, n, share)]
             if any(job.wait() for job in jobs):
