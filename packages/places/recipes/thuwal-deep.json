@@ -1,0 +1,9 @@
+{
+  "name": "thuwal-deep",
+  "site": {"centre": [22.32, 38.55], "acrossM": 8000, "cells": 512},
+  "sources": [
+    {"use": "bathymetry", "as": "gmrt", "place": "thuwal-deep", "error": 10.0},
+    {"use": "gebco", "path": "~/iocean/places/thuwal-deep"}
+  ],
+  "scene": {"depth": ["gmrt.depth", "gebco.depth"], "featherCells": 0}
+}
