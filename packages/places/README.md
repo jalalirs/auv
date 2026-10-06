@@ -17,7 +17,7 @@ sources  →  layers  →  fusion  →  place  →  scene
   - `fringing`: the constructed fringing reef (moved from tools/fringing.py), depth and hardness both chosen;
   - `geotiff`, `points` (XYZ), `place` (an existing place), `flat` (an assumed depth).
 
-  Today they read what the fetching tools wrote (a place's reference folder, `--cache`); the fetching itself moves in next.
+  Each reads its files from the place's reference folder (`--cache`) and, when they are missing, fetches them there first (`iocean_places/fetch/`, moved from the tools, which are now command lines over it). ICESat-2 needs `NASA_TOKEN` (an Earthdata Login token) in the environment or the repository's `.env`. Sentinel-2 sources take an `until` date, so a recipe fetches the scenes it was built from rather than whatever is clearest today.
 - **Models** (`iocean_places/models/`) turn named layers into another layer, with an error checked on held-out 200 m blocks and a record of the fit: `curve-depth` (one curve of the claim, from tools/fit-depths; `keepWet` keeps what the satellite saw as water under it), `colour-depth` (the colour and the reef map, from tools/fit-colour-depths) and `datum-fit` (a survey shifted onto a reference's datum, holes filled, specks dropped, from tools/ground). The fit tools now use them from here.
 - **A layer** (`layer.py`) is one quantity on the site's grid with, cell by cell, a value, an error in metres and the source it came from. Every source is cited with a kind: measured, derived, chosen or assumed.
 - **Fusion** (`fusion.py`) believes the source with the smallest error in each cell, and tapers a source off over `featherCells` at the edge of what it covers, so seams are slopes, not steps.
@@ -33,6 +33,14 @@ Every product is named `<as>.<quantity>` (soundings `<as>.<quantity>.points`), a
 | kaneohe | NOAA mosaic, re-fetched | within a metre; median 1.5 cm on flat ground, 0.58 m on steep edges (resampling) |
 | red-sea | the constructed fringing reef, its hardness carried to make-site | identical, coral and textures included |
 | thuwal-deep | GMRT, re-fetched | identical |
+
+Shushah from an empty folder, one command, fetching everything, gives the published seabed to within 1e-6 m:
+
+```
+tools/places build packages/places/recipes/shushah.json --into /tmp/shushah --cache /tmp/shushah-reference
+```
+
+(with the `gebco` source's `path` removed, so it fetches GEBCO into the folder too.)
 
 `tools/places build ... --record PLACE` writes the call into the place, and `tools/rebuild` then builds the seabed first.
 
