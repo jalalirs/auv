@@ -162,9 +162,9 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#000}
 </div>
 
 <div class="scene" id="tank">
-  <video class="full" src="assets/minihoot.mp4" muted preload="auto"></video>
+  <video class="full" src="assets/tank_new.mp4" muted preload="auto"></video>
   <div class="shade"></div>
-  <div class="cap">From a test tank to the open reef.<small>mini-hoot on its tether in a 2 m tank, its drag measured in a numerical tow tank</small></div>
+  <div class="cap">From a test tank to the open reef.<small>mini-hoot on its tether in a 2 m tank among Red Sea fish · its drag measured in a numerical tow tank</small></div>
 </div>
 
 <div class="scene card" id="end">
@@ -242,7 +242,7 @@ const SCENES = [
   { id: "vehicles", a: 100.0, b: 104.5,
     run: (t) => document.querySelectorAll("#vehicles .grid6 div").forEach((d, i) => { d.style.opacity = ramp(t, 0.3 + i * 0.22, 0.9 + i * 0.22);
       d.style.transform = `scale(${0.96 + 0.04 * ramp(t, 0.3 + i * 0.22, 0.9 + i * 0.22)})`; }) },
-  { id: "tank", a: 104.0, b: 109.5, video: { el: "#tank video", from: 8, rate: 1 },
+  { id: "tank", a: 104.0, b: 109.5, video: { el: "#tank video", from: 31, rate: 1 },
     run: (t) => { $("tank").querySelector(".cap").style.opacity = ramp(t, 0.6, 1.6); } },
   { id: "end", a: 109.0, b: 116.0, run: (t, el) => { el.firstElementChild.style.opacity = ramp(t, 0.4, 1.6); } },
 ];

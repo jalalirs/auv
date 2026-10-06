@@ -118,7 +118,7 @@ def main() -> int:
     with sync_playwright() as p:
         browser = p.chromium.launch(channel="chrome", args=["--autoplay-policy=no-user-gesture-required"])
         page = browser.new_page(viewport={"width": 1920, "height": 1080}, device_scale_factor=1)
-        page.goto(f"http://127.0.0.1:{port}/timeline.html")
+        page.goto(f"http://127.0.0.1:{port}/timeline.html", wait_until="domcontentloaded", timeout=120000)
         page.evaluate("window.ready")
         duration = page.evaluate("window.DURATION")
         if asked.stills:
