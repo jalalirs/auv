@@ -1,0 +1,16 @@
+[project]
+name = "iocean-places"
+version = "0.1.0"
+description = "Build a place from whatever data there is: sources, layers, fusion, place, scene."
+requires-python = ">=3.10"
+dependencies = ["numpy", "scipy", "pillow"]
+
+[project.optional-dependencies]
+rasters = ["rasterio"]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["iocean_places", "iocean_places.sources"]

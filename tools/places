@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+"""Build a place from whatever data there is: the places module's front door.
+
+    tools/places build recipe.json --into ~/iocean/places/<name>
+
+See packages/places/README.md for what a recipe says.
+"""
+
+import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "packages" / "places"))
+
+from iocean_places.__main__ import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main())
