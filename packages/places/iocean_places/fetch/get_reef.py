@@ -60,12 +60,13 @@ def metres_per_degree(latitude: float) -> tuple[float, float]:
     return east, north
 
 
-def clearest_scenes(box, since: str, cloud: float, most: int = 20) -> list[dict]:
+def clearest_scenes(box, since: str, cloud: float, most: int = 20,
+                    until: str = "2030-01-01T00:00:00Z") -> list[dict]:
     """The least cloudy scenes over this reef, clearest first. Cloud is the
     whole problem: a reef under one is a reef you cannot see the bottom of."""
     asking = json.dumps({
         "collections": [COLLECTION], "bbox": list(box),
-        "datetime": f"{since}/2030-01-01T00:00:00Z",
+        "datetime": f"{since}/{until}",
         "query": {"eo:cloud_cover": {"lt": cloud}},
         "sortby": [{"field": "properties.eo:cloud_cover", "direction": "asc"}],
         "limit": most}).encode()
@@ -309,6 +310,9 @@ def main(argv: list[str] | None = None) -> int:
     parse.add_argument("--across", type=float, default=3000.0, help="metres on a side")
     parse.add_argument("--samples", type=int, default=512)
     parse.add_argument("--since", default="2022-01-01T00:00:00Z")
+    # So a place can be fetched again from the same scenes: the clearest scene
+    # today may be one photographed after the place was built.
+    parse.add_argument("--until", default="2030-01-01T00:00:00Z")
     parse.add_argument("--cloud", type=float, default=3.0, help="most cloud, per cent")
     parse.add_argument("--deep", type=float, default=60.0,
                        help="depth the fore-reef falls to past the optical limit")
@@ -321,7 +325,7 @@ def main(argv: list[str] | None = None) -> int:
     box = (asked.longitude - half_lon, asked.latitude - half_lat,
            asked.longitude + half_lon, asked.latitude + half_lat)
 
-    for scene in clearest_scenes(box, asked.since, asked.cloud):
+    for scene in clearest_scenes(box, asked.since, asked.cloud, until=asked.until):
         when = scene["properties"]["datetime"][:10]
         cloud = scene["properties"].get("eo:cloud_cover", 0.0)
         green = read_band(scene, "green", box, asked.samples)

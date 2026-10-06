@@ -22,7 +22,8 @@ def get(url: str, timeout: int = 120, data: bytes | None = None, headers=None) -
 EARTH_SEARCH = "https://earth-search.aws.element84.com/v1/search"
 
 
-def from_space(into: pathlib.Path, box, scenes: int, cloud: float) -> dict | None:
+def from_space(into: pathlib.Path, box, scenes: int, cloud: float,
+               until: str = "2030-01-01T00:00:00Z") -> dict | None:
     """Sentinel-2 true colour over the square: the median of the clearest scenes.
 
     A median across eight clear days takes out the glint, the waves and the odd
@@ -38,7 +39,7 @@ def from_space(into: pathlib.Path, box, scenes: int, cloud: float) -> dict | Non
         print("  from space: needs numpy and rasterio (python -m pip install rasterio)")
         return None
     body = json.dumps({"collections": ["sentinel-2-l2a"], "bbox": list(box), "limit": 100,
-                       "datetime": "2022-01-01T00:00:00Z/2030-01-01T00:00:00Z",
+                       "datetime": f"2022-01-01T00:00:00Z/{until}",
                        "query": {"eo:cloud_cover": {"lt": cloud}}}).encode()
     try:
         found = json.loads(get(EARTH_SEARCH, data=body, headers={"Content-Type": "application/json"}))
@@ -61,7 +62,7 @@ def from_space(into: pathlib.Path, box, scenes: int, cloud: float) -> dict | Non
     h = min(a.shape[0] for a in stack); w = min(a.shape[1] for a in stack)
     median = np.median(np.stack([a[:h, :w] for a in stack]).astype("float32"), axis=0)
     np.save(into / "sentinel_median_rgb.npy", median)
-    (into / "sentinel.json").write_text(json.dumps({"bbox": list(box), "scenes": used,
+    (into / "sentinel.json").write_text(json.dumps({"bbox": list(box), "scenes": used, "until": until,
                                                     "rows": h, "columns": w,
                                                     "note": "row 0 is north"}, indent=1))
     print(f"  from space: median of {len(used)} Sentinel-2 scenes, {w}x{h} at 10 m")

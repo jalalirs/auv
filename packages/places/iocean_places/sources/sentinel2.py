@@ -55,8 +55,9 @@ class Sentinel2Median:
     gives = ("red", "green", "blue")
 
     def __init__(self, path: str | None = None, file: str = "sentinel_median_rgb.npy",
-                 note: str = "sentinel.json", scenes: int = 8, cloud: float = 8.0, fetch: bool = True) -> None:
-        self.path, self.file, self.note = path, file, note
+                 note: str = "sentinel.json", scenes: int = 8, cloud: float = 8.0, fetch: bool = True,
+                 until: str = "2030-01-01T00:00:00Z") -> None:
+        self.path, self.file, self.note, self.until = path, file, note, until
         self.scenes, self.cloud, self.fetch = int(scenes), float(cloud), bool(fetch)
 
     def layers(self, grid: Grid, cache=None) -> list[Layer]:
@@ -64,7 +65,7 @@ class Sentinel2Median:
         if not (folder / self.file).is_file() and self.fetch:
             from ..fetch.sentinel_median import from_space
             folder.mkdir(parents=True, exist_ok=True)
-            if from_space(folder, grid.bounds(), self.scenes, self.cloud) is None:
+            if from_space(folder, grid.bounds(), self.scenes, self.cloud, self.until) is None:
                 raise ValueError(f"{self.name}: no clear Sentinel-2 scenes could be read over this square")
         rgb = np.load(folder / self.file)
         said = json.loads((folder / self.note).read_text())
@@ -83,8 +84,8 @@ class Stumpf:
 
     def __init__(self, path: str | None = None, place: str | None = None, error: float = 10.0,
                  samples: int = 512, since: str = "2022-01-01T00:00:00Z", cloud: float = 3.0,
-                 deep: float = 60.0, fetch: bool = True) -> None:
-        self.path, self.place, self.error = path, place, float(error)
+                 deep: float = 60.0, fetch: bool = True, until: str = "2030-01-01T00:00:00Z") -> None:
+        self.path, self.place, self.error, self.until = path, place, float(error), until
         self.samples, self.since, self.cloud, self.deep, self.fetch = int(samples), since, float(cloud), float(deep), bool(fetch)
 
     def layers(self, grid: Grid, cache=None) -> list[Layer]:
@@ -95,7 +96,7 @@ class Stumpf:
             folder.mkdir(parents=True, exist_ok=True)
             fetched(self.name, main, [name, grid.latitude, grid.longitude, "--across", grid.across,
                                       "--samples", self.samples, "--since", self.since, "--cloud", self.cloud,
-                                      "--deep", self.deep, "--into", folder])
+                                      "--deep", self.deep, "--until", self.until, "--into", folder])
         said = json.loads((folder / f"{name}.json").read_text())
         field = said["heightfield"]
         height = np.fromfile(folder / field["file"], dtype="<f4").reshape(field["rows"], field["columns"])

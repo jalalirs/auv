@@ -2,8 +2,8 @@
   "name": "shushah",
   "site": {"centre": [27.9366, 34.9108], "acrossM": 2000, "cells": 512},
   "sources": [
-    {"use": "sentinel2-stumpf", "as": "stumpf", "place": "shushah"},
-    {"use": "sentinel2-median", "as": "sentinel"},
+    {"use": "sentinel2-stumpf", "as": "stumpf", "place": "shushah", "until": "2026-09-26T00:00:00Z"},
+    {"use": "sentinel2-median", "as": "sentinel", "until": "2026-09-26T00:00:00Z"},
     {"use": "allen-coral-atlas", "as": "atlas"},
     {"use": "icesat2", "as": "icesat"},
     {"use": "gebco", "path": "~/iocean/places/shushah"}
