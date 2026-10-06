@@ -1,0 +1,9 @@
+{
+  "name": "red-sea",
+  "site": {"centre": [22.305, 38.97], "acrossM": 1000, "cells": 512},
+  "sources": [
+    {"use": "fringing", "seed": 1},
+    {"use": "gebco", "path": "~/iocean/places/red-sea"}
+  ],
+  "scene": {"depth": ["fringing.depth", "gebco.depth"], "hardness": "fringing.hardness", "featherCells": 0}
+}

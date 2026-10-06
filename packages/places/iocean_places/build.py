@@ -126,6 +126,11 @@ def build(recipe: Recipe, into: pathlib.Path, cache: pathlib.Path | None = None)
            if leading else {}),
         "depth": depth_said, "models": models,
     }
+    hardness = recipe.scene.get("hardness")
+    if hardness:
+        hard = products[hardness]
+        hard.value.astype("<f4").tofile(into / "hardness.f32")
+        note["constructed"] = {**note.get("constructed", {}), "hardFile": "hardness.f32"}
     (into / "heights.json").write_text(json.dumps(note, indent=1) + "\n")
     site = {
         "name": recipe.name,

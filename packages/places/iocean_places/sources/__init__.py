@@ -25,7 +25,8 @@ from ..layer import Layer, Provenance, Soundings
 # ones a build sets itself). A note without one of these deletes it from the
 # place on the next rebuild: Al Fahal lost its scene and method that way.
 NOTE_KEYS = ("source", "method", "observedAt", "opticalLimitM", "bottomVisibleFraction",
-             "beyondOpticalDepthFraction", "medianDetailM", "toCalibrate", "constructedPastTheSensor")
+             "beyondOpticalDepthFraction", "medianDetailM", "toCalibrate", "constructedPastTheSensor",
+             "constructed")
 
 
 def note_of(said: dict) -> dict:
@@ -156,7 +157,8 @@ SOURCES = {"geotiff": _geotiff, "points": Points, "place": Place, "flat": Flat,
            "allen-coral-atlas": _lazy("coral_atlas", "CoralAtlas"),
            "gebco": _lazy("gebco", "Gebco"),
            "bathymetry": _lazy("surveys", "Bathymetry"),
-           "survey-dem": _lazy("surveys", "SurveyDem")}
+           "survey-dem": _lazy("surveys", "SurveyDem"),
+           "fringing": _lazy("fringing", "Fringing")}
 
 
 def source_from(entry: dict) -> Source:

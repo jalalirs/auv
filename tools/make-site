@@ -362,6 +362,13 @@ def main() -> int:
         morphology, step = None, 1
         surveyed = bool(note.get("surveyed", True))
         survey_note = note
+        # A constructed reef from the places module: its parts and its own
+        # map of what is rock, as --build would have handed them over.
+        made = note.get("constructed") or {}
+        if made.get("hardFile"):
+            hard_file = pathlib.Path(asked.heights).parent / made["hardFile"]
+            morphology = {**{k: v for k, v in made.items() if k != "hardFile"},
+                          "hard": np.fromfile(hard_file, dtype="<f4").reshape(height.shape)}
     elif asked.raster:
         height, step = read_patch(asked.raster, tuple(asked.centre or (0, 0)),
                                   asked.across, asked.most)
