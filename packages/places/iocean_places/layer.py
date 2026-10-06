@@ -60,6 +60,9 @@ class Layer:
     source: np.ndarray
     provenance: list[Provenance] = field(default_factory=list)
     classes: tuple[str, ...] | None = None
+    # What fusion ranks this layer by, when not its per-cell error: a model's
+    # overall held-out error (see fusion.py for why).
+    rank: float | None = None
 
     NONE = 255
 

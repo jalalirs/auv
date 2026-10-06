@@ -49,6 +49,30 @@ def _site_of(platform: Platform, place: dict) -> dict | None:
     return None
 
 
+def _error_at_begin(platform: Platform, place: dict, site: dict) -> float | None:
+    """How wrong the seabed may be where a dive begins, read off the place's
+    own per-cell error at its own start: the start is chosen after the seabed
+    is built, by whichever tool knew the reef, so only the place knows both."""
+    cells, begin = site.get("perCell") or {}, site.get("beginAt")
+    field = (site.get("mesh") or {}).get("heightfield") or {}
+    across = (site.get("from") or {}).get("acrossMetres")
+    if not (cells.get("error") and begin and field.get("rows") and across):
+        return None
+    version = _newest(platform.versions_of_place(place["id"]))
+    url = next((one["url"] for one in platform.files(version["id"]) if one["path"] == cells["error"]), None)
+    if url is None:
+        return None
+    import urllib.request
+    import numpy as np
+    with urllib.request.urlopen(url, timeout=60) as answer:
+        error = np.frombuffer(answer.read(), dtype="<f4").reshape(field["rows"], field["columns"])
+    n = field["rows"] - 1
+    row = int(np.clip(round((begin[1] / across + 0.5) * n), 0, n))
+    col = int(np.clip(round((begin[0] / across + 0.5) * (field["columns"] - 1)), 0, field["columns"] - 1))
+    value = float(error[row, col])
+    return round(value, 2) if np.isfinite(value) else None
+
+
 # ── looking ──────────────────────────────────────────────────────────────────
 
 def places_list(platform: Platform) -> dict:
@@ -108,6 +132,19 @@ def places_get(platform: Platform, place_id: str) -> dict:
             said(good_to, DERIVED, fitted.get("source", "the fit"),
                  note="below this the fit does not hold and the ground is not calibrated")
             if good_to is not None else unknown("the fit did not report a depth it holds to"))
+
+    # Where the ground is weak, cell by cell, for a place built by the places
+    # module: how much of it is measured, derived, chosen or assumed, how much
+    # may be more than a metre or five out, the weakest blocks, and the error
+    # where a dive begins. Absent for a place built before the module.
+    weak = (came.get("depth") or {}).get("weak")
+    if weak:
+        depth["weak"] = said(
+            {"byKind": weak.get("byKind"), "byError": weak.get("byError"), "errorM": weak.get("errorM"),
+             "landShare": weak.get("landShare"), "weakest": weak.get("weakest"),
+             "atBeginM": _error_at_begin(platform, place, site)},
+            DERIVED, "each cell's source: a measurement's own uncertainty, or a model's held-out error at the cell's depth",
+            note="perCell in the package holds the error and source of every cell, and a picture (weak.png)")
 
     cover = reef.get("cover") or {}
     life = site.get("life") or {}

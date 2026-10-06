@@ -25,6 +25,7 @@ from .models import model_from
 from .recipe import Recipe
 from .scene import where_a_dive_begins, write_place
 from .sources import source_from
+from .weak import legend, picture, weak_of
 
 
 def products_of(recipe: Recipe, cache: pathlib.Path | None = None) -> dict[str, Layer | Soundings]:
@@ -96,6 +97,19 @@ def build(recipe: Recipe, into: pathlib.Path, cache: pathlib.Path | None = None)
                        texture=recipe.scene.get("texture"))
     height = depth.value
     depth_said = depth.said()
+    begin = where_a_dive_begins(height, recipe.grid.across).get("beginAt")
+    # Not at `begin`: a place's start is chosen later (make-site from its
+    # reef, reef-survey from its survey), so the error where a dive begins is
+    # read off error.f32 by whoever knows the start.
+    depth_said["weak"] = weak_of(depth)
+    from PIL import Image
+    Image.fromarray(picture(depth)).save(into / "weak.png")
+    # Cell by cell, beside the heightfield: the error, which source made it,
+    # and the picture. make-site carries these into the place.
+    per_cell = {"error": mesh["errorFile"], "source": mesh["sourcesFile"], "picture": "weak.png",
+                "sources": [p.said() for p in depth.provenance], "legend": legend(),
+                "format": "little-endian float32 (error, metres) and uint8 (index into sources, 255 none), "
+                          "row major, south to north then west to east, the heightfield's rows and columns"}
     measured = sum(s["share"] for s in depth_said["sources"] if s["kind"] == "measured")
     # The model that made most of the seabed says how it was fitted, under the
     # key every place has always carried it in.
@@ -124,7 +138,7 @@ def build(recipe: Recipe, into: pathlib.Path, cache: pathlib.Path | None = None)
         "surveyed": measured >= 0.5, "surveyedFraction": round(measured, 4),
         **({"fittedAgainst": {k: v for k, v in models[leading].items() if k not in ("model", "inputs")}}
            if leading else {}),
-        "depth": depth_said, "models": models,
+        "depth": depth_said, "models": models, "perCell": per_cell,
     }
     hardness = recipe.scene.get("hardness")
     if hardness:
@@ -142,7 +156,8 @@ def build(recipe: Recipe, into: pathlib.Path, cache: pathlib.Path | None = None)
         "mesh": {"lowest": float(height.min()), "highest": float(height.max()),
                  "heightfield": mesh["heightfield"], "errorFile": mesh["errorFile"],
                  "sourcesFile": mesh["sourcesFile"]},
-        "beginAt": where_a_dive_begins(height, recipe.grid.across).get("beginAt"),
+        "perCell": per_cell,
+        "beginAt": begin,
         "builtBy": {"places": {"recipe": "recipe.json", "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}},
     }
     (into / "recipe.json").write_text(json.dumps(recipe.said(), indent=2) + "\n")

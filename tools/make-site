@@ -821,6 +821,15 @@ def main() -> int:
     if asked.assemblage:
         site.setdefault("reef", {})["assemblage"] = {
             "name": asked.assemblage, "from": asked.assemblage_from}
+    # Cell by cell, from the places module: each cell's error and source, and
+    # the picture of where the place is weak, copied in beside the heightfield.
+    cells = (survey_note or {}).get("perCell")
+    if cells:
+        beside = pathlib.Path(asked.heights).parent
+        for key in ("error", "source", "picture"):
+            if cells.get(key):
+                shutil.copy(beside / cells[key], where / cells[key])
+        site["perCell"] = cells
     built.carry_the_record_forward(site, where / "site.json")
     built.record_call(site, "make-site")
     (where / "site.json").write_text(json.dumps(site, indent=2) + "\n")

@@ -172,3 +172,18 @@ def test_a_survey_is_shifted_onto_the_mosaic_and_feathered_in():
     edge = seabed.value[50, 50 + 29]                         # the outermost cell: the mosaic's
     assert np.isclose(edge, mosaic.value[50, 50 + 29])
     assert np.abs(np.diff(seabed.value[50, 70:90])).max() < 0.2, "no step where the survey ends"
+
+
+def test_a_place_says_where_it_is_weak(tmp_path):
+    """Each cell's error is the model's held-out error at its depth, and the
+    record says how much of the place is how wrong, and where it is worst."""
+    site = build(Recipe.of(RECIPE), tmp_path / "place", reference(tmp_path / "ref", wobble=1.5))
+    weak = site["from"]["depth"]["weak"]
+    assert abs(sum(weak["byError"].values()) - 1.0) < 1e-3
+    assert weak["byKind"] == {"derived": 1.0}
+    assert weak["weakest"] and weak["errorM"]["worst"] >= weak["errorM"]["median"]
+    assert (tmp_path / "place" / "weak.png").is_file()
+    error = np.fromfile(tmp_path / "place" / "error.f32", dtype="<f4").reshape(41, 41)
+    assert np.unique(error.round(3)).size > 2, "the error varies with depth, not one number per model"
+    note = json.loads((tmp_path / "place" / "heights.json").read_text())
+    assert note["perCell"]["picture"] == "weak.png" and note["perCell"]["sources"]

@@ -22,7 +22,7 @@ import numpy as np
 
 from ..grid import Grid
 from ..layer import Layer, Provenance
-from .curve_depth import BLOCK_M, blocks_of
+from .curve_depth import BLOCK_M, blocks_of, error_of_cells, held_out_by_depth
 
 BEYOND_M = 3.0
 # The shallowest the colour may put a cell it speaks for: awash, never dry.
@@ -116,6 +116,7 @@ class ColourDepth:
             "heldOut": f"blocks of {BLOCK_M:.0f} m, each predicted from a fit to the others",
             "rmsHeldOutM": round(error, 2), "rmsHeldOutOneCurveM": round(rms(curve - measured), 2),
             "residualByDepth": by_depth(measured, colour_fit),
+            "heldOutByDepth": held_out_by_depth(measured, colour_fit),
             "calibratedBetweenM": [round(-shallowest, 1), round(-deepest, 1)],
             "fromColourShare": round(float(seen.mean()), 3),
             "elsewhere": "the next source fusion believes, where the colour is not the bottom's",
@@ -130,4 +131,7 @@ class ColourDepth:
                            f"{', '.join(sorted({take(self.inputs[b]).provenance[0].source for b in ('red', 'green', 'blue')}))}"
                            f" colour and the {reef_map.provenance[0].source} reef map, fitted to "
                            f"{truth.provenance.source}, held-out rms {error:.2f} m", note=note)
-        return [Layer.of(grid, "depth", value, error, cited)], record
+        per_cell = error_of_cells(value, record["heldOutByDepth"], deepest, error)
+        layer = Layer.of(grid, "depth", value, per_cell, cited)
+        layer.rank = error
+        return [layer], record

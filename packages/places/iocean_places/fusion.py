@@ -48,7 +48,15 @@ def fuse(layers: list[Layer], feather: int = 3) -> Layer:
     sources = np.stack([np.where(one.covers(), one.source.astype(int) + off, Layer.NONE)
                         for one, off in zip(layers, offsets)])
 
-    rank = np.argsort(errors, axis=0, kind="stable")
+    # A model ranks by its overall held-out error, not cell by cell. At
+    # Shushah, choosing between the colour fit and the curve by each one's
+    # error at its own predicted depth never changed a held-out ICESat-2
+    # point, and moved 6% of the cells no laser crossed by up to 11 m, with
+    # cliffs where the choice flipped: a choice nobody can check, not taken.
+    # Each cell still carries its own error.
+    ranks = np.stack([np.where(one.covers(), one.rank, np.inf) if one.rank is not None else e
+                      for one, e in zip(layers, errors)])
+    rank = np.argsort(ranks, axis=0, kind="stable")
     rows, cols = np.indices(errors.shape[1:])
     value = np.zeros(errors.shape[1:])
     error = np.zeros(errors.shape[1:])

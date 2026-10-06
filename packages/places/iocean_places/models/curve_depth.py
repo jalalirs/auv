@@ -166,10 +166,11 @@ def blocks_of(x, y, across: float, block: float = BLOCK_M) -> np.ndarray:
     return (np.floor((x + across / 2) / block) * 1000 + np.floor((y + across / 2) / block)).astype(int)
 
 
-def held_out_rms(said, measured, blocks, kept, degree: int, balanced: bool) -> float:
+def held_out(said, measured, blocks, kept, degree: int, balanced: bool) -> np.ndarray:
     """Each block predicted by the chosen shape fitted to the others' kept
     points, and scored on every point in it: what the fit dropped as an
-    outlier is still somewhere a vehicle may fly."""
+    outlier is still somewhere a vehicle may fly. NaN where a block could not
+    be predicted."""
     out = np.full(len(measured), np.nan)
     for block in np.unique(blocks):
         test = blocks == block
@@ -178,8 +179,51 @@ def held_out_rms(said, measured, blocks, kept, degree: int, balanced: bool) -> f
             continue
         w = np.sqrt(band_weights(measured[train])) if balanced else None
         out[test] = np.poly1d(np.polyfit(said[train], measured[train], degree, w=w))(said[test])
+    return out
+
+
+def held_out_rms(said, measured, blocks, kept, degree: int, balanced: bool) -> float:
+    out = held_out(said, measured, blocks, kept, degree, balanced)
     ok = np.isfinite(out)
     return float(np.sqrt(np.mean((out[ok] - measured[ok]) ** 2)))
+
+
+# Fewer held-out points than this in a depth band and its rms is not a number
+# to give a cell; the band takes its neighbours' instead.
+FEWEST_IN_A_BAND = 20
+
+
+def held_out_by_depth(measured, predicted, edges=(0, 2, 5, 10, 15, 25, 40)) -> list[dict]:
+    """The held-out error in depth bands, by the depth a fit *predicted*
+    (which is the depth a cell has; the measured one is not known there)."""
+    ok = np.isfinite(predicted)
+    depth, e = -predicted[ok], predicted[ok] - measured[ok]
+    out = []
+    for low, high in zip(edges[:-1], edges[1:]):
+        inside = (depth >= low) & (depth < high)
+        if inside.sum() >= FEWEST_IN_A_BAND:
+            out.append({"fromM": low, "toM": high, "points": int(inside.sum()),
+                        "rmsM": round(float(np.sqrt(np.mean(e[inside] ** 2))), 3)})
+    return out
+
+
+# Past the deepest depth anybody measured, a fit is extrapolating, and how
+# wrong it may be grows with how far: chosen, half a metre a metre.
+EXTRAPOLATING_PER_M = 0.5
+
+
+def error_of_cells(value: np.ndarray, bands: list[dict], deepest_measured: float, overall: float) -> np.ndarray:
+    """Each cell's error: the held-out rms at its depth, interpolated between
+    band middles so that fusion never sees a step at a band's edge, and
+    growing past the deepest measured depth."""
+    if not bands:
+        return np.full(value.shape, overall, dtype="float32")
+    middles = np.array([(b["fromM"] + b["toM"]) / 2 for b in bands])
+    rms = np.array([b["rmsM"] for b in bands])
+    depth = np.clip(-value.astype(float), 0.0, None)
+    error = np.interp(depth, middles, rms)
+    past = np.clip(depth - abs(deepest_measured), 0.0, None)
+    return (error + EXTRAPOLATING_PER_M * past).astype("float32")
 
 
 class CurveDepth:
@@ -216,7 +260,10 @@ class CurveDepth:
         bands = what_is_left_by_depth(measured, fitted)
         good_to, past = holds_to(bands)
         blocks = blocks_of(x, y, across)
-        error = held_out_rms(said, measured, blocks, keep, curve.order, "balanced" in chosen)
+        predicted = held_out(said, measured, blocks, keep, curve.order, "balanced" in chosen)
+        ok = np.isfinite(predicted)
+        error = float(np.sqrt(np.mean((predicted[ok] - measured[ok]) ** 2)))
+        bands_held_out = held_out_by_depth(measured, predicted)
 
         value = curve(claims).astype("float32")
         land = np.zeros(claims.shape, bool)
@@ -240,7 +287,8 @@ class CurveDepth:
             "triedOnWorstBand": {name: (why or round(score, 2)) for name, _c, score, why in tried},
             "rmsAfterM": round(float(np.sqrt(np.mean((measured - fitted) ** 2))), 2),
             "rmsHeldOutM": round(error, 2), "heldOut": f"blocks of {BLOCK_M:.0f} m, each predicted from a fit to the others",
-            "residualByDepth": bands, "calibratedToM": good_to, "pastThatUncalibrated": bool(past),
+            "residualByDepth": bands, "heldOutByDepth": bands_held_out,
+            "calibratedToM": good_to, "pastThatUncalibrated": bool(past),
             "calibratedBetweenM": [round(-shallowest, 1), round(-deepest, 1)], "extrapolatedShare": round(beyond, 3),
             "landKeptCells": int((land & ~awash).sum()), "awashCells": int(awash.sum()),
             ("keptWetCells" if self.keep_wet else "driedCells"): int(wet.sum()),
@@ -254,4 +302,7 @@ class CurveDepth:
         cited = Provenance(self.name, self.kind,
                            f"{claim.source} rescaled by a {chosen} to "
                            f"{truth.provenance.source}, held-out rms {error:.2f} m", note=note)
-        return [Layer.of(grid, "depth", value, error, cited)], record
+        per_cell = error_of_cells(value, bands_held_out, deepest, error)
+        layer = Layer.of(grid, "depth", value, per_cell, cited)
+        layer.rank = error
+        return [layer], record

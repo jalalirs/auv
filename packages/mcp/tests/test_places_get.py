@@ -100,3 +100,34 @@ def test_a_named_source_is_not_an_assumption(monkeypatch):
     assert surveyed["kind"] == provenance.DERIVED
     assert "Sentinel-2" in surveyed["from"]
     assert surveyed["note"] == "derived, not surveyed"
+
+
+def test_a_place_built_by_the_places_module_says_where_it_is_weak(monkeypatch, tmp_path):
+    """The weak record rides in from.depth, the error where a dive begins is
+    read off the place's own error file at its own start, and an older place
+    simply has none of it."""
+    import copy
+    import numpy as np
+    site = copy.deepcopy(SITE)
+    site["from"]["depth"] = {"weak": {"byKind": {"derived": 1.0}, "errorM": {"median": 1.0, "p90": 6.2, "worst": 6.2},
+                                      "byError": {"5 m and worse": 0.1}, "landShare": 0.0,
+                                      "weakest": [{"at": [0.0, 0.0], "medianErrorM": 6.2, "from": "curve-depth"}]}}
+    rows = 64
+    site["mesh"] = {"heightfield": {"rows": rows, "columns": rows}}
+    site["from"]["acrossMetres"] = across = 3000.0
+    x, y = -320.0, -231.9
+    site["beginAt"] = [x, y, -10.0]
+    error = np.full((rows, rows), 1.5, dtype="<f4")
+    error[int(round((y / across + 0.5) * (rows - 1))), int(round((x / across + 0.5) * (rows - 1)))] = 0.75
+    error.tofile(tmp_path / "error.f32")
+    site["perCell"] = {"error": "error.f32"}
+
+    class WithError(OnePlace):
+        def files(self, version):
+            return [{"path": "site.json", "url": "file://site"}, {"path": "error.f32", "url": (tmp_path / "error.f32").as_uri()}]
+
+    monkeypatch.setattr(tools, "_site_of", lambda platform, place: site)
+    weak = tools.places_get(WithError(), "al-fahal")["ground"]["weak"]
+    assert weak["kind"] == provenance.DERIVED and weak["value"]["atBeginM"] == 0.75
+    assert weak["value"]["weakest"][0]["from"] == "curve-depth"
+    assert "weak" not in _answer(monkeypatch)["ground"]
