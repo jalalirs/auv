@@ -64,7 +64,13 @@ class TaskingSystem(System):
         if task is None:
             return
         v, navigator = world.vehicle, world.navigation
-        floor = world.place.bottom_under(v.position)
+        # The bottom as an altimeter would give it: the first thing under the
+        # vehicle, a colony's top over a reef. A task asked to be flown at three
+        # metres means three metres as the vehicle measures it; judged against
+        # the sand under the coral, a Luna that crossed all 220 m of a transect
+        # three metres over the reef was given none of it.
+        from systems.helm import what_the_altimeter_sees
+        floor = what_the_altimeter_sees(world, v.position, world.place.bottom_under(v.position))
         task.step(world.clock.simulated, v.position,
                   float(np.arctan2(v.rotation[1, 0], v.rotation[0, 0])), floor, world.thrust.commands,
                   believed=None if navigator is None else navigator.believed,

@@ -212,7 +212,15 @@
  },
  "power": {
   "hotelW": 9.0,
-  "hotelNote": "The base electronics and nothing else: the vehicle computer and its housekeeping. It was a single lumped figure that stood for the electronics, the sensors and the lights together — which meant unfitting a Doppler log or switching the lamps off changed the endurance by exactly nothing. Each instrument states its own draw now and they are added to this, so a dive that carries less lasts longer, which is the whole reason to be able to choose."
+  "hotelNote": "The base electronics and nothing else: the vehicle computer and its housekeeping. It was a single lumped figure that stood for the electronics, the sensors and the lights together — which meant unfitting a Doppler log or switching the lamps off changed the endurance by exactly nothing. Each instrument states its own draw now and they are added to this, so a dive that carries less lasts longer, which is the whole reason to be able to choose.",
+  "capacityWh": 1000.0,
+  "capacityNote": "Assumed: the 1 kWh lithium-ion pack commonly cited for the REMUS 100. HII's current sheet gives endurance only, 'up to 10 hours depending on sensor configuration and speed'; this pack with this sensor fit at the 1.5 m/s cruise comes out at about 11 hours, which agrees.",
+  "thrusterMaxW": 110.0,
+  "thrusterNote": "Derived from the package's own drag: 4.4 N at 1.5 m/s is 6.6 W into the water, about 20 W electrical at an assumed 35 % propulsive efficiency, drawn at the 0.17 of full power the propeller's command averages at cruise.",
+  "powerExponent": 1.5,
+  "nominalVoltage": 28.8,
+  "voltageNote": "assumed",
+  "reserveFraction": 0.15
  },
  "computer": {
   "kind": "vehicle-computer",

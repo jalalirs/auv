@@ -236,13 +236,29 @@ def route_for(goal: dict, believed=None, camera_half_angle: float | None = None)
         return _dock(goal)
     if kind == "descend":
         return _descend(goal)
-    # "hold", "wait", and anything this planner does not recognise: stay where
+    if kind == "hold" and goal.get("at") is not None:
+        return _hold(goal)
+    # "hold" with nowhere named, "wait", and anything this planner does not recognise: stay where
     # you are. A controller that does not know what it was asked should not
     # invent a direction to go in.
     return []
 
 
 # ── the goals, one at a time ─────────────────────────────────────────────────
+
+def _hold(goal: dict) -> list[dict]:
+    """Go to the station, then stay there.
+
+    A hold that names its station used to be planned as "stay where you are",
+    so the vehicle held wherever it happened to be when the hold began. A Luna
+    launched at the surface in a 0.15 m/s set had drifted five metres by then,
+    and held there for 25 minutes, scored against a station it never went to.
+    """
+    at = goal["at"]
+    radius = float(goal.get("radiusM") or 1.0)
+    return [{"x": float(at[0]), "y": float(at[1]), "depthM": float(-at[2]),
+             "arriveM": max(0.1, min(1.0, 0.5 * radius))}]
+
 
 def _visit(goal: dict) -> list[dict]:
     """Points in the order given. A hold at each, when the goal asks for one.
