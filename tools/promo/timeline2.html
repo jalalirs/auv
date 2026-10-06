@@ -109,7 +109,7 @@ const SPEC = [
   { kind: "words", id: "w4", dur: 4.5, lines: [["Rehearse it first.", 0.5]], big: true },
   // ── 2. what iOcean is ──
   { kind: "film", id: "intro", src: "reef_alfahal.mp4", dur: 8.0, from: 8, rate: 1, push: [1.06, 1.0],
-    panel: `<span class="k">Introducing</span><span class="t" style="font-size:150px;line-height:1">iOcean</span><span class="s">A unified platform for marine engineering work</span>`, at: [1.0, 7.4] },
+    panel: `<span class="k">Introducing</span><span class="t" style="font-size:150px;line-height:1">iOcean</span><span class="s">A unified digital twin for marine operations</span>`, at: [1.0, 7.4] },
   { kind: "film", id: "coupled", src: "reef_alfahal.mp4", dur: 8.5, from: 25, rate: 1, push: [1.05, 1.0],
     panel: `<span class="t">One digital twin of the sea</span><span class="s">the place, what is built in it and what works in it — simulated together,<br>each acting on the others, so a job can be rehearsed before anyone goes to sea</span>`, at: [0.8, 7.9] },
   { kind: "html", id: "built", dur: 11.0, cls: "sea", html: SEA + `
@@ -223,7 +223,7 @@ const SPEC = [
       e.style.transform = `translateY(${20 * (1 - ramp(t, 0.6 + i * 2.0, 1.5 + i * 2.0))}px)`; }) },
   { kind: "html", id: "end", dur: 8.0, cls: "paper", html: `
       <div style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center"><div class="big" style="font-size:150px">iOcean</div>
-      <div class="big" style="font-size:50px;margin-top:22px;color:#3b4850">A unified platform for marine engineering work.</div>
+      <div class="big" style="font-size:50px;margin-top:22px;color:#3b4850">A unified digital twin for marine operations.</div>
       <div style="font-family:var(--sans);font-size:24px;color:var(--muted);margin-top:60px">Saudi Maritime &amp; Logistics Congress · Jeddah · October 2026</div></div>`,
     run: (t, el) => { el.firstElementChild.style.opacity = ramp(t, 0.4, 1.6); } },
 ];

@@ -92,14 +92,29 @@ def serve() -> int:
 
 
 def music(seconds: float, out: pathlib.Path) -> None:
+    """The piano under the film: the track, then its middle crossfaded back
+    in as many times as the film needs, faded in and out. Long enough always:
+    the mux stops at the shorter of picture and sound, and a track that ran
+    out first cut the end of the film off."""
     track = ROOT / "assets" / "music.mp3"
-    subprocess.run([
-        "ffmpeg", "-v", "error", "-y", "-i", str(track), "-ss", "24", "-i", str(track), "-ss", "24", "-i", str(track),
-        "-filter_complex",
-        "[0:a][1:a]acrossfade=d=5:c1=tri:c2=tri[x];"
-        f"[x][2:a]acrossfade=d=5:c1=tri:c2=tri,atrim=0:{seconds:.2f},"
-        f"afade=t=in:st=0:d=1.5,afade=t=out:st={seconds - 5:.2f}:d=5[a]",
-        "-map", "[a]", "-c:a", "aac", "-b:a", "192k", str(out)], check=True)
+    length = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                                   str(track)], capture_output=True, text=True).stdout)
+    fade, again = 5.0, 24.0
+    repeats = 0
+    total = length
+    while total < seconds + 2:
+        total += length - again - fade
+        repeats += 1
+    inputs = ["-i", str(track)]
+    for _ in range(repeats):
+        inputs += ["-ss", f"{again}", "-i", str(track)]
+    chain, last = [], "[0:a]"
+    for k in range(1, repeats + 1):
+        chain.append(f"{last}[{k}:a]acrossfade=d={fade}:c1=tri:c2=tri[m{k}]")
+        last = f"[m{k}]"
+    chain.append(f"{last}atrim=0:{seconds:.2f},afade=t=in:st=0:d=1.5,afade=t=out:st={seconds - 5:.2f}:d=5[a]")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex", ";".join(chain),
+                    "-map", "[a]", "-c:a", "aac", "-b:a", "192k", str(out)], check=True)
 
 
 def main() -> int:
