@@ -13,7 +13,7 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#000}
 /* The quiet background the words stand on: deep water, and depth contours
    drifting across it, thin and faint. */
 .sea{background:radial-gradient(ellipse at 50% 40%,#123446 0%,#0a1c27 55%,#060f15 100%)}
-.sea svg{position:absolute;inset:0;width:100%;height:100%}
+.sea > svg{position:absolute;inset:0;width:100%;height:100%}
 .words{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;color:#eef3f1}
 .words .l{font-family:var(--serif);font-size:84px;line-height:1.2;display:block}
 .words .s{font-family:var(--sans);font-size:30px;line-height:1.5;color:#a9c3ca;display:block;margin-top:26px}
@@ -55,6 +55,19 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#000}
 .phase ul{list-style:none;font-family:var(--sans);font-size:25px;line-height:1.65;margin-top:16px;color:#33434b}
 .rail{position:absolute;left:330px;right:330px;top:381px;height:4px;border-radius:2px;background:linear-gradient(90deg,var(--sea-2),var(--amber),var(--coral))}
 .big{font-family:var(--serif);font-weight:400;color:var(--text)}
+.info{position:absolute;left:120px;right:120px;top:170px;display:grid;grid-template-columns:repeat(3,1fr);gap:50px}
+.ip{background:rgba(16,35,48,.55);border:1px solid rgba(127,180,193,.22);border-radius:22px;padding:30px 30px 36px;text-align:center;height:780px}
+.ip h4{font-family:var(--serif);font-weight:400;font-size:46px;color:#eef3f1;margin-top:26px}
+.ip p{font-family:var(--sans);font-size:24px;line-height:1.5;color:#a9c3ca;margin-top:12px}
+.ip svg#ring{width:100%;height:440px;display:block}
+.stack{position:relative;height:440px;border-radius:16px;overflow:hidden}
+.stack img{width:100%;height:100%;object-fit:cover;opacity:.9}
+.src{position:absolute;left:18px;font-family:var(--sans);font-size:22px;font-weight:600;color:#eef3f1;background:rgba(6,14,20,.78);padding:8px 16px;border-radius:999px;border:1px solid rgba(127,180,193,.4)}
+.trace{height:440px;display:flex;flex-direction:column;justify-content:center;align-items:center}
+.tv{font-family:var(--serif);font-size:110px;color:#fff;line-height:1}
+.tl{font-family:var(--sans);font-size:24px;color:#a9c3ca;margin-top:10px}
+.tk{margin-top:18px;font-family:var(--sans);font-size:22px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:6px 16px;border-radius:999px;background:#dde8f0;color:#1f4f6e}
+.from{font-family:var(--sans);font-size:24px;font-weight:600;color:#eef3f1;background:rgba(6,14,20,.78);padding:10px 20px;border-radius:12px;border:1px solid rgba(127,180,193,.4)}
 </style>
 </head>
 <body>
@@ -77,7 +90,29 @@ const SPEC = [
     keys: [[0, 0.92, .5, .5], [1.0, 1.15, .45, .35], [5.5, 1.15, .45, .35], [7.0, 1.15, .45, .4], [10.5, 1.15, .45, .3], [14, 1.0, .5, .5]] },
   { kind: "film", id: "coupled", src: "reef_alfahal.mp4", dur: 8.0, from: 25, rate: 1, push: [1.05, 1.0],
     panel: `<span class="t">One coupled model of the sea</span><span class="s">the place, what is built in it and what works in it — each acting on the others</span>`, at: [0.8, 7.4] },
-  { kind: "words", id: "w5", dur: 8.0, lines: [["Physics on GPUs.", 0.6], ["Real seabeds, from satellites and surveys.", 2.4], ["A source for every number.", 4.2]] },
+  { kind: "html", id: "built", dur: 11.0, cls: "sea", html: SEA + `
+      <div style="position:absolute;top:80px;left:0;right:0;text-align:center;font-family:var(--sans);font-size:24px;letter-spacing:.2em;text-transform:uppercase;font-weight:650;color:var(--sea)">How it is built</div>
+      <div class="info">
+        <div class="ip" id="ip1"><svg id="ring" viewBox="0 0 520 440"></svg>
+          <h4>Coupled physics</h4><p>Isaac Sim, PhysX and our own GPU solvers — every system acting on the others</p></div>
+        <div class="ip" id="ip2"><div class="stack"><img src="${A}shushah.jpg">
+            <span class="src" style="top:20px">Sentinel-2 colour</span><span class="src" style="top:76px">ICESat-2 laser depths</span>
+            <span class="src" style="top:132px">Allen Coral Atlas</span><span class="src" style="top:188px">GEBCO beyond the site</span></div>
+          <h4>Real seabeds</h4><p>Built from satellites, laser altimetry and surveys — and your own data</p></div>
+        <div class="ip" id="ip3"><div class="trace">
+            <div class="tv">±1.28 m</div><div class="tl">depth error at Shushah</div><span class="tk">derived</span>
+            <svg viewBox="0 0 400 120" style="width:400px;height:120px;display:block;margin:18px auto 0"><path id="tracepath" d="M200 0 C200 60, 200 60, 200 120" stroke="#7fb4c1" stroke-width="2" fill="none" stroke-dasharray="6 6"/></svg>
+            <div class="from">7,149 ICESat-2 depths, held out</div></div>
+          <h4>A source for every number</h4><p>Measured, derived, chosen or assumed — and from what</p></div>
+      </div>`,
+    run: (t, el) => { contours(el.querySelector("svg"), T_NOW);
+      ["ip1", "ip2", "ip3"].forEach((id, i) => { const e = $(id); e.style.opacity = ramp(t, 0.6 + i * 2.2, 1.6 + i * 2.2);
+        e.style.transform = `translateY(${20 * (1 - ramp(t, 0.6 + i * 2.2, 1.6 + i * 2.2))}px)`; });
+      ring($("ring"), t);
+      el.querySelectorAll(".src").forEach((c, j) => { c.style.opacity = ramp(t, 3.4 + j * 0.45, 3.9 + j * 0.45);
+        c.style.transform = `translateX(${-24 * (1 - ramp(t, 3.4 + j * 0.45, 3.9 + j * 0.45))}px)`; });
+      $("tracepath").style.strokeDashoffset = String(-t * 30);
+      el.querySelector(".from").style.opacity = ramp(t, 6.4, 7.2); el.querySelector(".tk").style.opacity = ramp(t, 5.6, 6.2); } },
   { kind: "html", id: "vehicles", dur: 7.0, cls: "paper", html: `
       <div class="ctitle"><span style="font-family:var(--sans);font-size:24px;letter-spacing:.2em;text-transform:uppercase;font-weight:650;color:var(--sea-2);display:block;margin-bottom:12px">iOcean Robotics</span>Design, test and fly a vehicle.</div>
       <div class="grid6"><div><img src="${A}remus-100.jpg"></div><div><img src="${A}seaglider.jpg"></div><div><img src="${A}bluerov2-heavy.jpg"></div>
@@ -160,6 +195,24 @@ function zoom(el, t, keys) {
   const [, s, x, y] = k;
   el.style.transform = `translate(${(0.5 - x) * 1600 * (s - 1)}px, ${(0.5 - y) * 900 * (s - 1)}px) scale(${s})`;
 }
+// The coupled systems as a ring, each joined to its neighbours and across,
+// with pulses running along the joins.
+const SYSTEMS = ["hydrodynamics", "wash & flow", "sediment", "coral", "fish", "tether", "sensors"];
+const LINKS = [[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,0],[1,3],[1,4],[0,5],[2,6],[0,3]];
+function ring(svg, t) {
+  const cx = 260, cy = 215, r = 160, at = SYSTEMS.map((_, i) => { const a = -Math.PI / 2 + i * 2 * Math.PI / SYSTEMS.length; return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; });
+  let out = "";
+  LINKS.forEach(([a, b], k) => { const [x0, y0] = at[a], [x1, y1] = at[b], f = ((t * 0.35 + k * 0.17) % 1);
+    out += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="rgba(127,180,193,.28)" stroke-width="1.5"/>` +
+      `<circle cx="${x0 + (x1 - x0) * f}" cy="${y0 + (y1 - y0) * f}" r="4" fill="#e4572e"/>`; });
+  out += `<circle cx="${cx}" cy="${cy}" r="62" fill="rgba(127,180,193,.12)" stroke="rgba(127,180,193,.5)"/>` +
+    `<text x="${cx}" y="${cy - 6}" text-anchor="middle" font-family="-apple-system,Helvetica" font-size="17" fill="#eef3f1">Isaac Sim</text>` +
+    `<text x="${cx}" y="${cy + 16}" text-anchor="middle" font-family="-apple-system,Helvetica" font-size="15" fill="#a9c3ca">PhysX · Warp</text>`;
+  at.forEach(([x, y], i) => { out += `<circle cx="${x}" cy="${y}" r="9" fill="#7fb4c1"/>` +
+    `<text x="${x}" y="${y + (y < cy ? -18 : 30)}" text-anchor="middle" font-family="-apple-system,Helvetica" font-size="19" fill="#dfe9ec">${SYSTEMS[i]}</text>`; });
+  svg.innerHTML = out;
+}
+let T_NOW = 0;
 // Depth contours: a dozen thin lines, each a slow sum of waves, drifting.
 function contours(svg, T) {
   let out = "";
@@ -199,6 +252,7 @@ for (const s of SPEC) {
 window.DURATION = SPEC[SPEC.length - 1].b;
 
 window.renderAt = async function (T) {
+  T_NOW = T;
   const waits = [];
   SPEC.forEach((s, i) => {
     const el = $(s.id), on = T >= s.a - 1e-6 && T <= s.b + 1e-6;

@@ -147,12 +147,39 @@ def main() -> int:
     import matplotlib.pyplot as plt
     from matplotlib.colors import LightSource, LinearSegmentedColormap, LogNorm
 
-    ink, paper, sand = "#0d1b24", "#e9edef", "#c9b991"
-    # Deep is dark, shallow is light: the shading is of height, -40 m to the surface.
-    sea = LinearSegmentedColormap.from_list("sea", ["#08161f", "#123447", "#245a6e", "#3d7d8c"])
-    silt = LinearSegmentedColormap.from_list("silt", ["#d9c9a3", "#b08a52", "#7a5228"])
-    shade = LightSource(azdeg=315, altdeg=40).shade(-depth, cmap=sea, vert_exag=6, blend_mode="soft",
-                                                     vmin=-40, vmax=0)
+    from matplotlib.patches import FancyBboxPatch
+    from scipy.ndimage import gaussian_filter
+
+    ink, paper = "#0d1b24", "#eef2f1"
+    # A plain chart, so the eye goes to the plume: the seabed smoothed past
+    # its spurs and grooves (which read as noise from above), shallow pale,
+    # deep dark; the coral drawn as what it is — colonies, as dots.
+    sea = LinearSegmentedColormap.from_list("sea", ["#06202e", "#0f3a50", "#2b6f85", "#6aa6b3", "#a6cfd3"])
+    silt = LinearSegmentedColormap.from_list("silt", ["#d8c7a0", "#a77f49", "#6e4a24"])
+    smooth = gaussian_filter(depth, 4.0)
+    shade = LightSource(azdeg=315, altdeg=45).shade(-smooth, cmap=sea, vert_exag=1.5, blend_mode="soft",
+                                                     vmin=-35, vmax=0)
+    # Where the reef is, from where its colonies are; which side the shore.
+    xs = coral.at[shown, 0]
+    bins = np.linspace(rx0, rx1, 60)
+    counts, _ = np.histogram(xs, bins)
+    dense = np.flatnonzero(counts > 0.45 * counts.max())
+    reef_x = (bins[dense[0]] + bins[dense[-1] + 1]) / 2 if len(dense) else (rx0 + rx1) / 2
+    shore_left = depth[:, : depth.shape[1] // 6].mean() < depth[:, -depth.shape[1] // 6:].mean()
+    GREEN, AMBER, RED = "#8fe0b0", "#f2a33a", "#e4572e"
+
+    def legend(fig):
+        box = fig.add_axes([0.012, 0.105, 0.27, 0.27])
+        box.axis("off")
+        box.add_patch(FancyBboxPatch((0, 0), 1, 1, boxstyle="round,pad=0,rounding_size=0.06", transform=box.transAxes,
+                                     facecolor=(0.04, 0.09, 0.12, 0.82), edgecolor=(0.5, 0.7, 0.76, 0.4)))
+        rows = [("o", GREEN, "a coral colony"), ("s", "#a77f49", "sediment in the water"),
+                ("o", AMBER, "stressed: over 10 mg/cm²/day"), ("o", RED, "smothered: over 50 mg/cm²/day")]
+        for i, (mk, col, text) in enumerate(rows):
+            y = 0.8 - i * 0.2
+            box.scatter([0.09], [y], s=90 if mk == "o" else 120, marker=mk, c=col, transform=box.transAxes,
+                        alpha=0.95 if mk == "o" else 0.8)
+            box.text(0.17, y, text, color=paper, fontsize=12, va="center", transform=box.transAxes)
 
     seconds = int(asked.hours * 3600)
     every = int(asked.frame_s)
@@ -174,34 +201,41 @@ def main() -> int:
                          "harmed": harmed, "badly": badly})
 
         fig = plt.figure(figsize=(12.8, 7.2), dpi=100, facecolor=ink)
-        ax = fig.add_axes([0, 0.07, 1, 0.93])
+        ax = fig.add_axes([0, 0.08, 1, 0.92])
         ax.set_facecolor(ink)
         ax.imshow(shade, origin="lower", extent=(rx0, rx1, ry0, ry1), interpolation="bilinear")
         d = dose[shown]
         quiet = d < SMOTHERS_FROM
-        ax.scatter(coral.at[shown[quiet], 0], coral.at[shown[quiet], 1], s=0.15, c="#cfe0d8", alpha=0.3,
-                   linewidths=0)
-        for low, high, colour in ((SMOTHERS_FROM, SMOTHERS_BADLY, "#f2a33a"), (SMOTHERS_BADLY, np.inf, "#e4572e")):
-            pick = (d >= low) & (d < high)
-            ax.scatter(coral.at[shown[pick], 0], coral.at[shown[pick], 1], s=1.2, c=colour, linewidths=0)
+        ax.scatter(coral.at[shown[quiet], 0], coral.at[shown[quiet], 1], s=0.35, c=GREEN, alpha=0.35, linewidths=0)
         load = column_load(sed, now, ex, ey)
         if load.max() > 0.5:
             masked = np.ma.masked_less(load, 0.5)
-            ax.imshow(masked, origin="lower", extent=(rx0, rx1, ry0, ry1), cmap=silt, alpha=0.75,
+            ax.imshow(masked, origin="lower", extent=(rx0, rx1, ry0, ry1), cmap=silt, alpha=0.7,
                       norm=LogNorm(vmin=0.5, vmax=max(50.0, float(load.max()))), interpolation="bilinear")
-        ax.scatter([x0], [y0], s=260, marker="s", c="#f4f1ea", edgecolors=ink, linewidths=2, zorder=5)
-        ax.annotate("dredger", (x0, y0), xytext=(10, 10), textcoords="offset points", color=paper, fontsize=13)
-        # The current, and a scale.
-        ox, oy = rx0 + 90, ry1 - 60
-        ax.annotate("", xy=(ox + current[0] / speed * 45, oy + current[1] / speed * 45), xytext=(ox, oy),
-                    arrowprops=dict(arrowstyle="-|>", color=paper, lw=2.2), annotation_clip=False)
-        ax.text(ox, oy - 30, f"current {speed:.2f} m/s", color=paper, fontsize=12, ha="center", va="top")
+        for low, high, colour in ((SMOTHERS_FROM, SMOTHERS_BADLY, AMBER), (SMOTHERS_BADLY, np.inf, RED)):
+            pick = (d >= low) & (d < high)
+            ax.scatter(coral.at[shown[pick], 0], coral.at[shown[pick], 1], s=1.4, c=colour, linewidths=0, alpha=0.9)
+        # The dredger, the current, the places.
+        ax.scatter([x0], [y0], s=420, marker="s", c="#f4f1ea", edgecolors=ink, linewidths=2.5, zorder=6)
+        ax.text(x0, y0 - 22, "dredger", color=paper, fontsize=15, ha="center", va="top", zorder=6,
+                bbox=dict(boxstyle="round,pad=0.3", fc=(0.04, 0.09, 0.12, 0.8), ec="none"))
+        ox, oy = x0 + 70, y0 + 70
+        ax.annotate("", xy=(ox + current[0] / speed * 70, oy + current[1] / speed * 70), xytext=(ox, oy),
+                    arrowprops=dict(arrowstyle="-|>,head_width=0.5,head_length=0.9", color=paper, lw=3), zorder=6)
+        ax.text(ox + current[0] / speed * 35, oy + current[1] / speed * 35 + 16, f"current {speed:.2f} m/s",
+                color=paper, fontsize=13, ha="center", va="bottom", zorder=6)
+        label = dict(color=paper, fontsize=16, ha="center", va="top", fontweight="bold",
+                     bbox=dict(boxstyle="round,pad=0.35", fc=(0.04, 0.09, 0.12, 0.78), ec="none"))
+        ax.text(reef_x, ry1 - 18, "CORAL REEF", **label)
+        ax.text(rx0 + 70 if shore_left else rx1 - 70, ry1 - 18, ("← shore" if shore_left else "shore →"), **label)
+        ax.text(rx1 - 90 if shore_left else rx0 + 90, ry1 - 18, "deep water", **label)
         ax.plot([rx1 - 140, rx1 - 40], [ry0 + 30, ry0 + 30], color=paper, lw=3)
         ax.text(rx1 - 90, ry0 + 38, "100 m", color=paper, fontsize=12, ha="center")
+        legend(fig)
         h, m = int(now // 3600), int(now % 3600 // 60)
-        fig.text(0.02, 0.035, f"{h}:{m:02d} into the shift   ·   {sed.dredged_kg / 1000:.0f} t lost at the overflow"
-                 f"   ·   {harmed:,} colonies over {SMOTHERS_FROM:.0f} mg/cm²/day, {badly:,} over {SMOTHERS_BADLY:.0f}",
-                 color=paper, fontsize=14, va="center")
+        fig.text(0.5, 0.04, f"{h}:{m:02d} into the dredging shift   ·   {sed.dredged_kg / 1000:.0f} t of sediment released"
+                 f"   ·   {harmed:,} coral colonies stressed, {badly:,} smothered",
+                 color=paper, fontsize=16, va="center", ha="center")
         ax.set_xlim(rx0, rx1)
         ax.set_ylim(ry0, ry1)
         ax.set_aspect("equal")
