@@ -20,13 +20,15 @@ from .layer import Layer
 
 
 def _taper(covers: np.ndarray, feather: int) -> np.ndarray:
-    """1 from `feather` cells inside what a layer covers, falling towards 0 at its edge."""
+    """0 on the outermost cell a layer covers, rising to 1 `feather` cells
+    further in: the profile tools/ground feathered Looe Key's survey with, so
+    the place rebuilt here is the place that was built there."""
     if feather <= 0 or covers.all() or not covers.any():
         return covers.astype("float64")
     from scipy.ndimage import distance_transform_edt
 
     inside = distance_transform_edt(covers)
-    return np.clip(inside / (feather + 1), 0.0, 1.0)
+    return np.clip((inside - 1) / feather, 0.0, 1.0)
 
 
 def fuse(layers: list[Layer], feather: int = 3) -> Layer:

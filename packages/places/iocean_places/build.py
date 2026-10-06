@@ -107,8 +107,18 @@ def build(recipe: Recipe, into: pathlib.Path, cache: pathlib.Path | None = None)
     # keys the place's record has always carried it in.
     shares = {k: float((depth.source == k).mean()) for k in range(len(depth.provenance))}
     first = depth.provenance[max(shares, key=shares.get)] if shares else None
+    # Every survey that made some of it, in the recipe's order; and, where more
+    # than one source did, each named with its share.
+    made = [(p, shares[k]) for k, p in enumerate(depth.provenance) if shares[k] > 0]
+    surveys = [one for p, _ in made for one in p.note.get("surveys", [])]
+    told = {}
+    if surveys:
+        told["surveys"] = surveys
+    if len(made) > 1:
+        told["source"] = "; ".join(f"{p.note.get('source') or p.citation} over {share:.1%} of the square"
+                                   for p, share in sorted(made, key=lambda m: -m[1]))
     note = {
-        **(first.note if first else {}),
+        **(first.note if first else {}), **told,
         "rows": recipe.grid.cells, "columns": recipe.grid.cells, "acrossMetres": recipe.grid.across,
         "file": mesh["heightfield"]["file"], "format": mesh["heightfield"]["format"], "centre": centre,
         "surveyed": measured >= 0.5, "surveyedFraction": round(measured, 4),

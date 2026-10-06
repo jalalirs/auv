@@ -154,7 +154,9 @@ SOURCES = {"geotiff": _geotiff, "points": Points, "place": Place, "flat": Flat,
            "sentinel2-stumpf": _lazy("sentinel2", "Stumpf"),
            "icesat2": _lazy("icesat2", "IceSat2"),
            "allen-coral-atlas": _lazy("coral_atlas", "CoralAtlas"),
-           "gebco": _lazy("gebco", "Gebco")}
+           "gebco": _lazy("gebco", "Gebco"),
+           "bathymetry": _lazy("surveys", "Bathymetry"),
+           "survey-dem": _lazy("surveys", "SurveyDem")}
 
 
 def source_from(entry: dict) -> Source:

@@ -40,11 +40,11 @@ def test_fusion_takes_the_better_source_and_says_whose():
 def test_the_seam_is_blended_not_stepped():
     survey = Layer.of(GRID, "depth", half(-10.0, east=True), 0.2, SURVEY)
     satellite = Layer.of(GRID, "depth", half(-12.0, east=False), 1.5, SATELLITE)
-    fused = fuse([satellite, survey], feather=2)
+    fused = fuse([satellite, survey], feather=4)
     row, err = fused.value[20], fused.error[20]
-    assert np.abs(np.diff(row)).max() < 1.0, "a 2 m step at the seam is spread over the feather"
+    assert np.abs(np.diff(row)).max() <= 0.5 + 1e-6, "a 2 m step at the seam is spread over the feather"
     between = (row > -12.0) & (row < -10.0)
-    assert between.sum() == 2, "two cells of slope where the survey tapers off"
+    assert between.sum() == 3, "three cells of slope where the survey tapers off"
     assert np.all((err[between] > 0.2) & (err[between] < 1.5))
     # Inside its coverage the survey is believed outright, not averaged with a worse guess.
     assert row[-1] == -10.0 and err[-1] == np.float32(0.2)

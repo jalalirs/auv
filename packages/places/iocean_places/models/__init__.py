@@ -33,7 +33,12 @@ def _colour(**kw):
     return ColourDepth(**kw)
 
 
-MODELS = {"curve-depth": _curve, "colour-depth": _colour}
+def _datum(**kw):
+    from .datum_fit import DatumFit
+    return DatumFit(**kw)
+
+
+MODELS = {"curve-depth": _curve, "colour-depth": _colour, "datum-fit": _datum}
 
 
 def model_from(entry: dict) -> Model:

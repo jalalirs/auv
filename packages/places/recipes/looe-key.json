@@ -1,0 +1,14 @@
+{
+  "name": "looe-key",
+  "site": {"centre": [24.54586, -81.4072], "acrossM": 1000, "cells": 1001},
+  "sources": [
+    {"use": "bathymetry", "as": "noaa", "place": "looe-key"},
+    {"use": "survey-dem", "as": "squid",
+     "citation": "USGS SQUID-5 survey of Looe Key, July 2022 (doi 10.5066/P1QRS3SK), 1 m quicklook DEM, NAVD88"},
+    {"use": "gebco", "path": "~/iocean/places/looe-key"}
+  ],
+  "models": [
+    {"use": "datum-fit", "as": "squid-fitted", "survey": "squid.depth", "reference": "noaa.depth"}
+  ],
+  "scene": {"depth": ["squid-fitted.depth", "noaa.depth", "gebco.depth"], "featherCells": 6}
+}
