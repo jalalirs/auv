@@ -50,8 +50,9 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#000}
 .node span{font-size:22px;color:#9fb3bb}
 .wire{position:absolute;top:410px;height:2px;background:#2b4a5b}
 .dot{position:absolute;top:403px;width:16px;height:16px;border-radius:50%;background:var(--coral);box-shadow:0 0 18px var(--coral)}
-.facts{position:absolute;left:0;right:0;top:640px;display:flex;justify-content:center;gap:70px;font-family:var(--sans);color:#eef1ec}
-.facts div{text-align:center}
+.facts{position:absolute;left:270px;width:1380px;top:640px;display:grid;grid-template-columns:repeat(3,380px);column-gap:120px;
+  font-family:var(--sans);color:#eef1ec}
+.facts div{text-align:center;white-space:nowrap;justify-self:center}
 .facts b{display:block;font-family:var(--serif);font-weight:400;font-size:64px}
 .facts span{font-size:24px;color:#9fb3bb}
 .big{font-family:var(--serif);font-weight:400;color:var(--text)}
@@ -99,7 +100,7 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#000}
     <div class="node"><b>iocean</b><span>the platform: places, vehicles, runs</span></div>
     <div class="node"><b>GPU hosts</b><span>the ocean, simulated</span></div>
   </div>
-  <div class="wire" style="left:530px;width:120px"></div><div class="wire" style="left:1150px;width:120px"></div>
+  <div class="wire" id="wire1"></div><div class="wire" id="wire2"></div>
   <div class="dot" id="dot1"></div><div class="dot" id="dot2"></div>
   <div class="facts">
     <div><b>15×</b><span>faster than real time, flown for the numbers</span></div>
@@ -215,7 +216,14 @@ const SCENES = [
     run: (t, el) => zoom(el.querySelector(".window"), t, [[0, 0.94, .5, .5], [1.0, 1.5, .55, .22], [4.0, 1.5, .55, .22], [5.2, 1.5, .66, .22], [6.6, 1.5, .66, .22], [7.8, 1.35, .75, .88], [9.5, 1.35, .78, .9]]) },
   { id: "remote", a: 52.5, b: 59.0,
     run: (t) => { const k = (t * 0.55) % 1, j = (t * 0.55 + 0.5) % 1;
-      $("dot1").style.left = (530 + 104 * k) + "px"; $("dot2").style.left = (1150 + 104 * j) + "px";
+      // The wires span the gaps between the boxes as they were laid out, and
+      // the dots travel along them: measured, not written down, so they stay
+      // between the boxes whatever the boxes' widths come to.
+      const [a, b, c] = [...document.querySelectorAll("#remote .node")].map(n => n.getBoundingClientRect());
+      const mid = a.top + a.height / 2;
+      [[$("wire1"), $("dot1"), a.right, b.left, k], [$("wire2"), $("dot2"), b.right, c.left, j]].forEach(([w, d, x0, x1, f]) => {
+        w.style.left = x0 + "px"; w.style.width = (x1 - x0) + "px"; w.style.top = (mid - 1) + "px";
+        d.style.left = (x0 + (x1 - x0 - 16) * f) + "px"; d.style.top = (mid - 8) + "px"; });
       document.querySelectorAll("#remote .facts div").forEach((d, i) => d.style.opacity = ramp(t, 1.2 + i * 0.7, 2.0 + i * 0.7)); } },
   { id: "ui-results", a: 58.5, b: 65.0, video: { el: "#ui-results video", from: 0, rate: 1.25 },
     run: (t, el) => zoom(el.querySelector(".window"), t, [[0, 0.94, .5, .5], [1.0, 1.22, .52, .3], [6.5, 1.22, .52, .32]]) },
