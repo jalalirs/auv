@@ -10,7 +10,7 @@ page through time in Google Chrome — Chrome rather than Playwright's own
 Chromium, because the films are H.264 and Chromium will not play it — taking
 one screenshot a frame after every film on screen has seeked to its frame.
 Then encodes, and lays the music under it: the piano track runs 85 s, so its
-middle is crossfaded back in to carry it to the end, and it fades with the
+middle is crossfaded back in, twice if need be, to carry it to the end, and it fades with the
 last card.
 """
 
@@ -94,9 +94,10 @@ def serve() -> int:
 def music(seconds: float, out: pathlib.Path) -> None:
     track = ROOT / "assets" / "music.mp3"
     subprocess.run([
-        "ffmpeg", "-v", "error", "-y", "-i", str(track), "-ss", "24", "-i", str(track),
+        "ffmpeg", "-v", "error", "-y", "-i", str(track), "-ss", "24", "-i", str(track), "-ss", "24", "-i", str(track),
         "-filter_complex",
-        f"[0:a][1:a]acrossfade=d=5:c1=tri:c2=tri,atrim=0:{seconds:.2f},"
+        "[0:a][1:a]acrossfade=d=5:c1=tri:c2=tri[x];"
+        f"[x][2:a]acrossfade=d=5:c1=tri:c2=tri,atrim=0:{seconds:.2f},"
         f"afade=t=in:st=0:d=1.5,afade=t=out:st={seconds - 5:.2f}:d=5[a]",
         "-map", "[a]", "-c:a", "aac", "-b:a", "192k", str(out)], check=True)
 
