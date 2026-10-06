@@ -60,22 +60,33 @@ def metres_per_degree(latitude: float) -> tuple[float, float]:
     return east, north
 
 
-def clearest_scene(box, since: str, cloud: float) -> dict:
-    """The least cloudy scene over this reef. Cloud is the whole problem: a
-    reef under one is a reef you cannot see the bottom of."""
+def clearest_scenes(box, since: str, cloud: float, most: int = 20) -> list[dict]:
+    """The least cloudy scenes over this reef, clearest first. Cloud is the
+    whole problem: a reef under one is a reef you cannot see the bottom of."""
     asking = json.dumps({
         "collections": [COLLECTION], "bbox": list(box),
         "datetime": f"{since}/2030-01-01T00:00:00Z",
         "query": {"eo:cloud_cover": {"lt": cloud}},
         "sortby": [{"field": "properties.eo:cloud_cover", "direction": "asc"}],
-        "limit": 1}).encode()
+        "limit": most}).encode()
     request = urllib.request.Request(SEARCH, data=asking,
                                      headers={"content-type": "application/json"})
     with urllib.request.urlopen(request, timeout=120) as answer:
         found = json.loads(answer.read())
     if not found.get("features"):
         raise SystemExit("no clear scene over that reef; try --cloud or --since")
-    return found["features"][0]
+    return found["features"]
+
+
+def clearest_scene(box, since: str, cloud: float) -> dict:
+    return clearest_scenes(box, since, cloud, most=1)[0]
+
+
+# How much of the square a scene has to have data over. A scene's cloud
+# figure is over its whole tile, and the clearest one can be a neighbouring
+# tile that only clips the square: at Shushah the first pick was T36RXS, empty
+# over almost all of it, read as open water.
+COVERS_AT_LEAST = 0.95
 
 
 def read_band(scene: dict, key: str, box, samples: int) -> np.ndarray:
@@ -310,13 +321,19 @@ def main(argv: list[str] | None = None) -> int:
     box = (asked.longitude - half_lon, asked.latitude - half_lat,
            asked.longitude + half_lon, asked.latitude + half_lat)
 
-    scene = clearest_scene(box, asked.since, asked.cloud)
-    when = scene["properties"]["datetime"][:10]
-    cloud = scene["properties"].get("eo:cloud_cover", 0.0)
+    for scene in clearest_scenes(box, asked.since, asked.cloud):
+        when = scene["properties"]["datetime"][:10]
+        cloud = scene["properties"].get("eo:cloud_cover", 0.0)
+        green = read_band(scene, "green", box, asked.samples)
+        covered = float((green > 0).mean())
+        if covered >= COVERS_AT_LEAST:
+            break
+        print(f"{scene['id']}  {when}  {cloud:.2f}% cloud: data over {covered:.0%} of the square, skipped")
+    else:
+        raise SystemExit("no clear scene has data over this whole square; try --cloud or --since")
     print(f"{scene['id']}  {when}  {cloud:.2f}% cloud")
 
     blue = read_band(scene, "blue", box, asked.samples)
-    green = read_band(scene, "green", box, asked.samples)
     nir = read_band(scene, "nir", box, asked.samples)
     sample = asked.across / (asked.samples - 1)
     depth, seen, deep, land = depth_from(blue, green, nir, sample)
