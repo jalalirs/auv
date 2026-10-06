@@ -15,6 +15,8 @@ import type { Held, Packages } from "../screens/Deck.js";
 import { Designer } from "../screens/Designer.js";
 import { Fly } from "../screens/Fly.js";
 import { Missions } from "../screens/Missions.js";
+import { Places } from "../screens/Places.js";
+import { Fleet } from "../screens/Fleet.js";
 import { Runs } from "../screens/Runs.js";
 import { LayoutEditor } from "../screens/Layout.js";
 
@@ -25,7 +27,24 @@ const id = (kind: string) => `${kind}_${(++counter).toString().padStart(4, "0")}
 type Doc = Record<string, unknown>;
 interface Version { id: string; ordinal: number; createdAt: string; document: Doc; label?: string }
 
-const places = [{ id: "city_red", slug: "red-sea", name: "Red Sea fringing reef", fixture: "red-sea" }];
+const places = [
+  { id: "city_red", slug: "red-sea", name: "Red Sea fringing reef", fixture: "red-sea",
+    summary: "A fringing reef shaped like this coast: flat, crest, fore-reef and sand terrace" },
+  { id: "city_shushah", slug: "shushah", name: "Shushah Island", fixture: "shushah",
+    summary: "Seabed fitted to ICESat-2 depths, 1.7 million colonies, its own recorded fish" },
+  { id: "city_fahal", slug: "al-fahal", name: "Al Fahal reef", fixture: "al-fahal",
+    summary: "A midshelf reef off Thuwal, depths calibrated to ICESat-2" },
+  { id: "city_tank", slug: "iocean-tank-1", name: "iocean tank", fixture: "iocean-tank-1",
+    summary: "A 2 m test tank with a tethered vehicle and Red Sea fish" },
+];
+const vehicleList = [
+  { id: "veh_remus", slug: "remus-100", name: "REMUS 100", manufacturer: "HII", summary: "A torpedo AUV, steered by fins" },
+  { id: "veh_glider", slug: "seaglider", name: "Seaglider", manufacturer: "Kongsberg", summary: "A buoyancy glider" },
+  { id: "veh_heavy", slug: "bluerov2-heavy", name: "BlueROV2 Heavy", manufacturer: "Blue Robotics", summary: "An eight-thruster ROV" },
+  { id: "veh_tow", slug: "edgetech-2300", name: "EdgeTech 2300", manufacturer: "EdgeTech", summary: "A towed side-scan towfish" },
+  { id: "veh_luna", slug: "boxfish-luna", name: "Boxfish Luna", manufacturer: "Boxfish Robotics", summary: "A hovering inspection AUV" },
+  { id: "veh_mini", slug: "mini-hoot", name: "mini-hoot", manufacturer: "iocean", summary: "Our own tethered test vehicle" },
+];
 
 const pipeline = { id: "pipeline-1", kind: "pipeline", x: 150, y: -20, radiusM: 0.16, bendRadiusM: 150,
                    route: [{ x: 0, y: -40 }, { x: 150, y: -20 }, { x: 450, y: 0 }] };
@@ -77,7 +96,7 @@ const flown = [
 const delay = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(v), 30));
 const said: string[] = [];
 const platform = {
-  missionsOf: () => delay([...store.missions.values()].map((m) => m.mission)),
+  missionsOf: (city: string) => delay([...store.missions.values()].filter((m) => m.place === city).map((m) => m.mission)),
   mission: (missionId: string) => delay(store.missions.get(missionId)!.mission),
   versionsOfMission: (missionId: string) => delay([...(store.missions.get(missionId)?.versions ?? [])].reverse()),
   startMission: (city: string, asked: Doc) => {
@@ -114,8 +133,8 @@ const platform = {
 const baseHeld = {
   you: { id: "p1", displayName: "Demo", email: "demo@example.test" },
   institution: { id: "org_1", name: "iocean" },
-  places: places.map((p) => ({ id: p.id, slug: p.slug, name: p.name })),
-  vehicles: [{ id: "veh_remus", slug: "remus-100", name: "REMUS 100" }, { id: "veh_luna", slug: "boxfish-luna", name: "Boxfish Luna" }],
+  places: places.map((p) => ({ id: p.id, slug: p.slug, name: p.name, summary: p.summary })),
+  vehicles: vehicleList,
   queues: [{ id: "queue_1", name: "GPU hosts, Jeddah", free: 2, devices: 2, runtimes: ["isaac-6.0.1+oceansim"] }],
   runs: flown, stacks: [], controllers: [],
 };
@@ -124,14 +143,17 @@ async function packagesOf(): Promise<Packages> {
   const placePackages = new Map();
   for (const p of places) {
     const site = await (await fetch(`./harness/fixtures/${p.fixture}/site.json`)).json();
+    const picture = `./harness/fixtures/${p.fixture}/picture.jpg`;
+    const has = (await fetch(picture, { method: "HEAD" })).ok;
     placePackages.set(p.id, {
-      version: { id: `${p.id}-v1` }, pictureUrl: undefined, credit: undefined, site,
+      version: { id: `${p.id}-v1` }, pictureUrl: has ? picture : undefined, credit: undefined, site,
       files: [{ path: site.mesh.heightfield.file, url: `./harness/fixtures/${p.fixture}/${site.mesh.heightfield.file}` }],
     });
   }
   const vehicles = new Map();
-  for (const [vid, slug] of [["veh_remus", "remus-100"], ["veh_luna", "boxfish-luna"]] as const) {
-    vehicles.set(vid, { version: { id: `${vid}-v1` }, dynamics: await (await fetch(`./harness/fixtures/${slug}/dynamics.json`)).json() });
+  for (const one of vehicleList) {
+    vehicles.set(one.id, { version: { id: `${one.id}-v1` }, pictureUrl: `./harness/fixtures/${one.slug}/picture.jpg`, hull: true,
+                           dynamics: await (await fetch(`./harness/fixtures/${one.slug}/dynamics.json`)).json() });
   }
   return { places: placePackages, vehicles } as unknown as Packages;
 }
@@ -165,12 +187,19 @@ function Promo({ packages }: { packages: Packages }) {
     <div className="deck">
       <nav>
         <div className="here"><strong>iocean</strong></div>
-        {["missions", "designer", "fly", "results", "layout"].map((page) => (
-          <a key={page} aria-current={where.page === page ? "page" : undefined} onClick={() => setWhere((w) => ({ ...w, page }))}>{page}</a>
+        {/* The app's own rail; the designer is a mission opened, the layout a place opened. */}
+        {[["fly", "Fly"], ["missions", "Missions"], ["places", "Places"], ["results", "Runs"], ["fleet", "Fleet"]].map(([page, name]) => (
+          <a key={page} aria-current={where.page === page || (page === "missions" && where.page === "designer")
+                                     || (page === "places" && where.page === "layout") ? "page" : undefined}
+             onClick={() => setWhere((w) => ({ ...w, page: page! }))}>{name}</a>
         ))}
       </nav>
       <main>
-        {where.page === "missions" ? (
+        {where.page === "places" ? (
+          <Places held={h} packages={packages} onOpen={() => setWhere((w) => ({ ...w, page: "layout" }))} />
+        ) : where.page === "fleet" ? (
+          <Fleet held={h} packages={packages} onOpen={() => undefined} />
+        ) : where.page === "missions" ? (
           <Missions platform={p} held={h} onOpen={(mission, place) => setWhere({ page: "designer", mission, place })}
                     onFly={(mission) => setWhere((w) => ({ ...w, page: "fly", mission }))} />
         ) : where.page === "designer" ? (

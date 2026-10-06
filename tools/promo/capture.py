@@ -232,7 +232,40 @@ def results(browser) -> None:
     s.encode()
 
 
-SHOTS = {"layout": layout, "designer": designer, "fly": fly, "results": results}
+def missions(browser) -> None:
+    """The first screen the app opens on: the missions, and one opened."""
+    page = open_page(browser, "page=missions")
+    s = Shot(page, "missions")
+    s.cursor()
+    s.hold(1.5)
+    s.move("text=Inspect the landfall for free spans", 1.4)
+    s.hold(0.8)
+    s.click()
+    s.hold(2.5)
+    s.encode()
+
+
+def intro(browser) -> None:
+    """The app as it opens: its places, its fleet, its missions, one opened."""
+    page = open_page(browser, "page=places")
+    s = Shot(page, "intro")
+    s.cursor()
+    s.hold(1.2)
+    s.move((CSS_W * 0.45, CSS_H * 0.42), 1.2)
+    s.move((CSS_W * 0.72, CSS_H * 0.42), 1.0)
+    s.hold(0.6)
+    s.click("nav >> text=Fleet")
+    s.hold(1.4)
+    s.move((CSS_W * 0.55, CSS_H * 0.45), 1.0)
+    s.hold(0.8)
+    s.click("nav >> text=Missions")
+    s.hold(0.8)
+    s.click("text=Inspect the landfall for free spans")
+    s.hold(2.2)
+    s.encode()
+
+
+SHOTS = {"intro": intro, "missions": missions, "layout": layout, "designer": designer, "fly": fly, "results": results}
 
 
 def main(names: list[str]) -> int:

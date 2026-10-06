@@ -4,121 +4,122 @@
 <meta charset="utf-8">
 <title>iOcean promo 2</title>
 <style>
-:root{--ink:#0a141b;--ink-2:#102330;--line:#244a5c;--paper:#f3f1ec;--text:#14212a;--muted:#5b6a72;--coral:#e4572e;--amber:#f2a33a;--sea:#7fb4c1;--sea-2:#3d7d8c;
+:root{--ink:#08121a;--paper:#f3f1ec;--text:#14212a;--muted:#5b6a72;--coral:#e4572e;--amber:#f2a33a;--sea:#7fb4c1;--sea-2:#3d7d8c;
   --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;--sans:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:1920px;height:1080px;overflow:hidden;background:#000}
 .scene{position:absolute;inset:0;opacity:0;overflow:hidden;visibility:hidden}
 .full{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform-origin:50% 50%}
-.shade-b{position:absolute;inset:0;background:linear-gradient(0deg,rgba(5,12,18,.82) 0%,rgba(5,12,18,.25) 38%,rgba(5,12,18,0) 60%)}
-.shade-l{position:absolute;inset:0;background:linear-gradient(90deg,rgba(5,12,18,.85) 0%,rgba(5,12,18,.45) 45%,rgba(5,12,18,0) 75%)}
-.cap{position:absolute;left:120px;bottom:110px;max-width:1500px;color:#f4f6f3;font-family:var(--serif);font-size:62px;line-height:1.12;text-shadow:0 2px 20px rgba(0,0,0,.5)}
-.cap .k{display:block;font-family:var(--sans);font-size:22px;letter-spacing:.18em;text-transform:uppercase;font-weight:650;color:var(--sea);margin-bottom:18px;text-shadow:none}
-.cap small{display:block;font-family:var(--sans);font-size:25px;line-height:1.45;color:rgba(244,246,243,.85);margin-top:16px}
-.card{background:var(--paper);display:flex;align-items:center;justify-content:center;text-align:center}
-.card h1{font-family:var(--serif);font-weight:400;font-size:88px;line-height:1.15;color:var(--text)}
-.dark{background:var(--ink)}
-.window{position:absolute;left:50%;top:46%;width:1600px;height:900px;margin:-450px 0 0 -800px;border-radius:16px;overflow:hidden;
+/* The quiet background the words stand on: deep water, and depth contours
+   drifting across it, thin and faint. */
+.sea{background:radial-gradient(ellipse at 50% 40%,#123446 0%,#0a1c27 55%,#060f15 100%)}
+.sea svg{position:absolute;inset:0;width:100%;height:100%}
+.words{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;color:#eef3f1}
+.words .l{font-family:var(--serif);font-size:84px;line-height:1.2;display:block}
+.words .s{font-family:var(--sans);font-size:30px;line-height:1.5;color:#a9c3ca;display:block;margin-top:26px}
+.panel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;color:#f4f6f3;
+  background:rgba(6,14,20,.58);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:44px 72px 50px;border-radius:26px;
+  box-shadow:0 30px 80px rgba(0,0,0,.35);width:max-content;max-width:1500px}
+.panel .k{font-family:var(--sans);font-size:24px;letter-spacing:.2em;text-transform:uppercase;font-weight:650;color:var(--sea);display:block;margin-bottom:16px}
+.panel .t{font-family:var(--serif);font-size:72px;line-height:1.15;display:block}
+.panel .s{font-family:var(--sans);font-size:27px;line-height:1.5;color:rgba(238,243,241,.85);display:block;margin-top:18px}
+.top{position:absolute;left:50%;top:44px;transform:translateX(-50%);white-space:nowrap;color:#eef1ec;font-family:var(--serif);font-size:40px;
+  background:rgba(6,14,20,.82);padding:14px 36px;border-radius:999px;box-shadow:0 10px 40px rgba(0,0,0,.4);z-index:5}
+.window{position:absolute;left:50%;top:53%;width:1600px;height:900px;margin:-450px 0 0 -800px;border-radius:16px;overflow:hidden;
   box-shadow:0 40px 120px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.06);transform-origin:50% 50%;background:#0b141b}
 .window video{width:100%;height:100%;display:block}
-.pill{position:absolute;left:50%;bottom:40px;transform:translateX(-50%);white-space:nowrap;color:#eef1ec;font-family:var(--serif);font-size:40px;
-  background:rgba(8,16,22,.86);padding:14px 34px;border-radius:999px;box-shadow:0 10px 40px rgba(0,0,0,.4);z-index:5}
-.nums{position:absolute;right:120px;bottom:110px;display:flex;flex-direction:column;gap:26px;text-align:right}
-.num b{display:block;font-family:var(--serif);font-weight:400;font-size:84px;line-height:1;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.5)}
-.num span{display:block;font-family:var(--sans);font-size:24px;color:rgba(244,246,243,.88);margin-top:6px;text-shadow:0 1px 8px rgba(0,0,0,.6)}
+.dark{background:var(--ink)}
+.numrow{position:absolute;left:50%;bottom:90px;transform:translateX(-50%);display:flex;gap:90px;background:rgba(6,14,20,.6);
+  backdrop-filter:blur(8px);padding:30px 70px;border-radius:24px;text-align:center;width:max-content}
+.num b{display:block;font-family:var(--serif);font-weight:400;font-size:76px;line-height:1;color:#fff;white-space:nowrap}
+.num span{display:block;font-family:var(--sans);font-size:23px;color:rgba(238,243,241,.85);margin-top:8px}
 .split{position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;gap:6px;background:#000}
 .split>div{position:relative;overflow:hidden}.split video{width:100%;height:100%;object-fit:cover}
-.tag{position:absolute;left:40px;top:36px;font-family:var(--sans);font-size:26px;font-weight:600;color:#fff;background:rgba(11,20,27,.72);padding:10px 18px;border-radius:999px}
-.count{position:absolute;left:40px;bottom:40px;font-family:var(--serif);font-size:64px;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.6)}
-.count span{font-family:var(--sans);font-size:24px;display:block;color:rgba(255,255,255,.85)}
-.paper{background:var(--paper);padding:140px 180px;color:var(--text)}
-.paper h2{font-family:var(--serif);font-weight:400;font-size:70px}
-.row{display:grid;grid-template-columns:520px 480px 240px;align-items:center;font-family:var(--sans);font-size:34px;padding:24px 0;border-bottom:1px solid #d9dcd6}
-.row:first-of-type{margin-top:56px}.row .v{font-family:var(--serif);font-size:44px}
+.tag{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);font-family:var(--sans);font-size:30px;font-weight:600;color:#fff;background:rgba(6,14,20,.75);padding:12px 24px;border-radius:999px;white-space:nowrap}
+.count{position:absolute;left:0;right:0;bottom:50px;text-align:center;font-family:var(--serif);font-size:72px;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.6)}
+.count span{font-family:var(--sans);font-size:24px;margin-left:12px;color:rgba(255,255,255,.85)}
+.paper{background:var(--paper);color:var(--text)}
+.ctitle{position:absolute;top:110px;left:0;right:0;text-align:center;font-family:var(--serif);font-size:68px;color:var(--text)}
+.rows{position:absolute;left:50%;top:300px;transform:translateX(-50%);width:1380px}
+.row{display:grid;grid-template-columns:560px 520px 240px;align-items:center;font-family:var(--sans);font-size:34px;padding:24px 0;border-bottom:1px solid #d9dcd6}
+.row .v{font-family:var(--serif);font-size:44px}
 .p{font-size:22px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;padding:6px 16px;border-radius:999px;justify-self:start}
 .measured{background:#d7ebe0;color:#1d5b3b}.derived{background:#dde8f0;color:#1f4f6e}.chosen{background:#f3e6cf;color:#7a5216}.assumed{background:#f5dcd5;color:#8a2f17}
-.grid6{position:absolute;left:150px;right:150px;top:180px;display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
-.grid6 div{height:320px;border-radius:14px;overflow:hidden;background:#dfe3e6}.grid6 img{width:100%;height:100%;object-fit:cover}
-.phases{position:absolute;left:150px;right:150px;top:330px;display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:40px;text-align:left}
-.phase .dot{width:46px;height:46px;border-radius:50%;border:6px solid var(--paper)}
+.grid6{position:absolute;left:150px;right:150px;top:240px;display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
+.grid6 div{height:300px;border-radius:14px;overflow:hidden;background:#dfe3e6}.grid6 img{width:100%;height:100%;object-fit:cover}
+.sub{position:absolute;bottom:70px;left:0;right:0;text-align:center;font-family:var(--sans);font-size:28px;color:var(--muted)}
+.phases{position:absolute;left:150px;right:150px;top:360px;display:grid;grid-template-columns:repeat(3,1fr);gap:50px;text-align:center}
+.phase .dot{width:46px;height:46px;border-radius:50%;border:6px solid var(--paper);margin:0 auto}
 .phase p{font-family:var(--sans);font-size:24px;color:var(--muted);margin-top:18px}
 .phase h3{font-family:var(--serif);font-weight:400;font-size:46px;margin-top:6px}
-.phase ul{font-family:var(--sans);font-size:24px;line-height:1.6;margin:14px 0 0 26px;color:#33434b}
-.rail{position:absolute;left:150px;right:150px;top:351px;height:4px;border-radius:2px;background:linear-gradient(90deg,var(--sea-2),var(--amber),var(--coral))}
+.phase ul{list-style:none;font-family:var(--sans);font-size:25px;line-height:1.65;margin-top:16px;color:#33434b}
+.rail{position:absolute;left:330px;right:330px;top:381px;height:4px;border-radius:2px;background:linear-gradient(90deg,var(--sea-2),var(--amber),var(--coral))}
 .big{font-family:var(--serif);font-weight:400;color:var(--text)}
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script>
-// ── the film, as data ────────────────────────────────────────────────────────
-// film: a clip full-bleed, slowly pushed in, with a caption over it.
-// ui: an app recording in a window, zoomed by keys [t, scale, x, y].
-// card: a line on paper. html: anything else, with its own run(t).
 const A = "assets/";
+const SEA = `<svg viewBox="0 0 1920 1080" preserveAspectRatio="none"></svg>`;
+// ── the film, as data ────────────────────────────────────────────────────────
+// words: lines on the quiet sea, one after another, centred.
+// film: a clip, slowly pushed in, a panel of words in the middle of it.
+// ui: an app recording in a window, a line at the top, zoomed by keys.
 const SPEC = [
-  { kind: "film", id: "coast", src: "g01.mp4", dur: 6.5, from: 0, rate: 0.7, push: [1.0, 1.06], shade: "l",
-    cap: `<span style="font-size:130px">iOcean</span><small>A digital twin for marine operations</small>`, capAt: [1.2, 5.6] },
-  { kind: "film", id: "reef0", src: "reef_alfahal.mp4", dur: 6.0, from: 8, rate: 1, push: [1.06, 1.0], shade: "b",
-    cap: `<small style="font-size:22px;margin:0">Not footage — Al Fahal reef, Red Sea, simulated</small>`, capAt: [1.0, 5.4] },
-  { kind: "film", id: "deck", src: "g02.mp4", dur: 6.0, from: 0, rate: 1, push: [1.0, 1.05], shade: "b",
-    cap: `Marine work is planned on paper`, capAt: [0.8, 5.6] },
-  { kind: "film", id: "below", src: "g03.mp4", dur: 5.0, from: 0, rate: 1, push: [1.0, 1.08], shade: "b",
-    cap: `and learned at sea.`, capAt: [0.6, 4.6] },
-  { kind: "film", id: "plume0", src: "g04.mp4", dur: 6.5, from: 0, rate: 1, push: [1.0, 1.07], shade: "b",
-    cap: `And the sea pays for what nobody saw.`, capAt: [0.8, 6.0] },
-  { kind: "card", id: "c1", dur: 4.5, text: "Rehearse it first." },
-  { kind: "film", id: "desk", src: "g05.mp4", dur: 6.0, from: 0, rate: 1, push: [1.0, 1.06], shade: "l",
-    cap: `<span class="k">What iOcean is</span>One coupled model of the sea<br>and everything working in it.`, capAt: [0.8, 5.6] },
-  { kind: "film", id: "tank", src: "tank_new.mp4", dur: 7.0, from: 31, rate: 1, push: [1.04, 1.0], shade: "b",
-    cap: `Place · assets · operations<small>each acting on the others, both ways — the fish, the tether, the thrusters' wash</small>`, capAt: [0.8, 6.5] },
-  { kind: "film", id: "dc", src: "g07.mp4", dur: 6.5, from: 0, rate: 0.9, push: [1.0, 1.06], shade: "l",
-    cap: `<span class="k">How it is built</span>Physics on GPUs. Real seabeds.<br>A source for every number.`, capAt: [0.8, 6.0] },
-  { kind: "film", id: "shop", src: "g06.mp4", dur: 6.0, from: 0, rate: 1, push: [1.0, 1.05], shade: "l",
-    cap: `<span class="k">iOcean Robotics</span>Design, test and fly<br>an underwater vehicle.`, capAt: [0.8, 5.6] },
-  { kind: "html", id: "vehicles", dur: 6.5, cls: "card", html: `
-      <div style="position:absolute;top:70px;left:0;right:0;text-align:center"><span class="big" style="font-size:62px">Bring your vehicle.</span></div>
+  { kind: "words", id: "w1", dur: 7.0, lines: [["Marine work is planned on paper", 0.6], ["and learned at sea.", 2.6]] },
+  { kind: "words", id: "w2", dur: 6.5, lines: [["Nobody sees the seabed, the current or the plume", 0.6], ["until the job is under way.", 2.6]] },
+  { kind: "words", id: "w3", dur: 5.5, lines: [["And the sea pays for what nobody saw.", 0.6]] },
+  { kind: "words", id: "w4", dur: 4.5, lines: [["Rehearse it first.", 0.5]], big: true },
+  { kind: "film", id: "intro", src: "reef_alfahal.mp4", dur: 8.0, from: 8, rate: 1, push: [1.06, 1.0],
+    panel: `<span class="k">Introducing</span><span class="t" style="font-size:150px;line-height:1">iOcean</span><span class="s">A digital twin for marine operations</span>`, at: [1.0, 7.4] },
+  { kind: "ui", id: "tour", src: "intro.mp4", dur: 15.0, rate: 1.0, top: "Your places, your fleet, your missions.",
+    keys: [[0, 0.92, .5, .5], [1.0, 1.15, .45, .35], [5.5, 1.15, .45, .35], [7.0, 1.15, .45, .4], [10.5, 1.15, .45, .3], [14, 1.0, .5, .5]] },
+  { kind: "film", id: "coupled", src: "tank_new.mp4", dur: 8.0, from: 31, rate: 1, push: [1.05, 1.0],
+    panel: `<span class="t">One coupled model of the sea</span><span class="s">place · assets · operations — each acting on the others, both ways</span>`, at: [0.8, 7.4] },
+  { kind: "words", id: "w5", dur: 8.0, lines: [["Physics on GPUs.", 0.6], ["Real seabeds, from satellites and surveys.", 2.4], ["A source for every number.", 4.2]] },
+  { kind: "html", id: "vehicles", dur: 7.0, cls: "paper", html: `
+      <div class="ctitle"><span style="font-family:var(--sans);font-size:24px;letter-spacing:.2em;text-transform:uppercase;font-weight:650;color:var(--sea-2);display:block;margin-bottom:12px">iOcean Robotics</span>Design, test and fly a vehicle.</div>
       <div class="grid6"><div><img src="${A}remus-100.jpg"></div><div><img src="${A}seaglider.jpg"></div><div><img src="${A}bluerov2-heavy.jpg"></div>
         <div><img src="${A}edgetech-2300.jpg"></div><div><img src="${A}boxfish-luna.jpg"></div><div><img src="${A}mini-hoot.jpg"></div></div>
-      <div style="position:absolute;bottom:70px;left:0;right:0;text-align:center;font-family:var(--sans);font-size:28px;color:var(--muted)">Hull, thrusters or fins, sensors, battery — and your own controller.</div>`,
-    run: (t, el) => el.querySelectorAll(".grid6 div").forEach((d, i) => { d.style.opacity = ramp(t, 0.3 + i * 0.25, 0.9 + i * 0.25); }) },
-  { kind: "ui", id: "designer", src: "designer.mp4", dur: 11.0, rate: 1.0, pill: "Plan it against the vehicle you will send.",
-    keys: [[0, 0.94, .5, .5], [1.3, 1.25, .45, .4], [4.8, 1.6, .8, .3], [8.0, 1.6, .8, .3], [9.5, 1.15, .7, .2]] },
-  { kind: "film", id: "landfall", src: "g08.mp4", dur: 7.5, from: 0, rate: 1, push: [1.0, 1.04], shade: "b",
-    cap: `<span class="k">Offshore</span>A pipeline landfall, inspected for free spans.`, capAt: [0.8, 7.0] },
-  { kind: "film", id: "pipe", src: "pipeline.mp4", dur: 12.0, from: 125, rate: 1.4, push: [1.0, 1.0], shade: "b",
-    cap: `<small style="margin:0">REMUS 100 following the line at 4.5 m · simulated</small>`, capAt: [0.6, 11.5],
-    nums: [["452 / 452 m", "of the line seen"], ["3 / 3", "free spans seen"], ["0", "of 1,096,027 colonies struck"]], numsAt: 2.5, numsGap: 1.7 },
-  { kind: "card", id: "c2", dur: 4.0, text: "Change one thing." },
+      <div class="sub">Hull, thrusters or fins, sensors, battery — and your own controller.</div>`,
+    run: (t, el) => el.querySelectorAll(".grid6 div").forEach((d, i) => { d.style.opacity = ramp(t, 0.5 + i * 0.25, 1.1 + i * 0.25); }) },
+  { kind: "ui", id: "layout", src: "layout.mp4", dur: 13.0, rate: 1.0, top: "Lay out what is on the seabed.",
+    keys: [[0, 0.92, .5, .5], [1.7, 0.92, .5, .5], [4.0, 1.4, .52, .5], [9.8, 1.4, .56, .5], [12.1, 1.05, .5, .5]] },
+  { kind: "ui", id: "designer", src: "designer.mp4", dur: 11.0, rate: 1.0, top: "Plan it against the vehicle you will send.",
+    keys: [[0, 0.92, .5, .5], [1.3, 1.25, .45, .45], [4.8, 1.55, .8, .35], [8.0, 1.55, .8, .35], [9.5, 1.1, .7, .3]] },
+  { kind: "film", id: "landfall", src: "g08.mp4", dur: 7.5, from: 0, rate: 1, push: [1.0, 1.04],
+    panel: `<span class="k">Offshore</span><span class="t">A pipeline landfall,<br>inspected for free spans.</span>`, at: [0.8, 7.0] },
+  { kind: "film", id: "pipe", src: "pipeline.mp4", dur: 12.0, from: 125, rate: 1.4, push: [1.0, 1.0],
+    nums: [["452 / 452 m", "of the line seen"], ["3 / 3", "free spans seen"], ["0", "of 1,096,027 colonies struck"]], numsAt: 1.5, numsGap: 1.6,
+    top: "REMUS 100 following the line at 4.5 m" },
+  { kind: "words", id: "w6", dur: 4.0, lines: [["Change one thing.", 0.5]], big: true },
   { kind: "html", id: "split", dur: 13.0, html: `
       <div class="split"><div><video src="${A}nursery_pursue.mp4" muted preload="auto"></video><div class="tag">Flies the route</div><div class="count" id="c1n"></div></div>
         <div><video src="${A}nursery_wary.mp4" muted preload="auto"></video><div class="tag">Reads its sonar</div><div class="count" id="c2n"></div></div></div>
-      <div class="pill" id="splitpill" style="bottom:120px">Same reef, same water, same seed. Only the controller changes.</div>`,
+      <div class="top" id="splittop">Same reef, same water, same seed — only the controller changes.</div>`,
     videos: [{ sel: "video", from: 100, rate: 3.0 }],
-    run: (t) => { $("splitpill").style.opacity = ramp(t, 0.8, 1.8) * (1 - ramp(t, 6.5, 7.5)); strikes(t, 100, 3.0); } },
-  { kind: "film", id: "port", src: "g09.mp4", dur: 6.0, from: 0, rate: 1, push: [1.0, 1.06], shade: "b",
-    cap: `<span class="k">Ports</span>Dredging beside a reef.`, capAt: [0.8, 5.6] },
-  { kind: "film", id: "plume", src: "plume.mp4", dur: 10.0, from: 0, rate: 1.5, push: [1.0, 1.08], shade: "none", fit: "contain",
-    cap: `Where the plume goes — and what it settles on.<small>six hours · 67,478 colonies over 10 mg/cm²/day · the farthest 420 m away · rate assumed, thresholds Erftemeijer 2012</small>`,
-    capAt: [0.8, 9.5], capTop: true },
-  { kind: "film", id: "diver", src: "g11.mp4", dur: 6.5, from: 0, rate: 1, push: [1.0, 1.05], shade: "b",
-    cap: `<span class="k">Places</span>A twin is only as real as its seabed.`, capAt: [0.8, 6.0] },
-  { kind: "film", id: "shushah", src: "reef_shushah.mp4", dur: 9.0, from: 20, rate: 1, push: [1.04, 1.0], shade: "l",
-    cap: `Shushah Island<small>seabed fitted to 7,149 ICESat-2 depths · ±1.28 m held out · 1.7 million colonies · its own recorded fish<br>next: AI depth from imagery, coral cover, your data fused cell by cell</small>`, capAt: [0.8, 8.5],
-    inset: "shushah.jpg" },
+    run: (t) => { $("splittop").style.opacity = ramp(t, 0.6, 1.4); strikes(t, 100, 3.0); } },
+  { kind: "ui", id: "fly", src: "fly.mp4", dur: 15.0, rate: 1.0, top: "Or everything that could go differently: four currents, four dives.",
+    keys: [[0, 0.92, .5, .5], [1.4, 1.5, .55, .25], [5.8, 1.5, .55, .25], [7.5, 1.5, .66, .25], [9.6, 1.5, .66, .25], [11.3, 1.35, .75, .88], [13.8, 1.35, .78, .9]] },
+  { kind: "ui", id: "results", src: "results.mp4", dur: 9.5, rate: 1.0, top: "Flown remotely on GPU hosts — in parallel — and back.",
+    keys: [[0, 0.92, .5, .5], [1.2, 1.2, .52, .32], [9.5, 1.2, .52, .35]] },
+  { kind: "film", id: "port", src: "g09.mp4", dur: 6.0, from: 0, rate: 1, push: [1.0, 1.06],
+    panel: `<span class="k">Ports</span><span class="t">Dredging beside a reef.</span>`, at: [0.8, 5.6] },
+  { kind: "film", id: "plume", src: "plume.mp4", dur: 10.0, from: 0, rate: 1.5, push: [1.0, 1.06], fit: "contain",
+    top: "Where the plume goes — and what it settles on." },
+  { kind: "film", id: "shushah", src: "reef_shushah.mp4", dur: 9.0, from: 20, rate: 1, push: [1.04, 1.0],
+    panel: `<span class="k">Places</span><span class="t">A twin is only as real as its seabed.</span><span class="s">Shushah Island · fitted to 7,149 ICESat-2 depths · ±1.28 m<br>next: AI depth from imagery, coral cover, your data fused</span>`, at: [0.8, 8.5] },
   { kind: "html", id: "prov", dur: 10.0, cls: "paper", html: `
-      <h2>Every number says where it came from.</h2>
+      <div class="ctitle">Every number says where it came from.</div>
+      <div class="rows">
       <div class="row"><span>Pipeline seen</span><span class="v">452 of 452 m</span><span class="p derived">derived</span></div>
       <div class="row"><span>Water clarity off Thuwal</span><span class="v">Kd 0.05–0.12 m⁻¹</span><span class="p measured">measured</span></div>
       <div class="row"><span>Survey altitude</span><span class="v">4.5 m</span><span class="p chosen">chosen</span></div>
-      <div class="row"><span>Dredger overflow loss</span><span class="v">20 kg/s</span><span class="p assumed">assumed</span></div>`,
+      <div class="row"><span>Dredger overflow loss</span><span class="v">20 kg/s</span><span class="p assumed">assumed</span></div></div>`,
     run: (t, el) => el.querySelectorAll(".row").forEach((r, i) => { r.style.opacity = ramp(t, 1.0 + i * 1.2, 1.7 + i * 1.2); }) },
-  { kind: "ui", id: "results", src: "results.mp4", dur: 9.5, rate: 1.0, pill: "Flown remotely on GPU hosts — in parallel.",
-    keys: [[0, 0.94, .5, .5], [1.2, 1.22, .52, .3], [9.5, 1.22, .52, .33]] },
-  { kind: "film", id: "platform", src: "g10.mp4", dur: 6.0, from: 0, rate: 1, push: [1.0, 1.04], shade: "b",
-    cap: `<span class="k">Next</span>From vehicles to everything in the sea.`, capAt: [0.8, 5.6] },
-  { kind: "html", id: "roadmap", dur: 11.0, cls: "card", html: `
-      <div style="position:absolute;top:110px;left:150px"><span class="big" style="font-size:68px">From one product to one ocean twin.</span></div>
+  { kind: "html", id: "roadmap", dur: 11.0, cls: "paper", html: `
+      <div class="ctitle">From one product to one ocean twin.</div>
       <div class="rail"></div>
       <div class="phases">
         <div class="phase"><div class="dot" style="background:var(--sea-2)"></div><p>Phase 1 · the next 9 months</p><h3>iOcean Robotics</h3>
@@ -129,17 +130,17 @@ const SPEC = [
           <ul><li>Every module, one model</li><li>Live data in</li><li>Assets that respond to the sea</li></ul></div>
       </div>`,
     run: (t, el) => el.querySelectorAll(".phase").forEach((p, i) => { p.style.opacity = ramp(t, 0.6 + i * 1.6, 1.4 + i * 1.6); }) },
-  { kind: "film", id: "whole", src: "g12.mp4", dur: 6.0, from: 0, rate: 0.9, push: [1.0, 1.08], shade: "b",
-    cap: `One ocean digital twin.`, capAt: [0.8, 5.6] },
-  { kind: "html", id: "end", dur: 8.0, cls: "card", html: `
-      <div><div class="big" style="font-size:150px">iOcean</div>
+  { kind: "film", id: "whole", src: "g12.mp4", dur: 6.0, from: 0, rate: 0.9, push: [1.0, 1.08],
+    panel: `<span class="t">One ocean digital twin.</span>`, at: [0.8, 5.6] },
+  { kind: "html", id: "end", dur: 8.0, cls: "paper", html: `
+      <div style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center"><div class="big" style="font-size:150px">iOcean</div>
       <div class="big" style="font-size:50px;margin-top:22px;color:#3b4850">A digital twin for marine operations.</div>
       <div style="font-family:var(--sans);font-size:24px;color:var(--muted);margin-top:60px">Saudi Maritime &amp; Logistics Congress · Jeddah · October 2026</div></div>`,
     run: (t, el) => { el.firstElementChild.style.opacity = ramp(t, 0.4, 1.6); } },
 ];
 
 // ── the machinery ────────────────────────────────────────────────────────────
-const FADE = 0.6;
+const FADE = 0.7;
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
 const ease = k => 0.5 - 0.5 * Math.cos(Math.PI * clamp(k));
 const ramp = (t, a, b) => ease((t - a) / (b - a));
@@ -159,24 +160,36 @@ function zoom(el, t, keys) {
   const [, s, x, y] = k;
   el.style.transform = `translate(${(0.5 - x) * 1600 * (s - 1)}px, ${(0.5 - y) * 900 * (s - 1)}px) scale(${s})`;
 }
+// Depth contours: a dozen thin lines, each a slow sum of waves, drifting.
+function contours(svg, T) {
+  let out = "";
+  for (let i = 0; i < 14; i++) {
+    const y0 = 80 + i * 72, a1 = 26 + 9 * Math.sin(i * 1.7), a2 = 14 + 6 * Math.cos(i * 0.9), ph = T * 0.12 + i * 0.6;
+    let d = "";
+    for (let x = -20; x <= 1940; x += 40) {
+      const y = y0 + a1 * Math.sin(x / 260 + ph) + a2 * Math.sin(x / 113 - ph * 1.3 + i);
+      d += (x === -20 ? "M" : "L") + x + " " + y.toFixed(1);
+    }
+    out += `<path d="${d}" fill="none" stroke="rgba(127,180,193,${(0.06 + 0.05 * Math.sin(i)).toFixed(3)})" stroke-width="1.2"/>`;
+  }
+  svg.innerHTML = out;
+}
 
 const root = $("root");
 for (const s of SPEC) {
   const el = document.createElement("div");
-  el.className = "scene " + (s.cls || (s.kind === "card" ? "card" : s.kind === "ui" ? "dark" : ""));
+  el.className = "scene " + (s.cls || (s.kind === "words" ? "sea" : s.kind === "ui" ? "dark" : ""));
   el.id = s.id;
-  if (s.kind === "film") {
+  if (s.kind === "words") {
+    el.innerHTML = SEA + `<div class="words">${s.lines.map(([l]) => `<span class="l" style="${s.big ? "font-size:110px" : ""}">${l}</span>`).join("")}</div>`;
+  } else if (s.kind === "film") {
     el.innerHTML = `<video class="full" src="${A}${s.src}" muted preload="auto" style="${s.fit === "contain" ? "object-fit:contain;background:#0d1b24" : ""}"></video>` +
-      (s.shade && s.shade !== "none" ? `<div class="shade-${s.shade}"></div>` : "") +
-      (s.inset ? `<img src="${A}${s.inset}" style="position:absolute;right:120px;top:110px;width:300px;height:300px;border-radius:14px;border:2px solid rgba(255,255,255,.7);box-shadow:0 20px 60px rgba(0,0,0,.4)">` : "") +
-      `<div class="cap" style="${s.capTop ? "bottom:auto;top:90px" : ""}">${s.cap || ""}</div>` +
-      (s.nums ? `<div class="nums">${s.nums.map(([b, sp]) => `<div class="num"><b>${b}</b><span>${sp}</span></div>`).join("")}</div>` : "");
+      (s.panel ? `<div class="panel">${s.panel}</div>` : "") + (s.top ? `<div class="top">${s.top}</div>` : "") +
+      (s.nums ? `<div class="numrow">${s.nums.map(([b, sp]) => `<div class="num"><b>${b}</b><span>${sp}</span></div>`).join("")}</div>` : "");
     s.videos = [{ sel: "video", from: s.from, rate: s.rate }];
   } else if (s.kind === "ui") {
-    el.innerHTML = `<div class="window"><video src="${A}${s.src}" muted preload="auto"></video></div><div class="pill">${s.pill}</div>`;
+    el.innerHTML = `<div class="window"><video src="${A}${s.src}" muted preload="auto"></video></div><div class="top">${s.top}</div>`;
     s.videos = [{ sel: "video", from: 0, rate: s.rate }];
-  } else if (s.kind === "card") {
-    el.innerHTML = `<h1>${s.text}</h1>`;
   } else {
     el.innerHTML = s.html;
   }
@@ -189,23 +202,27 @@ window.renderAt = async function (T) {
   const waits = [];
   SPEC.forEach((s, i) => {
     const el = $(s.id), on = T >= s.a - 1e-6 && T <= s.b + 1e-6;
-    const fadeIn = s.a === 0 ? 1 : ramp(T, s.a, s.a + FADE), fadeOut = 1 - ramp(T, s.b - FADE, s.b);
+    const fadeIn = s.a === 0 ? ramp(T, 0, 0.8) : ramp(T, s.a, s.a + FADE), fadeOut = 1 - ramp(T, s.b - FADE, s.b);
     el.style.opacity = on ? Math.min(fadeIn, fadeOut) : 0;
     el.style.visibility = on ? "visible" : "hidden";
     el.style.zIndex = on ? String(1 + i) : "0";
     if (!on) return;
     const t = T - s.a;
-    if (s.kind === "film") {
+    if (s.kind === "words") {
+      contours(el.querySelector("svg"), T);
+      el.querySelectorAll(".words .l").forEach((l, j) => { const at = s.lines[j][1];
+        l.style.opacity = ramp(t, at, at + 1.0); l.style.transform = `translateY(${14 * (1 - ramp(t, at, at + 1.0))}px)`; });
+    } else if (s.kind === "film") {
       el.querySelector("video").style.transform = `scale(${s.push[0] + (s.push[1] - s.push[0]) * ease(t / s.dur)})`;
-      const cap = el.querySelector(".cap");
-      cap.style.opacity = ramp(t, s.capAt[0], s.capAt[0] + 0.9) * (1 - ramp(t, s.capAt[1], s.capAt[1] + 0.5));
-      cap.style.transform = `translateY(${10 * (1 - ramp(t, s.capAt[0], s.capAt[0] + 0.9))}px)`;
-      if (s.nums) el.querySelectorAll(".num").forEach((n, j) => n.style.opacity = ramp(t, s.numsAt + j * s.numsGap, s.numsAt + j * s.numsGap + 0.8));
+      const p = el.querySelector(".panel");
+      if (p) { p.style.opacity = ramp(t, s.at[0], s.at[0] + 1.0) * (1 - ramp(t, s.at[1], s.at[1] + 0.5));
+        p.style.transform = `translate(-50%, calc(-50% + ${12 * (1 - ramp(t, s.at[0], s.at[0] + 1.0))}px))`; }
+      const top = el.querySelector(".top"); if (top) top.style.opacity = ramp(t, 0.6, 1.4);
+      if (s.nums) el.querySelector(".numrow").style.opacity = ramp(t, s.numsAt - 0.4, s.numsAt + 0.4),
+        el.querySelectorAll(".num").forEach((n, j) => n.style.opacity = ramp(t, s.numsAt + j * s.numsGap, s.numsAt + j * s.numsGap + 0.8));
     } else if (s.kind === "ui") {
       zoom(el.querySelector(".window"), t, s.keys);
-      el.querySelector(".pill").style.opacity = ramp(t, 0.8, 1.6);
-    } else if (s.kind === "card") {
-      el.querySelector("h1").style.transform = `translateY(${12 * (1 - ramp(t, 0, 1.2))}px)`;
+      el.querySelector(".top").style.opacity = ramp(t, 0.6, 1.4);
     }
     if (s.run) s.run(t, el);
     for (const v of s.videos || []) {
