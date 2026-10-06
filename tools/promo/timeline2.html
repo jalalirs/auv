@@ -55,6 +55,27 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:#000}
 .phase ul{list-style:none;font-family:var(--sans);font-size:25px;line-height:1.65;margin-top:16px;color:#33434b}
 .rail{position:absolute;left:330px;right:330px;top:381px;height:4px;border-radius:2px;background:linear-gradient(90deg,var(--sea-2),var(--amber),var(--coral))}
 .big{font-family:var(--serif);font-weight:400;color:var(--text)}
+.comps{position:absolute;left:140px;right:140px;top:420px;display:grid;grid-template-columns:repeat(4,1fr);gap:22px}
+.comp{border-radius:18px;padding:22px 24px 24px;text-align:left;position:relative}
+.comp.on{background:rgba(16,35,48,.7);border:1px solid rgba(127,180,193,.35)}
+.comp.next{background:rgba(16,35,48,.35);border:1px dashed rgba(242,163,58,.5)}
+.comp h5{font-family:var(--serif);font-weight:400;font-size:36px;color:#eef3f1}
+.comp p{font-family:var(--sans);font-size:21px;color:#a9c3ca;margin-top:6px;line-height:1.4}
+.comp .b{position:absolute;right:16px;top:16px;font-family:var(--sans);font-size:16px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:4px 10px;border-radius:999px}
+.comp.on .b{background:rgba(127,180,193,.2);color:var(--sea)} .comp.next .b{background:rgba(242,163,58,.18);color:var(--amber)}
+.nexts{position:absolute;left:160px;right:160px;top:400px;display:grid;grid-template-columns:repeat(4,1fr);gap:30px}
+.nx{border:1px dashed rgba(242,163,58,.55);border-radius:20px;padding:34px 28px;background:rgba(16,35,48,.4);text-align:center}
+.nx h5{font-family:var(--serif);font-weight:400;font-size:44px;color:#eef3f1}
+.nx p{font-family:var(--sans);font-size:24px;color:#a9c3ca;margin-top:14px;line-height:1.45}
+.road{position:absolute;left:110px;right:110px;top:250px;display:grid;grid-template-columns:1fr 1.5fr 1fr;gap:40px;text-align:center}
+.tiles{height:400px;border-radius:16px;overflow:hidden;position:relative}
+.tiles video{width:100%;height:100%;object-fit:cover;display:block}
+.tiles.three{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;background:none}
+.tiles.three>div{position:relative;border-radius:14px;overflow:hidden}
+.tiles.three b{position:absolute;left:0;right:0;bottom:14px;text-align:center;font-family:var(--sans);font-size:24px;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.7)}
+.ph p{font-family:var(--sans);font-size:24px;color:var(--muted);margin-top:24px}
+.ph h3{font-family:var(--serif);font-weight:400;font-size:48px;color:var(--text);margin-top:6px}
+.ph span{display:block;font-family:var(--sans);font-size:24px;color:#33434b;margin-top:10px;line-height:1.45}
 .info{position:absolute;left:120px;right:120px;top:170px;display:grid;grid-template-columns:repeat(3,1fr);gap:50px}
 .ip{background:rgba(16,35,48,.55);border:1px solid rgba(127,180,193,.22);border-radius:22px;padding:30px 30px 36px;text-align:center;height:780px}
 .ip h4{font-family:var(--serif);font-weight:400;font-size:46px;color:#eef3f1;margin-top:26px}
@@ -80,16 +101,17 @@ const SEA = `<svg viewBox="0 0 1920 1080" preserveAspectRatio="none"></svg>`;
 // film: a clip, slowly pushed in, a panel of words in the middle of it.
 // ui: an app recording in a window, a line at the top, zoomed by keys.
 const SPEC = [
+  // ── 1. the problem ──
   { kind: "words", id: "w1", dur: 7.0, lines: [["Marine work is planned on paper", 0.6], ["and learned at sea.", 2.6]] },
   { kind: "words", id: "w2", dur: 6.5, lines: [["Nobody sees the seabed, the current or the plume", 0.6], ["until the job is under way.", 2.6]] },
-  { kind: "words", id: "w3", dur: 5.5, lines: [["And the sea pays for what nobody saw.", 0.6]] },
+  { kind: "film", id: "pays", src: "g04.mp4", dur: 6.5, from: 0, rate: 1, push: [1.0, 1.07],
+    panel: `<span class="t">And the sea pays for what nobody saw.</span>`, at: [0.8, 6.0] },
   { kind: "words", id: "w4", dur: 4.5, lines: [["Rehearse it first.", 0.5]], big: true },
+  // ── 2. what iOcean is ──
   { kind: "film", id: "intro", src: "reef_alfahal.mp4", dur: 8.0, from: 8, rate: 1, push: [1.06, 1.0],
-    panel: `<span class="k">Introducing</span><span class="t" style="font-size:150px;line-height:1">iOcean</span><span class="s">A digital twin for marine operations</span>`, at: [1.0, 7.4] },
-  { kind: "ui", id: "tour", src: "intro.mp4", dur: 15.0, rate: 1.0, top: "Your places, your fleet, your missions.",
-    keys: [[0, 0.92, .5, .5], [1.0, 1.15, .45, .35], [5.5, 1.15, .45, .35], [7.0, 1.15, .45, .4], [10.5, 1.15, .45, .3], [14, 1.0, .5, .5]] },
-  { kind: "film", id: "coupled", src: "reef_alfahal.mp4", dur: 8.0, from: 25, rate: 1, push: [1.05, 1.0],
-    panel: `<span class="t">One coupled model of the sea</span><span class="s">the place, what is built in it and what works in it — each acting on the others</span>`, at: [0.8, 7.4] },
+    panel: `<span class="k">Introducing</span><span class="t" style="font-size:150px;line-height:1">iOcean</span><span class="s">A unified platform for marine engineering work</span>`, at: [1.0, 7.4] },
+  { kind: "film", id: "coupled", src: "reef_alfahal.mp4", dur: 8.5, from: 25, rate: 1, push: [1.05, 1.0],
+    panel: `<span class="t">One digital twin of the sea</span><span class="s">the place, what is built in it and what works in it — simulated together,<br>each acting on the others, so a job can be rehearsed before anyone goes to sea</span>`, at: [0.8, 7.9] },
   { kind: "html", id: "built", dur: 11.0, cls: "sea", html: SEA + `
       <div style="position:absolute;top:80px;left:0;right:0;text-align:center;font-family:var(--sans);font-size:24px;letter-spacing:.2em;text-transform:uppercase;font-weight:650;color:var(--sea)">How it is built</div>
       <div class="info">
@@ -113,63 +135,95 @@ const SPEC = [
         c.style.transform = `translateX(${-24 * (1 - ramp(t, 3.4 + j * 0.45, 3.9 + j * 0.45))}px)`; });
       $("tracepath").style.strokeDashoffset = String(-t * 30);
       el.querySelector(".from").style.opacity = ramp(t, 6.4, 7.2); el.querySelector(".tk").style.opacity = ramp(t, 5.6, 6.2); } },
+  { kind: "ui", id: "tour", src: "intro.mp4", dur: 15.0, rate: 1.0, top: "Planned at your desk; simulated remotely, on GPU hosts.",
+    keys: [[0, 0.92, .5, .5], [1.0, 1.15, .45, .35], [5.5, 1.15, .45, .35], [7.0, 1.15, .45, .4], [10.5, 1.15, .45, .3], [14, 1.0, .5, .5]] },
+  // ── 3. iOcean Robotics, phase one ──
+  { kind: "html", id: "robotics", dur: 14.0, cls: "sea", html: SEA + `
+      <div style="position:absolute;top:90px;left:0;right:0;text-align:center">
+        <div style="font-family:var(--sans);font-size:24px;letter-spacing:.2em;text-transform:uppercase;font-weight:650;color:var(--sea)">Phase one</div>
+        <div style="font-family:var(--serif);font-size:96px;color:#eef3f1;margin-top:10px">iOcean Robotics</div>
+        <div style="font-family:var(--sans);font-size:30px;color:#a9c3ca;margin-top:12px">Design, test and fly underwater vehicles in real seas — before the boat leaves.</div></div>
+      <div class="comps">
+        ${[["Places", "real seabeds and reefs", 1], ["Vehicles", "hull, thrusters, sensors, battery", 1], ["Controllers", "yours, through our SDK", 1],
+           ["Missions", "lay out and plan the job", 1], ["Sweeps", "everything that could go differently", 1], ["Remote runs", "flown on GPU hosts", 1],
+           ["Results", "films, and every number's source", 1], ["Vehicle Lab", "tow, manoeuvre, compare designs", 0],
+           ["AI places", "depth and coral cover from imagery", 0], ["Autonomy", "SLAM and swarm test engines", 0],
+           ["Synthetic data", "train controllers, test on new seas", 0]]
+          .map(([n, d, b]) => `<div class="comp ${b ? "on" : "next"}"><span class="b">${b ? "built" : "next"}</span><h5>${n}</h5><p>${d}</p></div>`).join("")}
+      </div>`,
+    run: (t, el) => { contours(el.querySelector("svg"), T_NOW);
+      el.querySelectorAll(".comp").forEach((c, i) => { c.style.opacity = ramp(t, 2.0 + i * 0.35, 2.6 + i * 0.35);
+        c.style.transform = `translateY(${16 * (1 - ramp(t, 2.0 + i * 0.35, 2.6 + i * 0.35))}px)`; }); } },
+  // ── 4. what is built, on one job ──
+  { kind: "film", id: "places", src: "reef_shushah.mp4", dur: 8.0, from: 20, rate: 1, push: [1.04, 1.0],
+    panel: `<span class="k">Built · Places</span><span class="t">Real seabeds, reef by reef.</span><span class="s">Shushah Island · fitted to 7,149 ICESat-2 depths · ±1.28 m · 1.7 million colonies · its own recorded fish</span>`, at: [0.8, 7.4] },
   { kind: "html", id: "vehicles", dur: 7.0, cls: "paper", html: `
-      <div class="ctitle"><span style="font-family:var(--sans);font-size:24px;letter-spacing:.2em;text-transform:uppercase;font-weight:650;color:var(--sea-2);display:block;margin-bottom:12px">iOcean Robotics</span>Design, test and fly a vehicle.</div>
+      <div class="ctitle"><span style="font-family:var(--sans);font-size:24px;letter-spacing:.2em;text-transform:uppercase;font-weight:650;color:var(--sea-2);display:block;margin-bottom:12px">Built · Vehicles</span>Six vehicles, from the makers' own sheets.</div>
       <div class="grid6"><div><img src="${A}remus-100.jpg"></div><div><img src="${A}seaglider.jpg"></div><div><img src="${A}bluerov2-heavy.jpg"></div>
         <div><img src="${A}edgetech-2300.jpg"></div><div><img src="${A}boxfish-luna.jpg"></div><div><img src="${A}mini-hoot.jpg"></div></div>
-      <div class="sub">Hull, thrusters or fins, sensors, battery — and your own controller.</div>`,
+      <div class="sub">REMUS 100 · Seaglider · BlueROV2 Heavy · EdgeTech 2300 · Boxfish Luna · our mini-hoot</div>`,
     run: (t, el) => el.querySelectorAll(".grid6 div").forEach((d, i) => { d.style.opacity = ramp(t, 0.5 + i * 0.25, 1.1 + i * 0.25); }) },
-  { kind: "ui", id: "layout", src: "layout.mp4", dur: 13.0, rate: 1.0, top: "Lay out what is on the seabed.",
+  { kind: "words", id: "job", dur: 5.0, lines: [["One job, end to end:", 0.5], ["a pipeline landfall, inspected for free spans.", 1.8]] },
+  { kind: "ui", id: "layout", src: "layout.mp4", dur: 13.0, rate: 1.0, top: "Built · Missions — lay the pipeline on the seabed.",
     keys: [[0, 0.92, .5, .5], [1.7, 0.92, .5, .5], [4.0, 1.4, .52, .5], [9.8, 1.4, .56, .5], [12.1, 1.05, .5, .5]] },
-  { kind: "ui", id: "designer", src: "designer.mp4", dur: 11.0, rate: 1.0, top: "Plan it against the vehicle you will send.",
+  { kind: "ui", id: "designer", src: "designer.mp4", dur: 11.0, rate: 1.0, top: "Plan it against the vehicle you will send: a REMUS 100, five minutes.",
     keys: [[0, 0.92, .5, .5], [1.3, 1.25, .45, .45], [4.8, 1.55, .8, .35], [8.0, 1.55, .8, .35], [9.5, 1.1, .7, .3]] },
-  { kind: "film", id: "landfall", src: "g08.mp4", dur: 7.5, from: 0, rate: 1, push: [1.0, 1.04],
-    panel: `<span class="k">Offshore</span><span class="t">A pipeline landfall,<br>inspected for free spans.</span>`, at: [0.8, 7.0] },
+  { kind: "ui", id: "fly", src: "fly.mp4", dur: 15.0, rate: 1.0, top: "Built · Sweeps — four currents, one dive each.",
+    keys: [[0, 0.92, .5, .5], [1.4, 1.5, .55, .25], [5.8, 1.5, .55, .25], [7.5, 1.5, .66, .25], [9.6, 1.5, .66, .25], [11.3, 1.35, .75, .88], [13.8, 1.35, .78, .9]] },
+  { kind: "ui", id: "results", src: "results.mp4", dur: 9.5, rate: 1.0, top: "Built · Remote runs — flown on GPU hosts, in parallel, and back.",
+    keys: [[0, 0.92, .5, .5], [1.2, 1.2, .52, .32], [9.5, 1.2, .52, .35]] },
   { kind: "film", id: "pipe", src: "pipeline.mp4", dur: 12.0, from: 125, rate: 1.4, push: [1.0, 1.0],
     nums: [["452 / 452 m", "of the line seen"], ["3 / 3", "free spans seen"], ["0", "of 1,096,027 colonies struck"]], numsAt: 1.5, numsGap: 1.6,
-    top: "REMUS 100 following the line at 4.5 m" },
-  { kind: "words", id: "w6", dur: 4.0, lines: [["Change one thing.", 0.5]], big: true },
+    top: "Built · Results — the REMUS following the line, as flown." },
+  { kind: "html", id: "prov", dur: 10.5, cls: "paper", html: `
+      <div class="ctitle"><span style="font-family:var(--sans);font-size:24px;letter-spacing:.2em;text-transform:uppercase;font-weight:650;color:var(--sea-2);display:block;margin-bottom:12px">This job's numbers</span>Each says where it came from.</div>
+      <div class="rows" style="top:330px">
+      <div class="row"><span>Pipeline seen</span><span class="v">452 of 452 m</span><span class="p derived">derived</span></div>
+      <div class="row"><span>Survey altitude</span><span class="v">4.5 m</span><span class="p chosen">chosen</span></div>
+      <div class="row"><span>Water clarity off Thuwal</span><span class="v">Kd 0.05–0.12 m⁻¹</span><span class="p measured">measured</span></div>
+      <div class="row"><span>This reef's shape</span><span class="v">constructed</span><span class="p assumed">assumed</span></div></div>`,
+    run: (t, el) => el.querySelectorAll(".row").forEach((r, i) => { r.style.opacity = ramp(t, 1.0 + i * 1.2, 1.7 + i * 1.2); }) },
+  // ── what is envisioned ──
+  { kind: "html", id: "next", dur: 11.0, cls: "sea", html: SEA + `
+      <div style="position:absolute;top:110px;left:0;right:0;text-align:center">
+        <div style="font-family:var(--sans);font-size:24px;letter-spacing:.2em;text-transform:uppercase;font-weight:650;color:var(--amber)">Next, in phase one</div>
+        <div style="font-family:var(--serif);font-size:76px;color:#eef3f1;margin-top:12px">What we are building now.</div></div>
+      <div class="nexts">
+        <div class="nx"><h5>Vehicle Lab</h5><p>Tow tank, standard manoeuvres, design A against design B</p></div>
+        <div class="nx"><h5>AI places</h5><p>Depth and coral cover from imagery; your surveys fused cell by cell</p></div>
+        <div class="nx"><h5>Autonomy</h5><p>SLAM and swarm test engines, scored against the truth</p></div>
+        <div class="nx"><h5>Synthetic data</h5><p>Train controllers on our seas, test them on seas they never saw</p></div>
+      </div>`,
+    run: (t, el) => { contours(el.querySelector("svg"), T_NOW);
+      el.querySelectorAll(".nx").forEach((c, i) => { c.style.opacity = ramp(t, 1.4 + i * 1.1, 2.1 + i * 1.1); }); } },
+  // ── 5. bring your own ──
+  { kind: "words", id: "sdk", dur: 7.0, lines: [["Design your vehicle and controller with our SDK.", 0.5], ["Run them. Compare them.", 2.4]] },
   { kind: "html", id: "split", dur: 13.0, html: `
-      <div class="split"><div><video src="${A}nursery_pursue.mp4" muted preload="auto"></video><div class="tag">Flies the route</div><div class="count" id="c1n"></div></div>
-        <div><video src="${A}nursery_wary.mp4" muted preload="auto"></video><div class="tag">Reads its sonar</div><div class="count" id="c2n"></div></div></div>
-      <div class="top" id="splittop">Same reef, same water, same seed — only the controller changes.</div>`,
+      <div class="split"><div><video src="${A}nursery_pursue.mp4" muted preload="auto"></video><div class="tag">Controller A · flies the route</div><div class="count" id="c1n"></div></div>
+        <div><video src="${A}nursery_wary.mp4" muted preload="auto"></video><div class="tag">Controller B · reads its sonar</div><div class="count" id="c2n"></div></div></div>
+      <div class="top" id="splittop">The same vehicle, reef, water and seed — two controllers.</div>`,
     videos: [{ sel: "video", from: 100, rate: 3.0 }],
     run: (t) => { $("splittop").style.opacity = ramp(t, 0.6, 1.4); strikes(t, 100, 3.0); } },
-  { kind: "ui", id: "fly", src: "fly.mp4", dur: 15.0, rate: 1.0, top: "Or everything that could go differently: four currents, four dives.",
-    keys: [[0, 0.92, .5, .5], [1.4, 1.5, .55, .25], [5.8, 1.5, .55, .25], [7.5, 1.5, .66, .25], [9.6, 1.5, .66, .25], [11.3, 1.35, .75, .88], [13.8, 1.35, .78, .9]] },
-  { kind: "ui", id: "results", src: "results.mp4", dur: 9.5, rate: 1.0, top: "Flown remotely on GPU hosts — in parallel — and back.",
-    keys: [[0, 0.92, .5, .5], [1.2, 1.2, .52, .32], [9.5, 1.2, .52, .35]] },
-  { kind: "film", id: "port", src: "g09.mp4", dur: 6.0, from: 0, rate: 1, push: [1.0, 1.06],
-    panel: `<span class="k">Ports</span><span class="t">Dredging beside a reef.</span>`, at: [0.8, 5.6] },
-  { kind: "film", id: "plume", src: "plume.mp4", dur: 10.0, from: 0, rate: 1.5, push: [1.0, 1.06], fit: "contain",
-    top: "Where the plume goes — and what it settles on." },
-  { kind: "film", id: "shushah", src: "reef_shushah.mp4", dur: 9.0, from: 20, rate: 1, push: [1.04, 1.0],
-    panel: `<span class="k">Places</span><span class="t">A twin is only as real as its seabed.</span><span class="s">Shushah Island · fitted to 7,149 ICESat-2 depths · ±1.28 m<br>next: AI depth from imagery, coral cover, your data fused</span>`, at: [0.8, 8.5] },
-  { kind: "html", id: "prov", dur: 10.0, cls: "paper", html: `
-      <div class="ctitle">Every number says where it came from.</div>
-      <div class="rows">
-      <div class="row"><span>Pipeline seen</span><span class="v">452 of 452 m</span><span class="p derived">derived</span></div>
-      <div class="row"><span>Water clarity off Thuwal</span><span class="v">Kd 0.05–0.12 m⁻¹</span><span class="p measured">measured</span></div>
-      <div class="row"><span>Survey altitude</span><span class="v">4.5 m</span><span class="p chosen">chosen</span></div>
-      <div class="row"><span>Dredger overflow loss</span><span class="v">20 kg/s</span><span class="p assumed">assumed</span></div></div>`,
-    run: (t, el) => el.querySelectorAll(".row").forEach((r, i) => { r.style.opacity = ramp(t, 1.0 + i * 1.2, 1.7 + i * 1.2); }) },
-  { kind: "html", id: "roadmap", dur: 11.0, cls: "paper", html: `
-      <div class="ctitle">From one product to one ocean twin.</div>
-      <div class="rail"></div>
-      <div class="phases">
-        <div class="phase"><div class="dot" style="background:var(--sea-2)"></div><p>Phase 1 · the next 9 months</p><h3>iOcean Robotics</h3>
-          <ul><li>Vehicle Lab</li><li>Real places, coral cover</li><li>SLAM and swarm</li><li>Synthetic data for training</li></ul></div>
-        <div class="phase"><div class="dot" style="background:var(--amber)"></div><p>Phase 2</p><h3>Ports · Energy · Reef</h3>
-          <ul><li>Dredging, berths, quay walls</li><li>Pipelines, platforms, cables</li><li>Restoration, monitoring</li></ul></div>
-        <div class="phase"><div class="dot" style="background:var(--coral)"></div><p>Phase 3</p><h3>One ocean digital twin</h3>
-          <ul><li>Every module, one model</li><li>Live data in</li><li>Assets that respond to the sea</li></ul></div>
+  // ── 6. roadmap ──
+  { kind: "html", id: "roadmap", dur: 15.0, cls: "paper", html: `
+      <div class="ctitle" style="top:70px">From one product to one ocean twin.</div>
+      <div class="road">
+        <div class="ph" id="ph1"><div class="tiles one"><video src="${A}reef_alfahal.mp4" muted preload="auto"></video></div>
+          <p>Phase 1 · the next 9 months</p><h3>iOcean Robotics</h3><span>vehicles, places, autonomy</span></div>
+        <div class="ph" id="ph2"><div class="tiles three">
+            <div><video src="${A}g09.mp4" muted preload="auto"></video><b>Ports</b></div>
+            <div><video src="${A}g08.mp4" muted preload="auto"></video><b>Energy</b></div>
+            <div><video src="${A}g11.mp4" muted preload="auto"></video><b>Reef</b></div></div>
+          <p>Phase 2</p><h3>Ports · Energy · Reef</h3><span>dredging and berths, pipelines and platforms, restoration</span></div>
+        <div class="ph" id="ph3"><div class="tiles one"><video src="${A}g12.mp4" muted preload="auto"></video></div>
+          <p>Phase 3</p><h3>One ocean digital twin</h3><span>every module, live data, assets that respond to the sea</span></div>
       </div>`,
-    run: (t, el) => el.querySelectorAll(".phase").forEach((p, i) => { p.style.opacity = ramp(t, 0.6 + i * 1.6, 1.4 + i * 1.6); }) },
-  { kind: "film", id: "whole", src: "g12.mp4", dur: 6.0, from: 0, rate: 0.9, push: [1.0, 1.08],
-    panel: `<span class="t">One ocean digital twin.</span>`, at: [0.8, 5.6] },
+    videos: [{ sel: "video", from: 0, rate: 0.6 }],
+    run: (t, el) => ["ph1", "ph2", "ph3"].forEach((id, i) => { const e = $(id); e.style.opacity = ramp(t, 0.6 + i * 2.0, 1.5 + i * 2.0);
+      e.style.transform = `translateY(${20 * (1 - ramp(t, 0.6 + i * 2.0, 1.5 + i * 2.0))}px)`; }) },
   { kind: "html", id: "end", dur: 8.0, cls: "paper", html: `
       <div style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center"><div class="big" style="font-size:150px">iOcean</div>
-      <div class="big" style="font-size:50px;margin-top:22px;color:#3b4850">A digital twin for marine operations.</div>
+      <div class="big" style="font-size:50px;margin-top:22px;color:#3b4850">A unified platform for marine engineering work.</div>
       <div style="font-family:var(--sans);font-size:24px;color:var(--muted);margin-top:60px">Saudi Maritime &amp; Logistics Congress · Jeddah · October 2026</div></div>`,
     run: (t, el) => { el.firstElementChild.style.opacity = ramp(t, 0.4, 1.6); } },
 ];
