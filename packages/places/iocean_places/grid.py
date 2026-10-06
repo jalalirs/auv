@@ -43,8 +43,21 @@ class Grid:
     def xy(self) -> tuple[np.ndarray, np.ndarray]:
         """Each cell's place in the site's frame: metres east and north of
         the middle, as two (cells, cells) arrays."""
-        line = np.linspace(-self.across / 2, self.across / 2, self.cells)
+        # Written the way the tools have always written it, so a cell here is
+        # the same float as a cell there and a place rebuilt matches bit for bit.
+        line = (np.arange(self.cells) / (self.cells - 1) - 0.5) * self.across
         return np.meshgrid(line, line)
+
+    def nearest(self, x, y) -> tuple[np.ndarray, np.ndarray]:
+        """The row and column of the cell nearest each point (site metres)."""
+        n = self.cells - 1
+        row = np.clip(np.round((np.asarray(y) / self.across + 0.5) * n).astype(int), 0, n)
+        col = np.clip(np.round((np.asarray(x) / self.across + 0.5) * n).astype(int), 0, n)
+        return row, col
+
+    def inside(self, x, y) -> np.ndarray:
+        """Which points (site metres) are on the square."""
+        return (np.abs(np.asarray(x)) < self.across / 2) & (np.abs(np.asarray(y)) < self.across / 2)
 
     def lonlat(self) -> tuple[np.ndarray, np.ndarray]:
         """Each cell's longitude and latitude."""

@@ -1,0 +1,244 @@
+"""One curve of the claim: a satellite-derived depth rescaled to measured ones.
+
+Moved from tools/fit-depths, which now uses it from here. Satellite-derived
+bathymetry reads shape off how much light comes back from the bottom; the
+shape is usually good and the scale is a fit against an assumed water column,
+so when the assumption is wrong the whole seabed is wrong together. This fits
+the claimed depth to measured ones, drops what the fit itself calls an outlier,
+tries a few shapes and keeps the simplest whose worst depth band is not
+meaningfully beaten, and applies it to the whole square.
+
+It does not make the seabed measured. It makes it a derived seabed with a known
+error: the error of a 200 m block of the site predicted from a fit to the
+others, so a sounding is never scored against a line through its own track.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+from ..grid import Grid
+from ..layer import Layer, Provenance
+
+# How far past the measured range the fit may be trusted before it is
+# extrapolation. ICESat-2 sees to about 1.5 Secchi depths and no further.
+BEYOND_M = 3.0
+BLOCK_M = 200.0
+BANDS = ((0.0, 5.0), (5.0, 10.0), (10.0, 15.0), (15.0, 25.0), (25.0, None))
+# How much better a more complicated shape has to be before it is worth it.
+# Over Al Fahal the curve bought 1.37 m in a band holding 56 points and cost
+# 1.34 m in the band holding 22,430: a worse seabed everywhere anybody flies.
+WORTH_IT_M = 2.0
+WORTH_IT_SHARE = 0.25
+# Where a fit stops holding. A band further out than this is not calibrated,
+# whatever the overall rms says.
+HOLDS_WITHIN_M = 3.0
+# Bright reef the near infrared took for island, and the reef map says is reef:
+# awash rather than dry, at a depth chosen, not measured.
+AWASH_M = -0.3
+
+
+def sample(field, across: float, x, y):
+    """What a heightfield says at a scatter of points."""
+    rows, columns = field.shape
+    u = np.clip((x / across + 0.5) * (columns - 1), 0, columns - 1.001)
+    v = np.clip((y / across + 0.5) * (rows - 1), 0, rows - 1.001)
+    i, j = u.astype(int), v.astype(int)
+    fu, fv = u - i, v - j
+    return ((field[j, i] * (1 - fu) + field[j, i + 1] * fu) * (1 - fv)
+            + (field[j + 1, i] * (1 - fu) + field[j + 1, i + 1] * fu) * fv)
+
+
+def spread_of(residual):
+    middle = float(np.median(residual))
+    return middle, float(np.median(np.abs(residual - middle)) * 1.4826)
+
+
+def what_is_left_by_depth(measured, fitted):
+    """The residual by depth band, because one rms hides its own shape.
+
+    Al Fahal fitted to rms 2.00 m from 10.50 m, which reads as solved. It is
+    not: 22,430 of its 26,726 measured depths are in the top five metres, so
+    the line is theirs, and what is left runs +0.62 m there and -16.35 m
+    between fifteen and twenty-five. `measured` and `fitted` are negative-down.
+    """
+    left = np.asarray(measured) - np.asarray(fitted)
+    depth = -np.asarray(measured)
+    out = []
+    for near, far in BANDS:
+        inside = (depth >= near) if far is None else ((depth >= near) & (depth < far))
+        if not inside.any():
+            continue
+        out.append({"fromM": near, "toM": far, "points": int(inside.sum()),
+                    "medianM": round(float(np.median(left[inside])), 2),
+                    "rmsM": round(float(np.sqrt(np.mean(left[inside] ** 2))), 2)})
+    return out
+
+
+def worst_band(bands):
+    """The band furthest out, by median. None when there are no bands."""
+    return max(bands, key=lambda b: abs(b["medianM"]), default=None) or None
+
+
+def band_weights(measured):
+    """One weight per point, so each depth band counts for as much as another."""
+    depth = -np.asarray(measured)
+    w = np.ones(len(depth))
+    for near, far in BANDS:
+        inside = (depth >= near) if far is None else ((depth >= near) & (depth < far))
+        if inside.any():
+            w[inside] = 1.0 / float(inside.sum())
+    return w
+
+
+def candidate_fits(said, measured, weights):
+    """The fits worth trying, each as (name, curve). A straight line is the
+    right shape for a log-ratio in principle; in practice the claim saturates
+    near its optical limit, which a second-order term can hold."""
+    out = [("straight line", np.polyfit(said, measured, 1)),
+           ("straight line, bands balanced", np.polyfit(said, measured, 1, w=np.sqrt(weights)))]
+    if len(said) > 12:
+        out.append(("curved, bands balanced", np.polyfit(said, measured, 2, w=np.sqrt(weights))))
+    return [(name, np.poly1d(c)) for name, c in out]
+
+
+def rises_with_depth(curve, said):
+    """A fit that turns back on itself over the claimed range is not a rescaling."""
+    grid = np.linspace(float(np.min(said)), float(np.max(said)), 256)
+    step = np.diff(curve(grid))
+    return bool(np.all(step >= 0) or np.all(step <= 0))
+
+
+def how_bad_at_worst(measured, fitted):
+    """The score a fit is chosen on: its furthest band, not its overall rms."""
+    worst = worst_band(what_is_left_by_depth(measured, fitted))
+    return abs(worst["medianM"]) if worst else 0.0
+
+
+def simplest_good_enough(tried):
+    """The simplest shape, unless a longer one is meaningfully better.
+    `tried` is (name, curve, worst_band_metres, why_not), simplest first."""
+    usable = [t for t in tried if t[2] is not None]
+    if not usable:
+        return None
+    best = usable[0]
+    for other in usable[1:]:
+        gain = abs(best[2]) - abs(other[2])
+        if gain >= WORTH_IT_M and gain >= WORTH_IT_SHARE * abs(best[2]):
+            best = other
+    return best
+
+
+def holds_to(bands):
+    """The depth this fit is good to, and the bands past it."""
+    good = None
+    for band in bands:
+        if abs(band["medianM"]) <= HOLDS_WITHIN_M:
+            good = band["toM"] if band["toM"] is not None else band["fromM"]
+        else:
+            break
+    past = [b for b in bands if abs(b["medianM"]) > HOLDS_WITHIN_M]
+    return good, past
+
+
+def fit(said, measured):
+    """Fit, drop what the fit calls an outlier (three robust sigma), and keep
+    the simplest shape whose worst band is not meaningfully beaten. Returns
+    (name, curve, kept, tried), or None when no shape holds."""
+    slope, offset = np.polyfit(said, measured, 1)
+    residual = measured - (slope * said + offset)
+    middle, spread = spread_of(residual)
+    keep = np.abs(residual - middle) < 3 * spread
+    weights = band_weights(measured[keep])
+    tried = []
+    for name, curve in candidate_fits(said[keep], measured[keep], weights):
+        if not rises_with_depth(curve, said[keep]):
+            tried.append((name, curve, None, "turns back on itself"))
+            continue
+        tried.append((name, curve, how_bad_at_worst(measured, curve(said)), None))
+    picked = simplest_good_enough(tried)
+    if picked is None:
+        return None
+    return picked[0], picked[1], keep, tried
+
+
+def blocks_of(x, y, across: float, block: float = BLOCK_M) -> np.ndarray:
+    return (np.floor((x + across / 2) / block) * 1000 + np.floor((y + across / 2) / block)).astype(int)
+
+
+def held_out_rms(said, measured, blocks, kept, degree: int, balanced: bool) -> float:
+    """Each block predicted by the chosen shape fitted to the others' kept
+    points, and scored on every point in it: what the fit dropped as an
+    outlier is still somewhere a vehicle may fly."""
+    out = np.full(len(measured), np.nan)
+    for block in np.unique(blocks):
+        test = blocks == block
+        train = ~test & kept
+        if train.sum() <= degree + 1:
+            continue
+        w = np.sqrt(band_weights(measured[train])) if balanced else None
+        out[test] = np.poly1d(np.polyfit(said[train], measured[train], degree, w=w))(said[test])
+    ok = np.isfinite(out)
+    return float(np.sqrt(np.mean((out[ok] - measured[ok]) ** 2)))
+
+
+class CurveDepth:
+    """`depth`: the claimed depth layer; `truth`: measured soundings; `land`
+    (optional): a layer that is 1 on land, kept at its claimed height;
+    `reef` (optional): a layer of classes, where land the reef map calls reef
+    is awash instead."""
+
+    name = "curve-depth"
+    gives = ("depth",)
+
+    def __init__(self, depth: str, truth: str, land: str | None = None, reef: str | None = None,
+                 kind: str = "derived") -> None:
+        self.inputs = {"depth": depth, "truth": truth, "land": land, "reef": reef}
+        self.kind = kind
+
+    def run(self, grid: Grid, take) -> tuple[list[Layer], dict]:
+        claims = take(self.inputs["depth"]).value
+        truth = take(self.inputs["truth"])
+        across = grid.across
+        x, y, measured = truth.x, truth.y, truth.value
+        inside = grid.inside(x, y) & (measured < -0.5)
+        x, y, measured = x[inside], y[inside], measured[inside]
+        said = sample(claims, across, x, y)
+        got = fit(said, measured)
+        if got is None:
+            raise ValueError(f"{self.name}: no shape holds over this range")
+        chosen, curve, keep, tried = got
+        fitted = curve(said)
+        bands = what_is_left_by_depth(measured, fitted)
+        good_to, past = holds_to(bands)
+        blocks = blocks_of(x, y, across)
+        error = held_out_rms(said, measured, blocks, keep, curve.order, "balanced" in chosen)
+
+        value = curve(claims).astype("float32")
+        land = np.zeros(claims.shape, bool)
+        if self.inputs["land"]:
+            land = take(self.inputs["land"]).value == 1.0
+        awash = np.zeros(claims.shape, bool)
+        if self.inputs["reef"] is not None:
+            awash = land & (take(self.inputs["reef"]).codes() > 0)
+        value = np.where(land & ~awash, claims, value)
+        value = np.where(awash, np.float32(AWASH_M), value).astype("float32")
+
+        deepest, shallowest = float(measured.min()), float(measured.max())
+        corrected = value[~land]
+        beyond = float(((corrected < deepest - BEYOND_M) | (corrected > shallowest + BEYOND_M)).mean())
+        record = {
+            "source": truth.provenance.citation, "points": int(len(x)), "shape": chosen,
+            "coefficients": [float(c) for c in curve.coefficients],
+            "triedOnWorstBand": {name: (why or round(score, 2)) for name, _c, score, why in tried},
+            "rmsAfterM": round(float(np.sqrt(np.mean((measured - fitted) ** 2))), 2),
+            "rmsHeldOutM": round(error, 2), "heldOut": f"blocks of {BLOCK_M:.0f} m, each predicted from a fit to the others",
+            "residualByDepth": bands, "calibratedToM": good_to, "pastThatUncalibrated": bool(past),
+            "calibratedBetweenM": [round(-shallowest, 1), round(-deepest, 1)], "extrapolatedShare": round(beyond, 3),
+            "landKeptCells": int((land & ~awash).sum()), "awashCells": int(awash.sum()),
+            "note": "derived from a satellite claim rescaled to measured depths. Not a survey: a derived seabed with a known, held-out error.",
+        }
+        cited = Provenance(self.name, self.kind,
+                           f"{take(self.inputs['depth']).provenance[0].source} rescaled by a {chosen} to "
+                           f"{truth.provenance.source}, held-out rms {error:.2f} m")
+        return [Layer.of(grid, "depth", value, error, cited)], record

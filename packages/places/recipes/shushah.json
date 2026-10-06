@@ -1,0 +1,19 @@
+{
+  "name": "shushah",
+  "site": {"centre": [27.9366, 34.9108], "acrossM": 2000, "cells": 512},
+  "sources": [
+    {"use": "sentinel2-stumpf", "as": "stumpf", "place": "shushah"},
+    {"use": "sentinel2-median", "as": "sentinel"},
+    {"use": "allen-coral-atlas", "as": "atlas"},
+    {"use": "icesat2", "as": "icesat"},
+    {"use": "gebco", "path": "~/iocean/places/shushah"}
+  ],
+  "models": [
+    {"use": "curve-depth", "as": "curve", "depth": "stumpf.depth", "truth": "icesat.depth.points",
+     "land": "stumpf.land", "reef": "atlas.geomorphic"},
+    {"use": "colour-depth", "as": "colour", "depth": "stumpf.depth", "red": "sentinel.red",
+     "green": "sentinel.green", "blue": "sentinel.blue", "classes": "atlas.geomorphic",
+     "truth": "icesat.depth.points", "land": "stumpf.land"}
+  ],
+  "scene": {"depth": ["colour.depth", "curve.depth", "gebco.depth"], "featherCells": 0}
+}

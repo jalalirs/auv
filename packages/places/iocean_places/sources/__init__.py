@@ -17,21 +17,48 @@ from typing import Protocol
 import numpy as np
 
 from ..grid import Grid
-from ..layer import Layer, Provenance
+from ..layer import Layer, Provenance, Soundings
 
 
 class Source(Protocol):
+    """`layers` are on the grid; a source of measurements at points also has
+    `soundings`, which models are fitted and checked against."""
+
     name: str
     gives: tuple[str, ...]
 
     def layers(self, grid: Grid, cache: pathlib.Path | None = None) -> list[Layer]: ...
 
 
+def where(path: str | None, cache: pathlib.Path | None) -> pathlib.Path:
+    """The folder a source reads from: its own `path`, else the recipe's cache."""
+    if path:
+        return pathlib.Path(path).expanduser()
+    if cache is None:
+        raise ValueError("this source reads from a folder: give it a path, or build with --cache")
+    return pathlib.Path(cache).expanduser()
+
+
+def gridded(grid: Grid, soundings: Soundings, reach: float, slope: float) -> Layer:
+    """Soundings on the grid: each cell takes the nearest within `reach`
+    metres, and its error is the sounding's own plus the slope it may have
+    missed over the distance (`slope` metres per metre), so a cell far from
+    any sounding says so."""
+    from scipy.spatial import cKDTree
+
+    gx, gy = grid.xy()
+    distance, nearest = cKDTree(np.column_stack([soundings.x, soundings.y])).query(
+        np.column_stack([gx.ravel(), gy.ravel()]))
+    distance, nearest = distance.reshape(gx.shape), nearest.reshape(gx.shape)
+    near = distance <= reach
+    value = np.where(near, soundings.value[nearest], np.nan)
+    error = soundings.error[nearest] + slope * distance
+    return Layer.of(grid, soundings.quantity, value, error, soundings.provenance)
+
+
 class Points:
     """Soundings: x y z points, or longitude latitude depth, from a file of
-    rows. Each cell takes the nearest point within `reach` metres; its error is
-    the sounding's own plus the slope it may have missed over the distance
-    (`slope` metres per metre), so a cell far from any sounding says so."""
+    rows; gridded as `gridded` says."""
 
     name = "points"
     gives = ("depth",)
@@ -42,21 +69,17 @@ class Points:
         self.path, self.error, self.reach, self.slope = path, float(error), float(reach), float(slope)
         self.degrees, self.depths_positive, self.kind, self.citation = degrees, depths_positive, kind, citation
 
-    def layers(self, grid: Grid, cache=None) -> list[Layer]:
-        from scipy.spatial import cKDTree
-
+    def soundings(self, grid: Grid, cache=None) -> list[Soundings]:
         rows = np.loadtxt(self.path, delimiter="," if str(self.path).endswith(".csv") else None, ndmin=2)
         a, b, z = rows[:, 0], rows[:, 1], rows[:, 2]
         x, y = grid.to_xy(a, b) if self.degrees else (a, b)
         z = -z if self.depths_positive else z
-        gx, gy = grid.xy()
-        distance, nearest = cKDTree(np.column_stack([x, y])).query(np.column_stack([gx.ravel(), gy.ravel()]))
-        distance, nearest = distance.reshape(gx.shape), nearest.reshape(gx.shape)
-        near = distance <= self.reach
-        value = np.where(near, z[nearest], np.nan)
-        error = self.error + self.slope * distance
-        return [Layer.of(grid, "depth", value, error,
-                         Provenance(self.name, self.kind, self.citation or f"soundings in {pathlib.Path(self.path).name}"))]
+        return [Soundings("depth", np.asarray(x, float), np.asarray(y, float), z, np.full(len(z), self.error),
+                          Provenance(self.name, self.kind,
+                                     self.citation or f"soundings in {pathlib.Path(self.path).name}"))]
+
+    def layers(self, grid: Grid, cache=None) -> list[Layer]:
+        return [gridded(grid, one, self.reach, self.slope) for one in self.soundings(grid, cache)]
 
 
 class Place:
@@ -105,13 +128,27 @@ def _geotiff(**kw):
     return GeoTiff(**kw)
 
 
-# The recipe names a source by `use`; the rest of its entry are the source's arguments.
-SOURCES = {"geotiff": _geotiff, "points": Points, "place": Place, "flat": Flat}
+def _lazy(module: str, name: str):
+    def make(**kw):
+        import importlib
+        return getattr(importlib.import_module(f"{__name__}.{module}"), name)(**kw)
+    return make
+
+
+# The recipe names a source by `use`; the rest of its entry are the source's
+# arguments, and `as` the name its layers go by (default: `use`).
+SOURCES = {"geotiff": _geotiff, "points": Points, "place": Place, "flat": Flat,
+           "sentinel2-median": _lazy("sentinel2", "Sentinel2Median"),
+           "sentinel2-stumpf": _lazy("sentinel2", "Stumpf"),
+           "icesat2": _lazy("icesat2", "IceSat2"),
+           "allen-coral-atlas": _lazy("coral_atlas", "CoralAtlas"),
+           "gebco": _lazy("gebco", "Gebco")}
 
 
 def source_from(entry: dict) -> Source:
     entry = dict(entry)
     use = entry.pop("use")
+    entry.pop("as", None)
     if use not in SOURCES:
         raise ValueError(f"no source called {use!r}; there are {', '.join(sorted(SOURCES))}")
     return SOURCES[use](**entry)

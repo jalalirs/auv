@@ -734,7 +734,11 @@ def main() -> int:
                  # than left in the reference, because the place is the thing
                  # somebody flies and the place has to say which of its
                  # seabed is a measurement. A quarter of Al Fahal is not.
-                 "constructedPastTheSensor", "fittedAgainst")
+                 "constructedPastTheSensor", "fittedAgainst",
+                 # From the places module: which source made what share of
+                 # the seabed and how wrong it may be there, and how each
+                 # model was fitted.
+                 "depth", "models")
                 if survey_note and k in survey_note}),
             # Without the hardness map itself, which is an array and belongs
             # in hardness.png beside the place rather than in its record.

@@ -43,37 +43,21 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import built  # noqa: E402
 
-BLOCK_M = 200.0
-BEYOND_M = 3.0
-
-
-def metres_per_degree(latitude: float) -> tuple[float, float]:
-    r = math.radians(latitude)
-    north = 111_132.92 - 559.82 * math.cos(2 * r) + 1.175 * math.cos(4 * r)
-    east = 111_412.84 * math.cos(r) - 93.5 * math.cos(3 * r)
-    return east, north
+# The fit lives in the places module now (models/colour_depth.py and
+# sources/coral_atlas.py), where a recipe uses it as the colour-depth model;
+# this is its command line over a reference folder.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "packages" / "places"))
+from iocean_places.grid import Grid  # noqa: E402
+from iocean_places.models.colour_depth import BEYOND_M, by_depth, features, held_out  # noqa: E402
+from iocean_places.models.curve_depth import BLOCK_M  # noqa: E402
+from iocean_places.sources.coral_atlas import rasterised  # noqa: E402
 
 
 def classes_on(grid: int, across: float, centre: dict, geomorphic: dict) -> tuple[np.ndarray, list[str]]:
     """The geomorphic map rasterised onto the seabed's grid: 0 unmapped, then
     one code per class, south to north then west to east like the seabed."""
-    from matplotlib.path import Path
-    east, north = metres_per_degree(centre["latitude"])
-    names = sorted({f["properties"]["class_name"] for f in geomorphic["features"]})
-    at = (np.arange(grid) / (grid - 1) - 0.5) * across
-    X, Y = np.meshgrid(at, at)
-    cells = np.stack([X.ravel(), Y.ravel()], 1)
-    out = np.zeros((grid, grid), dtype=int)
-    for f in geomorphic["features"]:
-        code = names.index(f["properties"]["class_name"]) + 1
-        shape = f["geometry"]
-        polygons = shape["coordinates"] if shape["type"] == "MultiPolygon" else [shape["coordinates"]]
-        for polygon in polygons:
-            ring = np.asarray(polygon[0], dtype=float)
-            xy = np.stack([(ring[:, 0] - centre["longitude"]) * east,
-                           (ring[:, 1] - centre["latitude"]) * north], 1)
-            out[Path(xy).contains_points(cells).reshape(grid, grid)] = code
-    return out, names
+    codes, names = rasterised(Grid(centre["latitude"], centre["longitude"], across, grid), geomorphic)
+    return codes, list(names)
 
 
 def colour_on(grid: int, rgb: np.ndarray) -> np.ndarray:
@@ -82,39 +66,6 @@ def colour_on(grid: int, rgb: np.ndarray) -> np.ndarray:
     rows = np.clip(np.round((1.0 - np.arange(grid) / (grid - 1)) * (m - 1)).astype(int), 0, m - 1)
     cols = np.clip(np.round(np.arange(grid) / (grid - 1) * (m - 1)).astype(int), 0, m - 1)
     return rgb[rows][:, cols].astype(float)
-
-
-def features(claimed, colour, cls, n_classes):
-    """What the fit is on, for any set of cells: claimed depth, the log-ratio,
-    the log of each band, and the class as one column each."""
-    blue, green, red = (np.maximum(colour[..., k], 1e-4) for k in (2, 1, 0))
-    columns = [np.ones_like(claimed), claimed, np.log(1000 * blue) / np.log(1000 * green),
-               np.log(blue), np.log(green), np.log(red)]
-    columns += [(cls == k).astype(float) for k in range(1, n_classes + 1)]
-    return np.stack(columns, axis=-1)
-
-
-def by_depth(measured, predicted):
-    bands = []
-    for low, high in ((0, 2), (2, 5), (5, 10), (10, 15), (15, 25), (25, None)):
-        depth = -measured
-        inside = (depth >= low) & ((depth < high) if high is not None else True)
-        if inside.sum() < 20:
-            continue
-        e = predicted[inside] - measured[inside]
-        bands.append({"fromM": low, "toM": high, "points": int(inside.sum()),
-                      "medianM": round(float(np.median(e)), 2), "rmsM": round(float(np.sqrt(np.mean(e ** 2))), 2)})
-    return bands
-
-
-def held_out(F, measured, blocks):
-    """Each block predicted by a fit to the others."""
-    out = np.full(len(measured), np.nan)
-    for block in np.unique(blocks):
-        test = blocks == block
-        coefficients, *_ = np.linalg.lstsq(F[~test], measured[~test], rcond=None)
-        out[test] = F[test] @ coefficients
-    return out
 
 
 def main() -> int:

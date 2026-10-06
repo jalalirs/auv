@@ -271,6 +271,11 @@ def where_a_dive_begins(height, across: float, off_bottom: float = 3.0) -> dict:
     typical = float(np.median(inside))
     off = np.abs(coarse - typical)
     scored = rough + off
+    # A start needs water over it. Where the middle of a site is an island
+    # and its reef flat, the typical depth is the surface, and the flattest
+    # ground near it is dry land; so ground too shallow to float three metres
+    # off and a metre under is not a start.
+    scored[coarse > -(off_bottom + 1.0)] = np.inf
     if not np.isfinite(scored).any():
         return {}
     r, c = np.unravel_index(int(np.argmin(scored)), scored.shape)

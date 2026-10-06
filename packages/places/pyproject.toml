@@ -3,7 +3,7 @@ name = "iocean-places"
 version = "0.1.0"
 description = "Build a place from whatever data there is: sources, layers, fusion, place, scene."
 requires-python = ">=3.10"
-dependencies = ["numpy", "scipy", "pillow"]
+dependencies = ["numpy", "scipy", "pillow", "matplotlib"]
 
 [project.optional-dependencies]
 rasters = ["rasterio"]

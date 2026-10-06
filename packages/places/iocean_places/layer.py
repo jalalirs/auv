@@ -45,7 +45,9 @@ class Layer:
     """`quantity` is what the values are ("depth" is height in metres, z up,
     0 at the surface, as the platform's heightfields are). `value` and `error`
     are (cells, cells). `source` is, per cell, an index into `provenance`;
-    255 where there is no value."""
+    255 where there is no value. A layer of classes (a reef map's geomorphic
+    zones, a habitat map) holds each cell's class as 1 + its index in
+    `classes`, NaN where unmapped, and no error."""
 
     grid: Grid
     quantity: str
@@ -53,18 +55,24 @@ class Layer:
     error: np.ndarray
     source: np.ndarray
     provenance: list[Provenance] = field(default_factory=list)
+    classes: tuple[str, ...] | None = None
 
     NONE = 255
 
     @classmethod
-    def of(cls, grid: Grid, quantity: str, value, error, provenance: Provenance) -> "Layer":
+    def of(cls, grid: Grid, quantity: str, value, error, provenance: Provenance,
+           classes: tuple[str, ...] | None = None) -> "Layer":
         """A layer from one source: error a number or a grid like the values."""
         value = np.asarray(value, dtype="float32")
         if value.shape != (grid.cells, grid.cells):
             raise ValueError(f"{quantity} is {value.shape}, the grid is {grid.cells} square")
         error = np.broadcast_to(np.asarray(error, dtype="float32"), value.shape).copy()
         source = np.where(np.isfinite(value), 0, cls.NONE).astype("u1")
-        return cls(grid, quantity, value, error, source, [provenance])
+        return cls(grid, quantity, value, error, source, [provenance], classes)
+
+    def codes(self) -> np.ndarray:
+        """A layer of classes as integers: 0 unmapped, k for classes[k - 1]."""
+        return np.nan_to_num(self.value, nan=0.0).astype(int)
 
     def covers(self) -> np.ndarray:
         """Which cells have a value."""
@@ -86,3 +94,23 @@ class Layer:
                         "errorM": {"median": round(float(np.median(self.error[mine])), 3),
                                    "worst": round(float(np.max(self.error[mine])), 3)}})
         return {"quantity": self.quantity, "covered": round(self.share(), 4), "sources": out}
+
+
+@dataclass
+class Soundings:
+    """Measurements at points rather than on a grid: depths along a laser's
+    track, a diver's spot checks, a single-beam line. Kept as points, because
+    a model is checked against what was measured where it was measured, and
+    gridding first would score a fit against its own interpolation. `x` and
+    `y` are metres in the site's frame; `value` and `error` as in a layer."""
+
+    quantity: str
+    x: np.ndarray
+    y: np.ndarray
+    value: np.ndarray
+    error: np.ndarray
+    provenance: Provenance
+
+    def said(self) -> dict:
+        return {**self.provenance.said(), "quantity": self.quantity, "points": int(len(self.value)),
+                "errorM": {"median": round(float(np.nanmedian(self.error)), 3)} if len(self.value) else None}
