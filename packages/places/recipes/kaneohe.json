@@ -1,0 +1,9 @@
+{
+  "name": "kaneohe",
+  "site": {"centre": [21.49, -157.83], "acrossM": 1000, "cells": 1001},
+  "sources": [
+    {"use": "bathymetry", "as": "noaa", "place": "kaneohe"},
+    {"use": "gebco", "path": "~/iocean/places/kaneohe"}
+  ],
+  "scene": {"depth": ["noaa.depth", "gebco.depth"], "featherCells": 0}
+}
