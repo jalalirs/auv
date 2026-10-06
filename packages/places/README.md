@@ -12,15 +12,25 @@ sources  →  layers  →  fusion  →  place  →  scene
   - `allen-coral-atlas`: the geomorphic and benthic maps, as layers of classes;
   - `icesat2`: ATL24 seafloor photons, as soundings and gridded near the tracks;
   - `gebco`: GEBCO 2026 with an error per cell from its type identifier, and the DCDB multibeam where there is any;
+  - `bathymetry`: get-bathymetry's NOAA survey mosaic (or GMRT), cubic onto a finer grid as tools/ground did;
+  - `survey-dem`: a survey's own DEM GeoTIFF (USGS SQUID-5 at Looe Key), placed pixel for pixel in its own datum;
   - `geotiff`, `points` (XYZ), `place` (an existing place), `flat` (an assumed depth).
 
   Today they read what the fetching tools wrote (a place's reference folder, `--cache`); the fetching itself moves in next.
-- **Models** (`iocean_places/models/`) turn named layers into another layer, with an error checked on held-out 200 m blocks and a record of the fit: `curve-depth` (one curve of the claim, from tools/fit-depths) and `colour-depth` (the colour and the reef map, from tools/fit-colour-depths). The tools now use them from here.
+- **Models** (`iocean_places/models/`) turn named layers into another layer, with an error checked on held-out 200 m blocks and a record of the fit: `curve-depth` (one curve of the claim, from tools/fit-depths; `keepWet` keeps what the satellite saw as water under it), `colour-depth` (the colour and the reef map, from tools/fit-colour-depths) and `datum-fit` (a survey shifted onto a reference's datum, holes filled, specks dropped, from tools/ground). The fit tools now use them from here.
 - **A layer** (`layer.py`) is one quantity on the site's grid with, cell by cell, a value, an error in metres and the source it came from. Every source is cited with a kind: measured, derived, chosen or assumed.
 - **Fusion** (`fusion.py`) believes the source with the smallest error in each cell, and tapers a source off over `featherCells` at the edge of what it covers, so seams are slopes, not steps.
 - **The scene** (`scene.py`) writes what a dive opens: `seabed.f32`, `seabed.usda`, and alongside them `error.f32` and `sources.u8`, the error and the source of every cell; and `heights.json`, which `tools/make-site --heights` builds the reef, ground and record from.
 
-Every product is named `<as>.<quantity>` (soundings `<as>.<quantity>.points`), and models and the scene refer to them by name. `recipes/shushah.json` is a real one: it rebuilds Shushah's published seabed from its reference folder.
+Every product is named `<as>.<quantity>` (soundings `<as>.<quantity>.points`), and models and the scene refer to them by name. `recipes/` holds the real ones. Each rebuilds its place's seabed from the place's reference folder:
+
+| place | sources and models | against what it was built from |
+|---|---|---|
+| shushah | Stumpf claim, median colour, Allen atlas, ICESat-2; colour-depth over curve-depth | identical but for 9 cells one float32 step apart |
+| al-fahal | Stumpf claim, ICESat-2; curve-depth with keepWet | the published fit, less 32 ha of reef flat it had lifted dry (republished v7) |
+| looe-key | NOAA mosaic, SQUID-5 DEM; datum-fit, feathered over 6 m | within one float32 step |
+
+`tools/places build ... --record PLACE` writes the call into the place, and `tools/rebuild` then builds the seabed first.
 
 A **recipe** says the site, the sources and the scene:
 

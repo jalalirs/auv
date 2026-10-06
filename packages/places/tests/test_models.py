@@ -147,3 +147,28 @@ def test_a_fit_does_not_make_dry_land_of_water(tmp_path):
         else:
             assert said["curve"]["keptWetCells"] > 0 and water.max() <= top
     claim.tofile(folder / "test.f32")
+
+
+def test_a_survey_is_shifted_onto_the_mosaic_and_feathered_in():
+    """tools/ground's merge: the survey in its own datum, shifted by the median
+    difference where they overlap, holes filled, specks dropped, feathered."""
+    from iocean_places import Layer, Provenance, fuse
+    from iocean_places.models.datum_fit import DatumFit
+
+    grid = Grid(24.5, -81.4, 100.0, 101)                     # 1 m cells
+    x, y = grid.xy()
+    mosaic = Layer.of(grid, "depth", -10.0 + 0.02 * x, 1.0, Provenance("noaa", "measured", "mosaic"))
+    body = (np.abs(x) < 30) & (np.abs(y) < 30)
+    survey = np.where(body, -10.0 + 0.02 * x + 0.25 + 0.3 * np.sin(y / 3), np.nan)
+    survey[50, 50] = np.nan                                  # a hole
+    survey[5, 5] = -3.0                                      # a speck
+    dem = Layer.of(grid, "depth", survey, 0.1, Provenance("squid", "measured", "dem"))
+    layers = {"squid": dem, "noaa": mosaic}
+    (fitted,), said = DatumFit("squid", "noaa", smallestM2=50.0).run(grid, layers.__getitem__)
+    assert abs(said["datumOffsetM"] - np.nanmedian((survey - mosaic.value)[body])) < 1e-6
+    assert np.isfinite(fitted.value[50, 50]) and not np.isfinite(fitted.value[5, 5])
+    seabed = fuse([fitted, mosaic], feather=6)
+    assert np.isclose(seabed.value[50, 50 + 25], fitted.value[50, 50 + 25]), "deep inside, the survey"
+    edge = seabed.value[50, 50 + 29]                         # the outermost cell: the mosaic's
+    assert np.isclose(edge, mosaic.value[50, 50 + 29])
+    assert np.abs(np.diff(seabed.value[50, 70:90])).max() < 0.2, "no step where the survey ends"
