@@ -10,5 +10,5 @@
   "models": [
     {"use": "datum-fit", "as": "squid-fitted", "survey": "squid.depth", "reference": "noaa.depth"}
   ],
-  "scene": {"depth": ["squid-fitted.depth", "noaa.depth", "gebco.depth"], "featherCells": 6}
+  "scene": {"depth": ["noaa.depth", "squid-fitted.depth", "gebco.depth"], "featherCells": 6}
 }
