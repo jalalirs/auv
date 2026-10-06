@@ -116,10 +116,17 @@ def fetch(latitude: float, longitude: float, across: float, samples: int):
     bounds = (longitude - half_lon, latitude - half_lat,
               longitude + half_lon, latitude + half_lat)
 
+    # adjustAspectRatio=false, or the service keeps its pixels square in
+    # degrees and widens the box to fit a square image: a degree of latitude is
+    # longer than a degree of longitude away from the equator, so every square
+    # this fetched was taller than asked and squeezed into the same rows,
+    # 1,068 m into 1,000 at Kaneohe and 1,093 m at Looe Key (found 2026-10-06
+    # against the box the service says it returned).
     raw = ask("/exportImage", bbox=",".join("%.9f" % b for b in bounds),
               bboxSR=4326, imageSR=4326, size="%d,%d" % (samples, samples),
               format="tiff", pixelType="F32", noData=NOTHING,
-              interpolation="RSP_BilinearInterpolation", f="image")
+              interpolation="RSP_BilinearInterpolation", adjustAspectRatio="false",
+              f="image")
     heights = tifffile.imread(io.BytesIO(raw)).astype("float32")
     # North is row zero in an image and row last in a heightfield, which is the
     # convention everything downstream reads.
