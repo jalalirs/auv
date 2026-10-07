@@ -97,7 +97,14 @@ class ColourDepth:
         colour = np.stack([take(self.inputs[b]).value for b in ("red", "green", "blue")], axis=-1).astype(float)
         reef_map = take(self.inputs["classes"])
         cls, names = reef_map.codes(), reef_map.classes or ()
-        every = features(claimed, colour, cls, len(names), self.soften_m / grid.cell)
+        # Fitted on the classes as the atlas draws them, drawn with them softened.
+        # Fitted softened, a class with no photons of its own is still a few
+        # per cent present beside one that has, and the least-squares buys it
+        # a coefficient of hundreds of metres out of that (Looe Key's held-out
+        # error went from 0.87 m to 407 m). The offsets come from the hard
+        # classes; only where they are laid down is softened.
+        every = features(claimed, colour, cls, len(names))
+        drawn = features(claimed, colour, cls, len(names), self.soften_m / grid.cell)
 
         truth = take(self.inputs["truth"])
         x, y, measured = truth.x, truth.y, truth.value
@@ -112,7 +119,7 @@ class ColourDepth:
         colour_fit = held_out(F, measured, blocks)
         error = rms(colour_fit - measured)
         coefficients, *_ = np.linalg.lstsq(F, measured, rcond=None)
-        heights = every @ coefficients
+        heights = drawn @ coefficients
         deepest, shallowest = float(measured.min()), float(measured.max())
 
         land = np.zeros(claimed.shape, bool)

@@ -2,7 +2,7 @@
   "name": "al-fahal",
   "site": {"centre": [22.284, 38.962], "acrossM": 3000, "cells": 512},
   "sources": [
-    {"use": "sentinel2-stumpf", "as": "stumpf", "place": "al-fahal"},
+    {"use": "sentinel2-stumpf", "as": "stumpf", "place": "al-fahal", "scene": "S2B_T37QDE_20240223T080223_L2A"},
     {"use": "icesat2", "as": "icesat"},
     {"use": "gebco", "path": "~/iocean/places/al-fahal"}
   ],
