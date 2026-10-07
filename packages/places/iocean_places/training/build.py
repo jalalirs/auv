@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import sys
 import threading
@@ -53,9 +54,23 @@ def fetch_lidar(root: pathlib.Path, only: str | None) -> None:
         lidar.fetch(d["slug"], root / "lidar")
 
 
+# A chip that takes longer than this is given up on; a run that makes no chip
+# for STALLED seconds stops, and the script around it starts it again (it resumes).
+CHIP_SECONDS = 240
+STALLED = 900
+
+
 def _one_chip(root: str, d: dict, tiles: list, lat: float, lon: float):
     """One chip, in a worker process: (id, why it was skipped) or (id, (x, y, record))."""
+    import signal
+
     chip_id = f"{d['slug']}-{lat:.4f}-{lon:.4f}"
+
+    def gave_up(*_):
+        raise TimeoutError(f"no chip in {CHIP_SECONDS} s")
+
+    signal.signal(signal.SIGALRM, gave_up)
+    signal.alarm(CHIP_SECONDS)
     try:
         grid = chips.chip_grid(lat, lon)
         y = chips.lidar_label(grid, tiles)
@@ -69,6 +84,8 @@ def _one_chip(root: str, d: dict, tiles: list, lat: float, lon: float):
     except Exception as bad:   # one chip is not the set: say why and go on
         traceback.print_exc(limit=1, file=sys.stderr)
         return chip_id, f"error: {bad}"
+    finally:
+        signal.alarm(0)
 
 
 def make_chips(root: pathlib.Path, only: str | None, workers: int, most: int | None) -> None:
@@ -106,20 +123,28 @@ def make_chips(root: pathlib.Path, only: str | None, workers: int, most: int | N
         # Processes, not threads: GDAL in one process across many threads
         # deadlocked. Each chip is made in a worker; only the parent writes
         # the index, so nothing is written twice at once.
-        from concurrent.futures import ProcessPoolExecutor
+        from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
         with ProcessPoolExecutor(workers, initializer=sentinel.use_gdal_env) as pool:
-            futures = [pool.submit(_one_chip, str(root), d, tiles, lat, lon) for lat, lon in todo]
-            for k, f in enumerate(futures, 1):
-                chip_id, result = f.result()
-                if isinstance(result, str):
-                    _note_skip(root, chip_id, result)
-                else:
-                    x, y, record = result
-                    chips.save(root / "chips" / d["region"].replace(" ", "-").replace("/", "-").lower(),
-                               chip_id, x, y, "dense", record)
-                    made += 1
-                if k % 25 == 0:
-                    print(f"  {d['slug']}: {k}/{len(todo)} looked at, {made} made", flush=True)
+            pending = {pool.submit(_one_chip, str(root), d, tiles, lat, lon) for lat, lon in todo}
+            k = 0
+            while pending:
+                finished, pending = wait(pending, timeout=STALLED, return_when=FIRST_COMPLETED)
+                if not finished:
+                    print(f"{d['slug']}: no chip finished in {STALLED} s; stopping so the run can start again",
+                          flush=True)
+                    os._exit(3)
+                for f in finished:
+                    k += 1
+                    chip_id, result = f.result()
+                    if isinstance(result, str):
+                        _note_skip(root, chip_id, result)
+                    else:
+                        x, y, record = result
+                        chips.save(root / "chips" / d["region"].replace(" ", "-").replace("/", "-").lower(),
+                                   chip_id, x, y, "dense", record)
+                        made += 1
+                    if k % 25 == 0:
+                        print(f"  {d['slug']}: {k}/{len(todo)} looked at, {made} made", flush=True)
         print(f"{d['slug']}: {made} chips made", flush=True)
 
 

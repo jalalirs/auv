@@ -57,10 +57,13 @@ def _scale(asset: dict) -> tuple[float, float]:
 # rasterio.Env entered from many threads at once deadlocked the first full run
 # (170 threads asleep, no connection open). Timeouts and retries so a stuck
 # read fails and is tried again instead of hanging.
+# HTTP/1.1: over HTTP/2's multiplexed streams a stalled read sat open and
+# silent for a quarter of an hour, and a timeout does not fire on a connection
+# that is open. A transfer that moves nothing for 30 s is abandoned instead.
 GDAL_ENV = dict(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR", CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".tif",
-                GDAL_HTTP_MERGE_CONSECUTIVE_RANGES="YES", GDAL_HTTP_MULTIPLEX="YES", GDAL_HTTP_VERSION="2",
+                GDAL_HTTP_MERGE_CONSECUTIVE_RANGES="YES", GDAL_HTTP_VERSION="1.1",
                 VSI_CACHE="TRUE", GDAL_CACHEMAX="256", GDAL_HTTP_TIMEOUT="60", GDAL_HTTP_MAX_RETRY="4",
-                GDAL_HTTP_RETRY_DELAY="3")
+                GDAL_HTTP_RETRY_DELAY="3", GDAL_HTTP_LOW_SPEED_TIME="30", GDAL_HTTP_LOW_SPEED_LIMIT="1")
 
 
 def use_gdal_env() -> None:
