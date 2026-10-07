@@ -61,3 +61,11 @@ def test_chips_load_from_their_index(tmp_path):
                                                                  "dataset": "a"}) + "\n")
     rows = data.load_chips(tmp_path)
     assert len(rows) == 1 and rows[0]["x"].shape == (7, 8, 8)
+
+
+def test_a_survey_the_config_excludes_is_out_of_every_part():
+    rows = [chip("Florida", "a"), chip("Am. Samoa", "samoa"), chip("USVI", "b")]
+    parts = data.split(rows, ["USVI", "Am. Samoa"], [], excluded={"samoa": "ellipsoid heights"})
+    assert not any(r["dataset"] == "samoa" for part in parts.values() for r in part)
+    assert data.excluded_surveys({"lidar": [{"slug": "samoa", "excluded": "ellipsoid heights"}, {"slug": "a"}]}) == \
+        {"samoa": "ellipsoid heights"}

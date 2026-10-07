@@ -64,7 +64,10 @@ def train(cfg: dict, run: pathlib.Path, ds: pathlib.Path) -> dict:
     (run / "config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
     shallow, deep = cfg["target"]["shallowest_m"], cfg["target"]["deepest_m"]
 
-    parts = data.split(data.load_chips(ds), cfg["split"]["test_regions"], cfg["split"]["validation_datasets"])
+    from . import config
+
+    excluded = data.excluded_surveys(config.load(f"dataset/{cfg['dataset']}.yaml"))
+    parts = data.split(data.load_chips(ds), cfg["split"]["test_regions"], cfg["split"]["validation_datasets"], excluded)
     Xtr, Ytr, Mtr = data.arrays(parts["train"], shallow, deep)
     Xva, Yva, Mva = data.arrays(parts["validation"], shallow, deep)
     flat = Xtr.transpose(1, 0, 2, 3).reshape(Xtr.shape[1], -1)
@@ -80,7 +83,7 @@ def train(cfg: dict, run: pathlib.Path, ds: pathlib.Path) -> dict:
     info = {"run": run.name, "commit": os.environ.get("GIT_COMMIT", "unknown"), "device": device,
             "gpu": torch.cuda.get_device_name(0) if device == "cuda" else None,
             "dataset": {"name": ds.name, "manifest": json.loads(manifest.read_text()) if manifest.is_file() else None},
-            "chips": {k: len(v) for k, v in parts.items()},
+            "chips": {k: len(v) for k, v in parts.items()}, "excluded": excluded,
             "regions": {k: sorted({r["region"] for r in v}) for k, v in parts.items()},
             "parameters": int(sum(p.numel() for p in model.parameters())),
             "features": list(data.FEATURES), "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}

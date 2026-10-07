@@ -6,7 +6,8 @@
 name: unet-v1
 dataset: depth-v1
 split:
-  test_regions: [USVI, Guam/CNMI, Am. Samoa]
+  # American Samoa's surveys are excluded (ellipsoid heights; see the dataset config).
+  test_regions: [USVI, Guam/CNMI]
   # Held out of training to choose the epoch: one survey from each of the two
   # biggest training regions, so the choice is not made on the training reefs.
   validation_datasets: [FL_DryTortugas_NGS_DEM_2015_6212, USACE_Kauai_HI_LMSL_DEM_2013_9335]

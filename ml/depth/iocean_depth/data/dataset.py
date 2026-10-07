@@ -43,9 +43,13 @@ def target(y: np.ndarray, shallowest: float, deepest: float) -> tuple[np.ndarray
     return np.where(mask, depth, 0.0).astype("float32"), mask
 
 
-def split(rows: list[dict], test_regions, validation_datasets) -> dict[str, list[dict]]:
+def split(rows: list[dict], test_regions, validation_datasets, excluded=()) -> dict[str, list[dict]]:
+    """`excluded` are surveys whose labels are not to be trusted (a dataset
+    config's `excluded:`), out of every part."""
     out = {"train": [], "validation": [], "test": [], "red-sea": []}
     for r in rows:
+        if r["dataset"] in excluded:
+            continue
         if r["region"] == "Red Sea":
             out["red-sea"].append(r)
         elif r["region"] in test_regions:
@@ -78,3 +82,8 @@ def augment(x: np.ndarray, y: np.ndarray, m: np.ndarray, rng: np.random.Generato
     if rng.random() < 0.5:
         x, y, m = x[..., ::-1], y[..., ::-1], m[..., ::-1]
     return np.ascontiguousarray(x), np.ascontiguousarray(y), np.ascontiguousarray(m)
+
+
+def excluded_surveys(dataset_cfg: dict) -> dict[str, str]:
+    """The surveys a dataset config excludes, and why."""
+    return {d["slug"]: d["excluded"] for d in dataset_cfg.get("lidar", []) if d.get("excluded")}

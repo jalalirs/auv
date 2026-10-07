@@ -26,6 +26,9 @@ red_sea:
   places: [shushah, al-fahal]
 left_out: >-
   French Frigate Shoals (12 GB), the post-Irma Keys survey (13.6 GB), Puerto Rico's 2015, 2016 and 2018 flights.
+# Each survey's heights are in its own vertical datum, from its metadata. Sea-level datums
+# (NAVD88, LMSL, the territories' own) are decimetres apart and used as they are; a survey
+# in ellipsoid heights is excluded until a geoid model converts it.
 lidar:
   - slug: NGS_Tutuila_AS_Topobathy_2022_10093
     name: "Tutuila, American Samoa"
@@ -33,105 +36,126 @@ lidar:
     region: Am. Samoa
     gb: 1.018
     files: 29
+    vertical_datum: "ellipsoid"
+    excluded: "heights above the ellipsoid, not sea level (the survey's metadata), about 17 m off at Samoa; unet-v1 was 17 m out there for it. Needs a geoid model to use."
   - slug: NGS_Ofu_Olosega_AS_Topobathy_2022_10084
     name: "Ofu and Olosega, American Samoa"
     year: "2022"
     region: Am. Samoa
     gb: 0.123
     files: 6
+    vertical_datum: "ellipsoid"
+    excluded: "heights above the ellipsoid, not sea level (the survey's metadata), about 17 m off at Samoa; unet-v1 was 17 m out there for it. Needs a geoid model to use."
   - slug: NGS_Tau_AS_Topobathy_2022_10091
     name: "Ta'u, American Samoa"
     year: "2022"
     region: Am. Samoa
     gb: 0.115
     files: 7
+    vertical_datum: "ellipsoid"
+    excluded: "heights above the ellipsoid, not sea level (the survey's metadata), about 17 m off at Samoa; unet-v1 was 17 m out there for it. Needs a geoid model to use."
   - slug: NGS_Guam_topobathy_DEM_2020_9323
     name: "Guam"
     year: "2020"
     region: Guam/CNMI
     gb: 2.138
     files: 52
+    vertical_datum: "GUVD04"
   - slug: NGS_USVI_Topobathy_DEM_2019_9414
     name: "U.S. Virgin Islands"
     year: "2019"
     region: USVI
     gb: 1.44
     files: 785
+    vertical_datum: "orthometric (geoid18)"
   - slug: NGS_PR_Topobathy_DEM_2019_9392
     name: "Puerto Rico"
     year: "2019"
     region: Puerto Rico
     gb: 5.967
     files: 3314
+    vertical_datum: "orthometric (geoid18)"
   - slug: CNMI_Topobathy_DEM_2019_9474
     name: "CNMI (Aguijan, Rota, Saipan, Tinian)"
     year: "2019 - 2020"
     region: Guam/CNMI
     gb: 1.44
     files: 2192
+    vertical_datum: "NMVD03"
   - slug: NGS_FL_keys_outer_reef_block4_2017_8480
     name: "Florida Keys Outer Reef Block 04"
     year: "2017"
     region: Florida
     gb: 0.984
     files: 1
+    vertical_datum: "NAVD88"
   - slug: NGS_FL_keys_outer_reef_block3_2016_6363
     name: "Florida Keys Outer Reef Block 03"
     year: "2016"
     region: Florida
     gb: 0.566
     files: 376
+    vertical_datum: "NAVD88"
   - slug: NGS_FL_keys_outer_reef_block2_2016_6364
     name: "Florida Keys Outer Reef Block 02"
     year: "2016"
     region: Florida
     gb: 0.538
     files: 1
+    vertical_datum: "NAVD88"
   - slug: NGS_FL_keys_outer_reef_block1_2016_6365
     name: "Florida Keys Outer Reef Block 01"
     year: "2016"
     region: Florida
     gb: 1.199
     files: 1
+    vertical_datum: "NAVD88"
   - slug: FL_DryTortugas_NGS_DEM_2015_6212
     name: "Dry Tortugas, FL"
     year: "2015"
     region: Florida
     gb: 0.193
     files: 1
+    vertical_datum: "NAVD88"
   - slug: USACE_Oahu_HI_LMSL_DEM_2013_9365
     name: "Oahu, HI"
     year: "2013"
     region: Hawaii
     gb: 2.146
     files: 889
+    vertical_datum: "LMSL"
   - slug: USACE_Molokai_HI_LMSL_DEM_2013_9344
     name: "Molokai, HI"
     year: "2013"
     region: Hawaii
     gb: 1.11
     files: 484
+    vertical_datum: "LMSL"
   - slug: USACE_Maui_HI_LMSL_DEM_2013_9337
     name: "Maui, HI"
     year: "2013"
     region: Hawaii
     gb: 1.7
     files: 742
+    vertical_datum: "LMSL"
   - slug: USACE_Lanai_HI_LMSL_DEM_2013_9336
     name: "Lanai, HI"
     year: "2013"
     region: Hawaii
     gb: 0.094
     files: 56
+    vertical_datum: "LMSL"
   - slug: USACE_Kauai_HI_LMSL_DEM_2013_9335
     name: "Kauai, HI"
     year: "2013"
     region: Hawaii
     gb: 1.31
     files: 570
+    vertical_datum: "LMSL"
   - slug: USACE_Big_Island_HI_LMSL_DEM_2013_9326
     name: "Hawaii (Big Island)"
     year: "2013"
     region: Hawaii
     gb: 2.14
     files: 1048
+    vertical_datum: "LMSL"
