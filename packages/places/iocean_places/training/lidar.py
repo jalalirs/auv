@@ -98,7 +98,10 @@ def wet(tiles: list[tuple[pathlib.Path, tuple]], every_m: float = 20.0, shallowe
     lons, lats, area = [], [], every_m ** 2
     for path, _ in tiles:
         with rasterio.open(path) as src:
-            step = max(1, int(round(every_m / abs(src.res[0]))))
+            # A pixel's size in metres: Hawaii's surveys are in degrees, and
+            # 20 m divided by 9e-6 read every tile as a single pixel.
+            pixel_m = abs(src.res[0]) * (111_000.0 if src.crs and src.crs.is_geographic else 1.0)
+            step = max(1, int(round(every_m / pixel_m)))
             h = src.read(1, out_shape=(max(1, src.height // step), max(1, src.width // step)))
             nodata = src.nodata
             rows, cols = np.nonzero((h < shallowest) & (h > deepest) & ((h != nodata) if nodata is not None else True))
