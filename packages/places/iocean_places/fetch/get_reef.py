@@ -347,7 +347,12 @@ def main(argv: list[str] | None = None) -> int:
         cloud = scene["properties"].get("eo:cloud_cover", 0.0)
         green = read_band(scene, "green", box, asked.samples)
         covered = float((green > 0).mean())
-        if covered >= COVERS_AT_LEAST:
+        if covered >= COVERS_AT_LEAST or asked.scene:
+            # A scene asked for by name is the one taken, and how much of the
+            # square it covers is said: Al Fahal was built from one that
+            # covers 91% of its three kilometres.
+            if covered < COVERS_AT_LEAST:
+                print(f"{scene['id']}: asked for by name; data over {covered:.0%} of the square")
             break
         print(f"{scene['id']}  {when}  {cloud:.2f}% cloud: data over {covered:.0%} of the square, skipped")
     else:
