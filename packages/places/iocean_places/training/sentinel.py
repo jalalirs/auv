@@ -32,8 +32,16 @@ def clear_scenes(grid: Grid, cloud: float = 20.0, most: int = 40, since: str = "
                          "sortby": [{"field": "properties.eo:cloud_cover", "direction": "asc"}],
                          "limit": most}).encode()
     request = urllib.request.Request(SEARCH, data=asking, headers={"content-type": "application/json"})
-    with urllib.request.urlopen(request, timeout=120) as answer:
-        return json.loads(answer.read()).get("features", [])
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(request, timeout=120) as answer:
+                return json.loads(answer.read()).get("features", [])
+        except OSError:
+            if attempt == 3:
+                raise
+            import time
+            time.sleep(5 * (attempt + 1))
+    return []
 
 
 def _scale(asset: dict) -> tuple[float, float]:
@@ -45,19 +53,30 @@ def _scale(asset: dict) -> tuple[float, float]:
 # no directory listing beside each file, ranges merged, HTTP/2, a cache. A
 # scene's eight reads went from 29 s to 9 s with these, and its bands are read
 # side by side.
+# Set once, in the process's environment, which GDAL reads as its defaults:
+# rasterio.Env entered from many threads at once deadlocked the first full run
+# (170 threads asleep, no connection open). Timeouts and retries so a stuck
+# read fails and is tried again instead of hanging.
 GDAL_ENV = dict(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR", CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".tif",
-                GDAL_HTTP_MERGE_CONSECUTIVE_RANGES=True, GDAL_HTTP_MULTIPLEX=True, GDAL_HTTP_VERSION="2",
-                VSI_CACHE=True, GDAL_CACHEMAX=256)
+                GDAL_HTTP_MERGE_CONSECUTIVE_RANGES="YES", GDAL_HTTP_MULTIPLEX="YES", GDAL_HTTP_VERSION="2",
+                VSI_CACHE="TRUE", GDAL_CACHEMAX="256", GDAL_HTTP_TIMEOUT="60", GDAL_HTTP_MAX_RETRY="4",
+                GDAL_HTTP_RETRY_DELAY="3")
+
+
+def use_gdal_env() -> None:
+    import os
+    for k, v in GDAL_ENV.items():
+        os.environ.setdefault(k, v)
 
 
 def stack(grid: Grid, scenes: int = 8, covers: float = 0.95, **search) -> tuple[np.ndarray, list[dict]]:
     """(len(BANDS), cells, cells) reflectance medians, rows south first, and
     the scenes used. A scene counts only if it has data over `covers` of the
     chip; its clouds are masked, not the scene dropped."""
-    import rasterio
     from concurrent.futures import ThreadPoolExecutor
 
-    with rasterio.Env(**GDAL_ENV), ThreadPoolExecutor(len(BANDS) + 1) as pool:
+    use_gdal_env()
+    with ThreadPoolExecutor(len(BANDS) + 1) as pool:
         return _stack(grid, scenes, covers, pool, **search)
 
 

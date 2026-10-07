@@ -19,7 +19,6 @@ import pathlib
 import sys
 import threading
 import traceback
-from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
@@ -54,6 +53,24 @@ def fetch_lidar(root: pathlib.Path, only: str | None) -> None:
         lidar.fetch(d["slug"], root / "lidar")
 
 
+def _one_chip(root: str, d: dict, tiles: list, lat: float, lon: float):
+    """One chip, in a worker process: (id, why it was skipped) or (id, (x, y, record))."""
+    chip_id = f"{d['slug']}-{lat:.4f}-{lon:.4f}"
+    try:
+        grid = chips.chip_grid(lat, lon)
+        y = chips.lidar_label(grid, tiles)
+        if chips.labelled_share(y) < chips.LABELLED_AT_LEAST:
+            return chip_id, f"labelled {chips.labelled_share(y):.2f}"
+        x, scenes = sentinel.stack(grid)
+        return chip_id, (x, y, {"region": d["region"], "dataset": d["slug"], "surveyYear": d["year"],
+                                "centre": [lat, lon], "acrossM": chips.ACROSS, "cells": chips.CELLS,
+                                "bands": list(sentinel.BANDS), "scenes": scenes,
+                                "label": f"NOAA topobathy lidar ({d['name']}, {d['year']}), averaged into 10 m cells"})
+    except Exception as bad:   # one chip is not the set: say why and go on
+        traceback.print_exc(limit=1, file=sys.stderr)
+        return chip_id, f"error: {bad}"
+
+
 def make_chips(root: pathlib.Path, only: str | None, workers: int, most: int | None) -> None:
     (root / "chips").mkdir(parents=True, exist_ok=True)
     done, skipped = _done(root), _skipped(root)
@@ -85,32 +102,22 @@ def make_chips(root: pathlib.Path, only: str | None, workers: int, most: int | N
                 if f"{d['slug']}-{lat:.4f}-{lon:.4f}" not in done | skipped]
         print(f"{d['slug']}: {len(tiles)} tiles, {len(centres)} chip places, {len(todo)} to make", flush=True)
 
-        def one(centre):
-            lat, lon = centre
-            chip_id = f"{d['slug']}-{lat:.4f}-{lon:.4f}"
-            try:
-                grid = chips.chip_grid(lat, lon)
-                y = chips.lidar_label(grid, tiles)
-                if chips.labelled_share(y) < chips.LABELLED_AT_LEAST:
-                    _note_skip(root, chip_id, f"labelled {chips.labelled_share(y):.2f}")
-                    return None
-                x, scenes = sentinel.stack(grid)
-                with _lock:
-                    return chips.save(root / "chips" / d["region"].replace(" ", "-").replace("/", "-").lower(),
-                                      chip_id, x, y, "dense",
-                                      {"region": d["region"], "dataset": d["slug"], "surveyYear": d["year"],
-                                       "centre": [lat, lon], "acrossM": chips.ACROSS, "cells": chips.CELLS,
-                                       "bands": list(sentinel.BANDS), "scenes": scenes,
-                                       "label": f"NOAA topobathy lidar ({d['name']}, {d['year']}), averaged into 10 m cells"})
-            except Exception as bad:   # one chip is not the set: say why and go on
-                _note_skip(root, chip_id, f"error: {bad}")
-                traceback.print_exc(limit=1, file=sys.stderr)
-                return None
-
         made = 0
-        with ThreadPoolExecutor(workers) as pool:
-            for k, r in enumerate(pool.map(one, todo), 1):
-                made += r is not None
+        # Processes, not threads: GDAL in one process across many threads
+        # deadlocked. Each chip is made in a worker; only the parent writes
+        # the index, so nothing is written twice at once.
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor(workers, initializer=sentinel.use_gdal_env) as pool:
+            futures = [pool.submit(_one_chip, str(root), d, tiles, lat, lon) for lat, lon in todo]
+            for k, f in enumerate(futures, 1):
+                chip_id, result = f.result()
+                if isinstance(result, str):
+                    _note_skip(root, chip_id, result)
+                else:
+                    x, y, record = result
+                    chips.save(root / "chips" / d["region"].replace(" ", "-").replace("/", "-").lower(),
+                               chip_id, x, y, "dense", record)
+                    made += 1
                 if k % 25 == 0:
                     print(f"  {d['slug']}: {k}/{len(todo)} looked at, {made} made", flush=True)
         print(f"{d['slug']}: {made} chips made", flush=True)
