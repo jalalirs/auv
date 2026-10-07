@@ -1,0 +1,137 @@
+# depth-v1: the first training set for the depth model.
+#
+# Dense labels from NOAA topobathy lidar over coral reefs (the public
+# noaa-nos-coastal-lidar-pds bucket), one survey per area; sparse labels from
+# ICESat-2 over the Red Sea places. Input: Sentinel-2 L2A band medians.
+# Built 2026-10-07: 3,267 chips, 35.0 M labelled cells. The data is not in
+# git (the repository is public): it lives under the data root, and
+# manifest.json there says what was built from this file.
+
+name: depth-v1
+chip:
+  cells: 128            # per side
+  cell_m: 10.0          # Sentinel-2's own resolution
+  labelled_at_least: 0.25   # share of a chip that must be measured seabed
+  shallowest_m: -0.5
+  deepest_m: -30.0
+sentinel2:
+  collection: sentinel-2-c1-l2a
+  bands: [coastal, blue, green, red, rededge1, nir, swir16]
+  scenes: 8             # the median of up to this many clear scenes
+  cloud_below: 20.0     # per cent, over the scene
+  covers_at_least: 0.95 # of the chip, for a scene to count
+  masked_scl: [3, 8, 9, 10]   # cloud shadow, cloud, thin cirrus
+red_sea:
+  label: icesat2
+  places: [shushah, al-fahal]
+left_out: >-
+  French Frigate Shoals (12 GB), the post-Irma Keys survey (13.6 GB), Puerto Rico's 2015, 2016 and 2018 flights.
+lidar:
+  - slug: NGS_Tutuila_AS_Topobathy_2022_10093
+    name: "Tutuila, American Samoa"
+    year: "2022"
+    region: Am. Samoa
+    gb: 1.018
+    files: 29
+  - slug: NGS_Ofu_Olosega_AS_Topobathy_2022_10084
+    name: "Ofu and Olosega, American Samoa"
+    year: "2022"
+    region: Am. Samoa
+    gb: 0.123
+    files: 6
+  - slug: NGS_Tau_AS_Topobathy_2022_10091
+    name: "Ta'u, American Samoa"
+    year: "2022"
+    region: Am. Samoa
+    gb: 0.115
+    files: 7
+  - slug: NGS_Guam_topobathy_DEM_2020_9323
+    name: "Guam"
+    year: "2020"
+    region: Guam/CNMI
+    gb: 2.138
+    files: 52
+  - slug: NGS_USVI_Topobathy_DEM_2019_9414
+    name: "U.S. Virgin Islands"
+    year: "2019"
+    region: USVI
+    gb: 1.44
+    files: 785
+  - slug: NGS_PR_Topobathy_DEM_2019_9392
+    name: "Puerto Rico"
+    year: "2019"
+    region: Puerto Rico
+    gb: 5.967
+    files: 3314
+  - slug: CNMI_Topobathy_DEM_2019_9474
+    name: "CNMI (Aguijan, Rota, Saipan, Tinian)"
+    year: "2019 - 2020"
+    region: Guam/CNMI
+    gb: 1.44
+    files: 2192
+  - slug: NGS_FL_keys_outer_reef_block4_2017_8480
+    name: "Florida Keys Outer Reef Block 04"
+    year: "2017"
+    region: Florida
+    gb: 0.984
+    files: 1
+  - slug: NGS_FL_keys_outer_reef_block3_2016_6363
+    name: "Florida Keys Outer Reef Block 03"
+    year: "2016"
+    region: Florida
+    gb: 0.566
+    files: 376
+  - slug: NGS_FL_keys_outer_reef_block2_2016_6364
+    name: "Florida Keys Outer Reef Block 02"
+    year: "2016"
+    region: Florida
+    gb: 0.538
+    files: 1
+  - slug: NGS_FL_keys_outer_reef_block1_2016_6365
+    name: "Florida Keys Outer Reef Block 01"
+    year: "2016"
+    region: Florida
+    gb: 1.199
+    files: 1
+  - slug: FL_DryTortugas_NGS_DEM_2015_6212
+    name: "Dry Tortugas, FL"
+    year: "2015"
+    region: Florida
+    gb: 0.193
+    files: 1
+  - slug: USACE_Oahu_HI_LMSL_DEM_2013_9365
+    name: "Oahu, HI"
+    year: "2013"
+    region: Hawaii
+    gb: 2.146
+    files: 889
+  - slug: USACE_Molokai_HI_LMSL_DEM_2013_9344
+    name: "Molokai, HI"
+    year: "2013"
+    region: Hawaii
+    gb: 1.11
+    files: 484
+  - slug: USACE_Maui_HI_LMSL_DEM_2013_9337
+    name: "Maui, HI"
+    year: "2013"
+    region: Hawaii
+    gb: 1.7
+    files: 742
+  - slug: USACE_Lanai_HI_LMSL_DEM_2013_9336
+    name: "Lanai, HI"
+    year: "2013"
+    region: Hawaii
+    gb: 0.094
+    files: 56
+  - slug: USACE_Kauai_HI_LMSL_DEM_2013_9335
+    name: "Kauai, HI"
+    year: "2013"
+    region: Hawaii
+    gb: 1.31
+    files: 570
+  - slug: USACE_Big_Island_HI_LMSL_DEM_2013_9326
+    name: "Hawaii (Big Island)"
+    year: "2013"
+    region: Hawaii
+    gb: 2.14
+    files: 1048

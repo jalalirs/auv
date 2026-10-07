@@ -32,7 +32,7 @@ check:
 # and a linter is not going to improve it.
 check-python:
     uvx ruff@0.14.0 check --config ruff.toml \
-        services/sim-runtime packages/sdk-python packages/mcp tools apps
+        services/sim-runtime packages/sdk-python packages/mcp packages/places ml tools apps
 
 # Run every component's tests.
 test:
@@ -111,3 +111,17 @@ e2e:
 # Commit and synchronize a reviewed change across Mac, GitHub, and the GPU host.
 sync message:
     ./tools/gpu sync "{{ message }}"
+
+# The depth model, in its container on the box's second GPU (ml/depth):
+# `just ml-depth train --config train/unet-v1.yaml`, `just ml-depth runs`.
+ml-depth *args:
+    GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown) IOCEAN_UID=$(id -u) IOCEAN_GID=$(id -g) \
+        docker compose -f ml/depth/compose.yaml run --rm depth {{args}}
+
+# Build the depth model's image.
+ml-depth-image:
+    docker compose -f ml/depth/compose.yaml build depth
+
+# The depth model's tests, in its container (the U-Net's need torch).
+ml-depth-test:
+    IOCEAN_UID=$(id -u) IOCEAN_GID=$(id -g) docker compose -f ml/depth/compose.yaml run --rm --entrypoint python depth -m pytest -q -p no:cacheprovider tests

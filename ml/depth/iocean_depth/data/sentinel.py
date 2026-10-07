@@ -15,8 +15,8 @@ import urllib.request
 
 import numpy as np
 
-from ..grid import Grid
-from ..sources.raster import onto
+from iocean_places.grid import Grid
+from iocean_places.sources.raster import onto
 
 SEARCH = "https://earth-search.aws.element84.com/v1/search"
 COLLECTION = "sentinel-2-c1-l2a"
@@ -26,8 +26,8 @@ MASKED = (3, 8, 9, 10)
 
 
 def clear_scenes(grid: Grid, cloud: float = 20.0, most: int = 40, since: str = "2017-01-01T00:00:00Z",
-                 until: str = "2030-01-01T00:00:00Z") -> list[dict]:
-    asking = json.dumps({"collections": [COLLECTION], "bbox": list(grid.bounds()),
+                 until: str = "2030-01-01T00:00:00Z", collection: str = COLLECTION) -> list[dict]:
+    asking = json.dumps({"collections": [collection], "bbox": list(grid.bounds()),
                          "datetime": f"{since}/{until}", "query": {"eo:cloud_cover": {"lt": cloud}},
                          "sortby": [{"field": "properties.eo:cloud_cover", "direction": "asc"}],
                          "limit": most}).encode()
@@ -72,34 +72,35 @@ def use_gdal_env() -> None:
         os.environ.setdefault(k, v)
 
 
-def stack(grid: Grid, scenes: int = 8, covers: float = 0.95, **search) -> tuple[np.ndarray, list[dict]]:
+def stack(grid: Grid, scenes: int = 8, covers: float = 0.95, bands: tuple[str, ...] = BANDS,
+          masked: tuple[int, ...] = MASKED, **search) -> tuple[np.ndarray, list[dict]]:
     """(len(BANDS), cells, cells) reflectance medians, rows south first, and
     the scenes used. A scene counts only if it has data over `covers` of the
     chip; its clouds are masked, not the scene dropped."""
     from concurrent.futures import ThreadPoolExecutor
 
     use_gdal_env()
-    with ThreadPoolExecutor(len(BANDS) + 1) as pool:
-        return _stack(grid, scenes, covers, pool, **search)
+    with ThreadPoolExecutor(len(bands) + 1) as pool:
+        return _stack(grid, scenes, covers, pool, tuple(bands), tuple(masked), **search)
 
 
-def _stack(grid: Grid, scenes: int, covers: float, pool, **search) -> tuple[np.ndarray, list[dict]]:
+def _stack(grid: Grid, scenes: int, covers: float, pool, bands, masked, **search) -> tuple[np.ndarray, list[dict]]:
     taken, used = [], []
     for item in clear_scenes(grid, **search):
         assets = item["assets"]
-        if not all(b in assets for b in BANDS + ("scl",)):
+        if not all(b in assets for b in bands + ("scl",)):
             continue
         green, _ = onto(grid, assets["green"]["href"], average=False)
         if float(np.isfinite(green).mean()) < covers or float((green > 0).mean()) < covers:
             continue
-        others = [b for b in BANDS if b != "green"]
-        read = list(pool.map(lambda name: onto(grid, assets[name]["href"], nearest=(name == "scl"),
+        others = [b for b in bands if b != "green"]
+        read = list(pool.map(lambda name, assets=assets: onto(grid, assets[name]["href"], nearest=(name == "scl"),
                                                average=None if name == "scl" else False)[0], others + ["scl"]))
-        bands = dict(zip(others, read[:-1]), green=green)
-        bad = np.isin(np.nan_to_num(read[-1], nan=0).round(), MASKED)
+        read_bands = dict(zip(others, read[:-1]), green=green)
+        bad = np.isin(np.nan_to_num(read[-1], nan=0).round(), masked)
         layers = []
-        for name in BANDS:
-            raw = bands[name]
+        for name in bands:
+            raw = read_bands[name]
             scale, offset = _scale(assets[name])
             value = raw * scale + offset
             value[bad | ~np.isfinite(raw) | (raw <= 0)] = np.nan

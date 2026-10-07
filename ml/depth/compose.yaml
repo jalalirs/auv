@@ -1,0 +1,35 @@
+# The depth model on the box: one service, run for each step.
+#
+#   just ml-depth dataset summary
+#   just ml-depth train --config train/unet-v1.yaml
+#   just ml-depth evaluate --run unet-v1-20261007-1700
+#   just ml-depth runs
+#
+# Data is not in the image and not in git: datasets and runs live on the host
+# under IOCEAN_ML_DATA_HOST (~/iocean/ml/depth), mounted at /data. The places'
+# reference folders are mounted read-only for the Red Sea chips.
+#
+# GPU 1 only: GPU 0 belongs to the dives and to the other services on this box.
+services:
+  depth:
+    image: iocean/ml-depth:${IOCEAN_IMAGE_TAG:-dev}
+    pull_policy: never
+    build:
+      context: ../..
+      dockerfile: ml/depth/Dockerfile
+    environment:
+      IOCEAN_ML_DATA: /data
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    volumes:
+      - ${IOCEAN_ML_DATA_HOST:-${HOME}/iocean/ml/depth}:/data
+      - ${IOCEAN_REFERENCE_HOST:-${HOME}/iocean/reference}:/reference:ro
+    user: "${IOCEAN_UID:-1000}:${IOCEAN_GID:-1000}"
+    # PyTorch's data loading and the dataset build's workers share memory.
+    shm_size: 8g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${IOCEAN_ML_GPU:-1}"]
+              capabilities: [gpu]

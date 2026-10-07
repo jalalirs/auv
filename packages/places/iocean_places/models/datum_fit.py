@@ -22,7 +22,7 @@ class DatumFit:
     name = "datum-fit"
     gives = ("depth",)
 
-    def __init__(self, survey: str, reference: str | None = None, fillPasses: int = 6,  # noqa: N803 - the recipe's keys
+    def __init__(self, survey: str, reference: str | None = None, fillPasses: int = 6,
                  smallestM2: float = 2000.0, offsetM: float | None = None, fewestOverlapCells: int = 200,
                  allowDerived: bool = False) -> None:
         self.inputs = {"survey": survey, "reference": reference}

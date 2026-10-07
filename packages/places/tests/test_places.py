@@ -1,6 +1,5 @@
 """The places module: layers on one grid, fusion by error, a place from a recipe."""
 
-import json
 import pathlib
 import sys
 
@@ -9,8 +8,8 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from iocean_places import Grid, Layer, Provenance, Recipe, build, fuse  # noqa: E402
-from iocean_places.sources import Points  # noqa: E402
+from iocean_places import Grid, Layer, Provenance, Recipe, build, fuse
+from iocean_places.sources import Points
 
 GRID = Grid(27.9, 34.9, 200.0, 41)
 SURVEY = Provenance("survey", "measured", "a multibeam survey")

@@ -87,7 +87,7 @@ class ColourDepth:
     gives = ("depth",)
 
     def __init__(self, depth: str, red: str, green: str, blue: str, classes: str, truth: str,
-                 land: str | None = None, softenClassesM: float = 20.0) -> None:  # noqa: N803 - the recipe's key
+                 land: str | None = None, softenClassesM: float = 20.0) -> None:
         self.inputs = {"depth": depth, "red": red, "green": green, "blue": blue, "classes": classes,
                        "truth": truth, "land": land}
         self.soften_m = float(softenClassesM)

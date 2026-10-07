@@ -80,7 +80,7 @@ def box_of(url: str, name: str, i0: int, i1: int, j0: int, j1: int) -> np.ndarra
     for i in range(i0, i1):
         a = offset + (i * COLS + j0) * size
         b = offset + (i * COLS + j1) * size - 1
-        for attempt in range(5):
+        for _attempt in range(5):
             got = requests.get(url, headers={"Range": f"bytes={a}-{b}"}, timeout=60).content
             if len(got) == b - a + 1:
                 break

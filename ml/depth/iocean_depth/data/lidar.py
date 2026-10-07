@@ -9,22 +9,16 @@ record rather than corrected.
 
 from __future__ import annotations
 
-import json
 import pathlib
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 
+import numpy as np
+
 BUCKET = "https://noaa-nos-coastal-lidar-pds.s3.amazonaws.com"
 NS = "{http://s3.amazonaws.com/doc/2006-03-01/}"
-SOURCES = pathlib.Path(__file__).with_name("lidar_sources.json")
-
-
-def datasets() -> list[dict]:
-    return json.loads(SOURCES.read_text())["datasets"]
-
-
 def files_of(slug: str) -> list[tuple[str, int]]:
     """Every GeoTIFF in a dataset, with its size: (key, bytes)."""
     out, token = [], None
@@ -85,13 +79,12 @@ def footprints(paths: list[pathlib.Path]) -> list[tuple[pathlib.Path, tuple[floa
 
 
 def wet(tiles: list[tuple[pathlib.Path, tuple]], every_m: float = 20.0, shallowest: float = -0.5,
-        deepest: float = -30.0) -> tuple["np.ndarray", "np.ndarray", float]:
+        deepest: float = -30.0) -> tuple[np.ndarray, np.ndarray, float]:
     """Where each survey measured water a satellite can see the bottom of,
     read coarsely: longitudes and latitudes of the wet samples, and the area
     each stands for. Most of a survey's square is land or open sea, and
     reading it at full resolution, chip by chip, to find that out is what
     made Tutuila's first 142 chip places take 16 minutes to refuse."""
-    import numpy as np
     import rasterio
     from rasterio.warp import transform as warp
 

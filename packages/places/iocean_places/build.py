@@ -17,7 +17,6 @@ import json
 import pathlib
 import time
 
-import numpy as np
 
 from .fusion import fuse
 from .layer import Layer, Soundings

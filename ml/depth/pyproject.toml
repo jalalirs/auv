@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iocean-depth"
+version = "0.1.0"
+description = "iOcean's depth model: depth and its uncertainty from Sentinel-2, trained on measured reef seabed."
+readme = "README.md"
+requires-python = ">=3.10"
+# The places package (packages/places) gives the grid and the raster reader;
+# in the container it is on PYTHONPATH beside this one.
+dependencies = ["numpy", "pyyaml"]
+
+[project.optional-dependencies]
+data = ["rasterio>=1.4", "scipy>=1.11", "requests>=2.31", "h5py>=3.10"]
+train = ["torch>=2.6"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+iocean-depth = "iocean_depth.cli:main"
+
+[tool.setuptools]
+packages = ["iocean_depth", "iocean_depth.data", "iocean_depth.models"]

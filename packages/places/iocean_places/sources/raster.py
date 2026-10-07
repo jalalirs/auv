@@ -75,7 +75,7 @@ class Raster:
     gives = ("depth",)
 
     def __init__(self, file: str, path: str | None = None, error: float = 0.3, band: int = 1,
-                 uncertaintyBand: int | None = None, depthsPositive: bool = False,  # noqa: N803
+                 uncertaintyBand: int | None = None, depthsPositive: bool = False,
                  kind: str = "measured", citation: str = "", datum: str = "", licence: str = "",
                  name: str | None = None) -> None:
         self.file, self.path, self.error, self.band = file, path, float(error), int(band)

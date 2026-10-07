@@ -1,0 +1,29 @@
+# unet-v1: the first depth model.
+#
+# Tested only on regions it never saw: neighbouring cells are alike, and a
+# model scored on cells of the reefs it trained on is scored on its memory.
+
+name: unet-v1
+dataset: depth-v1
+split:
+  test_regions: [USVI, Guam/CNMI, Am. Samoa]
+  # Held out of training to choose the epoch: one survey from each of the two
+  # biggest training regions, so the choice is not made on the training reefs.
+  validation_datasets: [FL_DryTortugas_NGS_DEM_2015_6212, USACE_Kauai_HI_LMSL_DEM_2013_9335]
+target:
+  shallowest_m: 0.0     # depth, positive down; cells outside are not scored
+  deepest_m: 40.0
+model:
+  kind: unet
+  base_channels: 32     # 32, 64, 128, 256 down; about 7.8 M parameters
+  # Out: depth and the log of its variance, trained on the Gaussian
+  # likelihood after `warmup_epochs` on the absolute error alone.
+train:
+  epochs: 60
+  warmup_epochs: 5
+  batch: 32
+  learning_rate: 0.002
+  weight_decay: 0.0001
+  seed: 0
+  augment: [rot90, flip]
+  precision: bf16

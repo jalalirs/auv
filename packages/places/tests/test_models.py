@@ -10,9 +10,9 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from iocean_places import Grid, Recipe, build  # noqa: E402
-from iocean_places.build import products_of, run_models  # noqa: E402
-from iocean_places.grid import metres_per_degree  # noqa: E402
+from iocean_places import Grid, Recipe, build
+from iocean_places.build import products_of, run_models
+from iocean_places.grid import metres_per_degree
 
 GRID = Grid(27.9, 34.9, 400.0, 41)
 X, Y = GRID.xy()
@@ -44,8 +44,8 @@ def reference(folder: pathlib.Path, seed: int = 3, wobble: float = 0.0) -> pathl
                                                       "scenes": [{"date": "2026-01-01", "id": "S2"}]}))
     # tools/coral-atlas: reef slope over the west half.
     east, north = metres_per_degree(GRID.latitude)
-    lon = lambda x: GRID.longitude + x / east  # noqa: E731
-    lat = lambda y: GRID.latitude + y / north  # noqa: E731
+    lon = lambda x: GRID.longitude + x / east
+    lat = lambda y: GRID.latitude + y / north
     ring = [[lon(-210), lat(-210)], [lon(0), lat(-210)], [lon(0), lat(210)], [lon(-210), lat(210)], [lon(-210), lat(-210)]]
     slope = {"type": "Feature", "properties": {"class_name": "Reef Slope"},
              "geometry": {"type": "Polygon", "coordinates": [ring]}}

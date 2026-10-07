@@ -82,13 +82,13 @@ def ask(layer: str, bbox: tuple, tries: int = 3) -> dict:
         "bbox": "%.6f,%.6f,%.6f,%.6f,EPSG:4326" % bbox,
     })
     last = None
-    for attempt in range(tries):
+    for _attempt in range(tries):
         try:
             request = urllib.request.Request(f"{WFS}?{query}",
                                              headers={"User-Agent": AGENT})
             with urllib.request.urlopen(request, timeout=180) as answer:
                 return json.loads(answer.read().decode())
-        except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+        except Exception as exc:
             last = exc
     raise SystemExit(f"the Atlas would not answer for {layer}: {last}")
 

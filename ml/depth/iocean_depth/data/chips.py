@@ -3,7 +3,7 @@ saw over them and what was measured there.
 
 A chip is 128 by 128 cells at 10 m, about 1.3 km square: enough for a network
 to see a reef flat, its crest and the slope off it together. Each is saved as
-one .npz: `x`, the Sentinel-2 band medians (sentinel.BANDS, reflectance);
+one .npz: `x`, the Sentinel-2 band medians (the dataset config's bands, reflectance);
 `y`, the measured height in each cell (NaN where nothing was measured);
 `kind`, whether the label is dense (a lidar survey) or sparse (ICESat-2
 photons along tracks). `index.jsonl` beside them says where each chip is,
@@ -19,9 +19,8 @@ import time
 
 import numpy as np
 
-from ..grid import Grid, metres_per_degree
-from ..sources.raster import onto
-from . import sentinel
+from iocean_places.grid import Grid, metres_per_degree
+from iocean_places.sources.raster import onto
 
 CELLS = 128
 CELL_M = 10.0
@@ -66,8 +65,8 @@ def lidar_label(grid: Grid, tiles: list[tuple[pathlib.Path, tuple]]) -> np.ndarr
     return out
 
 
-def labelled_share(y: np.ndarray) -> float:
-    return float(((y < SHALLOWEST) & (y > DEEPEST)).mean())
+def labelled_share(y: np.ndarray, shallowest: float = SHALLOWEST, deepest: float = DEEPEST) -> float:
+    return float(((y < shallowest) & (y > deepest)).mean())
 
 
 def photons_label(grid: Grid, lon: np.ndarray, lat: np.ndarray, height: np.ndarray) -> np.ndarray:
@@ -85,16 +84,17 @@ def photons_label(grid: Grid, lon: np.ndarray, lat: np.ndarray, height: np.ndarr
     return out
 
 
-def save(into: pathlib.Path, chip_id: str, x: np.ndarray, y: np.ndarray, kind: str, record: dict) -> dict:
+def save(into: pathlib.Path, chip_id: str, x: np.ndarray, y: np.ndarray, kind: str, record: dict,
+         shallowest: float = SHALLOWEST, deepest: float = DEEPEST) -> dict:
     into.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(into / f"{chip_id}.npz", x=x.astype("float32"), y=y.astype("float32"), kind=kind)
     record = {"chip": chip_id, "file": str((into / f"{chip_id}.npz").name), "labelKind": kind,
-              "labelledShare": round(labelled_share(y), 3), "made": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+              "labelledShare": round(labelled_share(y, shallowest, deepest), 3), "made": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
               **record}
     with open(into.parent / "index.jsonl", "a") as index:
         index.write(json.dumps(record) + "\n")
     return record
 
 
-def chip_grid(latitude: float, longitude: float) -> Grid:
-    return Grid(latitude, longitude, ACROSS, CELLS)
+def chip_grid(latitude: float, longitude: float, cells: int = CELLS, cell_m: float = CELL_M) -> Grid:
+    return Grid(latitude, longitude, cell_m * (cells - 1), cells)

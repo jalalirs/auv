@@ -61,7 +61,7 @@ class Gebco:
     name = "gebco"
     gives = ("depth",)
 
-    def __init__(self, path: str | None = None, multibeam: bool = True, halfDegrees: float = 0.1,  # noqa: N803
+    def __init__(self, path: str | None = None, multibeam: bool = True, halfDegrees: float = 0.1,
                  fetch: bool = True) -> None:
         self.path, self.multibeam, self.half, self.fetch = path, bool(multibeam), float(halfDegrees), bool(fetch)
 

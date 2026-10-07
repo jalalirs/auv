@@ -240,7 +240,7 @@ class CurveDepth:
     gives = ("depth",)
 
     def __init__(self, depth: str, truth: str, land: str | None = None, reef: str | None = None,
-                 kind: str = "derived", keepWet: bool = True) -> None:  # noqa: N803 - the recipe's key
+                 kind: str = "derived", keepWet: bool = True) -> None:
         self.inputs = {"depth": depth, "truth": truth, "land": land, "reef": reef}
         self.kind, self.keep_wet = kind, bool(keepWet)
 

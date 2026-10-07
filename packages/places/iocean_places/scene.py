@@ -7,7 +7,6 @@ the heightfield, the USD and the record of where every cell came from out.
 
 from __future__ import annotations
 
-import json
 import pathlib
 
 
@@ -382,7 +381,7 @@ def write_usd(where: pathlib.Path, name: str, height, across: float,
 
     lowest, highest = float(height.min()), float(height.max())
     if ground is not None:
-        import numpy as np  # noqa: F811
+        import numpy as np
 
         # A reef photographed through ten metres of water comes back flat and
         # blue-grey; tools/ground has already taken the water out of the
