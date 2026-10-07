@@ -91,14 +91,22 @@ class Points:
 
     def __init__(self, path: str, error: float = 0.2, reach: float = 30.0, slope: float = 0.1,
                  degrees: bool = False, depths_positive: bool = False, kind: str = "measured",
-                 citation: str = "") -> None:
+                 citation: str = "", crs: str | None = None, skip: int = 0) -> None:
         self.path, self.error, self.reach, self.slope = path, float(error), float(reach), float(slope)
         self.degrees, self.depths_positive, self.kind, self.citation = degrees, depths_positive, kind, citation
+        self.crs, self.skip = crs, int(skip)
 
     def soundings(self, grid: Grid, cache=None) -> list[Soundings]:
-        rows = np.loadtxt(self.path, delimiter="," if str(self.path).endswith(".csv") else None, ndmin=2)
+        rows = np.loadtxt(self.path, delimiter="," if str(self.path).endswith(".csv") else None, ndmin=2,
+                          skiprows=self.skip)
         a, b, z = rows[:, 0], rows[:, 1], rows[:, 2]
-        x, y = grid.to_xy(a, b) if self.degrees else (a, b)
+        if self.crs:
+            # Eastings and northings in a projected system (UTM, say): to degrees, then to the site.
+            from rasterio.warp import transform
+            lon, lat = transform(self.crs, "EPSG:4326", a.tolist(), b.tolist())
+            x, y = grid.to_xy(np.asarray(lon), np.asarray(lat))
+        else:
+            x, y = grid.to_xy(a, b) if self.degrees else (a, b)
         z = -z if self.depths_positive else z
         return [Soundings("depth", np.asarray(x, float), np.asarray(y, float), z, np.full(len(z), self.error),
                           Provenance(self.name, self.kind,
@@ -149,9 +157,10 @@ class Flat:
                          Provenance(self.name, "assumed", f"a flat seabed at {abs(self.depth)} m"))]
 
 
-def _geotiff(**kw):
-    from .geotiff import GeoTiff
-    return GeoTiff(**kw)
+def _geotiff(path: str, error: float = 0.3, kind: str = "measured", citation: str = "", negate: bool = False, **kw):
+    """`geotiff` as recipes first named it: a raster, now in any coordinate system."""
+    from .raster import Raster
+    return Raster(file=path, error=error, kind=kind, citation=citation, depthsPositive=negate, **kw)
 
 
 def _lazy(module: str, name: str):
@@ -171,7 +180,9 @@ SOURCES = {"geotiff": _geotiff, "points": Points, "place": Place, "flat": Flat,
            "gebco": _lazy("gebco", "Gebco"),
            "bathymetry": _lazy("surveys", "Bathymetry"),
            "survey-dem": _lazy("surveys", "SurveyDem"),
-           "fringing": _lazy("fringing", "Fringing")}
+           "fringing": _lazy("fringing", "Fringing"),
+           "raster": _lazy("raster", "Raster"),
+           "ortho": _lazy("raster", "Ortho")}
 
 
 def source_from(entry: dict) -> Source:

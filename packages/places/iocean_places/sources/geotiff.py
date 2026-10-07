@@ -1,16 +1,12 @@
-"""A raster somebody surveyed: a GeoTIFF of depths or heights.
-
-The first source this module had, because it is the one every client has: a
-multibeam grid, a lidar DEM or a chart exported to GeoTIFF. Read in degrees,
-cut to the place's square and resampled onto its grid.
-"""
+"""make-site's --raster reader, for a GeoTIFF in degrees: cut to the place's
+square and decimated. The places module's own raster source (raster.py) reads
+any raster in any coordinate system; this stays for make-site."""
 
 from __future__ import annotations
 
-import pathlib
+import math
 
-from ..grid import Grid, metres_per_degree
-from ..layer import Layer, Provenance
+from ..grid import metres_per_degree
 
 
 def read_patch(raster, centre, across, most):
@@ -56,31 +52,3 @@ def read_patch(raster, centre, across, most):
 
     # North is up in a raster and +y in the world, so the rows are flipped.
     return np.flipud(filled), step
-
-
-class GeoTiff:
-    """Depths from a GeoTIFF.
-
-    `error` is the vertical error the survey states, in metres; `kind` is
-    what the numbers are (measured for a survey, derived for a model's
-    output). `negate` for a raster of depths rather than heights."""
-
-    name = "geotiff"
-    gives = ("depth",)
-
-    def __init__(self, path: str, error: float = 0.5, kind: str = "measured",
-                 citation: str = "", negate: bool = False) -> None:
-        self.path, self.error, self.kind, self.citation, self.negate = path, float(error), kind, citation, negate
-
-    def layers(self, grid: Grid, cache=None) -> list[Layer]:
-        import numpy as np
-
-        height, _ = read_patch(self.path, (grid.latitude, grid.longitude), grid.across, grid.cells)
-        height = np.asarray(height, dtype="float32")
-        if self.negate:
-            height = -height
-        if height.shape != (grid.cells, grid.cells):
-            from scipy.ndimage import zoom
-            height = zoom(height, (grid.cells / height.shape[0], grid.cells / height.shape[1]), order=1)
-        return [Layer.of(grid, "depth", height, self.error,
-                         Provenance(self.name, self.kind, self.citation or f"the raster {pathlib.Path(self.path).name}"))]
