@@ -79,6 +79,14 @@ def clearest_scenes(box, since: str, cloud: float, most: int = 20,
     return found["features"]
 
 
+def the_scene(scene_id: str) -> dict:
+    """One scene by its id, so a place is fetched again from the scene it was
+    built from and not from whichever is clearest now."""
+    url = SEARCH.rsplit("/", 1)[0] + f"/collections/{COLLECTION}/items/{scene_id}"
+    with urllib.request.urlopen(url, timeout=120) as answer:
+        return json.loads(answer.read())
+
+
 def clearest_scene(box, since: str, cloud: float) -> dict:
     return clearest_scenes(box, since, cloud, most=1)[0]
 
@@ -98,6 +106,7 @@ def read_band(scene: dict, key: str, box, samples: int) -> np.ndarray:
     it reads land everywhere, which is exactly what it did.
     """
     import rasterio
+    from rasterio.enums import Resampling
     from rasterio.warp import transform_bounds
     from rasterio.windows import from_bounds
 
@@ -107,7 +116,11 @@ def read_band(scene: dict, key: str, box, samples: int) -> np.ndarray:
     with rasterio.open(asset["href"]) as source:
         bounds = transform_bounds("EPSG:4326", source.crs, *box)
         window = from_bounds(*bounds, source.transform)
-        raw = source.read(1, window=window, out_shape=(samples, samples)).astype("float64")
+        # Bilinear: read by nearest pixel, a 10 m band on a 4 m grid comes back
+        # in 10 m blocks, and every depth read off it is terraced in steps of
+        # up to a metre (found 2026-10-07 against Looe Key's surveyed seabed).
+        raw = source.read(1, window=window, out_shape=(samples, samples),
+                          resampling=Resampling.bilinear).astype("float64")
     return raw * scale + offset
 
 
@@ -198,13 +211,14 @@ def bottom_colour(colour, depth, seen, deep, land):
 
 def read_colour(scene: dict, box, samples: int) -> np.ndarray:
     import rasterio
+    from rasterio.enums import Resampling
     from rasterio.warp import transform_bounds
     from rasterio.windows import from_bounds
 
     with rasterio.open(scene["assets"]["visual"]["href"]) as source:
         bounds = transform_bounds("EPSG:4326", source.crs, *box)
         window = from_bounds(*bounds, source.transform)
-        return source.read(window=window, out_shape=(3, samples, samples))
+        return source.read(window=window, out_shape=(3, samples, samples), resampling=Resampling.bilinear)
 
 
 # The smallest thing that will be believed to be reef, in square metres. Kept
@@ -313,6 +327,7 @@ def main(argv: list[str] | None = None) -> int:
     # So a place can be fetched again from the same scenes: the clearest scene
     # today may be one photographed after the place was built.
     parse.add_argument("--until", default="2030-01-01T00:00:00Z")
+    parse.add_argument("--scene", help="this scene, by its id, rather than the clearest")
     parse.add_argument("--cloud", type=float, default=3.0, help="most cloud, per cent")
     parse.add_argument("--deep", type=float, default=60.0,
                        help="depth the fore-reef falls to past the optical limit")
@@ -325,7 +340,9 @@ def main(argv: list[str] | None = None) -> int:
     box = (asked.longitude - half_lon, asked.latitude - half_lat,
            asked.longitude + half_lon, asked.latitude + half_lat)
 
-    for scene in clearest_scenes(box, asked.since, asked.cloud, until=asked.until):
+    candidates = ([the_scene(asked.scene)] if asked.scene
+                  else clearest_scenes(box, asked.since, asked.cloud, until=asked.until))
+    for scene in candidates:
         when = scene["properties"]["datetime"][:10]
         cloud = scene["properties"].get("eo:cloud_cover", 0.0)
         green = read_band(scene, "green", box, asked.samples)

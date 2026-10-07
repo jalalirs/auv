@@ -34,20 +34,25 @@ def picture_on(grid: Grid, picture: np.ndarray, bbox) -> np.ndarray:
     sample here and there."""
     m_rows, m_cols = picture.shape[:2]
     n = grid.cells
+    from scipy.ndimage import map_coordinates
+
+    # Bilinear, not nearest: a 10 m picture read by nearest sample onto a 4 m
+    # grid is 10 m blocks, and a depth fitted on its colour is terraced.
     if _cut_to(grid, bbox):
-        rows = np.clip(np.round((1.0 - np.arange(n) / (n - 1)) * (m_rows - 1)).astype(int), 0, m_rows - 1)
-        cols = np.clip(np.round(np.arange(n) / (n - 1) * (m_cols - 1)).astype(int), 0, m_cols - 1)
-        return picture[rows][:, cols].astype(float)
-    west, south, east, north = bbox
-    lon, lat = grid.lonlat()
-    u = (lon - west) / (east - west) * (m_cols - 1)
-    v = (north - lat) / (north - south) * (m_rows - 1)
+        v = np.repeat(((1.0 - np.arange(n) / (n - 1)) * (m_rows - 1))[:, None], n, 1)
+        u = np.repeat((np.arange(n) / (n - 1) * (m_cols - 1))[None, :], n, 0)
+    else:
+        west, south, east, north = bbox
+        lon, lat = grid.lonlat()
+        u = (lon - west) / (east - west) * (m_cols - 1)
+        v = (north - lat) / (north - south) * (m_rows - 1)
     on = (u >= -0.5) & (u <= m_cols - 0.5) & (v >= -0.5) & (v <= m_rows - 0.5)
-    i = np.clip(np.round(v).astype(int), 0, m_rows - 1)
-    j = np.clip(np.round(u).astype(int), 0, m_cols - 1)
-    out = picture[i, j].astype(float)
+    u, v = np.clip(u, 0, m_cols - 1), np.clip(v, 0, m_rows - 1)
+    bands = picture.shape[2] if picture.ndim == 3 else 1
+    flat = picture.reshape(m_rows, m_cols, bands).astype(float)
+    out = np.stack([map_coordinates(flat[..., b], [v, u], order=1) for b in range(bands)], -1)
     out[~on] = np.nan
-    return out
+    return out if picture.ndim == 3 else out[..., 0]
 
 
 class Sentinel2Median:
@@ -84,8 +89,9 @@ class Stumpf:
 
     def __init__(self, path: str | None = None, place: str | None = None, error: float = 10.0,
                  samples: int = 512, since: str = "2022-01-01T00:00:00Z", cloud: float = 3.0,
-                 deep: float = 60.0, fetch: bool = True, until: str = "2030-01-01T00:00:00Z") -> None:
-        self.path, self.place, self.error, self.until = path, place, float(error), until
+                 deep: float = 60.0, fetch: bool = True, until: str = "2030-01-01T00:00:00Z",
+                 scene: str | None = None) -> None:
+        self.path, self.place, self.error, self.until, self.scene = path, place, float(error), until, scene
         self.samples, self.since, self.cloud, self.deep, self.fetch = int(samples), since, float(cloud), float(deep), bool(fetch)
 
     def layers(self, grid: Grid, cache=None) -> list[Layer]:
@@ -96,7 +102,8 @@ class Stumpf:
             folder.mkdir(parents=True, exist_ok=True)
             fetched(self.name, main, [name, grid.latitude, grid.longitude, "--across", grid.across,
                                       "--samples", self.samples, "--since", self.since, "--cloud", self.cloud,
-                                      "--deep", self.deep, "--until", self.until, "--into", folder])
+                                      "--deep", self.deep, "--until", self.until, "--into", folder]
+                    + (["--scene", self.scene] if self.scene else []))
         said = json.loads((folder / f"{name}.json").read_text())
         field = said["heightfield"]
         height = np.fromfile(folder / field["file"], dtype="<f4").reshape(field["rows"], field["columns"])

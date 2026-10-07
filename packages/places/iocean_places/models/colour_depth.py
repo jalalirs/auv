@@ -29,13 +29,25 @@ BEYOND_M = 3.0
 AWASH_M = -0.1
 
 
-def features(claimed, colour, cls, n_classes):
+def features(claimed, colour, cls, n_classes, soften_cells: float = 0.0):
     """What the fit is on, for any set of cells: claimed depth, the log-ratio,
-    the log of each band, and the class as one column each."""
+    the log of each band, and the class as one column each.
+
+    A class's column is softened over `soften_cells` (a Gaussian's sigma):
+    each class buys a constant depth offset (6.75 m for the inner reef flat at
+    Shushah), and a hard 0 or 1 puts that offset down as a cliff along every
+    edge of the atlas's polygons. Softened, it ramps across the edge, and the
+    fit learns the offset all the same, inside the polygons where the photons
+    are."""
     blue, green, red = (np.maximum(colour[..., k], 1e-4) for k in (2, 1, 0))
     columns = [np.ones_like(claimed), claimed, np.log(1000 * blue) / np.log(1000 * green),
                np.log(blue), np.log(green), np.log(red)]
-    columns += [(cls == k).astype(float) for k in range(1, n_classes + 1)]
+    for k in range(1, n_classes + 1):
+        one = (cls == k).astype(float)
+        if soften_cells > 0:
+            from scipy.ndimage import gaussian_filter
+            one = gaussian_filter(one, soften_cells, mode="nearest")
+        columns.append(one)
     return np.stack(columns, axis=-1)
 
 
@@ -75,16 +87,17 @@ class ColourDepth:
     gives = ("depth",)
 
     def __init__(self, depth: str, red: str, green: str, blue: str, classes: str, truth: str,
-                 land: str | None = None) -> None:
+                 land: str | None = None, softenClassesM: float = 20.0) -> None:  # noqa: N803 - the recipe's key
         self.inputs = {"depth": depth, "red": red, "green": green, "blue": blue, "classes": classes,
                        "truth": truth, "land": land}
+        self.soften_m = float(softenClassesM)
 
     def run(self, grid: Grid, take) -> tuple[list[Layer], dict]:
         claimed = take(self.inputs["depth"]).value.astype(float)
         colour = np.stack([take(self.inputs[b]).value for b in ("red", "green", "blue")], axis=-1).astype(float)
         reef_map = take(self.inputs["classes"])
         cls, names = reef_map.codes(), reef_map.classes or ()
-        every = features(claimed, colour, cls, len(names))
+        every = features(claimed, colour, cls, len(names), self.soften_m / grid.cell)
 
         truth = take(self.inputs["truth"])
         x, y, measured = truth.x, truth.y, truth.value
