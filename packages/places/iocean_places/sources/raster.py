@@ -39,9 +39,11 @@ def grid_transform(grid: Grid):
     return from_origin(west - dlon / 2, top + dlat / 2, dlon, dlat)
 
 
-def onto(grid: Grid, path: pathlib.Path, band: int = 1, average: bool | None = None) -> tuple[np.ndarray, dict]:
+def onto(grid: Grid, path: pathlib.Path, band: int = 1, average: bool | None = None,
+         nearest: bool = False) -> tuple[np.ndarray, dict]:
     """One band of a raster on the grid, rows south first; NaN where it has
-    nothing. Returns the values and what the raster says about itself."""
+    nothing. Returns the values and what the raster says about itself.
+    `nearest` for a band of classes, which interpolating would invent."""
     import rasterio
     from rasterio.warp import Resampling, reproject
 
@@ -57,9 +59,10 @@ def onto(grid: Grid, path: pathlib.Path, band: int = 1, average: bool | None = N
         reproject(source=rasterio.band(src, band), destination=out,
                   src_nodata=src.nodata, dst_nodata=np.nan,
                   dst_transform=grid_transform(grid), dst_crs="EPSG:4326",
-                  resampling=Resampling.average if average else Resampling.bilinear)
+                  resampling=(Resampling.nearest if nearest else Resampling.average if average else Resampling.bilinear))
         about = {"crs": src.crs.to_string() if src.crs else None, "pixelM": round(float(native), 3),
-                 "bands": src.count, "resampled": "averaged into each cell" if average else "bilinear"}
+                 "bands": src.count,
+                 "resampled": "nearest" if nearest else "averaged into each cell" if average else "bilinear"}
     return out[::-1].copy(), about
 
 
