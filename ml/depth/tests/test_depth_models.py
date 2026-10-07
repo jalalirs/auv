@@ -45,7 +45,8 @@ def test_the_unet_gives_depth_and_its_variance_for_every_cell():
 
 
 def test_a_small_unet_learns_a_slope():
-    """Thirty steps on one chip whose depth is a slope across it: the loss falls."""
+    """A hundred steps on one chip whose depth is a slope across it: the error
+    falls to under 40% of where it started (6.3 m to about 1.2 m by step 80)."""
     torch = pytest.importorskip("torch")
     from iocean_depth.models.unet import UNet
 
@@ -55,9 +56,9 @@ def test_a_small_unet_learns_a_slope():
     model = UNet(9, base=8)
     opt = torch.optim.Adam(model.parameters(), lr=1e-2)
     first = None
-    for _ in range(30):
+    for _ in range(100):
         depth, _ = model(x)
         loss = (depth - y).abs().mean()
         first = first if first is not None else loss.item()
         opt.zero_grad(); loss.backward(); opt.step()
-    assert loss.item() < 0.5 * first
+    assert loss.item() < 0.4 * first
