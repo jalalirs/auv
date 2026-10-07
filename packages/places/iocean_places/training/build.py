@@ -67,6 +67,18 @@ def make_chips(root: pathlib.Path, only: str | None, workers: int, most: int | N
             continue
         tiles = lidar.footprints(tifs)
         centres = chips.lattice(tiles)
+        # Only where the survey measured enough water a satellite can see into.
+        lon, lat, area = lidar.wet(tiles)
+        chip_area = chips.ACROSS ** 2
+        kept = []
+        for c_lat, c_lon in centres:
+            g = chips.chip_grid(c_lat, c_lon)
+            west, south, east, north = g.bounds()
+            n = int(((lon >= west) & (lon <= east) & (lat >= south) & (lat <= north)).sum())
+            if n * area >= 0.8 * chips.LABELLED_AT_LEAST * chip_area:
+                kept.append((c_lat, c_lon))
+        print(f"{d['slug']}: {len(kept)} of {len(centres)} chip places have water the survey measured", flush=True)
+        centres = kept
         if most:
             centres = centres[:most]
         todo = [(lat, lon) for lat, lon in centres

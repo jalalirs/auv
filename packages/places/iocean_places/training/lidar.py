@@ -82,3 +82,32 @@ def footprints(paths: list[pathlib.Path]) -> list[tuple[pathlib.Path, tuple[floa
                 continue
             out.append((p, transform_bounds(src.crs, "EPSG:4326", *src.bounds)))
     return out
+
+
+def wet(tiles: list[tuple[pathlib.Path, tuple]], every_m: float = 20.0, shallowest: float = -0.5,
+        deepest: float = -30.0) -> tuple["np.ndarray", "np.ndarray", float]:
+    """Where each survey measured water a satellite can see the bottom of,
+    read coarsely: longitudes and latitudes of the wet samples, and the area
+    each stands for. Most of a survey's square is land or open sea, and
+    reading it at full resolution, chip by chip, to find that out is what
+    made Tutuila's first 142 chip places take 16 minutes to refuse."""
+    import numpy as np
+    import rasterio
+    from rasterio.warp import transform as warp
+
+    lons, lats, area = [], [], every_m ** 2
+    for path, _ in tiles:
+        with rasterio.open(path) as src:
+            step = max(1, int(round(every_m / abs(src.res[0]))))
+            h = src.read(1, out_shape=(max(1, src.height // step), max(1, src.width // step)))
+            nodata = src.nodata
+            rows, cols = np.nonzero((h < shallowest) & (h > deepest) & ((h != nodata) if nodata is not None else True))
+            if not rows.size:
+                continue
+            sy, sx = src.height / h.shape[0], src.width / h.shape[1]
+            xs, ys = rasterio.transform.xy(src.transform, (rows + 0.5) * sy, (cols + 0.5) * sx, offset="ul")
+            lon, lat = warp(src.crs, "EPSG:4326", list(np.atleast_1d(xs)), list(np.atleast_1d(ys)))
+            lons.append(np.asarray(lon)); lats.append(np.asarray(lat))
+    if not lons:
+        return np.array([]), np.array([]), area
+    return np.concatenate(lons), np.concatenate(lats), area
