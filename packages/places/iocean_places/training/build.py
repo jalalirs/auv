@@ -57,7 +57,7 @@ def fetch_lidar(root: pathlib.Path, only: str | None) -> None:
 # A chip that takes longer than this is given up on; a run that makes no chip
 # for STALLED seconds stops, and the script around it starts it again (it resumes).
 CHIP_SECONDS = 240
-STALLED = 600
+STALLED = 240
 
 
 def _one_chip(root: str, d: dict, tiles: list, lat: float, lon: float):
