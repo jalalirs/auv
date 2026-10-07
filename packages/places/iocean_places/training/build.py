@@ -57,7 +57,7 @@ def fetch_lidar(root: pathlib.Path, only: str | None) -> None:
 # A chip that takes longer than this is given up on; a run that makes no chip
 # for STALLED seconds stops, and the script around it starts it again (it resumes).
 CHIP_SECONDS = 240
-STALLED = 900
+STALLED = 600
 
 
 def _one_chip(root: str, d: dict, tiles: list, lat: float, lon: float):
@@ -124,7 +124,14 @@ def make_chips(root: pathlib.Path, only: str | None, workers: int, most: int | N
         # deadlocked. Each chip is made in a worker; only the parent writes
         # the index, so nothing is written twice at once.
         from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
-        with ProcessPoolExecutor(workers, initializer=sentinel.use_gdal_env) as pool:
+        # Spawned, not forked: the parent has used GDAL (the footprints, the
+        # water) by now, and a forked child can inherit a lock one of its
+        # threads held at the fork and wait on it for ever, deep in C where no
+        # alarm reaches. That was the chips that hung at the tail of every
+        # dataset.
+        import multiprocessing
+        with ProcessPoolExecutor(workers, initializer=sentinel.use_gdal_env,
+                                 mp_context=multiprocessing.get_context("spawn")) as pool:
             pending = {pool.submit(_one_chip, str(root), d, tiles, lat, lon) for lat, lon in todo}
             k = 0
             while pending:
