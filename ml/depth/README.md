@@ -22,6 +22,25 @@ as its colour. It is tested only on regions it never saw, and against the
 per-pixel linear fit the places use (models/linear.py), fitted on the same
 training chips.
 
+## Results so far
+
+unet-v1, 7 October 2026 (runs unet-v1-20261007-1744 and unet-v1-no-florida-20261007-1747
+on the box). Depth error in metres against measured seabed on regions the model never
+saw; the linear baseline is fitted on the same training chips.
+
+| held out | U-Net rms | linear rms | U-Net bias |
+|---|---|---|---|
+| Florida (Keys blocks 1 to 4, Dry Tortugas) | 1.33 | 5.58 | -0.07 |
+| US Virgin Islands | 1.58 | 2.42 | +0.69 |
+| Guam and the Marianas | 3.56 | 5.46 | -0.38 |
+| Red Sea, ICESat-2 tracks (4 chips) | 2.1 to 2.4 | 2.7 to 3.4 | |
+
+Kauai (a validation survey) is the weakest, at about 5 m. American Samoa's three surveys
+are excluded: their heights are above the ellipsoid, not sea level, which the first run
+found as a 17 m "error". The stated uncertainty, calibrated on the validation surveys
+(a factor of 1.15 to 1.24), puts 58% to 71% of held-out cells within one sigma, where
+68% is honest.
+
 ## Running it
 
 On the box, from the repository; everything runs in the container on GPU 1:
