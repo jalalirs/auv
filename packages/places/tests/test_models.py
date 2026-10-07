@@ -187,3 +187,35 @@ def test_a_place_says_where_it_is_weak(tmp_path):
     assert np.unique(error.round(3)).size > 2, "the error varies with depth, not one number per model"
     note = json.loads((tmp_path / "place" / "heights.json").read_text())
     assert note["perCell"]["picture"] == "weak.png" and note["perCell"]["sources"]
+
+
+def test_a_datum_needs_something_to_be_measured_against():
+    """No overlap is an error that says so, not a NaN that empties the survey;
+    a declared offset is applied and said to be chosen."""
+    from iocean_places import Layer, Provenance
+    from iocean_places.models.datum_fit import DatumFit
+
+    grid = Grid(24.5, -81.4, 100.0, 101)
+    x, y = grid.xy()
+    survey = Layer.of(grid, "depth", np.where(np.abs(x) < 20, -10.0, np.nan), 0.1, Provenance("dem", "measured", "a survey"))
+    track = Layer.of(grid, "depth", np.where(x > 40, -9.0, np.nan), 0.2, Provenance("icesat2", "measured", "a track"))
+    layers = {"dem": survey, "track": track}
+    with pytest.raises(ValueError, match="too few to measure a datum"):
+        DatumFit("dem", "track", smallestM2=10.0).run(grid, layers.__getitem__)
+    (fitted,), said = DatumFit("dem", offsetM=-0.25, smallestM2=10.0).run(grid, layers.__getitem__)
+    assert said["offsetIs"] == "chosen" and np.allclose(fitted.value[np.abs(x) < 15], -9.75)
+
+
+def test_a_datum_is_not_fitted_onto_a_guess():
+    from iocean_places import Layer, Provenance
+    from iocean_places.models.datum_fit import DatumFit
+
+    grid = Grid(24.5, -81.4, 100.0, 101)
+    x, _ = grid.xy()
+    survey = Layer.of(grid, "depth", np.where(np.abs(x) < 20, -10.0, np.nan), 0.1, Provenance("dem", "measured", "a survey"))
+    fit = Layer.of(grid, "depth", np.full((101, 101), -11.5), 0.9, Provenance("colour-depth", "derived", "a fit"))
+    layers = {"dem": survey, "fit": fit}
+    with pytest.raises(ValueError, match="takes on its local bias"):
+        DatumFit("dem", "fit", smallestM2=10.0).run(grid, layers.__getitem__)
+    (_,), said = DatumFit("dem", "fit", smallestM2=10.0, allowDerived=True).run(grid, layers.__getitem__)
+    assert said["datumOffsetM"] == 1.5

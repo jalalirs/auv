@@ -1,0 +1,19 @@
+{
+  "name": "looe-key-satellite",
+  "site": {"centre": [24.54586, -81.4072], "acrossM": 1000, "cells": 512},
+  "sources": [
+    {"use": "sentinel2-stumpf", "as": "stumpf", "place": "looe-key-satellite", "until": "2026-10-07T00:00:00Z"},
+    {"use": "sentinel2-median", "as": "sentinel", "until": "2026-10-07T00:00:00Z"},
+    {"use": "allen-coral-atlas", "as": "atlas"},
+    {"use": "icesat2", "as": "icesat"},
+    {"use": "gebco", "path": "~/iocean/places/looe-key"}
+  ],
+  "models": [
+    {"use": "curve-depth", "as": "curve", "depth": "stumpf.depth", "truth": "icesat.depth.points",
+     "land": "stumpf.land", "reef": "atlas.geomorphic"},
+    {"use": "colour-depth", "as": "colour", "depth": "stumpf.depth", "red": "sentinel.red",
+     "green": "sentinel.green", "blue": "sentinel.blue", "classes": "atlas.geomorphic",
+     "truth": "icesat.depth.points", "land": "stumpf.land"}
+  ],
+  "scene": {"depth": ["colour.depth", "curve.depth", "gebco.depth"], "featherCells": 0}
+}

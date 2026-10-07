@@ -1,0 +1,80 @@
+{
+ "name": "looe-key-client",
+ "site": {
+  "centre": [
+   24.54586,
+   -81.4072
+  ],
+  "acrossM": 1000,
+  "cells": 512
+ },
+ "sources": [
+  {
+   "use": "sentinel2-stumpf",
+   "as": "stumpf",
+   "place": "looe-key-satellite",
+   "until": "2026-10-07T00:00:00Z"
+  },
+  {
+   "use": "sentinel2-median",
+   "as": "sentinel",
+   "until": "2026-10-07T00:00:00Z"
+  },
+  {
+   "use": "allen-coral-atlas",
+   "as": "atlas"
+  },
+  {
+   "use": "icesat2",
+   "as": "icesat"
+  },
+  {
+   "use": "raster",
+   "as": "client",
+   "file": "~/iocean/reference/looe-key/usgs/SQUID_LKR_2022_DEM_1m.tif",
+   "error": 0.1,
+   "datum": "NAVD88, taken as the laser's (orthometric, EGM) to within the decimetres between them: chosen",
+   "citation": "a client's survey: USGS SQUID-5, Looe Key, July 2022 (doi 10.5066/P1QRS3SK), 1 m DEM"
+  },
+  {
+   "use": "gebco",
+   "path": "~/iocean/places/looe-key"
+  }
+ ],
+ "models": [
+  {
+   "use": "curve-depth",
+   "as": "curve",
+   "depth": "stumpf.depth",
+   "truth": "icesat.depth.points",
+   "land": "stumpf.land",
+   "reef": "atlas.geomorphic"
+  },
+  {
+   "use": "colour-depth",
+   "as": "colour",
+   "depth": "stumpf.depth",
+   "red": "sentinel.red",
+   "green": "sentinel.green",
+   "blue": "sentinel.blue",
+   "classes": "atlas.geomorphic",
+   "truth": "icesat.depth.points",
+   "land": "stumpf.land"
+  },
+  {
+   "use": "datum-fit",
+   "as": "client-fitted",
+   "survey": "client.depth",
+   "offsetM": 0.0
+  }
+ ],
+ "scene": {
+  "depth": [
+   "client-fitted.depth",
+   "colour.depth",
+   "curve.depth",
+   "gebco.depth"
+  ],
+  "featherCells": 10
+ }
+}

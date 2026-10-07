@@ -22,19 +22,48 @@ class DatumFit:
     name = "datum-fit"
     gives = ("depth",)
 
-    def __init__(self, survey: str, reference: str, fillPasses: int = 6,  # noqa: N803 - the recipe's keys
-                 smallestM2: float = 2000.0) -> None:
+    def __init__(self, survey: str, reference: str | None = None, fillPasses: int = 6,  # noqa: N803 - the recipe's keys
+                 smallestM2: float = 2000.0, offsetM: float | None = None, fewestOverlapCells: int = 200,
+                 allowDerived: bool = False) -> None:
         self.inputs = {"survey": survey, "reference": reference}
         self.fill_passes, self.smallest_m2 = int(fillPasses), float(smallestM2)
+        self.offset_m, self.fewest = (None if offsetM is None else float(offsetM)), int(fewestOverlapCells)
+        self.allow_derived = bool(allowDerived)
+        if reference is None and offsetM is None:
+            raise ValueError("datum-fit needs a reference layer to measure the offset against, or an offsetM to apply")
 
     def run(self, grid: Grid, take) -> tuple[list[Layer], dict]:
         from scipy import ndimage
 
-        survey, reference = take(self.inputs["survey"]), take(self.inputs["reference"])
+        survey = take(self.inputs["survey"])
+        reference = take(self.inputs["reference"]) if self.inputs["reference"] else None
         D = survey.value.astype(float)
-        h = reference.value.astype(float)
-        valid = np.isfinite(D) & np.isfinite(h)
-        offset = float(np.nanmedian((D - h)[valid]))
+        if self.offset_m is not None:
+            # Declared: the client knows its datum's offset (a chart datum to
+            # mean sea level, say), and the record says it was chosen.
+            valid, offset, onto = np.zeros(D.shape, bool), self.offset_m, "an offset the recipe declares"
+        else:
+            # A datum is measured against something measured. Fitted onto a
+            # satellite fit, Looe Key's survey took on that fit's local bias
+            # and moved 1.59 m: the fit was 0.87 m good on average and 1.5 m
+            # out over that patch of reef.
+            if reference.provenance[0].kind != "measured" and not self.allow_derived:
+                raise ValueError(
+                    f"{self.name}: {reference.provenance[0].source} is {reference.provenance[0].kind}, and a datum "
+                    "fitted onto it takes on its local bias; fit onto something measured, declare offsetM, "
+                    "or say allowDerived")
+            h = reference.value.astype(float)
+            valid = np.isfinite(D) & np.isfinite(h)
+            if valid.sum() < self.fewest:
+                # A median of nothing is NaN, and a NaN offset empties the survey
+                # without a word: at Looe Key no ICESat-2 track crosses the SQUID-5
+                # footprint, and the client's survey vanished from the place.
+                raise ValueError(
+                    f"{self.name}: {survey.provenance[0].source} and {reference.provenance[0].source} overlap in "
+                    f"{int(valid.sum())} cells, too few to measure a datum; fit onto a layer that covers it "
+                    "(a satellite fit calibrated to the laser) or declare offsetM")
+            offset = float(np.nanmedian((D - h)[valid]))
+            onto = f"{reference.provenance[0].source}'s datum (the median difference where they overlap)"
         D -= offset
         filled = D.copy()
         passes = 0
@@ -55,10 +84,10 @@ class DatumFit:
         error = np.where(kept, survey.error, np.nan).astype("float32")
         was = survey.provenance[0]
         cited = Provenance(was.source, was.kind,
-                           f"{was.citation}; shifted {-offset:+.3f} m onto {reference.provenance[0].source}'s datum "
-                           "(the median difference where they overlap), small holes filled, specks dropped",
+                           f"{was.citation}; shifted {-offset:+.3f} m onto {onto}, small holes filled, specks dropped",
                            was.licence, was.note)
-        record = {"survey": was.source, "onto": reference.provenance[0].source,
+        record = {"survey": was.source, "onto": reference.provenance[0].source if reference else "declared",
+                  "offsetIs": "chosen" if self.offset_m is not None else "measured",
                   "datumOffsetM": round(offset, 3), "overlapCells": int(valid.sum()),
                   "filledCells": int((have & ~np.isfinite(D)).sum()), "droppedCells": int((have & ~kept).sum()),
                   "coveredShare": round(float(kept.mean()), 4)}

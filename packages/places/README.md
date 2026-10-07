@@ -15,10 +15,11 @@ sources  →  layers  →  fusion  →  place  →  scene
   - `bathymetry`: get-bathymetry's NOAA survey mosaic (or GMRT), cubic onto a finer grid as tools/ground did;
   - `survey-dem`: a survey's own DEM GeoTIFF (USGS SQUID-5 at Looe Key), placed pixel for pixel in its own datum;
   - `fringing`: the constructed fringing reef (moved from tools/fringing.py), depth and hardness both chosen;
+  - `raster` (alias `geotiff`): a client's survey raster, anything GDAL opens, in any coordinate system, reprojected onto the grid (averaged when finer), with its uncertainty band if it has one; `ortho`: an orthomosaic as colour layers; `points` take a `crs` for eastings and northings;
   - `geotiff`, `points` (XYZ), `place` (an existing place), `flat` (an assumed depth).
 
   Each reads its files from the place's reference folder (`--cache`) and, when they are missing, fetches them there first (`iocean_places/fetch/`, moved from the tools, which are now command lines over it). ICESat-2 needs `NASA_TOKEN` (an Earthdata Login token) in the environment or the repository's `.env`. Sentinel-2 sources take an `until` date, so a recipe fetches the scenes it was built from rather than whatever is clearest today.
-- **Models** (`iocean_places/models/`) turn named layers into another layer, with an error checked on held-out 200 m blocks and a record of the fit: `curve-depth` (one curve of the claim, from tools/fit-depths; `keepWet` keeps what the satellite saw as water under it), `colour-depth` (the colour and the reef map, from tools/fit-colour-depths) and `datum-fit` (a survey shifted onto a reference's datum, holes filled, specks dropped, from tools/ground). The fit tools now use them from here.
+- **Models** (`iocean_places/models/`) turn named layers into another layer, with an error checked on held-out 200 m blocks and a record of the fit: `curve-depth` (one curve of the claim, from tools/fit-depths; `keepWet` keeps what the satellite saw as water under it), `colour-depth` (the colour and the reef map, from tools/fit-colour-depths) and `datum-fit` (a survey shifted onto a measured reference's datum, or by a declared `offsetM`; holes filled, specks dropped; from tools/ground). The fit tools now use them from here.
 - **A layer** (`layer.py`) is one quantity on the site's grid with, cell by cell, a value, an error in metres and the source it came from. Every source is cited with a kind: measured, derived, chosen or assumed.
 - **Fusion** (`fusion.py`) believes the source with the smallest error in each cell, and tapers a source off over `featherCells` at the edge of what it covers, so seams are slopes, not steps.
 - **The scene** (`scene.py`) writes what a dive opens: `seabed.f32`, `seabed.usda`, and alongside them `error.f32` and `sources.u8`, the error and the source of every cell; and `heights.json`, which `tools/make-site --heights` builds the reef, ground and record from.
@@ -41,6 +42,8 @@ tools/places build packages/places/recipes/shushah.json --into /tmp/shushah --ca
 ```
 
 (with the `gebco` source's `path` removed, so it fetches GEBCO into the folder too.)
+
+A client's survey over a satellite seabed: `recipes/demos/looe-key-client.json` builds Looe Key from Sentinel-2, the atlas and ICESat-2 alone, then lays the USGS SQUID-5 DEM over it as a client's GeoTIFF (UTM 17N, NAVD88). Inside the survey the seabed is the survey's (0.48 m rms from the real Looe Key, against 3.77 m for the satellite alone); across its edge the slopes stay within the real seabed's (99th percentile 0.73 against 0.80). A datum is fitted only onto something measured: fitted onto the satellite fit, the survey took on that fit's local bias and moved 1.59 m.
 
 `tools/places build ... --record PLACE` writes the call into the place, and `tools/rebuild` then builds the seabed first.
 
