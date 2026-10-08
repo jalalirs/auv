@@ -41,6 +41,22 @@ found as a 17 m "error". The stated uncertainty, calibrated on the validation su
 (a factor of 1.15 to 1.24), puts 58% to 71% of held-out cells within one sigma, where
 68% is honest.
 
+## In a place
+
+The places module runs an export of a run (`iocean-depth export`) through its
+`learned-depth` source, then corrects it with the place's own ICESat-2 photons
+(curve-depth). At Looe Key, from satellite data alone, with the model that never saw
+Florida, scored against the surveyed seabed (`recipes/demos/looe-key-learned.json`):
+
+| | median error | rms |
+|---|---|---|
+| the colour fit the places use today | 1.4 m | 3.68 m |
+| the depth model | 0.57 m | 2.21 m |
+| the depth model, corrected by Looe Key's ICESat-2 (held out 0.76 m) | 0.32 m | 1.77 m |
+
+Places that use it are built in this image (the `places` service in compose.yaml),
+which has onnxruntime; the box's own Python stays without it.
+
 ## Running it
 
 On the box, from the repository; everything runs in the container on GPU 1:
