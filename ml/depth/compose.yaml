@@ -20,9 +20,14 @@ services:
     environment:
       IOCEAN_ML_DATA: /data
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
+      # An Earthdata Login token for ICESat-2, from the host's environment
+      # (the box keeps it in the repository's .env); only the Red Sea step needs it.
+      NASA_TOKEN: ${NASA_TOKEN:-}
     volumes:
       - ${IOCEAN_ML_DATA_HOST:-${HOME}/iocean/ml/depth}:/data
       - ${IOCEAN_REFERENCE_HOST:-${HOME}/iocean/reference}:/reference:ro
+      # ICESat-2 passes once fetched, shared with the places module's fetches.
+      - ${IOCEAN_ICESAT_CACHE_HOST:-${HOME}/iocean/source/icesat}:/icesat
     user: "${IOCEAN_UID:-1000}:${IOCEAN_GID:-1000}"
     # PyTorch's data loading and the dataset build's workers share memory.
     shm_size: 8g

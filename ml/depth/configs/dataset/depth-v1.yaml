@@ -24,6 +24,17 @@ sentinel2:
 red_sea:
   label: icesat2
   places: [shushah, al-fahal]
+  # Areas along the Saudi coast where ICESat-2 finds the reefs: every pass over
+  # each, a chip wherever its seafloor photons cross at least
+  # least_photon_cells cells. A test of the model on Red Sea water, which no
+  # lidar here covers. bbox: west, south, east, north.
+  least_photon_cells: 100
+  regions:
+    - {name: thuwal, bbox: [38.80, 21.90, 39.20, 22.60]}     # the reefs off KAUST
+    - {name: neom, bbox: [34.55, 27.60, 35.30, 28.20]}       # Shushah, Tiran, the mouth of Aqaba
+    - {name: al-wajh, bbox: [36.20, 25.70, 36.90, 26.50]}    # the Al Wajh bank
+    - {name: yanbu, bbox: [37.80, 23.80, 38.30, 24.25]}
+    - {name: farasan, bbox: [41.60, 16.40, 42.30, 17.20]}    # the Farasan islands
 left_out: >-
   French Frigate Shoals (12 GB), the post-Irma Keys survey (13.6 GB), Puerto Rico's 2015, 2016 and 2018 flights.
 # Each survey's heights are in its own vertical datum, from its metadata. Sea-level datums

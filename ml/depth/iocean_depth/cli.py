@@ -1,6 +1,6 @@
 """iocean-depth: build a dataset, train, evaluate.
 
-    iocean-depth dataset build   --config dataset/depth-v1.yaml [--step lidar|chips|red-sea|all]
+    iocean-depth dataset build   --config dataset/depth-v1.yaml [--step lidar|chips|red-sea|red-sea-regions|all]
     iocean-depth dataset summary --config dataset/depth-v1.yaml
     iocean-depth dataset manifest --config dataset/depth-v1.yaml
     iocean-depth train    --config train/unet-v1.yaml [--run NAME]
@@ -39,28 +39,37 @@ def _dataset(a) -> int:
         return 0
     if a.action == "chips-once":
         return build.make_chips(cfg, ds, a.only, a.workers)
-    steps =("lidar", "chips", "red-sea") if a.step == "all" else (a.step,)
+    if a.action == "regions-once":
+        from .data import redsea
+        return redsea.make_region_chips(cfg, ds, pathlib.Path(a.icesat_cache), min(a.workers, 16), a.only)
+    steps = ("lidar", "chips", "red-sea", "red-sea-regions") if a.step == "all" else (a.step,)
     if "lidar" in steps:
         build.fetch_lidar(cfg, ds, a.only)
     if "chips" in steps:
-        # Each attempt in its own process: one that makes no chip for a while
-        # exits 3 and the next resumes where it stopped.
-        for attempt in range(1, a.attempts + 1):
-            print(f"== chips, attempt {attempt}", flush=True)
-            done = subprocess.call([sys.executable, "-m", "iocean_depth.cli", "dataset", "chips-once",
-                                    "--config", str(a.config), "--workers", str(a.workers)]
-                                   + (["--only", a.only] if a.only else []))
-            if done == 0:
-                break
-        else:
-            print("chips: gave up after every attempt stalled", file=sys.stderr)
+        if _again_until_done("chips-once", a) != 0:
             return 1
     if "red-sea" in steps:
         build.red_sea(cfg, ds, pathlib.Path(a.reference).expanduser())
+    if "red-sea-regions" in steps and _again_until_done("regions-once", a) != 0:
+        return 1
     manifest = build.write_manifest(cfg, ds, config.CONFIGS / a.config if not pathlib.Path(a.config).is_file()
                                     else pathlib.Path(a.config))
     print(json.dumps({k: manifest[k] for k in ("name", "chips", "labelledCells", "skipped")}, indent=1))
     return 0
+
+
+def _again_until_done(action: str, a) -> int:
+    """Run a step in its own process until it finishes: one that makes no chip
+    for a while exits 3, and the next resumes where it stopped."""
+    for attempt in range(1, a.attempts + 1):
+        print(f"== {action}, attempt {attempt}", flush=True)
+        done = subprocess.call([sys.executable, "-m", "iocean_depth.cli", "dataset", action, "--config", str(a.config),
+                                "--workers", str(a.workers), "--icesat-cache", a.icesat_cache]
+                               + (["--only", a.only] if a.only else []))
+        if done == 0:
+            return 0
+    print(f"{action}: gave up after every attempt stalled", file=sys.stderr)
+    return 1
 
 
 def _train(a) -> int:
@@ -103,9 +112,10 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="iocean-depth", description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="command", required=True)
     d = sub.add_parser("dataset")
-    d.add_argument("action", choices=("build", "summary", "manifest", "chips-once"))
+    d.add_argument("action", choices=("build", "summary", "manifest", "chips-once", "regions-once"))
     d.add_argument("--config", default="dataset/depth-v1.yaml")
-    d.add_argument("--step", default="all", choices=("all", "lidar", "chips", "red-sea"))
+    d.add_argument("--step", default="all", choices=("all", "lidar", "chips", "red-sea", "red-sea-regions"))
+    d.add_argument("--icesat-cache", default="/icesat", help="where ICESat-2 passes are kept once fetched")
     d.add_argument("--only", help="one survey, by its slug")
     d.add_argument("--workers", type=int, default=32)
     d.add_argument("--attempts", type=int, default=30)
