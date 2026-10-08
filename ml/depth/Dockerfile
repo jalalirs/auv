@@ -12,7 +12,7 @@ FROM pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime
 
 RUN pip install --no-cache-dir \
         "numpy<2.3" "pyyaml>=6" "rasterio>=1.4" "scipy>=1.11" "pillow>=10" "matplotlib>=3.8" \
-        "requests>=2.31" "h5py>=3.10" "pytest>=8"
+        "requests>=2.31" "h5py>=3.10" "pytest>=8" "onnx>=1.16" "onnxruntime>=1.18"
 
 COPY packages/places /src/packages/places
 COPY ml/depth /src/ml/depth

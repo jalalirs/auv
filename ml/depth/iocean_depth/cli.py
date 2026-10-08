@@ -5,6 +5,7 @@
     iocean-depth dataset manifest --config dataset/depth-v1.yaml
     iocean-depth train    --config train/unet-v1.yaml [--run NAME]
     iocean-depth evaluate --run RUN
+    iocean-depth export   --run RUN        (ONNX and model.json, for the places module)
     iocean-depth runs
 
 Data under IOCEAN_ML_DATA (see config.py). In the repository, `just ml-depth
@@ -97,6 +98,14 @@ def _evaluate(a) -> int:
     return 0
 
 
+def _export(a) -> int:
+    from .export import export
+
+    said = export(config.runs_dir() / a.run)
+    print(json.dumps({k: said[k] for k in ("run", "sigmaScale", "heldOut", "onnxAgreesToM")}, indent=1))
+    return 0
+
+
 def _runs(a) -> int:
     for run in sorted(config.runs_dir().glob("*")):
         info = json.loads((run / "run.json").read_text()) if (run / "run.json").is_file() else {}
@@ -126,11 +135,13 @@ def main(argv: list[str] | None = None) -> int:
     t.add_argument("--no-evaluate", action="store_true")
     e = sub.add_parser("evaluate")
     e.add_argument("--run", required=True)
+    x = sub.add_parser("export", help="the run as ONNX, for the places module")
+    x.add_argument("--run", required=True)
     sub.add_parser("runs")
     a = ap.parse_args(argv)
     if a.command == "dataset":
         return _dataset(a)
-    return {"train": _train, "evaluate": _evaluate, "runs": _runs}[a.command](a)
+    return {"train": _train, "evaluate": _evaluate, "export": _export, "runs": _runs}[a.command](a)
 
 
 if __name__ == "__main__":

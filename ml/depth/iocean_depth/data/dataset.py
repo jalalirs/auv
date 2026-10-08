@@ -12,8 +12,9 @@ import pathlib
 
 import numpy as np
 
-FEATURES = ("log coastal", "log blue", "log green", "log red", "log red edge", "log nir", "log swir",
-            "ln(1000 blue) / ln(1000 green)", "input present")
+# The features are computed in the places module, beside the band reader, so
+# that a place sees exactly what the model was trained on.
+from iocean_places.fetch.sentinel_bands import FEATURES, features
 
 
 def load_chips(ds: pathlib.Path) -> list[dict]:
@@ -24,15 +25,6 @@ def load_chips(ds: pathlib.Path) -> list[dict]:
         d = np.load(ds / "chips" / folder / r["file"])
         out.append({**r, "x": d["x"], "y": d["y"]})
     return out
-
-
-def features(x: np.ndarray) -> np.ndarray:
-    """The band medians as the network sees them (FEATURES): the log of each
-    band, Stumpf's log-ratio of blue to green, and where the input is missing."""
-    valid = np.all(np.isfinite(x), axis=0)
-    safe = np.where(np.isfinite(x), np.clip(x, 1e-4, None), 1e-4)
-    ratio = np.log(1000 * safe[1]) / np.log(1000 * safe[2])
-    return np.concatenate([np.log(safe), ratio[None], valid[None].astype("float32")]).astype("float32")
 
 
 def target(y: np.ndarray, shallowest: float, deepest: float) -> tuple[np.ndarray, np.ndarray]:

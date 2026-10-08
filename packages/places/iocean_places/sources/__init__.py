@@ -182,7 +182,8 @@ SOURCES = {"geotiff": _geotiff, "points": Points, "place": Place, "flat": Flat,
            "survey-dem": _lazy("surveys", "SurveyDem"),
            "fringing": _lazy("fringing", "Fringing"),
            "raster": _lazy("raster", "Raster"),
-           "ortho": _lazy("raster", "Ortho")}
+           "ortho": _lazy("raster", "Ortho"),
+           "learned-depth": _lazy("learned", "LearnedDepth")}
 
 
 def source_from(entry: dict) -> Source:
