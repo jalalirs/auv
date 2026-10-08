@@ -1,0 +1,16 @@
+{
+  "name": "al-fahal",
+  "site": {"centre": [22.284, 38.962], "acrossM": 3000, "cells": 512},
+  "sources": [
+    {"use": "sentinel2-stumpf", "as": "stumpf", "place": "al-fahal", "scene": "S2B_T37QDE_20240223T080223_L2A"},
+    {"use": "icesat2", "as": "icesat"},
+    {"use": "learned-depth", "as": "learned",
+     "model": "~/iocean/ml/depth/runs/unet-v2-redsea-w10-20261008-1131/export", "until": "2026-09-27T00:00:00Z"},
+    {"use": "gebco", "path": "~/iocean/places/al-fahal"}
+  ],
+  "models": [
+    {"use": "curve-depth", "as": "corrected", "depth": "learned.depth", "truth": "icesat.depth.points",
+     "land": "stumpf.land", "landHeight": "stumpf.depth"}
+  ],
+  "scene": {"depth": ["corrected.depth", "gebco.depth"], "featherCells": 0}
+}

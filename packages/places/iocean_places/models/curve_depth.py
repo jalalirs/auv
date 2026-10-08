@@ -240,8 +240,9 @@ class CurveDepth:
     gives = ("depth",)
 
     def __init__(self, depth: str, truth: str, land: str | None = None, reef: str | None = None,
+                 landHeight: str | None = None,
                  kind: str = "derived", keepWet: bool = True) -> None:
-        self.inputs = {"depth": depth, "truth": truth, "land": land, "reef": reef}
+        self.inputs = {"depth": depth, "truth": truth, "land": land, "reef": reef, "landHeight": landHeight}
         self.kind, self.keep_wet = kind, bool(keepWet)
 
     def run(self, grid: Grid, take) -> tuple[list[Layer], dict]:
@@ -272,7 +273,11 @@ class CurveDepth:
         awash = np.zeros(claims.shape, bool)
         if self.inputs["reef"] is not None:
             awash = land & (take(self.inputs["reef"]).codes() > 0)
-        value = np.where(land & ~awash, claims, value)
+        # Land at its own height: the claim's, or a layer that knows land (the
+        # learned depth model knows only water, so a recipe hands it the
+        # satellite's land height).
+        on_land = take(self.inputs["landHeight"]).value if self.inputs["landHeight"] else claims
+        value = np.where(land & ~awash, on_land, value)
         value = np.where(awash, np.float32(AWASH_M), value).astype("float32")
         wet = ~land & (claims <= 0.0) & (value > AWASH_M)
         if self.keep_wet:

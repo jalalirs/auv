@@ -12,7 +12,8 @@ and it has never seen this place. A place corrects it with what was measured
 here (curve-depth against the place's ICESat-2 photons), the way the satellite
 claim has always been corrected.
 
-Needs onnxruntime (CPU is enough).
+Needs onnxruntime (CPU is enough) the first time over a place; the prediction
+is then kept in the place's reference folder and a rebuild reads it back.
 """
 
 from __future__ import annotations
@@ -94,17 +95,32 @@ class LearnedDepth:
         np.savez_compressed(cached, x=x, scenes=json.dumps(scenes))
         return x, scenes
 
-    def layers(self, grid: Grid, cache=None) -> list[Layer]:
+    def _predicted(self, grid10: Grid, folder: pathlib.Path, meta: dict) -> tuple[np.ndarray, np.ndarray, list[dict]]:
+        """The model's depth and sigma at 10 m over the place, kept in its
+        reference folder like the bands they came from: a rebuild reads them
+        back and needs neither onnxruntime nor the satellite again."""
+        kept = folder / f"learned_depth_{meta['run']}.npz"
+        if kept.is_file():
+            d = np.load(kept, allow_pickle=False)
+            if d["depth"].shape == (grid10.cells, grid10.cells):
+                return d["depth"], d["sigma"], json.loads(str(d["scenes"]))
         import onnxruntime as ort
+
+        session = ort.InferenceSession(str(self.model / "model.onnx"), providers=["CPUExecutionProvider"])
+        x, scenes = self._bands(grid10, folder, meta["bands"])
+        depth10, sigma10 = predict(session, meta, x)
+        folder.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(kept, depth=depth10, sigma=sigma10, scenes=json.dumps(scenes))
+        return depth10, sigma10, scenes
+
+    def layers(self, grid: Grid, cache=None) -> list[Layer]:
         from scipy.ndimage import map_coordinates
 
         meta = json.loads((self.model / "model.json").read_text())
-        session = ort.InferenceSession(str(self.model / "model.onnx"), providers=["CPUExecutionProvider"])
         cell = float(meta.get("cellM", 10.0))
         n10 = int(round(grid.across / cell)) + 1
         grid10 = Grid(grid.latitude, grid.longitude, cell * (n10 - 1), n10)
-        x, scenes = self._bands(grid10, where(self.path, cache), meta["bands"])
-        depth10, sigma10 = predict(session, meta, x)
+        depth10, sigma10, scenes = self._predicted(grid10, where(self.path, cache), meta)
 
         # Onto the place's grid: both squares share a middle; the place's may be
         # a fraction of a cell narrower, so its edge cells clamp to the last 10 m cell.

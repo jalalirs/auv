@@ -1,0 +1,17 @@
+{
+  "name": "shushah",
+  "site": {"centre": [27.9366, 34.9108], "acrossM": 2000, "cells": 512},
+  "sources": [
+    {"use": "sentinel2-stumpf", "as": "stumpf", "place": "shushah", "scene": "S2B_T36RXR_20251110T082107_L2A"},
+    {"use": "allen-coral-atlas", "as": "atlas"},
+    {"use": "icesat2", "as": "icesat"},
+    {"use": "learned-depth", "as": "learned",
+     "model": "~/iocean/ml/depth/runs/unet-v2-redsea-w10-20261008-1131/export", "until": "2026-09-26T00:00:00Z"},
+    {"use": "gebco", "path": "~/iocean/places/shushah"}
+  ],
+  "models": [
+    {"use": "curve-depth", "as": "corrected", "depth": "learned.depth", "truth": "icesat.depth.points",
+     "land": "stumpf.land", "reef": "atlas.geomorphic", "landHeight": "stumpf.depth"}
+  ],
+  "scene": {"depth": ["corrected.depth", "gebco.depth"], "featherCells": 0}
+}
