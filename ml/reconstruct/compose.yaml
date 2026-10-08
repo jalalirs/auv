@@ -1,0 +1,27 @@
+# Reef reconstructions on the box. Data under IOCEAN_ML_DATA_HOST
+# (~/iocean/ml/reconstruct) at /data; the cover project's raw videos read-only
+# at /videos. GPU 1 only: GPU 0 belongs to the dives.
+services:
+  reconstruct:
+    image: iocean/ml-reconstruct:${IOCEAN_IMAGE_TAG:-dev}
+    pull_policy: never
+    build:
+      context: ../..
+      dockerfile: ml/reconstruct/Dockerfile
+    environment:
+      IOCEAN_ML_DATA: /data
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
+      # COLMAP draws nothing, but Qt wants to know there is no screen.
+      QT_QPA_PLATFORM: offscreen
+    volumes:
+      - ${IOCEAN_ML_DATA_HOST:-${HOME}/iocean/ml/reconstruct}:/data
+      - ${HOME}/iocean/ml/cover/raw:/videos:ro
+    user: "${IOCEAN_UID:-1000}:${IOCEAN_GID:-1000}"
+    shm_size: 8g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${IOCEAN_ML_GPU:-1}"]
+              capabilities: [gpu]

@@ -11,7 +11,7 @@
 FROM pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime
 
 RUN pip install --no-cache-dir \
-        "numpy<2.3" "pyyaml>=6" "rasterio>=1.4" "pillow>=10" "pyarrow>=15" \
+        "numpy<2.3" "pyyaml>=6" "rasterio>=1.4" "pillow>=10" "pyarrow>=15" "scipy>=1.11" \
         "transformers>=5.0,<6" "safetensors>=0.4" "huggingface_hub>=0.30" "av>=12" "pytest>=8"
 
 COPY ml/cover /src/ml/cover

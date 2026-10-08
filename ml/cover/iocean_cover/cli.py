@@ -9,6 +9,8 @@
     iocean-cover video --video FILE[,FILE] --name NAME [--from S --to S] [--every S]
                        [--begin LAT,LON --end LAT,LON]
                                              cover along a video transect -> transects/<name>/
+    iocean-cover colonies --video FILE[,FILE] --name NAME [--every S]
+                                             every colony the videos show, cut out and sorted by type -> catalogs/<name>/
     iocean-cover finetune --config finetune/caribbean-v1.yaml [--run NAME]
                                              the model fine-tuned on labelled photo-quadrats -> runs/<run>/
     iocean-cover bands --name NAME --dem GLOB [--step M]
@@ -93,6 +95,7 @@ def _fetch(cfg, a) -> int:
 
     print(fetch.model(cfg))
     print(fetch.test_set(cfg))
+    print(fetch.outliner(cfg))
     return 0
 
 
@@ -165,6 +168,23 @@ def _video(cfg, a) -> int:
                     start=a.start, end=a.end, begin=point(a.begin), finish=point(a.finish))
     print(json.dumps({k: said[k] for k in ("frames", "framesUsed", "toSeconds", "lengthM", "cover", "seconds")},
                      indent=1))
+    return 0
+
+
+def _colonies(cfg, a) -> int:
+    from .colonies import extract
+
+    from .outline import Outliner
+
+    seg, groups = _model(cfg, a.model)
+    outliner = None
+    if not a.no_outliner:
+        o = cfg["outliner"]
+        outliner = Outliner(config.outliner_dir(cfg), point_spacing=o["point_spacing"], min_score=o["min_score"],
+                            min_purity=o["min_purity"], overlap=o["overlap"])
+    said = extract(seg, groups, [pathlib.Path(p) for p in a.video.split(",")],
+                   config.data_root() / "catalogs" / a.name, every=a.every, outliner=outliner)
+    print(json.dumps({k: said[k] for k in ("frames", "colonies", "byClass", "seconds")}, indent=1))
     return 0
 
 
@@ -248,6 +268,12 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--begin", help="the transect's start: LAT,LON")
     v.add_argument("--end", dest="finish", help="the transect's end: LAT,LON")
     v.add_argument("--model", help="a fine-tuned run instead of the config's model")
+    co = sub.add_parser("colonies")
+    co.add_argument("--video", required=True, help="videos, comma separated; each is read on its own")
+    co.add_argument("--name", required=True)
+    co.add_argument("--every", type=float, default=1.0, help="seconds between the frames read")
+    co.add_argument("--model", help="a fine-tuned run instead of the config's model")
+    co.add_argument("--no-outliner", action="store_true", help="connected patches of a class instead of SAM 2's outlines")
     f = sub.add_parser("finetune")
     f.add_argument("--config", dest="tuning", required=True, help="finetune/<name>.yaml")
     f.add_argument("--run")
@@ -257,7 +283,7 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--step", type=float, default=2.0)
     a = ap.parse_args(argv)
     cfg = config.load(a.config)
-    return {"fetch": _fetch, "check": _check, "look": _look, "map": _map, "video": _video, "finetune": _finetune, "bands": _bands}[a.command](cfg, a)
+    return {"fetch": _fetch, "check": _check, "look": _look, "map": _map, "video": _video, "colonies": _colonies, "finetune": _finetune, "bands": _bands}[a.command](cfg, a)
 
 
 if __name__ == "__main__":

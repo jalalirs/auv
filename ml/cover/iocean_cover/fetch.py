@@ -41,3 +41,15 @@ def test_set(cfg: dict) -> str:
             hf_hub_download(t["repo"], name, repo_type="dataset", revision=t["revision"], local_dir=folder)
         _fetched(folder, t["repo"], t["revision"], "dataset", "Apache-2.0")
     return str(folder)
+
+
+def outliner(cfg: dict) -> str:
+    from huggingface_hub import hf_hub_download
+
+    o = cfg["outliner"]
+    folder = config.outliner_dir(cfg)
+    if not (folder / "fetched.json").is_file():
+        for name in o["files"]:
+            hf_hub_download(o["repo"], name, revision=o["revision"], local_dir=folder)
+        _fetched(folder, o["repo"], o["revision"], "model", o.get("licence"))
+    return str(folder)

@@ -13,6 +13,20 @@ model:
   licence: Apache-2.0
   cite: "Sauder et al. 2026, CoralscapesV2: Panoptic and Fine-Grained Visual Scene Understanding in Coral Reefs (ECCV Workshop on Marine Vision)"
 
+# Outlines each colony on its own, where the segmentation model only says what
+# each pixel is: two Porites touching are one patch of "porites" to it.
+# Meta's SAM 2.1 (Apache 2.0), prompted with points on the coral the
+# segmentation found; each outline then takes the class most of it is.
+outliner:
+  repo: facebook/sam2.1-hiera-large
+  revision: 665f8e2ad61cf5f53d65644ff27c8ee525124610
+  licence: Apache-2.0
+  files: ["config.json", "model.safetensors", "preprocessor_config.json", "processor_config.json", "README.md"]
+  point_spacing: 48        # pixels between the points it is prompted with, on coral only
+  min_score: 0.80          # its own estimate of how good an outline is
+  min_purity: 0.60         # how much of an outline must be one coral class to be a colony of it
+  overlap: 0.5             # an outline overlapping a better one by this much is the same colony
+
 test:
   repo: josauder/coralscapesV2
   revision: 8a4567b2fbec14882e09aebff63a7a1ca5e24dca

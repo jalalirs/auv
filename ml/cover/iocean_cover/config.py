@@ -37,3 +37,8 @@ def model_dir(cfg: dict) -> pathlib.Path:
 
 def test_dir(cfg: dict) -> pathlib.Path:
     return data_root() / "datasets" / cfg["test"]["repo"].replace("/", "--") / cfg["test"]["revision"][:12]
+
+
+def outliner_dir(cfg: dict) -> pathlib.Path:
+    o = cfg["outliner"]
+    return data_root() / "models" / o["repo"].replace("/", "--") / o["revision"][:12]

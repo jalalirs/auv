@@ -1,0 +1,29 @@
+# A reef patch in 3D from a dive video, with COLMAP (BSD-3): frames from the
+# video, structure from motion, dense stereo, a mesh.
+name: default
+
+frames:
+  every: 0.5            # seconds between frames: a diver at about 0.3 m/s moves 15 cm, which is plenty of overlap
+  longest_side: 1600    # pixels; GoPro's 1920 is slower for little gain at reef distances
+
+colmap:
+  camera_model: OPENCV  # GoPro's wide lens bends straight lines; OPENCV fits that radial and tangential bend
+  single_camera: true   # one camera for the whole video
+  matcher: sequential   # neighbouring frames overlap; matching every pair is wasted work
+  sequential_overlap: 15
+  gpu: "0"              # inside the container, which sees only the box's second GPU
+
+dense:
+  max_image_size: 1600
+  mesher: poisson       # poisson closes small holes; delaunay keeps edges sharp but leaves gaps
+  poisson_depth: 11
+  trim: 7               # how hard poisson's guessed surface is trimmed back to what was seen
+
+# A monocular video has no scale and no up. Up is the reef's own mean plane
+# (fitted to the dense points, normal pointing at the cameras). The scale is
+# assumed until something measured says otherwise: the camera's median height
+# above the reconstructed seabed is set to this, which is how high a diver
+# swims a transect video.
+scale:
+  camera_height_m: 1.5
+  how: assumed
