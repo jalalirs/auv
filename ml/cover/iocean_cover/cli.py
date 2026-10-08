@@ -9,8 +9,13 @@
     iocean-cover video --video FILE[,FILE] --name NAME [--from S --to S] [--every S]
                        [--begin LAT,LON --end LAT,LON]
                                              cover along a video transect -> transects/<name>/
+    iocean-cover finetune --config finetune/caribbean-v1.yaml [--run NAME]
+                                             the model fine-tuned on labelled photo-quadrats -> runs/<run>/
     iocean-cover bands --name NAME --dem GLOB [--step M]
                                              a map's shares by depth, from the survey's elevation model
+
+look, map and video take `--model RUN` to run a fine-tuned model (runs/<run>/model)
+instead of the config's.
 
 Data under IOCEAN_ML_DATA (see config.py). In the repository, `just ml-cover
 ...` runs these in the container on the box's second GPU.
@@ -24,24 +29,44 @@ import json
 import os
 import pathlib
 import sys
+import time
+
+import yaml
 
 from . import config
 
 
-def _model(cfg: dict):
+def _model(cfg: dict, run: str | None = None):
     from .classes import Groups
     from .segment import Segmenter
 
-    folder = config.model_dir(cfg)
-    if not (folder / "fetched.json").is_file():
-        raise SystemExit(f"no model in {folder}; run `iocean-cover fetch` first")
+    if run:
+        folder = config.data_root() / "runs" / run / "model"
+        if not (folder / "config.json").is_file():
+            raise SystemExit(f"no fine-tuned model in {folder}")
+    else:
+        folder = config.model_dir(cfg)
+        if not (folder / "fetched.json").is_file():
+            raise SystemExit(f"no model in {folder}; run `iocean-cover fetch` first")
     seg = Segmenter(folder, window=cfg["window"], stride=cfg["stride"])
     return seg, Groups(seg.id2label, cfg["groups"])
 
 
-def _about(cfg: dict) -> dict:
+def _about(cfg: dict, run: str | None = None) -> dict:
     about = {"model": cfg["model"]["repo"], "revision": cfg["model"]["revision"], "licence": cfg["model"]["licence"],
              "cite": cfg["model"]["cite"], "config": cfg["name"], "commit": os.environ.get("GIT_COMMIT", "unknown")}
+    if run:
+        # A fine-tuned model carries its own check: the test countries it never saw.
+        folder = config.data_root() / "runs" / run
+        tuned = yaml.safe_load((folder / "config.yaml").read_text())
+        r = json.loads((folder / "report.json").read_text())["fineTuned"]
+        about.update({"model": f"{about['model']}, fine-tuned as {run}", "fineTuned": run,
+                      "licence": tuned.get("licence", about["licence"]),
+                      "checked": {"on": f"{r['quadrats']} photo-quadrats from countries it never saw",
+                                  "meanAbsError": {k: v["dense"]["meanAbsError"] for k, v in r["groups"].items()},
+                                  "bias": {k: v["dense"]["bias"] for k, v in r["groups"].items()},
+                                  "report": f"runs/{run}/report.md"}})
+        return about
     report = config.data_root() / "checks" / cfg["name"] / "report.json"
     if report.is_file():
         # How the model did on imagery it never saw, carried with what it
@@ -89,7 +114,7 @@ def _look(cfg, a) -> int:
 
     from .mosaic import COLOURS, read
 
-    seg, groups = _model(cfg)
+    seg, groups = _model(cfg, a.model)
     tiles = [rasterio.open(p) for p in _tiles(a.tiles)]
     x, y = (float(v) for v in a.at.split(","))
     out = config.data_root() / "looks"
@@ -120,11 +145,11 @@ def _look(cfg, a) -> int:
 def _map(cfg, a) -> int:
     from .mosaic import make
 
-    seg, groups = _model(cfg)
+    seg, groups = _model(cfg, a.model)
     settings = dict(cfg["mosaic"])
     if a.res:
         settings["metres_per_pixel"] = a.res
-    about = _about(cfg)
+    about = _about(cfg, a.model)
     said = make(seg, groups, _tiles(a.tiles), config.data_root() / "maps" / a.name, settings, about)
     print(json.dumps({k: said[k] for k in ("imagedM2", "seabedM2", "shares", "seconds")}, indent=1))
     return 0
@@ -133,13 +158,24 @@ def _map(cfg, a) -> int:
 def _video(cfg, a) -> int:
     from .video import transect
 
-    seg, groups = _model(cfg)
+    seg, groups = _model(cfg, a.model)
     point = (lambda v: tuple(float(x) for x in v.split(",")) if v else None)
     paths = [pathlib.Path(p) for p in a.video.split(",")]
-    said = transect(seg, groups, paths, config.data_root() / "transects" / a.name, _about(cfg), every=a.every,
+    said = transect(seg, groups, paths, config.data_root() / "transects" / a.name, _about(cfg, a.model), every=a.every,
                     start=a.start, end=a.end, begin=point(a.begin), finish=point(a.finish))
     print(json.dumps({k: said[k] for k in ("frames", "framesUsed", "toSeconds", "lengthM", "cover", "seconds")},
                      indent=1))
+    return 0
+
+
+def _finetune(cfg, a) -> int:
+    from .finetune import train
+
+    tuned = config.load(a.tuning)
+    run = config.data_root() / "runs" / (a.run or f"{tuned['name']}-{time.strftime('%Y%m%d-%H%M')}")
+    info = train(tuned, cfg, config.model_dir(cfg), run, config.data_root())
+    print(json.dumps({k: info[k] for k in ("run", "bestEpoch", "bestValidationMainError", "seconds")}, indent=1))
+    print((run / "report.md").read_text())
     return 0
 
 
@@ -195,12 +231,14 @@ def main(argv: list[str] | None = None) -> int:
     lk.add_argument("--size", type=float, default=10.0, help="metres across")
     lk.add_argument("--res", default="0.005,0.01", help="metres a pixel, one or more")
     lk.add_argument("--label")
+    lk.add_argument("--model", help="a fine-tuned run instead of the config's model")
     lk.add_argument("--only-seabed", action="store_true", help="rule out the classes that are not seabed")
     lk.add_argument("--stretch", action="store_true", help="stretch each channel's contrast first")
     m = sub.add_parser("map")
     m.add_argument("--tiles", required=True)
     m.add_argument("--name", required=True)
     m.add_argument("--res", type=float, help="metres a pixel (the config's by default)")
+    m.add_argument("--model", help="a fine-tuned run instead of the config's model")
     v = sub.add_parser("video")
     v.add_argument("--video", required=True, help="one file, or several a transect was cut into, comma separated")
     v.add_argument("--name", required=True)
@@ -209,13 +247,17 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--every", type=float, default=1.0, help="seconds between the frames read")
     v.add_argument("--begin", help="the transect's start: LAT,LON")
     v.add_argument("--end", dest="finish", help="the transect's end: LAT,LON")
+    v.add_argument("--model", help="a fine-tuned run instead of the config's model")
+    f = sub.add_parser("finetune")
+    f.add_argument("--config", dest="tuning", required=True, help="finetune/<name>.yaml")
+    f.add_argument("--run")
     b = sub.add_parser("bands")
     b.add_argument("--name", required=True)
     b.add_argument("--dem", required=True, help="the survey's elevation model tiles, heights in metres")
     b.add_argument("--step", type=float, default=2.0)
     a = ap.parse_args(argv)
     cfg = config.load(a.config)
-    return {"fetch": _fetch, "check": _check, "look": _look, "map": _map, "video": _video, "bands": _bands}[a.command](cfg, a)
+    return {"fetch": _fetch, "check": _check, "look": _look, "map": _map, "video": _video, "finetune": _finetune, "bands": _bands}[a.command](cfg, a)
 
 
 if __name__ == "__main__":

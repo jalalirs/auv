@@ -1,0 +1,58 @@
+# The Red Sea model fine-tuned on Caribbean photo-quadrats.
+#
+# The XL Catlin Seaview Survey's Atlantic set: 1,407 downward-facing photos of
+# about a square metre each, from 109 surveys in 13 countries, each with about
+# 66 points an expert labelled (University of Queensland, DOI
+# 10.14264/uql.2019.930). Its repository page says CC BY 3.0; its own
+# documentation says CC BY-NC-SA 4.0. Until that is settled a model trained
+# on it is for research, not for sale.
+#
+# Points are labelled with the survey's codes; they are gathered into the
+# cover groups of cover.yaml, and the model is taught at the group level: at
+# each point, the summed probability of the group's classes. The 95 classes
+# within a group are then not to be read; the groups are.
+name: caribbean-v1
+base: cover.yaml
+licence: "research only until the Seaview licence is settled: CC BY 3.0 on its repository page, CC BY-NC-SA 4.0 in its own documentation"
+
+data:
+  root: raw/seaview
+  annotations: tabular/tabular-data/annotations_ATL.csv
+  surveys: tabular/tabular-data/seaviewsurvey_surveys.csv
+  images: images/ATL
+  # Each photo scaled to this many pixels across (they are 848 to 1,398 for
+  # about a metre; CoralscapesV2's frames are 1024 tall).
+  pixels: 1024
+
+# Survey label -> cover group. By the survey's functional group, then the
+# exceptions by code, then any code ending -BL is bleached.
+labels:
+  by_function:
+    Hard Coral: hard_coral
+    Soft Coral: soft_coral
+    Algae: algae
+    Sponge: other_life
+    Other Invertebrates: other_life
+  by_code:
+    Mille: hard_coral           # fire coral: a stony hydrocoral, counted as stony coral by CREMP
+    CCA: hard_substrate         # crustose coralline algae: the pavement itself
+    Sand: sand
+    Sediment: sand
+    Turfsa: sand                # turf over sand
+    Seagrass: seagrass
+    FISH: not_seabed            # hides the bottom, does not cover it
+  bleached_suffix: "-BL"
+
+# Held out by country, as the depth model is by region.
+split:
+  test: [BHS, BLZ]              # the Bahamas, and Belize on the Mesoamerican reef
+  validation: [CUW]             # Curaçao
+
+train:
+  seed: 1
+  epochs: 30
+  batch: 4
+  crop: 768
+  learning_rate: 0.00006        # the encoder's; the decode head's is ten times this
+  weight_decay: 0.01
+  precision: bf16
