@@ -38,3 +38,21 @@ services:
             - driver: nvidia
               device_ids: ["${IOCEAN_ML_GPU:-1}"]
               capabilities: [gpu]
+
+  # The places module in this image, for a place built with the learned-depth
+  # source: it needs onnxruntime, which this image has and the box's own Python
+  # must not (installing it there pulled in NumPy 2 and broke scipy). ~/iocean
+  # is mounted where it is on the host, so a recipe's paths mean the same here.
+  #
+  #   docker compose -f ml/depth/compose.yaml run --rm places build \
+  #       /src/packages/places/recipes/demos/looe-key-learned.json --into ~/iocean/... --cache ~/iocean/reference/...
+  places:
+    image: iocean/ml-depth:${IOCEAN_IMAGE_TAG:-dev}
+    pull_policy: never
+    entrypoint: ["python", "-m", "iocean_places"]
+    environment:
+      HOME: ${HOME}
+      NASA_TOKEN: ${NASA_TOKEN:-}
+    volumes:
+      - ${HOME}/iocean:${HOME}/iocean
+    user: "${IOCEAN_UID:-1000}:${IOCEAN_GID:-1000}"

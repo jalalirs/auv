@@ -7,6 +7,8 @@ dependencies = ["numpy", "scipy", "pillow", "matplotlib"]
 
 [project.optional-dependencies]
 rasters = ["rasterio"]
+# The learned-depth source runs the depth model (ml/depth) on a CPU.
+learned = ["onnxruntime>=1.18"]
 
 [build-system]
 requires = ["setuptools>=64"]

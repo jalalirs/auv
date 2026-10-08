@@ -1,0 +1,14 @@
+{
+  "name": "looe-key-learned",
+  "site": {"centre": [24.54586, -81.4072], "acrossM": 1000, "cells": 512},
+  "sources": [
+    {"use": "learned-depth", "as": "learned",
+     "model": "~/iocean/ml/depth/runs/unet-v1-no-florida-20261007-1747/export", "until": "2026-10-07T00:00:00Z"},
+    {"use": "icesat2", "as": "icesat"},
+    {"use": "gebco", "path": "~/iocean/places/looe-key"}
+  ],
+  "models": [
+    {"use": "curve-depth", "as": "corrected", "depth": "learned.depth", "truth": "icesat.depth.points"}
+  ],
+  "scene": {"depth": ["corrected.depth", "gebco.depth"], "featherCells": 0}
+}
