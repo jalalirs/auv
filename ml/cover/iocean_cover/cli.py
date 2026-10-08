@@ -109,7 +109,19 @@ def _map(cfg, a) -> int:
     settings = dict(cfg["mosaic"])
     if a.res:
         settings["metres_per_pixel"] = a.res
-    said = make(seg, groups, _tiles(a.tiles), config.data_root() / "maps" / a.name, settings, _about(cfg))
+    about = _about(cfg)
+    report = config.data_root() / "checks" / cfg["name"] / "report.json"
+    if report.is_file():
+        # How the model did on imagery it never saw, carried with the map: a
+        # place reading it takes these as each share's error where the imagery
+        # is like that, and must say otherwise where it is not.
+        r = json.loads(report.read_text())
+        about["checked"] = {
+            "on": f"CoralscapesV2's test split, {r['frames']} frames from five Red Sea dive sites it never saw",
+            "meanAbsError": {k: v["meanAbsError"] for k, v in r["cover"].items()},
+            "bias": {k: v["bias"] for k, v in r["cover"].items()},
+            "report": f"checks/{cfg['name']}/report.md"}
+    said = make(seg, groups, _tiles(a.tiles), config.data_root() / "maps" / a.name, settings, about)
     print(json.dumps({k: said[k] for k in ("imagedM2", "seabedM2", "shares", "seconds")}, indent=1))
     return 0
 

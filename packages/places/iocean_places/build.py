@@ -6,7 +6,9 @@ and add their own. The seabed is the fusion of the depth layers the scene names
 (`scene.depth`), or, when it names none, of every depth layer no model used.
 
 What this builds is the seabed, with the error and the source of every cell
-beside it, and a heights note (`heights.json`) that tools/make-site builds the
+beside it; what covers it, where some source says (`cover.<group>` layers,
+each group fused like depth and written as one band of cover.f32); and a
+heights note (`heights.json`) that tools/make-site builds the
 rest of the place from: the reef, the ground's colour, the life and the water
 are still the tools', and move in later.
 """
@@ -69,6 +71,45 @@ def run_models(recipe: Recipe, products: dict) -> tuple[dict, set[str]]:
             products[f"{name}.{layer.quantity}"] = layer
         said[name] = {"model": entry["use"], "inputs": {k: v for k, v in model.inputs.items() if v}, **record}
     return said, used
+
+
+def cover_of(recipe: Recipe, products: dict, into: pathlib.Path) -> dict | None:
+    """Each cover group's layers fused, written as one band each of cover.f32
+    (shares 0 to 1, NaN where nothing says) and cover-error.f32, and what the
+    record says of them. The scene may name the products (`scene.cover`);
+    otherwise every `cover.<group>` layer is taken."""
+    import numpy as np
+
+    named = recipe.scene.get("cover")
+    if named:
+        missing = [n for n in named if n not in products]
+        if missing:
+            raise ValueError(f"the scene names {', '.join(missing)}, which nothing made")
+        chosen = [products[n] for n in named]
+    else:
+        chosen = [p for p in products.values() if isinstance(p, Layer) and p.quantity.startswith("cover.")]
+    if not chosen:
+        return None
+    by: dict[str, list[Layer]] = {}
+    for layer in chosen:
+        by.setdefault(layer.quantity, []).append(layer)
+    groups = sorted(by)
+    fused = [fuse(by[q], feather=int(recipe.scene.get("featherCells", 3))) for q in groups]
+    np.stack([f.value for f in fused]).astype("<f4").tofile(into / "cover.f32")
+    np.stack([f.error for f in fused]).astype("<f4").tofile(into / "cover-error.f32")
+    said = {}
+    for q, f in zip(groups, fused):
+        one = f.said()
+        here = f.covers()
+        one["meanShare"] = round(float(np.mean(f.value[here])), 4) if here.any() else None
+        for source in one["sources"]:                   # a share's error, not metres
+            source["errorShare"] = source.pop("errorM")
+        said[q.split(".", 1)[1]] = one
+    return {"groups": [q.split(".", 1)[1] for q in groups], "file": "cover.f32", "errorFile": "cover-error.f32",
+            "format": "little-endian float32, one band per group in this order, each row major, south to north "
+                      "then west to east, the heightfield's rows and columns: the group's share of the cell's "
+                      "seabed (0 to 1), NaN where nothing says; errorFile the same, how wrong each share may be",
+            "by": said}
 
 
 def build(recipe: Recipe, into: pathlib.Path, cache: pathlib.Path | None = None) -> dict:
@@ -139,6 +180,9 @@ def build(recipe: Recipe, into: pathlib.Path, cache: pathlib.Path | None = None)
            if leading else {}),
         "depth": depth_said, "models": models, "perCell": per_cell,
     }
+    cover = cover_of(recipe, products, into)
+    if cover:
+        note["cover"] = cover
     hardness = recipe.scene.get("hardness")
     if hardness:
         hard = products[hardness]
@@ -156,6 +200,7 @@ def build(recipe: Recipe, into: pathlib.Path, cache: pathlib.Path | None = None)
                  "heightfield": mesh["heightfield"], "errorFile": mesh["errorFile"],
                  "sourcesFile": mesh["sourcesFile"]},
         "perCell": per_cell,
+        **({"cover": cover} if cover else {}),
         "beginAt": begin,
         "builtBy": {"places": {"recipe": "recipe.json", "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}},
     }
