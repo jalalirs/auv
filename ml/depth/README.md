@@ -41,6 +41,26 @@ found as a 17 m "error". The stated uncertainty, calibrated on the validation su
 (a factor of 1.15 to 1.24), puts 58% to 71% of held-out cells within one sigma, where
 68% is honest.
 
+### In the Red Sea
+
+The Red Sea test set: 1,774 chips along the Saudi coast (Thuwal, NEOM, Al Wajh,
+Yanbu, Farasan), found and labelled by ICESat-2. Scored on the areas a model never
+trained on (NEOM and Thuwal), each corrected by its own area's ICESat-2 as a place
+would be:
+
+| model | median error | rms |
+|---|---|---|
+| the per-pixel linear fit (what the places use) | 0.77 | 2.30 |
+| unet-v1, US reefs only | 0.87 | 2.50 |
+| unet-v2-redsea, Farasan, Al Wajh and Yanbu added | 0.70 | 2.07 |
+| unet-v2-redsea-w10, their cells weighted ten to one | 0.60 | 1.94 |
+
+Trained on US reefs alone, the model was no better than the per-pixel fit in the Red
+Sea; with three Red Sea areas in training it is, at every depth to 20 m, and it is
+better on the held-out US regions too (Guam and the Marianas 3.21 m, the Virgin
+Islands 1.48 m). Below 15 m the Red Sea stays weak for both (4 m and worse): the
+satellite barely sees the bottom there.
+
 ## In a place
 
 The places module runs an export of a run (`iocean-depth export`) through its
