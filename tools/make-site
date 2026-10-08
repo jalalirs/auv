@@ -118,6 +118,29 @@ def _soften(field, texels: float):
     return out.astype("float32")
 
 
+def atlas_on(reference: pathlib.Path, centre, across: float, cells: int):
+    """The Allen Coral Atlas on this seabed's grid, where the place has fetched
+    it: the class and the zone name of every cell, '' where it mapped nothing.
+    None where the place has no Atlas, and the reef is then placed by the
+    inference alone, as every place was before."""
+    import numpy as np
+
+    benthic = reference / "coral-atlas-benthic.geojson"
+    geomorphic = reference / "coral-atlas-geomorphic.geojson"
+    if centre is None or not (benthic.is_file() and geomorphic.is_file()):
+        return None
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "packages" / "places"))
+    from iocean_places.grid import Grid
+    from iocean_places.sources.coral_atlas import BENTHIC_ORDER, rasterised
+
+    grid = Grid(float(centre[0]), float(centre[1]), float(across), int(cells))
+    out = {}
+    for key, path, order in (("benthic", benthic, BENTHIC_ORDER), ("geomorphic", geomorphic, None)):
+        codes, names = rasterised(grid, json.loads(path.read_text()), order)
+        out[key] = np.array([""] + list(names), dtype=object)[codes]
+    return out
+
+
 def derived_hardness(height, across: float, n: int = 1024):
     """Where the hard ground is, worked out from the shape of the seabed.
 
@@ -683,7 +706,16 @@ def main() -> int:
         # A place's own corpus, if it has one. Where it holds a scan of a
         # colony, the reef stands scans rather than grown shapes.
         corpus = pathlib.Path.home() / "iocean" / "reference" / asked.name
+        # Where the place has the Allen Coral Atlas, it decides how dense the
+        # coral is and which part of the reef's mix grows where, by the one
+        # table every place shares (zonation.ATLAS_DENSITY, ATLAS_ZONE_BAND).
+        atlas = atlas_on(pathlib.Path(asked.ground).expanduser(), asked.centre, asked.across,
+                         height.shape[0]) if asked.ground else None
+        if atlas is not None:
+            mapped = float((atlas["benthic"] != "").mean())
+            print(f"  reef: the Allen Coral Atlas sets the density over {100 * mapped:.0f}% of the site")
         reef = grow_reef.plant(where, height, asked.across, asked.seed, asked.coral,
+                               atlas=atlas,
                                cover_from=asked.cover_from,
                                assemblage=asked.assemblage,
                                picture=seen_from_above,

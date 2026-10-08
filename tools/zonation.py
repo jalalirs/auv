@@ -290,6 +290,98 @@ ASSEMBLAGES["deep"] = (
 NO_BIGGER_THAN_M = {"holothurian": 0.45}
 
 
+# How much coral each kind of ground the Allen Coral Atlas maps carries, the
+# same for every place.
+#
+# The Atlas says what the bottom is made of at ten metres, which is the one
+# thing the inference below (slope and relief of the seabed) can only guess at.
+# So where the Atlas has mapped a square, its class sets the density, and the
+# depth only shapes it: the share of `COVER`'s peak the light and the waves
+# allow there.
+#
+# Where it has not mapped, which is water deeper than the satellite sees, the
+# ground is thin unless it slopes like a reef edge. The inference used to
+# stand there, and it calls level ground hard: the deep west half of Al
+# Fahal, a plain at twenty to thirty-eight metres, was covered edge to edge.
+# A reef's deep slope is steep and carries coral; a deep plain is sediment.
+# So only the slope counts there, with the light's ceiling and the same
+# clearings.
+#
+# These are chosen, not measured, and the place's record says so. The
+# reasoning: "Coral/Algae" is ground where living cover dominates, and what is
+# planted here stands for all of it (hard coral, soft coral, sponges); the
+# Thuwal reefs' line transects found 8 to 31% hard coral alone (Khalil,
+# Bouwmeester and Berumen 2017), so standing life at its densest is put a
+# little under half. Rock is pavement with heads scattered on it; rubble
+# carries the odd colony that took on a stable piece; sand, mats and seagrass
+# carry almost none.
+ATLAS_DENSITY = {
+    "Coral/Algae": 0.45,
+    "Rock": 0.18,
+    "Rubble": 0.06,
+    "Seagrass": 0.01,
+    "Microalgal Mats": SAND_IS_STILL,
+    "Sand": SAND_IS_STILL,
+}
+
+# Which part of the reef picks the mix, where the Atlas says which part this is.
+#
+# The bands below each assemblage are by depth, and depth alone puts a reef
+# flat at two metres and a lagoon floor at two metres in the same band. They
+# are not the same place: the flat is scoured, the lagoon is sheltered and
+# grows patch reefs. So a zone names the band of its own assemblage to draw
+# from (0 the scoured top, 1 the upper fore reef, 2 the slope), or None to
+# keep drawing by depth, which is what a slope is.
+ATLAS_ZONE_BAND = {
+    "Reef Crest": 0,
+    "Outer Reef Flat": 0,
+    "Inner Reef Flat": 0,
+    "Terrestrial Reef Flat": 0,
+    "Shallow Lagoon": 1,
+    "Deep Lagoon": 1,
+    "Back Reef Slope": 1,
+    "Plateau": 2,
+    "Sheltered Reef Slope": None,
+    "Reef Slope": None,
+    "Patch Reefs": 1,
+}
+
+
+def atlas_cover(ground: dict, benthic, rng, patchiness: float = 1.0):
+    """`cover`, with the Atlas's class setting the density wherever it mapped.
+
+    `benthic` is the Atlas class name of every cell ('' where it mapped
+    nothing). Returns the cover wanted, and which cells the Atlas decided;
+    the rest carry coral only as far as they slope like a reef edge."""
+    benthic = np.asarray(benthic)
+    density = np.array([ATLAS_DENSITY.get(str(b), np.nan) if b else np.nan
+                        for b in benthic.ravel()]).reshape(benthic.shape)
+    mapped = np.isfinite(density)
+    # One field of clearings for both, so an Atlas patch is a set of stands
+    # and clearings like any other ground, and the seam where the Atlas stops
+    # mapping does not change the pattern.
+    patch = _patch(ground, rng, patchiness)
+    # Nothing below three degrees, all of it by twelve: a reef's drop-off is
+    # steeper than ten, and `rough`'s own ramp (full at six) still gave Al
+    # Fahal's deep plain, level to a degree, a fifth of the coral a slope gets
+    # and so more colonies a square kilometre than the mapped reef.
+    edge = np.clip((ground["slope"] - 3.0) / 9.0, SAND_IS_STILL, 1.0)
+    unmapped = np.clip(ground["ceiling"] * edge * ground["standing"] * patch, 0.0, 0.94)
+    light = ground["ceiling"] / max(COVER)
+    from_atlas = np.clip(np.nan_to_num(density) * light * ground["standing"] * patch, 0.0, 0.94)
+    return np.where(mapped, from_atlas, unmapped), mapped
+
+
+def zone_bands(geomorphic) -> np.ndarray:
+    """The band each cell's Atlas zone draws from, -1 where it draws by depth."""
+    g = np.asarray(geomorphic)
+    out = np.full(g.shape, -1, dtype=int)
+    for name, band in ATLAS_ZONE_BAND.items():
+        if band is not None:
+            out[g == name] = band
+    return out
+
+
 def bands_for(assemblage: str | None):
     """The mix for a named reef, or the one this platform started with."""
     if assemblage is None:
@@ -534,14 +626,16 @@ def cover(ground: dict, rng, patchiness: float = 1.0):
     the patchiness a reef has — coral recruits beside coral, so it comes in
     stands with clearings between them and never as an even lawn.
     """
-    depth = ground["depth"]
-    rows, columns = depth.shape
+    wanted = ground["ceiling"] * ground["hard"] * ground["standing"]
+    return np.clip(wanted * _patch(ground, rng, patchiness), 0.0, 0.94)
+
+
+def _patch(ground: dict, rng, patchiness: float = 1.0):
+    """Two scales of clearing: stands of a few metres, and reaches of a hundred
+    where a reef is simply better or worse than the reef next to it."""
+    rows, columns = ground["depth"].shape
     step = ground["step"]
 
-    wanted = ground["ceiling"] * ground["hard"] * ground["standing"]
-
-    # Two scales of clearing: stands of a few metres, and reaches of a hundred
-    # where a reef is simply better or worse than the reef next to it.
     def blobs(metres, strength):
         cells = max(2, int(round(rows * step / metres)))
         seed = rng.normal(0, 1, (cells, cells))
@@ -550,8 +644,7 @@ def cover(ground: dict, rng, patchiness: float = 1.0):
         field = _blur(seed[np.ix_(up_r, up_c)], metres / 3.0, step)
         return field / (field.std() or 1.0) * strength
 
-    patch = 1.0 + patchiness * (blobs(24.0, 0.34) + blobs(110.0, 0.26))
-    return np.clip(wanted * patch, 0.0, 0.94)
+    return 1.0 + patchiness * (blobs(24.0, 0.34) + blobs(110.0, 0.26))
 
 
 # How much of a site may be reef habitat before the inference is not to be
@@ -596,7 +689,7 @@ def is_it_all_reef(want, surveyed: bool = False) -> dict:
     }
 
 
-def community(depths, rng, bands=None):
+def community(depths, rng, bands=None, zone_band=None):
     """Which kind of coral each colony is, and how big it may get.
 
     Sampled per colony from the band it landed in, rather than from one mix for
@@ -615,6 +708,10 @@ def community(depths, rng, bands=None):
     edges = np.array([deepest for deepest, _, _ in bands])
     band = np.searchsorted(edges, np.asarray(depths), side="left")
     band = np.clip(band, 0, len(bands) - 1)
+    # Where the Atlas says which part of the reef this is, that part's band.
+    if zone_band is not None:
+        zone_band = np.asarray(zone_band)
+        band = np.where(zone_band >= 0, np.clip(zone_band, 0, len(bands) - 1), band)
 
     table = np.zeros((len(bands), len(kinds)))
     caps = np.zeros(len(bands))

@@ -273,3 +273,50 @@ def test_the_help_text_names_every_mix():
         assert mix in told, (
             f"--assemblage does not mention {mix!r}, which zonation defines. "
             f"There is no `choices` to fall back on, so nobody can find it.")
+
+
+def test_the_atlas_class_sets_the_density_where_it_mapped():
+    """Same depth, same ground: coral/algae carries more than rock, rock more
+    than rubble, rubble more than sand; where the Atlas mapped nothing the
+    inference stands exactly as before."""
+    height = np.full((120, 120), -8.0)
+    ground = zonation.describe(height, 600.0)
+    benthic = np.full(height.shape, "", dtype=object)
+    benthic[:, :24], benthic[:, 24:48] = "Coral/Algae", "Rock"
+    benthic[:, 48:72], benthic[:, 72:96] = "Rubble", "Sand"
+    want, mapped = zonation.atlas_cover(ground, benthic, np.random.default_rng(4))
+    means = [want[:, a:a + 24].mean() for a in (0, 24, 48, 72)]
+    assert means[0] > means[1] > means[2] > means[3]
+    assert abs(means[0] / means[1] - zonation.ATLAS_DENSITY["Coral/Algae"] / zonation.ATLAS_DENSITY["Rock"]) < 0.3
+    assert mapped[:, :96].all() and not mapped[:, 96:].any()
+
+
+def test_where_the_atlas_did_not_map_only_a_reef_edge_carries_coral():
+    """Deep water the satellite did not see: a level plain is thin, a slope
+    like a reef edge is not."""
+    height = np.full((120, 120), -30.0)                              # a level plain at 30 m
+    height[60:80, :] = -30.0 + np.arange(20)[:, None] * 1.0          # a drop-off of 11 degrees, 30 m to 11 m
+    height[80:, :] = -11.0                                           # and a level top
+    ground = zonation.describe(height, 600.0)
+    benthic = np.full(height.shape, "", dtype=object)
+    want, mapped = zonation.atlas_cover(ground, benthic, np.random.default_rng(4))
+    assert not mapped.any()
+    assert want[5:50, 5:115].mean() < 0.01
+    assert want[63:77, 5:115].mean() > 0.2
+    assert want[90:115, 5:115].mean() < 0.01
+
+
+def test_a_reef_flat_draws_from_the_flat_whatever_its_depth():
+    """Ten metres down is the slope's band, with tables in the Red Sea mix;
+    told it is a reef flat, the same depth draws from the scoured band, which
+    has none."""
+    bands = zonation.bands_for("red-sea")
+    depths = np.full(4000, 10.0)
+    kinds, picked, _ = zonation.community(depths, np.random.default_rng(1), bands)
+    assert (np.array(kinds)[picked] == "table").any()
+    zone = zonation.zone_bands(np.full(4000, "Inner Reef Flat", dtype=object))
+    kinds, picked, caps = zonation.community(depths, np.random.default_rng(1), bands, zone_band=zone)
+    assert not (np.array(kinds)[picked] == "table").any()
+    assert np.allclose(caps, bands[0][2])
+    slope = zonation.zone_bands(np.full(3, "Reef Slope", dtype=object))
+    assert (slope == -1).all()

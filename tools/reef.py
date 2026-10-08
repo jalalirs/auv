@@ -35,7 +35,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
           how_many: int, picture=None, reference: pathlib.Path | None = None,
           cover_from: str | None = None,
           assemblage: str | None = None, hard=None,
-          knows_its_own: bool = False) -> dict:
+          knows_its_own: bool = False, atlas: dict | None = None) -> dict:
     """Grow a reef onto a seabed, and write it beside it.
 
     `reference` is a place's fetched corpus. Where it holds a scan of a colony
@@ -73,7 +73,15 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # own, so Red Sea's coral was planted on a sand terrace the very same
     # pipeline had drawn as sand a hundred lines earlier.
     ground = zonation.describe(height, across, picture=picture, known=hard)
-    want = zonation.cover(ground, rng)
+    zone = None
+    if atlas is not None:
+        for key in ("benthic", "geomorphic"):
+            if np.shape(atlas[key]) != height.shape:
+                raise ValueError(f"the Atlas {key} map is {np.shape(atlas[key])}, the seabed {height.shape}")
+        want, atlas_mapped = zonation.atlas_cover(ground, atlas["benthic"], rng)
+        zone = zonation.zone_bands(atlas["geomorphic"])
+    else:
+        want = zonation.cover(ground, rng)
 
     # Below the light the cover map is correctly empty, and that is not the
     # same as there being nothing to plant.
@@ -215,9 +223,9 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
                          for i in range(len(prototypes))])
     kind_scale = np.array([per_kind[k] for k in kinds])
 
-    def a_draw(at_depth, rng):
+    def a_draw(at_depth, rng, at_zone=None):
         """Which prototype each colony is, how big, and what it covers."""
-        _, which_kind, cap = zonation.community(at_depth, rng, bands)
+        _, which_kind, cap = zonation.community(at_depth, rng, bands, zone_band=at_zone)
         which = which_kind * variants + rng.integers(0, variants, len(at_depth))
         scale = rng.uniform(0.65, 1.8, len(at_depth)) * kind_scale[which_kind]
         # No bigger than the band allows. A three metre table belongs on the
@@ -251,7 +259,8 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
                    p=(plant_on / plant_on.sum()).ravel()),
         plant_on.shape)
     each_covers = float(a_draw(depth[trial_rows, trial_columns],
-                               np.random.default_rng(seed + 1))[2].mean())
+                               np.random.default_rng(seed + 1),
+                               None if zone is None else zone[trial_rows, trial_columns])[2].mean())
     needed = wanted_area / max(each_covers, 1e-6)
     how_many_asked = int(how_many)
     short_by = needed / max(float(how_many), 1.0)
@@ -285,8 +294,11 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     flat = (plant_on / plant_on.sum()).ravel()
     picked = rng.choice(flat.size, size=stands, p=flat)
     stand_row, stand_column = np.unravel_index(picked, want.shape)
-    centre_x = -across / 2 + stand_column * step_x
-    centre_y = -across / 2 + stand_row * step_y
+    # Anywhere in the cell it was picked in, not on the grid's own point: a
+    # stand on the point drew the colonies in rows a cell apart, which a plan
+    # view of every place showed as a lattice.
+    centre_x = -across / 2 + (stand_column + rng.uniform(-0.5, 0.5, stands)) * step_x
+    centre_y = -across / 2 + (stand_row + rng.uniform(-0.5, 0.5, stands)) * step_y
 
     belongs = np.repeat(np.arange(stands), per_stand)[:how_many]
     if belongs.size < how_many:
@@ -315,7 +327,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
 
     # What shape each one is, decided by the depth it landed at rather than by
     # one mix for the whole site.
-    which, scale, covered_by = a_draw(depth[row, column], rng)
+    which, scale, covered_by = a_draw(depth[row, column], rng, None if zone is None else zone[row, column])
     turn = rng.uniform(0, 2 * math.pi, how_many)
 
     # The surface of a coral at the scale of its polyps, and the material that
@@ -472,6 +484,18 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
                         "the budget covers what the map asks for"),
             },
             "beginAt": begin,
+            # Which rules set the density and the mix, so a place built from
+            # the Atlas says so, and says the numbers are chosen.
+            "coverRules": ({
+                "from": "the Allen Coral Atlas where it mapped this seabed, the inference "
+                        "from depth and ground where it did not",
+                "atlasMappedShare": round(float(atlas_mapped.mean()), 4),
+                "densityByClass": zonation.ATLAS_DENSITY,
+                "bandByZone": zonation.ATLAS_ZONE_BAND,
+                "densitiesAre": "chosen, the same for every place; shaped by depth "
+                                "through the cover curve's share of its peak",
+            } if atlas is not None else {
+                "from": "the inference from depth, light and ground, everywhere"}),
             "points": int(sum(len(p) for p, _ in prototypes)),
             "coverWhereItGrows": round(cover, 5),
             "reefAreaM2": int(round(measured["reefGroundM2"])),
