@@ -1,4 +1,5 @@
-"""What covers the seabed, from a cover map made of underwater imagery.
+"""What covers the seabed, from underwater imagery: a cover map made of a
+photo mosaic (`cover-map`), or the frames of a video transect (`cover-transect`).
 
 A cover map is what `iocean-cover map` (ml/cover) writes from a photo mosaic:
 cover.tif, one band per group (hard coral, soft coral, dead coral, algae,
@@ -107,3 +108,81 @@ class CoverMap:
             {"coverMap": folder.name, "model": about.get("model"), "revision": about.get("revision"),
              "made": about.get("made"), "imagedShareOfSquare": round(imaged, 4)})
         return [Layer.of(grid, f"cover.{n}", on[k], errors[n], cited) for k, n in enumerate(names)]
+
+
+class CoverTransect:
+    """A video transect's frames (what `iocean-cover video` writes, frames.csv
+    and transect.json) along its line: each place cell within `reach` metres
+    of a frame takes its frames' shares, each weighted by how much of the frame
+    is seabed. The frames sit where an even pace between the transect's marked
+    ends puts them, which is how a diver swims a tape; `reach` is how far that
+    may be out, and how much reef one frame sees. Cells no frame reaches are
+    left without a value.
+
+    Errors as a cover map's: the model's check where the video is like what it
+    was checked on (a Red Sea GoPro transect is exactly that), a number
+    otherwise."""
+
+    name = "cover-transect"
+    gives = ("cover.*",)
+
+    def __init__(self, transect: str, path: str | None = None, error: str | float = "checked",
+                 reach: float = 3.0, minSeabed: float = 0.3, citation: str = "") -> None:
+        self.transect, self.path, self.error = transect, path, error
+        self.reach, self.min_seabed, self.citation = float(reach), float(minSeabed), citation
+
+    def layers(self, grid: Grid, cache=None) -> list[Layer]:
+        import csv
+
+        from scipy.spatial import cKDTree
+
+        folder = pathlib.Path(self.transect).expanduser()
+        folder = folder if folder.is_absolute() else where(self.path, cache) / folder
+        about = json.loads((folder / "transect.json").read_text())
+        rows = list(csv.DictReader(open(folder / "frames.csv")))
+        if not rows or "latitude" not in rows[0]:
+            raise ValueError(f"{self.name}: {folder.name} has no positions; make it with the transect's ends "
+                             "(iocean-cover video --begin LAT,LON --end LAT,LON)")
+        names = [k for k in rows[0] if k not in ("t", "seabed", "latitude", "longitude")]
+        keep = [r for r in rows if float(r["seabed"]) >= self.min_seabed]
+        lat = np.array([float(r["latitude"]) for r in keep])
+        lon = np.array([float(r["longitude"]) for r in keep])
+        x, y = grid.to_xy(lon, lat)
+        seabed = np.array([float(r["seabed"]) for r in keep])
+        shares = np.array([[float(r[n]) for n in names] for r in keep])
+
+        gx, gy = grid.xy()
+        cells = np.column_stack([gx.ravel(), gy.ravel()])
+        reach = max(self.reach, grid.cell / 2)
+        near = cKDTree(np.column_stack([x, y])).query_ball_point(cells, reach)
+        total = np.zeros((len(cells), len(names)))
+        weight = np.zeros(len(cells))
+        for c, frames in enumerate(near):
+            if frames:
+                w = seabed[frames]
+                total[c] = (shares[frames] * w[:, None]).sum(0)
+                weight[c] = w.sum()
+        with np.errstate(invalid="ignore", divide="ignore"):
+            value = np.where(weight[:, None] > 0, total / weight[:, None], np.nan)
+        value = value.reshape(gx.shape + (len(names),))
+
+        checked = about.get("checked") or {}
+        if self.error == "checked":
+            if not checked.get("meanAbsError"):
+                raise ValueError(f"{self.name}: {folder.name} carries no check of its model; "
+                                 "say how wrong its shares may be with a number (error: 0.15)")
+            errors = {n: float(checked["meanAbsError"][n]) for n in names}
+            how = f"error per group its mean error per frame on {checked.get('on', 'its check')}"
+        else:
+            errors = {n: float(self.error) for n in names}
+            how = f"error {float(self.error):.0%} a share, chosen"
+        cited = Provenance(
+            self.name, "derived",
+            (self.citation + "; " if self.citation else "")
+            + f"{about.get('model')} ({about.get('licence', '')}) over {len(keep)} frames of a video transect"
+            + (f" {about['lengthM']:g} m long" if about.get("lengthM") else "")
+            + f", placed at an even pace between its marked ends, within {reach:g} m; {how}",
+            about.get("licence", ""),
+            {"transect": folder.name, "model": about.get("model"), "revision": about.get("revision"),
+             "videos": about.get("videos"), "begin": about.get("begin"), "end": about.get("end")})
+        return [Layer.of(grid, f"cover.{n}", value[..., k], errors[n], cited) for k, n in enumerate(names)]

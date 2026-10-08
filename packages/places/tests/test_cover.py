@@ -15,7 +15,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from iocean_places import Grid  # noqa: E402
 from iocean_places.build import build  # noqa: E402
 from iocean_places.recipe import Recipe  # noqa: E402
-from iocean_places.sources.cover_map import CoverMap  # noqa: E402
+from iocean_places.sources.cover_map import CoverMap, CoverTransect  # noqa: E402
 
 GRID = Grid(27.9366, 34.9108, 200.0, 41)               # 5 m cells, at Shushah
 
@@ -88,3 +88,31 @@ def test_a_place_carries_its_cover(tmp_path):
     assert by["sources"][0]["kind"] == "derived" and by["sources"][0]["errorShare"]["median"] == pytest.approx(0.023)
     heights = json.loads((tmp_path / "place" / "heights.json").read_text())
     assert heights["cover"]["file"] == "cover.f32"
+
+
+def test_a_video_transect_along_its_line(tmp_path):
+    """Forty frames a metre apart along 40 m running east through the middle:
+    coral 0.4 on its west half, 0.1 on its east; two frames looking at water."""
+    folder = tmp_path / "t"
+    folder.mkdir()
+    east_per_degree = 111_320.0 * np.cos(np.radians(GRID.latitude))
+    rows = []
+    for i in range(40):
+        x = -20.0 + i
+        coral = 0.4 if x < 0 else 0.1
+        rows.append({"t": i, "seabed": 0.05 if i in (5, 6) else 0.8, "hard_coral": 0.9 if i in (5, 6) else coral,
+                     "sand": 1 - coral, "latitude": GRID.latitude, "longitude": GRID.longitude + x / east_per_degree})
+    import csv
+    with open(folder / "frames.csv", "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    (folder / "transect.json").write_text(json.dumps({"model": "test-model", "lengthM": 39.0, "checked": {
+        "on": "the test sites", "meanAbsError": {"hard_coral": 0.023, "sand": 0.022}}}))
+    coral = {one.quantity: one for one in CoverTransect(str(folder), reach=3.0).layers(GRID)}["cover.hard_coral"]
+    c = GRID.cells // 2
+    assert coral.value[c, c - 3] == pytest.approx(0.4, abs=1e-6)       # 15 m west, the frames looking up left out
+    assert coral.value[c, c + 3] == pytest.approx(0.1, abs=1e-6)
+    assert np.isnan(coral.value[c + 2, c]), "10 m off the line, out of reach"
+    assert np.isnan(coral.value[c, c + 6]), "past the transect's end"
+    assert coral.error[c, c] == pytest.approx(0.023)

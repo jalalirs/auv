@@ -6,6 +6,9 @@
                                              a patch of a mosaic and what the model says of it, to look at
     iocean-cover map   --tiles GLOB --name NAME [--res R]
                                              a cover map from a photo mosaic -> maps/<name>/
+    iocean-cover video --video FILE[,FILE] --name NAME [--from S --to S] [--every S]
+                       [--begin LAT,LON --end LAT,LON]
+                                             cover along a video transect -> transects/<name>/
     iocean-cover bands --name NAME --dem GLOB [--step M]
                                              a map's shares by depth, from the survey's elevation model
 
@@ -37,8 +40,20 @@ def _model(cfg: dict):
 
 
 def _about(cfg: dict) -> dict:
-    return {"model": cfg["model"]["repo"], "revision": cfg["model"]["revision"], "licence": cfg["model"]["licence"],
-            "cite": cfg["model"]["cite"], "config": cfg["name"], "commit": os.environ.get("GIT_COMMIT", "unknown")}
+    about = {"model": cfg["model"]["repo"], "revision": cfg["model"]["revision"], "licence": cfg["model"]["licence"],
+             "cite": cfg["model"]["cite"], "config": cfg["name"], "commit": os.environ.get("GIT_COMMIT", "unknown")}
+    report = config.data_root() / "checks" / cfg["name"] / "report.json"
+    if report.is_file():
+        # How the model did on imagery it never saw, carried with what it
+        # made: a place takes these as each share's error where the imagery is
+        # like that, and must say otherwise where it is not.
+        r = json.loads(report.read_text())
+        about["checked"] = {
+            "on": f"CoralscapesV2's test split, {r['frames']} frames from five Red Sea dive sites it never saw",
+            "meanAbsError": {k: v["meanAbsError"] for k, v in r["cover"].items()},
+            "bias": {k: v["bias"] for k, v in r["cover"].items()},
+            "report": f"checks/{cfg['name']}/report.md"}
+    return about
 
 
 def _tiles(pattern: str) -> list[pathlib.Path]:
@@ -110,19 +125,21 @@ def _map(cfg, a) -> int:
     if a.res:
         settings["metres_per_pixel"] = a.res
     about = _about(cfg)
-    report = config.data_root() / "checks" / cfg["name"] / "report.json"
-    if report.is_file():
-        # How the model did on imagery it never saw, carried with the map: a
-        # place reading it takes these as each share's error where the imagery
-        # is like that, and must say otherwise where it is not.
-        r = json.loads(report.read_text())
-        about["checked"] = {
-            "on": f"CoralscapesV2's test split, {r['frames']} frames from five Red Sea dive sites it never saw",
-            "meanAbsError": {k: v["meanAbsError"] for k, v in r["cover"].items()},
-            "bias": {k: v["bias"] for k, v in r["cover"].items()},
-            "report": f"checks/{cfg['name']}/report.md"}
     said = make(seg, groups, _tiles(a.tiles), config.data_root() / "maps" / a.name, settings, about)
     print(json.dumps({k: said[k] for k in ("imagedM2", "seabedM2", "shares", "seconds")}, indent=1))
+    return 0
+
+
+def _video(cfg, a) -> int:
+    from .video import transect
+
+    seg, groups = _model(cfg)
+    point = (lambda v: tuple(float(x) for x in v.split(",")) if v else None)
+    paths = [pathlib.Path(p) for p in a.video.split(",")]
+    said = transect(seg, groups, paths, config.data_root() / "transects" / a.name, _about(cfg), every=a.every,
+                    start=a.start, end=a.end, begin=point(a.begin), finish=point(a.finish))
+    print(json.dumps({k: said[k] for k in ("frames", "framesUsed", "toSeconds", "lengthM", "cover", "seconds")},
+                     indent=1))
     return 0
 
 
@@ -184,13 +201,21 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("--tiles", required=True)
     m.add_argument("--name", required=True)
     m.add_argument("--res", type=float, help="metres a pixel (the config's by default)")
+    v = sub.add_parser("video")
+    v.add_argument("--video", required=True, help="one file, or several a transect was cut into, comma separated")
+    v.add_argument("--name", required=True)
+    v.add_argument("--from", dest="start", type=float, default=0.0, help="seconds: where the transect begins")
+    v.add_argument("--to", dest="end", type=float, help="seconds: where it ends")
+    v.add_argument("--every", type=float, default=1.0, help="seconds between the frames read")
+    v.add_argument("--begin", help="the transect's start: LAT,LON")
+    v.add_argument("--end", dest="finish", help="the transect's end: LAT,LON")
     b = sub.add_parser("bands")
     b.add_argument("--name", required=True)
     b.add_argument("--dem", required=True, help="the survey's elevation model tiles, heights in metres")
     b.add_argument("--step", type=float, default=2.0)
     a = ap.parse_args(argv)
     cfg = config.load(a.config)
-    return {"fetch": _fetch, "check": _check, "look": _look, "map": _map, "bands": _bands}[a.command](cfg, a)
+    return {"fetch": _fetch, "check": _check, "look": _look, "map": _map, "video": _video, "bands": _bands}[a.command](cfg, a)
 
 
 if __name__ == "__main__":
