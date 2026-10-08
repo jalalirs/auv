@@ -74,6 +74,18 @@ Florida, scored against the surveyed seabed (`recipes/demos/looe-key-learned.jso
 | the depth model | 0.57 m | 2.21 m |
 | the depth model, corrected by Looe Key's ICESat-2 (held out 0.76 m) | 0.32 m | 1.77 m |
 
+In the Red Sea, with unet-v2-redsea-w10 (which never saw the NEOM or Thuwal
+areas, so not Shushah or Al Fahal either), corrected by each place's own photons,
+against the seabed each place had published (held-out 200 m blocks of photons):
+
+| | published | depth model, corrected | |
+|---|---|---|---|
+| Al Fahal | 2.01 m (curve fit) | 0.79 m | better in every depth band at the photons; republished 2026-10-08, version 10 |
+| Shushah | 1.28 m (colour fit) | 1.11 m | worse in every depth band at the photons; kept as published |
+
+Shushah's colour fit was already tuned to its own reef map, and the two seabeds
+differ most where no photon is; a lower held-out figure alone did not earn the swap.
+
 Places that use it are built in this image (the `places` service in compose.yaml),
 which has onnxruntime; the box's own Python stays without it.
 
