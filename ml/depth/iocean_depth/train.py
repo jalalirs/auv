@@ -67,8 +67,10 @@ def train(cfg: dict, run: pathlib.Path, ds: pathlib.Path) -> dict:
     from . import config
 
     excluded = data.excluded_surveys(config.load(f"dataset/{cfg['dataset']}.yaml"))
-    parts = data.split(data.load_chips(ds), cfg["split"]["test_regions"], cfg["split"]["validation_datasets"], excluded)
+    parts = data.split(data.load_chips(ds), cfg["split"]["test_regions"], cfg["split"]["validation_datasets"], excluded,
+                       cfg["split"].get("red_sea_train_areas", ()))
     Xtr, Ytr, Mtr = data.arrays(parts["train"], shallow, deep)
+    Wtr = data.weights(parts["train"], Mtr, float(t.get("sparse_weight", 1.0)))
     Xva, Yva, Mva = data.arrays(parts["validation"], shallow, deep)
     flat = Xtr.transpose(1, 0, 2, 3).reshape(Xtr.shape[1], -1)
     mean = flat.mean(1)[None, :, None, None].astype("float32")
@@ -97,16 +99,20 @@ def train(cfg: dict, run: pathlib.Path, ds: pathlib.Path) -> dict:
         losses = []
         order = rng.permutation(len(Xtr))
         for i in range(0, len(order), t["batch"]):
-            batch = [data.augment(Xtr[j], Ytr[j], Mtr[j], rng) for j in order[i:i + t["batch"]]]
+            batch = [data.augment(Xtr[j], Ytr[j], Wtr[j], rng) for j in order[i:i + t["batch"]]]
             xb = torch.from_numpy((np.stack([b[0] for b in batch]) - mean) / std).to(device)
             yb = torch.from_numpy(np.stack([b[1] for b in batch])).to(device)
-            mb = torch.from_numpy(np.stack([b[2] for b in batch])).to(device)
+            wb = torch.from_numpy(np.stack([b[2] for b in batch])).to(device)
+            mb = wb > 0
             if not mb.any():
                 continue
             with torch.autocast(device, dtype=torch.bfloat16, enabled=device == "cuda" and t["precision"] == "bf16"):
                 d, lv = model(xb)
             d, lv = d.float(), lv.float()
-            loss = (d - yb).abs()[mb].mean() if epoch < t["warmup_epochs"] else gaussian_nll(d, lv, yb, mb)
+            if epoch < t["warmup_epochs"]:
+                loss = ((d - yb).abs() * wb).sum() / wb.sum()
+            else:
+                loss = gaussian_nll(d, lv, yb, mb, wb)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)

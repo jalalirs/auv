@@ -35,21 +35,25 @@ def target(y: np.ndarray, shallowest: float, deepest: float) -> tuple[np.ndarray
     return np.where(mask, depth, 0.0).astype("float32"), mask
 
 
-def split(rows: list[dict], test_regions, validation_datasets, excluded=()) -> dict[str, list[dict]]:
+def split(rows: list[dict], test_regions, validation_datasets, excluded=(), red_sea_train=()) -> dict[str, list[dict]]:
     """`excluded` are surveys whose labels are not to be trusted (a dataset
-    config's `excluded:`), out of every part."""
+    config's `excluded:`), out of every part. Red Sea chips are test-only
+    unless their area is in `red_sea_train`; the rest stay held out."""
     out = {"train": [], "validation": [], "test": [], "red-sea": []}
     for r in rows:
         if r["dataset"] in excluded:
             continue
         if r["region"] == "Red Sea":
-            out["red-sea"].append(r)
+            out["train" if r["dataset"] in red_sea_train else "red-sea"].append(r)
         elif r["region"] in test_regions:
             out["test"].append(r)
         elif r["dataset"] in validation_datasets:
             out["validation"].append(r)
         else:
             out["train"].append(r)
+    shared_areas = {r["dataset"] for r in out["train"]} & {r["dataset"] for r in out["red-sea"]}
+    if shared_areas:
+        raise ValueError(f"Red Sea areas in both training and test: {sorted(shared_areas)}")
     leaked = {r["region"] for r in out["train"]} & {r["region"] for r in out["test"]}
     if leaked:
         raise ValueError(f"regions in both training and test: {sorted(leaked)}")
@@ -57,6 +61,14 @@ def split(rows: list[dict], test_regions, validation_datasets, excluded=()) -> d
     if shared:
         raise ValueError(f"surveys in both training and validation: {sorted(shared)}")
     return out
+
+
+def weights(rows: list[dict], mask: np.ndarray, sparse_weight: float) -> np.ndarray:
+    """How much each measured cell counts: 1 for a lidar cell, `sparse_weight`
+    for a cell an ICESat-2 track crossed, so a few hundred cells of Red Sea are
+    not drowned by sixteen thousand of Florida in every chip."""
+    w = np.array([sparse_weight if r.get("labelKind") == "sparse" else 1.0 for r in rows], "float32")
+    return (mask * w[:, None, None]).astype("float32")
 
 
 def arrays(rows: list[dict], shallowest: float, deepest: float):

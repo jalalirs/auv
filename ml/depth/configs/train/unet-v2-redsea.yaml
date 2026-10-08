@@ -1,0 +1,36 @@
+# unet-v2-redsea: unet-v1 with three Red Sea areas in training (their ICESat-2
+# tracks), tested on the two it never saw. unet-v1 was no better than the
+# per-pixel fit in the Red Sea (2.5 m against 2.3 m, corrected per area).
+#
+# Tested only on regions it never saw: neighbouring cells are alike, and a
+# model scored on cells of the reefs it trained on is scored on its memory.
+
+name: unet-v2-redsea
+dataset: depth-v1
+split:
+  # American Samoa's surveys are excluded (ellipsoid heights; see the dataset config).
+  test_regions: [USVI, Guam/CNMI]
+  # Held out of training to choose the epoch: one survey from each of the two
+  # biggest training regions, so the choice is not made on the training reefs.
+  # Red Sea areas trained on; the others (Thuwal, NEOM, and the Shushah and Al
+  # Fahal chips inside them) stay held out.
+  red_sea_train_areas: [icesat-farasan, icesat-al-wajh, icesat-yanbu]
+  validation_datasets: [FL_DryTortugas_NGS_DEM_2015_6212, USACE_Kauai_HI_LMSL_DEM_2013_9335]
+target:
+  shallowest_m: 0.0     # depth, positive down; cells outside are not scored
+  deepest_m: 40.0
+model:
+  kind: unet
+  base_channels: 32     # 32, 64, 128, 256 down; about 7.8 M parameters
+  # Out: depth and the log of its variance, trained on the Gaussian
+  # likelihood after `warmup_epochs` on the absolute error alone.
+train:
+  epochs: 60
+  warmup_epochs: 5
+  batch: 32
+  learning_rate: 0.002
+  weight_decay: 0.0001
+  seed: 0
+  augment: [rot90, flip]
+  precision: bf16
+  sparse_weight: 1.0     # how much an ICESat-2 cell counts against a lidar cell

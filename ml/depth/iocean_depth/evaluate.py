@@ -31,7 +31,8 @@ def evaluate(run: pathlib.Path, ds: pathlib.Path) -> dict:
     from . import config
 
     excluded = data.excluded_surveys(config.load(f"dataset/{cfg['dataset']}.yaml"))
-    parts = data.split(data.load_chips(ds), cfg["split"]["test_regions"], cfg["split"]["validation_datasets"], excluded)
+    parts = data.split(data.load_chips(ds), cfg["split"]["test_regions"], cfg["split"]["validation_datasets"], excluded,
+                       cfg["split"].get("red_sea_train_areas", ()))
     baseline = LinearBaseline().fit(*data.arrays(parts["train"], shallow, deep))
 
     # The stated uncertainty, calibrated on the validation surveys: one factor

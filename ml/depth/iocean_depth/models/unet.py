@@ -40,6 +40,10 @@ class UNet(nn.Module):
         return nn.functional.softplus(out[:, 0]), out[:, 1].clamp(-6.0, 6.0)
 
 
-def gaussian_nll(depth, log_var, target, mask) -> torch.Tensor:
-    """The negative log likelihood of the measured depth, over measured cells."""
-    return (0.5 * (torch.exp(-log_var) * (depth - target) ** 2 + log_var))[mask].mean()
+def gaussian_nll(depth, log_var, target, mask, weight=None) -> torch.Tensor:
+    """The negative log likelihood of the measured depth, over measured cells,
+    each counted by `weight` when one is given."""
+    nll = 0.5 * (torch.exp(-log_var) * (depth - target) ** 2 + log_var)
+    if weight is None:
+        return nll[mask].mean()
+    return (nll * weight)[mask].sum() / weight[mask].sum()

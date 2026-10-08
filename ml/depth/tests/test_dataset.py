@@ -69,3 +69,15 @@ def test_a_survey_the_config_excludes_is_out_of_every_part():
     assert not any(r["dataset"] == "samoa" for part in parts.values() for r in part)
     assert data.excluded_surveys({"lidar": [{"slug": "samoa", "excluded": "ellipsoid heights"}, {"slug": "a"}]}) == \
         {"samoa": "ellipsoid heights"}
+
+
+def test_red_sea_areas_split_by_area_and_sparse_cells_can_count_more():
+    rows = [chip("Florida", "a"), {**chip("Red Sea", "icesat-farasan"), "labelKind": "sparse"},
+            {**chip("Red Sea", "icesat-thuwal"), "labelKind": "sparse"}]
+    parts = data.split(rows, [], [], red_sea_train=["icesat-farasan"])
+    assert [r["dataset"] for r in parts["train"]] == ["a", "icesat-farasan"]
+    assert [r["dataset"] for r in parts["red-sea"]] == ["icesat-thuwal"]
+    _, mask = zip(*(data.target(r["y"], 0.0, 40.0) for r in parts["train"]))
+    w = data.weights(parts["train"], np.stack(mask), 10.0)
+    assert w[0].max() == 1.0 and w[1].max() == 10.0
+    assert w[1][~mask[1]].max() == 0, "an unmeasured cell counts for nothing"
