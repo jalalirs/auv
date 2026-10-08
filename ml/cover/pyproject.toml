@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iocean-cover"
+version = "0.1.0"
+description = "iOcean's coral cover: what covers the seabed, from underwater imagery, with CoralscapesV2's segmentation model."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy", "pyyaml"]
+
+[project.optional-dependencies]
+model = ["torch>=2.6", "transformers>=5.0,<6", "safetensors>=0.4", "huggingface_hub>=0.30"]
+data = ["rasterio>=1.4", "pillow>=10", "pyarrow>=15"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+iocean-cover = "iocean_cover.cli:main"
+
+[tool.setuptools]
+packages = ["iocean_cover"]

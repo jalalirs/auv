@@ -125,3 +125,17 @@ ml-depth-image:
 # The depth model's tests, in its container (the U-Net's need torch).
 ml-depth-test:
     IOCEAN_UID=$(id -u) IOCEAN_GID=$(id -g) docker compose -f ml/depth/compose.yaml run --rm --entrypoint python depth -m pytest -q -p no:cacheprovider tests
+
+# Coral cover from underwater imagery (ml/cover), in its container on the box's
+# second GPU: `just ml-cover fetch`, `just ml-cover check`, `just ml-cover map ...`.
+ml-cover *args:
+    GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown) IOCEAN_UID=$(id -u) IOCEAN_GID=$(id -g) \
+        docker compose -f ml/cover/compose.yaml run --rm cover {{args}}
+
+# Build the coral cover image.
+ml-cover-image:
+    docker compose -f ml/cover/compose.yaml build cover
+
+# The coral cover tests, in its container.
+ml-cover-test:
+    IOCEAN_UID=$(id -u) IOCEAN_GID=$(id -g) docker compose -f ml/cover/compose.yaml run --rm --entrypoint python cover -m pytest -q -p no:cacheprovider tests

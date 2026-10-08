@@ -1,0 +1,36 @@
+# Coral cover on the box: one service, run for each step.
+#
+#   just ml-cover fetch
+#   just ml-cover check
+#   just ml-cover map --tiles '/reference/looe-key/usgs/SQUID5_LKR_2022_Orthomosaic-*.tif' --name looe-key-squid5-2022
+#
+# Data is not in the image and not in git: models, test sets, checks and maps
+# live on the host under IOCEAN_ML_DATA_HOST (~/iocean/ml/cover), mounted at
+# /data. The places' reference folders (the photo mosaics) are read-only.
+#
+# GPU 1 only: GPU 0 belongs to the dives and to the other services on this box.
+services:
+  cover:
+    image: iocean/ml-cover:${IOCEAN_IMAGE_TAG:-dev}
+    pull_policy: never
+    build:
+      context: ../..
+      dockerfile: ml/cover/Dockerfile
+    environment:
+      IOCEAN_ML_DATA: /data
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
+      HF_HOME: /data/hf-cache
+      # Plain HTTP: the Xet transfer stalled on the box partway through the model.
+      HF_HUB_DISABLE_XET: "1"
+    volumes:
+      - ${IOCEAN_ML_DATA_HOST:-${HOME}/iocean/ml/cover}:/data
+      - ${IOCEAN_REFERENCE_HOST:-${HOME}/iocean/reference}:/reference:ro
+    user: "${IOCEAN_UID:-1000}:${IOCEAN_GID:-1000}"
+    shm_size: 8g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${IOCEAN_ML_GPU:-1}"]
+              capabilities: [gpu]

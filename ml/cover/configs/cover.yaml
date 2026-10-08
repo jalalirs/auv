@@ -1,0 +1,147 @@
+# Coral cover from underwater imagery.
+#
+# The model is CoralscapesV2's SegFormer-B5 (EPFL ECEO, Apache 2.0): trained on
+# 1,790 densely labelled video frames from 34 Red Sea dive sites, 95 classes,
+# tested on 5 sites it never saw. We do not train it; we check it on that test
+# split and on a reef whose cover was measured, and run it over photo mosaics.
+# Pinned to the revisions that were checked.
+name: cover-v1
+
+model:
+  repo: EPFL-ECEO/segformer-b5-finetuned-coralscapesv2-1024-1024-95_class
+  revision: a81205e666767b8602c6e7ad8da69b1e013bafdd
+  licence: Apache-2.0
+  cite: "Sauder et al. 2026, CoralscapesV2: Panoptic and Fine-Grained Visual Scene Understanding in Coral Reefs (ECCV Workshop on Marine Vision)"
+
+test:
+  repo: josauder/coralscapesV2
+  revision: 8a4567b2fbec14882e09aebff63a7a1ca5e24dca
+  files: ["data/test-00000-of-00003.parquet", "data/test-00001-of-00003.parquet", "data/test-00002-of-00003.parquet"]
+
+# How the model is run: 1024-pixel windows (what it was trained at) that
+# overlap by a quarter, their class scores blended with a taper.
+window: 1024
+stride: 768
+
+# The 95 classes, gathered into what a cover map says. Every class of the
+# model is in exactly one group (checked when the model is loaded). Groups
+# under `not_seabed` are left out of every share: a fish or a diver over a
+# patch of reef hides it, it does not cover it. `unlabeled` is the model's
+# output 0, the void its labels left out.
+groups:
+  hard_coral:
+    - acropora alive
+    - brain coral alive
+    - branching coral alive
+    - fungiidae alive
+    - galaxea alive
+    - goniopora alive
+    - hard coral alive
+    - lobophylliidae alive
+    - massive alive
+    - meandering coral alive
+    - millepora
+    - pavona alive
+    - pocillopora alive
+    - porites alive
+    - seriatopora alive
+    - stylophora alive
+    - table acropora alive
+    - thin plate/encrusting coral alive
+    - turbinaria
+  soft_coral:
+    - cirrhipathes
+    - leather coral alive
+    - nephtheidae alive
+    - soft coral (malacalcyonacea) alive
+    - xeniidae alive
+  # Living coral the annotators would not call hard or soft.
+  other_coral:
+    - other coral alive
+  bleached_coral:
+    - acropora bleached
+    - brain coral bleached
+    - branching coral bleached
+    - fungiidae bleached
+    - galaxea bleached
+    - hard coral bleached
+    - lobophylliidae bleached
+    - massive bleached
+    - meandering coral bleached
+    - millepora bleached
+    - other coral bleached
+    - pavona bleached
+    - pocillopora bleached
+    - porites bleached
+    - seriatopora bleached
+    - soft coral (malacalcyonacea) bleached
+    - stylophora bleached
+    - table acropora bleached
+    - thin plate/encrusting coral bleached
+  dead_coral:
+    - acropora dead
+    - brain coral dead
+    - branching coral dead
+    - fungiidae dead
+    - galaxea dead
+    - goniopora dead
+    - hard coral dead
+    - lobophylliidae dead
+    - massive dead
+    - meandering coral dead
+    - millepora dead
+    - other coral dead
+    - pavona dead
+    - pocillopora dead
+    - porites dead
+    - seriatopora dead
+    - stylophora dead
+    - table acropora dead
+    - thin plate/encrusting coral dead
+    - turbinaria dead
+  algae:
+    - algae covered brain coral
+    - algae covered branching coral
+    - algae covered lobophylliidae
+    - algae covered massive coral
+    - algae covered pocillopora
+    - algae covered porites
+    - algae covered substrate
+    - algae covered table acropora
+  seagrass: [seagrass]
+  sand: [sand]
+  rubble: [rubble]
+  hard_substrate: [hard substrate, human-made structure, dead giant clam]
+  other_life:
+    - acanthaster planci
+    - anemone
+    - feather worm
+    - giant clam
+    - other animal
+    - sea cucumber
+    - sea urchin
+    - sponge
+  not_seabed:
+    - unlabeled
+    - background
+    - dark
+    - fish
+    - human
+    - transect line
+    - transect tools
+    - trash
+    - water column
+    - water surface
+
+# Running over a photo mosaic: read at this many metres a pixel (the
+# mosaic's overviews make a coarser read cheap), in blocks with a margin the
+# windows see but the result drops, and gathered into cells of this size.
+mosaic:
+  metres_per_pixel: 0.01
+  block: 4096
+  margin: 256
+  cell_m: 0.5
+  # Everything imaged in a mosaic is seabed: without this the model, trained
+  # on a diver's view across a reef, calls hazy patches of it open water.
+  only_seabed: true
+  stretch: false
