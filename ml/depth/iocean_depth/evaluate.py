@@ -61,6 +61,8 @@ def evaluate(run: pathlib.Path, ds: pathlib.Path) -> dict:
                           for name in sorted({r["dataset"] for r in parts["test"] + parts["validation"]})}
     if parts["red-sea"]:
         report["redSea"] = {**both(parts["red-sea"]), "labels": "ICESat-2 photons, the cells the tracks crossed"}
+        report["redSeaByArea"] = {name: both([r for r in parts["red-sea"] if r["dataset"] == name])
+                                  for name in sorted({r["dataset"] for r in parts["red-sea"]})}
     (run / "report.json").write_text(json.dumps(report, indent=1) + "\n")
     (run / "report.md").write_text(markdown(report))
     return report
@@ -91,6 +93,16 @@ def markdown(report: dict) -> str:
         u, b = r["unet"], r["linearBaseline"]
         if u.get("cells"):
             out.append(f"| {name} | {u['cells']:,} | {u['rmsM']:.2f} | {b['rmsM']:.2f} | {u['biasM']:+.2f} |\n")
+    if report.get("redSeaByArea"):
+        out.append("\nRed Sea by area (ICESat-2 tracks, never trained on):\n\n| area | chips' cells | U-Net rms | linear rms | U-Net bias |\n|---|---|---|---|---|\n")
+        for name, r in report["redSeaByArea"].items():
+            u, b = r["unet"], r["linearBaseline"]
+            if u.get("cells"):
+                out.append(f"| {name} | {u['cells']:,} | {u['rmsM']:.2f} | {b['rmsM']:.2f} | {u['biasM']:+.2f} |\n")
+        every = report["redSea"]["unet"]
+        out.append("\nRed Sea by depth, U-Net rms (linear rms):\n\n| depth | cells | U-Net | linear |\n|---|---|---|---|\n")
+        for u, b in zip(every["byDepth"], report["redSea"]["linearBaseline"]["byDepth"]):
+            out.append(f"| {u['fromM']} to {u['toM']} m | {u['cells']:,} | {u['rmsM']:.2f} | {b['rmsM']:.2f} |\n")
     if report.get("excluded"):
         out.append("\nExcluded: " + "; ".join(f"{k}: {v}" for k, v in report["excluded"].items()) + "\n")
     out.append(f"\nSigma scale from the validation surveys: {report.get('sigmaScale')}.\n")
