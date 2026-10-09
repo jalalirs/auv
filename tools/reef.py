@@ -195,7 +195,13 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
                 surfaces.append((corallite_for(kind), True))
             elif shelf:
                 entry = shelf[at % len(shelf)]
-                prototypes.append(_from_library(library_dir / entry["file"], size))
+                # As wide as the grown colony of this size would be, so the
+                # footprint the cover sums rely on is the one they were
+                # calibrated with; by height, the flatter library shapes came
+                # out two metres across.
+                grown_points, _ = coral.grow_one(kind, np.random.default_rng(seed + at), size)
+                width = float(max(np.ptp(grown_points[:, 0]), np.ptp(grown_points[:, 1])))
+                prototypes.append(_from_library(library_dir / entry["file"], width))
                 colours.append(tuple(entry["colour"]))
                 surfaces.append((entry.get("corallite"), False))
                 from_library += 1
@@ -902,14 +908,15 @@ def _library(assemblage):
     return (json.loads(said.read_text()) if said.is_file() else None), folder
 
 
-def _from_library(path: pathlib.Path, size: float):
-    """A library colony as a prototype: base at z = 0, scaled so it stands
-    `size` tall, as a grown prototype of that size does."""
+def _from_library(path: pathlib.Path, width: float):
+    """A library colony as a prototype: base at z = 0, centred, scaled so it
+    is `width` across at its widest."""
     import coral_hd
 
     points, faces, _ = coral_hd.read_ply(path)
-    points = points - np.array([0, 0, points[:, 2].min()])
-    return points * (size / max(float(points[:, 2].max()), 1e-6)), faces
+    points = points - np.array([points[:, 0].mean(), points[:, 1].mean(), points[:, 2].min()])
+    across = max(float(np.ptp(points[:, 0])), float(np.ptp(points[:, 1])), 1e-6)
+    return points * (width / across), faces
 
 
 def _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn, surfaces=None) -> str:
