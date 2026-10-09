@@ -17,6 +17,21 @@ def test_a_colony_comes_back_as_it_was_written(tmp_path):
     assert np.allclose(c, c2, atol=1 / 255)
 
 
+def test_a_crevice_is_darker_than_an_open_top():
+    # Two upright fingers two centimetres apart: their facing sides are shut
+    # in, their tops are open.
+    field = coral_hd.Field([-0.08, -0.05, -0.01], [0.08, 0.05, 0.15], 0.002, k=0.002)
+    field.capsule([-0.02, 0, 0], [-0.02, 0, 0.1], 0.01)
+    field.capsule([0.02, 0, 0], [0.02, 0, 0.1], 0.01)
+    v, f, _ = field.mesh()
+    open_to = coral_hd.occlusion(v, f)
+    tops = v[:, 2] > 0.105
+    facing = (np.abs(v[:, 0]) < 0.012) & (v[:, 2] > 0.03) & (v[:, 2] < 0.08)
+    assert tops.any() and facing.any()
+    assert open_to[tops].mean() > 0.85
+    assert open_to[facing].mean() < open_to[tops].mean() - 0.3
+
+
 def test_a_reef_plants_the_kinds_its_library_has(tmp_path, monkeypatch):
     shelf = tmp_path / "library" / "red-sea"
     shelf.mkdir(parents=True)

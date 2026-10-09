@@ -88,6 +88,10 @@ VOXEL = {"porites": 0.004, "pocillopora": 0.003, "acropora": 0.003, "table": 0.0
          "finger": 0.003, "staghorn": 0.003, "elkhorn": 0.005, "sea_rod": 0.0025}
 
 
+# How dark a point shut in all round is, as a share of its colour.
+SHUT = 0.3
+
+
 def decimate(v: np.ndarray, f: np.ndarray, c: np.ndarray, triangles: int):
     """Quadric decimation to about `triangles`; colours carried by nearest vertex."""
     import pyfqmr
@@ -125,6 +129,10 @@ def main() -> int:
             if colours:
                 kw["palette"] = coral_hd.PALETTES[colours][rng.integers(len(coral_hd.PALETTES[colours]))]
             v, f, c = coral_hd.FORMS[form](rng, **kw)
+            # Crevices darker in the colour itself: the renderer the dives use
+            # does not shade the gaps between branches, and a colony lit the
+            # same all over reads flat.
+            c = c * (SHUT + (1 - SHUT) * coral_hd.occlusion(v, f))[:, None]
             made = len(f)
             v, f, c = decimate(v, f, c, TRIANGLES.get(form, a.triangles))
             name = f"{kind}-{n}.ply"
@@ -140,6 +148,8 @@ def main() -> int:
             "seconds": round(time.time() - t0),
             "how": "tools/coral_hd generators (reaction-diffusion, space colonisation, signed-distance "
                    "unions), quadric decimation (pyfqmr); the shapes are made, not measured",
+            "occlusion": {"shutIs": SHUT, "how": "coral_hd.occlusion: steps out along each normal to 5 cm "
+                                                 "against a distance transform of the colony and the sand"},
             "kinds": entries}
     (into / "library.json").write_text(json.dumps(said, indent=1) + "\n")
     print(f"{sum(len(e) for e in entries.values())} colonies in {said['seconds']} s -> {into}")

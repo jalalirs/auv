@@ -191,6 +191,40 @@ def _normals(v: np.ndarray, f: np.ndarray) -> np.ndarray:
 DRIFTS = np.array([(-0.6, 0.6, -0.2), (0.6, 0.0, -0.6), (0.5, 0.5, 0.5)])
 
 
+def occlusion(v: np.ndarray, f: np.ndarray, reach: float = 0.05, cells: int = 220) -> np.ndarray:
+    """How open each vertex is to the water, 0 (shut in) to 1 (open): ambient
+    occlusion, worked out once so the colour can carry it.
+
+    A renderer that does not shade the gaps between branches draws a colony
+    lit the same all over, which is what the dives showed. This steps out
+    from each point along its normal, a few millimetres to `reach`, and asks
+    how near the colony's own surface (or the sand) comes at each step: on
+    an open top it stays as far as the step, in a crevice it closes in. The
+    surface's distance is a distance transform of the voxels the mesh passes
+    through, `cells` across the colony."""
+    from scipy import ndimage
+
+    n = _normals(v, f)
+    if ((v - v.mean(0)) * n).sum() < 0:                  # outward, whichever way the faces were wound
+        n = -n
+    lo = v.min(0) - reach * 1.5
+    hi = v.max(0) + reach * 1.5
+    voxel = float((hi - lo).max()) / cells
+    shape = np.ceil((hi - lo) / voxel).astype(int) + 1
+    free = np.ones(shape, bool)
+    on = np.concatenate([v, v[f].mean(1)])
+    free[tuple(np.round((on - lo) / voxel).astype(int).T)] = False
+    distance = ndimage.distance_transform_edt(free) * voxel
+    shut = np.zeros(len(v))
+    steps = np.geomspace(max(3 * voxel, 0.006), max(reach, 4 * voxel), 4)
+    for h in steps:
+        p = v + n * h
+        d = ndimage.map_coordinates(distance, ((p - lo) / voxel).T, order=1, mode="nearest")
+        d = np.minimum(d + 0.6 * voxel, np.maximum(p[:, 2], 0.0))       # the voxels' own error back; the sand
+        shut += np.clip((h - d) / h, 0, 1)
+    return 1 - shut / len(steps)
+
+
 def _patches(directions: np.ndarray, rng, count: int, width: tuple) -> np.ndarray:
     """Smooth patches over the colony, -1 to 1, about half of it beyond a
     half either way. Scaled by their spread, not their peak: by the peak, one
