@@ -1,0 +1,382 @@
+#!/usr/bin/env python3
+"""Put a reef patch reconstructed from a dive video into a place.
+
+    tools/place-reconstruction add PLACE PATCH [--name N] [--at X,Y] [--heading DEG]
+                                               [--transect DIR]
+    tools/place-reconstruction PLACE
+
+A reconstruction always belongs to a place: it is copied into the place and
+the place's record says where it stands and how that was decided. Where it
+stands, in this order:
+
+  1. `--at`: coordinates somebody knows (site metres), with `--heading`.
+  2. The most likely spot: the video's living coral cover (from its
+     transect, ml/cover) matched to the cover this place planted, on 15 m
+     windows inside the depth band a diver works; of the equally good, the
+     one nearest where dives begin, so a dive can see it. It is laid along
+     the depth contour there, because a transect is swum along the reef.
+  3. The middle of the site, when there is nothing to match.
+
+`add` (from ~/iocean/venvs/coral, for pyfqmr) writes PLACE/reconstructions/<name>/:
+
+    patch.ply        decimated to `--triangles`, colours white-balanced
+                     (grey world: the water's cast taken out, since the
+                     renderer puts its own water back), the patch's own
+                     frame: metres, z up, x along the transect
+    placement.json   where, which way, at what height, and how it was decided
+
+and then applies. Applying is what `tools/rebuild` replays after the reef is
+grown again: coral.usda gains the patch as one more prototype with one
+instance, and the colonies planted on its footprint are taken out, because
+the reconstruction is that ground. The placement is decided once, at `add`,
+and kept: a rebuild does not move it.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import re
+import shutil
+import sys
+
+import numpy as np
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+CELL_M = 5.0                 # the cover map the match is made on
+WINDOW_CELLS = 3             # fifteen metres: about a transect patch
+BAND_M = (3.0, 20.0)         # where a diver swims a transect video
+FOOTPRINT_M = 0.25           # the grid a patch's footprint is drawn on
+
+
+# ── reading what the reconstruction made ─────────────────────────────────────
+
+def read_open3d_ply(path: pathlib.Path):
+    """Vertices, triangles and colours (0 to 1) of a binary PLY as Open3D
+    writes one: double xyz, double normals, uchar rgb; triangles only."""
+    raw = path.read_bytes()
+    end = raw.index(b"end_header\n") + len(b"end_header\n")
+    header = raw[:end].decode("ascii").splitlines()
+    n_v = int(next(h for h in header if h.startswith("element vertex")).split()[-1])
+    n_f = int(next(h for h in header if h.startswith("element face")).split()[-1])
+    props = [h.split() for h in header if h.startswith("property") and "list" not in h]
+    kind = {"double": "<f8", "float": "<f4", "uchar": "u1", "int": "<i4", "uint": "<u4"}
+    vdtype = np.dtype([(p[2], kind[p[1]]) for p in props])
+    v = np.frombuffer(raw, vdtype, n_v, end)
+    f = np.frombuffer(raw, np.dtype([("n", "u1"), ("i", "<u4", 3)]), n_f, end + n_v * vdtype.itemsize)
+    points = np.stack([v["x"], v["y"], v["z"]], -1).astype(np.float64)
+    colours = np.stack([v["red"], v["green"], v["blue"]], -1) / 255.0 if "red" in v.dtype.names else None
+    return points, f["i"].astype(np.int64), colours
+
+
+def grey_world(colours: np.ndarray, strength: float = 0.8) -> np.ndarray:
+    """The water's cast taken out of a photograph's colours: each channel
+    scaled so the patch's mean is grey, by `strength` of the way."""
+    mean = colours.mean(0)
+    gain = (mean.mean() / np.maximum(mean, 1e-3)) ** strength
+    return np.clip(colours * gain, 0, 1)
+
+
+def living_cover(transect: pathlib.Path, video: str, start: float, stop: float) -> float | None:
+    """Living coral (hard, soft, other) as a share of the seabed, over the
+    seconds of the video the patch was built from."""
+    said = json.loads((transect / "transect.json").read_text())
+    if not any(pathlib.Path(v).name == pathlib.Path(video).name for v in said.get("videos", [])):
+        return None
+    import csv
+    rows = [r for r in csv.DictReader(open(transect / "frames.csv")) if start <= float(r["t"]) <= stop]
+    if not rows:
+        return None
+    return float(np.mean([float(r["hard_coral"]) + float(r["soft_coral"]) + float(r["other_coral"])
+                          for r in rows]))
+
+
+# ── reading and writing the place's reef ─────────────────────────────────────
+
+ARRAYS = {"positions": r"^    point3f\[\] positions = \[(.*)\]$",
+          "protoIndices": r"^    int\[\] protoIndices = \[(.*)\]$",
+          "scales": r"^    float3\[\] scales = \[(.*)\]$",
+          "orientations": r"^    quath\[\] orientations = \[(.*)\]$",
+          "prototypes": r"^    rel prototypes = \[(.*)\]$"}
+
+
+def _numbers(text: str) -> np.ndarray:
+    return np.array(re.sub(r"[(),]", " ", text).split(), dtype=np.float64)
+
+
+def read_reef(text: str) -> dict:
+    found = {}
+    for key, pattern in ARRAYS.items():
+        m = re.search(pattern, text, re.M)
+        if m is None:
+            raise SystemExit(f"coral.usda has no {key} line in the shape this tool reads")
+        found[key] = m
+    return {
+        "positions": _numbers(found["positions"].group(1)).reshape(-1, 3),
+        "which": _numbers(found["protoIndices"].group(1)).astype(int),
+        "scales": _numbers(found["scales"].group(1)).reshape(-1, 3),
+        "orientations": _numbers(found["orientations"].group(1)).reshape(-1, 4),
+        "prototypes": re.findall(r"<([^>]+)>", found["prototypes"].group(1)),
+        "matches": found,
+    }
+
+
+def planted_cover(reef: dict, area_at_one, across: float):
+    """Cover and mean seabed height on CELL_M cells, from the colonies planted."""
+    n = int(np.ceil(across / CELL_M))
+    x, y, z = reef["positions"].T
+    col = np.clip(((x + across / 2) / CELL_M).astype(int), 0, n - 1)
+    row = np.clip(((y + across / 2) / CELL_M).astype(int), 0, n - 1)
+    sx, sy = reef["scales"][:, 0], reef["scales"][:, 1]
+    area = (np.asarray(area_at_one)[reef["which"]] * sx * sy if area_at_one is not None
+            else np.pi * sx * sy)
+    covered = np.zeros((n, n))
+    np.add.at(covered, (row, col), area)
+    height = np.zeros((n, n))
+    count = np.zeros((n, n))
+    np.add.at(height, (row, col), z)
+    np.add.at(count, (row, col), 1)
+    height = np.where(count > 0, height / np.maximum(count, 1), np.nan)
+    return 1 - np.exp(-covered / (CELL_M * CELL_M)), height
+
+
+def _window(grid: np.ndarray) -> np.ndarray:
+    from scipy import ndimage
+    return ndimage.uniform_filter(np.nan_to_num(grid), WINDOW_CELLS, mode="constant")
+
+
+def choose(site: dict, reef: dict, cover_v: float | None, across: float) -> dict:
+    """Where the patch most likely is, by the rules in the docstring."""
+    middle = {"at": [0.0, 0.0], "headingDeg": 0.0, "how": "the middle of the site",
+              "kind": "chosen", "why": "nothing to match the video against"}
+    if cover_v is None:
+        return middle
+    proto_area = (site.get("reef") or {}).get("prototypeAreaM2")
+    if proto_area is not None and len(proto_area) != len(reef["prototypes"]):
+        proto_area = None
+    cover, height = planted_cover(reef, proto_area, across)
+    smooth = _window(cover)
+    depth = -height
+    inside = np.isfinite(depth) & (depth >= BAND_M[0]) & (depth <= BAND_M[1]) & (smooth > 0.01)
+    if not inside.any():
+        return middle
+    miss = np.where(inside, np.abs(smooth - cover_v), np.inf)
+    good = miss <= miss.min() + 0.02
+    n = cover.shape[0]
+    rows, cols = np.nonzero(good)
+    xs = -across / 2 + (cols + 0.5) * CELL_M
+    ys = -across / 2 + (rows + 0.5) * CELL_M
+    begin = site.get("beginAt") or [0, 0, 0]
+    k = int(np.argmin((xs - begin[0]) ** 2 + (ys - begin[1]) ** 2))
+    r, c = int(rows[k]), int(cols[k])
+    # Along the depth contour: across the slope.
+    filled = np.where(np.isfinite(height), height, np.nanmean(height))
+    gy, gx = np.gradient(_window(filled))
+    heading = float(np.degrees(np.arctan2(gx[r, c], -gy[r, c]))) if (gx[r, c] or gy[r, c]) else 0.0
+    return {"at": [round(float(xs[k]), 1), round(float(ys[k]), 1)], "headingDeg": round(heading, 1),
+            "how": "the most likely spot: the video's living coral cover matched to the cover this "
+                   "place planted, on %g m windows between %g and %g m deep; of the %d equally good, "
+                   "the one nearest where dives begin; laid along the depth contour"
+                   % (CELL_M * WINDOW_CELLS, BAND_M[0], BAND_M[1], int(good.sum())),
+            "kind": "derived",
+            "videoCover": round(float(cover_v), 3), "placeCoverThere": round(float(smooth[r, c]), 3),
+            "depthM": round(float(depth[r, c]), 1), "cells": n}
+
+
+# ── add ──────────────────────────────────────────────────────────────────────
+
+def add(asked) -> int:
+    import pyfqmr
+    from scipy.spatial import cKDTree
+
+    place, patch = pathlib.Path(asked.place), pathlib.Path(asked.patch)
+    about = json.loads((patch / "patch.json").read_text())
+    name = asked.name or about.get("run") or patch.parent.name
+    into = place / "reconstructions" / name
+    into.mkdir(parents=True, exist_ok=True)
+
+    points, faces, colours = read_open3d_ply(patch / "mesh.ply")
+    s = pyfqmr.Simplify()
+    s.setMesh(points, faces.astype(np.int32))
+    s.simplify_mesh(target_count=asked.triangles, aggressiveness=7, preserve_border=True, verbose=False)
+    v, f, _ = s.getMesh()
+    c = colours[cKDTree(points).query(v)[1]] if colours is not None else np.full((len(v), 3), 0.5)
+    c = grey_world(c)
+    import coral_hd
+    coral_hd.write_ply(into / "patch.ply", np.asarray(v), np.asarray(f, int), c)
+    for extra in ("patch.json", "ortho.png", "preview.png"):
+        if (patch / extra).exists():
+            shutil.copy(patch / extra, into / extra)
+
+    site = json.loads((place / "site.json").read_text())
+    across = float(site["from"]["acrossMetres"])
+    if asked.at:
+        x, y = (float(t) for t in asked.at.split(","))
+        where = {"at": [x, y], "headingDeg": float(asked.heading or 0.0), "how": "coordinates given",
+                 "kind": "measured" if asked.at_from else "chosen", "from": asked.at_from}
+    else:
+        cover_v = None
+        if asked.transect:
+            video = (about.get("video") or {}).get("videos", [""])[0]
+            cover_v = living_cover(pathlib.Path(asked.transect), video,
+                                   float(about["video"]["fromSeconds"]), float(about["video"]["toSeconds"]))
+        where = choose(site, read_reef((place / "coral.usda").read_text()), cover_v, across)
+    placement = {"name": name, "from": str(patch), "video": about.get("video"),
+                 "scale": about.get("scale") or {"how": "assumed"},
+                 "triangles": int(len(f)), "trianglesMade": int(len(faces)),
+                 "colours": "grey world, 0.8 of the way: the water's cast taken out",
+                 **where}
+    (into / "placement.json").write_text(json.dumps(placement, indent=1) + "\n")
+    print(f"{place.name}: {name} at {where['at']} heading {where['headingDeg']} ({where['how'][:60]})")
+    return apply(place)
+
+
+# ── apply ────────────────────────────────────────────────────────────────────
+
+def _skin(text: str, name: str, colour) -> str:
+    """A material for the patch: the reef's own first skin, with no
+    corallites (the photograph already has whatever surface there was) and
+    no light through it."""
+    m = re.search(r'(        def Material "Skin_0"\n.*?\n        }\n)', text, re.S)
+    if m is None:
+        raise SystemExit("coral.usda has no Skin_0 to model the patch's material on")
+    block = m.group(1).replace("Skin_0", f"Skin_{name}")
+    block = re.sub(r"\n\s*asset inputs:corallites = [^\n]*", "", block)
+    block = re.sub(r"\n\s*float inputs:tile_metres = [^\n]*", "", block)
+    block = re.sub(r"float inputs:alive = [\d.]+", "float inputs:alive = 1", block)
+    block = re.sub(r"float inputs:through = [\d.]+", "float inputs:through = 0", block)
+    block = re.sub(r"color3f inputs:(tissue|diffuseColor) = \([^)]*\)",
+                   lambda mm: "color3f inputs:%s = (%.3g, %.3g, %.3g)" % (mm.group(1), *colour), block)
+    return block
+
+
+def apply(place: pathlib.Path) -> int:
+    import coral_hd
+    import reef as reef_tool
+
+    shelf = sorted((place / "reconstructions").glob("*/placement.json"))
+    site_file = place / "site.json"
+    site = json.loads(site_file.read_text())
+    if not shelf:
+        print(f"{place.name}: no reconstructions")
+        return 0
+    text = (place / "coral.usda").read_text()
+    reef = read_reef(text)
+    records = []
+    for said in shelf:
+        p = json.loads(said.read_text())
+        name = re.sub(r"[^A-Za-z0-9_]", "_", p["name"])
+        if f"Reconstruction_{name}" in text:
+            print(f"  {p['name']}: already in coral.usda")
+            continue
+        v, f, c = coral_hd.read_ply(said.parent / "patch.ply")
+        x0, y0 = p["at"]
+        turn = np.radians(p["headingDeg"])
+        cos, sin = np.cos(turn), np.sin(turn)
+        flat = np.stack([x0 + v[:, 0] * cos - v[:, 1] * sin, y0 + v[:, 0] * sin + v[:, 1] * cos], -1)
+        # The footprint, on a fine grid, and the colonies standing on it.
+        lo = flat.min(0) - FOOTPRINT_M
+        cells = np.floor((flat - lo) / FOOTPRINT_M).astype(int)
+        grid = np.zeros(cells.max(0) + 3, bool)
+        grid[cells[:, 0], cells[:, 1]] = True
+        # Closed over the mesh's own spacing, so a coarse patch is a solid
+        # footprint and not a lattice of dots, and its holes filled.
+        from scipy import ndimage
+        edge = float(np.median(np.linalg.norm(flat[f[:, 0]] - flat[f[:, 1]], axis=1)))
+        reach = int(np.ceil(edge / FOOTPRINT_M)) + 1
+        grid = ndimage.binary_fill_holes(ndimage.binary_closing(
+            np.pad(grid, reach + 2), iterations=reach))[reach + 2:-(reach + 2), reach + 2:-(reach + 2)]
+        grid = ndimage.binary_dilation(grid, iterations=2)
+        at = np.floor((reef["positions"][:, :2] - lo) / FOOTPRINT_M).astype(int)
+        inside = ((at >= 0).all(1) & (at[:, 0] < grid.shape[0]) & (at[:, 1] < grid.shape[1]))
+        under = np.zeros(len(at), bool)
+        under[inside] = grid[at[inside, 0], at[inside, 1]]
+        ground = (float(np.median(reef["positions"][under, 2])) + 0.04 if under.any()
+                  else float(p.get("groundZ", 0.0)))
+        keep = ~under
+        index = len(reef["prototypes"])
+        reef["prototypes"].append(f"/Coral/Grown/Reconstruction_{name}")
+        reef["positions"] = np.concatenate([reef["positions"][keep], [[x0, y0, ground]]])
+        reef["which"] = np.concatenate([reef["which"][keep], [index]])
+        reef["scales"] = np.concatenate([reef["scales"][keep], [[1.0, 1.0, 1.0]]])
+        reef["orientations"] = np.concatenate([reef["orientations"][keep],
+                                               [[np.cos(turn / 2), 0, 0, np.sin(turn / 2)]]])
+        mesh = ('\n        def Mesh "Reconstruction_%s" (\n'
+                '            prepend apiSchemas = ["MaterialBindingAPI"]\n'
+                "        )\n        {\n"
+                '            uniform token subdivisionScheme = "none"\n'
+                "            int[] faceVertexCounts = [%s]\n"
+                "            int[] faceVertexIndices = [%s]\n"
+                "            point3f[] points = [%s]\n"
+                "            normal3f[] normals = [%s] (\n"
+                '                interpolation = "vertex"\n'
+                "            )\n"
+                "            color3f[] primvars:displayColor = [%s] (\n"
+                '                interpolation = "vertex"\n'
+                "            )\n"
+                "            rel material:binding = </Coral/Skins/Skin_%s>\n"
+                "        }\n") % (name, ", ".join(["3"] * len(f)), ", ".join(str(i) for i in f.reshape(-1)),
+                                  reef_tool._triples(v), reef_tool._triples(reef_tool._smooth_normals(v, f)),
+                                  reef_tool._triples(c), name)
+        text = text.replace('    def Scope "Grown"\n    {', '    def Scope "Grown"\n    {' + mesh, 1)
+        text = text.replace('    def Scope "Skins"\n    {\n',
+                            '    def Scope "Skins"\n    {\n' + _skin(text, name, c.mean(0)), 1)
+        records.append({**{k: p[k] for k in ("name", "at", "headingDeg", "how", "kind") if k in p},
+                        "groundZ": round(ground, 2), "coloniesRemoved": int(under.sum()),
+                        "prototype": index, "folder": f"reconstructions/{said.parent.name}",
+                        "scale": p.get("scale"), "triangles": p.get("triangles")})
+        print(f"  {p['name']}: prototype {index}, at {p['at']} z {ground:.2f}, "
+              f"{int(under.sum()):,} colonies on its footprint taken out")
+    if not records:
+        return 0
+    m = read_reef(text)["matches"]
+    lines = {"positions": "    point3f[] positions = [%s]" % reef_tool._triples(reef["positions"]),
+             "protoIndices": "    int[] protoIndices = [%s]" % ", ".join(str(int(i)) for i in reef["which"]),
+             "scales": "    float3[] scales = [%s]" % reef_tool._triples(reef["scales"]),
+             "orientations": "    quath[] orientations = [%s]" % ", ".join(
+                 "(%.5g, %.5g, %.5g, %.5g)" % tuple(q) for q in reef["orientations"]),
+             "prototypes": "    rel prototypes = [%s]" % ", ".join(f"<{t}>" for t in reef["prototypes"])}
+    for key in sorted(m, key=lambda k: -m[k].start()):
+        text = text[:m[key].start()] + lines[key] + text[m[key].end():]
+    (place / "coral.usda").write_text(text)
+    site = json.loads(site_file.read_text())
+    named = {r["name"] for r in records}
+    site["reconstructions"] = [r for r in (site.get("reconstructions") or []) if r.get("name") not in named] + records
+    # Recorded as the apply, whichever way it was called: `add` decimates
+    # with pyfqmr, which the Python a rebuild runs under does not have.
+    import datetime
+    site.setdefault("builtBy", {})["place-reconstruction"] = {
+        "argv": [str(place.resolve())], "cwd": str(pathlib.Path.cwd()),
+        "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
+    if site.get("reef"):
+        site["reef"]["colonies"] = int(len(reef["which"]))
+        kinds = site["reef"].get("prototypeKinds")
+        if isinstance(kinds, list):
+            kinds += ["reconstruction"] * (len(reef["prototypes"]) - len(kinds))
+    site_file.write_text(json.dumps(site, indent=1) + "\n")
+    return 0
+
+
+def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "add":
+        ap = argparse.ArgumentParser(description="put a reconstructed reef patch into a place")
+        ap.add_argument("verb")
+        ap.add_argument("place")
+        ap.add_argument("patch", help="a patch folder from ml/reconstruct (mesh.ply, patch.json)")
+        ap.add_argument("--name")
+        ap.add_argument("--at", help="X,Y in site metres, where the video is known to be")
+        ap.add_argument("--at-from", help="where those coordinates come from")
+        ap.add_argument("--heading", type=float)
+        ap.add_argument("--transect", help="the video's ml/cover transect folder, for its coral cover")
+        ap.add_argument("--triangles", type=int, default=300000)
+        return add(ap.parse_args())
+    ap = argparse.ArgumentParser(description="apply the reconstructions a place holds")
+    ap.add_argument("place")
+    asked = ap.parse_args()
+    return apply(pathlib.Path(asked.place))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

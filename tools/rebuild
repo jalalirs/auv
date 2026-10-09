@@ -42,7 +42,7 @@ import sys
 # simply has no record to replay for it.
 # `places` (the places module) comes first where a place has one: it builds the
 # seabed make-site's --heights reads.
-IN_ORDER = ["places", "make-site", "make-tank", "reef-survey", "fauna", "aim-water"]
+IN_ORDER = ["places", "make-site", "make-tank", "reef-survey", "place-reconstruction", "fauna", "aim-water"]
 
 HERE = pathlib.Path(__file__).resolve().parent
 
