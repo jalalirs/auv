@@ -311,6 +311,7 @@ def apply(place: pathlib.Path) -> int:
         # and around its footprint (they sit on the seabed): a reef slope is
         # tilted, and a patch laid flat on one is buried at one end.
         tilt = np.array([1.0, 0.0, 0.0, 0.0])
+        downhill = None
         reach_m = 0.6 * float(np.ptp(v[:, :2], 0).max()) + 2.0
         near = np.hypot(reef["positions"][:, 0] - x0, reef["positions"][:, 1] - y0) < reach_m
         if near.sum() >= 6:
@@ -318,6 +319,7 @@ def apply(place: pathlib.Path) -> int:
             (a, b, c0), *_ = np.linalg.lstsq(np.stack([px, py, np.ones_like(px)], -1), pz, rcond=None)
             ground = float(a * x0 + b * y0 + c0) + 0.04
             normal = np.array([-a, -b, 1.0]) / np.sqrt(a * a + b * b + 1)
+            downhill = [float(-a), float(-b)]
             axis = np.cross([0, 0, 1.0], normal)
             if np.linalg.norm(axis) > 1e-9:
                 angle = np.arccos(np.clip(normal[2], -1, 1))
@@ -357,12 +359,14 @@ def apply(place: pathlib.Path) -> int:
                             '    def Scope "Skins"\n    {\n' + _skin(text, name, c.mean(0)), 1)
         records.append({**{k: p[k] for k in ("name", "at", "headingDeg", "how", "kind") if k in p},
                         "groundZ": round(ground, 2),
-                        "slopeDeg": round(float(np.degrees(2 * np.arccos(np.clip(tilt[0], -1, 1)))), 1), "coloniesRemoved": int(under.sum()),
+                        "slopeDeg": round(float(np.degrees(2 * np.arccos(np.clip(tilt[0], -1, 1)))), 1),
+                        "downhill": downhill, "coloniesRemoved": int(under.sum()),
                         "prototype": index, "folder": f"reconstructions/{said.parent.name}",
                         "scale": p.get("scale"), "triangles": p.get("triangles")})
         print(f"  {p['name']}: prototype {index}, at {p['at']} z {ground:.2f}, "
               f"{int(under.sum()):,} colonies on its footprint taken out")
     if not records:
+        _cameras(site_file)
         return 0
     m = read_reef(text)["matches"]
     lines = {"positions": "    point3f[] positions = [%s]" % reef_tool._triples(reef["positions"]),
@@ -389,7 +393,28 @@ def apply(place: pathlib.Path) -> int:
         if isinstance(kinds, list):
             kinds += ["reconstruction"] * (len(reef["prototypes"]) - len(kinds))
     site_file.write_text(json.dumps(site, indent=1) + "\n")
+    _cameras(site_file)
     return 0
+
+
+def _cameras(site_file: pathlib.Path) -> None:
+    """A fixed camera on each patch, so a dive can be asked to look at it
+    (dives_start views ["patch-<name>"]): from the downhill side, twelve
+    metres off and six up, aimed at its middle."""
+    site = json.loads(site_file.read_text())
+    fixed = site.setdefault("cameras", {}).setdefault("fixed", {})
+    for r in site.get("reconstructions") or []:
+        x0, y0 = r["at"]
+        z0 = float(r.get("groundZ", 0.0))
+        down = np.radians(float(r.get("headingDeg", 0.0)) + 90.0)
+        side = np.array([np.cos(down), np.sin(down)])
+        tilt = r.get("downhill")
+        if tilt is not None and np.linalg.norm(tilt) > 1e-3:          # level ground has no downhill
+            side = np.array(tilt) / np.linalg.norm(tilt)
+        eye = [round(float(x0 + 12 * side[0]), 2), round(float(y0 + 12 * side[1]), 2), round(min(z0 + 6.0, -1.0), 2)]
+        fixed["patch-" + r["name"]] = {"eye": eye, "aim": [x0, y0, round(z0, 2)],
+                                       "what": "the reconstructed patch " + r["name"] + ", from its downhill side"}
+    site_file.write_text(json.dumps(site, indent=1) + "\n")
 
 
 def main() -> int:

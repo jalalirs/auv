@@ -98,3 +98,13 @@ def test_a_patch_on_a_slope_is_tilted_to_it(tmp_path):
     east = np.array([1.0, 0.0, 0.0])
     turned = east + 2 * w * np.cross(qv, east) + 2 * np.cross(qv, np.cross(qv, east))
     assert turned[2] > 0.25
+
+
+def test_a_patch_gets_a_camera_that_looks_at_it(tmp_path):
+    _a_place(tmp_path)
+    _a_patch(tmp_path / "reconstructions" / "test-patch", (5.0, -3.0))
+    place_reconstruction.apply(tmp_path)
+    cam = json.loads((tmp_path / "site.json").read_text())["cameras"]["fixed"]["patch-test-patch"]
+    assert cam["aim"][:2] == [5.0, -3.0]
+    assert abs(np.hypot(cam["eye"][0] - 5.0, cam["eye"][1] + 3.0) - 12.0) < 0.1
+    assert cam["eye"][2] > cam["aim"][2]
