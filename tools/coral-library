@@ -45,15 +45,47 @@ FORMS_BY_KIND = {
         "table":      (["table"], "acropora"),
         "encrusting": (["plate", "galaxea", "millepora"], "galaxea"),
         "plume":      (["leather"], None),
+        "sponge":     (["sponge"], None),
+        "fan":        (["fan"], None),
+        "rubble":     (["rubble"], None),
+    },
+    # Kaneohe Bay: Porites compressa fingers, Montipora capitata plates and
+    # crusts, Porites lobata boulders, Pocillopora meandrina; no tables, no fans.
+    "hawaii": {
+        "massive":    (["porites:lobata"], "porites"),
+        "finger":     (["finger"], "porites"),
+        "encrusting": (["plate:capitata"], "porites"),
+        "branching":  (["pocillopora:meandrina"], "pocillopora"),
+        "brain":      (["brain"], "brain"),
+        "plume":      (["leather"], None),
+        "sponge":     (["sponge"], None),
+        "rubble":     (["rubble"], None),
+    },
+    # Florida Keys and the Caribbean: Orbicella boulders, grooved brains,
+    # staghorn and elkhorn, Porites porites fingers, Agaricia plates, sea
+    # rods and plumes, Gorgonia fans, barrel and tube sponges.
+    "caribbean": {
+        "massive":    (["porites:orbicella"], "galaxea"),
+        "brain":      (["brain:diploria"], "brain"),
+        "branching":  (["staghorn"], "acropora"),
+        "table":      (["elkhorn"], "acropora"),
+        "finger":     (["finger"], "porites"),
+        "encrusting": (["plate:agaricia"], "porites"),
+        "plume":      (["sea_rod"], None),
+        "fan":        (["fan:ventalina"], None),
+        "sponge":     (["sponge:caribbean-sponge"], None),
+        "rubble":     (["rubble"], None),
     },
 }
 # Coarser than the look-dev colonies before decimation: the decimation keeps
 # the shape, and a finer field only costs time.
 # How many triangles each keeps. Branches lose their shape to facets first
 # (at twelve thousand a Pocillopora was a heap of shards), so they get more.
-TRIANGLES = {"pocillopora": 40000, "acropora": 40000, "table": 24000}
+TRIANGLES = {"pocillopora": 40000, "acropora": 40000, "table": 24000, "fan": 40000, "staghorn": 30000,
+             "finger": 30000, "sea_rod": 30000, "elkhorn": 24000}
 VOXEL = {"porites": 0.004, "pocillopora": 0.003, "acropora": 0.003, "table": 0.004, "plate": 0.003,
-         "galaxea": 0.004, "millepora": 0.003, "leather": 0.004}
+         "galaxea": 0.004, "millepora": 0.003, "leather": 0.004, "sponge": 0.004, "fan": 0.0025, "rubble": 0.003,
+         "finger": 0.003, "staghorn": 0.003, "elkhorn": 0.005, "sea_rod": 0.0025}
 
 
 def decimate(v: np.ndarray, f: np.ndarray, c: np.ndarray, triangles: int):
@@ -85,17 +117,20 @@ def main() -> int:
     for kind, (forms, corallite) in FORMS_BY_KIND[a.assemblage].items():
         entries[kind] = []
         for n in range(a.variants):
-            form = forms[n % len(forms)]
+            # "plate:capitata" is the plate generator in Montipora capitata's colours.
+            form, _, colours = forms[n % len(forms)].partition(":")
             seed = a.seed * 1000 + zlib.crc32(kind.encode()) % 1000 + n     # the same every run
             rng = np.random.default_rng(seed)
             kw = {"grooves": False, "level": 6} if form == "brain" else {"voxel": VOXEL[form]}
+            if colours:
+                kw["palette"] = coral_hd.PALETTES[colours][rng.integers(len(coral_hd.PALETTES[colours]))]
             v, f, c = coral_hd.FORMS[form](rng, **kw)
             made = len(f)
             v, f, c = decimate(v, f, c, TRIANGLES.get(form, a.triangles))
             name = f"{kind}-{n}.ply"
             coral_hd.write_ply(into / name, v, f, c)
             entries[kind].append({
-                "file": name, "form": form, "seed": int(seed), "corallite": corallite,
+                "file": name, "form": form, "palette": colours or form, "seed": int(seed), "corallite": corallite,
                 "triangles": int(len(f)), "trianglesBeforeDecimation": int(made),
                 "heightM": round(float(v[:, 2].max()), 4), "acrossM": round(float(np.ptp(v[:, :2], 0).max()), 4),
                 "colour": [round(float(x), 4) for x in c.mean(0)]})

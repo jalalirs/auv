@@ -58,6 +58,43 @@ PALETTES = {
                 ((0.52, 0.56, 0.40), (0.33, 0.37, 0.24)),   # olive
                 ((0.78, 0.72, 0.58), (0.56, 0.50, 0.38)),   # cream
                 ((0.68, 0.46, 0.30), (0.45, 0.28, 0.17))],  # the orange-brown ones
+    "sponge": [((0.62, 0.30, 0.20), (0.30, 0.12, 0.08)),    # rust-red barrels
+               ((0.48, 0.34, 0.46), (0.20, 0.13, 0.20)),    # purple tubes
+               ((0.66, 0.56, 0.40), (0.30, 0.24, 0.16)),    # tan
+               ((0.50, 0.50, 0.48), (0.22, 0.22, 0.21))],   # grey
+    "fan": [((0.72, 0.30, 0.20), (0.48, 0.18, 0.12)),       # red-orange Annella
+            ((0.80, 0.56, 0.24), (0.55, 0.36, 0.14)),       # orange-yellow
+            ((0.56, 0.32, 0.26), (0.36, 0.18, 0.15))],      # brown-red Subergorgia
+    "rubble": [((0.56, 0.52, 0.44), (0.30, 0.28, 0.22)),    # bare grey-tan
+               ((0.46, 0.44, 0.32), (0.24, 0.24, 0.16))],   # turf-covered
+    "finger": [((0.74, 0.64, 0.42), (0.40, 0.32, 0.18)),    # tan-yellow, the commonest
+               ((0.62, 0.60, 0.46), (0.32, 0.30, 0.20)),    # grey-tan
+               ((0.60, 0.62, 0.72), (0.30, 0.30, 0.36))],   # the blue-tipped ones
+    "staghorn": [((0.82, 0.70, 0.50), (0.46, 0.36, 0.20)),  # golden-brown, pale tips
+                 ((0.72, 0.60, 0.44), (0.40, 0.30, 0.18))],
+    "elkhorn": [((0.80, 0.64, 0.34), (0.48, 0.34, 0.14)),   # mustard-brown
+                ((0.72, 0.58, 0.36), (0.42, 0.30, 0.16))],
+    "sea_rod": [((0.50, 0.36, 0.40), (0.30, 0.20, 0.24)),   # purple-brown
+                ((0.74, 0.64, 0.46), (0.48, 0.40, 0.26)),   # tan
+                ((0.80, 0.70, 0.36), (0.52, 0.42, 0.18))],  # yellow
+    # Other reefs' colours for the same shapes, named by species.
+    "lobata": [((0.72, 0.66, 0.42), (0.44, 0.38, 0.20)),    # Porites lobata: yellow-tan
+               ((0.56, 0.62, 0.48), (0.30, 0.36, 0.24))],   # green-grey
+    "capitata": [((0.62, 0.42, 0.30), (0.34, 0.20, 0.13)),  # Montipora capitata: red-brown
+                 ((0.74, 0.56, 0.36), (0.40, 0.28, 0.16))],  # orange-tan
+    "meandrina": [((0.72, 0.60, 0.48), (0.40, 0.30, 0.22)),  # Pocillopora meandrina: cream-tan
+                  ((0.70, 0.56, 0.54), (0.38, 0.28, 0.28))],  # pinkish
+    "orbicella": [((0.66, 0.58, 0.38), (0.34, 0.28, 0.16)),  # Orbicella: tan-brown
+                  ((0.56, 0.58, 0.40), (0.28, 0.30, 0.18))],  # green-brown
+    "diploria": [((0.70, 0.62, 0.42), (0.34, 0.30, 0.18)),  # grooved brain: tan
+                 ((0.58, 0.60, 0.44), (0.28, 0.30, 0.20))],
+    "agaricia": [((0.66, 0.54, 0.36), (0.34, 0.26, 0.16)),  # lettuce coral: brown
+                 ((0.64, 0.60, 0.40), (0.32, 0.30, 0.18))],
+    "ventalina": [((0.56, 0.34, 0.56), (0.34, 0.18, 0.34)),  # Gorgonia ventalina: purple
+                  ((0.78, 0.70, 0.40), (0.50, 0.42, 0.20))],  # yellow
+    "caribbean-sponge": [((0.48, 0.30, 0.22), (0.24, 0.12, 0.08)),  # barrel: brown-red
+                         ((0.80, 0.66, 0.24), (0.48, 0.36, 0.10)),  # yellow tube
+                         ((0.50, 0.32, 0.52), (0.24, 0.14, 0.26))],  # purple vase
 }
 
 
@@ -738,8 +775,243 @@ def leather(rng, diameter: float = 0.45, voxel: float = 0.0025, palette=None):
     return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
 
 
+def sponge(rng, diameter: float = 0.35, voxel: float = 0.004, palette=None):
+    """A barrel or tube sponge: one to four thick-walled tubes, waisted at
+    the holdfast, widest two thirds up, open at the top, the outside ribbed
+    lengthwise as a barrel sponge's is. Darker inside the opening."""
+    tubes = int(rng.choice([1, 1, 2, 3, 4]))
+    reach = diameter / 2
+    tall = diameter * rng.uniform(0.9, 1.6) if tubes > 1 else diameter * rng.uniform(0.7, 1.1)
+    field = Field([-reach * 1.6, -reach * 1.6, -0.01], [reach * 1.6, reach * 1.6, tall * 1.25], voxel, k=0.006)
+    axes = []
+    for _ in range(tubes):
+        away = rng.uniform(0, 2 * np.pi)
+        at = np.array([np.cos(away), np.sin(away), 0.0]) * (reach * 0.45 if tubes > 1 else 0.0)
+        h = tall * rng.uniform(0.7, 1.15)
+        r0 = (reach if tubes == 1 else reach * rng.uniform(0.35, 0.55))
+        lean = np.array([at[0] * 0.6, at[1] * 0.6, h]) / max(h, 1e-6)
+        wall = r0 * rng.uniform(0.22, 0.32)
+        ribs, rib_h, phase = int(rng.integers(8, 16)), r0 * rng.uniform(0.04, 0.08), rng.uniform(0, 2 * np.pi)
+
+        def tube(x, y, z, at=at, h=h, r0=r0, lean=lean, wall=wall, ribs=ribs, rib_h=rib_h, phase=phase):
+            s = np.clip(z / h, 0, 1)
+            cx, cy = at[0] + lean[0] * z, at[1] + lean[1] * z
+            dx, dy = x - cx, y - cy
+            rr = np.sqrt(dx * dx + dy * dy)
+            th = np.arctan2(dy, dx)
+            outer = r0 * (0.55 + 0.5 * np.sin(np.pi * np.clip(s, 0, 1) ** 0.8)) + rib_h * np.sin(ribs * th + phase)
+            inner = outer - wall
+            shell = np.maximum(rr - outer, inner - rr)
+            return np.maximum(np.maximum(shell, z - h), -z)
+
+        field.within(np.array([-reach * 1.6, -reach * 1.6, -0.01]), np.array([reach * 1.6, reach * 1.6, h + 0.02]), tube)
+        axes.append((at, lean, h, r0, wall))
+    v, f, _ = field.mesh()
+    # Darker in the opening and down its throat: the light does not get in.
+    inside = np.zeros(len(v), bool)
+    for at, lean, h, r0, wall in axes:
+        cx, cy = at[0] + lean[0] * v[:, 2], at[1] + lean[1] * v[:, 2]
+        rr = np.hypot(v[:, 0] - cx, v[:, 1] - cy)
+        s = np.clip(v[:, 2] / h, 0, 1)
+        outer = r0 * (0.55 + 0.5 * np.sin(np.pi * s ** 0.8))
+        inside |= (rr < outer - wall * 0.5) & (v[:, 2] > h * 0.15)
+    light = np.where(inside, 0.15, 0.6 + 0.4 * np.clip(v[:, 2] / max(v[:, 2].max(), 1e-6), 0, 1))
+    palette = palette or PALETTES["sponge"][rng.integers(len(PALETTES["sponge"]))]
+    return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
+
+
+def fan(rng, diameter: float = 0.8, voxel: float = 0.0025, palette=None):
+    """A sea fan (Annella, Subergorgia): a flat net of thin branches in one
+    upright plane, grown by space colonisation from a short trunk, and the
+    branches that grow close fused across into a mesh, as Annella's do."""
+    from scipy.spatial import cKDTree
+
+    radius = diameter / 2
+    height = diameter * rng.uniform(0.8, 1.1)
+    pts = rng.uniform(-1, 1, size=(20000, 2))
+    # A fan: a half disc, wider than tall, raised on its trunk.
+    keep = (pts[:, 0] ** 2 + pts[:, 1] ** 2 <= 1) & (pts[:, 1] > -0.15)
+    pts = pts[keep][:7000]
+    attractors = np.column_stack([pts[:, 0] * radius, rng.normal(0, 0.004, len(pts)),
+                                  0.04 * height + (pts[:, 1] + 0.15) / 1.15 * 0.96 * height])
+    trunk = int(rng.integers(3, 6))
+    roots = [np.array([0, 0, 0.0])]
+    nodes, parent = colonise(rng, attractors, np.array(roots), step=0.01, influence=0.07, kill=0.02, up=0.15)
+    nodes[:, 1] = np.clip(nodes[:, 1], -0.01, 0.01)
+    tip_r, max_r = rng.uniform(0.0022, 0.003), rng.uniform(0.008, 0.012)
+    field, _, _ = _branching_colony(rng, nodes, parent, tip_r, max_r, voxel, k=0.0015, tip_scale=1.0,
+                                       lo=np.array([-radius - 0.05, -0.05, 0]), hi=np.array([radius + 0.05, 0.05, height + 0.05]))
+    # The net: a node near another branch's node, not its own parent or
+    # child, is joined to it.
+    tree = cKDTree(nodes)
+    along = nodes - nodes[np.maximum(parent, 0)]
+    along /= np.linalg.norm(along, axis=1, keepdims=True) + 1e-9
+    for a, b in tree.query_pairs(0.032):
+        if parent[a] == b or parent[b] == a or nodes[a, 2] < trunk * 0.015:
+            continue
+        # Across, not along: a join along a branch is the branch again.
+        ab = (nodes[b] - nodes[a]) / (np.linalg.norm(nodes[b] - nodes[a]) + 1e-9)
+        if abs(ab @ along[a]) > 0.5 or abs(ab @ along[b]) > 0.5:
+            continue
+        if rng.random() < 0.5:
+            field.capsule(nodes[a], nodes[b], tip_r)
+    v, f, _ = field.mesh()
+    light = np.clip(0.45 + 0.55 * v[:, 2] / max(v[:, 2].max(), 1e-6), 0, 1)
+    palette = palette or PALETTES["fan"][rng.integers(len(PALETTES["fan"]))]
+    return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
+
+
+def rubble(rng, diameter: float = 0.4, voxel: float = 0.003, palette=None):
+    """Coral rubble: broken branch ends and a few rolled blocks, lying in a
+    heap, grey-brown with turf and pink patches of coralline algae."""
+    radius = diameter / 2
+    field = Field([-radius * 1.2, -radius * 1.2, -0.01], [radius * 1.2, radius * 1.2, radius * 0.6], voxel, k=0.004)
+    for _ in range(int(rng.integers(45, 90))):
+        at = np.array([*rng.normal(0, radius * 0.35, 2), 0.0])
+        if np.linalg.norm(at[:2]) > radius:
+            continue
+        length = rng.uniform(0.03, 0.10)
+        turn = rng.uniform(0, 2 * np.pi)
+        tilt = rng.uniform(-0.3, 0.3)
+        d = np.array([np.cos(turn), np.sin(turn), tilt])
+        d /= np.linalg.norm(d)
+        thick = rng.uniform(0.006, 0.014)
+        at[2] = thick + rng.exponential(0.008)                     # most on the sand, some on others
+        field.capsule(at - d * length / 2, at + d * length / 2, thick)
+        if rng.random() < 0.4:                                      # a stub of a side branch
+            side = d + rng.normal(0, 0.8, 3)
+            side /= np.linalg.norm(side)
+            field.capsule(at, at + side * length * 0.35, thick * 0.7)
+    for _ in range(int(rng.integers(1, 4))):
+        at = np.array([*rng.normal(0, radius * 0.3, 2), 0.0])
+        size = rng.uniform(0.03, 0.07)
+        field.ellipsoid(at, (size * rng.uniform(1, 1.6), size, size * 0.6), up=rng.normal(0, 0.2, 3) + [0, 0, 1])
+    v, f, _ = field.mesh()
+    light = np.clip(0.5 + 0.5 * v[:, 2] / max(v[:, 2].max(), 1e-6), 0, 1)
+    palette = palette or PALETTES["rubble"][rng.integers(len(PALETTES["rubble"]))]
+    colour = _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
+    # Crustose coralline algae: pink patches on the tops.
+    pink = np.clip(_patches(v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), rng, 12, (0.2, 0.5)), 0, 1)
+    pink = pink * np.clip(v[:, 2] / max(v[:, 2].max(), 1e-6) * 2, 0, 1)
+    return v, f, np.clip(colour * (1 - 0.6 * pink[:, None]) + np.array([0.62, 0.42, 0.46]) * 0.6 * pink[:, None], 0, 1)
+
+
+def finger(rng, diameter: float = 0.5, voxel: float = 0.003, palette=None):
+    """Finger coral (Porites compressa in Hawaii, Porites porites in the
+    Caribbean): a clump of stubby upright fingers two to three centimetres
+    thick, club-ended, forking once or twice, packed close on a low base."""
+    radius = diameter / 2
+    height = radius * rng.uniform(0.6, 0.9)
+    pts = rng.uniform(-1, 1, size=(20000, 3))
+    pts[:, 2] = np.abs(pts[:, 2])
+    # Fingers stand: the space they grow into is the colony's upper part, and
+    # they start all over a broad base rather than from a few roots.
+    rho = np.linalg.norm(pts, axis=1)
+    keep = (rho <= 1) & (pts[:, 2] > 0.25)
+    attractors = pts[keep][:5000] * np.array([radius, radius, height])
+    spread = np.sqrt(rng.uniform(0, 1, 60)) * radius * 0.8
+    turn = rng.uniform(0, 2 * np.pi, 60)
+    roots = np.column_stack([spread * np.cos(turn), spread * np.sin(turn), np.full(60, height * 0.15)])
+    nodes, parent = colonise(rng, attractors, roots, step=0.012, influence=0.12, kill=0.034, up=3.0)
+    tip_r = rng.uniform(0.010, 0.013)
+    field, tips, _ = _branching_colony(rng, nodes, parent, tip_r, 0.022, voxel, k=0.005, tip_scale=1.25,
+                                       lo=np.array([-radius, -radius, 0]), hi=np.array([radius, radius, height]))
+    # The fingers stand on a low mound of their own dead bases.
+    field.ellipsoid(np.array([0, 0, 0.0]), (radius * 0.85, radius * 0.85, height * 0.3))
+    v, f, _ = field.mesh()
+    light = np.clip(0.25 + 0.35 * v[:, 2] / max(v[:, 2].max(), 1e-6) + 0.45 * _tips_light(v, nodes, tips, 0.025), 0, 1)
+    palette = palette or PALETTES["finger"][rng.integers(len(PALETTES["finger"]))]
+    return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
+
+
+def staghorn(rng, diameter: float = 0.8, voxel: float = 0.003, palette=None):
+    """Staghorn coral (Acropora cervicornis): long cylindrical branches a
+    couple of centimetres thick, few and far apart, reaching out and up at a
+    slant and forking at wide angles, with pale growing tips."""
+    radius = diameter / 2
+    height = radius * rng.uniform(0.6, 0.9)
+    pts = rng.uniform(-1, 1, size=(20000, 3))
+    pts[:, 2] = np.abs(pts[:, 2])
+    keep = np.linalg.norm(pts, axis=1) <= 1
+    attractors = pts[keep][:2500] * np.array([radius, radius, height])
+    roots = np.column_stack([rng.normal(0, radius * 0.1, (3, 2)), np.zeros(3)])
+    nodes, parent = colonise(rng, attractors, roots, step=0.02, influence=0.16, kill=0.07, up=0.35)
+    tip_r = rng.uniform(0.007, 0.009)
+    field, tips, _ = _branching_colony(rng, nodes, parent, tip_r, 0.016, voxel, k=0.003, tip_scale=0.9)
+    v, f, _ = field.mesh()
+    light = np.clip(0.3 + 0.25 * v[:, 2] / max(v[:, 2].max(), 1e-6) + 0.6 * _tips_light(v, nodes, tips, 0.04), 0, 1)
+    palette = palette or PALETTES["staghorn"][rng.integers(len(PALETTES["staghorn"]))]
+    return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
+
+
+def elkhorn(rng, diameter: float = 1.0, voxel: float = 0.005, palette=None):
+    """Elkhorn coral (Acropora palmata): a thick trunk and broad flattened
+    branches like a moose's antlers, spreading out and up, forking into
+    blunt flat lobes; mustard-brown with pale margins."""
+    radius = diameter / 2
+    trunk_h = rng.uniform(0.08, 0.18)
+    field = Field([-radius * 1.3, -radius * 1.3, -0.01], [radius * 1.3, radius * 1.3, trunk_h + radius * 0.9], voxel, k=0.005)
+    field.capsule([0, 0, 0], [0, 0, trunk_h], rng.uniform(0.05, 0.08))
+    margins = []
+
+    def blade(start, heading, rise, length, width, depth):
+        if depth > 2 or length < 0.06:
+            return
+        d = np.array([np.cos(heading), np.sin(heading), rise])
+        d /= np.linalg.norm(d)
+        end = start + d * length
+        mid = (start + end) / 2
+        flat_up = np.cross(d, np.cross([0, 0, 1], d))
+        flat_up = flat_up / (np.linalg.norm(flat_up) + 1e-9) if np.linalg.norm(flat_up) > 1e-6 else np.array([0, 0, 1.0])
+        field.ellipsoid(mid, (length * 0.55, width, 0.014), up=flat_up, along=d)
+        if depth == 3 or rng.random() < 0.15:
+            margins.append(end)
+            return
+        for turn in (-1, 1):
+            blade(end - d * length * 0.1, heading + turn * rng.uniform(0.35, 0.6), rise * 0.8,
+                  length * rng.uniform(0.6, 0.75), width * 0.85, depth + 1)
+
+    # A few main antlers, spread evenly round the trunk so they do not merge.
+    main = int(rng.integers(2, 5))
+    first = rng.uniform(0, 2 * np.pi)
+    for m in range(main):
+        blade(np.array([0, 0, trunk_h]), first + 2 * np.pi * m / main + rng.normal(0, 0.2), rng.uniform(0.25, 0.6),
+              radius * rng.uniform(0.3, 0.42), rng.uniform(0.045, 0.06), 0)
+    v, f, _ = field.mesh()
+    from scipy.spatial import cKDTree
+    edge = np.clip(1 - cKDTree(np.array(margins)).query(v)[0] / 0.08, 0, 1) if margins else np.zeros(len(v))
+    light = np.clip(0.35 + 0.3 * v[:, 2] / max(v[:, 2].max(), 1e-6) + 0.4 * edge, 0, 1)
+    palette = palette or PALETTES["elkhorn"][rng.integers(len(PALETTES["elkhorn"]))]
+    return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
+
+
+def sea_rod(rng, diameter: float = 0.6, voxel: float = 0.0025, palette=None):
+    """A sea rod or sea plume (Eunicea, Plexaura, Antillogorgia): a bush of
+    thin flexible upright branches from one holdfast, candelabra-like,
+    taller than wide, swaying; purple-brown, tan or yellow."""
+    radius = diameter / 2
+    height = diameter * rng.uniform(0.9, 1.4)
+    pts = rng.uniform(-1, 1, size=(20000, 3))
+    pts[:, 2] = np.abs(pts[:, 2])
+    keep = (np.linalg.norm(pts[:, :2], axis=1) <= 0.3 + 0.7 * pts[:, 2]) & (pts[:, 2] > 0.1)
+    attractors = pts[keep][:3000] * np.array([radius, radius, height])
+    nodes, parent = colonise(rng, attractors, np.array([[0, 0, 0.0]]), step=0.015, influence=0.15, kill=0.05, up=1.0)
+    # Sway: each node pushed sideways by a gentle curve that grows with height.
+    lean = rng.normal(0, 0.12, 2)
+    nodes[:, :2] += lean[None] * (nodes[:, 2:3] / max(height, 1e-6)) ** 2 * height
+    tip_r = rng.uniform(0.0035, 0.005)
+    field, tips, _ = _branching_colony(rng, nodes, parent, tip_r, 0.012, voxel, k=0.002, tip_scale=1.0,
+                                       lo=np.array([-radius * 1.5, -radius * 1.5, 0]), hi=np.array([radius * 1.5, radius * 1.5, height * 1.1]))
+    v, f, _ = field.mesh()
+    light = np.clip(0.5 + 0.3 * v[:, 2] / max(v[:, 2].max(), 1e-6) + 0.2 * _tips_light(v, nodes, tips, 0.03), 0, 1)
+    palette = palette or PALETTES["sea_rod"][rng.integers(len(PALETTES["sea_rod"]))]
+    return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
+
+
 FORMS = {"brain": brain, "porites": porites, "pocillopora": pocillopora, "galaxea": galaxea,
-         "acropora": acropora, "table": table, "plate": plate, "millepora": millepora, "leather": leather}
+         "finger": finger, "staghorn": staghorn, "elkhorn": elkhorn, "sea_rod": sea_rod,
+         "acropora": acropora, "table": table, "plate": plate, "millepora": millepora, "leather": leather,
+         "sponge": sponge, "fan": fan, "rubble": rubble}
 
 
 def read_ply(path: pathlib.Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
