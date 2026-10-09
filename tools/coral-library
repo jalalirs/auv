@@ -85,8 +85,10 @@ FORMS_BY_KIND = {
 # Coarser than the look-dev colonies before decimation: the decimation keeps
 # the shape, and a finer field only costs time.
 # How many triangles each keeps. Branches lose their shape to facets first
-# (at twelve thousand a Pocillopora was a heap of shards), so they get more.
-TRIANGLES = {"reef_rock": 30000, "brain": 60000, "lobophyllia": 40000, "favites": 60000, "stylophora": 40000, "seriatopora": 40000,
+# (at twelve thousand a Pocillopora was a heap of shards), so they get more;
+# and a Porites boulder or a rock two metres across, seen from a metre, came
+# out as crumpled paper at twenty thousand.
+TRIANGLES = {"reef_rock": 40000, "porites": 50000, "brain": 60000, "lobophyllia": 40000, "favites": 60000, "stylophora": 40000, "seriatopora": 40000,
              "dendronephthya": 40000, "xenia": 24000, "fungia": 16000, "pocillopora": 40000, "acropora": 40000, "table": 24000, "fan": 40000, "staghorn": 30000,
              "finger": 30000, "sea_rod": 30000, "elkhorn": 24000}
 VOXEL = {"porites": 0.004, "pocillopora": 0.003, "acropora": 0.003, "table": 0.004, "plate": 0.003,
