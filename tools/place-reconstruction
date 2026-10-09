@@ -252,6 +252,14 @@ def _skin(text: str, name: str, colour) -> str:
     return block
 
 
+def _times(q, r):
+    """Quaternion product q r, (w, x, y, z): r turned first, then q."""
+    w1, x1, y1, z1 = q
+    w2, x2, y2, z2 = r
+    return np.array([w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2, w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+                     w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2, w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2])
+
+
 def apply(place: pathlib.Path) -> int:
     import coral_hd
     import reef as reef_tool
@@ -293,16 +301,34 @@ def apply(place: pathlib.Path) -> int:
         inside = ((at >= 0).all(1) & (at[:, 0] < grid.shape[0]) & (at[:, 1] < grid.shape[1]))
         under = np.zeros(len(at), bool)
         under[inside] = grid[at[inside, 0], at[inside, 1]]
-        ground = (float(np.median(reef["positions"][under, 2])) + 0.04 if under.any()
-                  else float(p.get("groundZ", 0.0)))
+        # Laid on the seabed's own slope there, fitted to the colonies on
+        # and around its footprint (they sit on the seabed): a reef slope is
+        # tilted, and a patch laid flat on one is buried at one end.
+        tilt = np.array([1.0, 0.0, 0.0, 0.0])
+        reach_m = 0.6 * float(np.ptp(v[:, :2], 0).max()) + 2.0
+        near = np.hypot(reef["positions"][:, 0] - x0, reef["positions"][:, 1] - y0) < reach_m
+        if near.sum() >= 6:
+            px, py, pz = reef["positions"][near].T
+            (a, b, c0), *_ = np.linalg.lstsq(np.stack([px, py, np.ones_like(px)], -1), pz, rcond=None)
+            ground = float(a * x0 + b * y0 + c0) + 0.04
+            normal = np.array([-a, -b, 1.0]) / np.sqrt(a * a + b * b + 1)
+            axis = np.cross([0, 0, 1.0], normal)
+            if np.linalg.norm(axis) > 1e-9:
+                angle = np.arccos(np.clip(normal[2], -1, 1))
+                axis = axis / np.linalg.norm(axis)
+                tilt = np.concatenate([[np.cos(angle / 2)], axis * np.sin(angle / 2)])
+        else:
+            ground = (float(np.median(reef["positions"][under, 2])) + 0.04 if under.any()
+                      else float(p.get("groundZ", 0.0)))
+        yaw = np.array([np.cos(turn / 2), 0, 0, np.sin(turn / 2)])
+        orientation = _times(tilt, yaw)
         keep = ~under
         index = len(reef["prototypes"])
         reef["prototypes"].append(f"/Coral/Grown/Reconstruction_{name}")
         reef["positions"] = np.concatenate([reef["positions"][keep], [[x0, y0, ground]]])
         reef["which"] = np.concatenate([reef["which"][keep], [index]])
         reef["scales"] = np.concatenate([reef["scales"][keep], [[1.0, 1.0, 1.0]]])
-        reef["orientations"] = np.concatenate([reef["orientations"][keep],
-                                               [[np.cos(turn / 2), 0, 0, np.sin(turn / 2)]]])
+        reef["orientations"] = np.concatenate([reef["orientations"][keep], [orientation]])
         mesh = ('\n        def Mesh "Reconstruction_%s" (\n'
                 '            prepend apiSchemas = ["MaterialBindingAPI"]\n'
                 "        )\n        {\n"
@@ -324,7 +350,8 @@ def apply(place: pathlib.Path) -> int:
         text = text.replace('    def Scope "Skins"\n    {\n',
                             '    def Scope "Skins"\n    {\n' + _skin(text, name, c.mean(0)), 1)
         records.append({**{k: p[k] for k in ("name", "at", "headingDeg", "how", "kind") if k in p},
-                        "groundZ": round(ground, 2), "coloniesRemoved": int(under.sum()),
+                        "groundZ": round(ground, 2),
+                        "slopeDeg": round(float(np.degrees(2 * np.arccos(np.clip(tilt[0], -1, 1)))), 1), "coloniesRemoved": int(under.sum()),
                         "prototype": index, "folder": f"reconstructions/{said.parent.name}",
                         "scale": p.get("scale"), "triangles": p.get("triangles")})
         print(f"  {p['name']}: prototype {index}, at {p['at']} z {ground:.2f}, "

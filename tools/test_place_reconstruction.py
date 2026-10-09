@@ -76,3 +76,25 @@ def test_the_most_likely_spot_is_one_whose_cover_matches_the_video(tmp_path):
     assert got["kind"] == "derived" and abs(got["placeCoverThere"] - 0.05) < 0.05
     assert place_reconstruction.choose(site, place_reconstruction.read_reef(
         (tmp_path / "coral.usda").read_text()), None, 100.0)["how"] == "the middle of the site"
+
+
+def test_a_patch_on_a_slope_is_tilted_to_it(tmp_path):
+    x, y = _a_place(tmp_path)
+    text = (tmp_path / "coral.usda").read_text()
+    sloped = place_reconstruction.read_reef(text)
+    sloped["positions"][:, 2] = -8.0 + 0.3 * sloped["positions"][:, 0]          # rising 0.3 m a metre east
+    m = sloped["matches"]["positions"]
+    text = text[:m.start()] + "    point3f[] positions = [%s]" % reef._triples(sloped["positions"]) + text[m.end():]
+    (tmp_path / "coral.usda").write_text(text)
+    _a_patch(tmp_path / "reconstructions" / "test-patch", (0.0, 0.0))
+    place_reconstruction.apply(tmp_path)
+    q = place_reconstruction.read_reef((tmp_path / "coral.usda").read_text())["orientations"][-1]
+    site = json.loads((tmp_path / "site.json").read_text())
+    assert abs(site["reconstructions"][0]["slopeDeg"] - np.degrees(np.arctan(0.3))) < 1.0
+    assert abs(site["reconstructions"][0]["groundZ"] - (-8.0 + 0.04)) < 0.1
+    assert abs(np.linalg.norm(q) - 1) < 1e-3
+    # And the right way: the patch's east end rises with the seabed.
+    w, qv = q[0], np.asarray(q[1:])
+    east = np.array([1.0, 0.0, 0.0])
+    turned = east + 2 * w * np.cross(qv, east) + 2 * np.cross(qv, np.cross(qv, east))
+    assert turned[2] > 0.25
