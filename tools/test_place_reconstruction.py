@@ -108,3 +108,28 @@ def test_a_patch_gets_a_camera_that_looks_at_it(tmp_path):
     assert cam["aim"][:2] == [5.0, -3.0]
     assert abs(np.hypot(cam["eye"][0] - 5.0, cam["eye"][1] + 3.0) - 12.0) < 0.1
     assert cam["eye"][2] > cam["aim"][2]
+
+
+def test_a_patch_rim_is_draped_onto_the_seabed(tmp_path):
+    _a_place(tmp_path)
+    (np.full((101, 101), -8.0, dtype="<f4")).tofile(tmp_path / "seabed.f32")
+    site = json.loads((tmp_path / "site.json").read_text())
+    site["mesh"] = {"heightfield": {"file": "seabed.f32", "rows": 101, "columns": 101}}
+    (tmp_path / "site.json").write_text(json.dumps(site))
+    folder = tmp_path / "reconstructions" / "test-patch"
+    _a_patch(folder, (0.0, 0.0))
+    # A dome a metre high in the middle, its rim half a metre up: the rim must come down.
+    v, f, c = coral_hd.read_ply(folder / "patch.ply")
+    v[:, 2] = 0.5 + 0.5 * np.exp(-(v[:, 0] ** 2 + v[:, 1] ** 2) / 4)
+    coral_hd.write_ply(folder / "patch.ply", v, f, c)
+    place_reconstruction.apply(tmp_path)
+    text = (tmp_path / "coral.usda").read_text()
+    reef_now = place_reconstruction.read_reef(text)
+    import re as _re
+    block = text.split('def Mesh "Reconstruction_test_patch"')[1]
+    pts = np.array(_re.sub(r"[(),]", " ", _re.search(r"point3f\[\] points = \[(.*?)\]", block).group(1)).split(),
+                   float).reshape(-1, 3)
+    world = place_reconstruction._rotate(reef_now["orientations"][-1], pts) + reef_now["positions"][-1]
+    rim = place_reconstruction._to_rim(pts, f) < 1e-6
+    assert np.allclose(world[rim, 2], -8.0 + 0.02, atol=0.05)
+    assert world[~rim, 2].max() > -8.0 + 0.4

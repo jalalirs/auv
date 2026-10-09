@@ -258,6 +258,25 @@ def _skin(text: str, name: str, colour) -> str:
     return block
 
 
+DRAPE_M = 1.0
+
+
+def _to_rim(v, f):
+    """Each vertex's distance to the mesh's open edge (edges used by one
+    triangle), in the mesh's own metres."""
+    from scipy.spatial import cKDTree
+    edges = np.sort(np.concatenate([f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]]), axis=1)
+    unique, count = np.unique(edges, axis=0, return_counts=True)
+    rim = np.unique(unique[count == 1])
+    if not len(rim):
+        return np.full(len(v), np.inf)
+    return cKDTree(v[rim]).query(v)[0]
+
+
+def _conjugate(q):
+    return np.array([q[0], -q[1], -q[2], -q[3]])
+
+
 def _rotate(q, v):
     """Points `v` turned by the unit quaternion q (w, x, y, z)."""
     w, qv = q[0], np.asarray(q[1:])
@@ -352,6 +371,19 @@ def apply(place: pathlib.Path) -> int:
         turned = _rotate(_times(tilt, np.array([np.cos(turn / 2), 0, 0, np.sin(turn / 2)])), v)
         here = drawn(x0 + turned[:, 0], y0 + turned[:, 1]) if drawn is not None else pz
         ground = float(np.percentile(here - turned[:, 2], 90))
+        # Its rim draped onto the seabed: a reconstruction's edge is where
+        # the stereo ran out, and left where it was it hung above the ground
+        # as a jagged skirt. Within DRAPE_M of the rim each point is pulled
+        # down to the drawn surface, fully at the rim.
+        if drawn is not None:
+            to_rim = _to_rim(v, f)
+            pull = np.clip(1 - to_rim / DRAPE_M, 0, 1)[:, None]
+            world = turned + [x0, y0, ground]
+            target = world.copy()
+            target[:, 2] = here + 0.02
+            world = world * (1 - pull) + target * pull
+            v = _rotate(_conjugate(_times(tilt, np.array([np.cos(turn / 2), 0, 0, np.sin(turn / 2)]))),
+                        world - [x0, y0, ground])
         yaw = np.array([np.cos(turn / 2), 0, 0, np.sin(turn / 2)])
         orientation = _times(tilt, yaw)
         keep = ~under
