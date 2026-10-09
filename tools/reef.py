@@ -182,6 +182,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # kind it does not (sea fans, sponges, rubble) is grown here as before.
     library, library_dir = _library(assemblage)
     prototypes, colours, surfaces, from_library = [], [], [], 0
+    painted = {}                        # prototype index -> colour per point, for library colonies
     for kind in kinds:
         here = scans.get(kind, [])
         shelf = (library or {}).get("kinds", {}).get(kind, [])
@@ -201,7 +202,9 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
                 # out two metres across.
                 grown_points, _ = coral.grow_one(kind, np.random.default_rng(seed + at), size)
                 width = float(max(np.ptp(grown_points[:, 0]), np.ptp(grown_points[:, 1])))
-                prototypes.append(_from_library(library_dir / entry["file"], width))
+                points, faces, per_point = _from_library(library_dir / entry["file"], width)
+                prototypes.append((points, faces))
+                painted[len(prototypes) - 1] = per_point
                 colours.append(tuple(entry["colour"]))
                 surfaces.append((entry.get("corallite"), False))
                 from_library += 1
@@ -365,7 +368,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
                 where / "coral_tissue.mdl")
 
     (where / "coral.usda").write_text(
-        _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn, surfaces))
+        _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn, surfaces, painted))
 
     # How much of the ground this actually covers.
     #
@@ -910,20 +913,23 @@ def _library(assemblage):
 
 def _from_library(path: pathlib.Path, width: float):
     """A library colony as a prototype: base at z = 0, centred, scaled so it
-    is `width` across at its widest."""
+    is `width` across at its widest; and its colour at every point."""
     import coral_hd
 
-    points, faces, _ = coral_hd.read_ply(path)
+    points, faces, per_point = coral_hd.read_ply(path)
     points = points - np.array([points[:, 0].mean(), points[:, 1].mean(), points[:, 2].min()])
     across = max(float(np.ptp(points[:, 0])), float(np.ptp(points[:, 1])), 1e-6)
-    return points * (width / across), faces
+    return points * (width / across), faces, per_point
 
 
-def _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn, surfaces=None) -> str:
+def _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn, surfaces=None, painted=None) -> str:
     """The reef, as one instancer over a handful of grown prototypes.
     `surfaces` is, per prototype, its corallite surface and whether it is
-    low-poly enough to want smoothing at render time."""
+    low-poly enough to want smoothing at render time; `painted`, for those
+    that carry one, a colour per point (written as a vertex displayColor,
+    which coral_tissue.mdl reads; the rest carry their one colour)."""
     grown = []
+    painted = painted or {}
     surfaces = surfaces or [(corallite_for(k), True) for k in kinds_of]
     for i, ((points, faces), colour) in enumerate(zip(prototypes, colours)):
         counts = ", ".join(["3"] * len(faces))
@@ -942,13 +948,14 @@ def _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn, surfa
             "            normal3f[] normals = [%s] (\n"
             '                interpolation = "vertex"\n'
             "            )\n"
-            "            color3f[] primvars:displayColor = [(%.3g, %.3g, %.3g)] (\n"
-            '                interpolation = "constant"\n'
+            "            color3f[] primvars:displayColor = [%s] (\n"
+            '                interpolation = "%s"\n'
             "            )\n"
             "            rel material:binding = </Coral/Skins/Skin_%d>\n"
             "        }\n" % (i, "catmullClark" if surfaces[i][1] else "none", counts, indices, _triples(points),
                              _triples(_smooth_normals(points, faces)),
-                             colour[0], colour[1], colour[2], i))
+                             _triples(painted[i]) if i in painted else "(%.3g, %.3g, %.3g)" % tuple(colour[:3]),
+                             "vertex" if i in painted else "constant", i))
 
     # Turned about the vertical, as a quaternion — one line rather than a
     # matrix for every colony.

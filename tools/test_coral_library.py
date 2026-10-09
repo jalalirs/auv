@@ -33,6 +33,10 @@ def test_a_reef_plants_the_kinds_its_library_has(tmp_path, monkeypatch):
     assert said["fromLibrary"]["prototypes"] == 6                     # every massive variant, and only those
     text = (tmp_path / "place" / "coral.usda").read_text()
     assert text.count('subdivisionScheme = "none"') == 6
+    # Each library colony carries its colour at every point, for the material.
+    import re
+    painted = re.findall(r'primvars:displayColor = \[[^\]]*\] \(\s*interpolation = "vertex"', text)
+    assert len(painted) == 6
     assert (tmp_path / "place" / "textures" / "corallite_porites_normal.png").is_file()
     massive = [i for i, k in enumerate(said["prototypeKinds"]) if k == "massive"]
     # Scaled to stand as tall as the grown prototype of that size would.

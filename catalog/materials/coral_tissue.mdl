@@ -43,6 +43,7 @@ import ::anno::*;
 import ::base::*;
 import ::df::*;
 import ::math::*;
+import ::scene::*;
 import ::state::*;
 import ::tex::*;
 
@@ -228,6 +229,13 @@ export material coral_tissue(
     float3 bumped = base::tangent_space_normal_texture(
         texture: corallites, factor: relief, uvw: here, flip_tangent_v: true);
 
+    // The colony's own colour where it carries one per point (a library
+    // colony: pale tips, darker crevices and bases, a mottle), read from its
+    // displayColor primvar; `tissue` where it does not. At a few metres the
+    // corallites are below a pixel, and this is most of what makes a colony
+    // read as a colony rather than a painted stone.
+    color tissue_here = scene::data_lookup_color("displayColor", tissue);
+
     // What comes back out.
     //
     // Light enters the tissue, scatters in the white aragonite about a
@@ -239,7 +247,7 @@ export material coral_tissue(
     //
     // A boulder coral is not translucent at the scale of a boulder. This is
     // scattering under a millimetre of tissue, not light through a head.
-    color lit_from_under = tissue * math::lerp(
+    color lit_from_under = tissue_here * math::lerp(
         color(1.0), aragonite * 2.2, math::saturate(scatter));
     // And as the tissue goes, so does the colour: `alive` at nought is the
     // same skeleton with nothing on it, which is what a bleached colony is.
@@ -313,7 +321,7 @@ export material coral_tissue(
             // which is what lights a branch tip from behind.
             base: df::weighted_layer(
                 weight: math::saturate(through * alive),
-                layer: df::diffuse_transmission_bsdf(tint: tissue),
+                layer: df::diffuse_transmission_bsdf(tint: tissue_here),
                 base: df::diffuse_reflection_bsdf(
                 tint: show_distance > 0.0 ? color(0.0)
                       : under * survives * woven)),
