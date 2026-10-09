@@ -21,6 +21,7 @@ run it from ~/iocean/venvs/coral.
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import os
 import pathlib
@@ -38,13 +39,14 @@ import coral_hd
 # before (sea fans, sponges, rubble, sea cucumbers).
 FORMS_BY_KIND = {
     "red-sea": {
-        "massive":    (["porites"], "porites"),
-        "brain":      (["brain"], None),
-        "branching":  (["pocillopora", "acropora"], "pocillopora"),
+        # Six of each kind, the genera Khalil et al. counted most of in turn.
+        "massive":    (["porites", "favites", "porites", "favites"], "porites"),
+        "brain":      (["brain", "lobophyllia"], None),
+        "branching":  (["pocillopora", "acropora", "stylophora", "seriatopora"], "pocillopora"),
         "finger":     (["acropora"], "acropora"),
         "table":      (["table"], "acropora"),
-        "encrusting": (["plate", "galaxea", "millepora"], "galaxea"),
-        "plume":      (["leather"], None),
+        "encrusting": (["plate", "galaxea", "millepora", "turbinaria", "fungia", "plate"], "galaxea"),
+        "plume":      (["leather", "dendronephthya", "xenia", "sinularia", "dendronephthya", "leather"], None),
         "sponge":     (["sponge"], None),
         "fan":        (["fan"], None),
         "rubble":     (["rubble"], None),
@@ -81,11 +83,14 @@ FORMS_BY_KIND = {
 # the shape, and a finer field only costs time.
 # How many triangles each keeps. Branches lose their shape to facets first
 # (at twelve thousand a Pocillopora was a heap of shards), so they get more.
-TRIANGLES = {"brain": 60000, "pocillopora": 40000, "acropora": 40000, "table": 24000, "fan": 40000, "staghorn": 30000,
+TRIANGLES = {"brain": 60000, "lobophyllia": 40000, "favites": 60000, "stylophora": 40000, "seriatopora": 40000,
+             "dendronephthya": 40000, "xenia": 24000, "fungia": 16000, "pocillopora": 40000, "acropora": 40000, "table": 24000, "fan": 40000, "staghorn": 30000,
              "finger": 30000, "sea_rod": 30000, "elkhorn": 24000}
 VOXEL = {"porites": 0.004, "pocillopora": 0.003, "acropora": 0.003, "table": 0.004, "plate": 0.003,
          "galaxea": 0.004, "millepora": 0.003, "leather": 0.004, "sponge": 0.004, "fan": 0.0025, "rubble": 0.003,
-         "finger": 0.003, "staghorn": 0.003, "elkhorn": 0.005, "sea_rod": 0.0025}
+         "finger": 0.003, "staghorn": 0.003, "elkhorn": 0.005, "sea_rod": 0.0025,
+         "stylophora": 0.0015, "seriatopora": 0.0015, "turbinaria": 0.003, "dendronephthya": 0.002, "xenia": 0.0015,
+         "sinularia": 0.003}
 
 
 # How dark a point shut in all round is, as a share of its colour.
@@ -128,7 +133,10 @@ def main() -> int:
             # The brain's maze in the mesh and its colour: at the two or three
             # metres a dive sees it from, a maze only in the material is a
             # smooth pale stone.
-            kw = {"grooves": True, "level": 7} if form == "brain" else {"voxel": VOXEL[form]}
+            kw = {"grooves": True, "level": 7} if form == "brain" else {"voxel": VOXEL.get(form, 0.003)}
+            # Only what the generator takes: the ones built on another form
+            # (a Lobophyllia is a brain coral at another scale) set their own.
+            kw = {k: x for k, x in kw.items() if k in inspect.signature(coral_hd.FORMS[form]).parameters}
             if colours:
                 kw["palette"] = coral_hd.PALETTES[colours][rng.integers(len(coral_hd.PALETTES[colours]))]
             v, f, c = coral_hd.FORMS[form](rng, **kw)

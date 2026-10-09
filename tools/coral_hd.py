@@ -77,6 +77,33 @@ PALETTES = {
     "sea_rod": [((0.50, 0.36, 0.40), (0.30, 0.20, 0.24)),   # purple-brown
                 ((0.74, 0.64, 0.46), (0.48, 0.40, 0.26)),   # tan
                 ((0.80, 0.70, 0.36), (0.52, 0.42, 0.18))],  # yellow
+    "favites": [((0.70, 0.62, 0.42), (0.34, 0.40, 0.22)),   # pale walls, green cups
+                ((0.72, 0.56, 0.38), (0.40, 0.26, 0.16)),   # brown
+                ((0.66, 0.66, 0.50), (0.42, 0.36, 0.24))],  # cream
+    "lobophyllia": [((0.46, 0.62, 0.38), (0.20, 0.30, 0.16)),  # green
+                    ((0.66, 0.34, 0.30), (0.34, 0.16, 0.14)),  # red
+                    ((0.62, 0.62, 0.58), (0.30, 0.30, 0.28))],  # grey
+    "stylophora": [((0.80, 0.66, 0.60), (0.48, 0.38, 0.32)),   # cream-pink
+                   ((0.80, 0.56, 0.62), (0.46, 0.30, 0.34))],  # pink
+    "seriatopora": [((0.84, 0.64, 0.66), (0.56, 0.48, 0.42)),  # pale, pink tips
+                    ((0.76, 0.70, 0.56), (0.48, 0.42, 0.30))],  # cream-tan
+    "turbinaria": [((0.70, 0.68, 0.36), (0.40, 0.38, 0.18)),   # yellow-green
+                   ((0.56, 0.52, 0.44), (0.30, 0.28, 0.22))],  # grey-brown
+    "fungia": [((0.68, 0.56, 0.40), (0.38, 0.28, 0.18)),       # brown
+               ((0.56, 0.60, 0.42), (0.28, 0.32, 0.20)),       # green-brown
+               ((0.76, 0.68, 0.56), (0.46, 0.40, 0.30))],      # pale
+    "dendronephthya": [((0.92, 0.32, 0.52), (0.62, 0.16, 0.32)),  # pink
+                       ((0.88, 0.20, 0.16), (0.56, 0.10, 0.08)),  # red
+                       ((0.94, 0.52, 0.18), (0.64, 0.30, 0.08)),  # orange
+                       ((0.62, 0.32, 0.72), (0.36, 0.16, 0.44)),  # purple
+                       ((0.92, 0.80, 0.30), (0.62, 0.50, 0.14))],  # yellow
+    "dendronephthya-stalk": [((0.90, 0.84, 0.82), (0.66, 0.58, 0.58))],
+    "xenia": [((0.86, 0.82, 0.70), (0.56, 0.52, 0.42)),        # cream
+              ((0.70, 0.80, 0.86), (0.42, 0.50, 0.56)),        # pale blue
+              ((0.86, 0.72, 0.74), (0.56, 0.44, 0.46))],       # pinkish
+    "sinularia": [((0.58, 0.60, 0.44), (0.32, 0.34, 0.22)),    # olive
+                  ((0.66, 0.64, 0.58), (0.38, 0.36, 0.32)),    # grey
+                  ((0.72, 0.64, 0.46), (0.42, 0.36, 0.22))],   # tan
     # Other reefs' colours for the same shapes, named by species.
     "lobata": [((0.72, 0.66, 0.42), (0.44, 0.38, 0.20)),    # Porites lobata: yellow-tan
                ((0.56, 0.62, 0.48), (0.30, 0.36, 0.24))],   # green-grey
@@ -1042,7 +1069,197 @@ def sea_rod(rng, diameter: float = 0.6, voxel: float = 0.0025, palette=None):
     return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
 
 
+def favites(rng, diameter: float = 0.5, cup: float = 0.02, palette=None):
+    """A Favites or Dipsastraea: a dome of polygonal cups a couple of
+    centimetres across, sharing their walls, each sunk a few millimetres,
+    the walls paler than the cups. Diploastrea is the same with smaller cups
+    on a larger dome. Big enough to read from a few metres, so in the mesh."""
+    from scipy.spatial import cKDTree
+
+    v, f, _ = brain(rng, diameter=diameter, level=7, grooves=False)
+    n = _normals(v, f)
+    # Cup centres roughly `cup` apart: one vertex kept in each cell of a grid
+    # that size, from a shuffled order, so they are spaced and not in rows.
+    order = rng.permutation(len(v))
+    _, first = np.unique(np.floor(v[order] / cup).astype(int), axis=0, return_index=True)
+    seeds = v[order[first]]
+    near, which = cKDTree(seeds).query(v, k=2)
+    # Distance to the wall between the two nearest cups, along the line that joins them.
+    edge = np.clip((near[:, 1] - near[:, 0]) / 2, 0, None)
+    wall = 1 - np.clip(edge / (cup * 0.18), 0, 1)
+    sunk = cup * 0.22 * (1 - wall) ** 0.6
+    v = v - n * sunk[:, None]
+    palette = palette or PALETTES["favites"][rng.integers(len(PALETTES["favites"]))]
+    d = v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9)
+    return v, f, _shade(0.35 + 0.65 * wall, palette, rng, d, v[:, 2])
+
+
+def lobophyllia(rng, diameter: float = 0.6, palette=None):
+    """A Lobophyllia or Symphyllia: a brain coral of big fleshy valleys a
+    few centimetres wide, often green, red or grey, the ridges contrasting."""
+    palette = palette or PALETTES["lobophyllia"][rng.integers(len(PALETTES["lobophyllia"]))]
+    return brain(rng, diameter=diameter, level=6, ridge_m=0.012, palette=palette, grooves=True)
+
+
+def stylophora(rng, diameter: float = 0.35, voxel: float = 0.0015, palette=None):
+    """A Stylophora: a small Pocillopora-like bush of blunt branches, cream
+    or pink, the commonest branching coral on a Red Sea reef flat."""
+    palette = palette or PALETTES["stylophora"][rng.integers(len(PALETTES["stylophora"]))]
+    return pocillopora(rng, diameter=diameter, voxel=voxel, palette=palette)
+
+
+def seriatopora(rng, diameter: float = 0.4, voxel: float = 0.0015, palette=None):
+    """A bird's-nest coral (Seriatopora): a rounded bush of thin, sharp,
+    densely forking branches a few millimetres thick, pale with pink tips."""
+    radius = diameter / 2
+    height = radius * rng.uniform(0.7, 0.95)
+    pts = rng.uniform(-1, 1, size=(30000, 3))
+    pts[:, 2] = np.abs(pts[:, 2])
+    rho = np.linalg.norm(pts, axis=1)
+    keep = (rho <= 1) & ((rho > 0.5) | (rng.random(len(rho)) < 0.3))
+    attractors = pts[keep][:9000] * np.array([radius, radius, height])
+    roots = np.column_stack([rng.normal(0, radius * 0.12, (6, 2)), np.zeros(6)])
+    nodes, parent = colonise(rng, attractors, roots, step=0.007, influence=0.05, kill=0.016, up=0.5)
+    field, tips, _ = _branching_colony(rng, nodes, parent, rng.uniform(0.0018, 0.0024), 0.006, voxel, k=0.0015,
+                                       tip_scale=0.8)
+    v, f, _ = field.mesh()
+    light = np.clip(0.25 + 0.3 * v[:, 2] / max(v[:, 2].max(), 1e-6) + 0.5 * _tips_light(v, nodes, tips, 0.015), 0, 1)
+    palette = palette or PALETTES["seriatopora"][rng.integers(len(PALETTES["seriatopora"]))]
+    return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
+
+
+def turbinaria(rng, diameter: float = 0.5, voxel: float = 0.003, palette=None):
+    """A scroll coral (Turbinaria): a thin plate rolled into a flaring vase
+    on a short stalk, open down one side, the rim wavy; yellow-green or grey."""
+    radius = diameter / 2
+    tall = radius * rng.uniform(0.8, 1.3)
+    stalk = tall * rng.uniform(0.15, 0.3)
+    gap, facing = rng.uniform(0.6, 1.6), rng.uniform(0, 2 * np.pi)
+    flare, waves, phase = rng.uniform(1.2, 2.2), int(rng.integers(3, 7)), rng.uniform(0, 2 * np.pi)
+    thick = rng.uniform(0.006, 0.01)
+    field = Field([-radius * 1.3, -radius * 1.3, -0.01], [radius * 1.3, radius * 1.3, tall + 0.05], voxel, k=0.004)
+    field.capsule([0, 0, 0], [0, 0, stalk], rng.uniform(0.015, 0.025))
+
+    def vase(x, y, z):
+        s = np.clip((z - stalk) / (tall - stalk), 0, 1)
+        th = np.arctan2(y, x)
+        rr = np.sqrt(x * x + y * y)
+        r_here = 0.02 + (radius - 0.02) * s ** (1 / flare) * (1 + 0.08 * s * np.sin(waves * th + phase))
+        shell = np.abs(rr - r_here) - thick
+        # Open down one side: a scroll, not a cup.
+        off = np.abs(np.angle(np.exp(1j * (th - facing)))) - gap / 2
+        cut = -off * np.maximum(rr, 0.02)
+        rim = z - tall * (1 + 0.05 * np.sin(waves * th + phase))
+        return np.maximum(np.maximum(np.maximum(shell, cut), rim), stalk - 0.01 - z)
+
+    field.within(np.array([-radius * 1.3, -radius * 1.3, stalk - 0.02]), np.array([radius * 1.3, radius * 1.3, tall * 1.1]), vase)
+    v, f, _ = field.mesh()
+    light = np.clip(0.4 + 0.5 * v[:, 2] / max(v[:, 2].max(), 1e-6), 0, 1)
+    palette = palette or PALETTES["turbinaria"][rng.integers(len(PALETTES["turbinaria"]))]
+    return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
+
+
+def fungia(rng, diameter: float = 0.2, voxel: float = 0.0, palette=None):
+    """A mushroom coral (Fungia, Danafungia): one free-living polyp, an oval
+    disc a hand or two across lying on the sand, slightly domed, ribbed with
+    a hundred radial septa from a slit mouth to the edge. Built as a polar
+    grid, not a field: the septa are finer than any field this size affords."""
+    a = diameter / 2
+    b = a * rng.uniform(0.75, 1.0)
+    rings, sectors = 70, 720
+    septa = int(rng.integers(80, 130))
+    dome = a * rng.uniform(0.18, 0.3)
+    rho = np.linspace(0, 1, rings)[:, None]
+    th = np.linspace(0, 2 * np.pi, sectors, endpoint=False)[None]
+    ridge = (0.5 + 0.5 * np.cos(septa * th)) ** 3 * np.clip(rho * 3, 0, 1)
+    z = dome * (1 - rho ** 2) + 0.004 * ridge - 0.006 * np.exp(-((rho * np.abs(np.sin(th))) / 0.05) ** 2) * (rho < 0.25)
+    x, y = a * rho * np.cos(th), b * rho * np.sin(th)
+    top = np.stack([x, y, z + 0.006], -1).reshape(-1, 3)
+    rim = np.stack([a * np.cos(th[0]), b * np.sin(th[0]), np.zeros(sectors)], -1)
+    v = np.concatenate([top, rim])
+    idx = np.arange(rings * sectors).reshape(rings, sectors)
+    f = []
+    for r in range(rings - 1):
+        a0, a1 = idx[r], idx[r + 1]
+        b0, b1 = np.roll(a0, -1), np.roll(a1, -1)
+        f += [np.stack([a0, a1, b1], 1), np.stack([a0, b1, b0], 1)]
+    edge, ring0 = idx[-1], rings * sectors + np.arange(sectors)
+    f += [np.stack([edge, ring0, np.roll(ring0, -1)], 1), np.stack([edge, np.roll(ring0, -1), np.roll(edge, -1)], 1)]
+    f = np.concatenate(f)
+    light = np.concatenate([(0.45 + 0.55 * ridge).reshape(-1), np.full(sectors, 0.3)])
+    palette = palette or PALETTES["fungia"][rng.integers(len(PALETTES["fungia"]))]
+    return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
+
+
+def dendronephthya(rng, diameter: float = 0.45, voxel: float = 0.002, palette=None):
+    """A Dendronephthya: a soft coral tree, the stalk and branches
+    translucent white, the ends crowded with bunches of polyps in vivid pink,
+    red, orange, purple or yellow. The colour of a Red Sea wall."""
+    from scipy.spatial import cKDTree
+
+    radius = diameter / 2
+    height = diameter * rng.uniform(0.8, 1.2)
+    pts = rng.uniform(-1, 1, size=(20000, 3))
+    pts[:, 2] = np.abs(pts[:, 2])
+    keep = (np.linalg.norm(pts, axis=1) <= 1) & (pts[:, 2] > 0.25)
+    attractors = pts[keep][:3000] * np.array([radius, radius, height])
+    nodes, parent = colonise(rng, attractors, np.array([[0, 0, 0.0]]), step=0.012, influence=0.25, kill=0.035, up=0.6)
+    field, tips, _ = _branching_colony(rng, nodes, parent, 0.003, 0.02, voxel, k=0.003, tip_scale=1.0,
+                                       lo=np.array([-radius * 1.2, -radius * 1.2, 0]), hi=np.array([radius * 1.2, radius * 1.2, height * 1.15]))
+    bunches, tip_set = [], set(tips.tolist())
+    for n in np.where((parent >= 0) & (nodes[:, 2] > height * 0.35))[0]:
+        if n in tip_set or rng.random() < 0.5:
+            for _ in range(int(rng.integers(6, 12))):
+                at = nodes[n] + rng.normal(0, 0.006, 3)
+                field.sphere(at, rng.uniform(0.003, 0.005))
+                bunches.append(at)
+    v, f, _ = field.mesh()
+    # Coloured out to just past a polyp's own radius, so the bunches are
+    # solid colour and the white shows only on the stalk and branches.
+    bunch = (np.clip(1 - (cKDTree(np.array(bunches)).query(v)[0] - 0.006) / 0.004, 0, 1)
+             if bunches else np.zeros(len(v)))
+    d = v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9)
+    stalk = _shade(np.full(len(v), 0.9), PALETTES["dendronephthya-stalk"][0], rng, d, v[:, 2] + 1.0)
+    palette = palette or PALETTES["dendronephthya"][rng.integers(len(PALETTES["dendronephthya"]))]
+    polyps = _shade(0.6 + 0.4 * bunch, palette, rng, d, v[:, 2] + 1.0)
+    return v, f, np.clip(stalk * (1 - bunch[:, None]) + polyps * bunch[:, None], 0, 1)
+
+
+def xenia(rng, diameter: float = 0.3, voxel: float = 0.0015, palette=None):
+    """A Xenia or Heteroxenia: a clump of short soft stalks, each crowned by
+    a tuft of feathery polyps that pulse; cream, pale blue or pinkish."""
+    radius = diameter / 2
+    field = Field([-radius * 1.4, -radius * 1.4, -0.01], [radius * 1.4, radius * 1.4, radius * 1.4], voxel, k=0.002)
+    for _ in range(int(rng.integers(6, 16))):
+        foot = np.array([*rng.normal(0, radius * 0.35, 2), 0.0])
+        lean = np.array([foot[0] * 1.2, foot[1] * 1.2, 1.0])
+        top = foot + lean / np.linalg.norm(lean) * rng.uniform(0.04, 0.09)
+        stalk_r = rng.uniform(0.006, 0.01)
+        field.capsule(foot, top, stalk_r)
+        for _ in range(int(rng.integers(8, 16))):
+            out = rng.normal(0, 1, 3)
+            out[2] = abs(out[2]) + 0.6
+            out /= np.linalg.norm(out)
+            tip = top + out * rng.uniform(0.015, 0.03)
+            field.capsule(top, tip, rng.uniform(0.0015, 0.0025))
+            field.sphere(tip, 0.0028)
+    v, f, _ = field.mesh()
+    light = np.clip(0.5 + 0.5 * v[:, 2] / max(v[:, 2].max(), 1e-6), 0, 1)
+    palette = palette or PALETTES["xenia"][rng.integers(len(PALETTES["xenia"]))]
+    return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
+
+
+def sinularia(rng, diameter: float = 0.5, voxel: float = 0.003, palette=None):
+    """A Sinularia: a leather coral of short rounded lobes and fingers on a
+    low base; olive, grey or tan."""
+    palette = palette or PALETTES["sinularia"][rng.integers(len(PALETTES["sinularia"]))]
+    return finger(rng, diameter=diameter, voxel=voxel, palette=palette)
+
+
 FORMS = {"brain": brain, "porites": porites, "pocillopora": pocillopora, "galaxea": galaxea,
+         "favites": favites, "lobophyllia": lobophyllia, "stylophora": stylophora, "seriatopora": seriatopora,
+         "turbinaria": turbinaria, "fungia": fungia, "dendronephthya": dendronephthya, "xenia": xenia,
+         "sinularia": sinularia,
          "finger": finger, "staghorn": staghorn, "elkhorn": elkhorn, "sea_rod": sea_rod,
          "acropora": acropora, "table": table, "plate": plate, "millepora": millepora, "leather": leather,
          "sponge": sponge, "fan": fan, "rubble": rubble}
