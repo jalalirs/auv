@@ -376,39 +376,21 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # hard. A seabed left flat between the colonies is what made the dives
     # look like ornaments on sand. Drawn from the library's "rock", in the
     # same instancer, and not coral: no part of the cover above counts it.
-    rock_shelf = (library or {}).get("kinds", {}).get("rock", [])
     framework = None
     all_at = (prototypes, colours, kinds_of, x, y, z, which, scale, turn, surfaces, painted)
-    if rock_shelf:
+    if (library or {}).get("kinds", {}).get("rock"):
         share = zonation.framework_share(ground, None if atlas is None else atlas["benthic"], want)
-        rock = [_from_library(library_dir / entry["file"], 1.0) for entry in rock_shelf]
-        rock_area = [float(np.pi / 4 * np.ptp(p[:, 0]) * np.ptp(p[:, 1])) for p, _, _ in rock]
-        sizes = ROCK_SIZES_M
-        mean_area = float(np.mean(rock_area)) * (sizes[1] ** 3 - sizes[0] ** 3) / (3 * (sizes[1] - sizes[0]))
-        counts = rng.poisson(share.ravel() * step_x * step_y / mean_area)
-        cell = np.repeat(np.arange(share.size), counts)
-        r_row, r_col = cell // columns, cell % columns
-        n_rock = len(cell)
-        rx = np.clip(-across / 2 + (r_col + rng.uniform(0, 1, n_rock)) * step_x, -across / 2, across / 2)
-        ry = np.clip(-across / 2 + (r_row + rng.uniform(0, 1, n_rock)) * step_y, -across / 2, across / 2)
-        rs = rng.uniform(sizes[0], sizes[1], n_rock)
-        rz = seabed_at(height, across, rx, ry) - 0.08 * rs    # bedded in, as rock is
+        laid = lay_framework(share, height, across, rng, library, library_dir)
         first = len(prototypes)
-        all_at = (prototypes + [(p, f) for p, f, _ in rock],
-                  colours + [tuple(c.mean(0)) for _, _, c in rock],
-                  kinds_of + ["rock"] * len(rock),
-                  np.concatenate([x, rx]), np.concatenate([y, ry]), np.concatenate([z, rz]),
-                  np.concatenate([which, first + rng.integers(0, len(rock), n_rock)]),
-                  np.concatenate([scale, rs]), np.concatenate([turn, rng.uniform(0, 2 * math.pi, n_rock)]),
-                  surfaces + [(None, False)] * len(rock),
-                  {**painted, **{first + k: c for k, (_, _, c) in enumerate(rock)}})
-        framework = {"pieces": int(n_rock), "prototypes": len(rock), "firstPrototype": first,
-                     "areaM2AtScaleOne": [round(a, 4) for a in rock_area],
-                     "sizesM": list(sizes), "shareOfGround": zonation.FRAMEWORK_SHARE,
-                     "from": "the reef's coral library (" + str(library_dir) + "), kind rock",
-                     "is": "chosen: how much of the hard ground is dead framework is a choice per Atlas "
-                           "class, not a measurement; it is not coral and no cover figure counts it"}
-        print(f"    {n_rock:,} pieces of reef framework on the hard ground")
+        all_at = (prototypes + laid["prototypes"], colours + laid["colours"],
+                  kinds_of + ["rock"] * len(laid["prototypes"]),
+                  np.concatenate([x, laid["x"]]), np.concatenate([y, laid["y"]]),
+                  np.concatenate([z, laid["z"]]), np.concatenate([which, first + laid["which"]]),
+                  np.concatenate([scale, laid["scale"]]), np.concatenate([turn, laid["turn"]]),
+                  surfaces + [(None, False)] * len(laid["prototypes"]),
+                  {**painted, **{first + k: c for k, c in laid["painted"].items()}})
+        framework = {**laid["record"], "firstPrototype": first}
+        print(f"    {laid['record']['pieces']:,} pieces of reef framework on the hard ground")
 
     (where / "coral.usda").write_text(_instancer(*all_at))
 
@@ -950,6 +932,36 @@ _CORALLITES = {"massive": "massive", "brain": "brain", "branching": "branching",
 def corallite_for(kind):
     """The corallite surface a kind wears, or None where nobody has one."""
     return _CORALLITES.get(kind)
+
+
+def lay_framework(share, height, across: float, rng, library: dict, library_dir) -> dict:
+    """The reef's dead framework: pieces of the library's "rock", as many as
+    cover `share` of each cell of the seabed grid, each on the seabed as it
+    is drawn. Returns the prototypes (1 m across), their colours per point,
+    and every piece's place, size and turn; `which` counts from nought."""
+    rows, columns = height.shape
+    step_x, step_y = across / max(1, columns - 1), across / max(1, rows - 1)
+    shelf = library["kinds"]["rock"]
+    rock = [_from_library(library_dir / entry["file"], 1.0) for entry in shelf]
+    area = [float(np.pi / 4 * np.ptp(p[:, 0]) * np.ptp(p[:, 1])) for p, _, _ in rock]
+    lo, hi = ROCK_SIZES_M
+    mean_area = float(np.mean(area)) * (hi ** 3 - lo ** 3) / (3 * (hi - lo))
+    counts = rng.poisson(np.asarray(share).ravel() * step_x * step_y / mean_area)
+    cell = np.repeat(np.arange(np.asarray(share).size), counts)
+    row, col = cell // columns, cell % columns
+    n = len(cell)
+    rx = np.clip(-across / 2 + (col + rng.uniform(0, 1, n)) * step_x, -across / 2, across / 2)
+    ry = np.clip(-across / 2 + (row + rng.uniform(0, 1, n)) * step_y, -across / 2, across / 2)
+    rs = rng.uniform(lo, hi, n)
+    return {"prototypes": [(p, f) for p, f, _ in rock], "colours": [tuple(c.mean(0)) for _, _, c in rock],
+            "painted": {k: c for k, (_, _, c) in enumerate(rock)},
+            "x": rx, "y": ry, "z": seabed_at(height, across, rx, ry) - 0.08 * rs,   # bedded in, as rock is
+            "scale": rs, "turn": rng.uniform(0, 2 * math.pi, n), "which": rng.integers(0, len(rock), n),
+            "record": {"pieces": int(n), "prototypes": len(rock), "areaM2AtScaleOne": [round(a, 4) for a in area],
+                       "sizesM": [lo, hi], "shareOfGround": zonation.FRAMEWORK_SHARE,
+                       "from": "the reef's coral library (" + str(library_dir) + "), kind rock",
+                       "is": "chosen: how much of the hard ground is dead framework is a choice, not a "
+                             "measurement; it is not coral and no cover figure counts it"}}
 
 
 def seabed_at(height, across: float, x, y):

@@ -259,8 +259,24 @@ def main() -> int:
                 / "catalog" / "materials" / "coral_tissue.mdl",
                 place / "coral_tissue.mdl")
 
-    (place / "coral.usda").write_text(
-        _instancer(prototypes, colours, kind_of, x, y, z, which, sx, sz, turn, forms, painted))
+    # The reef's framework, as tools/reef.py lays it, where the survey says
+    # the reef is: the dead rock between the colonies, following their own
+    # density. Not coral, and not in any cover figure here.
+    framework, drawn_at = None, (prototypes, colours, kind_of, x, y, z, which, sx, sz, turn, forms, painted)
+    if (library or {}).get("kinds", {}).get("rock"):
+        share = _framework_share(heights, across, x, y, math.pi * sx * sx)
+        laid = reef.lay_framework(share, heights, across, rng, library, library_dir)
+        first = len(prototypes)
+        drawn_at = (prototypes + laid["prototypes"], colours + laid["colours"],
+                    kind_of + ["rock"] * len(laid["prototypes"]),
+                    np.concatenate([x, laid["x"]]), np.concatenate([y, laid["y"]]), np.concatenate([z, laid["z"]]),
+                    np.concatenate([which, first + laid["which"]]), np.concatenate([sx, laid["scale"]]),
+                    np.concatenate([sz, laid["scale"]]), np.concatenate([turn, laid["turn"]]),
+                    forms + [None] * len(laid["prototypes"]),
+                    {**painted, **{first + k: c for k, c in laid["painted"].items()}})
+        framework = {**laid["record"], "firstPrototype": first}
+        print(f"  {laid['record']['pieces']:,} pieces of reef framework where the survey found reef")
+    (place / "coral.usda").write_text(_instancer(*drawn_at))
     size = (place / "coral.usda").stat().st_size
     print(f"  coral.usda: {len(prototypes)} prototypes, {len(colonies):,} instances, {size / 1e6:.1f} MB")
 
@@ -311,7 +327,8 @@ def main() -> int:
         # what the survey counted, and the first version of `tools/deliver`
         # read it as a list of growth forms and labelled every colony in a
         # published CSV "low" or "unknown".
-        "prototypeKinds": list(kind_of),
+        "prototypeKinds": list(kind_of) + (["rock"] * framework["prototypes"] if framework else []),
+        "framework": framework,
         # And how to read a colony's scale, which is not the same on a
         # surveyed reef as on a grown one. Here the scale *is* the
         # measurement — the survey recorded a diameter for every colony and
@@ -376,6 +393,25 @@ def main() -> int:
     print(f"  begins at {begin['at']} — {site['beginBecause']}")
     print(f"  {place / 'site.json'}")
     return 0
+
+
+def _framework_share(heights, across, x, y, area):
+    """How much of each cell is dead framework, from the surveyed colonies:
+    four times their own cover over a few metres around, at most 0.6, so the
+    rock goes where the reef is and not onto the sand between spurs. Four,
+    because a Florida reef is a few per cent living coral on hard bottom:
+    at one and a half the spurs came out as sand. Chosen."""
+    import numpy as np
+    from scipy import ndimage
+
+    rows, cols = heights.shape
+    step = across / (cols - 1)
+    j = np.clip(((x + across / 2) / step).astype(int), 0, cols - 1)
+    i = np.clip(((y + across / 2) / step).astype(int), 0, rows - 1)
+    covered = np.zeros(heights.shape)
+    np.add.at(covered, (i, j), area)
+    covered = ndimage.gaussian_filter(covered, max(1.0, 3.0 / step))
+    return np.clip(4.0 * (1 - np.exp(-covered / (step * step))), 0.0, 0.6)
 
 
 def _floor(heights, across, x, y):
