@@ -149,15 +149,39 @@ def _normals(v: np.ndarray, f: np.ndarray) -> np.ndarray:
     return out / (np.linalg.norm(out, axis=1, keepdims=True) + 1e-12)
 
 
+# Which way a colony's patches drift in hue: greener where the algae in the
+# tissue are thicker, browner, or paler where they are thinner. Chosen.
+DRIFTS = np.array([(-0.6, 0.6, -0.2), (0.6, 0.0, -0.6), (0.5, 0.5, 0.5)])
+
+
+def _patches(directions: np.ndarray, rng, count: int, width: tuple) -> np.ndarray:
+    """Smooth patches over the colony, -1 to 1, about half of it beyond a
+    half either way. Scaled by their spread, not their peak: by the peak, one
+    tall bump left the rest of the colony near nought."""
+    p = _bumps(directions, rng, count, width, (-1, 1))
+    return np.clip((p - p.mean()) / (1.5 * p.std() + 1e-9), -1, 1)
+
+
 def _shade(ridge: np.ndarray, palette, rng, directions, z: np.ndarray) -> np.ndarray:
     """Colour per vertex: the palette's light on the ridges and dark in the
-    valleys, a slow mottle over the colony, and the bottom edge darker where
-    turf and sediment take the tissue back."""
+    valleys, patches over the colony, and the bottom edge darker where turf
+    and sediment take the tissue back.
+
+    A living colony is not one colour. Over tens of centimetres its tissue
+    shifts in shade and hue, and from a few metres that is most of what
+    tells a colony from a painted stone. The first mottle here was a tenth
+    either way and read in the dives as no change at all (on most of a
+    colony the colour spanned 0.02); the patches are now broad (a third of
+    the colony) and blotches (a few centimetres), both visible at a metre."""
     top, low = (np.asarray(c) for c in palette)
-    mottle = 1.0 + 0.10 * (_bumps(directions, rng, 25, (0.15, 0.5), (-1, 1)) / 2.0)
     colour = low[None] + (top - low)[None] * ridge[:, None]
+    broad = _patches(directions, rng, 10, (0.35, 0.8))
+    blotch = _patches(directions, rng, 60, (0.06, 0.15))
+    hue = _patches(directions, rng, 8, (0.3, 0.7))
+    colour = colour * (1.0 + 0.22 * broad + 0.10 * blotch)[:, None]
+    colour = colour + 0.07 * hue[:, None] * DRIFTS[rng.integers(len(DRIFTS))][None]
     base = np.clip(z / max(z.max(), 1e-6) / 0.15, 0, 1)[:, None]           # the bottom 15% of its height
-    colour = colour * mottle[:, None] * (0.55 + 0.45 * base)
+    colour = colour * (0.55 + 0.45 * base)
     return np.clip(colour, 0, 1)
 
 
@@ -336,7 +360,8 @@ def brain(rng, diameter: float = 0.55, level: int = 8, ridge_m: float = 0.005, p
         # A colony for a reef, where the maze is the material's
         # (corallite.py "brain") rather than the mesh's.
         palette = palette or PALETTES["brain"][rng.integers(len(PALETTES["brain"]))]
-        return v, f, _shade(np.full(len(v), 0.85), palette, rng, d, v[:, 2])
+        # Paler on top, where it faces the light, than down the sides.
+        return v, f, _shade(0.55 + 0.45 * np.clip(d[:, 2], 0, 1), palette, rng, d, v[:, 2])
     pattern = gray_scott(laplacian(d, f), rng)
     ridge = np.clip((pattern - 0.25) / 0.5, 0, 1)                          # 1 on the ridge, 0 in the valley
     ridge = ridge * ridge * (3 - 2 * ridge)
