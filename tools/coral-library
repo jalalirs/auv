@@ -39,7 +39,7 @@ import coral_hd
 FORMS_BY_KIND = {
     "red-sea": {
         "massive":    (["porites"], "porites"),
-        "brain":      (["brain"], "brain"),
+        "brain":      (["brain"], None),
         "branching":  (["pocillopora", "acropora"], "pocillopora"),
         "finger":     (["acropora"], "acropora"),
         "table":      (["table"], "acropora"),
@@ -56,7 +56,7 @@ FORMS_BY_KIND = {
         "finger":     (["finger"], "porites"),
         "encrusting": (["plate:capitata"], "porites"),
         "branching":  (["pocillopora:meandrina"], "pocillopora"),
-        "brain":      (["brain"], "brain"),
+        "brain":      (["brain"], None),
         "plume":      (["leather"], None),
         "sponge":     (["sponge"], None),
         "rubble":     (["rubble"], None),
@@ -66,7 +66,7 @@ FORMS_BY_KIND = {
     # rods and plumes, Gorgonia fans, barrel and tube sponges.
     "caribbean": {
         "massive":    (["porites:orbicella"], "galaxea"),
-        "brain":      (["brain:diploria"], "brain"),
+        "brain":      (["brain:diploria"], None),
         "branching":  (["staghorn"], "acropora"),
         "table":      (["elkhorn"], "acropora"),
         "finger":     (["finger"], "porites"),
@@ -81,7 +81,7 @@ FORMS_BY_KIND = {
 # the shape, and a finer field only costs time.
 # How many triangles each keeps. Branches lose their shape to facets first
 # (at twelve thousand a Pocillopora was a heap of shards), so they get more.
-TRIANGLES = {"pocillopora": 40000, "acropora": 40000, "table": 24000, "fan": 40000, "staghorn": 30000,
+TRIANGLES = {"brain": 60000, "pocillopora": 40000, "acropora": 40000, "table": 24000, "fan": 40000, "staghorn": 30000,
              "finger": 30000, "sea_rod": 30000, "elkhorn": 24000}
 VOXEL = {"porites": 0.004, "pocillopora": 0.003, "acropora": 0.003, "table": 0.004, "plate": 0.003,
          "galaxea": 0.004, "millepora": 0.003, "leather": 0.004, "sponge": 0.004, "fan": 0.0025, "rubble": 0.003,
@@ -125,7 +125,10 @@ def main() -> int:
             form, _, colours = forms[n % len(forms)].partition(":")
             seed = a.seed * 1000 + zlib.crc32(kind.encode()) % 1000 + n     # the same every run
             rng = np.random.default_rng(seed)
-            kw = {"grooves": False, "level": 6} if form == "brain" else {"voxel": VOXEL[form]}
+            # The brain's maze in the mesh and its colour: at the two or three
+            # metres a dive sees it from, a maze only in the material is a
+            # smooth pale stone.
+            kw = {"grooves": True, "level": 7} if form == "brain" else {"voxel": VOXEL[form]}
             if colours:
                 kw["palette"] = coral_hd.PALETTES[colours][rng.integers(len(coral_hd.PALETTES[colours]))]
             v, f, c = coral_hd.FORMS[form](rng, **kw)

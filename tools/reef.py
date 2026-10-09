@@ -428,7 +428,17 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     thick = measured["thicketM2"]
 
     asked_for = float(np.average(want, weights=want > 0.02)) if (want > 0.02).any() else 0.0
-    begin = zonation.best_ground(ground, want, across)
+    # Where a dive begins: judged on the colonies actually planted, not on the
+    # cover map asked for. The map said 94% at Al Fahal's start and the dives
+    # opened on sand: the colonies a cell can afford are not what it asks for.
+    rows_, columns_ = want.shape
+    step_ = across / max(1, columns_ - 1)
+    planted = np.zeros(want.shape)
+    np.add.at(planted, (np.clip(np.round((y + across / 2) / step_).astype(int), 0, rows_ - 1),
+                        np.clip(np.round((x + across / 2) / step_).astype(int), 0, columns_ - 1)), covered_by)
+    begin = zonation.best_ground(ground, np.minimum(planted / (step_ * step_), 1.0), across)
+    if begin:
+        begin["judgedOn"] = "the colonies planted, by their area in each cell"
     return {"colonies": int(how_many), "prototypes": len(prototypes),
             # What each prototype *is*, by its index in the instancer, and how
             # much ground one of them covers at scale one.
