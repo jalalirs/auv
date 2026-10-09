@@ -41,6 +41,9 @@ PALETTES = {
                     ((0.62, 0.62, 0.40), (0.30, 0.32, 0.18)),  # olive-green
                     ((0.80, 0.68, 0.42), (0.45, 0.36, 0.20)),  # yellow-tan
                     ((0.78, 0.58, 0.50), (0.40, 0.28, 0.24))], # the pinkish ones
+    "galaxea": [((0.62, 0.66, 0.50), (0.24, 0.28, 0.20)),   # grey-green, the commonest
+                ((0.70, 0.62, 0.44), (0.30, 0.26, 0.17)),   # brown
+                ((0.74, 0.76, 0.66), (0.32, 0.34, 0.28))],  # pale
     "porites": [((0.70, 0.60, 0.40), (0.48, 0.40, 0.25)),   # tan
                 ((0.52, 0.56, 0.40), (0.33, 0.37, 0.24)),   # olive
                 ((0.78, 0.72, 0.58), (0.56, 0.50, 0.38)),   # cream
@@ -198,8 +201,9 @@ class Field:
         x, y, z = np.meshgrid(*self.axes, indexing="ij")
         self._add(tuple(slice(None) for _ in range(3)), dist_of(x, y, z))
 
-    def mesh(self, ground: float = 0.0):
-        """Vertices, triangles and normals of the surface, cut flat at `ground`."""
+    def mesh(self, ground: float = 0.0, settle: bool = True):
+        """Vertices, triangles and normals of the surface, cut flat at
+        `ground`; `settle` sets its lowest point at z = 0."""
         from skimage.measure import marching_cubes
 
         field = -self.k * np.log(self.total + 1e-30)
@@ -207,7 +211,8 @@ class Field:
         field = np.maximum(field, ground - z)
         v, f, normals, _ = marching_cubes(field, level=0.0, spacing=(self.voxel,) * 3)
         v = v + self.lo
-        v[:, 2] -= v[:, 2].min()
+        if settle:
+            v[:, 2] -= v[:, 2].min()
         return v, f[:, ::-1], normals
 
 
@@ -453,6 +458,84 @@ def pocillopora(rng, diameter: float = 0.60, voxel: float = 0.0015, palette=None
     return v, f, _shade(light, palette, rng, directions, v[:, 2])
 
 
+def _spread(points: np.ndarray, spacing: float, rng) -> np.ndarray:
+    """Indices of a subset of `points` no two closer than `spacing`, taken in
+    random order: points spread evenly over a surface (Poisson-disc-like)."""
+    from scipy.spatial import cKDTree
+
+    tree = cKDTree(points)
+    order = rng.permutation(len(points))
+    taken = np.zeros(len(points), bool)
+    blocked = np.zeros(len(points), bool)
+    for i in order:
+        if blocked[i]:
+            continue
+        taken[i] = True
+        blocked[tree.query_ball_point(points[i], spacing)] = True
+    return np.where(taken)[0]
+
+
+def galaxea(rng, diameter: float = 0.45, voxel: float = 0.0012, palette=None):
+    """A Galaxea: a low lumpy mound packed with corallites that stand off it,
+    each a cup five to nine millimetres across ringed by a dozen septa, the
+    radiating plates that make every cup a star.
+
+    The mound is a smooth union of a few broad lobes; its surface is meshed
+    coarsely to spread the corallites evenly over it (one every
+    `spacing`), and each corallite is a short capsule along the surface's
+    normal with its septa as thin capsules fanning out from its rim, all
+    merged with the mound into one surface."""
+    radius = diameter / 2
+    squash = rng.uniform(0.35, 0.55)
+    lobes = []
+    for _ in range(int(rng.integers(5, 12))):
+        d = rng.normal(size=3)
+        d[2] = abs(d[2]) + 0.4
+        d /= np.linalg.norm(d)
+        lobes.append((d * np.array([radius, radius, radius * squash]) * rng.uniform(0.6, 0.85),
+                      radius * rng.uniform(0.3, 0.5)))
+
+    def mound(field):
+        field.everywhere(lambda x, y, z: np.sqrt(x ** 2 + y ** 2 + (z / squash) ** 2) - radius * 0.75)
+        for c, r in lobes:
+            field.sphere(c, r)
+
+    lo = np.array([-radius * 1.3, -radius * 1.3, -0.01])
+    hi = np.array([radius * 1.3, radius * 1.3, radius * squash * 1.6 + 0.05])
+    coarse = Field(lo, hi, 0.004, k=0.02)
+    mound(coarse)
+    base_v, _, base_n = coarse.mesh(settle=False)                             # in the fine field's own frame
+    spacing = rng.uniform(0.007, 0.009)
+    keep = _spread(base_v, spacing, rng)
+    keep = keep[base_v[keep, 2] > 0.004]                                       # none on the cut base
+    fine = Field(lo, hi, voxel, k=0.0015)
+    mound(fine)
+    for i in keep:
+        at, n = base_v[i], -base_n[i] if base_n[:, 2].mean() < 0 else base_n[i]
+        cup = rng.uniform(0.0025, 0.0045)                                      # cup radius
+        rise = rng.uniform(0.003, 0.006)
+        rim = at + n * rise
+        fine.capsule(at - n * 0.002, rim, cup * 0.75)
+        # Septa: a dozen thin plates from the cup's centre out past its rim.
+        u = np.cross(n, [0.3, 0.5, 0.8]); u /= np.linalg.norm(u)
+        w = np.cross(n, u)
+        for j in range(12):
+            a = 2 * np.pi * (j + rng.uniform(-0.15, 0.15)) / 12
+            out = np.cos(a) * u + np.sin(a) * w
+            fine.capsule(rim + out * cup * 0.3, rim + out * cup * 1.35 - n * 0.0015, 0.0005)
+    v, f, normals = fine.mesh()
+    from scipy.spatial import cKDTree
+    # Corallites lighter than the tissue between them: the septa catch the
+    # light and the polyps' rims are paler.
+    cups = cKDTree(base_v[keep])
+    to_cup = cups.query(v)[0]
+    height_off = np.clip((v[:, 2] - 0) / max(v[:, 2].max(), 1e-6), 0, 1)
+    light = np.clip(0.25 + 0.55 * np.clip(1 - to_cup / (spacing * 0.6), 0, 1) + 0.2 * height_off, 0, 1)
+    directions = v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9)
+    palette = palette or PALETTES["galaxea"][rng.integers(len(PALETTES["galaxea"]))]
+    return v, f, _shade(light, palette, rng, directions, v[:, 2])
+
+
 def write_ply(path: pathlib.Path, v: np.ndarray, f: np.ndarray, c: np.ndarray) -> None:
     """Binary PLY with a colour per vertex."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -474,7 +557,7 @@ def write_ply(path: pathlib.Path, v: np.ndarray, f: np.ndarray, c: np.ndarray) -
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("form", choices=("brain", "porites", "pocillopora"))
+    ap.add_argument("form", choices=("brain", "porites", "pocillopora", "galaxea"))
     ap.add_argument("--into", required=True)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--diameter", type=float)
@@ -484,7 +567,7 @@ def main() -> int:
     kw = {k: getattr(a, k) for k in ("diameter",) if getattr(a, k) is not None}
     if a.level is not None and a.form == "brain":
         kw["level"] = a.level
-    v, f, c = {"brain": brain, "porites": porites, "pocillopora": pocillopora}[a.form](rng, **kw)
+    v, f, c = {"brain": brain, "porites": porites, "pocillopora": pocillopora, "galaxea": galaxea}[a.form](rng, **kw)
     write_ply(pathlib.Path(a.into), v, f, c)
     print(f"{a.form}: {len(v):,} vertices, {len(f):,} triangles, {np.ptp(v[:, 0]):.2f} m across, "
           f"{v[:, 2].max():.2f} m tall -> {a.into}")
