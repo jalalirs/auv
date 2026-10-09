@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""Build the coral a reef is planted from, once, at the detail of the
+close-up colonies (tools/coral_hd) and light enough to plant by the million.
+
+    tools/coral-library red-sea --into ~/iocean/coral-library
+
+Each of a reef's growth forms (`reef.py`'s kinds) gets a few colonies made
+by the generator that builds that form (`FORMS_BY_KIND`), each reduced to
+about `--triangles` triangles (more for branching forms, `TRIANGLES`) by quadric decimation (pyfqmr): the shape stays,
+and what is finer than the mesh (corallites, a brain coral's maze) is the
+material's (`corallite.py`). Written as <kind>-<n>.ply beside library.json,
+which says, for each, which generator and seed made it, its size, its mean
+colour, and the corallite surface it wears. `reef.py` plants from the library
+when there is one for the place's assemblage and grows its own shapes for any
+kind the library does not have.
+
+Needs scikit-image and pyfqmr, which the box's own Python must not be given:
+run it from ~/iocean/venvs/coral.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import pathlib
+import sys
+import time
+import zlib
+
+import numpy as np
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import coral_hd
+
+# Which generator builds which of a reef's growth forms, by assemblage, and
+# the corallite surface it wears. A kind with no entry is grown by coral.py as
+# before (sea fans, sponges, rubble, sea cucumbers).
+FORMS_BY_KIND = {
+    "red-sea": {
+        "massive":    (["porites"], "porites"),
+        "brain":      (["brain"], "brain"),
+        "branching":  (["pocillopora", "acropora"], "pocillopora"),
+        "finger":     (["acropora"], "acropora"),
+        "table":      (["table"], "acropora"),
+        "encrusting": (["plate", "galaxea", "millepora"], "galaxea"),
+        "plume":      (["leather"], None),
+    },
+}
+# Coarser than the look-dev colonies before decimation: the decimation keeps
+# the shape, and a finer field only costs time.
+# How many triangles each keeps. Branches lose their shape to facets first
+# (at twelve thousand a Pocillopora was a heap of shards), so they get more.
+TRIANGLES = {"pocillopora": 40000, "acropora": 40000, "table": 24000}
+VOXEL = {"porites": 0.004, "pocillopora": 0.003, "acropora": 0.003, "table": 0.004, "plate": 0.003,
+         "galaxea": 0.004, "millepora": 0.003, "leather": 0.004}
+
+
+def decimate(v: np.ndarray, f: np.ndarray, c: np.ndarray, triangles: int):
+    """Quadric decimation to about `triangles`; colours carried by nearest vertex."""
+    import pyfqmr
+    from scipy.spatial import cKDTree
+
+    if len(f) <= triangles:
+        return v, f, c
+    s = pyfqmr.Simplify()
+    s.setMesh(v.astype(np.float64), f.astype(np.int32))
+    s.simplify_mesh(target_count=triangles, aggressiveness=7, preserve_border=True, verbose=False)
+    nv, nf, _ = s.getMesh()
+    nc = c[cKDTree(v).query(nv)[1]]
+    return np.asarray(nv), np.asarray(nf, int), nc
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("assemblage", choices=sorted(FORMS_BY_KIND))
+    ap.add_argument("--into", default=str(pathlib.Path.home() / "iocean" / "coral-library"))
+    ap.add_argument("--variants", type=int, default=6)
+    ap.add_argument("--triangles", type=int, default=20000, help="for forms TRIANGLES does not name")
+    ap.add_argument("--seed", type=int, default=1)
+    a = ap.parse_args()
+    into = pathlib.Path(a.into).expanduser() / a.assemblage
+    into.mkdir(parents=True, exist_ok=True)
+    entries, t0 = {}, time.time()
+    for kind, (forms, corallite) in FORMS_BY_KIND[a.assemblage].items():
+        entries[kind] = []
+        for n in range(a.variants):
+            form = forms[n % len(forms)]
+            seed = a.seed * 1000 + zlib.crc32(kind.encode()) % 1000 + n     # the same every run
+            rng = np.random.default_rng(seed)
+            kw = {"grooves": False, "level": 6} if form == "brain" else {"voxel": VOXEL[form]}
+            v, f, c = coral_hd.FORMS[form](rng, **kw)
+            made = len(f)
+            v, f, c = decimate(v, f, c, TRIANGLES.get(form, a.triangles))
+            name = f"{kind}-{n}.ply"
+            coral_hd.write_ply(into / name, v, f, c)
+            entries[kind].append({
+                "file": name, "form": form, "seed": int(seed), "corallite": corallite,
+                "triangles": int(len(f)), "trianglesBeforeDecimation": int(made),
+                "heightM": round(float(v[:, 2].max()), 4), "acrossM": round(float(np.ptp(v[:, :2], 0).max()), 4),
+                "colour": [round(float(x), 4) for x in c.mean(0)]})
+            print(f"  {kind:11s} {n}  {form:12s} {made:>9,} -> {len(f):>7,} triangles", flush=True)
+    said = {"assemblage": a.assemblage, "made": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "commit": os.environ.get("GIT_COMMIT", "unknown"), "triangles": a.triangles,
+            "seconds": round(time.time() - t0),
+            "how": "tools/coral_hd generators (reaction-diffusion, space colonisation, signed-distance "
+                   "unions), quadric decimation (pyfqmr); the shapes are made, not measured",
+            "kinds": entries}
+    (into / "library.json").write_text(json.dumps(said, indent=1) + "\n")
+    print(f"{sum(len(e) for e in entries.values())} colonies in {said['seconds']} s -> {into}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

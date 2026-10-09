@@ -176,18 +176,33 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # grown ones stay because no museum has scanned the long tail.
     from_a_scan = 0
 
-    prototypes, colours = [], []
+    # The coral library for this reef's assemblage, where one has been built
+    # (tools/coral-library): colonies made at the detail of a photograph and
+    # decimated to plant by the million. A kind it has is planted from it; a
+    # kind it does not (sea fans, sponges, rubble) is grown here as before.
+    library, library_dir = _library(assemblage)
+    prototypes, colours, surfaces, from_library = [], [], [], 0
     for kind in kinds:
         here = scans.get(kind, [])
+        shelf = (library or {}).get("kinds", {}).get(kind, [])
         for at in range(variants):
             size = sizes[kind] * rng.uniform(0.7, 1.4)
             if here and at % 3 != 2:
                 prototypes.append(
                     scanned.as_a_colony(here[from_a_scan % len(here)], size))
                 from_a_scan += 1
+                colours.append(coral.a_colour(rng, kind))
+                surfaces.append((corallite_for(kind), True))
+            elif shelf:
+                entry = shelf[at % len(shelf)]
+                prototypes.append(_from_library(library_dir / entry["file"], size))
+                colours.append(tuple(entry["colour"]))
+                surfaces.append((entry.get("corallite"), False))
+                from_library += 1
             else:
                 prototypes.append(coral.grow_one(kind, rng, size))
-            colours.append(coral.a_colour(rng, kind))
+                colours.append(coral.a_colour(rng, kind))
+                surfaces.append((corallite_for(kind), True))
 
     # Measured on what is above the seabed. A scan keeps its buried base, which
     # is wider than the colony that grows out of it; counting that as covered
@@ -337,14 +352,14 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
 
     import corallite
     kinds_of = [kinds[i // variants] for i in range(len(prototypes))]
-    for form in sorted({f for f in map(corallite_for, kinds_of) if f}):
+    for form in sorted({f for f, _ in surfaces if f}):
         corallite.write(form, where / "textures")
     shutil.copy(pathlib.Path(__file__).resolve().parent.parent
                 / "catalog" / "materials" / "coral_tissue.mdl",
                 where / "coral_tissue.mdl")
 
     (where / "coral.usda").write_text(
-        _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn))
+        _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn, surfaces))
 
     # How much of the ground this actually covers.
     #
@@ -434,6 +449,11 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
             # so a place's page can say what its coral is made of and nobody
             # has to take a render's word for it.
             "fromScans": from_a_scan,
+            # How many came from the coral library, and which one: its
+            # shapes are made by generators, not measured, and it says so.
+            "fromLibrary": ({"prototypes": from_library, "path": str(library_dir),
+                             "made": library.get("made"), "commit": library.get("commit"),
+                             "how": library.get("how")} if from_library else None),
             "scannedForms": sorted(scans),
             "cover": {
                 "asked": round(asked_for, 5),
@@ -765,7 +785,7 @@ def cover_over(x, y, area, across: float, cell_m: float = COVER_CELL_M,
     }
 
 
-def _skins(colours, kinds=None, tile_metres: float = 0.04) -> str:
+def _skins(colours, kinds=None, tile_metres: float = 0.04, forms=None) -> str:
     """A material per prototype.
 
     A mesh carrying only a display colour gets flat shading, and under a bright
@@ -782,7 +802,7 @@ def _skins(colours, kinds=None, tile_metres: float = 0.04) -> str:
     skins = []
     for i, colour in enumerate(colours):
         kind = None if kinds is None else kinds[i]
-        form = _CORALLITES.get(kind)
+        form = forms[i] if forms is not None else _CORALLITES.get(kind)
         corallites = ("" if form is None else
                       '                asset inputs:corallites = '
                       '@textures/corallite_%s_normal.png@\n'
@@ -868,9 +888,36 @@ def corallite_for(kind):
     return _CORALLITES.get(kind)
 
 
-def _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn) -> str:
-    """The reef, as one instancer over a handful of grown prototypes."""
+def _library(assemblage):
+    """The coral library for an assemblage, and where it is, or (None, path).
+
+    `IOCEAN_CORAL_LIBRARY` names the folder holding one library per
+    assemblage; by default ~/iocean/coral-library."""
+    import json
+    import os
+
+    root = pathlib.Path(os.environ.get("IOCEAN_CORAL_LIBRARY", pathlib.Path.home() / "iocean" / "coral-library"))
+    folder = root.expanduser() / str(assemblage or "caribbean").lower()
+    said = folder / "library.json"
+    return (json.loads(said.read_text()) if said.is_file() else None), folder
+
+
+def _from_library(path: pathlib.Path, size: float):
+    """A library colony as a prototype: base at z = 0, scaled so it stands
+    `size` tall, as a grown prototype of that size does."""
+    import coral_hd
+
+    points, faces, _ = coral_hd.read_ply(path)
+    points = points - np.array([0, 0, points[:, 2].min()])
+    return points * (size / max(float(points[:, 2].max()), 1e-6)), faces
+
+
+def _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn, surfaces=None) -> str:
+    """The reef, as one instancer over a handful of grown prototypes.
+    `surfaces` is, per prototype, its corallite surface and whether it is
+    low-poly enough to want smoothing at render time."""
     grown = []
+    surfaces = surfaces or [(corallite_for(k), True) for k in kinds_of]
     for i, ((points, faces), colour) in enumerate(zip(prototypes, colours)):
         counts = ", ".join(["3"] * len(faces))
         indices = ", ".join(str(v) for v in faces.reshape(-1))
@@ -878,9 +925,10 @@ def _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn) -> st
             '\n        def Mesh "Coral_%d" (\n'
             '            prepend apiSchemas = ["MaterialBindingAPI"]\n'
             "        )\n        {\n"
-            # Smoothed. The prototypes are low-poly on purpose and the facets
-            # show on anything domed; subdividing costs nothing at render time.
-            '            uniform token subdivisionScheme = "catmullClark"\n'
+            # Smoothed where grown: those prototypes are low-poly on purpose
+            # and the facets show on anything domed. A library colony carries
+            # its own detail and is drawn as it is.
+            '            uniform token subdivisionScheme = "%s"\n'
             "            int[] faceVertexCounts = [%s]\n"
             "            int[] faceVertexIndices = [%s]\n"
             "            point3f[] points = [%s]\n"
@@ -891,7 +939,7 @@ def _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn) -> st
             '                interpolation = "constant"\n'
             "            )\n"
             "            rel material:binding = </Coral/Skins/Skin_%d>\n"
-            "        }\n" % (i, counts, indices, _triples(points),
+            "        }\n" % (i, "catmullClark" if surfaces[i][1] else "none", counts, indices, _triples(points),
                              _triples(_smooth_normals(points, faces)),
                              colour[0], colour[1], colour[2], i))
 
@@ -920,7 +968,7 @@ def _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn) -> st
         '    def Scope "Grown"\n'
         "    {%s    }\n"
         "}\n" % (
-            _skins(colours, kinds_of),
+            _skins(colours, kinds_of, forms=[f for f, _ in surfaces]),
             _triples(np.stack([x, y, z], axis=-1)),
             ", ".join(str(int(i)) for i in which),
             _triples(np.stack([scale, scale, scale], axis=-1)),

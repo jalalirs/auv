@@ -312,7 +312,7 @@ def colonise(rng, attractors: np.ndarray, roots: np.ndarray, step: float, influe
 
 
 
-def brain(rng, diameter: float = 0.55, level: int = 8, ridge_m: float = 0.005, palette=None):
+def brain(rng, diameter: float = 0.55, level: int = 8, ridge_m: float = 0.005, palette=None, grooves: bool = True):
     """A brain coral colony: vertices (m), triangles, colours."""
     d, f = upper(*icosphere(level))
     squash = rng.uniform(0.4, 0.6)                                        # domes are lower than spheres
@@ -332,6 +332,11 @@ def brain(rng, diameter: float = 0.55, level: int = 8, ridge_m: float = 0.005, p
     r = diameter / 2 * (1 + lumps)
     v = d * r[:, None] * np.array([1, 1, squash])
     v[:, 2] -= v[:, 2].min()
+    if not grooves:
+        # A colony for a reef, where the maze is the material's
+        # (corallite.py "brain") rather than the mesh's.
+        palette = palette or PALETTES["brain"][rng.integers(len(PALETTES["brain"]))]
+        return v, f, _shade(np.full(len(v), 0.85), palette, rng, d, v[:, 2])
     pattern = gray_scott(laplacian(d, f), rng)
     ridge = np.clip((pattern - 0.25) / 0.5, 0, 1)                          # 1 on the ridge, 0 in the valley
     ridge = ridge * ridge * (3 - 2 * ridge)
@@ -710,6 +715,21 @@ def leather(rng, diameter: float = 0.45, voxel: float = 0.0025, palette=None):
 
 FORMS = {"brain": brain, "porites": porites, "pocillopora": pocillopora, "galaxea": galaxea,
          "acropora": acropora, "table": table, "plate": plate, "millepora": millepora, "leather": leather}
+
+
+def read_ply(path: pathlib.Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """What write_ply wrote: vertices, triangles, colours (0 to 1)."""
+    data = pathlib.Path(path).read_bytes()
+    end = data.index(b"end_header\n") + len(b"end_header\n")
+    head = data[:end].decode().split("\n")
+    nv = int(next(h for h in head if h.startswith("element vertex")).split()[-1])
+    nf = int(next(h for h in head if h.startswith("element face")).split()[-1])
+    vert = np.frombuffer(data, dtype=[("x", "<f4"), ("y", "<f4"), ("z", "<f4"), ("r", "u1"), ("g", "u1"),
+                                      ("b", "u1")], count=nv, offset=end)
+    face = np.frombuffer(data, dtype=[("n", "u1"), ("i", "<i4", 3)], count=nf, offset=end + vert.nbytes)
+    v = np.stack([vert["x"], vert["y"], vert["z"]], 1).astype(float)
+    c = np.stack([vert["r"], vert["g"], vert["b"]], 1) / 255.0
+    return v, face["i"].astype(int), c
 
 
 def write_ply(path: pathlib.Path, v: np.ndarray, f: np.ndarray, c: np.ndarray) -> None:
