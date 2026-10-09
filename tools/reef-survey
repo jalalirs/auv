@@ -71,6 +71,11 @@ KINDS = ("low", "stony", "head", "fan", "plume")
 # identification the survey did not make.
 FROM_A_SCAN = {"stony": "massive", "head": "brain"}
 
+# And which can be drawn from the reef's coral library (tools/coral-library):
+# the survey's kind, and the library's kind of the same growth form. "low" is
+# left grown, for the reason above.
+FROM_THE_LIBRARY = {"stony": "massive", "head": "brain", "fan": "fan", "plume": "plume"}
+
 
 def _normalised(points, faces, np):
     """A scale of (w/2, w/2, h) gives a colony w across and h tall.
@@ -138,6 +143,8 @@ def main() -> int:
     parse.add_argument("place", help="the place directory (site.json, seabed.f32)")
     parse.add_argument("reference", help="the reference directory, with colonies.json")
     parse.add_argument("--seed", type=int, default=3)
+    parse.add_argument("--assemblage", default="caribbean",
+                       help="whose coral library the colonies are drawn from")
     parse.add_argument("--begin-depth", type=float, nargs=2, default=(6.0, 12.0),
                        metavar=("SHALLOW", "DEEP"),
                        help="the depth band a dive should begin in, metres")
@@ -168,21 +175,46 @@ def main() -> int:
     # collected; a reef is variation, and sixty thousand copies of a museum
     # piece would be as wrong as sixty thousand blobs, in a way that is harder
     # to notice.
+    # Where the reef's coral library has a kind, its colonies stand in for the
+    # grown shape: made at the detail of a photograph, each with a colour at
+    # every point. That colour keeps its pattern and is brought to this kind's
+    # level and hue (HUE, times the shade), which is what this reef reflects.
+    import coral_hd
+    import reef
+    library, library_dir = reef._library(asked.assemblage)
     prototypes, colours, index, scans = [], [], {}, 0
-    kind_of = []
+    kind_of, forms, painted, from_library = [], [], {}, 0
     for kind in KINDS:
+        shelf = (library or {}).get("kinds", {}).get(FROM_THE_LIBRARY.get(kind, ""), [])
         for s, shade in enumerate(SHADES):
             # A different specimen for each shade, so the scans on a reef are
             # several colonies and not several copies of one.
             scan = from_a_scan(kind, ref, which=s)
-            shapes = [grow(kind, rng)] + ([scan] if scan is not None else [])
+            target = np.array([min(1.0, c * shade) for c in HUE[kind]])
+            if shelf:
+                shapes = []
+                for entry in shelf[s::len(SHADES)]:
+                    points, faces, per_point = coral_hd.read_ply(library_dir / entry["file"])
+                    shapes.append((_normalised(points, faces, np),
+                                   np.clip(per_point * target / np.maximum(per_point.mean(0), 1e-3), 0, 1),
+                                   entry.get("corallite")))
+            else:
+                shapes = [(grow(kind, rng), None, reef.corallite_for(kind))]
+            if scan is not None:
+                shapes.append((scan, None, reef.corallite_for(kind)))
             index[(kind, s)] = []
-            for shape in shapes:
+            for shape, per_point, form in shapes:
                 index[(kind, s)].append(len(prototypes))
+                if per_point is not None:
+                    painted[len(prototypes)] = per_point
+                    from_library += 1
                 prototypes.append(shape)
                 kind_of.append(kind)
-                colours.append(tuple(min(1.0, c * shade) for c in HUE[kind]))
+                forms.append(form)
+                colours.append(tuple(target))
             scans += scan is not None
+    if from_library:
+        print(f"  prototypes from the {library['assemblage']} coral library: {from_library}")
     print(f"  prototypes: {len(prototypes)} over {len(KINDS)} kinds, "
           f"{scans} of them from scans ({', '.join(sorted(FROM_A_SCAN)) or 'none'})"
           if scans else f"  prototypes: {len(prototypes)}, none from scans")
@@ -194,8 +226,9 @@ def main() -> int:
     lum = np.array([np.mean(c["colour"]) if c.get("colour") else 0.5 for c in colonies])
     reference = float(np.median(lum[lum > 0])) if (lum > 0).any() else 0.5
     shade = np.clip(np.round((lum / max(reference, 1e-3) - 0.72) / 0.28), 0, 2).astype(int)
-    # Which prototypes are the scan: the second form of any kind that has one.
-    from_scans = np.array([choices[1] for choices in index.values() if len(choices) > 1],
+    # Which prototypes are the scan: the last form of any kind that has one.
+    from_scans = np.array([choices[-1] for (kind, _), choices in index.items()
+                           if kind in FROM_A_SCAN and from_a_scan(kind, ref) is not None],
                           dtype=int)
     # Which of the forms available for that kind and shade, chosen per colony so
     # that shape does not correlate with brightness.
@@ -218,8 +251,7 @@ def main() -> int:
     # reads it. Both live with the place: a published package has to carry
     # everything it is drawn from.
     import corallite
-    import reef
-    for form in sorted({f for f in map(reef.corallite_for, kind_of) if f}):
+    for form in sorted({f for f in forms if f}):
         made = corallite.write(form, place / "textures")
         print(f"  corallites: {form}, {made['corallliteMm']:.1f} mm, "
               f"{made['reliefMm']:.2f} mm of relief ({made['says']})")
@@ -228,7 +260,7 @@ def main() -> int:
                 place / "coral_tissue.mdl")
 
     (place / "coral.usda").write_text(
-        _instancer(prototypes, colours, kind_of, x, y, z, which, sx, sz, turn))
+        _instancer(prototypes, colours, kind_of, x, y, z, which, sx, sz, turn, forms, painted))
     size = (place / "coral.usda").stat().st_size
     print(f"  coral.usda: {len(prototypes)} prototypes, {len(colonies):,} instances, {size / 1e6:.1f} MB")
 
@@ -316,6 +348,10 @@ def main() -> int:
         # back and forth, and this is how it knows which they are.
         "swaysWith": {kind: sorted({i for i, k in enumerate(kind_of) if k == kind})
                       for kind in ("fan", "plume")},
+        "fromLibrary": ({"prototypes": int(from_library), "path": str(library_dir),
+                         "made": library.get("made"), "how": library.get("how"),
+                         "colourIs": "the library colony's pattern, brought to HUE times the shade"}
+                        if from_library else None),
         "fromScans": {"prototypes": int(scans),
                       "colonies": int(np.isin(which, from_scans).sum()),
                       "forms": sorted(set(FROM_A_SCAN.values())) if scans else []},
@@ -398,8 +434,10 @@ def _how_much_was_flown(ref, across: float) -> float | None:
     return None
 
 
-def _instancer(prototypes, colours, kind_of, x, y, z, which, sx, sz, turn) -> str:
-    """The reef as one point instancer, in the shape the runtime already draws."""
+def _instancer(prototypes, colours, kind_of, x, y, z, which, sx, sz, turn, forms=None, painted=None) -> str:
+    """The reef as one point instancer, in the shape the runtime already draws.
+    A prototype in `painted` carries a colour at every point (a vertex
+    displayColor, which coral_tissue.mdl reads); the rest carry their one."""
     import numpy as np
 
     import reef
@@ -407,6 +445,7 @@ def _instancer(prototypes, colours, kind_of, x, y, z, which, sx, sz, turn) -> st
     half = turn / 2.0
     orient = np.stack([np.cos(half), np.zeros_like(half), np.zeros_like(half), np.sin(half)], -1)
     grown = []
+    painted = painted or {}
     for i, ((points, faces), colour) in enumerate(zip(prototypes, colours)):
         grown.append(
             '\n        def Mesh "Coral_%d" (\n'
@@ -419,13 +458,14 @@ def _instancer(prototypes, colours, kind_of, x, y, z, which, sx, sz, turn) -> st
             "            normal3f[] normals = [%s] (\n"
             '                interpolation = "vertex"\n'
             "            )\n"
-            "            color3f[] primvars:displayColor = [(%.3g, %.3g, %.3g)] (\n"
-            '                interpolation = "constant"\n'
+            "            color3f[] primvars:displayColor = [%s] (\n"
+            '                interpolation = "%s"\n'
             "            )\n"
             "            rel material:binding = </Coral/Skins/Skin_%d>\n"
             "        }\n" % (i, ", ".join(["3"] * len(faces)), ", ".join(str(v) for v in faces.reshape(-1)),
                              reef._triples(points), reef._triples(reef._smooth_normals(points, faces)),
-                             colour[0], colour[1], colour[2], i))
+                             reef._triples(painted[i]) if i in painted else "(%.3g, %.3g, %.3g)" % tuple(colour[:3]),
+                             "vertex" if i in painted else "constant", i))
     return (
         "#usda 1.0\n(\n"
         '    doc = "Coral, where a survey saw it. Metres, Z up. Source in site.json."\n'
@@ -434,7 +474,7 @@ def _instancer(prototypes, colours, kind_of, x, y, z, which, sx, sz, turn) -> st
         "    point3f[] positions = [%s]\n    int[] protoIndices = [%s]\n"
         "    float3[] scales = [%s]\n    quath[] orientations = [%s]\n"
         "    rel prototypes = [%s]\n\n    def Scope \"Grown\"\n    {%s    }\n}\n" % (
-            reef._skins(colours, kind_of),
+            reef._skins(colours, kind_of, forms=forms),
             reef._triples(np.stack([x, y, z], -1)),
             ", ".join(str(int(i)) for i in which),
             reef._triples(np.stack([sx, sx, sz], -1)),
