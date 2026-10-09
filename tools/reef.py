@@ -347,7 +347,11 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     # of its stand — a colony two metres away can be half a metre lower.
     column = np.clip(((x + across / 2) / step_x).astype(int), 0, columns - 1)
     row = np.clip(((y + across / 2) / step_y).astype(int), 0, rows - 1)
-    z = height[row, column] - 0.04   # bedded in, not balanced on top
+    # On the surface that is drawn, not on the corner of the cell it is in.
+    # It was the corner: on Al Fahal's 5.9 m cells and a twenty-degree reef
+    # slope that put the colonies a metre under the drawn seabed on average,
+    # and most of the reef was underground in every dive.
+    z = seabed_at(height, across, x, y) - 0.04   # bedded in, not balanced on top
 
     # What shape each one is, decided by the depth it landed at rather than by
     # one mix for the whole site.
@@ -388,7 +392,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
         rx = np.clip(-across / 2 + (r_col + rng.uniform(0, 1, n_rock)) * step_x, -across / 2, across / 2)
         ry = np.clip(-across / 2 + (r_row + rng.uniform(0, 1, n_rock)) * step_y, -across / 2, across / 2)
         rs = rng.uniform(sizes[0], sizes[1], n_rock)
-        rz = height[r_row, r_col] - 0.08 * rs                  # bedded in, as rock is
+        rz = seabed_at(height, across, rx, ry) - 0.08 * rs    # bedded in, as rock is
         first = len(prototypes)
         all_at = (prototypes + [(p, f) for p, f, _ in rock],
                   colours + [tuple(c.mean(0)) for _, _, c in rock],
@@ -946,6 +950,23 @@ _CORALLITES = {"massive": "massive", "brain": "brain", "branching": "branching",
 def corallite_for(kind):
     """The corallite surface a kind wears, or None where nobody has one."""
     return _CORALLITES.get(kind)
+
+
+def seabed_at(height, across: float, x, y):
+    """The seabed's height at (x, y) on the mesh it is drawn as: each cell of
+    the grid two triangles split from its south-east corner to its north-west
+    (iocean_places.scene.write_usd), the height linear on each."""
+    rows, columns = height.shape
+    fx = (np.asarray(x) + across / 2) / (across / max(1, columns - 1))
+    fy = (np.asarray(y) + across / 2) / (across / max(1, rows - 1))
+    j = np.clip(np.floor(fx).astype(int), 0, columns - 2)
+    i = np.clip(np.floor(fy).astype(int), 0, rows - 2)
+    tx, ty = np.clip(fx - j, 0, 1), np.clip(fy - i, 0, 1)
+    a, b = height[i, j], height[i, j + 1]
+    c, d = height[i + 1, j], height[i + 1, j + 1]
+    first = a + tx * (b - a) + ty * (c - a)
+    second = d + (1 - tx) * (c - d) + (1 - ty) * (b - d)
+    return np.where(tx + ty <= 1, first, second)
 
 
 # How big a piece of the reef's framework is, across, in metres: a draw

@@ -90,3 +90,17 @@ def test_a_library_with_rock_lays_the_reef_framework_and_it_is_not_coral(tmp_pat
     indices = [int(i) for i in re.search(r"int\[\] protoIndices = \[(.*)\]", text).group(1).split(", ")]
     assert len(indices) == said["colonies"] + frame["pieces"]
     assert indices.count(frame["firstPrototype"]) == frame["pieces"]
+
+
+def test_colonies_stand_on_the_seabed_as_it_is_drawn():
+    # A slope and a bump on a coarse grid: the height under any point is the
+    # drawn triangle's, which at a corner is the corner and between corners
+    # is neither of them.
+    h = np.array([[0.0, 1.0, 2.0], [0.0, 1.0, 2.0], [0.0, 3.0, 2.0]])
+    across = 20.0                                              # 10 m cells, x and y from -10 to 10
+    assert np.isclose(reef.seabed_at(h, across, np.array([-10.0]), np.array([-10.0]))[0], 0.0)
+    assert np.isclose(reef.seabed_at(h, across, np.array([0.0]), np.array([10.0]))[0], 3.0)
+    # Half way along x in the first cell, on the south edge: half way up the slope.
+    assert np.isclose(reef.seabed_at(h, across, np.array([-5.0]), np.array([-10.0]))[0], 0.5)
+    # The middle of a cell lies on its split diagonal: the mean of the two corners it joins.
+    assert np.isclose(reef.seabed_at(h, across, np.array([5.0]), np.array([5.0]))[0], (h[1, 2] + h[2, 1]) / 2)
