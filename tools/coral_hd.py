@@ -844,9 +844,12 @@ def sponge(rng, diameter: float = 0.35, voxel: float = 0.004, palette=None):
     """A barrel or tube sponge: one to four thick-walled tubes, waisted at
     the holdfast, widest two thirds up, open at the top, the outside ribbed
     lengthwise as a barrel sponge's is. Darker inside the opening."""
-    tubes = int(rng.choice([1, 1, 2, 3, 4]))
+    # Mostly one squat barrel or a short pair: scaled to a reef sponge's
+    # width, the tall clusters stood a metre high and the reefs read as
+    # forests of chimneys.
+    tubes = int(rng.choice([1, 1, 1, 2, 2, 3]))
     reach = diameter / 2
-    tall = diameter * rng.uniform(0.9, 1.6) if tubes > 1 else diameter * rng.uniform(0.7, 1.1)
+    tall = diameter * rng.uniform(0.55, 0.9) if tubes > 1 else diameter * rng.uniform(0.4, 0.7)
     field = Field([-reach * 1.6, -reach * 1.6, -0.01], [reach * 1.6, reach * 1.6, tall * 1.25], voxel, k=0.006)
     axes = []
     for _ in range(tubes):
