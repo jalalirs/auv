@@ -174,6 +174,7 @@ for k, path in enumerate(colonies):
     bpy.ops.wm.ply_import(filepath=path)
     obj = bpy.context.selected_objects[0]
     obj.location = (k * 1.0 - (len(colonies) - 1) * 0.5, 0, -0.01)
+    obj.name = f"coral{k}"
     bpy.ops.object.shade_smooth()
     layer = obj.data.color_attributes[0].name if obj.data.color_attributes else "Col"
     obj.data.materials.append(coral_material(f"coral{k}", "porites" in path.lower(), layer))
@@ -182,8 +183,12 @@ cam = bpy.data.objects.new("cam", bpy.data.cameras.new("cam"))
 cam.data.lens = 35
 scene.collection.objects.link(cam)
 scene.camera = cam
-span = max(1.0, len(colonies) * 1.0)
-cam.location = (0, -0.75 - 0.35 * span, 0.45 + 0.2 * span)
-cam.rotation_euler = (math.radians(60), 0, 0)
+# Framed to what is there: a single colony fills about two thirds of the
+# frame whatever its size, a row of them the row.
+corals = [o for o in scene.objects if o.type == "MESH" and o.name not in ("Plane", "Cube")]
+size = max(max(o.dimensions[0], o.dimensions[1]) for o in corals) if corals else 1.0
+span = max(size * 1.6, len(colonies) * 1.0 if len(colonies) > 1 else 0)
+cam.location = (0, -1.05 * span, 0.62 * span)
+cam.rotation_euler = (math.radians(58), 0, 0)
 scene.render.filepath = out
 bpy.ops.render.render(write_still=True)

@@ -37,6 +37,10 @@ PALETTES = {
               ((0.66, 0.54, 0.36), (0.30, 0.22, 0.13)),     # brown
               ((0.78, 0.60, 0.48), (0.42, 0.28, 0.22)),     # the pink-orange ones
               ((0.70, 0.70, 0.58), (0.34, 0.36, 0.28))],    # pale
+    "pocillopora": [((0.70, 0.56, 0.38), (0.36, 0.27, 0.16)),  # brown, the commonest
+                    ((0.62, 0.62, 0.40), (0.30, 0.32, 0.18)),  # olive-green
+                    ((0.80, 0.68, 0.42), (0.45, 0.36, 0.20)),  # yellow-tan
+                    ((0.78, 0.58, 0.50), (0.40, 0.28, 0.24))], # the pinkish ones
     "porites": [((0.70, 0.60, 0.40), (0.48, 0.40, 0.25)),   # tan
                 ((0.52, 0.56, 0.40), (0.33, 0.37, 0.24)),   # olive
                 ((0.78, 0.72, 0.58), (0.56, 0.50, 0.38)),   # cream
@@ -142,6 +146,117 @@ def _shade(ridge: np.ndarray, palette, rng, directions, z: np.ndarray) -> np.nda
     base = np.clip(z / max(z.max(), 1e-6) / 0.15, 0, 1)[:, None]           # the bottom 15% of its height
     colour = colour * mottle[:, None] * (0.55 + 0.45 * base)
     return np.clip(colour, 0, 1)
+
+
+class Field:
+    """A smooth union of simple shapes, as a signed distance field on a grid.
+
+    Shapes are spheres and capsules (a segment with a radius), each written as
+    its distance function; their smooth minimum (log-sum-exp, sharpness `k`
+    metres) merges neighbours with a rounded crease rather than a seam. Each
+    shape is added only inside its own box, beyond which its term is nothing,
+    so tens of thousands of them are cheap. `mesh` pulls the surface out by
+    marching cubes."""
+
+    def __init__(self, lo, hi, voxel: float, k: float):
+        self.lo, self.voxel, self.k = np.asarray(lo, float), voxel, k
+        self.axes = [np.arange(a, b, voxel, dtype=np.float32) for a, b in zip(lo, hi)]
+        self.shape = tuple(len(a) for a in self.axes)
+        self.total = np.zeros(self.shape, np.float32)
+
+    def _box(self, lo, hi):
+        reach = 8 * self.k
+        a = np.maximum(((np.asarray(lo) - reach - self.lo) / self.voxel).astype(int), 0)
+        b = np.minimum(((np.asarray(hi) + reach - self.lo) / self.voxel).astype(int) + 1, self.shape)
+        if (b <= a).any():
+            return None
+        sl = tuple(slice(i, j) for i, j in zip(a, b))
+        x, y, z = np.meshgrid(self.axes[0][sl[0]], self.axes[1][sl[1]], self.axes[2][sl[2]], indexing="ij")
+        return sl, x, y, z
+
+    def _add(self, sl, dist):
+        self.total[sl] += np.exp(-np.clip(dist, -0.1, 0.1) / self.k)
+
+    def sphere(self, c, r):
+        box = self._box(np.asarray(c) - r, np.asarray(c) + r)
+        if box:
+            sl, x, y, z = box
+            self._add(sl, np.sqrt((x - c[0]) ** 2 + (y - c[1]) ** 2 + (z - c[2]) ** 2) - r)
+
+    def capsule(self, a, b, r):
+        a, b = np.asarray(a, np.float32), np.asarray(b, np.float32)
+        box = self._box(np.minimum(a, b) - r, np.maximum(a, b) + r)
+        if box:
+            sl, x, y, z = box
+            ab = b - a
+            t = np.clip(((x - a[0]) * ab[0] + (y - a[1]) * ab[1] + (z - a[2]) * ab[2]) / max(float(ab @ ab), 1e-12), 0, 1)
+            self._add(sl, np.sqrt((x - a[0] - t * ab[0]) ** 2 + (y - a[1] - t * ab[1]) ** 2
+                                  + (z - a[2] - t * ab[2]) ** 2) - r)
+
+    def everywhere(self, dist_of):
+        """A shape too big for a box (a core mound): its distance at every cell."""
+        x, y, z = np.meshgrid(*self.axes, indexing="ij")
+        self._add(tuple(slice(None) for _ in range(3)), dist_of(x, y, z))
+
+    def mesh(self, ground: float = 0.0):
+        """Vertices, triangles and normals of the surface, cut flat at `ground`."""
+        from skimage.measure import marching_cubes
+
+        field = -self.k * np.log(self.total + 1e-30)
+        z = self.axes[2][None, None, :]
+        field = np.maximum(field, ground - z)
+        v, f, normals, _ = marching_cubes(field, level=0.0, spacing=(self.voxel,) * 3)
+        v = v + self.lo
+        v[:, 2] -= v[:, 2].min()
+        return v, f[:, ::-1], normals
+
+
+def colonise(rng, attractors: np.ndarray, roots: np.ndarray, step: float, influence: float, kill: float,
+             up: float = 0.25, rounds: int = 400):
+    """Space colonisation: branches grow from `roots` towards the free space
+    `attractors` mark out, a step at a time, each node towards the mean of
+    the attractors nearest it, and an attractor a branch has reached is used
+    up. The branches fill the shape the attractors fill, never cross, and
+    fork where two groups of attractors pull a node two ways. Returns node
+    positions and each node's parent (-1 for a root)."""
+    from scipy.spatial import cKDTree
+
+    nodes = [np.asarray(r, float) for r in roots]
+    parent = [-1] * len(nodes)
+    free = np.asarray(attractors, float)
+    for _ in range(rounds):
+        if not len(free):
+            break
+        where = np.array(nodes)
+        dist, near = cKDTree(where).query(free, distance_upper_bound=influence)
+        pulled = np.isfinite(dist)
+        if not pulled.any():
+            break
+        pull = np.zeros_like(where)
+        towards = free[pulled] - where[near[pulled]]
+        towards /= np.linalg.norm(towards, axis=1, keepdims=True) + 1e-12
+        np.add.at(pull, near[pulled], towards)
+        growing = np.where(np.linalg.norm(pull, axis=1) > 0)[0]
+        # A step onto a node already there is the method's known stall: a
+        # node pulled evenly two ways steps back and forth on the spot and
+        # piles up a lump. Such a step is not taken.
+        occupied = cKDTree(where)
+        grew = 0
+        for n in growing:
+            d = pull[n] / np.linalg.norm(pull[n]) + np.array([0, 0, up])
+            d /= np.linalg.norm(d)
+            new = where[n] + d * step
+            if occupied.query(new)[0] < 0.5 * step:
+                continue
+            nodes.append(new)
+            parent.append(int(n))
+            grew += 1
+        if not grew:
+            break
+        dist, _ = cKDTree(np.array(nodes)).query(free)
+        free = free[dist > kill]
+    return np.array(nodes), np.array(parent)
+
 
 
 def brain(rng, diameter: float = 0.55, level: int = 8, ridge_m: float = 0.005, palette=None):
@@ -256,6 +371,88 @@ def porites(rng, diameter: float = 0.60, voxel: float = 0.003, palette=None):
     return v, f, _shade(light, palette, rng, directions, v[:, 2])
 
 
+def pocillopora(rng, diameter: float = 0.60, voxel: float = 0.0015, palette=None):
+    """A Pocillopora: a cushion of short branches about a centimetre thick,
+    forking, each studded with verrucae (the warts a few millimetres across
+    that give the colony its knobbly look) and ending in a blunt tip.
+
+    The branches are grown by space colonisation into a cushion-shaped space
+    from a handful of roots at the base; each branch is a run of capsules
+    whose radius follows the pipe model (a branch is as thick as the tips it
+    carries need), and the verrucae are small spheres on the upper branches,
+    all merged into one surface."""
+    radius = diameter / 2
+    height = radius * rng.uniform(0.6, 0.85)
+    # Free space to grow into: a cushion with a lobed outline (a colony grows
+    # unevenly, faster where it has room), mostly its outer shell.
+    pts = rng.uniform(-1, 1, size=(30000, 3))
+    pts[:, 2] = np.abs(pts[:, 2])
+    angle = np.arctan2(pts[:, 1], pts[:, 0])
+    lobed = 1 + sum(rng.uniform(0.05, 0.15) * np.cos(m * angle + rng.uniform(0, 2 * np.pi)) for m in (2, 3, 5))
+    rho = np.linalg.norm(pts, axis=1) / lobed
+    # Mostly the outer shell, where the branch ends are, but a thinned trail
+    # inside too: branches start at the base and need something to reach for
+    # all the way out.
+    keep = (rho <= 1) & ((rho > 0.6) | (rng.random(len(rho)) < 0.2))
+    pts = pts[keep][:10000]
+    attractors = pts * np.array([radius, radius, height])
+    roots = np.column_stack([rng.normal(0, radius * 0.25, (12, 2)), np.zeros(12)])
+    # Upward and outward: a Pocillopora's branches radiate from the base of the
+    # colony, so each step leans away from the colony's axis as well as up.
+    # A branch's neighbours stand about two of its widths away: the kill
+    # distance sets that spacing, and closer than this the tips merge into a
+    # carpet instead of reading as branches.
+    nodes, parent = colonise(rng, attractors, roots, step=0.009, influence=0.06, kill=0.024, up=0.6)
+    # Pipe model: a node's radius from how many tips it carries.
+    children = np.bincount(parent[parent >= 0], minlength=len(nodes))
+    tips = np.where(children == 0)[0]
+    carried = np.zeros(len(nodes))
+    carried[tips] = 1
+    for n in range(len(nodes) - 1, -1, -1):
+        if parent[n] >= 0:
+            carried[parent[n]] += carried[n]
+    tip_r = rng.uniform(0.0055, 0.0068)
+    r = np.clip(tip_r * carried ** 0.45, tip_r, 0.016)
+    # Smoothed along each branch, so its thickness changes gradually and not
+    # in steps a segment long, which drew rings like a stack of coins.
+    for _ in range(3):
+        smooth = r.copy()
+        has = parent >= 0
+        smooth[has] = 0.5 * r[has] + 0.5 * r[parent[has]]
+        r = np.maximum(smooth, tip_r)
+    top = nodes[:, 2].max()
+    field = Field(nodes.min(0) - 0.03, nodes.max(0) + 0.03, voxel, k=0.003)
+    field.lo[2] = -0.01
+    for n in range(len(nodes)):
+        if parent[n] >= 0:
+            field.capsule(nodes[parent[n]], nodes[n], r[n])
+    for n in tips:
+        field.sphere(nodes[n], r[n] * 1.25)                                  # the blunt, slightly swollen tip
+    # Verrucae: on the upper two thirds of the branches.
+    for n in np.where((parent >= 0) & (nodes[:, 2] > top * 0.33))[0]:
+        a, b = nodes[parent[n]], nodes[n]
+        axis = (b - a) / (np.linalg.norm(b - a) + 1e-12)
+        for _ in range(int(rng.integers(2, 6))):
+            side = rng.normal(size=3)
+            side -= axis * (side @ axis)
+            side /= np.linalg.norm(side) + 1e-12
+            at = a + (b - a) * rng.uniform() + side * r[n] * 0.9
+            field.sphere(at, rng.uniform(0.002, 0.003))
+    v, f, normals = field.mesh()
+    # Tips lighter and pinker, the bases darker: light and new growth at the
+    # top, shade and older tissue below.
+    from scipy.spatial import cKDTree
+    to_tip = cKDTree(nodes[tips]).query(v)[0]
+    tipness = np.clip(1 - to_tip / 0.015, 0, 1)
+    # How far out in the cushion a point is: the inside is in the branches'
+    # own shade and darker.
+    outward = np.clip(np.sqrt((v[:, 0] / radius) ** 2 + (v[:, 1] / radius) ** 2 + (v[:, 2] / height) ** 2), 0, 1)
+    light = np.clip(0.05 + 0.45 * outward ** 2 + 0.55 * tipness, 0, 1)
+    directions = v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9)
+    palette = palette or PALETTES["pocillopora"][rng.integers(len(PALETTES["pocillopora"]))]
+    return v, f, _shade(light, palette, rng, directions, v[:, 2])
+
+
 def write_ply(path: pathlib.Path, v: np.ndarray, f: np.ndarray, c: np.ndarray) -> None:
     """Binary PLY with a colour per vertex."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -277,7 +474,7 @@ def write_ply(path: pathlib.Path, v: np.ndarray, f: np.ndarray, c: np.ndarray) -
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("form", choices=("brain", "porites"))
+    ap.add_argument("form", choices=("brain", "porites", "pocillopora"))
     ap.add_argument("--into", required=True)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--diameter", type=float)
@@ -287,7 +484,7 @@ def main() -> int:
     kw = {k: getattr(a, k) for k in ("diameter",) if getattr(a, k) is not None}
     if a.level is not None and a.form == "brain":
         kw["level"] = a.level
-    v, f, c = (brain if a.form == "brain" else porites)(rng, **kw)
+    v, f, c = {"brain": brain, "porites": porites, "pocillopora": pocillopora}[a.form](rng, **kw)
     write_ply(pathlib.Path(a.into), v, f, c)
     print(f"{a.form}: {len(v):,} vertices, {len(f):,} triangles, {np.ptp(v[:, 0]):.2f} m across, "
           f"{v[:, 2].max():.2f} m tall -> {a.into}")
