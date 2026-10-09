@@ -13,6 +13,7 @@ Colonies are set out in a row along x, a metre apart.
 """
 
 import math
+import os
 import sys
 
 import bpy
@@ -23,6 +24,7 @@ out, colonies = args[0], args[1:]
 balance = float(next((a.split("=")[1] for a in colonies if a.startswith("wb=")), "12000"))
 tint = float(next((a.split("=")[1] for a in colonies if a.startswith("tint=")), "50"))
 exposure = float(next((a.split("=")[1] for a in colonies if a.startswith("ev=")), "-0.4"))
+textures = next((a.split("=", 1)[1] for a in colonies if a.startswith("tex=")), None)
 colonies = [a for a in colonies if "=" not in a]
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -64,7 +66,23 @@ def coral_material(name: str, pitted: bool, layer: str):
     bsdf.inputs["Subsurface Weight"].default_value = 0.08
     bsdf.inputs["Subsurface Radius"].default_value = (0.004, 0.003, 0.002)
     coords = t.nodes.new("ShaderNodeTexCoord")
-    if pitted:
+    form = os.path.basename(name).split("-")[0]
+    height_map = os.path.join(textures, f"corallite_{form}_height.png") if textures else None
+    if height_map and os.path.exists(height_map):
+        # The polyp-scale surface (tools/corallite), forty millimetres a
+        # tile, projected from three sides so it needs no unwrapping.
+        scale = t.nodes.new("ShaderNodeMapping")
+        scale.inputs["Scale"].default_value = (1 / 0.04, 1 / 0.04, 1 / 0.04)
+        links.new(coords.outputs["Object"], scale.inputs["Vector"])
+        image = t.nodes.new("ShaderNodeTexImage")
+        image.image = bpy.data.images.load(height_map)
+        image.image.colorspace_settings.name = "Non-Color"
+        image.projection = "BOX"
+        image.projection_blend = 0.3
+        links.new(scale.outputs["Vector"], image.inputs["Vector"])
+        height = image.outputs["Color"]
+        strength = 0.9
+    elif pitted:
         # Corallites: a Voronoi cell a millimetre and a half across, its
         # centre sunk, the walls between standing.
         cells = node(t, "ShaderNodeTexVoronoi", Scale=650.0)
@@ -77,7 +95,7 @@ def coral_material(name: str, pitted: bool, layer: str):
         links.new(coords.outputs["Object"], grain.inputs["Vector"])
         height = grain.outputs["Fac"]
         strength = 0.25
-    bump = node(t, "ShaderNodeBump", Strength=strength, Distance=0.0008)
+    bump = node(t, "ShaderNodeBump", Strength=strength, Distance=0.0015 if height_map and os.path.exists(height_map) else 0.0008)
     links.new(height, bump.inputs["Height"])
     links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
     # A little of the same detail in the colour, so pits read darker.
@@ -177,7 +195,7 @@ for k, path in enumerate(colonies):
     obj.name = f"coral{k}"
     bpy.ops.object.shade_smooth()
     layer = obj.data.color_attributes[0].name if obj.data.color_attributes else "Col"
-    obj.data.materials.append(coral_material(f"coral{k}", "porites" in path.lower(), layer))
+    obj.data.materials.append(coral_material(os.path.basename(path), "porites" in path.lower(), layer))
 
 cam = bpy.data.objects.new("cam", bpy.data.cameras.new("cam"))
 cam.data.lens = 35

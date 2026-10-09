@@ -34,8 +34,8 @@ import numpy as np
 FORMS = {
     "massive":    {"kind": "cups", "across": 2.6, "deep": 0.45, "rim": 0.30,
                    "says": "Orbicella, Montastraea: separate cups with raised rims"},
-    "brain":      {"kind": "valleys", "across": 6.0, "deep": 0.55, "rim": 0.40,
-                   "says": "Diploria, Colpophyllia: meandering valleys and ridges"},
+    "brain":      {"kind": "maze", "across": 8.0, "deep": 1.2, "rim": 1.0,
+                   "says": "Platygyra, Diploria: meandering valleys and ridges, about 8 mm ridge to ridge"},
     "branching":  {"kind": "cups", "across": 1.2, "deep": 0.25, "rim": 0.35,
                    "says": "Acropora: small crowded corallites on a branch"},
     "table":      {"kind": "cups", "across": 1.6, "deep": 0.30, "rim": 0.22,
@@ -44,6 +44,17 @@ FORMS = {
                    "says": "Millepora: pores, finer than a corallite"},
     "finger":     {"kind": "cups", "across": 1.4, "deep": 0.30, "rim": 0.28,
                    "says": "Porites: very fine, shallow cups"},
+    # The Red Sea forms the close-up colonies (tools/coral_hd) wear.
+    "porites":    {"kind": "cups", "across": 1.3, "deep": 0.22, "rim": 0.16,
+                   "says": "Porites lutea, lobata: cups barely a millimetre across, shallow, walls sharp"},
+    "pocillopora": {"kind": "cups", "across": 0.9, "deep": 0.25, "rim": 0.20,
+                    "says": "Pocillopora: small immersed corallites between the verrucae"},
+    "galaxea":    {"kind": "stars", "across": 6.5, "deep": 0.9, "rim": 1.6,
+                   "says": "Galaxea fascicularis: tall cups with a dozen exsert septa, a star each"},
+    "acropora":   {"kind": "tubes", "across": 1.8, "deep": 0.5, "rim": 0.9,
+                   "says": "Acropora: radial corallites standing off the branch as little tubes"},
+    "millepora":  {"kind": "cups", "across": 0.45, "deep": 0.08, "rim": 0.03,
+                   "says": "Millepora: smooth, with pores, not corallites"},
     # The octocorals have no skeleton like this at all. A sea fan's surface is
     # a mesh of spicules and polyps standing off it, which is a different thing
     # and is not this.
@@ -106,6 +117,72 @@ def _cups(shape: dict, tile_mm: float, pixels: int, rng) -> np.ndarray:
     return np.where(away < 0.6 * radius, cup, rim)
 
 
+def _nearest(shape: dict, tile_mm: float, pixels: int, rng):
+    """Distance and direction from every pixel to its nearest corallite centre."""
+    from scipy import spatial
+
+    at = _wrapped(_seeds(shape["across"], tile_mm, rng), tile_mm)
+    grid = (np.arange(pixels) + 0.5) * (tile_mm / pixels)
+    gx, gy = np.meshgrid(grid, grid)
+    points = np.stack([gx.ravel(), gy.ravel()], axis=-1)
+    away, which = spatial.cKDTree(at).query(points, k=1)
+    offset = points - at[which]
+    angle = np.arctan2(offset[:, 1], offset[:, 0])
+    # Each corallite turned its own way, so the stars do not all line up.
+    turn = rng.uniform(0, 2 * np.pi, len(at))[which]
+    return away.reshape(pixels, pixels), (angle + turn).reshape(pixels, pixels)
+
+
+def _stars(shape: dict, tile_mm: float, pixels: int, rng) -> np.ndarray:
+    """Tall cups whose septa stand out past the wall: a star each.
+
+    A cup sunk in the middle, a wall around it, and twelve plates radiating
+    from the centre out past the wall, highest at the wall and falling away."""
+    away, angle = _nearest(shape, tile_mm, pixels, rng)
+    radius = shape["across"] / 2.0
+    r = away / radius
+    cup = -shape["deep"] * np.clip(1 - (r / 0.45) ** 2, 0, None)
+    wall = shape["rim"] * 0.55 * np.exp(-((r - 0.55) / 0.12) ** 2)
+    septa = np.clip(np.cos(12 * angle), 0, None) ** 6
+    plates = shape["rim"] * septa * np.clip(1 - np.abs(r - 0.6) / 0.55, 0, None)
+    between = -0.25 * shape["rim"] * np.clip((r - 1.0) / 0.3, 0, 1)
+    return cup + np.maximum(wall, plates) + between
+
+
+def _tubes(shape: dict, tile_mm: float, pixels: int, rng) -> np.ndarray:
+    """Small tubes standing off the surface, each with a hole in its end."""
+    away, _ = _nearest(shape, tile_mm, pixels, rng)
+    r = away / (shape["across"] / 2.0)
+    tube = shape["rim"] * np.clip(1 - (r / 0.8) ** 4, 0, None)
+    hole = -shape["deep"] * np.clip(1 - (r / 0.3) ** 2, 0, None)
+    return tube + hole
+
+
+def _maze(shape: dict, tile_mm: float, pixels: int, rng) -> np.ndarray:
+    """A brain coral's maze, grown by Gray-Scott reaction-diffusion on a small
+    torus (so it tiles without a seam) and enlarged smoothly: the same process
+    the close-up colonies' grooves are grown by (tools/coral_hd), here flat."""
+    from scipy import ndimage
+
+    # The pattern settles at about eleven cells ridge to ridge.
+    n = max(16, int(round(tile_mm / shape["across"] * 11)))
+    u, v = np.ones((n, n)), np.zeros((n, n))
+    seed = rng.random((n, n)) < 0.12
+    v[seed], u[seed] = 0.5, 0.5
+
+    def lap(a):
+        return np.roll(a, 1, 0) + np.roll(a, -1, 0) + np.roll(a, 1, 1) + np.roll(a, -1, 1) - 4 * a
+
+    for _ in range(12000):
+        uvv = u * v * v
+        u += 0.16 * lap(u) - uvv + 0.037 * (1 - u)
+        v += 0.08 * lap(v) + uvv - (0.037 + 0.06) * v
+    big = ndimage.zoom(np.tile(v, (3, 3)), pixels / n, order=3)[pixels:2 * pixels, pixels:2 * pixels]
+    ridge = np.clip((big - big.min()) / (np.ptp(big) + 1e-9) * 2 - 0.5, 0, 1)
+    ridge = ridge * ridge * (3 - 2 * ridge)
+    return shape["rim"] * ridge - shape["deep"] * (1 - ridge)
+
+
 def _valleys(shape: dict, tile_mm: float, pixels: int, rng) -> np.ndarray:
     """Meandering valleys, which is what a brain coral has instead of cups.
 
@@ -151,7 +228,7 @@ def height_for(form: str, tile_mm: float = TILE_MM, pixels: int = PIXELS,
         raise KeyError(f"nobody has said what {form} corallites look like")
     shape = FORMS[form]
     rng = np.random.default_rng(seed)
-    made = (_cups if shape["kind"] == "cups" else _valleys)(
+    made = {"cups": _cups, "valleys": _valleys, "stars": _stars, "tubes": _tubes, "maze": _maze}[shape["kind"]](
         shape, tile_mm, pixels, rng)
     return made - float(made.mean())
 

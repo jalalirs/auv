@@ -44,6 +44,16 @@ PALETTES = {
     "galaxea": [((0.62, 0.66, 0.50), (0.24, 0.28, 0.20)),   # grey-green, the commonest
                 ((0.70, 0.62, 0.44), (0.30, 0.26, 0.17)),   # brown
                 ((0.74, 0.76, 0.66), (0.32, 0.34, 0.28))],  # pale
+    "acropora": [((0.72, 0.62, 0.50), (0.38, 0.32, 0.24)),   # tan with pale tips
+                 ((0.62, 0.66, 0.70), (0.30, 0.34, 0.38)),   # the blue-grey ones
+                 ((0.66, 0.58, 0.40), (0.34, 0.30, 0.18))],  # olive-brown
+    "plate": [((0.66, 0.56, 0.40), (0.36, 0.28, 0.18)),      # brown
+              ((0.62, 0.64, 0.46), (0.30, 0.32, 0.20)),      # green-brown
+              ((0.72, 0.62, 0.30), (0.42, 0.34, 0.14))],     # yellow, Turbinaria
+    "millepora": [((0.86, 0.80, 0.58), (0.62, 0.52, 0.22)),  # mustard with pale edges
+                  ((0.80, 0.74, 0.50), (0.55, 0.46, 0.20))],
+    "leather": [((0.74, 0.70, 0.56), (0.52, 0.48, 0.34)),    # pale tan
+                ((0.62, 0.62, 0.44), (0.40, 0.42, 0.28))],   # olive
     "porites": [((0.70, 0.60, 0.40), (0.48, 0.40, 0.25)),   # tan
                 ((0.52, 0.56, 0.40), (0.33, 0.37, 0.24)),   # olive
                 ((0.78, 0.72, 0.58), (0.56, 0.50, 0.38)),   # cream
@@ -195,6 +205,44 @@ class Field:
             t = np.clip(((x - a[0]) * ab[0] + (y - a[1]) * ab[1] + (z - a[2]) * ab[2]) / max(float(ab @ ab), 1e-12), 0, 1)
             self._add(sl, np.sqrt((x - a[0] - t * ab[0]) ** 2 + (y - a[1] - t * ab[1]) ** 2
                                   + (z - a[2] - t * ab[2]) ** 2) - r)
+
+    def within(self, lo, hi, dist_of):
+        """A shape given by its own distance function `dist_of(x, y, z)`,
+        evaluated only inside the box `lo`..`hi`."""
+        box = self._box(lo, hi)
+        if box:
+            sl, x, y, z = box
+            self._add(sl, dist_of(x, y, z))
+
+    def ellipsoid(self, c, radii, up=(0, 0, 1), along=None):
+        """An ellipsoid, approximately: radii along (u, w, up), turned so its
+        third axis is `up` and, when given, its first lies in the direction
+        of `along`. A plate is one with a small third radius."""
+        c, radii = np.asarray(c, float), np.asarray(radii, float)
+        n = np.asarray(up, float) / np.linalg.norm(up)
+        hint = np.asarray(along, float) if along is not None else np.array([0.31, 0.47, 0.83])
+        u = hint - n * (hint @ n)
+        if np.linalg.norm(u) < 1e-6:
+            u = np.cross(n, [0.31, 0.47, 0.83])
+        u /= np.linalg.norm(u)
+        w = np.cross(n, u)
+        reach = radii.max()
+
+        def dist(x, y, z):
+            # Inigo Quilez's bound for an ellipsoid: k0 (k0 - 1) / k1, with k0
+            # the point's length in units of the radii and k1 in units of their
+            # squares. The plain (k0 - 1) * smallest radius underestimates the
+            # distance beyond a long axis twenty times over, and in a smooth
+            # union that swelled every blade into a loaf.
+            dx, dy, dz = x - c[0], y - c[1], z - c[2]
+            pa = dx * u[0] + dy * u[1] + dz * u[2]
+            pb = dx * w[0] + dy * w[1] + dz * w[2]
+            pc = dx * n[0] + dy * n[1] + dz * n[2]
+            k0 = np.sqrt((pa / radii[0]) ** 2 + (pb / radii[1]) ** 2 + (pc / radii[2]) ** 2)
+            k1 = np.sqrt((pa / radii[0] ** 2) ** 2 + (pb / radii[1] ** 2) ** 2 + (pc / radii[2] ** 2) ** 2)
+            return k0 * (k0 - 1) / np.maximum(k1, 1e-9)
+
+        self.within(c - reach, c + reach, dist)
 
     def everywhere(self, dist_of):
         """A shape too big for a box (a core mound): its distance at every cell."""
@@ -458,33 +506,13 @@ def pocillopora(rng, diameter: float = 0.60, voxel: float = 0.0015, palette=None
     return v, f, _shade(light, palette, rng, directions, v[:, 2])
 
 
-def _spread(points: np.ndarray, spacing: float, rng) -> np.ndarray:
-    """Indices of a subset of `points` no two closer than `spacing`, taken in
-    random order: points spread evenly over a surface (Poisson-disc-like)."""
-    from scipy.spatial import cKDTree
+def galaxea(rng, diameter: float = 0.45, voxel: float = 0.003, palette=None):
+    """A Galaxea: a low lumpy mound, a smooth union of a few broad lobes.
 
-    tree = cKDTree(points)
-    order = rng.permutation(len(points))
-    taken = np.zeros(len(points), bool)
-    blocked = np.zeros(len(points), bool)
-    for i in order:
-        if blocked[i]:
-            continue
-        taken[i] = True
-        blocked[tree.query_ball_point(points[i], spacing)] = True
-    return np.where(taken)[0]
-
-
-def galaxea(rng, diameter: float = 0.45, voxel: float = 0.0012, palette=None):
-    """A Galaxea: a low lumpy mound packed with corallites that stand off it,
-    each a cup five to nine millimetres across ringed by a dozen septa, the
-    radiating plates that make every cup a star.
-
-    The mound is a smooth union of a few broad lobes; its surface is meshed
-    coarsely to spread the corallites evenly over it (one every
-    `spacing`), and each corallite is a short capsule along the surface's
-    normal with its septa as thin capsules fanning out from its rim, all
-    merged with the mound into one surface."""
+    Its corallites, cups six or seven millimetres across ringed by a dozen
+    septa that make each a star, are finer than a mesh a colony can afford:
+    they are the material's (corallite.py "galaxea"). Built as geometry they
+    came out below the grid's resolution and left pits."""
     radius = diameter / 2
     squash = rng.uniform(0.35, 0.55)
     lobes = []
@@ -502,38 +530,186 @@ def galaxea(rng, diameter: float = 0.45, voxel: float = 0.0012, palette=None):
 
     lo = np.array([-radius * 1.3, -radius * 1.3, -0.01])
     hi = np.array([radius * 1.3, radius * 1.3, radius * squash * 1.6 + 0.05])
-    coarse = Field(lo, hi, 0.004, k=0.02)
-    mound(coarse)
-    base_v, _, base_n = coarse.mesh(settle=False)                             # in the fine field's own frame
-    spacing = rng.uniform(0.007, 0.009)
-    keep = _spread(base_v, spacing, rng)
-    keep = keep[base_v[keep, 2] > 0.004]                                       # none on the cut base
-    fine = Field(lo, hi, voxel, k=0.0015)
+    fine = Field(lo, hi, voxel, k=0.02)
     mound(fine)
-    for i in keep:
-        at, n = base_v[i], -base_n[i] if base_n[:, 2].mean() < 0 else base_n[i]
-        cup = rng.uniform(0.0025, 0.0045)                                      # cup radius
-        rise = rng.uniform(0.003, 0.006)
-        rim = at + n * rise
-        fine.capsule(at - n * 0.002, rim, cup * 0.75)
-        # Septa: a dozen thin plates from the cup's centre out past its rim.
-        u = np.cross(n, [0.3, 0.5, 0.8]); u /= np.linalg.norm(u)
-        w = np.cross(n, u)
-        for j in range(12):
-            a = 2 * np.pi * (j + rng.uniform(-0.15, 0.15)) / 12
-            out = np.cos(a) * u + np.sin(a) * w
-            fine.capsule(rim + out * cup * 0.3, rim + out * cup * 1.35 - n * 0.0015, 0.0005)
     v, f, normals = fine.mesh()
-    from scipy.spatial import cKDTree
-    # Corallites lighter than the tissue between them: the septa catch the
-    # light and the polyps' rims are paler.
-    cups = cKDTree(base_v[keep])
-    to_cup = cups.query(v)[0]
-    height_off = np.clip((v[:, 2] - 0) / max(v[:, 2].max(), 1e-6), 0, 1)
-    light = np.clip(0.25 + 0.55 * np.clip(1 - to_cup / (spacing * 0.6), 0, 1) + 0.2 * height_off, 0, 1)
+    height_off = np.clip(v[:, 2] / max(v[:, 2].max(), 1e-6), 0, 1)
+    light = np.clip(0.35 + 0.5 * height_off, 0, 1)
     directions = v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9)
     palette = palette or PALETTES["galaxea"][rng.integers(len(PALETTES["galaxea"]))]
     return v, f, _shade(light, palette, rng, directions, v[:, 2])
+
+
+def _branching_colony(rng, nodes, parent, tip_r, max_r, voxel, k=0.003, tip_scale=1.1, lo=None, hi=None):
+    """A field of capsules along a colonised skeleton, thickness by the pipe
+    model and smoothed along each branch; the tips' nodes back. `lo` and `hi`
+    widen the field's box for anything else that will be added to it."""
+    children = np.bincount(parent[parent >= 0], minlength=len(nodes))
+    tips = np.where(children == 0)[0]
+    carried = np.zeros(len(nodes))
+    carried[tips] = 1
+    for n in range(len(nodes) - 1, -1, -1):
+        if parent[n] >= 0:
+            carried[parent[n]] += carried[n]
+    r = np.clip(tip_r * carried ** 0.45, tip_r, max_r)
+    for _ in range(3):
+        smooth = r.copy()
+        has = parent >= 0
+        smooth[has] = 0.5 * r[has] + 0.5 * r[parent[has]]
+        r = np.maximum(smooth, tip_r)
+    low, high = nodes.min(0) - 0.04, nodes.max(0) + 0.04
+    if lo is not None:
+        low = np.minimum(low, lo)
+    if hi is not None:
+        high = np.maximum(high, hi)
+    low[2] = -0.01
+    field = Field(low, high, voxel, k=k)
+    for n in range(len(nodes)):
+        if parent[n] >= 0:
+            field.capsule(nodes[parent[n]], nodes[n], r[n])
+    for n in tips:
+        field.sphere(nodes[n], r[n] * tip_scale)
+    return field, tips, r
+
+
+def _tips_light(v, nodes, tips, reach):
+    from scipy.spatial import cKDTree
+
+    to_tip = cKDTree(nodes[tips]).query(v)[0]
+    return np.clip(1 - to_tip / reach, 0, 1)
+
+
+def acropora(rng, diameter: float = 0.55, voxel: float = 0.002, palette=None):
+    """A branching Acropora: a bushy thicket of slender branches that taper
+    to pale tips, each branch studded with tubular corallites (the
+    material's, corallite.py "acropora")."""
+    radius = diameter / 2
+    height = radius * rng.uniform(0.7, 1.0)
+    pts = rng.uniform(-1, 1, size=(30000, 3))
+    pts[:, 2] = np.abs(pts[:, 2])
+    rho = np.linalg.norm(pts, axis=1)
+    keep = (rho <= 1) & ((rho > 0.55) | (rng.random(len(rho)) < 0.25))
+    attractors = pts[keep][:8000] * np.array([radius, radius, height])
+    roots = np.column_stack([rng.normal(0, radius * 0.15, (5, 2)), np.zeros(5)])
+    nodes, parent = colonise(rng, attractors, roots, step=0.012, influence=0.08, kill=0.032, up=0.9)
+    field, tips, _ = _branching_colony(rng, nodes, parent, rng.uniform(0.004, 0.0055), 0.018, voxel, tip_scale=0.9)
+    v, f, _ = field.mesh()
+    light = np.clip(0.15 + 0.35 * v[:, 2] / max(v[:, 2].max(), 1e-6) + 0.6 * _tips_light(v, nodes, tips, 0.03), 0, 1)
+    palette = palette or PALETTES["acropora"][rng.integers(len(PALETTES["acropora"]))]
+    return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
+
+
+def table(rng, diameter: float = 0.8, voxel: float = 0.003, palette=None):
+    """A table Acropora: a stout stalk, and on it a flat plate of fused
+    branches growing out horizontally, its top bristling with short upright
+    branchlets. The shape the Red Sea's fore-reef slopes are known for."""
+    radius = diameter / 2
+    stalk_h = rng.uniform(0.12, 0.25)
+    stalk_r = rng.uniform(0.025, 0.04)
+    tilt = rng.normal(0, 0.08, 2)
+    top = np.array([tilt[0], tilt[1], stalk_h])
+    # The plate: branches grown outwards in a thin disc at the stalk's top.
+    a = rng.uniform(0, 2 * np.pi, 9000)
+    rr = radius * np.sqrt(rng.uniform(0.02, 1, 9000)) * (1 + 0.12 * np.cos(3 * a + rng.uniform(0, 6)))
+    attractors = np.column_stack([top[0] + rr * np.cos(a), top[1] + rr * np.sin(a),
+                                  top[2] + rng.uniform(-0.01, 0.015, 9000) + 0.03 * (rr / radius)])
+    roots = top[None] + np.column_stack([rng.normal(0, 0.01, (4, 2)), np.zeros(4)])
+    nodes, parent = colonise(rng, attractors, roots, step=0.012, influence=0.07, kill=0.02, up=0.0)
+    field, tips, r = _branching_colony(rng, nodes, parent, 0.005, 0.02, voxel, k=0.006,
+                                       lo=np.array([-0.1, -0.1, -0.01]), hi=nodes.max(0) + np.array([0, 0, 0.05]))
+    field.capsule(np.array([0, 0, -0.01]), top, stalk_r)
+    field.sphere(np.array([0, 0, 0.0]), stalk_r * 1.6)                       # the foot
+    # Branchlets: short and upright, all over the top of the plate.
+    for n in np.where(parent >= 0)[0][::2]:
+        base = nodes[n]
+        tip = base + np.array([rng.normal(0, 0.004), rng.normal(0, 0.004), rng.uniform(0.012, 0.028)])
+        field.capsule(base, tip, rng.uniform(0.0035, 0.005))
+    v, f, _ = field.mesh()
+    light = np.clip(0.2 + 0.6 * np.clip((v[:, 2] - stalk_h + 0.02) / 0.06, 0, 1), 0, 1)
+    palette = palette or PALETTES["acropora"][rng.integers(len(PALETTES["acropora"]))]
+    return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
+
+
+def plate(rng, diameter: float = 0.5, voxel: float = 0.002, palette=None):
+    """Encrusting and plating coral (Montipora, Turbinaria, Echinopora): thin
+    plates in overlapping tiers, each tilted up a little towards the light,
+    like shelves of a fungus."""
+    radius = diameter / 2
+    field = Field([-radius * 1.3, -radius * 1.3, -0.01], [radius * 1.3, radius * 1.3, radius * 0.9], voxel, k=0.004)
+    tiers = int(rng.integers(5, 11))
+    for i in range(tiers):
+        h = 0.02 + (i / tiers) * radius * rng.uniform(0.4, 0.7)
+        a = rng.uniform(0, 2 * np.pi)
+        out = radius * rng.uniform(0.0, 0.45) * (1 - i / tiers)
+        c = np.array([out * np.cos(a), out * np.sin(a), h])
+        size = radius * rng.uniform(0.45, 0.8) * (1 - 0.5 * i / tiers)
+        up = np.array([np.cos(a) * 0.35, np.sin(a) * 0.35, 1.0]) + rng.normal(0, 0.15, 3)
+        field.ellipsoid(c, (size, size * rng.uniform(0.7, 1.0), rng.uniform(0.009, 0.013)), up)
+        field.capsule(np.array([c[0] * 0.3, c[1] * 0.3, 0]), c, 0.02)       # what holds the tier up
+    v, f, normals = field.mesh()
+    up_facing = np.clip(np.abs(normals[:, 2]), 0, 1)
+    light = np.clip(0.3 + 0.6 * up_facing, 0, 1)
+    palette = palette or PALETTES["plate"][rng.integers(len(PALETTES["plate"]))]
+    return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
+
+
+def millepora(rng, diameter: float = 0.45, voxel: float = 0.0018, palette=None):
+    """Fire coral (Millepora dichotoma, platyphylla): upright blades and
+    crests that branch and fuse, mustard yellow with pale edges."""
+    radius = diameter / 2
+    field = Field([-radius * 1.2, -radius * 1.2, -0.01], [radius * 1.2, radius * 1.2, radius * 1.3], voxel, k=0.003)
+    edges = []
+    for _ in range(int(rng.integers(3, 7))):
+        a = rng.uniform(0, np.pi)
+        along = np.array([np.cos(a), np.sin(a), 0.0])
+        off = rng.normal(0, radius * 0.35, 2)
+        h = radius * rng.uniform(0.6, 1.1)
+        # A blade is a row of overlapping upright ellipsoids, its crest wavy.
+        for t in np.linspace(-1, 1, 12):
+            base = np.array([off[0], off[1], 0]) + along * t * radius * 0.8
+            top = h * (1 - 0.35 * t * t) * (1 + 0.1 * np.sin(5 * t + a))
+            across = np.array([-along[1], along[0], 0.0])
+            field.ellipsoid(base + np.array([0, 0, top / 2]), (radius * 0.12, top / 2, 0.005),
+                            up=across, along=along)
+            edges.append(base + np.array([0, 0, top]))
+    v, f, _ = field.mesh()
+    from scipy.spatial import cKDTree
+    to_edge = cKDTree(np.array(edges)).query(v)[0]
+    light = np.clip(0.3 + 0.7 * np.clip(1 - to_edge / 0.04, 0, 1), 0, 1)
+    palette = palette or PALETTES["millepora"][rng.integers(len(PALETTES["millepora"]))]
+    return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
+
+
+def leather(rng, diameter: float = 0.45, voxel: float = 0.0025, palette=None):
+    """A leather coral (Sarcophyton): a thick stalk and a broad cap whose
+    margin folds in waves, smooth, pale tan or olive."""
+    radius = diameter / 2
+    stalk_h = rng.uniform(0.06, 0.14)
+    folds = int(rng.integers(5, 10))
+    amp = rng.uniform(0.02, 0.045)
+    phase = rng.uniform(0, 2 * np.pi)
+    field = Field([-radius * 1.3, -radius * 1.3, -0.01], [radius * 1.3, radius * 1.3, stalk_h + 0.12], voxel, k=0.01)
+    field.capsule(np.array([0, 0, 0.0]), np.array([0, 0, stalk_h]), radius * rng.uniform(0.25, 0.35))
+
+    def cap(x, y, z):
+        rr = np.sqrt(x * x + y * y)
+        th = np.arctan2(y, x)
+        edge = radius * (1 + 0.08 * np.sin(3 * th + phase))
+        sag = amp * np.sin(folds * th + phase) * (rr / radius) ** 2 + 0.03 * (rr / radius) ** 2
+        mid = stalk_h + 0.02 + sag
+        thick = 0.012 * (1 - 0.5 * np.clip(rr / edge, 0, 1)) + 0.004
+        return np.maximum(np.abs(z - mid) - thick, rr - edge)
+
+    field.within(np.array([-radius * 1.2, -radius * 1.2, stalk_h - 0.07]),
+                 np.array([radius * 1.2, radius * 1.2, stalk_h + 0.1]), cap)
+    v, f, _ = field.mesh()
+    light = np.clip(0.4 + 0.5 * np.clip((v[:, 2] - stalk_h * 0.5) / 0.06, 0, 1), 0, 1)
+    palette = palette or PALETTES["leather"][rng.integers(len(PALETTES["leather"]))]
+    return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
+
+
+FORMS = {"brain": brain, "porites": porites, "pocillopora": pocillopora, "galaxea": galaxea,
+         "acropora": acropora, "table": table, "plate": plate, "millepora": millepora, "leather": leather}
 
 
 def write_ply(path: pathlib.Path, v: np.ndarray, f: np.ndarray, c: np.ndarray) -> None:
@@ -557,7 +733,7 @@ def write_ply(path: pathlib.Path, v: np.ndarray, f: np.ndarray, c: np.ndarray) -
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("form", choices=("brain", "porites", "pocillopora", "galaxea"))
+    ap.add_argument("form", choices=sorted(FORMS))
     ap.add_argument("--into", required=True)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--diameter", type=float)
@@ -567,7 +743,7 @@ def main() -> int:
     kw = {k: getattr(a, k) for k in ("diameter",) if getattr(a, k) is not None}
     if a.level is not None and a.form == "brain":
         kw["level"] = a.level
-    v, f, c = {"brain": brain, "porites": porites, "pocillopora": pocillopora, "galaxea": galaxea}[a.form](rng, **kw)
+    v, f, c = FORMS[a.form](rng, **kw)
     write_ply(pathlib.Path(a.into), v, f, c)
     print(f"{a.form}: {len(v):,} vertices, {len(f):,} triangles, {np.ptp(v[:, 0]):.2f} m across, "
           f"{v[:, 2].max():.2f} m tall -> {a.into}")
