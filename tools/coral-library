@@ -45,11 +45,12 @@ FORMS_BY_KIND = {
         "branching":  (["pocillopora", "acropora", "stylophora", "seriatopora"], "pocillopora"),
         "finger":     (["acropora"], "acropora"),
         "table":      (["table"], "acropora"),
-        "encrusting": (["plate", "galaxea", "millepora", "turbinaria", "fungia", "plate"], "galaxea"),
+        "encrusting": (["plate", "galaxea", "millepora", "fungia", "plate", "galaxea"], "galaxea"),
         "plume":      (["leather", "dendronephthya", "xenia", "sinularia", "dendronephthya", "leather"], None),
         "sponge":     (["sponge"], None),
         "fan":        (["fan"], None),
         "rubble":     (["rubble"], None),
+        "rock":       (["reef_rock"], None),
     },
     # Kaneohe Bay: Porites compressa fingers, Montipora capitata plates and
     # crusts, Porites lobata boulders, Pocillopora meandrina; no tables, no fans.
@@ -62,6 +63,7 @@ FORMS_BY_KIND = {
         "plume":      (["leather"], None),
         "sponge":     (["sponge"], None),
         "rubble":     (["rubble"], None),
+        "rock":       (["reef_rock"], None),
     },
     # Florida Keys and the Caribbean: Orbicella boulders, grooved brains,
     # staghorn and elkhorn, Porites porites fingers, Agaricia plates, sea
@@ -77,18 +79,19 @@ FORMS_BY_KIND = {
         "fan":        (["fan:ventalina"], None),
         "sponge":     (["sponge:caribbean-sponge"], None),
         "rubble":     (["rubble"], None),
+        "rock":       (["reef_rock"], None),
     },
 }
 # Coarser than the look-dev colonies before decimation: the decimation keeps
 # the shape, and a finer field only costs time.
 # How many triangles each keeps. Branches lose their shape to facets first
 # (at twelve thousand a Pocillopora was a heap of shards), so they get more.
-TRIANGLES = {"brain": 60000, "lobophyllia": 40000, "favites": 60000, "stylophora": 40000, "seriatopora": 40000,
+TRIANGLES = {"reef_rock": 30000, "brain": 60000, "lobophyllia": 40000, "favites": 60000, "stylophora": 40000, "seriatopora": 40000,
              "dendronephthya": 40000, "xenia": 24000, "fungia": 16000, "pocillopora": 40000, "acropora": 40000, "table": 24000, "fan": 40000, "staghorn": 30000,
              "finger": 30000, "sea_rod": 30000, "elkhorn": 24000}
 VOXEL = {"porites": 0.004, "pocillopora": 0.003, "acropora": 0.003, "table": 0.004, "plate": 0.003,
          "galaxea": 0.004, "millepora": 0.003, "leather": 0.004, "sponge": 0.004, "fan": 0.0025, "rubble": 0.003,
-         "finger": 0.003, "staghorn": 0.003, "elkhorn": 0.005, "sea_rod": 0.0025,
+         "reef_rock": 0.008, "finger": 0.003, "staghorn": 0.003, "elkhorn": 0.005, "sea_rod": 0.0025,
          "stylophora": 0.0015, "seriatopora": 0.0015, "turbinaria": 0.003, "dendronephthya": 0.002, "xenia": 0.0015,
          "sinularia": 0.003}
 

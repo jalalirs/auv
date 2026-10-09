@@ -65,6 +65,10 @@ PALETTES = {
     "fan": [((0.72, 0.30, 0.20), (0.48, 0.18, 0.12)),       # red-orange Annella
             ((0.80, 0.56, 0.24), (0.55, 0.36, 0.14)),       # orange-yellow
             ((0.56, 0.32, 0.26), (0.36, 0.18, 0.15))],      # brown-red Subergorgia
+    "reef_rock": [((0.50, 0.46, 0.38), (0.22, 0.20, 0.16)),   # brown turf
+                  ((0.54, 0.52, 0.48), (0.26, 0.25, 0.22)),   # grey, bare
+                  ((0.46, 0.45, 0.36), (0.20, 0.20, 0.15))],  # olive turf
+    "coralline": [(0.66, 0.42, 0.48), (0.56, 0.36, 0.52), (0.70, 0.50, 0.50)],  # pink, purple, salmon
     "rubble": [((0.56, 0.52, 0.44), (0.30, 0.28, 0.22)),    # bare grey-tan
                ((0.46, 0.44, 0.32), (0.24, 0.24, 0.16))],   # turf-covered
     "finger": [((0.74, 0.64, 0.42), (0.40, 0.32, 0.18)),    # tan-yellow, the commonest
@@ -922,6 +926,60 @@ def fan(rng, diameter: float = 0.8, voxel: float = 0.0025, palette=None):
     return v, f, _shade(light, palette, rng, v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9), v[:, 2])
 
 
+def _noise(v: np.ndarray, rng, scales, weights) -> np.ndarray:
+    """Smooth value noise at each vertex, -1 to 1 roughly: a random lattice
+    `scales` metres apart, read trilinearly, summed with `weights`."""
+    from scipy import ndimage
+
+    total = np.zeros(len(v))
+    for scale, weight in zip(scales, weights):
+        lo = v.min(0) - scale
+        size = np.ceil((v.max(0) - lo) / scale).astype(int) + 3
+        lattice = rng.uniform(-1, 1, size)
+        total += weight * ndimage.map_coordinates(lattice, ((v - lo) / scale).T, order=1, mode="nearest")
+    return total / sum(weights) * 2
+
+
+def reef_rock(rng, diameter: float = 1.0, voxel: float = 0.008, palette=None):
+    """The reef's own framework: a low, rugged mound of dead coral, old
+    heads and cemented rubble, turf-covered, with patches of pink and purple
+    coralline algae and dark holes. Most of a real reef between the living
+    colonies is this, and a flat seabed between them is what made the dives
+    look like ornaments on sand."""
+    radius = diameter / 2
+    tall = diameter * rng.uniform(0.15, 0.3)
+    field = Field([-radius * 1.25, -radius * 1.25, -0.02], [radius * 1.25, radius * 1.25, tall * 2.5], voxel, k=0.004)
+    # A low core, then lumps of every size on it: a few old heads, many
+    # cobbles, the smallest a few centimetres.
+    field.ellipsoid(np.array([0, 0, 0.0]), (radius * 0.8, radius * rng.uniform(0.55, 0.8), tall * 0.7),
+                    along=[np.cos(rng.uniform(0, np.pi)), np.sin(rng.uniform(0, np.pi)), 0])
+    for size, count in ((0.22, 5), (0.1, 30), (0.045, 120)):
+        for _ in range(count):
+            a = rng.uniform(0, 2 * np.pi)
+            r = radius * np.sqrt(rng.uniform(0, 1)) * 0.85
+            h = tall * 0.7 * max(0.0, 1 - (r / radius) ** 2) ** 0.5
+            c = np.array([r * np.cos(a), r * np.sin(a), h * rng.uniform(0.6, 1.0)])
+            s = diameter * size * rng.uniform(0.6, 1.4)
+            field.ellipsoid(c, (s, s * rng.uniform(0.5, 1.0), s * rng.uniform(0.35, 0.7)),
+                            up=rng.normal(0, 0.3, 3) + [0, 0, 1])
+    v, f, _ = field.mesh()
+    # Rough at every scale below the lumps: dead coral is pitted, bored and
+    # broken, not smooth.
+    n = _normals(v, f)
+    if ((v - v.mean(0)) * n).sum() < 0:
+        n = -n
+    rough = _noise(v, rng, (0.06, 0.025, 0.01), (0.5, 0.3, 0.2))
+    v = v + n * (diameter * 0.03 * rough)[:, None] * (v[:, 2:3] > 0.01)
+    d = v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9)
+    palette = palette or PALETTES["reef_rock"][rng.integers(len(PALETTES["reef_rock"]))]
+    colour = _shade(np.clip(0.5 + 0.5 * v[:, 2] / max(v[:, 2].max(), 1e-6), 0, 1), palette, rng, d, v[:, 2])
+    # Crustose coralline algae, pink to purple, in patches on the tops.
+    pink = np.clip(_patches(d, rng, 14, (0.15, 0.4)), 0, 1) ** 1.5
+    pink = pink * np.clip(v[:, 2] / max(v[:, 2].max(), 1e-6) * 1.5, 0, 1)
+    cca = np.array(PALETTES["coralline"][rng.integers(len(PALETTES["coralline"]))])
+    return v, f, np.clip(colour * (1 - 0.7 * pink[:, None]) + cca * 0.7 * pink[:, None], 0, 1)
+
+
 def rubble(rng, diameter: float = 0.4, voxel: float = 0.003, palette=None):
     """Coral rubble: broken branch ends and a few rolled blocks, lying in a
     heap, grey-brown with turf and pink patches of coralline algae."""
@@ -1262,7 +1320,7 @@ FORMS = {"brain": brain, "porites": porites, "pocillopora": pocillopora, "galaxe
          "sinularia": sinularia,
          "finger": finger, "staghorn": staghorn, "elkhorn": elkhorn, "sea_rod": sea_rod,
          "acropora": acropora, "table": table, "plate": plate, "millepora": millepora, "leather": leather,
-         "sponge": sponge, "fan": fan, "rubble": rubble}
+         "sponge": sponge, "fan": fan, "rubble": rubble, "reef_rock": reef_rock}
 
 
 def read_ply(path: pathlib.Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

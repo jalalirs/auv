@@ -360,6 +360,10 @@ def deliver(place: pathlib.Path, into: pathlib.Path) -> dict:
     for i, ((x, y, z), which) in enumerate(zip(colonies["at"], colonies["which"])):
         latitude, longitude = where_on_earth(centre, x, y)
         kind = kinds[which] if which < len(kinds) else "unknown"
+        # The reef's dead framework and a reconstructed patch stand in the
+        # same instancer as the colonies, and neither is a colony.
+        if kind in ("rock", "reconstruction"):
+            continue
         rows.append({
             "id": i,
             "latitude": round(latitude, 8),

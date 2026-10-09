@@ -347,6 +347,30 @@ ATLAS_ZONE_BAND = {
 }
 
 
+# How much of the ground is the reef's dead framework, by what the Atlas says
+# it is: rugged rock and rubble under the living colonies and between them.
+# Chosen, not measured. Sand and seagrass have none.
+FRAMEWORK_SHARE = {
+    "Coral/Algae": 0.55,
+    "Rock": 0.6,
+    "Rubble": 0.3,
+    "Microalgal Mats": 0.05,
+}
+
+
+def framework_share(ground: dict, benthic, want) -> np.ndarray:
+    """The share of each cell that is reef framework: by the Atlas class where
+    it mapped, and elsewhere as far as coral grows there (a reef edge the
+    Atlas missed has its rock too)."""
+    from_coral = np.clip(np.asarray(want) * 1.2, 0.0, 0.6)
+    if benthic is None:
+        return from_coral * np.clip(ground["hard"], 0.0, 1.0)
+    benthic = np.asarray(benthic)
+    share = np.array([FRAMEWORK_SHARE.get(str(b), 0.0) if b else np.nan
+                      for b in benthic.ravel()]).reshape(benthic.shape)
+    return np.where(np.isfinite(share), share, from_coral)
+
+
 def atlas_cover(ground: dict, benthic, rng, patchiness: float = 1.0):
     """`cover`, with the Atlas's class setting the density wherever it mapped.
 

@@ -367,8 +367,46 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
                 / "catalog" / "materials" / "coral_tissue.mdl",
                 where / "coral_tissue.mdl")
 
-    (where / "coral.usda").write_text(
-        _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn, surfaces, painted))
+    # The reef's framework: the dead rock, old heads and cemented rubble that
+    # most of a real reef is between its living colonies, where the ground is
+    # hard. A seabed left flat between the colonies is what made the dives
+    # look like ornaments on sand. Drawn from the library's "rock", in the
+    # same instancer, and not coral: no part of the cover above counts it.
+    rock_shelf = (library or {}).get("kinds", {}).get("rock", [])
+    framework = None
+    all_at = (prototypes, colours, kinds_of, x, y, z, which, scale, turn, surfaces, painted)
+    if rock_shelf:
+        share = zonation.framework_share(ground, None if atlas is None else atlas["benthic"], want)
+        rock = [_from_library(library_dir / entry["file"], 1.0) for entry in rock_shelf]
+        rock_area = [float(np.pi / 4 * np.ptp(p[:, 0]) * np.ptp(p[:, 1])) for p, _, _ in rock]
+        sizes = ROCK_SIZES_M
+        mean_area = float(np.mean(rock_area)) * (sizes[1] ** 3 - sizes[0] ** 3) / (3 * (sizes[1] - sizes[0]))
+        counts = rng.poisson(share.ravel() * step_x * step_y / mean_area)
+        cell = np.repeat(np.arange(share.size), counts)
+        r_row, r_col = cell // columns, cell % columns
+        n_rock = len(cell)
+        rx = np.clip(-across / 2 + (r_col + rng.uniform(0, 1, n_rock)) * step_x, -across / 2, across / 2)
+        ry = np.clip(-across / 2 + (r_row + rng.uniform(0, 1, n_rock)) * step_y, -across / 2, across / 2)
+        rs = rng.uniform(sizes[0], sizes[1], n_rock)
+        rz = height[r_row, r_col] - 0.08 * rs                  # bedded in, as rock is
+        first = len(prototypes)
+        all_at = (prototypes + [(p, f) for p, f, _ in rock],
+                  colours + [tuple(c.mean(0)) for _, _, c in rock],
+                  kinds_of + ["rock"] * len(rock),
+                  np.concatenate([x, rx]), np.concatenate([y, ry]), np.concatenate([z, rz]),
+                  np.concatenate([which, first + rng.integers(0, len(rock), n_rock)]),
+                  np.concatenate([scale, rs]), np.concatenate([turn, rng.uniform(0, 2 * math.pi, n_rock)]),
+                  surfaces + [(None, False)] * len(rock),
+                  {**painted, **{first + k: c for k, (_, _, c) in enumerate(rock)}})
+        framework = {"pieces": int(n_rock), "prototypes": len(rock), "firstPrototype": first,
+                     "areaM2AtScaleOne": [round(a, 4) for a in rock_area],
+                     "sizesM": list(sizes), "shareOfGround": zonation.FRAMEWORK_SHARE,
+                     "from": "the reef's coral library (" + str(library_dir) + "), kind rock",
+                     "is": "chosen: how much of the hard ground is dead framework is a choice per Atlas "
+                           "class, not a measurement; it is not coral and no cover figure counts it"}
+        print(f"    {n_rock:,} pieces of reef framework on the hard ground")
+
+    (where / "coral.usda").write_text(_instancer(*all_at))
 
     # How much of the ground this actually covers.
     #
@@ -454,8 +492,11 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
             #
             # A file that has to be reverse-engineered by the tool that ships
             # it is a file that will be reverse-engineered wrong.
-            "prototypeKinds": [kinds[i // variants] for i in range(len(prototypes))],
-            "prototypeAreaM2": [round(float(one), 6) for one in footprint],
+            "prototypeKinds": [kinds[i // variants] for i in range(len(prototypes))]
+                              + (["rock"] * framework["prototypes"] if framework else []),
+            "prototypeAreaM2": [round(float(one), 6) for one in footprint]
+                               + (framework["areaM2AtScaleOne"] if framework else []),
+            "framework": framework,
             "variantsEach": variants,
             # Nothing here is a measurement. A colony's size is a draw against
             # a prototype's size, and a colony inventory out of this place
@@ -905,6 +946,11 @@ _CORALLITES = {"massive": "massive", "brain": "brain", "branching": "branching",
 def corallite_for(kind):
     """The corallite surface a kind wears, or None where nobody has one."""
     return _CORALLITES.get(kind)
+
+
+# How big a piece of the reef's framework is, across, in metres: a draw
+# between these.
+ROCK_SIZES_M = (1.0, 3.0)
 
 
 def _library(assemblage):

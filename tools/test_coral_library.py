@@ -1,6 +1,7 @@
 """A reef planted from a coral library, where the place's assemblage has one."""
 
 import json
+import re
 
 import numpy as np
 
@@ -64,3 +65,28 @@ def test_without_a_library_nothing_changes(tmp_path, monkeypatch):
                       assemblage="red-sea")
     assert said["fromLibrary"] is None
     assert 'subdivisionScheme = "none"' not in (tmp_path / "place" / "coral.usda").read_text()
+
+
+def test_a_library_with_rock_lays_the_reef_framework_and_it_is_not_coral(tmp_path, monkeypatch):
+    shelf = tmp_path / "library" / "red-sea"
+    shelf.mkdir(parents=True)
+    v, f = coral_hd.upper(*coral_hd.icosphere(2))
+    v[:, 2] -= v[:, 2].min()
+    v[:, 2] *= 0.3
+    coral_hd.write_ply(shelf / "rock-0.ply", v, f, np.full((len(v), 3), 0.3))
+    (shelf / "library.json").write_text(json.dumps({"made": "now", "commit": "test", "how": "a test",
+                                                    "kinds": {"rock": [{"file": "rock-0.ply", "form": "reef_rock",
+                                                                        "corallite": None,
+                                                                        "colour": [0.3, 0.3, 0.3]}]}}))
+    monkeypatch.setenv("IOCEAN_CORAL_LIBRARY", str(tmp_path / "library"))
+    height = np.full((48, 48), -6.0)
+    said = reef.plant(tmp_path / "place", height, 60.0, 1, 3000, cover_from="a test", assemblage="red-sea",
+                      hard=np.ones((48, 48)))
+    frame = said["framework"]
+    assert frame and frame["pieces"] > 0 and frame["prototypes"] == 1
+    assert said["prototypeKinds"][-1] == "rock" and len(said["prototypeKinds"]) == len(said["prototypeAreaM2"])
+    assert said["prototypeKinds"].count("rock") == 1
+    text = (tmp_path / "place" / "coral.usda").read_text()
+    indices = [int(i) for i in re.search(r"int\[\] protoIndices = \[(.*)\]", text).group(1).split(", ")]
+    assert len(indices) == said["colonies"] + frame["pieces"]
+    assert indices.count(frame["firstPrototype"]) == frame["pieces"]

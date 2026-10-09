@@ -156,6 +156,12 @@ def choose(site: dict, reef: dict, cover_v: float | None, across: float) -> dict
     proto_area = (site.get("reef") or {}).get("prototypeAreaM2")
     if proto_area is not None and len(proto_area) != len(reef["prototypes"]):
         proto_area = None
+    # Coral only: the framework and other patches are not cover.
+    kinds = (site.get("reef") or {}).get("prototypeKinds") or []
+    coral = np.array([kinds[w] not in ("rock", "reconstruction") if w < len(kinds) else True
+                      for w in range(len(reef["prototypes"]))])[reef["which"]]
+    reef = {**reef, "positions": reef["positions"][coral], "which": reef["which"][coral],
+            "scales": reef["scales"][coral]}
     cover, height = planted_cover(reef, proto_area, across)
     smooth = _window(cover)
     depth = -height
