@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import multiprocessing
-import os
 import pathlib
 import sys
 import traceback
@@ -23,7 +22,7 @@ from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 import numpy as np
 
 from . import chips, sentinel
-from .build import STALLED, _done, _note_skip, _skipped
+from .build import STALLED, _done, _note_skip, _skipped, stop_stalled
 
 
 def photons(box, cache: pathlib.Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -107,7 +106,7 @@ def make_region_chips(cfg: dict, ds: pathlib.Path, cache: pathlib.Path, workers:
                 if not finished:
                     print(f"{region['name']}: no chip finished in {STALLED} s; stopping so the run can start again",
                           flush=True)
-                    os._exit(3)
+                    stop_stalled(pool)
                 for f in finished:
                     chip_id, result = f.result()
                     if isinstance(result, str):

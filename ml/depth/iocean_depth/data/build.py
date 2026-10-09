@@ -31,6 +31,19 @@ CHIP_SECONDS = 240
 STALLED = 240
 
 
+def stop_stalled(pool) -> None:
+    """Kill a stalled pool's workers, then this process.
+
+    `os._exit` alone leaves the workers running, orphaned: each stalled pass
+    on 7 October left thirty-two of them holding a tile open, the restart loop
+    made more, and two days later 224 of them held 53 GB of the box's memory
+    and starved the dives. A worker stuck in GDAL does not answer a polite
+    shutdown, so it is killed."""
+    for worker in list(getattr(pool, "_processes", {}).values()):
+        worker.kill()
+    os._exit(3)
+
+
 def _done(ds: pathlib.Path) -> set[str]:
     index = ds / "chips" / "index.jsonl"
     return {json.loads(line)["chip"] for line in index.read_text().splitlines() if line.strip()} if index.is_file() else set()
@@ -135,7 +148,7 @@ def make_chips(cfg: dict, ds: pathlib.Path, only: str | None = None, workers: in
                 if not finished:
                     print(f"{d['slug']}: no chip finished in {STALLED} s; stopping so the run can start again",
                           flush=True)
-                    os._exit(3)
+                    stop_stalled(pool)
                 for f in finished:
                     k += 1
                     chip_id, result = f.result()
