@@ -41,7 +41,18 @@ def products_of(recipe: Recipe, cache: pathlib.Path | None = None, tell=_quiet) 
         tell("source", f"reading {entry['use']}", n=n, of=len(recipe.sources), source=entry["use"])
         source = source_from(entry)
         for layer in source.layers(recipe.grid, cache):
-            out[f"{name}.{layer.quantity}"] = layer
+            key = f"{name}.{layer.quantity}"
+            # A source may give two layers of one quantity (GEBCO's grid and
+            # the multibeam mosaic beside it). The last keeps the plain name,
+            # as it always has, so recipes that name it read what they did;
+            # the ones before it keep a number rather than being lost, which
+            # they were: a place no multibeam reached came out with no depth.
+            if key in out:
+                n = 1
+                while f"{key}.{n}" in out:
+                    n += 1
+                out[f"{key}.{n}"] = out[key]
+            out[key] = layer
         if hasattr(source, "soundings"):
             for one in source.soundings(recipe.grid, cache):
                 out[f"{name}.{one.quantity}.points"] = one

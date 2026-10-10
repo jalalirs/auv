@@ -47,8 +47,9 @@ def depth_model(lat: float, lon: float) -> pathlib.Path:
     return MODELS / ("unet-v2-final" if red_sea else "unet-v1")
 
 
-def recipe_of(brief: dict, inputs: pathlib.Path = INPUTS, nasa: bool | None = None) -> tuple[dict, list[str]]:
-    """The recipe a brief asks for, and what was left out and why."""
+def recipe_of(brief: dict, inputs: pathlib.Path = INPUTS, nasa: bool | None = None) -> tuple[dict, list[str], list[str]]:
+    """The recipe a brief asks for, what was left out and why, and the depth
+    layers it is expected to fuse."""
     asked = list(dict.fromkeys(brief.get("sources") or []))
     lat, lon = (float(v) for v in brief["centre"])
     nasa = bool(os.environ.get("NASA_TOKEN")) if nasa is None else nasa
@@ -123,12 +124,16 @@ def recipe_of(brief: dict, inputs: pathlib.Path = INPUTS, nasa: bool | None = No
             scene.append("stumpf.depth")
     scene.append("gebco.depth")
 
+    # The scene names no depth layers: every one no model used is fused, and
+    # fusion keeps the least wrong in each cell. Naming them would mean knowing
+    # in advance which a source will give (GEBCO's multibeam is only where a
+    # ship has been). `scene` above is what that is expected to be, for the plan.
     recipe = {"name": brief.get("slug") or "place",
               "site": {"centre": [lat, lon], "acrossM": float(brief["acrossM"]),
                        "cells": int(brief.get("cells") or 512)},
               "sources": sources, "models": models,
-              "scene": {"depth": scene, "featherCells": 10 if files else 0}}
-    return recipe, left_out
+              "scene": {"featherCells": 10 if files else 0}}
+    return recipe, left_out, scene
 
 
 def main(argv: list[str]) -> int:
@@ -140,10 +145,10 @@ def main(argv: list[str]) -> int:
     os.environ["HOME"] = str(home)
     os.environ.setdefault("MPLCONFIGDIR", str(home / "matplotlib"))
 
-    recipe, left_out = recipe_of(brief)
+    recipe, left_out, expected = recipe_of(brief)
     tell("plan", f"{len(recipe['sources'])} sources, {len(recipe['models'])} models",
          sources=[s["use"] for s in recipe["sources"]], models=[m["use"] for m in recipe["models"]],
-         depthFrom=recipe["scene"]["depth"])
+         depthFrom=expected)
     for why in left_out:
         tell("left-out", why)
 
