@@ -117,7 +117,15 @@ class Sensor:
         return self.full_well_e * max(binned, 1.0) * self.base_iso / max(iso, self.base_iso)
 
 
-SENSORS = {"gopro": Sensor(), "none": Sensor(kind="none")}
+SENSORS = {
+    "gopro": Sensor(),
+    # Blue Robotics' Low-Light HD USB camera, the BlueROV2's own: a Sony
+    # IMX322, 1/2.9 inch, 1920 x 1080, 2.8 micrometre pixels, so about four
+    # times the light a GoPro pixel catches. Typical of that sensor; chosen.
+    "imx322": Sensor(kind="imx322", full_well_e=9000.0, read_noise_e=2.5, sensor_px=(1920, 1080),
+                     vignette=0.2),
+    "none": Sensor(kind="none"),
+}
 
 
 @dataclass
@@ -126,6 +134,10 @@ class Camera:
     port: Port = field(default_factory=Port)
     filter: Filter = field(default_factory=lambda: FILTERS["none"])
     sensor: Sensor = field(default_factory=lambda: SENSORS["gopro"])
+    # A number pins the exposure there, as a camera set by hand; None is the
+    # camera's own auto-exposure.
+    iso: float | None = None
+    told_by: tuple = ()
 
     def said(self) -> dict:
         return {"lens": self.lens.model, "lensFovDeg": self.lens.horizontal_fov_deg, "lensIs": self.lens.said,
@@ -134,18 +146,68 @@ class Camera:
                 "sensorIs": None if self.sensor.kind == "none" else
                 {"fullWellE": self.sensor.full_well_e, "readNoiseE": self.sensor.read_noise_e,
                  "bits": self.sensor.bits, "pixels": list(self.sensor.sensor_px),
-                 "is": "typical of a 1/2.3-inch 4K sensor; chosen, not measured on this camera"}}
+                 "is": "typical of its class; chosen, not measured on this camera"},
+                "iso": self.iso if self.iso is not None else "auto", "toldBy": list(self.told_by)}
+
+
+# What a camera is when nothing says otherwise: a GoPro behind a flat port.
+DEFAULTS = {"lens": "gopro-wide", "port": "flat", "filter": "none", "sensor": "gopro", "iso": "auto"}
+LENSES = {"gopro-wide": ("equidistant", 118.0), "pinhole": ("pinhole", 47.17)}
+
+
+def settings_from(vehicle: dict | None = None, dive: dict | None = None, environment=None) -> tuple[dict, tuple]:
+    """The camera's settings and who set each layer, the dive over the
+    vehicle over the environment over the defaults."""
+    env = os.environ if environment is None else environment
+    from_env = {key: env[name].strip().lower() for key, name in
+                (("lens", "IOCEAN_LENS"), ("port", "IOCEAN_PORT"), ("filter", "IOCEAN_FILTER"),
+                 ("sensor", "IOCEAN_SENSOR"), ("iso", "IOCEAN_CAMERA_ISO")) if env.get(name, "").strip()}
+    merged, told = dict(DEFAULTS), []
+    for name, layer in (("environment", from_env), ("vehicle", vehicle or {}), ("dive", dive or {})):
+        if layer:
+            merged.update({k: v for k, v in layer.items() if k in DEFAULTS or k == "lensFovDeg"})
+            told.append(name)
+    return merged, tuple(told)
+
+
+def camera_from(settings: dict, told_by: tuple = ()) -> Camera:
+    lens_name = str(settings.get("lens", "gopro-wide")).lower()
+    model, fov = LENSES.get(lens_name, LENSES["gopro-wide"])
+    fov = float(settings.get("lensFovDeg", fov))
+    said = (Lens.said if lens_name == "gopro-wide" and "lensFovDeg" not in settings
+            else f"{model}, {fov:g} degrees across in air")
+    port = str(settings.get("port", "flat")).lower()
+    iso = settings.get("iso", "auto")
+    try:
+        iso = None if str(iso).lower() == "auto" else float(iso)
+    except ValueError:
+        iso = None
+    return Camera(lens=Lens(model=model, horizontal_fov_deg=fov, said=said),
+                  port=Port(kind=port if port in ("flat", "dome", "none") else "flat"),
+                  filter=FILTERS.get(str(settings.get("filter", "none")).lower(), FILTERS["none"]),
+                  sensor=SENSORS.get(str(settings.get("sensor", "gopro")).lower(), SENSORS["gopro"]),
+                  iso=iso, told_by=told_by)
+
+
+def for_dive(brief: dict | None = None, vehicle_dir=None) -> Camera:
+    """The camera a dive carries: its own `objective.camera` if it says, else
+    the vehicle's (`camera` in its dynamics.json), else the environment's."""
+    import json
+    import pathlib
+
+    vehicle = None
+    if vehicle_dir is not None:
+        try:
+            vehicle = json.loads((pathlib.Path(vehicle_dir) / "dynamics.json").read_text()).get("camera")
+        except Exception:
+            vehicle = None
+    dive = ((brief or {}).get("objective") or {}).get("camera")
+    return camera_from(*settings_from(vehicle if isinstance(vehicle, dict) else None,
+                                      dive if isinstance(dive, dict) else None))
 
 
 def from_environment() -> Camera:
-    lens = os.environ.get("IOCEAN_LENS", "gopro-wide").strip().lower()
-    port = os.environ.get("IOCEAN_PORT", "flat").strip().lower()
-    filt = os.environ.get("IOCEAN_FILTER", "none").strip().lower()
-    sensor = os.environ.get("IOCEAN_SENSOR", "gopro").strip().lower()
-    return Camera(lens=Lens(model="pinhole" if lens == "pinhole" else "equidistant"),
-                  port=Port(kind=port if port in ("flat", "dome", "none") else "flat"),
-                  filter=FILTERS.get(filt, FILTERS["none"]),
-                  sensor=SENSORS.get(sensor, SENSORS["gopro"]))
+    return camera_from(*settings_from())
 
 
 def _directions(camera: Camera, wide: int, tall: int):

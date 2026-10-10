@@ -482,8 +482,18 @@ class CoralCityShell(omni.ext.IExt):
         """The vehicle camera's filter, port and lens (coral/optics.py), once."""
         if getattr(self, "_camera_model", None) is None:
             import optics
-            self._camera_model = optics.from_environment()
+            brief = self.brief if isinstance(getattr(self, "brief", None), dict) else {}
+            self._camera_model = optics.for_dive(brief, brief.get("vehiclePath", "/dive/vehicle"))
             self._optics_maps = {}
+            if self._camera_model.iso is not None:
+                # A camera set by hand: the exposure pinned at its ISO and the
+                # auto-meter told to leave it, so the picture is as dark or as
+                # noisy as that setting makes it.
+                try:
+                    carb.settings.get_settings().set("/rtx/post/tonemap/filmIso", float(self._camera_model.iso))
+                    os.environ["IOCEAN_METER"] = "0"
+                except Exception as exc:
+                    carb.log_warn(f"iocean could not pin the camera's ISO: {exc}")
             self._say("camera_is", **self._camera_model.said())
         return self._camera_model
 
@@ -501,10 +511,12 @@ class CoralCityShell(omni.ext.IExt):
             # The ISO the camera's own auto-exposure chose, which is what sets
             # how few electrons a frame is made of; and a seed per frame, so a
             # dive's noise is the same when the dive is run again.
-            try:
-                iso = float(carb.settings.get_settings().get("/rtx/post/tonemap/filmIso") or 100.0)
-            except Exception:
-                iso = 100.0
+            iso = camera.iso
+            if iso is None:
+                try:
+                    iso = float(carb.settings.get_settings().get("/rtx/post/tonemap/filmIso") or 100.0)
+                except Exception:
+                    iso = 100.0
             self._frames_taken = getattr(self, "_frames_taken", 0) + 1
             seed = int(os.environ.get("IOCEAN_SEED", "1") or 1) * 100003 + self._frames_taken
             return optics.through(frame, camera, self._optics_maps, iso=iso, seed=seed)

@@ -367,5 +367,14 @@
   "tops": 0.0,
   "ramGb": 4,
   "note": "What a stock BlueROV2 actually carries. It will run a PID loop and a state estimator and it will not run a network: a controller that needs tera-operations to think cannot be flown on this hull, and saying so before the dive is the point of declaring it."
+ },
+ "camera": {
+  "lens": "pinhole",
+  "lensFovDeg": 80,
+  "port": "dome",
+  "filter": "none",
+  "sensor": "imx322",
+  "iso": "auto",
+  "note": "What the forward camera's picture goes through (coral/optics.py): Blue Robotics' Low-Light HD USB camera, a Sony IMX322 behind the dome end cap of the front enclosure, so a rectilinear lens about 80 degrees across and no refraction at the port. Approximate, from Blue Robotics' published figures, not measured. A dive can carry another camera by saying so in its objective, e.g. {\"camera\": {\"lens\": \"gopro-wide\", \"port\": \"flat\", \"sensor\": \"gopro\"}}."
  }
 }

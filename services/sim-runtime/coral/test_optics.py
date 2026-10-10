@@ -91,3 +91,31 @@ def test_no_sensor_is_the_optics_alone():
     frame = _flat((0.4, 0.45, 0.5))
     out = optics.through(frame, _plain(sensor=optics.SENSORS["none"]), iso=3200, seed=4)
     assert out.reshape(-1, 3).std(0).max() < 1.0
+
+
+def test_the_dive_says_over_the_vehicle_over_the_environment_over_the_defaults():
+    settings, told = optics.settings_from(vehicle={"lens": "pinhole", "lensFovDeg": 80, "port": "dome"},
+                                          dive={"filter": "red", "iso": 1600},
+                                          environment={"IOCEAN_PORT": "flat", "IOCEAN_SENSOR": "imx322"})
+    camera = optics.camera_from(settings, told)
+    assert camera.lens.model == "pinhole" and camera.lens.horizontal_fov_deg == 80
+    assert camera.port.kind == "dome"                      # the vehicle over the environment
+    assert camera.filter.kind == "red" and camera.iso == 1600
+    assert camera.sensor.kind == "imx322"                  # nobody above the environment said
+    assert told == ("environment", "vehicle", "dive")
+    assert optics.camera_from(*optics.settings_from(environment={})).said()["iso"] == "auto"
+
+
+def test_a_dive_reads_its_camera_from_the_vehicle_package_and_its_own_objective(tmp_path):
+    import json
+
+    (tmp_path / "dynamics.json").write_text(json.dumps({"camera": {"lens": "pinhole", "lensFovDeg": 80,
+                                                                   "port": "dome", "sensor": "imx322"}}))
+    plain = optics.for_dive({"objective": {"kind": "reach"}}, tmp_path)
+    assert plain.port.kind == "dome" and plain.sensor.kind == "imx322"
+    gopro = optics.for_dive({"objective": {"kind": "reach", "camera": {"lens": "gopro-wide", "port": "flat"}}},
+                            tmp_path)
+    assert gopro.lens.model == "equidistant" and gopro.port.kind == "flat" and gopro.sensor.kind == "imx322"
+    # A rectilinear 80 degree lens behind a dome is drawn at exactly its own width.
+    across, _ = optics.render_tangents(plain, 160, 90)
+    assert abs(across / 1.01 - np.tan(np.radians(40))) < 0.01
