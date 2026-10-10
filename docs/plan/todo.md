@@ -2339,9 +2339,9 @@ platform being usable by somebody who is not us.
       replay.** The drain reads the whole log now, but the *live* relay still
       asks for the last four hundred lines, so anybody watching misses the
       first events. Harmless and untidy.
-- [ ] **45 · calibrated depths.** One free NASA Earthdata account and ICESat-2
-      ATL24 makes Al Fahal measured rather than plausible — fifty-seven
-      granules cross it. **Not ours to create.**
+- [x] **45 · calibrated depths.** Done in r8: ICESat-2 photons fit Al Fahal
+      (rms 2.00 m, v7) and Shushah (1.28 m), and the learned depth model is
+      corrected by each place's photons (Al Fahal 0.79 m held out, v10).
 
 
 ## What a dive is made of
