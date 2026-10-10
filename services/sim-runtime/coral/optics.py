@@ -412,10 +412,12 @@ def through(pixels: np.ndarray, camera: Camera, cached: dict | None = None,
 
 
 # How much more a video codec gets out of a bit than JPEG does, for the same
-# look: an intra frame of H.264 is about one and a half times as efficient,
-# and the frames between, predicted from their neighbours, more. Two and a
-# half is the middle of that; a still is matched to the bits a frame gets.
-CODEC_EFFICIENCY = 2.5
+# look: an intra frame of H.264 is about one and a half to two times as
+# efficient, and the frames between, predicted from their neighbours, two or
+# three times more again on footage that moves slowly, as a reef from an ROV
+# does. Four is inside that; at two and a half the BlueROV2's 10 Mbit/s came
+# out at JPEG quality 22 with blocked colour, which its footage does not have.
+CODEC_EFFICIENCY = 4.0
 
 
 def sharpened(rgb: np.ndarray, amount: float, radius: float = 1.0) -> np.ndarray:
