@@ -18,6 +18,17 @@ frame size; applying them is a remap.
     IOCEAN_LENS     gopro-wide (default) | pinhole
     IOCEAN_PORT     flat (default) | dome | none
     IOCEAN_FILTER   none (default) | red | magenta
+    IOCEAN_SENSOR   gopro (default) | none
+
+After the optics, the sensor: the light becomes electrons on a small 4K
+sensor (a GoPro's is 1/2.3 inch, 1.55 micrometre pixels), with the shot noise
+light has and the read noise electronics add, at the ISO the camera's own
+auto-exposure chose, each output pixel the average of the sensor pixels it
+was scaled down from; then quantised as the sensor's converter does, and the
+colour noise smoothed as a camera's processing smooths it. The sensor's
+figures are typical of its class (Clark, "Digital camera sensor performance
+summary", clarkvision.com; Foi et al., IEEE TIP 17:1737, 2008, for the
+model), chosen, not measured on this camera.
 
 The GoPro's field of view is its published one (HERO, Wide, 16:9: 118 by 69
 degrees in air), with an equidistant fisheye (image radius proportional to
@@ -87,25 +98,54 @@ FILTERS = {
 }
 
 
+@dataclass(frozen=True)
+class Sensor:
+    """Light into electrons into numbers."""
+    kind: str = "gopro"
+    full_well_e: float = 4500.0          # electrons a pixel holds at base ISO
+    read_noise_e: float = 2.5            # electrons, per read
+    base_iso: float = 100.0
+    bits: int = 12
+    sensor_px: tuple = (3840, 2160)      # what the output is scaled down from
+    prnu: float = 0.01                   # pixel to pixel gain, as a share
+    chroma_blur_px: float = 1.5          # the camera's colour noise reduction
+    vignette: float = 0.3                # how much darker the corners, after the camera's own correction
+
+    def electrons_at(self, iso: float, wide: int, tall: int) -> float:
+        """Electrons for a full-scale output pixel at this ISO."""
+        binned = (self.sensor_px[0] * self.sensor_px[1]) / max(wide * tall, 1)
+        return self.full_well_e * max(binned, 1.0) * self.base_iso / max(iso, self.base_iso)
+
+
+SENSORS = {"gopro": Sensor(), "none": Sensor(kind="none")}
+
+
 @dataclass
 class Camera:
     lens: Lens = field(default_factory=Lens)
     port: Port = field(default_factory=Port)
     filter: Filter = field(default_factory=lambda: FILTERS["none"])
+    sensor: Sensor = field(default_factory=lambda: SENSORS["gopro"])
 
     def said(self) -> dict:
         return {"lens": self.lens.model, "lensFovDeg": self.lens.horizontal_fov_deg, "lensIs": self.lens.said,
                 "port": self.port.kind, "filter": self.filter.kind, "filterTransmits": list(self.filter.transmits),
-                "waterIndex": list(WATER_INDEX)}
+                "waterIndex": list(WATER_INDEX), "sensor": self.sensor.kind,
+                "sensorIs": None if self.sensor.kind == "none" else
+                {"fullWellE": self.sensor.full_well_e, "readNoiseE": self.sensor.read_noise_e,
+                 "bits": self.sensor.bits, "pixels": list(self.sensor.sensor_px),
+                 "is": "typical of a 1/2.3-inch 4K sensor; chosen, not measured on this camera"}}
 
 
 def from_environment() -> Camera:
     lens = os.environ.get("IOCEAN_LENS", "gopro-wide").strip().lower()
     port = os.environ.get("IOCEAN_PORT", "flat").strip().lower()
     filt = os.environ.get("IOCEAN_FILTER", "none").strip().lower()
+    sensor = os.environ.get("IOCEAN_SENSOR", "gopro").strip().lower()
     return Camera(lens=Lens(model="pinhole" if lens == "pinhole" else "equidistant"),
                   port=Port(kind=port if port in ("flat", "dome", "none") else "flat"),
-                  filter=FILTERS.get(filt, FILTERS["none"]))
+                  filter=FILTERS.get(filt, FILTERS["none"]),
+                  sensor=SENSORS.get(sensor, SENSORS["gopro"]))
 
 
 def _directions(camera: Camera, wide: int, tall: int):
@@ -161,8 +201,30 @@ def _sample(channel: np.ndarray, mx: np.ndarray, my: np.ndarray) -> np.ndarray:
         return (top * (1 - fy) + bottom * fy).astype(channel.dtype)
 
 
-def through(pixels: np.ndarray, camera: Camera, cached: dict | None = None) -> np.ndarray:
-    """A pinhole frame (sRGB, H x W x 3, uint8) as this camera takes it."""
+def _linear(encoded: np.ndarray) -> np.ndarray:
+    v = encoded.astype("float32") / 255.0
+    return np.where(v <= 0.04045, v / 12.92, ((v + 0.055) / 1.055) ** 2.4)
+
+
+def _encoded(light: np.ndarray) -> np.ndarray:
+    v = np.clip(light, 0.0, 1.0)
+    v = np.where(v <= 0.0031308, v * 12.92, 1.055 * v ** (1 / 2.4) - 0.055)
+    return (v * 255.0 + 0.5).astype("uint8")
+
+
+def _blur(channel: np.ndarray, sigma: float) -> np.ndarray:
+    try:
+        import cv2
+        return cv2.GaussianBlur(channel, (0, 0), sigma)
+    except ImportError:
+        from scipy import ndimage
+        return ndimage.gaussian_filter(channel, sigma)
+
+
+def through(pixels: np.ndarray, camera: Camera, cached: dict | None = None,
+            iso: float = 100.0, seed: int = 0) -> np.ndarray:
+    """A pinhole frame (sRGB, H x W x 3, uint8) as this camera takes it:
+    filter, port and lens, vignetting, then the sensor at `iso`."""
     tall, wide = pixels.shape[:2]
     key = (wide, tall, camera.lens, camera.port)
     if cached is not None and key in cached:
@@ -171,13 +233,35 @@ def through(pixels: np.ndarray, camera: Camera, cached: dict | None = None) -> n
         m = maps(camera, wide, tall)
         if cached is not None:
             cached[key] = m
-    frame = pixels[..., :3]
-    if camera.filter.kind != "none":
-        # In light, not in the encoding, and brightness given back as the
-        # camera's own exposure would: a filter changes colour, and an
-        # auto-exposing camera opens up for the light it takes.
-        from metering import balanced
-        t = np.asarray(camera.filter.transmits, dtype="float64")
-        frame = balanced(frame, tuple(t / (np.array([0.2126, 0.7152, 0.0722]) @ t)))
-    out = np.stack([_sample(np.ascontiguousarray(frame[..., c]), *m[c]) for c in range(3)], axis=-1)
-    return out
+    light = _linear(pixels[..., :3])
+    t = np.asarray(camera.filter.transmits, dtype="float32")
+    light = light * t[None, None, :]
+    light = np.stack([_sample(np.ascontiguousarray(light[..., c]), *m[c]) for c in range(3)], axis=-1)
+    # An auto-exposing camera opens up for the light the filter took: more
+    # gain, which is fewer electrons for the same picture, which is noise.
+    gain = 1.0 / max(float(np.array([0.2126, 0.7152, 0.0722], dtype="float32") @ t), 1e-3)
+    sensor = camera.sensor
+    if sensor.kind != "none":
+        cols = (np.arange(wide, dtype="float32") - (wide - 1) / 2) / ((wide - 1) / 2)
+        rows = (np.arange(tall, dtype="float32") - (tall - 1) / 2) / ((wide - 1) / 2)
+        r2 = cols[None, :] ** 2 + rows[:, None] ** 2
+        corner = 1.0 + ((tall - 1) / (wide - 1)) ** 2
+        light = light * (1.0 - sensor.vignette * r2 / corner)[..., None]
+        rng = np.random.default_rng(seed)
+        # Electrons from the light that reached the sensor, at the exposure
+        # the scene was drawn with; the filter's gain is only how many
+        # electrons make full scale, so it costs electrons, not light.
+        e = np.clip(light, 0, None) * sensor.electrons_at(iso, wide, tall)
+        e = e * (1.0 + sensor.prnu * rng.standard_normal((1, wide, 1)).astype("float32"))
+        e = e + np.sqrt(e) * rng.standard_normal(e.shape).astype("float32")
+        e = e + sensor.read_noise_e * rng.standard_normal(e.shape).astype("float32")
+        levels = float(2 ** sensor.bits - 1)
+        light = np.round(np.clip(e / sensor.electrons_at(iso * gain, wide, tall), 0, 1) * levels) / levels
+        if sensor.chroma_blur_px > 0:
+            luma = light @ np.array([0.2126, 0.7152, 0.0722], dtype="float32")
+            chroma = light - luma[..., None]
+            chroma = np.stack([_blur(np.ascontiguousarray(chroma[..., c]), sensor.chroma_blur_px)
+                               for c in range(3)], axis=-1)
+            light = luma[..., None] + chroma
+        return _encoded(light)
+    return _encoded(light * gain)

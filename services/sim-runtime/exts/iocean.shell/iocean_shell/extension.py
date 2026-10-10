@@ -495,9 +495,19 @@ class CoralCityShell(omni.ext.IExt):
         try:
             import optics
             camera = self._optics()
-            if camera.lens.model == "pinhole" and camera.port.kind == "none" and camera.filter.kind == "none":
+            if (camera.lens.model == "pinhole" and camera.port.kind == "none" and camera.filter.kind == "none"
+                    and camera.sensor.kind == "none"):
                 return frame
-            return optics.through(frame, camera, self._optics_maps)
+            # The ISO the camera's own auto-exposure chose, which is what sets
+            # how few electrons a frame is made of; and a seed per frame, so a
+            # dive's noise is the same when the dive is run again.
+            try:
+                iso = float(carb.settings.get_settings().get("/rtx/post/tonemap/filmIso") or 100.0)
+            except Exception:
+                iso = 100.0
+            self._frames_taken = getattr(self, "_frames_taken", 0) + 1
+            seed = int(os.environ.get("IOCEAN_SEED", "1") or 1) * 100003 + self._frames_taken
+            return optics.through(frame, camera, self._optics_maps, iso=iso, seed=seed)
         except Exception as exc:
             carb.log_warn(f"iocean could not put the frame through the camera: {exc}")
             return frame

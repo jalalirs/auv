@@ -52,3 +52,42 @@ def test_a_red_filter_warms_the_frame_and_keeps_its_brightness():
     assert after[0] / after[2] > before[0] / before[2] * 1.5
     luma = np.array([0.2126, 0.7152, 0.0722])
     assert abs(luma @ after - luma @ before) < 20
+
+
+def _flat(colour, wide=1280, tall=720):
+    return (np.ones((tall, wide, 3)) * np.asarray(colour) * 255).astype("uint8")
+
+
+def _plain(**kw):
+    return optics.Camera(lens=optics.Lens(model="pinhole"), port=optics.Port("none"), **kw)
+
+
+def test_noise_grows_with_iso():
+    frame = _flat((0.4, 0.45, 0.5))
+    low = optics.through(frame, _plain(), iso=100, seed=1).astype(float)
+    high = optics.through(frame, _plain(), iso=3200, seed=1).astype(float)
+    middle = (slice(340, 380), slice(600, 680))                 # away from the vignetted corners
+    spread = lambda a: a[middle].reshape(-1, 3).std(0).mean()  # per channel, not across them
+    assert spread(high) > 2 * spread(low)
+    # And the picture stays the picture: the mean barely moves.
+    assert abs(high[middle].mean() - low[middle].mean()) < 4
+
+
+def test_a_red_filter_gives_a_dim_red_channel_more_signal_against_its_noise():
+    # Blue water at depth: red is a sliver of what reaches the camera.
+    frame = _flat((0.06, 0.45, 0.55))
+    middle = (slice(340, 380), slice(600, 680))
+    bare = optics.through(frame, _plain(), iso=800, seed=2).astype(float)[middle][..., 0]
+    red = optics.through(frame, _plain(filter=optics.FILTERS["red"]), iso=800, seed=2).astype(float)[middle][..., 0]
+    assert red.mean() / red.std() > bare.mean() / bare.std()
+
+
+def test_the_corners_are_darker_than_the_middle():
+    out = optics.through(_flat((0.5, 0.5, 0.5)), _plain(), iso=100, seed=3).astype(float)
+    assert out[:20, :20].mean() < out[350:370, 630:650].mean() - 5
+
+
+def test_no_sensor_is_the_optics_alone():
+    frame = _flat((0.4, 0.45, 0.5))
+    out = optics.through(frame, _plain(sensor=optics.SENSORS["none"]), iso=3200, seed=4)
+    assert out.reshape(-1, 3).std(0).max() < 1.0
