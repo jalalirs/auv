@@ -15,6 +15,10 @@
 
 FROM python:3.12-slim
 
+# rasterio's wheel carries GDAL but not the XML parser GDAL is linked against.
+RUN apt-get update && apt-get install -y --no-install-recommends libexpat1 \
+ && rm -rf /var/lib/apt/lists/*
+
 RUN pip install --no-cache-dir \
         "numpy>=1.26,<3" "scipy>=1.11" "pillow>=10" "matplotlib>=3.8" \
         "rasterio>=1.3.10" "onnxruntime>=1.18" "requests>=2.31" "h5py>=3.10" "tifffile>=2024.1.30"
