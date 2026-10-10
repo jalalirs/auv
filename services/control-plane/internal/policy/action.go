@@ -73,6 +73,17 @@ const (
 
 	// ObjectUpload covers obtaining a grant to place bytes in storage.
 	ObjectUpload Action = "object.upload"
+	// CityFound covers an organisation founding a place of its own.
+	CityFound Action = "city.found"
+	// CityPublish covers recording and publishing a version of a place: a
+	// platform steward for the catalogue, the owning organisation's members
+	// for a place of their own.
+	CityPublish Action = "city.publish"
+	// VersionRead covers fetching a package's files. A catalogue package is
+	// open to anyone signed in, as it always was; an organisation's own place
+	// only to those who may see it.
+	VersionRead Action = "version.read"
+
 	// ObjectRelease covers an organisation letting go of bytes it holds.
 	ObjectRelease Action = "object.release"
 	// StorageRead covers seeing what an organisation holds and may hold.
@@ -127,6 +138,9 @@ var requirement = map[Action]struct {
 	CityRead:    {RoleViewer, []ResourceKind{ResourceCity}},
 	CityGrant:   {RoleSteward, []ResourceKind{ResourceCity}},
 	CityArrange: {RoleViewer, []ResourceKind{ResourceCity}},
+	CityFound:   {RoleContributor, []ResourceKind{ResourceOrg}},
+	CityPublish: {RoleSteward, []ResourceKind{ResourceCity, ResourcePlatform}},
+	VersionRead: {RoleAnyone, []ResourceKind{ResourceCity, ResourcePlatform}},
 
 	VehicleCreate: {RoleAdmin, []ResourceKind{ResourcePlatform}},
 	VehicleRead:   {RoleViewer, []ResourceKind{ResourceVehicle, ResourcePlatform}},

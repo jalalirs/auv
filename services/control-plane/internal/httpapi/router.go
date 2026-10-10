@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/jalalirs/auv/services/control-plane/internal/db"
 	"github.com/jalalirs/auv/services/control-plane/internal/policy"
 )
 
@@ -159,5 +160,24 @@ func fromPath(kind policy.ResourceKind, segment string) ResourceOf {
 			return policy.Resource{}, fmt.Errorf("%s is missing from the path", segment)
 		}
 		return policy.Resource{Kind: kind, ID: value}, nil
+	}
+}
+
+// ofVersion names what a package belongs to: the place, for a place's
+// version, so that a private place's files are as private as the place; the
+// platform, for a vehicle's.
+func (d *Dependencies) ofVersion(segment string) ResourceOf {
+	return func(r *http.Request) (policy.Resource, error) {
+		id := r.PathValue(segment)
+		var kind, asset string
+		err := d.Pool.QueryRow(r.Context(),
+			`SELECT asset_kind::text, asset_id FROM catalog.version WHERE id = $1`, id).Scan(&kind, &asset)
+		if err != nil {
+			return policy.Resource{}, db.Translate(err)
+		}
+		if kind == "city" {
+			return policy.City(asset), nil
+		}
+		return policy.Platform(), nil
 	}
 }

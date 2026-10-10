@@ -171,6 +171,9 @@ func (d *Dependencies) createDive(w http.ResponseWriter, r *http.Request) {
 	}
 	principal, _ := principalOf(r.Context())
 	orgID := r.PathValue("orgId")
+	if !d.mayUseVersion(w, r, request.CityVersionID) {
+		return
+	}
 
 	var created dive.Dive
 	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
@@ -773,4 +776,30 @@ func (d *Dependencies) listArtefacts(w http.ResponseWriter, r *http.Request) {
 		answer = append(answer, fetchable{Artefact: artefact, URL: url})
 	}
 	writeJSON(w, r, http.StatusOK, map[string]any{"artefacts": answer})
+}
+
+// mayUseVersion refuses a dive in a place the caller may not see. A place an
+// organisation owns is reported to anyone outside it as absent, the same as
+// when they ask for it by name.
+func (d *Dependencies) mayUseVersion(w http.ResponseWriter, r *http.Request, versionID string) bool {
+	if versionID == "" {
+		return true
+	}
+	r.SetPathValue("cityVersionId", versionID)
+	resource, err := d.ofVersion("cityVersionId")(r)
+	if err != nil {
+		writeError(w, r, err)
+		return false
+	}
+	subject, _ := subjectOf(r.Context())
+	decision, err := d.Authorizer.Decide(r.Context(), subject, policy.VersionRead, resource)
+	if err != nil {
+		writeError(w, r, err)
+		return false
+	}
+	if !decision.Allowed() {
+		writeDenied(w, r, decision)
+		return false
+	}
+	return true
 }

@@ -123,11 +123,11 @@ func (rt *Router) registerAll() {
 		Resource: atPlatform(), Handle: d.setDynamics})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/versions/{versionId}/files",
 		Summary: "a package's files, each with a short-lived URL to fetch it",
-		Action:  policy.PlatformReadCatalogue, Resource: atPlatform(),
+		Action:  policy.VersionRead, Resource: d.ofVersion("versionId"),
 		Handle: d.listVersionFiles})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/versions/{versionId}/publish",
 		Summary: "make a package pinnable, and from then on unchangeable",
-		Action:  policy.CityCreate, Resource: atPlatform(), Handle: d.publishVersion})
+		Action:  policy.CityPublish, Resource: d.ofVersion("versionId"), Handle: d.publishVersion})
 
 	// Capacity.
 	rt.register(Route{Method: "PUT", Pattern: "/api/v1/organisations/{orgId}/quota",
@@ -157,8 +157,11 @@ func (rt *Router) registerAll() {
 		Summary: "a city's packages", Action: policy.CityRead,
 		Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.listCityVersions})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/cities/{cityId}/versions",
-		Summary: "record a package for a city", Action: policy.CityCreate,
-		Resource: atPlatform(), Handle: d.createCityVersion})
+		Summary: "record a package for a city", Action: policy.CityPublish,
+		Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.createCityVersion})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/cities",
+		Summary: "found a place of the organisation's own, seen only by its members until they share it",
+		Action:  policy.CityFound, Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.foundOwnCity})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/cities/{cityId}/grants",
 		Summary: "who has been granted access to a place", Action: policy.CityGrant,
 		Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.readCityGrants})

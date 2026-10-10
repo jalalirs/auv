@@ -2097,6 +2097,51 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/v1/organisations/{orgId}/cities:
+    post:
+      tags: [places]
+      summary: Found a place of the organisation's own
+      description: >
+        The place belongs to the organisation: its members see it, publish its
+        versions and share it, and nobody else learns it exists until they do.
+        It is never discoverable when founded.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [slug, name, verticalDatum]
+              properties:
+                slug: { type: string }
+                name: { type: string }
+                summary: { type: string }
+                extent:
+                  $ref: '#/components/schemas/Extent'
+                horizontalCrs:
+                  type: string
+                  default: 'EPSG:4326'
+                verticalDatum: { type: string, minLength: 1 }
+      responses:
+        '201':
+          description: The place.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/City'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/v1/cities/{cityId}:
     get:
       tags: [places]
@@ -3677,10 +3722,10 @@ components:
     City:
       type: object
       description: >
-        A place a dive happens in: a reef, a wreck, a test tank, a harbour. It
-        exists at the platform and outlives the institutions granted access to
-        it; ownership is a question answered in policy, never a property of the
-        place.
+        A place a dive happens in: a reef, a wreck, a test tank, a harbour.
+        The platform's catalogue places belong to no organisation and outlive
+        the institutions granted them; a place an organisation founded belongs
+        to it (`ownedByOrg`).
       properties:
         id: { type: string }
         slug: { type: string }
@@ -3700,6 +3745,11 @@ components:
             Discoverable places are listed to anyone signed in. The rest appear
             only to those granted them, and are otherwise indistinguishable
             from places that do not exist.
+        ownedByOrg:
+          type: string
+          description: >
+            The organisation the place belongs to, whose members curate it.
+            Absent for the platform's catalogue.
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
         retiredAt: { type: string, format: date-time, nullable: true }

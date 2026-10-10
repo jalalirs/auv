@@ -3007,6 +3007,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organisations/{orgId}/cities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Found a place of the organisation's own
+         * @description The place belongs to the organisation: its members see it, publish its versions and share it, and nobody else learns it exists until they do. It is never discoverable when founded.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The institution. */
+                    orgId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        slug: string;
+                        name: string;
+                        summary?: string;
+                        extent?: components["schemas"]["Extent"];
+                        /** @default EPSG:4326 */
+                        horizontalCrs?: string;
+                        verticalDatum: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description The place. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["City"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+                409: components["responses"]["Conflict"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cities/{cityId}": {
         parameters: {
             query?: never;
@@ -5203,7 +5261,7 @@ export interface components {
             sizeBytes: number;
             mediaType: string;
         };
-        /** @description A place a dive happens in: a reef, a wreck, a test tank, a harbour. It exists at the platform and outlives the institutions granted access to it; ownership is a question answered in policy, never a property of the place.
+        /** @description A place a dive happens in: a reef, a wreck, a test tank, a harbour. The platform's catalogue places belong to no organisation and outlive the institutions granted them; a place an organisation founded belongs to it (`ownedByOrg`).
          *      */
         City: {
             id: string;
@@ -5218,6 +5276,9 @@ export interface components {
             /** @description Discoverable places are listed to anyone signed in. The rest appear only to those granted them, and are otherwise indistinguishable from places that do not exist.
              *      */
             discoverable: boolean;
+            /** @description The organisation the place belongs to, whose members curate it. Absent for the platform's catalogue.
+             *      */
+            ownedByOrg?: string;
             /** Format: date-time */
             createdAt: string;
             createdBy: string;

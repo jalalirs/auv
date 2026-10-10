@@ -136,11 +136,12 @@ func (a *Authorizer) decideOrg(ctx context.Context, subject Subject, need Role, 
 // Discoverability decides what a principal with no binding may learn, and it is
 // consulted only after bindings prove insufficient, so a binding always wins.
 func (a *Authorizer) decideCity(ctx context.Context, subject Subject, need Role, cityID string) (Decision, error) {
-	var slug string
+	var slug, owner string
 	var discoverable bool
 	err := a.pool.QueryRow(ctx,
-		`SELECT slug, discoverable FROM catalog.city WHERE id = $1 AND retired_at IS NULL`,
-		cityID).Scan(&slug, &discoverable)
+		`SELECT slug, discoverable, coalesce(owned_by_org, '') FROM catalog.city
+		 WHERE id = $1 AND retired_at IS NULL`,
+		cityID).Scan(&slug, &discoverable, &owner)
 	if errors.Is(db.Translate(err), db.ErrNotFound) {
 		return denyHidden("no city with that identifier is visible to you"), nil
 	}
@@ -152,6 +153,7 @@ func (a *Authorizer) decideCity(ctx context.Context, subject Subject, need Role,
 	if err != nil {
 		return Decision{}, err
 	}
+	role = ownersRole(role, owner, discoverable, subject)
 	if role.AtLeast(need) {
 		return allow(role, a.platformFilter(subject, role)), nil
 	}
@@ -163,6 +165,26 @@ func (a *Authorizer) decideCity(ctx context.Context, subject Subject, need Role,
 			"this action needs %s in %s; you hold %s", need, slug, describe(role))), nil
 	}
 	return denyHidden("no city with that identifier is visible to you"), nil
+}
+
+// ownersRole adjusts what a subject holds on a place for who owns it.
+//
+// A place an organisation owns is its members' to curate: they hold steward
+// on it, which is what publishing a version of it and sharing it need. And
+// it is private: signing in confers nothing on it, so to anyone outside the
+// organisation that it has not shared it with, it does not exist. A place
+// with no owner, the platform's catalogue, is unchanged.
+func ownersRole(role Role, owner string, discoverable bool, subject Subject) Role {
+	if owner == "" {
+		return role
+	}
+	if subject.InOrg(owner) {
+		return stronger(role, RoleSteward)
+	}
+	if role == RoleAnyone && !discoverable {
+		return ""
+	}
+	return role
 }
 
 // decideJob answers questions about work, which belongs to the organisation
@@ -443,5 +465,25 @@ func (a *Authorizer) Assets(ctx context.Context, subject Subject, kind ScopeKind
 		}
 		scope.BoundIDs = append(scope.BoundIDs, id)
 	}
-	return scope, rows.Err()
+	if err := rows.Err(); err != nil {
+		return AssetScope{}, err
+	}
+	if kind != ScopeCity || len(subject.OrgIDs) == 0 {
+		return scope, nil
+	}
+	// And the places the subject's organisations own.
+	owned, err := a.pool.Query(ctx,
+		`SELECT id FROM catalog.city WHERE owned_by_org = ANY($1) AND retired_at IS NULL`, subject.OrgIDs)
+	if err != nil {
+		return AssetScope{}, fmt.Errorf("reading the places an organisation owns: %w", err)
+	}
+	defer owned.Close()
+	for owned.Next() {
+		var id string
+		if err := owned.Scan(&id); err != nil {
+			return AssetScope{}, err
+		}
+		scope.BoundIDs = append(scope.BoundIDs, id)
+	}
+	return scope, owned.Err()
 }

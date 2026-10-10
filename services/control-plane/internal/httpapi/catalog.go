@@ -92,6 +92,56 @@ func (d *Dependencies) createCity(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusCreated, created)
 }
 
+type foundCityRequest struct {
+	Slug          string         `json:"slug"`
+	Name          string         `json:"name"`
+	Summary       string         `json:"summary"`
+	Extent        *domain.Extent `json:"extent"`
+	HorizontalCRS string         `json:"horizontalCrs"`
+	VerticalDatum string         `json:"verticalDatum"`
+}
+
+// foundOwnCity founds a place that belongs to an organisation. Its members
+// see it, publish its versions and share it; nobody else learns it exists
+// until they do, so it is never discoverable when founded.
+func (d *Dependencies) foundOwnCity(w http.ResponseWriter, r *http.Request) {
+	var request foundCityRequest
+	if err := readJSON(r, &request); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	principal, _ := principalOf(r.Context())
+	orgID := r.PathValue("orgId")
+
+	var created catalog.City
+	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		var err error
+		created, err = d.Catalog.CreateCity(r.Context(), conn, catalog.CitySpec{
+			Slug:          request.Slug,
+			Name:          request.Name,
+			Summary:       request.Summary,
+			Extent:        request.Extent,
+			HorizontalCRS: request.HorizontalCRS,
+			VerticalDatum: request.VerticalDatum,
+			CreatedBy:     principal.ID,
+			OwnedByOrg:    orgID,
+		})
+		if err != nil {
+			return err
+		}
+		return d.Audit.Record(r.Context(), conn, audit.Event{
+			ActorID: principal.ID, Action: string(policy.CityFound),
+			SubjectKind: "city", SubjectID: created.ID, Outcome: audit.Succeeded,
+			Detail: map[string]any{"slug": created.Slug, "ownedByOrg": orgID},
+		})
+	})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusCreated, created)
+}
+
 // readCity reads one place.
 func (d *Dependencies) readCity(w http.ResponseWriter, r *http.Request) {
 	place, err := d.Catalog.City(r.Context(), r.PathValue("cityId"))

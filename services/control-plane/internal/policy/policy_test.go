@@ -141,3 +141,39 @@ func TestASubjectKnowsItsOrganisations(t *testing.T) {
 		t.Fatal("a non-member was treated as belonging to an organisation")
 	}
 }
+
+func TestAnOrganisationsPlaceIsItsMembersAndHiddenFromEveryoneElse(t *testing.T) {
+	member := Subject{PrincipalID: "prin_m", OrgIDs: []string{"org_kaust"}}
+	outsider := Subject{PrincipalID: "prin_o", OrgIDs: []string{"org_other"}}
+
+	if got := ownersRole(RoleAnyone, "org_kaust", false, member); got != RoleSteward {
+		t.Fatalf("a member curates the place: %q", got)
+	}
+	if got := ownersRole(RoleAnyone, "org_kaust", false, outsider); got != "" {
+		t.Fatalf("signing in confers nothing on a private place: %q", got)
+	}
+	if got := ownersRole(RoleViewer, "org_kaust", false, outsider); got != RoleViewer {
+		t.Fatalf("a place shared with an outsider is seen by them: %q", got)
+	}
+	if got := ownersRole(RoleAnyone, "org_kaust", true, outsider); got != RoleAnyone {
+		t.Fatalf("a place its owner made discoverable is listed as one: %q", got)
+	}
+	if got := ownersRole(RoleAnyone, "", false, outsider); got != RoleAnyone {
+		t.Fatalf("the platform's catalogue is unchanged: %q", got)
+	}
+	if !ownersRole(RoleAnyone, "org_kaust", false, member).AtLeast(mustRequire(t, CityPublish)) {
+		t.Fatal("a member may publish a version of the place")
+	}
+	if ownersRole(RoleAnyone, "org_kaust", false, outsider).AtLeast(mustRequire(t, VersionRead)) {
+		t.Fatal("an outsider may not fetch its files")
+	}
+}
+
+func mustRequire(t *testing.T, action Action) Role {
+	t.Helper()
+	role, _, err := Requires(action)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return role
+}

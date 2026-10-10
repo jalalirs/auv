@@ -64,9 +64,12 @@ type City struct {
 	HorizontalCRS string        `json:"horizontalCrs"`
 	VerticalDatum string        `json:"verticalDatum"`
 	Discoverable  bool          `json:"discoverable"`
-	CreatedAt     time.Time     `json:"createdAt"`
-	CreatedBy     string        `json:"createdBy"`
-	RetiredAt     *time.Time    `json:"retiredAt,omitempty"`
+	// OwnedByOrg is the organisation the place belongs to; empty for the
+	// platform's own catalogue.
+	OwnedByOrg string     `json:"ownedByOrg,omitempty"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	CreatedBy  string     `json:"createdBy"`
+	RetiredAt  *time.Time `json:"retiredAt,omitempty"`
 }
 
 // Vehicle is what a dive is flown in.
@@ -254,6 +257,9 @@ type CitySpec struct {
 	VerticalDatum string
 	Discoverable  bool
 	CreatedBy     string
+	// OwnedByOrg makes the place an organisation's own rather than the
+	// platform's.
+	OwnedByOrg string
 }
 
 // Validate reports whether the place is described well enough to found.
@@ -280,14 +286,15 @@ const selectCity = `
 	SELECT id, slug, name, summary,
 	       coalesce(ST_XMin(extent), 0), coalesce(ST_YMin(extent), 0),
 	       coalesce(ST_XMax(extent), 0), coalesce(ST_YMax(extent), 0),
-	       horizontal_crs, vertical_datum, discoverable, created_at, created_by, retired_at
+	       horizontal_crs, vertical_datum, discoverable, coalesce(owned_by_org, ''),
+	       created_at, created_by, retired_at
 	FROM catalog.city`
 
 func scanCity(row interface{ Scan(...any) error }) (City, error) {
 	var place City
 	err := row.Scan(&place.ID, &place.Slug, &place.Name, &place.Summary,
 		&place.Extent.West, &place.Extent.South, &place.Extent.East, &place.Extent.North,
-		&place.HorizontalCRS, &place.VerticalDatum, &place.Discoverable,
+		&place.HorizontalCRS, &place.VerticalDatum, &place.Discoverable, &place.OwnedByOrg,
 		&place.CreatedAt, &place.CreatedBy, &place.RetiredAt)
 	return place, err
 }
@@ -311,14 +318,14 @@ func (s *Store) CreateCity(ctx context.Context, conn db.Conn, spec CitySpec) (Ci
 	_, err := conn.Exec(ctx, `
 		INSERT INTO catalog.city
 		    (id, slug, name, summary, extent, horizontal_crs, vertical_datum,
-		     discoverable, created_by)
+		     discoverable, created_by, owned_by_org)
 		VALUES ($1, $2, $3, $4,
 		        CASE WHEN $5::float8 IS NULL THEN NULL
 		             ELSE ST_MakeEnvelope($5, $6, $7, $8, 4326) END,
-		        $9, $10, $11, $12)`,
+		        $9, $10, $11, $12, nullif($13, ''))`,
 		id, spec.Slug, spec.Name, spec.Summary,
 		west, south, east, north,
-		crs, spec.VerticalDatum, spec.Discoverable, spec.CreatedBy)
+		crs, spec.VerticalDatum, spec.Discoverable, spec.CreatedBy, spec.OwnedByOrg)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return City{}, fmt.Errorf("%w: a city named %q already exists",
