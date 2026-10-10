@@ -67,7 +67,12 @@ def make(dense: pathlib.Path, text: pathlib.Path, out: pathlib.Path, cfg: dict, 
     cams = read_cameras(text)
     centres = np.array([c for _, c in cams])
     centre, rotation, heights = frame_of(points, centres)
-    scale = float(cfg["scale"]["camera_height_m"]) / float(np.median(heights))
+    assumed = float(cfg["scale"]["camera_height_m"]) / float(np.median(heights))
+    # Measured, where the video's own motion sensor gave a scale whose
+    # gravity came out as gravity (scale.py); assumed otherwise.
+    measured = about.get("measuredScale") or {}
+    trusted = bool(measured.get("measured")) and abs(float(measured.get("gravityMs2", 0)) - 9.81) < 1.0
+    scale = float(measured["scale"]) if trusted else assumed
 
     def to_patch(p):
         return (np.asarray(p) - centre) @ rotation.T * scale
@@ -98,10 +103,16 @@ def make(dense: pathlib.Path, text: pathlib.Path, out: pathlib.Path, cfg: dict, 
         "cellM": cell, "demOrigin": [round(float(lo[0]), 3), round(float(lo[1]), 3)],
         "track": {"lengthM": round(float(np.linalg.norm(np.diff(cam_patch[:, :2], axis=0), axis=1).sum()), 1),
                   "cameraHeightM": round(float(np.median(cam_patch[:, 2] - 0)), 2)},
-        "scale": {"factor": scale, "how": cfg["scale"]["how"],
-                  "from": f"the cameras' median height above the reef's mean plane, set to "
-                          f"{cfg['scale']['camera_height_m']} m: how high a diver swims a transect video; "
-                          "not measured"},
+        "scale": ({"factor": scale, "how": "measured", "from": measured.get("how"),
+                   "gravityMs2": measured.get("gravityMs2"), "residualM": measured.get("residualM"),
+                   "pairs": measured.get("pairs"), "assumedWouldHaveBeen": assumed,
+                   "cameraHeightM": round(float(np.median(heights)) * scale, 2)}
+                  if trusted else
+                  {"factor": scale, "how": cfg["scale"]["how"],
+                   "from": f"the cameras' median height above the reef's mean plane, set to "
+                           f"{cfg['scale']['camera_height_m']} m: how high a diver swims a transect video; "
+                           "not measured",
+                   "measuredButRefused": measured or None}),
         "frame": "metres, z up (the reef's mean plane), x along the transect, origin at the patch's middle",
         "placed": None,
     }

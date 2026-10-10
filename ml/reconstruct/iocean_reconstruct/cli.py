@@ -47,11 +47,25 @@ def _video(cfg, a) -> int:
     return 0
 
 
+def _scale(cfg, a) -> int:
+    from .scale import measure
+
+    run = config.run_dir(a.name)
+    video = json.loads((run / "frames" / "frames.json").read_text())
+    said = measure(pathlib.Path(a.video or video["videos"][0]), run / "colmap" / "sparse-text",
+                   float(video["fromSeconds"]), float(video["everySeconds"]))
+    (run / "scale.json").write_text(json.dumps(said, indent=1) + "\n")
+    print(json.dumps(said, indent=1))
+    return 0
+
+
 def _patch(cfg, a) -> int:
     from .patch import make
 
     run = config.run_dir(a.name)
     about = {**_about(cfg, a.name), "video": json.loads((run / "frames" / "frames.json").read_text())}
+    if (run / "scale.json").exists():
+        about["measuredScale"] = json.loads((run / "scale.json").read_text())
     said = make(run / "colmap" / "dense", run / "colmap" / "sparse-text", run / "patch", cfg, about)
     print(json.dumps({k: said[k] for k in ("frames", "sizeM", "seenM2", "track", "scale")}, indent=1))
     return 0
@@ -68,9 +82,12 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--to", dest="end", type=float, help="seconds")
     p = sub.add_parser("patch")
     p.add_argument("--name", required=True)
+    m = sub.add_parser("scale", help="measure the scale from the video's own motion sensor")
+    m.add_argument("--name", required=True)
+    m.add_argument("--video", help="the video, where frames.json's path is not the one mounted here")
     a = ap.parse_args(argv)
     cfg = config.load(a.config)
-    return {"video": _video, "patch": _patch}[a.command](cfg, a)
+    return {"video": _video, "patch": _patch, "scale": _scale}[a.command](cfg, a)
 
 
 if __name__ == "__main__":
