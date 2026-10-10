@@ -138,6 +138,10 @@ class Camera:
     # camera's own auto-exposure.
     iso: float | None = None
     told_by: tuple = ()
+    # Blur from the camera moving while the shutter is open; the distance the
+    # moving part assumes the scene is at, since the capture has no depth.
+    motion_blur: bool = True
+    blur_depth_m: float = 3.0
 
     def said(self) -> dict:
         return {"lens": self.lens.model, "lensFovDeg": self.lens.horizontal_fov_deg, "lensIs": self.lens.said,
@@ -147,11 +151,15 @@ class Camera:
                 {"fullWellE": self.sensor.full_well_e, "readNoiseE": self.sensor.read_noise_e,
                  "bits": self.sensor.bits, "pixels": list(self.sensor.sensor_px),
                  "is": "typical of its class; chosen, not measured on this camera"},
-                "iso": self.iso if self.iso is not None else "auto", "toldBy": list(self.told_by)}
+                "iso": self.iso if self.iso is not None else "auto", "toldBy": list(self.told_by),
+                "motionBlur": self.motion_blur, "blurDepthM": self.blur_depth_m,
+                "blurDepthIs": "assumed: the capture has no depth, so the blur from moving (not from turning) "
+                               "takes the scene to be this far away"}
 
 
 # What a camera is when nothing says otherwise: a GoPro behind a flat port.
-DEFAULTS = {"lens": "gopro-wide", "port": "flat", "filter": "none", "sensor": "gopro", "iso": "auto"}
+DEFAULTS = {"lens": "gopro-wide", "port": "flat", "filter": "none", "sensor": "gopro", "iso": "auto",
+            "motionBlur": True, "blurDepthM": 3.0}
 LENSES = {"gopro-wide": ("equidistant", 118.0), "pinhole": ("pinhole", 47.17)}
 
 
@@ -186,7 +194,9 @@ def camera_from(settings: dict, told_by: tuple = ()) -> Camera:
                   port=Port(kind=port if port in ("flat", "dome", "none") else "flat"),
                   filter=FILTERS.get(str(settings.get("filter", "none")).lower(), FILTERS["none"]),
                   sensor=SENSORS.get(str(settings.get("sensor", "gopro")).lower(), SENSORS["gopro"]),
-                  iso=iso, told_by=told_by)
+                  iso=iso, told_by=told_by,
+                  motion_blur=str(settings.get("motionBlur", True)).lower() not in ("false", "0", "no", "off"),
+                  blur_depth_m=float(settings.get("blurDepthM", 3.0)))
 
 
 def for_dive(brief: dict | None = None, vehicle_dir=None) -> Camera:
@@ -283,10 +293,44 @@ def _blur(channel: np.ndarray, sigma: float) -> np.ndarray:
         return ndimage.gaussian_filter(channel, sigma)
 
 
+def motion(wide: int, tall: int, across: float, moving, turning, exposure_s: float, depth_m: float):
+    """How far, in pixels of the pinhole picture, each point travels while the
+    shutter is open: the motion field of a camera translating at `moving` and
+    turning at `turning` (both in the camera's own axes, x right, y down, z
+    ahead), the scene `depth_m` away (Longuet-Higgins and Prazdny, Proc. R.
+    Soc. Lond. B 208:385, 1980)."""
+    f = (wide - 1) / 2 / max(across, 1e-6)
+    x = np.arange(wide, dtype="float32")[None, :] - (wide - 1) / 2
+    y = np.arange(tall, dtype="float32")[:, None] - (tall - 1) / 2
+    tx, ty, tz = (float(v) for v in moving)
+    wx, wy, wz = (float(v) for v in turning)
+    z = max(float(depth_m), 0.1)
+    u = (-f * tx + x * tz) / z + x * y * wx / f - (f + x * x / f) * wy + y * wz
+    v = (-f * ty + y * tz) / z + (f + y * y / f) * wx - x * y * wy / f - x * wz
+    return u * exposure_s, v * exposure_s
+
+
+def smeared(light: np.ndarray, du: np.ndarray, dv: np.ndarray, most: int = 16) -> np.ndarray:
+    """The picture averaged along each pixel's path over the exposure, in light."""
+    reach = float(np.sqrt(du * du + dv * dv).max()) if du.size else 0.0
+    if reach < 0.5:
+        return light
+    steps = int(min(most, max(2, np.ceil(reach) + 1)))
+    tall, wide = light.shape[:2]
+    gx, gy = np.meshgrid(np.arange(wide, dtype="float32"), np.arange(tall, dtype="float32"))
+    total = np.zeros_like(light)
+    for s in np.linspace(-0.5, 0.5, steps, dtype="float32"):
+        mx, my = gx + s * du, gy + s * dv
+        total += np.stack([_sample(np.ascontiguousarray(light[..., c]), mx, my) for c in range(3)], axis=-1)
+    return total / steps
+
+
 def through(pixels: np.ndarray, camera: Camera, cached: dict | None = None,
-            iso: float = 100.0, seed: int = 0) -> np.ndarray:
+            iso: float = 100.0, seed: int = 0, moving=(0.0, 0.0, 0.0), turning=(0.0, 0.0, 0.0),
+            exposure_s: float = 1.0 / 60.0) -> np.ndarray:
     """A pinhole frame (sRGB, H x W x 3, uint8) as this camera takes it:
-    filter, port and lens, vignetting, then the sensor at `iso`."""
+    the blur of its own motion over the exposure, filter, port and lens,
+    vignetting, then the sensor at `iso`."""
     tall, wide = pixels.shape[:2]
     key = (wide, tall, camera.lens, camera.port)
     if cached is not None and key in cached:
@@ -296,6 +340,9 @@ def through(pixels: np.ndarray, camera: Camera, cached: dict | None = None,
         if cached is not None:
             cached[key] = m
     light = _linear(pixels[..., :3])
+    if camera.motion_blur and (any(moving) or any(turning)):
+        across, _ = render_tangents(camera, wide, tall)
+        light = smeared(light, *motion(wide, tall, across, moving, turning, exposure_s, camera.blur_depth_m))
     t = np.asarray(camera.filter.transmits, dtype="float32")
     light = light * t[None, None, :]
     light = np.stack([_sample(np.ascontiguousarray(light[..., c]), *m[c]) for c in range(3)], axis=-1)

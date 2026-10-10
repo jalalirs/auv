@@ -506,7 +506,7 @@ class CoralCityShell(omni.ext.IExt):
             import optics
             camera = self._optics()
             if (camera.lens.model == "pinhole" and camera.port.kind == "none" and camera.filter.kind == "none"
-                    and camera.sensor.kind == "none"):
+                    and camera.sensor.kind == "none" and not camera.motion_blur):
                 return frame
             # The ISO the camera's own auto-exposure chose, which is what sets
             # how few electrons a frame is made of; and a seed per frame, so a
@@ -519,7 +519,25 @@ class CoralCityShell(omni.ext.IExt):
                     iso = 100.0
             self._frames_taken = getattr(self, "_frames_taken", 0) + 1
             seed = int(os.environ.get("IOCEAN_SEED", "1") or 1) * 100003 + self._frames_taken
-            return optics.through(frame, camera, self._optics_maps, iso=iso, seed=seed)
+            # The vehicle's own motion while the shutter is open, in the
+            # camera's axes (x right, y down, z ahead). The body is forward,
+            # left, up: the front camera looks along x, the down camera along
+            # -z with the vehicle's nose at the top of the picture.
+            moving = turning = (0.0, 0.0, 0.0)
+            try:
+                u, v, w, p, q, r = (float(one) for one in self.dive.velocity[:6])
+                if view == "front":
+                    moving, turning = (-v, -w, u), (-q, -r, p)
+                elif view == "down":
+                    moving, turning = (-v, -u, -w), (-q, -p, -r)
+            except Exception:
+                pass
+            try:
+                exposure = float(carb.settings.get_settings().get("/rtx/post/tonemap/exposureTime") or 1 / 60)
+            except Exception:
+                exposure = 1 / 60
+            return optics.through(frame, camera, self._optics_maps, iso=iso, seed=seed,
+                                  moving=moving, turning=turning, exposure_s=exposure)
         except Exception as exc:
             carb.log_warn(f"iocean could not put the frame through the camera: {exc}")
             return frame

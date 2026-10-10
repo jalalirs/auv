@@ -119,3 +119,28 @@ def test_a_dive_reads_its_camera_from_the_vehicle_package_and_its_own_objective(
     # A rectilinear 80 degree lens behind a dome is drawn at exactly its own width.
     across, _ = optics.render_tangents(plain, 160, 90)
     assert abs(across / 1.01 - np.tan(np.radians(40))) < 0.01
+
+
+def test_a_turn_smears_sideways_by_what_the_motion_field_says():
+    du, dv = optics.motion(161, 91, 1.0, (0, 0, 0), (0, 0.6, 0), 1 / 60, 3.0)
+    f = 80 / 1.0
+    assert abs(abs(du[45, 80]) - f * 0.6 / 60) < 1e-3 and abs(dv[45, 80]) < 1e-6
+    stripes = np.zeros((91, 161, 3), "float32")
+    stripes[:, ::8] = 1.0
+    out = optics.smeared(stripes, du * 8, dv * 8)                 # exaggerated, so it shows
+    assert out[45].std() < stripes[45].std() * 0.8                # across: softened
+    assert np.allclose(out[:, 80].std(), stripes[:, 80].std(), atol=0.05)   # down a column: as it was
+
+
+def test_moving_ahead_smears_the_edges_and_leaves_the_middle():
+    du, dv = optics.motion(161, 91, 1.0, (0, 0, 2.0), (0, 0, 0), 1 / 60, 3.0)
+    assert abs(du[45, 80]) < 1e-6 and abs(dv[45, 80]) < 1e-6
+    assert abs(du[45, 0]) > 0.5 and abs(dv[0, 80]) > 0.3
+
+
+def test_no_motion_is_no_blur_and_blur_can_be_turned_off():
+    frame = _flat((0.4, 0.45, 0.5), 320, 180)
+    still = _plain(sensor=optics.SENSORS["none"])
+    assert np.array_equal(optics.through(frame, still), optics.through(frame, still, turning=(0, 0, 0)))
+    settings, told = optics.settings_from(dive={"motionBlur": False}, environment={})
+    assert optics.camera_from(settings, told).motion_blur is False
