@@ -3065,6 +3065,181 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cities/{cityId}/builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A place's builds, newest first */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The place. */
+                    cityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Its builds. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            builds: components["schemas"]["BuildRecord"][];
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        /**
+         * Build a place from its data
+         * @description The platform runs the places module as a job with this brief: the public sources named, and the organisation's own uploaded files. The job reports each step; when it finishes, the package it made becomes a draft version of the place, which its curators publish. A place an organisation owns is built for it; for a catalogue place, say which of your organisations the work is for.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The place. */
+                    cityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["BuildBrief"];
+                };
+            };
+            responses: {
+                /** @description The build, queued. */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Build"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                429: components["responses"]["Refused"];
+                /** @description This platform has no image to build places with. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/builds/{buildId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How a build is going, and what it made
+         * @description The steps it has reported; when it is done, the draft version it made and what the place's record says about where it is weak.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The build. */
+                    buildId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The build. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Build"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/build-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What a place can be built from */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The public sources and the kinds of file one can add. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            sources: {
+                                [key: string]: string;
+                            };
+                            fileUses: {
+                                [key: string]: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cities/{cityId}": {
         parameters: {
             query?: never;
@@ -5987,6 +6162,63 @@ export interface components {
             parts: components["schemas"]["PartPlan"];
             /** Format: date-time */
             expiresAt: string;
+        };
+        BuildBrief: {
+            /** @description Latitude, longitude in degrees. */
+            centre: number[];
+            acrossM: number;
+            cells?: number;
+            sources: ("gebco" | "sentinel2" | "icesat2" | "allen-coral-atlas" | "learned-depth")[];
+            files?: {
+                objectId: string;
+                /** @enum {string} */
+                use: "raster" | "points" | "ortho";
+                name?: string;
+                errorM?: number;
+                datum?: string;
+                citation?: string;
+                path?: string;
+            }[];
+            label?: string;
+            name?: string;
+            slug?: string;
+            orgId?: string;
+        };
+        BuildRecord: {
+            id: string;
+            cityId: string;
+            orgId: string;
+            jobId: string;
+            brief: components["schemas"]["BuildBrief"];
+            versionId?: string;
+            /** @description What the place's record says about its depth and where it is weak. */
+            result?: {
+                [key: string]: unknown;
+            };
+            failure?: string;
+            createdBy: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            recordedAt?: string;
+        };
+        Build: components["schemas"]["BuildRecord"] & {
+            /** @enum {string} */
+            state: "queued" | "running" | "recording" | "ready" | "failed";
+            jobState: string;
+            steps: {
+                /** Format: date-time */
+                at: string;
+                step: string;
+                say: string;
+                n?: number;
+                of?: number;
+                detail?: {
+                    [key: string]: unknown;
+                };
+            }[];
+            /** @description The end of what the build printed, when it failed. */
+            said?: string;
         };
         PartPlan: {
             count: number;

@@ -29,11 +29,16 @@ from .sources import source_from
 from .weak import legend, picture, weak_of
 
 
-def products_of(recipe: Recipe, cache: pathlib.Path | None = None) -> dict[str, Layer | Soundings]:
+def _quiet(step: str, say: str, **detail) -> None:
+    """What a build says about what it is doing, when nobody is listening."""
+
+
+def products_of(recipe: Recipe, cache: pathlib.Path | None = None, tell=_quiet) -> dict[str, Layer | Soundings]:
     """Every layer and every set of soundings every source gives, by name."""
     out: dict[str, Layer | Soundings] = {}
-    for entry in recipe.sources:
+    for n, entry in enumerate(recipe.sources, 1):
         name = entry.get("as", entry["use"])
+        tell("source", f"reading {entry['use']}", n=n, of=len(recipe.sources), source=entry["use"])
         source = source_from(entry)
         for layer in source.layers(recipe.grid, cache):
             out[f"{name}.{layer.quantity}"] = layer
@@ -52,7 +57,7 @@ def layers_of(recipe: Recipe, cache: pathlib.Path | None = None) -> dict[str, li
     return out
 
 
-def run_models(recipe: Recipe, products: dict) -> tuple[dict, set[str]]:
+def run_models(recipe: Recipe, products: dict, tell=_quiet) -> tuple[dict, set[str]]:
     """Each model in turn, its layers added to the products; returns what each
     said about how it was fitted, and which products the models used."""
     said, used = {}, set()
@@ -62,8 +67,9 @@ def run_models(recipe: Recipe, products: dict) -> tuple[dict, set[str]]:
             raise ValueError(f"nothing called {name!r}; there is {', '.join(sorted(products))}")
         return products[name]
 
-    for entry in recipe.models:
+    for n, entry in enumerate(recipe.models, 1):
         name = entry.get("as", entry["use"])
+        tell("model", f"fitting {entry['use']}", n=n, of=len(recipe.models), model=entry["use"])
         model = model_from(entry)
         used |= {v for v in model.inputs.values() if v}
         layers, record = model.run(recipe.grid, take)
@@ -112,12 +118,13 @@ def cover_of(recipe: Recipe, products: dict, into: pathlib.Path) -> dict | None:
             "by": said}
 
 
-def build(recipe: Recipe, into: pathlib.Path, cache: pathlib.Path | None = None) -> dict:
-    """Build the place into `into`; returns its record (also written as site.json)."""
+def build(recipe: Recipe, into: pathlib.Path, cache: pathlib.Path | None = None, tell=_quiet) -> dict:
+    """Build the place into `into`; returns its record (also written as site.json).
+    `tell(step, say, **detail)` hears each stage as it starts."""
     into = pathlib.Path(into).expanduser()
     into.mkdir(parents=True, exist_ok=True)
-    products = products_of(recipe, cache)
-    models, used = run_models(recipe, products)
+    products = products_of(recipe, cache, tell)
+    models, used = run_models(recipe, products, tell)
     named = recipe.scene.get("depth")
     if named:
         missing = [n for n in named if n not in products]
@@ -128,11 +135,13 @@ def build(recipe: Recipe, into: pathlib.Path, cache: pathlib.Path | None = None)
         chosen = [p for n, p in products.items() if isinstance(p, Layer) and p.quantity == "depth" and n not in used]
     if not chosen:
         raise ValueError("no source gave a depth; a place needs a seabed")
+    tell("fuse", f"fusing {len(chosen)} depth layers, cell by cell")
     depth = fuse(chosen, feather=int(recipe.scene.get("featherCells", 3)))
     if not depth.covers().all():
         missing = 1.0 - depth.share()
         raise ValueError(f"{missing:.1%} of the square has no depth from any source; add one that covers it "
                          "(a 'flat' source says what is assumed where nothing is known)")
+    tell("scene", "writing the seabed")
     mesh = write_place(into, recipe.name, depth, recipe.grid, tile=float(recipe.scene.get("tileM", 10.0)),
                        texture=recipe.scene.get("texture"))
     height = depth.value

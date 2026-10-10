@@ -159,6 +159,18 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/cities/{cityId}/versions",
 		Summary: "record a package for a city", Action: policy.CityPublish,
 		Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.createCityVersion})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/cities/{cityId}/builds",
+		Summary: "build a place from its data, as a job; the package it makes becomes a draft version",
+		Action:  policy.CityPublish, Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.startBuild})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/cities/{cityId}/builds",
+		Summary: "a place's builds, newest first", Action: policy.CityRead,
+		Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.listBuilds})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/builds/{buildId}",
+		Summary: "how a build is going, and what it made", Action: policy.CityRead,
+		Resource: d.ofBuild("buildId"), Handle: d.watchBuild})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/build-sources",
+		Summary: "what a place can be built from", Action: policy.PlatformReadCatalogue,
+		Resource: atPlatform(), Handle: d.buildSources})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/cities",
 		Summary: "found a place of the organisation's own, seen only by its members until they share it",
 		Action:  policy.CityFound, Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.foundOwnCity})

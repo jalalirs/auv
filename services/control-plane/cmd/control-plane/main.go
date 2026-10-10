@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/jalalirs/auv/services/control-plane/internal/audit"
+	"github.com/jalalirs/auv/services/control-plane/internal/building"
 	"github.com/jalalirs/auv/services/control-plane/internal/catalog"
 	"github.com/jalalirs/auv/services/control-plane/internal/compute"
 	"github.com/jalalirs/auv/services/control-plane/internal/config"
@@ -97,6 +98,8 @@ func run(logger *slog.Logger) error {
 		Blobs:      blobs,
 		Broker:     broker,
 		Logger:     logger,
+		Builder: building.New(pool, broker, objects, catalog.NewStore(pool),
+			building.Settings{Image: settings.PlacesImage}),
 		Drafter: planning.Drafter{
 			URL: settings.ModelURL, Key: settings.ModelKey, Model: settings.Model,
 			MaxTokens: settings.ModelMaxTokens,

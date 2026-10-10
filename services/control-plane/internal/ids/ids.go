@@ -52,6 +52,7 @@ const (
 	KindDive       Kind = "dive"
 	KindRun        Kind = "run"
 	KindSweep      Kind = "swp"
+	KindBuild      Kind = "bld"
 )
 
 var kinds = map[Kind]struct{}{
@@ -64,6 +65,7 @@ var kinds = map[Kind]struct{}{
 	KindAdmission: {}, KindRefusal: {}, KindSchedule: {},
 	KindVehicle: {}, KindQueue: {}, KindDevice: {}, KindStack: {},
 	KindConditions: {}, KindDive: {}, KindRun: {}, KindSweep: {},
+	KindBuild: {},
 }
 
 // ErrMalformed reports an identifier that is not of the expected shape or kind.

@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jalalirs/auv/services/worker/internal/config"
@@ -53,6 +55,10 @@ type Runner struct {
 	settings config.Config
 	logger   *slog.Logger
 	http     *http.Client
+
+	// How many progress lines of each attempt have been passed on.
+	reportedMu sync.Mutex
+	reported   map[string]int
 }
 
 // New builds a runner.
@@ -64,7 +70,8 @@ func New(client *controlplane.Client, runtime *container.Runtime, settings confi
 		logger:   logger,
 		// Staging and uploading move whole payloads, so they are not bound by
 		// the short timeout that suits a control-plane call.
-		http: &http.Client{Timeout: 0},
+		http:     &http.Client{Timeout: 0},
+		reported: map[string]int{},
 	}
 }
 
@@ -96,11 +103,15 @@ func (r *Runner) Run(ctx context.Context, lease *controlplane.Lease) error {
 		return r.fail(ctx, lease, imageUnavailable, err, log)
 	}
 
+	env := []string{"IOCEAN_JOB_ID=" + lease.Job.ID}
+	if lease.Job.RecipeID == placesBuild {
+		env = append(env, r.settings.PlacesBuildEnv...)
+	}
 	id, err := r.runtime.Create(work, container.Spec{
 		Image:       lease.Job.ImageDigest,
 		Command:     lease.Job.Command,
 		Args:        lease.Job.Args,
-		Env:         []string{"IOCEAN_JOB_ID=" + lease.Job.ID},
+		Env:         env,
 		InputsHost:  r.hostPath(inputs),
 		OutputsHost: r.hostPath(outputs),
 		MemoryBytes: lease.Job.RequestMemoryBytes,
@@ -127,7 +138,20 @@ func (r *Runner) Run(ctx context.Context, lease *controlplane.Lease) error {
 	}
 	log.Info("running")
 
+	following, stopFollowing := context.WithCancel(work)
+	followed := make(chan struct{})
+	go func() {
+		defer close(followed)
+		r.follow(following, lease, id, log)
+	}()
 	exitCode, waitErr := r.runtime.Wait(work, id)
+	stopFollowing()
+	<-followed
+	// And whatever it said between the last look and its exit.
+	r.passOn(context.WithoutCancel(ctx), lease, id, log)
+	r.reportedMu.Lock()
+	delete(r.reported, lease.AttemptID)
+	r.reportedMu.Unlock()
 
 	// Cancellation reaches running work through the heartbeat, so it is checked
 	// before the exit status is interpreted.
@@ -167,6 +191,63 @@ func (r *Runner) Run(ctx context.Context, lease *controlplane.Lease) error {
 	}
 
 	return r.finish(ctx, lease, outcomeSucceeded, 0, noFailure, log)
+}
+
+// placesBuild is the recipe of the platform's own place builds.
+const placesBuild = "places-build/v1"
+
+// progressMark starts a line a job prints to say how it is getting on.
+const progressMark = `{"progress":`
+
+// follow passes on what a running job says about its progress, every few
+// seconds, so somebody watching a build an hour long sees each step as it
+// happens rather than everything at the end.
+func (r *Runner) follow(ctx context.Context, lease *controlplane.Lease, id string, log *slog.Logger) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			r.passOn(ctx, lease, id, log)
+		}
+	}
+}
+
+// passOn reports the progress lines a job has printed since the last report.
+func (r *Runner) passOn(ctx context.Context, lease *controlplane.Lease, id string, log *slog.Logger) {
+	// All of it: counting progress lines in a window that slides would lose
+	// count once a chatty fetch pushed the early ones out.
+	logs, err := r.runtime.Logs(ctx, id, 0)
+	if err != nil {
+		return
+	}
+	var said []map[string]any
+	for _, line := range strings.Split(logs, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, progressMark) {
+			continue
+		}
+		var one map[string]any
+		if json.Unmarshal([]byte(line), &one) == nil {
+			said = append(said, one)
+		}
+	}
+	r.reportedMu.Lock()
+	start := r.reported[lease.AttemptID]
+	if start > len(said) {
+		start = len(said)
+	}
+	fresh := said[start:]
+	r.reported[lease.AttemptID] = len(said)
+	r.reportedMu.Unlock()
+	for _, one := range fresh {
+		if err := r.client.ReportProgress(ctx, lease.AttemptID, lease.Token, one); err != nil {
+			log.Warn("could not pass on a job's progress", "error", err)
+			return
+		}
+	}
 }
 
 // beat keeps the lease alive while the work runs, and cancels the work when the

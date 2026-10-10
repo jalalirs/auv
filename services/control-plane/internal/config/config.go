@@ -59,6 +59,9 @@ type Config struct {
 	// OrgStorageBytes is what an organisation may hold when the platform has
 	// not set its limit.
 	OrgStorageBytes int64
+	// PlacesImage is the places module's image, by digest, that builds
+	// places. Empty means this platform does not build them.
+	PlacesImage string
 
 	// A model this platform may ask for a plan, and the key to ask with. All
 	// three empty on a platform that has not been given one, which is not an
@@ -164,6 +167,7 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	config.OrgStorageBytes = orgStorage
+	config.PlacesImage = os.Getenv("IOCEAN_PLACES_IMAGE")
 
 	config.StorageUseTLS = boolean("IOCEAN_STORAGE_USE_TLS", false)
 	config.StoragePublicUseTLS = boolean("IOCEAN_STORAGE_PUBLIC_USE_TLS", config.StorageUseTLS)

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
 	"github.com/jalalirs/auv/services/control-plane/internal/domain"
+	"github.com/jalalirs/auv/services/control-plane/internal/ids"
 )
 
 // What an organisation may store, how bytes arrive in parts, and how an
@@ -396,3 +398,47 @@ func (o *Objects) collect(ctx context.Context, object Object) (string, error) {
 
 // errKept rolls back a collection that something still refers to.
 var errKept = errors.New("kept: something refers to it")
+
+// Ingest records bytes the platform made on an organisation's behalf (a place
+// a build produced): hashed here, stored at their content address, held by the
+// organisation. The same bytes already stored are not stored again.
+func (o *Objects) Ingest(ctx context.Context, principalID, orgID string, bucket domain.Bucket,
+	body io.ReadSeeker, size int64, mediaType string) (Object, error) {
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, body); err != nil {
+		return Object{}, fmt.Errorf("hashing what was made: %w", err)
+	}
+	digest, err := domain.DigestFromBytes(hasher.Sum(nil))
+	if err != nil {
+		return Object{}, err
+	}
+	object, err := o.ByDigest(ctx, bucket, digest)
+	if errors.Is(err, db.ErrNotFound) {
+		if _, err := body.Seek(0, io.SeekStart); err != nil {
+			return Object{}, err
+		}
+		if err := o.blobs.Put(ctx, bucket, digest, body, size, mediaType); err != nil {
+			return Object{}, err
+		}
+		object = Object{ID: ids.New(ids.KindObject), Bucket: bucket, Digest: digest, SHA256: digest.String(),
+			SizeBytes: size, MediaType: mediaType, UploadedBy: principalID}
+		err = o.pool.QueryRow(ctx, `
+			INSERT INTO store.object (id, bucket, sha256, size_bytes, media_type, uploaded_by)
+			VALUES ($1, $2::store.bucket, $3, $4, $5, $6)
+			ON CONFLICT (bucket, sha256) DO UPDATE SET id = store.object.id
+			RETURNING id, uploaded_at`,
+			object.ID, string(bucket), digest.Bytes(), size, mediaType, principalID).
+			Scan(&object.ID, &object.UploadedAt)
+	}
+	if err != nil {
+		return Object{}, fmt.Errorf("recording what was made: %w", err)
+	}
+	if orgID != "" {
+		if _, err := o.pool.Exec(ctx, `
+			INSERT INTO store.holding (org_id, object_id, held_by) VALUES ($1, $2, $3)
+			ON CONFLICT DO NOTHING`, orgID, object.ID, principalID); err != nil {
+			return Object{}, fmt.Errorf("holding what was made: %w", err)
+		}
+	}
+	return object, nil
+}

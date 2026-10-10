@@ -2142,6 +2142,117 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/v1/cities/{cityId}/builds:
+    post:
+      tags: [places]
+      summary: Build a place from its data
+      description: >
+        The platform runs the places module as a job with this brief: the
+        public sources named, and the organisation's own uploaded files. The
+        job reports each step; when it finishes, the package it made becomes
+        a draft version of the place, which its curators publish. A place an
+        organisation owns is built for it; for a catalogue place, say which of
+        your organisations the work is for.
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          description: The place.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildBrief'
+      responses:
+        '202':
+          description: The build, queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Build'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/Refused'
+        '503':
+          description: This platform has no image to build places with.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+    get:
+      tags: [places]
+      summary: A place's builds, newest first
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          description: The place.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Its builds.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [builds]
+                properties:
+                  builds:
+                    type: array
+                    items: { $ref: '#/components/schemas/BuildRecord' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/builds/{buildId}:
+    get:
+      tags: [places]
+      summary: How a build is going, and what it made
+      description: >
+        The steps it has reported; when it is done, the draft version it made
+        and what the place's record says about where it is weak.
+      parameters:
+        - name: buildId
+          in: path
+          required: true
+          description: The build.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The build.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Build'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/build-sources:
+    get:
+      tags: [places]
+      summary: What a place can be built from
+      responses:
+        '200':
+          description: The public sources and the kinds of file one can add.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sources, fileUses]
+                properties:
+                  sources:
+                    type: object
+                    additionalProperties: { type: string }
+                  fileUses:
+                    type: object
+                    additionalProperties: { type: string }
   /api/v1/cities/{cityId}:
     get:
       tags: [places]
@@ -4877,6 +4988,84 @@ components:
             API instead.
         parts: { $ref: '#/components/schemas/PartPlan' }
         expiresAt: { type: string, format: date-time }
+
+    BuildBrief:
+      type: object
+      additionalProperties: false
+      required: [centre, acrossM, sources]
+      properties:
+        centre:
+          type: array
+          description: Latitude, longitude in degrees.
+          items: { type: number }
+          minItems: 2
+          maxItems: 2
+        acrossM: { type: number, minimum: 100, maximum: 20000 }
+        cells: { type: integer, minimum: 64, maximum: 2048 }
+        sources:
+          type: array
+          items: { type: string, enum: [gebco, sentinel2, icesat2, allen-coral-atlas, learned-depth] }
+        files:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [objectId, use]
+            properties:
+              objectId: { type: string }
+              use: { type: string, enum: [raster, points, ortho] }
+              name: { type: string }
+              errorM: { type: number }
+              datum: { type: string }
+              citation: { type: string }
+              path: { type: string }
+        label: { type: string }
+        name: { type: string }
+        slug: { type: string }
+        orgId: { type: string }
+
+    BuildRecord:
+      type: object
+      required: [id, cityId, orgId, jobId, brief, createdBy, createdAt]
+      properties:
+        id: { type: string }
+        cityId: { type: string }
+        orgId: { type: string }
+        jobId: { type: string }
+        brief: { $ref: '#/components/schemas/BuildBrief' }
+        versionId: { type: string }
+        result:
+          type: object
+          additionalProperties: true
+          description: What the place's record says about its depth and where it is weak.
+        failure: { type: string }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+        recordedAt: { type: string, format: date-time }
+
+    Build:
+      allOf:
+        - $ref: '#/components/schemas/BuildRecord'
+        - type: object
+          required: [state, jobState, steps]
+          properties:
+            state: { type: string, enum: [queued, running, recording, ready, failed] }
+            jobState: { type: string }
+            steps:
+              type: array
+              items:
+                type: object
+                required: [at, step, say]
+                properties:
+                  at: { type: string, format: date-time }
+                  step: { type: string }
+                  say: { type: string }
+                  n: { type: integer }
+                  of: { type: integer }
+                  detail: { type: object, additionalProperties: true }
+            said:
+              type: string
+              description: The end of what the build printed, when it failed.
 
     PartPlan:
       type: object

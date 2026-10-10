@@ -68,6 +68,12 @@ type Config struct {
 	// scheduled. A port you intend to listen on should not be one the kernel
 	// thinks it may give away.
 	StreamSignalPort int
+
+	// PlacesBuildEnv is what a place build is given from this host's own
+	// environment: the NASA Earthdata token the laser altimeter's depths are
+	// fetched with. Only a build (recipe places-build/v1) gets it, and the
+	// build's image is the platform's, never an organisation's.
+	PlacesBuildEnv []string
 }
 
 // Load reads the environment, refusing anything that has no safe default.
@@ -112,6 +118,11 @@ func Load() (Config, error) {
 	config.RuntimeVersion = os.Getenv("IOCEAN_RUNTIME_VERSION")
 	config.StreamHost = os.Getenv("IOCEAN_STREAM_HOST")
 	config.StreamSignalPort = port("IOCEAN_STREAM_SIGNAL_PORT", 18100)
+	for _, name := range []string{"NASA_TOKEN"} {
+		if value := os.Getenv(name); value != "" {
+			config.PlacesBuildEnv = append(config.PlacesBuildEnv, name+"="+value)
+		}
+	}
 	if config.SimImage == "" {
 		config.SimImage = "iocean/sim-runtime:r1"
 	}

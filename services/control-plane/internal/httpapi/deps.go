@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jalalirs/auv/services/control-plane/internal/audit"
+	"github.com/jalalirs/auv/services/control-plane/internal/building"
 	"github.com/jalalirs/auv/services/control-plane/internal/catalog"
 	"github.com/jalalirs/auv/services/control-plane/internal/compute"
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
@@ -34,6 +35,9 @@ type Dependencies struct {
 	Blobs      *storage.Blobs
 	Broker     *exec.Broker
 	Logger     *slog.Logger
+
+	// Builder builds places from their data as jobs.
+	Builder *building.Builder
 
 	// Drafter turns what somebody said into a plan, by asking a model. Left
 	// unconfigured on a platform that has not been given one, and it says so
