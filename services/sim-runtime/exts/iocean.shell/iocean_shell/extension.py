@@ -1165,6 +1165,10 @@ class CoralCityShell(omni.ext.IExt):
                     self._grade = _metering.grade_gains(frame[..., :3])
                     self._say("camera_grades", look="gopro", gain=[round(g, 3) for g in self._grade])
                 frame = np.concatenate([_metering.balanced(frame[..., :3], self._grade), frame[..., 3:]], axis=-1)
+            if view in VEHICLE_VIEWS:
+                import optics
+                frame = np.concatenate([optics.finished(np.ascontiguousarray(frame[..., :3]), self._optics(),
+                                                        still=False), frame[..., 3:]], axis=-1)
             pixels = cv2.cvtColor(frame, cv2.COLOR_RGBA2BGRA).tobytes()
             # As many times as the grid points this frame stands for: once,
             # unless the drawing fell behind the dive. The video then holds
@@ -1455,6 +1459,11 @@ class CoralCityShell(omni.ext.IExt):
                         view = getattr(self.dive, "view", "chase")
                         seen = self._through_the_camera(frame[..., :3], view)
                         rgb = seen if self._balance_locked(view) else _metering.graded(seen)
+                        if view in VEHICLE_VIEWS:
+                            # The camera's last steps: sharpened, and coded as
+                            # a frame of the video it records.
+                            import optics
+                            rgb = optics.finished(rgb, self._optics(), still=True)
                         cv2.imwrite(str(path), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
                         self._say("photograph", at=at, path=str(path), graded="gopro")
                     except Exception as exc:

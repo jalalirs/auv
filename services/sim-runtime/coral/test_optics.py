@@ -151,3 +151,42 @@ def test_white_balance_is_auto_unless_a_dive_locks_it():
     locked = optics.camera_from(*optics.settings_from(dive={"whiteBalance": "daylight", "filter": "red"},
                                                       environment={}))
     assert locked.white_balance == "daylight" and locked.said()["whiteBalance"] == "daylight"
+
+
+def _scene(wide=640, tall=360, seed=5):
+    rng = np.random.default_rng(seed)
+    base = np.zeros((tall, wide, 3), "float32")
+    for _ in range(60):
+        x, y, r = rng.integers(0, wide), rng.integers(0, tall), rng.integers(10, 60)
+        yy, xx = np.ogrid[:tall, :wide]
+        base[(xx - x) ** 2 + (yy - y) ** 2 < r * r] = rng.uniform(0.1, 0.9, 3)
+    base += rng.normal(0, 0.03, base.shape)
+    return (np.clip(base, 0, 1) * 255).astype("uint8")
+
+
+def test_sharpening_raises_the_edges_and_off_leaves_the_frame():
+    import cv2
+
+    frame = cv2.GaussianBlur(_scene(), (0, 0), 1.5)
+    edges = lambda a: cv2.Laplacian(a.astype("float32").mean(2), cv2.CV_32F).std()
+    assert edges(optics.sharpened(frame, 0.9)) > edges(frame) * 1.3
+    assert np.array_equal(optics.sharpened(frame, 0.0), frame)
+
+
+def test_fewer_bits_buy_a_lower_quality_and_more_error():
+    frame = _scene()
+    rich, q_rich = optics.compressed(frame, 60.0)
+    poor, q_poor = optics.compressed(frame, 2.0)
+    assert q_poor < q_rich
+    error = lambda a: np.abs(a.astype(float) - frame.astype(float)).mean()
+    assert error(poor) > error(rich) and poor.shape == frame.shape
+
+
+def test_each_camera_records_at_its_own_rate_unless_told():
+    assert optics.camera_from(*optics.settings_from(environment={})).video_mbps == 60.0
+    own = optics.camera_from(*optics.settings_from(vehicle={"sensor": "imx322"}, environment={}))
+    assert own.video_mbps == 10.0
+    told = optics.camera_from(*optics.settings_from(vehicle={"sensor": "imx322"}, dive={"videoMbps": 25,
+                                                                                         "sharpening": "high"},
+                                                    environment={}))
+    assert told.video_mbps == 25.0 and told.sharpening == 0.9

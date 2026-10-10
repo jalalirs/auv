@@ -147,6 +147,13 @@ class Camera:
     # filter's tint back out. "daylight": white balance locked, nothing
     # adapts, so a filter or a lamp shows its own colour.
     white_balance: str = "auto"
+    # The camera's own last steps: sharpening (an unsharp mask on brightness,
+    # its amount), and the video it records (megabits a second, frames a
+    # second, at what size), which a still from it carries the marks of.
+    sharpening: float = 0.5
+    video_mbps: float = 60.0
+    video_fps: float = 30.0
+    record_px: tuple = (1920, 1080)
 
     def said(self) -> dict:
         return {"lens": self.lens.model, "lensFovDeg": self.lens.horizontal_fov_deg, "lensIs": self.lens.said,
@@ -158,14 +165,17 @@ class Camera:
                  "is": "typical of its class; chosen, not measured on this camera"},
                 "iso": self.iso if self.iso is not None else "auto", "toldBy": list(self.told_by),
                 "motionBlur": self.motion_blur, "blurDepthM": self.blur_depth_m,
-                "whiteBalance": self.white_balance,
+                "whiteBalance": self.white_balance, "sharpening": self.sharpening,
+                "videoMbps": self.video_mbps, "videoFps": self.video_fps, "recordPx": list(self.record_px),
+                "videoIs": "typical of this camera's recording; chosen, not measured",
                 "blurDepthIs": "assumed: the capture has no depth, so the blur from moving (not from turning) "
                                "takes the scene to be this far away"}
 
 
 # What a camera is when nothing says otherwise: a GoPro behind a flat port.
 DEFAULTS = {"lens": "gopro-wide", "port": "flat", "filter": "none", "sensor": "gopro", "iso": "auto",
-            "motionBlur": True, "blurDepthM": 3.0, "whiteBalance": "auto"}
+            "motionBlur": True, "blurDepthM": 3.0, "whiteBalance": "auto", "sharpening": "medium",
+            "videoMbps": None}
 LENSES = {"gopro-wide": ("equidistant", 118.0), "pinhole": ("pinhole", 47.17)}
 
 
@@ -204,7 +214,24 @@ def camera_from(settings: dict, told_by: tuple = ()) -> Camera:
                   motion_blur=str(settings.get("motionBlur", True)).lower() not in ("false", "0", "no", "off"),
                   blur_depth_m=float(settings.get("blurDepthM", 3.0)),
                   white_balance="daylight" if str(settings.get("whiteBalance", "auto")).lower() in
-                  ("daylight", "fixed", "off", "manual") else "auto")
+                  ("daylight", "fixed", "off", "manual") else "auto",
+                  sharpening=_sharpening(settings.get("sharpening", "medium")),
+                  video_mbps=float(settings.get("videoMbps") or VIDEO_MBPS.get(str(settings.get("sensor", "gopro")).lower(),
+                                                                                 60.0)))
+
+
+# What each camera records at, megabits a second at 1080p30: a GoPro's
+# high-quality H.264, and the BlueROV2's USB camera's own H.264 stream as it
+# comes up the tether. Typical; chosen.
+VIDEO_MBPS = {"gopro": 60.0, "imx322": 10.0, "none": 60.0}
+SHARPENING = {"off": 0.0, "low": 0.25, "medium": 0.5, "high": 0.9}
+
+
+def _sharpening(said) -> float:
+    try:
+        return max(0.0, float(said))
+    except (TypeError, ValueError):
+        return SHARPENING.get(str(said).lower(), 0.5)
 
 
 def for_dive(brief: dict | None = None, vehicle_dir=None) -> Camera:
@@ -382,3 +409,60 @@ def through(pixels: np.ndarray, camera: Camera, cached: dict | None = None,
             light = luma[..., None] + chroma
         return _encoded(light)
     return _encoded(light * gain)
+
+
+# How much more a video codec gets out of a bit than JPEG does, for the same
+# look: an intra frame of H.264 is about one and a half times as efficient,
+# and the frames between, predicted from their neighbours, more. Two and a
+# half is the middle of that; a still is matched to the bits a frame gets.
+CODEC_EFFICIENCY = 2.5
+
+
+def sharpened(rgb: np.ndarray, amount: float, radius: float = 1.0) -> np.ndarray:
+    """An unsharp mask on brightness only, as a camera's sharpness setting
+    does: edges get their slight halo, colours are left alone."""
+    if amount <= 0:
+        return rgb
+    frame = rgb.astype("float32")
+    luma = frame @ np.array([0.299, 0.587, 0.114], dtype="float32")
+    detail = luma - _blur(luma, radius)
+    return np.clip(frame + amount * detail[..., None], 0, 255).astype("uint8")
+
+
+def compressed(rgb: np.ndarray, mbps: float, fps: float = 30.0, record_px=(1920, 1080),
+               efficiency: float = CODEC_EFFICIENCY) -> tuple[np.ndarray, int]:
+    """A still as a frame of this camera's video carries it: sized to what the
+    camera records, coded to the bits a frame of it gets (rate-controlled, so
+    a busy picture pays for its detail and a plain one does not), and back.
+    Returns the frame and the quality the bits bought."""
+    import cv2
+
+    tall, wide = rgb.shape[:2]
+    rw, rh = int(record_px[0]), int(record_px[1])
+    big = cv2.resize(rgb, (rw, rh), interpolation=cv2.INTER_CUBIC) if (rw, rh) != (wide, tall) else rgb
+    budget = mbps * 1e6 / max(fps, 1.0) * efficiency / 8.0           # bytes a frame may spend
+    bgr = cv2.cvtColor(np.ascontiguousarray(big), cv2.COLOR_RGB2BGR)
+    lo, hi, best = 5, 98, None
+    while lo <= hi:
+        q = (lo + hi) // 2
+        ok, coded = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, q])
+        if ok and len(coded) <= budget:
+            best, lo = (q, coded), q + 1
+        else:
+            hi = q - 1
+    if best is None:
+        best = (5, cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, 5])[1])
+    back = cv2.cvtColor(cv2.imdecode(best[1], cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+    if (rw, rh) != (wide, tall):
+        back = cv2.resize(back, (wide, tall), interpolation=cv2.INTER_AREA)
+    return back, best[0]
+
+
+def finished(rgb: np.ndarray, camera: Camera, still: bool = True) -> np.ndarray:
+    """The camera's last steps on a graded frame: sharpening, and for a still
+    the marks of the video it is a frame of. A recording is coded for real by
+    its own encoder, so it is only sharpened."""
+    out = sharpened(rgb, camera.sharpening)
+    if still and camera.video_mbps:
+        out, _ = compressed(out, camera.video_mbps, camera.video_fps, camera.record_px)
+    return out
