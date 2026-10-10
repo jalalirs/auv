@@ -33,10 +33,17 @@ type Object struct {
 }
 
 // Grant is permission to place specific bytes in storage, valid briefly.
+//
+// Bytes reach the store one of two ways: straight to it at UploadURL, which
+// only a caller on the platform's network can reach, or through the API in
+// parts (PUT …/uploads/{grant}/parts/{n}), which works wherever the API does
+// and resumes after a drop. Parts says how many and how large; a small upload
+// is one part.
 type Grant struct {
 	ID        string        `json:"id"`
 	Bucket    domain.Bucket `json:"bucket"`
-	UploadURL string        `json:"uploadUrl"`
+	UploadURL string        `json:"uploadUrl,omitempty"`
+	Parts     PartPlan      `json:"parts"`
 	ExpiresAt time.Time     `json:"expiresAt"`
 }
 
@@ -47,6 +54,12 @@ type Objects struct {
 	blobs          *Blobs
 	grantLifetime  time.Duration
 	maxObjectBytes int64
+	// Uploads larger than one part arrive in parts, and live long enough to
+	// be resumed. An organisation with no limit of its own may hold
+	// defaultLimit bytes.
+	partBytes     int64
+	partsLifetime time.Duration
+	defaultLimit  int64
 }
 
 // NewObjects builds the object registry over a byte store.
@@ -56,7 +69,25 @@ func NewObjects(pool *db.Pool, blobs *Blobs, grantLifetime time.Duration, maxObj
 		blobs:          blobs,
 		grantLifetime:  grantLifetime,
 		maxObjectBytes: maxObjectBytes,
+		partBytes:      DefaultPartBytes,
+		partsLifetime:  DefaultPartsLifetime,
+		defaultLimit:   DefaultOrgLimitBytes,
 	}
+}
+
+// WithLimits sets how large a part is, how long a multipart upload may take,
+// and what an organisation may hold when nobody set its limit.
+func (o *Objects) WithLimits(partBytes int64, partsLifetime time.Duration, defaultLimit int64) *Objects {
+	if partBytes > 0 {
+		o.partBytes = partBytes
+	}
+	if partsLifetime > 0 {
+		o.partsLifetime = partsLifetime
+	}
+	if defaultLimit > 0 {
+		o.defaultLimit = defaultLimit
+	}
+	return o
 }
 
 // UploadRequest is a caller's claim about bytes it intends to upload.
@@ -65,6 +96,10 @@ type UploadRequest struct {
 	Digest    domain.Digest
 	SizeBytes int64
 	MediaType string
+	// OrgID is the organisation the bytes are for: it will hold them, and
+	// they count against its limit. Empty for the platform's own work (a
+	// run's recording, a job's output).
+	OrgID string
 }
 
 // RequestUpload issues a short-lived grant to upload specific bytes.
@@ -83,26 +118,58 @@ func (o *Objects) RequestUpload(ctx context.Context, principalID string, request
 		return Grant{}, fmt.Errorf("%w: an object states its media type", domain.ErrInvalid)
 	}
 
+	if request.OrgID != "" {
+		if err := o.roomFor(ctx, request.OrgID, request.Bucket, request.Digest, request.SizeBytes); err != nil {
+			return Grant{}, err
+		}
+	}
+
+	// The platform's own work (a worker inside the network) puts its bytes
+	// straight into the store in one piece; an organisation's upload of more
+	// than a part arrives in parts, through the API, from anywhere.
+	plan := PartPlan{Count: 1, PartBytes: request.SizeBytes}
+	if request.OrgID != "" {
+		plan = planParts(request.SizeBytes, o.partBytes)
+	}
 	grant := Grant{
 		ID:        ids.New(ids.KindUploadGrant),
 		Bucket:    request.Bucket,
+		Parts:     plan,
 		ExpiresAt: time.Now().Add(o.grantLifetime),
+	}
+	var multipartID *string
+	var partBytes *int64
+	if plan.Count > 1 {
+		id, err := o.blobs.StartParts(ctx, request.Bucket, grant.ID)
+		if err != nil {
+			return Grant{}, err
+		}
+		multipartID, partBytes = &id, &plan.PartBytes
+		grant.ExpiresAt = time.Now().Add(o.partsLifetime)
+	}
+	var orgID *string
+	if request.OrgID != "" {
+		orgID = &request.OrgID
 	}
 	_, err := o.pool.Exec(ctx, `
 		INSERT INTO store.upload_grant
-		    (id, bucket, declared_sha256, declared_size, declared_media, issued_to, expires_at)
-		VALUES ($1, $2::store.bucket, $3, $4, $5, $6, $7)`,
+		    (id, bucket, declared_sha256, declared_size, declared_media, issued_to, expires_at,
+		     org_id, multipart_id, part_bytes)
+		VALUES ($1, $2::store.bucket, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		grant.ID, string(request.Bucket), request.Digest.Bytes(),
-		request.SizeBytes, request.MediaType, principalID, grant.ExpiresAt)
+		request.SizeBytes, request.MediaType, principalID, grant.ExpiresAt,
+		orgID, multipartID, partBytes)
 	if err != nil {
 		return Grant{}, fmt.Errorf("recording an upload grant: %w", err)
 	}
 
-	uploadURL, err := o.blobs.PresignPut(ctx, request.Bucket, grant.ID, audience)
-	if err != nil {
-		return Grant{}, err
+	if plan.Count == 1 {
+		uploadURL, err := o.blobs.PresignPut(ctx, request.Bucket, grant.ID, audience)
+		if err != nil {
+			return Grant{}, err
+		}
+		grant.UploadURL = uploadURL
 	}
-	grant.UploadURL = uploadURL
 	return grant, nil
 }
 
@@ -119,11 +186,16 @@ func (o *Objects) ConfirmUpload(ctx context.Context, principalID, grantID string
 		issuedTo      string
 		expiresAt     time.Time
 		confirmedAt   *time.Time
+		orgID         *string
+		multipartID   *string
+		partBytes     *int64
 	)
 	err := o.pool.QueryRow(ctx, `
-		SELECT bucket, declared_sha256, declared_size, declared_media, issued_to, expires_at, confirmed_at
+		SELECT bucket, declared_sha256, declared_size, declared_media, issued_to, expires_at, confirmed_at,
+		       org_id, multipart_id, part_bytes
 		FROM store.upload_grant WHERE id = $1`, grantID).
-		Scan(&bucket, &declaredRaw, &declaredSize, &declaredMedia, &issuedTo, &expiresAt, &confirmedAt)
+		Scan(&bucket, &declaredRaw, &declaredSize, &declaredMedia, &issuedTo, &expiresAt, &confirmedAt,
+			&orgID, &multipartID, &partBytes)
 	if err != nil {
 		return Object{}, db.Translate(err)
 	}
@@ -139,6 +211,20 @@ func (o *Objects) ConfirmUpload(ctx context.Context, principalID, grantID string
 	declared, err := domain.DigestFromBytes(declaredRaw)
 	if err != nil {
 		return Object{}, err
+	}
+
+	if multipartID != nil {
+		parts, err := o.blobs.Parts(ctx, bucket, grantID, *multipartID)
+		if err != nil {
+			return Object{}, err
+		}
+		plan := PartPlan{Count: partCount(declaredSize, *partBytes), PartBytes: *partBytes}
+		if gaps := missingParts(parts, plan, declaredSize); len(gaps) > 0 {
+			return Object{}, &PartsMissing{Missing: gaps, Of: plan.Count}
+		}
+		if err := o.blobs.FinishParts(ctx, bucket, grantID, *multipartID, parts); err != nil {
+			return Object{}, err
+		}
 	}
 
 	actual, size, err := o.blobs.VerifyStaged(ctx, bucket, grantID)
@@ -191,6 +277,14 @@ func (o *Objects) ConfirmUpload(ctx context.Context, principalID, grantID string
 		_, err = conn.Exec(ctx,
 			`UPDATE store.upload_grant SET confirmed_at = now(), object_id = $2 WHERE id = $1`,
 			grantID, object.ID)
+		if err != nil || orgID == nil {
+			return err
+		}
+		// Held by the organisation it was uploaded for. The same bytes already
+		// held stay held once.
+		_, err = conn.Exec(ctx, `
+			INSERT INTO store.holding (org_id, object_id, held_by) VALUES ($1, $2, $3)
+			ON CONFLICT DO NOTHING`, *orgID, object.ID, principalID)
 		return err
 	})
 	if err != nil {

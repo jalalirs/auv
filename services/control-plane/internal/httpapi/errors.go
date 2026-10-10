@@ -71,6 +71,8 @@ func writeDenied(w http.ResponseWriter, r *http.Request, decision policy.Decisio
 func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var refusal *exec.Refusal
 	var tooLarge *exec.OutputTooLarge
+	var overLimit *storage.OverLimit
+	var partsMissing *storage.PartsMissing
 
 	switch {
 	case errors.Is(err, db.ErrNotFound):
@@ -90,6 +92,15 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 
 	case errors.Is(err, storage.ErrGrantSpent):
 		writeProblem(w, r, http.StatusConflict, "grant_spent", err.Error(), nil)
+
+	case errors.As(err, &overLimit):
+		writeProblem(w, r, http.StatusRequestEntityTooLarge, "storage_limit", overLimit.Error(),
+			map[string]any{"usedBytes": overLimit.UsedBytes, "limitBytes": overLimit.LimitBytes,
+				"askedBytes": overLimit.AskedBytes})
+
+	case errors.As(err, &partsMissing):
+		writeProblem(w, r, http.StatusConflict, "parts_missing", partsMissing.Error(),
+			map[string]any{"missing": partsMissing.Missing, "of": partsMissing.Of})
 
 	case errors.Is(err, exec.ErrLeaseInvalid):
 		writeProblem(w, r, http.StatusConflict, "lease_invalid", err.Error(), nil)

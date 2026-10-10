@@ -2806,6 +2806,202 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/Unprocessable'
+  /api/v1/organisations/{orgId}/uploads/{grantId}/parts/{number}:
+    put:
+      tags: [bytes]
+      summary: Send one part of an upload
+      description: >
+        The bytes of part `number` (from 1), through the API, for a caller
+        that cannot reach the store directly or is resuming after a drop. A
+        part sent again replaces the one before. Every part but the last is
+        `parts.partBytes` long; a small upload is one part.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+        - name: grantId
+          in: path
+          required: true
+          description: The grant.
+          schema: { type: string }
+        - name: number
+          in: path
+          required: true
+          description: The part, from 1.
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '200':
+          description: The part arrived.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [number, sizeBytes]
+                properties:
+                  number: { type: integer }
+                  sizeBytes: { type: integer, format: int64 }
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/organisations/{orgId}/uploads/{grantId}:
+    get:
+      tags: [bytes]
+      summary: Which parts of an upload have arrived
+      description: >
+        So an upload that dropped resumes: send the parts listed as missing,
+        then confirm.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+        - name: grantId
+          in: path
+          required: true
+          description: The grant.
+          schema: { type: string }
+      responses:
+        '200':
+          description: What has arrived.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadProgress'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/organisations/{orgId}/storage:
+    get:
+      tags: [bytes]
+      summary: What an organisation holds against what it may
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Its usage and limit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorageUsage'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/organisations/{orgId}/storage/limit:
+    put:
+      tags: [bytes]
+      summary: Set what an organisation may hold
+      description: >
+        A platform decision, because the disks are the platform's.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [limitBytes]
+              properties:
+                limitBytes: { type: integer, format: int64, minimum: 0 }
+      responses:
+        '200':
+          description: Its usage under the new limit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorageUsage'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/organisations/{orgId}/objects:
+    get:
+      tags: [bytes]
+      summary: What an organisation holds, newest first
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 1000 }
+      responses:
+        '200':
+          description: The objects it holds.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [objects]
+                properties:
+                  objects:
+                    type: array
+                    items: { $ref: '#/components/schemas/HeldObject' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/organisations/{orgId}/objects/{objectId}:
+    delete:
+      tags: [bytes]
+      summary: Let go of bytes an organisation holds
+      description: >
+        The bytes themselves go when no other organisation holds them and
+        nothing is made of them; a published place version, a run's recording
+        or a job's output keeps them, and the answer says which.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The institution.
+          schema: { type: string }
+        - name: objectId
+          in: path
+          required: true
+          description: The object.
+          schema: { type: string }
+      responses:
+        '200':
+          description: What letting go did.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [objectId, collected, freedBytes]
+                properties:
+                  objectId: { type: string }
+                  collected: { type: boolean }
+                  keptBecause: { type: string }
+                  freedBytes: { type: integer, format: int64 }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/schedules:
     get:
       tags: [work]
@@ -4618,16 +4814,73 @@ components:
 
     UploadGrant:
       type: object
-      required: [id, bucket, uploadUrl, expiresAt]
+      required: [id, bucket, parts, expiresAt]
       properties:
         id: { type: string }
         bucket: { type: string, enum: [evidence, derived, ephemeral] }
         uploadUrl:
           type: string
           description: >
-            A short-lived URL accepting exactly one upload. It is signed over its
-            host, so it names the address this caller can reach.
+            For a one-part upload, a short-lived URL accepting it straight into
+            the store. It is signed over its host, so only a caller on the
+            platform's network can use it; anyone can send the part through the
+            API instead.
+        parts: { $ref: '#/components/schemas/PartPlan' }
         expiresAt: { type: string, format: date-time }
+
+    PartPlan:
+      type: object
+      required: [count, partBytes]
+      properties:
+        count: { type: integer, minimum: 1 }
+        partBytes:
+          type: integer
+          format: int64
+          description: Every part but the last is this long.
+
+    UploadProgress:
+      type: object
+      required: [grantId, sizeBytes, parts, arrived, missing]
+      properties:
+        grantId: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+        parts: { $ref: '#/components/schemas/PartPlan' }
+        arrived:
+          type: array
+          items:
+            type: object
+            required: [number, sizeBytes]
+            properties:
+              number: { type: integer }
+              sizeBytes: { type: integer, format: int64 }
+        missing:
+          type: array
+          items: { type: integer }
+
+    StorageUsage:
+      type: object
+      required: [orgId, usedBytes, objects, onTheWayBytes, limitBytes, limitSet]
+      properties:
+        orgId: { type: string }
+        usedBytes: { type: integer, format: int64 }
+        objects: { type: integer, format: int64 }
+        onTheWayBytes:
+          type: integer
+          format: int64
+          description: Uploads granted and not yet confirmed; they count against the limit.
+        limitBytes: { type: integer, format: int64 }
+        limitSet:
+          type: boolean
+          description: False when the organisation has the platform's default.
+
+    HeldObject:
+      allOf:
+        - $ref: '#/components/schemas/Object'
+        - type: object
+          required: [heldBy, heldSince]
+          properties:
+            heldBy: { type: string }
+            heldSince: { type: string, format: date-time }
 
     JobInput:
       type: object

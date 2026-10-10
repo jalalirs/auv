@@ -4069,6 +4069,302 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organisations/{orgId}/uploads/{grantId}/parts/{number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Send one part of an upload
+         * @description The bytes of part `number` (from 1), through the API, for a caller that cannot reach the store directly or is resuming after a drop. A part sent again replaces the one before. Every part but the last is `parts.partBytes` long; a small upload is one part.
+         *
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The institution. */
+                    orgId: string;
+                    /** @description The grant. */
+                    grantId: string;
+                    /** @description The part, from 1. */
+                    number: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            responses: {
+                /** @description The part arrived. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            number: number;
+                            /** Format: int64 */
+                            sizeBytes: number;
+                        };
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/{orgId}/uploads/{grantId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which parts of an upload have arrived
+         * @description So an upload that dropped resumes: send the parts listed as missing, then confirm.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The institution. */
+                    orgId: string;
+                    /** @description The grant. */
+                    grantId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What has arrived. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["UploadProgress"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/{orgId}/storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What an organisation holds against what it may */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The institution. */
+                    orgId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Its usage and limit. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StorageUsage"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/{orgId}/storage/limit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set what an organisation may hold
+         * @description A platform decision, because the disks are the platform's.
+         *
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The institution. */
+                    orgId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: int64 */
+                        limitBytes: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Its usage under the new limit. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StorageUsage"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/{orgId}/objects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What an organisation holds, newest first */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path: {
+                    /** @description The institution. */
+                    orgId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The objects it holds. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            objects: components["schemas"]["HeldObject"][];
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/{orgId}/objects/{objectId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Let go of bytes an organisation holds
+         * @description The bytes themselves go when no other organisation holds them and nothing is made of them; a published place version, a run's recording or a job's output keeps them, and the answer says which.
+         *
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The institution. */
+                    orgId: string;
+                    /** @description The object. */
+                    objectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What letting go did. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            objectId: string;
+                            collected: boolean;
+                            keptBecause?: string;
+                            /** Format: int64 */
+                            freedBytes: number;
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/schedules": {
         parameters: {
             query?: never;
@@ -5624,11 +5920,53 @@ export interface components {
             id: string;
             /** @enum {string} */
             bucket: "evidence" | "derived" | "ephemeral";
-            /** @description A short-lived URL accepting exactly one upload. It is signed over its host, so it names the address this caller can reach.
+            /** @description For a one-part upload, a short-lived URL accepting it straight into the store. It is signed over its host, so only a caller on the platform's network can use it; anyone can send the part through the API instead.
              *      */
-            uploadUrl: string;
+            uploadUrl?: string;
+            parts: components["schemas"]["PartPlan"];
             /** Format: date-time */
             expiresAt: string;
+        };
+        PartPlan: {
+            count: number;
+            /**
+             * Format: int64
+             * @description Every part but the last is this long.
+             */
+            partBytes: number;
+        };
+        UploadProgress: {
+            grantId: string;
+            /** Format: int64 */
+            sizeBytes: number;
+            parts: components["schemas"]["PartPlan"];
+            arrived: {
+                number: number;
+                /** Format: int64 */
+                sizeBytes: number;
+            }[];
+            missing: number[];
+        };
+        StorageUsage: {
+            orgId: string;
+            /** Format: int64 */
+            usedBytes: number;
+            /** Format: int64 */
+            objects: number;
+            /**
+             * Format: int64
+             * @description Uploads granted and not yet confirmed; they count against the limit.
+             */
+            onTheWayBytes: number;
+            /** Format: int64 */
+            limitBytes: number;
+            /** @description False when the organisation has the platform's default. */
+            limitSet: boolean;
+        };
+        HeldObject: components["schemas"]["Object"] & {
+            heldBy: string;
+            /** Format: date-time */
+            heldSince: string;
         };
         JobInput: {
             name: string;

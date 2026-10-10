@@ -178,6 +178,24 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/uploads/{grantId}/confirm",
 		Summary: "check what arrived against what was declared", Action: policy.ObjectUpload,
 		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.confirmUpload})
+	rt.register(Route{Method: "PUT", Pattern: "/api/v1/organisations/{orgId}/uploads/{grantId}/parts/{number}",
+		Summary: "send one part of an upload; a part sent again replaces it", Action: policy.ObjectUpload,
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.putUploadPart})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations/{orgId}/uploads/{grantId}",
+		Summary: "which parts of an upload have arrived", Action: policy.ObjectUpload,
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.uploadProgress})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations/{orgId}/storage",
+		Summary: "what an organisation holds against what it may", Action: policy.StorageRead,
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.storageOf})
+	rt.register(Route{Method: "PUT", Pattern: "/api/v1/organisations/{orgId}/storage/limit",
+		Summary: "set what an organisation may hold", Action: policy.PlatformAdminister,
+		Resource: atPlatform(), Handle: d.setStorageLimit})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations/{orgId}/objects",
+		Summary: "what an organisation holds, newest first", Action: policy.StorageRead,
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.heldObjects})
+	rt.register(Route{Method: "DELETE", Pattern: "/api/v1/organisations/{orgId}/objects/{objectId}",
+		Summary: "let go of bytes; they go when nobody holds them and nothing is made of them",
+		Action:  policy.ObjectRelease, Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.releaseObject})
 
 	// The platform's own recurring work.
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/schedules",

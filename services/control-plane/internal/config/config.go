@@ -27,7 +27,10 @@ const (
 	defaultLeaseDuration       = 60 * time.Second
 	defaultReaperInterval      = 15 * time.Second
 	defaultMaxAttempts         = 3
-	defaultMaxObjectBytes      = int64(8) << 30
+	// An hour of 4K dive video is about 25 GB; a single object may be more
+	// than that, arriving in parts.
+	defaultMaxObjectBytes  = int64(64) << 30
+	defaultOrgStorageBytes = int64(200) << 30
 )
 
 // Config is everything the control plane needs to run.
@@ -53,6 +56,9 @@ type Config struct {
 	PresignLifetime       time.Duration
 	UploadGrantLifetime   time.Duration
 	MaxObjectBytes        int64
+	// OrgStorageBytes is what an organisation may hold when the platform has
+	// not set its limit.
+	OrgStorageBytes int64
 
 	// A model this platform may ask for a plan, and the key to ask with. All
 	// three empty on a platform that has not been given one, which is not an
@@ -152,6 +158,12 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	config.MaxObjectBytes = maxObject
+
+	orgStorage, err := number64("IOCEAN_ORG_STORAGE_BYTES", defaultOrgStorageBytes)
+	if err != nil {
+		return Config{}, err
+	}
+	config.OrgStorageBytes = orgStorage
 
 	config.StorageUseTLS = boolean("IOCEAN_STORAGE_USE_TLS", false)
 	config.StoragePublicUseTLS = boolean("IOCEAN_STORAGE_PUBLIC_USE_TLS", config.StorageUseTLS)

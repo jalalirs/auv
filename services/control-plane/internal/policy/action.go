@@ -73,6 +73,10 @@ const (
 
 	// ObjectUpload covers obtaining a grant to place bytes in storage.
 	ObjectUpload Action = "object.upload"
+	// ObjectRelease covers an organisation letting go of bytes it holds.
+	ObjectRelease Action = "object.release"
+	// StorageRead covers seeing what an organisation holds and may hold.
+	StorageRead Action = "storage.read"
 
 	// JobSubmit covers asking the platform to run work.
 	JobSubmit Action = "job.submit"
@@ -136,7 +140,9 @@ var requirement = map[Action]struct {
 	DiveRead:   {RoleViewer, []ResourceKind{ResourceOrg, ResourceDive}},
 	RunRequest: {RoleContributor, []ResourceKind{ResourceDive}},
 
-	ObjectUpload: {RoleContributor, []ResourceKind{ResourceOrg}},
+	ObjectUpload:  {RoleContributor, []ResourceKind{ResourceOrg}},
+	ObjectRelease: {RoleContributor, []ResourceKind{ResourceOrg}},
+	StorageRead:   {RoleViewer, []ResourceKind{ResourceOrg}},
 
 	JobSubmit:           {RoleContributor, []ResourceKind{ResourceOrg}},
 	JobSubmitPrivileged: {RoleAdmin, []ResourceKind{ResourcePlatform}},

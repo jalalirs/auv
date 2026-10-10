@@ -135,11 +135,32 @@ while IFS= read -r relative; do
         "{\"bucket\":\"evidence\",\"sha256\":\"$digest\",\"sizeBytes\":$size,\"mediaType\":\"$media\"}")
     grant_id=$(printf '%s' "$grant" | json "['id']")
     url=$(printf '%s' "$grant" | json "['uploadUrl']")
-    [ -n "$url" ] \
+    [ -n "$grant_id" ] \
         || die "no grant for $relative: $(printf '%s' "$grant" | head -c 220)"
 
-    curl -sS -X PUT --upload-file "$absolute" -H "content-type: $media" "$url" >/dev/null \
-        || die "could not upload $relative"
+    if [ -n "$url" ]; then
+        curl -sS -X PUT --upload-file "$absolute" -H "content-type: $media" "$url" >/dev/null \
+            || die "could not upload $relative"
+    else
+        # More than one part: each sent through the API, and sent again if it
+        # does not arrive.
+        count=$(printf '%s' "$grant" | json "['parts']['count']")
+        part=$(printf '%s' "$grant" | json "['parts']['partBytes']")
+        n=1
+        while [ "$n" -le "$count" ]; do
+            sent=""
+            for _ in 1 2 3; do
+                if dd if="$absolute" bs="$part" skip=$((n - 1)) count=1 2>/dev/null \
+                    | curl -sSf -X PUT "$API/api/v1/organisations/$ORG/uploads/$grant_id/parts/$n" \
+                        -H "Authorization: Bearer $TOKEN" -H 'content-type: application/octet-stream' \
+                        --data-binary @- >/dev/null; then
+                    sent=1; break
+                fi
+            done
+            [ -n "$sent" ] || die "part $n of $relative did not arrive"
+            n=$((n + 1))
+        done
+    fi
 
     # The platform hashes what arrived and refuses it if it is not what was
     # declared, so a corrupted upload is caught here rather than by whatever

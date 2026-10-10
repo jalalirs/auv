@@ -80,7 +80,8 @@ func run(logger *slog.Logger) error {
 
 	broker := exec.NewBroker(pool)
 	identities := identity.NewStore(pool, settings.SessionLifetime)
-	objects := storage.NewObjects(pool, blobs, settings.UploadGrantLifetime, settings.MaxObjectBytes)
+	objects := storage.NewObjects(pool, blobs, settings.UploadGrantLifetime, settings.MaxObjectBytes).
+		WithLimits(0, 0, settings.OrgStorageBytes)
 	recorder := audit.NewRecorder()
 
 	deps := &httpapi.Dependencies{
