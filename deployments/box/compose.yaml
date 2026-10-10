@@ -39,6 +39,9 @@ x-platform-env: &platform-env
   IOCEAN_MODEL_URL: ${IOCEAN_MODEL_URL:-}
   IOCEAN_MODEL_KEY: ${IOCEAN_MODEL_KEY:-}
   IOCEAN_MODEL: ${IOCEAN_MODEL:-}
+  # The places module's image, by digest, that builds places from their data
+  # (packages/places/Dockerfile). Empty: this platform does not build places.
+  IOCEAN_PLACES_IMAGE: ${IOCEAN_PLACES_IMAGE:-}
 
 services:
   record:
@@ -155,6 +158,10 @@ services:
     environment:
       IOCEAN_PLATFORM: http://control-plane:8080
       IOCEAN_RUNTIME_VERSION: ${IOCEAN_RUNTIME_VERSION:-isaac-6.0.1+oceansim}
+      # The NASA Earthdata token a place build fetches the laser altimeter's
+      # depths with, handed to place builds only. Empty: builds leave ICESat-2
+      # out and say so.
+      NASA_TOKEN: ${NASA_TOKEN:-}
     ports:
       - "${IOCEAN_BIND_ADDRESS:-127.0.0.1}:${IOCEAN_MCP_PORT:-18083}:8080"
     depends_on:

@@ -981,3 +981,107 @@ def sweeps_findings(platform: Platform, sweep: str) -> dict:
     mistake a person reading a table of failures makes first.
     """
     return platform.request("GET", f"/api/v1/sweeps/{sweep}/findings")
+
+
+# ── building a place ─────────────────────────────────────────────────────────
+
+
+def places_sources(platform: Platform) -> dict:
+    """What a place can be built from."""
+    said = platform.request("GET", "/api/v1/build-sources")
+    return {**said, "note": "places_build names some of these; gebco is laid under everything anyway, "
+                            "so every cell has a depth"}
+
+
+def _slug(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:56] or "place"
+    return slug if len(slug) >= 3 else slug + "-place"
+
+
+def places_build(platform: Platform, name: str, centre: list, across_m: float = 1000.0,
+                 sources: list | None = None, files: list | None = None, cells: int | None = None) -> dict:
+    """Found a place of the institution's own and build it from its data."""
+    if not isinstance(centre, (list, tuple)) or len(centre) != 2:
+        raise Refused(400, "invalid", "centre is [latitude, longitude] in degrees")
+    lat, lon = float(centre[0]), float(centre[1])
+    institution = platform.institution()
+    if institution is None:
+        raise Refused(403, "forbidden", "this session belongs to no institution, and a place is built for one")
+    half_lat = across_m / 2 / 111_320.0
+    half_lon = across_m / 2 / (111_320.0 * max(math.cos(math.radians(lat)), 1e-6))
+    extent = {"west": lon - half_lon, "south": lat - half_lat, "east": lon + half_lon, "north": lat + half_lat}
+    base = _slug(name)
+    place = None
+    for attempt in range(6):
+        slug = base if attempt == 0 else f"{base}-{attempt + 1}"
+        try:
+            place = platform.request("POST", f"/api/v1/organisations/{institution['id']}/cities", {
+                "slug": slug, "name": name, "verticalDatum": "mean sea level",
+                "summary": f"built from {', '.join(sources or ['gebco'])}", "extent": extent})
+            break
+        except Refused as refused:
+            if refused.status != 400 or "already exists" not in str(refused):
+                raise
+    if place is None:
+        raise Refused(409, "conflict", f"places called {base} and five more like it exist; choose another name")
+    brief: dict[str, Any] = {"centre": [lat, lon], "acrossM": float(across_m),
+                             "sources": list(sources or ["gebco", "sentinel2", "allen-coral-atlas"])}
+    if files:
+        brief["files"] = files
+    if cells:
+        brief["cells"] = int(cells)
+    build = platform.request("POST", f"/api/v1/cities/{place['id']}/builds", brief)
+    return {"place": {"id": place["id"], "slug": place["slug"], "name": place["name"],
+                      "ownedBy": institution.get("name")},
+            **_build_summary(build),
+            "note": "places_build_status says how it is going; a build from public data takes minutes, "
+                    "longer when the laser's depths are fetched"}
+
+
+def _build_summary(build: dict) -> dict:
+    steps = build.get("steps") or []
+    out: dict[str, Any] = {
+        "build": build.get("id"), "state": build.get("state"),
+        "steps": [(f"{s.get('say')} ({s['n']} of {s['of']})" if s.get("of") else s.get("say")) for s in steps][-12:],
+    }
+    if build.get("failure"):
+        out["failure"] = build["failure"]
+    if build.get("said"):
+        out["said"] = build["said"][-1500:]
+    result = build.get("result") or {}
+    depth = result.get("depth") or {}
+    weak = depth.get("weak") or {}
+    if build.get("versionId"):
+        out["version"] = build["versionId"]
+        out["published"] = False
+    if weak:
+        error = weak.get("errorM") or {}
+        out["howWrongTheDepthMayBe"] = {
+            "medianM": said(error.get("median"), DERIVED, "each cell's error from the source that made it"),
+            "p90M": said(error.get("p90"), DERIVED, "each cell's error from the source that made it"),
+            "worstM": said(error.get("worst"), DERIVED, "each cell's error from the source that made it")}
+        if weak.get("byKind"):
+            out["shareByKind"] = weak["byKind"]
+        if weak.get("weakest"):
+            out["weakest"] = weak["weakest"]
+    if depth.get("sources"):
+        out["madeBy"] = [{"source": s.get("source"), "kind": s.get("kind"), "share": s.get("share")}
+                         for s in depth["sources"]]
+    for key in ("deepestM", "shallowestM"):
+        if result.get(key) is not None:
+            out[key] = said(result[key], DERIVED, "the built seabed")
+    if build.get("state") == "ready":
+        out["next"] = "places_publish with this version lets dives use it"
+    return out
+
+
+def places_build_status(platform: Platform, build: str) -> dict:
+    """How a build is going, and when it is done, where the place it made is weak."""
+    return _build_summary(platform.request("GET", f"/api/v1/builds/{build}"))
+
+
+def places_publish(platform: Platform, version: str) -> dict:
+    """Publish a version a build made, so dives can use it."""
+    published = platform.request("POST", f"/api/v1/versions/{version}/publish")
+    return {"version": published.get("id", version), "published": True,
+            "note": "dives_start can now fly in it; places_get reads what its ground came from"}

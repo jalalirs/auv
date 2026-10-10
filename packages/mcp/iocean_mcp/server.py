@@ -40,6 +40,47 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
                                   "description": "the place's id or slug"}},
          "required": ["place"]},
         lambda p, place: tools.places_get(p, place)),
+    "places_sources": (
+        "What a place can be built from: the public sources (the global depth grid, satellite "
+        "imagery, the laser altimeter's depths, the coral atlas, the learned depth model) and the "
+        "kinds of file an institution can add.",
+        {"type": "object", "properties": {}},
+        tools.places_sources),
+    "places_build": (
+        "Found a place of this institution's own, private to it, and build it from its data. "
+        "THIS SPENDS TIME ON A MACHINE: the platform fetches the public data and builds the seabed "
+        "as a job. Returns at once with a build to watch with places_build_status; when it is ready "
+        "it has made a draft version, which places_publish lets dives use.",
+        {"type": "object",
+         "properties": {
+             "name": {"type": "string", "description": "what to call the place"},
+             "centre": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2,
+                        "description": "[latitude, longitude] in degrees, the middle of the square"},
+             "across_m": {"type": "number", "default": 1000, "description": "how wide the square is, 100 m to 20 km"},
+             "sources": {"type": "array", "items": {"type": "string",
+                                                    "enum": ["gebco", "sentinel2", "icesat2",
+                                                             "allen-coral-atlas", "learned-depth"]},
+                         "description": "public data to build from; default gebco, sentinel2, allen-coral-atlas"},
+             "files": {"type": "array", "items": {"type": "object"},
+                       "description": "the institution's own uploaded files: "
+                                      "[{\"objectId\": ..., \"use\": \"raster\"|\"points\"|\"ortho\", \"name\": ..., \"errorM\": 0.1}]"},
+             "cells": {"type": "integer", "description": "grid cells across, 64 to 2048; default 512"}},
+         "required": ["name", "centre"]},
+        lambda p, name, centre, across_m=1000.0, sources=None, files=None, cells=None:
+            tools.places_build(p, name, centre, across_m, sources, files, cells)),
+    "places_build_status": (
+        "How a build is going: the steps it has done, and when it is ready, the version it made, "
+        "how wrong its depth may be, and which source made how much of it.",
+        {"type": "object",
+         "properties": {"build": {"type": "string"}},
+         "required": ["build"]},
+        lambda p, build: tools.places_build_status(p, build)),
+    "places_publish": (
+        "Publish a version a build made, so dives can fly in it.",
+        {"type": "object",
+         "properties": {"version": {"type": "string"}},
+         "required": ["version"]},
+        lambda p, version: tools.places_publish(p, version)),
     "vehicles_list": (
         "Every vehicle, and whether it can actually fly. Read `flyable`: a "
         "package with dynamics and no hull cannot be put in the water however "
