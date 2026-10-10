@@ -19,11 +19,15 @@ stands, in this order:
 
 `add` (from ~/iocean/venvs/coral, for pyfqmr) writes PLACE/reconstructions/<name>/:
 
-    patch.ply        decimated to `--triangles`, colours white-balanced
-                     (grey world: the water's cast taken out, since the
-                     renderer puts its own water back), the patch's own
-                     frame: metres, z up, x along the transect
+    patch.ply        decimated to `--triangles`, each vertex the mean colour
+                     of the points it stands for, graded into the place's
+                     coral library (its brightness and tint: the water's cast
+                     taken out, since the renderer puts its own water back),
+                     the patch's own frame: metres, z up, x along the transect
     placement.json   where, which way, at what height, and how it was decided
+
+Adding a patch again (a new grade) keeps where it was put, and applying to a
+place that already has it gives the planted mesh the new colours.
 
 and then applies. Applying is what `tools/rebuild` replays after the reef is
 grown again: coral.usda gains the patch as one more prototype with one
@@ -71,19 +75,66 @@ def read_open3d_ply(path: pathlib.Path):
     return points, f["i"].astype(np.int64), colours
 
 
-def grey_world(colours: np.ndarray, strength: float = 0.8) -> np.ndarray:
-    """The water's cast taken out of a photograph's colours: each channel
-    scaled so the patch's mean is grey, by `strength` of the way."""
-    mean = colours.mean(0)
-    gain = (mean.mean() / np.maximum(mean, 1e-3)) ** strength
-    return np.clip(colours * gain, 0, 1)
+LUMA = np.array([0.2126, 0.7152, 0.0722])
 
 
-def stretch(colours: np.ndarray, low: float = 0.06, high: float = 0.8) -> np.ndarray:
-    """Each channel's 2nd to 98th percentile spread over `low`..`high`: the
-    haze a photograph through water carries taken out of its contrast."""
-    lo, hi = np.percentile(colours, 2, axis=0), np.percentile(colours, 98, axis=0)
-    return np.clip(low + (colours - lo) / np.maximum(hi - lo, 1e-3) * (high - low), 0, 1)
+def cell_means(points: np.ndarray, colours: np.ndarray, kept: np.ndarray) -> np.ndarray:
+    """Each kept vertex's colour as the mean of the made points nearest it.
+
+    Decimating to a few hundred thousand triangles leaves a vertex for every
+    ten or so the reconstruction made; giving it the colour of just the one
+    nearest is a sample, and a sample of a photograph's grain is speckle (a
+    dark dot here, a bright one there, at a few metres a salt-and-pepper
+    sheet). The mean over the points it stands for is what the vertex saw."""
+    from scipy.spatial import cKDTree
+
+    nearest = cKDTree(kept).query(points)[1]
+    sums = np.zeros((len(kept), 3))
+    np.add.at(sums, nearest, colours)
+    count = np.bincount(nearest, minlength=len(kept))
+    out = sums / np.maximum(count, 1)[:, None]
+    lonely = count == 0
+    if lonely.any():
+        out[lonely] = colours[cKDTree(points).query(kept[lonely])[1]]
+    return out
+
+
+def reef_colours(library_dir: pathlib.Path, per_colony: int = 20000, seed: int = 0) -> dict | None:
+    """The colours this place's reef is drawn in: the brightness (mean and
+    spread) and the mean tint of the coral library's colonies and rock, every
+    piece weighed alike. None when there is no library."""
+    import coral_hd
+
+    rng = np.random.default_rng(seed)
+    seen = []
+    for one in sorted(pathlib.Path(library_dir).glob("*.ply")):
+        _, _, c = coral_hd.read_ply(one)
+        seen.append(c[rng.choice(len(c), min(per_colony, len(c)), replace=False)])
+    if not seen:
+        return None
+    c = np.concatenate(seen)
+    y = c @ LUMA
+    return {"luma": float(y.mean()), "lumaSpread": float(y.std()),
+            "tint": (c - y[:, None]).mean(0).tolist(), "pieces": len(seen), "from": str(library_dir)}
+
+
+def to_the_reef(colours: np.ndarray, reef: dict) -> np.ndarray:
+    """A photograph's colours put into the reef's own: brightness given the
+    library's mean and spread, and the mean tint swapped for the library's.
+
+    The video was shot through water and the renderer puts the water back, so
+    whatever cast the photograph still carries is counted twice: the patch came
+    back from a dive a dark blue sheet beside the reef it is part of. Taking
+    the photograph's mean tint out entirely, rather than most of the way, and
+    putting the reef's in, leaves each point's difference from the patch's
+    average (its real colour variation, a green colony on grey rock) and makes
+    the patch the same stuff as the coral the place grew around it, so the
+    same water does the same thing to both."""
+    y = colours @ LUMA
+    chroma = colours - y[:, None]
+    y = reef["luma"] + (y - y.mean()) / max(float(y.std()), 1e-3) * reef["lumaSpread"]
+    chroma = chroma - chroma.mean(0) + np.asarray(reef["tint"])
+    return np.clip(y[:, None] + chroma, 0, 1)
 
 
 def living_cover(transect: pathlib.Path, video: str, start: float, stop: float) -> float | None:
@@ -202,8 +253,6 @@ def choose(site: dict, reef: dict, cover_v: float | None, across: float) -> dict
 
 def add(asked) -> int:
     import pyfqmr
-    from scipy.spatial import cKDTree
-
     place, patch = pathlib.Path(asked.place), pathlib.Path(asked.patch)
     about = json.loads((patch / "patch.json").read_text())
     name = asked.name or about.get("run") or patch.parent.name
@@ -215,17 +264,31 @@ def add(asked) -> int:
     s.setMesh(points, faces.astype(np.int32))
     s.simplify_mesh(target_count=asked.triangles, aggressiveness=7, preserve_border=True, verbose=False)
     v, f, _ = s.getMesh()
-    c = colours[cKDTree(points).query(v)[1]] if colours is not None else np.full((len(v), 3), 0.5)
-    c = stretch(grey_world(c))
+    v = np.asarray(v)
+    c = cell_means(points, colours, v) if colours is not None else np.full((len(v), 3), 0.5)
+    site = json.loads((place / "site.json").read_text())
+    library_dir = ((site.get("reef") or {}).get("fromLibrary") or {}).get("path")
+    reef = reef_colours(pathlib.Path(library_dir)) if library_dir else None
+    if reef is None:
+        raise SystemExit(f"{place.name} was grown without a coral library: nothing to grade the patch to")
+    c = to_the_reef(c, reef)
     import coral_hd
-    coral_hd.write_ply(into / "patch.ply", np.asarray(v), np.asarray(f, int), c)
+    coral_hd.write_ply(into / "patch.ply", v, np.asarray(f, int), c)
     for extra in ("patch.json", "ortho.png", "preview.png"):
         if (patch / extra).exists():
             shutil.copy(patch / extra, into / extra)
 
-    site = json.loads((place / "site.json").read_text())
     across = float(site["from"]["acrossMetres"])
-    if asked.at:
+    kept = into / "placement.json"
+    if kept.exists() and not asked.at:
+        # Made again (a new grade, a new decimation): it stays where it was
+        # put. The placement is decided once.
+        was = json.loads(kept.read_text())
+        made = ("name", "from", "video", "scale", "triangles", "trianglesMade", "colours")
+        where = {k: x for k, x in was.items() if k not in made}
+        if "at" not in where:
+            raise SystemExit(f"{kept} says nowhere")
+    elif asked.at:
         x, y = (float(t) for t in asked.at.split(","))
         where = {"at": [x, y], "headingDeg": float(asked.heading or 0.0), "how": "coordinates given",
                  "kind": "measured" if asked.at_from else "chosen", "from": asked.at_from}
@@ -239,8 +302,12 @@ def add(asked) -> int:
     placement = {"name": name, "from": str(patch), "video": about.get("video"),
                  "scale": about.get("scale") or {"how": "assumed"},
                  "triangles": int(len(f)), "trianglesMade": int(len(faces)),
-                 "colours": "grey world, 0.8 of the way (the water's cast taken out), then each channel's "
-                            "2nd to 98th percentile spread over 0.06 to 0.8 (its haze taken out)",
+                 "colours": {"how": "each vertex the mean of the reconstruction's points nearest it; then "
+                                    "brightness given the coral library's mean and spread, and the photograph's "
+                                    "mean tint (the water's cast) replaced by the library's",
+                             "kind": "derived", "reef": {k: (round(x, 4) if isinstance(x, float) else x)
+                                                         for k, x in reef.items() if k != "tint"}
+                             | {"tint": [round(x, 4) for x in reef["tint"]]}},
                  **where}
     (into / "placement.json").write_text(json.dumps(placement, indent=1) + "\n")
     print(f"{place.name}: {name} at {where['at']} heading {where['headingDeg']} ({where['how'][:60]})")
@@ -264,6 +331,27 @@ def _skin(text: str, name: str, colour) -> str:
     block = re.sub(r"color3f inputs:(tissue|diffuseColor) = \([^)]*\)",
                    lambda mm: "color3f inputs:%s = (%.3g, %.3g, %.3g)" % (mm.group(1), *colour), block)
     return block
+
+
+def _recoloured(text: str, name: str, colours: np.ndarray) -> tuple[str, str]:
+    """A patch already planted, given the colours its patch.ply has now (a
+    new grade), where the mesh is the one planted: same vertices, same order.
+    Its shape and where it stands are left as they are."""
+    import reef as reef_tool
+
+    mesh = re.search(r'(        def Mesh "Reconstruction_%s" \(.*?\n        }\n)' % re.escape(name), text, re.S)
+    said = re.search(r"(color3f\[\] primvars:displayColor = \[)([^\]]*)(\])", mesh.group(1)) if mesh else None
+    if said is None or said.group(2).count("(") != len(colours):
+        return text, "its vertices differ from patch.ply's: grow the reef again (tools/rebuild) to plant the new one"
+    block = mesh.group(1)[:said.start(2)] + reef_tool._triples(colours) + mesh.group(1)[said.end(2):]
+    text = text[:mesh.start(1)] + block + text[mesh.end(1):]
+    skin = re.search(r'(        def Material "Skin_%s"\n.*?\n        }\n)' % re.escape(name), text, re.S)
+    if skin:
+        mean = colours.mean(0)
+        block = re.sub(r"color3f inputs:(tissue|diffuseColor) = \([^)]*\)",
+                       lambda mm: "color3f inputs:%s = (%.3g, %.3g, %.3g)" % (mm.group(1), *mean), skin.group(1))
+        text = text[:skin.start(1)] + block + text[skin.end(1):]
+    return text, "recoloured"
 
 
 DRAPE_M = 1.0
@@ -326,10 +414,11 @@ def apply(place: pathlib.Path) -> int:
     for said in shelf:
         p = json.loads(said.read_text())
         name = re.sub(r"[^A-Za-z0-9_]", "_", p["name"])
-        if f"Reconstruction_{name}" in text:
-            print(f"  {p['name']}: already in coral.usda")
-            continue
         v, f, c = coral_hd.read_ply(said.parent / "patch.ply")
+        if f"Reconstruction_{name}" in text:
+            text, how = _recoloured(text, name, c)
+            print(f"  {p['name']}: already in coral.usda, {how}")
+            continue
         x0, y0 = p["at"]
         turn = np.radians(p["headingDeg"])
         cos, sin = np.cos(turn), np.sin(turn)
@@ -430,6 +519,7 @@ def apply(place: pathlib.Path) -> int:
         print(f"  {p['name']}: prototype {index}, at {p['at']} z {ground:.2f}, "
               f"{int(under.sum()):,} colonies on its footprint taken out")
     if not records:
+        (place / "coral.usda").write_text(text)          # recoloured, if anything
         _cameras(site_file)
         return 0
     m = read_reef(text)["matches"]

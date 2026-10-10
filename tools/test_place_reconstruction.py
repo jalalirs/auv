@@ -149,3 +149,48 @@ def test_a_patch_camera_stands_above_the_seabed_where_it_is(tmp_path):
     cam = json.loads((tmp_path / "site.json").read_text())["cameras"]["fixed"]["patch-test-patch"]
     floor = -0.5 - 0.75 * max(cam["eye"][0], 0.0)
     assert cam["eye"][2] > max(floor, -8.0) + 1.0 and cam["eye"][2] <= -0.5
+
+
+def test_a_patch_takes_the_reefs_colours_and_keeps_its_own_differences(tmp_path):
+    # A library: warm colonies, and a patch shot through blue water.
+    rng = np.random.default_rng(0)
+    for k in range(3):
+        coral_hd.write_ply(tmp_path / f"massive-{k}.ply", rng.normal(0, 1, (50, 3)), np.zeros((1, 3), int),
+                           np.clip(np.array([0.45, 0.35, 0.25]) + rng.normal(0, 0.08, (50, 3)), 0, 1))
+    reef_said = place_reconstruction.reef_colours(tmp_path)
+    blue = np.clip(np.array([0.15, 0.35, 0.45]) + rng.normal(0, 0.03, (400, 3)), 0, 1)
+    blue[:200, 1] += 0.1                                  # half of it greener: a colony on rock
+    out = place_reconstruction.to_the_reef(blue, reef_said)
+    luma = place_reconstruction.LUMA
+    assert abs(out @ luma - reef_said["luma"]).mean() < 0.2
+    assert abs((out @ luma).mean() - reef_said["luma"]) < 0.02
+    assert out[:, 0].mean() > out[:, 2].mean()            # the blue cast is gone, the reef's warmth is in
+    assert out[:200, 1].mean() - out[200:, 1].mean() > 0.05   # and the greener half is still greener
+
+
+def test_a_vertex_takes_the_mean_of_the_points_it_stands_for():
+    points = np.array([[0, 0, 0], [0.1, 0, 0], [5, 0, 0], [5.1, 0, 0]], float)
+    colours = np.array([[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 1, 0]], float)
+    kept = np.array([[0.05, 0, 0], [5.05, 0, 0], [20, 0, 0]], float)
+    got = place_reconstruction.cell_means(points, colours, kept)
+    assert np.allclose(got[0], [0.5, 0, 0.5]) and np.allclose(got[1], [0, 1, 0])
+    assert np.allclose(got[2], [0, 1, 0])                 # nothing nearest it: the nearest point's colour
+
+
+def test_a_planted_patch_given_a_new_grade_is_recoloured_where_it_stands(tmp_path):
+    _a_place(tmp_path)
+    folder = tmp_path / "reconstructions" / "test-patch"
+    _a_patch(folder, (0.0, 0.0))
+    place_reconstruction.apply(tmp_path)
+    before = (tmp_path / "coral.usda").read_text()
+    v, f, _ = coral_hd.read_ply(folder / "patch.ply")
+    coral_hd.write_ply(folder / "patch.ply", v, f, np.tile([0.6, 0.4, 0.2], (len(v), 1)))
+    graded = "(%.4g, %.4g, %.4g)" % tuple(coral_hd.read_ply(folder / "patch.ply")[2][0])
+    place_reconstruction.apply(tmp_path)
+    after = (tmp_path / "coral.usda").read_text()
+    mesh = after.split('def Mesh "Reconstruction_test_patch"')[1].split("\n        }\n")[0]
+    assert graded in mesh and "(0.502, 0.502, 0.502)" not in mesh
+    skin = after.split('def Material "Skin_test_patch"')[1][:2000]
+    assert "inputs:tissue = (0.6, 0.4, 0.2)" in skin
+    points = lambda t: t.split('def Mesh "Reconstruction_test_patch"')[1].split("point3f[] points")[1][:400]
+    assert points(after) == points(before)
