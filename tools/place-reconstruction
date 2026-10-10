@@ -466,6 +466,7 @@ def _cameras(site_file: pathlib.Path) -> None:
     (dives_start views ["patch-<name>"]): from the downhill side, twelve
     metres off and six up, aimed at its middle."""
     site = json.loads(site_file.read_text())
+    drawn = seabed_of(site_file.parent, site)
     fixed = site.setdefault("cameras", {}).setdefault("fixed", {})
     for r in site.get("reconstructions") or []:
         x0, y0 = r["at"]
@@ -475,7 +476,23 @@ def _cameras(site_file: pathlib.Path) -> None:
         tilt = r.get("downhill")
         if tilt is not None and np.linalg.norm(tilt) > 1e-3:          # level ground has no downhill
             side = np.array(tilt) / np.linalg.norm(tilt)
-        eye = [round(float(x0 + 12 * side[0]), 2), round(float(y0 + 12 * side[1]), 2), round(min(z0 + 6.0, -1.0), 2)]
+        # Above the seabed where the camera itself stands, and under the
+        # surface: on a reef flat the downhill side can be shallower than
+        # the patch, and a camera held at a fixed depth there was inside the
+        # reef, looking at it from underneath. The first side, turning round
+        # the patch, with room for the camera wins.
+        eye = None
+        start = np.arctan2(side[1], side[0])
+        for turn_by in np.radians([0, 45, -45, 90, -90, 135, -135, 180]):
+            ex, ey = x0 + 12 * np.cos(start + turn_by), y0 + 12 * np.sin(start + turn_by)
+            floor = float(drawn(np.array([ex]), np.array([ey]))[0]) if drawn is not None else z0
+            ez = min(max(floor, z0) + 3.0, -0.5)
+            if ez > floor + 1.0:
+                eye = [round(float(ex), 2), round(float(ey), 2), round(ez, 2)]
+                break
+        if eye is None:
+            fixed.pop("patch-" + r["name"], None)
+            continue
         fixed["patch-" + r["name"]] = {"eye": eye, "aim": [x0, y0, round(z0, 2)],
                                        "what": "the reconstructed patch " + r["name"] + ", from its downhill side"}
     site_file.write_text(json.dumps(site, indent=1) + "\n")

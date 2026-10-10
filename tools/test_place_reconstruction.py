@@ -133,3 +133,19 @@ def test_a_patch_rim_is_draped_onto_the_seabed(tmp_path):
     rim = place_reconstruction._to_rim(pts, f) < 1e-6
     assert np.allclose(world[rim, 2], -8.0 + 0.02, atol=0.05)
     assert world[~rim, 2].max() > -8.0 + 0.4
+
+
+def test_a_patch_camera_stands_above_the_seabed_where_it_is(tmp_path):
+    _a_place(tmp_path)
+    # A reef flat half a metre deep west of x = 0, a slope to eight metres east.
+    xs = np.linspace(-50, 50, 101)
+    h = np.where(xs < 0, -0.5, -0.5 - 0.75 * xs)
+    np.tile(np.maximum(h, -8.0), (101, 1)).astype("<f4").tofile(tmp_path / "seabed.f32")
+    site = json.loads((tmp_path / "site.json").read_text())
+    site["mesh"] = {"heightfield": {"file": "seabed.f32", "rows": 101, "columns": 101}}
+    (tmp_path / "site.json").write_text(json.dumps(site))
+    _a_patch(tmp_path / "reconstructions" / "test-patch", (12.0, 0.0))
+    place_reconstruction.apply(tmp_path)
+    cam = json.loads((tmp_path / "site.json").read_text())["cameras"]["fixed"]["patch-test-patch"]
+    floor = -0.5 - 0.75 * max(cam["eye"][0], 0.0)
+    assert cam["eye"][2] > max(floor, -8.0) + 1.0 and cam["eye"][2] <= -0.5
