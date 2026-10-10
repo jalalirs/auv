@@ -15,16 +15,18 @@ import { PlaceCard } from "./Dive.js";
 import { PlacePlan } from "../parts/PlanArt.js";
 import { Card, Empty, PageHead } from "./parts.js";
 
-export function Places({ held, packages, onOpen }: {
+export function Places({ held, packages, onOpen, onBuild }: {
   held: Held;
   packages: Packages;
   onOpen: (id: string) => void;
+  onBuild?: () => void;
 }): React.JSX.Element {
   const slugs = new Set(held.places.map((p) => p.slug));
   return (
     <>
       <PageHead title="Places"
-        says="Water we keep, versioned and granted. A dive pins the version it ran in, so the reef you dived is the reef anybody can dive again. Each place says what its sea is doing today, from the nearest monitoring site." />
+        says="Water we keep, versioned and granted. A dive pins the version it ran in, so the reef you dived is the reef anybody can dive again. Each place says what its sea is doing today, from the nearest monitoring site."
+        aside={onBuild ? <button onClick={onBuild}>New place</button> : undefined} />
       {held.places.length === 0 ? (
         <Empty title="Nothing granted yet">
           Places appear here once somebody grants your institution access to them.

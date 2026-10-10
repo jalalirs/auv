@@ -18,6 +18,7 @@ import { Fly } from "../screens/Fly.js";
 import { Missions } from "../screens/Missions.js";
 import { Runs } from "../screens/Runs.js";
 import { LayoutEditor } from "../screens/Layout.js";
+import { BuildPlace } from "../screens/BuildPlace.js";
 
 const now = () => new Date().toISOString();
 let counter = 0;
@@ -125,6 +126,52 @@ const platform = {
   cancel: () => delay(undefined),
   startSweep: (_org: string, s: Doc) => { said.push(`sweep ${JSON.stringify(s)}`); return delay({ id: id("sweep") }); },
 };
+// A build that walks through what a real one said, a step every second.
+const builtSteps = [
+  { step: "plan", say: "4 sources, 0 models" },
+  { step: "left-out", say: "icesat2: this platform has no NASA Earthdata token, so the laser's depths were not fetched" },
+  { step: "source", say: "reading sentinel2-stumpf", n: 1, of: 4 },
+  { step: "source", say: "reading sentinel2-median", n: 2, of: 4 },
+  { step: "source", say: "reading allen-coral-atlas", n: 3, of: 4 },
+  { step: "source", say: "reading gebco", n: 4, of: 4 },
+  { step: "fuse", say: "fusing 2 depth layers, cell by cell" },
+  { step: "scene", say: "writing the seabed" },
+  { step: "package", say: "packing the place" },
+  { step: "done", say: "built" },
+];
+let buildStarted = 0;
+const buildView = () => {
+  const shown = Math.min(builtSteps.length, Math.floor((Date.now() - buildStarted) / 1000));
+  const done = shown >= builtSteps.length;
+  return { id: "bld_1", cityId: "city_new", orgId: "org_1", jobId: "job_1", brief: {}, createdBy: "p1",
+    createdAt: now(), state: done ? "ready" : shown === 0 ? "queued" : "running", jobState: done ? "succeeded" : "running",
+    steps: builtSteps.slice(0, shown).map((s) => ({ at: now(), ...s })),
+    ...(done ? { versionId: "ver_new", result: { deepestM: 60, depth: {
+      sources: [{ source: "sentinel2-stumpf", kind: "derived", share: 1 }],
+      weak: { errorM: { median: 10, p90: 10, worst: 10 } } } } } : {}) };
+};
+Object.assign(platform, {
+  buildSources: () => delay({ sources: {
+    gebco: "the global depth grid (GEBCO): everywhere, coarse",
+    sentinel2: "satellite imagery (Sentinel-2): depth estimated from colour in clear shallow water",
+    icesat2: "the laser altimeter's depths (ICESat-2): measured, along tracks",
+    "allen-coral-atlas": "the Allen Coral Atlas: where reef, sand and seagrass are",
+    "learned-depth": "the learned depth model: depth from imagery, corrected by the laser's depths" },
+    fileUses: { raster: "a depth map (GeoTIFF or any grid GDAL reads)", points: "soundings (XYZ or CSV)",
+                ortho: "a photo mosaic (orthomosaic GeoTIFF)" } }),
+  upload: async (_org: string, file: File, o: { onProgress?: (s: string, d: number, n: number) => void }) => {
+    for (const stage of ["hashing", "sending"]) for (let k = 1; k <= 4; k++) {
+      await delay(0); o.onProgress?.(stage, file.size * k / 4, file.size);
+    }
+    said.push(`uploaded ${file.name}`);
+    return { id: id("obj") };
+  },
+  foundPlace: (org: string, body: Doc) => { said.push(`founded for ${org}: ${JSON.stringify(body)}`); return delay({ id: "city_new", ...body }); },
+  startBuild: (city: string, brief: Doc) => { said.push(`build ${city}: ${JSON.stringify(brief)}`); buildStarted = Date.now(); return delay(buildView()); },
+  build: () => delay(buildView()),
+  files: () => delay([{ path: "weak.png", url: "./harness/fixtures/built/weak.png" }]),
+  publishVersion: (v: string) => { said.push(`published ${v}`); return delay({ id: v }); },
+});
 Object.assign(window, { said, store });
 
 const held = {
@@ -169,7 +216,7 @@ function Harness({ packages }: { packages: Packages }) {
     <div className="deck">
       <nav>
         <div className="here"><strong>harness</strong></div>
-        {["missions", "designer", "fly", "results", "layout"].map((page) => (
+        {["missions", "designer", "fly", "results", "layout", "build"].map((page) => (
           <a key={page} aria-current={where.page === page ? "page" : undefined} onClick={() => setWhere((w) => ({ ...w, page }))}>{page}</a>
         ))}
       </nav>
@@ -185,6 +232,8 @@ function Harness({ packages }: { packages: Packages }) {
           <LayoutEditor platform={p} pkg={packages.places.get(where.place ?? "city_tank") as never}
                         layout={[...store.layouts.values()].find((l) => l.place === (where.place ?? "city_tank"))!.layout as never}
                         onBack={() => setWhere((w) => ({ ...w, page: "missions" }))} />
+        ) : where.page === "build" ? (
+          <BuildPlace platform={p} held={held} onBack={() => said.push("back")} onOpen={(c) => said.push(`open ${c}`)} />
         ) : where.page === "results" ? (
           <Runs platform={p} held={held} onChanged={() => undefined}
                 onReplay={(d, r) => said.push(`replay ${d} ${r}`)} onSweep={(s) => said.push(`read sweep ${s}`)} />

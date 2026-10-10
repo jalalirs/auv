@@ -38,6 +38,20 @@
         "forum-deck"
       ],
       "port": 8792
+    },
+    {
+      "name": "client-alt",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "CORAL_CITY_UPSTREAM=http://100.76.65.1:18080",
+        "apps/client/node_modules/.bin/vite",
+        "--config",
+        "apps/client/vite.renderer.config.mts",
+        "--port",
+        "5174",
+        "--strictPort"
+      ],
+      "port": 5174
     }
   ]
 }

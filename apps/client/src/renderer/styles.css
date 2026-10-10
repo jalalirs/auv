@@ -1781,3 +1781,47 @@ button.small { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 }
 .designer .number { flex-direction: row; }
 .fly .warn { color: var(--vehicle); font-size: 12.5px; line-height: 1.45; }
+
+/* ── a new place ─────────────────────────────────────────────────────────── */
+.builder { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr); gap: 24px; align-items: start; }
+.builder-map { display: flex; flex-direction: column; gap: 10px; position: sticky; top: 12px; }
+.world-map {
+  position: relative; overflow: hidden; height: min(68vh, 640px); border-radius: 12px;
+  border: 1px solid var(--edge); background: var(--abyss); cursor: crosshair; touch-action: none; user-select: none;
+}
+.world-map img { pointer-events: none; }
+.world-square {
+  position: absolute; border: 2px solid var(--coral); background: rgba(64, 199, 244, 0.12);
+  box-shadow: 0 0 0 1px rgba(4, 8, 15, 0.6); pointer-events: none;
+}
+.world-credit {
+  position: absolute; right: 6px; bottom: 4px; font-size: 10.5px; color: var(--plain);
+  background: rgba(4, 8, 15, 0.6); padding: 1px 6px; border-radius: 4px;
+}
+.world-zoom { position: absolute; left: 10px; top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.world-zoom button { width: 32px; height: 32px; padding: 0; background: rgba(4, 8, 15, 0.7); }
+.builder-where { display: flex; align-items: center; gap: 12px; }
+.builder-where input { flex: 0 0 280px; }
+.builder-side { display: flex; flex-direction: column; gap: 12px; }
+.builder-side h3 { margin: 14px 0 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); }
+.builder-sizes { display: flex; gap: 6px; flex-wrap: wrap; }
+.builder-sizes button { padding: 6px 12px; }
+.builder-list { display: flex; flex-direction: column; gap: 8px; }
+.builder-check { display: flex; flex-direction: row; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--faint); cursor: pointer; text-transform: none; letter-spacing: normal; }
+.builder-check input { width: auto; margin-top: 2px; }
+.builder-check strong { color: var(--plain); font-weight: 600; margin-right: 4px; }
+.builder-file { display: grid; grid-template-columns: 1fr auto 70px auto; gap: 8px; align-items: center; font-size: 13px; }
+.builder-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.builder-file select { max-width: 190px; }
+.builder-add { flex-direction: row; justify-content: center; text-transform: none; letter-spacing: normal; border: 1px dashed var(--edge-lit); border-radius: 9px; padding: 12px; text-align: center; color: var(--faint); cursor: pointer; font-size: 13px; }
+.builder-add input { display: none; }
+.builder-state { display: flex; gap: 10px; align-items: center; }
+.builder-steps { margin: 0; padding-left: 20px; color: var(--faint); font-size: 13px; line-height: 1.7; }
+.builder-steps li:last-child { color: var(--plain); }
+.builder-weak { width: 100%; image-rendering: pixelated; border-radius: 8px; border: 1px solid var(--edge); }
+.builder-facts { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--faint); }
+.builder-facts strong { color: var(--plain); }
+.builder-made { margin: 0; padding-left: 20px; font-size: 13px; color: var(--faint); }
+.trouble { color: var(--vehicle); font-size: 13px; }
+.trouble code { font-size: 11px; white-space: pre-wrap; color: var(--faint); }
+@media (max-width: 1100px) { .builder { grid-template-columns: 1fr; } .builder-map { position: static; } }

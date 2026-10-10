@@ -40,6 +40,12 @@ export type Placement = Schemas["Placement"];
 export type Needs = Schemas["Needs"];
 export type Hold = Schemas["Hold"];
 export type VehicleDynamics = Schemas["VehicleDynamics"];
+export type BuildBrief = Schemas["BuildBrief"];
+export type Build = Schemas["Build"];
+export type BuildRecord = Schemas["BuildRecord"];
+export type StoredObject = Schemas["Object"];
+export type UploadGrant = Schemas["UploadGrant"];
+export type StorageUsage = Schemas["StorageUsage"];
 
 /**
  * One file of a published package, with a short-lived URL to fetch it.
@@ -193,6 +199,99 @@ export class Platform {
   async institution(): Promise<Organisation | undefined> {
     const { organisations } = await this.me();
     return organisations[0];
+  }
+
+  // ── building a place from its data ─────────────────────────────────────────
+
+  /** What a place can be built from: public sources and kinds of file. */
+  buildSources(): Promise<{ sources: Record<string, string>; fileUses: Record<string, string> }> {
+    return this.#request("GET", "/api/v1/build-sources");
+  }
+
+  /** Found a place of an organisation's own, seen only by its members until shared. */
+  foundPlace(organisation: string, place: {
+    slug: string; name: string; summary?: string; verticalDatum: string;
+    extent?: { west: number; south: number; east: number; north: number };
+  }): Promise<City> {
+    return this.#request("POST", `/api/v1/organisations/${organisation}/cities`, place);
+  }
+
+  /** Build a place from its data; the package becomes a draft version. */
+  startBuild(city: string, brief: BuildBrief): Promise<Build> {
+    return this.#request("POST", `/api/v1/cities/${city}/builds`, brief);
+  }
+
+  build(id: string): Promise<Build> {
+    return this.#request("GET", `/api/v1/builds/${id}`);
+  }
+
+  async buildsOf(city: string): Promise<BuildRecord[]> {
+    const { builds } = await this.#request<{ builds: BuildRecord[] }>("GET", `/api/v1/cities/${city}/builds`);
+    return builds;
+  }
+
+  /** Make a version pinnable, and from then on unchangeable. */
+  publishVersion(version: string): Promise<AssetVersion> {
+    return this.#request("POST", `/api/v1/versions/${version}/publish`);
+  }
+
+  // ── what an organisation stores ────────────────────────────────────────────
+
+  storage(organisation: string): Promise<StorageUsage> {
+    return this.#request("GET", `/api/v1/organisations/${organisation}/storage`);
+  }
+
+  /**
+   * Upload a file for an organisation, in parts through the API, so that it
+   * works from anywhere the API does and a dropped part is simply sent again.
+   * The digest is computed here, a piece at a time, because the platform
+   * checks what arrived against it.
+   */
+  async upload(organisation: string, file: Blob, options: {
+    mediaType?: string; bucket?: "evidence" | "derived" | "ephemeral";
+    onProgress?: (stage: "hashing" | "sending", done: number, of: number) => void;
+  } = {}): Promise<StoredObject> {
+    const { digestOf } = await import("./sha256.js");
+    const sha256 = await digestOf(file, (done) => options.onProgress?.("hashing", done, file.size));
+    const grant = await this.#request<UploadGrant>("POST", `/api/v1/organisations/${organisation}/uploads`, {
+      bucket: options.bucket ?? "evidence", sha256, sizeBytes: file.size,
+      mediaType: options.mediaType || (file as File).type || "application/octet-stream",
+    });
+    const { count, partBytes } = grant.parts;
+    for (let n = 1; n <= count; n++) {
+      const piece = file.slice((n - 1) * partBytes, Math.min(n * partBytes, file.size));
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await this.#send(`/api/v1/organisations/${organisation}/uploads/${grant.id}/parts/${n}`, piece);
+          break;
+        } catch (failed) {
+          if (attempt >= 4 || failed instanceof Refused) throw failed;
+          await new Promise((wake) => setTimeout(wake, 1000 * attempt));
+        }
+      }
+      options.onProgress?.("sending", Math.min(n * partBytes, file.size), file.size);
+    }
+    return this.#request("POST", `/api/v1/organisations/${organisation}/uploads/${grant.id}/confirm`, {});
+  }
+
+  async #send(path: string, bytes: Blob): Promise<void> {
+    let response: Response;
+    try {
+      response = await fetch(this.#base + path, {
+        method: "PUT",
+        headers: {
+          ...(this.#token ? { authorization: `Bearer ${this.#token}` } : {}),
+          "content-type": "application/octet-stream",
+        },
+        body: bytes,
+      });
+    } catch (cause) {
+      throw new Unreachable(this.#base, cause);
+    }
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Refused(response.status, text ? JSON.parse(text)?.error : undefined);
+    }
   }
 
   // ── what you have been granted ─────────────────────────────────────────────

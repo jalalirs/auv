@@ -28,6 +28,7 @@ import { Places } from "./Places.js";
 import { Profile } from "./Profile.js";
 import { Runs } from "./Runs.js";
 import { Replay } from "./Replay.js";
+import { BuildPlace } from "./BuildPlace.js";
 import { VehicleDetail } from "./VehicleDetail.js";
 
 export type { Held, Packages };
@@ -39,6 +40,8 @@ export type Where =
   | { page: "dive" }
   | { page: "places" }
   | { page: "place"; id: string }
+  // A new place, built from its data on the platform's machines.
+  | { page: "build" }
   // An arrangement of a place, opened from it. Not a tab of its own: a layout
   // detached from the ground it was drawn on means nothing.
   | { page: "layout"; place: string; layout: string }
@@ -64,7 +67,7 @@ const PAGES: { key: Rail; name: string; count?: (held: Held) => number; is: (whe
   { key: "missions", name: "Missions",
     is: (w) => w.page === "missions" || w.page === "mission" },
   { key: "places", name: "Places", count: (h) => h.places.length,
-    is: (w) => w.page === "places" || w.page === "place" || w.page === "layout" },
+    is: (w) => w.page === "places" || w.page === "place" || w.page === "layout" || w.page === "build" },
   { key: "runs", name: "Results", count: (h) => h.runs.length,
     is: (w) => w.page === "runs" || w.page === "sweep" || w.page === "replay" },
   { key: "fleet", name: "Fleet", count: (h) => h.vehicles.length, is: (w) => w.page === "fleet" || w.page === "vehicle" },
@@ -183,7 +186,11 @@ export function Deck({ platform, onDiving }: {
           <Dive platform={platform} held={held} packages={packages} free={free} devices={devices}
                 onDiving={onDiving} onChanged={read} onOpen={setWhere} />
         ) : where.page === "places" ? (
-          <Places held={held} packages={packages} onOpen={(id) => setWhere({ page: "place", id })} />
+          <Places held={held} packages={packages} onOpen={(id) => setWhere({ page: "place", id })}
+                  onBuild={() => setWhere({ page: "build" })} />
+        ) : where.page === "build" ? (
+          <BuildPlace platform={platform} held={held} onBack={() => setWhere({ page: "places" })}
+                      onOpen={(id) => { void read(); setWhere({ page: "place", id }); }} />
         ) : where.page === "place" ? (
           <PlaceDetail held={held} packages={packages} id={where.id}
                        platform={platform}
