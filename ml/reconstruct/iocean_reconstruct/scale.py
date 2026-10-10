@@ -61,8 +61,9 @@ def telemetry(video: pathlib.Path) -> dict:
 
     out = {"ACCL": ([], []), "GYRO": ([], [])}
     with av.open(str(video)) as container:
-        stream = next(s for s in container.streams.data if "gpmd" in str(s.codec_context.codec_tag or "")
-                      or s.metadata.get("handler_name", "").strip().startswith("GoPro MET"))
+        # By its handler's name: PyAV gives a data stream no codec context to ask.
+        stream = next(s for s in container.streams.data
+                      if "GoPro MET" in (s.metadata or {}).get("handler_name", ""))
         base = float(stream.time_base)
         for packet in container.demux(stream):
             if packet.pts is None or packet.size == 0:
