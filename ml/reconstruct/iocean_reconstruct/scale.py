@@ -220,13 +220,20 @@ def measure(video: pathlib.Path, text: pathlib.Path, start_s: float, every_s: fl
     frames.sort(key=lambda f: f[0])
     offset = clock_offset(tg, gyro, frames)
     tg = tg - offset
+    # Over two seconds, not half of one: a diver turns the camera less than a
+    # degree in half a second, which is under what either side can tell.
     pairs = []
-    for (ti, _, ri), (tj, _, rj) in zip(frames, frames[1:]):
-        if 0 < tj - ti < 0.75:
-            rot, _, _ = integrate(tg, gyro, accel_on_gyro, ti, tj)
-            seen = _log(ri.T @ rj)
-            if np.linalg.norm(seen) > math.radians(1.0):
-                pairs.append((_log(rot), seen))
+    for i, (ti, _, ri) in enumerate(frames):
+        for tj, _, rj in frames[i + 1:i + 8]:
+            if 1.5 <= tj - ti <= 2.5:
+                rot, _, _ = integrate(tg, gyro, accel_on_gyro, ti, tj)
+                seen = _log(ri.T @ rj)
+                if np.linalg.norm(seen) > math.radians(0.5):
+                    pairs.append((_log(rot), seen))
+                break
+    if len(pairs) < 5:
+        return {"measured": False, "why": f"the camera hardly turned: {len(pairs)} spans of two seconds turned "
+                                          "half a degree or more, too few to find how the sensor sits"}
     turn = camera_to_sensor(pairs)
     agree = float(np.mean([np.degrees(np.linalg.norm(turn @ g - c)) for g, c in pairs]))
     said = align(frames, tg, gyro, accel_on_gyro, turn)
