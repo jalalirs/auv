@@ -43,6 +43,9 @@ MOST_TIMES_REAL = 4.0
 # the field of view to be a fact and not an inference: 24 mm across a 20.955 mm
 # aperture is 47.2 degrees wide, and the vertical follows the frame's shape.
 FOCAL_LENGTH_MM = 24.0
+# The views that are the vehicle's own camera, and so go through its filter,
+# port and lens (coral/optics.py). The rest are a director's cameras.
+VEHICLE_VIEWS = ("front", "down")
 APERTURE_MM = 20.955
 
 # How far behind wall-clock time the physics is allowed to fall before it stops
@@ -423,6 +426,7 @@ class CoralCityShell(omni.ext.IExt):
                         k = (r - 0.05) / max(far, 1e-9)
                         eye = (cx + dx * k, cy + dy * k, eye[2])
             self._aim.Set(Gf.Matrix4d().SetLookAt(dive.drawn_at(eye), dive.drawn_at(aim), up).GetInverse())
+            self._focus_for(view)
             # Which way the world's own axes fall on the screen, for the little
             # set of axes a console draws in the corner. Worked out here
             # because this is where the camera is aimed; anywhere else would be
@@ -474,6 +478,50 @@ class CoralCityShell(omni.ext.IExt):
         except Exception as exc:
             self._say("film_unavailable", why=str(exc)[:200])
 
+    def _optics(self):
+        """The vehicle camera's filter, port and lens (coral/optics.py), once."""
+        if getattr(self, "_camera_model", None) is None:
+            import optics
+            self._camera_model = optics.from_environment()
+            self._optics_maps = {}
+            self._say("camera_is", **self._camera_model.said())
+        return self._camera_model
+
+    def _through_the_camera(self, frame, view: str):
+        """A pinhole frame as the vehicle's own camera takes it, for the views
+        that are that camera; any other view is a director's and stays as drawn."""
+        if view not in VEHICLE_VIEWS:
+            return frame
+        try:
+            import optics
+            camera = self._optics()
+            if camera.lens.model == "pinhole" and camera.port.kind == "none" and camera.filter.kind == "none":
+                return frame
+            return optics.through(frame, camera, self._optics_maps)
+        except Exception as exc:
+            carb.log_warn(f"iocean could not put the frame through the camera: {exc}")
+            return frame
+
+    def _focus_for(self, view: str) -> None:
+        """Draw a vehicle camera's view as wide as its lens and port see, so the
+        optics have every ray they need; any other view at the usual lens."""
+        if self._camera_prim is None:
+            return
+        focal = FOCAL_LENGTH_MM
+        if view in VEHICLE_VIEWS:
+            try:
+                import optics
+                camera = self._optics()
+                if not (camera.lens.model == "pinhole" and camera.port.kind == "none"):
+                    wide, tall = self._lens_for if self._lens_for else (1280, 720)
+                    across, _ = optics.render_tangents(camera, max(int(wide) // 8, 32), max(int(tall) // 8, 18))
+                    focal = APERTURE_MM / (2.0 * across)
+            except Exception as exc:
+                carb.log_warn(f"iocean could not size the lens for the camera: {exc}")
+        if getattr(self, "_focal_now", None) != focal:
+            self._focal_now = focal
+            self._camera_prim.GetFocalLengthAttr().Set(float(focal))
+
     def _conform_lens(self, wide: int, tall: int) -> None:
         """Match the aperture to the frame, so no conform policy has an opinion.
 
@@ -502,9 +550,16 @@ class CoralCityShell(omni.ext.IExt):
         work out the pixel it fell on — and so draw the task on the seabed
         rather than in a box beside it.
         """
-        return {"basis": self._basis, "eye": self._eye, "upAxis": "Z",
-                "view": getattr(dive, "view", "chase"),
-                **self._lens}
+        view = getattr(dive, "view", "chase")
+        looking = {"basis": self._basis, "eye": self._eye, "upAxis": "Z", "view": view, **self._lens}
+        if view in VEHICLE_VIEWS:
+            # The vehicle's own camera is not a pinhole: what it is, so a
+            # console drawing on its picture projects through the same lens.
+            try:
+                looking["camera"] = self._optics().said()
+            except Exception:
+                pass
+        return looking
 
     def _free_running(self) -> bool:
         """Whether this dive may run faster than the clock on the wall.
@@ -1048,6 +1103,9 @@ class CoralCityShell(omni.ext.IExt):
             if not recorder.video:
                 return
             frame = np.frombuffer(bytes_of(buffer, size), dtype=np.uint8).reshape(tall, wide, 4)
+            view = getattr(self.dive, "view", "chase")
+            if view in VEHICLE_VIEWS:
+                frame = np.concatenate([self._through_the_camera(frame[..., :3], view), frame[..., 3:]], axis=-1)
             if _look() == "gopro":
                 # The same grade the stills get, its gains worked out on the
                 # first frame and kept, so the recording does not flicker as
@@ -1344,7 +1402,8 @@ class CoralCityShell(omni.ext.IExt):
                         import numpy as np
 
                         frame = np.frombuffer(bytes_of(buffer, size), dtype=np.uint8).reshape(tall, wide, 4)
-                        rgb = _metering.graded(frame[..., :3])
+                        seen = self._through_the_camera(frame[..., :3], getattr(self.dive, "view", "chase"))
+                        rgb = _metering.graded(seen)
                         cv2.imwrite(str(path), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
                         self._say("photograph", at=at, path=str(path), graded="gopro")
                     except Exception as exc:
