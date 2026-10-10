@@ -406,3 +406,15 @@ def test_the_medium_is_told_it_is_indoors_rather_than_guessing():
     said = inspect.signature(water.make).parameters
     assert "enclosed" in said
     assert said["enclosed"].default is False
+
+
+def test_the_gopro_look_keeps_half_the_cast_and_the_balanced_one_none():
+    lengths = water.water_of("IB")
+    balanced = water.sun_colour(lengths, 12.0, look="balanced")
+    gopro = water.sun_colour(lengths, 12.0, look="gopro")
+    assert balanced == (1.0, 0.98, 0.94)
+    assert max(gopro) == 1.0
+    # Red dies first: at twelve metres in IB water it keeps about half of blue.
+    assert 0.35 < gopro[0] < 0.6 and gopro[1] > 0.85
+    # At the surface there is no cast to keep.
+    assert water.sun_colour(lengths, 0.0, look="gopro") == (1.0, 1.0, 1.0)

@@ -180,6 +180,44 @@ _NET_STRENGTH = 0.0
 
 VEIL_TOWARDS_GREY = 0.6
 
+# How the camera sees, as one switch: IOCEAN_LOOK.
+#
+# "balanced" is the camera this file was written for: the key light white
+# balanced and the veil pulled well back towards grey, so a mustard colony in
+# front of the lens comes out mustard. "gopro" is the camera the reference
+# footage was shot on (DeepReefMap's Red Sea transects, a GoPro on auto white
+# balance), which corrects only part of the way: measured off its frames, red
+# is about half of green and blue a little above it, where the balanced
+# camera gave red three quarters of green and green above blue. The user
+# asked for the footage's look on 2026-10-10, so it is the default; the old
+# one is IOCEAN_LOOK=balanced.
+LOOK = os.environ.get("IOCEAN_LOOK", "gopro").strip().lower() or "gopro"
+# What share of the water's cast the key light keeps at the working depth:
+# nought is white balanced, one is the light as it arrives. A GoPro on auto
+# lands about half way, which put red at about half of green in the test
+# frames, as it is in the footage.
+GOPRO_SUN_CAST = 0.5
+# And the distance: pulled less far towards grey, so it goes the blue of the
+# water rather than a grey-green, and dimmer, so near things keep the contrast
+# the footage has (0.17 against 0.12 in the balanced camera's frames).
+GOPRO_TOWARDS_GREY = 0.35
+GOPRO_VEIL = 0.75
+
+
+def sun_colour(lengths, depth: float, look: str | None = None) -> tuple:
+    """The key light's colour at `depth` through water of these lengths.
+
+    Balanced: near white, the camera having taken the cast out. GoPro: the
+    daylight that survives the swim down, by channel, kept GOPRO_SUN_CAST of
+    the way and normalised so the brightest channel is one (the dimming is
+    the light's intensity, not its colour)."""
+    if (look or LOOK) != "gopro":
+        return (1.0, 0.98, 0.94)
+    survives = [math.exp(-max(0.0, float(depth)) / max(float(one), 0.01)) for one in lengths]
+    kept = [one ** GOPRO_SUN_CAST for one in survives]
+    most = max(kept)
+    return tuple(round(one / most, 4) for one in kept)
+
 # How bright the veil is — which is not one number, and used to be.
 #
 # It was 0.62 for every water on the platform. Jerlov I, the clearest open
@@ -238,11 +276,13 @@ def veiling_colour(lengths) -> tuple:
     spectrum than absorption is — so the veil is a desaturated version of what
     survives, never the attenuation ratios themselves.
     """
+    gopro = LOOK == "gopro"
     most = max(lengths)
     ratio = [float(one) / most for one in lengths]
     grey = sum(ratio) / 3.0
-    mixed = [one + (grey - one) * VEIL_TOWARDS_GREY for one in ratio]
-    bright = veil_brightness(lengths)
+    towards = GOPRO_TOWARDS_GREY if gopro else VEIL_TOWARDS_GREY
+    mixed = [one + (grey - one) * towards for one in ratio]
+    bright = veil_brightness(lengths) * (GOPRO_VEIL if gopro else 1.0)
     return tuple(round(one * bright, 4) for one in mixed)
 
 
@@ -338,7 +378,8 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     left = is_it_deep(max(0.0, working_depth), lengths)
     say("water_is", type=str(water_type or DEFAULT_TYPE),
         attenuationM=list(lengths), veiling=list(veiling),
-        daylightLeft=round(left, 3))
+        daylightLeft=round(left, 3), look=LOOK,
+        sun=list(sun_colour(lengths, working_depth)))
 
     # ── the camera ───────────────────────────────────────────────────────────
     #
@@ -827,7 +868,10 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     # because otherwise there is no picture. So the key light carries the water's
     # dimness but not its cast, the distance stays blue because the fog is still
     # blue, and a yellow coral in front of the camera comes out yellow.
-    sun.CreateColorAttr(Gf.Vec3f(1.0, 0.98, 0.94))
+    # Or, through the GoPro look (IOCEAN_LOOK, the default), half of the
+    # water's own cast at the working depth: the footage this platform is
+    # held against was shot that way.
+    sun.CreateColorAttr(Gf.Vec3f(*sun_colour(lengths, working_depth)))
     UsdGeom.Xformable(sun.GetPrim()).AddRotateXYZOp().Set(Gf.Vec3f(-52.0, 0.0, 18.0))
 
     # Everything the water scatters back, which is what stops the shadows being
