@@ -142,6 +142,11 @@ class Camera:
     # moving part assumes the scene is at, since the capture has no depth.
     motion_blur: bool = True
     blur_depth_m: float = 3.0
+    # "auto": the camera corrects colour towards what the footage looks like
+    # (metering.graded), as a GoPro on auto does, which takes most of a
+    # filter's tint back out. "daylight": white balance locked, nothing
+    # adapts, so a filter or a lamp shows its own colour.
+    white_balance: str = "auto"
 
     def said(self) -> dict:
         return {"lens": self.lens.model, "lensFovDeg": self.lens.horizontal_fov_deg, "lensIs": self.lens.said,
@@ -153,13 +158,14 @@ class Camera:
                  "is": "typical of its class; chosen, not measured on this camera"},
                 "iso": self.iso if self.iso is not None else "auto", "toldBy": list(self.told_by),
                 "motionBlur": self.motion_blur, "blurDepthM": self.blur_depth_m,
+                "whiteBalance": self.white_balance,
                 "blurDepthIs": "assumed: the capture has no depth, so the blur from moving (not from turning) "
                                "takes the scene to be this far away"}
 
 
 # What a camera is when nothing says otherwise: a GoPro behind a flat port.
 DEFAULTS = {"lens": "gopro-wide", "port": "flat", "filter": "none", "sensor": "gopro", "iso": "auto",
-            "motionBlur": True, "blurDepthM": 3.0}
+            "motionBlur": True, "blurDepthM": 3.0, "whiteBalance": "auto"}
 LENSES = {"gopro-wide": ("equidistant", 118.0), "pinhole": ("pinhole", 47.17)}
 
 
@@ -196,7 +202,9 @@ def camera_from(settings: dict, told_by: tuple = ()) -> Camera:
                   sensor=SENSORS.get(str(settings.get("sensor", "gopro")).lower(), SENSORS["gopro"]),
                   iso=iso, told_by=told_by,
                   motion_blur=str(settings.get("motionBlur", True)).lower() not in ("false", "0", "no", "off"),
-                  blur_depth_m=float(settings.get("blurDepthM", 3.0)))
+                  blur_depth_m=float(settings.get("blurDepthM", 3.0)),
+                  white_balance="daylight" if str(settings.get("whiteBalance", "auto")).lower() in
+                  ("daylight", "fixed", "off", "manual") else "auto")
 
 
 def for_dive(brief: dict | None = None, vehicle_dir=None) -> Camera:

@@ -542,6 +542,16 @@ class CoralCityShell(omni.ext.IExt):
             carb.log_warn(f"iocean could not put the frame through the camera: {exc}")
             return frame
 
+    def _balance_locked(self, view: str) -> bool:
+        """Whether this view's camera has its white balance locked, so its
+        picture keeps the colour its filter and lamps give it."""
+        if view not in VEHICLE_VIEWS:
+            return False
+        try:
+            return self._optics().white_balance != "auto"
+        except Exception:
+            return False
+
     def _focus_for(self, view: str) -> None:
         """Draw a vehicle camera's view as wide as its lens and port see, so the
         optics have every ray they need; any other view at the usual lens."""
@@ -1146,7 +1156,7 @@ class CoralCityShell(omni.ext.IExt):
             view = getattr(self.dive, "view", "chase")
             if view in VEHICLE_VIEWS:
                 frame = np.concatenate([self._through_the_camera(frame[..., :3], view), frame[..., 3:]], axis=-1)
-            if _look() == "gopro":
+            if _look() == "gopro" and not self._balance_locked(view):
                 # The same grade the stills get, its gains worked out on the
                 # first frame and kept, so the recording does not flicker as
                 # the scene's colour changes under it.
@@ -1442,8 +1452,9 @@ class CoralCityShell(omni.ext.IExt):
                         import numpy as np
 
                         frame = np.frombuffer(bytes_of(buffer, size), dtype=np.uint8).reshape(tall, wide, 4)
-                        seen = self._through_the_camera(frame[..., :3], getattr(self.dive, "view", "chase"))
-                        rgb = _metering.graded(seen)
+                        view = getattr(self.dive, "view", "chase")
+                        seen = self._through_the_camera(frame[..., :3], view)
+                        rgb = seen if self._balance_locked(view) else _metering.graded(seen)
                         cv2.imwrite(str(path), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
                         self._say("photograph", at=at, path=str(path), graded="gopro")
                     except Exception as exc:

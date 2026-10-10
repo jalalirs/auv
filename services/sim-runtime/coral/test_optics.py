@@ -144,3 +144,10 @@ def test_no_motion_is_no_blur_and_blur_can_be_turned_off():
     assert np.array_equal(optics.through(frame, still), optics.through(frame, still, turning=(0, 0, 0)))
     settings, told = optics.settings_from(dive={"motionBlur": False}, environment={})
     assert optics.camera_from(settings, told).motion_blur is False
+
+
+def test_white_balance_is_auto_unless_a_dive_locks_it():
+    assert optics.camera_from(*optics.settings_from(environment={})).white_balance == "auto"
+    locked = optics.camera_from(*optics.settings_from(dive={"whiteBalance": "daylight", "filter": "red"},
+                                                      environment={}))
+    assert locked.white_balance == "daylight" and locked.said()["whiteBalance"] == "daylight"

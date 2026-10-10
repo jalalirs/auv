@@ -1512,6 +1512,22 @@ def light_for(stage, depth: float, sky: float = 1.0) -> None:
             attribute = prim.GetAttribute("inputs:intensity")
             if attribute:
                 attribute.Set(base * left)
+    # And the veil with them. It is daylight scattered back out of the water,
+    # and it was set once, when the scene was built, from the depth alone: so
+    # at midnight the sun and the dome went out and the water went on glowing
+    # at noon's strength, and a night dive at ISO 3200 came out as a hazy day.
+    # Light that is not there cannot be scattered; at night what is left is
+    # what the lamps light, and they do that as lights, not as fog.
+    try:
+        import carb
+    except ImportError:
+        return
+    try:
+        from coral.runner import asked_for
+    except ImportError:
+        from runner import asked_for
+    carb.settings.get_settings().set("/rtx/fog/fogColorIntensity",
+                                     float(max(0.0, asked_for("IOCEAN_VEIL", VEIL_STRENGTH * left))))
 
 
 def drift(stage, seconds: float, follow=None) -> None:

@@ -131,3 +131,32 @@ def test_the_waters_sun_keeps_the_dives_day():
     water.light_for(night, 2.0, sky=0.0)
     assert noon.prims["/World/Sun"].attr.value > 0
     assert all(p.attr.value == 0 for p in night.prims.values())
+
+
+def test_the_veil_goes_out_with_the_daylight(monkeypatch):
+    """On a reef, the fog that stands for the water's scattered daylight goes
+    out with the daylight, as the sun and the dome do."""
+    import sys
+    import types
+
+    import water
+
+    said = {}
+    fake = types.ModuleType("carb")
+    fake.settings = types.SimpleNamespace(get_settings=lambda: types.SimpleNamespace(
+        set=lambda key, value: said.__setitem__(key, value)))
+    monkeypatch.setitem(sys.modules, "carb", fake)
+    monkeypatch.delenv("IOCEAN_VEIL", raising=False)
+
+    class Prim:
+        def GetAttribute(self, name):
+            return None
+
+    class Stage:
+        def GetPrimAtPath(self, path):
+            return Prim()
+
+    water.light_for(Stage(), 10.0, sky=1.0)
+    noon = said["/rtx/fog/fogColorIntensity"]
+    water.light_for(Stage(), 10.0, sky=0.0)
+    assert noon > 0.1 and said["/rtx/fog/fogColorIntensity"] == 0.0
