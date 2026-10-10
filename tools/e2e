@@ -392,6 +392,61 @@ check "a dive missing one of its determinants is refused" \
         "{\"name\":\"Incomplete\",\"cityVersionId\":\"$CITY_VERSION\"}")" "400"
 
 # ---------------------------------------------------------------------------
+step "A place an institution founds is its own"
+
+OWN=$(api "$GUEST" POST "/api/v1/organisations/$OTHER_ORG/cities" \
+    "{\"slug\":\"probe-own-$RUN\",\"name\":\"Our Reef\",\"verticalDatum\":\"EGM2008\"}")
+OWN_CITY=$(printf '%s' "$OWN" | json "['id']")
+[ -n "$OWN_CITY" ] && pass "a member founds a place for the institution" \
+    || fail "could not found the institution's place: $(printf '%s' "$OWN" | head -c 200)"
+check "the place says whose it is" "$(printf '%s' "$OWN" | json "['ownedByOrg']")" "$OTHER_ORG"
+check "and it is in the member's catalogue" \
+    "$(api "$GUEST" GET /api/v1/cities | holds cities "$OWN_CITY")" "$OWN_CITY"
+
+read -r OWN_DIGEST OWN_SIZE <<EOF
+$(stores "$GUEST" "$OTHER_ORG" "#usda 1.0
+def Xform \"Our Reef\" {}" "model/vnd.usd")
+EOF
+OWN_VERSION=$(api "$GUEST" POST "/api/v1/cities/$OWN_CITY/versions" \
+    "{\"label\":\"v1\",\"files\":[{\"path\":\"seabed.usda\",\"digest\":\"$OWN_DIGEST\",\"sizeBytes\":$OWN_SIZE,\"mediaType\":\"model/vnd.usd\"}]}" \
+    | json "['id']")
+[ -n "$OWN_VERSION" ] && pass "a member records a version of it, without the platform" \
+    || fail "a member could not record a version of the institution's place"
+check "and publishes it" "$(status "$GUEST" POST "/api/v1/versions/$OWN_VERSION/publish")" "200"
+check "and fetches its files" "$(status "$GUEST" GET "/api/v1/versions/$OWN_VERSION/files")" "200"
+
+STRANGER_ORG=$(api "$ADMIN" POST /api/v1/organisations \
+    "{\"slug\":\"probeo-$RUN\",\"name\":\"Elsewhere Institute\"}" | json "['id']")
+STRANGER=$(api "$ADMIN" POST /api/v1/people \
+    "{\"displayName\":\"Outsider\",\"email\":\"stranger-$RUN@example.org\",\"secret\":\"stranger-secret-value\"}" \
+    | json "['id']")
+api "$ADMIN" POST "/api/v1/organisations/$STRANGER_ORG/members" "{\"principalId\":\"$STRANGER\"}" >/dev/null
+ELSEWHERE=$(api '' POST /api/v1/sessions \
+    "{\"email\":\"stranger-$RUN@example.org\",\"secret\":\"stranger-secret-value\"}" | json "['token']")
+[ -n "$ELSEWHERE" ] && pass "somebody from another institution signs in" || fail "the stranger could not sign in"
+
+check "the place is not in their catalogue" \
+    "$(api "$ELSEWHERE" GET /api/v1/cities | holds cities "$OWN_CITY")" ""
+check "reading it directly reports absence" "$(status "$ELSEWHERE" GET "/api/v1/cities/$OWN_CITY")" "404"
+check "its files are as private as the place" \
+    "$(status "$ELSEWHERE" GET "/api/v1/versions/$OWN_VERSION/files")" "404"
+check "a dive in it is refused as if it were not there" \
+    "$(status "$ELSEWHERE" POST "/api/v1/organisations/$STRANGER_ORG/dives" \
+        "{\"name\":\"Trespass\",\"cityVersionId\":\"$OWN_VERSION\"}")" "404"
+check "and they cannot publish to it" \
+    "$(status "$ELSEWHERE" POST "/api/v1/cities/$OWN_CITY/versions" \
+        "{\"label\":\"v2\",\"files\":[{\"path\":\"seabed.usda\",\"digest\":\"$OWN_DIGEST\",\"sizeBytes\":$OWN_SIZE,\"mediaType\":\"model/vnd.usd\"}]}")" "404"
+
+check "the institution shares it" \
+    "$(status "$GUEST" POST "/api/v1/cities/$OWN_CITY/grants" \
+        "{\"subjectKind\":\"org\",\"subjectId\":\"$STRANGER_ORG\",\"role\":\"viewer\"}")" "201"
+check "and now the other institution sees it" \
+    "$(api "$ELSEWHERE" GET /api/v1/cities | holds cities "$OWN_CITY")" "$OWN_CITY"
+check "and may fetch its files" "$(status "$ELSEWHERE" GET "/api/v1/versions/$OWN_VERSION/files")" "200"
+check "but sharing it did not make it theirs to publish" \
+    "$(status "$ELSEWHERE" POST "/api/v1/versions/$OWN_VERSION/publish")" "403"
+
+# ---------------------------------------------------------------------------
 step "Asking for it to be run"
 
 RUN_ID=$(api "$GUEST" POST "/api/v1/dives/$DIVE/runs" \
