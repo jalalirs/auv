@@ -77,6 +77,15 @@ def _inherit_pythonpath() -> None:
             sys.path.append(entry)
 
 
+def _look() -> str:
+    """The camera look this runtime draws with (coral/water.py's LOOK)."""
+    try:
+        import water
+        return water.LOOK
+    except Exception:
+        return (os.environ.get("IOCEAN_LOOK", "gopro").strip().lower() or "gopro")
+
+
 def bytes_of(buffer, size: int) -> bytes:
     """The pixels behind whatever the capture handed us.
 
@@ -1039,6 +1048,15 @@ class CoralCityShell(omni.ext.IExt):
             if not recorder.video:
                 return
             frame = np.frombuffer(bytes_of(buffer, size), dtype=np.uint8).reshape(tall, wide, 4)
+            if _look() == "gopro":
+                # The same grade the stills get, its gains worked out on the
+                # first frame and kept, so the recording does not flicker as
+                # the scene's colour changes under it.
+                import metering as _metering
+                if getattr(self, "_grade", None) is None:
+                    self._grade = _metering.grade_gains(frame[..., :3])
+                    self._say("camera_grades", look="gopro", gain=[round(g, 3) for g in self._grade])
+                frame = np.concatenate([_metering.balanced(frame[..., :3], self._grade), frame[..., 3:]], axis=-1)
             pixels = cv2.cvtColor(frame, cv2.COLOR_RGBA2BGRA).tobytes()
             # As many times as the grid points this frame stands for: once,
             # unless the drawing fell behind the dive. The video then holds
@@ -1312,6 +1330,28 @@ class CoralCityShell(omni.ext.IExt):
             where = pathlib.Path(
                 os.environ.get("IOCEAN_BRIEF", "/dive/dive.json")).parent
             path = where / f"frame-{at:g}s.png"
+            if _look() == "gopro":
+                # Through the GoPro grade, which needs the pixels in hand: so
+                # captured as bytes, the way a recording's frame is, graded,
+                # and written here, rather than handed to Kit to write later
+                # where nothing can touch it.
+                from omni.kit.widget.viewport.capture import ByteCapture
+
+                def wrote(buffer, size, wide, tall, fmt=None, path=path, at=at):
+                    try:
+                        import cv2
+                        import metering as _metering
+                        import numpy as np
+
+                        frame = np.frombuffer(bytes_of(buffer, size), dtype=np.uint8).reshape(tall, wide, 4)
+                        rgb = _metering.graded(frame[..., :3])
+                        cv2.imwrite(str(path), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
+                        self._say("photograph", at=at, path=str(path), graded="gopro")
+                    except Exception as exc:
+                        carb.log_warn(f"iocean could not grade the photograph: {exc}")
+
+                viewport.schedule_capture(ByteCapture(wrote))
+                return
             capture_viewport_to_file(viewport, str(path))
             self._say("photograph", at=at, path=str(path))
         except Exception as exc:

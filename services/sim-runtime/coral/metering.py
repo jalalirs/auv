@@ -293,3 +293,40 @@ def balanced(pixels, gains):
     if keep is not None:
         out = np.concatenate([out, keep], axis=-1)
     return (out * 255.0).astype("uint8") if encoded else out
+
+
+# The GoPro look's last step: the picture's average colour moved towards the
+# reference footage's (DeepReefMap's Red Sea transects, measured 2026-10-10:
+# red 0.29, green 0.53, blue 0.56 of the frame, sRGB), brightness held. The
+# scene's light and water do most of the look; this is what a GoPro's own
+# processing does on top, and it is why the footage reads blue over a floor
+# that is pale sand.
+GOPRO_CAST = (0.29, 0.53, 0.56)
+# Not all the way: a reef that is greener than the footage's should stay a
+# little greener, the way a different reef would.
+GRADE_STRENGTH = 0.8
+
+
+def grade_gains(pixels, target=GOPRO_CAST, strength: float = GRADE_STRENGTH) -> tuple:
+    """Gains, in light, that move this frame's average colour `strength` of
+    the way to `target`'s, at the frame's own brightness."""
+    import numpy as np
+
+    frame = np.asarray(pixels)
+    step = max(1, min(frame.shape[0], frame.shape[1]) // 160)
+    small = frame[::step, ::step]
+    cast = np.maximum(np.asarray(cast_of(small)), 1e-4)
+    luma = np.array([0.2126, 0.7152, 0.0722])
+    goal = np.asarray(target, dtype="float64")
+    goal = goal * (luma @ cast) / max(luma @ goal, 1e-6)
+    want = cast * (goal / cast) ** max(0.0, strength)
+    gains = np.clip((want / cast) ** 2.2, 1.0 / MOST_GAIN, MOST_GAIN)
+    for _ in range(2):
+        got = np.maximum(np.asarray(cast_of(balanced(small, gains))), 1e-4)
+        gains = np.clip(gains * (want / got) ** 2.2, 1.0 / MOST_GAIN, MOST_GAIN)
+    return tuple(float(g) for g in gains)
+
+
+def graded(pixels, target=GOPRO_CAST, strength: float = GRADE_STRENGTH):
+    """The frame through the GoPro grade."""
+    return balanced(pixels, grade_gains(pixels, target, strength))

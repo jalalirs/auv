@@ -49,6 +49,18 @@ export material coral_ground(
                           "whole site."),
         anno::in_group("Ground")
     ]],
+    uniform float sand_neutral = 0.6
+    [[
+        anno::display_name("How grey the sand is"),
+        anno::description("How much of the colour map's cast is taken out, "
+                          "its brightness kept: nought leaves it as the "
+                          "satellite saw it, one makes it grey. Reef sand is "
+                          "carbonate and close to grey; the maps come out "
+                          "beige (red 0.67, blue 0.55 at Al Fahal), and a "
+                          "beige floor under the water's light reads teal "
+                          "where the footage's floor reads pale blue."),
+        anno::in_group("Ground")
+    ]],
     uniform texture_2d swum_map = texture_2d()
     [[
         anno::display_name("What survives the swim to the camera"),
@@ -338,9 +350,10 @@ export material coral_ground(
                            (site_eye_v - 0.5) * site_across,
                            eye_depth_m);
     float swum = math::distance(here_is, eye_is);
-    color low = base::file_texture(
+    color low_seen = base::file_texture(
         texture: site_colour, uvw: wide,
         wrap_u: tex::wrap_clamp, wrap_v: tex::wrap_clamp).tint;
+    color low = math::lerp(low_seen, color(math::luminance(low_seen)), math::saturate(sand_neutral));
 
     float hard_here = base::file_texture(
         texture: hardness, uvw: wide,

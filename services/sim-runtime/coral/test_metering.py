@@ -287,3 +287,18 @@ def test_an_eight_bit_frame_stays_eight_bit():
     out = metering.balanced(frame, (1.2, 1.0, 0.9))
     assert out.dtype == np.uint8, out.dtype
     assert out[0, 0, 0] > out[0, 0, 1] > out[0, 0, 2], out[0, 0]
+
+
+def test_the_gopro_grade_moves_a_green_frame_towards_the_footage_and_holds_its_brightness():
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    frame = np.clip(np.array([0.35, 0.49, 0.43]) + rng.normal(0, 0.08, (90, 160, 3)), 0, 1)
+    frame = (frame * 255).astype("uint8")
+    before = np.asarray(metering.cast_of(frame))
+    after = np.asarray(metering.cast_of(metering.graded(frame)))
+    luma = np.array([0.2126, 0.7152, 0.0722])
+    assert abs(luma @ after - luma @ before) < 0.03
+    # Blue up past green's share, red down: the footage's order.
+    assert after[2] / after[1] > before[2] / before[1] + 0.1
+    assert after[0] / after[1] < before[0] / before[1] - 0.05
