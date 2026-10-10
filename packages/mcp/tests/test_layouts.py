@@ -239,6 +239,19 @@ def test_the_objective_is_carried_through_whole():
     assert dive["objective"]["pictures"] is True
 
 
+def test_a_dive_can_start_somewhere_the_place_did_not_choose():
+    """Going to look at something the place holds, a reconstructed patch say."""
+    platform = Fleet()
+    tools.dives_start(platform, "al-fahal", "bluerov2", {"kind": "reach"}, start=[-197.5, -662.5, -4.2])
+    dive = next(b for p, b in platform.asked if p.endswith("/dives"))
+    assert dive["initialState"] == {"positionM": [-197.5, -662.5, -4.2]}
+    platform = Fleet()
+    tools.dives_start(platform, "al-fahal", "bluerov2", {"kind": "reach"})
+    assert "initialState" not in next(b for p, b in platform.asked if p.endswith("/dives"))
+    with pytest.raises(Refused):
+        tools.dives_start(Fleet(), "al-fahal", "bluerov2", {"kind": "reach"}, start=[1, 2])
+
+
 def test_it_asks_for_a_runtime_a_host_offers_not_an_image_tag():
     """An image tag is not a runtime.
 

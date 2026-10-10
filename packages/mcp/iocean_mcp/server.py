@@ -127,7 +127,9 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
                                           "(fish keep that day; a tank's lights follow it) — and, for a "
                                           "vehicle with no thrusters such as edgetech-2300, the tow that flies "
                                           "it: \"tow\": {\"speedKn\": 4, \"headingDeg\": 90, \"cableOutM\": 300, "
-                                          "\"frequencykHz\": 120}"},
+                                          "\"frequencykHz\": 120}; and the camera the vehicle carries, over its own: "
+                                          "\"camera\": {\"lens\": \"gopro-wide\", \"port\": \"flat\", \"filter\": \"red\", "
+                                          "\"iso\": 1600, \"whiteBalance\": \"daylight\"}"},
              "water": {"type": "string",
                        "enum": ["still", "gentle", "half-knot", "one-knot",
                                 "tank-still", "fan-low", "fan-high", "pump", "fan-and-pump"],
@@ -140,12 +142,16 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
                                       "places_get lists a place's own views"},
              "view_every_s": {"type": "number", "default": 4.0,
                               "description": "seconds of dive on each view"},
+             "start": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3,
+                       "description": "where the vehicle goes in, instead of where the place says a dive "
+                                      "begins: [x, y, z] in the site's metres, +x east, +y north, z up "
+                                      "(a depth is negative); places_get lists what a place holds and where"},
              "name": {"type": "string"}},
          "required": ["place", "vehicle", "objective"]},
         lambda p, place, vehicle, objective, water="still", pictures=False,
-               name="", controller="", views=None, view_every_s=4.0:
+               name="", controller="", views=None, view_every_s=4.0, start=None:
             tools.dives_start(p, place, vehicle, objective, water, controller,
-                              name, pictures, views, view_every_s)),
+                              name, pictures, views, view_every_s, start)),
     "dives_film": (
         "The path-traced film of a run already flown — one watched live, or "
         "flown by a controller, or flown undrawn for its numbers. THIS SPENDS "

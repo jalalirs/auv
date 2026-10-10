@@ -637,7 +637,7 @@ def dives_start(platform: Platform, place: str, vehicle: str,
                 objective: dict, water: str = "still",
                 controller: str = "", name: str = "",
                 pictures: bool = False, views: list | None = None,
-                view_every_s: float = 4.0) -> dict:
+                view_every_s: float = 4.0, start: list | None = None) -> dict:
     """Define a dive and ask for it. The first tool here that spends anything.
 
     A dive names four things and the platform refuses it without them: the
@@ -655,7 +655,14 @@ def dives_start(platform: Platform, place: str, vehicle: str,
     so one drawn run can be looked at from the room and from the vehicle.
     Which views a place offers is in places_get; a name it does not offer is
     skipped by the runtime rather than guessed at.
+
+    `start` puts the vehicle in somewhere other than where the place says a
+    dive begins: [x, y, z] in the site's metres, +x east, +y north, z up (so
+    a depth is negative). It is how a dive goes to look at something the
+    place holds, a reconstructed patch say, rather than at the place's start.
     """
+    if start is not None and len(start) != 3:
+        raise Refused(400, "bad_start", "start is [x, y, z] in the site's metres")
     found = next((p for p in platform.places()
                   if p["id"] == place or p.get("slug") == place), None)
     if found is None:
@@ -693,6 +700,7 @@ def dives_start(platform: Platform, place: str, vehicle: str,
             "conditionsId": sea["id"],
             "objective": {**objective, "pictures": bool(pictures),
                           **({"views": list(views), "viewEveryS": float(view_every_s)} if views else {})},
+            **({"initialState": {"positionM": [float(v) for v in start]}} if start else {}),
         })
 
     queues = platform.queues()
