@@ -162,8 +162,7 @@ def test_a_patch_takes_the_reefs_colours_and_keeps_its_own_differences(tmp_path)
     blue[:200, 1] += 0.1                                  # half of it greener: a colony on rock
     out = place_reconstruction.to_the_reef(blue, reef_said)
     luma = place_reconstruction.LUMA
-    assert abs(out @ luma - reef_said["luma"]).mean() < 0.2
-    assert abs((out @ luma).mean() - reef_said["luma"]) < 0.02
+    assert 0.3 < (out @ luma).mean() < 0.55                       # its own brightness, haze out
     assert out[:, 0].mean() > out[:, 2].mean()            # the blue cast is gone, the reef's warmth is in
     assert out[:200, 1].mean() - out[200:, 1].mean() > 0.05   # and the greener half is still greener
 
@@ -194,3 +193,16 @@ def test_a_planted_patch_given_a_new_grade_is_recoloured_where_it_stands(tmp_pat
     assert "inputs:tissue = (0.6, 0.4, 0.2)" in skin
     points = lambda t: t.split('def Mesh "Reconstruction_test_patch"')[1].split("point3f[] points")[1][:400]
     assert points(after) == points(before)
+
+
+def test_a_crumpled_surface_is_lit_as_the_surface_under_the_crumples():
+    rng = np.random.default_rng(1)
+    gx, gy = np.meshgrid(np.arange(0, 2.01, 0.05), np.arange(0, 2.01, 0.05))
+    v = np.stack([gx.ravel(), gy.ravel(), rng.normal(0, 0.03, gx.size)], -1)
+    wide = gx.shape[1]
+    f = np.array([[r * wide + c, r * wide + c + 1, (r + 1) * wide + c + 1] for r in range(wide - 1)
+                  for c in range(wide - 1)] + [[r * wide + c, (r + 1) * wide + c + 1, (r + 1) * wide + c]
+                                               for r in range(wide - 1) for c in range(wide - 1)])
+    own = reef._smooth_normals(v, f)
+    lit = place_reconstruction.shading_normals(v, f)
+    assert (lit[:, 2] > 0.9).mean() > 0.9 > (own[:, 2] > 0.9).mean()

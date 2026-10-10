@@ -118,23 +118,52 @@ def reef_colours(library_dir: pathlib.Path, per_colony: int = 20000, seed: int =
             "tint": (c - y[:, None]).mean(0).tolist(), "pieces": len(seen), "from": str(library_dir)}
 
 
-def to_the_reef(colours: np.ndarray, reef: dict) -> np.ndarray:
-    """A photograph's colours put into the reef's own: brightness given the
-    library's mean and spread, and the mean tint swapped for the library's.
+def to_the_reef(colours: np.ndarray, reef: dict, low: float = 0.06, high: float = 0.8) -> np.ndarray:
+    """A photograph's colours put into the reef's: its own brightness, with
+    the haze taken out of it, and the library's tint for its mean tint.
 
     The video was shot through water and the renderer puts the water back, so
     whatever cast the photograph still carries is counted twice: the patch came
     back from a dive a dark blue sheet beside the reef it is part of. Taking
     the photograph's mean tint out entirely, rather than most of the way, and
     putting the reef's in, leaves each point's difference from the patch's
-    average (its real colour variation, a green colony on grey rock) and makes
-    the patch the same stuff as the coral the place grew around it, so the
-    same water does the same thing to both."""
+    average (its real colour variation, a green colony on grey rock), so the
+    same water does the same thing to the patch and the coral grown around it.
+
+    The brightness is the photograph's, its 2nd to 98th percentile spread over
+    `low`..`high`: what the camera saw, less the haze. Given the library's
+    instead, a patch that is mostly sand and rubble came out as dark as coral
+    tissue, and darker than the sand around it."""
     y = colours @ LUMA
     chroma = colours - y[:, None]
-    y = reef["luma"] + (y - y.mean()) / max(float(y.std()), 1e-3) * reef["lumaSpread"]
+    lo, hi = np.percentile(y, 2), np.percentile(y, 98)
+    y = low + (y - lo) / max(float(hi - lo), 1e-3) * (high - low)
     chroma = chroma - chroma.mean(0) + np.asarray(reef["tint"])
     return np.clip(y[:, None] + chroma, 0, 1)
+
+
+def shading_normals(points: np.ndarray, faces: np.ndarray, passes: int = 40) -> np.ndarray:
+    """Normals for lighting a reconstruction, off a smoothed copy of it.
+
+    A surface meshed from a photograph's stereo is crumpled at the scale of
+    its triangles (a tenth of the patch's faces point down), and lit by its
+    own normals it is salt and pepper: each facet catches the sun or turns
+    from it at random. The shape stays as reconstructed; only the light falls
+    on it as on the surface the crumples are noise on. Laplacian passes over a
+    5 cm mesh: forty reach about thirty centimetres."""
+    import reef as reef_tool
+    import scipy.sparse as sp
+
+    n = len(points)
+    i = np.concatenate([faces[:, 0], faces[:, 1], faces[:, 2], faces[:, 1], faces[:, 2], faces[:, 0]])
+    j = np.concatenate([faces[:, 1], faces[:, 2], faces[:, 0], faces[:, 0], faces[:, 1], faces[:, 2]])
+    near = sp.csr_matrix((np.ones(len(i)), (i, j)), shape=(n, n))
+    near.data[:] = 1.0
+    mean_of = sp.diags(1.0 / np.maximum(np.asarray(near.sum(1)).ravel(), 1)) @ near
+    smooth = np.asarray(points, float).copy()
+    for _ in range(passes):
+        smooth = 0.5 * smooth + 0.5 * (mean_of @ smooth)
+    return reef_tool._smooth_normals(smooth, faces)
 
 
 def living_cover(transect: pathlib.Path, video: str, start: float, stop: float) -> float | None:
@@ -303,8 +332,9 @@ def add(asked) -> int:
                  "scale": about.get("scale") or {"how": "assumed"},
                  "triangles": int(len(f)), "trianglesMade": int(len(faces)),
                  "colours": {"how": "each vertex the mean of the reconstruction's points nearest it; then "
-                                    "brightness given the coral library's mean and spread, and the photograph's "
-                                    "mean tint (the water's cast) replaced by the library's",
+                                    "the photograph's brightness with its haze taken out (2nd to 98th percentile "
+                                    "over 0.06 to 0.8), and its mean tint (the water's cast) replaced by the "
+                                    "coral library's",
                              "kind": "derived", "reef": {k: (round(x, 4) if isinstance(x, float) else x)
                                                          for k, x in reef.items() if k != "tint"}
                              | {"tint": [round(x, 4) for x in reef["tint"]]}},
@@ -344,6 +374,14 @@ def _recoloured(text: str, name: str, colours: np.ndarray) -> tuple[str, str]:
     if said is None or said.group(2).count("(") != len(colours):
         return text, "its vertices differ from patch.ply's: grow the reef again (tools/rebuild) to plant the new one"
     block = mesh.group(1)[:said.start(2)] + reef_tool._triples(colours) + mesh.group(1)[said.end(2):]
+    # And lit as apply lights it now, off the points as planted.
+    planted = re.search(r"point3f\[\] points = \[([^\]]*)\]", block)
+    faces = re.search(r"int\[\] faceVertexIndices = \[([^\]]*)\]", block)
+    lit = re.search(r"(normal3f\[\] normals = \[)([^\]]*)(\])", block)
+    if planted and faces and lit:
+        v = np.array(re.findall(r"\(([-\d.e+]+), ([-\d.e+]+), ([-\d.e+]+)\)", planted.group(1)), float)
+        f = np.array(faces.group(1).split(","), int).reshape(-1, 3)
+        block = block[:lit.start(2)] + reef_tool._triples(shading_normals(v, f)) + block[lit.end(2):]
     text = text[:mesh.start(1)] + block + text[mesh.end(1):]
     skin = re.search(r'(        def Material "Skin_%s"\n.*?\n        }\n)' % re.escape(name), text, re.S)
     if skin:
@@ -505,7 +543,7 @@ def apply(place: pathlib.Path) -> int:
                 "            )\n"
                 "            rel material:binding = </Coral/Skins/Skin_%s>\n"
                 "        }\n") % (name, ", ".join(["3"] * len(f)), ", ".join(str(i) for i in f.reshape(-1)),
-                                  reef_tool._triples(v), reef_tool._triples(reef_tool._smooth_normals(v, f)),
+                                  reef_tool._triples(v), reef_tool._triples(shading_normals(v, f)),
                                   reef_tool._triples(c), name)
         text = text.replace('    def Scope "Grown"\n    {', '    def Scope "Grown"\n    {' + mesh, 1)
         text = text.replace('    def Scope "Skins"\n    {\n',
