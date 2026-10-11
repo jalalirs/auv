@@ -131,3 +131,14 @@ def test_a_place_built_by_the_places_module_says_where_it_is_weak(monkeypatch, t
     assert weak["kind"] == provenance.DERIVED and weak["value"]["atBeginM"] == 0.75
     assert weak["value"]["weakest"][0]["from"] == "curve-depth"
     assert "weak" not in _answer(monkeypatch)["ground"]
+
+
+def test_a_built_places_water_says_chosen_or_assumed_as_its_record_does(monkeypatch):
+    """A place the builder made takes its water by region (chosen) or, where
+    it knows nothing, the platform's default (assumed)."""
+    for words, kind in (("chosen by region: Kd(PAR) at KAUST", provenance.CHOSEN),
+                        ("assumed: Jerlov 1C, the platform's default", provenance.ASSUMED)):
+        site = {**SITE, "water": {"type": "IB", "from": words}}
+        monkeypatch.setattr(tools, "_site_of", lambda platform, place, site=site: site)
+        said = tools.places_get(OnePlace(), "al-fahal")
+        assert said["water"]["kind"] == kind

@@ -46,7 +46,7 @@ RED_SEA = (12.0, 30.5, 32.0, 44.0)
 # to be: none of these is a survey of the reef being built.
 CARIBBEAN = (5.0, 33.0, -100.0, -30.0)          # and the rest of the tropical Atlantic
 HAWAII = (18.0, 29.0, -179.0, -154.0)
-RED_SEA_WATER = ("Kd(PAR) 0.049-0.119 per metre at the pelagic station offshore of KAUST: Overmans & Agusti "
+RED_SEA_WATER = ("chosen by region: Kd(PAR) 0.049-0.119 per metre at the pelagic station offshore of KAUST: Overmans & Agusti "
                  "2020, Front. Mar. Sci. 7:111. Taken for this square because it is in the Red Sea, not measured here")
 
 

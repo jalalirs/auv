@@ -73,3 +73,10 @@ def test_a_reef_is_grown_from_its_regions_mix_and_says_it_was_chosen():
     assert far["water"] == "1C" and far["waterFrom"].startswith("assumed")
     assert "not this reef's own" in far["assemblageFrom"]
     assert "inferred" in far["coverFrom"]
+
+
+def test_the_water_says_it_was_chosen_or_assumed_so_nobody_reads_it_as_measured():
+    from iocean_places.job import life_of
+
+    assert life_of(22.3, 38.9, atlas=True)["waterFrom"].startswith("chosen")
+    assert life_of(-18.0, 147.0, atlas=True)["waterFrom"].startswith("assumed")

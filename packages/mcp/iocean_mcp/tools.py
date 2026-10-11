@@ -184,7 +184,9 @@ def places_get(platform: Platform, place_id: str) -> dict:
                  else unknown("no observation record for this place")),
         # A water type somebody chose for a tank is chosen, not measured,
         # however confidently its "from" is written.
+        # And one a place was given for want of anything known is assumed.
         "water": ((lambda w: said(w["type"], CHOSEN if str(w.get("from", "")).startswith("chosen")
+                                  else ASSUMED if str(w.get("from", "")).startswith("assumed")
                                   else MEASURED, w.get("from", "")) if w.get("from")
                    else said(w.get("type"), ASSUMED, "nobody said"))(site["water"])
                   if site.get("water") else unknown("no Jerlov type recorded")),
