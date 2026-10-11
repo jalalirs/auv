@@ -71,6 +71,26 @@ def _patch(cfg, a) -> int:
     return 0
 
 
+def _fuse(cfg, a) -> int:
+    from .prior import fuse
+
+    if a.picture is not None:
+        from .prior import picture
+
+        target = config.run_dir(a.name) / "prior" / f"compare-{a.picture:03d}.jpg"
+        picture(config.run_dir(a.name), a.picture, target)
+        print(json.dumps({"picture": str(target)}))
+        return 0
+    said = fuse(config.run_dir(a.name), pathlib.Path(a.library))
+    if a.truth:
+        from .prior import against_truth
+
+        print(json.dumps(against_truth(config.run_dir(a.name)), indent=1))
+    print(json.dumps({k: said[k] for k in ("points", "massivePoints", "groundPoints", "scores", "best", "seconds")}
+                     | {"colonies": len(said["colonies"])}, indent=1))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="iocean-reconstruct", description=__doc__.split("\n")[0])
     ap.add_argument("--config", default="default.yaml")
@@ -85,9 +105,14 @@ def main(argv: list[str] | None = None) -> int:
     m = sub.add_parser("scale", help="measure the scale from the video's own motion sensor")
     m.add_argument("--name", required=True)
     m.add_argument("--video", help="the video, where frames.json's path is not the one mounted here")
+    fu = sub.add_parser("fuse", help="the coral library as the prior, the video's points as the measurement")
+    fu.add_argument("--name", required=True)
+    fu.add_argument("--library", required=True, help="a coral library folder (library.json and its colonies)")
+    fu.add_argument("--picture", type=int, help="only draw held-back frame N beside the three versions")
+    fu.add_argument("--truth", action="store_true", help="also score against truth.ply (a synthetic run)")
     a = ap.parse_args(argv)
     cfg = config.load(a.config)
-    return {"video": _video, "patch": _patch, "scale": _scale}[a.command](cfg, a)
+    return {"video": _video, "patch": _patch, "scale": _scale, "fuse": _fuse}[a.command](cfg, a)
 
 
 if __name__ == "__main__":

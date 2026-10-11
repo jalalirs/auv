@@ -171,6 +171,33 @@ def _video(cfg, a) -> int:
     return 0
 
 
+def _label(cfg, a) -> int:
+    """Each frame's class at every pixel, as a 16-bit PNG beside a list of the
+    classes: what a 3D reconstruction's points are labelled from."""
+    import time
+
+    import numpy as np
+    from PIL import Image
+
+    seg, _ = _model(cfg, a.model)
+    frames, out = pathlib.Path(a.frames), pathlib.Path(a.into)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "classes.json").write_text(json.dumps({"id2label": seg.id2label, "model": _about(cfg, a.model)}, indent=1))
+    started, done = time.time(), 0
+    for path in sorted(frames.glob("*.jpg")):
+        target = out / (path.stem + ".png")
+        if target.is_file():
+            continue
+        image = np.asarray(Image.open(path).convert("RGB"))
+        if a.scale != 1.0:
+            image = np.asarray(Image.fromarray(image).resize(
+                (round(image.shape[1] * a.scale), round(image.shape[0] * a.scale)), Image.BILINEAR))
+        Image.fromarray(seg.classes(image).astype(np.uint16)).save(target)
+        done += 1
+    print(json.dumps({"labelled": done, "into": str(out), "seconds": round(time.time() - started)}))
+    return 0
+
+
 def _colonies(cfg, a) -> int:
     from .colonies import extract
 
@@ -274,6 +301,11 @@ def main(argv: list[str] | None = None) -> int:
     co.add_argument("--every", type=float, default=1.0, help="seconds between the frames read")
     co.add_argument("--model", help="a fine-tuned run instead of the config's model")
     co.add_argument("--no-outliner", action="store_true", help="connected patches of a class instead of SAM 2's outlines")
+    lb = sub.add_parser("label", help="each frame's class at every pixel, for labelling a 3D reconstruction")
+    lb.add_argument("--frames", required=True, help="a folder of .jpg frames")
+    lb.add_argument("--into", required=True)
+    lb.add_argument("--scale", type=float, default=1.0, help="resize the frames first")
+    lb.add_argument("--model", help="a fine-tuned run instead of the config's model")
     f = sub.add_parser("finetune")
     f.add_argument("--config", dest="tuning", required=True, help="finetune/<name>.yaml")
     f.add_argument("--run")
@@ -283,7 +315,7 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--step", type=float, default=2.0)
     a = ap.parse_args(argv)
     cfg = config.load(a.config)
-    return {"fetch": _fetch, "check": _check, "look": _look, "map": _map, "video": _video, "colonies": _colonies, "finetune": _finetune, "bands": _bands}[a.command](cfg, a)
+    return {"fetch": _fetch, "check": _check, "look": _look, "map": _map, "video": _video, "colonies": _colonies, "label": _label, "finetune": _finetune, "bands": _bands}[a.command](cfg, a)
 
 
 if __name__ == "__main__":
