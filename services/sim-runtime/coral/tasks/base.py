@@ -113,7 +113,10 @@ class Task:
         self.t = t
         self.samples += 1
         self.effort += float(np.mean(np.abs(np.asarray(commands, dtype=float)))) if len(commands) else 0.0
-        self.ride.step(t, position, commands, attitude=attitude, line=self.planned_line())
+        # While the task is being done: a vehicle holding after the work is
+        # over is not how the work was flown.
+        if not self.done:
+            self.ride.step(t, position, commands, attitude=attitude, line=self.planned_line())
         # Where the vehicle thinks it is, for the few tasks that need to know.
         # Kept on the task rather than added to every `judge` signature: a task
         # is scored against the truth and that is the rule, but a task that

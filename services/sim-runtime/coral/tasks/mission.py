@@ -49,7 +49,8 @@ class Mission(Task):
         self.t = t
         self.samples += 1
         self.effort += float(np.mean(np.abs(np.asarray(commands, dtype=float)))) if len(commands) else 0.0
-        self.ride.step(t, position, commands, attitude=attitude, line=self.planned_line())
+        if not self.done:
+            self.ride.step(t, position, commands, attitude=attitude, line=self.planned_line())
         stage = self.stage
         if stage is None or self.done:
             self.done = True

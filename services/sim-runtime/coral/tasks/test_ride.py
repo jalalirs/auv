@@ -49,3 +49,14 @@ def test_a_transect_says_its_ride_in_its_result():
     ride = task.result()["ride"]
     assert ride["offLine"]["secondsOff"] == 0.0
     assert math.isclose(ride["pitchDeg"]["typical"], 2.0, abs_tol=1e-6)
+
+
+def test_the_ride_stops_when_the_task_is_done():
+    task = task_for({"kind": "transect", "lengthM": 5.0}, [0.0, 0.0, -5.0], 0.0)
+    for k in range(40):
+        x = min(k * 0.5, 6.0)
+        task.step(k * 0.5, [x, 0.0, -5.0], 0.0, -10.0, [0.4] if not task.done else [0.0])
+    assert task.done
+    ride = task.result()["ride"]
+    assert ride["seconds"] < 10.0, ride
+    assert abs(ride["effort"]["meanShare"] - 0.4) < 1e-6, ride
