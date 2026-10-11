@@ -59,11 +59,28 @@ class Lens:
     said: str = "GoPro HERO, Wide, 16:9: 118 degrees across in air, GoPro's published figure; " \
                 "an equidistant fisheye standing in for its calibration"
 
+    # A measured lens (tools/calibrate-camera): OpenCV's fisheye model, its
+    # focal length as a fraction of the half-width and its four terms.
+    focal_of_half_width: float = 0.0
+    distortion: tuple = ()
+
     def angle_of(self, radius_px: np.ndarray, half_width_px: float) -> np.ndarray:
         """Angle off the axis, in air, of a ray landing `radius_px` from the centre."""
         half = math.radians(self.horizontal_fov_deg) / 2
         if self.model == "pinhole":
             return np.arctan(radius_px / half_width_px * math.tan(half))
+        if self.model == "opencv-fisheye" and self.focal_of_half_width > 0:
+            # theta_d = r / f, and theta_d = theta (1 + k1 t^2 + k2 t^4 + k3 t^6 + k4 t^8):
+            # Newton's method from theta = theta_d, which is a few steps for a real lens.
+            k = (list(self.distortion) + [0.0] * 4)[:4]
+            theta_d = np.asarray(radius_px, dtype=float) / (self.focal_of_half_width * half_width_px)
+            theta = theta_d.copy()
+            for _ in range(12):
+                t2 = theta * theta
+                f = theta * (1 + k[0] * t2 + k[1] * t2 ** 2 + k[2] * t2 ** 3 + k[3] * t2 ** 4) - theta_d
+                df = 1 + 3 * k[0] * t2 + 5 * k[1] * t2 ** 2 + 7 * k[2] * t2 ** 3 + 9 * k[3] * t2 ** 4
+                theta = theta - f / df
+            return theta
         return radius_px / half_width_px * half          # equidistant: r = f theta
 
 
@@ -189,7 +206,7 @@ def settings_from(vehicle: dict | None = None, dive: dict | None = None, environ
     merged, told = dict(DEFAULTS), []
     for name, layer in (("environment", from_env), ("vehicle", vehicle or {}), ("dive", dive or {})):
         if layer:
-            merged.update({k: v for k, v in layer.items() if k in DEFAULTS or k == "lensFovDeg"})
+            merged.update({k: v for k, v in layer.items() if k in DEFAULTS or k in ("lensFovDeg", "calibration")})
             told.append(name)
     return merged, tuple(told)
 
@@ -201,12 +218,26 @@ def camera_from(settings: dict, told_by: tuple = ()) -> Camera:
     said = (Lens.said if lens_name == "gopro-wide" and "lensFovDeg" not in settings
             else f"{model}, {fov:g} degrees across in air")
     port = str(settings.get("port", "flat")).lower()
+    measured = settings.get("calibration") if lens_name == "calibrated" else None
+    focal, terms = 0.0, ()
+    if isinstance(measured, dict) and measured.get("focalOfHalfWidth"):
+        # The camera's own lens, measured from a checkerboard. Calibrated in
+        # water behind its port, it already holds the port and the water, so
+        # nothing more is put between it and the sea.
+        model, fov = "opencv-fisheye", float(measured.get("horizontalFovDeg", fov))
+        focal = float(measured["focalOfHalfWidth"][0])
+        terms = tuple(float(v) for v in measured.get("distortion", ()))
+        said = (f"measured: {measured.get('from', 'a checkerboard calibration')}, "
+                f"{measured.get('reprojectionErrorPx', '?')} px reprojection error")
+        if str(measured.get("medium", "air")).lower() == "water":
+            port = "none"
     iso = settings.get("iso", "auto")
     try:
         iso = None if str(iso).lower() == "auto" else float(iso)
     except ValueError:
         iso = None
-    return Camera(lens=Lens(model=model, horizontal_fov_deg=fov, said=said),
+    return Camera(lens=Lens(model=model, horizontal_fov_deg=fov, said=said,
+                            focal_of_half_width=focal, distortion=terms),
                   port=Port(kind=port if port in ("flat", "dome", "none") else "flat"),
                   filter=FILTERS.get(str(settings.get("filter", "none")).lower(), FILTERS["none"]),
                   sensor=SENSORS.get(str(settings.get("sensor", "gopro")).lower(), SENSORS["gopro"]),

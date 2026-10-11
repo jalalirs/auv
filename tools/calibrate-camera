@@ -1,0 +1,219 @@
+#!/usr/bin/env python3
+"""A camera's lens, measured from a checkerboard filmed with it.
+
+    tools/calibrate-camera VIDEO [VIDEO ...] --out calibration.json \\
+        [--corners 9 6] [--square-mm 25] [--medium water|air] [--every 0.5] \\
+        [--camera "GoPro HERO11, Wide, 4K 16:9"]
+
+The dive camera's lens has been GoPro's published field of view with an ideal
+equidistant fisheye standing in for it. This replaces that with the real one:
+OpenCV's fisheye model (Kannala and Brandt, IEEE PAMI 28:1335, 2006), fitted
+to the corners of a printed checkerboard seen across the frame.
+
+  VIDEO       one or more clips (or folders of stills) of the board, moved
+              through the whole frame, the corners especially, tilted
+  --corners   inner corners across and down: a 10 by 7 board of squares has
+              9 by 6 (the OpenCV pattern)
+  --medium    what the camera looked through. Filmed underwater behind its
+              port, the fit holds the lens, the port and the water together,
+              and the runtime then draws it with no port of its own. Filmed
+              in air, it is the lens alone and the runtime adds the port.
+
+Written: the focal length and centre as fractions of the frame (so they hold
+at any resolution), the four distortion terms, the field of view they imply,
+how many frames were used and the reprojection error in pixels, which is the
+number that says whether to believe it. Marked measured, with what measured it.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime
+import json
+import math
+import pathlib
+import sys
+
+import numpy as np
+
+
+def frames_of(source: pathlib.Path, every_s: float):
+    """Grey frames from a clip, one every `every_s` seconds, or every still in
+    a folder; with where each came from."""
+    import cv2
+
+    if source.is_dir():
+        for path in sorted(p for p in source.iterdir() if p.suffix.lower() in (".jpg", ".jpeg", ".png")):
+            image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+            if image is not None:
+                yield f"{path.name}", image
+        return
+    clip = cv2.VideoCapture(str(source))
+    rate = clip.get(cv2.CAP_PROP_FPS) or 30.0
+    step = max(1, int(round(every_s * rate)))
+    n = 0
+    while True:
+        ok, image = clip.read()
+        if not ok:
+            break
+        if n % step == 0:
+            yield f"{source.name}@{n / rate:.2f}s", cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        n += 1
+    clip.release()
+
+
+def corners_in(image, pattern: tuple[int, int]):
+    """The board's inner corners, to a tenth of a pixel, or None."""
+    import cv2
+
+    flags = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE
+    found, corners = cv2.findChessboardCorners(image, pattern, flags)
+    if not found:
+        return None
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 50, 0.01)
+    return cv2.cornerSubPix(image, corners, (5, 5), (-1, -1), criteria)
+
+
+def spread(found: list, size: tuple[int, int], most: int) -> list:
+    """At most `most` views, chosen to cover the frame: the fit is only as good
+    as the parts of the frame the board was seen in, and a clip that dwells in
+    the middle gives forty copies of the easy part."""
+    if len(found) <= most:
+        return found
+    wide, tall = size
+    cells = {}
+    for one in found:
+        middle = one[1].reshape(-1, 2).mean(axis=0)
+        extent = np.ptp(one[1].reshape(-1, 2), axis=0).mean()
+        key = (int(4 * middle[0] / wide), int(3 * middle[1] / tall), int(extent > 0.25 * wide))
+        cells.setdefault(key, []).append(one)
+    chosen, k = [], 0
+    while len(chosen) < most:
+        took = False
+        for key in sorted(cells):
+            if k < len(cells[key]):
+                chosen.append(cells[key][k])
+                took = True
+                if len(chosen) == most:
+                    break
+        if not took:
+            break
+        k += 1
+    return chosen
+
+
+def fit(views: list, pattern: tuple[int, int], square_m: float, size: tuple[int, int]) -> dict:
+    """OpenCV's fisheye calibration over the views; drops a view the fit cannot
+    hold (a blurred or mis-ordered board) and tries again."""
+    import cv2
+
+    board = np.zeros((1, pattern[0] * pattern[1], 3), np.float64)
+    board[0, :, :2] = np.mgrid[0:pattern[0], 0:pattern[1]].T.reshape(-1, 2) * square_m
+    kept = list(views)
+    # OpenCV 4 keeps the fisheye flags under cv2.fisheye, OpenCV 5 under cv2.
+    flag = lambda name: getattr(cv2.fisheye, name, None) or getattr(cv2, name)
+    flags = flag("CALIB_RECOMPUTE_EXTRINSIC") | flag("CALIB_CHECK_COND") | flag("CALIB_FIX_SKEW")
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, 1e-9)
+    while len(kept) >= 6:
+        K, D = np.zeros((3, 3)), np.zeros((4, 1))
+        try:
+            rms, K, D, _, _ = cv2.fisheye.calibrate(
+                [board] * len(kept), [v[1].reshape(1, -1, 2).astype(np.float64) for v in kept],
+                size, K, D, flags=flags, criteria=criteria)
+            return {"rms": float(rms), "K": K, "D": D.ravel(), "used": [v[0] for v in kept]}
+        except cv2.error as failed:
+            # "CALIB_CHECK_COND - Ill-conditioned matrix for input array N"
+            text = str(failed)
+            bad = [int(w) for w in text.replace(",", " ").split() if w.isdigit()]
+            if not bad or bad[-1] >= len(kept):
+                raise
+            kept.pop(bad[-1])
+    raise SystemExit("fewer than six usable views of the board: film it again, closer, across the frame")
+
+
+def undistorted_angle(theta_d: float, D) -> float:
+    """The ray's angle off the axis from where it lands: inverts
+    theta_d = theta (1 + k1 theta^2 + k2 theta^4 + k3 theta^6 + k4 theta^8)."""
+    theta = theta_d
+    for _ in range(30):
+        t2 = theta * theta
+        f = theta * (1 + D[0] * t2 + D[1] * t2 ** 2 + D[2] * t2 ** 3 + D[3] * t2 ** 4) - theta_d
+        df = 1 + 3 * D[0] * t2 + 5 * D[1] * t2 ** 2 + 7 * D[2] * t2 ** 3 + 9 * D[3] * t2 ** 4
+        theta -= f / df
+    return theta
+
+
+def field_of_view(K, D, size: tuple[int, int]) -> float:
+    """The horizontal angle the fit says the frame takes in, in degrees: from
+    the centre out to each side edge."""
+    wide = size[0]
+    left = undistorted_angle(K[0, 2] / K[0, 0], D)
+    right = undistorted_angle((wide - 1 - K[0, 2]) / K[0, 0], D)
+    return math.degrees(left + right)
+
+
+def calibrate(sources: list[pathlib.Path], pattern=(9, 6), square_mm=25.0, every_s=0.5, most=40,
+              medium="water", camera="", say=print) -> dict:
+    found, size, looked = [], None, 0
+    for source in sources:
+        for name, image in frames_of(source, every_s):
+            looked += 1
+            size = (image.shape[1], image.shape[0])
+            corners = corners_in(image, pattern)
+            if corners is not None:
+                found.append((name, corners))
+    say(f"  the board was found in {len(found)} of {looked} frames")
+    if size is None:
+        raise SystemExit("no frames could be read")
+    views = spread(found, size, most)
+    got = fit(views, pattern, square_mm / 1000.0, size)
+    K, D = got["K"], got["D"]
+    wide, tall = size
+    fov = field_of_view(K, D, size)
+    say(f"  {len(got['used'])} views, reprojection error {got['rms']:.2f} px, "
+        f"{fov:.1f} degrees across")
+    return {
+        "kind": "measured",
+        "model": "opencv-fisheye",
+        "camera": camera,
+        "medium": medium,
+        "frame": [wide, tall],
+        # As fractions of the half-width, so the same lens holds at 720p and 4K.
+        "focalOfHalfWidth": [float(K[0, 0] / ((wide - 1) / 2)), float(K[1, 1] / ((wide - 1) / 2))],
+        "centreOfFrame": [float(K[0, 2] / (wide - 1)), float(K[1, 2] / (tall - 1))],
+        "distortion": [float(v) for v in D],
+        "horizontalFovDeg": round(fov, 2),
+        "reprojectionErrorPx": round(got["rms"], 3),
+        "views": len(got["used"]),
+        "framesLooked": looked,
+        "board": {"innerCorners": list(pattern), "squareMm": square_mm},
+        "from": (f"tools/calibrate-camera: OpenCV's fisheye model (Kannala and Brandt 2006) fitted to "
+                 f"{len(got['used'])} views of a {pattern[0] + 1} by {pattern[1] + 1} checkerboard "
+                 f"of {square_mm:g} mm squares, filmed in {medium}"),
+        "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+        "sources": [str(s.name) for s in sources],
+    }
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="measure a camera's lens from a filmed checkerboard")
+    ap.add_argument("sources", nargs="+", type=pathlib.Path, help="clips, or folders of stills")
+    ap.add_argument("--out", type=pathlib.Path, required=True)
+    ap.add_argument("--corners", nargs=2, type=int, default=(9, 6), metavar=("ACROSS", "DOWN"))
+    ap.add_argument("--square-mm", type=float, default=25.0)
+    ap.add_argument("--every", type=float, default=0.5, help="seconds between frames taken from a clip")
+    ap.add_argument("--most", type=int, default=40, help="most views to fit")
+    ap.add_argument("--medium", choices=("water", "air"), default="water")
+    ap.add_argument("--camera", default="", help="what camera and setting, as words")
+    a = ap.parse_args()
+    said = calibrate(a.sources, tuple(a.corners), a.square_mm, a.every, a.most, a.medium, a.camera)
+    a.out.write_text(json.dumps(said, indent=1) + "\n")
+    print(f"  {a.out}")
+    if said["reprojectionErrorPx"] > 1.0:
+        print("  more than a pixel out: film the board sharper and across the corners, and fit again",
+              file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -190,3 +190,26 @@ def test_each_camera_records_at_its_own_rate_unless_told():
                                                                                          "sharpening": "high"},
                                                     environment={}))
     assert told.video_mbps == 25.0 and told.sharpening == 0.9
+
+
+def test_a_calibrated_lens_is_drawn_as_measured_and_a_water_one_brings_its_own_port():
+    from optics import camera_from, settings_from
+
+    measured = {"kind": "measured", "model": "opencv-fisheye", "medium": "water",
+                "focalOfHalfWidth": [0.96, 0.96], "distortion": [0.03, 0.0, -0.03, 0.02],
+                "horizontalFovDeg": 115.8, "reprojectionErrorPx": 0.29,
+                "from": "tools/calibrate-camera: 40 views of a checkerboard, filmed in water"}
+    settings, told = settings_from(vehicle={"lens": "calibrated", "calibration": measured}, environment={})
+    camera = camera_from(settings, told)
+    assert camera.lens.model == "opencv-fisheye" and camera.port.kind == "none"
+    assert "measured" in camera.lens.said
+    import numpy as np
+    half = 479.5
+    # The edge of the frame is half the measured field of view off the axis.
+    edge = float(camera.lens.angle_of(np.array([half]), half)[0])
+    assert abs(np.degrees(edge) * 2 - 115.8) < 1.5, np.degrees(edge) * 2
+    # With no distortion terms the model is r = f theta.
+    plain = camera_from(settings_from(vehicle={"lens": "calibrated", "calibration": {
+        "focalOfHalfWidth": [1.0], "distortion": [0, 0, 0, 0], "medium": "air"}}, environment={})[0])
+    assert abs(float(plain.lens.angle_of(np.array([100.0]), 200.0)[0]) - 0.5) < 1e-9
+    assert plain.port.kind == "flat"
