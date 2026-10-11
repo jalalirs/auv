@@ -28,8 +28,8 @@ import { PageHead } from "./parts.js";
 
 interface Flyable { mission: Mission; version: AssetVersion; place: string }
 
-/** The settings that change the world or the plan, not the water. */
-const ELSEWHERE = new Set(["world", "objective"]);
+/** The settings that change the world, the plan or where it goes in, not the water. */
+const ELSEWHERE = new Set(["world", "objective", "launch"]);
 
 function changesMoreThanWater(does: Record<string, unknown>): boolean {
   return Object.keys(does).some((k) => ELSEWHERE.has(k));

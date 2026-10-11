@@ -135,6 +135,10 @@ type Scenario struct {
 	// thirty metres from where it was laid*, and those are the things that
 	// actually go wrong, because they are the things nobody measured.
 	World map[string]json.RawMessage
+	// And where it goes in: metres east and north of the mission's own launch,
+	// and a heading — what a best-launch sweep varies. Empty for a scenario
+	// that leaves the launch as the mission drew it.
+	Launch json.RawMessage
 }
 
 // Label is how a scenario reads to a person: "current:half a knot · fix:none".
@@ -250,6 +254,8 @@ func apply(said Setting, into *Scenario) {
 			into.Water["failures"] = mergeArrays(into.Water["failures"], value)
 		case "fitted":
 			into.Water["fitted"] = mergeObjects(into.Water["fitted"], value)
+		case "launch":
+			into.Launch = mergeObjects(into.Launch, value)
 		default:
 			into.Water[key] = value
 		}
@@ -331,6 +337,28 @@ type Flown struct {
 	HeldBack  bool              `json:"heldBack"`
 	DriftM    *float64          `json:"driftM,omitempty"`
 	PhysicsAt *int              `json:"physicsVersion,omitempty"`
+	// What the run's battery gave, for ranking settings by cost.
+	EnergyWh *float64 `json:"energyWh,omitempty"`
+}
+
+// SettingCost is what one setting of one dimension cost, on the runs that did
+// the job.
+type SettingCost struct {
+	Value    string   `json:"value"`
+	MeanWh   *float64 `json:"meanWh"`
+	Survived int      `json:"survived"`
+	Of       int      `json:"of"`
+}
+
+// Cheapest is one dimension's settings ranked by energy: which did the job for
+// least, and what it saves over the dearest that also did it. For a launch
+// dimension this is the best place and heading to put the vehicle in.
+type Cheapest struct {
+	Dimension string        `json:"dimension"`
+	Settings  []SettingCost `json:"settings"`
+	Best      string        `json:"best"`
+	BestWh    float64       `json:"bestWh"`
+	SavesWh   float64       `json:"savesWh"`
 }
 
 // Rate is how one setting of one dimension fared.
@@ -408,6 +436,10 @@ type Findings struct {
 	// This is what the answer above is about; the runs are underneath it.
 	Scenarios_ []ScenarioFlown `json:"scenariosFlown"`
 	Runs       []Flown         `json:"runs"`
+
+	// Each dimension's settings ranked by what the runs that did the job
+	// cost: the best launch, or the cheapest of anything else doubted.
+	Cheapest []Cheapest `json:"cheapest"`
 }
 
 // MATTERS is the gap, between a dimension's best setting and its worst, at
@@ -833,7 +865,9 @@ func (s *Store) askForScenario(ctx context.Context, conn db.Conn, spec SweepSpec
 		ObjectiveOverlay: overlaid(objective),
 		// What this scenario changed about the world it is flown in.
 		LayoutChanges: overlaid(changed),
-		CreatedBy:     spec.CreatedBy,
+		// Where it goes in, when this scenario moved or turned the launch.
+		InitialState: launchedFrom(one.Launch),
+		CreatedBy:    spec.CreatedBy,
 	})
 	if err != nil {
 		return err
@@ -859,6 +893,17 @@ func (s *Store) askForScenario(ctx context.Context, conn db.Conn, spec SweepSpec
 		}
 	}
 	return nil
+}
+
+// launchedFrom is a scenario's launch as a dive's initial state: an offset the
+// runtime applies to wherever the mission's own launch puts the vehicle
+// (composeFrom keeps that launch beside it). Nothing when the scenario left
+// the launch alone.
+func launchedFrom(offset json.RawMessage) json.RawMessage {
+	if len(offset) == 0 || string(offset) == "null" || string(offset) == "{}" {
+		return nil
+	}
+	return json.RawMessage(`{"launchOffset":` + string(offset) + `}`)
 }
 
 // overlaid is a scenario's changes to the objective, or nothing when it made
@@ -999,7 +1044,76 @@ func (s *Store) Findings(ctx context.Context, id string) (Findings, error) {
 	found.Flying = one.Flying
 	found.Repeats = one.Repeats
 	found.Cost = WhatItCosts(spent, true)
+	found.Cheapest = CheapestOf(flown)
 	return found, nil
+}
+
+// CheapestOf ranks each dimension's settings by the mean energy of the runs
+// that did the job. A setting is a candidate only when most of its runs did
+// it: the cheapest way to fail is not a way to do the work. Dimensions with
+// fewer than two candidates have nothing to rank and are left out.
+func CheapestOf(flown []Flown) []Cheapest {
+	type tally struct {
+		order    []string
+		survived map[string]int
+		of       map[string]int
+		wh       map[string]float64
+		whRuns   map[string]int
+	}
+	byDimension := map[string]*tally{}
+	names := []string{}
+	for _, run := range flown {
+		for dimension, value := range run.Chosen {
+			t := byDimension[dimension]
+			if t == nil {
+				t = &tally{survived: map[string]int{}, of: map[string]int{},
+					wh: map[string]float64{}, whRuns: map[string]int{}}
+				byDimension[dimension] = t
+				names = append(names, dimension)
+			}
+			if _, seen := t.of[value]; !seen {
+				t.order = append(t.order, value)
+			}
+			t.of[value]++
+			if run.Survived {
+				t.survived[value]++
+				if run.EnergyWh != nil {
+					t.wh[value] += *run.EnergyWh
+					t.whRuns[value]++
+				}
+			}
+		}
+	}
+	sort.Strings(names)
+	out := []Cheapest{}
+	for _, dimension := range names {
+		t := byDimension[dimension]
+		one := Cheapest{Dimension: dimension, Settings: []SettingCost{}}
+		best, worst := math.Inf(1), math.Inf(-1)
+		candidates := 0
+		for _, value := range t.order {
+			cost := SettingCost{Value: value, Survived: t.survived[value], Of: t.of[value]}
+			if t.whRuns[value] > 0 {
+				mean := t.wh[value] / float64(t.whRuns[value])
+				cost.MeanWh = &mean
+				if 2*t.survived[value] > t.of[value] {
+					candidates++
+					if mean < best {
+						best, one.Best = mean, value
+					}
+					worst = math.Max(worst, mean)
+				}
+			}
+			one.Settings = append(one.Settings, cost)
+		}
+		if candidates < 2 {
+			continue
+		}
+		one.BestWh = math.Round(best*1000) / 1000
+		one.SavesWh = math.Round((worst-best)*1000) / 1000
+		out = append(out, one)
+	}
+	return out
 }
 
 // readOutcome takes what a run said about itself onto the scenario.
@@ -1010,6 +1124,7 @@ func readOutcome(raw []byte, into *Flown, good float64) {
 			Score    *float64 `json:"score"`
 			Says     string   `json:"says"`
 			HeldBack any      `json:"heldBack"`
+			EnergyWh *float64 `json:"energyWh"`
 		} `json:"task"`
 		Navigation *struct {
 			DriftM *float64 `json:"driftM"`
@@ -1027,6 +1142,7 @@ func readOutcome(raw []byte, into *Flown, good float64) {
 	}
 	into.Says = said.Task.Says
 	into.HeldBack = said.Task.HeldBack != nil
+	into.EnergyWh = said.Task.EnergyWh
 	if said.Task.Score != nil {
 		into.Score = *said.Task.Score
 	}

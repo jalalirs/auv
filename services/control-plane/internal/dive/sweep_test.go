@@ -477,3 +477,43 @@ func TestAScenarioThatAsksForPicturesKeepsThem(t *testing.T) {
 		t.Errorf("overruled a scenario that asked to be seen: %q", said["pictures"])
 	}
 }
+
+func TestTheCheapestLaunchIsTheOneThatDidTheJobForLeast(t *testing.T) {
+	wh := func(v float64) *float64 { return &v }
+	runs := []Flown{
+		{Chosen: map[string]string{"launch": "as planned"}, Survived: true, EnergyWh: wh(10)},
+		{Chosen: map[string]string{"launch": "as planned"}, Survived: true, EnergyWh: wh(12)},
+		{Chosen: map[string]string{"launch": "20 m north"}, Survived: true, EnergyWh: wh(7)},
+		{Chosen: map[string]string{"launch": "20 m north"}, Survived: true, EnergyWh: wh(7)},
+		// Cheapest of all, and it failed: not a way to do the work.
+		{Chosen: map[string]string{"launch": "20 m south"}, Survived: false, EnergyWh: wh(2)},
+		{Chosen: map[string]string{"launch": "20 m south"}, Survived: false, EnergyWh: wh(2)},
+	}
+	got := CheapestOf(runs)
+	if len(got) != 1 || got[0].Dimension != "launch" {
+		t.Fatalf("one dimension ranked, got %+v", got)
+	}
+	if got[0].Best != "20 m north" || got[0].BestWh != 7 || got[0].SavesWh != 4 {
+		t.Fatalf("north saves 4 Wh over as planned, got %+v", got[0])
+	}
+	if got[0].Settings[2].MeanWh != nil {
+		t.Fatalf("a setting with no run that did the job has no cost, got %v", *got[0].Settings[2].MeanWh)
+	}
+}
+
+func TestALaunchSettingBecomesAnOffsetBesideTheMissionsLaunch(t *testing.T) {
+	scenarios, err := Combinations(map[string]json.RawMessage{
+		"launch": json.RawMessage(`{"as planned": {}, "north, facing east": {"launch": {"dyM": 20, "headingDeg": 0}}}`),
+	}, nil)
+	if err != nil || len(scenarios) != 2 {
+		t.Fatalf("two scenarios, got %v %v", len(scenarios), err)
+	}
+	if launchedFrom(scenarios[0].Launch) != nil {
+		t.Fatalf("as planned leaves the launch alone, got %s", launchedFrom(scenarios[0].Launch))
+	}
+	var state map[string]map[string]float64
+	if err := json.Unmarshal(launchedFrom(scenarios[1].Launch), &state); err != nil ||
+		state["launchOffset"]["dyM"] != 20 {
+		t.Fatalf("an offset the runtime applies, got %s", launchedFrom(scenarios[1].Launch))
+	}
+}

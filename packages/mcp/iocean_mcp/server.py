@@ -236,7 +236,10 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
         "{\"current\": [\"still\", \"one knot\"], "
         "\"the mooring\": [\"as drawn\", \"thirty metres off\"]}. "
         "Dimensions: current, fix, water clarity, trouble, the array, "
-        "the mooring, how long.",
+        "the mooring, where it goes in, which way it faces, how long. "
+        "A best-launch sweep is the last three: e.g. {\"where it goes in\": [\"as planned\", "
+        "\"20 m north\", \"20 m east\"], \"which way it faces\": [\"east\", \"north\"]}; "
+        "sweeps_findings then ranks them by energy under `cheapest`.",
         {"type": "object",
          "properties": {"mission": {"type": "string"},
                         "vehicle": {"type": "string"},

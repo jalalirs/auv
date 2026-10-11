@@ -122,3 +122,32 @@ def test_a_launch_puts_the_vehicle_there(tmp_path):
     dive = Dive(brief, Body(model), Allocator(model), _p.Path("nowhere.usda"), lambda kind, **said: None)
     assert dive.open_dry()
     assert round(float(dive.position[0])) == -10 and round(float(dive.position[1])) == -40, dive.position
+
+
+class Moved(Placed):
+    """And the part a best-launch sweep touches: moved and turned."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        import numpy as np
+        self.position = np.array([100.0, -40.0, -0.4])
+        self.rotation = np.eye(3)
+
+    from runner import Dive as _Dive
+    launch_moved = _Dive.launch_moved
+
+
+def test_a_sweep_may_move_the_launch_and_turn_the_vehicle():
+    import math
+    placed = Moved(a_site())
+    placed.launch_moved({"dyM": 20, "headingDeg": 90})
+    assert round(placed.position[0]) == 100 and round(placed.position[1]) == -20
+    heading = math.degrees(math.atan2(placed.rotation[1, 0], placed.rotation[0, 0]))
+    assert abs(heading - 90) < 1e-6, heading
+    assert placed.said[-1][0] == "launch_moved"
+
+
+def test_no_offset_leaves_the_launch_alone():
+    placed = Moved(a_site())
+    placed.launch_moved(None)
+    assert list(placed.position) == [100.0, -40.0, -0.4] and placed.said == []

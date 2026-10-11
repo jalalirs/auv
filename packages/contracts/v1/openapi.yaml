@@ -4567,6 +4567,29 @@ components:
             What computed them. A sweep whose runs were not all computed by the
             same simulator is a table that should not be one.
         cost: { $ref: '#/components/schemas/Cost' }
+        cheapest:
+          type: array
+          description: >
+            Each doubt's settings ranked by the mean energy of the runs that
+            did the job: the best launch, or the cheapest of anything else
+            doubted. A setting is a candidate only when most of its runs did
+            the job, and a doubt with fewer than two candidates is left out.
+          items:
+            type: object
+            properties:
+              dimension: { type: string }
+              best: { type: string }
+              bestWh: { type: number }
+              savesWh: { type: number }
+              settings:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    value: { type: string }
+                    meanWh: { type: number, nullable: true }
+                    survived: { type: integer }
+                    of: { type: integer }
         scenariosFlown:
           type: array
           description: >

@@ -953,6 +953,39 @@ class Dive:
                 self.say("vehicle_outside_the_place",
                          position=[round(float(v), 2) for v in self.position],
                          from_=corner, to=far)
+        self.launch_moved((self.brief.get("initialState") or {}).get("launchOffset"))
+
+    def launch_moved(self, offset) -> None:
+        """Somewhere other than where the plan says it goes in, and facing a
+        way: `{"dxM", "dyM", "headingDeg"}`, metres east and north of wherever
+        the vehicle was put, and a heading (0 east, 90 north).
+
+        What a best-launch sweep varies: the same mission from several points
+        and headings, ranked by what each costs. A vehicle always went in
+        facing east, whatever the work, so a launch could be moved but never
+        turned."""
+        if not isinstance(offset, dict) or not offset:
+            return
+        dx, dy = float(offset.get("dxM", 0.0)), float(offset.get("dyM", 0.0))
+        if dx or dy:
+            where = np.array(self.position, dtype=float)
+            where[:2] += [dx, dy]
+            # Kept off the bottom at the new spot, as a launch is.
+            floor = self.floor
+            if self.seabed is not None:
+                floor = self.seabed.under(float(where[0]), float(where[1]))
+            if floor is not None:
+                where[2] = max(float(where[2]), float(floor) + self.half_height + 0.3)
+            self.position = where
+        heading = offset.get("headingDeg")
+        if heading is not None:
+            a = np.radians(float(heading))
+            self.rotation = np.array([[np.cos(a), -np.sin(a), 0.0],
+                                      [np.sin(a), np.cos(a), 0.0],
+                                      [0.0, 0.0, 1.0]])
+        self.say("launch_moved", by=[round(dx, 2), round(dy, 2)],
+                 headingDeg=None if heading is None else float(heading),
+                 at=[round(float(v), 2) for v in self.position])
 
     def open(self, drawn: bool = False) -> bool:
         """Load the place and put the vehicle in it. False if it would not open.

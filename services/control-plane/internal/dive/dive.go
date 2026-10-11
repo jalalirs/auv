@@ -570,6 +570,21 @@ func composeFrom(ctx context.Context, conn db.Conn, spec DiveSpec) (DiveSpec, er
 		(len(spec.InitialState) == 0 || string(spec.InitialState) == "{}" ||
 			string(spec.InitialState) == "null") {
 		spec.InitialState = json.RawMessage(`{"launch":` + string(said.Launch) + `}`)
+	} else if len(said.Launch) > 0 && string(said.Launch) != "null" {
+		// Or moved from the mission's launch rather than instead of it: a
+		// best-launch sweep says "twenty metres north of where the plan goes
+		// in", which needs the plan's launch to be there to be north of.
+		var state map[string]json.RawMessage
+		if json.Unmarshal(spec.InitialState, &state) == nil {
+			_, positioned := state["positionM"]
+			_, launched := state["launch"]
+			if _, moved := state["launchOffset"]; moved && !positioned && !launched {
+				state["launch"] = said.Launch
+				if joined, err := json.Marshal(state); err == nil {
+					spec.InitialState = joined
+				}
+			}
+		}
 	}
 	// The mission's stages are the objective; what the caller said — who
 	// flies it, whether it is drawn — is laid over them. It used to stand

@@ -5887,6 +5887,20 @@ export interface components {
              *      */
             physics?: number[];
             cost?: components["schemas"]["Cost"];
+            /** @description Each doubt's settings ranked by the mean energy of the runs that did the job: the best launch, or the cheapest of anything else doubted. A setting is a candidate only when most of its runs did the job, and a doubt with fewer than two candidates is left out.
+             *      */
+            cheapest?: {
+                dimension?: string;
+                best?: string;
+                bestWh?: number;
+                savesWh?: number;
+                settings?: {
+                    value?: string;
+                    meanWh?: number | null;
+                    survived?: number;
+                    of?: number;
+                }[];
+            }[];
             /** @description Every question asked, with how it went across every run of it. A scenario that worked twice in three is a different thing from one that worked three times in three, and somebody planning ship time should be able to see which they have.
              *      */
             scenariosFlown?: {

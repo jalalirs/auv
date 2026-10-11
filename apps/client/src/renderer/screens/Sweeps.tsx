@@ -193,6 +193,46 @@ function Answer({ found, flying }: { found: Findings; flying: number }): React.J
           ) : null}
         </>
       )}
+      <Cheapest found={found} />
+    </>
+  );
+}
+
+/** Each doubt's settings by what the runs that did the job cost. For where the
+ *  vehicle goes in and which way it faces, this is the best launch. */
+function Cheapest({ found }: { found: Findings }): React.JSX.Element | null {
+  const ranked = found.cheapest ?? [];
+  if (ranked.length === 0) return null;
+  return (
+    <>
+      {ranked.map((one) => {
+        const costs = (one.settings ?? []).map((s) => s.meanWh).filter((w): w is number => typeof w === "number");
+        const dearest = costs.length ? Math.max(...costs) : 1;
+        return (
+          <div className="doubt-rates" key={one.dimension}>
+            <div className="doubt-head">
+              <strong>{one.dimension}, by energy</strong>
+              <span className="quiet">
+                cheapest: {one.best}, {(one.bestWh ?? 0).toFixed(1)} Wh a run,{" "}
+                {(one.savesWh ?? 0).toFixed(1)} Wh less than the dearest that also did the job
+              </span>
+            </div>
+            {(one.settings ?? []).map((s) => (
+              <div className="rate" key={s.value}
+                   title={typeof s.meanWh === "number" ? "mean energy of the runs that did the job"
+                     : "no run of this setting did the job, so it has no cost to rank"}>
+                <span className="setting-name">{s.value === one.best ? <b>{s.value}</b> : s.value}</span>
+                <span className="share">
+                  <span style={{ width: `${typeof s.meanWh === "number" ? (s.meanWh / dearest) * 100 : 0}%` }} />
+                </span>
+                <span className="tally">
+                  {typeof s.meanWh === "number" ? `${s.meanWh.toFixed(1)} Wh` : "failed"} · {s.survived}/{s.of}
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      })}
     </>
   );
 }

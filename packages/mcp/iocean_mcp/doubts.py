@@ -61,6 +61,25 @@ DOUBTS: dict[str, dict] = {
             "thirty metres off": {"world": {"move": {"mooring-block": {"dx": 30, "dy": 0}}}},
         },
     },
+    "where it goes in": {
+        "name": "Where it goes in",
+        "settings": {
+            "as planned": {},
+            "20 m north": {"launch": {"dyM": 20}},
+            "20 m south": {"launch": {"dyM": -20}},
+            "20 m east": {"launch": {"dxM": 20}},
+            "20 m west": {"launch": {"dxM": -20}},
+        },
+    },
+    "which way it faces": {
+        "name": "Which way it faces",
+        "settings": {
+            "east": {"launch": {"headingDeg": 0}},
+            "north": {"launch": {"headingDeg": 90}},
+            "west": {"launch": {"headingDeg": 180}},
+            "south": {"launch": {"headingDeg": 270}},
+        },
+    },
     "how long": {
         "name": "How long the day is",
         "settings": {

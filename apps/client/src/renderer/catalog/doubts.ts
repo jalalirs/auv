@@ -96,6 +96,27 @@ export const DOUBTS: Doubt[] = [
     ],
   },
   {
+    key: "where it goes in", name: "Where it goes in",
+    says: "The same work from a few metres either side of where the plan launches. Ranked by what each costs, it is the best place to put the vehicle in.",
+    settings: [
+      { key: "as planned", name: "Where the plan says", does: {} },
+      { key: "20 m north", name: "Twenty metres north", does: { launch: { dyM: 20 } } },
+      { key: "20 m south", name: "Twenty metres south", does: { launch: { dyM: -20 } } },
+      { key: "20 m east", name: "Twenty metres east", does: { launch: { dxM: 20 } } },
+      { key: "20 m west", name: "Twenty metres west", does: { launch: { dxM: -20 } } },
+    ],
+  },
+  {
+    key: "which way it faces", name: "Which way it faces",
+    says: "A vehicle put in facing away from the work turns before it starts, and a long hull in a current pays for it.",
+    settings: [
+      { key: "east", name: "East", does: { launch: { headingDeg: 0 } } },
+      { key: "north", name: "North", does: { launch: { headingDeg: 90 } } },
+      { key: "west", name: "West", does: { launch: { headingDeg: 180 } } },
+      { key: "south", name: "South", does: { launch: { headingDeg: 270 } } },
+    ],
+  },
+  {
     key: "how long", name: "How long the day is",
     says: "The doubt that changes the answer from “do not go” to “allow twice as long”, which is usually the one worth having.",
     settings: [
