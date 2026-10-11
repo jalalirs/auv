@@ -143,6 +143,8 @@ const platform = {
       { dimension: "which way it faces", best: "east", bestWh: 33.0, savesWh: 1.9, settings: [
         { value: "east", meanWh: 33.0, survived: 3, of: 3 },
         { value: "west", meanWh: 34.9, survived: 2, of: 3 }] }],
+    cheapestScenario: { label: "where it goes in:20 m east · which way it faces:west", meanWh: 8.3, survived: 1, of: 1,
+                        savesWh: 10.2, candidates: 3, chosen: {} },
     scenariosFlown: [], runs: [] }),
 };
 // A build that walks through what a real one said, a step every second.

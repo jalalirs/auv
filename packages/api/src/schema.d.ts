@@ -5901,6 +5901,19 @@ export interface components {
                     of?: number;
                 }[];
             }[];
+            /** @description The whole combination of settings that did the job for least, of the scenarios most of whose runs did it, and what it saves over the dearest of them. For a launch sweep, the best place and heading together. Absent when no scenario qualifies.
+             *      */
+            cheapestScenario?: {
+                label?: string;
+                chosen?: {
+                    [key: string]: string;
+                };
+                meanWh?: number;
+                survived?: number;
+                of?: number;
+                savesWh?: number;
+                candidates?: number;
+            };
             /** @description Every question asked, with how it went across every run of it. A scenario that worked twice in three is a different thing from one that worked three times in three, and somebody planning ship time should be able to see which they have.
              *      */
             scenariosFlown?: {

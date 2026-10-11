@@ -517,3 +517,27 @@ func TestALaunchSettingBecomesAnOffsetBesideTheMissionsLaunch(t *testing.T) {
 		t.Fatalf("an offset the runtime applies, got %s", launchedFrom(scenarios[1].Launch))
 	}
 }
+
+func TestTheCheapestScenarioIsAWholeLaunchNotOneSettingOfIt(t *testing.T) {
+	wh := func(v float64) *float64 { return &v }
+	run := func(at, facing string, ok bool, e float64) Flown {
+		chosen := map[string]string{"where it goes in": at, "which way it faces": facing}
+		return Flown{Chosen: chosen, Label: Scenario{Chosen: chosen}.Label(), Survived: ok, EnergyWh: wh(e)}
+	}
+	// Each position works facing one way only, so no setting wins on its own.
+	runs := []Flown{
+		run("as planned", "east", true, 18.5), run("as planned", "west", false, 37.9),
+		run("20 m east", "west", true, 8.3), run("20 m east", "east", false, 9.0),
+		run("20 m north", "west", true, 8.7), run("20 m north", "east", false, 9.1),
+	}
+	if got := CheapestOf(runs); len(got) != 0 {
+		t.Fatalf("no setting did the job in most of its runs, got %+v", got)
+	}
+	best := CheapestScenarioOf(runs)
+	if best == nil || best.Chosen["where it goes in"] != "20 m east" || best.Chosen["which way it faces"] != "west" {
+		t.Fatalf("20 m east facing west, got %+v", best)
+	}
+	if best.MeanWh != 8.3 || best.SavesWh != 10.2 || best.Candidates != 3 {
+		t.Fatalf("8.3 Wh, 10.2 less than as planned facing east, of 3, got %+v", best)
+	}
+}

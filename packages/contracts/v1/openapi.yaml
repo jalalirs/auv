@@ -4590,6 +4590,21 @@ components:
                     meanWh: { type: number, nullable: true }
                     survived: { type: integer }
                     of: { type: integer }
+        cheapestScenario:
+          type: object
+          description: >
+            The whole combination of settings that did the job for least, of
+            the scenarios most of whose runs did it, and what it saves over the
+            dearest of them. For a launch sweep, the best place and heading
+            together. Absent when no scenario qualifies.
+          properties:
+            label: { type: string }
+            chosen: { type: object, additionalProperties: { type: string } }
+            meanWh: { type: number }
+            survived: { type: integer }
+            of: { type: integer }
+            savesWh: { type: number }
+            candidates: { type: integer }
         scenariosFlown:
           type: array
           description: >

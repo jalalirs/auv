@@ -202,9 +202,18 @@ function Answer({ found, flying }: { found: Findings; flying: number }): React.J
  *  vehicle goes in and which way it faces, this is the best launch. */
 function Cheapest({ found }: { found: Findings }): React.JSX.Element | null {
   const ranked = found.cheapest ?? [];
-  if (ranked.length === 0) return null;
+  const whole = found.cheapestScenario;
+  if (ranked.length === 0 && !whole) return null;
   return (
     <>
+      {whole ? (
+        <p className="lead" title="of the scenarios most of whose runs did the job, the one whose runs used least energy">
+          Cheapest way to do it: <b>{(whole.label ?? "").replaceAll(":", ": ")}</b>, {(whole.meanWh ?? 0).toFixed(1)} Wh a run
+          {(whole.candidates ?? 0) > 1
+            ? `, ${(whole.savesWh ?? 0).toFixed(1)} Wh less than the dearest of the ${whole.candidates} that did the job`
+            : ", the only scenario that did the job"}.
+        </p>
+      ) : null}
       {ranked.map((one) => {
         const costs = (one.settings ?? []).map((s) => s.meanWh).filter((w): w is number => typeof w === "number");
         const dearest = costs.length ? Math.max(...costs) : 1;

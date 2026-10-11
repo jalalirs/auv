@@ -440,6 +440,22 @@ type Findings struct {
 	// Each dimension's settings ranked by what the runs that did the job
 	// cost: the best launch, or the cheapest of anything else doubted.
 	Cheapest []Cheapest `json:"cheapest"`
+	// And the whole combination that did the job for least. Where it goes in
+	// and which way it faces are one decision, and a position that works
+	// facing one way and not the other has no setting to rank on its own.
+	CheapestScenario *CheapestScenario `json:"cheapestScenario,omitempty"`
+}
+
+// CheapestScenario is the combination of settings that did the job for least,
+// on the scenarios most of whose runs did it.
+type CheapestScenario struct {
+	Label      string            `json:"label"`
+	Chosen     map[string]string `json:"chosen"`
+	MeanWh     float64           `json:"meanWh"`
+	Survived   int               `json:"survived"`
+	Of         int               `json:"of"`
+	SavesWh    float64           `json:"savesWh"`
+	Candidates int               `json:"candidates"`
 }
 
 // MATTERS is the gap, between a dimension's best setting and its worst, at
@@ -1045,7 +1061,63 @@ func (s *Store) Findings(ctx context.Context, id string) (Findings, error) {
 	found.Repeats = one.Repeats
 	found.Cost = WhatItCosts(spent, true)
 	found.Cheapest = CheapestOf(flown)
+	found.CheapestScenario = CheapestScenarioOf(flown)
 	return found, nil
+}
+
+// CheapestScenarioOf is the scenario that did the job for least: of those most
+// of whose runs did it, the lowest mean energy over the runs that did, and what
+// it saves over the dearest of them. Nothing when no scenario qualifies.
+func CheapestScenarioOf(flown []Flown) *CheapestScenario {
+	type tally struct {
+		chosen       map[string]string
+		survived, of int
+		wh           float64
+		whRuns       int
+	}
+	by := map[string]*tally{}
+	for _, run := range flown {
+		t := by[run.Label]
+		if t == nil {
+			t = &tally{chosen: run.Chosen}
+			by[run.Label] = t
+		}
+		t.of++
+		if run.Survived {
+			t.survived++
+			if run.EnergyWh != nil {
+				t.wh += *run.EnergyWh
+				t.whRuns++
+			}
+		}
+	}
+	labels := make([]string, 0, len(by))
+	for label := range by {
+		labels = append(labels, label)
+	}
+	sort.Strings(labels)
+	var best *CheapestScenario
+	dearest, candidates := math.Inf(-1), 0
+	for _, label := range labels {
+		t := by[label]
+		if t.whRuns == 0 || 2*t.survived <= t.of {
+			continue
+		}
+		mean := t.wh / float64(t.whRuns)
+		candidates++
+		dearest = math.Max(dearest, mean)
+		if best == nil || mean < best.MeanWh {
+			best = &CheapestScenario{Label: label, Chosen: t.chosen, MeanWh: mean,
+				Survived: t.survived, Of: t.of}
+		}
+	}
+	if best == nil {
+		return nil
+	}
+	best.Candidates = candidates
+	best.SavesWh = math.Round((dearest-best.MeanWh)*1000) / 1000
+	best.MeanWh = math.Round(best.MeanWh*1000) / 1000
+	return best
 }
 
 // CheapestOf ranks each dimension's settings by the mean energy of the runs
