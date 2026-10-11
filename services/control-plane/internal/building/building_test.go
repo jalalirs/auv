@@ -41,3 +41,10 @@ func TestTheResultKeepsWhereThePlaceIsWeak(t *testing.T) {
 		t.Fatalf("%+v", result)
 	}
 }
+
+func TestARecordWithNaNInItIsStillRead(t *testing.T) {
+	result := resultOf([]byte(`{"from":{"depth":{"weak":{"errorM":{"median":2.1}}},"models":{"curve":{"rmsM":NaN,"x":[1, -Infinity]}}},"deepestM":30}`))
+	if result == nil || result["deepestM"] != 30.0 {
+		t.Fatalf("a record with NaN in it came back as %v", result)
+	}
+}

@@ -184,6 +184,10 @@ type Build struct {
 
 var safeName = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
+// notANumber finds the non-numbers Python's json writes, outside strings well
+// enough for a record whose strings never hold them.
+var notANumber = regexp.MustCompile(`([:\[,]\s*)(?:NaN|-?Infinity)\b`)
+
 // Start asks for a place to be built. orgID is the organisation the work and
 // the package's bytes belong to.
 func (b *Builder) Start(ctx context.Context, principalID, orgID string, city catalog.City, brief Brief) (Build, error) {
@@ -350,6 +354,17 @@ func (b *Builder) Watch(ctx context.Context, buildID string) (View, error) {
 		}
 		if out, ok := e.Detail["output"].(string); ok {
 			view.Said = out
+		}
+	}
+
+	if build.VersionID != "" && build.Result == nil {
+		// Recorded before its result could be read: read it now, from the
+		// version it made.
+		if result := b.resultFromVersion(ctx, build.VersionID); result != nil {
+			said, _ := json.Marshal(result)
+			if _, err := b.pool.Exec(ctx, `UPDATE catalog.build SET result = $2 WHERE id = $1`, build.ID, said); err == nil {
+				view.Result = result
+			}
 		}
 	}
 
@@ -570,7 +585,9 @@ func describe(brief Brief) string {
 // it is weak.
 func resultOf(site []byte) map[string]any {
 	var record map[string]any
-	if json.Unmarshal(site, &record) != nil {
+	// The places module writes NaN where a fit had nothing to say, which
+	// Python reads and JSON does not; read as null, which is what it means.
+	if json.Unmarshal(notANumber.ReplaceAll(site, []byte("${1}null")), &record) != nil {
 		return nil
 	}
 	result := map[string]any{}
@@ -585,4 +602,29 @@ func resultOf(site []byte) map[string]any {
 		}
 	}
 	return result
+}
+
+// resultFromVersion reads what a version's site.json says about where the
+// place is weak.
+func (b *Builder) resultFromVersion(ctx context.Context, versionID string) map[string]any {
+	var objectID string
+	if err := b.pool.QueryRow(ctx,
+		`SELECT object_id FROM catalog.version_object WHERE version_id = $1 AND path = 'site.json'`,
+		versionID).Scan(&objectID); err != nil {
+		return nil
+	}
+	object, err := b.objects.Object(ctx, objectID)
+	if err != nil {
+		return nil
+	}
+	body, err := b.objects.Open(ctx, object)
+	if err != nil {
+		return nil
+	}
+	defer body.Close()
+	site, err := io.ReadAll(io.LimitReader(body, 64<<20))
+	if err != nil {
+		return nil
+	}
+	return resultOf(site)
 }
