@@ -14,6 +14,7 @@ what they do between calls.
 from __future__ import annotations
 
 import json
+import re
 import math
 import os
 import pathlib
@@ -379,6 +380,14 @@ def find_scene(root: pathlib.Path) -> pathlib.Path | None:
 # in one is wrong in the other. When the camera meters properly this becomes a
 # real photometric conversion and stops being a compromise.
 LAMP_SCALE = 70_000.0
+
+
+def lamp_path(name: str) -> str:
+    """Where a lamp hangs in the stage. Its name is the vehicle package's
+    ("port-fore"), and a USD prim name takes letters, digits and underscores
+    only: the BlueROV2 Heavy's hyphens made every dive in it fail as it hung
+    the lamps, which the shell caught and then idled on for good."""
+    return "/World/Lamp_" + re.sub(r"[^A-Za-z0-9_]", "_", str(name))
 
 
 def lamp_nits(lumens: float, across_m: float) -> float:
@@ -2125,7 +2134,7 @@ class Dive:
             # left between them was the implicitly created scope in the middle,
             # which is a typeless prim this renderer's traversal apparently
             # does not go through.
-            light = UsdLux.RectLight.Define(stage, f"/World/Lamp_{name}")
+            light = UsdLux.RectLight.Define(stage, lamp_path(name))
             across = asked_for("IOCEAN_LAMP_SIZE", 0.08)
             light.CreateWidthAttr(across)
             light.CreateHeightAttr(across)
@@ -2205,7 +2214,7 @@ class Dive:
         # that is simply dark.
         where = []
         for name in self.lamps:
-            prim = stage.GetPrimAtPath(f"/World/Lamp_{name}")
+            prim = stage.GetPrimAtPath(lamp_path(name))
             if prim:
                 box = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(
                     Usd.TimeCode.Default())

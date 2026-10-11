@@ -213,8 +213,23 @@ class CoralCityShell(omni.ext.IExt):
         try:
             self._open()
         except Exception as exc:  # a shell that dies silently is worse than one that says so
-            carb.log_error(f"iocean could not open the dive: {exc}")
+            import traceback
+            carb.log_error("iocean could not open the dive: " + traceback.format_exc())
             self.hud.opened("this dive would not open", str(exc)[:120])
+            self._give_up(f"the dive would not open: {exc}")
+
+    def _give_up(self, why: str) -> None:
+        """A dive that cannot open says so and leaves.
+
+        It used to put the reason on the HUD and stay: Kit went on drawing an
+        empty viewport at a few hundred frames a second, the run stayed
+        running, and every BlueROV2 Heavy dive on 11 October sat there for
+        half an hour before anybody looked."""
+        self._say("failed", why=str(why)[:400])
+        try:
+            omni.kit.app.get_app().post_quit()
+        except Exception as exc:
+            carb.log_warn(f"iocean could not quit: {exc}")
 
     # ── opening ──────────────────────────────────────────────────────────────
 
@@ -230,12 +245,14 @@ class CoralCityShell(omni.ext.IExt):
         prepared = prepare(brief, self._say)
         if prepared is None:
             self.hud.opened("this dive is not runnable", "")
+            self._give_up("the dive is not runnable")
             return
         scene, body, allocator = prepared
 
         dive = Dive(brief, body, allocator, scene, self._say)
         if not dive.open(drawn=True):
             self.hud.opened("the place would not open", str(scene))
+            self._give_up("the place would not open")
             return
         dive.connect()
         self.dive = dive
