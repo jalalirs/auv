@@ -209,7 +209,7 @@ function Cheapest({ found }: { found: Findings }): React.JSX.Element | null {
         const costs = (one.settings ?? []).map((s) => s.meanWh).filter((w): w is number => typeof w === "number");
         const dearest = costs.length ? Math.max(...costs) : 1;
         return (
-          <div className="doubt-rates" key={one.dimension}>
+          <div className="doubt-rates by-energy" key={one.dimension}>
             <div className="doubt-head">
               <strong>{one.dimension}, by energy</strong>
               <span className="quiet">

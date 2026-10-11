@@ -19,6 +19,7 @@ import { Missions } from "../screens/Missions.js";
 import { Runs } from "../screens/Runs.js";
 import { LayoutEditor } from "../screens/Layout.js";
 import { BuildPlace } from "../screens/BuildPlace.js";
+import { Swept } from "../screens/Sweeps.js";
 
 const now = () => new Date().toISOString();
 let counter = 0;
@@ -85,7 +86,11 @@ const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString(
 const runOf = (id: string, name: string, h: number, extra: Doc = {}, vehicle = "veh_mini", place = "city_tank") => ({
   dive: `dive_${id}`, name, flownBy: "Harness", vehicleVersion: `${vehicle}-v1`, placeVersion: `${place}-v1`,
   run: { id, state: "succeeded", mode: "batch", requestedAt: hoursAgo(h), physicsVersion: 3,
-         outcome: { task: { name: "Waypoints", score: 0.92, done: true, energyWh: 0.709, seconds: 59.7 } }, ...extra },
+         outcome: { task: { name: "Waypoints", score: 0.92, done: true, energyWh: 0.709, seconds: 59.7,
+           ride: { effort: { meanShare: 0.21, peakShare: 0.87, flatOutShare: 0.02 },
+                   rollDeg: { typical: 1.1, worst: 4.2 }, pitchDeg: { typical: 2.3, worst: 9.6 },
+                   offLine: { thresholdM: 1, secondsOnTheLine: 48, secondsOff: 3.5, worstM: 1.4, meanM: 0.3 } } } },
+         ...extra },
 });
 const delay = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(v), 30));
 const said: string[] = [];
@@ -125,6 +130,20 @@ const platform = {
   sweepsOf: () => delay([{ id: "sweep_a", name: "Round the tank ~ October 4", createdAt: hoursAgo(2), runs: 6, flown: 4, flying: 2 }]),
   cancel: () => delay(undefined),
   startSweep: (_org: string, s: Doc) => { said.push(`sweep ${JSON.stringify(s)}`); return delay({ id: id("sweep") }); },
+  sweep: () => delay({ id: "sweep_a", name: "Best launch: pipeline landfall", createdAt: hoursAgo(2), runs: 6, flown: 6, flying: 0,
+                       repeats: 1, good: 0.8, doubts: {} }),
+  findings: () => delay({
+    scenarios: 6, flown: 6, flownRuns: 6, flying: 0, survived: 5, marginal: 0, repeats: 1, good: 0.8,
+    matters: [], madeNoDifference: ["which way it faces"], physics: [3],
+    cheapest: [
+      { dimension: "where it goes in", best: "20 m east", bestWh: 31.4, savesWh: 6.2, settings: [
+        { value: "as planned", meanWh: 35.9, survived: 2, of: 2 },
+        { value: "20 m north", meanWh: 37.6, survived: 1, of: 2 },
+        { value: "20 m east", meanWh: 31.4, survived: 2, of: 2 }] },
+      { dimension: "which way it faces", best: "east", bestWh: 33.0, savesWh: 1.9, settings: [
+        { value: "east", meanWh: 33.0, survived: 3, of: 3 },
+        { value: "west", meanWh: 34.9, survived: 2, of: 3 }] }],
+    scenariosFlown: [], runs: [] }),
 };
 // A build that walks through what a real one said, a step every second.
 const builtSteps = [
@@ -216,7 +235,7 @@ function Harness({ packages }: { packages: Packages }) {
     <div className="deck">
       <nav>
         <div className="here"><strong>harness</strong></div>
-        {["missions", "designer", "fly", "results", "layout", "build"].map((page) => (
+        {["missions", "designer", "fly", "results", "sweep", "layout", "build"].map((page) => (
           <a key={page} aria-current={where.page === page ? "page" : undefined} onClick={() => setWhere((w) => ({ ...w, page }))}>{page}</a>
         ))}
       </nav>
@@ -234,6 +253,8 @@ function Harness({ packages }: { packages: Packages }) {
                         onBack={() => setWhere((w) => ({ ...w, page: "missions" }))} />
         ) : where.page === "build" ? (
           <BuildPlace platform={p} held={held} onBack={() => said.push("back")} onOpen={(c) => said.push(`open ${c}`)} />
+        ) : where.page === "sweep" ? (
+          <Swept platform={p} sweep="sweep_a" onBack={() => said.push("back")} />
         ) : where.page === "results" ? (
           <Runs platform={p} held={held} onChanged={() => undefined}
                 onReplay={(d, r) => said.push(`replay ${d} ${r}`)} onSweep={(s) => said.push(`read sweep ${s}`)} />
