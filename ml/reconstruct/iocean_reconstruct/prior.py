@@ -50,6 +50,7 @@ PRIOR_M = 0.08
 REACH_M = 0.06
 
 MASSIVE = ("massive", "porites", "meandering")
+CLASS_SAND = 69                      # the cover model's id for sand, which synthetic/reef.py labels with
 GROUND = ("sand", "rubble")
 
 
@@ -204,7 +205,39 @@ def colonies_of(points: np.ndarray, eps: float = 0.06, least: int = 400) -> list
     flat = np.c_[points[:, :2], np.zeros(len(points))]
     cloud = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(flat))
     labels = np.asarray(cloud.cluster_dbscan(eps=eps, min_points=10))
-    return [np.flatnonzero(labels == k) for k in range(labels.max() + 1) if (labels == k).sum() >= least]
+    out = []
+    for k in range(labels.max() + 1):
+        which = np.flatnonzero(labels == k)
+        if len(which) < least:
+            continue
+        out += [which[part] for part in split_at_peaks(points[which]) if len(part) >= least]
+    return out
+
+
+def split_at_peaks(points: np.ndarray, cell_m: float = 0.02, apart_m: float = 0.15,
+                   rise_m: float = 0.04) -> list[np.ndarray]:
+    """Colonies that touch, seen from above, are one group to a clustering by
+    distance; each is a hump of its own. The humps' tops are found on a height
+    grid (a top is the highest cell within `apart_m` and stands `rise_m` over
+    the lowest cell around it) and every point goes to the nearest top."""
+    lo = points[:, :2].min(0)
+    cells = np.floor((points[:, :2] - lo) / cell_m).astype(int)
+    shape = cells.max(0) + 1
+    top = np.full(shape, -np.inf)
+    np.maximum.at(top, (cells[:, 0], cells[:, 1]), points[:, 2])
+    r = max(1, int(round(apart_m / cell_m)))
+    filled = np.where(np.isfinite(top), top, np.nan)
+    peaks = []
+    for i, j in zip(*np.nonzero(np.isfinite(top))):
+        window = filled[max(0, i - r):i + r + 1, max(0, j - r):j + r + 1]
+        if top[i, j] >= np.nanmax(window) and top[i, j] - np.nanmin(window) >= rise_m:
+            if all((i - a) ** 2 + (j - b) ** 2 > r * r for a, b in peaks):
+                peaks.append((i, j))
+    if len(peaks) <= 1:
+        return [np.arange(len(points))]
+    centres = (np.array(peaks) + 0.5) * cell_m + lo
+    nearest = np.argmin(((points[:, None, :2] - centres[None]) ** 2).sum(-1), axis=1)
+    return [np.flatnonzero(nearest == k) for k in range(len(peaks))]
 
 
 # What a massive colony's shape is, before any one is measured: how tall it
@@ -268,6 +301,35 @@ def predict(template: tuple, colony: np.ndarray, ground_z: float, views: np.ndar
             "height": {"measuredM": round(measured, 3), "measuredSigmaM": sigma_measured, "priorM": round(prior_h, 3),
                        "priorSigmaM": round(sigma_prior, 3), "fusedM": round(h, 3), "fusedSigmaM": round(sigma_h, 3),
                        "topSeen": bool(seen_top)}}
+
+
+def best_template(shelf: list[pathlib.Path], region: np.ndarray, ground_z: float, views: np.ndarray,
+                  cache: dict, most: int = 3000, seed: int = 0) -> tuple[dict, pathlib.Path, list]:
+    """Of the library's colonies, the one that, placed and sized to this
+    colony, lies closest to the points the video measured on it, each tried
+    the way the footprint says and turned half round: which prior, before how
+    much of it."""
+    import open3d as o3d
+
+    rng = np.random.default_rng(seed)
+    pts = region[rng.choice(len(region), min(most, len(region)), replace=False)]
+    tried = []
+    best = None
+    for path in shelf:
+        template = cache.setdefault(path, read_library_ply(path))
+        for half_turn in (False, True):
+            v, f, c = template
+            if half_turn:
+                v = v * [-1, -1, 1]
+            prediction = predict((v, f, c), region, ground_z, views)
+            scene = o3d.t.geometry.RaycastingScene()
+            scene.add_triangles(o3d.core.Tensor(prediction["vertices"].astype("float32")),
+                                o3d.core.Tensor(prediction["faces"].astype("uint32")))
+            residual = float(np.median(scene.compute_distance(o3d.core.Tensor(pts.astype("float32"))).numpy()))
+            tried.append((path.name, half_turn, round(residual, 4)))
+            if best is None or residual < best[0]:
+                best = (residual, prediction, path)
+    return best[1] | {"fitResidualM": round(best[0], 4)}, best[2], sorted(tried, key=lambda x: x[2])[:3]
 
 
 def blend(prediction: dict, seen_v: np.ndarray, seen_f: np.ndarray, seen_c: np.ndarray,
@@ -377,7 +439,48 @@ def depth_seen(meshes: list[tuple[np.ndarray, np.ndarray]], frame: dict, to_mode
     return np.where(np.isfinite(hit), hit, np.nan), us, vs
 
 
-def fuse(run: pathlib.Path, library: pathlib.Path, out: pathlib.Path | None = None) -> dict:
+def standing(metres: np.ndarray, cell_m: float = 0.1, span_m: float = 1.0, above_m: float = 0.08) -> np.ndarray:
+    """Which points stand above the seabed around them: the seabed taken as
+    the low points (the tenth percentile of each cell, then the lowest within
+    `span_m`), and a point standing when it is `above_m` over that."""
+    lo = metres[:, :2].min(0)
+    cells = np.floor((metres[:, :2] - lo) / cell_m).astype(int)
+    shape = cells.max(0) + 1
+    order = np.lexsort((metres[:, 2], cells[:, 1], cells[:, 0]))
+    floor = np.full(shape, np.nan)
+    keys = cells[order]
+    starts = np.r_[0, np.flatnonzero((np.diff(keys, axis=0) != 0).any(1)) + 1, len(order)]
+    for a, b in zip(starts[:-1], starts[1:]):
+        floor[tuple(keys[a])] = metres[order[a + max(0, int((b - a) * 0.1) - 1)], 2]
+    # The seabed under each cell: a plane through the low cells around it,
+    # fitted, then fitted again to the cells under the first fit, so a colony
+    # in the window does not lift it and a slope is not read as standing.
+    r = max(1, int(round(span_m / cell_m / 2)))
+    ground = np.full(shape, np.nan)
+    for i in range(shape[0]):
+        for j in range(shape[1]):
+            a0, b0 = max(0, i - r), max(0, j - r)
+            window = floor[a0:i + r + 1, b0:j + r + 1]
+            ii, jj = np.nonzero(np.isfinite(window))
+            if len(ii) < 4:
+                if len(ii):
+                    ground[i, j] = np.nanmin(window)
+                continue
+            zz = window[ii, jj]
+            design = np.c_[ii + a0 - i, jj + b0 - j, np.ones(len(ii))]
+            keep = np.ones(len(zz), bool)
+            for _ in range(3):
+                coef, *_ = np.linalg.lstsq(design[keep], zz[keep], rcond=None)
+                below = zz <= design @ coef + 0.01
+                if below.sum() < 4 or (below == keep).all():
+                    break
+                keep = below
+            ground[i, j] = coef[2]
+    return metres[:, 2] - ground[cells[:, 0], cells[:, 1]] > above_m
+
+
+def fuse(run: pathlib.Path, library: pathlib.Path, out: pathlib.Path | None = None,
+         by: str = "labels") -> dict:
     """The whole of it, for one run; returns what was found and scored."""
     from PIL import Image
 
@@ -420,12 +523,18 @@ def fuse(run: pathlib.Path, library: pathlib.Path, out: pathlib.Path | None = No
     print(json.dumps({"step": "labelled", "massive": int((group == 1).sum()), "ground": int((group == 2).sum()),
                       "other": int((group == 0).sum()), "unlabelled": int((group == 255).sum())}), flush=True)
 
-    # 3. Colonies.
+    # 3. Colonies: the points labelled massive coral, or (by="shape", where
+    # the labels cannot be trusted, as on a smoothed model's texture)
+    # everything standing above the seabed that is not labelled ground.
+    if by == "shape":
+        group = np.where(standing(metres) & (group != 2), 1, np.where(group == 1, 0, group)).astype(np.uint8)
+        print(json.dumps({"step": "standing", "points": int((group == 1).sum())}), flush=True)
     massive = np.flatnonzero(group == 1)
     ground = np.flatnonzero(group == 2)
     found = colonies_of(metres[massive])
     library_said = json.loads((library / "library.json").read_text())
-    shelf = [library / e["file"] for e in library_said["kinds"]["massive"]]
+    shelf = [library / e["file"] for kind in ("massive", "brain") for e in library_said["kinds"].get(kind, [])]
+    templates: dict = {}
 
     from .patch import write_usd  # noqa: F401  (the same writer the patch uses, kept at hand)
     import open3d as o3d
@@ -449,8 +558,7 @@ def fuse(run: pathlib.Path, library: pathlib.Path, out: pathlib.Path | None = No
         ground_z = (float(np.median(metres[ground[np.asarray(idx)], 2])) if n >= 20
                     else float(np.percentile(metres[labelled, 2], 5)))
         region = region_of(metres, group, labelled, ground_z)
-        template = read_library_ply(shelf[k % len(shelf)])
-        prior = predict(template, metres[region], ground_z, views[region])
+        prior, chosen, runners_up = best_template(shelf, metres[region], ground_z, views[region], templates)
         # The seen part of the reconstruction over this colony.
         r = max(prior["acrossM"]) / 2 + 0.05
         inside = (np.linalg.norm(raw_v[:, :2] - prior["centre"], axis=1) < r) & (raw_v[:, 2] > ground_z + 0.01)
@@ -471,7 +579,8 @@ def fuse(run: pathlib.Path, library: pathlib.Path, out: pathlib.Path | None = No
         colonies.append({k2: post[k2] for k2 in ("centre", "yawDeg", "acrossM", "heightM", "groundZ",
                                                   "measuredShare", "meanShiftM", "height")}
                         | {"points": int(len(region)), "labelled": int(len(labelled)),
-                           "template": shelf[k % len(shelf)].name})
+                           "template": chosen.name, "fitResidualM": prior["fitResidualM"],
+                           "nextBest": runners_up[1:]})
         _write_ply(out / f"colony-{k:03d}.ply", post["vertices"], post["faces"], post["colours"])
         _write_ply(out / f"colony-{k:03d}-prior.ply", prior["vertices"], prior["faces"], prior["colours"])
         np.save(out / f"colony-{k:03d}-posterior.npy", post["posteriorM"].astype("float32"))
@@ -686,10 +795,35 @@ def against_truth(run: pathlib.Path, near_m: float = 0.02) -> dict:
     tv, tf, tclass, tcolony = read_truth(run / "truth.ply")
     scene = o3d.t.geometry.RaycastingScene()
     scene.add_triangles(o3d.core.Tensor(tv.astype("float32")), o3d.core.Tensor(tf.astype("uint32")))
-    # Which colony vertices a frame saw: unoccluded from its centre, in front
-    # of it and inside its picture.
-    sample = np.flatnonzero(tcolony >= 0)[::3]
+    # What can be known at all: a colony's surface that faces out, not its
+    # base resting on the sand or the underside of an overhang.
+    sand_faces = tf[(tclass[tf] == CLASS_SAND).all(1)]
+    sand = o3d.t.geometry.RaycastingScene()
+    sand.add_triangles(o3d.core.Tensor(tv.astype("float32")), o3d.core.Tensor(sand_faces.astype("uint32")))
+    mesh = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(tv), o3d.utility.Vector3iVector(tf))
+    mesh.compute_vertex_normals()
+    normal_z = np.asarray(mesh.vertex_normals)[:, 2]
+    candidates = np.flatnonzero(tcolony >= 0)[::3]
+    down = np.c_[tv[candidates, :2], np.full(len(candidates), 10.0), np.zeros((len(candidates), 2)),
+                 -np.ones(len(candidates))]
+    ground_under = 10.0 - sand.cast_rays(o3d.core.Tensor(down.astype("float32")))["t_hit"].numpy()
+    knowable = (tv[candidates, 2] > ground_under + 0.03) & (normal_z[candidates] > -0.2)
+    # Which colonies were found: a true colony is matched by a found one
+    # whose centre stands within its footprint.
+    said = json.loads((run / "prior" / "fused.json").read_text())
+    found_at = np.array([to_truth(np.array([[*c["centre"], c["groundZ"]]]))[0, :2] for c in said["colonies"]]) \
+        if said["colonies"] else np.zeros((0, 2))
+    matched = set()
+    for c in told["colonies"]:
+        k = c["id"]
+        here = tv[tcolony == k]
+        radius = max(float(np.abs(here[:, :2] - [c["x"], c["y"]]).max()), 0.15)
+        if len(found_at) and np.min(np.linalg.norm(found_at - [c["x"], c["y"]], axis=1)) < radius:
+            matched.add(k)
+    sample = candidates[knowable & np.isin(tcolony[candidates], list(matched))]
     pts = tv[sample]
+    # Which of it a frame saw: unoccluded from its centre, in front of it and
+    # inside its picture.
     seen_by = np.zeros(len(sample), bool)
     w, h, focal = told["width"], told["height"], told["focalPx"]
     for c in told["frames"]:
@@ -709,9 +843,12 @@ def against_truth(run: pathlib.Path, near_m: float = 0.02) -> dict:
         hit = scene.cast_rays(rays)["t_hit"].numpy()
         seen_by[np.flatnonzero(inside)[np.abs(hit - dist) < 0.01]] = True
 
-    said = json.loads((run / "prior" / "fused.json").read_text())
     out = {"cameraFitResidualM": round(residual, 4), "scaleModelToMetres": round(s, 5),
-           "colonyVertices": int(len(sample)), "seenShare": round(float(seen_by.mean()), 3), "versions": {}}
+           "trueColonies": len(told["colonies"]), "found": len(said["colonies"]), "matched": len(matched),
+           "matchedKinds": sorted(c["kind"] for c in told["colonies"] if c["id"] in matched),
+           "missedKinds": sorted(c["kind"] for c in told["colonies"] if c["id"] not in matched),
+           "scoredVertices": int(len(sample)), "knowableShare": round(float(knowable.mean()), 3),
+           "seenShare": round(float(seen_by.mean()), 3), "versions": {}}
     for key, suffix in (("reconstruction alone", "-raw"), ("library alone", "-prior"), ("fused", "")):
         version = o3d.t.geometry.RaycastingScene()
         added = 0
@@ -733,4 +870,95 @@ def against_truth(run: pathlib.Path, near_m: float = 0.02) -> dict:
                              f"within{int(near_m * 100)}cm": round(float((distance[mask] < near_m).mean()), 3)}
         out["versions"][key] = row
     (run / "prior" / "truth.json").write_text(json.dumps(out, indent=1))
+    return out
+
+
+def against_mesh(run: pathlib.Path, near_m: float = 0.02) -> dict:
+    """The three versions against a real reef's mesh (truth.obj, rendered by
+    synthetic/from_model.py), over each colony found: the true surface within
+    its footprint and above the ground around it, split by whether the
+    rendered camera path could see it."""
+    import open3d as o3d
+
+    told = json.loads((run / "cameras.json").read_text())
+    truth_centres = {c["name"]: np.array(c["centre"]) for c in told["frames"]}
+    _, frames = read_cameras(run / "colmap" / "dense" / "sparse-text")
+    names = [f["name"] for f in frames if f["name"] in truth_centres]
+    model_centres = np.array([f["centre"] for f in frames if f["name"] in truth_centres])
+    s, rot, shift = similarity(model_centres, np.array([truth_centres[n] for n in names]))
+    residual = float(np.median(np.linalg.norm(s * model_centres @ rot.T + shift
+                                              - np.array([truth_centres[n] for n in names]), axis=1)))
+    dense = run / "colmap" / "dense"
+    points, _, seen = read_fused(dense)
+    use = set(range(len(frames))) - set(range(0, len(frames), HELD_EVERY))
+    views = np.array([sum(1 for f in sv if int(f) in use) for sv in seen])
+    points = points[views >= 2]
+    scale = float(json.loads((run / "scale.json").read_text()).get("scale") or 1.0)
+    from .patch import frame_of as fit
+    centre, rotation, _ = fit(points, np.array([f["centre"] for f in frames]))
+    to_truth = lambda p: s * (((np.asarray(p) / scale) @ rotation + centre) @ rot.T) + shift
+
+    mesh = o3d.io.read_triangle_mesh(str(run / "truth.obj"))
+    mesh.compute_vertex_normals()
+    tv, tf = np.asarray(mesh.vertices), np.asarray(mesh.triangles)
+    normal_z = np.asarray(mesh.vertex_normals)[:, 2]
+    scene = o3d.t.geometry.RaycastingScene()
+    scene.add_triangles(o3d.core.Tensor(tv.astype("float32")), o3d.core.Tensor(tf.astype("uint32")))
+
+    said = json.loads((run / "prior" / "fused.json").read_text())
+    picked = []
+    for k, c in enumerate(said["colonies"]):
+        middle = to_truth(np.array([[*c["centre"], c["groundZ"]]]))[0]
+        r = max(c["acrossM"]) / 2 + 0.1
+        near = np.flatnonzero(np.linalg.norm(tv[:, :2] - middle[:2], axis=1) < r)
+        ring = np.flatnonzero((np.linalg.norm(tv[:, :2] - middle[:2], axis=1) > r) &
+                              (np.linalg.norm(tv[:, :2] - middle[:2], axis=1) < r + 0.4))
+        ground = float(np.percentile(tv[ring, 2], 30)) if len(ring) > 50 else middle[2]
+        picked.append(near[(tv[near, 2] > ground + 0.03) & (normal_z[near] > -0.2)])
+    sample = np.unique(np.concatenate(picked)) if picked else np.zeros(0, int)
+    sample = sample[::max(1, len(sample) // 60000)]
+    pts = tv[sample]
+    seen_by = np.zeros(len(sample), bool)
+    w, h, focal = told["width"], told["height"], told["focalPx"]
+    for c in told["frames"]:
+        m = np.array(c["world_from_camera"])
+        cam = (pts - m[:3, 3]) @ m[:3, :3]
+        z = -cam[:, 2]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            u = focal * cam[:, 0] / z + w / 2
+            v = -focal * cam[:, 1] / z + h / 2
+        inside = (z > 0.1) & (u >= 0) & (u < w) & (v >= 0) & (v < h)
+        if not inside.any():
+            continue
+        origin = np.asarray(c["centre"])
+        d = pts[inside] - origin
+        dist = np.linalg.norm(d, axis=1)
+        rays = o3d.core.Tensor(np.c_[np.broadcast_to(origin, d.shape), d / dist[:, None]].astype("float32"))
+        hit = scene.cast_rays(rays)["t_hit"].numpy()
+        seen_by[np.flatnonzero(inside)[np.abs(hit - dist) < 0.01]] = True
+
+    out = {"cameraFitResidualM": round(residual, 4), "colonies": len(said["colonies"]),
+           "scoredVertices": int(len(sample)), "seenShare": round(float(seen_by.mean()), 3) if len(sample) else None,
+           "versions": {}}
+    for key, suffix in (("reconstruction alone", "-raw"), ("library alone", "-prior"), ("fused", "")):
+        version = o3d.t.geometry.RaycastingScene()
+        added = 0
+        for k in range(len(said["colonies"])):
+            path = run / "prior" / f"colony-{k:03d}{suffix}.ply"
+            if not path.is_file():
+                continue
+            v, f, _ = read_library_ply(path)
+            version.add_triangles(o3d.core.Tensor(to_truth(v).astype("float32")),
+                                  o3d.core.Tensor(f.astype("uint32")))
+            added += 1
+        if not added or not len(sample):
+            continue
+        distance = version.compute_distance(o3d.core.Tensor(pts.astype("float32"))).numpy()
+        row = {}
+        for part, mask in (("seen", seen_by), ("hidden", ~seen_by)):
+            if mask.any():
+                row[part] = {"points": int(mask.sum()), "medianM": round(float(np.median(distance[mask])), 4),
+                             f"within{int(near_m * 100)}cm": round(float((distance[mask] < near_m).mean()), 3)}
+        out["versions"][key] = row
+    (run / "prior" / "mesh.json").write_text(json.dumps(out, indent=1))
     return out

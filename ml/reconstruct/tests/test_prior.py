@@ -106,3 +106,23 @@ def test_a_reconstruction_is_lined_up_with_the_scene_by_its_cameras():
     s, r, t = prior.similarity(model, truth)
     assert abs(s - 1.72) < 1e-6
     assert np.allclose(s * model @ r.T + t, truth, atol=1e-6)
+
+
+def test_two_colonies_that_touch_are_split_at_their_tops():
+    rng = np.random.default_rng(4)
+    xy = rng.uniform(-0.5, 0.5, (8000, 2)) * [1.0, 0.3]
+    z = np.maximum(0.3 - 2.0 * np.hypot(xy[:, 0] + 0.25, xy[:, 1]), 0) + np.maximum(0.25 - 2.0 * np.hypot(xy[:, 0] - 0.25, xy[:, 1]), 0)
+    parts = prior.split_at_peaks(np.c_[xy, z])
+    assert len(parts) == 2
+    left = min(parts, key=lambda p: xy[p, 0].mean())
+    assert (xy[left, 0] < 0.05).mean() > 0.9
+
+
+def test_what_stands_above_the_seabed_is_found_on_a_slope():
+    rng = np.random.default_rng(5)
+    xy = rng.uniform(0, 4, (20000, 2))
+    z = 0.2 * xy[:, 0] + rng.normal(0, 0.01, len(xy))          # a sloping seabed
+    bump = np.hypot(xy[:, 0] - 2, xy[:, 1] - 2) < 0.3
+    z[bump] += 0.25
+    found = prior.standing(np.c_[xy, z])
+    assert found[bump].mean() > 0.8 and found[~bump].mean() < 0.05

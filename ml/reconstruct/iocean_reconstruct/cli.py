@@ -81,11 +81,12 @@ def _fuse(cfg, a) -> int:
         picture(config.run_dir(a.name), a.picture, target)
         print(json.dumps({"picture": str(target)}))
         return 0
-    said = fuse(config.run_dir(a.name), pathlib.Path(a.library))
+    said = fuse(config.run_dir(a.name), pathlib.Path(a.library), by=a.colonies_by)
     if a.truth:
-        from .prior import against_truth
+        from .prior import against_mesh, against_truth
 
-        print(json.dumps(against_truth(config.run_dir(a.name)), indent=1))
+        run = config.run_dir(a.name)
+        print(json.dumps(against_truth(run) if (run / "truth.ply").is_file() else against_mesh(run), indent=1))
     print(json.dumps({k: said[k] for k in ("points", "massivePoints", "groundPoints", "scores", "best", "seconds")}
                      | {"colonies": len(said["colonies"])}, indent=1))
     return 0
@@ -110,6 +111,8 @@ def main(argv: list[str] | None = None) -> int:
     fu.add_argument("--library", required=True, help="a coral library folder (library.json and its colonies)")
     fu.add_argument("--picture", type=int, help="only draw held-back frame N beside the three versions")
     fu.add_argument("--truth", action="store_true", help="also score against truth.ply (a synthetic run)")
+    fu.add_argument("--colonies-by", default="labels", choices=["labels", "shape"],
+                    help="find colonies by the cover model's labels, or by what stands above the seabed")
     a = ap.parse_args(argv)
     cfg = config.load(a.config)
     return {"video": _video, "patch": _patch, "scale": _scale, "fuse": _fuse}[a.command](cfg, a)
