@@ -55,6 +55,10 @@ class FollowLine(Task):
         # the clock runs out for the few metres seen badly on the way down.
         self.far_end: int | None = None
 
+    def planned_line(self):
+        # The line itself, flown at its offset to one side.
+        return None if self.line is None else (self.line[:, :2], abs(self.offset))
+
     def judge(self, elapsed, position, heading, floor) -> None:
         if self.line is not None:
             flat = np.hypot(self.line[:, 0] - position[0], self.line[:, 1] - position[1])

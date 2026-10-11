@@ -23,6 +23,8 @@ import math
 
 import numpy as np
 
+from .ride import Ride
+
 
 def wrap(angle: float) -> float:
     return (angle + math.pi) % (2 * math.pi) - math.pi
@@ -92,6 +94,8 @@ class Task:
         self.effort = 0.0
         self.samples = 0
         self.done = False
+        # How it was flown, beside whether it did the job (tasks/ride.py).
+        self.ride = Ride()
         self.believed: np.ndarray | None = None
         # Whether the Doppler log has the bottom, when anybody told us.
         # Handed down rather than worked out: the navigation knows the log's
@@ -103,12 +107,13 @@ class Task:
     # ── what every task shares ───────────────────────────────────────────────
 
     def step(self, t: float, position, heading: float, floor: float | None, commands,
-             believed=None, locked=None) -> None:
+             believed=None, locked=None, attitude=None) -> None:
         if self.started_t is None:
             self.started_t = t
         self.t = t
         self.samples += 1
         self.effort += float(np.mean(np.abs(np.asarray(commands, dtype=float)))) if len(commands) else 0.0
+        self.ride.step(t, position, commands, attitude=attitude, line=self.planned_line())
         # Where the vehicle thinks it is, for the few tasks that need to know.
         # Kept on the task rather than added to every `judge` signature: a task
         # is scored against the truth and that is the rule, but a task that
@@ -135,6 +140,12 @@ class Task:
     def geometry(self) -> dict:
         """What to draw on the chart: points, a line, a rectangle, in world xy."""
         return {}
+
+    def planned_line(self):
+        """The line this task is flown along, as (points, offset), for a task
+        that runs along one; None for every other. The ride (tasks/ride.py)
+        counts the time spent more than a metre off it."""
+        return None
 
     def goal(self) -> dict:
         """What this task wants, in the world's own coordinates. Not how.
@@ -173,7 +184,7 @@ class Task:
         said = {"kind": self.kind, "name": self.name, "score": round(self.score(), 3),
                 "done": self.done, "failed": self.failed(), "seconds": round(self.elapsed(), 1),
                 "thrusterEffort": round(self.effort / max(1, self.samples), 3),
-                "achieved": self.detail()}
+                "achieved": self.detail(), "ride": self.ride.said()}
         # Pointed at something: which thing, so a result can be read against
         # the arrangement it was flown in rather than against a bare score.
         if self.over is not None:

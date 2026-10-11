@@ -76,7 +76,10 @@ class TaskingSystem(System):
                   believed=None if navigator is None else navigator.believed,
                   # Whether the log has the bottom: a descent is scored partly
                   # on how much of it was flown blind.
-                  locked=None if navigator is None else navigator.bottom_lock)
+                  locked=None if navigator is None else navigator.bottom_lock,
+                  # Roll and pitch, for the ride (tasks/ride.py).
+                  attitude=(float(np.arctan2(v.rotation[2, 1], v.rotation[2, 2])),
+                            float(-np.arcsin(np.clip(v.rotation[2, 0], -1.0, 1.0)))))
 
     # ── plan ─────────────────────────────────────────────────────────────────
 

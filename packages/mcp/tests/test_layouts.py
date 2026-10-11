@@ -347,3 +347,23 @@ def test_what_the_dive_did_to_the_reef_comes_back_marked():
 
 def test_a_run_from_before_the_reef_was_alive_has_no_reef_section():
     assert "reef" not in tools.dives_result(Scored(), "dive_1")
+
+
+class Ridden(Scored):
+    def runs(self, dive):
+        run = Scored.runs(self, dive)[0]
+        run["outcome"]["task"]["ride"] = {"effort": {"meanShare": 0.21, "peakShare": 0.9, "flatOutShare": 0.0},
+                                          "rollDeg": {"typical": 1.2, "worst": 4.0},
+                                          "offLine": {"secondsOff": 3.0, "worstM": 1.4}}
+        return [run]
+
+
+def test_how_a_run_was_flown_comes_back_marked_derived():
+    said = tools.dives_result(Ridden(), "dive_1")
+    assert said["ride"]["kind"] == "derived"
+    assert said["ride"]["value"]["offLine"]["worstM"] == 1.4
+    assert said["ride"]["value"] and "thrusters" in said["ride"]["from"]
+
+
+def test_a_run_from_before_the_ride_card_says_so_rather_than_nothing():
+    assert tools.dives_result(Scored(), "dive_1")["ride"]["unknown"]

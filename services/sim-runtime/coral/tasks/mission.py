@@ -42,13 +42,14 @@ class Mission(Task):
         return self.stages[self.at] if self.at < len(self.stages) else None
 
     def step(self, t, position, heading, floor, commands, believed=None,
-             locked=None) -> None:
+             locked=None, attitude=None) -> None:
         # The mission's own clock runs; the stage's clock starts when it does.
         if self.started_t is None:
             self.started_t = t
         self.t = t
         self.samples += 1
         self.effort += float(np.mean(np.abs(np.asarray(commands, dtype=float)))) if len(commands) else 0.0
+        self.ride.step(t, position, commands, attitude=attitude, line=self.planned_line())
         stage = self.stage
         if stage is None or self.done:
             self.done = True
@@ -57,7 +58,7 @@ class Mission(Task):
         # something needs to know when the vehicle *believed* it had arrived,
         # and a mission is only a way of running stages.
         stage.step(t, position, heading, floor, commands, believed=believed,
-                   locked=locked)
+                   locked=locked, attitude=attitude)
         if stage.done:
             self.finished.append(stage.result())
             if stage.failed() and stage.stops_a_mission:
@@ -98,6 +99,10 @@ class Mission(Task):
     def geometry(self) -> dict:
         stage = self.stage
         return {} if stage is None else stage.geometry()
+
+    def planned_line(self):
+        stage = self.stage
+        return None if stage is None or self.done else stage.planned_line()
 
     def goal(self) -> dict:
         stage = self.stage

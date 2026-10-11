@@ -211,6 +211,14 @@ class Transect(Task):
         """Where the line begins: where this leg did, once it has."""
         return self.began_at[:2] if self.from_at is None else self.from_at
 
+    def planned_line(self):
+        # Only once the leg has begun: until then the vehicle is getting to
+        # the line, not flying it.
+        if self.from_at is None:
+            return None
+        start = self.starts_at()
+        return np.array([start, start + self.ahead_xy * self.length]), 0.0
+
     def geometry(self) -> dict:
         start = self.starts_at()
         end = start + self.ahead_xy * self.length

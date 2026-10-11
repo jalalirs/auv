@@ -241,6 +241,42 @@ function Result({ outcome }: { outcome: Record<string, unknown> | undefined }): 
             ? ` (${(fix.shareOfDistance * 100).toFixed(1)}% of the way run)` : ""}
         </span>
       ) : null}
+      <Ride ride={(outcome?.["task"] as { ride?: RideSaid } | undefined)?.ride} />
+    </span>
+  );
+}
+
+/** How the run was flown, as the runtime's ride card says (tasks/ride.py). */
+interface RideSaid {
+  effort?: { meanShare?: number; peakShare?: number; flatOutShare?: number };
+  rollDeg?: { typical?: number; worst?: number };
+  pitchDeg?: { typical?: number; worst?: number };
+  offLine?: { secondsOff?: number; secondsOnTheLine?: number; worstM?: number; thresholdM?: number };
+}
+
+/** Effort, roll and pitch, and time off the line, beside the score: two runs
+ *  that both scored 100% can be one flown on a quarter of its thrust, level
+ *  and on the line, and one flat out, rolling and wandering. */
+function Ride({ ride }: { ride: RideSaid | undefined }): React.JSX.Element | null {
+  if (ride === undefined) return null;
+  const parts: string[] = [];
+  if (typeof ride.effort?.meanShare === "number") {
+    parts.push(`${(ride.effort.meanShare * 100).toFixed(0)}% thrust`
+      + (ride.effort.flatOutShare ? `, flat out ${(ride.effort.flatOutShare * 100).toFixed(0)}% of the time` : ""));
+  }
+  const worst = Math.max(ride.rollDeg?.worst ?? 0, ride.pitchDeg?.worst ?? 0);
+  if (ride.rollDeg !== undefined) parts.push(`tilted up to ${worst.toFixed(0)}°`);
+  if (ride.offLine !== undefined && typeof ride.offLine.secondsOff === "number") {
+    parts.push(ride.offLine.secondsOff > 0
+      ? `${ride.offLine.secondsOff.toFixed(0)} s off the line, ${(ride.offLine.worstM ?? 0).toFixed(1)} m at worst`
+      : "on the line throughout");
+  }
+  if (parts.length === 0) return null;
+  return (
+    <span className="quiet" title={"How it was flown, from the simulator's own state: the thrusters' mean command"
+      + " as a share of full, the worst roll or pitch, and for a task flown along a line, the time spent more than"
+      + ` ${ride.offLine?.thresholdM ?? 1} m off it once it had come onto it`}>
+      {" · "}{parts.join(" · ")}
     </span>
   );
 }

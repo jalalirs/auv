@@ -295,6 +295,12 @@ def dives_result(platform: Platform, dive_id: str, run_id: str | None = None) ->
         "flownBy": (task.get("flownBy") or {}).get("mostly"),
         "seconds": task.get("seconds"),
         "energyWh": task.get("energyWh"),
+        # How it was flown, beside whether it did the job: effort, roll and
+        # pitch, and time off the line for a task flown along one.
+        "ride": (said(task["ride"], DERIVED,
+                      "the simulator's own state, step by step: the thrusters' commands, the "
+                      "vehicle's roll and pitch, and its distance from the line the task is flown along")
+                 if task.get("ride") else unknown("this run was flown before results said how it was flown")),
         "struck": outcome.get("hit"),
         **({"navigation": {"aiding": navigation.get("aiding"), "fixFrom": navigation.get("fixFrom"),
                            "driftM": navigation.get("driftM"), "travelledM": navigation.get("travelledM")}}

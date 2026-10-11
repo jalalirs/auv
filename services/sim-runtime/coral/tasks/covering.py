@@ -414,6 +414,9 @@ class Section(Task):
         return {"path": [{"x": float(self.began_at[0]), "y": float(self.began_at[1])},
                          {"x": float(self.toward[0]), "y": float(self.toward[1])}]}
 
+    def planned_line(self):
+        return np.array([self.began_at[:2], self.toward[:2]]), 0.0
+
     def goal(self) -> dict:
         return {"kind": "section", "to": [float(v) for v in self.toward[:2]],
                 "bandM": [self.shallow, self.deep]}
