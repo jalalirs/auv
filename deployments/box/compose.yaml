@@ -158,10 +158,6 @@ services:
     environment:
       IOCEAN_PLATFORM: http://control-plane:8080
       IOCEAN_RUNTIME_VERSION: ${IOCEAN_RUNTIME_VERSION:-isaac-6.0.1+oceansim}
-      # The NASA Earthdata token a place build fetches the laser altimeter's
-      # depths with, handed to place builds only. Empty: builds leave ICESat-2
-      # out and say so.
-      NASA_TOKEN: ${NASA_TOKEN:-}
     ports:
       - "${IOCEAN_BIND_ADDRESS:-127.0.0.1}:${IOCEAN_MCP_PORT:-18083}:8080"
     depends_on:
@@ -273,6 +269,10 @@ services:
       # What a dive is simulated in. A property of this host rather than of the
       # platform: what it has, and what its GPUs can run.
       IOCEAN_SIM_IMAGE: ${IOCEAN_SIM_IMAGE:-127.0.0.1:18081/sim-runtime:r1}
+      # The NASA Earthdata token a place build fetches the laser altimeter's
+      # depths with, which the worker hands to place builds only. Empty: builds leave ICESat-2
+      # out and say so.
+      NASA_TOKEN: ${NASA_TOKEN:-}
       # What this host reports it can simulate in, every time it asks for work.
       # Whoever asks for a dive names a runtime, and cannot know what is
       # installed on a machine in a rack — so the machine says.
