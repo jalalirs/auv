@@ -59,3 +59,17 @@ def test_two_layers_of_one_quantity_from_one_source_are_both_kept(monkeypatch):
     Asked.grid = grid
     out = build.products_of(Asked())
     assert out["gebco.depth"] is patchy and out["gebco.depth.1"] is whole
+
+
+def test_a_reef_is_grown_from_its_regions_mix_and_says_it_was_chosen():
+    from iocean_places.job import life_of
+
+    red = life_of(22.3, 38.9, atlas=True)
+    assert (red["assemblage"], red["water"]) == ("red-sea", "IB")
+    assert "Allen Coral Atlas" in red["coverFrom"] and "not a transect" in red["coverFrom"]
+    assert life_of(24.5, -81.4, atlas=False)["assemblage"] == "caribbean"
+    assert life_of(21.5, -157.8, atlas=False)["assemblage"] == "hawaii"
+    far = life_of(-18.0, 147.0, atlas=False)
+    assert far["water"] == "1C" and far["waterFrom"].startswith("assumed")
+    assert "not this reef's own" in far["assemblageFrom"]
+    assert "inferred" in far["coverFrom"]

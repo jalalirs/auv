@@ -31,10 +31,53 @@ import traceback
 INPUTS = pathlib.Path(os.environ.get("IOCEAN_JOB_INPUTS", "/work/inputs"))
 OUTPUTS = pathlib.Path(os.environ.get("IOCEAN_JOB_OUTPUTS", "/work/outputs"))
 MODELS = pathlib.Path(os.environ.get("IOCEAN_DEPTH_MODELS", "/opt/iocean/depth-models"))
+# The tools that grow a reef and lay its ground on a seabed (tools/make-site,
+# tools/aim-water), and the stock surfaces they would otherwise fetch.
+TOOLS = pathlib.Path(os.environ.get("IOCEAN_TOOLS", "/opt/iocean/tools"))
+SURFACES = pathlib.Path(os.environ.get("IOCEAN_GROUND_SURFACES", "/opt/iocean/ground-surfaces"))
 
 # The Red Sea, where the model trained on its own laser depths is the better
 # one; elsewhere the one trained on reef lidar.
 RED_SEA = (12.0, 30.5, 32.0, 44.0)
+
+
+# Which of the platform's reefs a square is, by where it is: the coral mix it
+# is grown from and the water it is seen through. Chosen by region, and said
+# to be: none of these is a survey of the reef being built.
+CARIBBEAN = (5.0, 33.0, -100.0, -30.0)          # and the rest of the tropical Atlantic
+HAWAII = (18.0, 29.0, -179.0, -154.0)
+RED_SEA_WATER = ("Kd(PAR) 0.049-0.119 per metre at the pelagic station offshore of KAUST: Overmans & Agusti "
+                 "2020, Front. Mar. Sci. 7:111. Taken for this square because it is in the Red Sea, not measured here")
+
+
+def inside(lat: float, lon: float, box: tuple) -> bool:
+    south, north, west, east = box
+    return south <= lat <= north and west <= lon <= east
+
+
+def life_of(lat: float, lon: float, atlas: bool) -> dict:
+    """The arguments make-site grows a reef and lays its ground with, each
+    with where it came from."""
+    if inside(lat, lon, RED_SEA):
+        mix = ("red-sea", "the platform's Red Sea mix, from Khalil, Bouwmeester and Berumen 2017 (PeerJ 5:e3410) "
+                          "line-intercept transects off Thuwal; chosen because this square is in the Red Sea")
+    elif inside(lat, lon, HAWAII):
+        mix = ("hawaii", "the platform's Hawaiian mix (Porites, Montipora, Pocillopora); chosen because this "
+                         "square is in Hawaii")
+    elif inside(lat, lon, CARIBBEAN):
+        mix = ("caribbean", "the platform's Caribbean mix (Orbicella, brain, Acropora, gorgonians); chosen because "
+                            "this square is in the tropical Atlantic")
+    else:
+        mix = ("red-sea", "the platform's Red Sea mix, as the nearest Indo-Pacific reef it has a library for; "
+                          "not this reef's own species, which nobody has given the platform")
+    water = (("IB", RED_SEA_WATER) if inside(lat, lon, RED_SEA) else
+             ("1C", "assumed: Jerlov 1C, clear coastal water, the platform's default; nothing measured here"))
+    cover = ("Allen Coral Atlas benthic map of this square, 10 m, CC BY 4.0, read through the platform's one "
+             "table of density per class and zone (zonation.ATLAS_DENSITY); not a transect of this reef"
+             if atlas else
+             "inferred from the shape of the seabed (zonation), with no map or survey of coral here")
+    return {"assemblage": mix[0], "assemblageFrom": mix[1], "water": water[0], "waterFrom": water[1],
+            "coverFrom": cover}
 
 
 def tell(step: str, say: str, **detail) -> None:
@@ -136,6 +179,55 @@ def recipe_of(brief: dict, inputs: pathlib.Path = INPUTS, nasa: bool | None = No
     return recipe, left_out, scene
 
 
+def run_tool(step: str, argv: list[str]) -> None:
+    """One of the place tools, each line it prints passed on as progress."""
+    import subprocess
+
+    tell(step, pathlib.Path(argv[0]).name + " started")
+    done = subprocess.Popen([sys.executable, *argv], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                            cwd=str(OUTPUTS))
+    said = []
+    for line in done.stdout:
+        line = line.rstrip()
+        said.append(line)
+        if line.strip():
+            tell(step, line.strip())
+    if done.wait() != 0:
+        raise RuntimeError(f"{pathlib.Path(argv[0]).name} failed: " + " | ".join(said[-6:]))
+
+
+def grow(seabed: pathlib.Path, place: pathlib.Path, cache: pathlib.Path, brief: dict, recipe: dict) -> dict:
+    """The place on the seabed just built: ground, reef and water."""
+    import shutil
+
+    lat, lon = recipe["site"]["centre"]
+    atlas = (cache / "coral-atlas-benthic.geojson").is_file()
+    life = life_of(lat, lon, atlas)
+    tell("life", f"growing the reef ({life['assemblage']} mix) and laying the ground",
+         assemblage=life["assemblage"], water=life["water"], atlas=atlas)
+    # The stock surfaces, from the image rather than fetched: make-site takes
+    # a file that is already there as fetched.
+    if SURFACES.is_dir():
+        (place / "textures").mkdir(parents=True, exist_ok=True)
+        for one in SURFACES.glob("*.jpg"):
+            shutil.copy(one, place / "textures" / one.name)
+    run_tool("reef", [str(TOOLS / "make-site"), place.name, "--heights", str(seabed / "heights.json"),
+                      "--most", str(recipe["site"]["cells"]), "--ground", str(cache),
+                      "--cover-from", life["coverFrom"],
+                      "--assemblage", life["assemblage"], "--assemblage-from", life["assemblageFrom"],
+                      "--water", life["water"], "--water-from", life["waterFrom"],
+                      "--into", str(place.parent)])
+    run_tool("water", [str(TOOLS / "aim-water"), str(place)])
+    # The seabed's own recipe goes with the place; what grew on it is in site.json.
+    shutil.copy(seabed / "recipe.json", place / "recipe.json")
+    site = json.loads((place / "site.json").read_text())
+    site.setdefault("builtBy", {})["places"] = json.loads((seabed / "site.json").read_text())["builtBy"]["places"]
+    reef = site.get("reef") or {}
+    tell("life", f"{reef.get('colonies', 0):,} colonies", colonies=reef.get("colonies", 0),
+         coverWhereItGrows=reef.get("coverWhereItGrows"), beginAt=site.get("beginAt"))
+    return site
+
+
 def main(argv: list[str]) -> int:
     started = time.time()
     brief = json.loads(argv[0])
@@ -158,15 +250,23 @@ def main(argv: list[str]) -> int:
     place, cache = OUTPUTS / "place", OUTPUTS / "cache"
     cache.mkdir(parents=True, exist_ok=True)
     (OUTPUTS / "recipe.json").write_text(json.dumps(recipe, indent=1))
+    # The seabed alone, unless asked otherwise, is built beside the place and
+    # the place grown on it: its ground and its reef, as every hand-built
+    # place has (tools/make-site), and its water baked from where a dive
+    # begins (tools/aim-water).
+    alive = brief.get("life", True) and (TOOLS / "make-site").is_file()
+    seabed = OUTPUTS / "seabed" if alive else place
     try:
-        site = build(Recipe.read(OUTPUTS / "recipe.json"), place, cache, tell=tell)
+        site = build(Recipe.read(OUTPUTS / "recipe.json"), seabed, cache, tell=tell)
+        if alive:
+            site = grow(seabed, place, cache, brief, recipe)
     except Exception as failed:
         traceback.print_exc()
         tell("failed", str(failed))
         return 1
 
     # What a dive opens, said rather than guessed.
-    site["layers"] = {"terrain": "seabed.usda"}
+    site.setdefault("layers", {})["terrain"] = "seabed.usda"
     if brief.get("name"):
         site["title"] = brief["name"]
     if left_out:
