@@ -3,6 +3,7 @@
 
     tools/place-reconstruction add PLACE PATCH [--name N] [--at X,Y] [--heading DEG]
                                                [--transect DIR]
+    tools/place-reconstruction remove PLACE NAME [NAME ...]
     tools/place-reconstruction PLACE
 
 A reconstruction always belongs to a place: it is copied into the place and
@@ -589,6 +590,29 @@ def apply(place: pathlib.Path) -> int:
     return 0
 
 
+def remove(place: pathlib.Path, names: list[str]) -> int:
+    """Take patches out of a place: their folders, their records and their
+    cameras. The colonies a patch took off its footprint come back only when
+    the reef is grown again (make-site, or tools/rebuild), and coral.usda
+    still holds the patch until then, so this says so rather than leave a
+    place that looks done."""
+    site_file = place / "site.json"
+    site = json.loads(site_file.read_text())
+    for name in names:
+        folder = place / "reconstructions" / name
+        if folder.is_dir():
+            shutil.rmtree(folder)
+        site["reconstructions"] = [r for r in (site.get("reconstructions") or []) if r.get("name") != name]
+        ((site.get("cameras") or {}).get("fixed") or {}).pop("patch-" + name, None)
+        print(f"{place.name}: {name} removed")
+    if not site.get("reconstructions"):
+        site.pop("reconstructions", None)
+    site_file.write_text(json.dumps(site, indent=1) + "\n")
+    print(f"{place.name}: grow the reef again (make-site, or tools/rebuild) to plant its footprints and drop "
+          f"the patches from coral.usda")
+    return 0
+
+
 def _cameras(site_file: pathlib.Path) -> None:
     """A fixed camera on each patch, so a dive can be asked to look at it
     (dives_start views ["patch-<name>"]): from the downhill side, twelve
@@ -627,6 +651,13 @@ def _cameras(site_file: pathlib.Path) -> None:
 
 
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "remove":
+        ap = argparse.ArgumentParser(description="take reconstructed patches out of a place")
+        ap.add_argument("verb")
+        ap.add_argument("place")
+        ap.add_argument("names", nargs="+")
+        asked = ap.parse_args()
+        return remove(pathlib.Path(asked.place), asked.names)
     if len(sys.argv) > 1 and sys.argv[1] == "add":
         ap = argparse.ArgumentParser(description="put a reconstructed reef patch into a place")
         ap.add_argument("verb")
