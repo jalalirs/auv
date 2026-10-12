@@ -92,6 +92,20 @@ def _fuse(cfg, a) -> int:
     return 0
 
 
+def _drm(cfg, a) -> int:
+    from .from_drm import CORAL, IGNORED, rebuild, score
+
+    run, out = pathlib.Path(a.run), pathlib.Path(a.out)
+    told = json.loads(pathlib.Path(a.classes).read_text())
+    said = rebuild(run, pathlib.Path(a.library), out, told)
+    print(json.dumps({"colonies": said["colonies"], "triangles": said["triangles"], "frame": said["frame"]["said"]}))
+    if (run / "held.npz").is_file():
+        scored = score(run, out, told, {int(v) for k, v in told.items() if k in CORAL},
+                       {int(v) for k, v in told.items() if k in IGNORED})
+        print(json.dumps({k: scored[k] for k in ("heldFrames", "model", "cloud")}, indent=1))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="iocean-reconstruct", description=__doc__.split("\n")[0])
     ap.add_argument("--config", default="default.yaml")
@@ -113,9 +127,14 @@ def main(argv: list[str] | None = None) -> int:
     fu.add_argument("--truth", action="store_true", help="also score against truth.ply (a synthetic run)")
     fu.add_argument("--colonies-by", default="labels", choices=["labels", "shape"],
                     help="find colonies by the cover model's labels, or by what stands above the seabed")
+    dr = sub.add_parser("drm", help="a reef rebuilt from DeepReefMap's point cloud and the coral library")
+    dr.add_argument("--run", required=True, help="a DeepReefMap output folder (iocean's copy: cameras kept)")
+    dr.add_argument("--library", required=True)
+    dr.add_argument("--out", required=True)
+    dr.add_argument("--classes", required=True, help="DeepReefMap's class_to_label.json")
     a = ap.parse_args(argv)
     cfg = config.load(a.config)
-    return {"video": _video, "patch": _patch, "scale": _scale, "fuse": _fuse}[a.command](cfg, a)
+    return {"video": _video, "patch": _patch, "scale": _scale, "fuse": _fuse, "drm": _drm}[a.command](cfg, a)
 
 
 if __name__ == "__main__":
