@@ -97,7 +97,9 @@ def _drm(cfg, a) -> int:
 
     run, out = pathlib.Path(a.run), pathlib.Path(a.out)
     told = json.loads(pathlib.Path(a.classes).read_text())
-    said = rebuild(run, pathlib.Path(a.library), out, told)
+    video = json.loads(a.video) if a.video else None
+    said = rebuild(run, pathlib.Path(a.library), out, told, camera_height_m=a.camera_height,
+                   camera_height_from=a.camera_height_from or "", colony_triangles=a.colony_triangles, video=video)
     print(json.dumps({"colonies": said["colonies"], "triangles": said["triangles"], "frame": said["frame"]["said"]}))
     if (run / "held.npz").is_file():
         scored = score(run, out, told, {int(v) for k, v in told.items() if k in CORAL},
@@ -132,6 +134,10 @@ def main(argv: list[str] | None = None) -> int:
     dr.add_argument("--library", required=True)
     dr.add_argument("--out", required=True)
     dr.add_argument("--classes", required=True, help="DeepReefMap's class_to_label.json")
+    dr.add_argument("--camera-height", type=float, default=1.5, help="metres over the reef, for the scale")
+    dr.add_argument("--camera-height-from", help="what measured it; without this the height is assumed")
+    dr.add_argument("--colony-triangles", type=int, default=2000, help="each library colony thinned to this")
+    dr.add_argument("--video", help="JSON: the videos and seconds the run was made from")
     a = ap.parse_args(argv)
     cfg = config.load(a.config)
     return {"video": _video, "patch": _patch, "scale": _scale, "fuse": _fuse, "drm": _drm}[a.command](cfg, a)

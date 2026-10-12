@@ -83,7 +83,8 @@ def read_run(run: pathlib.Path, class_to_label: dict) -> dict:
             "frames": json.loads((run / "frames.json").read_text()), "label_to_class": label_to_class}
 
 
-def level_and_scale(xyz: np.ndarray, cameras: np.ndarray) -> dict:
+def level_and_scale(xyz: np.ndarray, cameras: np.ndarray, height_m: float = CAMERA_HEIGHT_M,
+                    height_from: str = "") -> dict:
     """The reef's plane made the ground (z up, the cameras above it), the swim
     along x, and the units made metres by the camera's height over the reef."""
     centre = np.median(xyz, axis=0)
@@ -95,9 +96,12 @@ def level_and_scale(xyz: np.ndarray, cameras: np.ndarray) -> dict:
         rotation[1] *= -1
     level = (xyz - centre) @ rotation.T
     above = np.median(((cameras - centre) @ rotation.T)[:, 2]) - np.median(level[:, 2])
-    scale = CAMERA_HEIGHT_M / max(above, 1e-9)
-    return {"centre": centre, "rotation": rotation, "scale": float(scale),
-            "said": f"assumed: the camera {CAMERA_HEIGHT_M} m over the reef, which made one unit {scale:.2f} m"}
+    scale = height_m / max(above, 1e-9)
+    said = (f"measured: the camera {height_m} m over the reef ({height_from}), which made one unit {scale:.2f} m"
+            if height_from else
+            f"assumed: the camera {height_m} m over the reef, which made one unit {scale:.2f} m")
+    return {"centre": centre, "rotation": rotation, "scale": float(scale), "said": said,
+            "cameraHeightM": float(height_m), "measured": bool(height_from)}
 
 
 def to_model(p, frame):
@@ -153,13 +157,13 @@ def seabed_of(xyz: np.ndarray, rgb: np.ndarray, ground: np.ndarray, cell: float 
     seen[np.unique(key)] = True
     known = ~np.isnan(height)
     h = _fill(np.nan_to_num(height).reshape(n[1], n[0]), known.reshape(n[1], n[0]))
-    # Smoothed over a 5 by 5 cell window: one camera's depth is noisy cell to cell.
-    for _ in range(2):
-        acc = np.zeros_like(h)
-        for dy in range(-2, 3):
-            for dx in range(-2, 3):
-                acc += np.roll(np.roll(h, dy, 0), dx, 1)
-        h = acc / 25.0
+    # Smoothed over a 3 by 3 cell window, once: one camera's depth is noisy
+    # cell to cell, and twice over five cells flattened the reef's ridges.
+    acc = np.zeros_like(h)
+    for dy in range(-1, 2):
+        for dx in range(-1, 2):
+            acc += np.roll(np.roll(h, dy, 0), dx, 1)
+    h = acc / 9.0
     c = _fill(colour.reshape(n[1], n[0], 3), known.reshape(n[1], n[0]))
     keep = seen.reshape(n[1], n[0])
     # Grown a little, so the floor runs under the colonies at the edge of the swim.
@@ -176,7 +180,7 @@ def seabed_of(xyz: np.ndarray, rgb: np.ndarray, ground: np.ndarray, cell: float 
     # No curtains: a cell whose corners differ by more than its own width
     # several times over is a fill across a gap, not ground.
     hz = h.ravel()[quads]
-    inside &= (hz.max(1) - hz.min(1)) < 4 * cell
+    inside &= (hz.max(1) - hz.min(1)) < 8 * cell
     q = quads[inside]
     faces = np.concatenate([q[:, [0, 1, 3]], q[:, [0, 3, 2]]])
     return {"v": v, "f": faces, "c": c.reshape(-1, 3), "lo": lo, "cell": cell, "n": n, "h": h}
@@ -211,6 +215,9 @@ def colonies_of(xyz: np.ndarray, coral: np.ndarray, kinds: np.ndarray, eps: floa
 # How wide one colony of each kind gets on these reefs, at most: a patch of
 # coral points wider than this is several colonies touching, not one big one.
 MOST_ACROSS_M = {"branching": 0.6, "table": 1.2, "encrusting": 0.5, "massive": 1.2, "brain": 0.8, "sponge": 0.5}
+# How many triangles each kind keeps when thinned: a branching colony is its
+# branches and goes to crystals below a few thousand; a massive one is a dome.
+TRIANGLES_OF = {"branching": 6000, "table": 6000, "encrusting": 2500, "massive": 2500, "brain": 4000, "sponge": 2500}
 
 
 def pieces_of(points: np.ndarray, most: float, rng=np.random.default_rng(0)) -> list[np.ndarray]:
@@ -243,8 +250,29 @@ def shelf_of(library: pathlib.Path, kind: str, forms: list[str]) -> list[dict]:
     return preferred or entries
 
 
+_THINNED: dict = {}
+
+
+def thinned(path: pathlib.Path, triangles: int):
+    """A library colony with at most `triangles` triangles, its colours kept;
+    worked out once per file."""
+    key = (str(path), triangles)
+    if key not in _THINNED:
+        v, f, c = read_library_ply(path)
+        if triangles and len(f) > triangles:
+            import open3d as o3d
+
+            mesh = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(v), o3d.utility.Vector3iVector(f))
+            mesh.vertex_colors = o3d.utility.Vector3dVector(c)
+            mesh = mesh.simplify_quadric_decimation(triangles)
+            v, f, c = (np.asarray(mesh.vertices), np.asarray(mesh.triangles).astype(np.int64),
+                       np.asarray(mesh.vertex_colors))
+        _THINNED[key] = (v, f, c)
+    return _THINNED[key]
+
+
 def fit_colony(points: np.ndarray, uncertainty: np.ndarray, floor: float, shelf: list[dict],
-               library: pathlib.Path) -> dict:
+               library: pathlib.Path, triangles: int = 0) -> dict:
     """The library colony that best fits these points, sized and turned to
     them, with a height that is the measured one and the library's weighed by
     how sure each is."""
@@ -258,7 +286,7 @@ def fit_colony(points: np.ndarray, uncertainty: np.ndarray, floor: float, shelf:
     sigma_m = float(np.clip(np.median(uncertainty), 0.01, 0.3))
     best = None
     for entry in shelf:
-        v0, f0, c0 = read_library_ply(library / entry["file"])
+        v0, f0, c0 = thinned(library / entry["file"], triangles)
         v0 = v0 - [v0[:, 0].mean(), v0[:, 1].mean(), v0[:, 2].min()]
         wide = max(float(np.ptp(v0[:, 0])), float(np.ptp(v0[:, 1])), 1e-6)
         prior_h = float(np.ptp(v0[:, 2])) * across / wide
@@ -317,11 +345,13 @@ def pull(fit: dict, points: np.ndarray, colours: np.ndarray, uncertainty: np.nda
 
 # ── the whole of it ──────────────────────────────────────────────────────────
 
-def rebuild(run: pathlib.Path, library: pathlib.Path, out: pathlib.Path, class_to_label: dict, say=print) -> dict:
+def rebuild(run: pathlib.Path, library: pathlib.Path, out: pathlib.Path, class_to_label: dict, say=print,
+            camera_height_m: float = CAMERA_HEIGHT_M, camera_height_from: str = "",
+            colony_triangles: int = 2000, video: dict | None = None) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     told = read_run(run, class_to_label)
     cameras = told["poses"][:, :3, 3]
-    frame = level_and_scale(told["xyz"], cameras)
+    frame = level_and_scale(told["xyz"], cameras, camera_height_m, camera_height_from)
     xyz = to_model(told["xyz"], frame)
     # DeepReefMap's uncertainty is in its own units, like its depths.
     uncertainty = told["uncertainty"] * frame["scale"]
@@ -344,8 +374,11 @@ def rebuild(run: pathlib.Path, library: pathlib.Path, out: pathlib.Path, class_t
         values, counts = np.unique(names[members], return_counts=True)
         name = str(values[counts.argmax()])
         kind, forms = CORAL[name]
-        floor = float(np.median(floor_at(seabed, xyz[members, :2])))
-        fit = fit_colony(xyz[members], uncertainty[members], floor, shelf_of(library, kind, forms), library)
+        # Seated on the low side: on a slope the median floor buries the
+        # downhill edge's gap under the colony and leaves the uphill one sunk.
+        floor = float(np.percentile(floor_at(seabed, xyz[members, :2]), 20))
+        fit = fit_colony(xyz[members], uncertainty[members], floor, shelf_of(library, kind, forms), library,
+                         triangles=TRIANGLES_OF.get(kind, colony_triangles) if colony_triangles else 0)
         fit = pull(fit, xyz[members], told["rgb"][members], uncertainty[members])
         meshes.append((fit["v"], fit["f"], fit["c"]))
         said.append({"class": name, "kind": kind, "form": fit["form"], "file": fit["file"], "points": int(len(members)),
@@ -363,6 +396,26 @@ def rebuild(run: pathlib.Path, library: pathlib.Path, out: pathlib.Path, class_t
     np.save(out / "owner.npy", owner)
     np.savez(out / "frame.npz", centre=frame["centre"], rotation=frame["rotation"], scale=frame["scale"])
     (out / "colonies.json").write_text(json.dumps({"frame": frame["said"], "colonies": said}, indent=1))
+    # And as a patch tools/place-reconstruction can put into a place: the
+    # model in its own frame (metres, z up, x along the swim).
+    patch = out / "patch"
+    patch.mkdir(exist_ok=True)
+    _write_ply(patch / "mesh.ply", v, f, c)
+    track = to_model(cameras, frame)
+    (patch / "patch.json").write_text(json.dumps({
+        "run": out.name,
+        "tool": ("DeepReefMap (Sauder et al. 2024; code josauder/mee-deepreefmap, no licence: research use) for the "
+                 "point cloud, classes and cameras; iocean-reconstruct drm for the seabed and the coral library's "
+                 "colonies fitted to it"),
+        "video": video or {},
+        "scale": {"factor": frame["scale"], "how": "measured" if frame["measured"] else "assumed",
+                  "from": frame["said"]},
+        "sizeM": {"along": round(float(np.ptp(v[:, 0])), 2), "across": round(float(np.ptp(v[:, 1])), 2),
+                  "relief": round(float(np.ptp(seabed["v"][:, 2])), 2)},
+        "colonies": len(said), "triangles": int(len(f)),
+        "track": {"lengthM": round(float(np.linalg.norm(np.diff(track, axis=0), axis=1).sum()), 1),
+                  "cameraHeightM": frame["cameraHeightM"]},
+    }, indent=1))
     return {"colonies": len(said), "triangles": int(len(f)), "frame": frame, "said": said}
 
 
