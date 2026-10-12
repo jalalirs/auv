@@ -1,0 +1,332 @@
+#!/usr/bin/env python3
+"""A synthetic place made from a reef rebuilt out of a dive video.
+
+    tools/video-reef REBUILT NAME [--across 80] [--most 1024] [--depth 8]
+                     [--centre LAT LON] [--into ~/iocean/places]
+
+REBUILT is an `iocean-reconstruct drm` output (seabed.npz, colonies.json,
+patch/patch.json). The place is built from it, nothing else:
+
+  the seabed   the rebuilt seabed where the video saw it, at its own size, in
+               the middle of the square; past the edge of what was seen, the
+               ground carried out from it and eased down to a plain, said to
+               be constructed (make-site paints it as the sediment apron)
+  the corals   every rebuilt colony as an instance of the coral library's
+               colony it was fitted with: at its place, turned as it was
+               turned, as wide and as tall as the rebuild made it (its height
+               the measured one and the library's weighed together). Planted
+               as instances rather than baked into one mesh, so they are drawn
+               with the library's own surfaces, like any planted reef
+  the water    Red Sea (Jerlov IB), chosen: the video is from the Red Sea
+
+What is not known is said: where the video was filmed and how deep. The
+square's position is a nominal one and its depth is chosen, and the place is
+marked synthetic. The colonies' own surface pull (the few centimetres the
+rebuild moved each library surface towards the points) is not carried: an
+instance is the library's shape.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import shutil
+import subprocess
+import sys
+
+import numpy as np
+
+HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+
+
+def _fill(grid: np.ndarray, known: np.ndarray, rounds: int = 2000) -> np.ndarray:
+    """Unknown cells taken from their known neighbours, outward, until none is left."""
+    g, k = grid.copy(), known.copy()
+    for _ in range(rounds):
+        if k.all():
+            break
+        total, count = np.zeros_like(g), np.zeros_like(g)
+        for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+            total += np.roll(np.roll(np.where(k, g, 0), dy, 0), dx, 1)
+            count += np.roll(np.roll(k, dy, 0), dx, 1)
+        fresh = ~k & (count > 0)
+        g[fresh] = total[fresh] / count[fresh]
+        k |= fresh
+    return g
+
+
+def _distance(known: np.ndarray, cell: float, most_m: float) -> np.ndarray:
+    """How far each cell is from the known ones, in metres, up to `most_m`."""
+    d = np.where(known, 0.0, np.inf)
+    reach = known.copy()
+    steps = int(np.ceil(most_m / cell))
+    for k in range(1, steps + 1):
+        grown = reach | np.roll(reach, 1, 0) | np.roll(reach, -1, 0) | np.roll(reach, 1, 1) | np.roll(reach, -1, 1)
+        d[grown & ~reach] = k * cell
+        reach = grown
+    d[np.isinf(d)] = most_m
+    return d
+
+
+def _blur(g: np.ndarray, passes: int) -> np.ndarray:
+    for _ in range(passes):
+        acc = np.zeros_like(g)
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                acc += np.roll(np.roll(g, dy, 0), dx, 1)
+        g = acc / 9.0
+    return g
+
+
+def seabed(rebuilt: pathlib.Path, across: float, most: int, depth: float):
+    """The place's heightfield (rows south to north, columns west to east), what
+    of it was seen, and the offset from the rebuild's frame to the place's."""
+    sb = np.load(rebuilt / "seabed.npz")
+    h, lo, cell, n, seen = sb["height"], sb["lo"], float(sb["cell"]), sb["n"], sb["seen"]
+    # The middle of what was seen is the middle of the place.
+    rows, cols = np.where(seen)
+    xs, ys = lo[0] + cols * cell, lo[1] + rows * cell
+    origin = np.array([(xs.min() + xs.max()) / 2, (ys.min() + ys.max()) / 2])
+    line = (np.arange(most) / (most - 1) - 0.5) * across
+    gx, gy = np.meshgrid(line + origin[0], line + origin[1])
+    fi, fj = (gy - lo[1]) / cell, (gx - lo[0]) / cell
+    inside = (fi >= 0) & (fi <= n[1] - 1) & (fj >= 0) & (fj <= n[0] - 1)
+    i0 = np.clip(np.floor(fi).astype(int), 0, n[1] - 2)
+    j0 = np.clip(np.floor(fj).astype(int), 0, n[0] - 2)
+    ti, tj = np.clip(fi - i0, 0, 1), np.clip(fj - j0, 0, 1)
+    sampled = ((1 - ti) * (1 - tj) * h[i0, j0] + (1 - ti) * tj * h[i0, j0 + 1]
+               + ti * (1 - tj) * h[i0 + 1, j0] + ti * tj * h[i0 + 1, j0 + 1])
+    # Measured where a point fell within half a metre; the rest is constructed.
+    near = seen.copy()
+    for _ in range(int(np.ceil(0.5 / cell))):
+        near = near | np.roll(near, 1, 0) | np.roll(near, -1, 0) | np.roll(near, 1, 1) | np.roll(near, -1, 1)
+    measured = inside & near[np.clip(np.round(fi).astype(int), 0, n[1] - 1),
+                             np.clip(np.round(fj).astype(int), 0, n[0] - 1)]
+    # Opened: thin lines and specks of seen ground (one camera's stray points
+    # far off the swim) are not ground anybody can stand a reef on, and left
+    # in they dig pits and dashed trenches across the plain.
+    step = across / (most - 1)
+    k = max(1, int(round(0.4 / step)))
+    measured = _grow(_shrink(measured, k), k) & measured
+    shift = -depth - float(np.median(sampled[measured]))
+    height = np.where(measured, sampled + shift, 0.0)
+    # Past what was seen: the edge carried outward, eased over ten metres down
+    # to a plain half a metre under the reef's middle depth.
+    carried = _blur(_fill(height, measured), 4)
+    plain = -depth - 0.5
+    ease = np.clip(_distance(measured, step, 10.0) / 10.0, 0, 1)
+    built = _blur(carried * (1 - ease) + plain * ease, 6)
+    # And the seen ground feathered into it over its outer metre, so its edge
+    # is a slope and not a wall.
+    inward = np.clip(_distance(~measured, step, 1.0) / 1.0, 0, 1)
+    height = np.where(measured, inward * height + (1 - inward) * built, built)
+    return height.astype("<f4"), measured, origin, shift
+
+
+def _grow(mask: np.ndarray, k: int) -> np.ndarray:
+    for _ in range(k):
+        mask = mask | np.roll(mask, 1, 0) | np.roll(mask, -1, 0) | np.roll(mask, 1, 1) | np.roll(mask, -1, 1)
+    return mask
+
+
+def _shrink(mask: np.ndarray, k: int) -> np.ndarray:
+    return ~_grow(~mask, k)
+
+
+def ground_colour(rebuilt: pathlib.Path, across: float, origin: np.ndarray, measured: np.ndarray,
+                  size: int = 2048) -> np.ndarray:
+    """The ground's colour as the video saw it, where it saw it: the rebuilt
+    seabed's own vertex colours, the water's blue cast taken
+    out by bringing their mean to carbonate sand's; elsewhere sand."""
+    import coral_hd
+
+    sb = np.load(rebuilt / "seabed.npz")
+    n, lo, cell = sb["n"], sb["lo"], float(sb["cell"])
+    # The seabed is the model's first n by n vertices, in grid order.
+    _, _, colours = coral_hd.read_ply(rebuilt / "model.ply")
+    c = np.asarray(colours, dtype=float)[: n[0] * n[1]].reshape(n[1], n[0], 3)
+    if c.max() > 1.0:
+        c = c / 255.0
+    sand = np.array([0.74, 0.71, 0.62])
+    seen = sb["seen"]
+    c = c * (sand / np.maximum(c[seen].mean(0), 1e-3))
+    line = (np.arange(size) / (size - 1) - 0.5) * across
+    # Row 0 is the south edge here: make-site turns a ground map over on the
+    # way in (a map's top is north, the mesh's v = 0 is south), and this one
+    # is built in the mesh's own order.
+    gx, gy = np.meshgrid(line + origin[0], line + origin[1])
+    i = np.clip(np.round((gy - lo[1]) / cell).astype(int), 0, n[1] - 1)
+    j = np.clip(np.round((gx - lo[0]) / cell).astype(int), 0, n[0] - 1)
+    m = measured.shape[0]
+    mi = np.clip(np.round((gy - origin[1] + across / 2) / (across / (m - 1))).astype(int), 0, m - 1)
+    mj = np.clip(np.round((gx - origin[0] + across / 2) / (across / (m - 1))).astype(int), 0, m - 1)
+    inside = measured[mi, mj]
+    out = np.where(inside[..., None], np.clip(c[i, j], 0, 1), sand)
+    # sRGB, as the renderer reads the file.
+    enc = np.where(out <= 0.0031308, out * 12.92, 1.055 * np.power(out, 1 / 2.4) - 0.055)
+    return (np.clip(enc, 0, 1) * 255).astype(np.uint8)
+
+
+def plant(place: pathlib.Path, rebuilt: pathlib.Path, library: pathlib.Path, height: np.ndarray,
+          across: float, origin: np.ndarray, shift: float) -> dict:
+    """The rebuilt colonies as instances of their library colonies."""
+    import corallite
+    import reef as reef_tool
+
+    told = json.loads((rebuilt / "colonies.json").read_text())
+    colonies = told["colonies"]
+    kinds = json.loads((library / "library.json").read_text())["kinds"]
+    entry_of = {e["file"]: (kind, e) for kind, shelf in kinds.items() for e in shelf}
+    files = sorted({c["file"] for c in colonies})
+    prototypes, colours, kinds_of, surfaces, painted, tall = [], [], [], [], {}, []
+    for i, f in enumerate(files):
+        kind, entry = entry_of[f]
+        points, faces, per_point = reef_tool._from_library(library / f, 1.0)     # one metre across, base at 0
+        prototypes.append((points, faces))
+        painted[i] = per_point
+        colours.append(tuple(entry["colour"]))
+        kinds_of.append(kind)
+        surfaces.append((entry.get("corallite"), False))
+        tall.append(max(float(points[:, 2].max()), 1e-3))
+    index = {f: i for i, f in enumerate(files)}
+    m = height.shape[0]
+    cell = across / (m - 1)
+
+    def floor(x, y):
+        j = np.clip(np.round((x + across / 2) / cell).astype(int), 0, m - 1)
+        i = np.clip(np.round((y + across / 2) / cell).astype(int), 0, m - 1)
+        return height[i, j]
+
+    x = np.array([c["centre"][0] for c in colonies]) - origin[0]
+    y = np.array([c["centre"][1] for c in colonies]) - origin[1]
+    wide = np.array([c["acrossM"] for c in colonies])
+    # Standing on the drawn seabed: the lowest of its middle and four points
+    # round it, so a colony on a slope is not left floating on its low side.
+    ring = [floor(x, y)] + [floor(x + 0.4 * wide * np.cos(a), y + 0.4 * wide * np.sin(a))
+                            for a in (0, np.pi / 2, np.pi, 1.5 * np.pi)]
+    z = np.min(ring, axis=0) - 0.02
+    which = np.array([index[c["file"]] for c in colonies])
+    sz = np.array([c["heightM"] for c in colonies]) / np.array([tall[i] for i in which])
+    turn = np.array([c["turnRad"] for c in colonies])
+    for form in sorted({s for s, _ in surfaces if s}):
+        corallite.write(form, place / "textures")
+    shutil.copy(HERE.parent / "catalog" / "materials" / "coral_tissue.mdl", place / "coral_tissue.mdl")
+    text = reef_tool._instancer(prototypes, colours, kinds_of, x, y, z, which, wide, turn, surfaces, painted)
+    # Wide as the rebuild made it and as tall: not one scale for both.
+    start = text.index("    float3[] scales = [")
+    end = text.index("\n", start)
+    text = text[:start] + "    float3[] scales = [%s]" % reef_tool._triples(np.stack([wide, wide, sz], -1)) + text[end:]
+    (place / "coral.usda").write_text(text)
+    by_class = {}
+    for c in colonies:
+        by_class[c["class"]] = by_class.get(c["class"], 0) + 1
+    return {"colonies": len(colonies), "prototypes": len(files), "byClass": by_class,
+            "x": x, "y": y, "z": z}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="a synthetic place made from a reef rebuilt out of a dive video")
+    ap.add_argument("rebuilt", type=pathlib.Path)
+    ap.add_argument("name", help="the place's handle, e.g. red-sea-video-reef")
+    ap.add_argument("--title", default="")
+    ap.add_argument("--across", type=float, default=80.0)
+    ap.add_argument("--most", type=int, default=1024)
+    ap.add_argument("--depth", type=float, default=8.0, help="the reef's middle depth, chosen")
+    ap.add_argument("--centre", nargs=2, type=float, default=(22.30, 38.85), metavar=("LAT", "LON"),
+                    help="a nominal position: where the video was filmed is not known")
+    ap.add_argument("--library", type=pathlib.Path,
+                    default=pathlib.Path.home() / "iocean" / "coral-library" / "red-sea")
+    ap.add_argument("--surfaces", type=pathlib.Path, help="a place whose textures/ hold the stock ground maps")
+    ap.add_argument("--into", type=pathlib.Path, default=pathlib.Path.home() / "iocean" / "places")
+    a = ap.parse_args()
+
+    patch = json.loads((a.rebuilt / "patch" / "patch.json").read_text())
+    height, measured, origin, shift = seabed(a.rebuilt, a.across, a.most, a.depth)
+    ref = pathlib.Path.home() / "iocean" / "reference" / a.name
+    ref.mkdir(parents=True, exist_ok=True)
+    height.tofile(ref / "heights.f32")
+    (ref / "constructed.bits").write_bytes(np.packbits(~measured.ravel()).tobytes())
+    video = patch.get("video") or {}
+    note = {
+        "heightfield": {"file": "heights.f32", "rows": a.most, "columns": a.most},
+        "acrossMetres": a.across,
+        "centre": {"latitude": a.centre[0], "longitude": a.centre[1]},
+        "surveyed": False,
+        "source": ("rebuilt from a dive video: " + patch.get("tool", "") + "; scale " +
+                   (patch.get("scale") or {}).get("from", "")),
+        "method": ("the seabed DeepReefMap's points saw, as rebuilt by iocean-reconstruct drm, over "
+                   f"{100 * float(measured.mean()):.1f}% of the square; its middle put at {a.depth:g} m, chosen"),
+        "constructedPastTheSensor": {"mask": "constructed.bits",
+                                     "how": "the seen seabed's edge carried outward and eased over 10 m to a "
+                                            "plain half a metre under the reef's middle depth"},
+    }
+    (ref / "heights.json").write_text(json.dumps(note, indent=1) + "\n")
+    print(f"  seabed: {100 * float(measured.mean()):.1f}% of the square seen; depth {-height.max():.1f} to "
+          f"{-height.min():.1f} m")
+
+    place = a.into / a.name
+    if a.surfaces:
+        (place / "textures").mkdir(parents=True, exist_ok=True)
+        for one in (a.surfaces / "textures").glob("*.jpg"):
+            if one.name.split("_")[0] in ("soft", "hard", "seabed"):
+                shutil.copy(one, place / "textures" / one.name)
+    ground = ref / "ground"
+    ground.mkdir(exist_ok=True)
+    from PIL import Image
+    Image.fromarray(ground_colour(a.rebuilt, a.across, origin, measured)).save(ground / "colour_4096.png")
+    said_from = (f"rebuilt from {', '.join(video.get('videos', []))} ({video.get('source', '')}), "
+                 f"{video.get('fromSeconds', '?')} to {video.get('toSeconds', '?')} s")
+    subprocess.run([sys.executable, str(HERE / "make-site"), a.name, "--heights", str(ref / "heights.json"),
+                    "--most", str(a.most), "--coral", "0", "--ground", str(ground),
+                    "--cover-from", "the colonies a dive video saw, rebuilt (" + said_from + "), not grown",
+                    "--assemblage", "red-sea",
+                    "--assemblage-from", "the coral library's Red Sea colonies, each the one fitted to a colony "
+                                         "of its class in the video (DeepReefMap's classes)",
+                    "--water", "IB",
+                    "--water-from", "chosen: the video is from the Red Sea; Jerlov IB as for the platform's "
+                                    "other Red Sea places, not measured where it was filmed",
+                    "--into", str(a.into)], check=True)
+    planted = plant(place, a.rebuilt, a.library, height, a.across, origin, shift)
+    site = json.loads((place / "site.json").read_text())
+    site["layers"]["coral"] = "coral.usda"
+    site["reef"] = {
+        "colonies": planted["colonies"], "prototypes": planted["prototypes"], "byClass": planted["byClass"],
+        "cover": {"from": "the colonies a dive video saw, rebuilt: " + said_from, "measured": False},
+        "from": ("each colony found in the video (DeepReefMap's point cloud and classes), given the coral "
+                 "library colony of its class, sized and turned to its points by iocean-reconstruct drm; "
+                 "planted here as instances of those library colonies"),
+        "kind": "derived",
+        "fromLibrary": {"path": str(a.library)},
+        "assemblage": {"name": "red-sea", "from": "the coral library's Red Sea colonies"},
+    }
+    if a.title:
+        site["title"] = a.title
+    # The ground's colour is the video's, not a survey's orthomosaic.
+    if site.get("ground"):
+        site["ground"]["colourFrom"] = ("the dive video's own colours on the rebuilt seabed, their blue cast "
+                                        "taken out to carbonate sand's mean; sand past what it saw")
+        site["ground"]["surveyed"] = False
+    site["synthetic"] = {
+        "is": True,
+        "why": ("a place made for a reef rebuilt from a dive video: where the video was filmed and how deep are "
+                "not known, so the position is nominal and the depth chosen"),
+        "video": video, "scale": patch.get("scale"), "rebuilt": str(a.rebuilt),
+        "seenShare": round(float(measured.mean()), 4),
+    }
+    # A dive begins at the start of the swim, three metres over the reef.
+    start_x = float(planted["x"].min()) + 2.0
+    i = int(np.argmin(np.abs(planted["x"] - start_x)))
+    site["beginAt"] = [round(start_x, 2), round(float(planted["y"][i]), 2),
+                       round(float(planted["z"][i]) + 3.0, 2)]
+    site["beginBecause"] = "the start of the swim the video was filmed on, three metres over the reef"
+    (place / "site.json").write_text(json.dumps(site, indent=2) + "\n")
+    subprocess.run([sys.executable, str(HERE / "aim-water"), str(place)], check=True)
+    print(f"  {a.name}: {planted['colonies']} colonies from {planted['prototypes']} library colonies; "
+          f"begins at {site['beginAt']}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

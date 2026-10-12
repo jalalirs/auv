@@ -186,6 +186,15 @@ def seabed_of(xyz: np.ndarray, rgb: np.ndarray, ground: np.ndarray, cell: float 
     return {"v": v, "f": faces, "c": c.reshape(-1, 3), "lo": lo, "cell": cell, "n": n, "h": h}
 
 
+def _seen_cells(xyz: np.ndarray, seabed: dict) -> np.ndarray:
+    """Which of the seabed's cells any point fell in: measured, as against filled."""
+    n = seabed["n"]
+    ij = np.clip(((xyz[:, :2] - seabed["lo"]) / seabed["cell"]).astype(int), 0, n - 1)
+    seen = np.zeros((n[1], n[0]), bool)
+    seen[ij[:, 1], ij[:, 0]] = True
+    return seen
+
+
 def floor_at(seabed: dict, xy: np.ndarray) -> np.ndarray:
     ij = np.clip(((np.asarray(xy) - seabed["lo"]) / seabed["cell"]).astype(int), 0, seabed["n"] - 1)
     return seabed["h"][ij[..., 1], ij[..., 0]]
@@ -386,7 +395,10 @@ def rebuild(run: pathlib.Path, library: pathlib.Path, out: pathlib.Path, class_t
                      "acrossM": round(fit["acrossM"], 3), "measuredHeightM": round(fit["measuredH"], 3),
                      "libraryHeightM": round(fit["priorH"], 3), "heightM": round(fit["heightM"], 3),
                      "fitMissM": round(fit["miss"], 4), "seenShare": round(fit["seenShare"], 3),
-                     "meanGain": round(fit["meanGain"], 3)})
+                     "meanGain": round(fit["meanGain"], 3),
+                     # Where and how the library colony stands, to plant it again as an instance.
+                     "centre": [round(float(x), 4) for x in np.median(xyz[members, :2], axis=0)],
+                     "baseZ": round(floor, 4), "turnRad": round(float(fit["turn"]), 4)})
     v = np.concatenate([m[0] for m in meshes])
     offsets = np.cumsum([0] + [len(m[0]) for m in meshes[:-1]])
     f = np.concatenate([m[1] + o for m, o in zip(meshes, offsets)])
@@ -395,6 +407,9 @@ def rebuild(run: pathlib.Path, library: pathlib.Path, out: pathlib.Path, class_t
     _write_ply(out / "model.ply", v, f, c)
     np.save(out / "owner.npy", owner)
     np.savez(out / "frame.npz", centre=frame["centre"], rotation=frame["rotation"], scale=frame["scale"])
+    # The seabed's grid, for building a place on it.
+    np.savez(out / "seabed.npz", height=seabed["h"], lo=seabed["lo"], cell=seabed["cell"], n=seabed["n"],
+             seen=_seen_cells(xyz, seabed))
     (out / "colonies.json").write_text(json.dumps({"frame": frame["said"], "colonies": said}, indent=1))
     # And as a patch tools/place-reconstruction can put into a place: the
     # model in its own frame (metres, z up, x along the swim).
