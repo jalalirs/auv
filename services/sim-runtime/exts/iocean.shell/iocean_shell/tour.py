@@ -713,3 +713,75 @@ class Stills:
             "nadir": bool(straight_down),
         }
         self.say("stills_where", **self.said_about)
+
+
+# ── a given path ─────────────────────────────────────────────────────────────
+#
+# A camera put exactly where another camera was: a dive video's own frames,
+# their poses worked out by a reconstruction, so the place can be held against
+# the footage frame for frame. Every other tour designs its own path; this one
+# is given one, and names each frame after the frame it is standing in for.
+
+# Frames drawn at each pose before one is kept: the renderer needs a few to
+# settle after the camera jumps.
+HOLD = 4
+
+
+class Path:
+    """The camera at each pose of a given path, one kept frame each.
+
+    The path is a JSON file (IOCEAN_TOUR_PATH): {"frames": [{"name", "eye",
+    "matrix"}], "focalMm", "apertureMm"}, each matrix the camera's transform
+    in the place (row-major, USD's camera: looking down -Z, +Y up)."""
+
+    def __init__(self, path_file: str, say) -> None:
+        import json
+
+        told = json.loads(open(path_file).read())
+        self.poses = told["frames"]
+        self.focal = float(told.get("focalMm", 18.0))
+        self.aperture = float(told.get("apertureMm", 20.955))
+        self.say = say
+        self.frames = len(self.poses) * HOLD
+        self.taken = 0
+        self.waiting = False
+        self.eye = None
+        self.tidied = False
+        say("path_tour", poses=len(self.poses), focalMm=self.focal, apertureMm=self.aperture)
+
+    @property
+    def done(self) -> bool:
+        return self.taken >= self.frames
+
+    def keep(self) -> bool:
+        return self.taken % HOLD == HOLD - 1
+
+    def name(self) -> str:
+        return str(self.poses[min(self.taken // HOLD, len(self.poses) - 1)]["name"])
+
+    def place(self, stage, viewport) -> None:
+        import carb
+        from pxr import Gf, UsdGeom
+
+        if not self.tidied:
+            settings = carb.settings.get_settings()
+            settings.set("/app/viewport/grid/enabled", False)
+            settings.set("/app/viewport/show/axis", False)
+            settings.set("/app/viewport/outline/enabled", False)
+            settings.set("/persistent/app/viewport/displayOptions", 0)
+            self.tidied = True
+        pose = self.poses[min(self.taken // HOLD, len(self.poses) - 1)]
+        camera_path = "/World/PathCamera"
+        camera = UsdGeom.Camera.Define(stage, camera_path)
+        camera.CreateFocalLengthAttr(self.focal)
+        camera.CreateHorizontalApertureAttr(self.aperture)
+        camera.CreateClippingRangeAttr(Gf.Vec2f(0.05, 2000.0))
+        m = pose["matrix"]
+        # USD matrices are row-vector: the translation is the last row.
+        matrix = Gf.Matrix4d(*[float(m[c][r]) for r in range(4) for c in range(4)])
+        moving = UsdGeom.Xformable(camera.GetPrim())
+        moving.ClearXformOpOrder()
+        moving.AddTransformOp().Set(matrix)
+        self.eye = tuple(float(v) for v in pose["eye"])
+        if str(viewport.camera_path) != camera_path:
+            viewport.camera_path = camera_path

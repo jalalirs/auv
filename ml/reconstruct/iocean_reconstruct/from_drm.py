@@ -94,6 +94,10 @@ def level_and_scale(xyz: np.ndarray, cameras: np.ndarray, height_m: float = CAME
     if np.median((cameras - centre) @ rotation[2]) < 0:
         rotation[2] *= -1
         rotation[1] *= -1
+    # A rotation, not a mirror: the plane fit's axes come out either hand, and
+    # a left-handed set turned every rebuild into the reef's mirror image.
+    if np.linalg.det(rotation) < 0:
+        rotation[1] *= -1
     level = (xyz - centre) @ rotation.T
     above = np.median(((cameras - centre) @ rotation.T)[:, 2]) - np.median(level[:, 2])
     scale = height_m / max(above, 1e-9)

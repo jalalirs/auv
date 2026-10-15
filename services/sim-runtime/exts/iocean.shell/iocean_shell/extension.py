@@ -279,7 +279,10 @@ class CoralCityShell(omni.ext.IExt):
                     return dive.seabed.under(float(x), float(y))
                 return dive.floor
 
-            if self._touring == "ladder":
+            if self._touring == "path":
+                from .tour import Path
+                self.tour = Path(os.environ.get("IOCEAN_TOUR_PATH", "/dive/path.json"), self._say)
+            elif self._touring == "ladder":
                 self.tour = Ladder(floor_at, self._say, begin=dive.position)
             elif self._touring == "stills":
                 # The same four views of every place, held still. Everything in
