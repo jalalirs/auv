@@ -414,6 +414,24 @@ def lamp_nits(lumens: float, across_m: float) -> float:
     return float(lumens) / (area * math.pi)
 
 
+# What a place that brings its own light turns off: the water medium, its
+# veil, the caustics, the auto exposure and the footage grade. A place made of
+# Gaussian splats trained on a dive video carries the light, the haze and the
+# camera's colour it was filmed with, and every one of these would be applied
+# a second time on top: the first such dive came out nearly white.
+CARRIED_LIGHT = {"IOCEAN_CLEAR": "1", "IOCEAN_VEIL": "0", "IOCEAN_CAUSTIC_STRENGTH": "0",
+                 "IOCEAN_METER": "0", "IOCEAN_LOOK": "balanced", "IOCEAN_ISO": "60"}
+
+
+def light_carried_by(site: dict) -> dict:
+    """The switches a place's own light sets, or none: what a dive set by
+    hand is kept, so a place can be looked at both ways."""
+    said = (site or {}).get("light") or {}
+    if not said.get("carriedByThePlace"):
+        return {}
+    return {k: v for k, v in CARRIED_LIGHT.items() if not os.environ.get(k)}
+
+
 def asked_for(name: str, fallback=None):
     """A number from the environment, where unset and empty mean the same.
 

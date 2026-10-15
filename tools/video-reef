@@ -136,7 +136,7 @@ def _shrink(mask: np.ndarray, k: int) -> np.ndarray:
 
 
 def ground_colour(rebuilt: pathlib.Path, across: float, origin: np.ndarray, measured: np.ndarray,
-                  size: int = 2048) -> np.ndarray:
+                  size: int = 2048, as_seen: bool = False) -> np.ndarray:
     """The ground's colour as the video saw it, where it saw it: the rebuilt
     seabed's own vertex colours, the water's blue cast taken
     out by bringing their mean to carbonate sand's; elsewhere sand."""
@@ -151,7 +151,12 @@ def ground_colour(rebuilt: pathlib.Path, across: float, origin: np.ndarray, meas
         c = c / 255.0
     sand = np.array([0.74, 0.71, 0.62])
     seen = sb["seen"]
-    c = c * (sand / np.maximum(c[seen].mean(0), 1e-3))
+    if as_seen:
+        # A place that carries its own light shows its ground as the camera
+        # saw it, water and all: the cast is the point, not a fault.
+        sand = c[seen].mean(0)
+    else:
+        c = c * (sand / np.maximum(c[seen].mean(0), 1e-3))
     line = (np.arange(size) / (size - 1) - 0.5) * across
     # Row 0 is the south edge here: make-site turns a ground map over on the
     # way in (a map's top is north, the mesh's v = 0 is south), and this one
@@ -226,6 +231,50 @@ def plant(place: pathlib.Path, rebuilt: pathlib.Path, library: pathlib.Path, hei
             "x": x, "y": y, "z": z}
 
 
+def splat_reef(place: pathlib.Path, splats: pathlib.Path, align: pathlib.Path, sink: float) -> dict:
+    """The reef as the video's splats: referenced from coral.usda in the
+    place's frame, the drawn seabed lowered under them (it stays for what a
+    vehicle stands on and to fill their holes), and the place said to carry
+    its own light."""
+    told = json.loads(align.read_text())
+    shutil.copy(splats, place / "splats.usdz")
+    rows = ", ".join("(%s)" % ", ".join("%.9g" % v for v in r) for r in told["usdMatrix"])
+    (place / "coral.usda").write_text(f'''#usda 1.0
+(
+    doc = "The reef as Gaussian splats trained on the dive video (3DGRUT ParticleField), in the place's frame. Metres, Z up."
+    defaultPrim = "Coral"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "Coral"
+{{
+    def Xform "Splats" (
+        prepend references = @splats.usdz@
+    )
+    {{
+        matrix4d xformOp:transform = ({rows})
+        uniform token[] xformOpOrder = ["xformOp:transform"]
+    }}
+}}
+''')
+    seabed = (place / "seabed.usda").read_text()
+    if "xformOp:translate" not in seabed.split("def ", 2)[1]:
+        seabed = seabed.replace('def Xform "World"\n{', 'def Xform "World"\n{\n    double3 xformOp:translate = (0, 0, %g)\n'
+                                '    uniform token[] xformOpOrder = ["xformOp:translate"]' % -sink, 1)
+        (place / "seabed.usda").write_text(seabed)
+    site = json.loads((place / "site.json").read_text())
+    site["reef"] = {"colonies": 0, "kind": "measured",
+                    "from": ("the dive video itself, as Gaussian splats (3DGRUT, ParticleField): what the camera "
+                             "saw, drawn as it saw it, with no colonies grown or planted"),
+                    "splats": {"file": "splats.usdz", "fitResidualM": told.get("fitResidualMedianM")}}
+    site["light"] = {"carriedByThePlace": True,
+                     "why": ("the reef is splats trained on the video: they hold the light, the haze and the "
+                             "camera's colour it was filmed with, so the water's own effects stay off"),
+                     "drawnSeabedSunkM": sink}
+    return site
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="a synthetic place made from a reef rebuilt out of a dive video")
     ap.add_argument("rebuilt", type=pathlib.Path)
@@ -240,6 +289,15 @@ def main() -> int:
                     default=pathlib.Path.home() / "iocean" / "coral-library" / "red-sea")
     ap.add_argument("--surfaces", type=pathlib.Path, help="a place whose textures/ hold the stock ground maps")
     ap.add_argument("--into", type=pathlib.Path, default=pathlib.Path.home() / "iocean" / "places")
+    ap.add_argument("--splats", type=pathlib.Path,
+                    help="Gaussian splats trained on the video (a 3DGRUT ParticleField USDZ): the reef is "
+                         "them instead of library colonies, and the place carries its own light")
+    ap.add_argument("--splat-align", type=pathlib.Path,
+                    help="the splats' transform into this place (align.json, usdMatrix), worked out with "
+                         "the same rebuild")
+    ap.add_argument("--sink", type=float, default=0.15,
+                    help="with splats: how far under them the drawn seabed lies, so it fills their holes "
+                         "without showing through")
     a = ap.parse_args()
 
     patch = json.loads((a.rebuilt / "patch" / "patch.json").read_text())
@@ -275,7 +333,8 @@ def main() -> int:
     ground = ref / "ground"
     ground.mkdir(exist_ok=True)
     from PIL import Image
-    Image.fromarray(ground_colour(a.rebuilt, a.across, origin, measured)).save(ground / "colour_4096.png")
+    Image.fromarray(ground_colour(a.rebuilt, a.across, origin, measured, as_seen=bool(a.splats))).save(
+        ground / "colour_4096.png")
     said_from = (f"rebuilt from {', '.join(video.get('videos', []))} ({video.get('source', '')}), "
                  f"{video.get('fromSeconds', '?')} to {video.get('toSeconds', '?')} s")
     subprocess.run([sys.executable, str(HERE / "make-site"), a.name, "--heights", str(ref / "heights.json"),
@@ -288,10 +347,14 @@ def main() -> int:
                     "--water-from", "chosen: the video is from the Red Sea; Jerlov IB as for the platform's "
                                     "other Red Sea places, not measured where it was filmed",
                     "--into", str(a.into)], check=True)
-    planted = plant(place, a.rebuilt, a.library, height, a.across, origin, shift)
-    site = json.loads((place / "site.json").read_text())
+    if a.splats:
+        site = splat_reef(place, a.splats, a.splat_align, a.sink)
+        planted = {"x": np.array([0.0]), "y": np.array([0.0]), "z": np.array([float(height[a.most // 2, a.most // 2])])}
+    else:
+        planted = plant(place, a.rebuilt, a.library, height, a.across, origin, shift)
+        site = json.loads((place / "site.json").read_text())
     site["layers"]["coral"] = "coral.usda"
-    site["reef"] = {
+    site["reef"] = site.get("reef") if a.splats else {
         "colonies": planted["colonies"], "prototypes": planted["prototypes"], "byClass": planted["byClass"],
         "cover": {"from": "the colonies a dive video saw, rebuilt: " + said_from, "measured": False},
         "from": ("each colony found in the video (DeepReefMap's point cloud and classes), given the coral "
@@ -315,16 +378,23 @@ def main() -> int:
         "video": video, "scale": patch.get("scale"), "rebuilt": str(a.rebuilt),
         "seenShare": round(float(measured.mean()), 4),
     }
-    # A dive begins at the start of the swim, three metres over the reef.
-    start_x = float(planted["x"].min()) + 2.0
-    i = int(np.argmin(np.abs(planted["x"] - start_x)))
-    site["beginAt"] = [round(start_x, 2), round(float(planted["y"][i]), 2),
-                       round(float(planted["z"][i]) + 3.0, 2)]
-    site["beginBecause"] = "the start of the swim the video was filmed on, three metres over the reef"
+    # A dive begins at the start of the swim, three metres over the reef: on
+    # the video's own first camera when the reef is its splats.
+    if a.splats and a.splat_align:
+        first = json.loads(a.splat_align.read_text())["frames"][0]["eye"]
+        site["beginAt"] = [round(float(v), 2) for v in first]
+        site["beginBecause"] = "where the video's camera was at its first frame"
+    else:
+        start_x = float(planted["x"].min()) + 2.0
+        i = int(np.argmin(np.abs(planted["x"] - start_x)))
+        site["beginAt"] = [round(start_x, 2), round(float(planted["y"][i]), 2),
+                           round(float(planted["z"][i]) + 3.0, 2)]
+        site["beginBecause"] = "the start of the swim the video was filmed on, three metres over the reef"
     (place / "site.json").write_text(json.dumps(site, indent=2) + "\n")
     subprocess.run([sys.executable, str(HERE / "aim-water"), str(place)], check=True)
-    print(f"  {a.name}: {planted['colonies']} colonies from {planted['prototypes']} library colonies; "
-          f"begins at {site['beginAt']}")
+    reef_said = ("the video's splats" if a.splats else
+                 f"{planted['colonies']} colonies from {planted['prototypes']} library colonies")
+    print(f"  {a.name}: {reef_said}; begins at {site['beginAt']}")
     return 0
 
 

@@ -239,6 +239,20 @@ class CoralCityShell(omni.ext.IExt):
 
         brief_path = os.environ.get("IOCEAN_BRIEF", "/dive/dive.json")
         brief = json.loads(pathlib.Path(brief_path).read_text())
+        # A place that brings its own light (a reef of splats trained on a
+        # video) turns the water's effects off before anything is drawn.
+        try:
+            from runner import light_carried_by
+            site = json.loads((pathlib.Path(brief.get("cityPath", "/dive/city")) / "site.json").read_text())
+            carried = light_carried_by(site)
+            if carried:
+                os.environ.update(carried)
+                if "water" in sys.modules:
+                    sys.modules["water"].LOOK = os.environ["IOCEAN_LOOK"]
+                self._say("light_carried_by_the_place", turnedOff=sorted(carried),
+                          why=(site.get("light") or {}).get("why", ""))
+        except Exception as exc:
+            carb.log_warn(f"iocean could not read whether the place carries its own light: {exc}")
         seed_everything(int(brief.get("seed", 0)))
         self.brief = brief
 
