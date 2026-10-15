@@ -34,6 +34,7 @@ import pathlib
 import shutil
 import subprocess
 import sys
+import zipfile
 
 import numpy as np
 
@@ -237,7 +238,15 @@ def splat_reef(place: pathlib.Path, splats: pathlib.Path, align: pathlib.Path, s
     vehicle stands on and to fill their holes), and the place said to carry
     its own light."""
     told = json.loads(align.read_text())
-    shutil.copy(splats, place / "splats.usdz")
+    if splats.stat().st_size < 2**31 - 2**24:
+        shutil.copy(splats, place / "splats.usdz")
+        drawn = "splats.usdz"
+    else:
+        # USD reads a usdz only below 2 GB (the whole video's splats are 2.2):
+        # a bigger one goes in unpacked, its stage beside its splats.
+        with zipfile.ZipFile(splats) as z:
+            z.extractall(place / "splats")
+        drawn = "splats/default.usda"
     rows = ", ".join("(%s)" % ", ".join("%.9g" % v for v in r) for r in told["usdMatrix"])
     (place / "coral.usda").write_text(f'''#usda 1.0
 (
@@ -250,7 +259,7 @@ def splat_reef(place: pathlib.Path, splats: pathlib.Path, align: pathlib.Path, s
 def Xform "Coral"
 {{
     def Xform "Splats" (
-        prepend references = @splats.usdz@
+        prepend references = @{drawn}@
     )
     {{
         matrix4d xformOp:transform = ({rows})
@@ -267,7 +276,7 @@ def Xform "Coral"
     site["reef"] = {"colonies": 0, "kind": "measured",
                     "from": ("the dive video itself, as Gaussian splats (3DGRUT, ParticleField): what the camera "
                              "saw, drawn as it saw it, with no colonies grown or planted"),
-                    "splats": {"file": "splats.usdz", "fitResidualM": told.get("fitResidualMedianM")}}
+                    "splats": {"file": drawn, "fitResidualM": told.get("fitResidualMedianM")}}
     site["light"] = {"carriedByThePlace": True,
                      "why": ("the reef is splats trained on the video: they hold the light, the haze and the "
                              "camera's colour it was filmed with, so the water's own effects stay off"),
