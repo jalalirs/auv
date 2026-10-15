@@ -17,6 +17,7 @@ what a dive gets; only the camera is different, and no physics runs at all.
 from __future__ import annotations
 
 import math
+import os
 
 # A fifth of the flight is out of the water, which is enough to read the layout
 # and no more. The rest is in it, because the water is the thing being built and
@@ -724,7 +725,7 @@ class Stills:
 
 # Frames drawn at each pose before one is kept: the renderer needs a few to
 # settle after the camera jumps.
-HOLD = 4
+HOLD = int(os.environ.get("IOCEAN_TOUR_HOLD", "4"))
 
 
 class Path:

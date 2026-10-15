@@ -232,12 +232,21 @@ def plant(place: pathlib.Path, rebuilt: pathlib.Path, library: pathlib.Path, hei
             "x": x, "y": y, "z": z}
 
 
-def splat_reef(place: pathlib.Path, splats: pathlib.Path, align: pathlib.Path, sink: float) -> dict:
+def splat_reef(place: pathlib.Path, splats: pathlib.Path, align: pathlib.Path, sink: float,
+               sorting: str = "cameraDistance") -> dict:
     """The reef as the video's splats: referenced from coral.usda in the
     place's frame, the drawn seabed lowered under them (it stays for what a
     vehicle stands on and to fill their holes), and the place said to carry
-    its own light."""
+    its own light.
+
+    Splats baked into the place's frame (ml/splat/bake_splats.py, align
+    "baked": true) and exported as a NuRec volume are referenced as they are.
+    That is the way that draws like the video: the same splats as a
+    ParticleField under the place's transform came out dark and hazy in Isaac
+    Sim 6 (12.8 dB against the video's held-back frames, where 3DGRUT's own
+    render is 24.1), and as NuRec 17.7, at the video's brightness."""
     told = json.loads(align.read_text())
+    baked = bool(told.get("baked"))
     if splats.stat().st_size < 2**31 - 2**24:
         shutil.copy(splats, place / "splats.usdz")
         drawn = "splats.usdz"
@@ -247,10 +256,30 @@ def splat_reef(place: pathlib.Path, splats: pathlib.Path, align: pathlib.Path, s
         with zipfile.ZipFile(splats) as z:
             z.extractall(place / "splats")
         drawn = "splats/default.usda"
-    rows = ", ".join("(%s)" % ", ".join("%.9g" % v for v in r) for r in told["usdMatrix"])
+    if baked:
+        inside = ""
+        kind = "3DGRUT, NuRec volume, baked into the place's frame"
+    else:
+        rows = ", ".join("(%s)" % ", ".join("%.9g" % v for v in r) for r in told["usdMatrix"])
+        # rayHitDistance drew nothing at all in Isaac Sim 6.0.1.
+        inside = f'''
+        matrix4d xformOp:transform = ({rows})
+        uniform token[] xformOpOrder = ["xformOp:transform"]
+
+        over "gaussians"
+        {{
+            over "Gaussians"
+            {{
+                over "gaussians"
+                {{
+                    uniform token sortingModeHint = "{sorting}"
+                }}
+            }}
+        }}'''
+        kind = "3DGRUT ParticleField, in the place's frame"
     (place / "coral.usda").write_text(f'''#usda 1.0
 (
-    doc = "The reef as Gaussian splats trained on the dive video (3DGRUT ParticleField), in the place's frame. Metres, Z up."
+    doc = "The reef as Gaussian splats trained on the dive video ({kind}). Metres, Z up."
     defaultPrim = "Coral"
     metersPerUnit = 1
     upAxis = "Z"
@@ -261,9 +290,7 @@ def Xform "Coral"
     def Xform "Splats" (
         prepend references = @{drawn}@
     )
-    {{
-        matrix4d xformOp:transform = ({rows})
-        uniform token[] xformOpOrder = ["xformOp:transform"]
+    {{{inside}
     }}
 }}
 ''')
@@ -274,7 +301,7 @@ def Xform "Coral"
         (place / "seabed.usda").write_text(seabed)
     site = json.loads((place / "site.json").read_text())
     site["reef"] = {"colonies": 0, "kind": "measured",
-                    "from": ("the dive video itself, as Gaussian splats (3DGRUT, ParticleField): what the camera "
+                    "from": ("the dive video itself, as Gaussian splats (3DGRUT): what the camera "
                              "saw, drawn as it saw it, with no colonies grown or planted"),
                     "splats": {"file": drawn, "fitResidualM": told.get("fitResidualMedianM")}}
     site["light"] = {"carriedByThePlace": True,
@@ -298,6 +325,9 @@ def main() -> int:
                     default=pathlib.Path.home() / "iocean" / "coral-library" / "red-sea")
     ap.add_argument("--surfaces", type=pathlib.Path, help="a place whose textures/ hold the stock ground maps")
     ap.add_argument("--into", type=pathlib.Path, default=pathlib.Path.home() / "iocean" / "places")
+    ap.add_argument("--splat-sorting", default="cameraDistance",
+                    choices=["rayHitDistance", "cameraDistance", "zDepth"],
+                    help="how the renderer orders splats along a ray (the export says cameraDistance)")
     ap.add_argument("--splats", type=pathlib.Path,
                     help="Gaussian splats trained on the video (a 3DGRUT ParticleField USDZ): the reef is "
                          "them instead of library colonies, and the place carries its own light")
@@ -357,7 +387,7 @@ def main() -> int:
                                     "other Red Sea places, not measured where it was filmed",
                     "--into", str(a.into)], check=True)
     if a.splats:
-        site = splat_reef(place, a.splats, a.splat_align, a.sink)
+        site = splat_reef(place, a.splats, a.splat_align, a.sink, a.splat_sorting)
         planted = {"x": np.array([0.0]), "y": np.array([0.0]), "z": np.array([float(height[a.most // 2, a.most // 2])])}
     else:
         planted = plant(place, a.rebuilt, a.library, height, a.across, origin, shift)

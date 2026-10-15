@@ -444,6 +444,15 @@ def make(stage, say, floor: float, water_level: float = 0.0,
     settings.set("/rtx/post/tonemap/filmIso", float(iso))
     say("camera_is", filmIso=round(float(iso), 1), fNumber=4.5,
         exposureTime=1 / 60.0, pinned=asked_for("IOCEAN_ISO") is not None)
+    # Any renderer setting by name, as JSON {"/rtx/...": value}: how a place
+    # whose light is already recorded (splats) is drawn without the exposure
+    # and tonemapping meant for light the renderer makes itself.
+    told = os.environ.get("IOCEAN_RTX", "").strip()
+    if told:
+        import json
+        for key, value in json.loads(told).items():
+            settings.set(key, value)
+        say("renderer_told", settings=json.loads(told))
     if os.environ.get("IOCEAN_SETTINGS") == "1":
         _say_what_the_renderer_has(settings, say)
 
