@@ -16,8 +16,8 @@ ground cuts through them; so the ground is taken from the splats themselves:
 
 Written into OUT in the shape tools/video-reef reads (seabed.npz, frame.npz,
 model.ply holding the seabed grid's colours, patch/patch.json), with
-cameras.json: every COLMAP camera, by name, as world_from_camera in COLMAP's
-frame, for the path tour.
+cameras.json: every COLMAP camera, by name, as world_from_camera in the
+frame the export draws the splats in, for the path tour.
 """
 
 from __future__ import annotations
@@ -92,6 +92,9 @@ def main() -> int:
     ap.add_argument("--camera-height-from", default="")
     ap.add_argument("--video", default="{}")
     ap.add_argument("--cell", type=float, default=0.04)
+    ap.add_argument("--clear", type=float, default=1.0,
+                    help="metres the seabed stays under every camera (within --clear-radius): the camera swam in water")
+    ap.add_argument("--clear-radius", type=float, default=1.5)
     ap.add_argument("--under", type=float, default=5.0,
                     help="the percentile of a cell's splat heights the seabed sits at; the median drew it through half the reef")
     a = ap.parse_args()
@@ -106,6 +109,12 @@ def main() -> int:
     M = gaussians_transform(a.usdz)
     pos = pos @ M[:3, :3] + M[3, :3]                              # into COLMAP's world, as the USD draws them
     cams = colmap_cameras(a.colmap)
+    # The export draws the cameras through the same transform as the splats
+    # (its own camera 0 is COLMAP's first camera so moved); near identity for
+    # the 2-minute splats, 4.4 degrees and 6 cm off for the whole video's.
+    usd_from_colmap = np.eye(4)
+    usd_from_colmap[:3, :3], usd_from_colmap[:3, 3] = M[:3, :3].T, M[3, :3]
+    cams["poses"] = {k: usd_from_colmap @ m for k, m in cams["poses"].items()}
     centres = np.array([m[:3, 3] for m in cams["poses"].values()])
     # The surface: opaque splats no bigger than the reef's own detail.
     keep = (opacity > 0.5) & (size < np.percentile(size, 90))
@@ -155,6 +164,23 @@ def main() -> int:
         for dx in (-2, -1, 0, 1, 2):
             low = np.minimum(low, np.roll(np.roll(h, dy, 0), dx, 1))
     h = low
+    # The camera swam in open water, so the ground under it is at least --clear
+    # below it: splats loose in the water (haze, fish, the diver's own bubbles)
+    # lifted cells of the whole video's seabed over 156 of its 756 cameras.
+    eyes = ((centres - centre) @ rotation.T) * scale
+    gx, gy = np.meshgrid(lo[0] + np.arange(n[0]) * cell, lo[1] + np.arange(n[1]) * cell)
+    reach = int(np.ceil(a.clear_radius / cell))
+    lifted = 0
+    for e in eyes:
+        i, j = int((e[0] - lo[0]) / cell), int((e[1] - lo[1]) / cell)
+        ys, xs = slice(max(j - reach, 0), min(j + reach + 1, n[1])), slice(max(i - reach, 0), min(i + reach + 1, n[0]))
+        if ys.start >= ys.stop or xs.start >= xs.stop:
+            continue
+        near = (gx[ys, xs] - e[0]) ** 2 + (gy[ys, xs] - e[1]) ** 2 <= a.clear_radius ** 2
+        roof = e[2] - a.clear
+        over = near & (h[ys, xs] > roof)
+        lifted += int(over.sum())
+        h[ys, xs][over] = roof
     np.savez(a.out / "seabed.npz", height=h, lo=lo, cell=cell, n=n, seen=seen)
     np.savez(a.out / "frame.npz", centre=centre, rotation=rotation, scale=scale)
     # The seabed grid's colours, as the first n by n vertices of a PLY (what
@@ -179,7 +205,7 @@ def main() -> int:
         "width": cams["width"], "height": cams["height"], "fx": cams["fx"],
         "poses": {k: m.tolist() for k, m in cams["poses"].items()}}))
     print(json.dumps({"splats": int(len(pos)), "surface": int(len(surface)), "scale": round(scale, 4),
-                      "seenShare": round(float(seen.mean()), 3), "grid": [int(n[0]), int(n[1])],
+                      "seenShare": round(float(seen.mean()), 3), "cellsLoweredUnderCameras": lifted, "grid": [int(n[0]), int(n[1])],
                       "extentM": [round(float(v), 1) for v in (hi - lo)]}))
     return 0
 
