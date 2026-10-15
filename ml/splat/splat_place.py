@@ -10,8 +10,9 @@ ground cuts through them; so the ground is taken from the splats themselves:
                 USD draws them in (its Gaussians transform applied)
   the frame     levelled by a plane fit (up towards the cameras, right-handed),
                 along the swim, in metres by the camera's height over the reef
-  the seabed    a 4 cm grid of the surface's median height, gaps filled,
-                coloured with the splats' own base colour
+  the seabed    a 4 cm grid under the surface (a low percentile of its
+                height in each cell), gaps filled, coloured with the splats'
+                own base colour: it shows only through the splats' holes
 
 Written into OUT in the shape tools/video-reef reads (seabed.npz, frame.npz,
 model.ply holding the seabed grid's colours, patch/patch.json), with
@@ -91,6 +92,8 @@ def main() -> int:
     ap.add_argument("--camera-height-from", default="")
     ap.add_argument("--video", default="{}")
     ap.add_argument("--cell", type=float, default=0.04)
+    ap.add_argument("--under", type=float, default=5.0,
+                    help="the percentile of a cell's splat heights the seabed sits at; the median drew it through half the reef")
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
 
@@ -126,7 +129,7 @@ def main() -> int:
                   f"one COLMAP unit {scale:.3f} m" if a.camera_height_from else
                   f"assumed: the camera {a.camera_height} m over the reef, one COLMAP unit {scale:.3f} m")
 
-    # The seabed: the surface's median height in each cell, gaps filled.
+    # The seabed: under the surface in each cell, gaps filled.
     cell = a.cell
     lo = np.percentile(xyz[:, :2], 0.5, axis=0) - 0.2
     hi = np.percentile(xyz[:, :2], 99.5, axis=0) + 0.2
@@ -140,17 +143,18 @@ def main() -> int:
     for c, s0, s1 in zip(cells, starts, list(starts[1:]) + [len(order)]):
         which = order[s0:s1]
         if len(which) >= 3:
-            height[c] = np.median(xyz[which, 2])
+            height[c] = np.percentile(xyz[which, 2], a.under)
             col[c] = np.median(tint[which], axis=0)
     known = ~np.isnan(height)
     seen = known.reshape(n[1], n[0])
     h = _fill(np.nan_to_num(height).reshape(n[1], n[0]), seen)
     c = _fill(col.reshape(n[1], n[0], 3), seen)
-    acc = np.zeros_like(h)
-    for dy in (-1, 0, 1):
-        for dx in (-1, 0, 1):
-            acc += np.roll(np.roll(h, dy, 0), dx, 1)
-    h = acc / 9.0
+    # Smoothed by its lowest neighbour, so a spike never stands up through the reef.
+    low = h.copy()
+    for dy in (-2, -1, 0, 1, 2):
+        for dx in (-2, -1, 0, 1, 2):
+            low = np.minimum(low, np.roll(np.roll(h, dy, 0), dx, 1))
+    h = low
     np.savez(a.out / "seabed.npz", height=h, lo=lo, cell=cell, n=n, seen=seen)
     np.savez(a.out / "frame.npz", centre=centre, rotation=rotation, scale=scale)
     # The seabed grid's colours, as the first n by n vertices of a PLY (what
