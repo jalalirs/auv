@@ -232,6 +232,40 @@ def plant(place: pathlib.Path, rebuilt: pathlib.Path, library: pathlib.Path, hei
             "x": x, "y": y, "z": z}
 
 
+AS_SEEN = '''
+        def Material "AsSeen"
+        {
+            token outputs:surface.connect = </World/Looks/AsSeen/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0, 0, 0)
+                color3f inputs:emissiveColor.connect = </World/Looks/AsSeen/Colour.outputs:rgb>
+                float inputs:roughness = 1
+                float inputs:metallic = 0
+                token outputs:surface
+            }
+
+            def Shader "Colour"
+            {
+                uniform token info:id = "UsdUVTexture"
+                asset inputs:file = @textures/site_colour.jpg@
+                token inputs:sourceColorSpace = "sRGB"
+                float2 inputs:st.connect = </World/Looks/AsSeen/St.outputs:result>
+                float3 outputs:rgb
+            }
+
+            def Shader "St"
+            {
+                uniform token info:id = "UsdPrimvarReader_float2"
+                string inputs:varname = "st"
+                float2 outputs:result
+            }
+        }
+'''
+
+
 def splat_reef(place: pathlib.Path, splats: pathlib.Path, align: pathlib.Path, sink: float,
                sorting: str = "cameraDistance") -> dict:
     """The reef as the video's splats: referenced from coral.usda in the
@@ -295,6 +329,16 @@ def Xform "Coral"
 }}
 ''')
     seabed = (place / "seabed.usda").read_text()
+    # Where the splats are thin the seabed shows, and its own material (stock
+    # hard and soft ground, lit by a sun with no water to take the red out)
+    # came out as rust-coloured patches. With the light carried by the place,
+    # the seabed shows the ground as the video saw it and is not lit: an
+    # emissive surface, the colour map and nothing else. It cannot simply be
+    # hidden: the NuRec volume draws nothing where there is no surface behind.
+    if "AsSeen" not in seabed:
+        seabed = seabed.replace("rel material:binding = </World/Looks/Seabed>",
+                                "rel material:binding = </World/Looks/AsSeen>", 1)
+        seabed = seabed.replace('def Scope "Looks"\n    {', 'def Scope "Looks"\n    {' + AS_SEEN, 1)
     if "xformOp:translate" not in seabed.split("def ", 2)[1]:
         seabed = seabed.replace('def Xform "World"\n{', 'def Xform "World"\n{\n    double3 xformOp:translate = (0, 0, %g)\n'
                                 '    uniform token[] xformOpOrder = ["xformOp:translate"]' % -sink, 1)
