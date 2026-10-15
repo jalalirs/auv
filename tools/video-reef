@@ -266,7 +266,36 @@ AS_SEEN = '''
 '''
 
 
-def splat_reef(place: pathlib.Path, splats: pathlib.Path, align: pathlib.Path, sink: float,
+def _splat_site(place: pathlib.Path, drawn, told: dict, sink: float) -> dict:
+    """The seabed under splats and what site.json says of them."""
+    seabed = (place / "seabed.usda").read_text()
+    # Where the splats are thin the seabed shows, and its own material (stock
+    # hard and soft ground, lit by a sun with no water to take the red out)
+    # came out as rust-coloured patches. With the light carried by the place,
+    # the seabed shows the ground as the video saw it and is not lit: an
+    # emissive surface, the colour map and nothing else. It cannot simply be
+    # hidden: the NuRec volume draws nothing where there is no surface behind.
+    if "AsSeen" not in seabed:
+        seabed = seabed.replace("rel material:binding = </World/Looks/Seabed>",
+                                "rel material:binding = </World/Looks/AsSeen>", 1)
+        seabed = seabed.replace('def Scope "Looks"\n    {', 'def Scope "Looks"\n    {' + AS_SEEN, 1)
+    if "xformOp:translate" not in seabed.split("def ", 2)[1]:
+        seabed = seabed.replace('def Xform "World"\n{', 'def Xform "World"\n{\n    double3 xformOp:translate = (0, 0, %g)\n'
+                                '    uniform token[] xformOpOrder = ["xformOp:translate"]' % -sink, 1)
+    (place / "seabed.usda").write_text(seabed)
+    site = json.loads((place / "site.json").read_text())
+    site["reef"] = {"colonies": 0, "kind": "measured",
+                    "from": ("the dive video itself, as Gaussian splats (3DGRUT): what the camera "
+                             "saw, drawn as it saw it, with no colonies grown or planted"),
+                    "splats": {"file": drawn, "fitResidualM": told.get("fitResidualMedianM")}}
+    site["light"] = {"carriedByThePlace": True,
+                     "why": ("the reef is splats trained on the video: they hold the light, the haze and the "
+                             "camera's colour it was filmed with, so the water's own effects stay off"),
+                     "drawnSeabedSunkM": sink}
+    return site
+
+
+def splat_reef(place: pathlib.Path, splats: list[pathlib.Path], align: pathlib.Path, sink: float,
                sorting: str = "cameraDistance") -> dict:
     """The reef as the video's splats: referenced from coral.usda in the
     place's frame, the drawn seabed lowered under them (it stays for what a
@@ -281,6 +310,38 @@ def splat_reef(place: pathlib.Path, splats: pathlib.Path, align: pathlib.Path, s
     render is 24.1), and as NuRec 17.7, at the video's brightness."""
     told = json.loads(align.read_text())
     baked = bool(told.get("baked"))
+    if baked and len(splats) > 1:
+        # Parts cut along the reef (ml/splat/split_splats.py) so each packages
+        # under USD's 2 GB: one volume each, side by side, nothing between.
+        drawn = []
+        for i, part in enumerate(splats):
+            shutil.copy(part, place / f"splats-{i}.usdz")
+            drawn.append(f"splats-{i}.usdz")
+        parts = "".join(f'''
+        def Xform "Part{i}" (
+            prepend references = @{name}@
+        )
+        {{
+        }}
+''' for i, name in enumerate(drawn))
+        (place / "coral.usda").write_text(f'''#usda 1.0
+(
+    doc = "The reef as Gaussian splats trained on the dive video (3DGRUT, NuRec volumes in {len(drawn)} parts, baked into the place's frame). Metres, Z up."
+    defaultPrim = "Coral"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "Coral"
+{{
+    def Xform "Splats"
+    {{{parts}    }}
+}}
+''')
+        return _splat_site(place, drawn, told, sink)
+    if len(splats) > 1:
+        raise SystemExit("several splat files only as baked NuRec parts")
+    splats = splats[0]
     if splats.stat().st_size < 2**31 - 2**24:
         shutil.copy(splats, place / "splats.usdz")
         drawn = "splats.usdz"
@@ -328,31 +389,7 @@ def Xform "Coral"
     }}
 }}
 ''')
-    seabed = (place / "seabed.usda").read_text()
-    # Where the splats are thin the seabed shows, and its own material (stock
-    # hard and soft ground, lit by a sun with no water to take the red out)
-    # came out as rust-coloured patches. With the light carried by the place,
-    # the seabed shows the ground as the video saw it and is not lit: an
-    # emissive surface, the colour map and nothing else. It cannot simply be
-    # hidden: the NuRec volume draws nothing where there is no surface behind.
-    if "AsSeen" not in seabed:
-        seabed = seabed.replace("rel material:binding = </World/Looks/Seabed>",
-                                "rel material:binding = </World/Looks/AsSeen>", 1)
-        seabed = seabed.replace('def Scope "Looks"\n    {', 'def Scope "Looks"\n    {' + AS_SEEN, 1)
-    if "xformOp:translate" not in seabed.split("def ", 2)[1]:
-        seabed = seabed.replace('def Xform "World"\n{', 'def Xform "World"\n{\n    double3 xformOp:translate = (0, 0, %g)\n'
-                                '    uniform token[] xformOpOrder = ["xformOp:translate"]' % -sink, 1)
-        (place / "seabed.usda").write_text(seabed)
-    site = json.loads((place / "site.json").read_text())
-    site["reef"] = {"colonies": 0, "kind": "measured",
-                    "from": ("the dive video itself, as Gaussian splats (3DGRUT): what the camera "
-                             "saw, drawn as it saw it, with no colonies grown or planted"),
-                    "splats": {"file": drawn, "fitResidualM": told.get("fitResidualMedianM")}}
-    site["light"] = {"carriedByThePlace": True,
-                     "why": ("the reef is splats trained on the video: they hold the light, the haze and the "
-                             "camera's colour it was filmed with, so the water's own effects stay off"),
-                     "drawnSeabedSunkM": sink}
-    return site
+    return _splat_site(place, drawn, told, sink)
 
 
 def main() -> int:
@@ -372,9 +409,9 @@ def main() -> int:
     ap.add_argument("--splat-sorting", default="cameraDistance",
                     choices=["rayHitDistance", "cameraDistance", "zDepth"],
                     help="how the renderer orders splats along a ray (the export says cameraDistance)")
-    ap.add_argument("--splats", type=pathlib.Path,
-                    help="Gaussian splats trained on the video (a 3DGRUT ParticleField USDZ): the reef is "
-                         "them instead of library colonies, and the place carries its own light")
+    ap.add_argument("--splats", type=pathlib.Path, nargs="+",
+                    help="Gaussian splats trained on the video (3DGRUT USDZ; several when baked NuRec parts): the "
+                         "reef is them instead of library colonies, and the place carries its own light")
     ap.add_argument("--splat-align", type=pathlib.Path,
                     help="the splats' transform into this place (align.json, usdMatrix), worked out with "
                          "the same rebuild")
