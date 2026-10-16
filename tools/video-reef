@@ -296,7 +296,7 @@ def _splat_site(place: pathlib.Path, drawn, told: dict, sink: float) -> dict:
 
 
 def splat_reef(place: pathlib.Path, splats: list[pathlib.Path], align: pathlib.Path, sink: float,
-               sorting: str = "cameraDistance") -> dict:
+               sorting: str = "cameraDistance", pieces: list[tuple[int, int]] | None = None) -> dict:
     """The reef as the video's splats: referenced from coral.usda in the
     place's frame, the drawn seabed lowered under them (it stays for what a
     vehicle stands on and to fill their holes), and the place said to carry
@@ -338,7 +338,19 @@ def Xform "Coral"
     {{{parts}    }}
 }}
 ''')
-        return _splat_site(place, drawn, told, sink)
+        site = _splat_site(place, drawn, told, sink)
+        if pieces:
+            # Whole pieces, one drawn at a time: the one whose stretch of the
+            # swim is nearest the camera (sim-runtime coral/splat_pieces.py).
+            if len(pieces) != len(drawn):
+                raise SystemExit(f"{len(drawn)} splat files but {len(pieces)} piece ranges")
+            frames = sorted(told["frames"], key=lambda f: f["name"])
+            site["reef"]["splats"]["pieces"] = [
+                {"prim": f"Part{i}", "frames": [lo, hi],
+                 "path": [[round(float(v), 3) for v in f["eye"]] for f in frames[lo - 1:hi:2]]}
+                for i, (lo, hi) in enumerate(pieces)]
+            site["reef"]["splats"]["drawn"] = "the piece nearest the camera, one at a time"
+        return site
     if len(splats) > 1:
         raise SystemExit("several splat files only as baked NuRec parts")
     splats = splats[0]
@@ -412,6 +424,9 @@ def main() -> int:
     ap.add_argument("--splats", type=pathlib.Path, nargs="+",
                     help="Gaussian splats trained on the video (3DGRUT USDZ; several when baked NuRec parts): the "
                          "reef is them instead of library colonies, and the place carries its own light")
+    ap.add_argument("--splat-pieces", default="",
+                    help="with several --splats: each one's frames, 1-based, as FIRST:LAST,FIRST:LAST,...; the "
+                         "place then draws one piece at a time, the one trained nearest the camera")
     ap.add_argument("--splat-align", type=pathlib.Path,
                     help="the splats' transform into this place (align.json, usdMatrix), worked out with "
                          "the same rebuild")
@@ -468,7 +483,8 @@ def main() -> int:
                                     "other Red Sea places, not measured where it was filmed",
                     "--into", str(a.into)], check=True)
     if a.splats:
-        site = splat_reef(place, a.splats, a.splat_align, a.sink, a.splat_sorting)
+        ranges = [tuple(int(v) for v in r.split(":")) for r in a.splat_pieces.split(",") if r]
+        site = splat_reef(place, a.splats, a.splat_align, a.sink, a.splat_sorting, ranges or None)
         planted = {"x": np.array([0.0]), "y": np.array([0.0]), "z": np.array([float(height[a.most // 2, a.most // 2])])}
     else:
         planted = plant(place, a.rebuilt, a.library, height, a.across, origin, shift)

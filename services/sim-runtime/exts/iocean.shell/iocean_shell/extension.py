@@ -770,6 +770,7 @@ class CoralCityShell(omni.ext.IExt):
         # before gets back the exposure it was metered at.
         self._expose_for_the_view()
         self._meter_the_frame()
+        self._draw_the_nearest_piece()
 
         if self.tour is not None:
             self._fly_the_tour(dive)
@@ -1245,6 +1246,48 @@ class CoralCityShell(omni.ext.IExt):
     # has plainly been lost.
     PASSES_TO_DEVELOP = 1
     PASSES_TO_GIVE_UP_ON_A_FRAME = 25
+
+    def _draw_the_nearest_piece(self) -> None:
+        """A reef trained from a video in pieces draws one piece: the one made
+        from the stretch of the swim nearest the camera (coral/splat_pieces.py).
+        Joined into one, the pieces drew dark shapes over the far reef."""
+        pieces = getattr(self, "_pieces", False)
+        if pieces is False:
+            self._pieces = pieces = None
+            try:
+                from splat_pieces import pieces_of
+                city = pathlib.Path(self.brief.get("cityPath", "/dive/city"))
+                self._pieces = pieces = pieces_of(json.loads((city / "site.json").read_text()))
+                if pieces is not None:
+                    self._say("splat_pieces", prims=pieces.prims)
+            except Exception as exc:
+                carb.log_warn(f"iocean could not read the place's splat pieces: {exc}")
+        if pieces is None:
+            return
+        try:
+            from omni.kit.viewport.utility import get_active_viewport
+            from pxr import Usd, UsdGeom
+
+            viewport = get_active_viewport()
+            stage = omni.usd.get_context().get_stage()
+            camera = stage.GetPrimAtPath(str(viewport.camera_path)) if viewport is not None else None
+            if not camera:
+                return
+            eye = UsdGeom.Xformable(camera).ComputeLocalToWorldTransform(Usd.TimeCode.Default()).ExtractTranslation()
+            was = pieces.drawn
+            now = pieces.which([eye[0], eye[1], eye[2]])
+            if now == was:
+                return
+            for i, name in enumerate(pieces.prims):
+                prim = stage.GetPrimAtPath(f"/World/Coral/Splats/{name}")
+                if prim:
+                    seen = UsdGeom.Imageable(prim)
+                    seen.MakeVisible() if i == now else seen.MakeInvisible()
+            self._say("splat_piece_drawn", piece=pieces.prims[now], eye=[round(float(v), 2) for v in eye])
+        except Exception as exc:
+            if not getattr(self, "_pieces_complained", False):
+                self._pieces_complained = True
+                carb.log_warn(f"iocean could not choose a splat piece: {exc}")
 
     def _expose_for_the_view(self) -> None:
         dive = self.dive
