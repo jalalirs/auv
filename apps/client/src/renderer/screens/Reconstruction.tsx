@@ -26,7 +26,7 @@ type Manifest = {
   frames?: number; registered?: number; extentM?: [number, number]; pathLengthM?: number; headingDeg?: number;
   pieces?: { splats: number }[]; scale?: { factor?: number; how?: string; from?: string };
   cover?: { shares?: Record<string, number>; from?: string; kind?: string };
-  tape?: { found?: boolean; paintedOut?: boolean; why?: string; framesWithTape?: number };
+  tape?: { found?: boolean; paintedOut?: boolean; why?: string; how?: string; framesWithTape?: number };
   video?: { durationS?: number; name?: string }; previews?: string[];
 };
 
@@ -100,7 +100,8 @@ export function ReconstructionPage({ platform, held, packages, id, onBack, onOpe
                 <Row of="size" is={m.extentM ? `${m.extentM[0].toFixed(0)} by ${m.extentM[1].toFixed(0)} m, ${m.pathLengthM ?? "?"} m of swim` : "?"}
                      note={`${m.scale?.how ?? "assumed"}: ${m.scale?.from ?? ""}`} />
                 <Row of="splats" is={`${splats.toLocaleString()} in ${m.pieces?.length ?? 0} pieces`} note="each piece drawn when the camera is over its stretch of the swim" />
-                <Row of="survey tape" is={m.tape?.paintedOut ? `painted out of ${m.tape.framesWithTape} frames` : (m.tape?.why ?? "none found")} />
+                <Row of="survey tape" is={m.tape?.paintedOut ? (m.tape.framesWithTape ? `painted out of ${m.tape.framesWithTape} frames` : "painted out") : (m.tape?.why ?? "none found")}
+                     note={m.tape?.how} />
               </div>
             </section>
             <section>

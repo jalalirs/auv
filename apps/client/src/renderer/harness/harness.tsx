@@ -203,24 +203,17 @@ const reconSteps = [
   { step: "tape", say: "a tape in 610 of 756 frames; finding it in 3D" },
   { step: "pieces", say: "training piece-2 (frames 223 to 534)", n: 2, of: 3 },
 ];
-const reconManifest = {
-  name: "Red Sea transect", frames: 756, registered: 756, extentM: [99.4, 14.2], pathLengthM: 118.3,
-  pieces: [{ splats: 6_912_004 }, { splats: 7_400_112 }, { splats: 6_100_877 }],
-  scale: { factor: 7.84, how: "assumed", from: "assumed: the camera 1.92 m over the reef, one COLMAP unit 7.840 m" },
-  cover: { kind: "derived", from: "CoralscapesV2 SegFormer on 63 of the video's frames, share of the seabed pixels by ml/cover's groups",
-           shares: { hard_coral: 0.112, soft_coral: 0.031, sand: 0.402, rubble: 0.214, algae: 0.09, other: 0.151 } },
-  tape: { found: true, paintedOut: true, framesWithTape: 610 },
-  video: { durationS: 377.8, name: "GX_SINGLE_VIDEO.MP4" }, previews: ["previews/frame-1.jpg", "previews/frame-2.jpg"],
-};
+// The real asset the job made of the Red Sea video (fixtures/recon, from the box).
+let reconManifest: Doc = {};
+void fetch("./harness/fixtures/recon/reconstruction.json").then((r) => r.json()).then((m) => { reconManifest = m; });
 const recon = (ready: boolean) => ({ id: "recon_1", orgId: "org_1", jobId: "job_r", name: "Red Sea transect",
-  brief: { video: { objectId: "obj_v", name: "GX_SINGLE_VIDEO.MP4" }, start: { lat: 22.2838, lon: 38.9605 } },
+  brief: { video: { objectId: "obj_v", name: "GX_SINGLE_VIDEO.MP4" } },
   createdBy: "p1", createdAt: now(), state: ready ? "ready" : "running", jobState: ready ? "succeeded" : "running",
   steps: reconSteps.map((s) => ({ at: now(), ...s })), ...(ready ? { manifest: reconManifest } : {}) });
-const candidates = [
-  { at: [197.5, -572.5], headingDeg: 100, dz: 2.98, startAt: [246.0, -563.1], fit: { rmsM: 0.54, placeGroundM: -4.8 } },
-  { at: [-302.5, -612.5], headingDeg: 70, dz: -1.2, startAt: [-348.2, -630.0], fit: { rmsM: 0.71, placeGroundM: -9.0 } },
-  { at: [87.5, -402.5], headingDeg: 260, dz: 0.4, startAt: [40.2, -394.5], fit: { rmsM: 0.88, placeGroundM: -7.4 } },
-];
+// A real Resolve of that asset onto Al Fahal, the whole place searched (no
+// start is known for the video).
+let candidates: Doc[] = [];
+void fetch("./harness/fixtures/recon/candidates.json").then((r) => r.json()).then((d) => { candidates = d.candidates; });
 let mapping: Doc | undefined;
 let mappingAt = 0;
 const mappingView = () => {
@@ -236,8 +229,7 @@ Object.assign(platform, {
   reconstruction: (rid: string) => delay(rid === "recon_2" ? { ...recon(false), id: "recon_2", name: "North wall swim" } : recon(true)),
   reconstructionObjects: () => delay([
     { path: "preview.jpg", url: "./harness/fixtures/recon/preview.jpg" },
-    { path: "previews/frame-1.jpg", url: "./harness/fixtures/recon/frame-1.jpg" },
-    { path: "previews/frame-2.jpg", url: "./harness/fixtures/recon/frame-2.jpg" }]),
+    ...[1, 2, 3, 4, 5, 6].map((k) => ({ path: `previews/frame-${k}.jpg`, url: `./harness/fixtures/recon/frame-${k}.jpg` }))]),
   startReconstruction: (org: string, brief: Doc) => { said.push(`reconstruct for ${org}: ${JSON.stringify(brief)}`); return delay(recon(false)); },
   mappingsOf: () => delay(mapping ? [mappingView()] : []),
   mapping: () => delay(mappingView()),
@@ -245,7 +237,7 @@ Object.assign(platform, {
     said.push(`map ${rid}: ${JSON.stringify(body)}`);
     mapping = body.mode === "onto"
       ? { id: "map_1", reconstructionId: rid, cityId: body.cityId, mode: "onto", state: "choosing", candidates,
-          start: [246.0, -563.1], steps: [{ at: now(), step: "done", say: "3 places it fits", phase: "resolve" }] }
+          start: null, steps: [{ at: now(), step: "done", say: "5 places it fits; the best 0.41 m rms at (998, -1457), -11.5 m deep", phase: "resolve" }] }
       : { id: "map_1", reconstructionId: rid, cityId: "city_new", mode: "own", state: "laying",
           steps: [{ at: now(), step: "plan", say: "a flat seabed at 8 m", phase: "base" }] };
     mappingAt = Date.now();

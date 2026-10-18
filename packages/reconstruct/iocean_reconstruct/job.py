@@ -450,7 +450,13 @@ def asset(brief: dict, said_pieces: list[dict], tape_said: dict) -> dict:
                                 SCRATCH / "align-baked.json"))
         baked.append(b)
     tell("surface", "the ground the splats stand on")
-    surface = last_json(run("surface", python("splat_surface.py", SCRATCH / "align-baked.json", out, *baked)))
+    # From the pieces as trained: splat_surface.py moves them itself, by the
+    # bake's own transform (given the baked ones, they were moved twice and
+    # the ground came out a third of the reef, 28 m up).
+    surface = last_json(run("surface", python("splat_surface.py", SCRATCH / "align-baked.json", out,
+                                              *[p["checkpoint"] for p in said_pieces])))
+    if float(surface.get("measuredShare", 0)) <= 0 or not surface.get("rows"):
+        raise RuntimeError("no ground could be measured under the swim: the reef's splats are too sparse")
     (SCRATCH / "identity.json").write_text(json.dumps({"matrix": np.eye(4).tolist(), "dz": 0.0}))
     parts = []
     code = grut_copy()
@@ -460,6 +466,9 @@ def asset(brief: dict, said_pieces: list[dict], tape_said: dict) -> dict:
                                                "--translate", "0,0,0")))
         ck = torch.load(t, map_location="cpu", weights_only=False)
         n = int(ck["positions"].shape[0])
+        if n < 1000:
+            raise RuntimeError(f"{p['name']} kept {n} splats of {trimmed.get('splats')} after the water and the "
+                               f"strip's edge were taken off: its splats are not over the ground measured")
         if n > MOST_SPLATS:
             # The faintest go: a part has to stay under what USD reads.
             keep = torch.argsort(ck["density"][:, 0].detach(), descending=True)[:MOST_SPLATS].sort().values
@@ -492,43 +501,50 @@ def asset(brief: dict, said_pieces: list[dict], tape_said: dict) -> dict:
 # -- what the frames show ------------------------------------------------------------------------------
 
 def cover(images: pathlib.Path, most: int = 60) -> dict:
+    """The cover the frames show, as ml/cover reads a video transect: each
+    frame at the scale the model was trained at (its shorter side 1024
+    pixels, in overlapping 1024-pixel windows), its pixels gathered into
+    ml/cover's groups, and the frames weighed by how much of each is seabed.
+    Squeezed to 1024 wide instead, the same frames called a coral reef 72%
+    sand and 0.3% hard coral."""
     import numpy as np
-    import torch
     import yaml
     from PIL import Image
-    from transformers import SegformerForSemanticSegmentation
 
     if done("cover"):
         return said_by("cover")
-    groups_of = yaml.safe_load(COVER_GROUPS.read_text())["groups"]
-    model_dir = MODELS / "coralscapes"
-    model = SegformerForSemanticSegmentation.from_pretrained(model_dir).cuda().eval().half()
-    where = {label: g for g, labels in groups_of.items() for label in labels}
-    names = list(groups_of)
-    lookup = np.full(max(model.config.id2label) + 1, names.index("not_seabed"))
-    for i, label in model.config.id2label.items():
-        if label in where:
-            lookup[int(i)] = names.index(where[label])
-    pre = json.loads((model_dir / "preprocessor_config.json").read_text())
-    mean = torch.tensor(pre.get("image_mean", [0.485, 0.456, 0.406])).view(1, 3, 1, 1).cuda().half()
-    std = torch.tensor(pre.get("image_std", [0.229, 0.224, 0.225])).view(1, 3, 1, 1).cuda().half()
+    sys.path.insert(0, str(COVER_GROUPS.parent))
+    from classes import NOT_SEABED, Groups
+    from segment import Segmenter
+
+    segmenter = Segmenter(MODELS / "coralscapes")
+    groups = Groups(segmenter.id2label, yaml.safe_load(COVER_GROUPS.read_text())["groups"])
+    names = list(groups.seabed)
+    not_seabed = groups.names.index(NOT_SEABED)
     files = sorted(images.glob("*.jpg"))
     files = files[::max(1, len(files) // most)]
-    counts = np.zeros(len(names))
-    with torch.no_grad():
-        for f in files:
-            rgb = Image.open(f).convert("RGB")
-            W, H = rgb.size
-            x = torch.from_numpy(np.asarray(rgb.resize((1024, int(1024 * H / W / 32 + 0.5) * 32)), dtype=np.float32) / 255.0)
-            label = model(pixel_values=((x.permute(2, 0, 1)[None].cuda().half()) - mean) / std).logits.argmax(1)[0]
-            counts += np.bincount(lookup[label.cpu().numpy().ravel()], minlength=len(names))
-    seabed = counts.sum() - counts[names.index("not_seabed")]
-    shares = {n: round(float(counts[i] / seabed), 4) for i, n in enumerate(names) if n != "not_seabed"} if seabed else {}
-    said = {"kind": "derived", "from": f"CoralscapesV2 SegFormer on {len(files)} of the video's frames, "
-                                       "share of the seabed pixels by ml/cover's groups",
-            "frames": len(files), "shares": shares}
+    total, weight, used = np.zeros(len(names)), 0.0, 0
+    for f in files:
+        rgb = Image.open(f).convert("RGB")
+        k = 1024 / min(rgb.size)
+        image = np.asarray(rgb.resize((int(round(rgb.width * k / 2)) * 2, int(round(rgb.height * k / 2)) * 2),
+                                      Image.BILINEAR))
+        classes = segmenter.classes(image)
+        seabed = float((groups.of(classes) != not_seabed).mean())
+        shares = groups.shares(classes)
+        if shares and seabed >= 0.3:
+            total += seabed * np.array([shares[n] for n in names])
+            weight += seabed
+            used += 1
+    shares = {n: round(float(v / weight), 4) for n, v in zip(names, total)} if weight else {}
+    said = {"kind": "derived", "from": f"CoralscapesV2 SegFormer on {used} of the video's frames (of {len(files)} "
+                                       "read; a frame less than 30% seabed is left out), each at its shorter side "
+                                       "1024 pixels, share of the seabed pixels by ml/cover's groups, frames "
+                                       "weighed by their seabed",
+            "frames": used, "shares": shares}
     mark("cover", said)
-    del model
+    del segmenter
+    import torch
     torch.cuda.empty_cache()
     return said
 
@@ -552,7 +568,11 @@ def previews(out: pathlib.Path, images: pathlib.Path, parts: list[dict]) -> list
         rgb.append(np.clip(0.5 + SH_C0 * ck["features_albedo"].detach().float().numpy()[keep], 0, 1))
         del ck
     xy, z, rgb = np.concatenate(xy), np.concatenate(z), np.concatenate(rgb)
-    lo, hi = np.percentile(xy, 0.2, axis=0), np.percentile(xy, 99.8, axis=0)
+    path = json.loads((out / "path.json").read_text())["frames"]
+    eyes = np.array([f["eye"][:2] for f in path])
+    # The swim inside the picture, its start dot and all.
+    lo = np.minimum(np.percentile(xy, 0.2, axis=0), eyes.min(0) - 1.0)
+    hi = np.maximum(np.percentile(xy, 99.8, axis=0), eyes.max(0) + 1.0)
     cell = max(0.02, float((hi - lo).max()) / 2400)
     w, h = (np.ceil((hi - lo) / cell).astype(int) + 1)
     ij = ((xy - lo) / cell).astype(int)
@@ -562,7 +582,6 @@ def previews(out: pathlib.Path, images: pathlib.Path, parts: list[dict]) -> list
     image = np.full((h, w, 3), 0.08)
     image[h - 1 - ij[order, 1], ij[order, 0]] = rgb[order]
     picture = Image.fromarray((image * 255).astype(np.uint8))
-    path = json.loads((out / "path.json").read_text())["frames"]
     draw = ImageDraw.Draw(picture)
     pts = [((f["eye"][0] - lo[0]) / cell, h - 1 - (f["eye"][1] - lo[1]) / cell) for f in path]
     draw.line(pts, fill=(255, 210, 60), width=max(2, w // 600))

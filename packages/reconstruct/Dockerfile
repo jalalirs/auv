@@ -14,7 +14,8 @@
 #   models/torch/hub/checkpoints/    big-lama.pt, for simple-lama-inpainting
 #
 # Built from a folder holding packages/reconstruct, ml/splat,
-# ml/cover/configs/cover.yaml and models/ in those places:
+# ml/cover/configs/cover.yaml, ml/cover/iocean_cover/{classes,segment}.py and
+# models/ in those places:
 #
 #   docker build -f packages/reconstruct/Dockerfile -t iocean/reconstruct-video:r1 .
 
@@ -36,12 +37,15 @@ RUN printf '#!/bin/sh\nLD_LIBRARY_PATH=/opt/colmap/lib exec /opt/colmap/bin/colm
  && chmod 755 /usr/local/bin/colmap \
  && colmap help > /dev/null
 
-RUN /workspace/.venv/bin/pip install --no-cache-dir "transformers>=4.44,<5" fire \
+# transformers 5, as ml/cover: CoralscapesV2's decode head is saved under 5's
+# names, and 4.57 loaded it as a fresh random head without failing (a reef
+# frame came out 80% "background").
+RUN /workspace/.venv/bin/pip install --no-cache-dir "transformers>=5.0,<6" fire \
  && /workspace/.venv/bin/pip install --no-cache-dir --no-deps simple-lama-inpainting
 
 COPY models /opt/iocean/models
 COPY ml/splat /opt/iocean/splat
-COPY ml/cover/configs/cover.yaml /opt/iocean/cover/cover.yaml
+COPY ml/cover/configs/cover.yaml ml/cover/iocean_cover/classes.py ml/cover/iocean_cover/segment.py /opt/iocean/cover/
 COPY packages/reconstruct/iocean_reconstruct /opt/iocean/reconstruct/iocean_reconstruct
 RUN chmod -R a+rX /opt/iocean
 
