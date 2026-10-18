@@ -3605,6 +3605,129 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/store/places": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The map store
+         * @description The places iOcean builds from public data, checks and publishes, open to everybody: each with where it is and what its newest published version says of itself (how deep, how much was measured, how much reef, its picture), and whether one of the caller's organisations already has it. Given an area, only the places that overlap it, nearest first.
+         *
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description The middle of an area, as latitude,longitude in degrees. */
+                    near?: string;
+                    /** @description How wide the area is, in metres; 1000 when absent. */
+                    acrossM?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The store. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            places: components["schemas"]["StorePlace"][];
+                        };
+                    };
+                };
+                400: components["responses"]["Invalid"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/{orgId}/store/{cityId}/adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Use a place from the map store
+         * @description Adds it to the organisation's places to see, as a share marked as taken from the store. Taking one already taken changes nothing.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The organisation. */
+                    orgId: string;
+                    /** @description A place in the map store. */
+                    cityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The share. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Binding"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        /**
+         * Let go of a place taken from the map store
+         * @description Withdraws only what taking it gave; a share granted on purpose stays.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The organisation. */
+                    orgId: string;
+                    /** @description The place. */
+                    cityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Let go of. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cities/{cityId}": {
         parameters: {
             query?: never;
@@ -6521,6 +6644,8 @@ export interface components {
             createdBy: string;
             /** Format: date-time */
             revokedAt?: string;
+            /** @description Why it exists, when not an ordinary grant: store, for a place taken from the map store. */
+            via?: string;
         };
         /** @description One file of a run's recording, an object in storage named by its path within the recording. */
         Artefact: {
@@ -6558,12 +6683,14 @@ export interface components {
             /** Format: date-time */
             expiresAt: string;
         };
+        /** @description Where to build (centre and acrossM, unless built on a base) and from what. Empty or absent sources means every public source that reaches the place, unless the place is a flat seabed or built on a base.
+         *      */
         BuildBrief: {
             /** @description Latitude, longitude in degrees. */
-            centre: number[];
-            acrossM: number;
+            centre?: number[];
+            acrossM?: number;
             cells?: number;
-            sources: ("gebco" | "sentinel2" | "icesat2" | "allen-coral-atlas" | "learned-depth")[];
+            sources?: ("gebco" | "sentinel2" | "icesat2" | "allen-coral-atlas" | "learned-depth")[];
             files?: {
                 objectId: string;
                 /** @enum {string} */
@@ -6583,6 +6710,19 @@ export interface components {
             flatDepthM?: number;
             /** @description False builds no colonies. */
             coral?: boolean;
+            /** @description The ground the place is built on: a place in the map store, one of the organisation's own, or one shared with it. Its seabed is the first depth, the organisation's files are laid over it, and the place takes its square. With a base no source is needed.
+             *      */
+            base?: {
+                /** @enum {string} */
+                kind?: "place";
+                cityId: string;
+                /** @description Its newest published version when absent. */
+                versionId?: string;
+                /** @description Where the job finds it; filled in by the platform. */
+                path?: string;
+            };
+            /** @description Written by the platform; sources was left empty and every public source was used. */
+            allSources?: boolean;
         };
         BuildRecord: {
             id: string;
@@ -6805,6 +6945,40 @@ export interface components {
             waiting?: string;
             /** @description The end of what the failed job printed. */
             said?: string;
+        };
+        StorePlace: {
+            id: string;
+            slug: string;
+            name: string;
+            summary: string;
+            extent: components["schemas"]["Extent"];
+            /** @description Its newest published version */
+            versionId?: string;
+            /** Format: date-time */
+            publishedAt?: string;
+            /** @description That version's files */
+            filesHref?: string;
+            deepestM?: number;
+            shallowestM?: number;
+            /** @description Whether most of its depth was measured. */
+            surveyed?: boolean;
+            /** @description How much of its depth was measured. */
+            surveyedFraction?: number;
+            /** @description How its depth was made. */
+            method?: string;
+            /** @description The place's own account of its depth, which source made how much and where it is weak. */
+            depth?: {
+                [key: string]: unknown;
+            };
+            colonies?: number;
+            picture?: {
+                path: string;
+                objectId: string;
+            };
+            /** @description One of the caller's organisations already has it. */
+            adopted: boolean;
+            /** @description How far its middle is from the area's */
+            distanceM?: number;
         };
         PartPlan: {
             count: number;

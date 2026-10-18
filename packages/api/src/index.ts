@@ -51,6 +51,8 @@ export type MappingRequest = Schemas["MappingRequest"];
 export type MappingChoice = Schemas["MappingChoice"];
 export type Mapping = Schemas["Mapping"];
 export type MappingRecord = Schemas["MappingRecord"];
+export type StorePlace = Schemas["StorePlace"];
+export type Binding = Schemas["Binding"];
 export type StoredObject = Schemas["Object"];
 export type UploadGrant = Schemas["UploadGrant"];
 export type StorageUsage = Schemas["StorageUsage"];
@@ -236,6 +238,31 @@ export class Platform {
   async buildsOf(city: string): Promise<BuildRecord[]> {
     const { builds } = await this.#request<{ builds: BuildRecord[] }>("GET", `/api/v1/cities/${city}/builds`);
     return builds;
+  }
+
+  // ── the map store ──────────────────────────────────────────────────────────
+
+  /**
+   * The places iOcean builds and publishes, open to everybody. Given an area,
+   * only those overlapping it, nearest first: what to offer before somebody
+   * builds a place iOcean already has.
+   */
+  async storePlaces(near?: { lat: number; lon: number; acrossM?: number }): Promise<StorePlace[]> {
+    const query = near
+      ? `?near=${near.lat},${near.lon}` + (near.acrossM ? `&acrossM=${near.acrossM}` : "")
+      : "";
+    const { places } = await this.#request<{ places: StorePlace[] }>("GET", `/api/v1/store/places${query}`);
+    return places;
+  }
+
+  /** Use a place from the map store: it joins the organisation's places. */
+  adoptStorePlace(organisation: string, city: string): Promise<Binding> {
+    return this.#request("POST", `/api/v1/organisations/${organisation}/store/${city}/adopt`);
+  }
+
+  /** Let go of a place taken from the map store. */
+  unadoptStorePlace(organisation: string, city: string): Promise<void> {
+    return this.#request("DELETE", `/api/v1/organisations/${organisation}/store/${city}/adopt`);
   }
 
   // ── a reef from a dive video ───────────────────────────────────────────────

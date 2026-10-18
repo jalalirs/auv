@@ -171,6 +171,18 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/build-sources",
 		Summary: "what a place can be built from", Action: policy.PlatformReadCatalogue,
 		Resource: atPlatform(), Handle: d.buildSources})
+	// The map store: the platform's own places, open to all, which an
+	// organisation uses as they are or builds on.
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/store/places",
+		Summary: "the map store: places iOcean built and published, open to all; near an area, those overlapping it",
+		Action:  policy.PlatformReadCatalogue, Resource: atPlatform(), Handle: d.storePlaces})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/store/{cityId}/adopt",
+		Summary: "add a place from the map store to the organisation's places",
+		Action:  policy.CityAdopt, Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.adoptStorePlace})
+	rt.register(Route{Method: "DELETE", Pattern: "/api/v1/organisations/{orgId}/store/{cityId}/adopt",
+		Summary: "let go of a place the organisation took from the map store",
+		Action:  policy.CityAdopt, Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.unadoptStorePlace})
+
 	// Reefs made from dive videos. Making one is founding something of the
 	// organisation's own, the same authority as founding a place it builds.
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/reconstructions",

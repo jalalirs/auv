@@ -34,8 +34,8 @@ def test_a_place_is_founded_for_the_institution_and_built_from_public_data():
     extent = founded[-1]["extent"]
     assert abs((extent["north"] - extent["south"]) * 111_320 - 1000) < 1
     brief = platform.sent[-1][2]
-    assert brief == {"centre": [22.3, 38.95], "acrossM": 1000.0,
-                     "sources": ["gebco", "sentinel2", "allen-coral-atlas"]}
+    # No sources named: the platform uses every public source, and says so.
+    assert brief == {"centre": [22.3, 38.95], "acrossM": 1000.0, "sources": []}
     assert said["place"]["slug"] == "thuwal-north-2" and said["build"] == "bld_1"
     assert said["state"] == "queued"
 

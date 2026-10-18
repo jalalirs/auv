@@ -1006,9 +1006,19 @@ def _slug(name: str) -> str:
     return slug if len(slug) >= 3 else slug + "-place"
 
 
-def places_build(platform: Platform, name: str, centre: list, across_m: float = 1000.0,
-                 sources: list | None = None, files: list | None = None, cells: int | None = None) -> dict:
+def places_build(platform: Platform, name: str, centre: list | None = None, across_m: float = 1000.0,
+                 sources: list | None = None, files: list | None = None, cells: int | None = None,
+                 base_place: str = "") -> dict:
     """Found a place of the institution's own and build it from its data."""
+    if base_place and centre is None:
+        # The new place takes the base's square; the founding record needs
+        # one, so it is read from the store, where a base usually comes from.
+        listed = {p["id"]: p for p in platform.request("GET", "/api/v1/store/places").get("places") or []}
+        extent = (listed.get(base_place) or {}).get("extent")
+        if not extent:
+            raise Refused(400, "invalid", "give centre too: the base is not in the map store, so its square is not known here")
+        centre = [(extent["south"] + extent["north"]) / 2, (extent["west"] + extent["east"]) / 2]
+        across_m = max((extent["north"] - extent["south"]) * 111_320.0, 100.0)
     if not isinstance(centre, (list, tuple)) or len(centre) != 2:
         raise Refused(400, "invalid", "centre is [latitude, longitude] in degrees")
     lat, lon = float(centre[0]), float(centre[1])
@@ -1023,17 +1033,21 @@ def places_build(platform: Platform, name: str, centre: list, across_m: float = 
     for attempt in range(6):
         slug = base if attempt == 0 else f"{base}-{attempt + 1}"
         try:
+            made_of = ", ".join(sources) if sources else (f"the place {base_place}" if base_place else "every public source")
             place = platform.request("POST", f"/api/v1/organisations/{institution['id']}/cities", {
                 "slug": slug, "name": name, "verticalDatum": "mean sea level",
-                "summary": f"built from {', '.join(sources or ['gebco'])}", "extent": extent})
+                "summary": f"built from {made_of}", "extent": extent})
             break
         except Refused as refused:
             if refused.status != 400 or "already exists" not in str(refused):
                 raise
     if place is None:
         raise Refused(409, "conflict", f"places called {base} and five more like it exist; choose another name")
-    brief: dict[str, Any] = {"centre": [lat, lon], "acrossM": float(across_m),
-                             "sources": list(sources or ["gebco", "sentinel2", "allen-coral-atlas"])}
+    # No sources named means every public source that reaches the place; the
+    # platform fills them in and says so.
+    brief: dict[str, Any] = {"centre": [lat, lon], "acrossM": float(across_m), "sources": list(sources or [])}
+    if base_place:
+        brief["base"] = {"cityId": base_place}
     if files:
         brief["files"] = files
     if cells:
@@ -1048,10 +1062,17 @@ def places_build(platform: Platform, name: str, centre: list, across_m: float = 
 
 def _build_summary(build: dict) -> dict:
     steps = build.get("steps") or []
+    brief = build.get("brief") or {}
     out: dict[str, Any] = {
         "build": build.get("id"), "state": build.get("state"),
         "steps": [(f"{s.get('say')} ({s['n']} of {s['of']})" if s.get("of") else s.get("say")) for s in steps][-12:],
     }
+    if brief.get("sources"):
+        out["sources"] = brief["sources"]
+        if brief.get("allSources"):
+            out["sourcesNote"] = "none were named, so every public source was used"
+    if brief.get("base"):
+        out["builtOn"] = brief["base"]
     if build.get("failure"):
         out["failure"] = build["failure"]
     if build.get("said"):
@@ -1300,3 +1321,51 @@ def mappings_accept(platform: Platform, mapping: str, candidate: int | None = No
         raise Refused(400, "invalid", "accept a candidate (its index from mappings_status) or at, heading_deg and dz")
     made = platform.request("POST", f"/api/v1/mappings/{mapping}/accept", choice)
     return {**_mapping_summary(made), "note": "the reef is laid in on a GPU; mappings_status says when the place is ready"}
+
+
+# ── the map store ────────────────────────────────────────────────────────────
+
+
+def store_places(platform: Platform, near: list | None = None, across_m: float | None = None) -> dict:
+    """The places iOcean builds and publishes, open to everybody."""
+    query = ""
+    if near is not None:
+        if not isinstance(near, (list, tuple)) or len(near) != 2:
+            raise Refused(400, "invalid", "near is [latitude, longitude] in degrees")
+        query = f"?near={float(near[0])},{float(near[1])}"
+        if across_m is not None:
+            query += f"&acrossM={float(across_m)}"
+    said_ = platform.request("GET", f"/api/v1/store/places{query}")
+    places = []
+    for one in said_.get("places") or []:
+        source = f"the place {one.get('name')} as iOcean built it ({one.get('versionId')})"
+        card: dict[str, Any] = {"place": one.get("id"), "slug": one.get("slug"), "name": one.get("name"),
+                                "summary": one.get("summary"), "adopted": one.get("adopted", False)}
+        for key in ("deepestM", "shallowestM"):
+            if one.get(key) is not None:
+                card[key] = said(one[key], DERIVED, source)
+        if one.get("surveyedFraction") is not None:
+            card["measuredShare"] = said(one["surveyedFraction"], DERIVED, source + ": how much of its depth was surveyed")
+        elif one.get("surveyed") is not None:
+            card["measured"] = "most of its depth was surveyed" if one["surveyed"] else \
+                "its depth is estimated, not surveyed: " + (one.get("method") or "from public data")
+        if one.get("colonies") is not None:
+            card["colonies"] = said(one["colonies"], ASSUMED, source + ": grown, nobody counted them")
+        if one.get("distanceM") is not None:
+            card["distanceM"] = said(round(one["distanceM"]), DERIVED, "from the middle of the area asked about")
+        card["picture"] = bool(one.get("picture"))
+        places.append(card)
+    note = ("store_adopt adds one to this institution's places; places_build with base_place builds on one "
+            "with the institution's own data")
+    if near is not None:
+        note = (f"{len(places)} store places overlap that area, nearest first; use one rather than build it again. "
+                + note)
+    return {"places": places, "note": note}
+
+
+def store_adopt(platform: Platform, place: str, org: str = "") -> dict:
+    """Add a place from the map store to the institution's places."""
+    org_id = _organisation(platform, org)
+    binding = platform.request("POST", f"/api/v1/organisations/{org_id}/store/{place}/adopt")
+    return {"place": place, "organisation": org_id, "adopted": True, "share": (binding or {}).get("id"),
+            "note": "it is among this institution's places now; dives_start can fly in it"}

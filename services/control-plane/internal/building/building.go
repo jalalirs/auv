@@ -23,6 +23,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -99,16 +100,66 @@ type Brief struct {
 	// Coral false builds no colonies, where the place would otherwise grow
 	// them from the coral atlas.
 	Coral *bool `json:"coral,omitempty"`
+	// Base is the ground a place is built on: a place that exists, whose
+	// seabed is the first depth and whatever else the brief brings is laid
+	// over it. With a base, no source is needed.
+	Base *Base `json:"base,omitempty"`
+	// AllSources says Sources was left empty and every public source was
+	// used. Written by the platform.
+	AllSources bool `json:"allSources,omitempty"`
+}
+
+// Base is the ground a place is built on.
+//
+// Today it is always another place (kind "place"): its newest published
+// version, or the one named. The shape is meant to take other ground later,
+// an organisation's own bathymetry survey held as an asset, by kind: whatever
+// it is, it resolves to files staged under Path and a square to build over.
+type Base struct {
+	Kind      string `json:"kind,omitempty"`
+	CityID    string `json:"cityId"`
+	VersionID string `json:"versionId,omitempty"`
+	// Path is where the job finds it, filled in when the build starts.
+	Path string `json:"path,omitempty"`
+}
+
+// allSources is every public source, in a stable order.
+func allSources() []string {
+	names := make([]string, 0, len(Sources))
+	for name := range Sources {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names
+}
+
+// withSources says what an empty list of sources means: every public source
+// that reaches the place, unless the place is a flat seabed or built on a
+// base, which need none.
+func withSources(b Brief) Brief {
+	if len(b.Sources) == 0 && b.FlatDepthM == nil && b.Base == nil {
+		b.Sources, b.AllSources = allSources(), true
+	}
+	if b.Sources == nil {
+		// The module is told there are none as a list.
+		b.Sources = []string{}
+	}
+	return b
 }
 
 // Validate reports whether a brief describes something that can be built.
+//
+// A place built on a base takes the base's square, so says nothing of its own
+// about where it is.
 func (b Brief) Validate() error {
-	lat, lon := b.Centre[0], b.Centre[1]
-	if math.IsNaN(lat) || lat < -85 || lat > 85 || math.IsNaN(lon) || lon < -180 || lon > 180 {
-		return fmt.Errorf("%w: the centre is latitude, longitude in degrees", domain.ErrInvalid)
-	}
-	if b.AcrossM < 100 || b.AcrossM > 20000 {
-		return fmt.Errorf("%w: a place is between 100 m and 20 km across", domain.ErrInvalid)
+	if b.Base == nil {
+		lat, lon := b.Centre[0], b.Centre[1]
+		if math.IsNaN(lat) || lat < -85 || lat > 85 || math.IsNaN(lon) || lon < -180 || lon > 180 {
+			return fmt.Errorf("%w: the centre is latitude, longitude in degrees", domain.ErrInvalid)
+		}
+		if b.AcrossM < 100 || b.AcrossM > 20000 {
+			return fmt.Errorf("%w: a place is between 100 m and 20 km across", domain.ErrInvalid)
+		}
 	}
 	if b.Cells != 0 && (b.Cells < 64 || b.Cells > 2048) {
 		return fmt.Errorf("%w: a place is 64 to 2048 cells across", domain.ErrInvalid)
@@ -117,7 +168,21 @@ func (b Brief) Validate() error {
 	if flat && (math.IsNaN(*b.FlatDepthM) || *b.FlatDepthM < 0.5 || *b.FlatDepthM > 60) {
 		return fmt.Errorf("%w: a flat seabed is between 0.5 m and 60 m deep", domain.ErrInvalid)
 	}
-	depth := flat
+	if b.Base != nil {
+		if flat {
+			return fmt.Errorf("%w: a place is a flat seabed or built on a base, not both", domain.ErrInvalid)
+		}
+		switch b.Base.Kind {
+		case "", "place":
+		default:
+			return fmt.Errorf("%w: a place is built on another place, not on %q", domain.ErrInvalid, b.Base.Kind)
+		}
+		if b.Base.CityID == "" {
+			return fmt.Errorf("%w: a base names the place it is (base.cityId)", domain.ErrInvalid)
+		}
+	}
+	b = withSources(b)
+	depth := flat || b.Base != nil
 	for _, s := range b.Sources {
 		if _, known := Sources[s]; !known {
 			return fmt.Errorf("%w: no source called %q (there are: %s)", domain.ErrInvalid, s, sourceNames())
@@ -208,13 +273,20 @@ func (b *Builder) Start(ctx context.Context, principalID, orgID string, city cat
 	if err := brief.Validate(); err != nil {
 		return Build{}, err
 	}
+	brief = withSources(brief)
 	brief.Name, brief.Slug = city.Name, city.Slug
-	if brief.Sources == nil {
-		// A flat seabed needs none, and the module is told so as a list.
-		brief.Sources = []string{}
+	var inputs []exec.Input
+	if brief.Base != nil {
+		ground, err := b.groundOf(ctx, orgID, *brief.Base)
+		if err != nil {
+			return Build{}, err
+		}
+		// The base's own square: its seabed is a grid over it, and laid over
+		// any other square it would be in the wrong place.
+		brief.Base, brief.Centre, brief.AcrossM = &ground.Base, ground.Centre, ground.AcrossM
+		inputs = append(inputs, ground.Inputs...)
 	}
 
-	inputs := make([]exec.Input, 0, len(brief.Files))
 	for i := range brief.Files {
 		f := &brief.Files[i]
 		object, err := b.objects.Object(ctx, f.ObjectID)
@@ -566,6 +638,12 @@ func mediaTypeOf(name string) string {
 
 func describe(brief Brief) string {
 	parts := append([]string{}, brief.Sources...)
+	if brief.AllSources {
+		parts = []string{"every public source (" + strings.Join(brief.Sources, ", ") + ")"}
+	}
+	if brief.Base != nil {
+		parts = append([]string{"the place " + brief.Base.CityID + " (" + brief.Base.VersionID + ")"}, parts...)
+	}
 	if brief.FlatDepthM != nil {
 		parts = append(parts, fmt.Sprintf("a flat seabed at %g m", *brief.FlatDepthM))
 	}
@@ -601,24 +679,162 @@ func resultOf(site []byte) map[string]any {
 // resultFromVersion reads what a version's site.json says about where the
 // place is weak.
 func (b *Builder) resultFromVersion(ctx context.Context, versionID string) map[string]any {
-	var objectID string
-	if err := b.pool.QueryRow(ctx,
-		`SELECT object_id FROM catalog.version_object WHERE version_id = $1 AND path = 'site.json'`,
-		versionID).Scan(&objectID); err != nil {
-		return nil
-	}
-	object, err := b.objects.Object(ctx, objectID)
-	if err != nil {
-		return nil
-	}
-	body, err := b.objects.Open(ctx, object)
-	if err != nil {
-		return nil
-	}
-	defer body.Close()
-	site, err := io.ReadAll(io.LimitReader(body, 64<<20))
+	site, err := b.siteBytes(ctx, versionID)
 	if err != nil {
 		return nil
 	}
 	return resultOf(site)
+}
+
+func (b *Builder) siteBytes(ctx context.Context, versionID string) ([]byte, error) {
+	var objectID string
+	if err := b.pool.QueryRow(ctx,
+		`SELECT object_id FROM catalog.version_object WHERE version_id = $1 AND path = 'site.json'`,
+		versionID).Scan(&objectID); err != nil {
+		return nil, db.Translate(err)
+	}
+	object, err := b.objects.Object(ctx, objectID)
+	if err != nil {
+		return nil, err
+	}
+	body, err := b.objects.Open(ctx, object)
+	if err != nil {
+		return nil, err
+	}
+	defer body.Close()
+	return io.ReadAll(io.LimitReader(body, 64<<20))
+}
+
+// Site reads a version's site.json, the place's own record of itself, with
+// Python's non-numbers read as null.
+func (b *Builder) Site(ctx context.Context, versionID string) (map[string]any, error) {
+	raw, err := b.siteBytes(ctx, versionID)
+	if err != nil {
+		return nil, err
+	}
+	var site map[string]any
+	if err := json.Unmarshal(notANumber.ReplaceAll(raw, []byte("${1}null")), &site); err != nil {
+		return nil, fmt.Errorf("version %s's site.json cannot be read: %w", versionID, err)
+	}
+	return site, nil
+}
+
+// Stage names a version's files as a job's inputs, each under dir at its own
+// path, the way every job that reads a place is given one.
+func Stage(files []catalog.File, dir string) []exec.Input {
+	inputs := make([]exec.Input, 0, len(files))
+	for _, f := range files {
+		at := dir + "/" + f.Path
+		inputs = append(inputs, exec.Input{Name: at, RelativePath: at, ObjectID: f.ObjectID,
+			SHA256: f.Digest.String(), MediaType: f.MediaType, SizeBytes: f.SizeBytes})
+	}
+	return inputs
+}
+
+// Ground is a base resolved: which version it is, the files the job is given,
+// and the square they cover.
+type Ground struct {
+	Base    Base
+	Inputs  []exec.Input
+	Centre  [2]float64
+	AcrossM float64
+}
+
+// groundOf resolves a base to what a build stages. The organisation must be
+// able to read it: a place in the map store (the platform's, discoverable),
+// one of its own, or one it was given.
+//
+// Only what the places module reads of a built place is staged, site.json and
+// its heightfield: the rest of a package (its reef, its pictures) is grown
+// again for the new place, and fetching it would be most of the bytes.
+func (b *Builder) groundOf(ctx context.Context, orgID string, base Base) (Ground, error) {
+	refused := fmt.Errorf("%w: no place %s that this organisation may build on", domain.ErrInvalid, base.CityID)
+	city, err := b.catalog.City(ctx, base.CityID)
+	if err != nil {
+		return Ground{}, refused
+	}
+	may := city.RetiredAt == nil && (city.OwnedByOrg == orgID || (city.OwnedByOrg == "" && city.Discoverable))
+	if !may {
+		if err := b.pool.QueryRow(ctx, `
+			SELECT EXISTS (SELECT 1 FROM policy.binding
+			               WHERE subject_kind = 'org' AND subject_id = $1 AND scope_kind = 'city'
+			                 AND scope_id = $2 AND revoked_at IS NULL)`,
+			orgID, city.ID).Scan(&may); err != nil {
+			return Ground{}, err
+		}
+	}
+	if !may {
+		return Ground{}, refused
+	}
+
+	var version catalog.Version
+	if base.VersionID != "" {
+		version, err = b.catalog.Version(ctx, base.VersionID)
+		if err != nil || version.AssetKind != catalog.KindCity || version.AssetID != city.ID {
+			return Ground{}, fmt.Errorf("%w: %s is not a version of %s", domain.ErrInvalid, base.VersionID, city.ID)
+		}
+		// Somebody else's draft is not theirs to build on.
+		if !version.Published() && city.OwnedByOrg != orgID {
+			return Ground{}, fmt.Errorf("%w: %s is not published", domain.ErrInvalid, base.VersionID)
+		}
+	} else {
+		versions, err := b.catalog.Versions(ctx, catalog.KindCity, city.ID)
+		if err != nil {
+			return Ground{}, err
+		}
+		for _, one := range versions {
+			if one.Published() && len(one.Manifest) > 0 {
+				version = one
+				break
+			}
+		}
+		if version.ID == "" {
+			return Ground{}, fmt.Errorf("%w: %s has no published version to build on", domain.ErrInvalid, city.ID)
+		}
+	}
+
+	site, err := b.Site(ctx, version.ID)
+	if err != nil {
+		return Ground{}, fmt.Errorf("%w: %s has no record of its seabed to build on: %v", domain.ErrInvalid, version.ID, err)
+	}
+	centre, across, field, err := squareOf(site)
+	if err != nil {
+		return Ground{}, fmt.Errorf("%w: %s: %v", domain.ErrInvalid, version.ID, err)
+	}
+	files, err := b.catalog.Files(ctx, version.ID)
+	if err != nil {
+		return Ground{}, err
+	}
+	wanted := files[:0:0]
+	for _, f := range files {
+		if f.Path == "site.json" || f.Path == field {
+			wanted = append(wanted, f)
+		}
+	}
+	if len(wanted) != 2 {
+		return Ground{}, fmt.Errorf("%w: %s does not hold the heightfield its site.json names (%s)",
+			domain.ErrInvalid, version.ID, field)
+	}
+	resolved := Base{Kind: "place", CityID: city.ID, VersionID: version.ID, Path: "base"}
+	return Ground{Base: resolved, Inputs: Stage(wanted, resolved.Path), Centre: centre, AcrossM: across}, nil
+}
+
+// squareOf reads where a built place is and how wide, and the file its
+// seabed is in, from its site.json.
+func squareOf(site map[string]any) ([2]float64, float64, string, error) {
+	from, _ := site["from"].(map[string]any)
+	centre, _ := from["centre"].(map[string]any)
+	lat, okLat := centre["latitude"].(float64)
+	lon, okLon := centre["longitude"].(float64)
+	across, okAcross := from["acrossMetres"].(float64)
+	if !okLat || !okLon || !okAcross || across <= 0 {
+		return [2]float64{}, 0, "", errors.New("its site.json does not say where it is and how wide")
+	}
+	mesh, _ := site["mesh"].(map[string]any)
+	field, _ := mesh["heightfield"].(map[string]any)
+	file, _ := field["file"].(string)
+	if file == "" {
+		return [2]float64{}, 0, "", errors.New("its site.json names no heightfield")
+	}
+	return [2]float64{lat, lon}, across, path.Clean(file), nil
 }

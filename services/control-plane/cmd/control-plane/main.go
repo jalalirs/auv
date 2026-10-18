@@ -26,6 +26,7 @@ import (
 	"github.com/jalalirs/auv/services/control-plane/internal/httpapi"
 	"github.com/jalalirs/auv/services/control-plane/internal/identity"
 	"github.com/jalalirs/auv/services/control-plane/internal/mapping"
+	"github.com/jalalirs/auv/services/control-plane/internal/mapstore"
 	"github.com/jalalirs/auv/services/control-plane/internal/planning"
 	"github.com/jalalirs/auv/services/control-plane/internal/platform"
 	"github.com/jalalirs/auv/services/control-plane/internal/policy"
@@ -96,11 +97,13 @@ func run(logger *slog.Logger) error {
 		PackageBytes:    settings.ReconstructPackageBytes,
 	})
 
+	authorizer := policy.NewAuthorizer(pool)
+
 	deps := &httpapi.Dependencies{
 		Info:          platform.Build(version, commit, builtAt),
 		Pool:          pool,
 		Identity:      identities,
-		Authorizer:    policy.NewAuthorizer(pool),
+		Authorizer:    authorizer,
 		Audit:         recorder,
 		Catalog:       catalog.NewStore(pool),
 		Compute:       compute.NewStore(pool),
@@ -113,6 +116,7 @@ func run(logger *slog.Logger) error {
 		Reconstructor: reconstructor,
 		Mapper: mapping.New(pool, broker, objects, catalog.NewStore(pool), builder, reconstructor,
 			mapping.Settings{Image: settings.ReconstructImage, PackageBytes: settings.ReconstructPackageBytes}),
+		MapStore: mapstore.New(catalog.NewStore(pool), builder, authorizer),
 		Drafter: planning.Drafter{
 			URL: settings.ModelURL, Key: settings.ModelKey, Model: settings.Model,
 			MaxTokens: settings.ModelMaxTokens,

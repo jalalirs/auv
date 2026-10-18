@@ -15,6 +15,7 @@ import (
 	"github.com/jalalirs/auv/services/control-plane/internal/exec"
 	"github.com/jalalirs/auv/services/control-plane/internal/identity"
 	"github.com/jalalirs/auv/services/control-plane/internal/mapping"
+	"github.com/jalalirs/auv/services/control-plane/internal/mapstore"
 	"github.com/jalalirs/auv/services/control-plane/internal/planning"
 	"github.com/jalalirs/auv/services/control-plane/internal/platform"
 	"github.com/jalalirs/auv/services/control-plane/internal/policy"
@@ -44,6 +45,8 @@ type Dependencies struct {
 	Reconstructor *reconstructing.Reconstructor
 	// Mapper puts reconstructions onto places as jobs.
 	Mapper *mapping.Mapper
+	// MapStore reads the places iOcean publishes for everybody.
+	MapStore *mapstore.Store
 
 	// Drafter turns what somebody said into a plan, by asking a model. Left
 	// unconfigured on a platform that has not been given one, and it says so

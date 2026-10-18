@@ -353,6 +353,26 @@ func (s *Store) Cities(ctx context.Context, scope Scope) ([]City, error) {
 	return cities.all(ctx, s.pool, scope)
 }
 
+// Catalogue lists the map store: the platform's own places (no organisation
+// owns them) that anybody may find, and that are not retired.
+func (s *Store) Catalogue(ctx context.Context) ([]City, error) {
+	rows, err := s.pool.Query(ctx, selectCity+`
+		WHERE owned_by_org IS NULL AND discoverable AND retired_at IS NULL ORDER BY name`)
+	if err != nil {
+		return nil, fmt.Errorf("listing the map store: %w", err)
+	}
+	defer rows.Close()
+	places := []City{}
+	for rows.Next() {
+		place, err := scanCity(rows)
+		if err != nil {
+			return nil, err
+		}
+		places = append(places, place)
+	}
+	return places, rows.Err()
+}
+
 // ── Vehicles ─────────────────────────────────────────────────────────────────
 
 // VehicleSpec describes a vehicle to publish.

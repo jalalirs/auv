@@ -23,6 +23,9 @@ type Binding struct {
 	CreatedAt   time.Time   `json:"createdAt"`
 	CreatedBy   string      `json:"createdBy"`
 	RevokedAt   *time.Time  `json:"revokedAt,omitempty"`
+	// Via says why the binding exists when something other than a grant
+	// made it: "store", for a place an organisation took from the map store.
+	Via string `json:"via,omitempty"`
 }
 
 // GrantSpec describes a binding to create.
@@ -33,7 +36,13 @@ type GrantSpec struct {
 	ScopeID     string
 	Role        Role
 	CreatedBy   string
+	// Via is why the binding exists, when it is not an ordinary grant.
+	Via string
 }
+
+// GrantedViaStore marks a binding an organisation made by taking a place from
+// the map store.
+const GrantedViaStore = "store"
 
 // Validate reports whether the grant is expressible.
 func (g GrantSpec) Validate() error {
@@ -85,17 +94,20 @@ func (a *Authorizer) Grant(ctx context.Context, conn db.Conn, spec GrantSpec) (B
 		Role:        spec.Role,
 		CreatedBy:   spec.CreatedBy,
 	}
+	// A grant repeated keeps the binding already there and what it says about
+	// why, so taking a place from the store that was already shared on
+	// purpose does not turn the share into something letting go withdraws.
 	err := conn.QueryRow(ctx, `
 		INSERT INTO policy.binding
-		    (id, subject_kind, subject_id, scope_kind, scope_id, role, created_by)
-		VALUES ($1, $2::policy.subject_kind, $3, $4::policy.scope_kind, $5, $6::policy.role, $7)
+		    (id, subject_kind, subject_id, scope_kind, scope_id, role, created_by, granted_via)
+		VALUES ($1, $2::policy.subject_kind, $3, $4::policy.scope_kind, $5, $6::policy.role, $7, nullif($8, ''))
 		ON CONFLICT (subject_kind, subject_id, scope_kind, coalesce(scope_id, ''), role)
 		    WHERE revoked_at IS NULL
 		DO UPDATE SET role = EXCLUDED.role
-		RETURNING id, created_at`,
+		RETURNING id, created_at, coalesce(granted_via, '')`,
 		binding.ID, string(spec.SubjectKind), spec.SubjectID, string(spec.ScopeKind),
-		scopeID, string(spec.Role), spec.CreatedBy,
-	).Scan(&binding.ID, &binding.CreatedAt)
+		scopeID, string(spec.Role), spec.CreatedBy, spec.Via,
+	).Scan(&binding.ID, &binding.CreatedAt, &binding.Via)
 	if err != nil {
 		return Binding{}, fmt.Errorf("granting %s: %w", spec.Role, err)
 	}
@@ -130,6 +142,48 @@ func (a *Authorizer) RevokeSubjectAtScope(ctx context.Context, conn db.Conn, sub
 		return 0, fmt.Errorf("revoking bindings at %s: %w", scope, err)
 	}
 	return tag.RowsAffected(), nil
+}
+
+// RevokeVia withdraws the bindings a subject holds at a scope that were made
+// for one reason, and only those: letting go of a place taken from the map
+// store withdraws what taking it gave.
+func (a *Authorizer) RevokeVia(ctx context.Context, conn db.Conn, subjectKind SubjectKind, subjectID string, scope ScopeKind, scopeID, via string) (int64, error) {
+	tag, err := conn.Exec(ctx, `
+		UPDATE policy.binding SET revoked_at = now()
+		WHERE revoked_at IS NULL AND granted_via = $5
+		  AND subject_kind = $1::policy.subject_kind AND subject_id = $2
+		  AND scope_kind = $3::policy.scope_kind AND coalesce(scope_id, '') = $4`,
+		string(subjectKind), subjectID, string(scope), scopeID, via)
+	if err != nil {
+		return 0, fmt.Errorf("revoking bindings at %s: %w", scope, err)
+	}
+	return tag.RowsAffected(), nil
+}
+
+// HeldByOrgs reports which assets of a kind any of these organisations holds
+// a live binding on, by the asset's identifier.
+func (a *Authorizer) HeldByOrgs(ctx context.Context, orgIDs []string, scope ScopeKind) (map[string]bool, error) {
+	held := map[string]bool{}
+	if len(orgIDs) == 0 {
+		return held, nil
+	}
+	rows, err := a.pool.Query(ctx, `
+		SELECT DISTINCT scope_id FROM policy.binding
+		WHERE revoked_at IS NULL AND subject_kind = 'org' AND subject_id = ANY($1)
+		  AND scope_kind = $2::policy.scope_kind AND scope_id IS NOT NULL`,
+		orgIDs, string(scope))
+	if err != nil {
+		return nil, fmt.Errorf("reading what organisations hold: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		held[id] = true
+	}
+	return held, rows.Err()
 }
 
 // BindingsAtScope lists the live bindings at a scope, which is what a steward

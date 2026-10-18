@@ -58,3 +58,53 @@ func TestAFlatSeabedNeedsNoSource(t *testing.T) {
 		t.Errorf("described as %q", describe(flat))
 	}
 }
+
+func TestNoSourcesMeansEveryPublicSource(t *testing.T) {
+	brief := withSources(Brief{Centre: [2]float64{22.3, 38.9}, AcrossM: 1000})
+	if !brief.AllSources || len(brief.Sources) != len(Sources) || brief.Sources[0] != "allen-coral-atlas" {
+		t.Fatalf("%+v", brief)
+	}
+	if err := (Brief{Centre: [2]float64{22.3, 38.9}, AcrossM: 1000}).Validate(); err != nil {
+		t.Fatalf("an area and nothing else: %v", err)
+	}
+	if got := describe(brief); got != "every public source (allen-coral-atlas, gebco, icesat2, learned-depth, sentinel2)" {
+		t.Errorf("described as %q", got)
+	}
+	named := withSources(Brief{Sources: []string{"gebco"}})
+	if named.AllSources || len(named.Sources) != 1 {
+		t.Errorf("named sources were replaced: %+v", named)
+	}
+	depth := 8.0
+	if flat := withSources(Brief{FlatDepthM: &depth}); flat.AllSources || flat.Sources == nil || len(flat.Sources) != 0 {
+		t.Errorf("a flat seabed was given sources: %+v", flat)
+	}
+	if based := withSources(Brief{Base: &Base{CityID: "city_1"}}); based.AllSources || len(based.Sources) != 0 {
+		t.Errorf("a place built on a base was given sources: %+v", based)
+	}
+}
+
+func TestAPlaceBuiltOnABaseTakesItsSquare(t *testing.T) {
+	based := Brief{Base: &Base{CityID: "city_1"}}
+	if err := based.Validate(); err != nil {
+		t.Fatalf("a base and nothing else: %v", err)
+	}
+	depth := 8.0
+	for name, brief := range map[string]Brief{
+		"a base of no kind":  {Base: &Base{Kind: "survey", CityID: "city_1"}},
+		"a base naming none": {Base: &Base{}},
+		"flat and on a base": {Base: &Base{CityID: "city_1"}, FlatDepthM: &depth},
+	} {
+		if brief.Validate() == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+	centre, across, field, err := squareOf(map[string]any{
+		"from": map[string]any{"centre": map[string]any{"latitude": 22.284, "longitude": 38.962}, "acrossMetres": 3000.0},
+		"mesh": map[string]any{"heightfield": map[string]any{"file": "./heights.f32"}}})
+	if err != nil || centre != [2]float64{22.284, 38.962} || across != 3000 || field != "heights.f32" {
+		t.Fatalf("%v %v %q %v", centre, across, field, err)
+	}
+	if _, _, _, err := squareOf(map[string]any{"from": map[string]any{}}); err == nil {
+		t.Error("a site.json that says nowhere was read")
+	}
+}

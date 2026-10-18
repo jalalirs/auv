@@ -549,12 +549,7 @@ func (m *Mapper) inputs(ctx context.Context, versionID, reconstructionID string,
 	if err != nil {
 		return nil, err
 	}
-	inputs := make([]exec.Input, 0, len(files))
-	for _, f := range files {
-		at := "place/" + f.Path
-		inputs = append(inputs, exec.Input{Name: at, RelativePath: at, ObjectID: f.ObjectID,
-			SHA256: f.Digest.String(), MediaType: f.MediaType, SizeBytes: f.SizeBytes})
-	}
+	inputs := building.Stage(files, "place")
 	held, err := m.reconstructor.Objects(ctx, reconstructionID)
 	if err != nil {
 		return nil, err

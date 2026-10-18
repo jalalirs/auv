@@ -49,25 +49,51 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
     "places_build": (
         "Found a place of this institution's own, private to it, and build it from its data. "
         "THIS SPENDS TIME ON A MACHINE: the platform fetches the public data and builds the seabed "
-        "as a job. Returns at once with a build to watch with places_build_status; when it is ready "
-        "it has made a draft version, which places_publish lets dives use.",
+        "as a job. Every public source that reaches the place is used unless sources names some. "
+        "Ask store_places with the area first: if iOcean already publishes it, store_adopt it, or "
+        "build on it with base_place and the institution's own files. Returns at once with a build "
+        "to watch with places_build_status; when it is ready it has made a draft version, which "
+        "places_publish lets dives use.",
         {"type": "object",
          "properties": {
              "name": {"type": "string", "description": "what to call the place"},
              "centre": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2,
-                        "description": "[latitude, longitude] in degrees, the middle of the square"},
+                        "description": "[latitude, longitude] in degrees, the middle of the square; "
+                                       "with base_place, the base's own square is used"},
              "across_m": {"type": "number", "default": 1000, "description": "how wide the square is, 100 m to 20 km"},
+             "base_place": {"type": "string",
+                            "description": "a place to build on (from store_places): its seabed first, "
+                                           "the institution's files laid over it"},
              "sources": {"type": "array", "items": {"type": "string",
                                                     "enum": ["gebco", "sentinel2", "icesat2",
                                                              "allen-coral-atlas", "learned-depth"]},
-                         "description": "public data to build from; default gebco, sentinel2, allen-coral-atlas"},
+                         "description": "only these public sources; default every one (none with base_place)"},
              "files": {"type": "array", "items": {"type": "object"},
                        "description": "the institution's own uploaded files: "
                                       "[{\"objectId\": ..., \"use\": \"raster\"|\"points\"|\"ortho\", \"name\": ..., \"errorM\": 0.1}]"},
              "cells": {"type": "integer", "description": "grid cells across, 64 to 2048; default 512"}},
-         "required": ["name", "centre"]},
-        lambda p, name, centre, across_m=1000.0, sources=None, files=None, cells=None:
-            tools.places_build(p, name, centre, across_m, sources, files, cells)),
+         "required": ["name"]},
+        lambda p, name, centre=None, across_m=1000.0, sources=None, files=None, cells=None, base_place="":
+            tools.places_build(p, name, centre, across_m, sources, files, cells, base_place)),
+    "store_places": (
+        "The iOcean map store: places iOcean built from public data, checked and published, open to "
+        "everybody. Each with how deep it is, how much of its depth was measured, its reef, and whether "
+        "this institution already has it. Given near (and across_m), only those overlapping that area, "
+        "nearest first: ask before building a place, so nobody rebuilds what iOcean publishes.",
+        {"type": "object",
+         "properties": {
+             "near": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2,
+                      "description": "[latitude, longitude] of the middle of an area"},
+             "across_m": {"type": "number", "description": "how wide the area is; default 1000"}}},
+        lambda p, near=None, across_m=None: tools.store_places(p, near, across_m)),
+    "store_adopt": (
+        "Use a place from the map store: add it to this institution's places as it is, so dives can fly in it.",
+        {"type": "object",
+         "properties": {
+             "place": {"type": "string", "description": "the store place's id"},
+             "org": {"type": "string", "description": "the organisation; this session's own when absent"}},
+         "required": ["place"]},
+        lambda p, place, org="": tools.store_adopt(p, place, org)),
     "places_build_status": (
         "How a build is going: the steps it has done, and when it is ready, the version it made, "
         "how wrong its depth may be, and which source made how much of it.",

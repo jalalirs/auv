@@ -2507,6 +2507,92 @@ paths:
           $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/Refused'
+  /api/v1/store/places:
+    get:
+      tags: [places]
+      summary: The map store
+      description: >
+        The places iOcean builds from public data, checks and publishes, open
+        to everybody: each with where it is and what its newest published
+        version says of itself (how deep, how much was measured, how much
+        reef, its picture), and whether one of the caller's organisations
+        already has it. Given an area, only the places that overlap it,
+        nearest first.
+      parameters:
+        - name: near
+          in: query
+          required: false
+          description: The middle of an area, as latitude,longitude in degrees.
+          schema: { type: string, example: "22.284,38.962" }
+        - name: acrossM
+          in: query
+          required: false
+          description: How wide the area is, in metres; 1000 when absent.
+          schema: { type: number }
+      responses:
+        '200':
+          description: The store.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [places]
+                properties:
+                  places:
+                    type: array
+                    items: { $ref: '#/components/schemas/StorePlace' }
+        '400':
+          $ref: '#/components/responses/Invalid'
+  /api/v1/organisations/{orgId}/store/{cityId}/adopt:
+    post:
+      tags: [places]
+      summary: Use a place from the map store
+      description: >
+        Adds it to the organisation's places to see, as a share marked as
+        taken from the store. Taking one already taken changes nothing.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The organisation.
+          schema: { type: string }
+        - name: cityId
+          in: path
+          required: true
+          description: A place in the map store.
+          schema: { type: string }
+      responses:
+        '201':
+          description: The share.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Binding' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [places]
+      summary: Let go of a place taken from the map store
+      description: Withdraws only what taking it gave; a share granted on purpose stays.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The organisation.
+          schema: { type: string }
+        - name: cityId
+          in: path
+          required: true
+          description: The place.
+          schema: { type: string }
+      responses:
+        '204':
+          description: Let go of.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/cities/{cityId}:
     get:
       tags: [places]
@@ -5245,6 +5331,7 @@ components:
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
         revokedAt: { type: string, format: date-time }
+        via: { type: string, description: 'Why it exists, when not an ordinary grant: store, for a place taken from the map store.' }
 
     Artefact:
       type: object
@@ -5289,7 +5376,10 @@ components:
     BuildBrief:
       type: object
       additionalProperties: false
-      required: [centre, acrossM, sources]
+      description: >
+        Where to build (centre and acrossM, unless built on a base) and from
+        what. Empty or absent sources means every public source that reaches
+        the place, unless the place is a flat seabed or built on a base.
       properties:
         centre:
           type: array
@@ -5329,6 +5419,23 @@ components:
             from a video is laid onto when it has no map. No source is needed
             with it.
         coral: { type: boolean, description: False builds no colonies. }
+        base:
+          type: object
+          additionalProperties: false
+          required: [cityId]
+          description: >
+            The ground the place is built on: a place in the map store, one of
+            the organisation's own, or one shared with it. Its seabed is the
+            first depth, the organisation's files are laid over it, and the
+            place takes its square. With a base no source is needed.
+          properties:
+            kind: { type: string, enum: [place] }
+            cityId: { type: string }
+            versionId: { type: string, description: Its newest published version when absent. }
+            path: { type: string, description: Where the job finds it; filled in by the platform. }
+        allSources:
+          type: boolean
+          description: Written by the platform; sources was left empty and every public source was used.
 
     BuildRecord:
       type: object
@@ -5594,6 +5701,37 @@ components:
             said:
               type: string
               description: The end of what the failed job printed.
+
+    StorePlace:
+      type: object
+      required: [id, slug, name, summary, extent, adopted]
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        name: { type: string }
+        summary: { type: string }
+        extent: { $ref: '#/components/schemas/Extent' }
+        versionId: { type: string, description: Its newest published version, which the rest is read from. }
+        publishedAt: { type: string, format: date-time }
+        filesHref: { type: string, description: That version's files, each with a URL to fetch it. }
+        deepestM: { type: number }
+        shallowestM: { type: number }
+        surveyed: { type: boolean, description: Whether most of its depth was measured. }
+        surveyedFraction: { type: number, description: How much of its depth was measured. }
+        method: { type: string, description: How its depth was made. }
+        depth:
+          type: object
+          additionalProperties: true
+          description: The place's own account of its depth, which source made how much and where it is weak.
+        colonies: { type: number }
+        picture:
+          type: object
+          required: [path, objectId]
+          properties:
+            path: { type: string }
+            objectId: { type: string }
+        adopted: { type: boolean, description: One of the caller's organisations already has it. }
+        distanceM: { type: number, description: How far its middle is from the area's, when an area was asked about. }
 
     PartPlan:
       type: object

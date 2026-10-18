@@ -310,34 +310,46 @@ func (d *Dependencies) grantAsset(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	var binding policy.Binding
-	err = d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
-		var err error
-		binding, err = d.Authorizer.Grant(r.Context(), conn, policy.GrantSpec{
-			SubjectKind: policy.SubjectKind(request.SubjectKind),
-			SubjectID:   request.SubjectID,
-			ScopeKind:   scope,
-			ScopeID:     assetID,
-			Role:        role,
-			CreatedBy:   principal.ID,
-		})
-		if err != nil {
-			return err
-		}
-		return d.Audit.Record(r.Context(), conn, audit.Event{
-			ActorID: principal.ID, Action: string(action),
-			SubjectKind: subjectKind, SubjectID: assetID, Outcome: audit.Succeeded,
-			Detail: map[string]any{
-				"subjectKind": request.SubjectKind, "subjectId": request.SubjectID,
-				"role": string(role),
-			},
-		})
+	binding, err := d.recordGrant(r, action, subjectKind, policy.GrantSpec{
+		SubjectKind: policy.SubjectKind(request.SubjectKind),
+		SubjectID:   request.SubjectID,
+		ScopeKind:   scope,
+		ScopeID:     assetID,
+		Role:        role,
+		CreatedBy:   principal.ID,
 	})
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
 	writeJSON(w, r, http.StatusCreated, binding)
+}
+
+// recordGrant makes a binding and writes it down, in one transaction: every
+// way a subject is given an asset goes through here.
+func (d *Dependencies) recordGrant(r *http.Request, action policy.Action, subjectKind string,
+	spec policy.GrantSpec) (policy.Binding, error) {
+	var binding policy.Binding
+	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		var err error
+		binding, err = d.Authorizer.Grant(r.Context(), conn, spec)
+		if err != nil {
+			return err
+		}
+		detail := map[string]any{
+			"subjectKind": string(spec.SubjectKind), "subjectId": spec.SubjectID,
+			"role": string(spec.Role),
+		}
+		if spec.Via != "" {
+			detail["via"] = spec.Via
+		}
+		return d.Audit.Record(r.Context(), conn, audit.Event{
+			ActorID: spec.CreatedBy, Action: string(action),
+			SubjectKind: subjectKind, SubjectID: spec.ScopeID, Outcome: audit.Succeeded,
+			Detail: detail,
+		})
+	})
+	return binding, err
 }
 
 // grantVehicle grants the use of a vehicle.

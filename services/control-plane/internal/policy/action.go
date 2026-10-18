@@ -79,6 +79,10 @@ const (
 	// platform steward for the catalogue, the owning organisation's members
 	// for a place of their own.
 	CityPublish Action = "city.publish"
+	// CityAdopt covers an organisation taking a place from the map store, or
+	// letting go of one it took: the platform's own places, built from public
+	// data and open to all, added to the organisation's places to see.
+	CityAdopt Action = "city.adopt"
 	// VersionRead covers fetching a package's files. A catalogue package is
 	// open to anyone signed in, as it always was; an organisation's own place
 	// only to those who may see it.
@@ -139,6 +143,7 @@ var requirement = map[Action]struct {
 	CityGrant:   {RoleSteward, []ResourceKind{ResourceCity}},
 	CityArrange: {RoleViewer, []ResourceKind{ResourceCity}},
 	CityFound:   {RoleContributor, []ResourceKind{ResourceOrg}},
+	CityAdopt:   {RoleContributor, []ResourceKind{ResourceOrg}},
 	CityPublish: {RoleSteward, []ResourceKind{ResourceCity, ResourcePlatform}},
 	VersionRead: {RoleAnyone, []ResourceKind{ResourceCity, ResourcePlatform}},
 

@@ -116,6 +116,14 @@ def recipe_of(brief: dict, inputs: pathlib.Path = INPUTS, nasa: bool | None = No
                   "sources": sources, "models": [], "scene": {"featherCells": 0}}
         return recipe, [f"{s}: a flat seabed was asked for" for s in asked], ["flat.depth"]
 
+    # A place built on another starts from that place's seabed, which says for
+    # itself whether it was measured; the organisation's own files are laid
+    # over it and win where they reach.
+    base = brief.get("base")
+    if base:
+        sources.append({"use": "place", "as": "base", "path": str(inputs / (base.get("path") or "base"))})
+        scene.append("base.depth")
+
     files = brief.get("files") or []
     for n, f in enumerate(files, 1):
         path = str(inputs / f["path"])
@@ -152,8 +160,10 @@ def recipe_of(brief: dict, inputs: pathlib.Path = INPUTS, nasa: bool | None = No
             left_out.append(f"learned-depth: no model at {model}")
             asked.remove("learned-depth")
     # Under everything, always: GEBCO covers the whole Earth, so every cell has
-    # a depth even where nothing better reaches.
-    sources.append({"use": "gebco"})
+    # a depth even where nothing better reaches. Not under a base, which
+    # already covers the place, unless somebody named public data too.
+    if not base or asked:
+        sources.append({"use": "gebco"})
 
     laser = "icesat2" in asked
     if "learned-depth" in asked:
@@ -178,7 +188,8 @@ def recipe_of(brief: dict, inputs: pathlib.Path = INPUTS, nasa: bool | None = No
             scene.append("curve.depth")
         else:
             scene.append("stumpf.depth")
-    scene.append("gebco.depth")
+    if not base or asked:
+        scene.append("gebco.depth")
 
     # The scene names no depth layers: every one no model used is fused, and
     # fusion keeps the least wrong in each cell. Naming them would mean knowing

@@ -87,3 +87,31 @@ def test_a_flat_seabed_is_only_itself_and_says_it_was_assumed():
                                         "sources": [], "flatDepthM": 8}, nasa=False)
     assert recipe["sources"] == [{"use": "flat", "depth": 8.0, "error": 1.0}]
     assert recipe["site"]["cells"] == 256 and expected == ["flat.depth"] and left == []
+
+
+def test_a_place_built_on_another_starts_from_its_seabed_and_fetches_nothing(tmp_path):
+    recipe, left, expected = recipe_of({"centre": [22.284, 38.962], "acrossM": 3000, "sources": [],
+                                        "base": {"cityId": "city_1", "versionId": "ver_1", "path": "base"},
+                                        "files": [{"use": "raster", "path": "files/01-dem.tif", "errorM": 0.1}]},
+                                       inputs=tmp_path, nasa=False)
+    assert recipe["sources"][0] == {"use": "place", "as": "base", "path": str(tmp_path / "base")}
+    assert [s["use"] for s in recipe["sources"]] == ["place", "raster"]
+    assert expected == ["base.depth", "own1.depth"]
+    assert recipe["models"] == [] and recipe["scene"]["featherCells"] == 10
+    assert left == []
+
+
+def test_a_base_with_public_data_named_still_lays_gebco_under_everything(tmp_path):
+    recipe, _, expected = recipe_of({"centre": [22.284, 38.962], "acrossM": 3000, "sources": ["gebco"],
+                                     "base": {"cityId": "city_1", "path": "base"}}, inputs=tmp_path, nasa=False)
+    assert [s["use"] for s in recipe["sources"]] == ["place", "gebco"]
+    assert expected == ["base.depth", "gebco.depth"]
+
+
+def test_every_public_source_is_what_an_empty_list_became_on_the_platform():
+    every = ["allen-coral-atlas", "gebco", "icesat2", "learned-depth", "sentinel2"]
+    recipe, left, _ = recipe_of({"centre": [22.3, 38.9], "acrossM": 1000, "sources": every,
+                                 "allSources": True}, nasa=False)
+    uses = [s["use"] for s in recipe["sources"]]
+    assert "icesat2" not in uses and left and left[0].startswith("icesat2")
+    assert uses[-1] == "gebco" and "allen-coral-atlas" in uses and "sentinel2-median" in uses
