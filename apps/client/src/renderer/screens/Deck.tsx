@@ -28,7 +28,7 @@ import { Places } from "./Places.js";
 import { Profile } from "./Profile.js";
 import { Runs } from "./Runs.js";
 import { Replay } from "./Replay.js";
-import { BuildPlace } from "./BuildPlace.js";
+import { Compose } from "./Compose.js";
 import { Reconstructions } from "./Reconstructions.js";
 import { ReconstructionPage } from "./Reconstruction.js";
 import { VehicleDetail } from "./VehicleDetail.js";
@@ -215,8 +215,8 @@ export function Deck({ platform, onDiving }: {
                               onBack={() => back({ page: "reconstructions" })}
                               onOpenPlace={(id) => { void read(); setWhere({ page: "place", id }); }} />
         ) : where.page === "build" ? (
-          <BuildPlace platform={platform} held={held} onBack={() => back({ page: "places" })}
-                      onOpen={(id) => { void read(); setWhere({ page: "place", id }); }} />
+          <Compose platform={platform} held={held} onBack={() => back({ page: "places" })}
+                   onOpen={(id) => { void read(); setWhere({ page: "place", id }); }} />
         ) : where.page === "place" ? (
           <PlaceDetail held={held} packages={packages} id={where.id}
                        platform={platform}

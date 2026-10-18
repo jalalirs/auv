@@ -18,7 +18,7 @@ import { Fly } from "../screens/Fly.js";
 import { Missions } from "../screens/Missions.js";
 import { Runs } from "../screens/Runs.js";
 import { LayoutEditor } from "../screens/Layout.js";
-import { BuildPlace } from "../screens/BuildPlace.js";
+import { Compose } from "../screens/Compose.js";
 import { Swept } from "../screens/Sweeps.js";
 import { Reconstructions } from "../screens/Reconstructions.js";
 import { ReconstructionPage } from "../screens/Reconstruction.js";
@@ -196,7 +196,10 @@ Object.assign(platform, {
   foundPlace: (org: string, body: Doc) => { said.push(`founded for ${org}: ${JSON.stringify(body)}`); return delay({ id: "city_new", ...body }); },
   startBuild: (city: string, brief: Doc) => { said.push(`build ${city}: ${JSON.stringify(brief)}`); buildStarted = Date.now(); return delay(buildView()); },
   build: () => delay(buildView()),
-  files: () => delay([{ path: "weak.png", url: "./harness/fixtures/built/weak.png" }]),
+  // A built ground reads as Al Fahal's: its site record and its seabed.
+  files: () => delay([{ path: "weak.png", url: "./harness/fixtures/built/weak.png" },
+    { path: "site.json", url: "./harness/fixtures/al-fahal/site.json" },
+    { path: "seabed.f32", url: "./harness/fixtures/al-fahal/seabed.f32" }]),
   publishVersion: (v: string) => { said.push(`published ${v}`); return delay({ id: v }); },
 });
 // A reconstruction that walks through its steps, then a mapping of it.
@@ -321,7 +324,7 @@ function Harness({ packages }: { packages: Packages }) {
                         layout={[...store.layouts.values()].find((l) => l.place === (where.place ?? "city_tank"))!.layout as never}
                         onBack={() => setWhere((w) => ({ ...w, page: "missions" }))} />
         ) : where.page === "build" ? (
-          <BuildPlace platform={p} held={held} onBack={() => said.push("back")} onOpen={(c) => said.push(`open ${c}`)} />
+          <Compose platform={p} held={held} onBack={() => said.push("back")} onOpen={(c) => said.push(`open ${c}`)} />
         ) : where.page === "places" ? (
           <Places held={held} packages={packages} onOpen={(c) => said.push(`open ${c}`)} onBuild={() => said.push("build")}
                   onFromVideo={() => setWhere((w) => ({ ...w, page: "video" }))} />
