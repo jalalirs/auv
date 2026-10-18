@@ -93,10 +93,17 @@ type Grant struct {
 }
 
 // Take asks for one job. A nil lease means there is nothing to do.
-func (c *Client) Take(ctx context.Context, targetName string) (*Lease, error) {
+//
+// withoutGPU asks only for work that needs no GPU, which a worker says while
+// it is already running work that holds one. It is sent only when true, so a
+// worker asks the way it always did until it has a reason not to.
+func (c *Client) Take(ctx context.Context, targetName string, withoutGPU bool) (*Lease, error) {
 	var lease Lease
-	status, err := c.call(ctx, http.MethodPost, "/api/v1/work/lease",
-		map[string]any{"targetName": targetName}, &lease)
+	asked := map[string]any{"targetName": targetName}
+	if withoutGPU {
+		asked["withoutGpu"] = true
+	}
+	status, err := c.call(ctx, http.MethodPost, "/api/v1/work/lease", asked, &lease)
 	if err != nil {
 		return nil, err
 	}

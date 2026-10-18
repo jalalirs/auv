@@ -43,6 +43,14 @@ export type VehicleDynamics = Schemas["VehicleDynamics"];
 export type BuildBrief = Schemas["BuildBrief"];
 export type Build = Schemas["Build"];
 export type BuildRecord = Schemas["BuildRecord"];
+export type ReconstructionBrief = Schemas["ReconstructionBrief"];
+export type Reconstruction = Schemas["Reconstruction"];
+export type ReconstructionRecord = Schemas["ReconstructionRecord"];
+export type ReconstructionObject = Schemas["ReconstructionObject"];
+export type MappingRequest = Schemas["MappingRequest"];
+export type MappingChoice = Schemas["MappingChoice"];
+export type Mapping = Schemas["Mapping"];
+export type MappingRecord = Schemas["MappingRecord"];
 export type StoredObject = Schemas["Object"];
 export type UploadGrant = Schemas["UploadGrant"];
 export type StorageUsage = Schemas["StorageUsage"];
@@ -228,6 +236,60 @@ export class Platform {
   async buildsOf(city: string): Promise<BuildRecord[]> {
     const { builds } = await this.#request<{ builds: BuildRecord[] }>("GET", `/api/v1/cities/${city}/builds`);
     return builds;
+  }
+
+  // ── a reef from a dive video ───────────────────────────────────────────────
+
+  /**
+   * Make a reef from a video the organisation holds, as a job on a GPU. What
+   * it makes becomes objects the organisation holds; laying it into a place
+   * is a separate step.
+   */
+  startReconstruction(organisation: string, brief: ReconstructionBrief): Promise<Reconstruction> {
+    return this.#request("POST", `/api/v1/organisations/${organisation}/reconstructions`, brief);
+  }
+
+  reconstruction(id: string): Promise<Reconstruction> {
+    return this.#request("GET", `/api/v1/reconstructions/${id}`);
+  }
+
+  async reconstructionsOf(organisation: string): Promise<Reconstruction[]> {
+    const { reconstructions } = await this.#request<{ reconstructions: Reconstruction[] }>(
+      "GET", `/api/v1/organisations/${organisation}/reconstructions`);
+    return reconstructions;
+  }
+
+  /** The files a reconstruction made, each with a short-lived URL to fetch it. */
+  async reconstructionObjects(id: string): Promise<ReconstructionObject[]> {
+    const { objects } = await this.#request<{ objects: ReconstructionObject[] }>(
+      "GET", `/api/v1/reconstructions/${id}/objects`);
+    return objects;
+  }
+
+  // ── a reef put onto a place ────────────────────────────────────────────────
+
+  /**
+   * Put a ready reconstruction onto a place (mode onto: a search, then a
+   * choice), or give it a place of its own (mode own: a flat seabed, then the
+   * reef laid in its middle).
+   */
+  startMapping(reconstruction: string, request: MappingRequest): Promise<Mapping> {
+    return this.#request("POST", `/api/v1/reconstructions/${reconstruction}/mappings`, request);
+  }
+
+  mapping(id: string): Promise<Mapping> {
+    return this.#request("GET", `/api/v1/mappings/${id}`);
+  }
+
+  async mappingsOf(reconstruction: string): Promise<Mapping[]> {
+    const { mappings } = await this.#request<{ mappings: Mapping[] }>(
+      "GET", `/api/v1/reconstructions/${reconstruction}/mappings`);
+    return mappings;
+  }
+
+  /** Choose where the reef goes, a candidate by index or a placement by hand, and lay it in. */
+  acceptMapping(id: string, choice: MappingChoice): Promise<Mapping> {
+    return this.#request("POST", `/api/v1/mappings/${id}/accept`, choice);
   }
 
   /** Make a version pinnable, and from then on unchangeable. */

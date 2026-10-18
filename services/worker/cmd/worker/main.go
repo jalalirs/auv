@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -95,6 +96,16 @@ func run(logger *slog.Logger) error {
 	var diving sync.WaitGroup
 	defer diving.Wait()
 
+	// Work that holds a GPU runs beside everything else, one at a time: a
+	// reconstruction runs for hours, and the dives and builds behind it
+	// should not wait for it. While one runs this host asks only for work
+	// that needs no GPU, and says it has that much less to give, so the
+	// platform does not place a dive on processors and memory it is using.
+	onGPU := make(chan struct{}, 1)
+	var holding atomic.Pointer[controlplane.Job]
+	var working sync.WaitGroup
+	defer working.Wait()
+
 	// Whatever the previous agent left running is picked up first. A dive
 	// survives the agent being redeployed under it.
 	if adopted := dive.Adopt(ctx, &diving); adopted > 0 {
@@ -114,7 +125,7 @@ func run(logger *slog.Logger) error {
 		claim, cancelClaim := context.WithTimeout(ctx, settings.RequestTimeout)
 		var claimed diver.Claimed
 		claimErr := client.ClaimDive(claim, settings.TargetName,
-			settings.Runtimes(), hostCapacity(), &claimed)
+			settings.Runtimes(), less(hostCapacity(), holding.Load()), &claimed)
 		cancelClaim()
 
 		if claimErr == nil {
@@ -140,7 +151,7 @@ func run(logger *slog.Logger) error {
 		// Taking work is bounded; running it is not, because a job runs for as
 		// long as its declared walltime allows.
 		take, cancelTake := context.WithTimeout(ctx, settings.RequestTimeout)
-		lease, err := client.Take(take, settings.TargetName)
+		lease, err := client.Take(take, settings.TargetName, len(onGPU) > 0)
 		cancelTake()
 
 		switch {
@@ -153,19 +164,56 @@ func run(logger *slog.Logger) error {
 			continue
 		}
 
-		logger.Info("took work", "jobId", lease.Job.ID, "attemptId", lease.AttemptID)
-		if err := execute.Run(ctx, lease); err != nil {
-			if errors.Is(err, runner.ErrLeaseLost) {
-				logger.Warn("the platform reclaimed this work while it was running",
-					"jobId", lease.Job.ID, "attemptId", lease.AttemptID)
-			} else {
-				logger.Error("could not complete work",
-					"jobId", lease.Job.ID, "attemptId", lease.AttemptID, "error", err)
-			}
+		logger.Info("took work", "jobId", lease.Job.ID, "attemptId", lease.AttemptID,
+			"gpu", lease.Job.RequestGPU)
+		if lease.Job.RequestGPU > 0 {
+			// Only this loop takes the slot, and it asked for no GPU work
+			// while the slot was taken; a platform too old to have heard
+			// that is waited out here rather than given a second card.
+			onGPU <- struct{}{}
+			holding.Store(&lease.Job)
+			working.Add(1)
+			go func(lease *controlplane.Lease) {
+				defer working.Done()
+				defer func() { holding.Store(nil); <-onGPU }()
+				work(ctx, execute, lease, logger)
+			}(lease)
+		} else {
+			work(ctx, execute, lease, logger)
 		}
 		// There may be more work waiting, so the next attempt is immediate.
 		idle.Reset(0)
 	}
+}
+
+// work executes one lease and says how it went.
+func work(ctx context.Context, execute *runner.Runner, lease *controlplane.Lease, logger *slog.Logger) {
+	if err := execute.Run(ctx, lease); err != nil {
+		if errors.Is(err, runner.ErrLeaseLost) {
+			logger.Warn("the platform reclaimed this work while it was running",
+				"jobId", lease.Job.ID, "attemptId", lease.AttemptID)
+		} else {
+			logger.Error("could not complete work",
+				"jobId", lease.Job.ID, "attemptId", lease.AttemptID, "error", err)
+		}
+	}
+}
+
+// less is what this host has to give while it runs work on a GPU: what it
+// has, less what that work was admitted for.
+func less(capacity controlplane.Capacity, running *controlplane.Job) controlplane.Capacity {
+	if running == nil {
+		return capacity
+	}
+	capacity.CPU -= running.RequestCPU
+	capacity.MemoryBytes -= running.RequestMemoryBytes
+	if capacity.CPU < 1 {
+		capacity.CPU = 1
+	}
+	if capacity.MemoryBytes < 1<<30 {
+		capacity.MemoryBytes = 1 << 30
+	}
+	return capacity
 }
 
 // platform adapts the control-plane client to what a diver needs, so that the

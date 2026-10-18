@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jalalirs/auv/services/control-plane/internal/domain"
 )
@@ -177,5 +178,26 @@ func TestATerminalStateIsRecognised(t *testing.T) {
 		if state.IsTerminal() {
 			t.Errorf("%s was treated as an ending", state)
 		}
+	}
+}
+
+func TestAStepIsReadAsTheJobSaidIt(t *testing.T) {
+	step := StepOf(time.Unix(0, 0), map[string]any{"step": "fetch", "say": "the coral atlas", "n": 3.0, "of": 6.0, "source": "allen-coral-atlas"})
+	if step.Step != "fetch" || step.N != 3 || step.Of != 6 || step.Detail["source"] != "allen-coral-atlas" {
+		t.Fatalf("%+v", step)
+	}
+}
+
+func TestProgressKeepsTheStepsAndTheLastThingSaid(t *testing.T) {
+	steps, said := Progress([]Event{
+		{Kind: EventScheduled, Detail: map[string]any{"attempt": 1.0}},
+		{Kind: EventProgress, Detail: map[string]any{"progress": map[string]any{"step": "frames", "say": "reading the video"}}},
+		{Kind: EventProgress, Detail: map[string]any{"output": "Traceback ..."}},
+	})
+	if len(steps) != 1 || steps[0].Step != "frames" || said != "Traceback ..." {
+		t.Fatalf("%+v %q", steps, said)
+	}
+	if _, said := Progress([]Event{{Kind: EventProgress, Detail: map[string]any{"failure": "this worker has no GPU for jobs"}}}); said == "" {
+		t.Fatal("a job the worker could not run said nothing about why")
 	}
 }

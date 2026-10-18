@@ -3240,6 +3240,371 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organisations/{orgId}/reconstructions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * An organisation's reconstructions, newest first
+         * @description The last hundred, each as somebody watching it sees it.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The organisation. */
+                    orgId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Its reconstructions. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            reconstructions: components["schemas"]["Reconstruction"][];
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        /**
+         * Make a reef from a dive video
+         * @description The platform runs the reconstruction module as a job on a GPU, with no network, over a video the organisation holds. The job reports each step; when it finishes, every file it made (the reef as splats in pieces, the ground surface, the camera's path, pictures) becomes an object the organisation holds, and reconstruction.json becomes the record's manifest. Laying the reef into a place is a separate act.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The organisation the work and what it makes belong to. */
+                    orgId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ReconstructionBrief"];
+                };
+            };
+            responses: {
+                /** @description The reconstruction, queued. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Reconstruction"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                429: components["responses"]["Refused"];
+                /** @description This platform has no image to reconstruct reefs with. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reconstructions/{reconstructionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How a reconstruction is going, and what it made
+         * @description The last of the steps it has reported; when it is done, its manifest. Watching a reconstruction whose job has finished is what starts keeping what it made, so its state is recording for a while before it is ready.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The reconstruction. */
+                    reconstructionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The reconstruction. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Reconstruction"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reconstructions/{reconstructionId}/objects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The files a reconstruction made
+         * @description Each by the path the job wrote it at, with the object holding it and a short-lived URL to fetch its bytes, signed for whoever asked. Empty until the reconstruction is ready.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The reconstruction. */
+                    reconstructionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Its files. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            objects: components["schemas"]["ReconstructionObject"][];
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reconstructions/{reconstructionId}/mappings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A reconstruction's mappings, newest first */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The reconstruction. */
+                    reconstructionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Its mappings. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            mappings: components["schemas"]["Mapping"][];
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        /**
+         * Put a reconstruction onto a place
+         * @description Onto a place that exists (mode onto): a job searches the place's seabed near where the video starts for where the reef's own ground fits, and the mapping waits in choosing until somebody accepts one of the candidates or a placement by hand. The caller must be able to make versions of that place. Or a place of its own (mode own): a place is founded for the reconstruction's organisation, a flat seabed is built for it, and the reef is laid in its middle. Either way the place gains a draft version with the reef in it. The reconstruction must be ready.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The reconstruction. */
+                    reconstructionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MappingRequest"];
+                };
+            };
+            responses: {
+                /** @description The mapping, started. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Mapping"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                429: components["responses"]["Refused"];
+                /** @description This platform has no image to put reconstructions onto places with. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mappings/{mappingId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How a mapping is going
+         * @description The steps of each job it has run, marked by phase; what the search found; what was chosen; and when it is ready, the version it made. Watching it is what moves it on when a job has finished.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The mapping. */
+                    mappingId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The mapping. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Mapping"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mappings/{mappingId}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Choose where the reef goes and lay it in
+         * @description One of the candidates the search found, by its index, or a placement by hand. Only a mapping that is choosing can be accepted.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The mapping. */
+                    mappingId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MappingChoice"];
+                };
+            };
+            responses: {
+                /** @description The mapping, laying. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Mapping"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                429: components["responses"]["Refused"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cities/{cityId}": {
         parameters: {
             query?: never;
@@ -4943,6 +5308,9 @@ export interface paths {
                 content: {
                     "application/json": {
                         targetName: string;
+                        /** @description Offer only work that needs no GPU. A worker says so while it is already running work that holds one.
+                         *      */
+                        withoutGpu?: boolean;
                     };
                 };
             };
@@ -6210,6 +6578,11 @@ export interface components {
             name?: string;
             slug?: string;
             orgId?: string;
+            /** @description A flat seabed at this depth and nothing else, the ground a reef from a video is laid onto when it has no map. No source is needed with it.
+             *      */
+            flatDepthM?: number;
+            /** @description False builds no colonies. */
+            coral?: boolean;
         };
         BuildRecord: {
             id: string;
@@ -6245,6 +6618,192 @@ export interface components {
                 };
             }[];
             /** @description The end of what the build printed, when it failed. */
+            said?: string;
+        };
+        ReconstructionBrief: {
+            video: {
+                /** @description A video the organisation holds: stored as video/*, or named .mp4, .mov or .mkv.
+                 *      */
+                objectId: string;
+                /** @description The video file's own name. */
+                name?: string;
+                /** @description Where the job finds it; filled in by the platform. */
+                path?: string;
+            };
+            /** @description What to call the reconstruction; the video's name when absent. */
+            label?: string;
+            /** @description How high over the reef the camera was, in metres, which gives the reef its scale. When absent the job assumes 1.92 m and says so.
+             *      */
+            cameraHeightM?: number;
+            /** @description Where the video starts. Recorded, not used. */
+            start?: {
+                lat: number;
+                lon: number;
+            };
+            /** @description Frames read a second; 2 when absent. */
+            fps?: number;
+            /**
+             * @description A survey tape in the frames is found and taken out (auto, the default) or kept.
+             * @enum {string}
+             */
+            tape?: "auto" | "keep";
+        };
+        ReconstructionRecord: {
+            id: string;
+            orgId: string;
+            jobId: string;
+            brief: components["schemas"]["ReconstructionBrief"];
+            name: string;
+            /** @description What the reconstruction said about itself (reconstruction.json): name, frames, registered, pieces, extentM, scale, surface, path, cover, tape, preview.
+             *      */
+            manifest?: {
+                [key: string]: unknown;
+            };
+            failure?: string;
+            createdBy: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            recordedAt?: string;
+        };
+        Reconstruction: components["schemas"]["ReconstructionRecord"] & {
+            /** @enum {string} */
+            state: "queued" | "running" | "recording" | "ready" | "failed";
+            jobState: string;
+            /** @description The last two hundred steps it reported. */
+            steps: {
+                /** Format: date-time */
+                at: string;
+                step: string;
+                say: string;
+                n?: number;
+                of?: number;
+                detail?: {
+                    [key: string]: unknown;
+                };
+            }[];
+            /** @description The end of what the reconstruction printed, when it failed. */
+            said?: string;
+        };
+        ReconstructionObject: {
+            /** @description Where the job wrote it */
+            path: string;
+            objectId: string;
+            /** Format: int64 */
+            sizeBytes: number;
+            mediaType: string;
+            /** @description A short-lived URL to fetch its bytes. */
+            url: string;
+        };
+        MappingRequest: {
+            /** @enum {string} */
+            mode: "onto" | "own";
+            /** @description The place to put the reef onto (onto). */
+            cityId?: string;
+            /** @description Which of its versions; its newest when absent (onto). */
+            versionId?: string;
+            /** @description Where the video starts; the reconstruction's own when absent. For a place of its own with neither, 22.30, 38.85, and the mapping says it was assumed.
+             *      */
+            start?: {
+                lat: number;
+                lon: number;
+            };
+            /** @description How far from the start the search looks; 400 when absent (onto). */
+            withinM?: number;
+            /** @description How deep the reef is: a hint to the search (onto), or the flat seabed's depth, 0.5 to 60 m, 8 when absent (own).
+             *      */
+            depthM?: number;
+            /** @description How many candidates the search reports; 5 when absent (onto). */
+            count?: number;
+            /** @description The new place's name (own). */
+            name?: string;
+            /** @description How wide the new place is; 300 when absent (own). */
+            acrossM?: number;
+            /**
+             * @description The ground around the reef; sand when absent (own).
+             * @enum {string}
+             */
+            pad?: "sand" | "coral";
+            /** @description Which way the reef faces; 0 when absent (own). */
+            headingDeg?: number;
+            /** @description Written by the platform; ignored when sent. */
+            startAssumed?: boolean;
+        };
+        MappingChoice: {
+            /** @description The index of one of the candidates the search found. */
+            candidate?: number;
+            /** @description Where to put the reef by hand, in the place's metres. */
+            placement?: {
+                at: number[];
+                headingDeg: number;
+                dz: number;
+            };
+        };
+        MappingRecord: {
+            id: string;
+            orgId: string;
+            reconstructionId: string;
+            cityId: string;
+            /** @enum {string} */
+            mode: "onto" | "own";
+            brief: components["schemas"]["MappingRequest"];
+            /** @description The version the reef is laid into. */
+            baseVersionId?: string;
+            /** @description The build of a place of its own's flat seabed. */
+            buildId?: string;
+            resolveJobId?: string;
+            /** @description The places the search found the reef fits, best first (candidates.json): each with headingDeg, at, dz, centre, matrix, startAt and fit (rmsM, score, placeGroundM).
+             *      */
+            candidates?: ({
+                headingDeg?: number;
+                at?: number[];
+                dz?: number;
+                fit?: {
+                    [key: string]: unknown;
+                };
+            } & {
+                [key: string]: unknown;
+            })[];
+            /** @description Where in the place's metres the search looked from, when it knew. */
+            start?: number[] | null;
+            /** @description How the search looked. */
+            searched?: {
+                [key: string]: unknown;
+            };
+            /** @description Where the reef is laid, as the lay job was told. */
+            chosen?: {
+                [key: string]: unknown;
+            };
+            layJobId?: string;
+            /** @description The draft version with the reef in it. */
+            versionId?: string;
+            failure?: string;
+            createdBy: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            recordedAt?: string;
+        };
+        Mapping: components["schemas"]["MappingRecord"] & {
+            /** @enum {string} */
+            state: "building" | "resolving" | "choosing" | "laying" | "recording" | "ready" | "failed";
+            /** @description The last two hundred steps of the jobs it has run. */
+            steps: {
+                /** Format: date-time */
+                at: string;
+                step: string;
+                say: string;
+                n?: number;
+                of?: number;
+                detail?: {
+                    [key: string]: unknown;
+                };
+                /** @enum {string} */
+                phase: "base" | "resolve" | "lay";
+            }[];
+            /** @description Why the next job has not started yet, when the platform refused it for now. */
+            waiting?: string;
+            /** @description The end of what the failed job printed. */
             said?: string;
         };
         PartPlan: {

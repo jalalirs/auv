@@ -32,8 +32,16 @@ type Config struct {
 	HeartbeatInterval time.Duration
 	RequestTimeout    time.Duration
 	// MaxInputBytes bounds what a worker will download for one input, so that
-	// a malformed job cannot fill the disk.
+	// a malformed job cannot fill the disk. An hour of 4K dive video is about
+	// 25 GB, and a reconstruction reads the whole of one.
 	MaxInputBytes int64
+
+	// JobGPUs are the devices, by index, that work which asks for a GPU is
+	// given. Dives are given theirs by the platform, card by card; a job is
+	// not, so the host says which of its cards jobs may use. Empty means this
+	// host runs no job that needs one, and such a job fails saying so rather
+	// than running without it.
+	JobGPUs []string
 
 	// SimImage is what a dive is simulated in. Named here rather than by the
 	// platform because it is a property of this host — what it has, and what
@@ -134,7 +142,16 @@ func Load() (Config, error) {
 		*setting.destination = value
 	}
 
-	maxInput, err := number64("IOCEAN_WORKER_MAX_INPUT_BYTES", int64(8)<<30)
+	for _, index := range strings.Split(os.Getenv("IOCEAN_WORKER_JOB_GPUS"), ",") {
+		if index = strings.TrimSpace(index); index != "" {
+			if _, err := strconv.Atoi(index); err != nil {
+				return Config{}, fmt.Errorf("IOCEAN_WORKER_JOB_GPUS is device indices, comma-separated: %q", index)
+			}
+			config.JobGPUs = append(config.JobGPUs, index)
+		}
+	}
+
+	maxInput, err := number64("IOCEAN_WORKER_MAX_INPUT_BYTES", int64(64)<<30)
 	if err != nil {
 		return Config{}, err
 	}

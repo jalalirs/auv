@@ -81,6 +81,88 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
          "properties": {"version": {"type": "string"}},
          "required": ["version"]},
         lambda p, version: tools.places_publish(p, version)),
+    "reconstructions_create": (
+        "Make a reef from a dive video this institution has uploaded: the reef as Gaussian splats, "
+        "the ground under it and the path the camera took. THIS SPENDS HOURS ON A GPU. Returns at "
+        "once with a reconstruction to watch with reconstructions_status. Laying the reef into a "
+        "place is a separate step, not this one.",
+        {"type": "object",
+         "properties": {
+             "video": {"type": "string", "description": "the uploaded video's object id (an .mp4, .mov or .mkv)"},
+             "name": {"type": "string", "description": "the video file's own name, e.g. GX010123.MP4"},
+             "org": {"type": "string", "description": "the organisation; this session's own when absent"},
+             "camera_height_m": {"type": "number",
+                                 "description": "how high over the reef the camera was, 0.2 to 20 m; it gives the "
+                                                "reef its scale. When absent 1.92 m is assumed, and said to be"},
+             "start": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2,
+                       "description": "[latitude, longitude] where the video starts; recorded only"},
+             "label": {"type": "string", "description": "what to call it; the video's name when absent"},
+             "fps": {"type": "number", "description": "frames read a second, 0.5 to 5; default 2"},
+             "tape": {"type": "string", "enum": ["auto", "keep"],
+                      "description": "a survey tape in the frames is taken out (auto, the default) or kept"}},
+         "required": ["video"]},
+        lambda p, video, name="", org="", camera_height_m=None, start=None, label="", fps=None, tape="":
+            tools.reconstructions_create(p, video, name, org, camera_height_m, start, label, fps, tape)),
+    "reconstructions_status": (
+        "How a reconstruction is going: the last steps it reported, and when it is ready, how many "
+        "frames it placed, its pieces and splats, and how big the reef is and where its scale came from.",
+        {"type": "object",
+         "properties": {"reconstruction": {"type": "string"}},
+         "required": ["reconstruction"]},
+        lambda p, reconstruction: tools.reconstructions_status(p, reconstruction)),
+    "reconstructions_list": (
+        "This institution's reconstructions, newest first, each with its state.",
+        {"type": "object",
+         "properties": {"org": {"type": "string", "description": "the organisation; this session's own when absent"}}},
+        lambda p, org="": tools.reconstructions_list(p, org)),
+    "mappings_create": (
+        "Put a ready reconstruction onto a place. mode onto: a place that exists (place, its id); a job "
+        "searches its seabed near where the video starts for where the reef's ground fits, and waits for "
+        "mappings_accept. mode own: a new place of this institution's own (name), a flat seabed built for "
+        "it, and the reef laid in its middle. THIS SPENDS TIME ON MACHINES, laying on a GPU. Either way "
+        "the place gains a draft version, which places_publish lets dives use.",
+        {"type": "object",
+         "properties": {
+             "reconstruction": {"type": "string"},
+             "mode": {"type": "string", "enum": ["onto", "own"]},
+             "place": {"type": "string", "description": "onto: the place's id"},
+             "version": {"type": "string", "description": "onto: which of its versions; its newest when absent"},
+             "start": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2,
+                       "description": "[latitude, longitude] where the video starts; the reconstruction's own when absent"},
+             "within_m": {"type": "number", "description": "onto: how far from the start to search; default 400"},
+             "depth_m": {"type": "number",
+                         "description": "onto: how deep the reef is, a hint; own: the flat seabed's depth, default 8"},
+             "count": {"type": "integer", "description": "onto: how many candidates; default 5"},
+             "name": {"type": "string", "description": "own: the new place's name"},
+             "across_m": {"type": "number", "description": "own: 100 to 2000 m; default 300"},
+             "pad": {"type": "string", "enum": ["sand", "coral"], "description": "own: the ground around the reef"},
+             "heading_deg": {"type": "number", "description": "own: which way the reef faces; default 0"}},
+         "required": ["reconstruction", "mode"]},
+        lambda p, reconstruction, mode, place="", version="", start=None, within_m=None, depth_m=None,
+               count=None, name="", across_m=None, pad="", heading_deg=None:
+            tools.mappings_create(p, reconstruction, mode, place, version, start, within_m, depth_m,
+                                  count, name, across_m, pad, heading_deg)),
+    "mappings_status": (
+        "How a mapping is going: its state, the steps of each job, and when the search has finished, "
+        "the candidates (index, where, heading, how well the ground fits, the seabed's depth there).",
+        {"type": "object",
+         "properties": {"mapping": {"type": "string"}},
+         "required": ["mapping"]},
+        lambda p, mapping: tools.mappings_status(p, mapping)),
+    "mappings_accept": (
+        "Choose where the reef goes and lay it in: a candidate's index from mappings_status, or a "
+        "placement by hand (at [x, y] in the place's metres, heading_deg, dz). Only while the mapping is "
+        "choosing. THIS SPENDS TIME ON A GPU.",
+        {"type": "object",
+         "properties": {
+             "mapping": {"type": "string"},
+             "candidate": {"type": "integer"},
+             "at": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+             "heading_deg": {"type": "number"},
+             "dz": {"type": "number"}},
+         "required": ["mapping"]},
+        lambda p, mapping, candidate=None, at=None, heading_deg=None, dz=None:
+            tools.mappings_accept(p, mapping, candidate, at, heading_deg, dz)),
     "vehicles_list": (
         "Every vehicle, and whether it can actually fly. Read `flyable`: a "
         "package with dynamics and no hull cannot be put in the water however "

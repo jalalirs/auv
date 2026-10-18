@@ -25,9 +25,11 @@ import (
 	"github.com/jalalirs/auv/services/control-plane/internal/exec"
 	"github.com/jalalirs/auv/services/control-plane/internal/httpapi"
 	"github.com/jalalirs/auv/services/control-plane/internal/identity"
+	"github.com/jalalirs/auv/services/control-plane/internal/mapping"
 	"github.com/jalalirs/auv/services/control-plane/internal/planning"
 	"github.com/jalalirs/auv/services/control-plane/internal/platform"
 	"github.com/jalalirs/auv/services/control-plane/internal/policy"
+	"github.com/jalalirs/auv/services/control-plane/internal/reconstructing"
 	"github.com/jalalirs/auv/services/control-plane/internal/storage"
 )
 
@@ -85,21 +87,32 @@ func run(logger *slog.Logger) error {
 		WithLimits(0, 0, settings.OrgStorageBytes)
 	recorder := audit.NewRecorder()
 
+	builder := building.New(pool, broker, objects, catalog.NewStore(pool),
+		building.Settings{Image: settings.PlacesImage})
+	reconstructor := reconstructing.New(pool, broker, objects, reconstructing.Settings{
+		Image: settings.ReconstructImage, CPU: float64(settings.ReconstructCPU),
+		MemoryBytes:     settings.ReconstructMemoryBytes,
+		WalltimeSeconds: int(settings.ReconstructWalltime.Seconds()),
+		PackageBytes:    settings.ReconstructPackageBytes,
+	})
+
 	deps := &httpapi.Dependencies{
-		Info:       platform.Build(version, commit, builtAt),
-		Pool:       pool,
-		Identity:   identities,
-		Authorizer: policy.NewAuthorizer(pool),
-		Audit:      recorder,
-		Catalog:    catalog.NewStore(pool),
-		Compute:    compute.NewStore(pool),
-		Dives:      dive.NewStore(pool),
-		Objects:    objects,
-		Blobs:      blobs,
-		Broker:     broker,
-		Logger:     logger,
-		Builder: building.New(pool, broker, objects, catalog.NewStore(pool),
-			building.Settings{Image: settings.PlacesImage}),
+		Info:          platform.Build(version, commit, builtAt),
+		Pool:          pool,
+		Identity:      identities,
+		Authorizer:    policy.NewAuthorizer(pool),
+		Audit:         recorder,
+		Catalog:       catalog.NewStore(pool),
+		Compute:       compute.NewStore(pool),
+		Dives:         dive.NewStore(pool),
+		Objects:       objects,
+		Blobs:         blobs,
+		Broker:        broker,
+		Logger:        logger,
+		Builder:       builder,
+		Reconstructor: reconstructor,
+		Mapper: mapping.New(pool, broker, objects, catalog.NewStore(pool), builder, reconstructor,
+			mapping.Settings{Image: settings.ReconstructImage, PackageBytes: settings.ReconstructPackageBytes}),
 		Drafter: planning.Drafter{
 			URL: settings.ModelURL, Key: settings.ModelKey, Model: settings.Model,
 			MaxTokens: settings.ModelMaxTokens,

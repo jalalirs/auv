@@ -14,9 +14,11 @@ import (
 	"github.com/jalalirs/auv/services/control-plane/internal/dive"
 	"github.com/jalalirs/auv/services/control-plane/internal/exec"
 	"github.com/jalalirs/auv/services/control-plane/internal/identity"
+	"github.com/jalalirs/auv/services/control-plane/internal/mapping"
 	"github.com/jalalirs/auv/services/control-plane/internal/planning"
 	"github.com/jalalirs/auv/services/control-plane/internal/platform"
 	"github.com/jalalirs/auv/services/control-plane/internal/policy"
+	"github.com/jalalirs/auv/services/control-plane/internal/reconstructing"
 	"github.com/jalalirs/auv/services/control-plane/internal/storage"
 )
 
@@ -38,6 +40,10 @@ type Dependencies struct {
 
 	// Builder builds places from their data as jobs.
 	Builder *building.Builder
+	// Reconstructor makes reefs from dive videos as jobs.
+	Reconstructor *reconstructing.Reconstructor
+	// Mapper puts reconstructions onto places as jobs.
+	Mapper *mapping.Mapper
 
 	// Drafter turns what somebody said into a plan, by asking a model. Left
 	// unconfigured on a platform that has not been given one, and it says so

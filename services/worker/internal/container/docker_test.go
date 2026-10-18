@@ -183,3 +183,22 @@ func TestUnframedOutputKeepsItsEndToo(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// Ordinary work keeps the runtime's small shared memory and the usual bound
+// on threads; work that asked for more, on a GPU, gets it.
+func TestSharedMemoryAndThreadsAreGivenOnlyWhenAsked(t *testing.T) {
+	host := createRequest(Spec{Image: "x"})["HostConfig"].(map[string]any)
+	if _, set := host["ShmSize"]; set {
+		t.Errorf("ordinary work was given shared memory: %v", host["ShmSize"])
+	}
+	if host["PidsLimit"] != 512 {
+		t.Errorf("ordinary work may have %v processes", host["PidsLimit"])
+	}
+	host = createRequest(Spec{Image: "x", ShmBytes: 16 << 30, PidsLimit: 8192, GPUs: []string{"1"}})["HostConfig"].(map[string]any)
+	if host["ShmSize"] != int64(16<<30) || host["PidsLimit"] != 8192 {
+		t.Errorf("work on a GPU was given %v shared memory and %v processes", host["ShmSize"], host["PidsLimit"])
+	}
+	if requests, _ := host["DeviceRequests"].([]map[string]any); len(requests) != 1 {
+		t.Errorf("work on a GPU was given no card: %v", host["DeviceRequests"])
+	}
+}

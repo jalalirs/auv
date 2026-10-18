@@ -15,6 +15,9 @@ import (
 
 type takeWorkRequest struct {
 	TargetName string `json:"targetName"`
+	// WithoutGPU asks only for work that needs no GPU: the worker is already
+	// running work that holds the one it has for jobs.
+	WithoutGPU bool `json:"withoutGpu,omitempty"`
 }
 
 // takeWork hands one admitted job to a worker, or reports that there is
@@ -33,7 +36,7 @@ func (d *Dependencies) takeWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lease, err := d.Broker.Take(r.Context(), principal.ID, target.ID, d.LeaseDuration)
+	lease, err := d.Broker.Take(r.Context(), principal.ID, target.ID, d.LeaseDuration, request.WithoutGPU)
 	if err != nil {
 		writeError(w, r, err)
 		return

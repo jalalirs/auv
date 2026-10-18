@@ -376,7 +376,7 @@ func (o *Objects) collect(ctx context.Context, object Object) (string, error) {
 		}
 		_, err := conn.Exec(ctx, `DELETE FROM store.object WHERE id = $1`, object.ID)
 		if db.IsForeignKeyViolation(err) {
-			kept = "a place version, a run or a job's output is made of it"
+			kept = "a place version, a run, a reconstruction or a job's output is made of it"
 			return errKept
 		}
 		return err

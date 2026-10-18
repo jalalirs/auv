@@ -42,6 +42,9 @@ x-platform-env: &platform-env
   # The places module's image, by digest, that builds places from their data
   # (packages/places/Dockerfile). Empty: this platform does not build places.
   IOCEAN_PLACES_IMAGE: ${IOCEAN_PLACES_IMAGE:-}
+  # The reconstruction module's image, by digest, that makes reefs from dive
+  # videos on a GPU. Empty: this platform does not make them.
+  IOCEAN_RECONSTRUCT_IMAGE: ${IOCEAN_RECONSTRUCT_IMAGE:-}
 
 services:
   record:
@@ -273,6 +276,10 @@ services:
       # depths with, which the worker hands to place builds only. Empty: builds leave ICESat-2
       # out and say so.
       NASA_TOKEN: ${NASA_TOKEN:-}
+      # The cards, by index, that a job asking for a GPU (a reconstruction)
+      # is given. Dives are given theirs card by card by the platform; a job
+      # is not. Empty: such a job fails saying so.
+      IOCEAN_WORKER_JOB_GPUS: ${IOCEAN_WORKER_JOB_GPUS:-}
       # What this host reports it can simulate in, every time it asks for work.
       # Whoever asks for a dive names a runtime, and cannot know what is
       # installed on a machine in a rack — so the machine says.

@@ -166,6 +166,18 @@ type Spec struct {
 	// else's program, and the thing it must not have is a way off this host.
 	Publish []Port
 
+	// ShmBytes is the size of the container's shared memory, when it needs
+	// more than the runtime's 64 MB. Work on a GPU does: a training loop's
+	// data loaders hand batches to each other through it, and run out of it
+	// long before they run out of anything else.
+	ShmBytes int64
+
+	// PidsLimit bounds how many processes and threads the container may have,
+	// when it needs more than ordinary work. A thread counts against it, and
+	// a numerical library starts one per processor the host has, not per
+	// processor the container was given.
+	PidsLimit int
+
 	// WritableRoot relaxes the read-only root filesystem. A simulator writes
 	// shader and asset caches all over its own installation and cannot run
 	// without it; ordinary work can and does.
@@ -357,6 +369,10 @@ func createRequest(spec Spec) map[string]any {
 		network = spec.Attach
 	}
 
+	pids := 512
+	if spec.PidsLimit > pids {
+		pids = spec.PidsLimit
+	}
 	hostConfig := map[string]any{
 		"Binds":          binds,
 		"NetworkMode":    network,
@@ -366,11 +382,15 @@ func createRequest(spec Spec) map[string]any {
 		"Privileged":     false,
 		"Memory":         spec.MemoryBytes,
 		"NanoCpus":       int64(spec.CPUs * 1e9),
-		"PidsLimit":      512,
+		"PidsLimit":      pids,
 		"AutoRemove":     false,
 		// A read-only root still needs somewhere to write scratch, and a
 		// bounded temporary filesystem is safer than a writable root.
 		"Tmpfs": map[string]string{"/tmp": "rw,noexec,nosuid,size=536870912"},
+	}
+
+	if spec.ShmBytes > 0 {
+		hostConfig["ShmSize"] = spec.ShmBytes
 	}
 
 	exposed := map[string]any{}

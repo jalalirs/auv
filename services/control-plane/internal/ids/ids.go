@@ -53,6 +53,10 @@ const (
 	KindRun        Kind = "run"
 	KindSweep      Kind = "swp"
 	KindBuild      Kind = "bld"
+	// A reef made from a dive video, held by the organisation that made it.
+	KindReconstruction Kind = "recon"
+	// A reconstruction put onto a place.
+	KindMapping Kind = "map"
 )
 
 var kinds = map[Kind]struct{}{
@@ -65,7 +69,7 @@ var kinds = map[Kind]struct{}{
 	KindAdmission: {}, KindRefusal: {}, KindSchedule: {},
 	KindVehicle: {}, KindQueue: {}, KindDevice: {}, KindStack: {},
 	KindConditions: {}, KindDive: {}, KindRun: {}, KindSweep: {},
-	KindBuild: {},
+	KindBuild: {}, KindReconstruction: {}, KindMapping: {},
 }
 
 // ErrMalformed reports an identifier that is not of the expected shape or kind.

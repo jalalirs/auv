@@ -62,6 +62,15 @@ type Config struct {
 	// PlacesImage is the places module's image, by digest, that builds
 	// places. Empty means this platform does not build them.
 	PlacesImage string
+	// ReconstructImage is the reconstruction module's image, by digest, that
+	// makes reefs from dive videos. Empty means this platform does not make
+	// them. The rest say what a reconstruction is admitted for; zero is the
+	// module's own default (8 processors, 48 GiB, 14 hours, a 40 GiB package).
+	ReconstructImage        string
+	ReconstructCPU          int
+	ReconstructMemoryBytes  int64
+	ReconstructWalltime     time.Duration
+	ReconstructPackageBytes int64
 
 	// A model this platform may ask for a plan, and the key to ask with. All
 	// three empty on a platform that has not been given one, which is not an
@@ -168,6 +177,19 @@ func Load() (Config, error) {
 	}
 	config.OrgStorageBytes = orgStorage
 	config.PlacesImage = os.Getenv("IOCEAN_PLACES_IMAGE")
+	config.ReconstructImage = os.Getenv("IOCEAN_RECONSTRUCT_IMAGE")
+	if config.ReconstructCPU, err = number("IOCEAN_RECONSTRUCT_CPU", 0); err != nil {
+		return Config{}, err
+	}
+	if config.ReconstructMemoryBytes, err = number64("IOCEAN_RECONSTRUCT_MEMORY_BYTES", 0); err != nil {
+		return Config{}, err
+	}
+	if config.ReconstructWalltime, err = duration("IOCEAN_RECONSTRUCT_WALLTIME", 0); err != nil {
+		return Config{}, err
+	}
+	if config.ReconstructPackageBytes, err = number64("IOCEAN_RECONSTRUCT_PACKAGE_BYTES", 0); err != nil {
+		return Config{}, err
+	}
 
 	config.StorageUseTLS = boolean("IOCEAN_STORAGE_USE_TLS", false)
 	config.StoragePublicUseTLS = boolean("IOCEAN_STORAGE_PUBLIC_USE_TLS", config.StorageUseTLS)

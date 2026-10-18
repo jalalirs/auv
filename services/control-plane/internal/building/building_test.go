@@ -1,9 +1,6 @@
 package building
 
-import (
-	"testing"
-	"time"
-)
+import "testing"
 
 func TestABriefSaysWhereAndHowDeep(t *testing.T) {
 	good := Brief{Centre: [2]float64{22.3, 38.9}, AcrossM: 1000, Sources: []string{"gebco", "allen-coral-atlas"}}
@@ -28,13 +25,6 @@ func TestABriefSaysWhereAndHowDeep(t *testing.T) {
 	}
 }
 
-func TestAStepIsReadAsTheBuildSaidIt(t *testing.T) {
-	step := stepOf(time.Unix(0, 0), map[string]any{"step": "fetch", "say": "the coral atlas", "n": 3.0, "of": 6.0, "source": "allen-coral-atlas"})
-	if step.Step != "fetch" || step.N != 3 || step.Of != 6 || step.Detail["source"] != "allen-coral-atlas" {
-		t.Fatalf("%+v", step)
-	}
-}
-
 func TestTheResultKeepsWhereThePlaceIsWeak(t *testing.T) {
 	result := resultOf([]byte(`{"name":"x","from":{"acrossMetres":1000,"depth":{"weak":{"errorM":{"median":1.2}}}},"deepestM":30,"layers":{}}`))
 	if result["depth"] == nil || result["deepestM"] != 30.0 || result["layers"] != nil {
@@ -46,5 +36,25 @@ func TestARecordWithNaNInItIsStillRead(t *testing.T) {
 	result := resultOf([]byte(`{"from":{"depth":{"weak":{"errorM":{"median":2.1}}},"models":{"curve":{"rmsM":NaN,"x":[1, -Infinity]}}},"deepestM":30}`))
 	if result == nil || result["deepestM"] != 30.0 {
 		t.Fatalf("a record with NaN in it came back as %v", result)
+	}
+}
+
+func TestAFlatSeabedNeedsNoSource(t *testing.T) {
+	depth, none := 8.0, false
+	flat := Brief{Centre: [2]float64{22.3, 38.85}, AcrossM: 300, FlatDepthM: &depth, Coral: &none}
+	if err := flat.Validate(); err != nil {
+		t.Fatalf("a flat seabed 8 m down, no sources: %v", err)
+	}
+	for _, d := range []float64{0.1, 61} {
+		deep := d
+		if (Brief{Centre: [2]float64{22.3, 38.85}, AcrossM: 300, FlatDepthM: &deep}).Validate() == nil {
+			t.Errorf("a flat seabed %g m down was accepted", d)
+		}
+	}
+	if (Brief{Centre: [2]float64{22.3, 38.85}, AcrossM: 50, FlatDepthM: &depth}).Validate() == nil {
+		t.Error("a flat place 50 m across was accepted")
+	}
+	if describe(flat) != "a flat seabed at 8 m" {
+		t.Errorf("described as %q", describe(flat))
 	}
 }

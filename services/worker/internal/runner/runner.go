@@ -86,6 +86,14 @@ func (r *Runner) Run(ctx context.Context, lease *controlplane.Lease) error {
 	defer stopWork()
 	cancelled := r.beat(work, stopWork, lease, log)
 
+	// Before anything is fetched: a reconstruction stages a video of tens of
+	// gigabytes, and finding out after that there is no card to run it on
+	// wastes the fetch.
+	gpus, err := devicesFor(lease.Job.RequestGPU, r.settings.JobGPUs)
+	if err != nil {
+		return r.fail(ctx, lease, internalError, err, log)
+	}
+
 	inputs, outputs, cleanup, err := r.stage(work, lease)
 	if err != nil {
 		return r.fail(ctx, lease, inputUnavailable, err, log)
@@ -107,7 +115,7 @@ func (r *Runner) Run(ctx context.Context, lease *controlplane.Lease) error {
 	if lease.Job.RecipeID == placesBuild {
 		env = append(env, r.settings.PlacesBuildEnv...)
 	}
-	id, err := r.runtime.Create(work, container.Spec{
+	spec := container.Spec{
 		Image:       lease.Job.ImageDigest,
 		Command:     lease.Job.Command,
 		Args:        lease.Job.Args,
@@ -118,7 +126,20 @@ func (r *Runner) Run(ctx context.Context, lease *controlplane.Lease) error {
 		CPUs:        lease.Job.RequestCPU,
 		Name:        "iocean-" + lease.AttemptID,
 		Network:     lease.Job.Egress == "internet",
-	})
+	}
+	if len(gpus) > 0 {
+		// Beside the inputs and outputs, so it goes with them; not inside the
+		// outputs, which are collected.
+		scratch := filepath.Join(filepath.Dir(inputs), "scratch")
+		if err := os.MkdirAll(scratch, 0o777); err != nil {
+			return r.fail(ctx, lease, internalError, err, log)
+		}
+		if err := os.Chmod(scratch, 0o777); err != nil {
+			return r.fail(ctx, lease, internalError, err, log)
+		}
+		onGPU(&spec, gpus, r.hostPath(scratch))
+	}
+	id, err := r.runtime.Create(work, spec)
 	if err != nil {
 		return r.fail(ctx, lease, internalError, err, log)
 	}
@@ -195,6 +216,38 @@ func (r *Runner) Run(ctx context.Context, lease *controlplane.Lease) error {
 
 // placesBuild is the recipe of the platform's own place builds.
 const placesBuild = "places-build/v1"
+
+// devicesFor names the cards a job that needs need of them is given, from the
+// ones this host offers jobs. A job that needs a card and cannot have one
+// fails saying so: run without it, it would either fail an hour in or crawl
+// along on the processor for days.
+func devicesFor(need int, offered []string) ([]string, error) {
+	if need <= 0 {
+		return nil, nil
+	}
+	if need > len(offered) {
+		return nil, fmt.Errorf("this work needs %d GPU and this worker offers jobs %d "+
+			"(IOCEAN_WORKER_JOB_GPUS names the cards jobs may use)", need, len(offered))
+	}
+	return offered[:need], nil
+}
+
+// Scratch is where work on a GPU writes what it needs only while it runs.
+const Scratch = "/work/scratch"
+
+// onGPU gives a container the cards it was admitted for and what work on
+// them needs besides: shared memory for its data loaders, room for the
+// threads a numerical library starts, and scratch on the host's disk rather
+// than in the small temporary filesystem every container has. Temporary
+// files go there too, because what a GPU job writes to them (decoded frames,
+// compiled kernels) does not fit in memory and has to be executable.
+func onGPU(spec *container.Spec, gpus []string, scratchHost string) {
+	spec.GPUs = gpus
+	spec.ShmBytes = 16 << 30
+	spec.PidsLimit = 8192
+	spec.Mounts = append(spec.Mounts, container.Mount{Source: scratchHost, Target: Scratch})
+	spec.Env = append(spec.Env, "IOCEAN_JOB_SCRATCH="+Scratch, "TMPDIR="+Scratch)
+}
 
 // progressMark starts a line a job prints to say how it is getting on.
 const progressMark = `{"progress":`
@@ -321,6 +374,10 @@ func (r *Runner) stage(ctx context.Context, lease *controlplane.Lease) (inputs, 
 	}
 
 	for _, declared := range lease.Job.Inputs {
+		if declared.SizeBytes > r.settings.MaxInputBytes {
+			return "", "", cleanup, fmt.Errorf("input %q is %d bytes, beyond the %d this worker fetches "+
+				"(IOCEAN_WORKER_MAX_INPUT_BYTES)", declared.Name, declared.SizeBytes, r.settings.MaxInputBytes)
+		}
 		input, readURL, err := r.client.InputURL(ctx, lease.AttemptID, lease.Token, declared.Name)
 		if err != nil {
 			return "", "", cleanup, fmt.Errorf("locating input %q: %w", declared.Name, err)

@@ -171,6 +171,35 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/build-sources",
 		Summary: "what a place can be built from", Action: policy.PlatformReadCatalogue,
 		Resource: atPlatform(), Handle: d.buildSources})
+	// Reefs made from dive videos. Making one is founding something of the
+	// organisation's own, the same authority as founding a place it builds.
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/reconstructions",
+		Summary: "make a reef from a dive video the organisation holds, as a job on a GPU",
+		Action:  policy.CityFound, Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.startReconstruction})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations/{orgId}/reconstructions",
+		Summary: "an organisation's reconstructions, newest first", Action: policy.OrgRead,
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.listReconstructions})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/reconstructions/{reconstructionId}",
+		Summary: "how a reconstruction is going, and what it made", Action: policy.OrgRead,
+		Resource: d.ofReconstruction("reconstructionId"), Handle: d.watchReconstruction})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/reconstructions/{reconstructionId}/objects",
+		Summary: "the files a reconstruction made, each with a short-lived URL", Action: policy.StorageRead,
+		Resource: d.ofReconstruction("reconstructionId"), Handle: d.reconstructionObjects})
+	// A reef put onto a place: an existing one (the caller must be able to
+	// make versions of it), or one of its own.
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/reconstructions/{reconstructionId}/mappings",
+		Summary: "put a reconstruction onto a place, or give it a place of its own",
+		Action:  policy.CityFound, Resource: d.ofReconstruction("reconstructionId"),
+		Also: []policy.Action{policy.CityPublish}, Handle: d.startMapping})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/reconstructions/{reconstructionId}/mappings",
+		Summary: "a reconstruction's mappings, newest first", Action: policy.OrgRead,
+		Resource: d.ofReconstruction("reconstructionId"), Handle: d.listMappings})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/mappings/{mappingId}",
+		Summary: "how a mapping is going: what the search found, what was chosen, the version it made",
+		Action:  policy.OrgRead, Resource: d.ofMapping("mappingId"), Handle: d.watchMapping})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/mappings/{mappingId}/accept",
+		Summary: "choose where the reef goes and lay it in", Action: policy.CityFound,
+		Resource: d.ofMapping("mappingId"), Handle: d.acceptMapping})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/cities",
 		Summary: "found a place of the organisation's own, seen only by its members until they share it",
 		Action:  policy.CityFound, Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.foundOwnCity})

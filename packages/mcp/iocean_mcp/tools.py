@@ -1093,3 +1093,210 @@ def places_publish(platform: Platform, version: str) -> dict:
     published = platform.request("POST", f"/api/v1/versions/{version}/publish")
     return {"version": published.get("id", version), "published": True,
             "note": "dives_start can now fly in it; places_get reads what its ground came from"}
+
+
+# ── a reef from a dive video ─────────────────────────────────────────────────
+
+
+def _organisation(platform: Platform, org: str) -> str:
+    """The organisation named, or the session's own."""
+    if org:
+        return org
+    institution = platform.institution()
+    if institution is None:
+        raise Refused(403, "forbidden", "this session belongs to no institution, and a reconstruction is made for one")
+    return institution["id"]
+
+
+def reconstructions_create(platform: Platform, video: str, name: str = "", org: str = "",
+                           camera_height_m: float | None = None, start: Any = None,
+                           label: str = "", fps: float | None = None, tape: str = "") -> dict:
+    """Make a reef from a dive video the institution holds."""
+    brief: dict[str, Any] = {"video": {"objectId": video}}
+    if name:
+        brief["video"]["name"] = name
+    if label:
+        brief["label"] = label
+    if camera_height_m is not None:
+        brief["cameraHeightM"] = float(camera_height_m)
+    if start is not None:
+        if isinstance(start, dict):
+            lat, lon = start.get("lat"), start.get("lon")
+        elif isinstance(start, (list, tuple)) and len(start) == 2:
+            lat, lon = start
+        else:
+            raise Refused(400, "invalid", "start is [latitude, longitude] in degrees")
+        brief["start"] = {"lat": float(lat), "lon": float(lon)}
+    if fps is not None:
+        brief["fps"] = float(fps)
+    if tape:
+        brief["tape"] = tape
+    made = platform.request("POST", f"/api/v1/organisations/{_organisation(platform, org)}/reconstructions", brief)
+    return {**_reconstruction_summary(made),
+            "note": "reconstructions_status says how it is going; a reconstruction runs on a GPU "
+                    "for hours, most of it training the reef's splats"}
+
+
+def _reconstruction_summary(made: dict) -> dict:
+    steps = made.get("steps") or []
+    brief = made.get("brief") or {}
+    out: dict[str, Any] = {
+        "reconstruction": made.get("id"), "name": made.get("name"), "state": made.get("state"),
+        "video": (brief.get("video") or {}).get("objectId"),
+        "steps": [(f"{s.get('say')} ({s['n']} of {s['of']})" if s.get("of") else s.get("say")) for s in steps][-12:],
+    }
+    if made.get("failure"):
+        out["failure"] = made["failure"]
+    if made.get("said"):
+        out["said"] = made["said"][-1500:]
+    manifest = made.get("manifest") or {}
+    if manifest:
+        scale = manifest.get("scale") or {}
+        how = str(scale.get("how") or "")
+        # The reef's size is only as good as what gave it its scale: a camera
+        # height nobody stated is the job's default, and says so.
+        kind = ASSUMED if "assum" in how.lower() or brief.get("cameraHeightM") is None else DERIVED
+        source = f"scale {how or 'unstated'}" + (f" from {scale['from']}" if scale.get("from") else "")
+        pieces = manifest.get("pieces") or []
+        out["reef"] = {
+            "pieces": said(len(pieces), DERIVED, "the reconstruction's own manifest"),
+            "frames": said(manifest.get("frames"), DERIVED, "frames read from the video"),
+            "registered": said(manifest.get("registered"), DERIVED, "frames the reconstruction placed"),
+            "splats": said(sum(int(p.get("splats") or 0) for p in pieces), DERIVED, "the reconstruction's pieces"),
+        }
+        if manifest.get("extentM"):
+            out["reef"]["extentM"] = said(manifest["extentM"], kind, source)
+        if scale.get("factor") is not None:
+            out["reef"]["scale"] = said(scale["factor"], kind, source)
+        if made.get("state") == "ready":
+            out["next"] = ("its files are at GET /api/v1/reconstructions/{id}/objects; laying it into a "
+                           "place is a separate step")
+    return out
+
+
+def reconstructions_status(platform: Platform, reconstruction: str) -> dict:
+    """How a reconstruction is going, and when it is done, what it made."""
+    return _reconstruction_summary(platform.request("GET", f"/api/v1/reconstructions/{reconstruction}"))
+
+
+def reconstructions_list(platform: Platform, org: str = "") -> dict:
+    """An institution's reconstructions, newest first."""
+    said_ = platform.request("GET", f"/api/v1/organisations/{_organisation(platform, org)}/reconstructions")
+    return {"reconstructions": [_reconstruction_summary(one) for one in said_.get("reconstructions") or []]}
+
+
+# ── a reef put onto a place ──────────────────────────────────────────────────
+
+
+def _latlon(start: Any) -> dict:
+    if isinstance(start, dict):
+        lat, lon = start.get("lat"), start.get("lon")
+    elif isinstance(start, (list, tuple)) and len(start) == 2:
+        lat, lon = start
+    else:
+        raise Refused(400, "invalid", "start is [latitude, longitude] in degrees")
+    return {"lat": float(lat), "lon": float(lon)}
+
+
+def mappings_create(platform: Platform, reconstruction: str, mode: str, place: str = "", version: str = "",
+                    start: Any = None, within_m: float | None = None, depth_m: float | None = None,
+                    count: int | None = None, name: str = "", across_m: float | None = None,
+                    pad: str = "", heading_deg: float | None = None) -> dict:
+    """Put a reconstruction onto a place, or give it a place of its own."""
+    if mode not in ("onto", "own"):
+        raise Refused(400, "invalid", "mode is onto (a place that exists) or own (a flat place of its own)")
+    request: dict[str, Any] = {"mode": mode}
+    if mode == "onto":
+        if not place:
+            raise Refused(400, "invalid", "onto names the place (its id)")
+        request["cityId"] = place
+        if version:
+            request["versionId"] = version
+        if within_m is not None:
+            request["withinM"] = float(within_m)
+        if count is not None:
+            request["count"] = int(count)
+    else:
+        if not name:
+            raise Refused(400, "invalid", "a place of its own has a name")
+        request["name"] = name
+        if across_m is not None:
+            request["acrossM"] = float(across_m)
+        if pad:
+            request["pad"] = pad
+        if heading_deg is not None:
+            request["headingDeg"] = float(heading_deg)
+    if start is not None:
+        request["start"] = _latlon(start)
+    if depth_m is not None:
+        request["depthM"] = float(depth_m)
+    made = platform.request("POST", f"/api/v1/reconstructions/{reconstruction}/mappings", request)
+    note = ("mappings_status says how it is going; the search takes minutes, and then waits for "
+            "mappings_accept" if mode == "onto" else
+            "mappings_status says how it is going; the flat seabed builds in minutes, then the reef is laid in on a GPU")
+    return {**_mapping_summary(made), "note": note}
+
+
+def _mapping_summary(made: dict) -> dict:
+    steps = made.get("steps") or []
+    brief = made.get("brief") or {}
+    out: dict[str, Any] = {
+        "mapping": made.get("id"), "mode": made.get("mode"), "state": made.get("state"),
+        "place": made.get("cityId"), "reconstruction": made.get("reconstructionId"),
+        "steps": [f"{s.get('phase')}: " + (f"{s.get('say')} ({s['n']} of {s['of']})" if s.get("of") else str(s.get("say")))
+                  for s in steps][-12:],
+    }
+    if brief.get("start"):
+        where = [brief["start"]["lat"], brief["start"]["lon"]]
+        out["start"] = (said(where, ASSUMED, "nobody said where the video starts; a nominal Red Sea point")
+                        if brief.get("startAssumed") else
+                        said(where, CHOSEN, "where the video starts, as stated"))
+    for key in ("failure", "waiting"):
+        if made.get(key):
+            out[key] = made[key]
+    if made.get("said"):
+        out["said"] = made["said"][-1500:]
+    candidates = made.get("candidates")
+    if candidates:
+        fits = "the search's fit of the reef's ground to the place's"
+        out["candidates"] = [{
+            "index": i,
+            "at": said(c.get("at"), DERIVED, fits),
+            "headingDeg": said(c.get("headingDeg"), DERIVED, fits),
+            "rmsM": said((c.get("fit") or {}).get("rmsM"), DERIVED, fits),
+            "groundDepthM": said((c.get("fit") or {}).get("placeGroundM"), DERIVED, "the place's seabed where it fits"),
+        } for i, c in enumerate(candidates)]
+    if made.get("chosen"):
+        chosen = made["chosen"]
+        out["chosen"] = {k: said(v, CHOSEN, "accepted for this mapping") for k, v in chosen.items()
+                         if k in ("at", "headingDeg", "dz", "centre", "depthM")}
+    if made.get("versionId"):
+        out["version"] = made["versionId"]
+        out["published"] = False
+    if made.get("state") == "choosing":
+        out["next"] = "mappings_accept with a candidate's index, or at/heading_deg/dz by hand"
+    elif made.get("state") == "ready":
+        out["next"] = "places_publish with this version lets dives use it"
+    return out
+
+
+def mappings_status(platform: Platform, mapping: str) -> dict:
+    """How a mapping is going, and what the search found."""
+    return _mapping_summary(platform.request("GET", f"/api/v1/mappings/{mapping}"))
+
+
+def mappings_accept(platform: Platform, mapping: str, candidate: int | None = None, at: list | None = None,
+                    heading_deg: float | None = None, dz: float | None = None) -> dict:
+    """Choose where the reef goes and lay it in."""
+    if candidate is not None and at is not None:
+        raise Refused(400, "invalid", "accept a candidate or a placement (at, heading_deg, dz), not both")
+    if candidate is not None:
+        choice: dict[str, Any] = {"candidate": int(candidate)}
+    elif at is not None:
+        if not isinstance(at, (list, tuple)) or len(at) != 2 or heading_deg is None or dz is None:
+            raise Refused(400, "invalid", "a placement by hand is at [x, y] metres, heading_deg and dz")
+        choice = {"placement": {"at": [float(at[0]), float(at[1])], "headingDeg": float(heading_deg), "dz": float(dz)}}
+    else:
+        raise Refused(400, "invalid", "accept a candidate (its index from mappings_status) or at, heading_deg and dz")
+    made = platform.request("POST", f"/api/v1/mappings/{mapping}/accept", choice)
+    return {**_mapping_summary(made), "note": "the reef is laid in on a GPU; mappings_status says when the place is ready"}

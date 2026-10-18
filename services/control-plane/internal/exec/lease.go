@@ -56,16 +56,19 @@ func leaseDigest(token string) []byte {
 // The job row is locked while the attempt is created, and locked rows are
 // skipped rather than waited for, so many workers can take work at once
 // without any of them taking the same job.
-func (b *Broker) Take(ctx context.Context, workerID, targetID string, leaseFor time.Duration) (*Lease, error) {
+//
+// A worker already running work that holds a GPU asks withoutGPU, and is
+// offered only work that needs none; what does waits for it, in order.
+func (b *Broker) Take(ctx context.Context, workerID, targetID string, leaseFor time.Duration, withoutGPU bool) (*Lease, error) {
 	var lease *Lease
 	err := b.pool.InTransaction(ctx, func(conn db.Conn) error {
 		var jobID string
 		err := conn.QueryRow(ctx, `
 			SELECT id FROM exec.job
-			WHERE state = 'admitted' AND target_id = $1
+			WHERE state = 'admitted' AND target_id = $1 AND (NOT $2 OR request_gpu = 0)
 			ORDER BY created_at
 			FOR UPDATE SKIP LOCKED
-			LIMIT 1`, targetID).Scan(&jobID)
+			LIMIT 1`, targetID, withoutGPU).Scan(&jobID)
 		if errors.Is(db.Translate(err), db.ErrNotFound) {
 			return nil
 		}

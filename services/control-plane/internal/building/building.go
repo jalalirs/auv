@@ -92,6 +92,13 @@ type Brief struct {
 	// Name and slug of the place, for the package's own record.
 	Name string `json:"name,omitempty"`
 	Slug string `json:"slug,omitempty"`
+	// FlatDepthM builds a flat seabed at this depth and nothing else: the
+	// ground a reef made from a video is laid onto when it has no map of its
+	// own. No source is needed for it.
+	FlatDepthM *float64 `json:"flatDepthM,omitempty"`
+	// Coral false builds no colonies, where the place would otherwise grow
+	// them from the coral atlas.
+	Coral *bool `json:"coral,omitempty"`
 }
 
 // Validate reports whether a brief describes something that can be built.
@@ -106,7 +113,11 @@ func (b Brief) Validate() error {
 	if b.Cells != 0 && (b.Cells < 64 || b.Cells > 2048) {
 		return fmt.Errorf("%w: a place is 64 to 2048 cells across", domain.ErrInvalid)
 	}
-	depth := false
+	flat := b.FlatDepthM != nil
+	if flat && (math.IsNaN(*b.FlatDepthM) || *b.FlatDepthM < 0.5 || *b.FlatDepthM > 60) {
+		return fmt.Errorf("%w: a flat seabed is between 0.5 m and 60 m deep", domain.ErrInvalid)
+	}
+	depth := flat
 	for _, s := range b.Sources {
 		if _, known := Sources[s]; !known {
 			return fmt.Errorf("%w: no source called %q (there are: %s)", domain.ErrInvalid, s, sourceNames())
@@ -198,6 +209,10 @@ func (b *Builder) Start(ctx context.Context, principalID, orgID string, city cat
 		return Build{}, err
 	}
 	brief.Name, brief.Slug = city.Name, city.Slug
+	if brief.Sources == nil {
+		// A flat seabed needs none, and the module is told so as a list.
+		brief.Sources = []string{}
+	}
 
 	inputs := make([]exec.Input, 0, len(brief.Files))
 	for i := range brief.Files {
@@ -308,14 +323,7 @@ func (b *Builder) Builds(ctx context.Context, cityID string) ([]Build, error) {
 }
 
 // Step is one thing a build said it was doing.
-type Step struct {
-	At     time.Time      `json:"at"`
-	Step   string         `json:"step"`
-	Say    string         `json:"say"`
-	N      int            `json:"n,omitempty"`
-	Of     int            `json:"of,omitempty"`
-	Detail map[string]any `json:"detail,omitempty"`
-}
+type Step = exec.Step
 
 // View is a build as somebody watching it sees it.
 type View struct {
@@ -340,22 +348,12 @@ func (b *Builder) Watch(ctx context.Context, buildID string) (View, error) {
 	if err != nil {
 		return View{}, err
 	}
-	view := View{Build: build, JobState: string(job.State), Steps: []Step{}}
+	view := View{Build: build, JobState: string(job.State)}
 	events, err := b.broker.Events(ctx, build.JobID, 0, 1000)
 	if err != nil {
 		return View{}, err
 	}
-	for _, e := range events {
-		if e.Kind != exec.EventProgress {
-			continue
-		}
-		if said, ok := e.Detail["progress"].(map[string]any); ok {
-			view.Steps = append(view.Steps, stepOf(e.OccurredAt, said))
-		}
-		if out, ok := e.Detail["output"].(string); ok {
-			view.Said = out
-		}
-	}
+	view.Steps, view.Said = exec.Progress(events)
 
 	if build.VersionID != "" && build.Result == nil {
 		// Recorded before its result could be read: read it now, from the
@@ -401,32 +399,6 @@ func (b *Builder) Watch(ctx context.Context, buildID string) (View, error) {
 	return view, nil
 }
 
-func stepOf(at time.Time, said map[string]any) Step {
-	step := Step{At: at, Detail: map[string]any{}}
-	for k, v := range said {
-		switch k {
-		case "step":
-			step.Step, _ = v.(string)
-		case "say":
-			step.Say, _ = v.(string)
-		case "n":
-			if f, ok := v.(float64); ok {
-				step.N = int(f)
-			}
-		case "of":
-			if f, ok := v.(float64); ok {
-				step.Of = int(f)
-			}
-		default:
-			step.Detail[k] = v
-		}
-	}
-	if len(step.Detail) == 0 {
-		step.Detail = nil
-	}
-	return step
-}
-
 // record turns the package a finished build made into a draft version.
 func (b *Builder) record(ctx context.Context, build *Build) error {
 	// Claimed first, so two people watching do not both record it.
@@ -464,6 +436,30 @@ func (b *Builder) unpack(ctx context.Context, build Build) (string, map[string]a
 	if !ok {
 		return "", nil, errors.New("the build finished without a package")
 	}
+	label := build.Brief.Label
+	if label == "" {
+		label = "built " + time.Now().UTC().Format("2006-01-02")
+	}
+	return b.Package(ctx, objectID, Made{
+		CityID: build.CityID, OrgID: build.OrgID, CreatedBy: build.CreatedBy, Label: label,
+		Notes: fmt.Sprintf("built by %s from %s", build.ID, describe(build.Brief)),
+	})
+}
+
+// Made says whose a place package is and what its version is to be called.
+type Made struct {
+	CityID    string
+	OrgID     string
+	CreatedBy string
+	Label     string
+	Notes     string
+}
+
+// Package turns a place package (a tar a job made, held as objectID) into a
+// draft version of the place: every file kept as evidence the organisation
+// holds, and site.json read for where the place is weak. A build does this
+// with what it made, and so does anything else whose job makes a whole place.
+func (b *Builder) Package(ctx context.Context, objectID string, made Made) (string, map[string]any, error) {
 	object, err := b.objects.Object(ctx, objectID)
 	if err != nil {
 		return "", nil, err
@@ -492,7 +488,7 @@ func (b *Builder) unpack(ctx context.Context, build Build) (string, map[string]a
 		if name == "." || strings.HasPrefix(name, "..") || path.IsAbs(name) {
 			return "", nil, fmt.Errorf("the package names a file outside itself: %s", header.Name)
 		}
-		entry, contents, err := b.keep(ctx, build, name, archive, header.Size, name == "site.json")
+		entry, contents, err := b.keep(ctx, made, name, archive, header.Size, name == "site.json")
 		if err != nil {
 			return "", nil, err
 		}
@@ -505,17 +501,12 @@ func (b *Builder) unpack(ctx context.Context, build Build) (string, map[string]a
 		return "", nil, errors.New("the package has no site.json, so nothing could open it")
 	}
 
-	label := build.Brief.Label
-	if label == "" {
-		label = "built " + time.Now().UTC().Format("2006-01-02")
-	}
 	var version catalog.Version
 	err = b.pool.InTransaction(ctx, func(conn db.Conn) error {
 		var err error
 		version, err = b.catalog.CreateVersion(ctx, conn, catalog.VersionSpec{
-			AssetKind: catalog.KindCity, AssetID: build.CityID, Label: label,
-			Notes:    fmt.Sprintf("built by %s from %s", build.ID, describe(build.Brief)),
-			Manifest: manifest, CreatedBy: build.CreatedBy,
+			AssetKind: catalog.KindCity, AssetID: made.CityID, Label: made.Label,
+			Notes: made.Notes, Manifest: manifest, CreatedBy: made.CreatedBy,
 		})
 		return err
 	})
@@ -526,7 +517,7 @@ func (b *Builder) unpack(ctx context.Context, build Build) (string, map[string]a
 }
 
 // keep stores one file of the package; it hands back site.json's contents.
-func (b *Builder) keep(ctx context.Context, build Build, name string, from io.Reader, size int64, wanted bool) (domain.ManifestEntry, []byte, error) {
+func (b *Builder) keep(ctx context.Context, made Made, name string, from io.Reader, size int64, wanted bool) (domain.ManifestEntry, []byte, error) {
 	scratch, err := os.CreateTemp("", "iocean-build-*")
 	if err != nil {
 		return domain.ManifestEntry{}, nil, err
@@ -540,7 +531,7 @@ func (b *Builder) keep(ctx context.Context, build Build, name string, from io.Re
 		return domain.ManifestEntry{}, nil, err
 	}
 	media := mediaTypeOf(name)
-	object, err := b.objects.Ingest(ctx, build.CreatedBy, build.OrgID, domain.Evidence, scratch, size, media)
+	object, err := b.objects.Ingest(ctx, made.CreatedBy, made.OrgID, domain.Evidence, scratch, size, media)
 	if err != nil {
 		return domain.ManifestEntry{}, nil, err
 	}
@@ -575,6 +566,9 @@ func mediaTypeOf(name string) string {
 
 func describe(brief Brief) string {
 	parts := append([]string{}, brief.Sources...)
+	if brief.FlatDepthM != nil {
+		parts = append(parts, fmt.Sprintf("a flat seabed at %g m", *brief.FlatDepthM))
+	}
 	for _, f := range brief.Files {
 		parts = append(parts, f.Use+" "+f.Name)
 	}
