@@ -2277,6 +2277,56 @@ scores, fly or sweep with it, its builds).
 **Done when:** every page passes docs/ui.md at 1280 px and at 125% zoom,
 Back works from every detail page, and the user signs it off page by page.
 
+## 69. A new controller from GitHub or a zip
+
+Asked 2026-10-18; one of the two features the user calls most important.
+Today a controller reaches the platform only from a terminal
+(`iocean deploy`). Deploying one becomes a thing done in the app:
+
+- **Three ways in** from Controllers, Deploy one: a GitHub repository
+  (URL, branch or tag, folder; a private one through a token the
+  organisation stores), a zip upload, or the command line as today.
+- **A controller build job** on the platform: fetch the source (network to
+  GitHub and the package index only), check it has a controller entry point,
+  build the image in the sandbox without the host's Docker, run a short tank
+  check against the SDK's topic contract, and register it as a new build of
+  that controller with the commit or upload it came from.
+- **On the page:** the build's log and its tank check; a GitHub controller
+  gets Pull latest, which rebuilds from the newest commit.
+
+**Done when:** a controller is deployed from a public GitHub repository and
+from a zip, both from the screen, each passes its tank check, and a dive is
+flown with each.
+
+## 70. A new place: the iOcean map store, or your own data
+
+Asked 2026-10-18; the other most important feature. The New place screen
+asked the user to tick public datasets (GEBCO, Sentinel-2, ICESat-2, the
+learned depth, the Coral Atlas). That is the platform's job, not theirs.
+A place comes from one of two things:
+
+- **The iOcean map store:** places iOcean builds from public data, checks
+  and publishes (Al Fahal, Shushah, Looe Key, Kāne'ohe), open to everybody:
+  a Map store tab beside Yours and Dive videos, each place with where it is,
+  its depth, how much is measured and how much estimated, its picture;
+  **Use it** adds it to the organisation's places, **Build on it** copies it
+  so their own data can improve it.
+- **Their own data:** surveys, soundings, photo mosaics, dive videos (67).
+
+New place is then: choose the area, add your files if any, Build. Every
+public source that reaches the area is always used, the best winning cell
+by cell. Where the area overlaps a store place, the page says so first and
+offers it, so nobody rebuilds what iOcean publishes. The result page keeps
+saying which source made how much and where it is weak.
+
+Needs: a published-by-iOcean, open-to-all mark on places; Use it and Build
+on it (a place copied into an organisation); the builder always taking every
+public source; the Map store tab.
+
+**Done when:** a new organisation finds Al Fahal in the map store and uses
+it, builds a new place by choosing an area and pressing Build with no source
+picked, and builds on a store place with its own survey.
+
 # The order to build it in
 
 **What this is, stated once.** There are two products latent in this list and
