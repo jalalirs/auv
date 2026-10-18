@@ -7,7 +7,12 @@ The brief is what somebody asked for (control plane: internal/building):
     {"centre": [lat, lon], "acrossM": 1000, "cells": 512,
      "sources": ["gebco", "sentinel2", "icesat2", "allen-coral-atlas", "learned-depth"],
      "files": [{"use": "raster", "path": "files/01-survey.tif", "errorM": 0.1, "name": "survey.tif"}],
-     "name": "Our Reef", "slug": "our-reef"}
+     "name": "Our Reef", "slug": "our-reef",
+     "flatDepthM": 8, "coral": true}
+
+flatDepthM builds the square as a flat seabed at that depth and nothing else
+(said to be assumed): the ground a reconstruction is laid into when nobody
+knows where it was filmed. coral false grows no colonies: bare sand round it.
 
 It is turned into a recipe here, because what goes with what (a satellite
 depth is calibrated against the laser's, the coral atlas says which pixels are
@@ -102,6 +107,14 @@ def recipe_of(brief: dict, inputs: pathlib.Path = INPUTS, nasa: bool | None = No
         left_out.append("icesat2: this platform has no NASA Earthdata token, so the laser's depths were not "
                         "fetched; satellite depths are then not calibrated against anything measured")
     sources, models, scene = [], [], []
+    if brief.get("flatDepthM") is not None:
+        depth = abs(float(brief["flatDepthM"]))
+        sources.append({"use": "flat", "depth": depth, "error": 1.0})
+        recipe = {"name": brief.get("slug") or "place",
+                  "site": {"centre": [lat, lon], "acrossM": float(brief["acrossM"]),
+                           "cells": int(brief.get("cells") or 256)},
+                  "sources": sources, "models": [], "scene": {"featherCells": 0}}
+        return recipe, [f"{s}: a flat seabed was asked for" for s in asked], ["flat.depth"]
 
     files = brief.get("files") or []
     for n, f in enumerate(files, 1):
@@ -213,6 +226,7 @@ def grow(seabed: pathlib.Path, place: pathlib.Path, cache: pathlib.Path, brief: 
             shutil.copy(one, place / "textures" / one.name)
     run_tool("reef", [str(TOOLS / "make-site"), place.name, "--heights", str(seabed / "heights.json"),
                       "--most", str(recipe["site"]["cells"]), "--ground", str(cache),
+                      *(["--coral", "0"] if brief.get("coral") is False else []),
                       "--cover-from", life["coverFrom"],
                       "--assemblage", life["assemblage"], "--assemblage-from", life["assemblageFrom"],
                       "--water", life["water"], "--water-from", life["waterFrom"],

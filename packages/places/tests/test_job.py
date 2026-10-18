@@ -80,3 +80,10 @@ def test_the_water_says_it_was_chosen_or_assumed_so_nobody_reads_it_as_measured(
 
     assert life_of(22.3, 38.9, atlas=True)["waterFrom"].startswith("chosen")
     assert life_of(-18.0, 147.0, atlas=True)["waterFrom"].startswith("assumed")
+
+
+def test_a_flat_seabed_is_only_itself_and_says_it_was_assumed():
+    recipe, left, expected = recipe_of({"centre": [22.3, 38.9], "acrossM": 300, "slug": "video-reef",
+                                        "sources": [], "flatDepthM": 8}, nasa=False)
+    assert recipe["sources"] == [{"use": "flat", "depth": 8.0, "error": 1.0}]
+    assert recipe["site"]["cells"] == 256 and expected == ["flat.depth"] and left == []
