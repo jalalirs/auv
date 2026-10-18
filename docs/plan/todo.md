@@ -2189,6 +2189,47 @@ days of work", which is a sentence somebody can take to whoever signs.
 a sweep states what the weather will cost on top.
 
 
+## 67. A place from a dive video: reconstruction, then mapping
+
+Agreed 2026-10-18. A dive video is one more kind of data a map is made from,
+so it lives in **Places**, not in a tab of its own; tomorrow's multibeam,
+photogrammetry and client GIS go through the same door. Two systems, so the
+long one never fails for the short one's reasons:
+
+**Reconstruction** turns an uploaded video into a *reconstruction asset* the
+organisation owns, usable in any of its places. Nothing is asked about where
+it goes. A platform job (GPU, hours): frames, the camera's path (COLMAP),
+the tape and divers painted out (CoralscapesV2's own classes, LaMa), Gaussian
+splats trained in overlapping pieces (3DGRUT), the ground they stand on, the
+video's water taken out. The asset holds the pieces, their ground, the path
+with every turn and tilt, a cover estimate, preview pictures, quality numbers,
+and how its scale was set (the tape's marks where it can read them, the
+camera's height assumed where it cannot). It fails only for the video's
+reasons: too blurred, too short, no path.
+
+**Mapping** turns an asset into a place, chosen by the user afterwards:
+
+- *its own map*: an optional coordinate where the video starts, the reef laid
+  along the camera's path from it; a heading (the first swim direction if
+  none: a GoPro has no compass and there is no GPS under water); the map's
+  size; what fills the rest (flat sand, procedural coral, the Atlas's cover
+  there). Nothing to resolve; it builds.
+- *onto real bathymetry*: an existing place, the start coordinate if known
+  and a radius to search. **Resolve** is its own job, an optimisation: where,
+  which way, how deep (and scale, if allowed) the reef's measured ground fits
+  the place's, plus how well its cover agrees; it returns the best placements
+  with their scores, the user drags or turns the footprint watching the score,
+  accepts, and the place gets a draft version to publish.
+
+Both faces, as with the Place Builder: MCP tools (`reconstructions_*`,
+`places_from_reconstruction`, `resolve_*`) and screens (Places → Data, a
+reconstruction's page, *Put on a map*, Resolve, review, Build).
+
+**Done when:** the Red Sea video is uploaded from the screen, reconstructed,
+put on its own map, resolved onto Al Fahal, published, and dived, with no
+terminal.
+
+
 # The order to build it in
 
 **What this is, stated once.** There are two products latent in this list and
@@ -2252,6 +2293,12 @@ platform being usable by somebody who is not us.
 
 
 ## Now, because the platform is finished and unproven
+
+- [ ] **67 · a place from a dive video.** Reconstruction as an organisation's
+      asset, then mapping it (its own map, or resolved onto a place's
+      bathymetry) as a separate step. Order: the reconstruction job and its
+      MCP tools; own-map mapping with fill; Resolve; the screens; deploy and
+      the Red Sea video end to end from the screen.
 
 - [ ] **62 · somebody who dives says it is right.** Everything here has been
       checked against itself. The physics agrees with the papers it was taken
