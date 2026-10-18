@@ -222,8 +222,12 @@ def cameras(brief: dict, frames_said: dict) -> dict:
         shutil.rmtree(mapped, ignore_errors=True)
         mapped.mkdir()
         tell("cameras", "solving every camera and the reef's points (COLMAP's global mapper)")
+        # Not on the GPU: this COLMAP's Ceres has no CUDA, and asked for the
+        # GPU it falls back to dense solvers, which sat over 657,000 tracks
+        # for more than an hour; on the CPU it chooses the sparse ones.
         run("cameras", [COLMAP, "global_mapper", "--database_path", db, "--image_path", images,
-                        "--output_path", mapped], log=logs / "mapper.log", lines=False)
+                        "--output_path", mapped, "--GlobalMapper.gp_use_gpu", "0",
+                        "--GlobalMapper.ba_ceres_use_gpu", "0"], log=logs / "mapper.log", lines=False)
         mark("mapped")
     models = sorted(p for p in mapped.iterdir() if p.is_dir())
     if not models:
