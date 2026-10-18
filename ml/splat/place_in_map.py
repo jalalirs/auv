@@ -53,6 +53,9 @@ def main() -> int:
     ap.add_argument("--sink", type=float, default=1.0)
     ap.add_argument("--clear", type=float, default=1.5)
     ap.add_argument("--video", default="{}")
+    ap.add_argument("--translate", default="",
+                    help="X,Y,Z put on the reef's layer: the parts were baked near the origin with this "
+                         "taken off, because NuRec keeps positions at half precision (0.5 m steps at 550 m)")
     a = ap.parse_args()
     ranges = [tuple(int(v) for v in r.split(":")) for r in a.pieces.split(",")]
     if len(ranges) != len(a.parts):
@@ -73,6 +76,13 @@ def main() -> int:
     for i, part in enumerate(a.parts):
         shutil.copy(part, into / f"splats-{i}.usdz")
         names.append(f"splats-{i}.usdz")
+    move = ""
+    if a.translate:
+        tx, ty, tz = (float(v) for v in a.translate.split(","))
+        move = f'''
+    double3 xformOp:translate = ({tx}, {ty}, {tz})
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+'''
     parts = "".join(f'''
     def Xform "Part{i}" (
         prepend references = @{n}@
@@ -89,7 +99,7 @@ def main() -> int:
 )
 
 def Xform "Reef"
-{{{parts}}}
+{{{move}{parts}}}
 ''')
 
     # Its ground, in the place: the grid's corner through the placement.

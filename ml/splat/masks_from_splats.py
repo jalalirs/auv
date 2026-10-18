@@ -1,6 +1,9 @@
 """Tape masks completed from the tape found in 3D: the tape splats projected
 into every frame, each a disc about the tape's width at its distance, joined
-with the segmenter's mask.  masks_from_splats.py TEXT MASKS OUT IMAGES TAPE.npy [...]"""
+with the segmenter's mask.
+    masks_from_splats.py TEXT MASKS OUT IMAGES TAPE.npy [...] [--half-width UNITS]
+--half-width is half the tape's width in COLMAP units (default 0.0016: 1.25 cm
+at the Red Sea video's 7.84 m a unit)."""
 import pathlib
 import sys
 
@@ -11,15 +14,17 @@ from PIL import Image
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from splat_place import colmap_cameras  # noqa: E402
 
-text, masks, out, images = (pathlib.Path(p) for p in sys.argv[1:5])
-tape = np.concatenate([np.load(f) for f in sys.argv[5:]])
+args = sys.argv[1:]
+half_width = 0.0016
+if "--half-width" in args:
+    i = args.index("--half-width"); half_width = float(args[i + 1]); del args[i:i + 2]
+text, masks, out, images = (pathlib.Path(p) for p in args[0:4])
+tape = np.concatenate([np.load(f) for f in args[4:]])
 out.mkdir(parents=True, exist_ok=True)
 cams = colmap_cameras(text)
 line = [ln.split() for ln in (text / "cameras.txt").read_text().splitlines() if ln and not ln.startswith("#")][0]
 fx, fy, cx, cy = (float(v) for v in line[4:8])
 W, H = cams["width"], cams["height"]
-# The tape is about 2.5 cm wide: half of it is 0.0016 COLMAP units at 7.84 m a unit.
-half_width = 0.0016
 p = torch.from_numpy(tape).float().cuda()
 added = []
 for name in sorted(cams["poses"]):

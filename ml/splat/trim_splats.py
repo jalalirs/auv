@@ -10,7 +10,8 @@ water of their own, so only the reef is kept:
 
   kept     splats over the reef's measured ground (SURFACE_DIR, laid in by
            PLACEMENT) and no more than --above metres over it nor --below
-           metres under it
+           metres under it; not the water's (larger than --big metres and
+           bluer than red by --blue, or reaching past --above)
   faded    opacity taken down over the strip's outer --edge metres, so its
            edge is not a wall
   gain     colour times R,G,B, base and view-dependent terms alike, so the
@@ -46,6 +47,8 @@ def main() -> int:
     ap.add_argument("--below", type=float, default=2.0)
     ap.add_argument("--edge", type=float, default=1.0)
     ap.add_argument("--gain", default="1,1,1")
+    ap.add_argument("--big", type=float, default=0.25, help="metres: a splat this large and --blue is water")
+    ap.add_argument("--blue", type=float, default=0.2, help="how much bluer than red a water splat is")
     a = ap.parse_args()
     T = np.array([float(v) for v in a.translate.split(",")])
     gain = np.array([float(v) for v in a.gain.split(",")])
@@ -57,7 +60,13 @@ def main() -> int:
     grid = np.fromfile(a.surface / "surface.f32", dtype="<f4").reshape(said["rows"], said["columns"])
     cell, (ox, oy) = float(said["cellM"]), said["origin"]
     known = np.isfinite(grid)
-    edge_m = ndimage.distance_transform_edt(known) * cell          # metres in from the strip's edge
+    # Metres in from the strip's outer edge: its mask closed over 1.5 m and its
+    # holes filled first, or every gap open to the outside counts as an edge
+    # (half the splats of a piece were faded that way).
+    r = int(round(1.5 / cell))
+    disk = np.hypot(*np.mgrid[-r:r + 1, -r:r + 1]) <= r
+    whole = ndimage.binary_fill_holes(ndimage.binary_closing(np.pad(known, r), structure=disk))[r:-r, r:-r]
+    edge_m = ndimage.distance_transform_edt(whole) * cell
 
     ck = torch.load(a.checkpoint, map_location="cpu", weights_only=False)
     ck.pop("optimizer", None)
@@ -70,7 +79,13 @@ def main() -> int:
     ground = np.full(len(pos), np.nan)
     ground[inside] = grid[v[inside], u[inside]] + dz
     over = world[:, 2] - ground
-    keep = inside & np.isfinite(ground) & (over <= a.above) & (over >= -a.below)
+    size = np.exp(ck["scale"].detach().double().numpy()).max(1)
+    colour = np.clip(0.5 + SH_C0 * ck["features_albedo"].detach().double().numpy(), 0, 1)
+    # The video's water: few splats, large and blue, low over the reef but
+    # standing up through the picture (a tenth of what a piece draws), and
+    # any whose top reaches past --above.
+    water = ((size > a.big) & (colour[:, 2] - colour[:, 0] > a.blue)) | (over + 2 * size > a.above)
+    keep = inside & np.isfinite(ground) & (over <= a.above) & (over >= -a.below) & ~water
     fade = np.zeros(len(pos))
     fade[inside] = np.clip(edge_m[v[inside], u[inside]] / max(a.edge, 1e-6), 0.0, 1.0)
 
@@ -98,6 +113,7 @@ def main() -> int:
                       "droppedOutside": int((~inside | ~np.isfinite(ground)).sum()),
                       "droppedAbove": int((inside & np.isfinite(ground) & (over > a.above)).sum()),
                       "droppedBelow": int((inside & np.isfinite(ground) & (over < -a.below)).sum()),
+                      "droppedWater": int((inside & np.isfinite(ground) & water).sum()),
                       "faded": int((keep & (fade < 1.0)).sum()), "gain": gain.tolist()}))
     return 0
 

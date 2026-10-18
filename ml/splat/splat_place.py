@@ -34,8 +34,13 @@ SH_C0 = 0.28209479177387814
 
 
 def gaussians_transform(usdz: pathlib.Path) -> np.ndarray:
-    """The exported Gaussians prim's own transform (row-vector, USD's)."""
+    """The exported Gaussians prim's own transform (row-vector, USD's); "-"
+    for none, when the splats are kept in COLMAP's own frame throughout (the
+    export's transform is only an estimate from the camera poses)."""
     import tempfile
+
+    if str(usdz) == "-":
+        return np.eye(4)
 
     from pxr import Usd, UsdGeom
 
