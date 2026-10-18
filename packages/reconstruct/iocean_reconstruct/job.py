@@ -293,6 +293,8 @@ def train(step: str, data: pathlib.Path, name: str, quick: bool, *, downsample: 
         return found[-1]
     code, logs = grut_copy(), SCRATCH / "logs"
     steps = iterations or (4000 if quick else 30000)
+    if downsample > 1:
+        shrunk(data, downsample)
     for grad in ("0.0002", "0.0003", "0.0004"):
         shutil.rmtree(runs / name, ignore_errors=True)
         log = logs / f"train-{name}.log"
@@ -321,6 +323,21 @@ def train(step: str, data: pathlib.Path, name: str, quick: bool, *, downsample: 
             raise RuntimeError(f"training {name} failed: " + " | ".join(tail.strip().splitlines()[-8:]))
         tell(step, f"{name}: the card ran out of memory; densifying less (gradient {grad} was too low)")
     raise RuntimeError(f"training {name} ran out of memory even densifying least")
+
+
+def shrunk(data: pathlib.Path, factor: int) -> None:
+    """The frames at 1/factor size beside them (images_<factor>), which is
+    where 3DGRUT's COLMAP reader looks for them when told to downsample."""
+    from PIL import Image
+
+    into = data / f"images_{factor}"
+    frames = sorted((data / "images").glob("*.jpg"))
+    if into.is_dir() and len(list(into.glob("*.jpg"))) == len(frames):
+        return
+    into.mkdir(exist_ok=True)
+    for f in frames:
+        with Image.open(f) as one:
+            one.resize((max(1, one.width // factor), max(1, one.height // factor)), Image.LANCZOS).save(into / f.name, quality=95)
 
 
 def _training_step(log: pathlib.Path) -> tuple[int, int] | None:
