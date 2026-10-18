@@ -1,0 +1,185 @@
+/* The shared parts (ui/components.tsx), from the tokens alone. */
+
+/* ── buttons ──────────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
+  height: var(--h-control); padding: 0 var(--s3);
+  border-radius: var(--r-control); border: 1px solid transparent;
+  font: 500 var(--t-body)/1 var(--font); white-space: nowrap; cursor: pointer;
+  transition: background 120ms, border-color 120ms, color 120ms;
+}
+.btn:focus-visible { outline: none; box-shadow: var(--focus); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn-large { height: var(--h-large); padding: 0 var(--s4); font-size: var(--t-strong); }
+.btn-square { width: var(--h-control); padding: 0; font-size: var(--t-strong); letter-spacing: 0.1em; }
+.btn-icon { display: inline-flex; }
+
+.btn-primary { background: var(--coral); color: var(--coral-ink); }
+.btn-primary:hover:not(:disabled) { background: #6ad5f8; }
+.btn-secondary { background: var(--shelf); border-color: var(--edge); color: var(--plain); }
+.btn-secondary:hover:not(:disabled) { background: var(--raised); border-color: var(--edge-lit); }
+.btn-secondary.on { border-color: var(--coral-deep); }
+.btn-ghost { background: transparent; color: var(--faint); }
+.btn-ghost:hover:not(:disabled) { background: var(--shelf); color: var(--plain); }
+.btn-danger { background: transparent; border-color: #5a2a2a; color: var(--bad); }
+.btn-danger:hover:not(:disabled) { background: #2a1416; }
+
+/* ── menus ────────────────────────────────────────────────────────────────── */
+
+.menu, .facet { position: relative; display: inline-block; }
+.menu-list {
+  position: absolute; right: 0; top: calc(100% + var(--s1)); z-index: 30; min-width: 180px;
+  display: flex; flex-direction: column; padding: var(--s1);
+  background: var(--raised); border: 1px solid var(--edge-lit); border-radius: var(--r-control);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.menu-list button {
+  height: var(--h-control); padding: 0 var(--s3); text-align: left; border: 0; border-radius: var(--r-control);
+  background: transparent; color: var(--plain); font: var(--t-body) var(--font); cursor: pointer;
+}
+.menu-list button:hover:not(:disabled) { background: var(--hover); }
+.menu-list button.danger { color: var(--bad); }
+.menu-list button:disabled { color: var(--dim); cursor: default; }
+
+/* ── the page ─────────────────────────────────────────────────────────────── */
+
+/* The page fills the main area; its head stays, its body scrolls. */
+main:has(> .page) { overflow: hidden; padding: 0; display: flex; flex-direction: column; }
+.page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.page-top {
+  flex: none; padding: var(--s5) var(--s6) 0;
+  border-bottom: 1px solid var(--edge);
+  background: linear-gradient(180deg, rgba(7, 18, 32, 0.0), rgba(7, 18, 32, 0.6));
+}
+.page-top:not(:has(.tabs)) { padding-bottom: var(--s4); }
+.crumb {
+  min-height: 0; display: inline-flex; align-items: center; gap: var(--s1); margin: 0 0 var(--s2) calc(-1 * var(--s2));
+  height: 24px; padding: 0 var(--s2); border: 0; border-radius: var(--r-control);
+  background: transparent; color: var(--faint); font: var(--t-meta) var(--font); cursor: pointer;
+}
+.crumb:hover { background: var(--shelf); color: var(--plain); }
+.page-title-row { display: flex; align-items: center; gap: var(--s4); min-height: var(--h-large); }
+.page-titles { flex: 1; min-width: 0; }
+.page-titles h1 {
+  display: flex; align-items: center; gap: var(--s2); margin: 0;
+  font: 600 var(--t-title)/1.2 var(--font); letter-spacing: -0.01em;
+}
+.page-subtitle {
+  margin: var(--s1) 0 0; color: var(--faint); font-size: var(--t-body);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.page-actions { display: flex; gap: var(--s2); align-items: center; flex: none; }
+.tabs { display: flex; gap: var(--s1); margin-top: var(--s4); }
+.tabs button {
+  min-height: 0; border-radius: 0; height: 36px; padding: 0 var(--s3); border: 0; border-bottom: 2px solid transparent;
+  background: transparent; color: var(--faint); font: 500 var(--t-body) var(--font); cursor: pointer;
+}
+.tabs button:hover { color: var(--plain); }
+.tabs button[aria-selected="true"] { color: var(--plain); border-bottom-color: var(--coral); }
+.tab-count { margin-left: var(--s2); color: var(--dim); font-size: var(--t-meta); font-variant-numeric: tabular-nums; }
+.toolbar { display: flex; align-items: center; gap: var(--s2); padding: var(--s3) 0; flex-wrap: wrap; }
+.page-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--s5) var(--s6) var(--s7); }
+.page-body > * { max-width: 1400px; }
+.page-body.wide > * { max-width: none; }
+
+.info { position: relative; display: inline-flex; }
+.info > button {
+  min-height: 0; width: 18px; height: 18px; border-radius: var(--r-round); border: 1px solid var(--edge-lit);
+  background: transparent; color: var(--faint); font: 600 11px/1 var(--font); cursor: pointer; padding: 0;
+}
+.info > button:hover { color: var(--plain); border-color: var(--faint); }
+.info-pop {
+  position: absolute; left: 0; top: calc(100% + var(--s2)); z-index: 40; width: 380px;
+  padding: var(--s3) var(--s4); background: var(--raised); border: 1px solid var(--edge-lit); border-radius: var(--r-control);
+  color: var(--plain); font: 400 var(--t-body)/1.5 var(--font); letter-spacing: 0;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+/* ── dialogs ──────────────────────────────────────────────────────────────── */
+
+.dialog-shade {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
+  background: rgba(2, 6, 12, 0.6); backdrop-filter: blur(2px);
+}
+.dialog {
+  width: min(520px, calc(100vw - 64px)); padding: var(--s5);
+  background: var(--shelf); border: 1px solid var(--edge-lit); border-radius: var(--r-surface);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+.dialog h2 { margin: 0 0 var(--s4); font: 600 var(--t-section)/1.2 var(--font); }
+.dialog-body { display: flex; flex-direction: column; gap: var(--s3); }
+.dialog-actions { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s5); }
+
+/* ── form fields ──────────────────────────────────────────────────────────── */
+
+.field { display: flex; flex-direction: column; gap: var(--s1); }
+.field > span { color: var(--faint); font-size: var(--t-meta); font-weight: 500; }
+.field input, .field select, .field textarea, .dt-search {
+  height: var(--h-control); padding: 0 var(--s3);
+  background: var(--water); border: 1px solid var(--edge); border-radius: var(--r-control);
+  color: var(--plain); font: var(--t-body) var(--font);
+}
+.field textarea { height: auto; padding: var(--s2) var(--s3); }
+.field input:focus, .field select:focus, .dt-search:focus { outline: none; border-color: var(--coral-deep); box-shadow: 0 0 0 3px rgba(64, 199, 244, 0.15); }
+
+/* ── states ───────────────────────────────────────────────────────────────── */
+
+.status {
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 var(--s2);
+  border-radius: var(--r-round); font: 500 var(--t-meta)/1 var(--font); white-space: nowrap;
+  background: var(--shelf); color: var(--faint);
+}
+.status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.status-good { color: var(--alive); background: rgba(79, 212, 138, 0.1); }
+.status-bad { color: var(--bad); background: rgba(240, 106, 106, 0.1); }
+.status-warn { color: var(--vehicle); background: rgba(240, 168, 79, 0.1); }
+.status-busy { color: var(--coral); background: rgba(64, 199, 244, 0.1); }
+
+/* ── tables ───────────────────────────────────────────────────────────────── */
+
+.dt { container-type: inline-size; }
+.dt-tools { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s3); }
+.dt-search { width: 280px; }
+.dt-count { margin-left: auto; color: var(--dim); font-size: var(--t-meta); font-variant-numeric: tabular-nums; }
+.facet-list { left: 0; right: auto; max-height: 320px; overflow-y: auto; min-width: 240px; }
+.facet-row {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--s2);
+  min-height: var(--h-control); padding: 0 var(--s2); border-radius: var(--r-control); cursor: pointer;
+  font-size: var(--t-body); text-transform: none; letter-spacing: 0; color: var(--plain);
+}
+.facet-row:hover { background: var(--hover); }
+.facet-row input { width: auto; margin: 0; }
+.facet-n { color: var(--dim); font-size: var(--t-meta); font-variant-numeric: tabular-nums; }
+.dt table { width: 100%; border-collapse: collapse; table-layout: auto; }
+.dt th {
+  height: 36px; padding: 0 var(--s3); text-align: left; white-space: nowrap;
+  color: var(--dim); font: 600 var(--t-meta)/1 var(--font); letter-spacing: 0.04em; text-transform: uppercase;
+  border-bottom: 1px solid var(--edge);
+}
+.dt th button { min-height: 0; border: 0; background: none; padding: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.dt th button:hover { color: var(--plain); }
+.dt td {
+  height: 52px; padding: var(--s2) var(--s3); vertical-align: middle;
+  border-bottom: 1px solid rgba(27, 47, 71, 0.6); font-size: var(--t-body);
+}
+.dt .right { text-align: right; font-variant-numeric: tabular-nums; }
+.dt tr.open { cursor: pointer; }
+.dt tbody tr:hover { background: rgba(19, 37, 58, 0.55); }
+.dt tr.chosen { background: rgba(64, 199, 244, 0.08); }
+.dt-actions { width: 1%; white-space: nowrap; text-align: right; }
+.dt-actions > * + * { margin-left: var(--s2); }
+.dt-empty { padding: var(--s6) 0; color: var(--faint); text-align: center; }
+.dt-pages { display: flex; align-items: center; justify-content: center; gap: var(--s3); margin-top: var(--s4); color: var(--faint); font-size: var(--t-meta); }
+.cell-main { font-size: var(--t-body); font-weight: 500; color: var(--plain); }
+.cell-sub { display: block; margin-top: 2px; color: var(--faint); font-size: var(--t-meta); max-width: 640px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell-meta { color: var(--faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+@container (max-width: 1150px) { .dt .p3 { display: none; } }
+@container (max-width: 900px) { .dt .p2 { display: none; } }
+
+/* ── the window below the width the layouts are designed for ──────────────── */
+
+@media (max-width: 1100px) {
+  .page-top { padding-left: var(--s5); padding-right: var(--s5); }
+  .page-body { padding-left: var(--s5); padding-right: var(--s5); }
+}

@@ -2252,6 +2252,31 @@ control plane, worker, image, quota GPU 1, target capacity GPU 1), and the
 whole loop from the screen.
 
 
+## 68. The client rebuilt on one design system
+
+Asked 2026-10-18, the fifth redo: the app read as ugly and broke when
+zoomed; a single run had no way back; Results was an endless unfiltered
+list; Fleet scrolled its own header away; Autonomy was a page of prose.
+The cause is in how it is built: twenty font sizes (8.5 to 36 px, half
+pixels among them), ten corner radii, one 1,842-line stylesheet edited per
+screen, navigation as one in-memory state with no history, paragraphs
+standing in for interface.
+
+Agreed: **foundation first** (tokens, Inter bundled, five type sizes, a
+4 px grid, two radii, a router with history and Back, zoom held to 80 to
+125%, shared Page, Toolbar, Button, Menu, Tabs, Dialog, filterable Table,
+Pill; the rules written in docs/ui.md), **then page by page** with before
+and after screenshots at 100% and 125%: Fly (compact header, sticky action
+bar, Dive in it), Missions (row actions in a menu, New plan in the header),
+Places (header buttons, Places / Data / Builds tabs), **Runs** (Results
+renamed; filters by place, vehicle, mission, controller, state, date;
+paging; Sweeps its own tab), Fleet (only the list scrolls), **Controllers**
+(Autonomy renamed and given work: compare on a task, each one's dives and
+scores, fly or sweep with it, its builds).
+
+**Done when:** every page passes docs/ui.md at 1280 px and at 125% zoom,
+Back works from every detail page, and the user signs it off page by page.
+
 # The order to build it in
 
 **What this is, stated once.** There are two products latent in this list and

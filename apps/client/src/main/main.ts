@@ -50,7 +50,40 @@ function open(): void {
     return { action: "deny" };
   });
 
+  holdTheZoom(window);
+  // Back and forward from the mouse's side buttons and a trackpad swipe, as
+  // the page's own history (every page has an address: ui/router.ts).
+  window.on("app-command", (_event, command) => {
+    if (command === "browser-backward") window.webContents.navigationHistory.goBack();
+    if (command === "browser-forward") window.webContents.navigationHistory.goForward();
+  });
+  window.on("swipe", (_event, direction) => {
+    if (direction === "right") window.webContents.navigationHistory.goBack();
+    if (direction === "left") window.webContents.navigationHistory.goForward();
+  });
+
   void window.loadFile(path.join(here, "../renderer/index.html"));
+}
+
+// Zoom between 80% and 125%, in tenths, and no pinching. Past that the
+// layouts are not designed and stop holding together: tables wrapped every
+// cell and pushed their buttons off the side.
+const ZOOM = { least: 0.8, most: 1.25, step: 0.1 };
+
+function holdTheZoom(window: BrowserWindow): void {
+  const contents = window.webContents;
+  contents.on("did-finish-load", () => { void contents.setVisualZoomLevelLimits(1, 1); });
+  contents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown" || !(input.meta || input.control)) return;
+    const now = contents.getZoomFactor();
+    let next: number | undefined;
+    if (input.key === "=" || input.key === "+") next = now + ZOOM.step;
+    else if (input.key === "-") next = now - ZOOM.step;
+    else if (input.key === "0") next = 1;
+    if (next === undefined) return;
+    event.preventDefault();
+    contents.setZoomFactor(Math.min(ZOOM.most, Math.max(ZOOM.least, Math.round(next * 100) / 100)));
+  });
 }
 
 // The name names the folder this machine keeps the application's settings in

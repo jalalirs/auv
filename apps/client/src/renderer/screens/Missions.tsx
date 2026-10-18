@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { AssetVersion, Cost, Mission, Platform } from "@coral-city/api";
 
 import type { Held } from "./Deck.js";
-import { PageHead, Pill } from "./parts.js";
+import { Button, Dialog, Menu, Page, Table } from "../ui/components.js";
 
 interface Row {
   mission: Mission;
@@ -40,6 +40,7 @@ export function Missions({ platform, held, onOpen, onFly }: {
   const [rows, setRows] = useState<Row[] | undefined>();
   const [where, setWhere] = useState<string>(() => held.places[0]?.id ?? "");
   const [naming, setNaming] = useState("");
+  const [planning, setPlanning] = useState(false);
   const [archiving, setArchiving] = useState<string | undefined>();
   const [trouble, setTrouble] = useState("");
 
@@ -88,72 +89,75 @@ export function Missions({ platform, held, onOpen, onFly }: {
 
   const placeName = (id: string) => held.places.find((p) => p.id === id)?.name ?? "somewhere";
 
+  const stagesOf = (row: Row) => ((row.newest?.document as { stages?: unknown[] } | undefined)?.stages ?? []).length;
+
+  const plan = () => {
+    const name = naming.trim();
+    if (!name || !where) return;
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 62);
+    void platform.startMission(where, { slug, name })
+      .then((made) => { setNaming(""); setTrouble(""); setPlanning(false); onOpen(made.id, where); })
+      .catch((thrown: unknown) => setTrouble(thrown instanceof Error ? thrown.message : "it would not start"));
+  };
+  const archivingRow = rows?.find((r) => r.mission.id === archiving);
+
   return (
-    <>
-      <PageHead title="Missions" says="A place, the arrangement it was planned over, and the work in order — drawn on its chart, flown by anybody, and comparable across both."
-                aside={<Pill>{rows?.length ?? 0} {rows?.length === 1 ? "plan" : "plans"}</Pill>} />
-
-      <section className="library">
-        {rows === undefined ? <p className="quiet">Reading the plans…</p>
-          : rows.length === 0 ? <p className="quiet">Nothing is planned yet. Name one below and draw it on its place&rsquo;s chart.</p>
-          : (
-          <table>
-            <thead>
-              <tr><th>Plan</th><th>Place</th><th>Stages</th><th>Saved</th><th>Flown</th><th /></tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
-                const stages = ((row.newest?.document as { stages?: unknown[] } | undefined)?.stages ?? []).length;
-                return (
-                  <tr key={row.mission.id}>
-                    <td className="what" onClick={() => onOpen(row.mission.id, row.place)}>
-                      <strong>{row.mission.name}</strong>
-                      {row.mission.summary ? <small>{row.mission.summary}</small> : null}
-                    </td>
-                    <td>{placeName(row.place)}</td>
-                    <td>{stages || "—"}</td>
-                    <td>{row.newest ? `v${row.newest.ordinal} · ${when(row.newest.createdAt)}` : "not yet"}</td>
-                    <td>{row.cost?.runs ? `${row.cost.runs} ${row.cost.runs === 1 ? "run" : "runs"}` : "never"}</td>
-                    <td className="row-acts">
-                      {archiving === row.mission.id ? (
-                        <>
-                          <span className="quiet">Archive it? Its runs stay in the record.</span>
-                          <button type="button" className="quiet" onClick={() => setArchiving(undefined)}>Keep</button>
-                          <button type="button" onClick={() => void archive(row)}>Archive</button>
-                        </>
-                      ) : (
-                        <>
-                          <button type="button" className="quiet" onClick={() => onOpen(row.mission.id, row.place)}>Open</button>
-                          <button type="button" disabled={!row.newest} onClick={() => onFly(row.mission.id)}>Fly</button>
-                          <button type="button" className="quiet" onClick={() => void duplicate(row)}>Duplicate</button>
-                          <button type="button" className="quiet" onClick={() => setArchiving(row.mission.id)}>Archive</button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-
-        <form className="naming" onSubmit={(event) => {
-          event.preventDefault();
-          const name = naming.trim();
-          if (!name || !where) return;
-          const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 62);
-          void platform.startMission(where, { slug, name })
-            .then((made) => { setNaming(""); setTrouble(""); onOpen(made.id, where); })
-            .catch((thrown: unknown) => setTrouble(thrown instanceof Error ? thrown.message : "it would not start"));
-        }}>
-          <select value={where} onChange={(e) => setWhere(e.target.value)}>
-            {held.places.map((one) => <option key={one.id} value={one.id}>{one.name}</option>)}
-          </select>
-          <input value={naming} onChange={(e) => setNaming(e.target.value)} placeholder="name a new plan of work" />
-          <button type="submit" disabled={!naming.trim() || !where}>Plan one</button>
-        </form>
-        {trouble ? <p className="trouble">{trouble}</p> : null}
-      </section>
-    </>
+    <Page title="Missions" subtitle="Plans of work: a place, how it is arranged, and the stages in order."
+          info="A mission is drawn on its place's chart, flown by anybody, and compared across both. Archived, never deleted: a run that flew a version of it still says what it flew."
+          actions={<Button kind="primary" onClick={() => setPlanning(true)} disabled={held.places.length === 0}>New plan</Button>}>
+      {trouble ? <p className="trouble">{trouble}</p> : null}
+      {rows === undefined ? <p className="note">Reading the plans…</p> : (
+        <Table rows={rows} rowKey={(r) => r.mission.id} onRow={(r) => onOpen(r.mission.id, r.place)}
+               search={(r) => `${r.mission.name} ${r.mission.summary ?? ""} ${placeName(r.place)}`} searchLabel="Search plans"
+               facets={[{ key: "place", label: "Place", value: (r) => placeName(r.place) }]}
+               initialSort={{ key: "saved", down: true }}
+               empty={<>Nothing is planned yet. <a onClick={() => setPlanning(true)}>Plan one</a> and draw it on its place&rsquo;s chart.</>}
+               columns={[
+                 { key: "plan", label: "Plan", sort: (a, b) => a.mission.name.localeCompare(b.mission.name),
+                   render: (r) => <><span className="cell-main">{r.mission.name}</span>{r.mission.summary ? <span className="cell-sub">{r.mission.summary}</span> : null}</> },
+                 { key: "place", label: "Place", priority: 2, sort: (a, b) => placeName(a.place).localeCompare(placeName(b.place)),
+                   render: (r) => <span className="cell-meta">{placeName(r.place)}</span> },
+                 { key: "stages", label: "Stages", align: "right", priority: 3, sort: (a, b) => stagesOf(a) - stagesOf(b),
+                   render: (r) => stagesOf(r) || "—" },
+                 { key: "saved", label: "Saved", priority: 2,
+                   sort: (a, b) => (a.newest?.createdAt ?? "").localeCompare(b.newest?.createdAt ?? ""),
+                   render: (r) => <span className="cell-meta">{r.newest ? `v${r.newest.ordinal} · ${when(r.newest.createdAt)}` : "not yet"}</span> },
+                 { key: "flown", label: "Flown", align: "right", sort: (a, b) => (a.cost?.runs ?? 0) - (b.cost?.runs ?? 0),
+                   render: (r) => <span className="cell-meta">{r.cost?.runs ? `${r.cost.runs} ${r.cost.runs === 1 ? "run" : "runs"}` : "never"}</span> },
+               ]}
+               actions={(r) => (
+                 <>
+                   <Button disabled={!r.newest} onClick={() => onFly(r.mission.id)}>Fly</Button>
+                   <Menu items={[
+                     { label: "Open on its chart", onSelect: () => onOpen(r.mission.id, r.place) },
+                     { label: "Duplicate", onSelect: () => void duplicate(r) },
+                     { label: "Archive…", danger: true, onSelect: () => setArchiving(r.mission.id) },
+                   ]} />
+                 </>
+               )} />
+      )}
+      {planning ? (
+        <Dialog title="A new plan of work" onClose={() => setPlanning(false)}
+                actions={<><Button kind="ghost" onClick={() => setPlanning(false)}>Cancel</Button>
+                  <Button kind="primary" disabled={!naming.trim() || !where} onClick={plan}>Create and open</Button></>}>
+          <label className="field"><span>Place</span>
+            <select value={where} onChange={(e) => setWhere(e.target.value)}>
+              {held.places.map((one) => <option key={one.id} value={one.id}>{one.name}</option>)}
+            </select>
+          </label>
+          <label className="field"><span>Name</span>
+            <input autoFocus value={naming} onChange={(e) => setNaming(e.target.value)}
+                   onKeyDown={(e) => { if (e.key === "Enter") plan(); }} placeholder="e.g. Survey the north plot" />
+          </label>
+        </Dialog>
+      ) : null}
+      {archivingRow ? (
+        <Dialog title={`Archive ${archivingRow.mission.name}?`} onClose={() => setArchiving(undefined)}
+                actions={<><Button kind="ghost" onClick={() => setArchiving(undefined)}>Keep it</Button>
+                  <Button kind="danger" onClick={() => void archive(archivingRow)}>Archive</Button></>}>
+          <p className="note">It leaves this list. Every run that flew it stays in the record and still says what it flew.</p>
+        </Dialog>
+      ) : null}
+    </Page>
   );
 }
