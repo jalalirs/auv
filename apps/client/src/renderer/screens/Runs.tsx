@@ -10,8 +10,8 @@ import type { Platform, Sweep } from "@coral-city/api";
 
 import type { Held } from "./Deck.js";
 import { useSweeps } from "./Sweeps.js";
-import { Empty, ago } from "./parts.js";
-import { Button, Page, Status, Table, type Tone } from "../ui/components.js";
+import { ago } from "./parts.js";
+import { Button, Dialog, Page, Status, Table, type Tone } from "../ui/components.js";
 
 const LIVE = new Set(["queued", "preparing", "running"]);
 
@@ -35,27 +35,6 @@ function spans(runs: Held["runs"]): number[] {
   return [...new Set(runs.map(physicsOf))].sort((a, b) => a - b);
 }
 
-/** Said wherever runs are put in a table together.
- *
- * The platform pins the place, the vehicle, the water and the seed, and pinned
- * none of that mattered while the simulator itself was moving under it. Two
- * runs from either side of a change to the physics are two answers to two
- * different questions, and a mean taken across them is a number that looks
- * like a measurement and is not one.
- */
-function NotOneTable({ runs, of }: { runs: Held["runs"]; of: string }): React.JSX.Element | null {
-  const versions = spans(runs);
-  if (versions.length < 2) return null;
-  const said = versions.map((v) => (v === 0 ? "runs that did not say" : `physics ${v}`));
-  return (
-    <p className="aside warn">
-      These {of} were not all computed by the same simulator — {said.join(" and ")}.
-      A change to the physics changes the answer, so they are kept apart rather
-      than averaged: two runs either side of one are two answers to two
-      different questions.
-    </p>
-  );
-}
 
 export function Runs({ platform, held, onChanged, onReplay, onSweep, by, view }: {
   platform: Platform;
@@ -90,7 +69,7 @@ export function Runs({ platform, held, onChanged, onReplay, onSweep, by, view }:
           tabs={[{ key: "dives", label: "Dives", count: dives.length }, { key: "sweeps", label: "Sweeps", count: sweeps.length },
                  { key: "compare", label: "Compare" }]}
           tab={tab} onTab={setTab}>
-      {outstanding.length > 0 ? (
+      {tab === "dives" && outstanding.length > 0 ? (
         <section className="holding">
           <h2>Holding a machine</h2>
           <Table rows={outstanding} rowKey={(r) => r.run.id} pageSize={10}
@@ -140,19 +119,7 @@ export function Runs({ platform, held, onChanged, onReplay, onSweep, by, view }:
                ]}
                actions={(w) => <Button onClick={() => onSweep(w.id)}>Read it</Button>} />
       ) : (
-        <>
-          <section>
-            <h2>Trials</h2>
-            <NotOneTable runs={held.runs} of="dives" />
-            <p className="note">The same dive flown more than once: a number with a spread on it, the only honest way to say one controller is better than another.</p>
-            <Trials runs={held.runs} />
-          </section>
-          <section>
-            <h2>Side by side</h2>
-            <p className="note">The same dive run more than once, with what each run scored.</p>
-            <Compared runs={held.runs} />
-          </section>
-        </>
+        <Trials runs={held.runs} onReplay={onReplay} />
       )}
     </Page>
   );
@@ -264,32 +231,92 @@ function Ride({ ride }: { ride: RideSaid | undefined }): React.JSX.Element | nul
  *  that was carried by hand is left out of the arithmetic and said so, because
  *  a vehicle that was picked up did not fly the thing being measured.
  */
-function Trials({ runs }: { runs: Held["runs"] }): React.JSX.Element {
+type Trial = {
+  key: string; dive: string; conditions: string; flownBy: string; physics: number;
+  runs: Held["runs"]; scores: number[]; mean: number; spread: number; worst: number; best: number; energyWh?: number;
+};
+
+/** The same dive flown more than once by one controller on one physics: a
+ *  mean and a spread. What computed it is part of what was tested, so runs
+ *  either side of a physics change are never one row. */
+function trialsOf(runs: Held["runs"]): Trial[] {
   const groups = new Map<string, Held["runs"]>();
   for (const one of runs) {
-    const outcome = one.run.outcome as Record<string, unknown> | undefined;
-    const task = outcome?.["task"] as { score?: number } | undefined;
-    if (typeof task?.score !== "number") continue;
-    // What computed it is part of what was being tested. Without this a
-    // controller that was "improved" on Tuesday is compared against itself
-    // across a physics change, and the improvement is the simulator.
+    if (scoreOf(one) < 0) continue;
     const key = `${one.dive}|${one.flownBy}|${physicsOf(one)}`;
     groups.set(key, [...(groups.get(key) ?? []), one]);
   }
-  const trials = [...groups.values()].filter((g) => g.length > 1)
-    .sort((a, b) => b.length - a.length);
-  if (trials.length === 0) {
-    return (
-      <Empty title="Nothing flown twice yet">
-        Run the same dive again — from the app, or with <code>iocean dive --again</code> —
-        and its runs are gathered here as a mean and a spread.
-      </Empty>
-    );
-  }
+  return [...groups.entries()].filter(([, g]) => g.length > 1).map(([key, g]) => {
+    const scores = g.map(scoreOf);
+    const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+    const spread = Math.sqrt(scores.reduce((a, b) => a + (b - mean) ** 2, 0) / scores.length);
+    const energies = g.map((one) => ((one.run.outcome as Record<string, unknown> | undefined)?.["task"] as { energyWh?: number } | undefined)?.energyWh)
+      .filter((e): e is number => typeof e === "number");
+    const [dive, ...rest] = g[0]!.name.split(" ~ ");
+    return { key, dive: dive!.trim(), conditions: rest.join(" · ").replace(/:/g, ": "), flownBy: g[0]!.flownBy,
+             physics: physicsOf(g[0]!), runs: g, scores, mean, spread, worst: Math.min(...scores), best: Math.max(...scores),
+             energyWh: energies.length ? energies.reduce((a, b) => a + b, 0) / energies.length : undefined };
+  });
+}
+
+/** Worst to best on a 0 to 100% scale, the mean as a dot, each run a tick. */
+function ScoreRange({ trial }: { trial: Trial }): React.JSX.Element {
+  const at = (v: number) => `${(v * 100).toFixed(1)}%`;
   return (
-    <div className="trials">
-      {trials.map((group) => <Trial key={group[0]!.run.id} group={group} />)}
-    </div>
+    <span className="score-range" title={`worst ${at(trial.worst)} · mean ${at(trial.mean)} · best ${at(trial.best)}`}>
+      <span className="track">
+        <span className="span" style={{ left: at(trial.worst), width: at(Math.max(trial.best - trial.worst, 0.004)) }} />
+        {trial.scores.map((v, i) => <span key={i} className="tick" style={{ left: at(v) }} />)}
+        <span className="mean" style={{ left: at(trial.mean) }} />
+      </span>
+    </span>
+  );
+}
+
+function Trials({ runs, onReplay }: { runs: Held["runs"]; onReplay: (dive: string, run: string) => void }): React.JSX.Element {
+  const trials = trialsOf(runs);
+  const [open, setOpen] = useState<Trial | undefined>();
+  const physics = spans(runs);
+  return (
+    <>
+      <p className="note">The same dive flown more than once by the same controller. Each row is a mean with its spread; the bar runs from the worst run to the best on 0 to 100%, the dot is the mean, and each tick is one run.{physics.length > 1 ? " Runs from different simulator versions are never put in one row." : ""}</p>
+      <Table rows={trials} rowKey={(t) => t.key} onRow={setOpen}
+             search={(t) => `${t.dive} ${t.conditions} ${t.flownBy}`} searchLabel="Search trials"
+             facets={[{ key: "dive", label: "Dive", value: (t) => t.dive }, { key: "by", label: "Flown by", value: (t) => t.flownBy },
+                      ...(physics.length > 1 ? [{ key: "physics", label: "Simulator", value: (t: Trial) => t.physics ? `physics ${t.physics}` : "not said" }] : [])]}
+             initialSort={{ key: "runs", down: true }}
+             empty={<>Nothing flown twice yet. Run the same dive again and its runs are gathered here as a mean and a spread.</>}
+             columns={[
+               { key: "dive", label: "Dive", sort: (a, b) => a.dive.localeCompare(b.dive),
+                 render: (t) => <><span className="cell-main">{t.dive}</span>{t.conditions ? <span className="cell-sub">{t.conditions}</span> : null}</> },
+               { key: "by", label: "Flown by", priority: 2, render: (t) => <span className="cell-meta">{t.flownBy}</span> },
+               { key: "runs", label: "Runs", align: "right", sort: (a, b) => a.runs.length - b.runs.length, render: (t) => t.runs.length },
+               { key: "score", label: "Score", align: "right", sort: (a, b) => a.mean - b.mean,
+                 render: (t) => <span className="score-cell"><b>{(t.mean * 100).toFixed(0)}%</b><span className="cell-meta"> ± {(t.spread * 100).toFixed(0)}</span></span> },
+               { key: "range", label: "Worst to best", priority: 2, render: (t) => <ScoreRange trial={t} /> },
+               { key: "energy", label: "Energy a run", align: "right", priority: 3,
+                 render: (t) => <span className="cell-meta">{t.energyWh === undefined ? "—" : `${t.energyWh.toFixed(1)} Wh`}</span> },
+             ]} />
+      {open ? (
+        <Dialog title={open.dive} onClose={() => setOpen(undefined)}
+                actions={<Button kind="primary" onClick={() => setOpen(undefined)}>Close</Button>}>
+          <p className="note">{open.conditions || "as the plan has it"} · flown by {open.flownBy}{open.physics ? ` · physics ${open.physics}` : ""}</p>
+          <table className="dialog-table">
+            <thead><tr><th>Run</th><th className="right">Score</th><th>When</th><th /></tr></thead>
+            <tbody>
+              {open.runs.map((one, i) => (
+                <tr key={one.run.id}>
+                  <td>{i + 1} · seed {String(one.run.seed).slice(0, 6)}</td>
+                  <td className="right"><b>{(scoreOf(one) * 100).toFixed(0)}%</b></td>
+                  <td className="cell-meta">{ago(one.run.requestedAt)}</td>
+                  <td className="right">{recorded(one.run) ? <Button onClick={() => onReplay(one.dive, one.run.id)}>Replay</Button> : null}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Dialog>
+      ) : null}
+    </>
   );
 }
 
@@ -338,39 +365,3 @@ function Trial({ group }: { group: Held["runs"] }): React.JSX.Element {
 }
 
 /** Dives with more than one scored run, each run's score beside the others'. */
-function Compared({ runs }: { runs: Held["runs"] }): React.JSX.Element {
-  const byDive = new Map<string, Held["runs"]>();
-  for (const one of runs) {
-    const task = (one.run.outcome as Record<string, unknown> | undefined)?.["task"] as { score?: number } | undefined;
-    if (typeof task?.score !== "number") continue;
-    byDive.set(one.dive, [...(byDive.get(one.dive) ?? []), one]);
-  }
-  const groups = [...byDive.values()].filter((g) => g.length > 1);
-  if (groups.length === 0) {
-    return <Empty title="Nothing to compare yet">Run a dive with a task twice, or with two controllers, and the scores line up here.</Empty>;
-  }
-  return (
-    <div className="compared">
-      {groups.map((group) => (
-        <div className="group" key={group[0]!.dive}>
-          <strong>{group[0]!.name}</strong>
-          <NotOneTable runs={group} of="runs" />
-          <ul>
-            {group.map(({ run, flownBy }) => {
-              const task = (run.outcome as Record<string, unknown>)["task"] as { score: number; seconds?: number; thrusterEffort?: number };
-              return (
-                <li key={run.id}>
-                  <span className="score-bar"><span style={{ width: `${Math.round(task.score * 100)}%` }} /></span>
-                  <b>{(task.score * 100).toFixed(0)}%</b>
-                  <em>{flownBy} · seed {String(run.seed).slice(0, 6)}
-                    {run.physicsVersion === undefined ? "" : ` · physics ${run.physicsVersion}`}
-                    {" "}· effort {task.thrusterEffort?.toFixed(3) ?? "—"} · {ago(run.requestedAt)}</em>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
-    </div>
-  );
-}

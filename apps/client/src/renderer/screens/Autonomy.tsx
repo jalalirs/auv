@@ -57,9 +57,9 @@ export function Autonomy({ held, onFly, onRuns, onCompare }: {
                  render: (r) => (
                    <div className="controller-cell">
                      <ControllerArt digest={r.newest.imageDigest} size={28} />
-                     <div>
+                     <div title={r.against.length ? r.against.join(" · ") : undefined}>
                        <span className="cell-main">{r.name}</span>
-                       <span className="cell-sub">{r.slug} · {r.newest.imageDigest.slice(7, 19)}{r.builds.length > 1 ? ` · ${r.builds.length} builds` : ""}{r.against.length ? ` · ${r.against.join(" · ")}` : ""}</span>
+                       <span className="cell-sub">{r.slug} · {r.newest.imageDigest.slice(7, 19)}{r.builds.length > 1 ? ` · ${r.builds.length} builds` : ""}</span>
                      </div>
                    </div>
                  ) },
@@ -72,7 +72,7 @@ export function Autonomy({ held, onFly, onRuns, onCompare }: {
                { key: "energy", label: "Energy", align: "right", priority: 3,
                  render: (r) => <span className="cell-meta">{r.flew.energyWh === undefined ? "—" : `${r.flew.energyWh.toFixed(1)} Wh`}</span> },
                { key: "last", label: "Last flown", priority: 2, sort: (a, b) => (a.flew.lastAt ?? "").localeCompare(b.flew.lastAt ?? ""),
-                 render: (r) => <span className="cell-meta">{r.flew.lastAt ? ago(r.flew.lastAt) : "never"}{r.flew.neverFlew ? ` · ${r.flew.neverFlew} could not start` : ""}</span> },
+                 render: (r) => <span className="cell-meta" title={r.flew.neverFlew ? `${r.flew.neverFlew} of its dives could not be started by the platform` : undefined}>{r.flew.lastAt ? ago(r.flew.lastAt) : "never"}{r.flew.neverFlew ? ` · ${r.flew.neverFlew} unstarted` : ""}</span> },
                { key: "card", label: "Needs", priority: 2, render: (r) => <Status tone={cardOf(r) === "no card" ? "quiet" : "busy"}>{cardOf(r)}</Status> },
              ]}
              actions={(r) => (

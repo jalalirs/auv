@@ -1510,7 +1510,11 @@ button.small { min-height: 28px; padding: 0 var(--s2); font-size: var(--t-meta);
 }
 .sweeping select:focus { outline: none; border-color: var(--edge-lit); }
 
-.doubts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+/* Packed in columns, each card as tall as it is: in a grid every card in a
+   row stretched to the tallest, and zoomed in the empty blocks were most of
+   the page. */
+.doubts { columns: 280px; column-gap: var(--s3); }
+.doubts > .doubt { break-inside: avoid; margin-bottom: var(--s3); }
 .doubt {
   background: var(--shelf); border: 1px solid var(--edge); border-radius: var(--r-surface);
   padding: 11px 12px; display: flex; flex-direction: column; gap: 6px;
@@ -1835,4 +1839,20 @@ button.small { min-height: 28px; padding: 0 var(--s2); font-size: var(--t-meta);
 .controller-cell { display: flex; align-items: center; gap: var(--s3); }
 ol.steps { margin: 0; padding-left: var(--s5); display: flex; flex-direction: column; gap: var(--s2); }
 .holding { margin-bottom: var(--s5); }
-.run-detail { max-width: 520px; }
+.run-detail { max-width: 420px; }
+
+.controller-cell > div { min-width: 0; }
+.fly-how { display: flex; flex-direction: column; gap: var(--s2); padding-top: var(--s2); border-top: 1px solid var(--edge); }
+.fly-how .check { flex-direction: row; align-items: center; gap: var(--s2); color: var(--plain); font-size: var(--t-body); font-weight: 400; }
+
+/* A trial's scores, worst to best on 0 to 100%. */
+.score-range { display: inline-block; width: 180px; vertical-align: middle; }
+.score-range .track { position: relative; display: block; height: 8px; border-radius: var(--r-round); background: var(--water); border: 1px solid var(--edge); }
+.score-range .span { position: absolute; top: 1px; bottom: 1px; border-radius: var(--r-round); background: var(--coral-deep); }
+.score-range .tick { position: absolute; top: -3px; width: 2px; height: 12px; margin-left: -1px; background: var(--faint); opacity: 0.7; }
+.score-range .mean { position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--coral); box-shadow: 0 0 0 2px var(--abyss); }
+.score-cell { white-space: nowrap; }
+.dialog-table { width: 100%; border-collapse: collapse; }
+.dialog-table th { text-align: left; color: var(--dim); font-size: var(--t-meta); font-weight: 600; padding: var(--s2); border-bottom: 1px solid var(--edge); }
+.dialog-table td { padding: var(--s2); border-bottom: 1px solid rgba(27, 47, 71, 0.6); }
+.dialog-table .right { text-align: right; }

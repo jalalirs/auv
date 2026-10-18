@@ -212,15 +212,16 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
   const machines = Math.max(1, held.queues[0]?.devices ?? 1);
 
   const action = asking ? "Asking for water…" : once ? (live ? "Fly it, watching" : "Fly it") : scenarios > 0 ? `Sweep it · ${runs} runs` : "Fly it";
+  // Beside the button only when it says something the button does not.
   const summary = once
-    ? `One dive${hours ? `, about ${Math.round(hours * 60)} min` : ""}`
-    : `${scenarios > 0 ? `${scenarios} ways × ${repeats}` : "One run"}${hours ? ` · about ${((hours * runs) / machines).toFixed(1)} h on ${machines} machine${machines === 1 ? "" : "s"}` : ""}`;
+    ? (hours ? `about ${Math.round(hours * 60)} min` : "")
+    : `${scenarios > 0 ? `${scenarios} ways × ${repeats}` : ""}${hours ? `${scenarios > 0 ? " · " : ""}about ${((hours * runs) / machines).toFixed(1)} h on ${machines} machine${machines === 1 ? "" : "s"}` : ""}`;
   return (
     <Page title="Fly" subtitle="A plan of work, flown once or under everything that could go differently on the day."
           tabs={FLY_TABS} tab="plan" onTab={(key) => { if (key === "task") onSingleTask(); }} wide
           actions={flyable && flyable.length > 0 ? (
             <>
-              <span className="action-summary">{summary}</span>
+              {summary ? <span className="action-summary">{summary}</span> : null}
               <Button kind="primary" disabled={asking || !chosen || !chosenVehicle} onClick={() => void go()}>{action}</Button>
             </>
           ) : undefined}>
@@ -271,6 +272,19 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
                 </select>
               </label>
             ) : <p className="quiet">A sweep is flown by the plan&rsquo;s own controller, the same in every run.</p>}
+            {once ? (
+              <div className="fly-how">
+                <label className="check"><input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} /> Watch it live</label>
+                {!live ? <label className="check"><input type="checkbox" checked={film} onChange={(e) => setFilm(e.target.checked)} /> Make a film of it (much slower)</label> : null}
+                <p className="quiet">{live ? "It opens in the water as soon as a machine has it." : "Flown unwatched, much faster; read it in Runs."}</p>
+              </div>
+            ) : scenarios > 0 ? (
+              <label><span>Each way, how many times</span>
+                <select value={repeats} onChange={(e) => setRepeats(Number(e.target.value))}>
+                  {[1, 3, 5, 10].map((n) => <option key={n} value={n}>{n === 1 ? "Once (a coin flip looks like a finding)" : `${n} times`}</option>)}
+                </select>
+              </label>
+            ) : null}
           </div>
 
           <div className="day">
@@ -302,29 +316,6 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
             </div>
           </div>
 
-          <div className="go">
-            {once ? (
-              <>
-                <label className="check"><input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} /> watch it live</label>
-                {!live ? <label className="check"><input type="checkbox" checked={film} onChange={(e) => setFilm(e.target.checked)} /> and make a film of it (much slower)</label> : null}
-                <span className="quiet">One dive{hours ? `, about ${Math.round(hours * 60)} minutes` : ""}.</span>
-              </>
-            ) : (
-              <>
-                {scenarios > 0 ? (
-                  <label><span>each way, how many times</span>
-                    <select value={repeats} onChange={(e) => setRepeats(Number(e.target.value))}>
-                      {[1, 3, 5, 10].map((n) => <option key={n} value={n}>{n === 1 ? "once — a coin flip looks like a finding" : `${n} times`}</option>)}
-                    </select>
-                  </label>
-                ) : null}
-                <span className="quiet">
-                  {scenarios > 0 ? `${scenarios} ways × ${repeats} = ${runs} runs` : "One run, with the world or the plan changed as decided"}
-                  {hours ? ` · about ${((hours * runs) / machines).toFixed(1)} hours on ${machines} machine${machines === 1 ? "" : "s"}` : ""}.
-                </span>
-              </>
-            )}
-          </div>
           {trouble ? <p className="trouble">{trouble}</p> : null}
         </section>
       )}

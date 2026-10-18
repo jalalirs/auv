@@ -165,6 +165,9 @@ export type Column<T> = {
   /** 1 always shown; 2 dropped below 900 px of table; 3 below 1150 px. */
   priority?: 1 | 2 | 3;
   width?: string;
+  /** Takes the room the others leave, its text clipped with an ellipsis
+   *  (the first column, unless another says). */
+  grow?: boolean;
 };
 
 export type Facet<T> = { key: string; label: string; value: (row: T) => string | undefined };
@@ -227,6 +230,10 @@ export function Table<T>({ rows, columns, rowKey, onRow, search, searchLabel = "
   const at = Math.min(page, pages - 1);
   const slice = shown.slice(at * pageSize, at * pageSize + pageSize);
   const filtering = words.trim() !== "" || Object.values(picked).some((s) => s.size > 0);
+  // One column takes the slack and clips its words, so a long description
+  // never pushes the row's actions off the side of the page.
+  const grows = columns.find((c) => c.grow)?.key ?? columns[0]?.key;
+  const cls = (c: Column<T>) => `${c.align === "right" ? "right " : ""}p${c.priority ?? 1}${c.key === grows ? " grow" : ""}`;
 
   return (
     <div className="dt">
@@ -253,7 +260,7 @@ export function Table<T>({ rows, columns, rowKey, onRow, search, searchLabel = "
           <thead>
             <tr>
               {columns.map((c) => (
-                <th key={c.key} className={`${c.align === "right" ? "right " : ""}p${c.priority ?? 1}`}
+                <th key={c.key} className={cls(c)}
                     style={c.width ? { width: c.width } : undefined}>
                   {c.sort ? (
                     <button type="button" onClick={() => setSort((s) => s?.key === c.key ? { key: c.key, down: !s.down } : { key: c.key, down: false })}>
@@ -272,7 +279,7 @@ export function Table<T>({ rows, columns, rowKey, onRow, search, searchLabel = "
                 <tr key={key} className={`${onRow ? "open" : ""}${chosen === key ? " chosen" : ""}`}
                     onClick={onRow ? () => onRow(r) : undefined}>
                   {columns.map((c) => (
-                    <td key={c.key} className={`${c.align === "right" ? "right " : ""}p${c.priority ?? 1}`}>{c.render(r)}</td>
+                    <td key={c.key} className={cls(c)}>{c.render(r)}</td>
                   ))}
                   {actions ? <td className="dt-actions" onClick={(e) => e.stopPropagation()}>{actions(r)}</td> : null}
                 </tr>

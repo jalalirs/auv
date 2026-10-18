@@ -171,8 +171,11 @@ main:has(> .page) { overflow: hidden; padding: 0; display: flex; flex-direction:
 .dt-actions > * + * { margin-left: var(--s2); }
 .dt-empty { padding: var(--s6) 0; color: var(--faint); text-align: center; }
 .dt-pages { display: flex; align-items: center; justify-content: center; gap: var(--s3); margin-top: var(--s4); color: var(--faint); font-size: var(--t-meta); }
-.cell-main { font-size: var(--t-body); font-weight: 500; color: var(--plain); }
-.cell-sub { display: block; margin-top: 2px; color: var(--faint); font-size: var(--t-meta); max-width: 640px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt td, .dt th { white-space: nowrap; }
+.dt td.grow, .dt th.grow { width: 100%; max-width: 0; }
+.dt td.grow > * { max-width: 100%; }
+.cell-main { display: block; font-size: var(--t-body); font-weight: 500; color: var(--plain); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell-sub { display: block; margin-top: 2px; color: var(--faint); font-size: var(--t-meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cell-meta { color: var(--faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
 @container (max-width: 1150px) { .dt .p3 { display: none; } }
 @container (max-width: 900px) { .dt .p2 { display: none; } }
