@@ -10,7 +10,7 @@
 // lay a new draft version on top of the last. Then it is published.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Build, BuildBrief, Mapping, Platform, Reconstruction } from "@coral-city/api";
+import type { Build, BuildBrief, Mapping, Platform, Reconstruction, StorePlace } from "@coral-city/api";
 
 import type { Held } from "./Deck.js";
 import { WorldMap, type LatLon } from "../parts/WorldMap.js";
@@ -45,9 +45,11 @@ type Stage =
   | { at: "asset"; index: number; mapping: Mapping }
   | { at: "done"; versionId: string };
 
-export function Compose({ platform, held, onBack, onOpen }: {
+export function Compose({ platform, held, base, onBack, onOpen }: {
   platform: Platform;
   held: Held;
+  /** A map store place to build on, from its card's Build on it. */
+  base?: string;
   onBack: () => void;
   onOpen: (id: string) => void;
 }): React.JSX.Element {
@@ -57,7 +59,10 @@ export function Compose({ platform, held, onBack, onOpen }: {
   const [typed, setTyped] = useState("");
   const [name, setName] = useState("");
   const [acrossM, setAcrossM] = useState(1000);
-  const [ground, setGround] = useState<GroundKind>("public");
+  const [ground, setGround] = useState<GroundKind>(base ? "store" : "public");
+  const [store, setStore] = useState<StorePlace[]>([]);
+  const [storeBase, setStoreBase] = useState<string | undefined>(base);
+  const [nearby, setNearby] = useState<StorePlace[]>([]);
   const [flatDepth, setFlatDepth] = useState("8");
   const [coral, setCoral] = useState(true);
   const [own, setOwn] = useState<Own[]>([]);
@@ -78,6 +83,26 @@ export function Compose({ platform, held, onBack, onOpen }: {
       platform.reconstructionsOf(institution.id).then((all) => setReefs(all.filter((r) => r.state === "ready"))).catch(() => undefined);
     }
   }, [platform, institution]);
+
+  useEffect(() => { platform.storePlaces().then(setStore).catch(() => undefined); }, [platform]);
+  const baseOf = (id?: string) => store.find((one) => one.id === id);
+  useEffect(() => {
+    const one = baseOf(storeBase);
+    if (!one?.extent || ground !== "store") return;
+    const e = one.extent;
+    const at = { lat: (e.north + e.south) / 2, lon: (e.east + e.west) / 2 };
+    setWhere(at);
+    setView({ centre: at, zoom: 12 });
+    setAcrossM(Math.round(Math.max(e.north - e.south, 0) * 111_320));
+    if (!name) setName(`${one.name}, ours`);
+  }, [storeBase, store, ground]); // eslint-disable-line react-hooks/exhaustive-deps
+  // An area that overlaps a store place says so: nobody rebuilds it.
+  useEffect(() => {
+    if (!where || ground === "store") { setNearby([]); return; }
+    let stale = false;
+    platform.storePlaces({ lat: where.lat, lon: where.lon, acrossM }).then((found) => { if (!stale) setNearby(found); }).catch(() => undefined);
+    return () => { stale = true; };
+  }, [platform, where, acrossM, ground]);
 
   const typedAt = useMemo(() => {
     const found = typed.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
@@ -158,7 +183,8 @@ export function Compose({ platform, held, onBack, onOpen }: {
         try {
           founded = await platform.foundPlace(institution.id, {
             slug, name: name.trim(), verticalDatum: "mean sea level",
-            summary: ground === "flat" ? `composed on a flat seabed at ${flatDepth} m` : "composed from public data and its own files",
+            summary: ground === "flat" ? `composed on a flat seabed at ${flatDepth} m`
+              : ground === "store" ? `composed on ${baseOf(storeBase)?.name ?? "a map store place"}` : "composed from public data and its own files",
             extent: { west: where.lon - halfLon, south: where.lat - halfLat, east: where.lon + halfLon, north: where.lat + halfLat },
           });
         } catch (refused) {
@@ -167,7 +193,9 @@ export function Compose({ platform, held, onBack, onOpen }: {
       }
       if (!founded) throw new Error("a place with that name exists; choose another");
       setPlace({ id: founded.id, name: founded.name });
-      const brief: BuildBrief = ground === "flat"
+      const brief: BuildBrief = ground === "store" && storeBase
+        ? { base: { kind: "place", cityId: storeBase }, sources: [], ...(files.length ? { files } : {}) }
+        : ground === "flat"
         ? { centre: [where.lat, where.lon], acrossM, sources: [], flatDepthM: Number(flatDepth), coral, ...(files.length ? { files } : {}) }
         : { centre: [where.lat, where.lon], acrossM, sources: catalogue as BuildBrief["sources"], ...(files.length ? { files } : {}) };
       setStage({ at: "ground", build: await platform.startBuild(founded.id, brief) });
@@ -193,7 +221,8 @@ export function Compose({ platform, held, onBack, onOpen }: {
 
   const composing = stage.at === "composing";
   const ready = composing && !!where && name.trim().length > 0 && !!institution && !busy
-    && (ground !== "flat" || (Number(flatDepth) >= 0.5 && Number(flatDepth) <= 60));
+    && (ground !== "flat" || (Number(flatDepth) >= 0.5 && Number(flatDepth) <= 60))
+    && (ground !== "store" || !!storeBase);
   const groundNow = useVersionGround(platform, versionId);
   const resolving = stage.at === "asset" && stage.mapping.state === "choosing";
   const reefOf = (i: number) => reefs.find((r) => r.id === picked[i]);
@@ -246,6 +275,12 @@ export function Compose({ platform, held, onBack, onOpen }: {
                          }} />
                   <span className="note">{where ? `${where.lat.toFixed(4)}, ${where.lon.toFixed(4)} · ${sizeSaid(acrossM)} square` : "Zoom in and click the middle of the place."}</span>
                 </div>
+                {nearby.length > 0 && composing ? (
+                  <div className="overlap">
+                    <span>This area is in the map store: <strong>{nearby[0]!.name}</strong>{nearby.length > 1 ? ` and ${nearby.length - 1} more` : ""}.</span>
+                    <Button onClick={() => { setGround("store"); setStoreBase(nearby[0]!.id); }}>Use it as the ground</Button>
+                  </div>
+                ) : null}
               </>
             ) : (
               <FitMap heightsUrl={groundNow.heightsUrl} rows={groundNow.rows} columns={groundNow.columns}
@@ -261,9 +296,10 @@ export function Compose({ platform, held, onBack, onOpen }: {
               <div className="field"><span>How wide</span>
                 <div className="segmented">
                   {SIZES.map((m) => (
-                    <button key={m} type="button" disabled={!composing} aria-pressed={m === acrossM} onClick={() => setAcrossM(m)}>{sizeSaid(m)}</button>
+                    <button key={m} type="button" disabled={!composing || ground === "store"} aria-pressed={m === acrossM} onClick={() => setAcrossM(m)}>{sizeSaid(m)}</button>
                   ))}
                 </div>
+                {ground === "store" ? <span className="note">The store place&rsquo;s own square: {sizeSaid(acrossM)}.</span> : null}
               </div>
             </Step>
 
@@ -284,8 +320,20 @@ export function Compose({ platform, held, onBack, onOpen }: {
                     </div>
                   ) : null}
                 </Choice>
-                <Choice on={false} disabled title="From the iOcean map store"
-                        says="Use or build on a place iOcean publishes. Arrives with the map store (plan item 71)." />
+                <Choice on={ground === "store"} disabled={!composing || store.length === 0} onPick={() => setGround("store")}
+                        title="A place from the iOcean map store"
+                        says={store.length ? "Built from public data, checked and published by iOcean; your files and assets go on it." : "The store has no places yet."}>
+                  {ground === "store" ? (
+                    <div className="choice-more">
+                      <label className="field"><span>Which place</span>
+                        <select value={storeBase ?? ""} disabled={!composing} onChange={(e) => setStoreBase(e.target.value || undefined)}>
+                          <option value="">choose one</option>
+                          {store.map((one) => <option key={one.id} value={one.id}>{one.name}{one.deepestM !== undefined ? ` · to ${one.deepestM.toFixed(0)} m` : ""}</option>)}
+                        </select>
+                      </label>
+                    </div>
+                  ) : null}
+                </Choice>
               </div>
               <div className="field"><span>Your own data, laid over the ground</span>
                 {own.map((one, i) => (

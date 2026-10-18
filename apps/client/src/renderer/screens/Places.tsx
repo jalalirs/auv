@@ -14,50 +14,121 @@ import type { Held, Packages } from "./Deck.js";
 import { PlaceCard } from "./Dive.js";
 import { PlacePlan } from "../parts/PlanArt.js";
 import { Card, Empty } from "./parts.js";
-import { Button, Page } from "../ui/components.js";
+import { useCallback, useEffect, useState } from "react";
+import type { Platform, StorePlace } from "@coral-city/api";
+import { Button, Page, Status } from "../ui/components.js";
 import { PLACES_TABS } from "./placesTabs.js";
 
-export function Places({ held, packages, onOpen, onBuild, onFromVideo }: {
+export function Places({ platform, held, packages, tab = "places", onTab, onOpen, onBuild, onFromVideo, onBuildOn }: {
+  platform?: Platform;
   held: Held;
   packages: Packages;
+  /** places or store; assets is its own page (Reconstructions). */
+  tab?: string;
+  onTab?: (tab: string) => void;
   onOpen: (id: string) => void;
   onBuild?: () => void;
   onFromVideo?: () => void;
+  /** Compose a new place on a store place's ground. */
+  onBuildOn?: (cityId: string) => void;
 }): React.JSX.Element {
+  const [store, setStore] = useState<StorePlace[] | undefined>();
+  const [pictures, setPictures] = useState<Record<string, string>>({});
+  const [trouble, setTrouble] = useState("");
+  const institution = held.institution;
+
+  const readStore = useCallback(() => {
+    if (!platform) return;
+    platform.storePlaces().then(setStore).catch(() => setStore([]));
+  }, [platform]);
+  useEffect(readStore, [readStore]);
+  // Each store place's picture, from its newest published version.
+  useEffect(() => {
+    if (!platform || tab !== "store") return;
+    for (const one of store ?? []) {
+      if (!one.versionId || !one.picture || pictures[one.id]) continue;
+      void platform.files(one.versionId).then((files) => {
+        const url = files.find((f) => f.path === "picture.jpg")?.url;
+        if (url) setPictures((was) => ({ ...was, [one.id]: url }));
+      }).catch(() => undefined);
+    }
+  }, [platform, store, tab, pictures]);
+
+  // Yours: what the organisation owns or holds; a store place only once it
+  // has been taken (Use it).
+  const storeIds = new Set((store ?? []).map((s) => s.id));
+  const adopted = new Set((store ?? []).filter((s) => s.adopted).map((s) => s.id));
+  const yours = held.places.filter((p) => !storeIds.has(p.id) || adopted.has(p.id));
   const slugs = new Set(held.places.map((p) => p.slug));
+
+  const adopt = async (one: StorePlace, take: boolean) => {
+    if (!platform || !institution) return;
+    setTrouble("");
+    try {
+      if (take) await platform.adoptStorePlace(institution.id, one.id);
+      else await platform.unadoptStorePlace(institution.id, one.id);
+      readStore();
+    } catch (problem) {
+      setTrouble(problem instanceof Error ? problem.message : "it could not be changed");
+    }
+  };
+
   return (
-    <Page title="Places" subtitle="Water we keep, versioned and granted; a dive pins the version it ran in."
-          info="A dive pins the version of the place it ran in, so the reef you dived is the reef anybody can dive again. Each place says what its sea is doing today, from the nearest monitoring site."
-          tabs={PLACES_TABS} tab="places" onTab={(key) => { if (key === "data") onFromVideo?.(); }}
+    <Page title="Places" subtitle="Places composed from ground and assets; a dive pins the version it ran in."
+          info="A place is composed from its ground (a place from the iOcean map store, every public source for a square, a flat seabed, or your own survey) and the assets put into it, such as reefs rebuilt from dive videos. A dive pins the version it ran in, so the reef you dived is the reef anybody can dive again."
+          tabs={[{ ...PLACES_TABS[0]!, count: yours.length }, PLACES_TABS[1]!, { ...PLACES_TABS[2]!, count: store?.length }]}
+          tab={tab} onTab={(key) => { if (key === "assets") onFromVideo?.(); else onTab?.(key); }}
           actions={onBuild ? <Button kind="primary" onClick={onBuild}>New place</Button> : undefined}>
-      {held.places.length === 0 ? (
-        <Empty title="Nothing granted yet">
-          Places appear here once somebody grants your institution access to them.
-        </Empty>
+      {trouble ? <p className="trouble">{trouble}</p> : null}
+      {tab === "store" ? (
+        <>
+          {store === undefined ? <p className="note">Reading the store…</p> : store.length === 0 ? (
+            <Empty title="The store is empty">iOcean publishes the places it builds from public data here, open to everybody.</Empty>
+          ) : (
+            <div className="cards">
+              {store.map((one) => (
+                <div key={one.id} className="store-card">
+                  <Card name={one.name} detail={one.summary || "an iOcean place"}
+                        picture={pictures[one.id]}
+                        art={<PlacePlan standing={one.surveyed ? "surveyed" : "derived"} deepestM={one.deepestM} size={64} />}
+                        specs={[
+                          one.deepestM !== undefined ? `to ${one.deepestM.toFixed(0)} m` : "",
+                          one.surveyedFraction !== undefined ? `${Math.round(one.surveyedFraction * 100)}% measured` : one.surveyed ? "surveyed" : "derived depths",
+                          one.colonies ? `${one.colonies.toLocaleString()} colonies` : "",
+                        ].filter(Boolean)}
+                        corner={one.adopted ? <Status tone="good">yours</Status> : undefined}
+                        onOpen={() => onOpen(one.id)} />
+                  <div className="store-actions">
+                    {one.adopted
+                      ? <Button kind="ghost" onClick={() => void adopt(one, false)}>Remove from yours</Button>
+                      : <Button onClick={() => void adopt(one, true)} disabled={!institution}>Use it</Button>}
+                    <Button kind="secondary" onClick={() => onBuildOn?.(one.id)}>Build on it</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <section className="store-coming">
+            <h2>Coming to the store</h2>
+            <div className="cards">
+              {ENVIRONMENTS.map((one) => (
+                <Card key={one.key} name={one.name} detail={`${one.where} · ${one.purpose}`}
+                      art={<PlacePlan standing={one.standing} deepestM={depthOf(one)} size={64} />}
+                      specs={[one.standing, ...one.sources.slice(0, 1)]}
+                      later={one.becomes !== undefined && slugs.has(one.becomes) ? "grows from a place you have" : "not built yet"} />
+              ))}
+            </div>
+          </section>
+        </>
+      ) : yours.length === 0 ? (
+        <Empty title="No places yet">Compose one with New place, or take one from the Map store.</Empty>
       ) : (
-        <section>
-          <div className="cards">
-            {held.places.map((one) => (
-              <PlaceCard key={one.id} place={one} packages={packages} onOpen={() => onOpen(one.id)} />
-            ))}
-          </div>
-        </section>
-      )}
-      <section>
-        <h2>The places this is for</h2>
         <div className="cards">
-          {ENVIRONMENTS.map((one) => (
-            <Card key={one.key} name={one.name} detail={`${one.where} · ${one.purpose}`}
-                  art={<PlacePlan standing={one.standing} deepestM={depthOf(one)} size={64} />}
-                  specs={[one.standing, ...one.sources.slice(0, 1)]}
-                  later={one.becomes !== undefined && slugs.has(one.becomes)
-                    ? "grows from a place you have" : "not built yet"} />
+          {yours.map((one) => (
+            <PlaceCard key={one.id} place={one} packages={packages} onOpen={() => onOpen(one.id)} />
           ))}
         </div>
-        <p className="note">
-          Each of these is real data first: a survey, a chart, a habitat map. What each takes is on its card; none is a scene somebody had lying around.
-        </p>
-      </section>
+      )}
     </Page>
   );
 }

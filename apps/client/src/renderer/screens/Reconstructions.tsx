@@ -33,11 +33,13 @@ export function stateOf(one: Reconstruction): { kind?: "good" | "bad" | "busy"; 
   }
 }
 
-export function Reconstructions({ platform, held, onOpen, onBack }: {
+export function Reconstructions({ platform, held, onOpen, onBack, onTab }: {
   platform: Platform;
   held: Held;
   onOpen: (id: string) => void;
   onBack: () => void;
+  /** To Places' other tabs. */
+  onTab?: (tab: string) => void;
 }): React.JSX.Element {
   const institution = held.institution;
   const [list, setList] = useState<Reconstruction[] | undefined>();
@@ -116,12 +118,12 @@ export function Reconstructions({ platform, held, onOpen, onBack }: {
   };
 
   return (
-    <Page title="Places" subtitle="Reefs rebuilt in 3D from dive videos, ready to put on a map."
+    <Page title="Places" subtitle="Assets: reefs and structures made on their own, ready to compose into a place."
           info="Upload a swim over a reef and the platform rebuilds the reef in 3D: where the camera was in every frame, the reef as splats, the survey tape painted out. It is your institution's, in its own frame; putting it on a map is the next step, on its page."
-          tabs={PLACES_TABS} tab="data" onTab={(key) => { if (key === "places") onBack(); }}>
+          tabs={PLACES_TABS} tab="assets" onTab={(key) => onTab?.(key)}>
       <div className="two">
         <section>
-          <h2>A new one</h2>
+          <h2>New asset from a video</h2>
           {!institution ? <p className="note">You belong to no institution, and a reconstruction is made for one.</p> : (
             <div className="builder-side">
               <label className="builder-add">
@@ -153,7 +155,7 @@ export function Reconstructions({ platform, held, onOpen, onBack }: {
         </section>
 
         <section>
-          <h2>Rebuilt</h2>
+          <h2>Assets</h2>
           {list === undefined ? <p className="note">Reading…</p>
             : list.length === 0 ? (
               <Empty title="None yet">A reconstruction appears here as soon as its video is uploaded.</Empty>

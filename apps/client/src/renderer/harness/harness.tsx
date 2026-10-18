@@ -256,6 +256,22 @@ Object.assign(platform, {
     return delay(mapping);
   },
 });
+// The map store: Al Fahal and Looe Key as iOcean publishes them.
+const storeList = [
+  { id: "city_fahal", slug: "al-fahal", name: "Al Fahal", summary: "A fringing reef off Thuwal, three kilometres square.",
+    extent: { west: 38.9475, south: 22.2705, east: 38.9765, north: 22.2975 }, versionId: "ver_fahal", deepestM: 38,
+    surveyed: false, surveyedFraction: 0.04, colonies: 1039632, picture: true, adopted: false },
+  { id: "city_looe", slug: "looe-key", name: "Looe Key", summary: "A spur-and-groove reef in the Florida Keys.",
+    extent: { west: -81.42, south: 24.54, east: -81.40, north: 24.556 }, versionId: "ver_looe", deepestM: 34,
+    surveyed: true, surveyedFraction: 0.92, colonies: 83055, picture: false, adopted: true },
+];
+Object.assign(platform, {
+  storePlaces: (near?: { lat: number; lon: number }) => delay(near
+    ? storeList.filter((s) => near.lat > s.extent.south - 0.02 && near.lat < s.extent.north + 0.02 && near.lon > s.extent.west - 0.02 && near.lon < s.extent.east + 0.02)
+    : storeList),
+  adoptStorePlace: (org: string, city: string) => { said.push(`adopt ${city} for ${org}`); storeList.forEach((s) => { if (s.id === city) s.adopted = true; }); return delay({}); },
+  unadoptStorePlace: (org: string, city: string) => { said.push(`unadopt ${city} for ${org}`); storeList.forEach((s) => { if (s.id === city) s.adopted = false; }); return delay({}); },
+});
 Object.assign(window, { said, store });
 
 const held = {
@@ -326,7 +342,10 @@ function Harness({ packages }: { packages: Packages }) {
         ) : where.page === "build" ? (
           <Compose platform={p} held={held} onBack={() => said.push("back")} onOpen={(c) => said.push(`open ${c}`)} />
         ) : where.page === "places" ? (
-          <Places held={held} packages={packages} onOpen={(c) => said.push(`open ${c}`)} onBuild={() => said.push("build")}
+          <Places platform={p} held={held} packages={packages} tab={where.place === "store" ? "store" : "places"}
+                  onTab={(tab) => setWhere((w) => ({ ...w, place: tab }))}
+                  onOpen={(c) => said.push(`open ${c}`)} onBuild={() => setWhere((w) => ({ ...w, page: "build" }))}
+                  onBuildOn={(c) => { said.push(`build on ${c}`); setWhere((w) => ({ ...w, page: "build" })); }}
                   onFromVideo={() => setWhere((w) => ({ ...w, page: "video" }))} />
         ) : where.page === "fleet" ? (
           <Fleet held={held} packages={packages} onOpen={(v) => said.push(`vehicle ${JSON.stringify(v)}`)} />

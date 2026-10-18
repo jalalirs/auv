@@ -41,10 +41,10 @@ export type Where =
   // Flying: a plan of work once or under doubts; a single task is "dive".
   | { page: "fly"; mission?: string }
   | { page: "dive" }
-  | { page: "places" }
+  | { page: "places"; tab?: string }
   | { page: "place"; id: string }
   // A new place, built from its data on the platform's machines.
-  | { page: "build" }
+  | { page: "build"; base?: string }
   // Reefs rebuilt from dive videos, and one of them; under Places, because
   // what one is for is to be put on a map.
   | { page: "reconstructions" }
@@ -204,18 +204,22 @@ export function Deck({ platform, onDiving }: {
                 onDiving={onDiving} onChanged={read} onOpen={setWhere}
                 onPlan={() => setWhere({ page: "fly" }, { replace: true })} />
         ) : where.page === "places" ? (
-          <Places held={held} packages={packages} onOpen={(id) => setWhere({ page: "place", id })}
+          <Places platform={platform} held={held} packages={packages} tab={where.tab ?? "places"}
+                  onTab={(tab) => setWhere({ page: "places", tab: tab === "places" ? undefined : tab }, { replace: true })}
+                  onOpen={(id) => setWhere({ page: "place", id })}
                   onBuild={() => setWhere({ page: "build" })}
+                  onBuildOn={(id) => setWhere({ page: "build", base: id })}
                   onFromVideo={() => setWhere({ page: "reconstructions" }, { replace: true })} />
         ) : where.page === "reconstructions" ? (
           <Reconstructions platform={platform} held={held} onBack={() => setWhere({ page: "places" }, { replace: true })}
+                           onTab={(tab) => setWhere({ page: "places", tab: tab === "places" ? undefined : tab }, { replace: true })}
                            onOpen={(id) => setWhere({ page: "reconstruction", id })} />
         ) : where.page === "reconstruction" ? (
           <ReconstructionPage platform={platform} held={held} packages={packages} id={where.id}
                               onBack={() => back({ page: "reconstructions" })}
                               onOpenPlace={(id) => { void read(); setWhere({ page: "place", id }); }} />
         ) : where.page === "build" ? (
-          <Compose platform={platform} held={held} onBack={() => back({ page: "places" })}
+          <Compose platform={platform} held={held} base={where.base} onBack={() => back({ page: "places" })}
                    onOpen={(id) => { void read(); setWhere({ page: "place", id }); }} />
         ) : where.page === "place" ? (
           <PlaceDetail held={held} packages={packages} id={where.id}
