@@ -14,7 +14,9 @@ stretches would flip between them, so the piece already drawn is kept until
 another is nearer by `margin` metres.
 
 site.json: reef.splats.pieces = [{"prim": "Part0", "frames": [1, 260],
-"path": [[x, y, z], ...]}, ...], the path in the place's metres.
+"path": [[x, y, z], ...]}, ...], the path in the place's metres; a prim not
+starting with "/" is under /World/Coral/Splats. A reconstruction laid into a
+place carries its own: reconstructions[i].pieces, with absolute prims.
 """
 
 from __future__ import annotations
@@ -44,6 +46,21 @@ class Pieces:
 
 
 def pieces_of(site: dict) -> Pieces | None:
-    """The place's pieces, or None when its reef is not drawn in pieces."""
+    """The place's own reef's pieces, or None when it is not drawn in pieces."""
     pieces = (((site or {}).get("reef") or {}).get("splats") or {}).get("pieces") or []
     return Pieces(pieces) if len(pieces) > 1 else None
+
+
+def all_pieces(site: dict) -> list[Pieces]:
+    """Every set of pieces a place draws one at a time: its own reef's, and
+    each reconstruction's laid into it."""
+    found = [p for p in [pieces_of(site)] if p is not None]
+    for rebuilt in (site or {}).get("reconstructions") or []:
+        pieces = (rebuilt or {}).get("pieces") or []
+        if len(pieces) > 1:
+            found.append(Pieces(pieces))
+    return found
+
+
+def prim_path(name: str) -> str:
+    return name if name.startswith("/") else f"/World/Coral/Splats/{name}"

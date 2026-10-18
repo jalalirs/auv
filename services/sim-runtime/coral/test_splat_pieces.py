@@ -1,4 +1,4 @@
-from splat_pieces import Pieces, pieces_of
+from splat_pieces import Pieces, all_pieces, pieces_of, prim_path
 
 
 def _three():
@@ -34,3 +34,15 @@ def test_a_place_without_pieces_has_none():
     found = pieces_of({"reef": {"splats": {"pieces": [{"prim": "A", "path": [[0, 0, 0]]},
                                                       {"prim": "B", "path": [[5, 0, 0]]}]}}})
     assert found.prims == ["A", "B"]
+
+
+def test_a_reconstruction_laid_into_a_place_brings_its_own():
+    site = {"reef": {"splats": {"pieces": [{"prim": "Part0", "path": [[0, 0, 0]]}, {"prim": "Part1", "path": [[9, 0, 0]]}]}},
+            "reconstructions": [{"name": "video", "pieces": [
+                {"prim": "/World/Reconstructions/video/Part0", "path": [[100, 0, 0]]},
+                {"prim": "/World/Reconstructions/video/Part1", "path": [[110, 0, 0]]}]}]}
+    groups = all_pieces(site)
+    assert [g.prims[0] for g in groups] == ["Part0", "/World/Reconstructions/video/Part0"]
+    assert prim_path("Part1") == "/World/Coral/Splats/Part1"
+    assert prim_path("/World/Reconstructions/video/Part1") == "/World/Reconstructions/video/Part1"
+    assert all_pieces({}) == []

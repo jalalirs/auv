@@ -1250,23 +1250,25 @@ class CoralCityShell(omni.ext.IExt):
     def _draw_the_nearest_piece(self) -> None:
         """A reef trained from a video in pieces draws one piece: the one made
         from the stretch of the swim nearest the camera (coral/splat_pieces.py).
-        Joined into one, the pieces drew dark shapes over the far reef."""
-        pieces = getattr(self, "_pieces", False)
-        if pieces is False:
-            self._pieces = pieces = None
+        Joined into one, the pieces drew dark shapes over the far reef. Every
+        set of pieces in the place: its own reef's, and each reconstruction's."""
+        groups = getattr(self, "_pieces", False)
+        if groups is False:
+            self._pieces = groups = []
             try:
-                from splat_pieces import pieces_of
+                from splat_pieces import all_pieces
                 city = pathlib.Path(self.brief.get("cityPath", "/dive/city"))
-                self._pieces = pieces = pieces_of(json.loads((city / "site.json").read_text()))
-                if pieces is not None:
+                self._pieces = groups = all_pieces(json.loads((city / "site.json").read_text()))
+                for pieces in groups:
                     self._say("splat_pieces", prims=pieces.prims)
             except Exception as exc:
                 carb.log_warn(f"iocean could not read the place's splat pieces: {exc}")
-        if pieces is None:
+        if not groups:
             return
         try:
             from omni.kit.viewport.utility import get_active_viewport
             from pxr import Usd, UsdGeom
+            from splat_pieces import prim_path
 
             viewport = get_active_viewport()
             stage = omni.usd.get_context().get_stage()
@@ -1274,16 +1276,17 @@ class CoralCityShell(omni.ext.IExt):
             if not camera:
                 return
             eye = UsdGeom.Xformable(camera).ComputeLocalToWorldTransform(Usd.TimeCode.Default()).ExtractTranslation()
-            was = pieces.drawn
-            now = pieces.which([eye[0], eye[1], eye[2]])
-            if now == was:
-                return
-            for i, name in enumerate(pieces.prims):
-                prim = stage.GetPrimAtPath(f"/World/Coral/Splats/{name}")
-                if prim:
-                    seen = UsdGeom.Imageable(prim)
-                    seen.MakeVisible() if i == now else seen.MakeInvisible()
-            self._say("splat_piece_drawn", piece=pieces.prims[now], eye=[round(float(v), 2) for v in eye])
+            for pieces in groups:
+                was = pieces.drawn
+                now = pieces.which([eye[0], eye[1], eye[2]])
+                if now == was:
+                    continue
+                for i, name in enumerate(pieces.prims):
+                    prim = stage.GetPrimAtPath(prim_path(name))
+                    if prim:
+                        seen = UsdGeom.Imageable(prim)
+                        seen.MakeVisible() if i == now else seen.MakeInvisible()
+                self._say("splat_piece_drawn", piece=pieces.prims[now], eye=[round(float(v), 2) for v in eye])
         except Exception as exc:
             if not getattr(self, "_pieces_complained", False):
                 self._pieces_complained = True

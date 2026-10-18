@@ -144,6 +144,48 @@ def coral_positions(city: pathlib.Path, at_most: int = 2000) -> list[list[float]
     return found
 
 
+class Surface:
+    """A reconstruction's own ground, finer than its place's: a height grid
+    laid into the place at an origin and a heading (site.json `surfaces`).
+
+    A place's heightfield is a survey's: Al Fahal's is three kilometres at
+    six metres a cell, and a reef rebuilt from a dive video is measured to
+    centimetres. Where a reconstruction is, its ground is the bottom: what a
+    vehicle rests on, what its altimeter reads, where the fish settle. Faded
+    into the place's own over `feather` metres at its edge, and nowhere it
+    did not measure (NaN cells), so it is never a step or a hole.
+    """
+
+    def __init__(self, heights, origin, heading_deg: float, cell: float, feather: float = 1.0) -> None:
+        self.heights = np.asarray(heights, dtype=float)
+        self.rows, self.columns = self.heights.shape
+        self.ox, self.oy = float(origin[0]), float(origin[1])
+        a = math.radians(float(heading_deg))
+        self.c, self.s = math.cos(a), math.sin(a)
+        self.cell = float(cell)
+        self.feather = max(float(feather), 1e-6)
+
+    def sample(self, x, y):
+        """(height, weight) at many points: weight 0 where it says nothing."""
+        dx, dy = np.asarray(x, dtype=float) - self.ox, np.asarray(y, dtype=float) - self.oy
+        u = (self.c * dx + self.s * dy) / self.cell
+        v = (-self.s * dx + self.c * dy) / self.cell
+        inside = (u >= 0) & (u <= self.columns - 1) & (v >= 0) & (v <= self.rows - 1)
+        uu = np.clip(u, 0.0, self.columns - 1.0001)
+        vv = np.clip(v, 0.0, self.rows - 1.0001)
+        col, row = uu.astype(int), vv.astype(int)
+        fu, fv = uu - col, vv - row
+        h = self.heights
+        corners = np.stack([h[row, col], h[row, col + 1], h[row + 1, col], h[row + 1, col + 1]])
+        weights = np.stack([(1 - fu) * (1 - fv), fu * (1 - fv), (1 - fu) * fv, fu * fv])
+        known = np.isfinite(corners)
+        total = (np.where(known, weights, 0.0)).sum(0)
+        height = np.where(total > 0, (np.where(known, corners, 0.0) * weights).sum(0) / np.maximum(total, 1e-12), np.nan)
+        edge = np.minimum.reduce([u, v, self.columns - 1 - u, self.rows - 1 - v]) * self.cell
+        w = np.where(inside & np.isfinite(height), np.clip(edge / self.feather, 0.0, 1.0) * np.clip(total, 0.0, 1.0), 0.0)
+        return np.nan_to_num(height), w
+
+
 class Seabed:
     """How deep the bottom is, anywhere in a site.
 
@@ -156,10 +198,12 @@ class Seabed:
     a reef by a controller reading a staircase will chase the steps.
     """
 
-    def __init__(self, heights, across: float, around=None) -> None:
+    def __init__(self, heights, across: float, around=None, surfaces=()) -> None:
         self.heights = heights
         self.across = across
         self.rows, self.columns = heights.shape
+        # Reconstructions' own ground, laid over the survey's (Surface).
+        self.surfaces = list(surfaces)
         # GEBCO round the survey (tools/surroundings): (heights, west, south,
         # east, north in local metres), or None — and then the edge of the
         # survey stands in for everything past it, as it always did.
@@ -175,9 +219,40 @@ class Seabed:
             field = described["mesh"]["heightfield"]
             raw = np.fromfile(city / field["file"], dtype="<f4")
             heights = raw.reshape(field["rows"], field["columns"])
-            return cls(heights, float(described["from"]["acrossMetres"]), cls._around(described, city))
+            return cls(heights, float(described["from"]["acrossMetres"]), cls._around(described, city),
+                       cls._surfaces(described, city))
         except Exception:
             return None
+
+    @staticmethod
+    def _surfaces(described: dict, city: pathlib.Path) -> list:
+        found = []
+        for said in described.get("surfaces") or []:
+            try:
+                grid = np.fromfile(city / said["file"], dtype="<f4").reshape(said["rows"], said["columns"])
+                found.append(Surface(grid, said["origin"], said.get("headingDeg", 0.0), said["cellM"],
+                                     said.get("featherM", 1.0)))
+            except Exception:
+                continue
+        return found
+
+    def _laid(self, x, y, survey):
+        """The survey's height with every reconstruction's ground laid over it."""
+        out = np.asarray(survey, dtype=float)
+        for surface in self.surfaces:
+            h, w = surface.sample(x, y)
+            out = w * h + (1.0 - w) * out
+        return out
+
+    def _step(self, x, y) -> float:
+        """How far apart to read the bottom for its slope: a cell of the
+        finest ground at that point."""
+        step = self.across / max(1, self.columns - 1)
+        for surface in self.surfaces:
+            _, w = surface.sample(np.array([x]), np.array([y]))
+            if w[0] > 0:
+                step = min(step, 2.0 * surface.cell)
+        return step
 
     @staticmethod
     def _around(described: dict, city: pathlib.Path):
@@ -254,9 +329,11 @@ class Seabed:
             + h[row + 1, column] * (1 - fu) * fv
             + h[row + 1, column + 1] * fu * fv
         )
-        if self.around is None or max(abs(x), abs(y)) < 0.45 * self.across:
-            return survey
-        return float(self._blended(np.array([x]), np.array([y]), np.array([survey]))[0])
+        if self.around is not None and max(abs(x), abs(y)) >= 0.45 * self.across:
+            survey = float(self._blended(np.array([x]), np.array([y]), np.array([survey]))[0])
+        if self.surfaces:
+            survey = float(self._laid(np.array([x]), np.array([y]), np.array([survey]))[0])
+        return survey
 
     def under_many(self, x, y) -> np.ndarray:
         """`under` for many points at once: a cable's nodes, a school's fish."""
@@ -267,15 +344,18 @@ class Seabed:
         h = self.heights
         survey = (h[row, column] * (1 - fu) * (1 - fv) + h[row, column + 1] * fu * (1 - fv)
                   + h[row + 1, column] * (1 - fu) * fv + h[row + 1, column + 1] * fu * fv).astype(float)
-        return self._blended(x, y, survey)
+        out = self._blended(x, y, survey)
+        return self._laid(x, y, out) if self.surfaces else out
 
     def normal_many(self, x, y) -> np.ndarray:
         """`normal` for many points at once, (n, 3)."""
         x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
         step = self.across / max(1, self.columns - 1)
+        if self.surfaces:
+            step = np.array([self._step(float(a), float(b)) for a, b in zip(np.atleast_1d(x), np.atleast_1d(y))])
         east = self.under_many(x + step, y) - self.under_many(x - step, y)
         north = self.under_many(x, y + step) - self.under_many(x, y - step)
-        normal = np.column_stack([-east, -north, np.full_like(east, 2.0 * step)])
+        normal = np.column_stack([-east, -north, 2.0 * np.broadcast_to(step, np.shape(east)).astype(float)])
         return normal / np.linalg.norm(normal, axis=1, keepdims=True)
 
     def normal(self, x: float, y: float) -> np.ndarray:
@@ -286,7 +366,7 @@ class Seabed:
         a spur returns something nearly horizontal, and that is the difference
         between ground a vehicle settles onto and ground it runs into.
         """
-        step = self.across / max(1, self.columns - 1)
+        step = self._step(x, y)
         east = self.under(x + step, y) - self.under(x - step, y)
         north = self.under(x, y + step) - self.under(x, y - step)
         normal = np.array([-east, -north, 2.0 * step])
@@ -1203,6 +1283,16 @@ class Dive:
             # The reef. Referenced rather than merged, so the seabed stays one
             # file and the coral stays another — a place is layers, and a
             # thousand colonies is not something to paste into a terrain.
+            # Reefs rebuilt from dive videos and laid into this place (each its
+            # own layer, already in the place's frame): drawn as they are; the
+            # ground they measured is in the seabed (Surface).
+            for rebuilt in layers_of(city).get("reconstructions") or []:
+                name, layer = str(rebuilt.get("name", "")), str(rebuilt.get("file", ""))
+                at = f"/World/Reconstructions/{name}"
+                if name and layer and (city / layer).exists() and not stage.GetPrimAtPath(at):
+                    stage.DefinePrim(at).GetReferences().AddReference(str(city / layer))
+                    self.say("reconstruction_drawn", name=name, file=layer)
+
             reef = layers_of(city).get("coral")
             if reef and (city / reef).exists() and not stage.GetPrimAtPath("/World/Coral"):
                 stage.DefinePrim("/World/Coral").GetReferences() \
