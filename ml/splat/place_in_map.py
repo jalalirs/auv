@@ -19,6 +19,8 @@ Into PLACE, which is changed (work on a copy):
   seabed.usda             the drawn ground lowered under the strip, to --sink
                           metres below the reef's own ground, so it does not
                           stand through the splats; physics is the surface's
+  (the reconstruction is drawn at /World/Reconstructions/<NAME with every
+  character not a letter, digit or _ made _>)
   coral.usda              the place's own colonies taken off the strip and
                           --clear metres round it
 
@@ -31,6 +33,7 @@ import argparse
 import json
 import math
 import pathlib
+import re
 import shutil
 
 import numpy as np
@@ -106,7 +109,8 @@ def Xform "Reef"
     # The swim, in the place, cut into each piece's stretch.
     told = json.loads(a.align.read_text())
     frames = sorted(told["frames"], key=lambda f: f["name"])
-    pieces = [{"prim": f"/World/Reconstructions/{a.name}/Part{i}", "frames": [lo, hi],
+    prim = re.sub(r"[^A-Za-z0-9_]", "_", a.name)            # what the runtime names it
+    pieces = [{"prim": f"/World/Reconstructions/{prim}/Part{i}", "frames": [lo, hi],
                "path": [[round(float(v), 3) for v in f["eye"]] for f in frames[lo - 1:hi:2]]}
               for i, (lo, hi) in enumerate(ranges)]
 

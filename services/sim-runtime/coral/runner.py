@@ -1288,7 +1288,8 @@ class Dive:
             # ground they measured is in the seabed (Surface).
             for rebuilt in layers_of(city).get("reconstructions") or []:
                 name, layer = str(rebuilt.get("name", "")), str(rebuilt.get("file", ""))
-                at = f"/World/Reconstructions/{name}"
+                # A prim's name is an identifier: "red-sea-video" is not one.
+                at = f"/World/Reconstructions/{re.sub(r'[^A-Za-z0-9_]', '_', name)}"
                 if name and layer and (city / layer).exists() and not stage.GetPrimAtPath(at):
                     stage.DefinePrim(at).GetReferences().AddReference(str(city / layer))
                     self.say("reconstruction_drawn", name=name, file=layer)
