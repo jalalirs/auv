@@ -20,6 +20,8 @@ import { Runs } from "../screens/Runs.js";
 import { LayoutEditor } from "../screens/Layout.js";
 import { BuildPlace } from "../screens/BuildPlace.js";
 import { Swept } from "../screens/Sweeps.js";
+import { Reconstructions } from "../screens/Reconstructions.js";
+import { ReconstructionPage } from "../screens/Reconstruction.js";
 
 const now = () => new Date().toISOString();
 let counter = 0;
@@ -31,6 +33,7 @@ interface Version { id: string; ordinal: number; createdAt: string; document: Do
 const places = [
   { id: "city_tank", slug: "iocean-tank-1", name: "iocean tank", fixture: "iocean-tank-1" },
   { id: "city_looe", slug: "looe-key", name: "Looe Key", fixture: "looe-key" },
+  { id: "city_fahal", slug: "al-fahal", name: "Al Fahal", fixture: "al-fahal" },
 ];
 
 const layoutThings: Record<string, Doc[]> = {
@@ -193,6 +196,68 @@ Object.assign(platform, {
   files: () => delay([{ path: "weak.png", url: "./harness/fixtures/built/weak.png" }]),
   publishVersion: (v: string) => { said.push(`published ${v}`); return delay({ id: v }); },
 });
+// A reconstruction that walks through its steps, then a mapping of it.
+const reconSteps = [
+  { step: "frames", say: "756 frames at 1600x900", frames: 756 },
+  { step: "cameras", say: "756 of 756 frames placed" },
+  { step: "tape", say: "a tape in 610 of 756 frames; finding it in 3D" },
+  { step: "pieces", say: "training piece-2 (frames 223 to 534)", n: 2, of: 3 },
+];
+const reconManifest = {
+  name: "Red Sea transect", frames: 756, registered: 756, extentM: [99.4, 14.2], pathLengthM: 118.3,
+  pieces: [{ splats: 6_912_004 }, { splats: 7_400_112 }, { splats: 6_100_877 }],
+  scale: { factor: 7.84, how: "assumed", from: "assumed: the camera 1.92 m over the reef, one COLMAP unit 7.840 m" },
+  cover: { kind: "derived", from: "CoralscapesV2 SegFormer on 63 of the video's frames, share of the seabed pixels by ml/cover's groups",
+           shares: { hard_coral: 0.112, soft_coral: 0.031, sand: 0.402, rubble: 0.214, algae: 0.09, other: 0.151 } },
+  tape: { found: true, paintedOut: true, framesWithTape: 610 },
+  video: { durationS: 377.8, name: "GX_SINGLE_VIDEO.MP4" }, previews: ["previews/frame-1.jpg", "previews/frame-2.jpg"],
+};
+const recon = (ready: boolean) => ({ id: "recon_1", orgId: "org_1", jobId: "job_r", name: "Red Sea transect",
+  brief: { video: { objectId: "obj_v", name: "GX_SINGLE_VIDEO.MP4" }, start: { lat: 22.2838, lon: 38.9605 } },
+  createdBy: "p1", createdAt: now(), state: ready ? "ready" : "running", jobState: ready ? "succeeded" : "running",
+  steps: reconSteps.map((s) => ({ at: now(), ...s })), ...(ready ? { manifest: reconManifest } : {}) });
+const candidates = [
+  { at: [197.5, -572.5], headingDeg: 100, dz: 2.98, startAt: [246.0, -563.1], fit: { rmsM: 0.54, placeGroundM: -4.8 } },
+  { at: [-302.5, -612.5], headingDeg: 70, dz: -1.2, startAt: [-348.2, -630.0], fit: { rmsM: 0.71, placeGroundM: -9.0 } },
+  { at: [87.5, -402.5], headingDeg: 260, dz: 0.4, startAt: [40.2, -394.5], fit: { rmsM: 0.88, placeGroundM: -7.4 } },
+];
+let mapping: Doc | undefined;
+let mappingAt = 0;
+const mappingView = () => {
+  if (!mapping) return mapping;
+  if (mapping.state === "laying" && Date.now() - mappingAt > 4000) {
+    mapping = { ...mapping, state: "ready", versionId: "ver_laid",
+                steps: [...(mapping.steps as Doc[]), { at: now(), step: "done", say: "red-sea-transect laid into the place" }] };
+  }
+  return mapping;
+};
+Object.assign(platform, {
+  reconstructionsOf: () => delay([recon(true), { ...recon(false), id: "recon_2", name: "North wall swim" }]),
+  reconstruction: (rid: string) => delay(rid === "recon_2" ? { ...recon(false), id: "recon_2", name: "North wall swim" } : recon(true)),
+  reconstructionObjects: () => delay([
+    { path: "preview.jpg", url: "./harness/fixtures/recon/preview.jpg" },
+    { path: "previews/frame-1.jpg", url: "./harness/fixtures/recon/frame-1.jpg" },
+    { path: "previews/frame-2.jpg", url: "./harness/fixtures/recon/frame-2.jpg" }]),
+  startReconstruction: (org: string, brief: Doc) => { said.push(`reconstruct for ${org}: ${JSON.stringify(brief)}`); return delay(recon(false)); },
+  mappingsOf: () => delay(mapping ? [mappingView()] : []),
+  mapping: () => delay(mappingView()),
+  startMapping: (rid: string, body: Doc) => {
+    said.push(`map ${rid}: ${JSON.stringify(body)}`);
+    mapping = body.mode === "onto"
+      ? { id: "map_1", reconstructionId: rid, cityId: body.cityId, mode: "onto", state: "choosing", candidates,
+          start: [246.0, -563.1], steps: [{ at: now(), step: "done", say: "3 places it fits", phase: "resolve" }] }
+      : { id: "map_1", reconstructionId: rid, cityId: "city_new", mode: "own", state: "laying",
+          steps: [{ at: now(), step: "plan", say: "a flat seabed at 8 m", phase: "base" }] };
+    mappingAt = Date.now();
+    return delay(mapping);
+  },
+  acceptMapping: (mid: string, body: Doc) => {
+    said.push(`accept ${mid}: ${JSON.stringify(body)}`);
+    mapping = { ...mapping, state: "laying", steps: [{ at: now(), step: "bake", say: "part 1 into the place's frame", n: 1, of: 3, phase: "lay" }] };
+    mappingAt = Date.now();
+    return delay(mapping);
+  },
+});
 Object.assign(window, { said, store });
 
 const held = {
@@ -237,7 +302,7 @@ function Harness({ packages }: { packages: Packages }) {
     <div className="deck">
       <nav>
         <div className="here"><strong>harness</strong></div>
-        {["missions", "designer", "fly", "results", "sweep", "layout", "build"].map((page) => (
+        {["missions", "designer", "fly", "results", "sweep", "layout", "build", "video", "recon"].map((page) => (
           <a key={page} aria-current={where.page === page ? "page" : undefined} onClick={() => setWhere((w) => ({ ...w, page }))}>{page}</a>
         ))}
       </nav>
@@ -255,6 +320,12 @@ function Harness({ packages }: { packages: Packages }) {
                         onBack={() => setWhere((w) => ({ ...w, page: "missions" }))} />
         ) : where.page === "build" ? (
           <BuildPlace platform={p} held={held} onBack={() => said.push("back")} onOpen={(c) => said.push(`open ${c}`)} />
+        ) : where.page === "video" ? (
+          <Reconstructions platform={p} held={held} onBack={() => said.push("back")}
+                           onOpen={(r) => setWhere((w) => ({ ...w, page: "recon", mission: r }))} />
+        ) : where.page === "recon" ? (
+          <ReconstructionPage platform={p} held={held} packages={packages} id={where.mission === "recon_2" ? "recon_2" : "recon_1"}
+                              onBack={() => setWhere((w) => ({ ...w, page: "video" }))} onOpenPlace={(c) => said.push(`open ${c}`)} />
         ) : where.page === "sweep" ? (
           <Swept platform={p} sweep="sweep_a" onBack={() => said.push("back")} />
         ) : where.page === "results" ? (

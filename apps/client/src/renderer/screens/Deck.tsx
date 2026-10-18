@@ -29,6 +29,8 @@ import { Profile } from "./Profile.js";
 import { Runs } from "./Runs.js";
 import { Replay } from "./Replay.js";
 import { BuildPlace } from "./BuildPlace.js";
+import { Reconstructions } from "./Reconstructions.js";
+import { ReconstructionPage } from "./Reconstruction.js";
 import { VehicleDetail } from "./VehicleDetail.js";
 
 export type { Held, Packages };
@@ -42,6 +44,10 @@ export type Where =
   | { page: "place"; id: string }
   // A new place, built from its data on the platform's machines.
   | { page: "build" }
+  // Reefs rebuilt from dive videos, and one of them; under Places, because
+  // what one is for is to be put on a map.
+  | { page: "reconstructions" }
+  | { page: "reconstruction"; id: string }
   // An arrangement of a place, opened from it. Not a tab of its own: a layout
   // detached from the ground it was drawn on means nothing.
   | { page: "layout"; place: string; layout: string }
@@ -67,7 +73,8 @@ const PAGES: { key: Rail; name: string; count?: (held: Held) => number; is: (whe
   { key: "missions", name: "Missions",
     is: (w) => w.page === "missions" || w.page === "mission" },
   { key: "places", name: "Places", count: (h) => h.places.length,
-    is: (w) => w.page === "places" || w.page === "place" || w.page === "layout" || w.page === "build" },
+    is: (w) => w.page === "places" || w.page === "place" || w.page === "layout" || w.page === "build"
+      || w.page === "reconstructions" || w.page === "reconstruction" },
   { key: "runs", name: "Results", count: (h) => h.runs.length,
     is: (w) => w.page === "runs" || w.page === "sweep" || w.page === "replay" },
   { key: "fleet", name: "Fleet", count: (h) => h.vehicles.length, is: (w) => w.page === "fleet" || w.page === "vehicle" },
@@ -187,7 +194,15 @@ export function Deck({ platform, onDiving }: {
                 onDiving={onDiving} onChanged={read} onOpen={setWhere} />
         ) : where.page === "places" ? (
           <Places held={held} packages={packages} onOpen={(id) => setWhere({ page: "place", id })}
-                  onBuild={() => setWhere({ page: "build" })} />
+                  onBuild={() => setWhere({ page: "build" })}
+                  onFromVideo={() => setWhere({ page: "reconstructions" })} />
+        ) : where.page === "reconstructions" ? (
+          <Reconstructions platform={platform} held={held} onBack={() => setWhere({ page: "places" })}
+                           onOpen={(id) => setWhere({ page: "reconstruction", id })} />
+        ) : where.page === "reconstruction" ? (
+          <ReconstructionPage platform={platform} held={held} packages={packages} id={where.id}
+                              onBack={() => setWhere({ page: "reconstructions" })}
+                              onOpenPlace={(id) => { void read(); setWhere({ page: "place", id }); }} />
         ) : where.page === "build" ? (
           <BuildPlace platform={platform} held={held} onBack={() => setWhere({ page: "places" })}
                       onOpen={(id) => { void read(); setWhere({ page: "place", id }); }} />

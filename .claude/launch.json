@@ -52,6 +52,18 @@
         "--strictPort"
       ],
       "port": 5174
+    },
+    {
+      "name": "client-harness",
+      "runtimeExecutable": "apps/client/node_modules/.bin/vite",
+      "runtimeArgs": [
+        "--config",
+        "apps/client/vite.renderer.config.mts",
+        "--port",
+        "5179",
+        "--strictPort"
+      ],
+      "port": 5179
     }
   ]
 }
