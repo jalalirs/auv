@@ -10,7 +10,8 @@ import type { Platform, Sweep } from "@coral-city/api";
 
 import type { Held } from "./Deck.js";
 import { useSweeps } from "./Sweeps.js";
-import { Empty, PageHead, Pill, ago } from "./parts.js";
+import { Empty, ago } from "./parts.js";
+import { Button, Page, Status, Table, type Tone } from "../ui/components.js";
 
 const LIVE = new Set(["queued", "preparing", "running"]);
 
@@ -56,31 +57,19 @@ function NotOneTable({ runs, of }: { runs: Held["runs"]; of: string }): React.JS
   );
 }
 
-type Entry =
-  | { at: string; run: Held["runs"][number]; sweep?: undefined }
-  | { at: string; sweep: Sweep; run?: undefined };
-
-export function Runs({ platform, held, onChanged, onReplay, onSweep }: {
+export function Runs({ platform, held, onChanged, onReplay, onSweep, by, view }: {
   platform: Platform;
   held: Held;
   onChanged: () => void;
   onReplay: (dive: string, run: string) => void;
   onSweep: (sweep: string) => void;
+  /** Arrive filtered to one controller's dives. */
+  by?: string;
+  /** Arrive on a tab: dives, sweeps or compare. */
+  view?: string;
 }): React.JSX.Element {
   const [ending, setEnding] = useState<string | undefined>();
   const sweeps = useSweeps(platform, held);
-  // A record with a matrix in it is a record somebody has to find one row of.
-  const [sift, setSift] = useState("");
-  const [showing, setShowing] = useState(60);
-  const words = sift.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const matches = (said: string) => words.every((word) => said.toLowerCase().includes(word));
-  const entries: Entry[] = [
-    ...held.runs.filter(({ run }) => !run.sweepId).map((one) => ({ at: one.run.requestedAt, run: one })),
-    ...sweeps.map((sweep) => ({ at: sweep.createdAt, sweep })),
-  ].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
-  const shown = words.length === 0 ? entries : entries.filter((e) =>
-    e.run ? matches(`${e.run.name} ${e.run.flownBy}`) : matches(`${e.sweep.name} sweep`));
-
   async function end(dive: string, run: string): Promise<void> {
     setEnding(run);
     try {
@@ -92,118 +81,104 @@ export function Runs({ platform, held, onChanged, onReplay, onSweep }: {
   }
 
   const outstanding = held.runs.filter((r) => LIVE.has(r.run.state));
+  const [tab, setTab] = useState(view ?? "dives");
+  const dives = held.runs.filter(({ run }) => !run.sweepId);
 
   return (
-    <>
-      <PageHead title="Results"
-        says="Every run pins its place, its vehicle, its water, its seed and the runtime that produced it — which is what makes running the same thing twice mean something. A sweep is one plan flown every way the day could go; its runs are under it." />
-
-      {outstanding.length > 0 && (
-        <section>
+    <Page title="Runs" subtitle="Every dive and sweep flown, with what each scored."
+          info="Every run pins its place, its vehicle, its water, its seed and the runtime that produced it, which is what makes running the same thing twice mean something. A sweep is one plan flown every way the day could go; its runs are under it."
+          tabs={[{ key: "dives", label: "Dives", count: dives.length }, { key: "sweeps", label: "Sweeps", count: sweeps.length },
+                 { key: "compare", label: "Compare" }]}
+          tab={tab} onTab={setTab}>
+      {outstanding.length > 0 ? (
+        <section className="holding">
           <h2>Holding a machine</h2>
-          <div className="ledger runs">
-            {outstanding.map(({ dive, name, flownBy, run }) => (
-              <div className="row" key={run.id}>
-                <div className="who">
-                  <strong>{name}</strong>
-                  <span className="when">{meta(name, flownBy, run)}</span>
-                </div>
-                <span className="result" />
-                <button className="quiet small" disabled={ending === run.id}
-                        onClick={() => void end(dive, run.id)}>
-                  {ending === run.id ? "Ending…" : "End it"}
-                </button>
-                <Pill kind="busy">{run.state}</Pill>
-              </div>
-            ))}
-          </div>
+          <Table rows={outstanding} rowKey={(r) => r.run.id} pageSize={10}
+                 columns={[
+                   { key: "run", label: "Run", render: (r) => <><span className="cell-main">{r.name}</span><span className="cell-sub">{meta(r.name, r.flownBy, r.run)}</span></> },
+                   { key: "state", label: "State", render: (r) => <Status tone="busy">{r.run.state}</Status> },
+                 ]}
+                 actions={(r) => <Button kind="danger" disabled={ending === r.run.id} onClick={() => void end(r.dive, r.run.id)}>{ending === r.run.id ? "Ending…" : "End it"}</Button>} />
         </section>
+      ) : null}
+
+      {tab === "dives" ? (
+        <Table rows={dives} rowKey={(r) => r.run.id} initialPicked={by ? { by: [by] } : undefined}
+               onRow={(r) => { if (recorded(r.run)) onReplay(r.dive, r.run.id); }}
+               search={(r) => `${r.name} ${r.flownBy} ${taskOf(r)} ${r.run.state}`} searchLabel="Search dives"
+               facets={[
+                 { key: "task", label: "Task", value: (r) => taskOf(r) || "no task" },
+                 { key: "by", label: "Flown by", value: (r) => r.flownBy },
+                 { key: "state", label: "State", value: (r) => r.run.state },
+                 { key: "how", label: "How", value: (r) => r.run.mode === "interactive" ? "watched" : "batch" },
+                 { key: "when", label: "When", value: (r) => whenOf(r.run.requestedAt) },
+               ]}
+               initialSort={{ key: "when", down: true }}
+               empty={<>Nothing has been run yet. Dives appear here as soon as you ask for one.</>}
+               columns={[
+                 { key: "run", label: "Dive", sort: (a, b) => a.name.localeCompare(b.name),
+                   render: (r) => <><span className="cell-main">{r.name}</span><span className="cell-sub">{meta(r.name, r.flownBy, r.run)}</span></> },
+                 { key: "score", label: "Score", align: "right", sort: (a, b) => scoreOf(a) - scoreOf(b),
+                   render: (r) => scoreOf(r) >= 0 ? <span title={taskOf(r)}><b>{(scoreOf(r) * 100).toFixed(0)}%</b></span> : <span className="cell-meta">—</span> },
+                 { key: "result", label: "How it went", priority: 3, render: (r) => <span className="cell-sub run-detail"><Result outcome={r.run.outcome} /></span> },
+                 { key: "when", label: "When", priority: 2, sort: (a, b) => a.run.requestedAt.localeCompare(b.run.requestedAt),
+                   render: (r) => <span className="cell-meta">{ago(r.run.requestedAt)}</span> },
+                 { key: "state", label: "State", render: (r) => <Status tone={toneOf(r.run.state)}>{r.run.state === "succeeded" && r.run.outcome?.["surfaced"] === true ? "surfaced" : r.run.state}</Status> },
+               ]}
+               actions={(r) => recorded(r.run) ? <Button onClick={() => onReplay(r.dive, r.run.id)}>Replay</Button> : null} />
+      ) : tab === "sweeps" ? (
+        <Table rows={sweeps} rowKey={(w) => w.id} onRow={(w) => onSweep(w.id)}
+               search={(w) => w.name} searchLabel="Search sweeps"
+               facets={[{ key: "state", label: "State", value: (w) => sweepState(w) }, { key: "when", label: "When", value: (w) => whenOf(w.createdAt) }]}
+               initialSort={{ key: "when", down: true }}
+               empty={<>No sweeps yet. A sweep flies one plan every way the day could go; start one from Fly.</>}
+               columns={[
+                 { key: "name", label: "Sweep", sort: (a, b) => a.name.localeCompare(b.name), render: (w) => <span className="cell-main">{w.name}</span> },
+                 { key: "flown", label: "Flown", align: "right", render: (w) => <span className="cell-meta">{w.flown ?? 0} of {w.runs ?? 0}{w.flying ? ` · ${w.flying} flying` : ""}</span> },
+                 { key: "when", label: "When", priority: 2, sort: (a, b) => a.createdAt.localeCompare(b.createdAt), render: (w) => <span className="cell-meta">{ago(w.createdAt)}</span> },
+                 { key: "state", label: "State", render: (w) => <Status tone={w.flying ? "busy" : sweepState(w) === "swept" ? "good" : "quiet"}>{sweepState(w)}</Status> },
+               ]}
+               actions={(w) => <Button onClick={() => onSweep(w.id)}>Read it</Button>} />
+      ) : (
+        <>
+          <section>
+            <h2>Trials</h2>
+            <NotOneTable runs={held.runs} of="dives" />
+            <p className="note">The same dive flown more than once: a number with a spread on it, the only honest way to say one controller is better than another.</p>
+            <Trials runs={held.runs} />
+          </section>
+          <section>
+            <h2>Side by side</h2>
+            <p className="note">The same dive run more than once, with what each run scored.</p>
+            <Compared runs={held.runs} />
+          </section>
+        </>
       )}
-
-      <section>
-        <h2>All of them</h2>
-        {entries.length > 12 ? (
-          <div className="sift">
-            <input value={sift} onChange={(e) => setSift(e.target.value)}
-                   placeholder={`Search ${entries.length} — a task, a water, a technology, "sweep"…`} />
-            <span>{shown.length === entries.length ? `${entries.length}` : `${shown.length} of ${entries.length}`}</span>
-          </div>
-        ) : null}
-        {entries.length === 0 ? (
-          <Empty title="Nothing has been run yet">
-            Dives appear here as soon as you ask for one.
-          </Empty>
-        ) : (
-          <div className="ledger runs">
-            {shown.slice(0, showing).map((entry) => entry.sweep ? (
-              <div className="row swept" key={entry.sweep.id}>
-                <div className="who">
-                  <strong>{entry.sweep.name}</strong>
-                  <span className="when">
-                    swept · {entry.sweep.flown ?? 0} of {entry.sweep.runs ?? 0} flown
-                    {entry.sweep.flying ? ` · ${entry.sweep.flying} in the water` : ""} · {ago(entry.sweep.createdAt)}
-                  </span>
-                </div>
-                <span className="result" />
-                <button className="quiet small" onClick={() => onSweep(entry.sweep.id)}>Read it</button>
-                <Pill kind={entry.sweep.flying ? "busy" : (entry.sweep.flown ?? 0) >= (entry.sweep.runs ?? 0) ? "good" : undefined}>
-                  {entry.sweep.flying ? "sweeping" : (entry.sweep.flown ?? 0) >= (entry.sweep.runs ?? 0) ? "swept" : "waiting"}
-                </Pill>
-              </div>
-            ) : (
-              <RunRow key={entry.run.run.id} one={entry.run} onReplay={onReplay} />
-            ))}
-            {shown.length > showing ? (
-              <button className="quiet more" onClick={() => setShowing(showing + 100)}>
-                {shown.length - showing} more
-              </button>
-            ) : null}
-          </div>
-        )}
-      </section>
-
-      <section>
-        <h2>Trials</h2>
-        <NotOneTable runs={held.runs} of="dives" />
-        <p className="aside">
-          One run of one seed is an anecdote. The same dive flown more than once is a
-          number with a spread on it, which is the only honest way to say one controller
-          is better than another.
-        </p>
-        <Trials runs={held.runs} />
-      </section>
-
-      <section>
-        <h2>Side by side</h2>
-        <p className="aside">The same dive run more than once, with what each run scored — a change to a controller as a change in a number.</p>
-        <Compared runs={held.runs} />
-      </section>
-    </>
+    </Page>
   );
 }
 
-/** One run, flown on its own. */
-function RunRow({ one: { dive, name, flownBy, run }, onReplay }: {
-  one: Held["runs"][number];
-  onReplay: (dive: string, run: string) => void;
-}): React.JSX.Element {
-  return (
-    <div className="row">
-      <div className="who">
-        <strong>{name}</strong>
-        <span className="when">{meta(name, flownBy, run)}</span>
-      </div>
-      <Result outcome={run.outcome} />
-      {recorded(run) ? (
-        <button className="quiet small" onClick={() => onReplay(dive, run.id)}>Replay</button>
-      ) : <span />}
-      <Pill kind={run.state === "succeeded" ? "good"
-        : LIVE.has(run.state) ? "busy"
-        : run.state === "failed" ? "bad" : undefined}>
-        {run.state === "succeeded" && run.outcome?.["surfaced"] === true ? "surfaced" : run.state}
-      </Pill>
-    </div>
-  );
+function taskOf(one: Held["runs"][number]): string {
+  return ((one.run.outcome as Record<string, unknown> | undefined)?.["task"] as { name?: string } | undefined)?.name ?? "";
+}
+
+function scoreOf(one: Held["runs"][number]): number {
+  const score = ((one.run.outcome as Record<string, unknown> | undefined)?.["task"] as { score?: number } | undefined)?.score;
+  return typeof score === "number" ? score : -1;
+}
+
+function toneOf(state: string): Tone {
+  return state === "succeeded" ? "good" : LIVE.has(state) ? "busy" : state === "failed" ? "bad" : "quiet";
+}
+
+function sweepState(w: Sweep): string {
+  return w.flying ? "sweeping" : (w.flown ?? 0) >= (w.runs ?? 0) ? "swept" : "waiting";
+}
+
+/** When, as the buckets a person filters by. */
+function whenOf(iso: string): string {
+  const days = (Date.now() - new Date(iso).getTime()) / 86_400_000;
+  return days < 1 ? "today" : days < 7 ? "this week" : days < 31 ? "this month" : "older";
 }
 
 /** The second line under a run's name: who flew it, unless the name already

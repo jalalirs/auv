@@ -168,12 +168,14 @@ nav .who span {
 
 main { overflow-y: auto; min-height: 0; padding: 6px 40px 44px; }
 
-.page-head { padding: 4px 0 22px; }
-.page-head h1 {
-  margin: 0; font-size: var(--t-title); font-weight: 600;
-  letter-spacing: var(--wide); line-height: var(--tall);
+/* The old page head, held like the new one (ui/ui.css .page-top): it stays
+   while the page scrolls under it. */
+.page-head {
+  position: sticky; top: -6px; z-index: 8;
+  margin: -6px -40px var(--s5); padding: var(--s5) 40px var(--s4);
+  background: rgba(5, 11, 20, 0.92); backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--edge);
 }
-.page-head p { margin: 5px 0 0; color: var(--faint); max-width: 62ch; }
 
 section { margin-bottom: 30px; }
 section > h2 {
@@ -652,12 +654,7 @@ canvas.minimap.carries { cursor: crosshair; }
 
 /* ── page heads with a way back ───────────────────────────────────────────── */
 
-.page-head .back {
-  display: inline-block; margin-bottom: 8px;
-  color: var(--faint); font-size: var(--t-meta); letter-spacing: var(--wide); cursor: pointer;
-}
-.page-head .back:hover { color: var(--coral); }
-.page-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.page-head-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); }
 
 .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; }
 @media (max-width: 1100px) { .two { grid-template-columns: 1fr; } }
@@ -810,12 +807,10 @@ table.axes .delta { color: var(--vehicle); font-size: var(--t-meta); }
  * the section holds every choice below the card too — 929 px of it — and
  * something taller than the window has nowhere to stick, so it scrolled
  * exactly as before. */
-.composer-dock {
-  position: sticky; top: -6px; z-index: 6;
-  margin-top: -6px; padding: 6px 0 16px;
-  background: var(--abyss);
-  box-shadow: 0 12px 18px -14px rgba(0, 0, 0, 0.8);
-}
+/* The place chosen, as a banner: its picture, its name and its facts. The
+   Dive button is the page's own action now, in the head that does not
+   scroll, so this neither sticks nor carries a button. */
+.composer-dock { margin-bottom: var(--s4); }
 
 .composer {
   position: relative;
@@ -823,7 +818,7 @@ table.axes .delta { color: var(--vehicle); font-size: var(--t-meta); }
   background:
     radial-gradient(120% 140% at 84% -20%, rgba(64, 199, 244, 0.16), transparent 58%),
     linear-gradient(140deg, var(--raised), var(--shelf) 62%, var(--water));
-  min-height: 300px;
+  min-height: 168px;
   display: flex;
 }
 .composer.pictured { background-size: cover; background-position: center; }
@@ -840,18 +835,18 @@ table.axes .delta { color: var(--vehicle); font-size: var(--t-meta); }
 .composer-top {
   flex: 1;
   display: grid; grid-template-columns: 1fr auto; gap: 26px; align-items: end;
-  padding: 30px 30px 24px;
+  padding: var(--s5);
 }
 .composer .said { min-width: 0; }
 .composer .eyebrow { font-size: var(--t-meta); letter-spacing: 0.09em; text-transform: uppercase; color: var(--coral); }
 .composer h2 {
-  margin: 8px 0 0; font-size: var(--t-title); font-weight: 600;
+  margin: var(--s1) 0 0; font-size: var(--t-section); font-weight: 600;
   line-height: var(--tall); letter-spacing: var(--wide); text-wrap: balance;
 }
 .composer p { margin: 8px 0 0; color: var(--plain); opacity: 0.8; max-width: 60ch; }
-.composer .facts { display: flex; gap: 26px; margin-top: 18px; flex-wrap: wrap; }
+.composer .facts { display: flex; gap: var(--s5); margin-top: var(--s3); flex-wrap: wrap; }
 .composer .act { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
-.composer .act .big { padding: 16px 44px; font-size: var(--t-strong); }
+
 
 /* ── choosing: three columns you can see whole ────────────────────────────── */
 
@@ -1833,3 +1828,11 @@ button.small { min-height: 28px; padding: 0 var(--s2); font-size: var(--t-meta);
 .recon-frames img { width: 100%; border-radius: var(--r-control); display: block; }
 .fitmap canvas { width: 100%; max-width: 520px; aspect-ratio: 1; border-radius: var(--r-surface); border: 1px solid var(--edge); cursor: crosshair; display: block; }
 .row.chosen { outline: 1px solid #ffc83c; }
+
+/* What the page's action will do, beside it in the head. */
+.action-summary { color: var(--faint); font-size: var(--t-meta); white-space: nowrap; }
+
+.controller-cell { display: flex; align-items: center; gap: var(--s3); }
+ol.steps { margin: 0; padding-left: var(--s5); display: flex; flex-direction: column; gap: var(--s2); }
+.holding { margin-bottom: var(--s5); }
+.run-detail { max-width: 520px; }

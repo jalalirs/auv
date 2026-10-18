@@ -94,14 +94,14 @@ export function Page({ title, subtitle, info, crumb, onCrumb, actions, tabs, tab
           {actions ? <div className="page-actions">{actions}</div> : null}
         </div>
         {tabs ? (
-          <nav className="tabs" role="tablist">
+          <div className="tabs" role="tablist">
             {tabs.map((t) => (
               <button key={t.key} type="button" role="tab" aria-selected={t.key === tab}
                       onClick={() => onTab?.(t.key)}>
                 {t.label}{t.count !== undefined ? <span className="tab-count">{t.count.toLocaleString()}</span> : null}
               </button>
             ))}
-          </nav>
+          </div>
         ) : null}
         {toolbar ? <div className="toolbar">{toolbar}</div> : null}
       </header>
@@ -170,7 +170,7 @@ export type Column<T> = {
 export type Facet<T> = { key: string; label: string; value: (row: T) => string | undefined };
 
 export function Table<T>({ rows, columns, rowKey, onRow, search, searchLabel = "Search", facets = [], actions,
-                           pageSize = 25, empty, initialSort, chosen }: {
+                           pageSize = 25, empty, initialSort, chosen, initialPicked }: {
   rows: T[];
   columns: Column<T>[];
   rowKey: (row: T) => string;
@@ -185,9 +185,12 @@ export function Table<T>({ rows, columns, rowKey, onRow, search, searchLabel = "
   empty?: React.ReactNode;
   initialSort?: { key: string; down?: boolean };
   chosen?: string;
+  /** Filters set on arrival, by facet key: "Its dives" from Controllers. */
+  initialPicked?: Record<string, string[]>;
 }): React.JSX.Element {
   const [words, setWords] = useState("");
-  const [picked, setPicked] = useState<Record<string, Set<string>>>({});
+  const [picked, setPicked] = useState<Record<string, Set<string>>>(() =>
+    Object.fromEntries(Object.entries(initialPicked ?? {}).map(([k, v]) => [k, new Set(v)])));
   const [sort, setSort] = useState<{ key: string; down: boolean } | undefined>(
     initialSort ? { key: initialSort.key, down: initialSort.down ?? false } : undefined);
   const [page, setPage] = useState(0);

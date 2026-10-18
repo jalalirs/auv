@@ -10,7 +10,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Platform, Reconstruction } from "@coral-city/api";
 import type { Held } from "./Deck.js";
-import { Empty, PageHead, Pill, ago } from "./parts.js";
+import { Empty, Pill, ago } from "./parts.js";
+import { Page } from "../ui/components.js";
+import { PLACES_TABS } from "./placesTabs.js";
 
 const VIDEO = /\.(mp4|mov|mkv)$/i;
 
@@ -114,9 +116,9 @@ export function Reconstructions({ platform, held, onOpen, onBack }: {
   };
 
   return (
-    <>
-      <PageHead title="From a dive video" back="Places" onBack={onBack}
-        says="Upload a swim over a reef and the platform rebuilds the reef in 3D: where the camera was in every frame, the reef as splats, the survey tape painted out. It is your institution's, in its own frame; putting it on a map is the next step, on its page." />
+    <Page title="Places" subtitle="Reefs rebuilt in 3D from dive videos, ready to put on a map."
+          info="Upload a swim over a reef and the platform rebuilds the reef in 3D: where the camera was in every frame, the reef as splats, the survey tape painted out. It is your institution's, in its own frame; putting it on a map is the next step, on its page."
+          tabs={PLACES_TABS} tab="data" onTab={(key) => { if (key === "places") onBack(); }}>
       <div className="two">
         <section>
           <h2>A new one</h2>
@@ -176,6 +178,6 @@ export function Reconstructions({ platform, held, onOpen, onBack }: {
             )}
         </section>
       </div>
-    </>
+    </Page>
   );
 }

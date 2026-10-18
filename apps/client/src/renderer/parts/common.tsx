@@ -1,5 +1,6 @@
 // The pieces every page shares.
 
+import { Info } from "../ui/components.js";
 import { useEffect, useState } from "react";
 
 import mark from "../../../assets/iocean.svg";
@@ -82,17 +83,20 @@ export function PageHead({ title, says, back, onBack, aside }: {
   onBack?: () => void;
   aside?: React.ReactNode;
 }): React.JSX.Element {
+  // One line under the title (docs/ui.md 8); the whole of it behind the (i).
+  const long = says !== undefined && says.length > 110;
+  const first = long ? `${says!.split(/(?<=[.;:])\s/)[0]!.replace(/[.;:]$/, "")}` : says;
   return (
     <div className="page-head">
       {back === undefined ? null : (
-        <a className="back" onClick={onBack}>← {back}</a>
+        <button type="button" className="crumb" onClick={onBack}>‹ {back}</button>
       )}
       <div className="page-head-row">
-        <div>
-          <h1>{title}</h1>
-          {says === undefined ? null : <p>{says}</p>}
+        <div className="page-titles">
+          <h1>{title}{long ? <Info>{says}</Info> : null}</h1>
+          {first === undefined ? null : <p className="page-subtitle">{first}</p>}
         </div>
-        {aside}
+        {aside === undefined ? null : <div className="page-actions">{aside}</div>}
       </div>
     </div>
   );

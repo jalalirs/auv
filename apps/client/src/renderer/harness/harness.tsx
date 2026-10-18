@@ -22,6 +22,9 @@ import { BuildPlace } from "../screens/BuildPlace.js";
 import { Swept } from "../screens/Sweeps.js";
 import { Reconstructions } from "../screens/Reconstructions.js";
 import { ReconstructionPage } from "../screens/Reconstruction.js";
+import { Places } from "../screens/Places.js";
+import { Fleet } from "../screens/Fleet.js";
+import { Autonomy } from "../screens/Autonomy.js";
 
 const now = () => new Date().toISOString();
 let counter = 0;
@@ -263,7 +266,14 @@ const held = {
     runOf("run_2", "Round the tank ~ October 4 · still", 1.5, { sweepId: "sweep_a" }),
     runOf("run_3", "Round the tank ~ October 4 · gentle", 1.6, { sweepId: "sweep_a" }),
     runOf("run_4", "The September plot round · Boxfish Luna", 26, { state: "failed", outcome: undefined }, "veh_luna", "city_looe"),
-  ], stacks: [], controllers: [],
+  ], stacks: [], controllers: [
+    { slug: "station-hold", name: "Station hold (SDK example)",
+      newest: { id: "stack_1", imageDigest: "sha256:5d6b894df3b6aa", createdAt: "2026-09-26T10:00:00Z", needs: {} },
+      builds: [{ id: "stack_1" }, { id: "stack_0" }] },
+    { slug: "learned-hold", name: "Learned hold (trained across waters)",
+      newest: { id: "stack_2", imageDigest: "sha256:cf884945687baa", createdAt: "2026-09-27T10:00:00Z", needs: { gpu: true, gpuMemoryBytes: 8589934592 } },
+      builds: [{ id: "stack_2" }] },
+  ],
 } as unknown as Held;
 
 async function packagesOf(): Promise<Packages> {
@@ -294,7 +304,7 @@ function Harness({ packages }: { packages: Packages }) {
     <div className="deck">
       <nav>
         <div className="here"><strong>harness</strong></div>
-        {["missions", "designer", "fly", "results", "sweep", "layout", "build", "video", "recon"].map((page) => (
+        {["fly", "missions", "places", "results", "fleet", "controllers", "designer", "sweep", "layout", "build", "video", "recon"].map((page) => (
           <a key={page} aria-current={where.page === page ? "page" : undefined} onClick={() => setWhere((w) => ({ ...w, page }))}>{page}</a>
         ))}
       </nav>
@@ -312,8 +322,15 @@ function Harness({ packages }: { packages: Packages }) {
                         onBack={() => setWhere((w) => ({ ...w, page: "missions" }))} />
         ) : where.page === "build" ? (
           <BuildPlace platform={p} held={held} onBack={() => said.push("back")} onOpen={(c) => said.push(`open ${c}`)} />
+        ) : where.page === "places" ? (
+          <Places held={held} packages={packages} onOpen={(c) => said.push(`open ${c}`)} onBuild={() => said.push("build")}
+                  onFromVideo={() => setWhere((w) => ({ ...w, page: "video" }))} />
+        ) : where.page === "fleet" ? (
+          <Fleet held={held} packages={packages} onOpen={(v) => said.push(`vehicle ${JSON.stringify(v)}`)} />
+        ) : where.page === "controllers" ? (
+          <Autonomy held={held} onFly={(s) => said.push(`fly with ${s}`)} onRuns={(b) => said.push(`runs by ${b}`)} />
         ) : where.page === "video" ? (
-          <Reconstructions platform={p} held={held} onBack={() => said.push("back")}
+          <Reconstructions platform={p} held={held} onBack={() => setWhere((w) => ({ ...w, page: "places" }))}
                            onOpen={(r) => setWhere((w) => ({ ...w, page: "recon", mission: r }))} />
         ) : where.page === "recon" ? (
           <ReconstructionPage platform={p} held={held} packages={packages} id={where.mission === "recon_2" ? "recon_2" : "recon_1"}

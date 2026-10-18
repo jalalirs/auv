@@ -8,6 +8,8 @@
 // there, or the only one if there is only one. Nothing else is on this page;
 // what became of earlier dives is the Dives page's business.
 
+import { Button, Page, Status } from "../ui/components.js";
+import { FLY_TABS } from "./flyTabs.js";
 import { useEffect, useMemo, useState } from "react";
 
 import type { AssetVersion, Mission, Platform } from "@coral-city/api";
@@ -103,7 +105,7 @@ function remembered<T extends { id: string }>(key: string, all: T[]): string | u
   return all.length === 1 ? all[0]!.id : undefined;
 }
 
-export function Dive({ platform, held, packages, free, devices, onDiving, onChanged, onOpen }: {
+export function Dive({ platform, held, packages, free, devices, onDiving, onChanged, onOpen, onPlan }: {
   platform: Platform;
   held: Held;
   packages: Packages;
@@ -112,6 +114,8 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
   onDiving: (dive: string, run: string) => void;
   onChanged: () => void;
   onOpen: (where: Where) => void;
+  /** To Fly's other tab, a plan of work. */
+  onPlan?: () => void;
 }): React.JSX.Element {
   const [place, setPlace] = useState(() => remembered(WHERE, held.places));
   const [vehicle, setVehicle] = useState(() => remembered(WHAT, held.vehicles));
@@ -456,7 +460,15 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
   const alert = sea.at === "known" ? sea.record.now.alertLevel?.value : undefined;
 
   return (
-    <>
+    <Page title="Fly" subtitle="A single task: a place, a vehicle, and what to do there."
+          tabs={FLY_TABS} tab="task" onTab={(key) => { if (key === "plan") onPlan?.(); }} wide
+          actions={<>
+            <Status tone={free > 0 ? "good" : "bad"}>{free > 0 ? `${free} of ${devices} machines free` : "every machine is busy"}</Status>
+            <Button kind="primary" title={notYet ?? "Put a dive in the water"}
+                    disabled={asking || !ready || task.unavailable !== undefined} onClick={() => void go()}>
+              {asking ? "Asking for water…" : "Dive"}
+            </Button>
+          </>}>
       <section>
         <div className="composer-dock">
         <div className={`composer${picture ? " pictured" : ""}`}
@@ -491,21 +503,14 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
                         note={planStages.map((s, at) =>
                           `${at + 1}. ${s.kind}${s.over ? ` over ${s.over}` : ""}`).join("  ")} />
                 )}
-                <Fact of="machines" is={`${free} free of ${devices}`} />
               </div>
             </div>
-            <div className="act">
-              <Pill kind={free > 0 ? "good" : "bad"}>
-                {free > 0 ? "a machine is free" : "everything is busy"}
-              </Pill>
-              <button className="big" title={notYet ?? "Put a dive in the water"}
-                      disabled={asking || !ready || task.unavailable !== undefined} onClick={() => void go()}>
-                {asking ? "Asking for water…" : "Dive"}
-              </button>
-              {notYet === undefined || refusal !== "" ? null
-                : <span className="not-yet">{notYet}</span>}
-              <span className="refusal">{refusal}</span>
-            </div>
+            {notYet !== undefined || refusal !== "" ? (
+              <div className="act">
+                {notYet === undefined || refusal !== "" ? null : <span className="not-yet">{notYet}</span>}
+                <span className="refusal">{refusal}</span>
+              </div>
+            ) : null}
           </div>
           {placePackage?.credit && placePackage.credit.kind !== "render"
             ? <div className="composer-credit"><Credit of={placePackage.credit} /></div> : null}
@@ -628,7 +633,7 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
           )}
         </div>
       </section>
-    </>
+    </Page>
   );
 }
 

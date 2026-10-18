@@ -7,7 +7,9 @@
 import { CATALOGUE } from "../catalog/vehicles.js";
 import type { Held, Packages } from "./Deck.js";
 import { VehiclePlan } from "../parts/PlanArt.js";
-import { Card, Empty, PageHead } from "./parts.js";
+import { useState } from "react";
+import { Card, Empty } from "./parts.js";
+import { Page } from "../ui/components.js";
 
 export function Fleet({ held, packages, onOpen }: {
   held: Held;
@@ -16,16 +18,16 @@ export function Fleet({ held, packages, onOpen }: {
 }): React.JSX.Element {
   const published = new Set(held.vehicles.map((v) => v.slug));
   const notYet = CATALOGUE.filter((v) => !published.has(v.slug));
+  const [tab, setTab] = useState("flyable");
   return (
-    <>
-      <PageHead title="Fleet"
-        says="Vehicles we publish, with the parameters they are flown by. The dynamics are the vehicle: mass, added mass, damping, and where each thruster points. Open one to see what its numbers mean." />
-      {held.vehicles.length === 0 ? (
-        <Empty title="Nothing granted yet">
-          Vehicles appear here once your institution has been granted one.
-        </Empty>
-      ) : (
-        <section>
+    <Page title="Fleet" subtitle="Vehicles, with the parameters they are flown by."
+          info="The dynamics are the vehicle: mass, added mass, damping, and where each thruster points. Open one to see what its numbers mean. Catalogued vehicles have parameters with a published source; each says what stands between it and the water."
+          tabs={[{ key: "flyable", label: "Flyable", count: held.vehicles.length }, { key: "catalogued", label: "Catalogued", count: notYet.length }]}
+          tab={tab} onTab={setTab}>
+      {tab === "flyable" ? (
+        held.vehicles.length === 0 ? (
+          <Empty title="Nothing granted yet">Vehicles appear here once your institution has been granted one.</Empty>
+        ) : (
           <div className="cards">
             {held.vehicles.map((one) => {
               const pkg = packages.vehicles.get(one.id);
@@ -40,36 +42,21 @@ export function Fleet({ held, packages, onOpen }: {
               );
             })}
           </div>
-        </section>
+        )
+      ) : notYet.length === 0 ? (
+        <Empty title="Everything catalogued is published">The catalogue and the platform agree.</Empty>
+      ) : (
+        <div className="cards">
+          {notYet.map((one) => (
+            <Card key={one.slug} name={one.name} detail={one.summary}
+                  art={<VehiclePlan thrusters={thrustersOf(one.dynamics)} size={64} />}
+                  specs={[one.manufacturer, `${one.dynamics.massKg} kg`]}
+                  later={one.notYet ?? "not published"}
+                  onOpen={() => onOpen({ slug: one.slug })} />
+          ))}
+        </div>
       )}
-      <section>
-        <h2>Catalogued, not yet flyable</h2>
-        {notYet.length === 0 ? (
-          <Empty title="Everything catalogued is published">The catalogue and the platform agree.</Empty>
-        ) : (
-          <div className="cards">
-            {notYet.map((one) => (
-              <Card key={one.slug} name={one.name} detail={one.summary}
-                    art={<VehiclePlan thrusters={thrustersOf(one.dynamics)} size={64} />}
-                    specs={[one.manufacturer, `${one.dynamics.massKg} kg`]}
-                    later={one.notYet ?? "not published"}
-                    onOpen={() => onOpen({ slug: one.slug })} />
-            ))}
-          </div>
-        )}
-        <p className="note">
-          Parameters with a published source, so their physics can be read and compared. Each says what stands between it and the water.
-        </p>
-      </section>
-      <section>
-        <h2>Coming</h2>
-        <Empty title="Your own vehicle" soon="not built yet">
-          Bring a hull and a set of parameters and fly it here. Today the vehicles
-          are ours and the autonomy is yours; there is no reason the vehicle cannot
-          be yours too, beyond the work of letting you publish one.
-        </Empty>
-      </section>
-    </>
+    </Page>
   );
 }
 

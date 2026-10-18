@@ -24,7 +24,8 @@ import { drawStages } from "../parts/StagesLayer.js";
 import { newestOf } from "../platform/packages.js";
 import type { Held, Packages } from "./Deck.js";
 import { BUILT_IN, MANUAL } from "./Dive.js";
-import { PageHead } from "./parts.js";
+import { Button, Page } from "../ui/components.js";
+import { FLY_TABS } from "./flyTabs.js";
 
 interface Flyable { mission: Mission; version: AssetVersion; place: string }
 
@@ -210,13 +211,22 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
   const hours = cost?.hours && !cost.notEnough ? cost.hours : undefined;
   const machines = Math.max(1, held.queues[0]?.devices ?? 1);
 
+  const action = asking ? "Asking for water…" : once ? (live ? "Fly it, watching" : "Fly it") : scenarios > 0 ? `Sweep it · ${runs} runs` : "Fly it";
+  const summary = once
+    ? `One dive${hours ? `, about ${Math.round(hours * 60)} min` : ""}`
+    : `${scenarios > 0 ? `${scenarios} ways × ${repeats}` : "One run"}${hours ? ` · about ${((hours * runs) / machines).toFixed(1)} h on ${machines} machine${machines === 1 ? "" : "s"}` : ""}`;
   return (
-    <>
-      <PageHead title="Fly" says="A plan of work, flown once or under everything that could go differently on the day."
-                aside={<button type="button" className="quiet" onClick={onSingleTask}>A single task instead</button>} />
+    <Page title="Fly" subtitle="A plan of work, flown once or under everything that could go differently on the day."
+          tabs={FLY_TABS} tab="plan" onTab={(key) => { if (key === "task") onSingleTask(); }} wide
+          actions={flyable && flyable.length > 0 ? (
+            <>
+              <span className="action-summary">{summary}</span>
+              <Button kind="primary" disabled={asking || !chosen || !chosenVehicle} onClick={() => void go()}>{action}</Button>
+            </>
+          ) : undefined}>
 
       {flyable !== undefined && flyable.length === 0 ? (
-        <section><p className="quiet">There is no plan with anything saved yet. Draw one in Missions, or fly a single task.</p></section>
+        <p className="note">There is no plan with anything saved yet. Draw one in Missions, or fly a single task.</p>
       ) : (
         <section className="fly">
           <div className="what">
@@ -314,14 +324,11 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
                 </span>
               </>
             )}
-            <button type="button" className="big" disabled={asking || !chosen || !chosenVehicle} onClick={() => void go()}>
-              {asking ? "Asking for water…" : once ? (live ? "Fly it, watching" : "Fly it") : scenarios > 0 ? "Sweep it" : "Fly it"}
-            </button>
           </div>
           {trouble ? <p className="trouble">{trouble}</p> : null}
         </section>
       )}
-    </>
+    </Page>
   );
 }
 

@@ -63,7 +63,7 @@ export type Where =
   | { page: "fleet" }
   | { page: "vehicle"; id?: string; slug?: string }
   | { page: "autonomy" }
-  | { page: "runs" }
+  | { page: "runs"; by?: string; view?: string }
   | { page: "replay"; dive: string; run: string }
   | { page: "profile" };
 
@@ -197,17 +197,18 @@ export function Deck({ platform, onDiving }: {
           <Fly platform={platform} held={held} packages={packages} mission={where.mission}
                onDiving={onDiving} onChanged={read}
                onSwept={(id) => setWhere({ page: "sweep", id })}
-               onSingleTask={() => setWhere({ page: "dive" })}
+               onSingleTask={() => setWhere({ page: "dive" }, { replace: true })}
                onDesign={(id, place) => setWhere({ page: "mission", id, place })} />
         ) : where.page === "dive" ? (
           <Dive platform={platform} held={held} packages={packages} free={free} devices={devices}
-                onDiving={onDiving} onChanged={read} onOpen={setWhere} />
+                onDiving={onDiving} onChanged={read} onOpen={setWhere}
+                onPlan={() => setWhere({ page: "fly" }, { replace: true })} />
         ) : where.page === "places" ? (
           <Places held={held} packages={packages} onOpen={(id) => setWhere({ page: "place", id })}
                   onBuild={() => setWhere({ page: "build" })}
-                  onFromVideo={() => setWhere({ page: "reconstructions" })} />
+                  onFromVideo={() => setWhere({ page: "reconstructions" }, { replace: true })} />
         ) : where.page === "reconstructions" ? (
-          <Reconstructions platform={platform} held={held} onBack={() => back({ page: "places" })}
+          <Reconstructions platform={platform} held={held} onBack={() => setWhere({ page: "places" }, { replace: true })}
                            onOpen={(id) => setWhere({ page: "reconstruction", id })} />
         ) : where.page === "reconstruction" ? (
           <ReconstructionPage platform={platform} held={held} packages={packages} id={where.id}
@@ -242,9 +243,13 @@ export function Deck({ platform, onDiving }: {
           <VehicleDetail held={held} packages={packages} id={where.id} slug={where.slug}
                          onBack={() => back({ page: "fleet" })} />
         ) : where.page === "autonomy" ? (
-          <Autonomy held={held} />
+          <Autonomy held={held}
+                    onFly={(stack) => { try { localStorage.setItem("coral-city.controller", stack); } catch { /* remembered or not */ } setWhere({ page: "dive" }); }}
+                    onRuns={(by) => setWhere({ page: "runs", by })}
+                    onCompare={() => setWhere({ page: "runs", view: "compare" })} />
         ) : where.page === "runs" ? (
-          <Runs platform={platform} held={held} onChanged={read}
+          <Runs key={`${where.by ?? ""}|${where.view ?? ""}`} platform={platform} held={held} onChanged={read}
+                by={where.by} view={where.view}
                 onReplay={(dive, run) => setWhere({ page: "replay", dive, run })}
                 onSweep={(id) => setWhere({ page: "sweep", id })} />
         ) : where.page === "replay" ? (

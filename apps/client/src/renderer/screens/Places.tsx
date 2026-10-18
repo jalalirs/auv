@@ -13,7 +13,9 @@ import { ENVIRONMENTS } from "../catalog/environments.js";
 import type { Held, Packages } from "./Deck.js";
 import { PlaceCard } from "./Dive.js";
 import { PlacePlan } from "../parts/PlanArt.js";
-import { Card, Empty, PageHead } from "./parts.js";
+import { Card, Empty } from "./parts.js";
+import { Button, Page } from "../ui/components.js";
+import { PLACES_TABS } from "./placesTabs.js";
 
 export function Places({ held, packages, onOpen, onBuild, onFromVideo }: {
   held: Held;
@@ -24,15 +26,10 @@ export function Places({ held, packages, onOpen, onBuild, onFromVideo }: {
 }): React.JSX.Element {
   const slugs = new Set(held.places.map((p) => p.slug));
   return (
-    <>
-      <PageHead title="Places"
-        says="Water we keep, versioned and granted. A dive pins the version it ran in, so the reef you dived is the reef anybody can dive again. Each place says what its sea is doing today, from the nearest monitoring site."
-        aside={onBuild || onFromVideo ? (
-          <span className="asides">
-            {onFromVideo ? <button className="quiet" onClick={onFromVideo}>From a dive video</button> : null}
-            {onBuild ? <button onClick={onBuild}>New place</button> : null}
-          </span>
-        ) : undefined} />
+    <Page title="Places" subtitle="Water we keep, versioned and granted; a dive pins the version it ran in."
+          info="A dive pins the version of the place it ran in, so the reef you dived is the reef anybody can dive again. Each place says what its sea is doing today, from the nearest monitoring site."
+          tabs={PLACES_TABS} tab="places" onTab={(key) => { if (key === "data") onFromVideo?.(); }}
+          actions={onBuild ? <Button kind="primary" onClick={onBuild}>New place</Button> : undefined}>
       {held.places.length === 0 ? (
         <Empty title="Nothing granted yet">
           Places appear here once somebody grants your institution access to them.
@@ -61,7 +58,7 @@ export function Places({ held, packages, onOpen, onBuild, onFromVideo }: {
           Each of these is real data first: a survey, a chart, a habitat map. What each takes is on its card; none is a scene somebody had lying around.
         </p>
       </section>
-    </>
+    </Page>
   );
 }
 
