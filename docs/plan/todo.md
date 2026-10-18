@@ -2229,6 +2229,28 @@ reconstruction's page, *Put on a map*, Resolve, review, Build).
 put on its own map, resolved onto Al Fahal, published, and dived, with no
 terminal.
 
+**Where it is (2026-10-18).** Built, not deployed:
+
+- the job image `iocean/reconstruct-video` (packages/reconstruct: 3DGRUT,
+  COLMAP with its own libraries, CoralscapesV2 and LaMa weights baked in),
+  with three entry points: `job` (video to asset), `resolve` (ranked fits
+  onto a place, ml/splat/place_choose.candidates) and `lay` (the asset baked
+  into a place's next version, place_in_map.py); run sandboxed on the box
+- the control plane: reconstructions (0034, internal/reconstructing) and
+  mappings (0035, internal/mapping: own map founds a place and builds a flat
+  base via the places job's new `flatDepthM`/`coral`; onto a place resolves,
+  waits for a choice, lays); the worker gives GPU jobs a named card, shared
+  memory and scratch, and runs them beside dives
+- MCP `reconstructions_*`, `mappings_*`; no MCP upload yet (multipart parts
+  need per-part presigned links or a grant-authorised part route)
+- screens: Places → *From a dive video* (upload, list), a reconstruction's
+  page (picture from above, frames, cover, size and whether it was assumed),
+  *Put it on a map* with both modes and the candidate map with nudges
+
+Left: a full run of the job on the Red Sea video, deploy (migrate 0034/0035,
+control plane, worker, image, quota GPU 1, target capacity GPU 1), and the
+whole loop from the screen.
+
 
 # The order to build it in
 
