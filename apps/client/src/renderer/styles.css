@@ -1794,7 +1794,8 @@ button.small { min-height: 28px; padding: 0 var(--s2); font-size: var(--t-meta);
   background: rgba(4, 8, 15, 0.6); padding: 1px 6px; border-radius: var(--r-control);
 }
 .world-zoom { position: absolute; left: 10px; top: 10px; display: flex; flex-direction: column; gap: 4px; }
-.world-zoom button { width: 32px; height: 32px; padding: 0; background: rgba(4, 8, 15, 0.7); }
+.world-zoom button { width: 32px; height: 32px; min-height: 0; padding: 0; background: rgba(4, 8, 15, 0.75); border-color: var(--edge-lit); color: var(--plain); font-size: var(--t-strong); line-height: 1; }
+.world-zoom button:hover:not(:disabled) { background: rgba(19, 37, 58, 0.9); }
 .builder-where { display: flex; align-items: center; gap: 12px; }
 .builder-where input { flex: 0 0 280px; }
 .builder-side { display: flex; flex-direction: column; gap: 12px; }

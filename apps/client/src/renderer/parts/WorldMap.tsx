@@ -35,6 +35,10 @@ function latLonOf(px: { x: number; y: number }, zoom: number): LatLon {
   return { lat, lon: ((lon + 540) % 360) - 180 };
 }
 
+/** Wheel travel, in pixels, for one zoom level, and the least time between two. */
+const WHEEL_LEVEL = 120;
+const WHEEL_GAP_MS = 180;
+
 /** Metres one screen pixel covers at a latitude and zoom. */
 export function metresPerPixel(lat: number, zoom: number): number {
   return 156543.03392 * Math.cos(lat * Math.PI / 180) / 2 ** zoom;
@@ -50,6 +54,10 @@ export function WorldMap({ view, onView, chosen, onChoose, acrossM }: {
   const box = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 520 });
   const drag = useRef<{ x: number; y: number; moved: number; centre: { x: number; y: number } } | undefined>(undefined);
+  // The wheel's travel, gathered: a trackpad sends dozens of small events a
+  // swipe, and a level for each one went from the planet to a street in a
+  // flick. A level for every notch's worth, and no more than one at a time.
+  const wheel = useRef({ travel: 0, last: 0 });
 
   useEffect(() => {
     const element = box.current;
@@ -116,7 +124,15 @@ export function WorldMap({ view, onView, chosen, onChoose, acrossM }: {
            }
          }}
          onWheel={(event) => {
-           const next = Math.max(2, Math.min(18, zoom + (event.deltaY < 0 ? 1 : -1)));
+           const notch = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? 800 : 1;
+           const gathered = wheel.current;
+           gathered.travel += event.deltaY * notch;
+           const now = performance.now();
+           if (Math.abs(gathered.travel) < WHEEL_LEVEL || now - gathered.last < WHEEL_GAP_MS) return;
+           const step = gathered.travel < 0 ? 1 : -1;
+           gathered.travel = 0;
+           gathered.last = now;
+           const next = Math.max(2, Math.min(18, zoom + step));
            if (next === zoom) return;
            // About the cursor, so what is under it stays under it.
            const rect = event.currentTarget.getBoundingClientRect();
