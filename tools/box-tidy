@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+"""What iocean's own work is leaving on the shared GPU box, and clearing it.
+
+    tools/box-tidy                 what would go, and why (nothing is removed)
+    tools/box-tidy --apply         remove it
+    tools/box-tidy need 40         is there room for a job that writes 40 GB?
+
+Run on the box. The box is shared (iTraffic, Arc and others), and below 10%
+free disk Kubernetes stops starting anything on it: on 2026-10-18 all of
+Arc's pods were stuck and ~190 GB of what was cleared was ours. So:
+
+  scratch       folders in ~/iocean/scratch older than --days (2), except
+                those named in ~/iocean/scratch/KEEP, one per line
+  checkpoints   ours_*/ckpt_*.pt under ~/iocean/ml/*/runs where the run keeps
+                ckpt_last.pt: the same weights twice, or an early copy
+  containers    stopped iocean-* containers, never iocean-keep-* (those pin
+                images against other people's prunes) nor compose's own jobs
+  images        sim-runtime *candidate* images no container pins
+  /tmp          iocean build folders (/tmp/build-*) older than a day
+
+Nothing outside those is touched; anything else of ours is for a person to
+decide. Files written as root by containers are removed through a container.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+import time
+
+HOME = pathlib.Path("/home/jalalirs/iocean")
+SCRATCH = HOME / "scratch"
+ML = HOME / "ml"
+HELPER = "iocean/ml-reconstruct:dev"          # an image of ours that stays, for root-owned files
+FLOOR = 0.15                                   # the share of the disk kept free before a big job
+
+
+def run(*cmd) -> str:
+    return subprocess.run(cmd, capture_output=True, text=True).stdout
+
+
+def size(path: pathlib.Path) -> int:
+    out = run("du", "-sb", str(path)).split()
+    return int(out[0]) if out else 0
+
+
+def gb(n: int) -> str:
+    return f"{n / 1e9:.1f} GB"
+
+
+def inside(path: pathlib.Path, root: pathlib.Path) -> bool:
+    try:
+        return path.resolve().is_relative_to(root.resolve()) and path.resolve() != root.resolve()
+    except FileNotFoundError:
+        return False
+
+
+def remove(path: pathlib.Path) -> None:
+    if not (inside(path, HOME) or inside(path, pathlib.Path("/tmp"))):
+        raise SystemExit(f"refusing to remove {path}: not under {HOME} or /tmp")
+    try:
+        shutil.rmtree(path) if path.is_dir() and not path.is_symlink() else path.unlink()
+    except PermissionError:
+        rel = path.resolve().relative_to(HOME.resolve()) if inside(path, HOME) else None
+        if rel is None:
+            raise
+        subprocess.run(["docker", "run", "--rm", "--user", "0", "--entrypoint", "env", "-v", f"{HOME}:/h",
+                        HELPER, "rm", "-rf", f"/h/{rel}"], check=True)
+
+
+def plan(days: float) -> list[tuple[str, str, int, str]]:
+    found = []
+    keep = set()
+    if (SCRATCH / "KEEP").exists():
+        keep = {ln.strip() for ln in (SCRATCH / "KEEP").read_text().splitlines() if ln.strip()}
+    now = time.time()
+    if SCRATCH.exists():
+        for d in sorted(SCRATCH.iterdir()):
+            if d.name == "KEEP" or d.name in keep:
+                continue
+            age = (now - d.stat().st_mtime) / 86400
+            if age > days:
+                found.append(("scratch", str(d), size(d), f"{age:.0f} days old, not in KEEP"))
+    for last in ML.glob("*/runs/**/ckpt_last.pt"):
+        for dup in last.parent.glob("ours_*/ckpt_*.pt"):
+            found.append(("checkpoint", str(dup), dup.stat().st_size, f"its run keeps {last.name}"))
+    pinned = set(run("docker", "ps", "-a", "--filter", "name=iocean-keep-", "--format", "{{.Image}}").split())
+    for line in run("docker", "ps", "-a", "--filter", "status=exited", "--format",
+                    "{{.Names}}|{{.Label \"com.docker.compose.project\"}}").split():
+        name, _, project = line.partition("|")
+        # The platform's own compose jobs (bootstrap, migrate) are not leftovers.
+        if name.startswith("iocean-") and not name.startswith("iocean-keep-") and not project:
+            found.append(("container", name, 0, "stopped"))
+    for line in run("docker", "images", "--format", "{{.Repository}}:{{.Tag}} {{.Size}}").splitlines():
+        ref = line.split()[0]
+        if "sim-runtime:" in ref and "candidate" in ref and ref not in pinned:
+            found.append(("image", ref, 0, "candidate nothing pins"))
+    for d in pathlib.Path("/tmp").glob("build-*"):
+        if d.is_dir() and (now - d.stat().st_mtime) / 86400 > 1:
+            found.append(("tmp", str(d), size(d), "build folder over a day old"))
+    return found
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("command", nargs="?", default="plan", choices=["plan", "need"])
+    ap.add_argument("gb", nargs="?", type=float, default=0.0)
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--days", type=float, default=2.0)
+    a = ap.parse_args()
+
+    disk = shutil.disk_usage("/")
+    if a.command == "need":
+        after = disk.free - a.gb * 1e9
+        ok = after >= FLOOR * disk.total
+        print(json.dumps({"freeGB": round(disk.free / 1e9), "jobGB": a.gb, "freeAfterGB": round(after / 1e9),
+                          "floorGB": round(FLOOR * disk.total / 1e9), "ok": ok}))
+        if not ok:
+            print("not enough room: run tools/box-tidy, and ask before going on", file=sys.stderr)
+        return 0 if ok else 1
+
+    items = plan(a.days)
+    total = sum(n for _, _, n, _ in items)
+    print(f"disk: {gb(disk.free)} free of {gb(disk.total)} ({100 * disk.free / disk.total:.0f}%)")
+    for kind, what, n, why in items:
+        print(f"  {kind:<10} {gb(n) if n else '':>9}  {what}  ({why})")
+    print(f"{len(items)} items, {gb(total)}" + ("" if a.apply else "; nothing removed (--apply to remove)"))
+    if not a.apply:
+        return 0
+    for kind, what, _, _ in items:
+        if kind in ("scratch", "checkpoint", "tmp"):
+            remove(pathlib.Path(what))
+        elif kind == "container":
+            run("docker", "rm", what)
+        elif kind == "image":
+            run("docker", "rmi", what)
+    disk = shutil.disk_usage("/")
+    print(f"done: {gb(disk.free)} free ({100 * disk.free / disk.total:.0f}%)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
