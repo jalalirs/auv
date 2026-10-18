@@ -2298,34 +2298,55 @@ Today a controller reaches the platform only from a terminal
 from a zip, both from the screen, each passes its tank check, and a dive is
 flown with each.
 
-## 70. A new place: the iOcean map store, or your own data
+## 70. Assets, made on their own
 
-Asked 2026-10-18; the other most important feature. The New place screen
-asked the user to tick public datasets (GEBCO, Sentinel-2, ICESat-2, the
-learned depth, the Coral Atlas). That is the platform's job, not theirs.
-A place comes from one of two things:
+Agreed 2026-10-18. A reef, a pipeline, an oil platform, a wind turbine's
+foundation, any subsea structure, and a bathymetry survey, are each an
+**asset**: made independently, owned by an organisation, used in any number
+of places. Made today by video-to-3D (67's reconstruction job), later by the
+other systems we add (model uploads, surveys, CAD).
 
-- **The iOcean map store:** places iOcean builds from public data, checks
-  and publishes (Al Fahal, Shushah, Looe Key, Kāne'ohe), open to everybody:
-  a Map store tab beside Yours and Dive videos, each place with where it is,
-  its depth, how much is measured and how much estimated, its picture;
-  **Use it** adds it to the organisation's places, **Build on it** copies it
-  so their own data can improve it.
-- **Their own data:** surveys, soundings, photo mosaics, dive videos (67).
+- **Kinds:** reef (splats and their ground), structure (with a type:
+  pipeline, platform, wind foundation, other; splats or a model, its
+  footprint and how it meets the seabed: stands on it, or drapes along a
+  route), bathymetry (a survey raster or soundings, with its error and datum).
+- **A library:** Places, Assets: each asset's picture, kind, size, how it
+  was made and how much of it was measured; New asset from a video (67),
+  from a survey file; models later.
+- Item 67's reconstruction is the first way an asset is made.
 
-New place is then: choose the area, add your files if any, Build. Every
-public source that reaches the area is always used, the best winning cell
-by cell. Where the area overlaps a store place, the page says so first and
-offers it, so nobody rebuilds what iOcean publishes. The result page keeps
-saying which source made how much and where it is weak.
+**Done when:** the Red Sea video and a pipeline video are both assets in the
+library, made from the screen, each with its page.
 
-Needs: a published-by-iOcean, open-to-all mark on places; Use it and Build
-on it (a place copied into an organisation); the builder always taking every
-public source; the Map store tab.
+## 71. A place is composed: ground, assets, Resolve
 
-**Done when:** a new organisation finds Al Fahal in the map store and uses
-it, builds a new place by choosing an area and pressing Build with no source
-picked, and builds on a store place with its own survey.
+Agreed 2026-10-18; with 69, the feature the user calls most important.
+The New place screen asked the user to tick public datasets; that is the
+platform's job. A place is put together, not picked from feeds:
+
+1. **The ground:** a place from the **iOcean map store** (places iOcean
+   builds from public data, checks and publishes: Al Fahal, Shushah, Looe
+   Key, Kāne'ohe, open to everybody: Use it, or Build on it), a square built
+   from every public source that reaches it (no checkboxes; the best source
+   wins cell by cell), a flat seabed at a depth, or the organisation's own
+   bathymetry asset. Its size and depth.
+2. **The assets:** dropped where they go: a reef here, a pipeline along a
+   route, a platform there, each with a heading.
+3. **Resolve:** each asset fitted to the ground (a reef by its measured
+   ground against the seabed, 67's resolve; a structure set on the seabed or
+   draped along it); candidates shown on the place's chart, nudged,
+   accepted.
+4. **Build:** a draft version of the place (67's lay, for any number of
+   assets), published from the same page.
+
+Where the chosen area overlaps a store place, the page says so first.
+Places gets three tabs: Places (composed), Assets (70), Map store. 67's
+"put it on a map" becomes this composer.
+
+**Done when:** a new organisation composes a place from the map store's Al
+Fahal with the Red Sea reef resolved onto it, and another from a public
+square with a pipeline asset laid along a route, both from the screen,
+published and dived.
 
 # The order to build it in
 
