@@ -302,6 +302,10 @@ def train(step: str, data: pathlib.Path, name: str, quick: bool, *, downsample: 
         argv = [sys.executable, "train.py", "--config-name", "apps/colmap_3dgut.yaml", f"path={data}",
                 f"out_dir={runs}", f"experiment_name={name}", f"dataset.downsample_factor={downsample}",
                 "export_usd.enabled=false", f"n_iterations={steps}", "compute_extra_metrics=false",
+                # Its test pass after training asks for SSIM even with the
+                # extra metrics off (render.py), and fails the run that has
+                # just finished; the splats are what is wanted, not its score.
+                "test_last=false",
                 f"strategy.densify.clone_grad_threshold={grad}", f"strategy.densify.split_grad_threshold={grad}",
                 f"hydra.run.dir={SCRATCH / 'hydra' / name}"]
         with open(log, "w") as out:
