@@ -162,27 +162,81 @@ def bytes_of(said) -> int:
     return int(float(m.group(1)) * 1024 ** "_KMGT".index(m.group(2).upper() or "_"))
 
 
-def described(brief: dict, src: pathlib.Path) -> dict:
+def needs_of(said: dict | None) -> dict:
+    said = said or {}
+    needs = {}
+    if said.get("gpu_memory"):
+        needs["gpuMemoryBytes"] = bytes_of(said["gpu_memory"])
+    if said.get("cpu"):
+        needs["cpu"] = float(said["cpu"])
+    if said.get("memory"):
+        needs["memoryBytes"] = bytes_of(said["memory"])
+    if said.get("gpu") or needs.get("gpuMemoryBytes"):
+        needs["gpu"] = True
+    return needs
+
+
+def catalogue(brief: dict, src: pathlib.Path) -> list[dict]:
+    """The controllers in the source, each {slug, name, controller ("file.py:Class",
+    or "" to be found), rate, needs, requirements}:
+
+      the brief's own controller          one, as the brief says
+      iocean.toml with [[controller]]     each entry (a repository of several)
+      folders holding a controller.py     each, named after its folder
+      iocean.toml with controller = ...   one, as before
+      nothing said                        the one Controller subclass found
+    """
     toml = {}
     if (src / "iocean.toml").is_file():
         try:
             toml = tomllib.loads((src / "iocean.toml").read_text())
         except tomllib.TOMLDecodeError as bad:
             raise Refused(f"iocean.toml does not read: {bad}") from None
-    needs_said = toml.get("needs") or {}
-    needs = {}
-    if needs_said.get("gpu_memory"):
-        needs["gpuMemoryBytes"] = bytes_of(needs_said["gpu_memory"])
-    if needs_said.get("cpu"):
-        needs["cpu"] = float(needs_said["cpu"])
-    if needs_said.get("memory"):
-        needs["memoryBytes"] = bytes_of(needs_said["memory"])
-    if needs_said.get("gpu") or needs.get("gpuMemoryBytes"):
-        needs["gpu"] = True
-    return {"controller": brief.get("controller") or toml.get("controller") or "",
-            "name": brief.get("name") or toml.get("name") or "",
-            "slug": brief.get("slug") or toml.get("slug") or "",
-            "rate": float(brief.get("rateHz") or toml.get("rate") or 20.0), "needs": needs}
+    rate = float(brief.get("rateHz") or toml.get("rate") or 20.0)
+
+    def requirements_for(entry: str) -> pathlib.Path | None:
+        folder = (src / entry.split(":")[0]).parent if entry else src
+        for where in (folder, src):
+            if (where / "requirements.txt").is_file():
+                return where / "requirements.txt"
+        return None
+
+    def one(slug, name, entry, needs, r):
+        return {"slug": slug or "", "name": name or "", "controller": entry or "", "rate": float(r or rate),
+                "needs": needs_of(needs), "requirements": requirements_for(entry or "")}
+
+    if brief.get("controller"):
+        return [one(brief.get("slug"), brief.get("name"), brief["controller"], toml.get("needs"), None)]
+    listed = toml.get("controller")
+    found: list[dict] = []
+    if isinstance(listed, list):
+        for c in listed:
+            if not isinstance(c, dict) or not c.get("entry"):
+                raise Refused("every [[controller]] in iocean.toml needs an entry = \"file.py:Class\"")
+            found.append(one(c.get("slug"), c.get("name"), c["entry"], c.get("needs"), c.get("rate")))
+    folders = sorted(p for p in (src / "controllers").glob("*/controller.py")) if (src / "controllers").is_dir() else []
+    named = {f["controller"].split(":")[0] for f in found}
+    for f in folders:
+        rel = f.relative_to(src).as_posix()
+        if rel not in named:
+            folder_toml = {}
+            if (f.parent / "iocean.toml").is_file():
+                folder_toml = tomllib.loads((f.parent / "iocean.toml").read_text())
+            found.append(one(folder_toml.get("slug") or f.parent.name, folder_toml.get("name"),
+                             folder_toml.get("controller") and f"{f.parent.relative_to(src).as_posix()}/{folder_toml['controller']}" or rel,
+                             folder_toml.get("needs"), folder_toml.get("rate")))
+    if found:
+        wanted = brief.get("controllers")
+        if wanted:
+            found = [f for f in found if f["slug"] in wanted]
+            if not found:
+                raise Refused("none of the controllers asked for is in the source")
+        return found
+    if isinstance(listed, str):
+        return [one(brief.get("slug") or toml.get("slug"), brief.get("name") or toml.get("name"), listed,
+                    toml.get("needs"), toml.get("rate"))]
+    return [one(brief.get("slug") or toml.get("slug"), brief.get("name") or toml.get("name"), "",
+                toml.get("needs"), toml.get("rate"))]
 
 
 FIND = r'''
@@ -247,81 +301,104 @@ def python(code: str, *args, timeout: int, extra: list[pathlib.Path]) -> dict:
 
 # -- the whole of it ---------------------------------------------------------------------------------
 
-def main(argv: list[str]) -> int:
-    started = time.time()
-    brief = json.loads(argv[0])
-    SCRATCH.mkdir(parents=True, exist_ok=True)
-    (SCRATCH / "home").mkdir(exist_ok=True)
-    os.environ.update(HOME=str(SCRATCH / "home"), TMPDIR=str(SCRATCH))
-    report: dict = {"ok": False, "checks": {}}
+def build_one(c: dict, src: pathlib.Path, said: dict, deps_cache: dict) -> dict:
+    """One controller: its packages, its checks, its image. A report of it."""
+    out: dict = {"ok": False, "checks": {}, "slug": c["slug"], "name": c["name"]}
     try:
-        src, said = source(brief)
-        report["source"] = {k: said.get(k) for k in ("kind", "url", "ref", "commit", "path", "objectId", "name") if said.get(k)}
-        meta = described(brief, src)
-
-        deps = SCRATCH / "deps"
-        shutil.rmtree(deps, ignore_errors=True)
-        if (src / "requirements.txt").is_file():
-            tell("packages", "installing requirements.txt")
-            deps.mkdir()
-            run([sys.executable, "-m", "pip", "install", "--no-cache-dir", "--disable-pip-version-check",
-                 "--target", deps, "-r", src / "requirements.txt"], timeout=1800, env={"PIP_NO_INPUT": "1"})
-            tell("packages", f"{sum(1 for _ in deps.iterdir())} packages installed")
+        deps = SCRATCH / "deps" / (c["slug"] or "one")
+        req = c["requirements"]
+        if req is not None:
+            key = req.read_bytes()
+            if key in deps_cache:
+                deps = deps_cache[key]
+            else:
+                shutil.rmtree(deps, ignore_errors=True)
+                deps.mkdir(parents=True)
+                tell("packages", f"{c['slug'] or 'the controller'}: installing {req.relative_to(src).as_posix()}")
+                run([sys.executable, "-m", "pip", "install", "--no-cache-dir", "--disable-pip-version-check",
+                     "--target", deps, "-r", req], timeout=1800, env={"PIP_NO_INPUT": "1"})
+                deps_cache[key] = deps
         extra = [SDK, deps, src]
 
-        tell("find", "finding the controller")
-        found = python(FIND, src, SDK, deps, meta["controller"], timeout=120, extra=extra)
+        found = python(FIND, src, SDK, deps, c["controller"], timeout=120, extra=extra)
         if found.get("refused"):
             raise Refused(found["refused"])
-        slug = meta["slug"] or re.sub(r"[^a-z0-9]+", "-", pathlib.Path(found["controller"].split(":")[0]).stem.lower()).strip("-")
+        slug = c["slug"] or re.sub(r"[^a-z0-9]+", "-", pathlib.Path(found["controller"].split(":")[0]).stem.lower()).strip("-")
         if not SLUG.match(slug):
             raise Refused(f"{slug!r} is not a usable slug: lower case letters, digits and dashes, 2 to 63")
-        name = meta["name"] or found["controller"].split(":")[1]
-        report.update(controller=found["controller"], vehicle=found["vehicle"], commands=found["commands"],
-                      slug=slug, name=name)
-        report["checks"]["vehicle"] = {"ok": not found["problems"], "problems": found["problems"]}
-        tell("check", f"{found['controller']} flies the {found['vehicle']}"
-             if not found["problems"] else f"{found['controller']} cannot fly the {found['vehicle']}: " + "; ".join(found["problems"]))
+        name = c["name"] or found["controller"].split(":")[1]
+        out.update(controller=found["controller"], vehicle=found["vehicle"], commands=found["commands"], slug=slug, name=name)
+        out["checks"]["vehicle"] = {"ok": not found["problems"], "problems": found["problems"]}
+        tell("check", f"{slug}: {found['controller']} flies the {found['vehicle']}"
+             if not found["problems"] else f"{slug}: cannot fly the {found['vehicle']}: " + "; ".join(found["problems"]))
         if found["problems"]:
             raise Refused("it cannot fly the vehicle it was written for: " + "; ".join(found["problems"]))
 
-        tell("check", f"{TANK_SECONDS:.0f} s in the tank")
         file, _, cls = found["controller"].partition(":")
         try:
             tank = python(TANK, f"{src / file}:{cls}", SDK, deps, TANK_SECONDS, timeout=TANK_TIMEOUT, extra=extra)
         except subprocess.TimeoutExpired:
             raise Refused(f"it did not finish {TANK_SECONDS:.0f} s in the tank within {TANK_TIMEOUT} s") from None
         score = tank["score"]
-        # No task in the tank, no score: null, not NaN, which JSON cannot say.
         score = round(score, 4) if isinstance(score, (int, float)) and score == score else None
-        report["checks"]["tank"] = {"ok": True, "seconds": round(tank["seconds"], 1), "score": score,
-                                    "said": tank["said"], "wallSeconds": tank["wall"]}
-        tell("check", f"the tank: {tank['said']}")
+        out["checks"]["tank"] = {"ok": True, "seconds": round(tank["seconds"], 1), "score": score,
+                                 "said": tank["said"], "wallSeconds": tank["wall"]}
+        tell("check", f"{slug}: the tank: {tank['said']}")
 
-        # What it will use, from the vehicle it was written for (as `iocean deploy` says it).
-        report["subscribes"] = ["/depth", "/imu/data"] + (["/dvl/twist"] if "dvl" in found["carries"] else [])
-        report["publishes"] = ["/cmd_vel" if found["commands"] == "wrench" else "/thruster_cmd"]
-        report["needs"] = meta["needs"]
-        report["wantsGpu"] = bool(meta["needs"].get("gpu"))
+        out["subscribes"] = ["/depth", "/imu/data"] + (["/dvl/twist"] if "dvl" in found["carries"] else [])
+        out["publishes"] = ["/cmd_vel" if found["commands"] == "wrench" else "/thruster_cmd"]
+        out["needs"] = c["needs"]
+        out["wantsGpu"] = bool(c["needs"].get("gpu"))
 
-        tell("image", "assembling the image on the ROS 2 base")
         layers = [(*oci.layer_of(oci.files_under(SDK / "iocean", "/opt/coral_city_sdk/iocean")
                                  + oci.files_under(src, "/opt/controller/source")), "the SDK and the controller's source")]
         if deps.is_dir() and any(deps.iterdir()):
             layers.append((*oci.layer_of(oci.files_under(deps, "/opt/controller/packages")), "its Python packages"))
         built = oci.assemble(
-            BASE, SCRATCH / "image",
-            [(packed, diff_id, what) for packed, diff_id, what in layers],
-            env={"PYTHONPATH": "/opt/coral_city_sdk:/opt/controller/packages:/opt/controller/source",
-                 "PYTHONUNBUFFERED": "1"},
+            BASE, SCRATCH / "layout", layers,
+            env={"PYTHONPATH": "/opt/coral_city_sdk:/opt/controller/packages:/opt/controller/source", "PYTHONUNBUFFERED": "1"},
             entrypoint=["/bin/bash", "-lc", "source /opt/ros/jazzy/setup.bash && exec python3 -m iocean.ros "
-                        f"/opt/controller/source/{file}:{cls} --rate {meta['rate']:g}"],
+                        f"/opt/controller/source/{file}:{cls} --rate {c['rate']:g}"],
             labels={"io.iocean.controller": found["controller"], "io.iocean.slug": slug,
                     **({"io.iocean.commit": said["commit"]} if said.get("commit") else {})},
             tag=slug)
-        oci.tar_layout(SCRATCH / "image", OUTPUTS / "image.oci.tar")
-        report.update(imageDigest=built["digest"], layers=built["layers"], sizeBytes=built["sizeBytes"], ok=True)
-        tell("image", f"{built['layers']} layers, {built['sizeBytes'] / 2 ** 20:.0f} MB", digest=built["digest"])
+        out.update(imageDigest=built["digest"], layers=built["layers"], sizeBytes=built["sizeBytes"],
+                   image=slug, ok=True)
+        out["_built"] = built
+        tell("image", f"{slug}: {built['layers']} layers, {built['sizeBytes'] / 2 ** 20:.0f} MB", digest=built["digest"])
+    except Refused as why:
+        out["failure"] = str(why)
+        tell("check", f"{out.get('slug') or 'a controller'}: refused: {why}"[:2000])
+    except subprocess.TimeoutExpired as late:
+        out["failure"] = f"it took too long: {late}"
+    return out
+
+
+def main(argv: list[str]) -> int:
+    started = time.time()
+    brief = json.loads(argv[0])
+    SCRATCH.mkdir(parents=True, exist_ok=True)
+    (SCRATCH / "home").mkdir(exist_ok=True)
+    os.environ.update(HOME=str(SCRATCH / "home"), TMPDIR=str(SCRATCH))
+    report: dict = {"ok": False, "controllers": []}
+    try:
+        src, said = source(brief)
+        report["source"] = {k: said.get(k) for k in ("kind", "url", "ref", "commit", "path", "objectId", "name") if said.get(k)}
+        listed = catalogue(brief, src)
+        tell("find", f"{len(listed)} controller{'s' if len(listed) != 1 else ''}"
+             + (": " + ", ".join(c["slug"] for c in listed if c["slug"]) if any(c["slug"] for c in listed) else ""),
+             controllers=len(listed))
+        cache: dict = {}
+        for i, c in enumerate(listed):
+            tell("controller", f"{c['slug'] or 'the controller'}", n=i + 1, of=len(listed))
+            report["controllers"].append(build_one(c, src, said, cache))
+        slugs = [c["slug"] for c in report["controllers"] if c.get("slug")]
+        if len(slugs) != len(set(slugs)):
+            raise Refused("two controllers have the same slug: " + ", ".join(sorted({s for s in slugs if slugs.count(s) > 1})))
+        report["ok"] = any(c["ok"] for c in report["controllers"])
+        if not report["ok"]:
+            report["failure"] = "no controller in the source could be built: " + "; ".join(
+                f"{c.get('slug') or '?'}: {c.get('failure')}" for c in report["controllers"])
     except Refused as why:
         report["failure"] = str(why)
         tell("failed", str(why)[:2000])
@@ -330,21 +407,25 @@ def main(argv: list[str]) -> int:
         report["failure"] = f"the build broke: {failed}"
         tell("failed", report["failure"][:2000])
     report["seconds"] = round(time.time() - started)
+    built = [c.pop("_built") for c in report["controllers"] if "_built" in c]
     (OUTPUTS / "report.json").write_text(json.dumps(report, indent=1))
-    if not report["ok"]:
-        # Every declared output must exist or the worker fails the job and
-        # the report saying why is lost; an empty tar stands for no image.
-        import tarfile
-        with tarfile.open(OUTPUTS / "image.oci.tar", "w"):
+    # Every declared output must exist or the worker fails the job and the
+    # report saying why is lost. images.oci.tar is one OCI layout holding
+    # every controller built, each named by its slug in index.json and
+    # sharing the base's blobs; it is an empty tar when none was built.
+    import tarfile
+    if built:
+        oci.finish(SCRATCH / "layout", built)
+        oci.tar_layout(SCRATCH / "layout", OUTPUTS / "images.oci.tar")
+    else:
+        with tarfile.open(OUTPUTS / "images.oci.tar", "w"):
             pass
     if SCRATCH.is_relative_to(OUTPUTS) and not os.environ.get("IOCEAN_KEEP_SCRATCH"):
         shutil.rmtree(SCRATCH, ignore_errors=True)
-    if report["ok"]:
-        tell("done", f"{report['name']} built: {report['controller']}, {report['checks']['tank']['said']}",
-             digest=report["imageDigest"])
-        return 0
-    # A source that cannot be built is still a finished build: its report
-    # says why, and the job succeeds so the report is collected.
+    built = [c for c in report["controllers"] if c.get("ok")]
+    tell("done" if report["ok"] else "failed",
+         f"{len(built)} of {len(report['controllers'])} built" + (": " + ", ".join(c["slug"] for c in built) if built else "")
+         if report["controllers"] else report.get("failure", "nothing built"))
     return 0
 
 

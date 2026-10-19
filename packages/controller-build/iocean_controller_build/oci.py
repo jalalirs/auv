@@ -122,11 +122,13 @@ def files_under(folder: pathlib.Path, inside: str, skip=("__pycache__", ".git"))
 def assemble(base: pathlib.Path, out: pathlib.Path, layers: list[tuple[bytes, str, str]],
              env: dict[str, str], entrypoint: list[str], labels: dict[str, str], tag: str = "latest") -> dict:
     """The base image with `layers` ((gzipped, diff id, what it is)) on top,
-    `env` merged into its environment, `entrypoint` set; written as a layout
-    at `out`. Returns the manifest's digest and sizes."""
-    if out.exists():
-        shutil.rmtree(out)
-    shutil.copytree(base, out, ignore=shutil.ignore_patterns("index.json", "manifest.json", "repositories"))
+    `env` merged into its environment, `entrypoint` set; added to the layout
+    at `out` (made from the base the first time), so several images share
+    the base's blobs. Returns the manifest's descriptor, digest and sizes;
+    `finish` writes the layout's index once every image is in."""
+    if not (out / "blobs").is_dir():
+        out.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(base / "blobs", out / "blobs")
     layout = Layout(out)
     _, manifest = Layout(base).manifest()
     config = json.loads(Layout(base).read(manifest["config"]["digest"]))
@@ -147,24 +149,32 @@ def assemble(base: pathlib.Path, out: pathlib.Path, layers: list[tuple[bytes, st
                 "layers": [{**layer, "mediaType": oci_type(layer["mediaType"])} for layer in manifest["layers"]]}
     manifest_bytes = json.dumps(manifest, separators=(",", ":"), sort_keys=True).encode()
     digest = layout.write(manifest_bytes)
+    descriptor = {"mediaType": MANIFEST, "digest": digest, "size": len(manifest_bytes),
+                  "platform": {"architecture": "amd64", "os": "linux"},
+                  "annotations": {"org.opencontainers.image.ref.name": tag, "io.containerd.image.name": f"iocean/controller:{tag}"}}
+    return {"digest": digest, "layers": len(manifest["layers"]), "descriptor": descriptor, "manifest": manifest,
+            "sizeBytes": sum(layer["size"] for layer in manifest["layers"]) + len(config_bytes)}
+
+
+def finish(out: pathlib.Path, images: list[dict]) -> None:
+    """The layout's index, one entry per image (named by its ref.name), with
+    the manifest Docker's own loader reads beside it, so `docker load` takes
+    it as well as a registry; and only the blobs those images use."""
     (out / "oci-layout").write_text(json.dumps({"imageLayoutVersion": "1.0.0"}))
-    (out / "index.json").write_text(json.dumps({"schemaVersion": 2, "mediaType": INDEX, "manifests": [
-        {"mediaType": MANIFEST, "digest": digest, "size": len(manifest_bytes),
-         "platform": {"architecture": "amd64", "os": "linux"},
-         "annotations": {"org.opencontainers.image.ref.name": tag, "io.containerd.image.name": f"iocean/controller:{tag}"}}]}))
-    # And the manifest Docker's own loader reads, as `docker save` writes it,
-    # so the image also loads with `docker load` (a registry reads index.json).
+    (out / "index.json").write_text(json.dumps({"schemaVersion": 2, "mediaType": INDEX,
+                                                "manifests": [i["descriptor"] for i in images]}))
     (out / "manifest.json").write_text(json.dumps([{
-        "Config": f"blobs/sha256/{manifest['config']['digest'].split(':', 1)[1]}",
-        "RepoTags": [f"iocean/controller:{tag}"],
-        "Layers": [f"blobs/sha256/{layer['digest'].split(':', 1)[1]}" for layer in manifest["layers"]]}]))
-    # Only the blobs this image uses: the base's own index and manifests go.
-    used = {manifest["config"]["digest"], digest, *(layer["digest"] for layer in manifest["layers"])}
+        "Config": f"blobs/sha256/{i['manifest']['config']['digest'].split(':', 1)[1]}",
+        "RepoTags": [i["descriptor"]["annotations"]["io.containerd.image.name"]],
+        "Layers": [f"blobs/sha256/{layer['digest'].split(':', 1)[1]}" for layer in i["manifest"]["layers"]],
+    } for i in images]))
+    used = {i["digest"] for i in images}
+    for i in images:
+        used.add(i["manifest"]["config"]["digest"])
+        used.update(layer["digest"] for layer in i["manifest"]["layers"])
     for blob in (out / "blobs" / "sha256").iterdir():
         if f"sha256:{blob.name}" not in used:
             blob.unlink()
-    return {"digest": digest, "layers": len(manifest["layers"]),
-            "sizeBytes": sum(layer["size"] for layer in manifest["layers"]) + len(config_bytes)}
 
 
 def tar_layout(layout: pathlib.Path, out: pathlib.Path) -> None:
