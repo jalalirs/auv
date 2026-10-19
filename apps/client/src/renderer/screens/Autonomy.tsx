@@ -20,10 +20,15 @@ import type { Held } from "./Deck.js";
 import { headToHead, recordOf, saidAs } from "./flown.js";
 import { ago } from "./parts.js";
 import { useState } from "react";
-import { Button, Dialog, Menu, Page, Status, Table } from "../ui/components.js";
+import type { Platform } from "@coral-city/api";
+import { Button, Menu, Page, Status, Table } from "../ui/components.js";
+import { Builds, DeployDialog } from "./Deploying.js";
 
-export function Autonomy({ held, onFly, onRuns, onCompare }: {
+export function Autonomy({ platform, held, onFly, onRuns, onCompare, onChanged }: {
+  platform?: Platform;
   held: Held;
+  /** Read the controllers again, when a build has registered one. */
+  onChanged?: () => void;
   /** Fly a single task with this controller (its newest build). */
   onFly?: (stackId: string) => void;
   /** Its dives, in Runs. */
@@ -31,6 +36,13 @@ export function Autonomy({ held, onFly, onRuns, onCompare }: {
   onCompare?: () => void;
 }): React.JSX.Element {
   const [deploying, setDeploying] = useState(false);
+  const [tab, setTab] = useState("controllers");
+  const pullLatest = async (slug: string) => {
+    if (!platform || !held.institution) return;
+    const builds = await platform.controllerBuildsOf(held.institution.id);
+    const last = builds.find((b) => (b.report as { slug?: string } | undefined)?.slug === slug || b.slug === slug);
+    if (last) { await platform.controllerBuildAgain(last.id); setTab("builds"); }
+  };
   type Row = Held["controllers"][number] & { flew: ReturnType<typeof recordOf>; against: string[] };
   const rows: Row[] = held.controllers.map((one) => ({
     ...one,
@@ -45,7 +57,10 @@ export function Autonomy({ held, onFly, onRuns, onCompare }: {
   return (
     <Page title="Controllers" subtitle="What flies the vehicle other than you: each one's dives, scores, and builds."
           info="Your controllers, in containers, pinned by digest. Each talks ROS 2 to the vehicle exactly as it would to a real one and imports nothing of ours: the same binary should run in a tank and in the sea. A dive pins a build; a person thinks in controllers, so every build folds under one row."
-          actions={<Button onClick={() => setDeploying(true)}>Deploy one</Button>}>
+          tabs={platform ? [{ key: "controllers", label: "Controllers", count: rows.length }, { key: "builds", label: "Builds" }] : undefined}
+          tab={tab} onTab={setTab}
+          actions={<Button kind="primary" onClick={() => setDeploying(true)}>Deploy one</Button>}>
+      {tab === "builds" && platform ? <Builds platform={platform} held={held} onRefresh={onChanged} /> : (
       <Table rows={rows} rowKey={(r) => r.slug}
              search={(r) => `${r.name} ${r.slug}`} searchLabel="Search controllers"
              facets={[{ key: "flown", label: "Flown", value: (r) => r.flew.dives === 0 ? "never flown" : "flown" },
@@ -81,21 +96,16 @@ export function Autonomy({ held, onFly, onRuns, onCompare }: {
                  <Menu items={[
                    { label: "Its dives", disabled: r.flew.dives === 0, onSelect: () => onRuns?.(r.name) },
                    { label: "Compare controllers", onSelect: () => onCompare?.() },
+                   ...((r.newest as { source?: { kind?: string } }).source?.kind === "git"
+                     ? [{ label: "Pull latest from GitHub", onSelect: () => void pullLatest(r.slug) }] : []),
                  ]} />
                </>
              )} />
-      {deploying ? (
-        <Dialog title="Deploying a controller" onClose={() => setDeploying(false)}
-                actions={<Button kind="primary" onClick={() => setDeploying(false)}>Done</Button>}>
-          <ol className="steps">
-            <li><code>pip install -e packages/sdk-python</code></li>
-            <li>Write a class against <code>iocean.Controller</code>.</li>
-            <li>Try it in the tank: <code>iocean tank</code></li>
-            <li>Deploy it: <code>iocean deploy your.py --slug name</code></li>
-          </ol>
-          <p className="note">A controller that is a model says what it needs with <code>--gpu-memory 8G</code>, and the scheduler places the dive where both it and the simulator fit.</p>
-        </Dialog>
-      ) : null}
+      )}
+      {deploying ? (platform ? (
+        <DeployDialog platform={platform} held={held} onClose={() => setDeploying(false)}
+                      onStarted={() => { setDeploying(false); setTab("builds"); }} />
+      ) : null) : null}
     </Page>
   );
 }

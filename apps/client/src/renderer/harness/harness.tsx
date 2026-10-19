@@ -272,6 +272,42 @@ Object.assign(platform, {
   adoptStorePlace: (org: string, city: string) => { said.push(`adopt ${city} for ${org}`); storeList.forEach((s) => { if (s.id === city) s.adopted = true; }); return delay({}); },
   unadoptStorePlace: (org: string, city: string) => { said.push(`unadopt ${city} for ${org}`); storeList.forEach((s) => { if (s.id === city) s.adopted = false; }); return delay({}); },
 });
+// Controller builds that walk through a real build's steps.
+const buildSteps = [
+  { step: "source", say: "cloning https://github.com/jalalirs/auv at r6-coupled-engine" },
+  { step: "source", say: "at commit 2f108f4a929a" },
+  { step: "find", say: "finding the controller" },
+  { step: "check", say: "hold.py:StationHold flies the BlueROV2" },
+  { step: "check", say: "the tank: score nan over 20 s, ended at depth 6.99 m, heading 4°, 0.00 m from where it began" },
+  { step: "image", say: "8 layers, 492 MB" },
+];
+const controllerBuilds: Doc[] = [];
+const viewOf = (b: Doc) => {
+  const shown = Math.min(buildSteps.length, Math.floor((Date.now() - (b.started as number)) / 1500));
+  const done = shown >= buildSteps.length;
+  return { ...b, state: done ? "ready" : shown === 0 ? "queued" : "running", jobState: done ? "succeeded" : "running",
+           steps: buildSteps.slice(0, shown).map((s) => ({ at: now(), ...s })),
+           ...(done ? { report: { ok: true, name: "Station hold (from GitHub)", slug: "station-hold-github", controller: "hold.py:StationHold",
+             vehicle: "BlueROV2", sizeBytes: 515457118, source: { kind: "git", commit: "2f108f4a929aec0f" },
+             checks: { vehicle: { ok: true, problems: [] }, tank: { ok: true, said: "20 s, 0.00 m from where it began" } } } } : {}) };
+};
+Object.assign(platform, {
+  startControllerBuild: (org: string, brief: Doc) => {
+    said.push(`controller build for ${org}: ${JSON.stringify(brief)}`);
+    const b = { id: id("ctlb"), orgId: org, jobId: "job_c", brief, slug: "station-hold-github", createdBy: "p1", createdAt: now(), started: Date.now() };
+    controllerBuilds.unshift(b);
+    return delay(viewOf(b));
+  },
+  controllerBuildsOf: () => delay(controllerBuilds.map(viewOf)),
+  controllerBuild: (bid: string) => delay(viewOf(controllerBuilds.find((b) => b.id === bid)!)),
+  controllerBuildAgain: (bid: string) => {
+    said.push(`again ${bid}`);
+    const old = controllerBuilds.find((b) => b.id === bid)!;
+    const b = { ...old, id: id("ctlb"), createdAt: now(), started: Date.now() };
+    controllerBuilds.unshift(b);
+    return delay(viewOf(b));
+  },
+});
 Object.assign(window, { said, store });
 
 const held = {
@@ -350,7 +386,7 @@ function Harness({ packages }: { packages: Packages }) {
         ) : where.page === "fleet" ? (
           <Fleet held={held} packages={packages} onOpen={(v) => said.push(`vehicle ${JSON.stringify(v)}`)} />
         ) : where.page === "controllers" ? (
-          <Autonomy held={held} onFly={(s) => said.push(`fly with ${s}`)} onRuns={(b) => said.push(`runs by ${b}`)} />
+          <Autonomy platform={p} held={held} onFly={(s) => said.push(`fly with ${s}`)} onRuns={(b) => said.push(`runs by ${b}`)} />
         ) : where.page === "video" ? (
           <Reconstructions platform={p} held={held} onBack={() => setWhere((w) => ({ ...w, page: "places" }))}
                            onOpen={(r) => setWhere((w) => ({ ...w, page: "recon", mission: r }))} />

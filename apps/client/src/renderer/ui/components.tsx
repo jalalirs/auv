@@ -165,8 +165,8 @@ export type Column<T> = {
   /** 1 always shown; 2 dropped below 900 px of table; 3 below 1150 px. */
   priority?: 1 | 2 | 3;
   width?: string;
-  /** Takes the room the others leave, its text clipped with an ellipsis
-   *  (the first column, unless another says). */
+  /** Takes (a share of) the room the others leave, its text clipped with
+   *  an ellipsis (the first column, unless others say). */
   grow?: boolean;
 };
 
@@ -232,11 +232,11 @@ export function Table<T>({ rows, columns, rowKey, onRow, search, searchLabel = "
   const filtering = words.trim() !== "" || Object.values(picked).some((s) => s.size > 0);
   // One column takes the slack and clips its words, so a long description
   // never pushes the row's actions off the side of the page.
-  const grows = columns.find((c) => c.grow)?.key ?? columns[0]?.key;
-  const cls = (c: Column<T>) => `${c.align === "right" ? "right " : ""}p${c.priority ?? 1}${c.key === grows ? " grow" : ""}`;
+  const grows = new Set(columns.some((c) => c.grow) ? columns.filter((c) => c.grow).map((c) => c.key) : [columns[0]?.key]);
+  const cls = (c: Column<T>) => `${c.align === "right" ? "right " : ""}p${c.priority ?? 1}${grows.has(c.key) ? " grow" : ""}`;
 
   return (
-    <div className="dt">
+    <div className={`dt${grows.size === 1 ? " one-grows" : ""}`}>
       {search || facets.length ? (
         <div className="dt-tools">
           {search ? (
@@ -261,7 +261,7 @@ export function Table<T>({ rows, columns, rowKey, onRow, search, searchLabel = "
             <tr>
               {columns.map((c) => (
                 <th key={c.key} className={cls(c)}
-                    style={c.width ? { width: c.width } : undefined}>
+                    style={c.width ? { width: c.width } : grows.size > 1 && grows.has(c.key) ? { width: `${Math.floor(100 / grows.size)}%` } : undefined}>
                   {c.sort ? (
                     <button type="button" onClick={() => setSort((s) => s?.key === c.key ? { key: c.key, down: !s.down } : { key: c.key, down: false })}>
                       {c.label}{sort?.key === c.key ? (sort.down ? " ↓" : " ↑") : ""}
@@ -279,7 +279,8 @@ export function Table<T>({ rows, columns, rowKey, onRow, search, searchLabel = "
                 <tr key={key} className={`${onRow ? "open" : ""}${chosen === key ? " chosen" : ""}`}
                     onClick={onRow ? () => onRow(r) : undefined}>
                   {columns.map((c) => (
-                    <td key={c.key} className={cls(c)}>{c.render(r)}</td>
+                    <td key={c.key} className={cls(c)}
+                        style={grows.size > 1 && grows.has(c.key) ? { width: `${Math.floor(100 / grows.size)}%` } : undefined}>{c.render(r)}</td>
                   ))}
                   {actions ? <td className="dt-actions" onClick={(e) => e.stopPropagation()}>{actions(r)}</td> : null}
                 </tr>

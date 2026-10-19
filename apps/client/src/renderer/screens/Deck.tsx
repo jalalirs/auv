@@ -247,7 +247,7 @@ export function Deck({ platform, onDiving }: {
           <VehicleDetail held={held} packages={packages} id={where.id} slug={where.slug}
                          onBack={() => back({ page: "fleet" })} />
         ) : where.page === "autonomy" ? (
-          <Autonomy held={held}
+          <Autonomy platform={platform} held={held} onChanged={read}
                     onFly={(stack) => { try { localStorage.setItem("coral-city.controller", stack); } catch { /* remembered or not */ } setWhere({ page: "dive" }); }}
                     onRuns={(by) => setWhere({ page: "runs", by })}
                     onCompare={() => setWhere({ page: "runs", view: "compare" })} />
