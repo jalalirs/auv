@@ -2298,6 +2298,21 @@ Today a controller reaches the platform only from a terminal
 from a zip, both from the screen, each passes its tank check, and a dive is
 flown with each.
 
+**Where it is (2026-10-19): done, live.** Controllers are developed in
+github.com/jalalirs/iocean-controllers (public; a submodule of auv at
+controllers/; an iocean.toml index of [[controller]] entries, one folder each).
+One build clones a source once and builds every controller in it (or a zip,
+or one), each vehicle-checked and run 20 s in the SDK tank, assembled on the
+ROS 2 base without an image builder (packages/controller-build), all in one
+OCI layout sharing the base; the control plane pushes them to the box's
+registry and registers a stack each with its source and commit. Proven
+through MCP: controllers_look found 4, controllers_build built 4 of 4 from
+c3f8af4 into autonomy/coral/*, and dives_start (which had dropped its
+controller until now) flew station-hold at Al Fahal for 60 s on the new
+stack. Not done: private repositories (an org-stored token); a zip through
+the platform end to end (built and checked in the job, not yet from the
+screen).
+
 ## 70. Assets, made on their own
 
 Agreed 2026-10-18. A reef, a pipeline, an oil platform, a wind turbine's
