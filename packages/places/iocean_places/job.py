@@ -148,7 +148,12 @@ def recipe_of(brief: dict, inputs: pathlib.Path = INPUTS, nasa: bool | None = No
         sources.append({"use": "sentinel2-stumpf", "as": "stumpf", "place": brief.get("slug") or "place"})
     if "sentinel2" in asked:
         sources.append({"use": "sentinel2-median", "as": "sentinel"})
-    if "allen-coral-atlas" in asked:
+    # The coral atlas says where reef, sand and seagrass are, and so how much
+    # coral grows where. A place built on another keeps it: without it the
+    # reef was regrown from the seabed's shape alone, and a place built on Al
+    # Fahal came out with 2,400,000 colonies (the grower's cap) against Al
+    # Fahal's own 1,039,632.
+    if "allen-coral-atlas" in asked or (base and brief.get("coral") is not False):
         sources.append({"use": "allen-coral-atlas", "as": "atlas"})
     if "icesat2" in asked:
         sources.append({"use": "icesat2", "as": "icesat"})

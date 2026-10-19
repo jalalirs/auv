@@ -61,6 +61,10 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
                         "description": "[latitude, longitude] in degrees, the middle of the square; "
                                        "with base_place, the base's own square is used"},
              "across_m": {"type": "number", "default": 1000, "description": "how wide the square is, 100 m to 20 km"},
+             "flat_depth_m": {"type": "number",
+                              "description": "a flat seabed at this depth (0.5 to 60 m) instead of any data, "
+                                             "said to be assumed: the ground for assets nobody can place"},
+             "coral": {"type": "boolean", "description": "false grows no colonies: bare ground round what is put in it"},
              "base_place": {"type": "string",
                             "description": "a place to build on (from store_places): its seabed first, "
                                            "the institution's files laid over it"},
@@ -73,8 +77,9 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
                                       "[{\"objectId\": ..., \"use\": \"raster\"|\"points\"|\"ortho\", \"name\": ..., \"errorM\": 0.1}]"},
              "cells": {"type": "integer", "description": "grid cells across, 64 to 2048; default 512"}},
          "required": ["name"]},
-        lambda p, name, centre=None, across_m=1000.0, sources=None, files=None, cells=None, base_place="":
-            tools.places_build(p, name, centre, across_m, sources, files, cells, base_place)),
+        lambda p, name, centre=None, across_m=1000.0, sources=None, files=None, cells=None, base_place="",
+               flat_depth_m=None, coral=None:
+            tools.places_build(p, name, centre, across_m, sources, files, cells, base_place, flat_depth_m, coral)),
     "store_places": (
         "The iOcean map store: places iOcean built from public data, checked and published, open to "
         "everybody. Each with how deep it is, how much of its depth was measured, its reef, and whether "

@@ -95,7 +95,7 @@ def test_a_place_built_on_another_starts_from_its_seabed_and_fetches_nothing(tmp
                                         "files": [{"use": "raster", "path": "files/01-dem.tif", "errorM": 0.1}]},
                                        inputs=tmp_path, nasa=False)
     assert recipe["sources"][0] == {"use": "place", "as": "base", "path": str(tmp_path / "base")}
-    assert [s["use"] for s in recipe["sources"]] == ["place", "raster"]
+    assert [s["use"] for s in recipe["sources"]] == ["place", "raster", "allen-coral-atlas"]
     assert expected == ["base.depth", "own1.depth"]
     assert recipe["models"] == [] and recipe["scene"]["featherCells"] == 10
     assert left == []
@@ -104,7 +104,7 @@ def test_a_place_built_on_another_starts_from_its_seabed_and_fetches_nothing(tmp
 def test_a_base_with_public_data_named_still_lays_gebco_under_everything(tmp_path):
     recipe, _, expected = recipe_of({"centre": [22.284, 38.962], "acrossM": 3000, "sources": ["gebco"],
                                      "base": {"cityId": "city_1", "path": "base"}}, inputs=tmp_path, nasa=False)
-    assert [s["use"] for s in recipe["sources"]] == ["place", "gebco"]
+    assert [s["use"] for s in recipe["sources"]] == ["place", "allen-coral-atlas", "gebco"]
     assert expected == ["base.depth", "gebco.depth"]
 
 
@@ -115,3 +115,11 @@ def test_every_public_source_is_what_an_empty_list_became_on_the_platform():
     uses = [s["use"] for s in recipe["sources"]]
     assert "icesat2" not in uses and left and left[0].startswith("icesat2")
     assert uses[-1] == "gebco" and "allen-coral-atlas" in uses and "sentinel2-median" in uses
+
+
+def test_a_place_built_on_another_keeps_the_coral_atlas(tmp_path):
+    """Its coral, not a reef regrown from the seabed's shape."""
+    recipe, _, _ = recipe_of({"centre": [22.28, 38.96], "acrossM": 3000, "sources": [],
+                              "base": {"kind": "place", "path": "base"}}, inputs=tmp_path, nasa=False)
+    uses = [s["use"] for s in recipe["sources"]]
+    assert uses[0] == "place" and "allen-coral-atlas" in uses and "gebco" not in uses

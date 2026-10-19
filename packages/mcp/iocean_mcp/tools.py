@@ -1023,7 +1023,7 @@ def _slug(name: str) -> str:
 
 def places_build(platform: Platform, name: str, centre: list | None = None, across_m: float = 1000.0,
                  sources: list | None = None, files: list | None = None, cells: int | None = None,
-                 base_place: str = "") -> dict:
+                 base_place: str = "", flat_depth_m: float | None = None, coral: bool | None = None) -> dict:
     """Found a place of the institution's own and build it from its data."""
     if base_place and centre is None:
         # The new place takes the base's square; the founding record needs
@@ -1048,7 +1048,8 @@ def places_build(platform: Platform, name: str, centre: list | None = None, acro
     for attempt in range(6):
         slug = base if attempt == 0 else f"{base}-{attempt + 1}"
         try:
-            made_of = ", ".join(sources) if sources else (f"the place {base_place}" if base_place else "every public source")
+            made_of = (f"a flat seabed at {flat_depth_m:g} m" if flat_depth_m is not None
+                       else ", ".join(sources) if sources else (f"the place {base_place}" if base_place else "every public source"))
             place = platform.request("POST", f"/api/v1/organisations/{institution['id']}/cities", {
                 "slug": slug, "name": name, "verticalDatum": "mean sea level",
                 "summary": f"built from {made_of}", "extent": extent})
@@ -1063,6 +1064,13 @@ def places_build(platform: Platform, name: str, centre: list | None = None, acro
     brief: dict[str, Any] = {"centre": [lat, lon], "acrossM": float(across_m), "sources": list(sources or [])}
     if base_place:
         brief["base"] = {"cityId": base_place}
+    if flat_depth_m is not None:
+        if base_place:
+            raise Refused(400, "invalid", "a flat seabed or a place to build on, not both")
+        brief["flatDepthM"] = float(flat_depth_m)
+        brief["sources"] = []
+    if coral is not None:
+        brief["coral"] = bool(coral)
     if files:
         brief["files"] = files
     if cells:
