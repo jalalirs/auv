@@ -312,6 +312,9 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/controller-builds/{buildId}/again",
 		Summary: "build the same source again; from a repository, its newest commit",
 		Action:  policy.DiveWrite, Resource: d.ofControllerBuild("buildId"), Handle: d.againControllerBuild})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/controller-sources/look",
+		Summary: "which controllers a public GitHub repository holds, to choose from before building",
+		Action:  policy.DiveRead, Resource: callersOrg(), Handle: d.lookControllerSource})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations/{orgId}/autonomy",
 		Summary: "an institution's autonomy", Action: policy.DiveRead,
 		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.listStacks})

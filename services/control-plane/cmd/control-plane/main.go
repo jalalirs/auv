@@ -122,6 +122,7 @@ func run(logger *slog.Logger) error {
 			Image: settings.ControllerBuildImage, ImageBytes: settings.ControllerImageBytes,
 			RegistryPush: settings.ControllerRegistryPush, RegistryPull: settings.ControllerRegistryPull,
 		}),
+		Looker: controllerbuild.NewLooker(),
 		Drafter: planning.Drafter{
 			URL: settings.ModelURL, Key: settings.ModelKey, Model: settings.Model,
 			MaxTokens: settings.ModelMaxTokens,

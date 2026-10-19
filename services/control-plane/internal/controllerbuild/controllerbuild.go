@@ -1,13 +1,15 @@
 // Package controllerbuild builds controllers from their source on the
 // platform's machines.
 //
-// Somebody names a GitHub repository (a branch, a tag or a commit, and the
-// folder the controller is in) or uploads a zip. The platform runs the
-// controller build as a job: it fetches the source, finds the controller's
-// entry point, builds its image without the host's Docker, and flies it in a
-// tank against the SDK's topic contract. A build that passes is put in the
-// platform's registry and registered as a new build of that controller, with
-// the commit or the upload it came from; one that does not says why.
+// Somebody names a GitHub repository (a branch, a tag or a commit, and a
+// folder) or uploads a zip. One source may hold several controllers, listed
+// in an iocean.toml at its root or each in a folder of its own under
+// controllers/. The platform runs the controller build as a job: it fetches
+// the source, finds the controllers, builds each one's image without the
+// host's Docker, and flies each in a tank against the SDK's topic contract.
+// Each that passes is put in the platform's registry and registered as a new
+// build of that controller, with the commit or the upload it came from; each
+// that does not says why, and does not stop the others.
 //
 // The job's image is the platform's, named in configuration, and nothing in
 // the brief chooses what runs: that is why it may reach the network (to fetch
@@ -79,8 +81,11 @@ type Source struct {
 // Brief is what a build is asked to make.
 type Brief struct {
 	Source Source `json:"source"`
-	// Slug and Name are what the controller is called; the job finds them
-	// in the source when they are not given.
+	// Controllers are which of the source's controllers to build, by slug;
+	// every one found when empty.
+	Controllers []string `json:"controllers,omitempty"`
+	// Slug, Name, Controller and RateHz say one controller outright, for a
+	// source with no index: what it is called, its entry point, its rate.
 	Slug string `json:"slug,omitempty"`
 	Name string `json:"name,omitempty"`
 	// Controller names the entry point, file.py:Class, when the job should
@@ -134,6 +139,14 @@ func (b Brief) Validate() error {
 			return err
 		}
 	}
+	if len(b.Controllers) > 50 {
+		return fmt.Errorf("%w: a build makes at most 50 controllers", domain.ErrInvalid)
+	}
+	for _, slug := range b.Controllers {
+		if err := domain.ValidateSlug(slug); err != nil {
+			return err
+		}
+	}
 	if b.Controller != "" && (!entryPoint.MatchString(b.Controller) || strings.Contains(b.Controller, "..")) {
 		return fmt.Errorf("%w: a controller is named file.py:Class", domain.ErrInvalid)
 	}
@@ -145,12 +158,10 @@ func (b Brief) Validate() error {
 
 var notSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
-// slugOf is what a build is called until its report says: the slug asked
-// for, or the repository's or the zip's name made one.
+// slugOf is what a build is called: its source, the repository's (or the
+// folder's) or the zip's name made a slug. The controllers it makes have
+// their own.
 func slugOf(brief Brief) string {
-	if brief.Slug != "" {
-		return brief.Slug
-	}
 	name := brief.Source.Name
 	if brief.Source.Kind == "git" {
 		name = path.Base(strings.TrimSuffix(strings.TrimSuffix(brief.Source.URL, "/"), ".git"))
@@ -163,7 +174,7 @@ func slugOf(brief Brief) string {
 	if len(slug) > 60 {
 		slug = strings.Trim(slug[:60], "-")
 	}
-	if slug == "" || slug[0] < 'a' || slug[0] > 'z' {
+	if len(slug) < 2 || slug[0] < 'a' || slug[0] > 'z' {
 		slug = "controller-" + slug
 	}
 	return strings.Trim(slug, "-")
@@ -206,15 +217,24 @@ type Build struct {
 	Brief Brief  `json:"brief"`
 	Slug  string `json:"slug"`
 	// Report is what the build said about itself (report.json), once read.
-	Report     map[string]any `json:"report,omitempty"`
-	StackID    string         `json:"stackId,omitempty"`
-	Failure    string         `json:"failure,omitempty"`
-	CreatedBy  string         `json:"createdBy"`
-	CreatedAt  time.Time      `json:"createdAt"`
-	RecordedAt *time.Time     `json:"recordedAt,omitempty"`
+	Report map[string]any `json:"report,omitempty"`
+	// Stacks are what it registered: a stack for each controller that
+	// passed, or why one that passed could not be.
+	Stacks     []Registered `json:"stacks,omitempty"`
+	Failure    string       `json:"failure,omitempty"`
+	CreatedBy  string       `json:"createdBy"`
+	CreatedAt  time.Time    `json:"createdAt"`
+	RecordedAt *time.Time   `json:"recordedAt,omitempty"`
 }
 
-// Start asks for a controller to be built for an organisation.
+// Registered is what became of one controller that passed.
+type Registered struct {
+	Slug    string `json:"slug"`
+	StackID string `json:"stackId,omitempty"`
+	Failure string `json:"failure,omitempty"`
+}
+
+// Start asks for a source's controllers to be built for an organisation.
 func (b *Builder) Start(ctx context.Context, principalID, orgID string, brief Brief) (Build, error) {
 	if b.settings.Image == "" || b.settings.RegistryPush == "" || b.settings.RegistryPull == "" {
 		return Build{}, ErrNotConfigured
@@ -260,7 +280,9 @@ func (b *Builder) Start(ctx context.Context, principalID, orgID string, brief Br
 		Args:        []string{string(said)},
 		Inputs:      inputs,
 		Outputs: []exec.Output{
-			{Name: "image", RelativePath: "image.oci.tar", MediaType: "application/x-tar",
+			// Every controller built, in one image layout: their blobs are
+			// shared, so the ROS base is in it once.
+			{Name: "images", RelativePath: "images.oci.tar", MediaType: "application/x-tar",
 				MaxSizeBytes: b.settings.ImageBytes},
 			{Name: "report", RelativePath: "report.json", MediaType: "application/json",
 				MaxSizeBytes: 1 << 20},
@@ -303,14 +325,14 @@ func (b *Builder) Again(ctx context.Context, principalID, id string) (Build, err
 }
 
 const selectBuild = `
-	SELECT id, org_id, job_id, brief, slug, report, coalesce(stack_id, ''), coalesce(failure, ''),
+	SELECT id, org_id, job_id, brief, slug, report, stacks, coalesce(failure, ''),
 	       created_by, created_at, recorded_at
 	FROM catalog.controller_build`
 
 func scanBuild(row interface{ Scan(...any) error }) (Build, error) {
 	var build Build
-	var brief, report []byte
-	if err := row.Scan(&build.ID, &build.OrgID, &build.JobID, &brief, &build.Slug, &report, &build.StackID,
+	var brief, report, stacks []byte
+	if err := row.Scan(&build.ID, &build.OrgID, &build.JobID, &brief, &build.Slug, &report, &stacks,
 		&build.Failure, &build.CreatedBy, &build.CreatedAt, &build.RecordedAt); err != nil {
 		return Build{}, db.Translate(err)
 	}
@@ -319,6 +341,11 @@ func scanBuild(row interface{ Scan(...any) error }) (Build, error) {
 	}
 	if len(report) > 0 {
 		if err := json.Unmarshal(report, &build.Report); err != nil {
+			return Build{}, err
+		}
+	}
+	if len(stacks) > 0 {
+		if err := json.Unmarshal(stacks, &build.Stacks); err != nil {
 			return Build{}, err
 		}
 	}
@@ -359,11 +386,15 @@ func (b *Builder) List(ctx context.Context, orgID string) ([]Build, error) {
 // View is a build as somebody watching it sees it.
 type View struct {
 	Build
-	// State is the build's: queued, running, recording (its image is being
-	// put in the registry and registered), ready, or failed.
+	// State is the build's: queued, running, recording (its images are being
+	// put in the registry and registered), ready (at least one controller
+	// registered), or failed.
 	State    string      `json:"state"`
 	JobState string      `json:"jobState"`
 	Steps    []exec.Step `json:"steps"`
+	// Controllers are each controller the build reported, whether it passed
+	// and why not, and the stack it registered.
+	Controllers []map[string]any `json:"controllers"`
 	// Said is the end of what the build printed, when it failed.
 	Said string `json:"said,omitempty"`
 }
@@ -387,7 +418,7 @@ func (b *Builder) Watch(ctx context.Context, id string) (View, error) {
 	if err != nil {
 		return View{}, err
 	}
-	view := View{Build: build, JobState: string(job.State)}
+	view := View{Build: build, JobState: string(job.State), Controllers: controllersOf(build)}
 	view.Steps, view.Said = exec.Progress(events)
 
 	switch job.State {
@@ -397,7 +428,7 @@ func (b *Builder) Watch(ctx context.Context, id string) (View, error) {
 		view.State = "running"
 	case exec.Succeeded:
 		switch {
-		case build.StackID != "":
+		case build.Stacks != nil && build.Failure == "":
 			view.State = "ready"
 		case build.Failure != "":
 			view.State = "failed"
@@ -427,7 +458,7 @@ func (b *Builder) Watch(ctx context.Context, id string) (View, error) {
 func (b *Builder) claim(ctx context.Context, build Build) error {
 	tag, err := b.pool.Exec(ctx, `
 		UPDATE catalog.controller_build SET recorded_at = now()
-		WHERE id = $1 AND stack_id IS NULL AND failure IS NULL
+		WHERE id = $1 AND stacks IS NULL AND failure IS NULL
 		  AND (recorded_at IS NULL OR recorded_at < now() - $2::interval)`,
 		build.ID, fmt.Sprintf("%d seconds", int(staleAfter.Seconds())))
 	if err != nil {
@@ -455,7 +486,7 @@ func (b *Builder) record(ctx context.Context, build Build) error {
 			if ok, _ := report["ok"].(bool); !ok {
 				failure, _ := report["failure"].(string)
 				if failure == "" {
-					failure = "the build did not pass its checks"
+					failure = "no controller in the source passed its checks"
 				}
 				err = errors.New(failure)
 			} else {
@@ -503,21 +534,17 @@ func (b *Builder) report(ctx context.Context, build Build) (map[string]any, erro
 	return report, nil
 }
 
-// register puts a passed build's image in the registry and records it as a
-// build of the controller, the same way autonomy brought from a terminal is.
+// register puts every controller that passed in the registry and records
+// each as a build of that controller, the same way autonomy brought from a
+// terminal is. One that cannot be registered is said to have failed beside
+// the others; the build fails only when none could be.
 func (b *Builder) register(ctx context.Context, build Build, report map[string]any) error {
-	spec, err := stackOf(build, report)
-	if err != nil {
-		return err
-	}
 	var orgSlug string
 	if err := b.pool.QueryRow(ctx, `SELECT slug FROM identity.organisation WHERE id = $1`,
 		build.OrgID).Scan(&orgSlug); err != nil {
 		return err
 	}
-	repository := "autonomy/" + orgSlug + "/" + spec.Slug
-
-	body, err := b.output(ctx, build, "image")
+	body, err := b.output(ctx, build, "images")
 	if err != nil {
 		return err
 	}
@@ -527,44 +554,138 @@ func (b *Builder) register(ctx context.Context, build Build, report map[string]a
 		return err
 	}
 	defer os.RemoveAll(scratch)
-	image, err := unpack(body, scratch)
+	images, err := unpack(body, scratch)
 	if err != nil {
 		return err
 	}
-	digest, err := newRegistry(b.settings.RegistryPush).push(ctx, image, repository)
+	registry := newRegistry(b.settings.RegistryPush)
+
+	stacks := []Registered{}
+	for _, one := range passed(report) {
+		done := Registered{}
+		done.Slug, _ = one["slug"].(string)
+		spec, err := stackOf(build, report, one)
+		if err == nil {
+			done.StackID, err = b.registerOne(ctx, build, images, registry, orgSlug, one, spec)
+		}
+		if err != nil {
+			done.Failure = err.Error()
+		}
+		stacks = append(stacks, done)
+	}
+	registered := 0
+	for _, one := range stacks {
+		if one.Failure == "" {
+			registered++
+		}
+	}
+	said, err := json.Marshal(stacks)
 	if err != nil {
 		return err
+	}
+	if _, err := b.pool.Exec(ctx, `UPDATE catalog.controller_build SET stacks = $2 WHERE id = $1`,
+		build.ID, said); err != nil {
+		return err
+	}
+	if registered == 0 {
+		return errors.New("no controller that passed could be registered: " + stacks[0].Failure)
+	}
+	return nil
+}
+
+// registerOne pushes one controller's image and registers it, and says the
+// stack it registered.
+func (b *Builder) registerOne(ctx context.Context, build Build, images layout, registry *registry,
+	orgSlug string, one map[string]any, spec dive.StackSpec) (string, error) {
+	name, _ := one["image"].(string)
+	if name == "" {
+		name = spec.Slug
+	}
+	image, ok := images.image(name)
+	if !ok {
+		return "", fmt.Errorf("the build passed %s and its images hold none named %q", spec.Slug, name)
+	}
+	if image.Digest != spec.ImageDigest {
+		return "", fmt.Errorf("the image named %s is %s, and the build reported %s", name, image.Digest, spec.ImageDigest)
+	}
+	repository := "autonomy/" + orgSlug + "/" + spec.Slug
+	digest, err := registry.push(ctx, images, image, repository)
+	if err != nil {
+		return "", err
 	}
 	if digest != spec.ImageDigest {
-		return fmt.Errorf("the registry holds the image as %s, and the build reported %s", digest, spec.ImageDigest)
+		return "", fmt.Errorf("the registry holds %s as %s, and the build reported %s", spec.Slug, digest, spec.ImageDigest)
 	}
 	spec.ImageRepository = strings.TrimRight(b.settings.RegistryPull, "/") + "/" + repository
 
-	return b.pool.InTransaction(ctx, func(conn db.Conn) error {
+	var stackID string
+	err = b.pool.InTransaction(ctx, func(conn db.Conn) error {
 		stack, err := b.dives.CreateStack(ctx, conn, spec)
 		if err != nil {
 			return err
 		}
-		if _, err := conn.Exec(ctx,
-			`UPDATE catalog.controller_build SET stack_id = $2, slug = $3 WHERE id = $1`,
-			build.ID, stack.ID, stack.Slug); err != nil {
-			return err
-		}
+		stackID = stack.ID
 		return b.audit.Record(ctx, conn, audit.Event{
 			ActorID: build.CreatedBy, Action: string(policy.DiveWrite),
 			SubjectKind: "autonomy", SubjectID: stack.ID, Outcome: audit.Succeeded,
 			Detail: map[string]any{"slug": stack.Slug, "image": stack.ImageRepository, "controllerBuild": build.ID},
 		})
 	})
+	return stackID, err
 }
 
-// stackOf is what a passed build registers: the stack its report describes.
-// The stack's own rules (a slug, a name, a digest not a tag, needs that are
-// not negative) are the stack's to apply, when it is created.
-func stackOf(build Build, report map[string]any) (dive.StackSpec, error) {
-	text := func(key string) string { v, _ := report[key].(string); return v }
+// passed are the controllers a report says passed.
+func passed(report map[string]any) []map[string]any {
+	all, _ := report["controllers"].([]any)
+	out := []map[string]any{}
+	for _, one := range all {
+		if controller, ok := one.(map[string]any); ok {
+			if ok, _ := controller["ok"].(bool); ok {
+				out = append(out, controller)
+			}
+		}
+	}
+	return out
+}
+
+// controllersOf is what a view shows of each controller: what the report
+// said, and the stack it registered or why it could not be.
+func controllersOf(build Build) []map[string]any {
+	all, _ := build.Report["controllers"].([]any)
+	out := make([]map[string]any, 0, len(all))
+	for _, one := range all {
+		controller, ok := one.(map[string]any)
+		if !ok {
+			continue
+		}
+		shown := make(map[string]any, len(controller)+1)
+		for k, v := range controller {
+			shown[k] = v
+		}
+		for _, done := range build.Stacks {
+			if done.Slug == controller["slug"] {
+				if done.StackID != "" {
+					shown["stackId"] = done.StackID
+				}
+				if done.Failure != "" {
+					shown["registered"] = false
+					shown["failure"] = done.Failure
+				}
+			}
+		}
+		out = append(out, shown)
+	}
+	return out
+}
+
+// stackOf is what a controller that passed registers: the stack its entry
+// in the report describes, with where the source came from. The stack's own
+// rules (a slug, a name, a digest not a tag, needs that are not negative) are
+// the stack's to apply, when it is created.
+func stackOf(build Build, report, one map[string]any) (dive.StackSpec, error) {
+	text := func(key string) string { v, _ := one[key].(string); return v }
 	raw := func(key string) json.RawMessage {
-		if v, ok := report[key]; ok && v != nil {
+		if v, ok := one[key]; ok && v != nil {
 			said, _ := json.Marshal(v)
 			return said
 		}
@@ -572,7 +693,7 @@ func stackOf(build Build, report map[string]any) (dive.StackSpec, error) {
 	}
 	slug := text("slug")
 	if slug == "" {
-		slug = build.Slug
+		return dive.StackSpec{}, errors.New("the build passed a controller and did not say what it is called")
 	}
 	name := text("name")
 	if name == "" {
@@ -580,9 +701,9 @@ func stackOf(build Build, report map[string]any) (dive.StackSpec, error) {
 	}
 	digest := text("imageDigest")
 	if digest == "" {
-		return dive.StackSpec{}, errors.New("the build passed and reported no image digest")
+		return dive.StackSpec{Slug: slug}, fmt.Errorf("the build passed %s and reported no image digest", slug)
 	}
-	wantsGPU, _ := report["wantsGpu"].(bool)
+	wantsGPU, _ := one["wantsGpu"].(bool)
 	source := map[string]any{"kind": build.Brief.Source.Kind, "controllerBuild": build.ID}
 	if from, ok := report["source"].(map[string]any); ok {
 		for k, v := range from {
@@ -592,6 +713,9 @@ func stackOf(build Build, report map[string]any) (dive.StackSpec, error) {
 		source["url"], source["ref"], source["path"] = build.Brief.Source.URL, build.Brief.Source.Ref, build.Brief.Source.Path
 	} else {
 		source["objectId"], source["name"] = build.Brief.Source.ObjectID, build.Brief.Source.Name
+	}
+	if entry := text("controller"); entry != "" {
+		source["controller"] = entry
 	}
 	said, _ := json.Marshal(source)
 	return dive.StackSpec{

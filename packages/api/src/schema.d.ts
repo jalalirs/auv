@@ -3813,6 +3813,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/controller-sources/look": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which controllers a GitHub repository holds
+         * @description The controllers its iocean.toml lists, and any folder under controllers/ holding a controller.py, read from GitHub's public content without credentials, so only a public repository can be looked into. Remembered for a minute.
+         *
+         */
+        get: {
+            parameters: {
+                query: {
+                    /** @description https://github.com/owner/repository */
+                    url: string;
+                    /** @description A branch, tag or commit; the repository's default branch when absent. */
+                    ref?: string;
+                    /** @description The folder to look in. */
+                    path?: string;
+                    /** @description The organisation asking; the caller's own when absent. */
+                    orgId?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What it holds. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ControllerSourceLook"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/controller-builds/{buildId}": {
         parameters: {
             query?: never;
@@ -7186,10 +7237,12 @@ export interface components {
                 /** @description zip: the file's name, ending .zip. */
                 name?: string;
             };
-            /** @description What the controller is called; found in the source when absent. */
+            /** @description Which of the source's controllers to build, by slug; every one found when absent. */
+            controllers?: string[];
+            /** @description One controller said outright, for a source with no index: what it is called. */
             slug?: string;
             name?: string;
-            /** @description The entry point, file.py:Class, when the build should not look for it. */
+            /** @description One controller said outright: its entry point, file.py:Class. */
             controller?: string;
             /** @description How often the controller is asked for a command; 20 when absent. */
             rateHz?: number;
@@ -7199,14 +7252,21 @@ export interface components {
             orgId: string;
             jobId: string;
             brief: components["schemas"]["ControllerBuildBrief"];
+            /** @description The source's name: the repository's, its folder's or the zip's. */
             slug: string;
-            /** @description What the build said about itself (report.json): ok, slug, name, controller, vehicle, commands, subscribes, publishes, wantsGpu, needs, source (with the commit), checks (vehicle, tank), imageDigest, layers, sizeBytes, and failure when not ok.
+            /** @description What the build said about itself (report.json): ok (any controller built), source (with the commit), controllers (each with ok, slug, name, controller, vehicle, commands, subscribes, publishes, wantsGpu, needs, checks, imageDigest, image, failure), failure when none was built, and seconds.
              *      */
             report?: {
                 [key: string]: unknown;
             };
-            /** @description The autonomy stack it registered. */
-            stackId?: string;
+            /** @description What became of each controller that passed. */
+            stacks?: {
+                slug: string;
+                /** @description The autonomy stack it registered. */
+                stackId?: string;
+                /** @description Why it passed and could not be registered. */
+                failure?: string;
+            }[];
             failure?: string;
             createdBy: string;
             /** Format: date-time */
@@ -7215,9 +7275,17 @@ export interface components {
             recordedAt?: string;
         };
         ControllerBuild: components["schemas"]["ControllerBuildRecord"] & {
-            /** @enum {string} */
+            /**
+             * @description Ready when at least one controller was registered.
+             * @enum {string}
+             */
             state: "queued" | "running" | "recording" | "ready" | "failed";
             jobState: string;
+            /** @description Each controller the build reported: what it said (ok, failure, checks, topics) and the stack it registered (stackId).
+             *      */
+            controllers?: {
+                [key: string]: unknown;
+            }[];
             steps: {
                 /** Format: date-time */
                 at: string;
@@ -7230,6 +7298,16 @@ export interface components {
                 };
             }[];
             /** @description The end of what the build printed, when it failed. */
+            said?: string;
+        };
+        ControllerSourceLook: {
+            controllers: {
+                slug: string;
+                name?: string;
+                /** @description file.py:Class, or the controller.py its folder holds. */
+                entry?: string;
+            }[];
+            /** @description What could not be seen, or why there is nothing; a build then looks for one controller. */
             said?: string;
         };
         PartPlan: {

@@ -2658,6 +2658,46 @@ paths:
                     items: { $ref: '#/components/schemas/ControllerBuild' }
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/v1/controller-sources/look:
+    get:
+      tags: [work]
+      summary: Which controllers a GitHub repository holds
+      description: >
+        The controllers its iocean.toml lists, and any folder under
+        controllers/ holding a controller.py, read from GitHub's public
+        content without credentials, so only a public repository can be
+        looked into. Remembered for a minute.
+      parameters:
+        - name: url
+          in: query
+          required: true
+          description: https://github.com/owner/repository
+          schema: { type: string }
+        - name: ref
+          in: query
+          required: false
+          description: A branch, tag or commit; the repository's default branch when absent.
+          schema: { type: string }
+        - name: path
+          in: query
+          required: false
+          description: The folder to look in.
+          schema: { type: string }
+        - name: orgId
+          in: query
+          required: false
+          description: The organisation asking; the caller's own when absent.
+          schema: { type: string }
+      responses:
+        '200':
+          description: What it holds.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ControllerSourceLook' }
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/v1/controller-builds/{buildId}:
     get:
       tags: [work]
@@ -5880,9 +5920,14 @@ components:
             path: { type: string, description: 'git: the folder the controller is in. zip: where the job finds it, filled in by the platform.' }
             objectId: { type: string, description: 'zip: the object it was uploaded as, held by the organisation.' }
             name: { type: string, description: "zip: the file's name, ending .zip." }
-        slug: { type: string, description: What the controller is called; found in the source when absent. }
+        controllers:
+          type: array
+          maxItems: 50
+          items: { type: string }
+          description: Which of the source's controllers to build, by slug; every one found when absent.
+        slug: { type: string, description: 'One controller said outright, for a source with no index: what it is called.' }
         name: { type: string }
-        controller: { type: string, description: 'The entry point, file.py:Class, when the build should not look for it.' }
+        controller: { type: string, description: 'One controller said outright: its entry point, file.py:Class.' }
         rateHz: { type: number, minimum: 1, maximum: 200, description: How often the controller is asked for a command; 20 when absent. }
 
     ControllerBuildRecord:
@@ -5893,16 +5938,26 @@ components:
         orgId: { type: string }
         jobId: { type: string }
         brief: { $ref: '#/components/schemas/ControllerBuildBrief' }
-        slug: { type: string }
+        slug: { type: string, description: "The source's name: the repository's, its folder's or the zip's." }
         report:
           type: object
           additionalProperties: true
           description: >
-            What the build said about itself (report.json): ok, slug, name,
-            controller, vehicle, commands, subscribes, publishes, wantsGpu,
-            needs, source (with the commit), checks (vehicle, tank),
-            imageDigest, layers, sizeBytes, and failure when not ok.
-        stackId: { type: string, description: The autonomy stack it registered. }
+            What the build said about itself (report.json): ok (any
+            controller built), source (with the commit), controllers (each
+            with ok, slug, name, controller, vehicle, commands, subscribes,
+            publishes, wantsGpu, needs, checks, imageDigest, image, failure),
+            failure when none was built, and seconds.
+        stacks:
+          type: array
+          description: What became of each controller that passed.
+          items:
+            type: object
+            required: [slug]
+            properties:
+              slug: { type: string }
+              stackId: { type: string, description: The autonomy stack it registered. }
+              failure: { type: string, description: Why it passed and could not be registered. }
         failure: { type: string }
         createdBy: { type: string }
         createdAt: { type: string, format: date-time }
@@ -5914,8 +5969,17 @@ components:
         - type: object
           required: [state, jobState, steps]
           properties:
-            state: { type: string, enum: [queued, running, recording, ready, failed] }
+            state:
+              type: string
+              enum: [queued, running, recording, ready, failed]
+              description: Ready when at least one controller was registered.
             jobState: { type: string }
+            controllers:
+              type: array
+              description: >
+                Each controller the build reported: what it said (ok, failure,
+                checks, topics) and the stack it registered (stackId).
+              items: { type: object, additionalProperties: true }
             steps:
               type: array
               items:
@@ -5931,6 +5995,23 @@ components:
             said:
               type: string
               description: The end of what the build printed, when it failed.
+
+    ControllerSourceLook:
+      type: object
+      required: [controllers]
+      properties:
+        controllers:
+          type: array
+          items:
+            type: object
+            required: [slug]
+            properties:
+              slug: { type: string }
+              name: { type: string }
+              entry: { type: string, description: 'file.py:Class, or the controller.py its folder holds.' }
+        said:
+          type: string
+          description: What could not be seen, or why there is nothing; a build then looks for one controller.
 
     PartPlan:
       type: object

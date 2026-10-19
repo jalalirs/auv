@@ -45,18 +45,43 @@ def test_a_zip_is_built_and_one_source_is_asked_for():
         tools.controllers_build(platform, url="https://github.com/a/b", zip_object="obj_z")
 
 
-def test_a_finished_build_says_its_tank_check_and_the_stack_it_registered():
-    platform = Builds({"id": "ctlb_1", "slug": "wary", "state": "ready", "stackId": "stack_9",
-                       "steps": [{"say": "tank check", "n": 1, "of": 1}],
-                       "brief": {"source": {"kind": "git", "url": "https://github.com/iocean/wary"}},
-                       "report": {"ok": True, "controller": "wary.py:Wary", "commands": "wrench",
-                                  "source": {"kind": "git", "commit": "abc123"},
-                                  "checks": {"tank": {"ok": True, "seconds": 30.2, "said": "held station"},
-                                             "vehicle": {"ok": True, "problems": []}}}})
+def test_each_controller_says_its_tank_check_and_the_stack_it_registered():
+    platform = Builds({"id": "ctlb_1", "slug": "iocean-controllers", "state": "ready",
+                       "steps": [{"say": "tank check", "n": 2, "of": 2}],
+                       "brief": {"source": {"kind": "git", "url": "https://github.com/jalalirs/iocean-controllers"}},
+                       "report": {"ok": True, "source": {"kind": "git", "commit": "abc123"}},
+                       "controllers": [
+                           {"ok": True, "slug": "station-hold", "controller": "controllers/station-hold/controller.py:StationHold",
+                            "commands": "wrench", "stackId": "stack_9",
+                            "checks": {"tank": {"ok": True, "seconds": 20.4, "said": "held station"},
+                                       "vehicle": {"ok": True, "problems": []}}},
+                           {"ok": False, "slug": "sawtooth", "failure": "the tank check raised",
+                            "checks": {"vehicle": {"ok": False, "problems": ["no buoyancy engine on this vehicle"]}}}]})
     said = tools.controllers_build_status(platform, "ctlb_1")
-    assert said["stack"] == "stack_9" and said["tank"]["ok"] is True
-    assert said["tank"]["seconds"]["kind"] == "measured" and said["source"]["commit"] == "abc123"
+    hold, saw = said["controllers"]
+    assert hold["stack"] == "stack_9" and hold["tank"]["seconds"]["kind"] == "measured"
+    assert saw["ok"] is False and saw["failure"] and saw["problems"]
+    assert said["source"]["commit"] == "abc123" and "dives_start" in said["next"]
     assert numbers(said) == []
     again = tools.controllers_build_again(platform, "ctlb_1")
     assert platform.sent[-1][:2] == ("POST", "/api/v1/controller-builds/ctlb_1/again")
     assert "new build" in again["note"]
+
+
+def test_some_controllers_are_asked_for_by_slug():
+    platform = Builds()
+    tools.controllers_build(platform, url="https://github.com/jalalirs/iocean-controllers",
+                            controllers=["station-hold", "sawtooth"])
+    assert platform.sent[-1][2]["controllers"] == ["station-hold", "sawtooth"]
+
+
+def test_a_repository_is_looked_into_with_only_what_was_said():
+    class Look(Builds):
+        def request(self, method, path, body=None):
+            self.sent.append((method, path, body))
+            return {"controllers": [{"slug": "station-hold", "name": "Station hold"}]}
+    platform = Look()
+    said = tools.controllers_look(platform, "https://github.com/jalalirs/iocean-controllers", ref="main")
+    assert platform.sent[-1][1] == ("/api/v1/controller-sources/look?url=https%3A%2F%2Fgithub.com%2Fjalalirs"
+                                    "%2Fiocean-controllers&ref=main")
+    assert said["controllers"][0]["slug"] == "station-hold" and "controllers_build" in said["note"]

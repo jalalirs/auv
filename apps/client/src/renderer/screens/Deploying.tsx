@@ -14,8 +14,14 @@ import type { Held } from "./Deck.js";
 import { ago } from "./parts.js";
 import { Button, Dialog, Status, Table, type Tone } from "../ui/components.js";
 
+type One = {
+  ok?: boolean; controller?: string; vehicle?: string; slug?: string; name?: string; failure?: string; stackId?: string;
+  checks?: { vehicle?: { ok?: boolean; problems?: string[] }; tank?: { ok?: boolean; said?: string; score?: number | null } };
+  sizeBytes?: number; imageDigest?: string;
+};
 type Report = {
   ok?: boolean; controller?: string; vehicle?: string; slug?: string; name?: string; failure?: string;
+  controllers?: One[];
   source?: { kind?: string; url?: string; ref?: string; commit?: string; path?: string; name?: string };
   checks?: { vehicle?: { ok?: boolean; problems?: string[] }; tank?: { ok?: boolean; said?: string; score?: number | null } };
   sizeBytes?: number; imageDigest?: string;
@@ -43,6 +49,10 @@ export function DeployDialog({ platform, held, onClose, onStarted }: {
   onStarted: (build: ControllerBuild) => void;
 }): React.JSX.Element {
   const [how, setHow] = useState<"git" | "zip" | "cli">("git");
+  const [advanced, setAdvanced] = useState(false);
+  const [found, setFound] = useState<{ slug: string; name?: string; entry?: string }[] | undefined>();
+  const [lookSaid, setLookSaid] = useState("");
+  const [ticked, setTicked] = useState<string[]>([]);
   const [url, setUrl] = useState("");
   const [ref, setRef] = useState("");
   const [path, setPath] = useState("");
@@ -54,7 +64,26 @@ export function DeployDialog({ platform, held, onClose, onStarted }: {
   const picker = useRef<HTMLInputElement>(null);
   const institution = held.institution;
   const github = /^https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+?(\.git)?\/?$/.test(url.trim());
-  const ready = !!institution && !sent && (how === "git" ? github : how === "zip" ? !!file && /\.zip$/i.test(file.name) : false);
+  // What the repository holds, looked up once its address reads right.
+  useEffect(() => {
+    setFound(undefined);
+    setLookSaid("");
+    if (how !== "git" || !github) return;
+    let stale = false;
+    const later = setTimeout(() => {
+      platform.lookControllerSource(url.trim(), ref.trim() || undefined, path.trim() || undefined)
+        .then((said) => {
+          if (stale) return;
+          setFound(said.controllers);
+          setTicked(said.controllers.map((c) => c.slug));
+          setLookSaid(said.said ?? "");
+        })
+        .catch((problem) => { if (!stale) setLookSaid(problem instanceof Error ? problem.message : "could not look at it"); });
+    }, 500);
+    return () => { stale = true; clearTimeout(later); };
+  }, [platform, how, github, url, ref, path]);
+  const ready = !!institution && !sent && (how === "git" ? github && (!found?.length || ticked.length > 0)
+    : how === "zip" ? !!file && /\.zip$/i.test(file.name) : false);
 
   const start = async () => {
     if (!institution) return;
@@ -69,8 +98,12 @@ export function DeployDialog({ platform, held, onClose, onStarted }: {
         source = { kind: "zip", objectId: stored.id, name: file!.name };
       }
       setSent("starting");
+      const several = how === "git" && found && found.length > 0;
       const build = await platform.startControllerBuild(institution.id, {
-        source, ...(controller.trim() ? { controller: controller.trim() } : {}), ...(name.trim() ? { name: name.trim() } : {}),
+        source,
+        ...(several && ticked.length < found!.length ? { controllers: ticked } : {}),
+        ...(!several && controller.trim() ? { controller: controller.trim() } : {}),
+        ...(!several && name.trim() ? { name: name.trim() } : {}),
       });
       onStarted(build);
     } catch (problem) {
@@ -96,14 +129,34 @@ export function DeployDialog({ platform, held, onClose, onStarted }: {
             <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://github.com/owner/repo" autoFocus />
           </label>
           {url.trim() && !github ? <p className="trouble">A public GitHub repository: https://github.com/owner/repo.</p> : null}
-          <div className="field-row">
-            <label className="field"><span>Branch, tag or commit</span>
-              <input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="its default branch" />
-            </label>
-            <label className="field"><span>Folder</span>
-              <input value={path} onChange={(e) => setPath(e.target.value)} placeholder="the repository's root" />
-            </label>
-          </div>
+          <button type="button" className="disclose" onClick={() => setAdvanced((a) => !a)}>{advanced ? "▾" : "▸"} Advanced: a branch other than its default, or a folder in it</button>
+          {advanced ? (
+            <div className="field-row">
+              <label className="field"><span>Branch, tag or commit</span>
+                <input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="its default branch" />
+              </label>
+              <label className="field"><span>Folder</span>
+                <input value={path} onChange={(e) => setPath(e.target.value)} placeholder="the repository's root" />
+              </label>
+            </div>
+          ) : null}
+          {github && found === undefined && !lookSaid ? <p className="note">Looking at the repository…</p> : null}
+          {found && found.length > 0 ? (
+            <div className="field"><span>{found.length} controller{found.length === 1 ? "" : "s"} in it</span>
+              <div className="choices">
+                {found.map((c) => {
+                  const on = ticked.includes(c.slug);
+                  return (
+                    <label key={c.slug} className="check found">
+                      <input type="checkbox" checked={on}
+                             onChange={() => setTicked((was) => on ? was.filter((x) => x !== c.slug) : [...was, c.slug])} />
+                      <span><strong>{c.name ?? c.slug}</strong> <span className="note">{c.entry ?? c.slug}</span></span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ) : lookSaid ? <p className="note">{lookSaid}</p> : null}
         </>
       ) : how === "zip" ? (
         <>
@@ -119,15 +172,15 @@ export function DeployDialog({ platform, held, onClose, onStarted }: {
         </ol>
       ) : (
         <>
-          <div className="field-row">
+          {how === "git" && found && found.length > 0 ? null : <div className="field-row">
             <label className="field"><span>Controller</span>
               <input value={controller} onChange={(e) => setController(e.target.value)} placeholder="found by itself; or file.py:Class" />
             </label>
             <label className="field"><span>Name</span>
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="from iocean.toml or the class" />
             </label>
-          </div>
-          <p className="note">The platform finds the one class built on <code>iocean.Controller</code> (or the one an <code>iocean.toml</code> names), installs its <code>requirements.txt</code>, checks it can fly its vehicle, runs it 20 s in the SDK&rsquo;s tank, and registers it. A controller that is a model says what it needs in <code>iocean.toml</code> (<code>[needs] gpu_memory = "8G"</code>).</p>
+          </div>}
+          <p className="note">The platform builds every controller the repository&rsquo;s <code>iocean.toml</code> lists (or each <code>controllers/&lt;name&gt;/controller.py</code>, or the one class built on <code>iocean.Controller</code>): it installs its <code>requirements.txt</code>, checks it can fly its vehicle, runs it 20 s in the SDK&rsquo;s tank, and registers it. A controller that is a model says what it needs in <code>iocean.toml</code> (<code>[needs] gpu_memory = "8G"</code>).</p>
         </>
       )}
       {trouble ? <p className="trouble">{trouble}</p> : null}
@@ -176,7 +229,14 @@ export function Builds({ platform, held, onRefresh }: {
              empty={builds === undefined ? "Reading…" : "No builds yet. Deploy one from GitHub or a zip."}
              columns={[
                { key: "controller", label: "Controller", grow: true, sort: (a, b) => a.slug.localeCompare(b.slug),
-                 render: (b) => <><span className="cell-main">{(b.report as Report | undefined)?.name ?? b.slug}</span><span className="cell-sub">{sourceSaid(b)}</span></> },
+                 render: (b) => {
+                   const r = b.report as Report | undefined;
+                   const many = r?.controllers;
+                   const title = many && many.length > 1
+                     ? `${b.slug}: ${many.filter((c) => c.ok).length} of ${many.length} controllers`
+                     : many?.[0]?.name ?? r?.name ?? b.slug;
+                   return <><span className="cell-main">{title}</span><span className="cell-sub">{sourceSaid(b)}</span></>;
+                 } },
                { key: "doing", label: "What it said", priority: 2, grow: true,
                  render: (b) => <span className="cell-sub">{b.state === "failed" ? (b.failure ?? (b.report as Report | undefined)?.failure) : b.steps[b.steps.length - 1]?.say ?? "waiting for a machine"}</span> },
                { key: "when", label: "When", priority: 3, sort: (a, b) => a.createdAt.localeCompare(b.createdAt),
@@ -192,13 +252,27 @@ export function Builds({ platform, held, onRefresh }: {
 
 function BuildDialog({ build, onClose }: { build: ControllerBuild; onClose: () => void }): React.JSX.Element {
   const r = (build.report ?? {}) as Report;
+  const each: One[] = r.controllers ?? (r.controller ? [r as One] : []);
   return (
-    <Dialog title={r.name ?? build.slug} onClose={onClose} actions={<Button kind="primary" onClick={onClose}>Close</Button>}>
+    <Dialog title={build.slug} onClose={onClose} actions={<Button kind="primary" onClick={onClose}>Close</Button>}>
       <p className="note">{sourceSaid(build)} · <Status tone={stateTone(build)}>{build.state}</Status></p>
-      {r.controller ? <p className="note">{r.controller} for the {r.vehicle}{r.sizeBytes ? ` · ${(r.sizeBytes / 2 ** 20).toFixed(0)} MB image` : ""}</p> : null}
-      {r.checks?.vehicle ? <p className="note">Vehicle check: {r.checks.vehicle.ok ? "it can fly it" : (r.checks.vehicle.problems ?? []).join("; ")}</p> : null}
-      {r.checks?.tank ? <p className="note">Tank: {r.checks.tank.said}</p> : null}
-      {build.state === "failed" ? <p className="trouble">{build.failure ?? r.failure}</p> : null}
+      {each.length > 0 ? (
+        <table className="dialog-table">
+          <thead><tr><th>Controller</th><th>Vehicle</th><th>Tank</th><th /></tr></thead>
+          <tbody>
+            {each.map((c, i) => (
+              <tr key={c.slug ?? i}>
+                <td><strong>{c.name ?? c.slug}</strong><br /><span className="cell-meta">{c.controller}</span></td>
+                <td className="cell-meta">{c.vehicle}{c.checks?.vehicle && !c.checks.vehicle.ok ? `: ${(c.checks.vehicle.problems ?? []).join("; ")}` : ""}</td>
+                <td className="cell-meta">{c.checks?.tank?.said ?? "—"}</td>
+                <td><Status tone={c.ok ? "good" : "bad"}>{c.ok ? "built" : "refused"}</Status></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+      {each.filter((c) => !c.ok && c.failure).map((c) => <p key={c.slug} className="trouble">{c.slug}: {c.failure}</p>)}
+      {build.state === "failed" && each.length === 0 ? <p className="trouble">{build.failure ?? r.failure}</p> : null}
       <ol className="builder-steps">
         {build.steps.map((s, i) => <li key={i}>{s.say}</li>)}
       </ol>

@@ -50,6 +50,8 @@ type Dependencies struct {
 	MapStore *mapstore.Store
 	// Controllers builds controllers from a repository or a zip as jobs.
 	Controllers *controllerbuild.Builder
+	// Looker says which controllers a public repository holds.
+	Looker *controllerbuild.Looker
 
 	// Drafter turns what somebody said into a plan, by asking a model. Left
 	// unconfigured on a platform that has not been given one, and it says so

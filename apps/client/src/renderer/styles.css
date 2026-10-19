@@ -1896,3 +1896,6 @@ ol.steps { margin: 0; padding-left: var(--s5); display: flex; flex-direction: co
 .store-actions { display: flex; gap: var(--s2); }
 .store-coming { margin-top: var(--s6); }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+.disclose { align-self: flex-start; min-height: 0; padding: 0; border: 0; background: none; color: var(--faint); font-size: var(--t-meta); }
+.disclose:hover:not(:disabled) { background: none; color: var(--plain); }
+.check.found { flex-direction: row; align-items: center; gap: var(--s2); padding: var(--s2) var(--s3); border: 1px solid var(--edge); border-radius: var(--r-control); color: var(--plain); font-size: var(--t-body); font-weight: 400; }

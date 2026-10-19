@@ -274,12 +274,19 @@ Object.assign(platform, {
 });
 // Controller builds that walk through a real build's steps.
 const buildSteps = [
-  { step: "source", say: "cloning https://github.com/jalalirs/auv at r6-coupled-engine" },
-  { step: "source", say: "at commit 2f108f4a929a" },
-  { step: "find", say: "finding the controller" },
-  { step: "check", say: "hold.py:StationHold flies the BlueROV2" },
-  { step: "check", say: "the tank: score nan over 20 s, ended at depth 6.99 m, heading 4°, 0.00 m from where it began" },
-  { step: "image", say: "8 layers, 492 MB" },
+  { step: "source", say: "cloning https://github.com/jalalirs/iocean-controllers" },
+  { step: "source", say: "at commit c3f8af443781" },
+  { step: "find", say: "4 controllers: station-hold, go-around-things, learned-hold, sawtooth" },
+  { step: "check", say: "station-hold: the tank: 20 s, 0.00 m from where it began" },
+  { step: "check", say: "go-around-things: the tank: 20 s, 5.04 m from where it began" },
+  { step: "check", say: "learned-hold: the tank: 20 s, 0.17 m from where it began" },
+  { step: "check", say: "sawtooth: the tank: 20 s, 0.20 m from where it began" },
+];
+const foundIn = [
+  { slug: "station-hold", name: "Station hold", entry: "controllers/station-hold/controller.py:StationHold" },
+  { slug: "go-around-things", name: "Go around things", entry: "controllers/go-around-things/controller.py:GoAroundThings" },
+  { slug: "learned-hold", name: "Learned hold", entry: "controllers/learned-hold/controller.py:LinearHold" },
+  { slug: "sawtooth", name: "Sawtooth (glider)", entry: "controllers/sawtooth/controller.py:Sawtooth" },
 ];
 const controllerBuilds: Doc[] = [];
 const viewOf = (b: Doc) => {
@@ -287,18 +294,21 @@ const viewOf = (b: Doc) => {
   const done = shown >= buildSteps.length;
   return { ...b, state: done ? "ready" : shown === 0 ? "queued" : "running", jobState: done ? "succeeded" : "running",
            steps: buildSteps.slice(0, shown).map((s) => ({ at: now(), ...s })),
-           ...(done ? { report: { ok: true, name: "Station hold (from GitHub)", slug: "station-hold-github", controller: "hold.py:StationHold",
-             vehicle: "BlueROV2", sizeBytes: 515457118, source: { kind: "git", commit: "2f108f4a929aec0f" },
-             checks: { vehicle: { ok: true, problems: [] }, tank: { ok: true, said: "20 s, 0.00 m from where it began" } } } } : {}) };
+           ...(done ? { report: { ok: true, source: { kind: "git", commit: "c3f8af4437815c5d" },
+             controllers: foundIn.map((c) => ({ ok: true, slug: c.slug, name: c.name, controller: c.entry,
+               vehicle: c.slug === "sawtooth" ? "Seaglider" : "BlueROV2", checks: { vehicle: { ok: true, problems: [] },
+               tank: { ok: true, said: "20 s in the tank, held" } } })) } } : {}) };
 };
 Object.assign(platform, {
   startControllerBuild: (org: string, brief: Doc) => {
     said.push(`controller build for ${org}: ${JSON.stringify(brief)}`);
-    const b = { id: id("ctlb"), orgId: org, jobId: "job_c", brief, slug: "station-hold-github", createdBy: "p1", createdAt: now(), started: Date.now() };
+    const b = { id: id("ctlb"), orgId: org, jobId: "job_c", brief, slug: "iocean-controllers", createdBy: "p1", createdAt: now(), started: Date.now() };
     controllerBuilds.unshift(b);
     return delay(viewOf(b));
   },
   controllerBuildsOf: () => delay(controllerBuilds.map(viewOf)),
+  lookControllerSource: (url: string) => delay(url.includes("iocean-controllers")
+    ? { controllers: foundIn } : { controllers: [], said: "no iocean.toml and no controllers/ folders; the build will look for one controller" }),
   controllerBuild: (bid: string) => delay(viewOf(controllerBuilds.find((b) => b.id === bid)!)),
   controllerBuildAgain: (bid: string) => {
     said.push(`again ${bid}`);

@@ -55,6 +55,7 @@ export type StorePlace = Schemas["StorePlace"];
 export type ControllerBuildBrief = Schemas["ControllerBuildBrief"];
 export type ControllerBuild = Schemas["ControllerBuild"];
 export type ControllerBuildRecord = Schemas["ControllerBuildRecord"];
+export type ControllerSourceLook = Schemas["ControllerSourceLook"];
 export type Binding = Schemas["Binding"];
 export type StoredObject = Schemas["Object"];
 export type UploadGrant = Schemas["UploadGrant"];
@@ -262,6 +263,17 @@ export class Platform {
     const { builds } = await this.#request<{ builds: ControllerBuild[] }>(
       "GET", `/api/v1/organisations/${organisation}/controller-builds`);
     return builds;
+  }
+
+  /**
+   * Which controllers a public GitHub repository holds (its iocean.toml, and
+   * folders under controllers/), to tick before building.
+   */
+  lookControllerSource(url: string, ref?: string, path?: string): Promise<ControllerSourceLook> {
+    const query = new URLSearchParams({ url });
+    if (ref) query.set("ref", ref);
+    if (path) query.set("path", path);
+    return this.#request("GET", `/api/v1/controller-sources/look?${query}`);
   }
 
   /** Build the same source again; from a repository, its newest commit (Pull latest). */

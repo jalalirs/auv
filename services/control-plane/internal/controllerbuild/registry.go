@@ -17,24 +17,40 @@ import (
 	"strings"
 )
 
-// An image arrives as an OCI image layout in a tar (index.json, oci-layout,
-// blobs/sha256/*), which is what a build without the host's Docker can make.
-// Hosts pull from a registry, so the platform puts it in its own: each blob
-// the registry does not already have, then the manifest, by its digest and as
-// "latest". This speaks the registry's HTTP interface directly; it needs five
-// calls, which is fewer than a client library's documentation.
+// Images arrive as one OCI image layout in a tar (index.json, oci-layout,
+// blobs/sha256/*), which is what a build without the host's Docker can make:
+// one manifest per controller, named by its slug, their blobs shared. Hosts
+// pull from a registry, so the platform puts each controller in its own as a
+// repository of its own: each blob the registry does not already have (sent
+// once, and mounted into the next repository rather than sent again), then
+// the manifest, by its digest and as "latest". This speaks the registry's
+// HTTP interface directly; it needs six calls, which is fewer than a client
+// library's documentation.
 
 // layout is an image layout unpacked onto disk, its blobs by digest.
 type layout struct {
 	dir string
-	// top is the manifest (or index of manifests) index.json names.
-	top descriptor
+	// manifests are the images index.json names.
+	manifests []descriptor
 }
 
 type descriptor struct {
-	MediaType string `json:"mediaType"`
-	Digest    string `json:"digest"`
-	Size      int64  `json:"size"`
+	MediaType   string            `json:"mediaType"`
+	Digest      string            `json:"digest"`
+	Size        int64             `json:"size"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+// image finds the manifest a controller's image is, by the name the build
+// gave it.
+func (l layout) image(name string) (descriptor, bool) {
+	for _, one := range l.manifests {
+		if one.Annotations["org.opencontainers.image.ref.name"] == name ||
+			strings.HasSuffix(one.Annotations["io.containerd.image.name"], ":"+name) {
+			return one, true
+		}
+	}
+	return descriptor{}, false
 }
 
 var blobPath = regexp.MustCompile(`^blobs/sha256/[0-9a-f]{64}$`)
@@ -83,7 +99,7 @@ func unpack(from io.Reader, dir string) (layout, error) {
 	if err := json.Unmarshal(index, &said); err != nil || len(said.Manifests) == 0 {
 		return layout{}, errors.New("the image's index.json names no manifest")
 	}
-	return layout{dir: dir, top: said.Manifests[0]}, nil
+	return layout{dir: dir, manifests: said.Manifests}, nil
 }
 
 func (l layout) blob(digest string) (string, error) {
@@ -102,25 +118,28 @@ func (l layout) blob(digest string) (string, error) {
 type registry struct {
 	base string
 	http *http.Client
+	// sent says which repository each blob was first put in, so the next
+	// repository that needs it has it mounted rather than sent again.
+	sent map[string]string
 }
 
-func newRegistry(address string) registry {
+func newRegistry(address string) *registry {
 	base := address
 	if !strings.Contains(base, "://") {
 		// The platform's own registry, on its own network, has no certificate.
 		base = "http://" + base
 	}
-	return registry{base: strings.TrimRight(base, "/"), http: &http.Client{}}
+	return &registry{base: strings.TrimRight(base, "/"), http: &http.Client{}, sent: map[string]string{}}
 }
 
-// push puts an image in the registry under repository, and reports the
-// manifest's digest as the registry has it.
-func (r registry) push(ctx context.Context, image layout, repository string) (string, error) {
-	digest, err := r.pushManifest(ctx, image, repository, image.top)
+// push puts one image of a layout in the registry under repository, and
+// reports the manifest's digest as the registry has it.
+func (r *registry) push(ctx context.Context, image layout, of descriptor, repository string) (string, error) {
+	digest, err := r.pushManifest(ctx, image, repository, of)
 	if err != nil {
 		return "", err
 	}
-	at, err := image.blob(image.top.Digest)
+	at, err := image.blob(of.Digest)
 	if err != nil {
 		return "", err
 	}
@@ -128,7 +147,7 @@ func (r registry) push(ctx context.Context, image layout, repository string) (st
 	if err != nil {
 		return "", err
 	}
-	if _, err := r.putManifest(ctx, repository, "latest", image.top.MediaType, raw); err != nil {
+	if _, err := r.putManifest(ctx, repository, "latest", of.MediaType, raw); err != nil {
 		return "", err
 	}
 	return digest, nil
@@ -137,7 +156,7 @@ func (r registry) push(ctx context.Context, image layout, repository string) (st
 // pushManifest pushes what a manifest refers to and then the manifest. An
 // index of manifests (an image built for several platforms) has each of its
 // manifests pushed first.
-func (r registry) pushManifest(ctx context.Context, image layout, repository string, of descriptor) (string, error) {
+func (r *registry) pushManifest(ctx context.Context, image layout, repository string, of descriptor) (string, error) {
 	at, err := image.blob(of.Digest)
 	if err != nil {
 		return "", err
@@ -182,7 +201,7 @@ func (r registry) pushManifest(ctx context.Context, image layout, repository str
 	return got, err
 }
 
-func (r registry) pushBlob(ctx context.Context, image layout, repository, digest string) error {
+func (r *registry) pushBlob(ctx context.Context, image layout, repository, digest string) error {
 	at, err := image.blob(digest)
 	if err != nil {
 		return err
@@ -191,9 +210,18 @@ func (r registry) pushBlob(ctx context.Context, image layout, repository, digest
 	if err == nil && head.StatusCode == http.StatusOK {
 		return nil
 	}
-	started, err := r.do(ctx, http.MethodPost, r.base+"/v2/"+repository+"/blobs/uploads/", nil, nil)
+	start := r.base + "/v2/" + repository + "/blobs/uploads/"
+	if from, ok := r.sent[digest]; ok && from != repository {
+		// Already in another repository: the registry links it in place, and
+		// says 201. One that will not says 202 and takes an upload instead.
+		start += "?" + url.Values{"mount": {digest}, "from": {from}}.Encode()
+	}
+	started, err := r.do(ctx, http.MethodPost, start, nil, nil)
 	if err != nil {
 		return err
+	}
+	if started.StatusCode == http.StatusCreated {
+		return nil
 	}
 	if started.StatusCode != http.StatusAccepted {
 		return fmt.Errorf("the registry would not start an upload of %s: %s", digest, started.Status)
@@ -227,10 +255,11 @@ func (r registry) pushBlob(ctx context.Context, image layout, repository, digest
 	if put.StatusCode != http.StatusCreated {
 		return fmt.Errorf("the registry refused %s: %s", digest, put.Status)
 	}
+	r.sent[digest] = repository
 	return nil
 }
 
-func (r registry) putManifest(ctx context.Context, repository, reference, mediaType string, raw []byte) (string, error) {
+func (r *registry) putManifest(ctx context.Context, repository, reference, mediaType string, raw []byte) (string, error) {
 	put, err := r.do(ctx, http.MethodPut, r.base+"/v2/"+repository+"/manifests/"+reference,
 		bytes.NewReader(raw), map[string]string{"Content-Type": mediaType})
 	if err != nil {
@@ -243,7 +272,7 @@ func (r registry) putManifest(ctx context.Context, repository, reference, mediaT
 }
 
 // do makes one call and reads its answer, so the connection is reused.
-func (r registry) do(ctx context.Context, method, to string, body io.Reader, headers map[string]string) (*http.Response, error) {
+func (r *registry) do(ctx context.Context, method, to string, body io.Reader, headers map[string]string) (*http.Response, error) {
 	request, err := http.NewRequestWithContext(ctx, method, to, body)
 	if err != nil {
 		return nil, err

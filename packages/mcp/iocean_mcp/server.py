@@ -190,10 +190,12 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
         lambda p, mapping, candidate=None, at=None, heading_deg=None, dz=None:
             tools.mappings_accept(p, mapping, candidate, at, heading_deg, dz)),
     "controllers_build": (
-        "Deploy a controller from its source: a public GitHub repository (url, and a branch, tag or "
-        "commit and a folder) or a zip this institution uploaded. THIS SPENDS TIME ON A MACHINE: the "
-        "platform builds its image, flies it in a tank against the SDK's topic contract, and registers "
-        "it as a new build of that controller when it passes. Watch it with controllers_build_status.",
+        "Deploy controllers from their source: a public GitHub repository (url, and a branch, tag or "
+        "commit and a folder) or a zip this institution uploaded. One source may hold several "
+        "(controllers_look lists them); every one is built unless controllers names some. THIS SPENDS "
+        "TIME ON A MACHINE: the platform builds each one's image, flies it in a tank against the SDK's "
+        "topic contract, and registers each that passes as a new build of that controller. Watch it "
+        "with controllers_build_status.",
         {"type": "object",
          "properties": {
              "url": {"type": "string", "description": "https://github.com/owner/repository"},
@@ -202,12 +204,25 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
              "zip_object": {"type": "string", "description": "an uploaded zip's object id, instead of a repository"},
              "zip_name": {"type": "string", "description": "the zip's file name"},
              "slug": {"type": "string"}, "name": {"type": "string"},
-             "controller": {"type": "string", "description": "file.py:Class, when the build should not look for it"},
+             "controller": {"type": "string",
+                            "description": "file.py:Class, one controller said outright for a source with no index"},
+             "controllers": {"type": "array", "items": {"type": "string"},
+                             "description": "which of the source's controllers to build, by slug; all when absent"},
              "org": {"type": "string", "description": "the organisation; this session's own when absent"}}},
-        lambda p, url="", ref="", path="", zip_object="", zip_name="", slug="", name="", controller="", org="":
-            tools.controllers_build(p, url, ref, path, zip_object, zip_name, slug, name, controller, org)),
+        lambda p, url="", ref="", path="", zip_object="", zip_name="", slug="", name="", controller="", org="",
+               controllers=None:
+            tools.controllers_build(p, url, ref, path, zip_object, zip_name, slug, name, controller, org,
+                                    controllers)),
+    "controllers_look": (
+        "Which controllers a public GitHub repository holds: what its iocean.toml lists, and any folder "
+        "under controllers/ with a controller.py. Cheap: nothing is built.",
+        {"type": "object",
+         "properties": {"url": {"type": "string"}, "ref": {"type": "string"}, "path": {"type": "string"}},
+         "required": ["url"]},
+        lambda p, url, ref="", path="": tools.controllers_look(p, url, ref, path)),
     "controllers_build_status": (
-        "How a controller build is going: its log, what it found, its tank check, and the stack it registered.",
+        "How a controller build is going: its log, and for each controller it found, its tank check, "
+        "why it failed if it did, and the stack it registered.",
         {"type": "object", "properties": {"build": {"type": "string"}}, "required": ["build"]},
         lambda p, build: tools.controllers_build_status(p, build)),
     "controllers_build_again": (

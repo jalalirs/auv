@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/jalalirs/auv/services/control-plane/internal/domain"
+
 	"github.com/jalalirs/auv/services/control-plane/internal/audit"
 	"github.com/jalalirs/auv/services/control-plane/internal/controllerbuild"
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
@@ -99,5 +101,33 @@ func (d *Dependencies) ofControllerBuild(segment string) ResourceOf {
 			return policy.Resource{}, err
 		}
 		return policy.Org(org), nil
+	}
+}
+
+// lookControllerSource says which controllers a public GitHub repository
+// holds, so somebody can choose which to build.
+func (d *Dependencies) lookControllerSource(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	look, err := d.Looker.Look(r.Context(), query.Get("url"), query.Get("ref"), query.Get("path"))
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, look)
+}
+
+// callersOrg is the organisation a question asks for (?orgId=), or the
+// caller's own when it names none, for questions that belong to no path.
+func callersOrg() ResourceOf {
+	return func(r *http.Request) (policy.Resource, error) {
+		if org := r.URL.Query().Get("orgId"); org != "" {
+			return policy.Org(org), nil
+		}
+		subject, _ := subjectOf(r.Context())
+		if len(subject.OrgIDs) == 0 {
+			return policy.Resource{}, errors.Join(domain.ErrInvalid,
+				errors.New("say which of your organisations this is for (orgId)"))
+		}
+		return policy.Org(subject.OrgIDs[0]), nil
 	}
 }

@@ -1376,8 +1376,8 @@ def store_adopt(platform: Platform, place: str, org: str = "") -> dict:
 
 def controllers_build(platform: Platform, url: str = "", ref: str = "", path: str = "", zip_object: str = "",
                       zip_name: str = "", slug: str = "", name: str = "", controller: str = "",
-                      org: str = "") -> dict:
-    """Build a controller from a GitHub repository or an uploaded zip."""
+                      org: str = "", controllers: list | None = None) -> dict:
+    """Build the controllers in a GitHub repository or an uploaded zip."""
     if bool(url) == bool(zip_object):
         raise Refused(400, "invalid", "name a GitHub repository (url) or an uploaded zip (zip_object), one of them")
     if url:
@@ -1389,6 +1389,8 @@ def controllers_build(platform: Platform, url: str = "", ref: str = "", path: st
     else:
         source = {"kind": "zip", "objectId": zip_object, "name": zip_name or "controller.zip"}
     brief: dict[str, Any] = {"source": source}
+    if controllers:
+        brief["controllers"] = [str(one) for one in controllers]
     for key, value in (("slug", slug), ("name", name), ("controller", controller)):
         if value:
             brief[key] = value
@@ -1400,31 +1402,37 @@ def controllers_build(platform: Platform, url: str = "", ref: str = "", path: st
 def _controller_build_summary(made: dict) -> dict:
     steps = made.get("steps") or []
     out: dict[str, Any] = {
-        "build": made.get("id"), "slug": made.get("slug"), "state": made.get("state"),
-        "source": (made.get("brief") or {}).get("source"),
+        "build": made.get("id"), "source": (made.get("brief") or {}).get("source"),
+        "state": made.get("state"),
         "steps": [(f"{s.get('say')} ({s['n']} of {s['of']})" if s.get("of") else s.get("say")) for s in steps][-12:],
     }
     report = made.get("report") or {}
-    if report:
-        out["controller"] = report.get("controller")
-        out["commands"] = report.get("commands")
-        if report.get("source"):
-            out["source"] = report["source"]
-        checks = report.get("checks") or {}
-        tank = checks.get("tank") or {}
+    if report.get("source"):
+        out["source"] = report["source"]
+    built = []
+    for one in made.get("controllers") or []:
+        tank = (one.get("checks") or {}).get("tank") or {}
+        entry: dict[str, Any] = {"slug": one.get("slug"), "ok": one.get("ok"), "controller": one.get("controller"),
+                                 "commands": one.get("commands")}
         if tank:
-            out["tank"] = {"ok": tank.get("ok"), "said": tank.get("said")}
+            entry["tank"] = {"ok": tank.get("ok"), "said": tank.get("said")}
             if tank.get("seconds") is not None:
-                out["tank"]["seconds"] = said(tank["seconds"], MEASURED, "the build's tank check, timed")
-        vehicle = checks.get("vehicle") or {}
-        if vehicle.get("problems"):
-            out["problems"] = vehicle["problems"]
+                entry["tank"]["seconds"] = said(tank["seconds"], MEASURED, "the build's tank check, timed")
+        problems = ((one.get("checks") or {}).get("vehicle") or {}).get("problems")
+        if problems:
+            entry["problems"] = problems
+        if one.get("failure"):
+            entry["failure"] = one["failure"]
+        if one.get("stackId"):
+            entry["stack"] = one["stackId"]
+        built.append(entry)
+    if built:
+        out["controllers"] = built
     for key in ("failure", "said"):
         if made.get(key):
             out[key] = made[key][-1500:] if key == "said" else made[key]
-    if made.get("stackId"):
-        out["stack"] = made["stackId"]
-        out["next"] = "dives_start with this controller flies it; controllers_build_again rebuilds it"
+    if any(one.get("stack") for one in built):
+        out["next"] = "dives_start with one of these controllers flies it; controllers_build_again rebuilds them"
     return out
 
 
@@ -1437,3 +1445,15 @@ def controllers_build_again(platform: Platform, build: str) -> dict:
     """Build the same source again: from a repository, its newest commit."""
     made = platform.request("POST", f"/api/v1/controller-builds/{build}/again")
     return {**_controller_build_summary(made), "note": "a new build of the same source; the old one is unchanged"}
+
+
+def controllers_look(platform: Platform, url: str, ref: str = "", path: str = "") -> dict:
+    """Which controllers a public GitHub repository holds."""
+    from urllib.parse import urlencode
+    query = {"url": url}
+    if ref:
+        query["ref"] = ref
+    if path:
+        query["path"] = path
+    said_ = platform.request("GET", "/api/v1/controller-sources/look?" + urlencode(query))
+    return {**said_, "note": "controllers_build with controllers=[slugs] builds those; without, every one listed"}
