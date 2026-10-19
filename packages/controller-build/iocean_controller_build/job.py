@@ -139,7 +139,9 @@ def source(brief: dict) -> tuple[pathlib.Path, dict]:
         tell("source", f"at commit {said['commit'][:12]}", commit=said["commit"])
     else:
         raise Refused(f"no source of kind {said['kind']!r}")
-    sub = (said.get("path") or "").strip("/")
+    # For git, "path" is the folder within the repository; for a zip it is
+    # where the upload was staged, and the zip's own top folder is the source.
+    sub = (said.get("path") or "").strip("/") if said["kind"] == "git" else ""
     if sub:
         if ".." in pathlib.PurePosixPath(sub).parts:
             raise Refused("the folder may not climb out of the source")
@@ -228,7 +230,7 @@ from iocean.tank import Tank
 cls = controller_from(sys.argv[1])
 started = time.time()
 report = Tank(cls.vehicle, seconds=float(sys.argv[4])).run(cls())
-print(json.dumps({"score": report.score, "seconds": report.seconds, "said": str(report),
+print(json.dumps({"score": report.score if report.score == report.score else None, "seconds": report.seconds, "said": str(report),
                   "wall": round(time.time() - started, 1)}))
 '''
 
@@ -289,7 +291,10 @@ def main(argv: list[str]) -> int:
             tank = python(TANK, f"{src / file}:{cls}", SDK, deps, TANK_SECONDS, timeout=TANK_TIMEOUT, extra=extra)
         except subprocess.TimeoutExpired:
             raise Refused(f"it did not finish {TANK_SECONDS:.0f} s in the tank within {TANK_TIMEOUT} s") from None
-        report["checks"]["tank"] = {"ok": True, "seconds": tank["seconds"], "score": round(tank["score"], 4),
+        score = tank["score"]
+        # No task in the tank, no score: null, not NaN, which JSON cannot say.
+        score = round(score, 4) if isinstance(score, (int, float)) and score == score else None
+        report["checks"]["tank"] = {"ok": True, "seconds": round(tank["seconds"], 1), "score": score,
                                     "said": tank["said"], "wallSeconds": tank["wall"]}
         tell("check", f"the tank: {tank['said']}")
 
@@ -312,7 +317,8 @@ def main(argv: list[str]) -> int:
             entrypoint=["/bin/bash", "-lc", "source /opt/ros/jazzy/setup.bash && exec python3 -m iocean.ros "
                         f"/opt/controller/source/{file}:{cls} --rate {meta['rate']:g}"],
             labels={"io.iocean.controller": found["controller"], "io.iocean.slug": slug,
-                    **({"io.iocean.commit": said["commit"]} if said.get("commit") else {})})
+                    **({"io.iocean.commit": said["commit"]} if said.get("commit") else {})},
+            tag=slug)
         oci.tar_layout(SCRATCH / "image", OUTPUTS / "image.oci.tar")
         report.update(imageDigest=built["digest"], layers=built["layers"], sizeBytes=built["sizeBytes"], ok=True)
         tell("image", f"{built['layers']} layers, {built['sizeBytes'] / 2 ** 20:.0f} MB", digest=built["digest"])
@@ -334,7 +340,7 @@ def main(argv: list[str]) -> int:
     if SCRATCH.is_relative_to(OUTPUTS) and not os.environ.get("IOCEAN_KEEP_SCRATCH"):
         shutil.rmtree(SCRATCH, ignore_errors=True)
     if report["ok"]:
-        tell("done", f"{report['name']} built: {report['controller']}, tank score {report['checks']['tank']['score']}",
+        tell("done", f"{report['name']} built: {report['controller']}, {report['checks']['tank']['said']}",
              digest=report["imageDigest"])
         return 0
     # A source that cannot be built is still a finished build: its report

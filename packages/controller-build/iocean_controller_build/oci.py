@@ -120,7 +120,7 @@ def files_under(folder: pathlib.Path, inside: str, skip=("__pycache__", ".git"))
 
 
 def assemble(base: pathlib.Path, out: pathlib.Path, layers: list[tuple[bytes, str, str]],
-             env: dict[str, str], entrypoint: list[str], labels: dict[str, str]) -> dict:
+             env: dict[str, str], entrypoint: list[str], labels: dict[str, str], tag: str = "latest") -> dict:
     """The base image with `layers` ((gzipped, diff id, what it is)) on top,
     `env` merged into its environment, `entrypoint` set; written as a layout
     at `out`. Returns the manifest's digest and sizes."""
@@ -150,7 +150,14 @@ def assemble(base: pathlib.Path, out: pathlib.Path, layers: list[tuple[bytes, st
     (out / "oci-layout").write_text(json.dumps({"imageLayoutVersion": "1.0.0"}))
     (out / "index.json").write_text(json.dumps({"schemaVersion": 2, "mediaType": INDEX, "manifests": [
         {"mediaType": MANIFEST, "digest": digest, "size": len(manifest_bytes),
-         "platform": {"architecture": "amd64", "os": "linux"}}]}))
+         "platform": {"architecture": "amd64", "os": "linux"},
+         "annotations": {"org.opencontainers.image.ref.name": tag, "io.containerd.image.name": f"iocean/controller:{tag}"}}]}))
+    # And the manifest Docker's own loader reads, as `docker save` writes it,
+    # so the image also loads with `docker load` (a registry reads index.json).
+    (out / "manifest.json").write_text(json.dumps([{
+        "Config": f"blobs/sha256/{manifest['config']['digest'].split(':', 1)[1]}",
+        "RepoTags": [f"iocean/controller:{tag}"],
+        "Layers": [f"blobs/sha256/{layer['digest'].split(':', 1)[1]}" for layer in manifest["layers"]]}]))
     # Only the blobs this image uses: the base's own index and manifests go.
     used = {manifest["config"]["digest"], digest, *(layer["digest"] for layer in manifest["layers"])}
     for blob in (out / "blobs" / "sha256").iterdir():
