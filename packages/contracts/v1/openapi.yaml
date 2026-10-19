@@ -2593,6 +2593,130 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v1/organisations/{orgId}/controller-builds:
+    post:
+      tags: [work]
+      summary: Build a controller from a GitHub repository or a zip
+      description: >
+        The platform runs the controller build as a job: it fetches the source
+        (from GitHub, or the organisation's upload), finds the controller,
+        builds its image without the host's Docker, and flies it in a tank
+        against the SDK's topic contract. A build that passes is put in the
+        platform's registry and registered as a new build of that controller,
+        with the commit or the upload it came from. The job may reach GitHub
+        and the package index; nothing in the brief chooses what runs.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The organisation the controller is for.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ControllerBuildBrief'
+      responses:
+        '201':
+          description: The build, queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControllerBuild'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/Refused'
+        '503':
+          description: This platform has no image to build controllers with, or no registry to put them in.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+    get:
+      tags: [work]
+      summary: An institution's controller builds, newest first
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The organisation.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The last fifty, each as somebody watching it sees it.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [builds]
+                properties:
+                  builds:
+                    type: array
+                    items: { $ref: '#/components/schemas/ControllerBuild' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/controller-builds/{buildId}:
+    get:
+      tags: [work]
+      summary: How a controller build is going
+      description: >
+        Its log as steps, and when it is done, its report (the controller it
+        found, its topics, its tank check, the commit) and the stack it
+        registered. Watching a finished build is what puts it in the registry.
+      parameters:
+        - name: buildId
+          in: path
+          required: true
+          description: The build.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The build.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControllerBuild'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/controller-builds/{buildId}/again:
+    post:
+      tags: [work]
+      summary: Build the same source again
+      description: >
+        A new build with the same brief. From a repository that is the same
+        branch or tag and folder, so it builds the newest commit there: Pull
+        latest.
+      parameters:
+        - name: buildId
+          in: path
+          required: true
+          description: The build to repeat.
+          schema: { type: string }
+      responses:
+        '201':
+          description: The new build, queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControllerBuild'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/Refused'
+        '503':
+          description: This platform has no image to build controllers with, or no registry to put them in.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
   /api/v1/cities/{cityId}:
     get:
       tags: [places]
@@ -4525,6 +4649,13 @@ components:
         wantsGpu: { type: boolean }
         needs:
           $ref: '#/components/schemas/Part'
+        source:
+          type: object
+          additionalProperties: true
+          description: >
+            Where this build came from, when the platform built it: a
+            repository (url, ref, path, commit) or an upload (objectId, name),
+            and the controller build that made it.
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
       required: [id, orgId, slug, name, imageRepository, imageDigest, createdAt, createdBy]
@@ -5732,6 +5863,74 @@ components:
             objectId: { type: string }
         adopted: { type: boolean, description: One of the caller's organisations already has it. }
         distanceM: { type: number, description: How far its middle is from the area's, when an area was asked about. }
+
+    ControllerBuildBrief:
+      type: object
+      additionalProperties: false
+      required: [source]
+      properties:
+        source:
+          type: object
+          additionalProperties: false
+          required: [kind]
+          properties:
+            kind: { type: string, enum: [git, zip] }
+            url: { type: string, description: 'git: https://github.com/owner/repository, with no credentials in it.' }
+            ref: { type: string, description: "git: a branch, tag or commit; the repository's default branch when absent." }
+            path: { type: string, description: 'git: the folder the controller is in. zip: where the job finds it, filled in by the platform.' }
+            objectId: { type: string, description: 'zip: the object it was uploaded as, held by the organisation.' }
+            name: { type: string, description: "zip: the file's name, ending .zip." }
+        slug: { type: string, description: What the controller is called; found in the source when absent. }
+        name: { type: string }
+        controller: { type: string, description: 'The entry point, file.py:Class, when the build should not look for it.' }
+        rateHz: { type: number, minimum: 1, maximum: 200, description: How often the controller is asked for a command; 20 when absent. }
+
+    ControllerBuildRecord:
+      type: object
+      required: [id, orgId, jobId, brief, slug, createdBy, createdAt]
+      properties:
+        id: { type: string }
+        orgId: { type: string }
+        jobId: { type: string }
+        brief: { $ref: '#/components/schemas/ControllerBuildBrief' }
+        slug: { type: string }
+        report:
+          type: object
+          additionalProperties: true
+          description: >
+            What the build said about itself (report.json): ok, slug, name,
+            controller, vehicle, commands, subscribes, publishes, wantsGpu,
+            needs, source (with the commit), checks (vehicle, tank),
+            imageDigest, layers, sizeBytes, and failure when not ok.
+        stackId: { type: string, description: The autonomy stack it registered. }
+        failure: { type: string }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+        recordedAt: { type: string, format: date-time }
+
+    ControllerBuild:
+      allOf:
+        - $ref: '#/components/schemas/ControllerBuildRecord'
+        - type: object
+          required: [state, jobState, steps]
+          properties:
+            state: { type: string, enum: [queued, running, recording, ready, failed] }
+            jobState: { type: string }
+            steps:
+              type: array
+              items:
+                type: object
+                required: [at, step, say]
+                properties:
+                  at: { type: string, format: date-time }
+                  step: { type: string }
+                  say: { type: string }
+                  n: { type: integer }
+                  of: { type: integer }
+                  detail: { type: object, additionalProperties: true }
+            said:
+              type: string
+              description: The end of what the build printed, when it failed.
 
     PartPlan:
       type: object

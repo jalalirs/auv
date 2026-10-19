@@ -57,6 +57,8 @@ const (
 	KindReconstruction Kind = "recon"
 	// A reconstruction put onto a place.
 	KindMapping Kind = "map"
+	// A controller built from its source.
+	KindControllerBuild Kind = "ctlb"
 )
 
 var kinds = map[Kind]struct{}{
@@ -70,6 +72,7 @@ var kinds = map[Kind]struct{}{
 	KindVehicle: {}, KindQueue: {}, KindDevice: {}, KindStack: {},
 	KindConditions: {}, KindDive: {}, KindRun: {}, KindSweep: {},
 	KindBuild: {}, KindReconstruction: {}, KindMapping: {},
+	KindControllerBuild: {},
 }
 
 // ErrMalformed reports an identifier that is not of the expected shape or kind.

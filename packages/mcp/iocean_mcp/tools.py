@@ -1369,3 +1369,71 @@ def store_adopt(platform: Platform, place: str, org: str = "") -> dict:
     binding = platform.request("POST", f"/api/v1/organisations/{org_id}/store/{place}/adopt")
     return {"place": place, "organisation": org_id, "adopted": True, "share": (binding or {}).get("id"),
             "note": "it is among this institution's places now; dives_start can fly in it"}
+
+
+# ── a controller built from its source ───────────────────────────────────────
+
+
+def controllers_build(platform: Platform, url: str = "", ref: str = "", path: str = "", zip_object: str = "",
+                      zip_name: str = "", slug: str = "", name: str = "", controller: str = "",
+                      org: str = "") -> dict:
+    """Build a controller from a GitHub repository or an uploaded zip."""
+    if bool(url) == bool(zip_object):
+        raise Refused(400, "invalid", "name a GitHub repository (url) or an uploaded zip (zip_object), one of them")
+    if url:
+        source: dict[str, Any] = {"kind": "git", "url": url}
+        if ref:
+            source["ref"] = ref
+        if path:
+            source["path"] = path
+    else:
+        source = {"kind": "zip", "objectId": zip_object, "name": zip_name or "controller.zip"}
+    brief: dict[str, Any] = {"source": source}
+    for key, value in (("slug", slug), ("name", name), ("controller", controller)):
+        if value:
+            brief[key] = value
+    made = platform.request("POST", f"/api/v1/organisations/{_organisation(platform, org)}/controller-builds", brief)
+    return {**_controller_build_summary(made),
+            "note": "controllers_build_status says how it is going; a build takes minutes, its tank check one more"}
+
+
+def _controller_build_summary(made: dict) -> dict:
+    steps = made.get("steps") or []
+    out: dict[str, Any] = {
+        "build": made.get("id"), "slug": made.get("slug"), "state": made.get("state"),
+        "source": (made.get("brief") or {}).get("source"),
+        "steps": [(f"{s.get('say')} ({s['n']} of {s['of']})" if s.get("of") else s.get("say")) for s in steps][-12:],
+    }
+    report = made.get("report") or {}
+    if report:
+        out["controller"] = report.get("controller")
+        out["commands"] = report.get("commands")
+        if report.get("source"):
+            out["source"] = report["source"]
+        checks = report.get("checks") or {}
+        tank = checks.get("tank") or {}
+        if tank:
+            out["tank"] = {"ok": tank.get("ok"), "said": tank.get("said")}
+            if tank.get("seconds") is not None:
+                out["tank"]["seconds"] = said(tank["seconds"], MEASURED, "the build's tank check, timed")
+        vehicle = checks.get("vehicle") or {}
+        if vehicle.get("problems"):
+            out["problems"] = vehicle["problems"]
+    for key in ("failure", "said"):
+        if made.get(key):
+            out[key] = made[key][-1500:] if key == "said" else made[key]
+    if made.get("stackId"):
+        out["stack"] = made["stackId"]
+        out["next"] = "dives_start with this controller flies it; controllers_build_again rebuilds it"
+    return out
+
+
+def controllers_build_status(platform: Platform, build: str) -> dict:
+    """How a controller build is going."""
+    return _controller_build_summary(platform.request("GET", f"/api/v1/controller-builds/{build}"))
+
+
+def controllers_build_again(platform: Platform, build: str) -> dict:
+    """Build the same source again: from a repository, its newest commit."""
+    made = platform.request("POST", f"/api/v1/controller-builds/{build}/again")
+    return {**_controller_build_summary(made), "note": "a new build of the same source; the old one is unchanged"}

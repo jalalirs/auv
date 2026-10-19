@@ -189,6 +189,31 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
          "required": ["mapping"]},
         lambda p, mapping, candidate=None, at=None, heading_deg=None, dz=None:
             tools.mappings_accept(p, mapping, candidate, at, heading_deg, dz)),
+    "controllers_build": (
+        "Deploy a controller from its source: a public GitHub repository (url, and a branch, tag or "
+        "commit and a folder) or a zip this institution uploaded. THIS SPENDS TIME ON A MACHINE: the "
+        "platform builds its image, flies it in a tank against the SDK's topic contract, and registers "
+        "it as a new build of that controller when it passes. Watch it with controllers_build_status.",
+        {"type": "object",
+         "properties": {
+             "url": {"type": "string", "description": "https://github.com/owner/repository"},
+             "ref": {"type": "string", "description": "branch, tag or commit; the repository's default when absent"},
+             "path": {"type": "string", "description": "the folder the controller is in"},
+             "zip_object": {"type": "string", "description": "an uploaded zip's object id, instead of a repository"},
+             "zip_name": {"type": "string", "description": "the zip's file name"},
+             "slug": {"type": "string"}, "name": {"type": "string"},
+             "controller": {"type": "string", "description": "file.py:Class, when the build should not look for it"},
+             "org": {"type": "string", "description": "the organisation; this session's own when absent"}}},
+        lambda p, url="", ref="", path="", zip_object="", zip_name="", slug="", name="", controller="", org="":
+            tools.controllers_build(p, url, ref, path, zip_object, zip_name, slug, name, controller, org)),
+    "controllers_build_status": (
+        "How a controller build is going: its log, what it found, its tank check, and the stack it registered.",
+        {"type": "object", "properties": {"build": {"type": "string"}}, "required": ["build"]},
+        lambda p, build: tools.controllers_build_status(p, build)),
+    "controllers_build_again": (
+        "Build the same source again; from a repository, the newest commit on the same branch (Pull latest).",
+        {"type": "object", "properties": {"build": {"type": "string"}}, "required": ["build"]},
+        lambda p, build: tools.controllers_build_again(p, build)),
     "vehicles_list": (
         "Every vehicle, and whether it can actually fly. Read `flyable`: a "
         "package with dynamics and no hull cannot be put in the water however "

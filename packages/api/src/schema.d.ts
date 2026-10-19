@@ -3728,6 +3728,192 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organisations/{orgId}/controller-builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An institution's controller builds, newest first */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The organisation. */
+                    orgId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The last fifty, each as somebody watching it sees it. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            builds: components["schemas"]["ControllerBuild"][];
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        /**
+         * Build a controller from a GitHub repository or a zip
+         * @description The platform runs the controller build as a job: it fetches the source (from GitHub, or the organisation's upload), finds the controller, builds its image without the host's Docker, and flies it in a tank against the SDK's topic contract. A build that passes is put in the platform's registry and registered as a new build of that controller, with the commit or the upload it came from. The job may reach GitHub and the package index; nothing in the brief chooses what runs.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The organisation the controller is for. */
+                    orgId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ControllerBuildBrief"];
+                };
+            };
+            responses: {
+                /** @description The build, queued. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ControllerBuild"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+                429: components["responses"]["Refused"];
+                /** @description This platform has no image to build controllers with, or no registry to put them in. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/controller-builds/{buildId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How a controller build is going
+         * @description Its log as steps, and when it is done, its report (the controller it found, its topics, its tank check, the commit) and the stack it registered. Watching a finished build is what puts it in the registry.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The build. */
+                    buildId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The build. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ControllerBuild"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/controller-builds/{buildId}/again": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Build the same source again
+         * @description A new build with the same brief. From a repository that is the same branch or tag and folder, so it builds the newest commit there: Pull latest.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The build to repeat. */
+                    buildId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The new build, queued. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ControllerBuild"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                429: components["responses"]["Refused"];
+                /** @description This platform has no image to build controllers with, or no registry to put them in. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cities/{cityId}": {
         parameters: {
             query?: never;
@@ -6147,6 +6333,11 @@ export interface components {
             publishes?: string[];
             wantsGpu?: boolean;
             needs?: components["schemas"]["Part"];
+            /** @description Where this build came from, when the platform built it: a repository (url, ref, path, commit) or an upload (objectId, name), and the controller build that made it.
+             *      */
+            source?: {
+                [key: string]: unknown;
+            };
             /** Format: date-time */
             createdAt: string;
             createdBy: string;
@@ -6979,6 +7170,67 @@ export interface components {
             adopted: boolean;
             /** @description How far its middle is from the area's */
             distanceM?: number;
+        };
+        ControllerBuildBrief: {
+            source: {
+                /** @enum {string} */
+                kind: "git" | "zip";
+                /** @description git: https://github.com/owner/repository, with no credentials in it. */
+                url?: string;
+                /** @description git: a branch, tag or commit; the repository's default branch when absent. */
+                ref?: string;
+                /** @description git: the folder the controller is in. zip: where the job finds it, filled in by the platform. */
+                path?: string;
+                /** @description zip: the object it was uploaded as, held by the organisation. */
+                objectId?: string;
+                /** @description zip: the file's name, ending .zip. */
+                name?: string;
+            };
+            /** @description What the controller is called; found in the source when absent. */
+            slug?: string;
+            name?: string;
+            /** @description The entry point, file.py:Class, when the build should not look for it. */
+            controller?: string;
+            /** @description How often the controller is asked for a command; 20 when absent. */
+            rateHz?: number;
+        };
+        ControllerBuildRecord: {
+            id: string;
+            orgId: string;
+            jobId: string;
+            brief: components["schemas"]["ControllerBuildBrief"];
+            slug: string;
+            /** @description What the build said about itself (report.json): ok, slug, name, controller, vehicle, commands, subscribes, publishes, wantsGpu, needs, source (with the commit), checks (vehicle, tank), imageDigest, layers, sizeBytes, and failure when not ok.
+             *      */
+            report?: {
+                [key: string]: unknown;
+            };
+            /** @description The autonomy stack it registered. */
+            stackId?: string;
+            failure?: string;
+            createdBy: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            recordedAt?: string;
+        };
+        ControllerBuild: components["schemas"]["ControllerBuildRecord"] & {
+            /** @enum {string} */
+            state: "queued" | "running" | "recording" | "ready" | "failed";
+            jobState: string;
+            steps: {
+                /** Format: date-time */
+                at: string;
+                step: string;
+                say: string;
+                n?: number;
+                of?: number;
+                detail?: {
+                    [key: string]: unknown;
+                };
+            }[];
+            /** @description The end of what the build printed, when it failed. */
+            said?: string;
         };
         PartPlan: {
             count: number;

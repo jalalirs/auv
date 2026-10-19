@@ -71,6 +71,15 @@ type Config struct {
 	ReconstructMemoryBytes  int64
 	ReconstructWalltime     time.Duration
 	ReconstructPackageBytes int64
+	// ControllerBuildImage is the controller build's image, by digest, that
+	// builds controllers from a repository or a zip. Empty means this
+	// platform does not build them. What it builds goes to the registry at
+	// ControllerRegistryPush (on the platform's own network) and is named by
+	// ControllerRegistryPull, the address hosts fetch images from.
+	ControllerBuildImage   string
+	ControllerRegistryPush string
+	ControllerRegistryPull string
+	ControllerImageBytes   int64
 
 	// A model this platform may ask for a plan, and the key to ask with. All
 	// three empty on a platform that has not been given one, which is not an
@@ -188,6 +197,13 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if config.ReconstructPackageBytes, err = number64("IOCEAN_RECONSTRUCT_PACKAGE_BYTES", 0); err != nil {
+		return Config{}, err
+	}
+
+	config.ControllerBuildImage = os.Getenv("IOCEAN_CONTROLLER_BUILD_IMAGE")
+	config.ControllerRegistryPush = os.Getenv("IOCEAN_CONTROLLER_REGISTRY_PUSH")
+	config.ControllerRegistryPull = os.Getenv("IOCEAN_CONTROLLER_REGISTRY_PULL")
+	if config.ControllerImageBytes, err = number64("IOCEAN_CONTROLLER_IMAGE_BYTES", 0); err != nil {
 		return Config{}, err
 	}
 

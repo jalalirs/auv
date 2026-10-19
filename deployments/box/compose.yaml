@@ -45,6 +45,14 @@ x-platform-env: &platform-env
   # The reconstruction module's image, by digest, that makes reefs from dive
   # videos on a GPU. Empty: this platform does not make them.
   IOCEAN_RECONSTRUCT_IMAGE: ${IOCEAN_RECONSTRUCT_IMAGE:-}
+  # The controller build's image, by digest, that builds controllers from a
+  # GitHub repository or a zip (packages/controller-build). Empty: this
+  # platform does not build them. What it builds is pushed to the registry on
+  # this network (registry:5000) and named by the address hosts pull from
+  # (127.0.0.1:18081, the registry as published on this machine).
+  IOCEAN_CONTROLLER_BUILD_IMAGE: ${IOCEAN_CONTROLLER_BUILD_IMAGE:-}
+  IOCEAN_CONTROLLER_REGISTRY_PUSH: ${IOCEAN_CONTROLLER_REGISTRY_PUSH:-}
+  IOCEAN_CONTROLLER_REGISTRY_PULL: ${IOCEAN_CONTROLLER_REGISTRY_PULL:-}
 
 services:
   record:

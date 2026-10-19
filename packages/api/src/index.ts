@@ -52,6 +52,9 @@ export type MappingChoice = Schemas["MappingChoice"];
 export type Mapping = Schemas["Mapping"];
 export type MappingRecord = Schemas["MappingRecord"];
 export type StorePlace = Schemas["StorePlace"];
+export type ControllerBuildBrief = Schemas["ControllerBuildBrief"];
+export type ControllerBuild = Schemas["ControllerBuild"];
+export type ControllerBuildRecord = Schemas["ControllerBuildRecord"];
 export type Binding = Schemas["Binding"];
 export type StoredObject = Schemas["Object"];
 export type UploadGrant = Schemas["UploadGrant"];
@@ -238,6 +241,32 @@ export class Platform {
   async buildsOf(city: string): Promise<BuildRecord[]> {
     const { builds } = await this.#request<{ builds: BuildRecord[] }>("GET", `/api/v1/cities/${city}/builds`);
     return builds;
+  }
+
+  // ── a controller built from its source ─────────────────────────────────────
+
+  /**
+   * Build a controller from a GitHub repository or an uploaded zip, as a job:
+   * its image built, flown in a tank, and registered as autonomy when it
+   * passes.
+   */
+  startControllerBuild(organisation: string, brief: ControllerBuildBrief): Promise<ControllerBuild> {
+    return this.#request("POST", `/api/v1/organisations/${organisation}/controller-builds`, brief);
+  }
+
+  controllerBuild(id: string): Promise<ControllerBuild> {
+    return this.#request("GET", `/api/v1/controller-builds/${id}`);
+  }
+
+  async controllerBuildsOf(organisation: string): Promise<ControllerBuild[]> {
+    const { builds } = await this.#request<{ builds: ControllerBuild[] }>(
+      "GET", `/api/v1/organisations/${organisation}/controller-builds`);
+    return builds;
+  }
+
+  /** Build the same source again; from a repository, its newest commit (Pull latest). */
+  controllerBuildAgain(id: string): Promise<ControllerBuild> {
+    return this.#request("POST", `/api/v1/controller-builds/${id}/again`);
   }
 
   // ── the map store ──────────────────────────────────────────────────────────

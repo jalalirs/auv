@@ -297,6 +297,21 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/autonomy",
 		Summary: "register autonomy, pinned by image digest", Action: policy.DiveWrite,
 		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.registerStack})
+	// A controller built on the platform from a repository or a zip, and
+	// registered as autonomy when it passes its tank check: the same
+	// authority as registering it from a terminal.
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/controller-builds",
+		Summary: "build a controller from a GitHub repository or a zip, as a job, and register it when it passes",
+		Action:  policy.DiveWrite, Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.startControllerBuild})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations/{orgId}/controller-builds",
+		Summary: "an institution's controller builds, newest first", Action: policy.DiveRead,
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.listControllerBuilds})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/controller-builds/{buildId}",
+		Summary: "how a controller build is going: its log, its tank check, the stack it registered",
+		Action:  policy.DiveRead, Resource: d.ofControllerBuild("buildId"), Handle: d.watchControllerBuild})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/controller-builds/{buildId}/again",
+		Summary: "build the same source again; from a repository, its newest commit",
+		Action:  policy.DiveWrite, Resource: d.ofControllerBuild("buildId"), Handle: d.againControllerBuild})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations/{orgId}/autonomy",
 		Summary: "an institution's autonomy", Action: policy.DiveRead,
 		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.listStacks})

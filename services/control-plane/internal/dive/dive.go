@@ -47,7 +47,10 @@ type AutonomyStack struct {
 	WantsGPU        bool            `json:"wantsGpu"`
 	// What it needs beside the simulator — gpu, gpuMemoryBytes, cpu,
 	// memoryBytes — written by whoever deployed it. What the scheduler places.
-	Needs     json.RawMessage `json:"needs"`
+	Needs json.RawMessage `json:"needs"`
+	// Source is where this build came from, when the platform built it: a
+	// repository and its commit, or an upload.
+	Source    json.RawMessage `json:"source,omitempty"`
 	CreatedAt time.Time       `json:"createdAt"`
 	CreatedBy string          `json:"createdBy"`
 }
@@ -63,6 +66,7 @@ type StackSpec struct {
 	Publishes       json.RawMessage
 	WantsGPU        bool
 	Needs           json.RawMessage
+	Source          json.RawMessage
 	CreatedBy       string
 }
 
@@ -354,14 +358,18 @@ func NewStore(pool *db.Pool) *Store { return &Store{pool: pool} }
 
 const selectStack = `
 	SELECT id, org_id, slug, name, image_repository, image_digest,
-	       subscribes, publishes, wants_gpu, needs, created_at, created_by
+	       subscribes, publishes, wants_gpu, needs, source, created_at, created_by
 	FROM dive.autonomy_stack`
 
 func scanStack(row interface{ Scan(...any) error }) (AutonomyStack, error) {
 	var stack AutonomyStack
+	var source []byte
 	err := row.Scan(&stack.ID, &stack.OrgID, &stack.Slug, &stack.Name,
 		&stack.ImageRepository, &stack.ImageDigest, &stack.Subscribes,
-		&stack.Publishes, &stack.WantsGPU, &stack.Needs, &stack.CreatedAt, &stack.CreatedBy)
+		&stack.Publishes, &stack.WantsGPU, &stack.Needs, &source, &stack.CreatedAt, &stack.CreatedBy)
+	if len(source) > 0 {
+		stack.Source = json.RawMessage(source)
+	}
 	return stack, err
 }
 
@@ -390,14 +398,19 @@ func (s *Store) CreateStack(ctx context.Context, conn db.Conn, spec StackSpec) (
 		}
 	}
 
+	var source []byte
+	if len(spec.Source) > 0 && string(spec.Source) != "null" {
+		source = spec.Source
+	}
+
 	id := ids.New(ids.KindStack)
 	_, err := conn.Exec(ctx, `
 		INSERT INTO dive.autonomy_stack
 		    (id, org_id, slug, name, image_repository, image_digest,
-		     subscribes, publishes, wants_gpu, needs, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		     subscribes, publishes, wants_gpu, needs, source, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
 		id, spec.OrgID, spec.Slug, spec.Name, spec.ImageRepository,
-		spec.ImageDigest, subscribes, publishes, spec.WantsGPU, needs, spec.CreatedBy)
+		spec.ImageDigest, subscribes, publishes, spec.WantsGPU, needs, source, spec.CreatedBy)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return AutonomyStack{}, fmt.Errorf("%w: this organisation already has a stack named %q",

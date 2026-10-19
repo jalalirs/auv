@@ -20,6 +20,7 @@ import (
 	"github.com/jalalirs/auv/services/control-plane/internal/catalog"
 	"github.com/jalalirs/auv/services/control-plane/internal/compute"
 	"github.com/jalalirs/auv/services/control-plane/internal/config"
+	"github.com/jalalirs/auv/services/control-plane/internal/controllerbuild"
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
 	"github.com/jalalirs/auv/services/control-plane/internal/dive"
 	"github.com/jalalirs/auv/services/control-plane/internal/exec"
@@ -117,6 +118,10 @@ func run(logger *slog.Logger) error {
 		Mapper: mapping.New(pool, broker, objects, catalog.NewStore(pool), builder, reconstructor,
 			mapping.Settings{Image: settings.ReconstructImage, PackageBytes: settings.ReconstructPackageBytes}),
 		MapStore: mapstore.New(catalog.NewStore(pool), builder, authorizer),
+		Controllers: controllerbuild.New(pool, broker, objects, dive.NewStore(pool), recorder, controllerbuild.Settings{
+			Image: settings.ControllerBuildImage, ImageBytes: settings.ControllerImageBytes,
+			RegistryPush: settings.ControllerRegistryPush, RegistryPull: settings.ControllerRegistryPull,
+		}),
 		Drafter: planning.Drafter{
 			URL: settings.ModelURL, Key: settings.ModelKey, Model: settings.Model,
 			MaxTokens: settings.ModelMaxTokens,
