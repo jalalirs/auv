@@ -335,6 +335,10 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
                        "description": "where the vehicle goes in, instead of where the place says a dive "
                                       "begins: [x, y, z] in the site's metres, +x east, +y north, z up "
                                       "(a depth is negative); places_get lists what a place holds and where"},
+             "controller": {"type": "string",
+                            "description": "what flies it: a deployed controller's slug or id (its newest "
+                                           "build; controllers_list), or one of the platform's own by name; "
+                                           "the vehicle holds station when absent"},
              "name": {"type": "string"}},
          "required": ["place", "vehicle", "objective"]},
         lambda p, place, vehicle, objective, water="still", pictures=False,

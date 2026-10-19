@@ -178,6 +178,10 @@ class Fleet:
 
     def request(self, method, path, body=None):
         self.asked.append((path, body))
+        if path.endswith("/autonomy"):
+            return {"autonomy": [
+                {"id": "stack_old", "slug": "station-hold", "createdAt": "2026-10-01T00:00:00Z"},
+                {"id": "stack_new", "slug": "station-hold", "createdAt": "2026-10-19T00:00:00Z"}]}
         if path.endswith("/conditions"):
             return {"id": "cond_1"}
         if path.endswith("/dives"):
@@ -367,3 +371,18 @@ def test_how_a_run_was_flown_comes_back_marked_derived():
 
 def test_a_run_from_before_the_ride_card_says_so_rather_than_nothing():
     assert tools.dives_result(Scored(), "dive_1")["ride"]["unknown"]
+
+
+def test_a_deployed_controller_flies_it_by_its_newest_build():
+    """Named and dropped, every dive an agent asked for was held by the runtime."""
+    platform = Fleet()
+    said = tools.dives_start(platform, "al-fahal", "bluerov2", {"kind": "hold-station"}, controller="station-hold")
+    dive = next(b for p, b in platform.asked if p.endswith("/dives"))
+    assert dive["autonomyStackId"] == "stack_new" and said["stack"] == "stack_new"
+
+
+def test_a_name_that_is_not_deployed_is_one_of_the_platforms_own():
+    platform = Fleet()
+    tools.dives_start(platform, "al-fahal", "bluerov2", {"kind": "hold-station"}, controller="hold")
+    dive = next(b for p, b in platform.asked if p.endswith("/dives"))
+    assert "autonomyStackId" not in dive and dive["objective"]["controller"] == "hold"

@@ -695,6 +695,19 @@ def dives_start(platform: Platform, place: str, vehicle: str,
     if institution is None:
         raise Refused(403, "no_institution", "this session belongs to no institution")
 
+    # What flies it: a deployed controller, by slug or id, flies its newest
+    # build; any other name is one of the platform's own, said in the
+    # objective. This was accepted and dropped, so every dive an agent asked
+    # for was held by the runtime whatever it named.
+    stack_id = None
+    if controller:
+        stacks = platform.request("GET", f"/api/v1/organisations/{institution['id']}/autonomy").get("autonomy", [])
+        named = [s for s in stacks if controller in (s.get("id"), s.get("slug"))]
+        if named:
+            stack_id = max(named, key=lambda s: s.get("createdAt") or "")["id"]
+        else:
+            objective = {**objective, "controller": controller}
+
     sea = platform.request(
         "POST", f"/api/v1/organisations/{institution['id']}/conditions",
         {"kind": "constructed", "name": water,
@@ -709,6 +722,7 @@ def dives_start(platform: Platform, place: str, vehicle: str,
             "objective": {**objective, "pictures": bool(pictures),
                           **({"views": list(views), "viewEveryS": float(view_every_s)} if views else {})},
             **({"initialState": {"positionM": [float(v) for v in start]}} if start else {}),
+            **({"autonomyStackId": stack_id} if stack_id else {}),
         })
 
     queues = platform.queues()
@@ -731,6 +745,7 @@ def dives_start(platform: Platform, place: str, vehicle: str,
         "dive": dive["id"], "run": run["id"], "state": run.get("state"),
         "place": found.get("name"), "vehicle": machine.get("name"),
         "water": water, "drawn": bool(pictures), "runtime": runtime,
+        **({"flownBy": controller, "stack": stack_id} if stack_id else {"flownBy": controller} if controller else {}),
         **({"views": list(views), "viewEveryS": float(view_every_s)} if views else {}),
         "note": ("queued. dives_result says how it went; a drawn dive runs at "
                  "about a sixth of real time and an undrawn one at fifteen "
