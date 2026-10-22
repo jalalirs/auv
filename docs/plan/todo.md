@@ -2341,6 +2341,13 @@ and soundings imported; all three laid into an Al Fahal draft in one job; a
 place built on the survey. The simulator that draws laid assets is live as
 sim-runtime:r2 (r1 drew none). Open: structure surfaces (plain white/black),
 platforms collide as solid blocks, no pipeline video yet, detail pages (68).
+Pipeline from video, 2026-10-22: SubPipe (Oceanscan-MST, CC BY 4.0), run 3,
+first 414 frames near the bottom. COLMAP placed 3 of 414 in the murk; the
+vehicle's navigation as camera poses (tools/subpipe-poses, brief "poses",
+"camera", "enhance": "clahe") placed all 414, metric. Asset
+recon_01M5JEK8VYR17WTFW1MP4R1GTA, 160.6 x 10 m, a pipeline structure; laid
+into "SubPipe outfall test" (own place, flat 17 m). No lat/lon in the data:
+its location is assumed.
 
 ## 71. A place is composed: ground, assets, Resolve
 
