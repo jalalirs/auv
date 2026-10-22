@@ -167,15 +167,21 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
              "name": {"type": "string", "description": "own: the new place's name"},
              "across_m": {"type": "number", "description": "own: 100 to 2000 m; default 300"},
              "pad": {"type": "string", "enum": ["sand", "coral"], "description": "own: the ground around the reef"},
-             "heading_deg": {"type": "number", "description": "own: which way the reef faces; default 0"}},
-         "required": ["reconstruction", "mode"]},
-        lambda p, reconstruction, mode, place="", version="", start=None, within_m=None, depth_m=None,
-               count=None, name="", across_m=None, pad="", heading_deg=None:
+             "heading_deg": {"type": "number", "description": "own: which way the reef faces; default 0"},
+             "assets": {"type": "array",
+                        "items": {"oneOf": [{"type": "string"}, {"type": "object"}]},
+                        "description": "onto: several reefs at once, each a reconstruction id or "
+                                       "{\"reconstruction\": id, \"start\": [lat, lon], \"depth_m\": 8, "
+                                       "\"within_m\": 400}; one search each, then one job lays them all in"}},
+         "required": ["mode"]},
+        lambda p, reconstruction="", mode="onto", place="", version="", start=None, within_m=None, depth_m=None,
+               count=None, name="", across_m=None, pad="", heading_deg=None, assets=None:
             tools.mappings_create(p, reconstruction, mode, place, version, start, within_m, depth_m,
-                                  count, name, across_m, pad, heading_deg)),
+                                  count, name, across_m, pad, heading_deg, assets)),
     "mappings_status": (
-        "How a mapping is going: its state, the steps of each job, and when the search has finished, "
-        "the candidates (index, where, heading, how well the ground fits, the seabed's depth there).",
+        "How a mapping is going: its state, the steps of each job, and for each reef its state and, "
+        "when its search has finished, its candidates (index, where, heading, how well the ground fits, "
+        "the seabed's depth there), and which reefs overlap once laid.",
         {"type": "object",
          "properties": {"mapping": {"type": "string"}},
          "required": ["mapping"]},
@@ -187,13 +193,21 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
         {"type": "object",
          "properties": {
              "mapping": {"type": "string"},
+             "asset": {"type": "integer", "description": "which reef, by its number in mappings_status; the first when absent"},
              "candidate": {"type": "integer"},
              "at": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
              "heading_deg": {"type": "number"},
              "dz": {"type": "number"}},
          "required": ["mapping"]},
-        lambda p, mapping, candidate=None, at=None, heading_deg=None, dz=None:
-            tools.mappings_accept(p, mapping, candidate, at, heading_deg, dz)),
+        lambda p, mapping, candidate=None, at=None, heading_deg=None, dz=None, asset=None:
+            tools.mappings_accept(p, mapping, candidate, at, heading_deg, dz, asset)),
+    "mappings_drop": (
+        "Take a reef out of a mapping before the reefs are laid in: one whose search failed, which holds "
+        "the rest up until it is dropped, or one not wanted after all.",
+        {"type": "object",
+         "properties": {"mapping": {"type": "string"}, "asset": {"type": "integer"}},
+         "required": ["mapping", "asset"]},
+        lambda p, mapping, asset: tools.mappings_drop(p, mapping, asset)),
     "controllers_build": (
         "Deploy controllers from their source: a public GitHub repository (url, and a branch, tag or "
         "commit and a folder) or a zip this institution uploaded. One source may hold several "

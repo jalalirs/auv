@@ -79,7 +79,8 @@ func (d *Dependencies) acceptMapping(w http.ResponseWriter, r *http.Request) {
 		return d.Audit.Record(r.Context(), conn, audit.Event{
 			ActorID: principal.ID, Action: string(policy.CityFound),
 			SubjectKind: "mapping", SubjectID: made.ID, Outcome: audit.Succeeded,
-			Detail: map[string]any{"chosen": made.Chosen, "layJobId": made.LayJobID},
+			Detail: map[string]any{"asset": choice.Asset, "candidate": choice.Candidate,
+				"placement": choice.Placement, "layJobId": made.LayJobID},
 		})
 	}); err != nil {
 		writeError(w, r, err)
@@ -110,16 +111,7 @@ func (d *Dependencies) listMappings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
-	views := make([]mapping.View, 0, len(all))
-	for _, one := range all {
-		view, err := d.Mapper.Watch(r.Context(), one.ID)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		views = append(views, view)
-	}
-	writeJSON(w, r, http.StatusOK, map[string]any{"mappings": views})
+	d.writeMappings(w, r, all)
 }
 
 // ofMapping names the organisation a mapping belongs to.
@@ -131,4 +123,119 @@ func (d *Dependencies) ofMapping(segment string) ResourceOf {
 		}
 		return policy.Org(org), nil
 	}
+}
+
+// startPlaceMapping asks for reefs to be put onto a place that exists: one
+// search each, then one job laying them all in. The caller must be able to
+// make versions of the place, and to found things in the organisation the
+// reefs belong to.
+func (d *Dependencies) startPlaceMapping(w http.ResponseWriter, r *http.Request) {
+	var request mapping.PlaceRequest
+	if err := readJSON(r, &request); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	if len(request.Assets) == 0 || request.Assets[0].ReconstructionID == "" {
+		writeError(w, r, errors.Join(domain.ErrInvalid, errors.New("name the reefs to put onto the place (assets)")))
+		return
+	}
+	for i := range request.Assets {
+		request.Assets[i].StartAssumed = false
+	}
+	org, err := d.Mapper.OrgOfReconstruction(r.Context(), request.Assets[0].ReconstructionID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	if !d.permits(w, r, policy.CityFound, policy.Org(org)) {
+		return
+	}
+	principal, _ := principalOf(r.Context())
+	made, err := d.Mapper.StartOnto(r.Context(), principal.ID, r.PathValue("cityId"), request)
+	if errors.Is(err, mapping.ErrNotConfigured) {
+		writeProblem(w, r, http.StatusServiceUnavailable, "not_configured", err.Error(), nil)
+		return
+	}
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	reefs := make([]string, 0, len(made.Assets))
+	for _, a := range made.Assets {
+		reefs = append(reefs, a.ReconstructionID)
+	}
+	if err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		return d.Audit.Record(r.Context(), conn, audit.Event{
+			ActorID: principal.ID, Action: string(policy.CityPublish),
+			SubjectKind: "mapping", SubjectID: made.ID, Outcome: audit.Succeeded,
+			Detail: map[string]any{"cityId": made.CityID, "reconstructions": reefs, "orgId": made.OrgID},
+		})
+	}); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	view, err := d.Mapper.Watch(r.Context(), made.ID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusCreated, view)
+}
+
+type dropRequest struct {
+	Asset int `json:"asset"`
+}
+
+// dropMappingAsset takes a reef out of a mapping before it is laid in.
+func (d *Dependencies) dropMappingAsset(w http.ResponseWriter, r *http.Request) {
+	var request dropRequest
+	if err := readJSON(r, &request); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	principal, _ := principalOf(r.Context())
+	made, err := d.Mapper.Drop(r.Context(), r.PathValue("mappingId"), request.Asset)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	if err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		return d.Audit.Record(r.Context(), conn, audit.Event{
+			ActorID: principal.ID, Action: string(policy.CityFound),
+			SubjectKind: "mapping", SubjectID: made.ID, Outcome: audit.Succeeded,
+			Detail: map[string]any{"dropped": request.Asset, "layJobId": made.LayJobID},
+		})
+	}); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	view, err := d.Mapper.Watch(r.Context(), made.ID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, view)
+}
+
+// listPlaceMappings lists the mappings onto a place, newest first.
+func (d *Dependencies) listPlaceMappings(w http.ResponseWriter, r *http.Request) {
+	all, err := d.Mapper.OfPlace(r.Context(), r.PathValue("cityId"))
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	d.writeMappings(w, r, all)
+}
+
+func (d *Dependencies) writeMappings(w http.ResponseWriter, r *http.Request, all []mapping.Mapping) {
+	views := make([]mapping.View, 0, len(all))
+	for _, one := range all {
+		view, err := d.Mapper.Watch(r.Context(), one.ID)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		views = append(views, view)
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{"mappings": views})
 }

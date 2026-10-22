@@ -3554,6 +3554,146 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cities/{cityId}/mappings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The mappings onto a place, newest first */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The place. */
+                    cityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Its mappings. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            mappings: components["schemas"]["Mapping"][];
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        /**
+         * Put several reefs onto a place
+         * @description Each reef (a ready reconstruction of one organisation's) gets a search of its own near where its video starts; as many start now as the organisation may run, the rest as those finish. The mapping waits in choosing until somebody accepts where each goes, or drops the ones whose search failed, and then one job lays them all into one draft version. The caller must be able to make versions of the place and to found things in the reefs' organisation.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The place. */
+                    cityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PlaceMappingRequest"];
+                };
+            };
+            responses: {
+                /** @description The mapping, its searches started. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Mapping"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                429: components["responses"]["Refused"];
+                /** @description This platform has no image to put reconstructions onto places with. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mappings/{mappingId}/drop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take a reef out of a mapping
+         * @description Before the reefs are laid in: a reef whose search failed, which holds the rest up until it is dropped, or one nobody wants after all. When every reef left has somewhere to go, they are laid in.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The mapping. */
+                    mappingId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description The reef */
+                        asset: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description The mapping. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Mapping"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mappings/{mappingId}/accept": {
         parameters: {
             query?: never;
@@ -7112,7 +7252,9 @@ export interface components {
             startAssumed?: boolean;
         };
         MappingChoice: {
-            /** @description The index of one of the candidates the search found. */
+            /** @description Which reef */
+            asset?: number;
+            /** @description The index of one of the candidates its search found. */
             candidate?: number;
             /** @description Where to put the reef by hand, in the place's metres. */
             placement?: {
@@ -7121,43 +7263,99 @@ export interface components {
                 dz: number;
             };
         };
+        PlaceMappingRequest: {
+            /** @description Which of the place's versions; its newest when absent. */
+            versionId?: string;
+            assets: components["schemas"]["MappingAssetRequest"][];
+        };
+        MappingAssetRequest: {
+            /** @description A ready reconstruction of the organisation's. */
+            reconstructionId: string;
+            /** @description Where its video starts; the reconstruction's own when absent. */
+            start?: {
+                lat: number;
+                lon: number;
+            };
+            /** @description How far from the start its search looks; 400 when absent. */
+            withinM?: number;
+            /** @description How deep the reef is */
+            depthM?: number;
+            /** @description How many candidates its search reports; 5 when absent. */
+            count?: number;
+            /** @description Which way it faces */
+            headingDeg?: number;
+            /** @description Written by the platform; ignored when sent. */
+            startAssumed?: boolean;
+        };
+        /** @description One place a search found a reef fits (candidates.json): headingDeg, at, dz, centre, matrix, startAt and fit (rmsM, score, placeGroundM).
+         *      */
+        MappingCandidate: {
+            headingDeg?: number;
+            at?: number[];
+            dz?: number;
+            fit?: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        MappingStep: {
+            /** Format: date-time */
+            at: string;
+            step: string;
+            say: string;
+            n?: number;
+            of?: number;
+            detail?: {
+                [key: string]: unknown;
+            };
+            /** @enum {string} */
+            phase: "base" | "resolve" | "lay";
+            /** @description Which reef a search step is of. */
+            asset?: number;
+        };
+        MappingAsset: {
+            ordinal: number;
+            reconstructionId: string;
+            /** @description What it is called in the place */
+            name: string;
+            brief: components["schemas"]["MappingAssetRequest"];
+            resolveJobId?: string;
+            /** @enum {string} */
+            state: "resolving" | "choosing" | "chosen" | "failed" | "dropped";
+            steps: components["schemas"]["MappingStep"][];
+            candidates?: components["schemas"]["MappingCandidate"][];
+            /** @description Where in the place's metres its search looked from, when it knew. */
+            start?: number[] | null;
+            /** @description How its search looked. */
+            searched?: {
+                [key: string]: unknown;
+            };
+            /** @description Where it is laid */
+            chosen?: {
+                [key: string]: unknown;
+            };
+            failure?: string;
+            /** Format: date-time */
+            droppedAt?: string;
+            /** @description The end of what its search printed */
+            said?: string;
+        };
         MappingRecord: {
             id: string;
             orgId: string;
-            reconstructionId: string;
+            /** @description The first reef's reconstruction. */
+            reconstructionId?: string;
             cityId: string;
             /** @enum {string} */
             mode: "onto" | "own";
             brief: components["schemas"]["MappingRequest"];
-            /** @description The version the reef is laid into. */
+            /** @description The version the reefs are laid into. */
             baseVersionId?: string;
             /** @description The build of a place of its own's flat seabed. */
             buildId?: string;
-            resolveJobId?: string;
-            /** @description The places the search found the reef fits, best first (candidates.json): each with headingDeg, at, dz, centre, matrix, startAt and fit (rmsM, score, placeGroundM).
-             *      */
-            candidates?: ({
-                headingDeg?: number;
-                at?: number[];
-                dz?: number;
-                fit?: {
-                    [key: string]: unknown;
-                };
-            } & {
-                [key: string]: unknown;
-            })[];
-            /** @description Where in the place's metres the search looked from, when it knew. */
-            start?: number[] | null;
-            /** @description How the search looked. */
-            searched?: {
-                [key: string]: unknown;
-            };
-            /** @description Where the reef is laid, as the lay job was told. */
-            chosen?: {
-                [key: string]: unknown;
-            };
             layJobId?: string;
-            /** @description The draft version with the reef in it. */
+            /** @description The draft version with the reefs in it. */
             versionId?: string;
             failure?: string;
             createdBy: string;
@@ -7167,26 +7365,34 @@ export interface components {
             recordedAt?: string;
         };
         Mapping: components["schemas"]["MappingRecord"] & {
-            /** @enum {string} */
+            /**
+             * @description Choosing until every reef has somewhere to go; a reef whose search failed holds the rest up until it is dropped.
+             *
+             * @enum {string}
+             */
             state: "building" | "resolving" | "choosing" | "laying" | "recording" | "ready" | "failed";
+            assets: components["schemas"]["MappingAsset"][];
             /** @description The last two hundred steps of the jobs it has run. */
-            steps: {
-                /** Format: date-time */
-                at: string;
-                step: string;
-                say: string;
-                n?: number;
-                of?: number;
-                detail?: {
-                    [key: string]: unknown;
-                };
-                /** @enum {string} */
-                phase: "base" | "resolve" | "lay";
+            steps: components["schemas"]["MappingStep"][];
+            /** @description Where the lay job put each reef (name, at, headingDeg, dz), once done. */
+            laid?: {
+                [key: string]: unknown;
             }[];
-            /** @description Why the next job has not started yet, when the platform refused it for now. */
+            /** @description Reefs whose ground came within a metre of each other. */
+            overlaps?: string[];
+            /** @description What it waits for that is not a job, or why the next job has not started yet. */
             waiting?: string;
             /** @description The end of what the failed job printed. */
             said?: string;
+            /** @description The first reef's candidates, as a mapping of one reef always said them. */
+            candidates?: components["schemas"]["MappingCandidate"][];
+            start?: number[] | null;
+            searched?: {
+                [key: string]: unknown;
+            };
+            chosen?: {
+                [key: string]: unknown;
+            };
         };
         StorePlace: {
             id: string;

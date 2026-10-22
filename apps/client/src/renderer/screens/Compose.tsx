@@ -38,11 +38,14 @@ function sizeSaid(m: number): string {
   return m >= 1000 ? `${m / 1000} km` : `${m} m`;
 }
 
-/** Where the work is: building the ground, an asset being resolved or laid, or done. */
+/** Where the work is: building the ground, the assets resolved, chosen and laid together, or done. */
+type AssetView = { ordinal: number; reconstructionId: string; name?: string; state: string; candidates?: unknown[];
+                   start?: [number, number] | null; failure?: string; steps?: { say: string }[] };
+const assetsOf = (m: Mapping): AssetView[] => ((m as unknown as { assets?: AssetView[] }).assets ?? []);
 type Stage =
   | { at: "composing" }
   | { at: "ground"; build: Build }
-  | { at: "asset"; index: number; mapping: Mapping }
+  | { at: "assets"; mapping: Mapping }
   | { at: "done"; versionId: string };
 
 export function Compose({ platform, held, base, onBack, onOpen }: {
@@ -119,39 +122,40 @@ export function Compose({ platform, held, base, onBack, onOpen }: {
     }, 4000);
     return () => clearInterval(again);
   }, [platform, stage]);
-  // Built: the first asset is resolved onto it, or it is done.
+  // Built: every asset resolved onto it at once, or it is done.
   useEffect(() => {
     if (stage.at !== "ground" || stage.build.state !== "ready" || !stage.build.versionId) return;
     setVersionId(stage.build.versionId);
-    void nextAsset(0);
+    void resolveAll();
   }, [stage]); // eslint-disable-line react-hooks/exhaustive-deps
-  // An asset's mapping, watched while it resolves or lays.
+  // The mapping, watched while its assets resolve, and while they are laid.
   useEffect(() => {
-    if (stage.at !== "asset") return;
+    if (stage.at !== "assets") return;
     const m = stage.mapping;
-    if (m.state === "choosing" || m.state === "failed") return;
+    if (m.state === "failed") return;
     if (m.state === "ready") {
       if (m.versionId) setVersionId(m.versionId);
-      void nextAsset(stage.index + 1);
+      setStage({ at: "done", versionId: m.versionId ?? versionId ?? "" });
       return;
     }
     const again = setInterval(() => {
-      platform.mapping(m.id).then((one) => setStage((s) => s.at === "asset" ? { ...s, mapping: one } : s)).catch(() => undefined);
+      platform.mapping(m.id).then((one) => setStage((s) => s.at === "assets" ? { ...s, mapping: one } : s)).catch(() => undefined);
     }, 4000);
     return () => clearInterval(again);
   }, [platform, stage]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const nextAsset = async (index: number) => {
+  const resolveAll = async () => {
     if (!place) return;
-    const reef = reefs.find((r) => r.id === picked[index]);
-    if (!reef) { setStage({ at: "done", versionId: versionId ?? "" }); return; }
+    if (picked.length === 0) { setStage({ at: "done", versionId: versionId ?? "" }); return; }
     try {
-      const mapping = await platform.startMapping(reef.id, {
-        mode: "onto", cityId: place.id, withinM: Math.max(10, Math.min(5000, acrossM)),
-        ...(where ? { start: where } : {}),
-        ...(ground === "flat" ? { depthM: Number(flatDepth) } : {}),
+      const mapping = await platform.startPlaceMapping(place.id, {
+        assets: picked.map((id) => ({
+          reconstructionId: id, withinM: Math.max(10, Math.min(5000, acrossM)),
+          ...(where ? { start: where } : {}),
+          ...(ground === "flat" ? { depthM: Number(flatDepth) } : {}),
+        })),
       });
-      setStage({ at: "asset", index, mapping });
+      setStage({ at: "assets", mapping });
     } catch (problem) {
       setTrouble(problem instanceof Error ? problem.message : "Resolve could not start");
     }
@@ -224,8 +228,9 @@ export function Compose({ platform, held, base, onBack, onOpen }: {
     && (ground !== "flat" || (Number(flatDepth) >= 0.5 && Number(flatDepth) <= 60))
     && (ground !== "store" || !!storeBase);
   const groundNow = useVersionGround(platform, versionId);
-  const resolving = stage.at === "asset" && stage.mapping.state === "choosing";
-  const reefOf = (i: number) => reefs.find((r) => r.id === picked[i]);
+  // The first asset still waiting for its place to be chosen.
+  const choosing = stage.at === "assets" && stage.mapping.state === "choosing"
+    ? assetsOf(stage.mapping).find((a) => a.state === "choosing") : undefined;
   const extentOf = (r?: Reconstruction): [number, number] => {
     const e = (r?.manifest as { extentM?: number[] } | undefined)?.extentM;
     return e && e.length >= 2 ? [e[0]!, e[1]!] : [50, 10];
@@ -243,17 +248,17 @@ export function Compose({ platform, held, base, onBack, onOpen }: {
     <Page title={place?.name ?? "New place"} crumb="Places" onCrumb={onBack} wide actions={action}
           subtitle="Where, its ground, the assets in it; Resolve fits each asset to the ground."
           info="A place is composed from things that exist on their own: a square of the Earth, a ground for it, and assets made independently, such as reefs rebuilt from dive videos. The ground is built first; then each asset is fitted to it in turn, and you choose where it goes before it is laid in.">
-      {resolving && stage.at === "asset" ? (
+      {choosing && stage.at === "assets" ? (
         <section>
-          <h2>Where {reefOf(stage.index)?.name ?? "the asset"} fits</h2>
-          <ResolveChoice candidates={(stage.mapping.candidates ?? []) as Candidate[]}
-                         start={stage.mapping.start as [number, number] | null | undefined}
-                         ground={groundNow} extentM={extentOf(reefOf(stage.index))} busy={busy}
+          <h2>Where {choosing.name ?? reefs.find((r) => r.id === choosing.reconstructionId)?.name ?? "the asset"} fits
+            <span className="note"> · asset {choosing.ordinal + 1} of {assetsOf(stage.mapping).length}</span></h2>
+          <ResolveChoice key={choosing.ordinal} candidates={(choosing.candidates ?? []) as Candidate[]} start={choosing.start}
+                         ground={groundNow} extentM={extentOf(reefs.find((r) => r.id === choosing.reconstructionId))} busy={busy}
                          onAccept={(choice) => {
                            setBusy(true);
-                           platform.acceptMapping(stage.mapping.id, choice)
-                             .then((m) => setStage({ at: "asset", index: stage.index, mapping: m }))
-                             .catch((p) => setTrouble(p instanceof Error ? p.message : "could not lay it"))
+                           platform.acceptMapping(stage.mapping.id, { ...choice, asset: choosing.ordinal })
+                             .then((m) => setStage({ at: "assets", mapping: m }))
+                             .catch((p) => setTrouble(p instanceof Error ? p.message : "could not choose it"))
                              .finally(() => setBusy(false));
                          }} />
         </section>
@@ -386,9 +391,14 @@ export function Compose({ platform, held, base, onBack, onOpen }: {
                   {stage.build.state === "failed" ? <p className="trouble">{stage.build.failure}</p> : null}
                 </div>
               ) : null}
-              {stage.at === "asset" ? (
+              {stage.at === "assets" ? (
                 <div className="progress">
-                  <Status tone={stage.mapping.state === "failed" ? "bad" : "busy"}>{reefOf(stage.index)?.name}: {stage.mapping.state}</Status>
+                  <Status tone={stage.mapping.state === "failed" ? "bad" : "busy"}>assets: {stage.mapping.state}</Status>
+                  {assetsOf(stage.mapping).map((a) => (
+                    <span key={a.ordinal} className="note">
+                      {a.name ?? reefs.find((r) => r.id === a.reconstructionId)?.name}: {a.state}{a.failure ? `, ${a.failure}` : ""}
+                    </span>
+                  ))}
                   <span className="note">{stage.mapping.steps?.[stage.mapping.steps.length - 1]?.say}</span>
                   {stage.mapping.state === "failed" ? <p className="trouble">{stage.mapping.failure}</p> : null}
                 </div>

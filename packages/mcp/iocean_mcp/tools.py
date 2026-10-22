@@ -1242,11 +1242,41 @@ def _latlon(start: Any) -> dict:
     return {"lat": float(lat), "lon": float(lon)}
 
 
-def mappings_create(platform: Platform, reconstruction: str, mode: str, place: str = "", version: str = "",
-                    start: Any = None, within_m: float | None = None, depth_m: float | None = None,
-                    count: int | None = None, name: str = "", across_m: float | None = None,
-                    pad: str = "", heading_deg: float | None = None) -> dict:
-    """Put a reconstruction onto a place, or give it a place of its own."""
+def _asset_of(one: Any) -> dict:
+    """One reef of several, as the platform is told it."""
+    if isinstance(one, str):
+        return {"reconstructionId": one}
+    if not isinstance(one, dict) or not (one.get("reconstruction") or one.get("reconstructionId")):
+        raise Refused(400, "invalid", "each asset is a reconstruction id, or {reconstruction, start, depth_m, within_m}")
+    asset: dict[str, Any] = {"reconstructionId": one.get("reconstruction") or one.get("reconstructionId")}
+    if one.get("start") is not None:
+        asset["start"] = _latlon(one["start"])
+    for key, field in (("depth_m", "depthM"), ("within_m", "withinM")):
+        if one.get(key) is not None:
+            asset[field] = float(one[key])
+    if one.get("count") is not None:
+        asset["count"] = int(one["count"])
+    return asset
+
+
+def mappings_create(platform: Platform, reconstruction: str = "", mode: str = "onto", place: str = "",
+                    version: str = "", start: Any = None, within_m: float | None = None,
+                    depth_m: float | None = None, count: int | None = None, name: str = "",
+                    across_m: float | None = None, pad: str = "", heading_deg: float | None = None,
+                    assets: list | None = None) -> dict:
+    """Put reconstructions onto a place, or give one a place of its own."""
+    if assets:
+        if mode != "onto" or not place:
+            raise Refused(400, "invalid", "several reefs are put onto a place that exists: mode onto, and the place")
+        request: dict[str, Any] = {"assets": [_asset_of(one) for one in assets]}
+        if version:
+            request["versionId"] = version
+        made = platform.request("POST", f"/api/v1/cities/{place}/mappings", request)
+        return {**_mapping_summary(made),
+                "note": "mappings_status says how each reef's search is going; mappings_accept each, or "
+                        "mappings_drop one whose search failed, and they are laid in together"}
+    if not reconstruction:
+        raise Refused(400, "invalid", "name the reconstruction, or several as assets")
     if mode not in ("onto", "own"):
         raise Refused(400, "invalid", "mode is onto (a place that exists) or own (a flat place of its own)")
     request: dict[str, Any] = {"mode": mode}
@@ -1281,13 +1311,30 @@ def mappings_create(platform: Platform, reconstruction: str, mode: str, place: s
     return {**_mapping_summary(made), "note": note}
 
 
+def _candidates_of(found: list) -> list:
+    fits = "the search's fit of the reef's ground to the place's"
+    return [{
+        "index": i,
+        "at": said(c.get("at"), DERIVED, fits),
+        "headingDeg": said(c.get("headingDeg"), DERIVED, fits),
+        "rmsM": said((c.get("fit") or {}).get("rmsM"), DERIVED, fits),
+        "groundDepthM": said((c.get("fit") or {}).get("placeGroundM"), DERIVED, "the place's seabed where it fits"),
+    } for i, c in enumerate(found)]
+
+
+def _chosen_of(chosen: dict) -> dict:
+    return {k: said(v, CHOSEN, "accepted for this mapping") for k, v in chosen.items()
+            if k in ("at", "headingDeg", "dz", "centre", "depthM")}
+
+
 def _mapping_summary(made: dict) -> dict:
     steps = made.get("steps") or []
     brief = made.get("brief") or {}
     out: dict[str, Any] = {
         "mapping": made.get("id"), "mode": made.get("mode"), "state": made.get("state"),
-        "place": made.get("cityId"), "reconstruction": made.get("reconstructionId"),
-        "steps": [f"{s.get('phase')}: " + (f"{s.get('say')} ({s['n']} of {s['of']})" if s.get("of") else str(s.get("say")))
+        "place": made.get("cityId"),
+        "steps": [f"{s.get('phase')}" + (f" {s['asset']}" if s.get("asset") is not None else "") + ": "
+                  + (f"{s.get('say')} ({s['n']} of {s['of']})" if s.get("of") else str(s.get("say")))
                   for s in steps][-12:],
     }
     if brief.get("start"):
@@ -1300,25 +1347,37 @@ def _mapping_summary(made: dict) -> dict:
             out[key] = made[key]
     if made.get("said"):
         out["said"] = made["said"][-1500:]
-    candidates = made.get("candidates")
-    if candidates:
-        fits = "the search's fit of the reef's ground to the place's"
-        out["candidates"] = [{
-            "index": i,
-            "at": said(c.get("at"), DERIVED, fits),
-            "headingDeg": said(c.get("headingDeg"), DERIVED, fits),
-            "rmsM": said((c.get("fit") or {}).get("rmsM"), DERIVED, fits),
-            "groundDepthM": said((c.get("fit") or {}).get("placeGroundM"), DERIVED, "the place's seabed where it fits"),
-        } for i, c in enumerate(candidates)]
-    if made.get("chosen"):
-        chosen = made["chosen"]
-        out["chosen"] = {k: said(v, CHOSEN, "accepted for this mapping") for k, v in chosen.items()
-                         if k in ("at", "headingDeg", "dz", "centre", "depthM")}
+    reefs = made.get("assets")
+    if reefs is None:
+        # A mapping as one reef said it, before there could be several.
+        reefs = [{"ordinal": 0, "reconstructionId": made.get("reconstructionId"), "state": made.get("state"),
+                  "candidates": made.get("candidates"), "chosen": made.get("chosen")}]
+    out["assets"] = []
+    for one in reefs:
+        reef: dict[str, Any] = {"asset": one.get("ordinal"), "reconstruction": one.get("reconstructionId"),
+                                "name": one.get("name"), "state": one.get("state")}
+        if one.get("candidates"):
+            reef["candidates"] = _candidates_of(one["candidates"])
+        if one.get("chosen"):
+            reef["chosen"] = _chosen_of(one["chosen"])
+        if one.get("failure"):
+            reef["failure"] = one["failure"]
+        out["assets"].append(reef)
+    if len(out["assets"]) == 1:
+        # One reef, as a mapping of one always said it.
+        only = out["assets"][0]
+        out["reconstruction"] = only["reconstruction"]
+        for key in ("candidates", "chosen"):
+            if key in only:
+                out[key] = only[key]
+    if made.get("overlaps"):
+        out["overlaps"] = made["overlaps"]
     if made.get("versionId"):
         out["version"] = made["versionId"]
         out["published"] = False
     if made.get("state") == "choosing":
-        out["next"] = "mappings_accept with a candidate's index, or at/heading_deg/dz by hand"
+        out["next"] = ("mappings_accept with an asset and a candidate's index, or at/heading_deg/dz by hand; "
+                       "mappings_drop a reef whose search failed")
     elif made.get("state") == "ready":
         out["next"] = "places_publish with this version lets dives use it"
     return out
@@ -1330,8 +1389,8 @@ def mappings_status(platform: Platform, mapping: str) -> dict:
 
 
 def mappings_accept(platform: Platform, mapping: str, candidate: int | None = None, at: list | None = None,
-                    heading_deg: float | None = None, dz: float | None = None) -> dict:
-    """Choose where the reef goes and lay it in."""
+                    heading_deg: float | None = None, dz: float | None = None, asset: int | None = None) -> dict:
+    """Choose where a reef goes; when every reef has somewhere, they are laid in."""
     if candidate is not None and at is not None:
         raise Refused(400, "invalid", "accept a candidate or a placement (at, heading_deg, dz), not both")
     if candidate is not None:
@@ -1342,8 +1401,19 @@ def mappings_accept(platform: Platform, mapping: str, candidate: int | None = No
         choice = {"placement": {"at": [float(at[0]), float(at[1])], "headingDeg": float(heading_deg), "dz": float(dz)}}
     else:
         raise Refused(400, "invalid", "accept a candidate (its index from mappings_status) or at, heading_deg and dz")
+    if asset is not None:
+        choice["asset"] = int(asset)
     made = platform.request("POST", f"/api/v1/mappings/{mapping}/accept", choice)
-    return {**_mapping_summary(made), "note": "the reef is laid in on a GPU; mappings_status says when the place is ready"}
+    note = ("the reefs are laid in on a GPU; mappings_status says when the place is ready"
+            if made.get("state") in ("laying", "recording", "ready") else
+            "chosen; the reefs are laid in once every one has somewhere to go")
+    return {**_mapping_summary(made), "note": note}
+
+
+def mappings_drop(platform: Platform, mapping: str, asset: int) -> dict:
+    """Take a reef out of a mapping before the reefs are laid in."""
+    made = platform.request("POST", f"/api/v1/mappings/{mapping}/drop", {"asset": int(asset)})
+    return {**_mapping_summary(made), "note": "dropped; the rest are laid in once each has somewhere to go"}
 
 
 # ── the map store ────────────────────────────────────────────────────────────

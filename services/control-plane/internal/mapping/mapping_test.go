@@ -2,7 +2,11 @@ package mapping
 
 import (
 	"math"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/jalalirs/auv/services/control-plane/internal/exec"
 
 	"github.com/jalalirs/auv/services/control-plane/internal/reconstructing"
 )
@@ -113,5 +117,92 @@ func TestAPlaceOfItsOwnIsASquareAroundTheStart(t *testing.T) {
 	e := extentOf(reconstructing.Point{Lat: 22.3, Lon: 38.85}, 300)
 	if math.Abs((e.North-e.South)*111320-300) > 0.5 || e.West >= 38.85 || e.East <= 38.85 {
 		t.Fatalf("%+v", e)
+	}
+}
+
+func TestAPlaceTakesOneToTwentyReefs(t *testing.T) {
+	one := AssetRequest{ReconstructionID: "recon_1"}
+	if err := (PlaceRequest{Assets: []AssetRequest{one, {ReconstructionID: "recon_2", WithinM: 800}}}).Validate(); err != nil {
+		t.Fatalf("two reefs: %v", err)
+	}
+	many := make([]AssetRequest, MostAssets+1)
+	for i := range many {
+		many[i] = one
+	}
+	for name, q := range map[string]PlaceRequest{
+		"no reefs":             {},
+		"too many reefs":       {Assets: many},
+		"a reef naming none":   {Assets: []AssetRequest{{}}},
+		"a reef searching far": {Assets: []AssetRequest{{ReconstructionID: "recon_1", WithinM: 9000}}},
+	} {
+		if q.Validate() == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+	if got := assetDefaults(one, reconstructing.Reconstruction{Brief: reconstructing.Brief{
+		Start: &reconstructing.Point{Lat: 22.1, Lon: 38.7}}}); got.Start.Lat != 22.1 || got.WithinM != 400 || got.Count != 5 {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestReefsAreCalledUniquelyInAPlace(t *testing.T) {
+	got := namesOf([]string{"GX010", "GX010", "Al Fahal", "gx010"})
+	want := []string{"gx010", "gx010-2", "al-fahal", "gx010-3"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("namesOf = %v, want %v", got, want)
+		}
+	}
+}
+
+func TestOneLayJobIsToldEveryReefStillInAndSizedByThem(t *testing.T) {
+	assets := []Asset{
+		{Ordinal: 0, ReconstructionID: "recon_1", Name: "gx010", Chosen: map[string]any{"at": []any{1.0, 2.0}, "headingDeg": 30.0, "dz": -8.0}},
+		{Ordinal: 1, ReconstructionID: "recon_2", Name: "north", Chosen: map[string]any{"at": []any{5.0, 2.0}}, DroppedAt: &time.Time{}},
+		{Ordinal: 2, ReconstructionID: "recon_1", Name: "gx010-2", Chosen: map[string]any{"at": []any{9.0, 2.0}}},
+	}
+	videos := map[string]reconstructing.Reconstruction{"recon_1": {ID: "recon_1",
+		Brief: reconstructing.Brief{Video: reconstructing.Video{Name: "GX010.MP4", ObjectID: "obj_v"}}}}
+	brief := layBrief(assets, videos)
+	laid := brief["assets"].([]any)
+	if len(laid) != 2 || brief["sink"] != 1.0 {
+		t.Fatalf("%v", brief)
+	}
+	first := laid[0].(map[string]any)
+	if first["name"] != "gx010" || first["path"] != "reconstruction/recon_1" ||
+		first["video"].(map[string]any)["objectId"] != "obj_v" {
+		t.Fatalf("%v", first)
+	}
+
+	settings := Settings{LayWalltimeSeconds: 16 * 3600, PackageBytes: 40 << 30, PackageCapBytes: 64 << 30}
+	walltime, limit := laySize(2, 2<<30, settings)
+	if walltime != 3600+2*2700 || limit != 64<<30 {
+		t.Errorf("two reefs: %d s, %d bytes", walltime, limit)
+	}
+	if walltime, limit := laySize(1, 1<<30, settings); walltime != 6300 || limit != 41<<30 {
+		t.Errorf("one reef: %d s, %d bytes", walltime, limit)
+	}
+	if walltime, _ := laySize(20, 0, settings); walltime != 16*3600 {
+		t.Errorf("twenty reefs were given %d s", walltime)
+	}
+
+	label, notes := labelOf(Mapping{ID: "map_1", Assets: assets}, map[string]string{"recon_1": "GX010", "recon_2": "North"})
+	if label != "GX010 and 1 more laid in" || !strings.Contains(notes, "recon_1, recon_1") || !strings.Contains(notes, "map_1") {
+		t.Errorf("%q / %q", label, notes)
+	}
+}
+
+func TestTheLayJobsLastWordSaysWhereEachWentAndWhatOverlaps(t *testing.T) {
+	laid, overlaps := doneOf([]exec.Step{
+		{Step: "lay", Say: "laying gx010"},
+		{Step: "done", Say: "2 assets laid", Detail: map[string]any{
+			"assets":   []any{map[string]any{"name": "gx010"}, map[string]any{"name": "north"}},
+			"overlaps": []any{"gx010 and north come within 0.4 m"}}},
+	})
+	if len(laid) != 2 || len(overlaps) != 1 {
+		t.Fatalf("%v %v", laid, overlaps)
+	}
+	if laid, overlaps := doneOf([]exec.Step{{Step: "lay"}}); laid != nil || overlaps != nil {
+		t.Fatal("a lay job that has not finished said where things went")
 	}
 }

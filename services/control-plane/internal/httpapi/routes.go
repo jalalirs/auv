@@ -210,8 +210,18 @@ func (rt *Router) registerAll() {
 		Summary: "how a mapping is going: what the search found, what was chosen, the version it made",
 		Action:  policy.OrgRead, Resource: d.ofMapping("mappingId"), Handle: d.watchMapping})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/mappings/{mappingId}/accept",
-		Summary: "choose where the reef goes and lay it in", Action: policy.CityFound,
+		Summary: "choose where a reef goes; when every reef has somewhere, they are laid in", Action: policy.CityFound,
 		Resource: d.ofMapping("mappingId"), Handle: d.acceptMapping})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/mappings/{mappingId}/drop",
+		Summary: "take a reef out of a mapping before the reefs are laid in", Action: policy.CityFound,
+		Resource: d.ofMapping("mappingId"), Handle: d.dropMappingAsset})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/cities/{cityId}/mappings",
+		Summary: "put several reefs onto a place: a search each, then one job laying them all in",
+		Action:  policy.CityPublish, Resource: fromPath(policy.ResourceCity, "cityId"),
+		Also: []policy.Action{policy.CityFound}, Handle: d.startPlaceMapping})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/cities/{cityId}/mappings",
+		Summary: "the mappings onto a place, newest first", Action: policy.CityRead,
+		Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.listPlaceMappings})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/cities",
 		Summary: "found a place of the organisation's own, seen only by its members until they share it",
 		Action:  policy.CityFound, Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.foundOwnCity})

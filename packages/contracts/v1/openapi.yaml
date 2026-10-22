@@ -2473,6 +2473,109 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v1/cities/{cityId}/mappings:
+    post:
+      tags: [places]
+      summary: Put several reefs onto a place
+      description: >
+        Each reef (a ready reconstruction of one organisation's) gets a search
+        of its own near where its video starts; as many start now as the
+        organisation may run, the rest as those finish. The mapping waits in
+        choosing until somebody accepts where each goes, or drops the ones
+        whose search failed, and then one job lays them all into one draft
+        version. The caller must be able to make versions of the place and to
+        found things in the reefs' organisation.
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          description: The place.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlaceMappingRequest' }
+      responses:
+        '201':
+          description: The mapping, its searches started.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mapping' }
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/Refused'
+        '503':
+          description: This platform has no image to put reconstructions onto places with.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+    get:
+      tags: [places]
+      summary: The mappings onto a place, newest first
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          description: The place.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Its mappings.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mappings]
+                properties:
+                  mappings:
+                    type: array
+                    items: { $ref: '#/components/schemas/Mapping' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/mappings/{mappingId}/drop:
+    post:
+      tags: [places]
+      summary: Take a reef out of a mapping
+      description: >
+        Before the reefs are laid in: a reef whose search failed, which holds
+        the rest up until it is dropped, or one nobody wants after all. When
+        every reef left has somewhere to go, they are laid in.
+      parameters:
+        - name: mappingId
+          in: path
+          required: true
+          description: The mapping.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [asset]
+              properties:
+                asset: { type: integer, minimum: 0, description: The reef, by its ordinal. }
+      responses:
+        '200':
+          description: The mapping.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mapping' }
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/mappings/{mappingId}/accept:
     post:
       tags: [places]
@@ -5782,7 +5885,8 @@ components:
       type: object
       additionalProperties: false
       properties:
-        candidate: { type: integer, minimum: 0, description: The index of one of the candidates the search found. }
+        asset: { type: integer, minimum: 0, description: Which reef, by its ordinal; the first when absent. }
+        candidate: { type: integer, minimum: 0, description: The index of one of the candidates its search found. }
         placement:
           type: object
           additionalProperties: false
@@ -5797,49 +5901,105 @@ components:
             headingDeg: { type: number, minimum: 0, maximum: 360 }
             dz: { type: number }
 
-    MappingRecord:
+    PlaceMappingRequest:
       type: object
-      required: [id, orgId, reconstructionId, cityId, mode, brief, createdBy, createdAt]
+      additionalProperties: false
+      required: [assets]
       properties:
-        id: { type: string }
-        orgId: { type: string }
+        versionId: { type: string, description: "Which of the place's versions; its newest when absent." }
+        assets:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { $ref: '#/components/schemas/MappingAssetRequest' }
+
+    MappingAssetRequest:
+      type: object
+      additionalProperties: false
+      required: [reconstructionId]
+      properties:
+        reconstructionId: { type: string, description: A ready reconstruction of the organisation's. }
+        start:
+          type: object
+          additionalProperties: false
+          required: [lat, lon]
+          description: "Where its video starts; the reconstruction's own when absent."
+          properties:
+            lat: { type: number, minimum: -90, maximum: 90 }
+            lon: { type: number, minimum: -180, maximum: 180 }
+        withinM: { type: number, minimum: 10, maximum: 5000, description: How far from the start its search looks; 400 when absent. }
+        depthM: { type: number, description: How deep the reef is, a hint to its search. }
+        count: { type: integer, minimum: 1, maximum: 20, description: How many candidates its search reports; 5 when absent. }
+        headingDeg: { type: number, description: Which way it faces, on a place of its own. }
+        startAssumed: { type: boolean, description: Written by the platform; ignored when sent. }
+
+    MappingCandidate:
+      type: object
+      additionalProperties: true
+      description: >
+        One place a search found a reef fits (candidates.json): headingDeg,
+        at, dz, centre, matrix, startAt and fit (rmsM, score, placeGroundM).
+      properties:
+        headingDeg: { type: number }
+        at:
+          type: array
+          items: { type: number }
+        dz: { type: number }
+        fit: { type: object, additionalProperties: true }
+
+    MappingStep:
+      type: object
+      required: [at, step, say, phase]
+      properties:
+        at: { type: string, format: date-time }
+        step: { type: string }
+        say: { type: string }
+        n: { type: integer }
+        of: { type: integer }
+        detail: { type: object, additionalProperties: true }
+        phase: { type: string, enum: [base, resolve, lay] }
+        asset: { type: integer, description: Which reef a search step is of. }
+
+    MappingAsset:
+      type: object
+      required: [ordinal, reconstructionId, name, brief, state, steps]
+      properties:
+        ordinal: { type: integer }
         reconstructionId: { type: string }
-        cityId: { type: string }
-        mode: { type: string, enum: [onto, own] }
-        brief: { $ref: '#/components/schemas/MappingRequest' }
-        baseVersionId: { type: string, description: The version the reef is laid into. }
-        buildId: { type: string, description: The build of a place of its own's flat seabed. }
+        name: { type: string, description: What it is called in the place, unique there. }
+        brief: { $ref: '#/components/schemas/MappingAssetRequest' }
         resolveJobId: { type: string }
+        state: { type: string, enum: [resolving, choosing, chosen, failed, dropped] }
+        steps:
+          type: array
+          items: { $ref: '#/components/schemas/MappingStep' }
         candidates:
           type: array
-          description: >
-            The places the search found the reef fits, best first
-            (candidates.json): each with headingDeg, at, dz, centre, matrix,
-            startAt and fit (rmsM, score, placeGroundM).
-          items:
-            type: object
-            additionalProperties: true
-            properties:
-              headingDeg: { type: number }
-              at:
-                type: array
-                items: { type: number }
-              dz: { type: number }
-              fit: { type: object, additionalProperties: true }
+          items: { $ref: '#/components/schemas/MappingCandidate' }
         start:
           type: [array, 'null']
           items: { type: number }
-          description: Where in the place's metres the search looked from, when it knew.
-        searched:
-          type: object
-          additionalProperties: true
-          description: How the search looked.
-        chosen:
-          type: object
-          additionalProperties: true
-          description: Where the reef is laid, as the lay job was told.
+          description: Where in the place's metres its search looked from, when it knew.
+        searched: { type: object, additionalProperties: true, description: How its search looked. }
+        chosen: { type: object, additionalProperties: true, description: Where it is laid, as the lay job is told. }
+        failure: { type: string }
+        droppedAt: { type: string, format: date-time }
+        said: { type: string, description: The end of what its search printed, when it failed. }
+
+    MappingRecord:
+      type: object
+      required: [id, orgId, cityId, mode, brief, createdBy, createdAt]
+      properties:
+        id: { type: string }
+        orgId: { type: string }
+        reconstructionId: { type: string, description: "The first reef's reconstruction." }
+        cityId: { type: string }
+        mode: { type: string, enum: [onto, own] }
+        brief: { $ref: '#/components/schemas/MappingRequest' }
+        baseVersionId: { type: string, description: The version the reefs are laid into. }
+        buildId: { type: string, description: The build of a place of its own's flat seabed. }
         layJobId: { type: string }
-        versionId: { type: string, description: The draft version with the reef in it. }
+        versionId: { type: string, description: The draft version with the reefs in it. }
         failure: { type: string }
         createdBy: { type: string }
         createdAt: { type: string, format: date-time }
@@ -5849,29 +6009,44 @@ components:
       allOf:
         - $ref: '#/components/schemas/MappingRecord'
         - type: object
-          required: [state, steps]
+          required: [state, assets, steps]
           properties:
-            state: { type: string, enum: [building, resolving, choosing, laying, recording, ready, failed] }
+            state:
+              type: string
+              enum: [building, resolving, choosing, laying, recording, ready, failed]
+              description: >
+                Choosing until every reef has somewhere to go; a reef whose
+                search failed holds the rest up until it is dropped.
+            assets:
+              type: array
+              items: { $ref: '#/components/schemas/MappingAsset' }
             steps:
               type: array
               description: The last two hundred steps of the jobs it has run.
-              items:
-                type: object
-                required: [at, step, say, phase]
-                properties:
-                  at: { type: string, format: date-time }
-                  step: { type: string }
-                  say: { type: string }
-                  n: { type: integer }
-                  of: { type: integer }
-                  detail: { type: object, additionalProperties: true }
-                  phase: { type: string, enum: [base, resolve, lay] }
+              items: { $ref: '#/components/schemas/MappingStep' }
+            laid:
+              type: array
+              items: { type: object, additionalProperties: true }
+              description: Where the lay job put each reef (name, at, headingDeg, dz), once done.
+            overlaps:
+              type: array
+              items: { type: string }
+              description: Reefs whose ground came within a metre of each other.
             waiting:
               type: string
-              description: Why the next job has not started yet, when the platform refused it for now.
+              description: What it waits for that is not a job, or why the next job has not started yet.
             said:
               type: string
               description: The end of what the failed job printed.
+            candidates:
+              type: array
+              description: "The first reef's candidates, as a mapping of one reef always said them."
+              items: { $ref: '#/components/schemas/MappingCandidate' }
+            start:
+              type: [array, 'null']
+              items: { type: number }
+            searched: { type: object, additionalProperties: true }
+            chosen: { type: object, additionalProperties: true }
 
     StorePlace:
       type: object

@@ -51,6 +51,8 @@ export type MappingRequest = Schemas["MappingRequest"];
 export type MappingChoice = Schemas["MappingChoice"];
 export type Mapping = Schemas["Mapping"];
 export type MappingRecord = Schemas["MappingRecord"];
+export type PlaceMappingRequest = Schemas["PlaceMappingRequest"];
+export type MappingAsset = Schemas["MappingAsset"];
 export type StorePlace = Schemas["StorePlace"];
 export type ControllerBuildBrief = Schemas["ControllerBuildBrief"];
 export type ControllerBuild = Schemas["ControllerBuild"];
@@ -355,9 +357,28 @@ export class Platform {
     return mappings;
   }
 
-  /** Choose where the reef goes, a candidate by index or a placement by hand, and lay it in. */
+  /**
+   * Choose where one reef goes (choice.asset, the first when absent): a
+   * candidate by index or a placement by hand. When every reef has
+   * somewhere to go, they are laid in.
+   */
   acceptMapping(id: string, choice: MappingChoice): Promise<Mapping> {
     return this.#request("POST", `/api/v1/mappings/${id}/accept`, choice);
+  }
+
+  /** Put several reefs onto a place: a search each, then one job laying them all in. */
+  startPlaceMapping(city: string, request: PlaceMappingRequest): Promise<Mapping> {
+    return this.#request("POST", `/api/v1/cities/${city}/mappings`, request);
+  }
+
+  /** Take a reef out of a mapping before the reefs are laid in. */
+  dropMappingAsset(id: string, asset: number): Promise<Mapping> {
+    return this.#request("POST", `/api/v1/mappings/${id}/drop`, { asset });
+  }
+
+  async mappingsOfPlace(city: string): Promise<Mapping[]> {
+    const { mappings } = await this.#request<{ mappings: Mapping[] }>("GET", `/api/v1/cities/${city}/mappings`);
+    return mappings;
   }
 
   /** Make a version pinnable, and from then on unchangeable. */
