@@ -225,9 +225,20 @@ def cameras(brief: dict, frames_said: dict) -> dict:
         # Not on the GPU: this COLMAP's Ceres has no CUDA, and asked for the
         # GPU it falls back to dense solvers, which sat over 657,000 tracks
         # for more than an hour; on the CPU it chooses the sparse ones.
+        # And on a selection of the tracks: positioning and refinement over
+        # every one of 657,366 took four and a half hours on the Red Sea
+        # video; over the 150 a frame that see the most (4,536 there), with
+        # two refinement rounds and half the positioning iterations, 45
+        # minutes, every camera but the first three within 0.11% of the swim
+        # of the long solve's (95th percentile), the full set triangulated
+        # and refined again at the end.
         run("cameras", [COLMAP, "global_mapper", "--database_path", db, "--image_path", images,
                         "--output_path", mapped, "--GlobalMapper.gp_use_gpu", "0",
-                        "--GlobalMapper.ba_ceres_use_gpu", "0"], log=logs / "mapper.log", lines=False)
+                        "--GlobalMapper.ba_ceres_use_gpu", "0",
+                        "--GlobalMapper.track_required_tracks_per_view", "150",
+                        "--GlobalMapper.keep_max_num_tracks", "100000",
+                        "--GlobalMapper.ba_num_iterations", "2",
+                        "--GlobalMapper.gp_max_num_iterations", "50"], log=logs / "mapper.log", lines=False)
         mark("mapped")
     models = sorted(p for p in mapped.iterdir() if p.is_dir())
     if not models:
