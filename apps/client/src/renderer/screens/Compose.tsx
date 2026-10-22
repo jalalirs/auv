@@ -10,7 +10,7 @@
 // lay a new draft version on top of the last. Then it is published.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Build, BuildBrief, Mapping, Platform, Reconstruction, StorePlace } from "@coral-city/api";
+import type { Asset, Build, BuildBrief, Mapping, Platform, Reconstruction, StorePlace } from "@coral-city/api";
 
 import type { Held } from "./Deck.js";
 import { WorldMap, type LatLon } from "../parts/WorldMap.js";
@@ -71,6 +71,11 @@ export function Compose({ platform, held, base, onBack, onOpen }: {
   const [own, setOwn] = useState<Own[]>([]);
   const [reefs, setReefs] = useState<Reconstruction[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
+  // Structures and seabed surveys the institution has made on their own.
+  const [others, setOthers] = useState<Asset[]>([]);
+  const [surveys, setSurveys] = useState<string[]>([]);
+  // Where each standing structure goes: "lat, lon" and a heading.
+  const [stands, setStands] = useState<Record<string, { at: string; heading: string }>>({});
   const [catalogue, setCatalogue] = useState<string[]>([]);
   const [place, setPlace] = useState<{ id: string; name: string } | undefined>();
   const [stage, setStage] = useState<Stage>({ at: "composing" });
@@ -84,6 +89,7 @@ export function Compose({ platform, held, base, onBack, onOpen }: {
     platform.buildSources().then((c) => setCatalogue(Object.keys(c.sources))).catch(() => undefined);
     if (institution) {
       platform.reconstructionsOf(institution.id).then((all) => setReefs(all.filter((r) => r.state === "ready"))).catch(() => undefined);
+      platform.listAssets(institution.id).then((all) => setOthers(all.filter((a) => a.kind !== "reef" && a.state === "ready"))).catch(() => undefined);
     }
   }, [platform, institution]);
 
@@ -149,11 +155,19 @@ export function Compose({ platform, held, base, onBack, onOpen }: {
     if (picked.length === 0) { setStage({ at: "done", versionId: versionId ?? "" }); return; }
     try {
       const mapping = await platform.startPlaceMapping(place.id, {
-        assets: picked.map((id) => ({
-          reconstructionId: id, withinM: Math.max(10, Math.min(5000, acrossM)),
-          ...(where ? { start: where } : {}),
-          ...(ground === "flat" ? { depthM: Number(flatDepth) } : {}),
-        })),
+        assets: picked.map((id) => {
+          const structure = others.find((a) => a.id === id);
+          if (structure) {
+            if (structure.meets !== "stands") return { reconstructionId: id };
+            const at = latLonOf(stands[id]?.at ?? "") ?? where!;
+            return { reconstructionId: id, placement: { lat: at.lat, lon: at.lon, headingDeg: Number(stands[id]?.heading || 0) } };
+          }
+          return {
+            reconstructionId: id, withinM: Math.max(10, Math.min(5000, acrossM)),
+            ...(where ? { start: where } : {}),
+            ...(ground === "flat" ? { depthM: Number(flatDepth) } : {}),
+          };
+        }),
       });
       setStage({ at: "assets", mapping });
     } catch (problem) {
@@ -197,11 +211,12 @@ export function Compose({ platform, held, base, onBack, onOpen }: {
       }
       if (!founded) throw new Error("a place with that name exists; choose another");
       setPlace({ id: founded.id, name: founded.name });
+      const survey = surveys.length ? { survey: surveys } : {};
       const brief: BuildBrief = ground === "store" && storeBase
-        ? { base: { kind: "place", cityId: storeBase }, sources: [], ...(files.length ? { files } : {}) }
+        ? { base: { kind: "place", cityId: storeBase }, sources: [], ...(files.length ? { files } : {}), ...survey }
         : ground === "flat"
-        ? { centre: [where.lat, where.lon], acrossM, sources: [], flatDepthM: Number(flatDepth), coral, ...(files.length ? { files } : {}) }
-        : { centre: [where.lat, where.lon], acrossM, sources: catalogue as BuildBrief["sources"], ...(files.length ? { files } : {}) };
+        ? { centre: [where.lat, where.lon], acrossM, sources: [], flatDepthM: Number(flatDepth), coral, ...(files.length ? { files } : {}), ...survey }
+        : { centre: [where.lat, where.lon], acrossM, sources: catalogue as BuildBrief["sources"], ...(files.length ? { files } : {}), ...survey };
       setStage({ at: "ground", build: await platform.startBuild(founded.id, brief) });
     } catch (problem) {
       setTrouble(problem instanceof Error ? problem.message : "the place could not be started");
@@ -340,6 +355,20 @@ export function Compose({ platform, held, base, onBack, onOpen }: {
                   ) : null}
                 </Choice>
               </div>
+              {others.some((a) => a.kind === "bathymetry") ? (
+                <div className="field"><span>Your surveys, laid over the ground</span>
+                  <div className="choices">
+                    {others.filter((a) => a.kind === "bathymetry").map((a) => {
+                      const on = surveys.includes(a.id);
+                      return (
+                        <Choice key={a.id} on={on} disabled={!composing} multi
+                                onPick={() => setSurveys((was) => on ? was.filter((x) => x !== a.id) : [...was, a.id])}
+                                title={a.name} says={`seabed survey · ${String(a.stats?.datum ?? "")}`} />
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
               <div className="field"><span>Your own data, laid over the ground</span>
                 {own.map((one, i) => (
                   <div key={i} className="own-file">
@@ -364,7 +393,7 @@ export function Compose({ platform, held, base, onBack, onOpen }: {
             </Step>
 
             <Step n={3} title="Assets" done={composing ? undefined : true}>
-              {reefs.length === 0 ? (
+              {reefs.length === 0 && !others.some((a) => a.kind === "structure") ? (
                 <p className="note">No assets yet. Reefs rebuilt from dive videos appear here (Places, Assets).</p>
               ) : (
                 <div className="choices">
@@ -377,9 +406,31 @@ export function Compose({ platform, held, base, onBack, onOpen }: {
                               title={r.name} says={`reef rebuilt from a dive video · ${e[0].toFixed(0)} by ${e[1].toFixed(0)} m`} />
                     );
                   })}
+                  {others.filter((a) => a.kind === "structure").map((a) => {
+                    const on = picked.includes(a.id);
+                    const spot = stands[a.id] ?? { at: "", heading: "0" };
+                    return (
+                      <Choice key={a.id} on={on} disabled={!composing} multi
+                              onPick={() => setPicked((was) => on ? was.filter((x) => x !== a.id) : [...was, a.id])}
+                              title={a.name} says={a.meets === "drapes" ? `${a.type ?? "structure"} · follows its own route on the seabed` : `${a.type ?? "structure"} · stands on the seabed`}>
+                        {on && a.meets === "stands" ? (
+                          <div className="inline-fields">
+                            <label>Where (latitude, longitude)
+                              <input value={spot.at} disabled={!composing} placeholder="the middle of the place"
+                                     onChange={(e) => setStands((was) => ({ ...was, [a.id]: { ...spot, at: e.target.value } }))} />
+                            </label>
+                            <label>Heading, degrees
+                              <input value={spot.heading} disabled={!composing}
+                                     onChange={(e) => setStands((was) => ({ ...was, [a.id]: { ...spot, heading: e.target.value } }))} />
+                            </label>
+                          </div>
+                        ) : null}
+                      </Choice>
+                    );
+                  })}
                 </div>
               )}
-              <p className="note">Each asset is fitted to the ground after it is built; you choose where it goes.</p>
+              <p className="note">A reef is fitted to the ground after it is built and you choose where it goes. A structure goes where you say, or along its own route.</p>
             </Step>
 
             <Step n={4} title="Build and Resolve" done={stage.at === "done" || undefined}>
@@ -436,4 +487,12 @@ function Choice({ on, disabled, multi, onPick, title, says, children }: {
       {children}
     </div>
   );
+}
+
+/** "lat, lon" typed in, when it is two numbers on the Earth. */
+function latLonOf(typed: string): LatLon | undefined {
+  const found = typed.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
+  if (!found) return undefined;
+  const lat = Number(found[1]), lon = Number(found[2]);
+  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : undefined;
 }

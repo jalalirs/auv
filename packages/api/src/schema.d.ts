@@ -3330,6 +3330,146 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organisations/{orgId}/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * An organisation's assets, newest first
+         * @description Every kind (reefs from videos too), the last hundred, each as the library shows it: kind, type, how it meets the seabed, what it was made from, its state, footprint, stats and a link to its picture.
+         *
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Only assets of this kind. */
+                    kind?: "reef" | "structure" | "bathymetry";
+                };
+                header?: never;
+                path: {
+                    /** @description The organisation. */
+                    orgId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Its assets. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            assets: components["schemas"]["Asset"][];
+                        };
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        /**
+         * Make a structure or a seabed survey into an asset
+         * @description The platform runs the import job (the reconstruction module's image, on processors, with no network) over a file the organisation holds, or a pipeline's route. When it finishes, every file it made (the model as USD, the survey as uploaded, a preview) becomes an object the organisation holds, and asset.json becomes the record's manifest. A reef is made from a video by a reconstruction instead.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The organisation the work and what it makes belong to. */
+                    orgId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AssetBrief"];
+                };
+            };
+            responses: {
+                /** @description The asset, queued. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Asset"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                429: components["responses"]["Refused"];
+                /** @description This platform has no image to make assets with. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assets/{assetId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How an asset is going, and what it is
+         * @description Any kind. Watching an asset whose job has finished is what starts keeping what it made, so its state is recording for a while before it is ready.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The asset. */
+                    assetId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The asset. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Asset"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reconstructions/{reconstructionId}": {
         parameters: {
             query?: never;
@@ -7082,7 +7222,12 @@ export interface components {
                 datum?: string;
                 citation?: string;
                 path?: string;
+                /** @description The survey it is the file of; written by the platform. */
+                asset?: string;
             }[];
+            /** @description Ready bathymetry assets of the organisation's, each laid in as one of its files (a GeoTIFF as a raster, soundings as points) with its datum and error.
+             *      */
+            survey?: string[];
             label?: string;
             name?: string;
             slug?: string;
@@ -7170,12 +7315,138 @@ export interface components {
              */
             tape?: "auto" | "keep";
         };
+        /** @description A bathymetry survey (file, datum, errorM, object) or a structure (type, meets, and a model with its object, or for a pipeline a route). A model stands; a route drapes.
+         *      */
+        AssetBrief: {
+            /** @enum {string} */
+            kind: "structure" | "bathymetry";
+            /**
+             * @description A structure's.
+             * @enum {string}
+             */
+            type?: "pipeline" | "platform" | "wind-foundation" | "other";
+            /**
+             * @description How a structure meets the seabed; stands for a model, drapes for a route when absent.
+             * @enum {string}
+             */
+            meets?: "stands" | "drapes";
+            /** @description A survey's file. */
+            file?: {
+                /** @description The file's own name; its format is read from it when absent. */
+                name?: string;
+                /** @enum {string} */
+                format?: "geotiff" | "xyz";
+                /** @description Where the job finds it; filled in by the platform. */
+                path?: string;
+            };
+            /** @description A survey's vertical datum: MSL, LAT, ... */
+            datum?: string;
+            /** @description How wrong a survey's depths may be. */
+            errorM?: number;
+            /** @description What a place built on the survey cites it as. */
+            citation?: string;
+            /** @description A structure's 3D model file. */
+            model?: {
+                /** @description The file's own name; its format is read from it when absent. */
+                name?: string;
+                /** @enum {string} */
+                format?: "glb" | "gltf" | "obj";
+                /** @description Metres per model unit; 1 when absent. */
+                scale?: number;
+                /**
+                 * @description The model's up axis; y when absent.
+                 * @enum {string}
+                 */
+                up?: "y" | "z";
+                /** @description Where the job finds it; filled in by the platform. */
+                path?: string;
+            };
+            /** @description A pipeline nobody has a model of. */
+            route?: {
+                /** @description [latitude, longitude] pairs, in degrees. */
+                points: number[][];
+                diameterM: number;
+                /** @description How deep it is buried */
+                burial?: number;
+            };
+            /** @description The uploaded file the organisation holds (not for a route). */
+            object?: string;
+            /** @description What to call the asset; the file's name when absent. */
+            label?: string;
+        };
+        Asset: {
+            id: string;
+            orgId: string;
+            jobId: string;
+            name: string;
+            /** @enum {string} */
+            kind: "reef" | "structure" | "bathymetry";
+            /** @description A structure's. */
+            type?: string;
+            /**
+             * @description How a structure meets the seabed.
+             * @enum {string}
+             */
+            meets?: "stands" | "drapes";
+            /** @enum {string} */
+            madeFrom: "video" | "survey" | "model" | "route";
+            /** @enum {string} */
+            state: "queued" | "running" | "recording" | "ready" | "failed";
+            jobState: string;
+            /** @description {sizeM: [x, y, z]} in local metres for a model or a reef, or {bbox: [south, west, north, east]} in degrees for a survey or a route.
+             *      */
+            footprint?: {
+                [key: string]: unknown;
+            };
+            /** @description What the job measured: a survey's depth range, cell size or point count, datum and errorM; a model's triangles and size; a route's length and diameter; a reef's pieces, splats, frames and scale.
+             *      */
+            stats?: {
+                [key: string]: unknown;
+            };
+            /** @description A short-lived URL to its picture */
+            preview?: string;
+            /** @description What was asked; a reconstruction's brief for a reef, an AssetBrief otherwise. */
+            brief: {
+                [key: string]: unknown;
+            };
+            /** @description What it said about itself (asset.json, or reconstruction.json for a reef). */
+            manifest?: {
+                [key: string]: unknown;
+            };
+            steps: {
+                /** Format: date-time */
+                at: string;
+                step: string;
+                say: string;
+                n?: number;
+                of?: number;
+                detail?: {
+                    [key: string]: unknown;
+                };
+            }[];
+            failure?: string;
+            /** @description The end of what its job printed */
+            said?: string;
+            createdBy: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
         ReconstructionRecord: {
             id: string;
             orgId: string;
             jobId: string;
             brief: components["schemas"]["ReconstructionBrief"];
+            asset?: components["schemas"]["AssetBrief"];
             name: string;
+            /** @enum {string} */
+            kind?: "reef" | "structure" | "bathymetry";
+            /** @enum {string} */
+            madeFrom?: "video" | "survey" | "model" | "route";
+            structure?: {
+                type: string;
+                /** @enum {string} */
+                meets: "stands" | "drapes";
+            };
             /** @description What the reconstruction said about itself (reconstruction.json): name, frames, registered, pieces, extentM, scale, surface, path, cover, tape, preview.
              *      */
             manifest?: {
@@ -7248,6 +7519,12 @@ export interface components {
             pad?: "sand" | "coral";
             /** @description Which way the reef faces; 0 when absent (own). */
             headingDeg?: number;
+            /** @description Where a structure that stands is put; a reef or a structure that drapes takes none. */
+            placement?: {
+                lat: number;
+                lon: number;
+                headingDeg: number;
+            };
             /** @description Written by the platform; ignored when sent. */
             startAssumed?: boolean;
         };
@@ -7269,8 +7546,14 @@ export interface components {
             assets: components["schemas"]["MappingAssetRequest"][];
         };
         MappingAssetRequest: {
-            /** @description A ready reconstruction of the organisation's. */
+            /** @description A ready asset of the organisation's: a reef, or a structure (no search). */
             reconstructionId: string;
+            /** @description Where a structure that stands is put; a reef or a structure that drapes takes none. */
+            placement?: {
+                lat: number;
+                lon: number;
+                headingDeg: number;
+            };
             /** @description Where its video starts; the reconstruction's own when absent. */
             start?: {
                 lat: number;

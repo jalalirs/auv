@@ -71,7 +71,7 @@ type Settings struct {
 	PackageCapBytes int64
 }
 
-// MostAssets is how many reefs one mapping lays into a place.
+// MostAssets is how many assets one mapping lays into a place.
 const MostAssets = 20
 
 // Request is what somebody asks a mapping to do.
@@ -97,6 +97,9 @@ type Request struct {
 	AcrossM    float64  `json:"acrossM,omitempty"`
 	Pad        string   `json:"pad,omitempty"`
 	HeadingDeg *float64 `json:"headingDeg,omitempty"`
+
+	// Placement is where a structure that stands is put (onto).
+	Placement *Standing `json:"placement,omitempty"`
 
 	// StartAssumed says the start is NominalStart, because neither the
 	// request nor the reconstruction named one. Written by the platform.
@@ -144,16 +147,19 @@ func (q Request) Validate() error {
 // asset is the one reef a request for a reconstruction's mapping asks about.
 func (q Request) asset(reconstructionID string) AssetRequest {
 	return AssetRequest{ReconstructionID: reconstructionID, Start: q.Start, WithinM: q.WithinM,
-		DepthM: q.DepthM, Count: q.Count, HeadingDeg: q.HeadingDeg, StartAssumed: q.StartAssumed}
+		DepthM: q.DepthM, Count: q.Count, HeadingDeg: q.HeadingDeg, Placement: q.Placement,
+		StartAssumed: q.StartAssumed}
 }
 
-// AssetRequest is one reef a mapping puts onto a place, and what its search
-// is told: where its video starts (the reconstruction's own when nobody
-// says), how far from there to look, how deep it is when somebody knows, and
-// how many places to report. For a place of its own, HeadingDeg is which way
-// it faces.
+// AssetRequest is one asset a mapping puts onto a place. A reef has a search,
+// and this is what it is told: where its video starts (the reconstruction's
+// own when nobody says), how far from there to look, how deep it is when
+// somebody knows, and how many places to report; for a place of its own,
+// HeadingDeg is which way it faces. A structure has no search: one that
+// stands is put at its Placement, one that drapes along its own route.
 type AssetRequest struct {
 	ReconstructionID string                `json:"reconstructionId"`
+	Placement        *Standing             `json:"placement,omitempty"`
 	Start            *reconstructing.Point `json:"start,omitempty"`
 	WithinM          float64               `json:"withinM,omitempty"`
 	DepthM           *float64              `json:"depthM,omitempty"`
@@ -177,7 +183,61 @@ func (a AssetRequest) Validate() error {
 	if a.Count != 0 && (a.Count < 1 || a.Count > 20) {
 		return fmt.Errorf("%w: the search reports 1 to 20 places", domain.ErrInvalid)
 	}
+	if p := a.Placement; p != nil {
+		if err := p.Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// Standing is where a structure that stands is put: its base's centre at a
+// latitude and longitude, turned by HeadingDeg.
+type Standing struct {
+	Lat        float64 `json:"lat"`
+	Lon        float64 `json:"lon"`
+	HeadingDeg float64 `json:"headingDeg"`
+}
+
+// Validate reports whether a standing placement is somewhere.
+func (s Standing) Validate() error {
+	if !finite(s.Lat) || s.Lat < -90 || s.Lat > 90 || !finite(s.Lon) || s.Lon < -180 || s.Lon > 180 {
+		return fmt.Errorf("%w: a structure is placed at latitude and longitude in degrees", domain.ErrInvalid)
+	}
+	if !finite(s.HeadingDeg) || s.HeadingDeg < 0 || s.HeadingDeg > 360 {
+		return fmt.Errorf("%w: a heading is 0 to 360 degrees", domain.ErrInvalid)
+	}
+	return nil
+}
+
+// structureChosen is where a structure goes, which it knows without a
+// search: at its placement when it stands, along its own route when it
+// drapes. A reef is not one, and a survey is a place's ground, not something
+// laid into it.
+func structureChosen(a AssetRequest, made reconstructing.Reconstruction) (map[string]any, error) {
+	switch {
+	case made.Kind == reconstructing.KindBathymetry:
+		return nil, fmt.Errorf("%w: %s is a survey, a place's ground; build the place with it (survey), not lay it in",
+			domain.ErrInvalid, made.ID)
+	case made.Kind != reconstructing.KindStructure || made.Structure == nil:
+		if a.Placement != nil {
+			return nil, fmt.Errorf("%w: %s is a reef, found its place by a search; a placement is for a structure that stands",
+				domain.ErrInvalid, made.ID)
+		}
+		return nil, nil
+	case made.Structure.Meets == reconstructing.Stands:
+		if a.Placement == nil {
+			return nil, fmt.Errorf("%w: %s stands on the seabed; say where (placement: lat, lon, headingDeg)",
+				domain.ErrInvalid, made.ID)
+		}
+		p := a.Placement
+		return map[string]any{"lat": p.Lat, "lon": p.Lon, "headingDeg": p.HeadingDeg}, nil
+	default:
+		if a.Placement != nil {
+			return nil, fmt.Errorf("%w: %s drapes along its own route, and takes no placement", domain.ErrInvalid, made.ID)
+		}
+		return map[string]any{"alongRoute": true}, nil
+	}
 }
 
 // PlaceRequest is what somebody asks for when they put reefs onto a place:

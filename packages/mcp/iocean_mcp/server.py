@@ -75,11 +75,15 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
              "files": {"type": "array", "items": {"type": "object"},
                        "description": "the institution's own uploaded files: "
                                       "[{\"objectId\": ..., \"use\": \"raster\"|\"points\"|\"ortho\", \"name\": ..., \"errorM\": 0.1}]"},
-             "cells": {"type": "integer", "description": "grid cells across, 64 to 2048; default 512"}},
+             "cells": {"type": "integer", "description": "grid cells across, 64 to 2048; default 512"},
+             "survey": {"type": "array", "items": {"type": "string"},
+                        "description": "ready bathymetry assets (assets_list kind bathymetry) laid in as the "
+                                       "ground, with their datum and error; without centre, the first one's square"}},
          "required": ["name"]},
         lambda p, name, centre=None, across_m=1000.0, sources=None, files=None, cells=None, base_place="",
-               flat_depth_m=None, coral=None:
-            tools.places_build(p, name, centre, across_m, sources, files, cells, base_place, flat_depth_m, coral)),
+               flat_depth_m=None, coral=None, survey=None:
+            tools.places_build(p, name, centre, across_m, sources, files, cells, base_place, flat_depth_m, coral,
+                               survey)),
     "store_places": (
         "The iOcean map store: places iOcean built from public data, checked and published, open to "
         "everybody. Each with how deep it is, how much of its depth was measured, its reef, and whether "
@@ -164,12 +168,56 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
         {"type": "object",
          "properties": {"org": {"type": "string", "description": "the organisation; this session's own when absent"}}},
         lambda p, org="": tools.reconstructions_list(p, org)),
+    "assets_create": (
+        "Make a structure or a seabed survey into an asset, as a job; watch it with assets_status. "
+        "bathymetry: an uploaded GeoTIFF or xyz (object), datum, error_m. structure: a type and an "
+        "uploaded glb/gltf/obj (object; it stands), or a pipeline route with diameter_m (it drapes). "
+        "A reef comes from reconstructions_create.",
+        {"type": "object",
+         "properties": {
+             "kind": {"type": "string", "enum": ["structure", "bathymetry"]},
+             "object": {"type": "string", "description": "the uploaded file's object id (uploads_confirm); not for a route"},
+             "name": {"type": "string", "description": "the file's own name; its format is read from it"},
+             "format": {"type": "string", "enum": ["geotiff", "xyz", "glb", "gltf", "obj"]},
+             "type": {"type": "string", "enum": ["pipeline", "platform", "wind-foundation", "other"]},
+             "meets": {"type": "string", "enum": ["stands", "drapes"],
+                       "description": "default: a model stands, a route drapes"},
+             "datum": {"type": "string", "description": "a survey's vertical datum: MSL, LAT, ..."},
+             "error_m": {"type": "number", "description": "how wrong a survey's depths may be, in metres"},
+             "citation": {"type": "string", "description": "what a place built on the survey cites it as"},
+             "scale": {"type": "number", "description": "a model's metres per unit; default 1"},
+             "up": {"type": "string", "enum": ["y", "z"], "description": "a model's up axis; default y"},
+             "route": {"type": "array", "items": {"type": "array", "items": {"type": "number"}},
+                       "description": "a pipeline's [latitude, longitude] points, two or more"},
+             "diameter_m": {"type": "number", "description": "a route's pipe diameter"},
+             "burial_m": {"type": "number", "description": "how deep a route's pipe is buried"},
+             "label": {"type": "string", "description": "what to call it; the file's name when absent"},
+             "org": {"type": "string", "description": "the organisation; this session's own when absent"}},
+         "required": ["kind"]},
+        lambda p, kind, object="", name="", format="", type="", meets="", datum="", error_m=None, citation="",
+               scale=None, up="", route=None, diameter_m=None, burial_m=None, label="", org="":
+            tools.assets_create(p, kind, object, name, format, type, meets, datum, error_m, citation, scale, up,
+                                route, diameter_m, burial_m, label, org)),
+    "assets_status": (
+        "How an asset is going, and when it is ready: its kind, type, how it meets the seabed, what it "
+        "was made from, its footprint and stats.",
+        {"type": "object",
+         "properties": {"asset": {"type": "string"}},
+         "required": ["asset"]},
+        lambda p, asset: tools.assets_status(p, asset)),
+    "assets_list": (
+        "This institution's assets of every kind (reefs, structures, surveys), newest first, each with its state.",
+        {"type": "object",
+         "properties": {"kind": {"type": "string", "enum": ["reef", "structure", "bathymetry"]},
+                        "org": {"type": "string", "description": "the organisation; this session's own when absent"}}},
+        lambda p, kind="", org="": tools.assets_list(p, kind, org)),
     "mappings_create": (
         "Put a ready reconstruction onto a place. mode onto: a place that exists (place, its id); a job "
         "searches its seabed near where the video starts for where the reef's ground fits, and waits for "
         "mappings_accept. mode own: a new place of this institution's own (name), a flat seabed built for "
-        "it, and the reef laid in its middle. THIS SPENDS TIME ON MACHINES, laying on a GPU. Either way "
-        "the place gains a draft version, which places_publish lets dives use.",
+        "it, and the reef laid in its middle. A ready structure asset goes onto a place too, with no "
+        "search: placement when it stands, nothing when it drapes. THIS SPENDS TIME ON MACHINES, laying "
+        "on a GPU. Either way the place gains a draft version, which places_publish lets dives use.",
         {"type": "object",
          "properties": {
              "reconstruction": {"type": "string"},
@@ -188,14 +236,18 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
              "heading_deg": {"type": "number", "description": "own: which way the reef faces; default 0"},
              "assets": {"type": "array",
                         "items": {"oneOf": [{"type": "string"}, {"type": "object"}]},
-                        "description": "onto: several reefs at once, each a reconstruction id or "
-                                       "{\"reconstruction\": id, \"start\": [lat, lon], \"depth_m\": 8, "
-                                       "\"within_m\": 400}; one search each, then one job lays them all in"}},
+                        "description": "onto: several at once, each an asset id or "
+                                       "{\"asset\": id, \"start\": [lat, lon], \"depth_m\": 8, "
+                                       "\"within_m\": 400} for a reef (one search each), or "
+                                       "{\"asset\": id, \"placement\": [lat, lon, heading_deg]} for a structure "
+                                       "that stands (no search; one that drapes needs nothing); one job lays them all in"},
+             "placement": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 3,
+                           "description": "onto: [latitude, longitude, heading_deg] for a structure that stands"}},
          "required": ["mode"]},
         lambda p, reconstruction="", mode="onto", place="", version="", start=None, within_m=None, depth_m=None,
-               count=None, name="", across_m=None, pad="", heading_deg=None, assets=None:
+               count=None, name="", across_m=None, pad="", heading_deg=None, assets=None, placement=None:
             tools.mappings_create(p, reconstruction, mode, place, version, start, within_m, depth_m,
-                                  count, name, across_m, pad, heading_deg, assets)),
+                                  count, name, across_m, pad, heading_deg, assets, placement)),
     "mappings_status": (
         "How a mapping is going: its state, the steps of each job, and for each reef its state and, "
         "when its search has finished, its candidates (index, where, heading, how well the ground fits, "

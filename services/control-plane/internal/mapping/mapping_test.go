@@ -206,3 +206,62 @@ func TestTheLayJobsLastWordSaysWhereEachWentAndWhatOverlaps(t *testing.T) {
 		t.Fatal("a lay job that has not finished said where things went")
 	}
 }
+
+func TestAStructureNeedsNoSearch(t *testing.T) {
+	stands := reconstructing.Reconstruction{ID: "recon_s", Kind: reconstructing.KindStructure,
+		Structure: &reconstructing.Structure{Type: "platform", Meets: reconstructing.Stands}}
+	drapes := reconstructing.Reconstruction{ID: "recon_d", Kind: reconstructing.KindStructure,
+		Structure: &reconstructing.Structure{Type: "pipeline", Meets: reconstructing.Drapes}}
+	reef := reconstructing.Reconstruction{ID: "recon_r", Kind: reconstructing.KindReef}
+	survey := reconstructing.Reconstruction{ID: "recon_b", Kind: reconstructing.KindBathymetry}
+	at := &Standing{Lat: 22.3, Lon: 38.85, HeadingDeg: 45}
+
+	chosen, err := structureChosen(AssetRequest{ReconstructionID: stands.ID, Placement: at}, stands)
+	if err != nil || chosen["lat"] != 22.3 || chosen["headingDeg"] != 45.0 {
+		t.Fatalf("a structure that stands: %v %v", chosen, err)
+	}
+	if chosen, err := structureChosen(AssetRequest{ReconstructionID: drapes.ID}, drapes); err != nil || chosen == nil {
+		t.Fatalf("a structure that drapes: %v %v", chosen, err)
+	}
+	if chosen, err := structureChosen(AssetRequest{ReconstructionID: reef.ID}, reef); err != nil || chosen != nil {
+		t.Fatalf("a reef was given somewhere without its search: %v %v", chosen, err)
+	}
+	for name, c := range map[string]struct {
+		asked AssetRequest
+		made  reconstructing.Reconstruction
+	}{
+		"a standing structure nowhere":  {AssetRequest{}, stands},
+		"a draping structure placed":    {AssetRequest{Placement: at}, drapes},
+		"a reef placed by latitude":     {AssetRequest{Placement: at}, reef},
+		"a survey laid in like a thing": {AssetRequest{}, survey},
+	} {
+		if _, err := structureChosen(c.asked, c.made); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+	for _, wrong := range []Standing{{Lat: 91}, {Lon: -181}, {HeadingDeg: 400}, {Lat: math.NaN()}} {
+		if (AssetRequest{ReconstructionID: "recon_s", Placement: &wrong}).Validate() == nil {
+			t.Errorf("%+v was accepted", wrong)
+		}
+	}
+
+	assets := []Asset{
+		{Ordinal: 0, ReconstructionID: "recon_r", Name: "gx010", Chosen: map[string]any{"at": []any{1.0, 2.0}}},
+		{Ordinal: 1, ReconstructionID: "recon_s", Name: "jacket", Chosen: chosen},
+		{Ordinal: 2, ReconstructionID: "recon_d", Name: "export-line", Chosen: map[string]any{"alongRoute": true}},
+	}
+	brief := layBrief(assets, map[string]reconstructing.Reconstruction{"recon_r": reef, "recon_s": stands, "recon_d": drapes})
+	laid := brief["assets"].([]any)
+	first, second, third := laid[0].(map[string]any), laid[1].(map[string]any), laid[2].(map[string]any)
+	if first["path"] != "reconstruction/recon_r" || first["kind"] != nil {
+		t.Errorf("a reef is laid as it always was: %v", first)
+	}
+	placement, _ := second["placement"].(map[string]any)
+	if second["path"] != "asset/recon_s" || second["kind"] != "structure" || second["meets"] != "stands" ||
+		placement["lon"] != 38.85 || placement["headingDeg"] != 45.0 {
+		t.Errorf("a structure that stands: %v", second)
+	}
+	if third["path"] != "asset/recon_d" || third["meets"] != "drapes" || third["placement"] != nil {
+		t.Errorf("a structure that drapes: %v", third)
+	}
+}

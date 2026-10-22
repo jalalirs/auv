@@ -54,6 +54,12 @@ type Settings struct {
 	WalltimeSeconds int
 	// PackageBytes is the largest package a reconstruction may make.
 	PackageBytes int64
+	// The import job, which makes a structure or a survey into an asset in
+	// the same image, is work for processors: no GPU.
+	ImportCPU             float64
+	ImportMemoryBytes     int64
+	ImportWalltimeSeconds int
+	ImportPackageBytes    int64
 }
 
 // Video is the dive video a reconstruction is made from.
@@ -160,6 +166,24 @@ func nameOf(brief Brief) string {
 	return "a reconstruction"
 }
 
+// held reads an object the organisation holds, or says why it cannot be used.
+func (r *Reconstructor) held(ctx context.Context, orgID, objectID string) (storage.Object, error) {
+	object, err := r.objects.Object(ctx, objectID)
+	if err != nil {
+		return storage.Object{}, fmt.Errorf("%w: no object %s", domain.ErrInvalid, objectID)
+	}
+	var held bool
+	if err := r.pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM store.holding WHERE org_id = $1 AND object_id = $2)`,
+		orgID, object.ID).Scan(&held); err != nil {
+		return storage.Object{}, err
+	}
+	if !held {
+		return storage.Object{}, fmt.Errorf("%w: the organisation does not hold %s; upload it first", domain.ErrInvalid, object.ID)
+	}
+	return object, nil
+}
+
 // Reconstructor runs reconstructions.
 type Reconstructor struct {
 	pool     *db.Pool
@@ -185,16 +209,38 @@ func New(pool *db.Pool, broker *exec.Broker, objects *storage.Objects, settings 
 	if settings.PackageBytes == 0 {
 		settings.PackageBytes = 40 << 30
 	}
+	if settings.ImportCPU == 0 {
+		settings.ImportCPU = 4
+	}
+	if settings.ImportMemoryBytes == 0 {
+		settings.ImportMemoryBytes = 8 << 30
+	}
+	if settings.ImportWalltimeSeconds == 0 {
+		settings.ImportWalltimeSeconds = 2 * 3600
+	}
+	if settings.ImportPackageBytes == 0 {
+		// A survey is carried as it was uploaded, beside its preview.
+		settings.ImportPackageBytes = 16 << 30
+	}
 	return &Reconstructor{pool: pool, broker: broker, objects: objects, settings: settings}
 }
 
-// Reconstruction is the record of one reconstruction.
+// Reconstruction is the record of one reconstruction: a reef from a video,
+// or any other asset (a structure, a survey) the import job made.
 type Reconstruction struct {
 	ID    string `json:"id"`
 	OrgID string `json:"orgId"`
 	JobID string `json:"jobId"`
-	Brief Brief  `json:"brief"`
-	Name  string `json:"name"`
+	// Brief is a reef's, made from a video; Asset is the import job's brief
+	// for anything else.
+	Brief Brief       `json:"brief"`
+	Asset *AssetBrief `json:"asset,omitempty"`
+	Name  string      `json:"name"`
+	// Kind is reef, structure or bathymetry; MadeFrom is video, survey, model
+	// or route; Structure is a structure's type and how it meets the seabed.
+	Kind      string     `json:"kind"`
+	MadeFrom  string     `json:"madeFrom"`
+	Structure *Structure `json:"structure,omitempty"`
 	// Manifest is what the reconstruction said about itself, once it has
 	// been recorded.
 	Manifest   map[string]any `json:"manifest,omitempty"`
@@ -213,18 +259,9 @@ func (r *Reconstructor) Start(ctx context.Context, principalID, orgID string, br
 	if err := brief.Validate(); err != nil {
 		return Reconstruction{}, err
 	}
-	object, err := r.objects.Object(ctx, brief.Video.ObjectID)
+	object, err := r.held(ctx, orgID, brief.Video.ObjectID)
 	if err != nil {
-		return Reconstruction{}, fmt.Errorf("%w: no object %s", domain.ErrInvalid, brief.Video.ObjectID)
-	}
-	var held bool
-	if err := r.pool.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM store.holding WHERE org_id = $1 AND object_id = $2)`,
-		orgID, object.ID).Scan(&held); err != nil {
 		return Reconstruction{}, err
-	}
-	if !held {
-		return Reconstruction{}, fmt.Errorf("%w: the organisation does not hold %s; upload it first", domain.ErrInvalid, object.ID)
 	}
 	if !isVideo(object.MediaType, brief.Video.Name) {
 		return Reconstruction{}, fmt.Errorf("%w: %s is %s, not a video (an .mp4, .mov or .mkv)",
@@ -268,7 +305,7 @@ func (r *Reconstructor) Start(ctx context.Context, principalID, orgID string, br
 	}
 
 	made := Reconstruction{ID: ids.New(ids.KindReconstruction), OrgID: orgID, JobID: job.ID,
-		Brief: brief, Name: nameOf(brief), CreatedBy: principalID}
+		Brief: brief, Name: nameOf(brief), Kind: KindReef, MadeFrom: FromVideo, CreatedBy: principalID}
 	err = r.pool.QueryRow(ctx, `
 		INSERT INTO catalog.reconstruction (id, org_id, job_id, brief, name, created_by)
 		VALUES ($1, $2, $3, $4, $5, $6) RETURNING created_at`,
@@ -281,18 +318,32 @@ func (r *Reconstructor) Start(ctx context.Context, principalID, orgID string, br
 
 const selectReconstruction = `
 	SELECT id, org_id, job_id, brief, name, manifest, coalesce(failure, ''),
-	       created_by, created_at, recorded_at
+	       created_by, created_at, recorded_at, kind, made_from, structure
 	FROM catalog.reconstruction`
 
 func scanReconstruction(row interface{ Scan(...any) error }) (Reconstruction, error) {
 	var made Reconstruction
-	var brief, manifest []byte
+	var brief, manifest, structure []byte
 	if err := row.Scan(&made.ID, &made.OrgID, &made.JobID, &brief, &made.Name, &manifest,
-		&made.Failure, &made.CreatedBy, &made.CreatedAt, &made.RecordedAt); err != nil {
+		&made.Failure, &made.CreatedBy, &made.CreatedAt, &made.RecordedAt,
+		&made.Kind, &made.MadeFrom, &structure); err != nil {
 		return Reconstruction{}, db.Translate(err)
 	}
-	if err := json.Unmarshal(brief, &made.Brief); err != nil {
-		return Reconstruction{}, err
+	if made.MadeFrom == FromVideo {
+		if err := json.Unmarshal(brief, &made.Brief); err != nil {
+			return Reconstruction{}, err
+		}
+	} else {
+		made.Asset = &AssetBrief{}
+		if err := json.Unmarshal(brief, made.Asset); err != nil {
+			return Reconstruction{}, err
+		}
+	}
+	if len(structure) > 0 && string(structure) != "null" {
+		made.Structure = &Structure{}
+		if err := json.Unmarshal(structure, made.Structure); err != nil {
+			return Reconstruction{}, err
+		}
 	}
 	if len(manifest) > 0 {
 		if err := json.Unmarshal(manifest, &made.Manifest); err != nil {
@@ -314,10 +365,15 @@ func (r *Reconstructor) OrgOf(ctx context.Context, id string) (string, error) {
 	return org, db.Translate(err)
 }
 
-// List lists an organisation's reconstructions, newest first.
+// List lists an organisation's reconstructions, newest first: its reefs made
+// from videos, which is what the reconstruction routes have always listed.
 func (r *Reconstructor) List(ctx context.Context, orgID string) ([]Reconstruction, error) {
+	return r.list(ctx, `WHERE org_id = $1 AND made_from = 'video'`, orgID)
+}
+
+func (r *Reconstructor) list(ctx context.Context, where string, args ...any) ([]Reconstruction, error) {
 	rows, err := r.pool.Query(ctx,
-		selectReconstruction+` WHERE org_id = $1 ORDER BY created_at DESC LIMIT 100`, orgID)
+		selectReconstruction+" "+where+` ORDER BY created_at DESC LIMIT 100`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -441,7 +497,8 @@ func (r *Reconstructor) Watch(ctx context.Context, id string) (View, error) {
 	default:
 		view.State = "failed"
 		if view.Failure == "" {
-			view.Failure = fmt.Sprintf("the reconstruction's job %s (%s)", job.State, job.FailureClass)
+			view.Failure = fmt.Sprintf("the %s's job %s (%s)", map[bool]string{true: "reconstruction", false: "import"}[made.MadeFrom == FromVideo],
+				job.State, job.FailureClass)
 		}
 	}
 	if view.State != "failed" {
@@ -517,9 +574,13 @@ func (r *Reconstructor) unpack(ctx context.Context, made Reconstruction) ([]Obje
 	if err != nil {
 		return nil, nil, err
 	}
-	objectID, ok := outputs["reconstruction"]
+	output, manifestName := "reconstruction", Manifest
+	if made.MadeFrom != FromVideo {
+		output, manifestName = "asset", AssetManifest
+	}
+	objectID, ok := outputs[output]
 	if !ok {
-		return nil, nil, errors.New("the reconstruction finished without a package")
+		return nil, nil, fmt.Errorf("the %s job finished without a package", output)
 	}
 	object, err := r.objects.Object(ctx, objectID)
 	if err != nil {
@@ -549,7 +610,7 @@ func (r *Reconstructor) unpack(ctx context.Context, made Reconstruction) ([]Obje
 		if name == "." || strings.HasPrefix(name, "..") || path.IsAbs(name) {
 			return nil, nil, fmt.Errorf("the package names a file outside itself: %s", header.Name)
 		}
-		one, contents, err := r.keep(ctx, made, name, archive, header.Size, name == Manifest)
+		one, contents, err := r.keep(ctx, made, name, archive, header.Size, name == manifestName)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -559,17 +620,21 @@ func (r *Reconstructor) unpack(ctx context.Context, made Reconstruction) ([]Obje
 		objects = append(objects, one)
 	}
 	if manifest == nil {
-		return nil, nil, fmt.Errorf("the package has no %s, so nothing could read it", Manifest)
+		return nil, nil, fmt.Errorf("the package has no %s, so nothing could read it", manifestName)
 	}
-	record, err := readManifest(manifest)
+	record, err := ReadObject(manifest)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("the package's %s is not a JSON object: %w", manifestName, err)
 	}
 	paths := map[string]bool{}
 	for _, one := range objects {
 		paths[one.Path] = true
 	}
-	if err := checkManifest(record, paths); err != nil {
+	check := checkManifest
+	if made.MadeFrom != FromVideo {
+		check = func(record map[string]any, paths map[string]bool) error { return checkAsset(made, record, paths) }
+	}
+	if err := check(record, paths); err != nil {
 		return nil, nil, err
 	}
 	return objects, record, nil
@@ -617,6 +682,10 @@ func mediaTypeOf(name string) string {
 		return "image/png"
 	case ".json":
 		return "application/json"
+	case ".tif", ".tiff":
+		return "image/tiff"
+	case ".csv":
+		return "text/csv"
 	default:
 		// The splats' checkpoints (.pt) and the surface's grid (.f32) are
 		// bytes only the reconstruction module reads.

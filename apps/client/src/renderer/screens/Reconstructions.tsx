@@ -8,13 +8,40 @@
 // its own, or a fit to a place's seabed somebody checks before it is laid).
 
 import { useEffect, useMemo, useState } from "react";
-import type { Platform, Reconstruction } from "@coral-city/api";
+import type { Asset, Platform, Reconstruction, StructureType } from "@coral-city/api";
 import type { Held } from "./Deck.js";
 import { Empty, Pill, ago } from "./parts.js";
-import { Page } from "../ui/components.js";
+import { Dialog, Page } from "../ui/components.js";
 import { PLACES_TABS } from "./placesTabs.js";
 
 const VIDEO = /\.(mp4|mov|mkv)$/i;
+const MODEL = /\.(glb|gltf|obj)$/i;
+const SURVEY = /\.(tif|tiff|xyz|csv|txt)$/i;
+
+type Making = "video" | "survey" | "model" | "route";
+const MAKING: { key: Making; label: string }[] = [
+  { key: "video", label: "A reef from a dive video" },
+  { key: "survey", label: "A seabed survey file" },
+  { key: "model", label: "A structure from a 3D model" },
+  { key: "route", label: "A pipeline from its route" },
+];
+const STRUCTURES: { key: StructureType; label: string }[] = [
+  { key: "platform", label: "platform" }, { key: "wind-foundation", label: "wind foundation" },
+  { key: "pipeline", label: "pipeline" }, { key: "other", label: "other" },
+];
+
+/** A fact's key as words: shallowestM is "shallowest, m". */
+function factSaid(key: string): string {
+  const unit = /M$/.test(key) ? ", m" : "";
+  return key.replace(/M$/, "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().replace(/^bbox$/, "bounds (S, W, N, E)") + unit;
+}
+
+/** What an asset is, said in a few words. */
+function kindSaid(one: Asset): string {
+  if (one.kind === "reef") return "reef from a video";
+  if (one.kind === "bathymetry") return "seabed survey";
+  return `${(one.type ?? "structure").replace("-", " ")} ${one.madeFrom === "route" ? "from its route" : "from a model"}`;
+}
 
 function megabytes(bytes: number): string {
   return bytes >= 1 << 30 ? `${(bytes / (1 << 30)).toFixed(1)} GB` : `${(bytes / (1 << 20)).toFixed(0)} MB`;
@@ -43,6 +70,17 @@ export function Reconstructions({ platform, held, onOpen, onBack, onTab }: {
 }): React.JSX.Element {
   const institution = held.institution;
   const [list, setList] = useState<Reconstruction[] | undefined>();
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [making, setMaking] = useState<Making>("video");
+  const [shown, setShown] = useState<Asset | undefined>();
+  const [datum, setDatum] = useState("MSL");
+  const [errorM, setErrorM] = useState("0.3");
+  const [structure, setStructure] = useState<StructureType>("platform");
+  const [scale, setScale] = useState("1");
+  const [up, setUp] = useState<"y" | "z">("y");
+  const [route, setRoute] = useState("");
+  const [diameter, setDiameter] = useState("0.5");
+  const [burial, setBurial] = useState("0.3");
   const [pictures, setPictures] = useState<Record<string, string>>({});
   const [file, setFile] = useState<File | undefined>();
   const [label, setLabel] = useState("");
@@ -54,7 +92,9 @@ export function Reconstructions({ platform, held, onOpen, onBack, onTab }: {
   const read = useMemo(() => async () => {
     if (!institution) return;
     try {
-      setList(await platform.reconstructionsOf(institution.id));
+      const [reefs, all] = await Promise.all([platform.reconstructionsOf(institution.id), platform.listAssets(institution.id)]);
+      setList(reefs);
+      setAssets(all.filter((a) => a.kind !== "reef"));
     } catch (problem) {
       setTrouble(problem instanceof Error ? problem.message : "could not read the reconstructions");
     }
@@ -64,10 +104,10 @@ export function Reconstructions({ platform, held, onOpen, onBack, onTab }: {
   // Kept fresh while any is still being made: a reconstruction takes hours,
   // so every half minute is often enough.
   useEffect(() => {
-    if (!list?.some((one) => one.state !== "ready" && one.state !== "failed")) return;
+    if (![...(list ?? []), ...assets].some((one) => one.state !== "ready" && one.state !== "failed")) return;
     const again = setInterval(() => void read(), 30_000);
     return () => clearInterval(again);
-  }, [list, read]);
+  }, [list, assets, read]);
 
   // The picture from above, for each one that has it.
   useEffect(() => {
@@ -89,6 +129,42 @@ export function Reconstructions({ platform, held, onOpen, onBack, onTab }: {
   const heightM = height.trim() === "" ? undefined : Number(height);
   const heightOk = heightM === undefined || (Number.isFinite(heightM) && heightM > 0.2 && heightM <= 20);
   const ready = !!file && !!institution && !sent && heightOk && (start.trim() === "" || !!startAt);
+
+  // A route typed as one "lat, lon" a line.
+  const routePoints = useMemo(() => route.split(/\n+/).map((line) => line.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/))
+    .filter((m): m is RegExpMatchArray => !!m).map((m) => [Number(m[1]), Number(m[2])]), [route]);
+  const otherReady = !!institution && !sent && (
+    making === "survey" ? !!file && SURVEY.test(file.name) && datum.trim() !== "" && Number(errorM) > 0
+    : making === "model" ? !!file && MODEL.test(file.name) && Number(scale) > 0
+    : making === "route" ? routePoints.length >= 2 && Number(diameter) > 0 && Number(burial) >= 0 && Number(burial) <= 1
+    : false);
+
+  const beginOther = async () => {
+    if (!institution) return;
+    setTrouble("");
+    try {
+      let object: string | undefined;
+      if (file && making !== "route") {
+        setSent({ stage: "hashing", done: 0 });
+        object = (await platform.upload(institution.id, file, { onProgress: (stage, done) => setSent({ stage, done }) })).id;
+      }
+      const named = label.trim() ? { label: label.trim() } : {};
+      const made = await platform.createAsset(institution.id,
+        making === "survey" ? { kind: "bathymetry", object, datum: datum.trim(), errorM: Number(errorM), ...named,
+                                file: { name: file!.name, format: /\.tiff?$/i.test(file!.name) ? "geotiff" : "xyz" } }
+        : making === "model" ? { kind: "structure", type: structure, meets: "stands", object, ...named,
+                                 model: { name: file!.name, format: file!.name.split(".").pop()!.toLowerCase() as "glb" | "gltf" | "obj", scale: Number(scale), up } }
+        : { kind: "structure", type: "pipeline", meets: "drapes", ...named,
+            route: { points: routePoints, diameterM: Number(diameter), burial: Number(burial) } });
+      setFile(undefined); setLabel(""); setRoute("");
+      setAssets((was) => [made, ...was]);
+      setShown(made);
+    } catch (problem) {
+      setTrouble(problem instanceof Error ? problem.message : "the asset could not be started");
+    } finally {
+      setSent(undefined);
+    }
+  };
 
   const begin = async () => {
     if (!file || !institution) return;
@@ -123,8 +199,55 @@ export function Reconstructions({ platform, held, onOpen, onBack, onTab }: {
           tabs={PLACES_TABS} tab="assets" onTab={(key) => onTab?.(key)}>
       <div className="two">
         <section>
-          <h2>New asset from a video</h2>
-          {!institution ? <p className="note">You belong to no institution, and a reconstruction is made for one.</p> : (
+          <h2>New asset</h2>
+          <label className="asset-making">Made from
+            <select value={making} onChange={(e) => { setMaking(e.target.value as Making); setFile(undefined); setTrouble(""); }}>
+              {MAKING.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+            </select>
+          </label>
+          {!institution ? <p className="note">You belong to no institution, and an asset is made for one.</p> : making !== "video" ? (
+            <div className="builder-side">
+              {making !== "route" ? (
+                <label className="builder-add">
+                  <input type="file" accept={making === "survey" ? ".tif,.tiff,.xyz,.csv,.txt" : ".glb,.gltf,.obj"}
+                         onChange={(e) => { const f = e.target.files?.[0]; if (f) setFile(f); e.target.value = ""; }} />
+                  <span>{file ? `${file.name} · ${megabytes(file.size)}` : making === "survey"
+                    ? "Choose a survey (GeoTIFF, or soundings as latitude, longitude, depth)" : "Choose a model (GLB, glTF or OBJ)"}</span>
+                </label>
+              ) : null}
+              <label>Name
+                <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={file ? file.name.replace(/\.[^.]+$/, "") : "e.g. Export line A"} />
+              </label>
+              {making === "survey" ? (<>
+                <label>Vertical datum<input value={datum} onChange={(e) => setDatum(e.target.value)} placeholder="MSL, LAT, ..." /></label>
+                <label>Error, metres<input value={errorM} onChange={(e) => setErrorM(e.target.value)} /></label>
+              </>) : null}
+              {making === "model" ? (<>
+                <label>What it is
+                  <select value={structure} onChange={(e) => setStructure(e.target.value as StructureType)}>
+                    {STRUCTURES.filter((s) => s.key !== "pipeline").map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                  </select>
+                </label>
+                <label>Scale to metres<input value={scale} onChange={(e) => setScale(e.target.value)} /></label>
+                <label>Up axis
+                  <select value={up} onChange={(e) => setUp(e.target.value as "y" | "z")}><option value="y">y (glTF)</option><option value="z">z</option></select>
+                </label>
+                <p className="note">It stands on the seabed. Where it goes is chosen when it is put in a place.</p>
+              </>) : null}
+              {making === "route" ? (<>
+                <label>Route, one &ldquo;latitude, longitude&rdquo; a line
+                  <textarea rows={5} value={route} onChange={(e) => setRoute(e.target.value)} placeholder={"22.3001, 38.9502\n22.3010, 38.9530"} />
+                </label>
+                <p className="note">{routePoints.length} points read.</p>
+                <label>Diameter, metres<input value={diameter} onChange={(e) => setDiameter(e.target.value)} /></label>
+                <label>Buried, share of its diameter (0 to 1)<input value={burial} onChange={(e) => setBurial(e.target.value)} /></label>
+              </>) : null}
+              {trouble ? <p className="trouble">{trouble}</p> : null}
+              <button className="big" disabled={!otherReady} onClick={() => void beginOther()}>
+                {sent ? `${sent.stage} ${file ? Math.round(100 * sent.done / Math.max(file.size, 1)) : 0}%` : making === "route" ? "Make it" : "Upload and make it"}
+              </button>
+            </div>
+          ) : (
             <div className="builder-side">
               <label className="builder-add">
                 <input type="file" accept="video/*,.mp4,.mov,.mkv"
@@ -149,15 +272,30 @@ export function Reconstructions({ platform, held, onOpen, onBack, onTab }: {
               <button className="big" disabled={!ready} onClick={() => void begin()}>
                 {sent ? `${sent.stage} ${file ? Math.round(100 * sent.done / Math.max(file.size, 1)) : 0}%` : "Upload and rebuild"}
               </button>
-              <p className="note">A six-minute swim takes the platform's GPU about four hours. The video goes up in 32 MB parts and resumes if the connection drops.</p>
+              <p className="note">A six-minute swim takes the platform's GPU about an hour. The video goes up in 32 MB parts and resumes if the connection drops.</p>
             </div>
           )}
         </section>
 
         <section>
           <h2>Assets</h2>
+          {assets.length ? (
+            <div className="rows">
+              {assets.map((one) => {
+                const state = stateOf(one as unknown as Reconstruction);
+                return (
+                  <button key={one.id} type="button" className="row open recon-row" onClick={() => setShown(one)}>
+                    {one.preview && one.state === "ready" ? <img className="recon-thumb" src={one.preview} alt="" /> : <span className="recon-thumb" />}
+                    <span className="what">{one.name}</span>
+                    <span className="quiet">{kindSaid(one)} · {state.doing ?? ago(one.createdAt)}</span>
+                    <Pill kind={state.kind}>{state.said}</Pill>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
           {list === undefined ? <p className="note">Reading…</p>
-            : list.length === 0 ? (
+            : list.length === 0 && assets.length === 0 ? (
               <Empty title="None yet">A reconstruction appears here as soon as its video is uploaded.</Empty>
             ) : (
               <div className="rows">
@@ -180,6 +318,18 @@ export function Reconstructions({ platform, held, onOpen, onBack, onTab }: {
             )}
         </section>
       </div>
+      {shown ? (
+        <Dialog title={shown.name} onClose={() => setShown(undefined)}>
+          <p className="note">{kindSaid(shown)} · {stateOf(shown as unknown as Reconstruction).said}</p>
+          {shown.preview && shown.state === "ready" ? <img className="asset-preview" src={shown.preview} alt="" /> : null}
+          {shown.failure ? <p className="trouble">{shown.failure}</p> : null}
+          <dl className="asset-facts">
+            {Object.entries({ ...(shown.stats ?? {}), ...(shown.footprint ?? {}) }).map(([k, v]) => (
+              <div key={k}><dt>{factSaid(k)}</dt><dd>{Array.isArray(v) ? v.map((x) => typeof x === "number" ? +x.toFixed(5) : String(x)).join(", ") : String(v)}</dd></div>
+            ))}
+          </dl>
+        </Dialog>
+      ) : null}
     </Page>
   );
 }

@@ -1,6 +1,10 @@
 package building
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/jalalirs/auv/services/control-plane/internal/reconstructing"
+)
 
 func TestABriefSaysWhereAndHowDeep(t *testing.T) {
 	good := Brief{Centre: [2]float64{22.3, 38.9}, AcrossM: 1000, Sources: []string{"gebco", "allen-coral-atlas"}}
@@ -106,5 +110,36 @@ func TestAPlaceBuiltOnABaseTakesItsSquare(t *testing.T) {
 	}
 	if _, _, _, err := squareOf(map[string]any{"from": map[string]any{}}); err == nil {
 		t.Error("a site.json that says nowhere was read")
+	}
+}
+
+func TestASurveyIsSomethingThatSaysHowDeep(t *testing.T) {
+	brief := Brief{Centre: [2]float64{22.3, 38.85}, AcrossM: 500, Sources: []string{"allen-coral-atlas"},
+		Survey: []string{"recon_b"}}
+	if err := brief.Validate(); err != nil {
+		t.Fatalf("a survey and the atlas: %v", err)
+	}
+	brief.Survey = []string{""}
+	if brief.Validate() == nil {
+		t.Error("a survey naming nothing was accepted")
+	}
+	brief.Survey = make([]string, MostSurveys+1)
+	for i := range brief.Survey {
+		brief.Survey[i] = "recon_b"
+	}
+	if brief.Validate() == nil {
+		t.Error("too many surveys were accepted")
+	}
+}
+
+func TestASurveyBecomesOneOfTheFiles(t *testing.T) {
+	f := surveyFile(3, "recon_b", reconstructing.Survey{ObjectID: "obj_s", Name: "north.xyz", Use: "points",
+		Datum: "LAT", ErrorM: 0.25, Citation: "KAUST multibeam 2025"})
+	if f.Path != "files/03/north.xyz" || f.Use != "points" || f.Datum != "LAT" || f.ErrorM != 0.25 ||
+		f.Citation != "KAUST multibeam 2025" || f.Asset != "recon_b" || f.ObjectID != "obj_s" {
+		t.Fatalf("%+v", f)
+	}
+	if f := surveyFile(1, "recon_b", reconstructing.Survey{Name: "../.."}); f.Path != "files/01/survey" {
+		t.Errorf("an unsafe name was staged at %s", f.Path)
 	}
 }

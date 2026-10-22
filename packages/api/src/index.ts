@@ -47,6 +47,17 @@ export type ReconstructionBrief = Schemas["ReconstructionBrief"];
 export type Reconstruction = Schemas["Reconstruction"];
 export type ReconstructionRecord = Schemas["ReconstructionRecord"];
 export type ReconstructionObject = Schemas["ReconstructionObject"];
+export type AssetBrief = Schemas["AssetBrief"];
+export type Asset = Schemas["Asset"];
+export type AssetKind = Asset["kind"];
+export type StructureType = NonNullable<AssetBrief["type"]>;
+export type AssetMeets = NonNullable<Asset["meets"]>;
+export type AssetMadeFrom = Asset["madeFrom"];
+export type AssetState = Asset["state"];
+export type AssetFootprint = NonNullable<Asset["footprint"]>;
+export type AssetStats = NonNullable<Asset["stats"]>;
+/** Where a structure that stands is put onto a place. */
+export type StructurePlacement = NonNullable<Schemas["MappingAssetRequest"]["placement"]>;
 export type MappingRequest = Schemas["MappingRequest"];
 export type MappingChoice = Schemas["MappingChoice"];
 export type Mapping = Schemas["Mapping"];
@@ -336,6 +347,29 @@ export class Platform {
     return objects;
   }
 
+  // ── assets of every kind ───────────────────────────────────────────────────
+
+  /**
+   * Make a structure (from a model, or a pipeline's route) or a bathymetry
+   * survey into an asset, as the import job. A reef comes from
+   * startReconstruction.
+   */
+  createAsset(organisation: string, brief: AssetBrief): Promise<Asset> {
+    return this.#request("POST", `/api/v1/organisations/${organisation}/assets`, brief);
+  }
+
+  /** An organisation's assets of every kind (reefs too), or of one, newest first. */
+  async listAssets(organisation: string, kind?: AssetKind): Promise<Asset[]> {
+    const query = kind ? `?kind=${encodeURIComponent(kind)}` : "";
+    const { assets } = await this.#request<{ assets: Asset[] }>(
+      "GET", `/api/v1/organisations/${organisation}/assets${query}`);
+    return assets;
+  }
+
+  getAsset(id: string): Promise<Asset> {
+    return this.#request("GET", `/api/v1/assets/${id}`);
+  }
+
   // ── a reef put onto a place ────────────────────────────────────────────────
 
   /**
@@ -366,7 +400,10 @@ export class Platform {
     return this.#request("POST", `/api/v1/mappings/${id}/accept`, choice);
   }
 
-  /** Put several reefs onto a place: a search each, then one job laying them all in. */
+  /**
+   * Put several assets onto a place: a search for each reef, none for a
+   * structure (placement when it stands), then one job laying them all in.
+   */
   startPlaceMapping(city: string, request: PlaceMappingRequest): Promise<Mapping> {
     return this.#request("POST", `/api/v1/cities/${city}/mappings`, request);
   }

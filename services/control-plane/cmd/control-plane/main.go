@@ -97,6 +97,8 @@ func run(logger *slog.Logger) error {
 		WalltimeSeconds: int(settings.ReconstructWalltime.Seconds()),
 		PackageBytes:    settings.ReconstructPackageBytes,
 	})
+	// A place is built on a survey the organisation made into an asset.
+	builder.UseSurveys(reconstructor)
 
 	authorizer := policy.NewAuthorizer(pool)
 

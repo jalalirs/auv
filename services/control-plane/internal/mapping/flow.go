@@ -143,6 +143,10 @@ func (m *Mapper) Start(ctx context.Context, principalID, reconstructionID string
 	if err != nil {
 		return Mapping{}, err
 	}
+	if made.Kind != reconstructing.KindReef {
+		return Mapping{}, fmt.Errorf("%w: %s is a %s; a place of its own is for a reef, and a %s is put onto a place that exists",
+			domain.ErrInvalid, made.ID, made.Kind, made.Kind)
+	}
 	request = withDefaults(request, made)
 	city, err := m.found(ctx, principalID, made, request)
 	if err != nil {
@@ -182,10 +186,10 @@ func (m *Mapper) OrgOfReconstruction(ctx context.Context, reconstructionID strin
 	return m.reconstructor.OrgOf(ctx, reconstructionID)
 }
 
-// StartOnto asks for reefs to be put onto a place that exists. They must all
-// be one organisation's, which the work is for; each gets a search of its
+// StartOnto asks for assets to be put onto a place that exists. They must all
+// be one organisation's, which the work is for. Each reef gets a search of its
 // own, and as many as the organisation may run start now: the rest start as
-// the first finish.
+// the first finish. A structure needs none: where it goes is chosen already.
 func (m *Mapper) StartOnto(ctx context.Context, principalID, cityID string, request PlaceRequest) (Mapping, error) {
 	if m.settings.Image == "" {
 		return Mapping{}, ErrNotConfigured
@@ -216,17 +220,28 @@ func (m *Mapper) StartOnto(ctx context.Context, principalID, cityID string, requ
 			return Mapping{}, fmt.Errorf("%w: the reefs of one mapping are one organisation's; %s is another's",
 				domain.ErrInvalid, made.ID)
 		}
-		mapping.Assets = append(mapping.Assets, Asset{Ordinal: i, ReconstructionID: made.ID,
-			Brief: assetDefaults(asked, made)})
+		chosen, err := structureChosen(asked, made)
+		if err != nil {
+			return Mapping{}, err
+		}
+		one := Asset{Ordinal: i, ReconstructionID: made.ID, Brief: asked, Chosen: chosen}
+		if chosen == nil {
+			one.Brief = assetDefaults(asked, made)
+		}
+		mapping.Assets = append(mapping.Assets, one)
 		names = append(names, made.Name)
 	}
 	for i, name := range namesOf(names) {
 		mapping.Assets[i].Name = name
 	}
+	started := 0
 	for i := range mapping.Assets {
+		if mapping.Assets[i].Chosen != nil {
+			continue
+		}
 		jobID, err := m.resolve(ctx, mapping, mapping.Assets[i])
 		var refusal *exec.Refusal
-		if errors.As(err, &refusal) && i > 0 {
+		if errors.As(err, &refusal) && started > 0 {
 			// The organisation is running as much as it may: the rest of the
 			// searches start as these finish.
 			break
@@ -235,6 +250,7 @@ func (m *Mapper) StartOnto(ctx context.Context, principalID, cityID string, requ
 			return Mapping{}, err
 		}
 		mapping.Assets[i].ResolveJobID = jobID
+		started++
 	}
 	return mapping, m.insert(ctx, &mapping)
 }
@@ -261,10 +277,17 @@ func (m *Mapper) insert(ctx context.Context, mapping *Mapping) error {
 			if err != nil {
 				return err
 			}
+			// A structure's place is chosen when it is asked for.
+			var chosen []byte
+			if a.Chosen != nil {
+				if chosen, err = json.Marshal(a.Chosen); err != nil {
+					return err
+				}
+			}
 			if _, err := conn.Exec(ctx, `
-				INSERT INTO catalog.mapping_asset (mapping_id, ordinal, reconstruction_id, name, brief, resolve_job_id)
-				VALUES ($1, $2, $3, $4, $5, nullif($6, ''))`,
-				mapping.ID, a.Ordinal, a.ReconstructionID, a.Name, brief, a.ResolveJobID); err != nil {
+				INSERT INTO catalog.mapping_asset (mapping_id, ordinal, reconstruction_id, name, brief, resolve_job_id, chosen)
+				VALUES ($1, $2, $3, $4, $5, nullif($6, ''), $7)`,
+				mapping.ID, a.Ordinal, a.ReconstructionID, a.Name, brief, a.ResolveJobID, chosen); err != nil {
 				return fmt.Errorf("recording reef %d of a mapping: %w", a.Ordinal, err)
 			}
 		}
@@ -926,8 +949,19 @@ func assetAt(mp *Mapping, ordinal int) (*Asset, error) {
 	return nil, fmt.Errorf("%w: this mapping has no reef %d", domain.ErrInvalid, ordinal)
 }
 
-// layBrief is what the lay job is told: every reef still in the mapping, each
-// with its files staged under reconstruction/<its reconstruction>.
+// stagedAt is where an asset's files are staged for the lay job: a reef's
+// under reconstruction/<id>, as always, anything else under asset/<id>.
+func stagedAt(made reconstructing.Reconstruction) string {
+	if made.Kind == reconstructing.KindStructure {
+		return "asset/" + made.ID
+	}
+	return "reconstruction/" + made.ID
+}
+
+// layBrief is what the lay job is told: every asset still in the mapping,
+// each with its files staged where stagedAt says. A reef is laid where it was
+// chosen; a structure that stands at its latitude and longitude, one that
+// drapes along its own route.
 func layBrief(assets []Asset, videos map[string]reconstructing.Reconstruction) map[string]any {
 	laid := []any{}
 	for _, a := range assets {
@@ -935,6 +969,16 @@ func layBrief(assets []Asset, videos map[string]reconstructing.Reconstruction) m
 			continue
 		}
 		made := videos[a.ReconstructionID]
+		if made.Kind == reconstructing.KindStructure && made.Structure != nil {
+			entry := map[string]any{"name": a.Name, "path": stagedAt(made), "kind": reconstructing.KindStructure,
+				"type": made.Structure.Type, "meets": made.Structure.Meets}
+			if made.Structure.Meets == reconstructing.Stands {
+				entry["placement"] = map[string]any{"lat": a.Chosen["lat"], "lon": a.Chosen["lon"],
+					"headingDeg": a.Chosen["headingDeg"]}
+			}
+			laid = append(laid, entry)
+			continue
+		}
 		laid = append(laid, map[string]any{
 			"name": a.Name, "path": "reconstruction/" + a.ReconstructionID, "placement": a.Chosen,
 			"video": map[string]any{"name": made.Brief.Video.Name, "objectId": made.Brief.Video.ObjectID,
@@ -983,7 +1027,7 @@ func (m *Mapper) lay(ctx context.Context, mp Mapping) (string, error) {
 			return "", err
 		}
 		videos[made.ID] = made
-		theirs, err := m.staged(ctx, made.ID, "reconstruction/"+made.ID, true)
+		theirs, err := m.staged(ctx, made.ID, stagedAt(made), true)
 		if err != nil {
 			return "", err
 		}
@@ -1062,7 +1106,7 @@ func labelOf(mp Mapping, names map[string]string) (string, string) {
 	case len(laid) > 1:
 		label = fmt.Sprintf("%s and %d more laid in", laid[0], len(laid)-1)
 	}
-	return label, fmt.Sprintf("the reefs reconstructed as %s, laid in by %s", strings.Join(from, ", "), mp.ID)
+	return label, fmt.Sprintf("the assets %s, laid in by %s", strings.Join(from, ", "), mp.ID)
 }
 
 func (m *Mapper) version(ctx context.Context, mp Mapping) (string, error) {

@@ -232,6 +232,19 @@ const mappingView = () => {
 };
 Object.assign(platform, {
   reconstructionsOf: () => delay([recon(true), { ...recon(false), id: "recon_2", name: "North wall swim" }]),
+  listAssets: () => delay([
+    { id: "recon_s1", orgId: "org_1", jobId: "job_s1", name: "Al Fahal multibeam 2025", kind: "bathymetry", madeFrom: "survey", state: "ready", jobState: "succeeded",
+      footprint: { bbox: [22.28, 38.95, 22.29, 38.97] }, stats: { shallowestM: 1.2, deepestM: 31.5, cellM: [0.5, 0.5], datum: "LAT", errorM: 0.15 },
+      brief: {}, steps: [], createdBy: "p", createdAt: new Date(Date.now() - 3_600_000).toISOString() },
+    { id: "recon_p1", orgId: "org_1", jobId: "job_p1", name: "Export line A", kind: "structure", type: "pipeline", meets: "drapes", madeFrom: "route", state: "ready", jobState: "succeeded",
+      footprint: { bbox: [22.281, 38.951, 22.284, 38.958] }, stats: { lengthM: 742.3, diameterM: 0.5 }, brief: {}, steps: [], createdBy: "p", createdAt: new Date(Date.now() - 7_200_000).toISOString() },
+    { id: "recon_m1", orgId: "org_1", jobId: "job_m1", name: "Monopile WTG-04", kind: "structure", type: "wind-foundation", meets: "stands", madeFrom: "model", state: "running", jobState: "running",
+      brief: {}, steps: [{ at: "", step: "usd", say: "writing the model as USD" }], createdBy: "p", createdAt: new Date().toISOString() },
+  ]),
+  createAsset: (_org: string, brief: { label?: string; kind: string; type?: string; meets?: string }) => delay({
+    id: "recon_new", orgId: "org_1", jobId: "job_new", name: brief.label ?? "new asset", kind: brief.kind, type: brief.type, meets: brief.meets,
+    madeFrom: brief.kind === "bathymetry" ? "survey" : brief.type === "pipeline" ? "route" : "model", state: "queued", jobState: "queued",
+    brief: {}, steps: [], createdBy: "p", createdAt: new Date().toISOString() }),
   reconstruction: (rid: string) => delay(rid === "recon_2" ? { ...recon(false), id: "recon_2", name: "North wall swim" } : recon(true)),
   reconstructionObjects: () => delay([
     { path: "preview.jpg", url: "./harness/fixtures/recon/preview.jpg" },

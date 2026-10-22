@@ -197,6 +197,18 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/reconstructions/{reconstructionId}/objects",
 		Summary: "the files a reconstruction made, each with a short-lived URL", Action: policy.StorageRead,
 		Resource: d.ofReconstruction("reconstructionId"), Handle: d.reconstructionObjects})
+	// Assets of every kind: a reef from a video (above), a structure or a
+	// seabed survey from the import job. Making one is founding something of
+	// the organisation's own, as a reconstruction is.
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/assets",
+		Summary: "make a structure or a seabed survey into an asset, as a job",
+		Action:  policy.CityFound, Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.startAsset})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations/{orgId}/assets",
+		Summary: "an organisation's assets of every kind, newest first", Action: policy.OrgRead,
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.listAssets})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/assets/{assetId}",
+		Summary: "how an asset is going, and what it is", Action: policy.OrgRead,
+		Resource: d.ofReconstruction("assetId"), Handle: d.watchAsset})
 	// A reef put onto a place: an existing one (the caller must be able to
 	// make versions of it), or one of its own.
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/reconstructions/{reconstructionId}/mappings",

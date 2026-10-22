@@ -2322,6 +2322,107 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v1/organisations/{orgId}/assets:
+    post:
+      tags: [places]
+      summary: Make a structure or a seabed survey into an asset
+      description: >
+        The platform runs the import job (the reconstruction module's image,
+        on processors, with no network) over a file the organisation holds,
+        or a pipeline's route. When it finishes, every file it made (the
+        model as USD, the survey as uploaded, a preview) becomes an object
+        the organisation holds, and asset.json becomes the record's
+        manifest. A reef is made from a video by a reconstruction instead.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The organisation the work and what it makes belong to.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssetBrief' }
+      responses:
+        '201':
+          description: The asset, queued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Asset' }
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/Refused'
+        '503':
+          description: This platform has no image to make assets with.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+    get:
+      tags: [places]
+      summary: An organisation's assets, newest first
+      description: >
+        Every kind (reefs from videos too), the last hundred, each as the
+        library shows it: kind, type, how it meets the seabed, what it was
+        made from, its state, footprint, stats and a link to its picture.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: The organisation.
+          schema: { type: string }
+        - name: kind
+          in: query
+          required: false
+          description: Only assets of this kind.
+          schema: { type: string, enum: [reef, structure, bathymetry] }
+      responses:
+        '200':
+          description: Its assets.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [assets]
+                properties:
+                  assets:
+                    type: array
+                    items: { $ref: '#/components/schemas/Asset' }
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/assets/{assetId}:
+    get:
+      tags: [places]
+      summary: How an asset is going, and what it is
+      description: >
+        Any kind. Watching an asset whose job has finished is what starts
+        keeping what it made, so its state is recording for a while before it
+        is ready.
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          description: The asset.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The asset.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Asset' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/reconstructions/{reconstructionId}:
     get:
       tags: [places]
@@ -5680,6 +5781,15 @@ components:
               datum: { type: string }
               citation: { type: string }
               path: { type: string }
+              asset: { type: string, description: The survey it is the file of; written by the platform. }
+        survey:
+          type: array
+          maxItems: 10
+          description: >
+            Ready bathymetry assets of the organisation's, each laid in as one
+            of its files (a GeoTIFF as a raster, soundings as points) with its
+            datum and error.
+          items: { type: string }
         label: { type: string }
         name: { type: string }
         slug: { type: string }
@@ -5793,6 +5903,117 @@ components:
           enum: [auto, keep]
           description: A survey tape in the frames is found and taken out (auto, the default) or kept.
 
+    AssetBrief:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      description: >
+        A bathymetry survey (file, datum, errorM, object) or a structure
+        (type, meets, and a model with its object, or for a pipeline a
+        route). A model stands; a route drapes.
+      properties:
+        kind: { type: string, enum: [structure, bathymetry] }
+        type: { type: string, enum: [pipeline, platform, wind-foundation, other], description: A structure's. }
+        meets:
+          type: string
+          enum: [stands, drapes]
+          description: How a structure meets the seabed; stands for a model, drapes for a route when absent.
+        file:
+          type: object
+          additionalProperties: false
+          description: A survey's file.
+          properties:
+            name: { type: string, description: The file's own name; its format is read from it when absent. }
+            format: { type: string, enum: [geotiff, xyz] }
+            path: { type: string, description: Where the job finds it; filled in by the platform. }
+        datum: { type: string, description: "A survey's vertical datum: MSL, LAT, ..." }
+        errorM: { type: number, exclusiveMinimum: 0, maximum: 100, description: How wrong a survey's depths may be. }
+        citation: { type: string, description: What a place built on the survey cites it as. }
+        model:
+          type: object
+          additionalProperties: false
+          description: A structure's 3D model file.
+          properties:
+            name: { type: string, description: The file's own name; its format is read from it when absent. }
+            format: { type: string, enum: [glb, gltf, obj] }
+            scale: { type: number, exclusiveMinimum: 0, maximum: 1000, description: Metres per model unit; 1 when absent. }
+            up: { type: string, enum: [y, z], description: The model's up axis; y when absent. }
+            path: { type: string, description: Where the job finds it; filled in by the platform. }
+        route:
+          type: object
+          additionalProperties: false
+          required: [points, diameterM]
+          description: A pipeline nobody has a model of.
+          properties:
+            points:
+              type: array
+              minItems: 2
+              maxItems: 10000
+              description: "[latitude, longitude] pairs, in degrees."
+              items:
+                type: array
+                items: { type: number }
+                minItems: 2
+                maxItems: 2
+            diameterM: { type: number, exclusiveMinimum: 0, maximum: 20 }
+            burial: { type: number, minimum: 0, maximum: 10, description: How deep it is buried, in metres. }
+        object: { type: string, description: The uploaded file the organisation holds (not for a route). }
+        label: { type: string, description: What to call the asset; the file's name when absent. }
+
+    Asset:
+      type: object
+      required: [id, orgId, jobId, name, kind, madeFrom, state, jobState, brief, steps, createdBy, createdAt]
+      properties:
+        id: { type: string }
+        orgId: { type: string }
+        jobId: { type: string }
+        name: { type: string }
+        kind: { type: string, enum: [reef, structure, bathymetry] }
+        type: { type: string, description: A structure's. }
+        meets: { type: string, enum: [stands, drapes], description: How a structure meets the seabed. }
+        madeFrom: { type: string, enum: [video, survey, model, route] }
+        state: { type: string, enum: [queued, running, recording, ready, failed] }
+        jobState: { type: string }
+        footprint:
+          type: object
+          additionalProperties: true
+          description: >
+            {sizeM: [x, y, z]} in local metres for a model or a reef, or
+            {bbox: [south, west, north, east]} in degrees for a survey or a
+            route.
+        stats:
+          type: object
+          additionalProperties: true
+          description: >
+            What the job measured: a survey's depth range, cell size or point
+            count, datum and errorM; a model's triangles and size; a route's
+            length and diameter; a reef's pieces, splats, frames and scale.
+        preview: { type: string, description: A short-lived URL to its picture, once it is ready. }
+        brief:
+          type: object
+          additionalProperties: true
+          description: What was asked; a reconstruction's brief for a reef, an AssetBrief otherwise.
+        manifest:
+          type: object
+          additionalProperties: true
+          description: What it said about itself (asset.json, or reconstruction.json for a reef).
+        steps:
+          type: array
+          items:
+            type: object
+            required: [at, step, say]
+            properties:
+              at: { type: string, format: date-time }
+              step: { type: string }
+              say: { type: string }
+              n: { type: integer }
+              of: { type: integer }
+              detail: { type: object, additionalProperties: true }
+        failure: { type: string }
+        said: { type: string, description: The end of what its job printed, when it failed. }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+
     ReconstructionRecord:
       type: object
       required: [id, orgId, jobId, brief, name, createdBy, createdAt]
@@ -5801,7 +6022,16 @@ components:
         orgId: { type: string }
         jobId: { type: string }
         brief: { $ref: '#/components/schemas/ReconstructionBrief' }
+        asset: { $ref: '#/components/schemas/AssetBrief' }
         name: { type: string }
+        kind: { type: string, enum: [reef, structure, bathymetry] }
+        madeFrom: { type: string, enum: [video, survey, model, route] }
+        structure:
+          type: object
+          required: [type, meets]
+          properties:
+            type: { type: string }
+            meets: { type: string, enum: [stands, drapes] }
         manifest:
           type: object
           additionalProperties: true
@@ -5879,6 +6109,15 @@ components:
         acrossM: { type: number, minimum: 100, maximum: 2000, description: How wide the new place is; 300 when absent (own). }
         pad: { type: string, enum: [sand, coral], description: The ground around the reef; sand when absent (own). }
         headingDeg: { type: number, minimum: 0, maximum: 360, description: Which way the reef faces; 0 when absent (own). }
+        placement:
+          type: object
+          additionalProperties: false
+          required: [lat, lon, headingDeg]
+          description: Where a structure that stands is put; a reef or a structure that drapes takes none.
+          properties:
+            lat: { type: number, minimum: -90, maximum: 90 }
+            lon: { type: number, minimum: -180, maximum: 180 }
+            headingDeg: { type: number, minimum: 0, maximum: 360 }
         startAssumed: { type: boolean, description: Written by the platform; ignored when sent. }
 
     MappingChoice:
@@ -5918,7 +6157,16 @@ components:
       additionalProperties: false
       required: [reconstructionId]
       properties:
-        reconstructionId: { type: string, description: A ready reconstruction of the organisation's. }
+        reconstructionId: { type: string, description: "A ready asset of the organisation's: a reef, or a structure (no search)." }
+        placement:
+          type: object
+          additionalProperties: false
+          required: [lat, lon, headingDeg]
+          description: Where a structure that stands is put; a reef or a structure that drapes takes none.
+          properties:
+            lat: { type: number, minimum: -90, maximum: 90 }
+            lon: { type: number, minimum: -180, maximum: 180 }
+            headingDeg: { type: number, minimum: 0, maximum: 360 }
         start:
           type: object
           additionalProperties: false

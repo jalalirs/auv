@@ -14,7 +14,17 @@ The brief (services/control-plane/internal/mapping):
      "sink": 1.0, "clear": 1.5}                    place_in_map.py's
 
 or, for one asset, as before: {"name", "placement", "video", "sink", "clear"}
-with its files at reconstruction/.
+with its files at reconstruction/. A structure (asset.py's) is an entry with
+"kind": "structure", and needs no search before it:
+
+    {"name", "path": "asset/<id>", "kind": "structure", "meets": "stands",
+     "placement": {"lat", "lon", "headingDeg"}}    a model stood on the seabed there
+    {"name", "path": "asset/<id>", "kind": "structure", "meets": "drapes"}
+                                                   a route laid along the seabed
+                                                   (a model that drapes is given a
+                                                   placement and follows the seabed)
+
+its files (asset.json, model.usdc) under its path.
 
 Inputs: /work/inputs/place/ the place's version, every file at its path, and
 each asset's files (reconstruction.json, parts/, surface.f32, surface.json,
@@ -30,6 +40,17 @@ another into one copy of the place. Two assets whose ground comes within a
 metre of each other are said to overlap (each clears the other's colonies and
 both lay their ground there); the place is still made. A dive begins where
 the first asset's swim began. The package is /work/outputs/place.tar.
+
+A structure goes in the way the runtime already takes a reef: its mesh a layer
+in layers.reconstructions ("kind": "structure", drawn at
+/World/Reconstructions/<name>), its top a height grid in surfaces, which the
+seabed reads for physics, altitude and sonar, so a vehicle rests on it and is
+stopped by it. A grid has no underside: what is under a deck is solid. Each is
+recorded in site.json structures[]. A model stands with its base on the
+seabed at its lat/lon, turned headingDeg about z as a reef's placement is; a
+pipeline is a tube of diameterM along its route, every ring on the seabed
+under it less burial x diameter, its top a strip of grid along each leg. The
+place's own colonies within half a metre of either are taken off.
 """
 
 from __future__ import annotations
@@ -38,6 +59,7 @@ import json
 import math
 import os
 import pathlib
+import re
 import shutil
 import sys
 import tarfile
@@ -46,7 +68,13 @@ import traceback
 
 import numpy as np
 
+from .asset import read_usd_mesh, write_usd_mesh
 from .job import INPUTS, OUTPUTS, SCRATCH, grut_copy, python, run, tell
+from .resolve import local_of
+
+# How far a structure clears the place's colonies, and the sides of a tube.
+STRUCTURE_CLEAR_M = 0.5
+RING = 16
 
 
 def placement_of(brief: dict, surface_dir) -> dict:
@@ -152,6 +180,353 @@ def overlaps(laid: list[dict], within: float = 1.0) -> list[str]:
     return said
 
 
+# -- structures -------------------------------------------------------------------------------------
+
+def seabed_of(place: pathlib.Path, site: dict):
+    """The bottom under many points as the runtime reads it (its Seabed): the
+    place's heightfield, bilinear and clamped at its edge, with every ground
+    laid over it (surfaces: a reef's, a structure's) faded in over its feather."""
+    hf = site["mesh"]["heightfield"]
+    h = np.fromfile(place / hf["file"], dtype="<f4").reshape(hf["rows"], hf["columns"]).astype(float)
+    across = float(site["from"]["acrossMetres"])
+    rows, cols = h.shape
+    laid = []
+    for said in site.get("surfaces") or []:
+        try:
+            g = np.fromfile(place / said["file"], dtype="<f4").reshape(said["rows"], said["columns"]).astype(float)
+        except (OSError, ValueError, KeyError):
+            continue
+        laid.append((g, said["origin"], math.radians(float(said.get("headingDeg", 0.0))), float(said["cellM"]),
+                     max(float(said.get("featherM", 1.0)), 1e-6)))
+
+    def bilinear(g, u, v):
+        r_, c_ = g.shape
+        uu, vv = np.clip(u, 0.0, c_ - 1.0001), np.clip(v, 0.0, r_ - 1.0001)
+        c, r = uu.astype(int), vv.astype(int)
+        fu, fv = uu - c, vv - r
+        corners = np.stack([g[r, c], g[r, c + 1], g[r + 1, c], g[r + 1, c + 1]])
+        weights = np.stack([(1 - fu) * (1 - fv), fu * (1 - fv), (1 - fu) * fv, fu * fv])
+        known = np.isfinite(corners)
+        total = np.where(known, weights, 0.0).sum(0)
+        z = (np.where(known, corners, 0.0) * weights).sum(0) / np.maximum(total, 1e-12)
+        return np.where(total > 0, z, np.nan), total
+
+    def under(x, y):
+        x, y = np.asarray(x, float), np.asarray(y, float)
+        out, _ = bilinear(h, (x / across + 0.5) * (cols - 1), (y / across + 0.5) * (rows - 1))
+        for g, (ox, oy), a, cell, feather in laid:
+            dx, dy = x - ox, y - oy
+            u = (math.cos(a) * dx + math.sin(a) * dy) / cell
+            v = (-math.sin(a) * dx + math.cos(a) * dy) / cell
+            r_, c_ = g.shape
+            inside = (u >= 0) & (u <= c_ - 1) & (v >= 0) & (v <= r_ - 1)
+            z, total = bilinear(g, u, v)
+            edge = np.minimum.reduce([u, v, c_ - 1 - u, r_ - 1 - v]) * cell
+            w = np.where(inside & np.isfinite(z), np.clip(edge / feather, 0, 1) * np.clip(total, 0, 1), 0.0)
+            out = w * np.nan_to_num(z) + (1 - w) * out
+        return out
+    return under
+
+
+def inside_place(site: dict, xy, what: str) -> None:
+    half = float(site["from"]["acrossMetres"]) / 2
+    worst = float(np.abs(np.atleast_2d(np.asarray(xy, float))).max())
+    if worst > half:
+        raise ValueError(f"{what} is outside the place: {worst:,.0f} m from its centre, which is {half:,.0f} m "
+                         "from its edge")
+
+
+def stand_at(site: dict, placement: dict, under) -> dict:
+    """Where a model stands: its lat/lon in the place's metres, its base on
+    the seabed there, turned headingDeg about z."""
+    x, y = local_of(site, float(placement["lat"]), float(placement["lon"]))
+    z = float(under(np.array([x]), np.array([y]))[0])
+    heading = float(placement.get("headingDeg") or 0.0)
+    t = math.radians(heading)
+    m = np.eye(4)
+    m[:3, :3] = [[math.cos(t), -math.sin(t), 0], [math.sin(t), math.cos(t), 0], [0, 0, 1]]
+    m[:3, 3] = [x, y, z]
+    return {"at": [float(x), float(y)], "headingDeg": heading, "baseZ": z, "matrix": m.tolist()}
+
+
+def along_route(xy: np.ndarray, step: float) -> np.ndarray:
+    """A route's points every `step` metres or less, its corners kept."""
+    out = []
+    for a, b in zip(xy[:-1], xy[1:]):
+        n = max(1, int(math.ceil(np.linalg.norm(b - a) / step)))
+        out.append(a + (np.arange(n) / n)[:, None] * (b - a))
+    return np.concatenate(out + [xy[-1:]])
+
+
+def tube(xy, diameter: float, burial: float, under, step: float | None = None,
+         ring: int = RING) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """A pipeline along a route on the seabed: its centre every `step` metres,
+    on the bottom under it less burial x diameter, plus its radius. The tube's
+    vertices, its triangles (capped at both ends) and the centre line."""
+    r = diameter / 2
+    pts = along_route(np.asarray(xy, float), step or float(np.clip(diameter, 0.1, 1.0)))
+    centre = np.c_[pts, under(pts[:, 0], pts[:, 1]) - burial * diameter + r]
+    t = np.gradient(centre, axis=0)
+    t /= np.maximum(np.linalg.norm(t, axis=1, keepdims=True), 1e-12)
+    side = np.cross(t, [0.0, 0.0, 1.0])
+    side /= np.maximum(np.linalg.norm(side, axis=1, keepdims=True), 1e-12)
+    up = np.cross(side, t)
+    a = 2 * math.pi * np.arange(ring) / ring
+    verts = (centre[:, None, :] + r * (np.cos(a)[None, :, None] * side[:, None, :]
+                                       + np.sin(a)[None, :, None] * up[:, None, :])).reshape(-1, 3)
+    n = len(centre)
+    k, j = np.meshgrid(np.arange(n - 1), np.arange(ring), indexing="ij")
+    p0, p1 = k * ring + j, k * ring + (j + 1) % ring
+    q0, q1 = p0 + ring, p1 + ring
+    faces = np.concatenate([np.stack([p0, p1, q1], -1).reshape(-1, 3), np.stack([p0, q1, q0], -1).reshape(-1, 3)])
+    first, last = len(verts), len(verts) + 1
+    verts = np.vstack([verts, centre[0], centre[-1]])
+    jj = np.arange(ring)
+    caps = np.concatenate([np.stack([np.full(ring, first), (jj + 1) % ring, jj], -1),
+                           np.stack([np.full(ring, last), (n - 1) * ring + jj, (n - 1) * ring + (jj + 1) % ring], -1)])
+    return verts, np.concatenate([faces, caps]).astype(np.int64), centre
+
+
+def pipe_tops(xy, centre: np.ndarray, diameter: float, under, longest: float = 200.0) -> list[dict]:
+    """A pipeline's top as height grids, one strip along each leg (a long leg
+    in pieces of `longest` metres), rounded past each end so a corner is
+    whole: the tube's crown where it is above the seabed, the seabed where it
+    is buried, nothing off it."""
+    xy = np.asarray(xy, float)
+    r = diameter / 2
+    cell = float(np.clip(diameter / 6, 0.03, 0.25))
+    half = r + 3 * cell
+    grids = []
+    for a, b in zip(xy[:-1], xy[1:]):
+        length = float(np.linalg.norm(b - a))
+        d = (b - a) / length
+        perp = np.array([-d[1], d[0]])
+        heading = math.degrees(math.atan2(d[1], d[0]))
+        # The centre's height along this leg, by distance from its start.
+        s_c, t_c = (centre[:, :2] - a) @ d, (centre[:, :2] - a) @ perp
+        on = (np.abs(t_c) < 1e-6) & (s_c >= -1e-6) & (s_c <= length + 1e-6)
+        order = np.argsort(s_c[on])
+        s_on, z_on = s_c[on][order], centre[on, 2][order]
+        start = 0.0
+        while start < length - 1e-9:
+            end = min(length, start + longest)
+            s0, s1 = start - half, end + half
+            cols = int(math.ceil((s1 - s0) / cell)) + 1
+            rows = int(math.ceil(2 * half / cell)) + 1
+            S, T = np.meshgrid(s0 + np.arange(cols) * cell, -half + np.arange(rows) * cell)
+            along = np.clip(S, 0.0, length)
+            dist = np.hypot(T, S - along)
+            cz = np.interp(along, s_on, z_on)
+            X, Y = a[0] + S * d[0] + T * perp[0], a[1] + S * d[1] + T * perp[1]
+            ground = under(X.ravel(), Y.ravel()).reshape(X.shape)
+            top = np.where(dist < r, cz + np.sqrt(np.maximum(r * r - dist * dist, 0.0)), np.nan)
+            corner = a + s0 * d - half * perp
+            grids.append({"grid": np.where(np.isfinite(top), np.maximum(top, ground), np.nan).astype("<f4"),
+                          "origin": [float(corner[0]), float(corner[1])], "headingDeg": heading, "cellM": cell})
+            start = end
+    return grids
+
+
+def model_top(points: np.ndarray, faces: np.ndarray, cell: float | None = None) -> dict:
+    """A model's top as a height grid, north up: the highest of its surface
+    over each cell, nothing where it is not. Points sampled over every
+    triangle, eight a cell, so walls count; widened a cell, so it is never
+    thinner than it is."""
+    from scipy import ndimage
+
+    lo, hi = points[:, :2].min(0), points[:, :2].max(0)
+    cell = cell or float(np.clip((hi - lo).max() / 300, 0.05, 1.0))
+    origin = lo - 2 * cell
+    cols, rows = (np.ceil((hi - lo) / cell).astype(int) + 5)
+    a, b, c = (points[faces[:, k]] for k in range(3))
+    area = 0.5 * np.linalg.norm(np.cross(b - a, c - a), axis=1)
+    n = np.clip(np.ceil(area / (cell * cell / 8)).astype(int), 1, None)
+    if n.sum() > 6_000_000:
+        n = np.clip((n * 6_000_000 / n.sum()).astype(int), 1, None)
+    pick = np.repeat(np.arange(len(faces)), n)
+    rng = np.random.default_rng(0)
+    u, v = rng.random(len(pick)), rng.random(len(pick))
+    flip = u + v > 1
+    u[flip], v[flip] = 1 - u[flip], 1 - v[flip]
+    p = np.vstack([a[pick] + u[:, None] * (b[pick] - a[pick]) + v[:, None] * (c[pick] - a[pick]), points])
+    ij = np.clip(np.floor((p[:, :2] - origin) / cell + 0.5).astype(int), 0, [cols - 1, rows - 1])
+    top = np.full((rows, cols), -np.inf)
+    np.maximum.at(top, (ij[:, 1], ij[:, 0]), p[:, 2])
+    top = ndimage.maximum_filter(top, size=3)
+    return {"grid": np.where(np.isfinite(top), top, np.nan).astype("<f4"),
+            "origin": [float(origin[0]), float(origin[1])], "headingDeg": 0.0, "cellM": cell}
+
+
+def cells_of(top: dict) -> np.ndarray:
+    """Where a height grid says something, in the place: each cell's centre."""
+    rr, cc = np.nonzero(np.isfinite(top["grid"]))
+    a = math.radians(top["headingDeg"])
+    u, v = cc * top["cellM"], rr * top["cellM"]
+    return np.c_[top["origin"][0] + math.cos(a) * u - math.sin(a) * v,
+                 top["origin"][1] + math.sin(a) * u + math.cos(a) * v]
+
+
+def clear_colonies(place: pathlib.Path, site: dict, xy: np.ndarray, within: float) -> int:
+    """The place's own colonies within `within` metres of `xy` taken off."""
+    coral_file = (site.get("layers") or {}).get("coral")
+    if not coral_file or not (place / coral_file).exists() or not len(xy):
+        return 0
+    from pxr import Usd, UsdGeom
+    from scipy.spatial import cKDTree
+
+    tree = cKDTree(xy)
+    removed = 0
+    stage = Usd.Stage.Open(str(place / coral_file))
+    for prim in stage.Traverse():
+        if prim.GetTypeName() != "PointInstancer":
+            continue
+        pos = np.array(UsdGeom.PointInstancer(prim).GetPositionsAttr().Get() or [], dtype=float)
+        if not len(pos):
+            continue
+        d, _ = tree.query(pos[:, :2], distance_upper_bound=within)
+        keep = ~np.isfinite(d)
+        if keep.all():
+            continue
+        kept = np.flatnonzero(keep)
+        for attr in prim.GetAttributes():
+            value = attr.Get()
+            try:
+                length = len(value)
+            except TypeError:
+                continue
+            if length != len(pos) or attr.GetName() in ("invisibleIds", "inactiveIds"):
+                continue
+            attr.Set(type(value)([value[int(i)] for i in kept]))
+        removed += int((~keep).sum())
+    stage.GetRootLayer().Save()
+    return removed
+
+
+STANDING = '''#usda 1.0
+(
+    doc = "{name}: a structure ({kind}) standing on this place's seabed. Metres, Z up."
+    defaultPrim = "Structure"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "Structure" (
+    prepend references = @model.usdc@
+)
+{{
+    double3 xformOp:translate = ({x!r}, {y!r}, {z!r})
+    float xformOp:rotateZ = {heading!r}
+    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+}}
+'''
+
+
+def lay_structure(asset: dict, src: pathlib.Path, place: pathlib.Path, n: int, of: int) -> dict:
+    """A structure laid into `place`: drawn, stood on, recorded; what the
+    place now holds of it."""
+    name = asset["name"]
+    made = json.loads((src / "asset.json").read_text())
+    if made.get("kind") != "structure":
+        raise ValueError(f"{name} is a {made.get('kind')}, not a structure")
+    meets = asset.get("meets") or made.get("meets") or "stands"
+    site_path = place / "site.json"
+    site = json.loads(site_path.read_text())
+    under = seabed_of(place, site)
+    into = place / "structures" / name
+    shutil.rmtree(into, ignore_errors=True)
+    into.mkdir(parents=True)
+    warnings = []
+    record = {"name": name, "type": made.get("type"), "meets": meets, "madeFrom": made.get("madeFrom"),
+              "asset": asset.get("path")}
+    if made.get("route"):
+        route = made["route"]
+        diameter, burial = float(route["diameterM"]), float(route.get("burial") or 0.0)
+        xy = np.array([local_of(site, float(lat), float(lon)) for lat, lon in route["points"]])
+        inside_place(site, xy, f"{name}'s route")
+        tell("place", f"{name}: {len(xy)} points, {made['stats']['lengthM']:,.0f} m of pipe {diameter:g} m across "
+                      f"on the seabed, {burial * 100:.0f}% buried", n=n, of=of)
+        verts, faces, centre = tube(xy, diameter, burial, under)
+        tops = pipe_tops(xy, centre, diameter, under)
+        shift = np.round(centre.mean(0))
+        write_usd_mesh(into / "structure.usdc", verts - shift, faces, np.full((1, 3), [0.45, 0.42, 0.38]),
+                       doc=f"{name}: a pipeline {diameter:g} m across along its route on this place's seabed, "
+                           f"{burial * 100:.0f}% buried. Metres, Z up.", translate=shift)
+        layer = f"structures/{name}/structure.usdc"
+        start = [float(centre[0, 0]), float(centre[0, 1]), float(centre[0, 2] + diameter / 2 + 2.0)]
+        placed = {"at": [float(v) for v in xy[0]], "headingDeg": 0.0, "dz": 0.0}
+        record.update(route={"points": route["points"], "lengthM": made["stats"].get("lengthM"),
+                             "local": [[round(float(a), 2), round(float(b), 2)] for a, b in xy],
+                             "diameterM": diameter, "burial": burial},
+                      triangles=int(len(faces)))
+    else:
+        if not asset.get("placement"):
+            raise ValueError(f"{name} is a model: it needs a placement {{lat, lon, headingDeg}}")
+        at = stand_at(site, asset["placement"], under)
+        inside_place(site, at["at"], name)
+        M = np.array(at["matrix"])
+        model = src / (made.get("model") or "model.usdc")
+        local, faces = read_usd_mesh(model)
+        world = (M @ np.c_[local, np.ones(len(local))].T)[:3].T
+        ground = under(world[:, 0], world[:, 1])
+        spread = float(ground.max() - ground.min())
+        if meets == "drapes":
+            # Each vertex follows the seabed under it, as the base does at the middle.
+            world[:, 2] += ground - at["baseZ"]
+            shift = np.round(world.mean(0))
+            write_usd_mesh(into / "structure.usdc", world - shift, faces, None, translate=shift,
+                           doc=f"{name}: a structure following this place's seabed. Metres, Z up.")
+            layer = f"structures/{name}/structure.usdc"
+        else:
+            if spread > 0.5:
+                warnings.append(f"{name} stands where the seabed under it varies {spread:.1f} m: its base is at "
+                                "the seabed at its middle, so some of it is buried or off the bottom")
+            shutil.copy(model, into / "model.usdc")
+            x, y, z = (float(v) for v in M[:3, 3])
+            (into / "structure.usda").write_text(STANDING.format(name=name, kind=made.get("type") or "other",
+                                                                 x=x, y=y, z=z, heading=at["headingDeg"]))
+            layer = f"structures/{name}/structure.usda"
+        tell("place", f"{name}: at ({at['at'][0]:.0f}, {at['at'][1]:.0f}) m, turned {at['headingDeg']:g} degrees, "
+                      f"its base at {at['baseZ']:.1f} m", n=n, of=of, at=at["at"], headingDeg=at["headingDeg"])
+        tops = [model_top(world, faces)]
+        reach = float((world[:, :2].max(0) - world[:, :2].min(0)).max()) / 2 + 5.0
+        start = [at["at"][0], at["at"][1] - reach, 0.0]
+        start[2] = float(under(np.array([start[0]]), np.array([start[1]]))[0] + 2.0)
+        placed = {"at": at["at"], "headingDeg": at["headingDeg"], "dz": at["baseZ"]}
+        record.update(placement=dict(asset["placement"], at=[round(v, 2) for v in at["at"]],
+                                     baseZ=round(at["baseZ"], 2)),
+                      seabedUnderM=[round(float(ground.min()), 2), round(float(ground.max()), 2)],
+                      triangles=int(len(faces)))
+
+    # Its top in the ground the runtime reads; the place's colonies off it.
+    surfaces = []
+    for k, top in enumerate(tops):
+        file = f"structures/{name}/surface-{k + 1}.f32"
+        top["grid"].tofile(place / file)
+        rows, cols = top["grid"].shape
+        surfaces.append({"name": f"{name}/{k + 1}", "file": file, "rows": int(rows), "columns": int(cols),
+                         "cellM": top["cellM"], "origin": top["origin"], "headingDeg": top["headingDeg"],
+                         "featherM": top["cellM"], "from": f"the top of {name}, a structure"})
+    footprint = np.concatenate([cells_of(top) for top in tops])
+    removed = clear_colonies(place, site, footprint, STRUCTURE_CLEAR_M)
+    layers = site.setdefault("layers", {})
+    layers["reconstructions"] = [r for r in layers.get("reconstructions") or [] if r.get("name") != name]
+    layers["reconstructions"].append({"name": name, "file": layer, "kind": "structure"})
+    site["surfaces"] = [s for s in site.get("surfaces") or []
+                        if s.get("name") != name and not str(s.get("name", "")).startswith(f"{name}/")] + surfaces
+    record.update(file=layer, drawn=f"/World/Reconstructions/{re.sub(r'[^A-Za-z0-9_]', '_', name)}",
+                  surfaces=[s["name"] for s in surfaces], coloniesRemoved=removed,
+                  collides="as ground: its top is in surfaces, which the seabed reads (a grid has no underside)")
+    site["structures"] = [r for r in site.get("structures") or [] if r.get("name") != name] + [record]
+    if warnings:
+        site.setdefault("warnings", []).extend(warnings)
+    site_path.write_text(json.dumps(site, indent=1))
+    for one in warnings:
+        tell("warning", one)
+    # Its ground about a sample a metre, for overlaps.
+    every = max(1, int(round(1.0 / min(t["cellM"] for t in tops))) ** 2)
+    return {"name": name, "placed": placed, "start": start, "ground": footprint[::every], "structure": True}
+
+
 def main(argv: list[str]) -> int:
     started = time.time()
     brief = json.loads(argv[0])
@@ -177,11 +552,16 @@ def main(argv: list[str]) -> int:
         place = SCRATCH / "place"
         shutil.rmtree(place, ignore_errors=True)
         shutil.copytree(base, place)
-        code = grut_copy()
+        code = None
         laid = []
         for i, asset in enumerate(assets):
-            laid.append(lay_one(asset, INPUTS / (asset.get("path") or "reconstruction"), place, SCRATCH / f"asset-{i + 1}",
-                                code, float(brief.get("sink", 1.0)), float(brief.get("clear", 1.5)), i + 1, len(assets)))
+            src = INPUTS / (asset.get("path") or "reconstruction")
+            if asset.get("kind") == "structure":
+                laid.append(lay_structure(asset, src, place, i + 1, len(assets)))
+                continue
+            code = code or grut_copy()
+            laid.append(lay_one(asset, src, place, SCRATCH / f"asset-{i + 1}", code, float(brief.get("sink", 1.0)),
+                                float(brief.get("clear", 1.5)), i + 1, len(assets)))
         crossed = overlaps(laid) if len(laid) > 1 else []
         for one in crossed:
             tell("overlap", one)
@@ -191,7 +571,8 @@ def main(argv: list[str]) -> int:
         if site.get("beginAt") is not None and "beginAtBefore" not in site:
             site["beginAtBefore"] = {"at": site["beginAt"], "because": site.get("beginBecause")}
         site["beginAt"] = [round(float(v), 2) for v in laid[0]["start"]]
-        site["beginBecause"] = f"where the video {laid[0]['name']} was rebuilt from began its swim"
+        site["beginBecause"] = (f"beside {laid[0]['name']}, the structure laid in" if laid[0].get("structure") else
+                                f"where the video {laid[0]['name']} was rebuilt from began its swim")
         if crossed:
             site.setdefault("warnings", []).extend(crossed)
     except Exception as failed:

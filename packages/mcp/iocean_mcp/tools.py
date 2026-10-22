@@ -1023,8 +1023,18 @@ def _slug(name: str) -> str:
 
 def places_build(platform: Platform, name: str, centre: list | None = None, across_m: float = 1000.0,
                  sources: list | None = None, files: list | None = None, cells: int | None = None,
-                 base_place: str = "", flat_depth_m: float | None = None, coral: bool | None = None) -> dict:
+                 base_place: str = "", flat_depth_m: float | None = None, coral: bool | None = None,
+                 survey: list | None = None) -> dict:
     """Found a place of the institution's own and build it from its data."""
+    if survey and centre is None and not base_place:
+        # The square the first survey covers, as its import read it.
+        bbox = (platform.request("GET", f"/api/v1/assets/{survey[0]}").get("footprint") or {}).get("bbox")
+        if not bbox or len(bbox) != 4:
+            raise Refused(400, "invalid", "give centre too: the survey does not say what it covers yet")
+        south, west, north, east = (float(v) for v in bbox)
+        centre = [(south + north) / 2, (west + east) / 2]
+        across_m = max((north - south) * 111_320.0,
+                       (east - west) * 111_320.0 * math.cos(math.radians(centre[0])), 100.0)
     if base_place and centre is None:
         # The new place takes the base's square; the founding record needs
         # one, so it is read from the store, where a base usually comes from.
@@ -1050,6 +1060,8 @@ def places_build(platform: Platform, name: str, centre: list | None = None, acro
         try:
             made_of = (f"a flat seabed at {flat_depth_m:g} m" if flat_depth_m is not None
                        else ", ".join(sources) if sources else (f"the place {base_place}" if base_place else "every public source"))
+            if survey:
+                made_of += " and the survey " + ", ".join(survey)
             place = platform.request("POST", f"/api/v1/organisations/{institution['id']}/cities", {
                 "slug": slug, "name": name, "verticalDatum": "mean sea level",
                 "summary": f"built from {made_of}", "extent": extent})
@@ -1073,6 +1085,8 @@ def places_build(platform: Platform, name: str, centre: list | None = None, acro
         brief["coral"] = bool(coral)
     if files:
         brief["files"] = files
+    if survey:
+        brief["survey"] = [str(one) for one in survey]
     if cells:
         brief["cells"] = int(cells)
     build = platform.request("POST", f"/api/v1/cities/{place['id']}/builds", brief)
@@ -1180,7 +1194,7 @@ def uploads_confirm(platform: Platform, grant: str, org: str = "") -> dict:
     organisation = _organisation(platform, org)
     made = platform.request("POST", f"/api/v1/organisations/{organisation}/uploads/{grant}/confirm", {})
     return {"object": made.get("id"), "sizeBytes": made.get("sizeBytes"), "sha256": made.get("sha256"),
-            "note": "give this object to reconstructions_create as video"}
+            "note": "give this object to reconstructions_create as video, or to assets_create as object"}
 
 
 def reconstructions_create(platform: Platform, video: str, name: str = "", org: str = "",
@@ -1260,6 +1274,116 @@ def reconstructions_list(platform: Platform, org: str = "") -> dict:
     return {"reconstructions": [_reconstruction_summary(one) for one in said_.get("reconstructions") or []]}
 
 
+# ── assets of every kind ─────────────────────────────────────────────────────
+
+
+def assets_create(platform: Platform, kind: str, object: str = "", name: str = "", format: str = "",
+                  type: str = "", meets: str = "", datum: str = "", error_m: float | None = None,
+                  citation: str = "", scale: float | None = None, up: str = "", route: list | None = None,
+                  diameter_m: float | None = None, burial_m: float | None = None, label: str = "",
+                  org: str = "") -> dict:
+    """Make a structure or a seabed survey into an asset, from an uploaded file or a pipeline's route."""
+    brief: dict[str, Any] = {"kind": kind}
+    if kind == "bathymetry":
+        if not object or not datum or error_m is None:
+            raise Refused(400, "invalid", "a survey is an uploaded file (object) with its datum and error_m")
+        brief["file"] = {k: v for k, v in (("name", name), ("format", format)) if v}
+        brief.update({"datum": datum, "errorM": float(error_m), "object": object})
+        if citation:
+            brief["citation"] = citation
+    elif kind == "structure":
+        if route is not None:
+            if object:
+                raise Refused(400, "invalid", "a structure is a model (object) or a route, not both")
+            if not isinstance(route, (list, tuple)) or len(route) < 2 or diameter_m is None:
+                raise Refused(400, "invalid", "a route is two or more [latitude, longitude] points, with diameter_m")
+            points = []
+            for one in route:
+                if not isinstance(one, (list, tuple)) or len(one) != 2:
+                    raise Refused(400, "invalid", "each point of a route is [latitude, longitude]")
+                points.append([float(one[0]), float(one[1])])
+            brief["type"] = type or "pipeline"
+            brief["route"] = {"points": points, "diameterM": float(diameter_m)}
+            if burial_m is not None:
+                brief["route"]["burial"] = float(burial_m)
+        else:
+            if not object or not type:
+                raise Refused(400, "invalid", "a structure is an uploaded model (object) with its type, or a pipeline's route")
+            brief["type"] = type
+            brief["model"] = {k: v for k, v in (("name", name), ("format", format), ("up", up)) if v}
+            if scale is not None:
+                brief["model"]["scale"] = float(scale)
+            brief["object"] = object
+        if meets:
+            brief["meets"] = meets
+    else:
+        raise Refused(400, "invalid", "assets_create makes a structure or a bathymetry survey; a reef comes from "
+                                      "reconstructions_create")
+    if label:
+        brief["label"] = label
+    made = platform.request("POST", f"/api/v1/organisations/{_organisation(platform, org)}/assets", brief)
+    return {**_asset_summary(made),
+            "note": "assets_status says how it is going; an import takes minutes on processors"}
+
+
+# Who to blame for each of an asset's figures, by its kind: a survey's depths
+# were measured by whoever surveyed it; what somebody typed when importing it
+# was chosen; everything the import job worked out is derived.
+_STATED = {"errorM", "datum", "diameterM", "scale", "burial"}
+
+
+def _asset_figures(kind: str, made_from: str, figures: dict, source: str) -> dict:
+    out: dict[str, Any] = {}
+    for key, value in figures.items():
+        if key in _STATED:
+            out[key] = said(value, CHOSEN, "stated when it was imported")
+        elif kind == "bathymetry" and "depth" in key.lower():
+            out[key] = said(value, MEASURED, "the survey, as uploaded")
+        else:
+            out[key] = said(value, DERIVED, source)
+    return out
+
+
+def _asset_summary(made: dict) -> dict:
+    if made.get("madeFrom") == "video":
+        # A reef says what it is in a reconstruction's words.
+        return {**_reconstruction_summary(made), "asset": made.get("id"), "kind": "reef", "madeFrom": "video"}
+    steps = made.get("steps") or []
+    kind, made_from = made.get("kind"), made.get("madeFrom")
+    out: dict[str, Any] = {
+        "asset": made.get("id"), "name": made.get("name"), "kind": kind, "madeFrom": made_from,
+        "state": made.get("state"),
+        "steps": [(f"{s.get('say')} ({s['n']} of {s['of']})" if s.get("of") else s.get("say")) for s in steps][-12:],
+    }
+    for key in ("type", "meets", "failure", "preview"):
+        if made.get(key):
+            out[key] = made[key]
+    if made.get("said"):
+        out["said"] = made["said"][-1500:]
+    source = {"survey": "the import's reading of the survey file", "model": "the import's reading of the model",
+              "route": "the route as given"}.get(made_from or "", "the import job")
+    if made.get("footprint"):
+        out["footprint"] = _asset_figures(kind, made_from, made["footprint"], source)
+    if made.get("stats"):
+        out["stats"] = _asset_figures(kind, made_from, made["stats"], source)
+    if made.get("state") == "ready":
+        out["next"] = ("places_build with survey lays it in as the place's ground" if kind == "bathymetry" else
+                       "mappings_create with it as an asset (and a placement when it stands) lays it into a place")
+    return out
+
+
+def assets_status(platform: Platform, asset: str) -> dict:
+    """How an asset is going, and when it is ready, what it is."""
+    return _asset_summary(platform.request("GET", f"/api/v1/assets/{asset}"))
+
+
+def assets_list(platform: Platform, kind: str = "", org: str = "") -> dict:
+    """An institution's assets of every kind, newest first."""
+    query = f"?kind={kind}" if kind else ""
+    said_ = platform.request("GET", f"/api/v1/organisations/{_organisation(platform, org)}/assets{query}")
+    return {"assets": [_asset_summary(one) for one in said_.get("assets") or []]}
+
+
 # ── a reef put onto a place ──────────────────────────────────────────────────
 
 
@@ -1273,13 +1397,31 @@ def _latlon(start: Any) -> dict:
     return {"lat": float(lat), "lon": float(lon)}
 
 
+def _placement(placement: Any) -> dict:
+    """Where a structure that stands goes: [lat, lon, heading] or {lat, lon, heading_deg}."""
+    if isinstance(placement, dict):
+        lat, lon = placement.get("lat"), placement.get("lon")
+        heading = placement.get("heading_deg", placement.get("headingDeg", 0))
+    elif isinstance(placement, (list, tuple)) and len(placement) in (2, 3):
+        lat, lon, heading = (list(placement) + [0])[:3]
+    else:
+        lat = lon = heading = None
+    if lat is None or lon is None:
+        raise Refused(400, "invalid", "a placement is [latitude, longitude, heading_deg]")
+    return {"lat": float(lat), "lon": float(lon), "headingDeg": float(heading)}
+
+
 def _asset_of(one: Any) -> dict:
-    """One reef of several, as the platform is told it."""
+    """One asset of several, as the platform is told it."""
     if isinstance(one, str):
         return {"reconstructionId": one}
-    if not isinstance(one, dict) or not (one.get("reconstruction") or one.get("reconstructionId")):
-        raise Refused(400, "invalid", "each asset is a reconstruction id, or {reconstruction, start, depth_m, within_m}")
-    asset: dict[str, Any] = {"reconstructionId": one.get("reconstruction") or one.get("reconstructionId")}
+    named = isinstance(one, dict) and (one.get("asset") or one.get("reconstruction") or one.get("reconstructionId"))
+    if not named:
+        raise Refused(400, "invalid", "each asset is an id, or {asset, placement} for a structure that stands, "
+                                      "or {asset, start, depth_m, within_m} for a reef")
+    asset: dict[str, Any] = {"reconstructionId": named}
+    if one.get("placement") is not None:
+        asset["placement"] = _placement(one["placement"])
     if one.get("start") is not None:
         asset["start"] = _latlon(one["start"])
     for key, field in (("depth_m", "depthM"), ("within_m", "withinM")):
@@ -1294,8 +1436,8 @@ def mappings_create(platform: Platform, reconstruction: str = "", mode: str = "o
                     version: str = "", start: Any = None, within_m: float | None = None,
                     depth_m: float | None = None, count: int | None = None, name: str = "",
                     across_m: float | None = None, pad: str = "", heading_deg: float | None = None,
-                    assets: list | None = None) -> dict:
-    """Put reconstructions onto a place, or give one a place of its own."""
+                    assets: list | None = None, placement: Any = None) -> dict:
+    """Put reefs and structures onto a place, or give a reef a place of its own."""
     if assets:
         if mode != "onto" or not place:
             raise Refused(400, "invalid", "several reefs are put onto a place that exists: mode onto, and the place")
@@ -1321,6 +1463,8 @@ def mappings_create(platform: Platform, reconstruction: str = "", mode: str = "o
             request["withinM"] = float(within_m)
         if count is not None:
             request["count"] = int(count)
+        if placement is not None:
+            request["placement"] = _placement(placement)
     else:
         if not name:
             raise Refused(400, "invalid", "a place of its own has a name")
@@ -1355,7 +1499,7 @@ def _candidates_of(found: list) -> list:
 
 def _chosen_of(chosen: dict) -> dict:
     return {k: said(v, CHOSEN, "accepted for this mapping") for k, v in chosen.items()
-            if k in ("at", "headingDeg", "dz", "centre", "depthM")}
+            if k in ("at", "headingDeg", "dz", "centre", "depthM", "lat", "lon", "alongRoute")}
 
 
 def _mapping_summary(made: dict) -> dict:

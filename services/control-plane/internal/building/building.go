@@ -32,6 +32,7 @@ import (
 	"github.com/jalalirs/auv/services/control-plane/internal/domain"
 	"github.com/jalalirs/auv/services/control-plane/internal/exec"
 	"github.com/jalalirs/auv/services/control-plane/internal/ids"
+	"github.com/jalalirs/auv/services/control-plane/internal/reconstructing"
 	"github.com/jalalirs/auv/services/control-plane/internal/storage"
 )
 
@@ -79,7 +80,13 @@ type File struct {
 	Citation string  `json:"citation,omitempty"`
 	// Path is where the job finds it, filled in when the build starts.
 	Path string `json:"path,omitempty"`
+	// Asset is the survey it is the file of, when it came from one. Written
+	// by the platform.
+	Asset string `json:"asset,omitempty"`
 }
+
+// MostSurveys is how many survey assets one build is given.
+const MostSurveys = 10
 
 // Brief is what a build is asked to make.
 type Brief struct {
@@ -89,7 +96,11 @@ type Brief struct {
 	Cells   int        `json:"cells,omitempty"`
 	Sources []string   `json:"sources"`
 	Files   []File     `json:"files,omitempty"`
-	Label   string     `json:"label,omitempty"`
+	// Survey names bathymetry assets of the organisation's, each laid in as
+	// one of its files: a GeoTIFF as a raster, soundings as points, with the
+	// survey's datum and error.
+	Survey []string `json:"survey,omitempty"`
+	Label  string   `json:"label,omitempty"`
 	// Name and slug of the place, for the package's own record.
 	Name string `json:"name,omitempty"`
 	Slug string `json:"slug,omitempty"`
@@ -202,6 +213,15 @@ func (b Brief) Validate() error {
 			depth = true
 		}
 	}
+	if len(b.Survey) > MostSurveys {
+		return fmt.Errorf("%w: a place is built on at most %d surveys", domain.ErrInvalid, MostSurveys)
+	}
+	for _, id := range b.Survey {
+		if id == "" {
+			return fmt.Errorf("%w: a survey is named by its asset's id", domain.ErrInvalid)
+		}
+		depth = true
+	}
 	if !depth {
 		return fmt.Errorf("%w: a place needs something that says how deep it is (gebco is everywhere)",
 			domain.ErrInvalid)
@@ -217,6 +237,18 @@ func sourceNames() string {
 	return strings.Join(names, ", ")
 }
 
+// surveyFile is the nth of a build's files, made from a survey asset: staged
+// at files/<n>/<its file>, used as a raster or points, with its datum, error
+// and citation.
+func surveyFile(n int, assetID string, survey reconstructing.Survey) File {
+	name := safeName.ReplaceAllString(path.Base(survey.Name), "_")
+	if name == "" || name == "." || name == "_" || strings.HasPrefix(name, "..") {
+		name = "survey"
+	}
+	return File{ObjectID: survey.ObjectID, Use: survey.Use, Name: survey.Name, ErrorM: survey.ErrorM,
+		Datum: survey.Datum, Citation: survey.Citation, Path: fmt.Sprintf("files/%02d/%s", n, name), Asset: assetID}
+}
+
 // Builder runs builds.
 type Builder struct {
 	pool     *db.Pool
@@ -224,7 +256,12 @@ type Builder struct {
 	objects  *storage.Objects
 	catalog  *catalog.Store
 	settings Settings
+	surveys  *reconstructing.Reconstructor
 }
+
+// UseSurveys lets builds be given bathymetry assets, which the reconstructor
+// keeps with every other asset.
+func (b *Builder) UseSurveys(r *reconstructing.Reconstructor) { b.surveys = r }
 
 // New builds a Builder.
 func New(pool *db.Pool, broker *exec.Broker, objects *storage.Objects, store *catalog.Store, settings Settings) *Builder {
@@ -287,6 +324,15 @@ func (b *Builder) Start(ctx context.Context, principalID, orgID string, city cat
 		inputs = append(inputs, ground.Inputs...)
 	}
 
+	// A survey's file is said again from the survey each time, never taken
+	// from a brief that was sent back.
+	own := brief.Files[:0:0]
+	for _, f := range brief.Files {
+		if f.Asset == "" {
+			own = append(own, f)
+		}
+	}
+	brief.Files = own
 	for i := range brief.Files {
 		f := &brief.Files[i]
 		object, err := b.objects.Object(ctx, f.ObjectID)
@@ -309,6 +355,26 @@ func (b *Builder) Start(ctx context.Context, principalID, orgID string, city cat
 		f.Path = fmt.Sprintf("files/%02d-%s", i+1, name)
 		inputs = append(inputs, exec.Input{
 			Name: fmt.Sprintf("file-%02d", i+1), RelativePath: f.Path, ObjectID: object.ID,
+			SHA256: object.SHA256, MediaType: object.MediaType, SizeBytes: object.SizeBytes,
+		})
+	}
+	for _, id := range brief.Survey {
+		if b.surveys == nil {
+			return Build{}, fmt.Errorf("%w: this platform keeps no surveys to build on", domain.ErrInvalid)
+		}
+		survey, err := b.surveys.Survey(ctx, orgID, id)
+		if err != nil {
+			return Build{}, err
+		}
+		object, err := b.objects.Object(ctx, survey.ObjectID)
+		if err != nil {
+			return Build{}, err
+		}
+		n := len(brief.Files) + 1
+		f := surveyFile(n, id, survey)
+		brief.Files = append(brief.Files, f)
+		inputs = append(inputs, exec.Input{
+			Name: fmt.Sprintf("file-%02d", n), RelativePath: f.Path, ObjectID: object.ID,
 			SHA256: object.SHA256, MediaType: object.MediaType, SizeBytes: object.SizeBytes,
 		})
 	}

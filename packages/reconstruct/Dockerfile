@@ -2,7 +2,10 @@
 #
 # A dive video made into a reef in 3D, as the platform runs it
 # (python -m iocean_reconstruct.job '<brief>';
-# services/control-plane/internal/reconstructing).
+# services/control-plane/internal/reconstructing). The same image imports the
+# other assets, a survey, a model or a route (python -m iocean_reconstruct.asset
+# '<brief>'; docs/plan/assets-contract.md), and lays any of them into a place
+# (python -m iocean_reconstruct.lay '<brief>').
 #
 # 3DGRUT trains the splats; COLMAP, from the reconstruct image, places the
 # cameras, and is copied in with every library it was linked against, kept to
@@ -42,6 +45,17 @@ RUN printf '#!/bin/sh\nLD_LIBRARY_PATH=/opt/colmap/lib exec /opt/colmap/bin/colm
 # frame came out 80% "background").
 RUN /workspace/.venv/bin/pip install --no-cache-dir "transformers>=5.0,<6" fire \
  && /workspace/.venv/bin/pip install --no-cache-dir --no-deps simple-lama-inpainting
+
+# The assets that are not reefs: trimesh reads a glb, gltf or obj, rasterio a
+# survey's GeoTIFF (its wheel carries GDAL but not the expat GDAL links), and
+# matplotlib draws the previews. USD is 3DGRUT's pxr; usd-core only if it has
+# none. Each is imported once here so a build without one fails, not a job.
+RUN (dpkg -s libexpat1 > /dev/null 2>&1 \
+     || (apt-get update && apt-get install -y --no-install-recommends libexpat1 && rm -rf /var/lib/apt/lists/*)) \
+ && /workspace/.venv/bin/pip install --no-cache-dir "trimesh>=4.4" "rasterio>=1.3.10" "matplotlib>=3.8" \
+ && (/workspace/.venv/bin/python -c "import pxr" 2> /dev/null \
+     || /workspace/.venv/bin/pip install --no-cache-dir "usd-core>=24.5") \
+ && /workspace/.venv/bin/python -c "import trimesh, rasterio, matplotlib, scipy, PIL; from pxr import Usd, UsdGeom, UsdPhysics"
 
 COPY models /opt/iocean/models
 COPY ml/splat /opt/iocean/splat
