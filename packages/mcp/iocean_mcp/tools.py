@@ -1280,7 +1280,7 @@ def reconstructions_list(platform: Platform, org: str = "") -> dict:
 def assets_create(platform: Platform, kind: str, object: str = "", name: str = "", format: str = "",
                   type: str = "", meets: str = "", datum: str = "", error_m: float | None = None,
                   citation: str = "", scale: float | None = None, up: str = "", route: list | None = None,
-                  diameter_m: float | None = None, burial_m: float | None = None, label: str = "",
+                  diameter_m: float | None = None, burial: float | None = None, label: str = "",
                   org: str = "") -> dict:
     """Make a structure or a seabed survey into an asset, from an uploaded file or a pipeline's route."""
     brief: dict[str, Any] = {"kind": kind}
@@ -1304,8 +1304,8 @@ def assets_create(platform: Platform, kind: str, object: str = "", name: str = "
                 points.append([float(one[0]), float(one[1])])
             brief["type"] = type or "pipeline"
             brief["route"] = {"points": points, "diameterM": float(diameter_m)}
-            if burial_m is not None:
-                brief["route"]["burial"] = float(burial_m)
+            if burial is not None:
+                brief["route"]["burial"] = float(burial)
         else:
             if not object or not type:
                 raise Refused(400, "invalid", "a structure is an uploaded model (object) with its type, or a pipeline's route")

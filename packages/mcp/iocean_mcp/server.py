@@ -190,14 +190,14 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
              "route": {"type": "array", "items": {"type": "array", "items": {"type": "number"}},
                        "description": "a pipeline's [latitude, longitude] points, two or more"},
              "diameter_m": {"type": "number", "description": "a route's pipe diameter"},
-             "burial_m": {"type": "number", "description": "how deep a route's pipe is buried"},
+             "burial": {"type": "number", "description": "the share of a route's pipe diameter under the seabed, 0 to 1"},
              "label": {"type": "string", "description": "what to call it; the file's name when absent"},
              "org": {"type": "string", "description": "the organisation; this session's own when absent"}},
          "required": ["kind"]},
         lambda p, kind, object="", name="", format="", type="", meets="", datum="", error_m=None, citation="",
-               scale=None, up="", route=None, diameter_m=None, burial_m=None, label="", org="":
+               scale=None, up="", route=None, diameter_m=None, burial=None, label="", org="":
             tools.assets_create(p, kind, object, name, format, type, meets, datum, error_m, citation, scale, up,
-                                route, diameter_m, burial_m, label, org)),
+                                route, diameter_m, burial, label, org)),
     "assets_status": (
         "How an asset is going, and when it is ready: its kind, type, how it meets the seabed, what it "
         "was made from, its footprint and stats.",

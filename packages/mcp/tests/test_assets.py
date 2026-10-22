@@ -52,7 +52,7 @@ def test_a_model_and_a_route_are_structures():
     tools.assets_create(platform, "structure", object="obj_m", name="jacket.glb", type="platform", scale=0.01, up="z")
     assert platform.sent[-1][2] == {"kind": "structure", "type": "platform", "object": "obj_m",
                                     "model": {"name": "jacket.glb", "up": "z", "scale": 0.01}}
-    tools.assets_create(platform, "structure", route=[[22.3, 38.85], [22.31, 38.86]], diameter_m=0.5, burial_m=0.3)
+    tools.assets_create(platform, "structure", route=[[22.3, 38.85], [22.31, 38.86]], diameter_m=0.5, burial=0.3)
     assert platform.sent[-1][2] == {"kind": "structure", "type": "pipeline",
                                     "route": {"points": [[22.3, 38.85], [22.31, 38.86]], "diameterM": 0.5, "burial": 0.3}}
 

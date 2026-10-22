@@ -5956,7 +5956,7 @@ components:
                 minItems: 2
                 maxItems: 2
             diameterM: { type: number, exclusiveMinimum: 0, maximum: 20 }
-            burial: { type: number, minimum: 0, maximum: 10, description: How deep it is buried, in metres. }
+            burial: { type: number, minimum: 0, maximum: 1, description: The share of its diameter under the seabed, 0 to 1. }
         object: { type: string, description: The uploaded file the organisation holds (not for a route). }
         label: { type: string, description: What to call the asset; the file's name when absent. }
 

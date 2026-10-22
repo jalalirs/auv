@@ -240,8 +240,8 @@ func (b AssetBrief) Validate() error {
 			if !finite(r.DiameterM) || r.DiameterM <= 0 || r.DiameterM > 20 {
 				return fmt.Errorf("%w: a pipeline is more than 0 m and at most 20 m across (diameterM)", domain.ErrInvalid)
 			}
-			if r.Burial != nil && (!finite(*r.Burial) || *r.Burial < 0 || *r.Burial > 10) {
-				return fmt.Errorf("%w: a pipeline is buried 0 to 10 m (burial)", domain.ErrInvalid)
+			if r.Burial != nil && (!finite(*r.Burial) || *r.Burial < 0 || *r.Burial > 1) {
+				return fmt.Errorf("%w: burial is the share of a pipeline's diameter under the seabed, 0 to 1", domain.ErrInvalid)
 			}
 		}
 	case KindReef, "":
