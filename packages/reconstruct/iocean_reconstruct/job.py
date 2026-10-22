@@ -14,6 +14,16 @@ The brief (services/control-plane/internal/reconstructing):
      "effort": "full" | "quick",                  quick: a short training, to try
      "camera": {"model": "OPENCV", "params": "fx,fy,cx,cy,k1,k2,p1,p2"}}
                                                   a known calibration, at the frames' size
+     "poses": {"objectId", "name"},               the vehicle's navigation, a CSV at
+                                                  poses/<name> (docs/plan/assets-contract.md)
+     "camera": {"model": "OPENCV", "width", "height", "fx", "fy", "cx", "cy",
+                "k1", "k2", "p1", "p2"},          with poses: at the video's resolution
+     "enhance": "clahe" | ""}                     contrast lifted before features and training
+
+With poses, each frame takes the pose nearest its time (none within half an
+interval: left out), the cameras are fixed there and COLMAP only triangulates
+(point_triangulator), the seabed under each camera seeds points when the
+altitude is known, and the scale is the navigation's metres (poses.py).
 
 What it does, each step said as {"progress": {...}} on stdout:
 
@@ -53,6 +63,8 @@ import sys
 import tarfile
 import time
 import traceback
+
+from iocean_reconstruct import poses
 
 INPUTS = pathlib.Path(os.environ.get("IOCEAN_JOB_INPUTS", "/work/inputs"))
 OUTPUTS = pathlib.Path(os.environ.get("IOCEAN_JOB_OUTPUTS", "/work/outputs"))
@@ -149,6 +161,14 @@ def frames(brief: dict) -> dict:
          durationS=round(duration, 1), width=width, height=height, fps=round(rate, 3))
     scale = min(1.0, 1600.0 / max(width, 1))
     size = (int(round(width * scale / 2)) * 2, int(round(height * scale / 2)) * 2)
+    # With the vehicle's navigation, each frame takes the pose nearest its
+    # time, and one with none within half an interval is left out.
+    navigation = poses.read_poses(poses_path(brief)) if brief.get("poses") else None
+    enhance = brief.get("enhance") == "clahe"
+    raw = SCRATCH / "frames-raw"
+    if enhance:
+        raw.mkdir(exist_ok=True)
+    matched, unmatched = {}, 0
     i, kept, next_t = 0, 0, 0.0
     while True:
         if not cap.grab():
@@ -161,18 +181,40 @@ def frames(brief: dict) -> dict:
         if not ok:
             break
         next_t += 1.0 / fps
+        if navigation is not None:
+            k = poses.nearest_in_time([t], [p["t"] for p in navigation], 1.0 / fps)[0]
+            if k is None:
+                unmatched += 1
+                continue
         if scale < 1.0:
             frame = cv2.resize(frame, size, interpolation=cv2.INTER_AREA)
         kept += 1
+        if navigation is not None:
+            matched[f"{kept:05d}.jpg"] = {"t": round(t, 3), **navigation[k]}
+        if enhance:
+            # The frames' own colours are kept for the cover; features and
+            # training see the contrast lifted.
+            cv2.imwrite(str(raw / f"{kept:05d}.jpg"), frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            frame = poses.clahe(frame)
         cv2.imwrite(str(images / f"{kept:05d}.jpg"), frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
         if kept % 100 == 0:
             tell("frames", f"{kept} frames", n=int(t), of=int(duration))
     cap.release()
     if kept < 20:
-        raise RuntimeError(f"only {kept} frames could be taken from the video; a reef needs a swim of a minute or more")
+        raise RuntimeError(f"only {kept} frames could be taken from the video"
+                           + (f" with a pose within half a frame interval ({unmatched} had none)" if navigation else "")
+                           + "; a reef needs a swim of a minute or more")
     said = {"frames": kept, "video": {"name": brief["video"].get("name", video.name), "durationS": round(duration, 1),
                                       "fps": round(rate, 3), "width": width, "height": height},
             "size": list(size), "every": round(1.0 / fps, 3)}
+    if navigation is not None:
+        (SCRATCH / "frame-poses.json").write_text(json.dumps(matched))
+        said["poses"] = {"rows": len(navigation), "matched": kept, "dropped": unmatched,
+                         "within": round(0.5 / fps, 3)}
+        tell("frames", f"{kept} frames with a pose; {unmatched} with none within {0.5 / fps:.2f} s left out",
+             matched=kept, dropped=unmatched)
+    if enhance:
+        said["enhanced"] = "CLAHE on L of LAB, clip 4, tiles 8x8, before features and training"
     mark("frames", said)
     tell("frames", f"{kept} frames at {size[0]}x{size[1]}", frames=kept)
     return said
@@ -192,6 +234,8 @@ def registered_in(model: pathlib.Path) -> int:
 def cameras(brief: dict, frames_said: dict) -> dict:
     if done("cameras"):
         return said_by("cameras")
+    if brief.get("poses"):
+        return cameras_from_poses(brief, frames_said)
     db, images, logs = SCRATCH / "colmap.db", SCRATCH / "frames", SCRATCH / "logs"
     logs.mkdir(exist_ok=True)
     camera = brief.get("camera") or {}
@@ -252,6 +296,16 @@ def cameras(brief: dict, frames_said: dict) -> dict:
     if most < max(20, 0.3 * frames_said["frames"]):
         raise RuntimeError(f"COLMAP placed only {most} of {frames_said['frames']} frames in one model; "
                            "the swim breaks into pieces it could not join")
+    undistort(best)
+    said = {"registered": most, "models": len(models)}
+    mark("cameras", said)
+    return said
+
+
+def undistort(best: pathlib.Path) -> None:
+    """The model's frames undistorted, as 3DGRUT reads them: data/images,
+    data/sparse/0 and data/text."""
+    images, logs = SCRATCH / "frames", SCRATCH / "logs"
     dense, data = SCRATCH / "undistorted", SCRATCH / "data"
     shutil.rmtree(dense, ignore_errors=True)
     shutil.rmtree(data, ignore_errors=True)
@@ -265,7 +319,100 @@ def cameras(brief: dict, frames_said: dict) -> dict:
     run("cameras", [COLMAP, "model_converter", "--input_path", data / "sparse" / "0",
                     "--output_path", data / "text", "--output_type", "TXT"], lines=False)
     shutil.rmtree(dense, ignore_errors=True)
-    said = {"registered": most, "models": len(models)}
+
+
+def poses_path(brief: dict) -> pathlib.Path:
+    given = brief["poses"]
+    return INPUTS / (given.get("path") or f"poses/{given['name']}")
+
+
+def analysed(model: pathlib.Path) -> dict:
+    """COLMAP's own count of a model: images, points, observations, the mean
+    reprojection error."""
+    said = run("cameras", [COLMAP, "model_analyzer", "--path", model], lines=False)
+    out = {}
+    for key, pattern in (("registered", r"Registered images:\s*(\d+)"), ("points", r"Points:\s*(\d+)"),
+                         ("observations", r"Observations:\s*(\d+)"),
+                         ("reprojectionErrorPx", r"Mean reprojection error:\s*([\d.]+)")):
+        for line in said:
+            m = re.search(pattern, line)
+            if m:
+                out[key] = float(m.group(1)) if "." in m.group(1) else int(m.group(1))
+                break
+    return out
+
+
+def cameras_from_poses(brief: dict, frames_said: dict) -> dict:
+    """The cameras where the vehicle's navigation puts them, fixed: features
+    and sequential matches triangulated with them (point_triangulator), and,
+    where the altitude is known, the seabed under each camera seeding points.
+    The world is the navigation's (x east, y north, z up, metres), moved to
+    the swim's middle."""
+    import numpy as np
+    from PIL import Image
+
+    db, images, logs = SCRATCH / "colmap.db", SCRATCH / "frames", SCRATCH / "logs"
+    logs.mkdir(exist_ok=True)
+    k = poses.intrinsics_at(brief.get("camera") or {}, tuple(frames_said["size"]))
+    matched = json.loads((SCRATCH / "frame-poses.json").read_text())
+    names = sorted(matched)
+    origin = np.round(np.mean([matched[n]["centre"] for n in names], axis=0), 2)
+    if not done("features"):
+        db.unlink(missing_ok=True)
+        tell("cameras", "finding features in every frame")
+        run("cameras", [COLMAP, "feature_extractor", "--database_path", db, "--image_path", images,
+                        "--ImageReader.single_camera", "1", "--ImageReader.camera_model", "OPENCV",
+                        "--ImageReader.camera_params", ",".join(f"{v:.10g}" for v in poses.params_of(k)),
+                        "--FeatureExtraction.use_gpu", "1"], log=logs / "features.log", lines=False)
+        mark("features")
+    if not done("matches"):
+        tell("cameras", "matching each frame with the 15 either side")
+        run("cameras", [COLMAP, "sequential_matcher", "--database_path", db, "--SequentialMatching.overlap", "15",
+                        "--FeatureMatching.use_gpu", "1"], log=logs / "match.log", lines=False)
+        mark("matches")
+    fixed, tri, seeded = SCRATCH / "sparse-fixed", SCRATCH / "sparse-triangulated", SCRATCH / "sparse-seeded"
+    if not done("triangulated"):
+        for d in (fixed, tri):
+            shutil.rmtree(d, ignore_errors=True)
+        poses.write_model(fixed, k, [(i + 1, n, *poses.world_to_camera(matched[n]["q"],
+                                                                       np.subtract(matched[n]["centre"], origin)))
+                                     for i, n in enumerate(names)])
+        tri.mkdir()
+        tell("cameras", f"the {len(names)} cameras fixed where the navigation puts them; triangulating the matches")
+        run("cameras", [COLMAP, "point_triangulator", "--database_path", db, "--image_path", images,
+                        "--input_path", fixed, "--output_path", tri], log=logs / "triangulate.log", lines=False)
+        mark("triangulated")
+    measured = analysed(tri)
+    shutil.rmtree(seeded, ignore_errors=True)
+    seeded.mkdir()
+    run("cameras", [COLMAP, "model_converter", "--input_path", tri, "--output_path", seeded,
+                    "--output_type", "TXT"], lines=False)
+    seeds = 0
+    # A DVL with no bottom lock says -1: no altitude, no seeds from that camera.
+    with_altitude = [n for n in names if (matched[n].get("altitudeM") or 0) > 0]
+    if with_altitude:
+        tell("cameras", f"seeding the seabed under {len(with_altitude)} cameras from their altitude")
+        xyz, rgb = [], []
+        for n in with_altitude:
+            p = matched[n]
+            with Image.open(images / n) as one:
+                frame = np.asarray(one.convert("RGB"))
+            a, b = poses.seabed_seeds(k, p["q"], np.subtract(p["centre"], origin), p["altitudeM"], frame)
+            xyz.append(a)
+            rgb.append(b)
+        seeds = poses.append_points(seeded / "points3D.txt", np.concatenate(xyz), np.concatenate(rgb))
+    tell("cameras", f"{measured.get('registered', 0)} cameras, {measured.get('points', 0):,} points triangulated "
+                    f"(mean reprojection error {measured.get('reprojectionErrorPx', 0):.2f} px), {seeds:,} seeded "
+                    "on the seabed", **measured, seeded=seeds)
+    if measured.get("registered", 0) < 20:
+        raise RuntimeError(f"only {measured.get('registered', 0)} cameras could be fixed from the navigation")
+    undistort(seeded)
+    said = {"registered": int(measured.get("registered", 0)), "models": 1,
+            "poses": {"from": f"the vehicle's navigation ({brief['poses'].get('name', 'poses')})",
+                      "frame": "x east, y north, z up, metres, the origin moved to the swim's middle",
+                      "origin": [float(v) for v in origin], "triangulated": measured, "seeded": seeds,
+                      "seededFrom": f"the seabed {len(with_altitude)} cameras' altitude puts under them, taken as "
+                                    "flat near each camera" if seeds else None}}
     mark("cameras", said)
     return said
 
@@ -391,12 +538,15 @@ def tape(brief: dict, quick: bool) -> dict:
     tell("tape", f"a tape in {with_tape} of {len(names)} frames; finding it in 3D", framesWithTape=with_tape)
     ckpt = train("tape", data, "tape-finder", quick, downsample=2, iterations=3000 if quick else 8000)
     # The tape's width in COLMAP's units, from a quick frame of the quick model.
-    look = SCRATCH / "tape-frame"
-    run("tape", python("splat_place.py", ckpt, "-", data / "text", look, "--camera-height",
-                       brief.get("cameraHeightM") or ASSUMED_CAMERA_HEIGHT), lines=False)
     import numpy as np
 
-    scale = float(np.load(look / "frame.npz")["scale"])
+    if brief.get("poses"):
+        scale = 1.0                                               # the navigation's metres already
+    else:
+        look = SCRATCH / "tape-frame"
+        run("tape", python("splat_place.py", ckpt, "-", data / "text", look, "--camera-height",
+                           brief.get("cameraHeightM") or ASSUMED_CAMERA_HEIGHT), lines=False)
+        scale = float(np.load(look / "frame.npz")["scale"])
     run("tape", python("recolour_tape.py", ckpt, data / "text", masks, SCRATCH / "tape-recoloured.pt",
                        f"1:{len(names)}", "--save-tape", SCRATCH / "tape.npy"))
     (SCRATCH / "tape-recoloured.pt").unlink(missing_ok=True)
@@ -472,10 +622,13 @@ def asset(brief: dict, said_pieces: list[dict], tape_said: dict) -> dict:
     run("frame", python("join_splats.py", data / "text", joined,
                         *[f"{p['checkpoint']}:{p['first']}:{p['last']}" for p in said_pieces]))
     place = SCRATCH / "place"
-    placed = last_json(run("frame", python(
-        "splat_place.py", joined, "-", data / "text", place, "--camera-height", height or ASSUMED_CAMERA_HEIGHT,
-        *(["--camera-height-from", "given with the video"] if height else []),
-        "--video", json.dumps({"name": brief["video"].get("name")}))))
+    if brief.get("poses"):
+        placed = metric_place(brief, joined, place)
+    else:
+        placed = last_json(run("frame", python(
+            "splat_place.py", joined, "-", data / "text", place, "--camera-height", height or ASSUMED_CAMERA_HEIGHT,
+            *(["--camera-height-from", "given with the video"] if height else []),
+            "--video", json.dumps({"name": brief["video"].get("name")}))))
     joined.unlink(missing_ok=True)
     run("frame", python("asset_frame.py", place, SCRATCH / "align-asset.json"))
     baked = []
@@ -489,8 +642,11 @@ def asset(brief: dict, said_pieces: list[dict], tape_said: dict) -> dict:
     # From the pieces as trained: splat_surface.py moves them itself, by the
     # bake's own transform (given the baked ones, they were moved twice and
     # the ground came out a third of the reef, 28 m up).
+    # A vehicle three metres up sees each patch of ground in far fewer splats
+    # than a diver at two: its ground is measured in 25 cm cells, not 5 cm.
+    cell = ["--cell", "0.25"] if brief.get("poses") else []
     surface = last_json(run("surface", python("splat_surface.py", SCRATCH / "align-baked.json", out,
-                                              *[p["checkpoint"] for p in said_pieces])))
+                                              *[p["checkpoint"] for p in said_pieces], *cell)))
     if float(surface.get("measuredShare", 0)) <= 0 or not surface.get("rows"):
         raise RuntimeError("no ground could be measured under the swim: the reef's splats are too sparse")
     (SCRATCH / "identity.json").write_text(json.dumps({"matrix": np.eye(4).tolist(), "dz": 0.0}))
@@ -532,6 +688,32 @@ def asset(brief: dict, said_pieces: list[dict], tape_said: dict) -> dict:
             "scale": json.loads((place / "patch" / "patch.json").read_text())["scale"]}
     mark("asset", said)
     return said
+
+
+def metric_place(brief: dict, joined: pathlib.Path, place: pathlib.Path) -> dict:
+    """splat_place.py with the scale left at one: the cameras are in metres
+    already. It scales by a camera height over the ground it finds, so it is
+    run once at a height of one unit to learn the height it finds, then at
+    that height; the scale is then recorded as measured from the navigation."""
+    import numpy as np
+
+    look = SCRATCH / "place-height"
+    run("frame", python("splat_place.py", joined, "-", SCRATCH / "data" / "text", look, "--camera-height", 1),
+        lines=False)
+    above = 1.0 / float(np.load(look / "frame.npz")["scale"])
+    shutil.rmtree(look, ignore_errors=True)
+    from_ = f"the vehicle's navigation ({brief['poses'].get('name', 'poses')})"
+    placed = last_json(run("frame", python(
+        "splat_place.py", joined, "-", SCRATCH / "data" / "text", place, "--camera-height", f"{above:.9g}",
+        "--camera-height-from", from_, "--video", json.dumps({"name": brief["video"].get("name")}))))
+    patch = place / "patch" / "patch.json"
+    said = json.loads(patch.read_text())
+    factor = float(said["scale"]["factor"])
+    said["scale"] = {"factor": factor, "how": "measured",
+                     "from": f"measured: {from_} put every camera in metres, so one unit is {factor:.4f} m; "
+                             f"the camera was {above:.2f} m over the reef's splats (derived, not assumed)"}
+    patch.write_text(json.dumps(said, indent=1))
+    return placed
 
 
 # -- what the frames show ------------------------------------------------------------------------------
@@ -667,7 +849,9 @@ def main(argv: list[str]) -> int:
         asset_said = timed("asset", asset, brief, pieces_said, tape_said)
         out = SCRATCH / "asset"
         originals = SCRATCH / "frames-undistorted"
-        if not originals.is_dir():
+        if (SCRATCH / "frames-raw").is_dir():
+            originals = SCRATCH / "frames-raw"                    # the colours as filmed, not the lifted
+        elif not originals.is_dir():
             originals = SCRATCH / "data" / "images"
         tell("cover", "what the frames show")
         cover_said = timed("cover", cover, originals)
@@ -692,6 +876,8 @@ def main(argv: list[str]) -> int:
                  "x along the reef's long axis; mapping it onto a place is a separate step",
         "video": frames_said["video"], "frames": frames_said["frames"], "every": frames_said["every"],
         "registered": cameras_said["registered"],
+        **({"poses": {**cameras_said["poses"], **frames_said.get("poses", {})}} if cameras_said.get("poses") else {}),
+        **({"enhanced": frames_said["enhanced"]} if frames_said.get("enhanced") else {}),
         "pieces": [{k: p[k] for k in ("part", "checkpoint", "first", "last", "splats")} for p in asset_said["parts"]],
         "trimmed": [p["trimmed"] for p in asset_said["parts"]],
         "extentM": asset_said["placed"].get("extentM"),
@@ -705,7 +891,9 @@ def main(argv: list[str]) -> int:
         "cover": cover_said, "tape": tape_said,
         "preview": "preview.jpg", "previews": shown,
         "effort": "quick" if quick else "full",
-        "made": {"tool": "COLMAP global mapper, 3DGRUT 3DGUT, iocean ml/splat", "recipe": "reconstruct-video/v1",
+        "made": {"tool": ("COLMAP point_triangulator on the vehicle's navigation" if brief.get("poses")
+                          else "COLMAP global mapper") + ", 3DGRUT 3DGUT, iocean ml/splat",
+                 "recipe": "reconstruct-video/v1",
                  "seconds": round(time.time() - started), "timings": timings},
     }
     (out / "reconstruction.json").write_text(json.dumps(manifest, indent=1))
