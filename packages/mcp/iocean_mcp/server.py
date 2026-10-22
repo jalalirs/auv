@@ -112,6 +112,24 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
          "properties": {"version": {"type": "string"}},
          "required": ["version"]},
         lambda p, version: tools.places_publish(p, version)),
+    "uploads_start": (
+        "Place a file (a dive video) in this institution's storage. Give its length and sha256; "
+        "the answer says how many parts to PUT and where. Finish with uploads_confirm.",
+        {"type": "object",
+         "properties": {
+             "size_bytes": {"type": "integer", "description": "the file's length in bytes"},
+             "sha256": {"type": "string", "description": "the file's sha256, 64 hex characters"},
+             "media_type": {"type": "string", "description": "e.g. video/mp4"},
+             "org": {"type": "string", "description": "the organisation; this session's own when absent"}},
+         "required": ["size_bytes", "sha256"]},
+        lambda p, size_bytes, sha256, media_type="", org="": tools.uploads_start(p, size_bytes, sha256, media_type, org)),
+    "uploads_confirm": (
+        "Finish an upload: the platform checks every byte against the sha256 and returns the object id.",
+        {"type": "object",
+         "properties": {"grant": {"type": "string"},
+                        "org": {"type": "string", "description": "the organisation; this session's own when absent"}},
+         "required": ["grant"]},
+        lambda p, grant, org="": tools.uploads_confirm(p, grant, org)),
     "reconstructions_create": (
         "Make a reef from a dive video this institution has uploaded: the reef as Gaussian splats, "
         "the ground under it and the path the camera took. THIS SPENDS HOURS ON A GPU. Returns at "

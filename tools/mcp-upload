@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Upload a file to the institution's storage the way an agent would: through
+MCP's uploads_start, PUT the parts to the API, then uploads_confirm.
+    tools/mcp-upload dive.mp4
+    tools/mcp-upload --ssh 100.76.65.1 /home/me/dive.mp4   # read it on another machine
+Prints the object id. Reads MCP_TOKEN the way tools/mcp-call does.
+"""
+from __future__ import annotations
+import hashlib
+import importlib.machinery
+import json
+import pathlib
+import subprocess
+import sys
+import urllib.request
+
+HERE = pathlib.Path(__file__).resolve().parent
+call = importlib.machinery.SourceFileLoader("mcp_call", str(HERE / "mcp-call")).load_module()
+
+
+def tool(name: str, arguments: dict) -> dict:
+    body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": arguments}}
+    asked = urllib.request.Request(call.ADDRESS, json.dumps(body).encode(), {
+        "Authorization": "Bearer " + call.token(), "content-type": "application/json",
+        "accept": "application/json, text/event-stream"})
+    said = json.load(urllib.request.urlopen(asked, timeout=600))
+    if "error" in said:
+        raise SystemExit(json.dumps(said["error"]))
+    return json.loads(said["result"]["content"][0]["text"])
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    host = None
+    if args[:1] == ["--ssh"]:
+        host, args = args[1], args[2:]
+    path = args[0]
+    if host:
+        size = int(subprocess.check_output(["ssh", host, f"stat -c %s '{path}'"]).decode())
+        sha = subprocess.check_output(["ssh", host, f"sha256sum '{path}'"]).decode().split()[0]
+    else:
+        size = pathlib.Path(path).stat().st_size
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for block in iter(lambda: f.read(1 << 22), b""):
+                h.update(block)
+        sha = h.hexdigest()
+    kind = "video/quicktime" if path.lower().endswith(".mov") else "video/mp4"
+    grant = tool("uploads_start", {"size_bytes": size, "sha256": sha, "media_type": kind})
+    if "grant" not in grant:
+        print(json.dumps(grant, indent=1)); return 1
+    base = call.ADDRESS.rsplit("/mcp", 1)[0]
+    step = int(grant["partBytes"])
+    for n in range(1, int(grant["parts"]) + 1):
+        if host:
+            body = subprocess.check_output(["ssh", host,
+                f"dd if='{path}' bs={step} skip={n - 1} count=1 status=none"])
+        else:
+            with open(path, "rb") as f:
+                f.seek((n - 1) * step); body = f.read(step)
+        ask = urllib.request.Request(base + grant["partPath"].replace("{n}", str(n)), data=body,
+                                     method="PUT", headers={"authorization": f"Bearer {call.token()}",
+                                                            "content-type": "application/octet-stream"})
+        with urllib.request.urlopen(ask, timeout=900) as answer:
+            answer.read()
+        print(f"part {n} of {grant['parts']}", file=sys.stderr, flush=True)
+    print(json.dumps(tool("uploads_confirm", {"grant": grant["grant"]}), indent=1))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

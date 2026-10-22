@@ -1152,6 +1152,37 @@ def _organisation(platform: Platform, org: str) -> str:
     return institution["id"]
 
 
+def uploads_start(platform: Platform, size_bytes: int, sha256: str, media_type: str = "",
+                  org: str = "") -> dict:
+    """Ask to place a file in the institution's storage; the bytes go in parts."""
+    if int(size_bytes) <= 0:
+        raise Refused(400, "invalid", "size_bytes is the file's length, more than 0")
+    sha = str(sha256).lower()
+    if len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
+        raise Refused(400, "invalid", "sha256 is the file's digest as 64 hex characters")
+    organisation = _organisation(platform, org)
+    grant = platform.request("POST", f"/api/v1/organisations/{organisation}/uploads", {
+        "bucket": "evidence", "sha256": sha, "sizeBytes": int(size_bytes),
+        "mediaType": media_type or "application/octet-stream"})
+    parts = grant.get("parts") or {}
+    return {
+        "grant": grant.get("id"), "expiresAt": grant.get("expiresAt"),
+        "parts": parts.get("count"), "partBytes": parts.get("partBytes"),
+        "partPath": f"/api/v1/organisations/{organisation}/uploads/{grant.get('id')}/parts/{{n}}",
+        "note": "PUT each part's bytes (n from 1, partBytes each, the last one shorter) to partPath "
+                "on this server's address, with the same Authorization header this MCP call used. "
+                "Then uploads_confirm with the grant gives the object id.",
+    }
+
+
+def uploads_confirm(platform: Platform, grant: str, org: str = "") -> dict:
+    """Check what arrived against what was declared; the object id comes back."""
+    organisation = _organisation(platform, org)
+    made = platform.request("POST", f"/api/v1/organisations/{organisation}/uploads/{grant}/confirm", {})
+    return {"object": made.get("id"), "sizeBytes": made.get("sizeBytes"), "sha256": made.get("sha256"),
+            "note": "give this object to reconstructions_create as video"}
+
+
 def reconstructions_create(platform: Platform, video: str, name: str = "", org: str = "",
                            camera_height_m: float | None = None, start: Any = None,
                            label: str = "", fps: float | None = None, tape: str = "") -> dict:
