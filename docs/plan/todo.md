@@ -2333,6 +2333,15 @@ other systems we add (model uploads, surveys, CAD).
 **Done when:** the Red Sea video and a pipeline video are both assets in the
 library, made from the screen, each with its page.
 
+**Status 2026-10-22:** built and live (e019f07, 3b30049). Kinds reef, structure
+(model or route), bathymetry; import job asset-import/v1; structures laid
+standing or draped; surveys as a place's ground; MCP assets_*, uploads_*.
+Tested through MCP: Red Sea video to a reef, a platform OBJ, a pipeline route
+and soundings imported; all three laid into an Al Fahal draft in one job; a
+place built on the survey. The simulator that draws laid assets is live as
+sim-runtime:r2 (r1 drew none). Open: structure surfaces (plain white/black),
+platforms collide as solid blocks, no pipeline video yet, detail pages (68).
+
 ## 71. A place is composed: ground, assets, Resolve
 
 Agreed 2026-10-18; with 69, the feature the user calls most important.
