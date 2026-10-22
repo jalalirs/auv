@@ -31,7 +31,7 @@ class Arranged:
             self.saved.append(body)
             return {"id": "ver_new"}
         if path.endswith("/versions"):
-            return {"versions": [{"id": "ver_1", "createdAt": "2026-01-01T00:00:00Z",
+            return {"versions": [{"id": "ver_1", "createdAt": "2026-01-01T00:00:00Z", "publishedAt": "2026-01-01T00:00:00Z",
                                   "document": {"things": [
                                       {"id": "a", "kind": "buoy", "x": 0.0, "y": 0.0}]}}]}
         return {"id": "lay_1", "name": "a plot", "cityId": "cty_1"}
@@ -160,10 +160,10 @@ class Fleet:
                 {"id": "veh_2", "slug": "seaglider", "name": "Seaglider"}]
 
     def versions_of_place(self, _):
-        return [{"id": "cv", "createdAt": "2026-09-28T00:00:00Z"}]
+        return [{"id": "cv", "createdAt": "2026-09-28T00:00:00Z", "publishedAt": "2026-09-28T00:00:00Z"}]
 
     def versions_of_vehicle(self, _):
-        return [{"id": "vv", "createdAt": "2026-09-28T00:00:00Z"}]
+        return [{"id": "vv", "createdAt": "2026-09-28T00:00:00Z", "publishedAt": "2026-09-28T00:00:00Z"}]
 
     def files(self, version):
         if getattr(self, "hull", True):
@@ -180,8 +180,8 @@ class Fleet:
         self.asked.append((path, body))
         if path.endswith("/autonomy"):
             return {"autonomy": [
-                {"id": "stack_old", "slug": "station-hold", "createdAt": "2026-10-01T00:00:00Z"},
-                {"id": "stack_new", "slug": "station-hold", "createdAt": "2026-10-19T00:00:00Z"}]}
+                {"id": "stack_old", "slug": "station-hold", "createdAt": "2026-10-01T00:00:00Z", "publishedAt": "2026-10-01T00:00:00Z"},
+                {"id": "stack_new", "slug": "station-hold", "createdAt": "2026-10-19T00:00:00Z", "publishedAt": "2026-10-19T00:00:00Z"}]}
         if path.endswith("/conditions"):
             return {"id": "cond_1"}
         if path.endswith("/dives"):
@@ -282,7 +282,7 @@ def test_the_runtime_can_be_overridden_for_a_platform_that_runs_another(monkeypa
 
 class Undrawn(Fleet):
     def runs(self, dive):
-        return [{"id": "run_1", "createdAt": "2026-10-01T00:00:00Z"}]
+        return [{"id": "run_1", "createdAt": "2026-10-01T00:00:00Z", "publishedAt": "2026-10-01T00:00:00Z"}]
 
     def artefacts(self, dive, run):
         return [{"path": "poses.jsonl", "url": "x"}, {"path": "manifest.json", "url": "x"}]
@@ -300,7 +300,7 @@ def test_an_undrawn_dive_says_how_to_get_one_that_can_be_seen():
 
 class Scored(Fleet):
     def runs(self, dive):
-        return [{"id": "run_1", "state": "succeeded", "createdAt": "2026-10-01T00:00:00Z",
+        return [{"id": "run_1", "state": "succeeded", "createdAt": "2026-10-01T00:00:00Z", "publishedAt": "2026-10-01T00:00:00Z",
                  "outcome": {"ended": "time", "task": {
                      "kind": "waypoints", "score": 0.6, "seconds": 48, "energyWh": 0.59,
                      "flownBy": {"mostly": "pursue"},
@@ -386,3 +386,11 @@ def test_a_name_that_is_not_deployed_is_one_of_the_platforms_own():
     tools.dives_start(platform, "al-fahal", "bluerov2", {"kind": "hold-station"}, controller="hold")
     dive = next(b for p, b in platform.asked if p.endswith("/dives"))
     assert "autonomyStackId" not in dive and dive["objective"]["controller"] == "hold"
+
+
+def test_a_draft_laid_on_a_place_is_not_what_is_dived():
+    from iocean_mcp.tools import _newest
+    versions = [{"id": "published", "createdAt": "2026-10-01T00:00:00Z", "publishedAt": "2026-10-01T00:00:00Z"},
+                {"id": "draft", "createdAt": "2026-10-22T00:00:00Z"}]
+    assert _newest(versions)["id"] == "draft"
+    assert _newest(versions, published=True)["id"] == "published"

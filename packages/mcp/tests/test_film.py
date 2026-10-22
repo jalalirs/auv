@@ -20,8 +20,8 @@ class Platform:
 
 
 def test_the_latest_run_is_filmed_unless_one_is_named():
-    p = Platform([{"id": "run_a", "createdAt": "2026-10-04T01:00:00Z"},
-                  {"id": "run_b", "createdAt": "2026-10-04T02:00:00Z"}])
+    p = Platform([{"id": "run_a", "createdAt": "2026-10-04T01:00:00Z", "publishedAt": "2026-10-04T01:00:00Z"},
+                  {"id": "run_b", "createdAt": "2026-10-04T02:00:00Z", "publishedAt": "2026-10-04T02:00:00Z"}])
     said = tools.dives_film(p, "dive_x", views=["glass"], view_every_s=5)
     assert p.asked == [("POST", "/api/v1/dives/dive_x/runs/run_b/film", {"views": ["glass"], "viewEveryS": 5.0})]
     assert said["filmOf"] == "run_b" and said["dive"] == "dive_film" and said["seed"] == 7

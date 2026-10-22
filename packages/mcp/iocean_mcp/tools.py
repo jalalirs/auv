@@ -24,12 +24,16 @@ from .platform import Platform, Refused
 from .provenance import ASSUMED, CHOSEN, DERIVED, MEASURED, said, unknown
 
 
-def _newest(versions: list[dict]) -> dict | None:
+def _newest(versions: list[dict], published: bool = False) -> dict | None:
     """The newest version, by when it was made rather than by where it sits.
 
     The client had a bug of this shape once — taking whichever build came back
-    first and verifying a change against the build it replaced.
+    first and verifying a change against the build it replaced. A place or a
+    vehicle is dived in its newest published version: a draft laid on top of
+    it (a mapping, a build) is not what anybody dives until it is published.
     """
+    if published:
+        versions = [v for v in versions if v.get("publishedAt")]
     if not versions:
         return None
     return max(versions, key=lambda v: v.get("createdAt") or "")
@@ -37,7 +41,7 @@ def _newest(versions: list[dict]) -> dict | None:
 
 def _site_of(platform: Platform, place: dict) -> dict | None:
     """A place's own record, out of its newest published package."""
-    version = _newest(platform.versions_of_place(place["id"]))
+    version = _newest(platform.versions_of_place(place["id"]), published=True)
     if version is None:
         return None
     for one in platform.files(version["id"]):
@@ -58,7 +62,7 @@ def _error_at_begin(platform: Platform, place: dict, site: dict) -> float | None
     across = (site.get("from") or {}).get("acrossMetres")
     if not (cells.get("error") and begin and field.get("rows") and across):
         return None
-    version = _newest(platform.versions_of_place(place["id"]))
+    version = _newest(platform.versions_of_place(place["id"]), published=True)
     url = next((one["url"] for one in platform.files(version["id"]) if one["path"] == cells["error"]), None)
     if url is None:
         return None
@@ -209,7 +213,7 @@ def vehicles_list(platform: Platform) -> dict:
     """
     out = []
     for vehicle in platform.vehicles():
-        version = _newest(platform.versions_of_vehicle(vehicle["id"]))
+        version = _newest(platform.versions_of_vehicle(vehicle["id"]), published=True)
         paths = [f["path"] for f in platform.files(version["id"])] if version else []
         hull = any(p.lower().endswith((".usd", ".usda", ".usdc", ".usdz")) for p in paths)
         out.append({
@@ -589,7 +593,7 @@ def layouts_chart(platform: Platform, layout: str) -> dict:
     if place is None:
         raise Refused(404, "not_found", "that layout's place is not granted to you")
 
-    version = _newest(platform.versions_of_place(place["id"]))
+    version = _newest(platform.versions_of_place(place["id"]), published=True)
     files = {f["path"]: f for f in platform.files(version["id"])} if version else {}
     if "site.json" not in files:
         raise Refused(409, "not_published", f"{place.get('name')} has no published package")
@@ -680,8 +684,8 @@ def dives_start(platform: Platform, place: str, vehicle: str,
     if machine is None:
         raise Refused(404, "not_found", f"no vehicle {vehicle!r} is granted to you")
 
-    city_version = _newest(platform.versions_of_place(found["id"]))
-    vehicle_version = _newest(platform.versions_of_vehicle(machine["id"]))
+    city_version = _newest(platform.versions_of_place(found["id"]), published=True)
+    vehicle_version = _newest(platform.versions_of_vehicle(machine["id"]), published=True)
     if city_version is None or vehicle_version is None:
         raise Refused(409, "not_published", "that place or vehicle has no published package")
     paths = [f["path"] for f in platform.files(vehicle_version["id"])]
@@ -966,7 +970,7 @@ def sweeps_run(platform: Platform, mission: str, vehicle: str,
                     if v["id"] == vehicle or v.get("slug") == vehicle), None)
     if machine is None:
         raise Refused(404, "not_found", f"no vehicle {vehicle!r} is granted to you")
-    vehicle_version = _newest(platform.versions_of_vehicle(machine["id"]))
+    vehicle_version = _newest(platform.versions_of_vehicle(machine["id"]), published=True)
     mission_version = _newest(
         platform.request("GET", f"/api/v1/missions/{mission}/versions")["versions"])
     if vehicle_version is None or mission_version is None:

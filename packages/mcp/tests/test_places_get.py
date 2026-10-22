@@ -30,7 +30,7 @@ class OnePlace:
         return [{"id": "cty_1", "slug": "al-fahal", "name": "Al Fahal"}]
 
     def versions_of_place(self, place):
-        return [{"id": "ver_1", "createdAt": "2026-09-28T00:00:00Z"}]
+        return [{"id": "ver_1", "createdAt": "2026-09-28T00:00:00Z", "publishedAt": "2026-09-28T00:00:00Z"}]
 
     def files(self, version):
         return [{"path": "site.json", "url": "file://site"}]
