@@ -7319,6 +7319,32 @@ export interface components {
                 /** @enum {string} */
                 type: "pipeline" | "platform" | "wind-foundation" | "other";
             };
+            /** @description The vehicle's navigation for every frame, a CSV the organisation holds (image, t, x east, y north, z up, qw qx qy qz camera to world, altitudeM); used instead of solving the cameras from the pictures. */
+            poses?: {
+                objectId: string;
+                name?: string;
+                readonly path?: string;
+            };
+            /** @description The lens at the video's resolution, as OpenCV's model has it. Required with poses. */
+            camera?: {
+                /** @enum {string} */
+                model: "OPENCV";
+                width: number;
+                height: number;
+                fx: number;
+                fy: number;
+                cx: number;
+                cy: number;
+                k1?: number;
+                k2?: number;
+                p1?: number;
+                p2?: number;
+            };
+            /**
+             * @description Lift the frames' contrast before features and training.
+             * @enum {string}
+             */
+            enhance?: "clahe" | "";
         };
         /** @description A bathymetry survey (file, datum, errorM, object) or a structure (type, meets, and a model with its object, or for a pipeline a route). A model stands; a route drapes.
          *      */

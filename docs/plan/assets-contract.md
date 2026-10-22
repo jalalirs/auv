@@ -59,3 +59,23 @@ A bathymetry asset chosen as a place's ground goes in the places brief as a "fil
 - A place build accepts "survey": [asset ids] which becomes "files" entries.
 - MCP: assets_create, assets_list, assets_status; mappings_create takes structure assets;
   places_build takes survey assets. uploads_start/uploads_confirm exist already.
+
+## Navigation poses for a video (2026-10-22)
+
+A reconstruction brief may carry the vehicle's own navigation instead of
+leaving the cameras to COLMAP's solve (murky water, low texture: SubPipe
+placed 3 of 414 frames by vision, all of them from navigation).
+
+    "poses":  {"objectId", "name"}       a CSV, staged at poses/<name>
+    "camera": {"model": "OPENCV", "width", "height", "fx", "fy", "cx", "cy",
+               "k1", "k2", "p1", "p2"}   intrinsics at the video's resolution
+    "enhance": "clahe" | ""              contrast lift before features (and training)
+
+The CSV (tools/subpipe-poses writes it): image, t (s from the video's first
+frame), x east, y north, z up (metres), qw qx qy qz (camera to world, OpenCV
+camera: x right, y down, z along the view), altitudeM (height over the seabed,
+optional). Each frame read at fps takes the pose nearest its time (within half
+a frame interval, else the frame is dropped). The model is metric: scale is
+measured, from the navigation. The cameras are fixed; features and sequential
+matches are triangulated with them (point_triangulator), and when altitudeM is
+given the seabed under each camera seeds points too.

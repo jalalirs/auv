@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""Camera poses for a SubPipe run (Oceanscan-MST's LAUV, CC BY 4.0), from the
+vehicle's own navigation, as the reconstruction job reads them.
+
+    tools/subpipe-poses <Chunk dir> <out.csv> [--frames list.txt] [--pitch -56]
+
+EstimatedState.csv gives each Cam0 image the vehicle's pose: x north, y east
+(metres from an origin the dataset does not give), depth, and roll, pitch, yaw
+(phi, theta, psi; NED, radians). config.yaml puts the GoPro 0.619 m forward and
+0.12 m up, turned offset_theta (-56 degrees) about the vehicle's y axis: it
+looks ahead and down. Out: image, t (s from the first frame), x east, y north,
+z up (metres), the camera-to-world rotation as qw qx qy qz (OpenCV camera: x
+right, y down, z along the view), and altitudeM, the DVL's height over the
+seabed.
+"""
+import csv
+import math
+import os
+import sys
+
+import numpy as np
+
+
+def rot_nb(phi, theta, psi):
+    """Body to NED, ZYX."""
+    cr, sr, cp, sp, cy, sy = math.cos(phi), math.sin(phi), math.cos(theta), math.sin(theta), math.cos(psi), math.sin(psi)
+    return np.array([[cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+                     [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+                     [-sp, cp * sr, cp * cr]])
+
+
+def camera_in_body(pitch_deg):
+    """OpenCV camera axes in the body frame: looking ahead, then pitched down."""
+    t = math.radians(-pitch_deg)
+    z = np.array([math.cos(t), 0.0, math.sin(t)])      # the view, ahead and down
+    x = np.array([0.0, 1.0, 0.0])                       # image right: starboard
+    y = np.cross(z, x)                                  # image down
+    return np.column_stack([x, y, z])
+
+
+def quaternion(r):
+    w = math.sqrt(max(0.0, 1 + r[0, 0] + r[1, 1] + r[2, 2])) / 2
+    x = math.copysign(math.sqrt(max(0.0, 1 + r[0, 0] - r[1, 1] - r[2, 2])) / 2, r[2, 1] - r[1, 2])
+    y = math.copysign(math.sqrt(max(0.0, 1 - r[0, 0] + r[1, 1] - r[2, 2])) / 2, r[0, 2] - r[2, 0])
+    z = math.copysign(math.sqrt(max(0.0, 1 - r[0, 0] - r[1, 1] + r[2, 2])) / 2, r[1, 0] - r[0, 1])
+    return w, x, y, z
+
+
+def main(argv):
+    chunk, out = argv[0], argv[1]
+    frames = None
+    if "--frames" in argv:
+        frames = [line.strip() for line in open(argv[argv.index("--frames") + 1]) if line.strip()]
+    pitch = float(argv[argv.index("--pitch") + 1]) if "--pitch" in argv else -56.0
+    rows = {os.path.basename(r["image"]): r for r in csv.DictReader(open(os.path.join(chunk, "EstimatedState.csv")))}
+    names = [os.path.basename(f) for f in frames] if frames else sorted(rows)
+    en = np.array([[0.0, 1, 0], [1, 0, 0], [0, 0, -1]])           # NED to ENU
+    bc = camera_in_body(pitch)
+    lever = np.array([0.619, 0.0, 0.12])                            # forward, starboard, down
+    t0 = None
+    with open(out, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["image", "t", "x", "y", "z", "qw", "qx", "qy", "qz", "altitudeM"])
+        for name in names:
+            r = rows[name]
+            g = lambda k: float(r[k])
+            nb = rot_nb(g(" phi (rad)"), g(" theta (rad)"), g(" psi (rad)"))
+            p = np.array([g(" x (m)"), g(" y (m)"), g(" depth (m)")]) + nb @ lever
+            c2w = en @ nb @ bc
+            t = g("timestamp")
+            t0 = t if t0 is None else t0
+            w.writerow([name, f"{t - t0:.3f}", *(f"{v:.4f}" for v in en @ p),
+                        *(f"{q:.6f}" for q in quaternion(c2w)), f"{g(' alt (m)'):.3f}"])
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

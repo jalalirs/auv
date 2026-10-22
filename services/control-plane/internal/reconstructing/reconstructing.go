@@ -99,6 +99,30 @@ type Brief struct {
 	// pipeline an AUV followed, say): what it is. Its splats are made and laid
 	// as a reef's are; the asset is a structure of that type.
 	Structure *Structure `json:"structure,omitempty"`
+	// Poses, when the vehicle's own navigation says where the camera was in
+	// every frame: a CSV the organisation holds (image, t, x, y, z, qw, qx,
+	// qy, qz, altitudeM), used instead of COLMAP's solve, which murky water
+	// defeats. Camera is the lens, at the video's resolution, and goes with it.
+	Poses  *Video  `json:"poses,omitempty"`
+	Camera *Camera `json:"camera,omitempty"`
+	// Enhance lifts the frames' contrast before features and training
+	// ("clahe"), or leaves them ("").
+	Enhance string `json:"enhance,omitempty"`
+}
+
+// Camera is a lens as OpenCV's model has it, in pixels at Width by Height.
+type Camera struct {
+	Model  string  `json:"model"`
+	Width  int     `json:"width"`
+	Height int     `json:"height"`
+	Fx     float64 `json:"fx"`
+	Fy     float64 `json:"fy"`
+	Cx     float64 `json:"cx"`
+	Cy     float64 `json:"cy"`
+	K1     float64 `json:"k1"`
+	K2     float64 `json:"k2"`
+	P1     float64 `json:"p1"`
+	P2     float64 `json:"p2"`
 }
 
 // Validate reports whether a brief describes something that can be
@@ -122,6 +146,20 @@ func (b Brief) Validate() error {
 	case "", "auto", "keep":
 	default:
 		return fmt.Errorf("%w: a survey tape is taken out (auto) or kept (keep), not %q", domain.ErrInvalid, b.Tape)
+	}
+	if b.Poses != nil {
+		if b.Poses.ObjectID == "" {
+			return fmt.Errorf("%w: navigation poses name the file they are in (poses.objectId)", domain.ErrInvalid)
+		}
+		c := b.Camera
+		if c == nil || c.Model != "OPENCV" || c.Width <= 0 || c.Height <= 0 || c.Fx <= 0 || c.Fy <= 0 {
+			return fmt.Errorf("%w: navigation poses need the lens they were taken with (camera: OPENCV, width, height, fx, fy, cx, cy, k1, k2, p1, p2)", domain.ErrInvalid)
+		}
+	}
+	switch b.Enhance {
+	case "", "clahe":
+	default:
+		return fmt.Errorf("%w: frames are enhanced by clahe or not at all, not %q", domain.ErrInvalid, b.Enhance)
 	}
 	if s := b.Structure; s != nil && !StructureTypes[s.Type] {
 		return fmt.Errorf("%w: a structure is a pipeline, platform, wind-foundation or other, not %q", domain.ErrInvalid, s.Type)
@@ -286,6 +324,20 @@ func (r *Reconstructor) Start(ctx context.Context, principalID, orgID string, br
 	if brief.Tape == "" {
 		brief.Tape = "auto"
 	}
+	inputs := []exec.Input{{Name: "video", RelativePath: brief.Video.Path, ObjectID: object.ID,
+		SHA256: object.SHA256, MediaType: object.MediaType, SizeBytes: object.SizeBytes}}
+	if brief.Poses != nil {
+		poses, err := r.held(ctx, orgID, brief.Poses.ObjectID)
+		if err != nil {
+			return Reconstruction{}, err
+		}
+		if brief.Poses.Name == "" {
+			brief.Poses.Name = "poses.csv"
+		}
+		brief.Poses.Path = "poses/" + path.Base(brief.Poses.Name)
+		inputs = append(inputs, exec.Input{Name: "poses", RelativePath: brief.Poses.Path, ObjectID: poses.ID,
+			SHA256: poses.SHA256, MediaType: poses.MediaType, SizeBytes: poses.SizeBytes})
+	}
 	said, err := json.Marshal(brief)
 	if err != nil {
 		return Reconstruction{}, err
@@ -296,8 +348,7 @@ func (r *Reconstructor) Start(ctx context.Context, principalID, orgID string, br
 		ImageDigest: r.settings.Image,
 		Command:     []string{"python", "-m", "iocean_reconstruct.job"},
 		Args:        []string{string(said)},
-		Inputs: []exec.Input{{Name: "video", RelativePath: brief.Video.Path, ObjectID: object.ID,
-			SHA256: object.SHA256, MediaType: object.MediaType, SizeBytes: object.SizeBytes}},
+		Inputs:      inputs,
 		Outputs: []exec.Output{{Name: "reconstruction", RelativePath: "reconstruction.tar",
 			MediaType: "application/x-tar", MaxSizeBytes: r.settings.PackageBytes}},
 		RequestCPU: r.settings.CPU, RequestMemoryBytes: r.settings.MemoryBytes,

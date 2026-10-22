@@ -5908,6 +5908,31 @@ components:
           required: [type]
           properties:
             type: { type: string, enum: [pipeline, platform, wind-foundation, other] }
+        poses:
+          type: object
+          description: The vehicle's navigation for every frame, a CSV the organisation holds (image, t, x east, y north, z up, qw qx qy qz camera to world, altitudeM); used instead of solving the cameras from the pictures.
+          required: [objectId]
+          properties:
+            objectId: { type: string }
+            name: { type: string }
+            path: { type: string, readOnly: true }
+        camera:
+          type: object
+          description: The lens at the video's resolution, as OpenCV's model has it. Required with poses.
+          required: [model, width, height, fx, fy, cx, cy]
+          properties:
+            model: { type: string, enum: [OPENCV] }
+            width: { type: integer }
+            height: { type: integer }
+            fx: { type: number }
+            fy: { type: number }
+            cx: { type: number }
+            cy: { type: number }
+            k1: { type: number }
+            k2: { type: number }
+            p1: { type: number }
+            p2: { type: number }
+        enhance: { type: string, enum: [clahe, ""], description: Lift the frames' contrast before features and training. }
 
     AssetBrief:
       type: object

@@ -170,3 +170,15 @@ func TestAVideoOfAStructureSaysWhatItIs(t *testing.T) {
 		t.Fatal("a structure of no known type was taken")
 	}
 }
+
+func TestNavigationPosesComeWithTheirLens(t *testing.T) {
+	brief := Brief{Video: Video{ObjectID: "obj_1"}, Poses: &Video{ObjectID: "obj_2"}}
+	if err := brief.Validate(); err == nil {
+		t.Fatal("poses without a lens were taken")
+	}
+	brief.Camera = &Camera{Model: "OPENCV", Width: 2704, Height: 1520, Fx: 1612.36, Fy: 1622.56, Cx: 1365.43, Cy: 741.27}
+	brief.Enhance = "clahe"
+	if err := brief.Validate(); err != nil {
+		t.Fatalf("poses with their lens were refused: %v", err)
+	}
+}

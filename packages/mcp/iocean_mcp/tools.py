@@ -1203,7 +1203,8 @@ def uploads_confirm(platform: Platform, grant: str, org: str = "") -> dict:
 
 def reconstructions_create(platform: Platform, video: str, name: str = "", org: str = "",
                            camera_height_m: float | None = None, start: Any = None,
-                           label: str = "", fps: float | None = None, tape: str = "", structure: str = "") -> dict:
+                           label: str = "", fps: float | None = None, tape: str = "", structure: str = "",
+                           poses: str = "", camera: dict | None = None, enhance: str = "") -> dict:
     """Make a reef, or a structure, from a dive video the institution holds."""
     brief: dict[str, Any] = {"video": {"objectId": video}}
     if name:
@@ -1226,6 +1227,12 @@ def reconstructions_create(platform: Platform, video: str, name: str = "", org: 
         brief["tape"] = tape
     if structure:
         brief["structure"] = {"type": structure}
+    if poses:
+        brief["poses"] = {"objectId": poses}
+    if camera:
+        brief["camera"] = dict(camera)
+    if enhance:
+        brief["enhance"] = enhance
     made = platform.request("POST", f"/api/v1/organisations/{_organisation(platform, org)}/reconstructions", brief)
     return {**_reconstruction_summary(made),
             "note": "reconstructions_status says how it is going; a reconstruction runs on a GPU "
@@ -1250,7 +1257,8 @@ def _reconstruction_summary(made: dict) -> dict:
         how = str(scale.get("how") or "")
         # The reef's size is only as good as what gave it its scale: a camera
         # height nobody stated is the job's default, and says so.
-        kind = ASSUMED if "assum" in how.lower() or brief.get("cameraHeightM") is None else DERIVED
+        kind = (ASSUMED if "assum" in how.lower() or (brief.get("cameraHeightM") is None and not brief.get("poses"))
+                else MEASURED if brief.get("poses") else DERIVED)
         source = f"scale {how or 'unstated'}" + (f" from {scale['from']}" if scale.get("from") else "")
         pieces = manifest.get("pieces") or []
         out["reef"] = {

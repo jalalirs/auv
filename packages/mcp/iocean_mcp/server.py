@@ -155,10 +155,22 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
                       "description": "a survey tape in the frames is taken out (auto, the default) or kept"},
              "structure": {"type": "string", "enum": ["pipeline", "platform", "wind-foundation", "other"],
                            "description": "when the video is of a structure, not a reef: what it is. It is "
-                                          "made and laid as a reef is, and kept as a structure"}},
+                                          "made and laid as a reef is, and kept as a structure"},
+             "poses": {"type": "string",
+                       "description": "an uploaded CSV of the vehicle's navigation for every frame (image, t, x east, "
+                                      "y north, z up, qw qx qy qz camera to world, altitudeM), used instead of "
+                                      "solving the cameras from the pictures; needs camera. tools/subpipe-poses "
+                                      "writes one"},
+             "camera": {"type": "object",
+                        "description": "the lens at the video's resolution: {model: OPENCV, width, height, fx, fy, "
+                                       "cx, cy, k1, k2, p1, p2}"},
+             "enhance": {"type": "string", "enum": ["clahe", ""],
+                         "description": "lift the frames' contrast first (murky water)"}},
          "required": ["video"]},
-        lambda p, video, name="", org="", camera_height_m=None, start=None, label="", fps=None, tape="", structure="":
-            tools.reconstructions_create(p, video, name, org, camera_height_m, start, label, fps, tape, structure)),
+        lambda p, video, name="", org="", camera_height_m=None, start=None, label="", fps=None, tape="", structure="",
+               poses="", camera=None, enhance="":
+            tools.reconstructions_create(p, video, name, org, camera_height_m, start, label, fps, tape, structure,
+                                         poses, camera, enhance)),
     "reconstructions_status": (
         "How a reconstruction is going: the last steps it reported, and when it is ready, how many "
         "frames it placed, its pieces and splats, and how big the reef is and where its scale came from.",
