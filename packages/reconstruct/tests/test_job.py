@@ -55,3 +55,16 @@ def test_a_coordinate_is_metres_east_and_north_of_the_centre():
     site = {"from": {"centre": {"latitude": 22.284, "longitude": 38.962}}}
     x, y = local_of(site, 22.284 + 0.001, 38.962 + 0.001)
     assert 102 < x < 104 and 110 < y < 111.5
+
+
+def test_two_assets_whose_ground_touches_are_said_to_overlap():
+    import numpy as np
+
+    from iocean_reconstruct.lay import overlaps
+
+    strip = np.stack(np.meshgrid(np.arange(0, 20.0), np.arange(0, 3.0)), -1).reshape(-1, 2)
+    apart = [{"name": "a", "ground": strip}, {"name": "b", "ground": strip + [100.0, 0.0]}]
+    touching = [{"name": "a", "ground": strip}, {"name": "b", "ground": strip + [19.5, 0.0]}]
+    assert overlaps(apart) == []
+    said = overlaps(touching)
+    assert len(said) == 1 and "a and b overlap" in said[0]
