@@ -152,10 +152,13 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
              "label": {"type": "string", "description": "what to call it; the video's name when absent"},
              "fps": {"type": "number", "description": "frames read a second, 0.5 to 5; default 2"},
              "tape": {"type": "string", "enum": ["auto", "keep"],
-                      "description": "a survey tape in the frames is taken out (auto, the default) or kept"}},
+                      "description": "a survey tape in the frames is taken out (auto, the default) or kept"},
+             "structure": {"type": "string", "enum": ["pipeline", "platform", "wind-foundation", "other"],
+                           "description": "when the video is of a structure, not a reef: what it is. It is "
+                                          "made and laid as a reef is, and kept as a structure"}},
          "required": ["video"]},
-        lambda p, video, name="", org="", camera_height_m=None, start=None, label="", fps=None, tape="":
-            tools.reconstructions_create(p, video, name, org, camera_height_m, start, label, fps, tape)),
+        lambda p, video, name="", org="", camera_height_m=None, start=None, label="", fps=None, tape="", structure="":
+            tools.reconstructions_create(p, video, name, org, camera_height_m, start, label, fps, tape, structure)),
     "reconstructions_status": (
         "How a reconstruction is going: the last steps it reported, and when it is ready, how many "
         "frames it placed, its pieces and splats, and how big the reef is and where its scale came from.",

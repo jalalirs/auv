@@ -219,7 +219,7 @@ func structureChosen(a AssetRequest, made reconstructing.Reconstruction) (map[st
 	case made.Kind == reconstructing.KindBathymetry:
 		return nil, fmt.Errorf("%w: %s is a survey, a place's ground; build the place with it (survey), not lay it in",
 			domain.ErrInvalid, made.ID)
-	case made.Kind != reconstructing.KindStructure || made.Structure == nil:
+	case made.MadeFrom == reconstructing.FromVideo || made.Structure == nil:
 		if a.Placement != nil {
 			return nil, fmt.Errorf("%w: %s is a reef, found its place by a search; a placement is for a structure that stands",
 				domain.ErrInvalid, made.ID)

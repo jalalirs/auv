@@ -5902,6 +5902,12 @@ components:
           type: string
           enum: [auto, keep]
           description: A survey tape in the frames is found and taken out (auto, the default) or kept.
+        structure:
+          type: object
+          description: When the video is of a structure, not a reef. Its splats are made and laid as a reef's; the asset is a structure of this type.
+          required: [type]
+          properties:
+            type: { type: string, enum: [pipeline, platform, wind-foundation, other] }
 
     AssetBrief:
       type: object

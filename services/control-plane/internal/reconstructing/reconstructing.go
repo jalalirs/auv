@@ -95,6 +95,10 @@ type Brief struct {
 	// Tape is what is done with a survey tape in the frames: auto finds it
 	// and takes it out, keep leaves it in.
 	Tape string `json:"tape,omitempty"`
+	// Structure, when the video is of a structure rather than a reef (a
+	// pipeline an AUV followed, say): what it is. Its splats are made and laid
+	// as a reef's are; the asset is a structure of that type.
+	Structure *Structure `json:"structure,omitempty"`
 }
 
 // Validate reports whether a brief describes something that can be
@@ -118,6 +122,9 @@ func (b Brief) Validate() error {
 	case "", "auto", "keep":
 	default:
 		return fmt.Errorf("%w: a survey tape is taken out (auto) or kept (keep), not %q", domain.ErrInvalid, b.Tape)
+	}
+	if s := b.Structure; s != nil && !StructureTypes[s.Type] {
+		return fmt.Errorf("%w: a structure is a pipeline, platform, wind-foundation or other, not %q", domain.ErrInvalid, s.Type)
 	}
 	return nil
 }
@@ -306,10 +313,17 @@ func (r *Reconstructor) Start(ctx context.Context, principalID, orgID string, br
 
 	made := Reconstruction{ID: ids.New(ids.KindReconstruction), OrgID: orgID, JobID: job.ID,
 		Brief: brief, Name: nameOf(brief), Kind: KindReef, MadeFrom: FromVideo, CreatedBy: principalID}
+	var structure []byte
+	if brief.Structure != nil {
+		made.Kind, made.Structure = KindStructure, &Structure{Type: brief.Structure.Type, Meets: Rebuilt}
+		if structure, err = json.Marshal(made.Structure); err != nil {
+			return Reconstruction{}, err
+		}
+	}
 	err = r.pool.QueryRow(ctx, `
-		INSERT INTO catalog.reconstruction (id, org_id, job_id, brief, name, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6) RETURNING created_at`,
-		made.ID, made.OrgID, made.JobID, said, made.Name, principalID).Scan(&made.CreatedAt)
+		INSERT INTO catalog.reconstruction (id, org_id, job_id, brief, name, created_by, kind, structure)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING created_at`,
+		made.ID, made.OrgID, made.JobID, said, made.Name, principalID, made.Kind, structure).Scan(&made.CreatedAt)
 	if err != nil {
 		return Reconstruction{}, fmt.Errorf("recording a reconstruction: %w", err)
 	}

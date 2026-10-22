@@ -159,3 +159,14 @@ func TestTheLibraryShowsEveryKindTheSameWay(t *testing.T) {
 		t.Errorf("a reef's brief is %T", reef.Brief)
 	}
 }
+
+func TestAVideoOfAStructureSaysWhatItIs(t *testing.T) {
+	brief := Brief{Video: Video{ObjectID: "obj_1"}, Structure: &Structure{Type: "pipeline"}}
+	if err := brief.Validate(); err != nil {
+		t.Fatalf("a pipeline from a video was refused: %v", err)
+	}
+	brief.Structure.Type = "submarine"
+	if err := brief.Validate(); err == nil {
+		t.Fatal("a structure of no known type was taken")
+	}
+}

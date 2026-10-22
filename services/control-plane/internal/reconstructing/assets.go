@@ -37,11 +37,13 @@ const (
 	FromRoute  = "route"
 )
 
-// How a structure meets the seabed: it stands on it at a placement, or drapes
-// along its own route.
+// How a structure meets the seabed: it stands on it at a placement, drapes
+// along its own route, or was rebuilt from a video with the ground it lies on
+// and is fitted to a place's seabed by a search, as a reef is.
 const (
-	Stands = "stands"
-	Drapes = "drapes"
+	Stands  = "stands"
+	Drapes  = "drapes"
+	Rebuilt = "rebuilt"
 )
 
 // ImportRecipe is what the import job is recorded as having been made by.

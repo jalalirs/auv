@@ -1203,8 +1203,8 @@ def uploads_confirm(platform: Platform, grant: str, org: str = "") -> dict:
 
 def reconstructions_create(platform: Platform, video: str, name: str = "", org: str = "",
                            camera_height_m: float | None = None, start: Any = None,
-                           label: str = "", fps: float | None = None, tape: str = "") -> dict:
-    """Make a reef from a dive video the institution holds."""
+                           label: str = "", fps: float | None = None, tape: str = "", structure: str = "") -> dict:
+    """Make a reef, or a structure, from a dive video the institution holds."""
     brief: dict[str, Any] = {"video": {"objectId": video}}
     if name:
         brief["video"]["name"] = name
@@ -1224,6 +1224,8 @@ def reconstructions_create(platform: Platform, video: str, name: str = "", org: 
         brief["fps"] = float(fps)
     if tape:
         brief["tape"] = tape
+    if structure:
+        brief["structure"] = {"type": structure}
     made = platform.request("POST", f"/api/v1/organisations/{_organisation(platform, org)}/reconstructions", brief)
     return {**_reconstruction_summary(made),
             "note": "reconstructions_status says how it is going; a reconstruction runs on a GPU "

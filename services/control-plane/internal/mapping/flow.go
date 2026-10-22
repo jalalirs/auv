@@ -143,7 +143,7 @@ func (m *Mapper) Start(ctx context.Context, principalID, reconstructionID string
 	if err != nil {
 		return Mapping{}, err
 	}
-	if made.Kind != reconstructing.KindReef {
+	if made.MadeFrom != reconstructing.FromVideo {
 		return Mapping{}, fmt.Errorf("%w: %s is a %s; a place of its own is for a reef, and a %s is put onto a place that exists",
 			domain.ErrInvalid, made.ID, made.Kind, made.Kind)
 	}
@@ -952,7 +952,7 @@ func assetAt(mp *Mapping, ordinal int) (*Asset, error) {
 // stagedAt is where an asset's files are staged for the lay job: a reef's
 // under reconstruction/<id>, as always, anything else under asset/<id>.
 func stagedAt(made reconstructing.Reconstruction) string {
-	if made.Kind == reconstructing.KindStructure {
+	if made.MadeFrom != reconstructing.FromVideo {
 		return "asset/" + made.ID
 	}
 	return "reconstruction/" + made.ID
@@ -969,7 +969,7 @@ func layBrief(assets []Asset, videos map[string]reconstructing.Reconstruction) m
 			continue
 		}
 		made := videos[a.ReconstructionID]
-		if made.Kind == reconstructing.KindStructure && made.Structure != nil {
+		if made.MadeFrom != reconstructing.FromVideo && made.Structure != nil {
 			entry := map[string]any{"name": a.Name, "path": stagedAt(made), "kind": reconstructing.KindStructure,
 				"type": made.Structure.Type, "meets": made.Structure.Meets}
 			if made.Structure.Meets == reconstructing.Stands {

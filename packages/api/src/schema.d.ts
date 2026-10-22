@@ -7314,6 +7314,11 @@ export interface components {
              * @enum {string}
              */
             tape?: "auto" | "keep";
+            /** @description When the video is of a structure, not a reef. Its splats are made and laid as a reef's; the asset is a structure of this type. */
+            structure?: {
+                /** @enum {string} */
+                type: "pipeline" | "platform" | "wind-foundation" | "other";
+            };
         };
         /** @description A bathymetry survey (file, datum, errorM, object) or a structure (type, meets, and a model with its object, or for a pipeline a route). A model stands; a route drapes.
          *      */
@@ -7366,7 +7371,7 @@ export interface components {
                 /** @description [latitude, longitude] pairs, in degrees. */
                 points: number[][];
                 diameterM: number;
-                /** @description How deep it is buried */
+                /** @description The share of its diameter under the seabed */
                 burial?: number;
             };
             /** @description The uploaded file the organisation holds (not for a route). */
