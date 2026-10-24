@@ -2277,6 +2277,13 @@ scores, fly or sweep with it, its builds).
 **Done when:** every page passes docs/ui.md at 1280 px and at 125% zoom,
 Back works from every detail page, and the user signs it off page by page.
 
+**Status 2026-10-24 (night):** detail pages for a controller (dives, builds,
+scores, Fly, Pull latest) and for a structure or survey (what the import
+measured, into New place with it chosen) added; every harness page checked at
+1024 px (1280 at 125%) with no sideways scroll, after clipping the background
+glow that widened every page by a tenth. Waiting: the user's page-by-page
+sign-off.
+
 ## 69. A new controller from GitHub or a zip
 
 Asked 2026-10-18; one of the two features the user calls most important.
