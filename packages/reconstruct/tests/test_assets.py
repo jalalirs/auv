@@ -244,3 +244,30 @@ def test_structures_are_laid_drawn_and_stood_on(tmp_path):
     mesh = stage.GetPrimAtPath("/Structure/Mesh")
     world = np.array(UsdGeom.Xformable(mesh).ComputeLocalToWorldTransform(Usd.TimeCode.Default())).T
     assert np.allclose(world[:3, 3], [fx, fy, bottom], atol=1e-6)
+
+
+def test_a_pipe_faces_out_of_itself():
+    import numpy as np
+    from iocean_reconstruct.lay import tube
+    verts, faces, centre = tube([[0, 0], [10, 0]], 1.0, 0.0, lambda x, y: np.zeros_like(x))
+    side = faces[: len(faces) - 2 * 16]
+    a, b, c = verts[side[:, 0]], verts[side[:, 1]], verts[side[:, 2]]
+    normal = np.cross(b - a, c - a)
+    middle = (a + b + c) / 3
+    out = middle - np.c_[middle[:, 0], np.zeros(len(middle)), np.full(len(middle), 0.5)]
+    assert (np.einsum("ij,ij->i", normal, out) > 0).mean() > 0.99
+
+
+def test_a_standing_structure_carries_its_surface(tmp_path):
+    from pxr import Usd, UsdShade
+    from iocean_reconstruct.lay import STANDING, surface_of
+    from iocean_reconstruct.asset import write_usd_mesh
+    import numpy as np
+    write_usd_mesh(tmp_path / "model.usdc", np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], float), np.array([[0, 1, 2]]))
+    look = surface_of("platform")
+    (tmp_path / "structure.usda").write_text(STANDING.format(name="p", kind="platform", x=0.0, y=0.0, z=0.0, heading=0.0,
+                                                             r=look["colour"][0], g=look["colour"][1], b=look["colour"][2],
+                                                             roughness=look["roughness"], metallic=look["metallic"]))
+    stage = Usd.Stage.Open(str(tmp_path / "structure.usda"))
+    bound, _ = UsdShade.MaterialBindingAPI(stage.GetPrimAtPath("/Structure/Mesh")).ComputeBoundMaterial()
+    assert bound and bound.GetPath().pathString == "/Structure/Looks/Surface"

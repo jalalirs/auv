@@ -69,12 +69,20 @@ import traceback
 import numpy as np
 
 from .asset import read_usd_mesh, write_usd_mesh
-from .job import INPUTS, OUTPUTS, SCRATCH, grut_copy, python, run, tell
+from .job import INPUTS, OUTPUTS, SCRATCH, grut_copy, python, run, tell, whole_of
 from .resolve import local_of
 
 # How far a structure clears the place's colonies, and the sides of a tube.
 STRUCTURE_CLEAR_M = 0.5
 RING = 16
+# A strip's sand, for the place's ground round it: its splats within
+# SAND_BAND_M of its edge and SAND_OVER_M of its ground (the pipe or the reef
+# is in the middle and stands up). The place's colour goes to it under the
+# strip and back to its own over GROUND_FALLOFF_M.
+SAND_BAND_M = 3.0
+SAND_OVER_M = 0.5
+GROUND_FALLOFF_M = 15.0
+SH_C0 = 0.28209479177387814
 
 
 def placement_of(brief: dict, surface_dir) -> dict:
@@ -151,7 +159,139 @@ def lay_one(asset: dict, rec: pathlib.Path, place: pathlib.Path, work: pathlib.P
                       "--sink", sink, "--clear", clear, "--video", json.dumps(video)))
     for f in parts:
         f.unlink(missing_ok=True)
+    blend_ground(place, name, rec, P, [rec / piece["checkpoint"] for piece in manifest["pieces"]], n=n, of=of)
     return {"name": name, "placed": placed, "start": frames[0]["eye"], "ground": footprint(rec, P, placed["dz"])}
+
+
+# -- the place's ground coloured to a strip ---------------------------------------------------------
+
+def strip_colour(rec: pathlib.Path, checkpoints: list[pathlib.Path]) -> dict | None:
+    """A strip's sand as its own splats have it: their base colour (the SH's
+    DC term), opacity-weighted, over the band SAND_BAND_M in from its edge and
+    within SAND_OVER_M of its ground. The parts are in the strip's own frame,
+    as its surface is."""
+    import torch
+    from scipy import ndimage
+
+    said = json.loads((rec / "surface.json").read_text())
+    grid = np.fromfile(rec / "surface.f32", dtype="<f4").reshape(said["rows"], said["columns"])
+    cell, (ox, oy) = float(said["cellM"]), said["origin"]
+    whole = whole_of(np.isfinite(grid), cell)
+    band = whole & (ndimage.distance_transform_edt(np.pad(whole, 1))[1:-1, 1:-1] * cell <= SAND_BAND_M)
+    total, weight, count = np.zeros(3), 0.0, 0
+    for path in checkpoints:
+        ck = torch.load(path, map_location="cpu", weights_only=False)
+        pos = ck["positions"].detach().double().numpy()
+        alpha = torch.sigmoid(ck["density"].detach().double()).numpy().reshape(len(pos), -1)[:, 0]
+        colour = np.clip(0.5 + SH_C0 * ck["features_albedo"].detach().double().numpy()[:, :3], 0.0, 1.0)
+        del ck
+        u = np.round((pos[:, 0] - ox) / cell).astype(int)
+        v = np.round((pos[:, 1] - oy) / cell).astype(int)
+        ok = (u >= 0) & (u < said["columns"]) & (v >= 0) & (v < said["rows"])
+        sel = ok.copy()
+        with np.errstate(invalid="ignore"):
+            sel[ok] = band[v[ok], u[ok]] & (np.abs(pos[ok, 2] - grid[v[ok], u[ok]]) <= SAND_OVER_M)
+        total += (alpha[sel, None] * colour[sel]).sum(0)
+        weight += float(alpha[sel].sum())
+        count += int(sel.sum())
+    if weight <= 0:
+        return None
+    return {"colour": [float(c) for c in total / weight], "splats": count}
+
+
+def ground_blend(rgb: np.ndarray, across: float, P: np.ndarray, whole: np.ndarray, cell: float, origin,
+                 colour, falloff: float = GROUND_FALLOFF_M) -> tuple[np.ndarray, dict]:
+    """The place's colour map (rows north to south, columns west to east, laid
+    nought-to-one over `across` metres as make-site lays it) taken to `colour`
+    over a strip's footprint (`whole`, its own grid, put in the place by P),
+    and back to its own over `falloff` metres outside it, smoothstep on the
+    distance. Only a window round the strip is touched."""
+    from scipy import ndimage
+
+    h, w = rgb.shape[:2]
+    ox, oy = origin
+    rr, cc = np.nonzero(whole)
+    if not len(rr):
+        return rgb, {"texels": 0}
+    own = np.c_[ox + cc * cell, oy + rr * cell]
+    xy = own @ P[:2, :2].T + P[:2, 3]                               # the strip's cells, in the place
+    lo, hi = xy.min(0) - falloff - cell, xy.max(0) + falloff + cell
+    c0, c1 = (np.clip(np.round((np.array([lo[0], hi[0]]) / across + 0.5) * w - 0.5), 0, w - 1)).astype(int)
+    r0, r1 = (np.clip(np.round((0.5 - np.array([hi[1], lo[1]]) / across) * h - 0.5), 0, h - 1)).astype(int)
+    C, R = np.meshgrid(np.arange(c0, c1 + 1), np.arange(r0, r1 + 1))
+    X, Y = ((C + 0.5) / w - 0.5) * across, (0.5 - (R + 0.5) / h) * across
+    # A texel is under the strip if its centre is, or any of the strip's cells
+    # is in it (a strip finer than the map's texels has no texel centre in it).
+    back = (np.stack([X.ravel(), Y.ravel()], 1) - P[:2, 3]) @ P[:2, :2]
+    u = np.round((back[:, 0] - ox) / cell).astype(int)
+    v = np.round((back[:, 1] - oy) / cell).astype(int)
+    ok = (u >= 0) & (u < whole.shape[1]) & (v >= 0) & (v < whole.shape[0])
+    under = np.zeros(len(u), dtype=bool)
+    under[ok] = whole[v[ok], u[ok]]
+    under = under.reshape(C.shape)
+    tc = np.round((xy[:, 0] / across + 0.5) * w - 0.5).astype(int) - c0
+    tr = np.round((0.5 - xy[:, 1] / across) * h - 0.5).astype(int) - r0
+    ok = (tc >= 0) & (tc < C.shape[1]) & (tr >= 0) & (tr < C.shape[0])
+    under[tr[ok], tc[ok]] = True
+    if not under.any():
+        return rgb, {"texels": 0}
+    d = ndimage.distance_transform_edt(~under, sampling=(across / h, across / w))
+    t = np.clip(d / max(falloff, 1e-6), 0.0, 1.0)
+    weight = 1.0 - t * t * (3.0 - 2.0 * t)
+    out = rgb.astype(float).copy()
+    window = out[r0:r1 + 1, c0:c1 + 1]
+    before = window[under].mean(0)
+    out[r0:r1 + 1, c0:c1 + 1] = window * (1.0 - weight[..., None]) + np.asarray(colour, float) * weight[..., None]
+    return out, {"texels": int((weight > 0).sum()), "texelsUnder": int(under.sum()),
+                 "before": [float(c) for c in before]}
+
+
+def blend_ground(place: pathlib.Path, name: str, rec: pathlib.Path, P: np.ndarray, checkpoints: list[pathlib.Path],
+                 colour=None, n: int = 1, of: int = 1) -> dict | None:
+    """The place's ground colour (textures/site_colour.jpg, which make-site
+    writes for a place with a ground) taken to a strip's sand under it and
+    round it, so the strip is not a carpet of another colour on the floor;
+    recorded on the strip in site.json. `colour` given, its splats are not
+    read (tests). A place painted some other way is left as it is."""
+    site_path = place / "site.json"
+    site = json.loads(site_path.read_text())
+    texture = place / "textures" / "site_colour.jpg"
+    if site.get("ground") is None or not texture.is_file():
+        tell("ground", f"{name}: the place has no colour map of its own; its ground is left as it is", n=n, of=of)
+        return None
+    from PIL import Image
+
+    said = json.loads((rec / "surface.json").read_text())
+    grid = np.fromfile(rec / "surface.f32", dtype="<f4").reshape(said["rows"], said["columns"])
+    cell = float(said["cellM"])
+    splats = None
+    if colour is None:
+        found = strip_colour(rec, checkpoints)
+        if not found:
+            tell("ground", f"{name}: no splats by the strip's edge to take a colour from; the ground is left",
+                 n=n, of=of)
+            return None
+        colour, splats = found["colour"], found["splats"]
+    rgb = np.asarray(Image.open(texture).convert("RGB"), dtype=float) / 255.0
+    out, how = ground_blend(rgb, float(site["from"]["acrossMetres"]), P, whole_of(np.isfinite(grid), cell), cell,
+                            said["origin"], colour)
+    if not how["texels"]:
+        return None
+    Image.fromarray(np.clip(np.round(out * 255), 0, 255).astype("uint8")).save(texture, quality=95)
+    record = {"colour": [round(float(c), 4) for c in colour], "falloffM": GROUND_FALLOFF_M,
+              "texture": "textures/site_colour.jpg", "placeColourBefore": [round(c, 4) for c in how["before"]],
+              "texels": how["texels"], "texelsUnder": how["texelsUnder"], "splats": splats,
+              "kind": "derived",
+              "from": (f"derived: from the asset's splats, their base colour opacity-weighted within {SAND_BAND_M:g} m "
+                       f"of the strip's edge and {SAND_OVER_M:g} m of its ground; the place's colour taken to it "
+                       f"under the strip and back to its own over {GROUND_FALLOFF_M:g} m (smoothstep)")}
+    for entry in site.get("reconstructions") or []:
+        if entry.get("name") == name:
+            entry["groundColour"] = record
+    site_path.write_text(json.dumps(site, indent=1))
+    tell("ground", f"{name}: the place's ground taken to the strip's sand under it and over {GROUND_FALLOFF_M:g} m "
+                   "round it", n=n, of=of, colour=record["colour"])
+    return record
 
 
 def footprint(rec: pathlib.Path, P: np.ndarray, dz: float) -> np.ndarray:
@@ -284,7 +424,9 @@ def tube(xy, diameter: float, burial: float, under, step: float | None = None,
     jj = np.arange(ring)
     caps = np.concatenate([np.stack([np.full(ring, first), (jj + 1) % ring, jj], -1),
                            np.stack([np.full(ring, last), (n - 1) * ring + jj, (n - 1) * ring + (jj + 1) % ring], -1)])
-    return verts, np.concatenate([faces, caps]).astype(np.int64), centre
+    # Wound so each triangle faces out of the pipe: the other way the renderer
+    # saw the inside of every face and drew the pipe black.
+    return verts, np.concatenate([faces, caps])[:, ::-1].astype(np.int64), centre
 
 
 def pipe_tops(xy, centre: np.ndarray, diameter: float, under, longest: float = 200.0) -> list[dict]:
@@ -402,6 +544,21 @@ def clear_colonies(place: pathlib.Path, site: dict, xy: np.ndarray, within: floa
     return removed
 
 
+# What a structure is made of, as it looks a few years on the seabed: a
+# platform's or a foundation's steel painted and fouled, a pipeline's concrete
+# weight coat. Chosen, not measured.
+SURFACES = {
+    "platform": {"colour": (0.30, 0.31, 0.29), "roughness": 0.6, "metallic": 0.35},
+    "wind-foundation": {"colour": (0.33, 0.35, 0.30), "roughness": 0.6, "metallic": 0.3},
+    "pipeline": {"colour": (0.46, 0.44, 0.40), "roughness": 0.95, "metallic": 0.0},
+    "other": {"colour": (0.40, 0.40, 0.40), "roughness": 0.8, "metallic": 0.1},
+}
+
+
+def surface_of(kind: str | None) -> dict:
+    return SURFACES.get(kind or "other", SURFACES["other"])
+
+
 STANDING = '''#usda 1.0
 (
     doc = "{name}: a structure ({kind}) standing on this place's seabed. Metres, Z up."
@@ -412,11 +569,30 @@ STANDING = '''#usda 1.0
 
 def Xform "Structure" (
     prepend references = @model.usdc@
+    prepend apiSchemas = ["MaterialBindingAPI"]
 )
 {{
     double3 xformOp:translate = ({x!r}, {y!r}, {z!r})
     float xformOp:rotateZ = {heading!r}
     uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+    rel material:binding = </Structure/Looks/Surface>
+
+    def Scope "Looks"
+    {{
+        def Material "Surface"
+        {{
+            token outputs:surface.connect = </Structure/Looks/Surface/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {{
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = ({r!r}, {g!r}, {b!r})
+                float inputs:roughness = {roughness!r}
+                float inputs:metallic = {metallic!r}
+                token outputs:surface
+            }}
+        }}
+    }}
 }}
 '''
 
@@ -450,7 +626,8 @@ def lay_structure(asset: dict, src: pathlib.Path, place: pathlib.Path, n: int, o
         shift = np.round(centre.mean(0))
         write_usd_mesh(into / "structure.usdc", verts - shift, faces, np.full((1, 3), [0.45, 0.42, 0.38]),
                        doc=f"{name}: a pipeline {diameter:g} m across along its route on this place's seabed, "
-                           f"{burial * 100:.0f}% buried. Metres, Z up.", translate=shift)
+                           f"{burial * 100:.0f}% buried. Metres, Z up.", translate=shift,
+                       surface=surface_of("pipeline"))
         layer = f"structures/{name}/structure.usdc"
         start = [float(centre[0, 0]), float(centre[0, 1]), float(centre[0, 2] + diameter / 2 + 2.0)]
         placed = {"at": [float(v) for v in xy[0]], "headingDeg": 0.0, "dz": 0.0}
@@ -474,7 +651,8 @@ def lay_structure(asset: dict, src: pathlib.Path, place: pathlib.Path, n: int, o
             world[:, 2] += ground - at["baseZ"]
             shift = np.round(world.mean(0))
             write_usd_mesh(into / "structure.usdc", world - shift, faces, None, translate=shift,
-                           doc=f"{name}: a structure following this place's seabed. Metres, Z up.")
+                           doc=f"{name}: a structure following this place's seabed. Metres, Z up.",
+                           surface=surface_of(made.get("type")))
             layer = f"structures/{name}/structure.usdc"
         else:
             if spread > 0.5:
@@ -482,8 +660,12 @@ def lay_structure(asset: dict, src: pathlib.Path, place: pathlib.Path, n: int, o
                                 "the seabed at its middle, so some of it is buried or off the bottom")
             shutil.copy(model, into / "model.usdc")
             x, y, z = (float(v) for v in M[:3, 3])
+            look = surface_of(made.get("type"))
+            r, g, b = look["colour"]
             (into / "structure.usda").write_text(STANDING.format(name=name, kind=made.get("type") or "other",
-                                                                 x=x, y=y, z=z, heading=at["headingDeg"]))
+                                                                 x=x, y=y, z=z, heading=at["headingDeg"],
+                                                                 r=r, g=g, b=b, roughness=look["roughness"],
+                                                                 metallic=look["metallic"]))
             layer = f"structures/{name}/structure.usda"
         tell("place", f"{name}: at ({at['at'][0]:.0f}, {at['at'][1]:.0f}) m, turned {at['headingDeg']:g} degrees, "
                       f"its base at {at['baseZ']:.1f} m", n=n, of=of, at=at["at"], headingDeg=at["headingDeg"])

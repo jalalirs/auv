@@ -608,6 +608,44 @@ def pieces(quick: bool) -> list[dict]:
 
 # -- the asset's own frame, ground and parts ----------------------------------------------------------
 
+def whole_of(known, cell: float):
+    """A strip's measured cells closed over 1.5 m and their holes filled, as
+    trim_splats.py takes them: what the strip covers, with no edge at a gap."""
+    import numpy as np
+    from scipy import ndimage
+
+    r = max(1, int(round(1.5 / cell)))
+    disk = np.hypot(*np.mgrid[-r:r + 1, -r:r + 1]) <= r
+    return ndimage.binary_fill_holes(ndimage.binary_closing(np.pad(known, r), structure=disk))[r:-r, r:-r]
+
+
+def narrow_width(known, cell: float) -> float:
+    """How wide a strip is across its narrow way, metres: twice the furthest
+    any of it is from its edge."""
+    import numpy as np
+    from scipy import ndimage
+
+    whole = whole_of(known, cell)
+    if not whole.any():
+        return 0.0
+    return 2.0 * float(ndimage.distance_transform_edt(np.pad(whole, 1)).max()) * cell
+
+
+def edge_for(narrow_m: float) -> float:
+    """Metres faded over a strip's outer edge: 15% of its narrow width, 1 to 4 m.
+    A diver's reef 10 m across gets 1.5 m (it was 1 m for all); a vehicle's
+    strip 30 m across 4 m, so its edge is not a line drawn on the seabed."""
+    return float(min(max(0.15 * narrow_m, 1.0), 4.0))
+
+
+def edge_of(surface_dir: pathlib.Path) -> float:
+    import numpy as np
+
+    said = json.loads((surface_dir / "surface.json").read_text())
+    grid = np.fromfile(surface_dir / "surface.f32", dtype="<f4").reshape(said["rows"], said["columns"])
+    return edge_for(narrow_width(np.isfinite(grid), float(said["cellM"])))
+
+
 def asset(brief: dict, said_pieces: list[dict], tape_said: dict) -> dict:
     import numpy as np
     import torch
@@ -652,10 +690,15 @@ def asset(brief: dict, said_pieces: list[dict], tape_said: dict) -> dict:
     (SCRATCH / "identity.json").write_text(json.dumps({"matrix": np.eye(4).tolist(), "dz": 0.0}))
     parts = []
     code = grut_copy()
+    # The fade scales with the strip: a metre was a hard line along a vehicle's
+    # strip 10 m by 160 laid on a place's own sand.
+    edge = edge_of(out)
+    tell("trim", f"the strip's outer {edge:.1f} m faded", edgeM=round(edge, 2))
     for i, (p, b) in enumerate(zip(said_pieces, baked)):
         t = SCRATCH / f"{p['name']}-trimmed.pt"
         trimmed = last_json(run("trim", python("trim_splats.py", b, t, SCRATCH / "identity.json", out,
-                                               "--translate", "0,0,0")))
+                                               "--translate", "0,0,0", "--edge", f"{edge:.2f}")))
+        trimmed["edgeM"] = round(edge, 2)
         ck = torch.load(t, map_location="cpu", weights_only=False)
         n = int(ck["positions"].shape[0])
         if n < 1000:

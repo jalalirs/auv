@@ -267,10 +267,12 @@ def model_frame(vertices: np.ndarray, scale: float = 1.0, up: str = "z") -> np.n
     return v - [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, lo[2]]
 
 
-def write_usd_mesh(to: pathlib.Path, points, faces, colours=None, *, doc: str = "", translate=None) -> None:
+def write_usd_mesh(to: pathlib.Path, points, faces, colours=None, *, doc: str = "", translate=None,
+                   surface: dict | None = None) -> None:
     """One triangle mesh as a USD layer: metres, z up, /Structure/Mesh, marked
-    to collide for anything that reads USD physics."""
-    from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, Vt
+    to collide for anything that reads USD physics. `surface` ({"colour",
+    "roughness", "metallic"}) is bound to it as a preview surface."""
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade, Vt
 
     stage = Usd.Stage.CreateNew(str(to))
     UsdGeom.SetStageMetersPerUnit(stage, 1.0)
@@ -297,6 +299,15 @@ def write_usd_mesh(to: pathlib.Path, points, faces, colours=None, *, doc: str = 
                                                           UsdGeom.Tokens.vertex if len(c) == len(pts)
                                                           else UsdGeom.Tokens.constant)
         primvar.Set(Vt.Vec3fArray.FromNumpy(c if len(c) == len(pts) else c[:1]))
+    if surface:
+        look = UsdShade.Material.Define(stage, "/Structure/Looks/Surface")
+        shader = UsdShade.Shader.Define(stage, "/Structure/Looks/Surface/Shader")
+        shader.CreateIdAttr("UsdPreviewSurface")
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*surface["colour"]))
+        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(float(surface["roughness"]))
+        shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(float(surface["metallic"]))
+        look.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+        UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(look)
     UsdPhysics.CollisionAPI.Apply(mesh.GetPrim())
     UsdPhysics.MeshCollisionAPI.Apply(mesh.GetPrim()).CreateApproximationAttr().Set(UsdPhysics.Tokens.none)
     stage.GetRootLayer().Save()
