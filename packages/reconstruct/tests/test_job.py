@@ -191,3 +191,14 @@ def test_a_place_with_no_colour_map_is_left_alone(tmp_path):
     before = (place / "site.json").read_text()
     assert blend_ground(place, "strip", rec, P, [], colour=(0.8, 0.6, 0.4)) is None
     assert (place / "site.json").read_text() == before and "groundColour" not in json.loads(before)["reconstructions"][0]
+
+
+def test_pieces_of_one_strip_are_brought_to_one_colour():
+    import numpy as np
+    from iocean_reconstruct.lay import gains_for
+    blue, green = np.array([0.2, 0.4, 0.6]), np.array([0.2, 0.6, 0.4])
+    gains = gains_for([blue, green], [100, 100])
+    assert np.allclose(np.array(gains[0]) * blue, np.array(gains[1]) * green, atol=1e-3)
+    assert np.allclose(np.array(gains[0]) * blue, [0.2, 0.5, 0.5], atol=1e-3)
+    held = gains_for([np.array([0.05, 0.5, 0.5]), np.array([0.9, 0.5, 0.5])], [1, 1])
+    assert max(max(g) for g in held) <= 1.6 and min(min(g) for g in held) >= 0.6

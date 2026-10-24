@@ -137,12 +137,20 @@ def lay_one(asset: dict, rec: pathlib.Path, place: pathlib.Path, work: pathlib.P
     (work / "align-local.json").write_text(json.dumps(dict(path, usdMatrix=usd.tolist())))
 
     parts = []
+    # Pieces of a vehicle's strip, trained apart, are brought to one colour.
+    gains = piece_gains([rec / p["checkpoint"] for p in manifest["pieces"]]) \
+        if manifest.get("poses") and len(manifest["pieces"]) > 1 else None
+    if gains:
+        tell("bake", f"{name}: its pieces brought to one colour (gains "
+                     + ", ".join("/".join(f"{v:.2f}" for v in g) for g in gains) + ")", n=n, of=of, gains=gains)
     for i, piece in enumerate(manifest["pieces"]):
         baked = work / f"part-{i + 1}-baked.pt"
         tell("bake", f"{name}: part {i + 1} of {len(manifest['pieces'])} into the place's frame", n=n, of=of)
         # A strip from a vehicle's navigation was seen from one angle: only its
         # base colour holds from any other (bake_splats.py --base-colour).
         flat = ["--base-colour"] if manifest.get("poses") else []
+        if gains:
+            flat.append("--gain=" + ",".join(f"{v:.4f}" for v in gains[i]))
         run("bake", python("bake_splats.py", rec / piece["checkpoint"], "-", work / "align-local.json", baked,
                            work / "align-local-baked.json", *flat))
         usdz = work / f"part-{i + 1}.usdz"
@@ -167,6 +175,30 @@ def lay_one(asset: dict, rec: pathlib.Path, place: pathlib.Path, work: pathlib.P
 
 
 # -- the place's ground coloured to a strip ---------------------------------------------------------
+
+def gains_for(means: list[np.ndarray], counts: list[int], low: float = 0.6, high: float = 1.6) -> list[list[float]]:
+    """Per piece, what brings its mean colour to the strip's (the pieces'
+    means weighed by their splats), each channel held to [low, high]."""
+    target = np.average(np.array(means), axis=0, weights=np.array(counts, float))
+    return [np.clip(target / np.maximum(m, 1e-3), low, high).round(4).tolist() for m in means]
+
+
+def piece_gains(checkpoints: list[pathlib.Path]) -> list[list[float]]:
+    """Each piece's mean base colour (opacity-weighted SH DC) and the gains
+    that bring them to one."""
+    import torch
+
+    means, counts = [], []
+    for path in checkpoints:
+        ck = torch.load(path, map_location="cpu", weights_only=False)
+        alpha = torch.sigmoid(ck["density"].detach().double()).numpy().reshape(-1)
+        colour = np.clip(0.5 + SH_C0 * ck["features_albedo"].detach().double().numpy()[:, :3], 0.0, 1.0)
+        del ck
+        alpha = alpha[: len(colour)]
+        means.append((alpha[:, None] * colour).sum(0) / max(float(alpha.sum()), 1e-9))
+        counts.append(len(colour))
+    return gains_for(means, counts)
+
 
 def strip_colour(rec: pathlib.Path, checkpoints: list[pathlib.Path]) -> dict | None:
     """A strip's sand as its own splats have it: their base colour (the SH's
