@@ -5,7 +5,7 @@
 # Docker started them before 100.76.65.1 existed, and does not retry.
 #
 # Run on the box, as yourself (it asks for sudo):
-#   bash ~/code/auv/deployments/box/docker-after-tailscale.sh
+#   bash ~/iocean/scratch/docker-after-tailscale.sh
 # It adds one systemd drop-in for docker.service: start after tailscaled, and
 # wait up to 60 s for the address before starting (then start anyway, so a box
 # with Tailscale down still runs everything else). Nothing restarts now; it
