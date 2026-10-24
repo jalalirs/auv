@@ -443,8 +443,12 @@ def grut_copy() -> pathlib.Path:
 
 
 def train(step: str, data: pathlib.Path, name: str, quick: bool, *, downsample: int = 1,
-          iterations: int | None = None) -> pathlib.Path:
-    """One model trained; densifying less when the card runs out of memory."""
+          iterations: int | None = None, one_colour: bool = False) -> pathlib.Path:
+    """One model trained; densifying less when the card runs out of memory.
+    `one_colour`: each splat one colour from every side (no view-dependent
+    terms). A vehicle's single pass sees the ground from one angle only; what
+    the higher terms learn there turns green and pink from any other angle,
+    which is every angle a dive looks from."""
     runs = SCRATCH / "runs"
     found = sorted((runs / name).glob("*/ckpt_last.pt"))
     if found and done(f"train-{name}"):
@@ -465,6 +469,7 @@ def train(step: str, data: pathlib.Path, name: str, quick: bool, *, downsample: 
                 # just finished; the splats are what is wanted, not its score.
                 "test_last=false",
                 f"strategy.densify.clone_grad_threshold={grad}", f"strategy.densify.split_grad_threshold={grad}",
+                *(["model.optimize_features_specular=false"] if one_colour else []),
                 f"hydra.run.dir={SCRATCH / 'hydra' / name}"]
         with open(log, "w") as out:
             proc = subprocess.Popen(argv, stdout=out, stderr=subprocess.STDOUT, cwd=str(code))
@@ -580,7 +585,7 @@ def pieces_of(n: int) -> list[dict]:
     return out
 
 
-def pieces(quick: bool) -> list[dict]:
+def pieces(quick: bool, one_colour: bool = False) -> list[dict]:
     data = SCRATCH / "data"
     names = sorted(p.name for p in (data / "images").glob("*.jpg"))
     said = pieces_of(len(names))
@@ -602,7 +607,7 @@ def pieces(quick: bool) -> list[dict]:
             mark(f"data-{piece['name']}")
         tell("pieces", f"training {piece['name']} (frames {piece['trainFirst']} to {piece['trainLast']})",
              n=i + 1, of=len(said))
-        piece["checkpoint"] = str(train("pieces", root, piece["name"], quick))
+        piece["checkpoint"] = str(train("pieces", root, piece["name"], quick, one_colour=one_colour))
     return said
 
 
@@ -888,7 +893,7 @@ def main(argv: list[str]) -> int:
         frames_said = timed("frames", frames, brief)
         cameras_said = timed("cameras", cameras, brief, frames_said)
         tape_said = timed("tape", tape, brief, quick)
-        pieces_said = timed("pieces", pieces, quick)
+        pieces_said = timed("pieces", pieces, quick, bool(brief.get("poses")))
         asset_said = timed("asset", asset, brief, pieces_said, tape_said)
         out = SCRATCH / "asset"
         originals = SCRATCH / "frames-undistorted"
