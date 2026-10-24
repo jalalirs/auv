@@ -140,8 +140,11 @@ def lay_one(asset: dict, rec: pathlib.Path, place: pathlib.Path, work: pathlib.P
     for i, piece in enumerate(manifest["pieces"]):
         baked = work / f"part-{i + 1}-baked.pt"
         tell("bake", f"{name}: part {i + 1} of {len(manifest['pieces'])} into the place's frame", n=n, of=of)
+        # A strip from a vehicle's navigation was seen from one angle: only its
+        # base colour holds from any other (bake_splats.py --base-colour).
+        flat = ["--base-colour"] if manifest.get("poses") else []
         run("bake", python("bake_splats.py", rec / piece["checkpoint"], "-", work / "align-local.json", baked,
-                           work / "align-local-baked.json"))
+                           work / "align-local-baked.json", *flat))
         usdz = work / f"part-{i + 1}.usdz"
         run("bake", [sys.executable, "-m", "threedgrut.export.scripts.export_usd", "--checkpoint", baked,
                      "--output", usdz, "--format", "nurec", "--no-cameras", "--no-background", "--half",

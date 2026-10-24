@@ -1,7 +1,11 @@
 """Splats moved into a place's frame in their own data, so the renderer draws
 them with no transform at all.
 
-    python bake_splats.py CHECKPOINT SPLATS_USDZ ALIGN_JSON OUT_CHECKPOINT OUT_ALIGN_JSON
+    python bake_splats.py CHECKPOINT SPLATS_USDZ ALIGN_JSON OUT_CHECKPOINT OUT_ALIGN_JSON [--base-colour]
+
+--base-colour keeps each splat's DC colour only, the bands above it zeroed:
+for a vehicle's single pass, which saw the ground from one angle, and whose
+higher bands showed green and pink from every other angle a dive looks from.
 
 Isaac Sim draws a ParticleField under a scaled, rotated prim badly: with the
 whole video's 7.66 m-per-unit scale on the prim the far reef came out as haze
@@ -74,6 +78,9 @@ def place_from_colmap(usdz: pathlib.Path, align: dict) -> tuple[np.ndarray, np.n
 
 
 def main() -> int:
+    base_colour = "--base-colour" in sys.argv
+    if base_colour:
+        sys.argv.remove("--base-colour")
     ckpt_in, usdz, align_in, ckpt_out, align_out = (pathlib.Path(p) for p in sys.argv[1:6])
     # Opacity taken to the power 1/k^thin: an experiment on whether the
     # renderer integrates a splat's opacity over its size in world units.
@@ -97,7 +104,9 @@ def main() -> int:
             alpha = torch.sigmoid(ck["density"].double()).clamp(1e-6, 1 - 1e-6)
             alpha = 1 - (1 - alpha) ** (1.0 / k ** thin)
             ck["density"] = torch.logit(alpha.clamp(1e-6, 1 - 1e-6)).to(ck["density"].dtype)
-        if ck.get("features_specular") is not None and ck["features_specular"].numel():
+        if base_colour and ck.get("features_specular") is not None:
+            ck["features_specular"] = torch.zeros_like(ck["features_specular"])
+        elif ck.get("features_specular") is not None and ck["features_specular"].numel():
             from threedgrut.export.sh_rotation import rotate_specular
             spec = ck["features_specular"]
             degree = int(round(np.sqrt(spec.shape[1] // 3 + 1))) - 1
