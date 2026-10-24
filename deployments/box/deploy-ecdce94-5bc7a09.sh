@@ -3,7 +3,7 @@
 #   places r5 (ecdce94): soundings interpolated across short triangles, not each
 #     a flat tile (a 5 m survey came out as terraces); built on r4 with that
 #     one file replaced.
-#   reconstruct r6 (5bc7a09): a vehicle's run trains each splat one colour from
+#   reconstruct r6 (5c92710): a vehicle's run trains each splat one colour from
 #     every side (its single view taught colours that showed green and pink).
 # Run on the box:
 #   bash ~/iocean/scratch/deploy-5bc7a09918f4/deployments/box/deploy-ecdce94-5bc7a09.sh
