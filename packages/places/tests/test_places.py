@@ -87,3 +87,18 @@ def test_a_square_nobody_covers_is_refused(tmp_path):
 def test_numbers_have_a_kind():
     with pytest.raises(ValueError):
         Provenance("x", "guessed", "")
+
+
+def test_soundings_are_interpolated_between_not_made_tiles():
+    import numpy as np
+    from iocean_places.grid import Grid
+    from iocean_places.sources import gridded
+    from iocean_places.layer import Soundings, Provenance
+    xs, ys = np.meshgrid(np.arange(-20.0, 21.0, 5.0), np.arange(-20.0, 21.0, 5.0))
+    depth = -10.0 - 0.1 * xs.ravel()                # a plane sloping east
+    said = Soundings("depth", xs.ravel(), ys.ravel(), depth, np.full(depth.size, 0.2), Provenance("points", "measured", "test"))
+    grid = Grid(22.0, 38.0, 40.0, 41)
+    layer = gridded(grid, said, reach=30.0, slope=0.1)
+    gx, gy = grid.xy()
+    inside = (np.abs(gx) < 19) & (np.abs(gy) < 19)
+    assert np.nanmax(np.abs(layer.value[inside] - (-10.0 - 0.1 * gx[inside]))) < 1e-6

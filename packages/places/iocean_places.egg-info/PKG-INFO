@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: iocean-places
+Version: 0.1.0
+Summary: Build a place from whatever data there is: sources, layers, fusion, place, scene.
+Requires-Python: >=3.10
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: pillow
+Requires-Dist: matplotlib
+Provides-Extra: rasters
+Requires-Dist: rasterio; extra == "rasters"
+Provides-Extra: learned
+Requires-Dist: onnxruntime>=1.18; extra == "learned"

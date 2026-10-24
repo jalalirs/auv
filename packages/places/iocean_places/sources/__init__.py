@@ -66,20 +66,44 @@ def where(path: str | None, cache: pathlib.Path | None) -> pathlib.Path:
 
 
 def gridded(grid: Grid, soundings: Soundings, reach: float, slope: float) -> Layer:
-    """Soundings on the grid: each cell takes the nearest within `reach`
-    metres, and its error is the sounding's own plus the slope it may have
-    missed over the distance (`slope` metres per metre), so a cell far from
-    any sounding says so."""
-    from scipy.spatial import cKDTree
+    """Soundings on the grid. Inside a triangle of soundings no side of which
+    is longer than `reach` metres, a cell is interpolated across the
+    triangle; elsewhere it takes the nearest sounding within `reach`. Its
+    error is the nearest sounding's own plus the slope it may have missed
+    over the distance (`slope` metres per metre), so a cell far from any
+    sounding says so.
+
+    Nearest alone made every sounding a flat tile with a step to the next: a
+    survey at 5 m spacing came out as terraces, drawn as a grid of seams. A
+    long triangle (across the gap between two of the laser's tracks) is not
+    interpolated, which is the old rule where soundings are far apart."""
+    from scipy.spatial import Delaunay, cKDTree
 
     gx, gy = grid.xy()
-    distance, nearest = cKDTree(np.column_stack([soundings.x, soundings.y])).query(
-        np.column_stack([gx.ravel(), gy.ravel()]))
-    distance, nearest = distance.reshape(gx.shape), nearest.reshape(gx.shape)
-    near = distance <= reach
-    value = np.where(near, soundings.value[nearest], np.nan)
+    points = np.column_stack([soundings.x, soundings.y])
+    cells = np.column_stack([gx.ravel(), gy.ravel()])
+    distance, nearest = cKDTree(points).query(cells)
+    value = np.where(distance <= reach, soundings.value[nearest], np.nan)
+    if len(points) >= 3:
+        try:
+            tri = Delaunay(points)
+        except Exception:                   # all in a line: nothing to span
+            tri = None
+        if tri is not None:
+            corners = points[tri.simplices]
+            sides = np.linalg.norm(corners - np.roll(corners, 1, axis=1), axis=2).max(axis=1)
+            which = tri.find_simplex(cells)
+            inside = which >= 0
+            inside[inside] = sides[which[inside]] <= reach
+            if inside.any():
+                k = which[inside]
+                T = tri.transform[k]
+                b = np.einsum("nij,nj->ni", T[:, :2], cells[inside] - T[:, 2])
+                weights = np.column_stack([b, 1 - b.sum(axis=1)])
+                value[inside] = (soundings.value[tri.simplices[k]] * weights).sum(axis=1)
     error = soundings.error[nearest] + slope * distance
-    return Layer.of(grid, soundings.quantity, value, error, soundings.provenance)
+    return Layer.of(grid, soundings.quantity, value.reshape(gx.shape), error.reshape(gx.shape),
+                    soundings.provenance)
 
 
 class Points:
