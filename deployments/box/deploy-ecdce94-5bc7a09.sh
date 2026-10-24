@@ -3,9 +3,10 @@
 #   places r5 (ecdce94): soundings interpolated across short triangles, not each
 #     a flat tile (a 5 m survey came out as terraces); built on r4 with that
 #     one file replaced.
-#   reconstruct r6 (4338829): a strip from a vehicle's navigation is laid with
-#     its base colour only (its single view taught colours that showed green and
-#     pink from a dive's angles). Checked on SubPipe in scratch 2026-10-25.
+#   reconstruct r6 (eb03c94): a strip from a vehicle's navigation is laid with
+#     its base colour only, its pieces brought to one colour (its single view
+#     taught colours that showed green and pink from a dive's angles). Checked
+#     on SubPipe in scratch 2026-10-25.
 # Run on the box:
 #   bash ~/iocean/scratch/deploy-5bc7a09918f4/deployments/box/deploy-ecdce94-5bc7a09.sh
 # No migration; only the control plane restarts, to read the new images. A job
