@@ -24,7 +24,20 @@ import { Reconstructions } from "../screens/Reconstructions.js";
 import { ReconstructionPage } from "../screens/Reconstruction.js";
 import { Places } from "../screens/Places.js";
 import { Fleet } from "../screens/Fleet.js";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const ASSETS: any[] = [
+    { id: "recon_s1", orgId: "org_1", jobId: "job_s1", name: "Al Fahal multibeam 2025", kind: "bathymetry", madeFrom: "survey", state: "ready", jobState: "succeeded",
+      footprint: { bbox: [22.28, 38.95, 22.29, 38.97] }, stats: { shallowestM: 1.2, deepestM: 31.5, cellM: [0.5, 0.5], datum: "LAT", errorM: 0.15 },
+      brief: {}, steps: [], createdBy: "p", createdAt: new Date(Date.now() - 3_600_000).toISOString() },
+    { id: "recon_p1", orgId: "org_1", jobId: "job_p1", name: "Export line A", kind: "structure", type: "pipeline", meets: "drapes", madeFrom: "route", state: "ready", jobState: "succeeded",
+      footprint: { bbox: [22.281, 38.951, 22.284, 38.958] }, stats: { lengthM: 742.3, diameterM: 0.5 }, brief: {}, steps: [], createdBy: "p", createdAt: new Date(Date.now() - 7_200_000).toISOString() },
+    { id: "recon_m1", orgId: "org_1", jobId: "job_m1", name: "Monopile WTG-04", kind: "structure", type: "wind-foundation", meets: "stands", madeFrom: "model", state: "running", jobState: "running",
+      brief: {}, steps: [{ at: "", step: "usd", say: "writing the model as USD" }], createdBy: "p", createdAt: new Date().toISOString() },
+  ];
 import { Autonomy } from "../screens/Autonomy.js";
+import { ControllerDetail } from "../screens/ControllerDetail.js";
+import { AssetDetail } from "../screens/AssetDetail.js";
 
 const now = () => new Date().toISOString();
 let counter = 0;
@@ -232,15 +245,8 @@ const mappingView = () => {
 };
 Object.assign(platform, {
   reconstructionsOf: () => delay([recon(true), { ...recon(false), id: "recon_2", name: "North wall swim" }]),
-  listAssets: () => delay([
-    { id: "recon_s1", orgId: "org_1", jobId: "job_s1", name: "Al Fahal multibeam 2025", kind: "bathymetry", madeFrom: "survey", state: "ready", jobState: "succeeded",
-      footprint: { bbox: [22.28, 38.95, 22.29, 38.97] }, stats: { shallowestM: 1.2, deepestM: 31.5, cellM: [0.5, 0.5], datum: "LAT", errorM: 0.15 },
-      brief: {}, steps: [], createdBy: "p", createdAt: new Date(Date.now() - 3_600_000).toISOString() },
-    { id: "recon_p1", orgId: "org_1", jobId: "job_p1", name: "Export line A", kind: "structure", type: "pipeline", meets: "drapes", madeFrom: "route", state: "ready", jobState: "succeeded",
-      footprint: { bbox: [22.281, 38.951, 22.284, 38.958] }, stats: { lengthM: 742.3, diameterM: 0.5 }, brief: {}, steps: [], createdBy: "p", createdAt: new Date(Date.now() - 7_200_000).toISOString() },
-    { id: "recon_m1", orgId: "org_1", jobId: "job_m1", name: "Monopile WTG-04", kind: "structure", type: "wind-foundation", meets: "stands", madeFrom: "model", state: "running", jobState: "running",
-      brief: {}, steps: [{ at: "", step: "usd", say: "writing the model as USD" }], createdBy: "p", createdAt: new Date().toISOString() },
-  ]),
+  listAssets: () => delay(ASSETS),
+  getAsset: (id: string) => delay(ASSETS.find((a) => a.id === id) ?? ASSETS[0]!),
   createAsset: (_org: string, brief: { label?: string; kind: string; type?: string; meets?: string }) => delay({
     id: "recon_new", orgId: "org_1", jobId: "job_new", name: brief.label ?? "new asset", kind: brief.kind, type: brief.type, meets: brief.meets,
     madeFrom: brief.kind === "bathymetry" ? "survey" : brief.type === "pipeline" ? "route" : "model", state: "queued", jobState: "queued",
@@ -399,7 +405,7 @@ function Harness({ packages }: { packages: Packages }) {
                         layout={[...store.layouts.values()].find((l) => l.place === (where.place ?? "city_tank"))!.layout as never}
                         onBack={() => setWhere((w) => ({ ...w, page: "missions" }))} />
         ) : where.page === "build" ? (
-          <Compose platform={p} held={held} onBack={() => said.push("back")} onOpen={(c) => said.push(`open ${c}`)} />
+          <Compose platform={p} held={held} chosen={where.mission} onBack={() => said.push("back")} onOpen={(c) => said.push(`open ${c}`)} />
         ) : where.page === "places" ? (
           <Places platform={p} held={held} packages={packages} tab={where.place === "store" ? "store" : "places"}
                   onTab={(tab) => setWhere((w) => ({ ...w, place: tab }))}
@@ -409,10 +415,18 @@ function Harness({ packages }: { packages: Packages }) {
         ) : where.page === "fleet" ? (
           <Fleet held={held} packages={packages} onOpen={(v) => said.push(`vehicle ${JSON.stringify(v)}`)} />
         ) : where.page === "controllers" ? (
-          <Autonomy platform={p} held={held} onFly={(s) => said.push(`fly with ${s}`)} onRuns={(b) => said.push(`runs by ${b}`)} />
+          <Autonomy platform={p} held={held} onFly={(s) => said.push(`fly with ${s}`)} onRuns={(b) => said.push(`runs by ${b}`)}
+                    onOpen={(slug) => setWhere((w) => ({ ...w, page: "controller", mission: slug }))} />
+        ) : where.page === "controller" ? (
+          <ControllerDetail platform={p} held={held} slug={where.mission ?? ""} onBack={() => setWhere((w) => ({ ...w, page: "controllers" }))}
+                            onFly={(s) => said.push(`fly with ${s}`)} onReplay={(d, r) => said.push(`replay ${d} ${r}`)} />
+        ) : where.page === "asset" ? (
+          <AssetDetail platform={p} id={where.mission ?? ""} onBack={() => setWhere((w) => ({ ...w, page: "video" }))}
+                       onCompose={(a) => { said.push(`compose with ${a}`); setWhere((w) => ({ ...w, page: "build", mission: a })); }} />
         ) : where.page === "video" ? (
           <Reconstructions platform={p} held={held} onBack={() => setWhere((w) => ({ ...w, page: "places" }))}
-                           onOpen={(r) => setWhere((w) => ({ ...w, page: "recon", mission: r }))} />
+                           onOpen={(r) => setWhere((w) => ({ ...w, page: "recon", mission: r }))}
+                           onOpenAsset={(a) => setWhere((w) => ({ ...w, page: "asset", mission: a }))} />
         ) : where.page === "recon" ? (
           <ReconstructionPage platform={p} held={held} packages={packages} id={where.mission === "recon_2" ? "recon_2" : "recon_1"}
                               onBack={() => setWhere((w) => ({ ...w, page: "video" }))} onOpenPlace={(c) => said.push(`open ${c}`)} />

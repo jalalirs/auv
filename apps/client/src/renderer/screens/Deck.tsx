@@ -32,6 +32,8 @@ import { Compose } from "./Compose.js";
 import { Reconstructions } from "./Reconstructions.js";
 import { ReconstructionPage } from "./Reconstruction.js";
 import { VehicleDetail } from "./VehicleDetail.js";
+import { ControllerDetail } from "./ControllerDetail.js";
+import { AssetDetail } from "./AssetDetail.js";
 import { useAddress, type Address } from "../ui/router.js";
 
 export type { Held, Packages };
@@ -44,11 +46,12 @@ export type Where =
   | { page: "places"; tab?: string }
   | { page: "place"; id: string }
   // A new place, built from its data on the platform's machines.
-  | { page: "build"; base?: string }
+  | { page: "build"; base?: string; with?: string }
   // Reefs rebuilt from dive videos, and one of them; under Places, because
   // what one is for is to be put on a map.
   | { page: "reconstructions" }
   | { page: "reconstruction"; id: string }
+  | { page: "asset"; id: string }
   // An arrangement of a place, opened from it. Not a tab of its own: a layout
   // detached from the ground it was drawn on means nothing.
   | { page: "layout"; place: string; layout: string }
@@ -63,6 +66,7 @@ export type Where =
   | { page: "fleet" }
   | { page: "vehicle"; id?: string; slug?: string }
   | { page: "autonomy" }
+  | { page: "controller"; slug: string }
   | { page: "runs"; by?: string; view?: string }
   | { page: "replay"; dive: string; run: string }
   | { page: "profile" };
@@ -70,8 +74,8 @@ export type Where =
 type Rail = Where["page"];
 
 const HOME: Where = { page: "fly" };
-const PAGES_KNOWN = new Set<string>(["fly", "dive", "places", "place", "build", "reconstructions", "reconstruction",
-  "layout", "missions", "mission", "sweep", "fleet", "vehicle", "autonomy", "runs", "replay", "profile"]);
+const PAGES_KNOWN = new Set<string>(["fly", "dive", "places", "place", "build", "reconstructions", "reconstruction", "asset",
+  "layout", "missions", "mission", "sweep", "fleet", "vehicle", "autonomy", "controller", "runs", "replay", "profile"]);
 const knownPage = (where: Address): boolean => PAGES_KNOWN.has(where.page);
 /** What scrolls on a page: its body, or the main area on a page not yet rebuilt. */
 const scroller = (): HTMLElement | null =>
@@ -83,11 +87,11 @@ const PAGES: { key: Rail; name: string; count?: (held: Held) => number; is: (whe
     is: (w) => w.page === "missions" || w.page === "mission" },
   { key: "places", name: "Places", count: (h) => h.places.length,
     is: (w) => w.page === "places" || w.page === "place" || w.page === "layout" || w.page === "build"
-      || w.page === "reconstructions" || w.page === "reconstruction" },
+      || w.page === "reconstructions" || w.page === "reconstruction" || w.page === "asset" },
   { key: "runs", name: "Runs", count: (h) => h.runs.length,
     is: (w) => w.page === "runs" || w.page === "sweep" || w.page === "replay" },
   { key: "fleet", name: "Fleet", count: (h) => h.vehicles.length, is: (w) => w.page === "fleet" || w.page === "vehicle" },
-  { key: "autonomy", name: "Controllers", is: (w) => w.page === "autonomy" },
+  { key: "autonomy", name: "Controllers", is: (w) => w.page === "autonomy" || w.page === "controller" },
 ];
 
 // wants a curated list of currents somebody made once. **Recordings** was a
@@ -213,13 +217,17 @@ export function Deck({ platform, onDiving }: {
         ) : where.page === "reconstructions" ? (
           <Reconstructions platform={platform} held={held} onBack={() => setWhere({ page: "places" }, { replace: true })}
                            onTab={(tab) => setWhere({ page: "places", tab: tab === "places" ? undefined : tab }, { replace: true })}
-                           onOpen={(id) => setWhere({ page: "reconstruction", id })} />
+                           onOpen={(id) => setWhere({ page: "reconstruction", id })}
+                           onOpenAsset={(id) => setWhere({ page: "asset", id })} />
+        ) : where.page === "asset" ? (
+          <AssetDetail platform={platform} id={where.id} onBack={() => back({ page: "reconstructions" })}
+                       onCompose={(id) => setWhere({ page: "build", with: id })} />
         ) : where.page === "reconstruction" ? (
           <ReconstructionPage platform={platform} held={held} packages={packages} id={where.id}
                               onBack={() => back({ page: "reconstructions" })}
                               onOpenPlace={(id) => { void read(); setWhere({ page: "place", id }); }} />
         ) : where.page === "build" ? (
-          <Compose platform={platform} held={held} base={where.base} onBack={() => back({ page: "places" })}
+          <Compose platform={platform} held={held} base={where.base} chosen={where.with} onBack={() => back({ page: "places" })}
                    onOpen={(id) => { void read(); setWhere({ page: "place", id }); }} />
         ) : where.page === "place" ? (
           <PlaceDetail held={held} packages={packages} id={where.id}
@@ -250,7 +258,14 @@ export function Deck({ platform, onDiving }: {
           <Autonomy platform={platform} held={held} onChanged={read}
                     onFly={(stack) => { try { localStorage.setItem("coral-city.controller", stack); } catch { /* remembered or not */ } setWhere({ page: "dive" }); }}
                     onRuns={(by) => setWhere({ page: "runs", by })}
+                    onOpen={(slug) => setWhere({ page: "controller", slug })}
                     onCompare={() => setWhere({ page: "runs", view: "compare" })} />
+        ) : where.page === "controller" ? (
+          <ControllerDetail platform={platform} held={held} slug={where.slug}
+                            onBack={() => back({ page: "autonomy" })}
+                            onFly={(stack) => { try { localStorage.setItem("coral-city.controller", stack); } catch { /* remembered or not */ } setWhere({ page: "dive" }); }}
+                            onReplay={(dive, run) => setWhere({ page: "replay", dive, run })}
+                            onPulled={read} />
         ) : where.page === "runs" ? (
           <Runs key={`${where.by ?? ""}|${where.view ?? ""}`} platform={platform} held={held} onChanged={read}
                 by={where.by} view={where.view}

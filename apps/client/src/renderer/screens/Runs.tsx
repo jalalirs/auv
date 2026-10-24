@@ -125,16 +125,16 @@ export function Runs({ platform, held, onChanged, onReplay, onSweep, by, view }:
   );
 }
 
-function taskOf(one: Held["runs"][number]): string {
+export function taskOf(one: Held["runs"][number]): string {
   return ((one.run.outcome as Record<string, unknown> | undefined)?.["task"] as { name?: string } | undefined)?.name ?? "";
 }
 
-function scoreOf(one: Held["runs"][number]): number {
+export function scoreOf(one: Held["runs"][number]): number {
   const score = ((one.run.outcome as Record<string, unknown> | undefined)?.["task"] as { score?: number } | undefined)?.score;
   return typeof score === "number" ? score : -1;
 }
 
-function toneOf(state: string): Tone {
+export function toneOf(state: string): Tone {
   return state === "succeeded" ? "good" : LIVE.has(state) ? "busy" : state === "failed" ? "bad" : "quiet";
 }
 
@@ -156,7 +156,7 @@ function meta(name: string, flownBy: string, run: { mode: string; requestedAt: s
 }
 
 /** Whether the run left a recording behind. */
-function recorded(run: { artefacts?: number; outcome?: Record<string, unknown> }): boolean {
+export function recorded(run: { artefacts?: number; outcome?: Record<string, unknown> }): boolean {
   if ((run.artefacts ?? 0) > 0) return true;
   const recording = run.outcome?.["recording"] as { files?: number } | undefined;
   return typeof recording?.files === "number" && recording.files > 0;

@@ -48,11 +48,13 @@ type Stage =
   | { at: "assets"; mapping: Mapping }
   | { at: "done"; versionId: string };
 
-export function Compose({ platform, held, base, onBack, onOpen }: {
+export function Compose({ platform, held, base, chosen, onBack, onOpen }: {
   platform: Platform;
   held: Held;
   /** A map store place to build on, from its card's Build on it. */
   base?: string;
+  /** An asset already chosen, from its page: a reef or structure to lay, or a survey for the ground. */
+  chosen?: string;
   onBack: () => void;
   onOpen: (id: string) => void;
 }): React.JSX.Element {
@@ -94,6 +96,28 @@ export function Compose({ platform, held, base, onBack, onOpen }: {
   }, [platform, institution]);
 
   useEffect(() => { platform.storePlaces().then(setStore).catch(() => undefined); }, [platform]);
+  // The asset somebody came from, chosen once its list has come.
+  const took = useRef(false);
+  useEffect(() => {
+    if (!chosen || took.current) return;
+    const survey = others.find((a) => a.id === chosen && a.kind === "bathymetry");
+    if (survey) {
+      took.current = true;
+      setSurveys((was) => was.includes(chosen) ? was : [...was, chosen]);
+      // Where the survey is, so the place is put over it.
+      const box = (survey.footprint as { bbox?: number[] } | undefined)?.bbox;
+      if (box && box.length === 4) {
+        const centre = { lat: (box[0]! + box[2]!) / 2, lon: (box[1]! + box[3]!) / 2 };
+        setWhere(centre);
+        setView({ centre, zoom: 14 });
+      }
+      return;
+    }
+    if (others.some((a) => a.id === chosen) || reefs.some((r) => r.id === chosen)) {
+      took.current = true;
+      setPicked((was) => was.includes(chosen) ? was : [...was, chosen]);
+    }
+  }, [chosen, others, reefs]);
   const baseOf = (id?: string) => store.find((one) => one.id === id);
   useEffect(() => {
     const one = baseOf(storeBase);

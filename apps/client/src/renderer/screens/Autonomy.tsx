@@ -24,7 +24,7 @@ import type { Platform } from "@coral-city/api";
 import { Button, Menu, Page, Status, Table } from "../ui/components.js";
 import { Builds, DeployDialog } from "./Deploying.js";
 
-export function Autonomy({ platform, held, onFly, onRuns, onCompare, onChanged }: {
+export function Autonomy({ platform, held, onFly, onRuns, onOpen, onCompare, onChanged }: {
   platform?: Platform;
   held: Held;
   /** Read the controllers again, when a build has registered one. */
@@ -33,6 +33,8 @@ export function Autonomy({ platform, held, onFly, onRuns, onCompare, onChanged }
   onFly?: (stackId: string) => void;
   /** Its dives, in Runs. */
   onRuns?: (flownBy: string) => void;
+  /** Its own page: builds, dives, scores. */
+  onOpen?: (slug: string) => void;
   onCompare?: () => void;
 }): React.JSX.Element {
   const [deploying, setDeploying] = useState(false);
@@ -61,7 +63,7 @@ export function Autonomy({ platform, held, onFly, onRuns, onCompare, onChanged }
           tab={tab} onTab={setTab}
           actions={<Button kind="primary" onClick={() => setDeploying(true)}>Deploy one</Button>}>
       {tab === "builds" && platform ? <Builds platform={platform} held={held} onRefresh={onChanged} /> : (
-      <Table rows={rows} rowKey={(r) => r.slug}
+      <Table rows={rows} rowKey={(r) => r.slug} onRow={(r) => onOpen?.(r.slug)}
              search={(r) => `${r.name} ${r.slug}`} searchLabel="Search controllers"
              facets={[{ key: "flown", label: "Flown", value: (r) => r.flew.dives === 0 ? "never flown" : "flown" },
                       { key: "card", label: "Needs", value: (r) => cardOf(r) === "no card" ? "no card" : "a card" }]}

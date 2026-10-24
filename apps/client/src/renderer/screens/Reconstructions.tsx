@@ -9,9 +9,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Asset, Platform, Reconstruction, StructureType } from "@coral-city/api";
+import { kindSaid } from "./AssetDetail.js";
 import type { Held } from "./Deck.js";
 import { Empty, Pill, ago } from "./parts.js";
-import { Dialog, Page } from "../ui/components.js";
+import { Page } from "../ui/components.js";
 import { PLACES_TABS } from "./placesTabs.js";
 
 const VIDEO = /\.(mp4|mov|mkv)$/i;
@@ -30,18 +31,7 @@ const STRUCTURES: { key: StructureType; label: string }[] = [
   { key: "pipeline", label: "pipeline" }, { key: "other", label: "other" },
 ];
 
-/** A fact's key as words: shallowestM is "shallowest, m". */
-function factSaid(key: string): string {
-  const unit = /M$/.test(key) ? ", m" : "";
-  return key.replace(/M$/, "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().replace(/^bbox$/, "bounds (S, W, N, E)") + unit;
-}
 
-/** What an asset is, said in a few words. */
-function kindSaid(one: Asset): string {
-  if (one.kind === "reef") return "reef from a video";
-  if (one.kind === "bathymetry") return "seabed survey";
-  return `${(one.type ?? "structure").replace("-", " ")} ${one.madeFrom === "route" ? "from its route" : "from a model"}`;
-}
 
 function megabytes(bytes: number): string {
   return bytes >= 1 << 30 ? `${(bytes / (1 << 30)).toFixed(1)} GB` : `${(bytes / (1 << 20)).toFixed(0)} MB`;
@@ -60,10 +50,12 @@ export function stateOf(one: Reconstruction): { kind?: "good" | "bad" | "busy"; 
   }
 }
 
-export function Reconstructions({ platform, held, onOpen, onBack, onTab }: {
+export function Reconstructions({ platform, held, onOpen, onOpenAsset, onBack, onTab }: {
   platform: Platform;
   held: Held;
   onOpen: (id: string) => void;
+  /** A structure's or a survey's own page. */
+  onOpenAsset?: (id: string) => void;
   onBack: () => void;
   /** To Places' other tabs. */
   onTab?: (tab: string) => void;
@@ -72,7 +64,6 @@ export function Reconstructions({ platform, held, onOpen, onBack, onTab }: {
   const [list, setList] = useState<Reconstruction[] | undefined>();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [making, setMaking] = useState<Making>("video");
-  const [shown, setShown] = useState<Asset | undefined>();
   const [datum, setDatum] = useState("MSL");
   const [errorM, setErrorM] = useState("0.3");
   const [structure, setStructure] = useState<StructureType>("platform");
@@ -158,7 +149,7 @@ export function Reconstructions({ platform, held, onOpen, onBack, onTab }: {
             route: { points: routePoints, diameterM: Number(diameter), burial: Number(burial) } });
       setFile(undefined); setLabel(""); setRoute("");
       setAssets((was) => [made, ...was]);
-      setShown(made);
+      onOpenAsset?.(made.id);
     } catch (problem) {
       setTrouble(problem instanceof Error ? problem.message : "the asset could not be started");
     } finally {
@@ -284,7 +275,7 @@ export function Reconstructions({ platform, held, onOpen, onBack, onTab }: {
               {assets.map((one) => {
                 const state = stateOf(one as unknown as Reconstruction);
                 return (
-                  <button key={one.id} type="button" className="row open recon-row" onClick={() => setShown(one)}>
+                  <button key={one.id} type="button" className="row open recon-row" onClick={() => onOpenAsset?.(one.id)}>
                     {one.preview && one.state === "ready" ? <img className="recon-thumb" src={one.preview} alt="" /> : <span className="recon-thumb" />}
                     <span className="what">{one.name}</span>
                     <span className="quiet">{kindSaid(one)} · {state.doing ?? ago(one.createdAt)}</span>
@@ -318,18 +309,6 @@ export function Reconstructions({ platform, held, onOpen, onBack, onTab }: {
             )}
         </section>
       </div>
-      {shown ? (
-        <Dialog title={shown.name} onClose={() => setShown(undefined)}>
-          <p className="note">{kindSaid(shown)} · {stateOf(shown as unknown as Reconstruction).said}</p>
-          {shown.preview && shown.state === "ready" ? <img className="asset-preview" src={shown.preview} alt="" /> : null}
-          {shown.failure ? <p className="trouble">{shown.failure}</p> : null}
-          <dl className="asset-facts">
-            {Object.entries({ ...(shown.stats ?? {}), ...(shown.footprint ?? {}) }).map(([k, v]) => (
-              <div key={k}><dt>{factSaid(k)}</dt><dd>{Array.isArray(v) ? v.map((x) => typeof x === "number" ? +x.toFixed(5) : String(x)).join(", ") : String(v)}</dd></div>
-            ))}
-          </dl>
-        </Dialog>
-      ) : null}
     </Page>
   );
 }
