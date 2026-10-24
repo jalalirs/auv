@@ -469,7 +469,7 @@ def train(step: str, data: pathlib.Path, name: str, quick: bool, *, downsample: 
                 # just finished; the splats are what is wanted, not its score.
                 "test_last=false",
                 f"strategy.densify.clone_grad_threshold={grad}", f"strategy.densify.split_grad_threshold={grad}",
-                *(["model.optimize_features_specular=false"] if one_colour else []),
+                *(["model.progressive_training.max_n_features=0"] if one_colour else []),
                 f"hydra.run.dir={SCRATCH / 'hydra' / name}"]
         with open(log, "w") as out:
             proc = subprocess.Popen(argv, stdout=out, stderr=subprocess.STDOUT, cwd=str(code))
