@@ -131,7 +131,7 @@ def main() -> int:
             degree = int(round(np.sqrt(spec.shape[1] // 3 + 1))) - 1
             ck["features_specular"] = rotate_specular(spec.double(), torch.from_numpy(R), degree).to(spec.dtype)
     # The exporter loads them as the model's parameters, as they were saved.
-    for key in ("positions", "rotation", "scale", "density", "features_specular"):
+    for key in ("positions", "rotation", "scale", "density", "features_albedo", "features_specular"):
         if key in ck and not isinstance(ck[key], torch.nn.Parameter):
             ck[key] = torch.nn.Parameter(ck[key].contiguous(), requires_grad=True)
     torch.save(ck, ckpt_out)
