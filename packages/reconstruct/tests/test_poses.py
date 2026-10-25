@@ -124,3 +124,17 @@ def test_the_csv_is_read_in_time_order(tmp_path):
     rows = poses.read_poses(f)
     assert [r["image"] for r in rows] == ["a.jpg", "b.jpg"]
     assert rows[0]["altitudeM"] is None and rows[1]["altitudeM"] == 2.5 and rows[1]["centre"] == [1.0, 2.0, -3.0]
+
+
+def test_a_wandering_white_balance_is_taken_out_and_detail_kept():
+    import numpy as np
+    from iocean_reconstruct.poses import colour_shifts
+    n = 200
+    drift = np.c_[np.linspace(-8, 8, n), np.linspace(5, -5, n)]
+    detail = np.c_[np.tile([1.0, -1.0], n // 2), np.zeros(n)]
+    means = 128 + drift + detail
+    evened = means + colour_shifts(means)
+    # The slow drift is gone (ends agree), the frame-to-frame detail is not.
+    assert abs(evened[:20, 0].mean() - evened[-20:, 0].mean()) < 1.0
+    assert abs(evened[:20, 1].mean() - evened[-20:, 1].mean()) < 1.0
+    assert np.abs(np.diff(evened[60:140, 0])).mean() > 1.5

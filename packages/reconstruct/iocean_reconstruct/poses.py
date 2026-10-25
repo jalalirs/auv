@@ -167,3 +167,34 @@ def clahe(bgr: np.ndarray) -> np.ndarray:
     lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
     lab[:, :, 0] = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8)).apply(lab[:, :, 0])
     return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+
+def colour_shifts(means: np.ndarray, window: int = 31) -> np.ndarray:
+    """Per frame, the shift that takes the slow drift of its mean colour (a
+    running median over `window` frames) to the run's own median. Frame to
+    frame differences stay; a camera's white balance wandering along the run
+    goes."""
+    from scipy.ndimage import median_filter
+
+    means = np.asarray(means, float)
+    w = max(1, min(window, len(means) | 1))
+    trend = median_filter(means, size=(w, 1), mode="nearest")
+    return np.median(means, axis=0) - trend
+
+
+def even_colour(paths: list) -> list:
+    """The frames' colour drift taken out in place: each frame's a and b (LAB)
+    shifted by colour_shifts. Returns the shifts, for the record."""
+    import cv2
+
+    means = []
+    for path in paths:
+        lab = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2LAB).astype(np.float32)
+        means.append(lab[:, :, 1:].reshape(-1, 2).mean(0))
+    shifts = colour_shifts(np.array(means))
+    for path, (da, db) in zip(paths, shifts):
+        lab = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2LAB).astype(np.float32)
+        lab[:, :, 1] = np.clip(lab[:, :, 1] + da, 0, 255)
+        lab[:, :, 2] = np.clip(lab[:, :, 2] + db, 0, 255)
+        cv2.imwrite(str(path), cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR), [cv2.IMWRITE_JPEG_QUALITY, 95])
+    return np.round(shifts, 2).tolist()

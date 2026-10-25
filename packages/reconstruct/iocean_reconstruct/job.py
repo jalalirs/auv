@@ -200,6 +200,14 @@ def frames(brief: dict) -> dict:
         if kept % 100 == 0:
             tell("frames", f"{kept} frames", n=int(t), of=int(duration))
     cap.release()
+    if enhance and kept >= 20:
+        # The camera's white balance wanders along a murky run (SubPipe: blue
+        # at the ends, green in the middle); the drift is taken out of what
+        # features and training see.
+        import numpy as np
+        shifts = poses.even_colour(sorted(images.glob("*.jpg")))
+        drift = float(np.ptp(np.array(shifts), axis=0).max()) if shifts else 0.0
+        tell("frames", f"colour evened along the run (its drift was up to {drift:.1f} in LAB a/b)", driftAB=round(drift, 1))
     if kept < 20:
         raise RuntimeError(f"only {kept} frames could be taken from the video"
                            + (f" with a pose within half a frame interval ({unmatched} had none)" if navigation else "")
@@ -214,7 +222,8 @@ def frames(brief: dict) -> dict:
         tell("frames", f"{kept} frames with a pose; {unmatched} with none within {0.5 / fps:.2f} s left out",
              matched=kept, dropped=unmatched)
     if enhance:
-        said["enhanced"] = "CLAHE on L of LAB, clip 4, tiles 8x8, before features and training"
+        said["enhanced"] = ("CLAHE on L of LAB, clip 4, tiles 8x8, and the colour's drift along the run taken out "
+                            "(a and b of LAB to the run's median, over a 31-frame running median), before features and training")
     mark("frames", said)
     tell("frames", f"{kept} frames at {size[0]}x{size[1]}", frames=kept)
     return said
