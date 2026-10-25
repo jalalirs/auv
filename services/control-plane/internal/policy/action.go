@@ -83,6 +83,11 @@ const (
 	// letting go of one it took: the platform's own places, built from public
 	// data and open to all, added to the organisation's places to see.
 	CityAdopt Action = "city.adopt"
+	// CityRetire covers taking a place out of the listings, so that it takes
+	// no new dives, and bringing it back. The same authority as publishing a
+	// version of it: a platform steward for the catalogue, the owning
+	// organisation's members for a place of their own.
+	CityRetire Action = "city.retire"
 	// VersionRead covers fetching a package's files. A catalogue package is
 	// open to anyone signed in, as it always was; an organisation's own place
 	// only to those who may see it.
@@ -145,6 +150,7 @@ var requirement = map[Action]struct {
 	CityFound:   {RoleContributor, []ResourceKind{ResourceOrg}},
 	CityAdopt:   {RoleContributor, []ResourceKind{ResourceOrg}},
 	CityPublish: {RoleSteward, []ResourceKind{ResourceCity, ResourcePlatform}},
+	CityRetire:  {RoleSteward, []ResourceKind{ResourceCity}},
 	VersionRead: {RoleAnyone, []ResourceKind{ResourceCity, ResourcePlatform}},
 
 	VehicleCreate: {RoleAdmin, []ResourceKind{ResourcePlatform}},
@@ -174,6 +180,19 @@ var requirement = map[Action]struct {
 	WorkLease:  {RoleAdmin, []ResourceKind{ResourceWork}},
 	WorkClaim:  {RoleContributor, []ResourceKind{ResourceWork}},
 	WorkReport: {RoleContributor, []ResourceKind{ResourceWork}},
+}
+
+// OpenWhenRetired reports whether an action may still be taken on a retired
+// place. A retired place keeps its history: it can be read, a dive already
+// flown in it can fetch its files to replay, and it can be brought back.
+// Anything that would add to it is refused until it is.
+func OpenWhenRetired(action Action) bool {
+	switch action {
+	case CityRead, VersionRead, CityRetire:
+		return true
+	default:
+		return false
+	}
 }
 
 // Requires reports the role an action needs and the resource kinds it applies

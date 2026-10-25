@@ -15,11 +15,11 @@ import { PlaceCard } from "./Dive.js";
 import { PlacePlan } from "../parts/PlanArt.js";
 import { Card, Empty } from "./parts.js";
 import { useCallback, useEffect, useState } from "react";
-import type { Platform, StorePlace } from "@coral-city/api";
-import { Button, Page, Status } from "../ui/components.js";
+import type { City, Platform, StorePlace } from "@coral-city/api";
+import { Button, Dialog, Menu, Page, Status } from "../ui/components.js";
 import { PLACES_TABS } from "./placesTabs.js";
 
-export function Places({ platform, held, packages, tab = "places", onTab, onOpen, onBuild, onFromVideo, onBuildOn }: {
+export function Places({ platform, held, packages, tab = "places", onTab, onOpen, onBuild, onFromVideo, onBuildOn, onChanged }: {
   platform?: Platform;
   held: Held;
   packages: Packages;
@@ -31,10 +31,14 @@ export function Places({ platform, held, packages, tab = "places", onTab, onOpen
   onFromVideo?: () => void;
   /** Compose a new place on a store place's ground. */
   onBuildOn?: (cityId: string) => void;
+  /** Read the places again, after one is retired. */
+  onChanged?: () => void | Promise<void>;
 }): React.JSX.Element {
   const [store, setStore] = useState<StorePlace[] | undefined>();
   const [pictures, setPictures] = useState<Record<string, string>>({});
   const [trouble, setTrouble] = useState("");
+  const [retiring, setRetiring] = useState<City | undefined>();
+  const [busy, setBusy] = useState(false);
   const institution = held.institution;
 
   const readStore = useCallback(() => {
@@ -72,6 +76,28 @@ export function Places({ platform, held, packages, tab = "places", onTab, onOpen
       setTrouble(problem instanceof Error ? problem.message : "it could not be changed");
     }
   };
+
+  // Retiring hides a place and refuses new dives in it; its versions, runs
+  // and files stay, and the platform can bring it back.
+  const retire = async (one: City) => {
+    if (!platform) return;
+    setBusy(true);
+    setTrouble("");
+    try {
+      await platform.retirePlace(one.id);
+      setRetiring(undefined);
+      await onChanged?.();
+    } catch (problem) {
+      setTrouble(problem instanceof Error ? problem.message : "it could not be retired");
+      setRetiring(undefined);
+    } finally {
+      setBusy(false);
+    }
+  };
+  // Only the organisation that owns a place manages it; a place taken from
+  // the store is let go of there instead.
+  const mayRetire = (one: City) => platform !== undefined && institution !== undefined
+    && one.ownedByOrg === institution.id;
 
   return (
     <Page title="Places" subtitle="Places composed from ground and assets; a dive pins the version it ran in."
@@ -125,10 +151,28 @@ export function Places({ platform, held, packages, tab = "places", onTab, onOpen
       ) : (
         <div className="cards">
           {yours.map((one) => (
-            <PlaceCard key={one.id} place={one} packages={packages} onOpen={() => onOpen(one.id)} />
+            <div key={one.id} className="store-card">
+              <PlaceCard place={one} packages={packages} onOpen={() => onOpen(one.id)} />
+              {mayRetire(one) ? (
+                <div className="store-actions">
+                  <Menu label={`More for ${one.name}`}
+                        items={[{ label: "Retire", danger: true, onSelect: () => setRetiring(one) }]} />
+                </div>
+              ) : null}
+            </div>
           ))}
         </div>
       )}
+      {retiring ? (
+        <Dialog title={`Retire ${retiring.name}?`} onClose={() => { if (!busy) setRetiring(undefined); }}
+                actions={<>
+                  <Button kind="ghost" disabled={busy} onClick={() => setRetiring(undefined)}>Cancel</Button>
+                  <Button kind="danger" disabled={busy} onClick={() => void retire(retiring)}>{busy ? "Retiring…" : "Retire"}</Button>
+                </>}>
+          <p>It leaves your places and no new dives can be made in it.</p>
+          <p className="note">Its history is kept: every version, run and file stays, and dives already flown in it still replay.</p>
+        </Dialog>
+      ) : null}
     </Page>
   );
 }

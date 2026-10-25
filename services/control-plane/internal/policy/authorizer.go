@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
 	"github.com/jalalirs/auv/services/control-plane/internal/ids"
@@ -74,7 +75,7 @@ func (a *Authorizer) evaluate(ctx context.Context, subject Subject, action Actio
 	case ResourceOrg:
 		return a.decideOrg(ctx, subject, need, resource.ID)
 	case ResourceCity:
-		return a.decideCity(ctx, subject, need, resource.ID)
+		return a.decideCity(ctx, subject, action, need, resource.ID)
 	case ResourceVehicle:
 		return a.decideVehicle(ctx, subject, need, resource.ID)
 	case ResourceQueue:
@@ -135,13 +136,17 @@ func (a *Authorizer) decideOrg(ctx context.Context, subject Subject, need Role, 
 //
 // Discoverability decides what a principal with no binding may learn, and it is
 // consulted only after bindings prove insufficient, so a binding always wins.
-func (a *Authorizer) decideCity(ctx context.Context, subject Subject, need Role, cityID string) (Decision, error) {
+//
+// A retired place is still there to read and to bring back; everything that
+// would add to it is refused, and says why, to anyone who may see it.
+func (a *Authorizer) decideCity(ctx context.Context, subject Subject, action Action, need Role, cityID string) (Decision, error) {
 	var slug, owner string
 	var discoverable bool
+	var retiredAt *time.Time
 	err := a.pool.QueryRow(ctx,
-		`SELECT slug, discoverable, coalesce(owned_by_org, '') FROM catalog.city
-		 WHERE id = $1 AND retired_at IS NULL`,
-		cityID).Scan(&slug, &discoverable, &owner)
+		`SELECT slug, discoverable, coalesce(owned_by_org, ''), retired_at FROM catalog.city
+		 WHERE id = $1`,
+		cityID).Scan(&slug, &discoverable, &owner, &retiredAt)
 	if errors.Is(db.Translate(err), db.ErrNotFound) {
 		return denyHidden("no city with that identifier is visible to you"), nil
 	}
@@ -155,6 +160,9 @@ func (a *Authorizer) decideCity(ctx context.Context, subject Subject, need Role,
 	}
 	role = ownersRole(role, owner, discoverable, subject)
 	if role.AtLeast(need) {
+		if retiredAt != nil && !OpenWhenRetired(action) {
+			return denyVisible(RetiredRefusal(slug, *retiredAt)), nil
+		}
 		return allow(role, a.platformFilter(subject, role)), nil
 	}
 
@@ -165,6 +173,12 @@ func (a *Authorizer) decideCity(ctx context.Context, subject Subject, need Role,
 			"this action needs %s in %s; you hold %s", need, slug, describe(role))), nil
 	}
 	return denyHidden("no city with that identifier is visible to you"), nil
+}
+
+// RetiredRefusal says why a retired place refused something.
+func RetiredRefusal(slug string, retiredAt time.Time) string {
+	return fmt.Sprintf("%s was retired on %s: it keeps its history but takes nothing new; "+
+		"bring it back (unretire) first", slug, retiredAt.UTC().Format("2006-01-02"))
 }
 
 // ownersRole adjusts what a subject holds on a place for who owns it.

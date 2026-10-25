@@ -3,7 +3,9 @@ package catalog
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/jalalirs/auv/services/control-plane/internal/domain"
 )
@@ -122,5 +124,25 @@ func TestAnUnpublishedVersionIsADraft(t *testing.T) {
 	draft := Version{ID: "ver_1"}
 	if draft.Published() {
 		t.Error("a version with no publication instant reported itself as published")
+	}
+}
+
+// A retired place leaves every listing — the places a subject may learn of
+// and the map store — and is still read by its id.
+func TestARetiredPlaceIsListedNowhereAndStillReadById(t *testing.T) {
+	for name, query := range map[string]string{
+		"places":    cities.listing(),
+		"map store": catalogueListing,
+	} {
+		if !strings.Contains(query, "retired_at IS NULL") {
+			t.Errorf("the %s listing does not skip a retired place", name)
+		}
+	}
+	if !strings.Contains(selectCity, "retired_at") || !strings.Contains(selectCity, "retired_by") {
+		t.Error("reading a place does not say whether, or by whom, it was retired")
+	}
+	retired := time.Now()
+	if !(City{RetiredAt: &retired}).Retired() || (City{}).Retired() {
+		t.Error("a place is retired exactly when it says when it was")
 	}
 }

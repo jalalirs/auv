@@ -2,7 +2,9 @@ package policy
 
 import (
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/jalalirs/auv/services/control-plane/internal/domain"
 )
@@ -176,4 +178,32 @@ func mustRequire(t *testing.T, action Action) Role {
 		t.Fatal(err)
 	}
 	return role
+}
+
+func TestARetiredPlaceIsReadAndBroughtBackButTakesNothingNew(t *testing.T) {
+	for _, open := range []Action{CityRead, VersionRead, CityRetire} {
+		if !OpenWhenRetired(open) {
+			t.Errorf("%s should still work on a retired place", open)
+		}
+	}
+	for _, closed := range []Action{CityPublish, CityArrange, CityGrant} {
+		if OpenWhenRetired(closed) {
+			t.Errorf("%s should be refused on a retired place", closed)
+		}
+	}
+	if mustRequire(t, CityRetire) != mustRequire(t, CityPublish) {
+		t.Fatal("retiring a place needs the same authority as publishing a version of it")
+	}
+	member := Subject{PrincipalID: "prin_m", OrgIDs: []string{"org_kaust"}}
+	outsider := Subject{PrincipalID: "prin_o", OrgIDs: []string{"org_other"}}
+	if !ownersRole(RoleAnyone, "org_kaust", false, member).AtLeast(mustRequire(t, CityRetire)) {
+		t.Fatal("a member of the owning organisation may retire its place")
+	}
+	if ownersRole(RoleViewer, "org_kaust", false, outsider).AtLeast(mustRequire(t, CityRetire)) {
+		t.Fatal("somebody it was only shared with may not")
+	}
+	said := RetiredRefusal("test-one", time.Date(2026, 10, 25, 9, 0, 0, 0, time.UTC))
+	if !strings.Contains(said, "2026-10-25") || !strings.Contains(said, "unretire") {
+		t.Fatalf("a refusal says when, and how to bring it back: %q", said)
+	}
 }

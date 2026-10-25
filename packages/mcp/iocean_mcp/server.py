@@ -33,13 +33,26 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
         tools.places_list),
     "places_get": (
         "One place in full: what its ground came from, how deep it is, how deep "
-        "that depth is actually calibrated to, its reef and its water. Every "
-        "number comes back marked measured, derived, chosen or assumed.",
+        "that depth is actually calibrated to, its reef and its water, and whether it is "
+        "retired. Every number comes back marked measured, derived, chosen or assumed.",
         {"type": "object",
          "properties": {"place": {"type": "string",
                                   "description": "the place's id or slug"}},
          "required": ["place"]},
         lambda p, place: tools.places_get(p, place)),
+    "places_retire": (
+        "Retire a place: it leaves every list and refuses new dives. Its versions, runs and files "
+        "are kept, past dives still replay, and places_unretire brings it back.",
+        {"type": "object",
+         "properties": {"place": {"type": "string", "description": "the place's id or slug"}},
+         "required": ["place"]},
+        lambda p, place: tools.places_retire(p, place)),
+    "places_unretire": (
+        "Bring a retired place back into the lists, so dives can be made in it again.",
+        {"type": "object",
+         "properties": {"place": {"type": "string", "description": "the place's id"}},
+         "required": ["place"]},
+        lambda p, place: tools.places_unretire(p, place)),
     "places_sources": (
         "What a place can be built from: the public sources (the global depth grid, satellite "
         "imagery, the laser altimeter's depths, the coral atlas, the learned depth model) and the "

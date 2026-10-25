@@ -93,6 +93,45 @@ def places_list(platform: Platform) -> dict:
             "note": "places_get returns what each one's ground came from"}
 
 
+def _find_place(platform: Platform, place_id: str) -> dict:
+    """A place by id or slug: from the listing, or by id when it is retired
+    and so no longer listed."""
+    place = next((p for p in platform.places() if p["id"] == place_id
+                  or p.get("slug") == place_id), None)
+    if place is None:
+        try:
+            place = platform.place(place_id)
+        except Refused:
+            place = None
+    if not place or not place.get("id"):
+        raise Refused(404, "not_found", f"no place {place_id!r} is granted to you")
+    return place
+
+
+def _retired(place: dict) -> dict:
+    """What a retired place says about it; nothing for one in use."""
+    if not place.get("retiredAt"):
+        return {}
+    return {"retired": {"at": place["retiredAt"], "by": place.get("retiredBy")},
+            "retiredNote": "retired: not listed and refuses new dives; its history is kept, "
+                           "and places_unretire brings it back"}
+
+
+def places_retire(platform: Platform, place: str) -> dict:
+    """Retire a place: unlisted, no new dives, history kept."""
+    found = _find_place(platform, place)
+    done = platform.request("POST", f"/api/v1/cities/{found['id']}/retire")
+    return {"id": done["id"], "name": done.get("name"), **_retired(done)}
+
+
+def places_unretire(platform: Platform, place: str) -> dict:
+    """Bring a retired place back."""
+    found = _find_place(platform, place)
+    done = platform.request("POST", f"/api/v1/cities/{found['id']}/unretire")
+    return {"id": done["id"], "name": done.get("name"), "retired": False,
+            "note": "listed again, and dives can be made in it"}
+
+
 def places_get(platform: Platform, place_id: str) -> dict:
     """One place, with every number marked.
 
@@ -103,14 +142,12 @@ def places_get(platform: Platform, place_id: str) -> dict:
     and not the depth it holds to would be handing an agent the exact number
     that reads as solved.
     """
-    place = next((p for p in platform.places() if p["id"] == place_id
-                  or p.get("slug") == place_id), None)
-    if place is None:
-        raise Refused(404, "not_found", f"no place {place_id!r} is granted to you")
+    place = _find_place(platform, place_id)
+    retired = _retired(place)
     site = _site_of(platform, place)
     if site is None:
         return {"id": place["id"], "name": place.get("name"),
-                "published": False,
+                "published": False, **retired,
                 "note": "no published package, so nothing about its ground is known"}
 
     came = site.get("from") or {}
@@ -153,7 +190,7 @@ def places_get(platform: Platform, place_id: str) -> dict:
     cover = reef.get("cover") or {}
     life = site.get("life") or {}
     return {
-        "id": place["id"], "name": place.get("name"), "published": True,
+        "id": place["id"], "name": place.get("name"), "published": True, **retired,
         "ground": {
             # Whether the ground was surveyed, and who says so.
             #

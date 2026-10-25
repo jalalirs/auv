@@ -4291,6 +4291,96 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cities/{cityId}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire a place
+         * @description Takes the place out of every listing and refuses new dives in it. Nothing is erased: its versions, runs and files stay, dives already flown in it still replay and their results still read, and reading it by id says it is retired, when and by whom. The same authority as publishing a version of it. Retiring a retired place is no error.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The place. */
+                    cityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The place, retired. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["City"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cities/{cityId}/unretire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bring a retired place back
+         * @description Returns the place to the listings and lets new dives be made in it again. Bringing back a place that is not retired is no error.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The place. */
+                    cityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The place, back in the listings. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["City"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cities/{cityId}/layouts": {
         parameters: {
             query?: never;
@@ -6465,8 +6555,14 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
             createdBy: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the place was retired: out of every listing and refusing new dives, its history kept. Absent while it is in use.
+             *
+             */
             retiredAt?: string | null;
+            /** @description The principal who retired it. Absent while it is in use. */
+            retiredBy?: string;
         };
         /** @description What a simulator integrates. The matrices are carried as objects rather than named columns because their shape belongs to the runtime that reads them, and pinning it here would mean changing the contract every time the model gained a term.
          *      */

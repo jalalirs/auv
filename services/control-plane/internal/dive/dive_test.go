@@ -202,3 +202,22 @@ func TestATopicListIsNamesOrObjects(t *testing.T) {
 		}
 	}
 }
+
+func TestANewDiveInARetiredPlaceIsRefusedAndAReplayIsNot(t *testing.T) {
+	retired := time.Date(2026, 10, 25, 9, 0, 0, 0, time.UTC)
+	err := RefuseRetiredPlace("Test one", &retired, false)
+	if !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("a new dive in a retired place is refused: %v", err)
+	}
+	for _, said := range []string{"Test one", "retired", "2026-10-25", "unretire"} {
+		if !strings.Contains(err.Error(), said) {
+			t.Errorf("the refusal should say %q: %v", said, err)
+		}
+	}
+	if err := RefuseRetiredPlace("Test one", &retired, true); err != nil {
+		t.Fatalf("a replay of a dive already flown there is history: %v", err)
+	}
+	if err := RefuseRetiredPlace("Test one", nil, false); err != nil {
+		t.Fatalf("a place in use takes new dives: %v", err)
+	}
+}

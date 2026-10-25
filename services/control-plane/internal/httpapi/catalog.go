@@ -152,6 +152,50 @@ func (d *Dependencies) readCity(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, place)
 }
 
+// retireCity takes a place out of every listing and refuses new dives in it.
+// Nothing is erased: its versions, runs and files stay, dives already flown
+// in it still replay, and reading it by id says it is retired.
+func (d *Dependencies) retireCity(w http.ResponseWriter, r *http.Request) {
+	d.setRetired(w, r, true)
+}
+
+// unretireCity brings a retired place back.
+func (d *Dependencies) unretireCity(w http.ResponseWriter, r *http.Request) {
+	d.setRetired(w, r, false)
+}
+
+func (d *Dependencies) setRetired(w http.ResponseWriter, r *http.Request, retire bool) {
+	principal, _ := principalOf(r.Context())
+	cityID := r.PathValue("cityId")
+	action := "city.unretire"
+	if retire {
+		action = string(policy.CityRetire)
+	}
+
+	var place catalog.City
+	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		var err error
+		if retire {
+			place, err = d.Catalog.RetireCity(r.Context(), conn, cityID, principal.ID)
+		} else {
+			place, err = d.Catalog.UnretireCity(r.Context(), conn, cityID)
+		}
+		if err != nil {
+			return err
+		}
+		return d.Audit.Record(r.Context(), conn, audit.Event{
+			ActorID: principal.ID, Action: action,
+			SubjectKind: "city", SubjectID: place.ID, Outcome: audit.Succeeded,
+			Detail: map[string]any{"slug": place.Slug, "retired": place.Retired()},
+		})
+	})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, place)
+}
+
 // listCityVersions lists a city's packages, newest first.
 func (d *Dependencies) listCityVersions(w http.ResponseWriter, r *http.Request) {
 	d.listVersionsOf(w, r, catalog.KindCity, r.PathValue("cityId"))

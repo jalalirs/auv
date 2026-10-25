@@ -153,6 +153,12 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/cities/{cityId}",
 		Summary: "enter a place", Action: policy.CityRead,
 		Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.readCity})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/cities/{cityId}/retire",
+		Summary: "retire a place: out of every listing and no new dives, its history kept",
+		Action:  policy.CityRetire, Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.retireCity})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/cities/{cityId}/unretire",
+		Summary: "bring a retired place back",
+		Action:  policy.CityRetire, Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.unretireCity})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/cities/{cityId}/versions",
 		Summary: "a city's packages", Action: policy.CityRead,
 		Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.listCityVersions})

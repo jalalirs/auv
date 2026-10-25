@@ -124,3 +124,30 @@ func TestNoTwoRoutesShareAMethodAndPattern(t *testing.T) {
 		seen[key] = true
 	}
 }
+
+// TestAPlaceCanBeRetiredAndBroughtBack keeps the way to retire a place, and
+// to undo it, governed by the place's own authority.
+func TestAPlaceCanBeRetiredAndBroughtBack(t *testing.T) {
+	want := map[string]bool{
+		"POST /api/v1/cities/{cityId}/retire":   false,
+		"POST /api/v1/cities/{cityId}/unretire": false,
+	}
+	for _, route := range routeTable(t) {
+		key := route.Method + " " + route.Pattern
+		if _, ok := want[key]; !ok {
+			continue
+		}
+		want[key] = true
+		if route.Action != policy.CityRetire {
+			t.Errorf("%s performs %q, not %q", key, route.Action, policy.CityRetire)
+		}
+		if route.Public || route.Resource == nil {
+			t.Errorf("%s must be decided against the place", key)
+		}
+	}
+	for key, found := range want {
+		if !found {
+			t.Errorf("%s is not served", key)
+		}
+	}
+}

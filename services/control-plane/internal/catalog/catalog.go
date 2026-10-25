@@ -66,11 +66,17 @@ type City struct {
 	Discoverable  bool          `json:"discoverable"`
 	// OwnedByOrg is the organisation the place belongs to; empty for the
 	// platform's own catalogue.
-	OwnedByOrg string     `json:"ownedByOrg,omitempty"`
-	CreatedAt  time.Time  `json:"createdAt"`
-	CreatedBy  string     `json:"createdBy"`
-	RetiredAt  *time.Time `json:"retiredAt,omitempty"`
+	OwnedByOrg string    `json:"ownedByOrg,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
+	CreatedBy  string    `json:"createdBy"`
+	// RetiredAt and RetiredBy say the place was taken out of the listings,
+	// when and by whom. It keeps its history and takes no new dives.
+	RetiredAt *time.Time `json:"retiredAt,omitempty"`
+	RetiredBy string     `json:"retiredBy,omitempty"`
 }
+
+// Retired reports whether the place has been taken out of the listings.
+func (c City) Retired() bool { return c.RetiredAt != nil }
 
 // Vehicle is what a dive is flown in.
 type Vehicle struct {
@@ -221,13 +227,19 @@ func (c catalogued[T]) one(ctx context.Context, pool *db.Pool, where string, arg
 	return thing, db.Translate(err)
 }
 
+// listing is the statement all asks. A retired one is never listed: it is
+// read by its id or not at all.
+func (c catalogued[T]) listing() string {
+	return c.selectFrom + `
+		WHERE retired_at IS NULL
+		  AND ($1::boolean OR id = ANY($2) OR ($3::boolean AND discoverable))
+		ORDER BY name`
+}
+
 // all lists what a subject may learn of: everything, or what it has been bound
 // to, or what somebody made discoverable.
 func (c catalogued[T]) all(ctx context.Context, pool *db.Pool, scope Scope) ([]T, error) {
-	rows, err := pool.Query(ctx, c.selectFrom+`
-		WHERE retired_at IS NULL
-		  AND ($1::boolean OR id = ANY($2) OR ($3::boolean AND discoverable))
-		ORDER BY name`,
+	rows, err := pool.Query(ctx, c.listing(),
 		scope.All, scope.BoundIDs, scope.IncludeDiscoverable)
 	if err != nil {
 		return nil, fmt.Errorf("listing %s: %w", c.plural, err)
@@ -287,7 +299,7 @@ const selectCity = `
 	       coalesce(ST_XMin(extent), 0), coalesce(ST_YMin(extent), 0),
 	       coalesce(ST_XMax(extent), 0), coalesce(ST_YMax(extent), 0),
 	       horizontal_crs, vertical_datum, discoverable, coalesce(owned_by_org, ''),
-	       created_at, created_by, retired_at
+	       created_at, created_by, retired_at, coalesce(retired_by, '')
 	FROM catalog.city`
 
 func scanCity(row interface{ Scan(...any) error }) (City, error) {
@@ -295,7 +307,7 @@ func scanCity(row interface{ Scan(...any) error }) (City, error) {
 	err := row.Scan(&place.ID, &place.Slug, &place.Name, &place.Summary,
 		&place.Extent.West, &place.Extent.South, &place.Extent.East, &place.Extent.North,
 		&place.HorizontalCRS, &place.VerticalDatum, &place.Discoverable, &place.OwnedByOrg,
-		&place.CreatedAt, &place.CreatedBy, &place.RetiredAt)
+		&place.CreatedAt, &place.CreatedBy, &place.RetiredAt, &place.RetiredBy)
 	return place, err
 }
 
@@ -353,11 +365,37 @@ func (s *Store) Cities(ctx context.Context, scope Scope) ([]City, error) {
 	return cities.all(ctx, s.pool, scope)
 }
 
+// RetireCity takes a place out of every listing and refuses new dives in it,
+// erasing nothing: its versions, runs and files stay, and a dive already
+// flown in it still replays. Retiring what is already retired is no error,
+// and keeps who retired it first.
+func (s *Store) RetireCity(ctx context.Context, conn db.Conn, id, by string) (City, error) {
+	if _, err := conn.Exec(ctx, `UPDATE catalog.city SET retired_at = now(), retired_by = $2
+		WHERE id = $1 AND retired_at IS NULL`, id, by); err != nil {
+		return City{}, fmt.Errorf("retiring a place: %w", err)
+	}
+	place, err := scanCity(conn.QueryRow(ctx, selectCity+` WHERE id = $1`, id))
+	return place, db.Translate(err)
+}
+
+// UnretireCity brings a retired place back into the listings. Bringing back
+// one that was never retired is no error.
+func (s *Store) UnretireCity(ctx context.Context, conn db.Conn, id string) (City, error) {
+	if _, err := conn.Exec(ctx, `UPDATE catalog.city SET retired_at = NULL, retired_by = NULL
+		WHERE id = $1 AND retired_at IS NOT NULL`, id); err != nil {
+		return City{}, fmt.Errorf("bringing a place back: %w", err)
+	}
+	place, err := scanCity(conn.QueryRow(ctx, selectCity+` WHERE id = $1`, id))
+	return place, db.Translate(err)
+}
+
+const catalogueListing = selectCity + `
+		WHERE owned_by_org IS NULL AND discoverable AND retired_at IS NULL ORDER BY name`
+
 // Catalogue lists the map store: the platform's own places (no organisation
 // owns them) that anybody may find, and that are not retired.
 func (s *Store) Catalogue(ctx context.Context) ([]City, error) {
-	rows, err := s.pool.Query(ctx, selectCity+`
-		WHERE owned_by_org IS NULL AND discoverable AND retired_at IS NULL ORDER BY name`)
+	rows, err := s.pool.Query(ctx, catalogueListing)
 	if err != nil {
 		return nil, fmt.Errorf("listing the map store: %w", err)
 	}

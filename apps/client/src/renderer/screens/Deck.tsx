@@ -213,6 +213,7 @@ export function Deck({ platform, onDiving }: {
                   onOpen={(id) => setWhere({ page: "place", id })}
                   onBuild={() => setWhere({ page: "build" })}
                   onBuildOn={(id) => setWhere({ page: "build", base: id })}
+                  onChanged={read}
                   onFromVideo={() => setWhere({ page: "reconstructions" }, { replace: true })} />
         ) : where.page === "reconstructions" ? (
           <Reconstructions platform={platform} held={held} onBack={() => setWhere({ page: "places" }, { replace: true })}

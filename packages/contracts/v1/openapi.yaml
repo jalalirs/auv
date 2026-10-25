@@ -2986,6 +2986,57 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v1/cities/{cityId}/retire:
+    post:
+      tags: [places]
+      summary: Retire a place
+      description: >
+        Takes the place out of every listing and refuses new dives in it.
+        Nothing is erased: its versions, runs and files stay, dives already
+        flown in it still replay and their results still read, and reading
+        it by id says it is retired, when and by whom. The same authority as
+        publishing a version of it. Retiring a retired place is no error.
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          description: The place.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The place, retired.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/City'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/cities/{cityId}/unretire:
+    post:
+      tags: [places]
+      summary: Bring a retired place back
+      description: >
+        Returns the place to the listings and lets new dives be made in it
+        again. Bringing back a place that is not retired is no error.
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          description: The place.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The place, back in the listings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/City'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/cities/{cityId}/layouts:
     get:
       tags: [places]
@@ -4576,7 +4627,16 @@ components:
             Absent for the platform's catalogue.
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
-        retiredAt: { type: string, format: date-time, nullable: true }
+        retiredAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            When the place was retired: out of every listing and refusing new
+            dives, its history kept. Absent while it is in use.
+        retiredBy:
+          type: string
+          description: The principal who retired it. Absent while it is in use.
       required: [id, slug, name, horizontalCrs, verticalDatum, discoverable, createdAt, createdBy]
     VehicleDynamics:
       type: object

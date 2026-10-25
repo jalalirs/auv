@@ -17,6 +17,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -218,6 +219,21 @@ type DiveSpec struct {
 	InitialState     json.RawMessage
 	Objective        json.RawMessage
 	CreatedBy        string
+	// ReplayOf names the run this dive flies again from its commands. A
+	// replay of a dive already flown is history, and is allowed in a place
+	// that has since been retired; a new dive there is not.
+	ReplayOf string
+}
+
+// RefuseRetiredPlace refuses a new dive in a place that has been retired.
+// A replay of one already flown there is not new, and is let through.
+func RefuseRetiredPlace(place string, retiredAt *time.Time, replay bool) error {
+	if retiredAt == nil || replay {
+		return nil
+	}
+	return fmt.Errorf("%w: %s was retired on %s and takes no new dives; its history is kept, "+
+		"and dives already flown in it still replay. Bring it back (unretire) to dive there again",
+		domain.ErrInvalid, place, retiredAt.UTC().Format("2006-01-02"))
 }
 
 // Validate reports whether the dive names everything a dive needs.
@@ -664,6 +680,21 @@ func (s *Store) CreateDive(ctx context.Context, conn db.Conn, spec DiveSpec) (Di
 			return Dive{}, err
 		}
 		spec.Objective = laid
+	}
+	{
+		var place string
+		var retiredAt *time.Time
+		err := conn.QueryRow(ctx, `
+			SELECT c.name, c.retired_at
+			  FROM catalog.version v
+			  JOIN catalog.city c ON c.id = v.asset_id
+			 WHERE v.id = $1 AND v.asset_kind = 'city'`, spec.CityVersionID).Scan(&place, &retiredAt)
+		if err != nil && !errors.Is(db.Translate(err), db.ErrNotFound) {
+			return Dive{}, fmt.Errorf("reading the place a dive is in: %w", err)
+		}
+		if err := RefuseRetiredPlace(place, retiredAt, spec.ReplayOf != ""); err != nil {
+			return Dive{}, err
+		}
 	}
 	initial, objective := spec.InitialState, spec.Objective
 	if len(initial) == 0 {

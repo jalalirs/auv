@@ -135,6 +135,7 @@ func (d *Dependencies) filmRun(w http.ResponseWriter, r *http.Request) {
 			Objective:        plan.Objective,
 			ObjectiveOverlay: laid,
 			CreatedBy:        principal.ID,
+			ReplayOf:         runID,
 		})
 		if err != nil {
 			return err

@@ -138,6 +138,10 @@ class Platform:
     def places(self) -> list[dict]:
         return self.request("GET", "/api/v1/cities")["cities"]
 
+    def place(self, place: str) -> dict:
+        """One place by id, retired or not."""
+        return self.request("GET", f"/api/v1/cities/{place}")
+
     def vehicles(self) -> list[dict]:
         return self.request("GET", "/api/v1/vehicles")["vehicles"]
 

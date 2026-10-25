@@ -214,6 +214,8 @@ Object.assign(platform, {
     { path: "site.json", url: "./harness/fixtures/al-fahal/site.json" },
     { path: "seabed.f32", url: "./harness/fixtures/al-fahal/seabed.f32" }]),
   publishVersion: (v: string) => { said.push(`published ${v}`); return delay({ id: v }); },
+  retirePlace: (city: string) => { said.push(`retired ${city}`); return delay({ id: city, retiredAt: new Date().toISOString(), retiredBy: "p1" }); },
+  unretirePlace: (city: string) => { said.push(`unretired ${city}`); return delay({ id: city }); },
 });
 // A reconstruction that walks through its steps, then a mapping of it.
 const reconSteps = [
@@ -342,7 +344,8 @@ Object.assign(window, { said, store });
 const held = {
   you: { id: "p1", displayName: "Harness", email: "harness@example.test" },
   institution: { id: "org_1", name: "Harness" },
-  places: places.map((p) => ({ id: p.id, slug: p.slug, name: p.name })),
+  // The tank is the institution's own, so Places offers to retire it.
+  places: places.map((p) => ({ id: p.id, slug: p.slug, name: p.name, ...(p.id === "city_tank" ? { ownedByOrg: "org_1" } : {}) })),
   vehicles: [{ id: "veh_mini", slug: "mini-hoot", name: "mini-hoot" }, { id: "veh_luna", slug: "boxfish-luna", name: "Boxfish Luna" }],
   queues: [{ id: "queue_1", free: 1, devices: 1, runtimes: ["isaac-6.0.1+oceansim"] }],
   runs: [
@@ -411,6 +414,7 @@ function Harness({ packages }: { packages: Packages }) {
                   onTab={(tab) => setWhere((w) => ({ ...w, place: tab }))}
                   onOpen={(c) => said.push(`open ${c}`)} onBuild={() => setWhere((w) => ({ ...w, page: "build" }))}
                   onBuildOn={(c) => { said.push(`build on ${c}`); setWhere((w) => ({ ...w, page: "build" })); }}
+                  onChanged={() => { said.push("places read again"); }}
                   onFromVideo={() => setWhere((w) => ({ ...w, page: "video" }))} />
         ) : where.page === "fleet" ? (
           <Fleet held={held} packages={packages} onOpen={(v) => said.push(`vehicle ${JSON.stringify(v)}`)} />

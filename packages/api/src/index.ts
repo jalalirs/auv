@@ -489,6 +489,19 @@ export class Platform {
     return cities;
   }
 
+  /**
+   * Retire a place: out of every listing and no new dives in it, with its
+   * versions, runs and files kept. Reading it by id still works.
+   */
+  retirePlace(city: string): Promise<City> {
+    return this.#request("POST", `/api/v1/cities/${city}/retire`);
+  }
+
+  /** Bring a retired place back into the listings. */
+  unretirePlace(city: string): Promise<City> {
+    return this.#request("POST", `/api/v1/cities/${city}/unretire`);
+  }
+
   async vehicles(): Promise<Vehicle[]> {
     const { vehicles } = await this.#request<{ vehicles: Vehicle[] }>("GET", "/api/v1/vehicles");
     return vehicles;
