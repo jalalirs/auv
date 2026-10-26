@@ -84,7 +84,7 @@ SAND_OVER_M = 0.5
 GROUND_FALLOFF_M = 15.0
 SH_C0 = 0.28209479177387814
 # How far in from a vehicle strip's edge its splats fade, at lay.
-EDGE_M = 3.0
+EDGE_M = 2.0
 
 
 def placement_of(brief: dict, surface_dir) -> dict:
@@ -146,7 +146,8 @@ def lay_one(asset: dict, rec: pathlib.Path, place: pathlib.Path, work: pathlib.P
         tell("bake", f"{name}: its pieces brought to one colour (gains "
                      + ", ".join("/".join(f"{v:.2f}" for v in g) for g in gains) + ")", n=n, of=of, gains=gains)
     # A vehicle's strip is long and narrow, and its trimmed metre of fade
-    # still reads as a carpet laid on the floor: its outer EDGE_M fade too.
+    # still reads as a carpet laid on the floor: its outer EDGE_M fade too
+    # (3 m left a 10 m strip a 4 m core; 2 m keeps it a strip).
     soften = bool(manifest.get("poses"))
     if soften:
         (work / "identity.json").write_text(json.dumps({"matrix": np.eye(4).tolist(), "dz": 0.0}))
