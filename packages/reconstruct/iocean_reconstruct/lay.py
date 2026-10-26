@@ -83,6 +83,8 @@ SAND_BAND_M = 3.0
 SAND_OVER_M = 0.5
 GROUND_FALLOFF_M = 15.0
 SH_C0 = 0.28209479177387814
+# How far in from a vehicle strip's edge its splats fade, at lay.
+EDGE_M = 3.0
 
 
 def placement_of(brief: dict, surface_dir) -> dict:
@@ -143,16 +145,31 @@ def lay_one(asset: dict, rec: pathlib.Path, place: pathlib.Path, work: pathlib.P
     if gains:
         tell("bake", f"{name}: its pieces brought to one colour (gains "
                      + ", ".join("/".join(f"{v:.2f}" for v in g) for g in gains) + ")", n=n, of=of, gains=gains)
+    # A vehicle's strip is long and narrow, and its trimmed metre of fade
+    # still reads as a carpet laid on the floor: its outer EDGE_M fade too.
+    soften = bool(manifest.get("poses"))
+    if soften:
+        (work / "identity.json").write_text(json.dumps({"matrix": np.eye(4).tolist(), "dz": 0.0}))
     for i, piece in enumerate(manifest["pieces"]):
         baked = work / f"part-{i + 1}-baked.pt"
+        source = rec / piece["checkpoint"]
+        if soften:
+            softened = work / f"part-{i + 1}-soft.pt"
+            # Nothing more taken out (the bounds held wide); only the fade.
+            run("bake", python("trim_splats.py", source, softened, work / "identity.json", rec,
+                               "--translate", "0,0,0", "--edge", f"{EDGE_M:g}",
+                               "--above", "1000", "--below", "1000", "--big", "1e9"))
+            source = softened
         tell("bake", f"{name}: part {i + 1} of {len(manifest['pieces'])} into the place's frame", n=n, of=of)
         # A strip from a vehicle's navigation was seen from one angle: only its
         # base colour holds from any other (bake_splats.py --base-colour).
         flat = ["--base-colour"] if manifest.get("poses") else []
         if gains:
             flat.append("--gain=" + ",".join(f"{v:.4f}" for v in gains[i]))
-        run("bake", python("bake_splats.py", rec / piece["checkpoint"], "-", work / "align-local.json", baked,
+        run("bake", python("bake_splats.py", source, "-", work / "align-local.json", baked,
                            work / "align-local-baked.json", *flat))
+        if soften:
+            softened.unlink(missing_ok=True)
         usdz = work / f"part-{i + 1}.usdz"
         run("bake", [sys.executable, "-m", "threedgrut.export.scripts.export_usd", "--checkpoint", baked,
                      "--output", usdz, "--format", "nurec", "--no-cameras", "--no-background", "--half",
