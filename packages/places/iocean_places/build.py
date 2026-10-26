@@ -33,14 +33,31 @@ def _quiet(step: str, say: str, **detail) -> None:
     """What a build says about what it is doing, when nobody is listening."""
 
 
-def products_of(recipe: Recipe, cache: pathlib.Path | None = None, tell=_quiet) -> dict[str, Layer | Soundings]:
-    """Every layer and every set of soundings every source gives, by name."""
+# Sources that may see nothing of a square and be left out, the global grid
+# filling in: a satellite over open water sees no bottom, and a square of open
+# water is still a place (an export line runs across one).
+OPTIONAL = {"sentinel2-stumpf", "sentinel2-median", "learned-depth", "icesat2", "allen-coral-atlas"}
+
+
+def products_of(recipe: Recipe, cache: pathlib.Path | None = None, tell=_quiet,
+                left_out: list | None = None) -> dict[str, Layer | Soundings]:
+    """Every layer and every set of soundings every source gives, by name. An
+    optional source that fails is left out (said in `left_out`), not the build."""
     out: dict[str, Layer | Soundings] = {}
     for n, entry in enumerate(recipe.sources, 1):
         name = entry.get("as", entry["use"])
         tell("source", f"reading {entry['use']}", n=n, of=len(recipe.sources), source=entry["use"])
         source = source_from(entry)
-        for layer in source.layers(recipe.grid, cache):
+        try:
+            layers = list(source.layers(recipe.grid, cache))
+        except ValueError as why:
+            if entry["use"] not in OPTIONAL:
+                raise
+            tell("source", f"{entry['use']} left out: {why}", source=entry["use"])
+            if left_out is not None:
+                left_out.append({"as": name, "said": f"{entry['use']}: {why}"})
+            continue
+        for layer in layers:
             key = f"{name}.{layer.quantity}"
             # A source may give two layers of one quantity (GEBCO's grid and
             # the multibeam mosaic beside it). The last keeps the plain name,
@@ -68,7 +85,7 @@ def layers_of(recipe: Recipe, cache: pathlib.Path | None = None) -> dict[str, li
     return out
 
 
-def run_models(recipe: Recipe, products: dict, tell=_quiet) -> tuple[dict, set[str]]:
+def run_models(recipe: Recipe, products: dict, tell=_quiet, gone: set | None = None) -> tuple[dict, set[str]]:
     """Each model in turn, its layers added to the products; returns what each
     said about how it was fitted, and which products the models used."""
     said, used = {}, set()
@@ -80,8 +97,13 @@ def run_models(recipe: Recipe, products: dict, tell=_quiet) -> tuple[dict, set[s
 
     for n, entry in enumerate(recipe.models, 1):
         name = entry.get("as", entry["use"])
-        tell("model", f"fitting {entry['use']}", n=n, of=len(recipe.models), model=entry["use"])
         model = model_from(entry)
+        # A model whose input a left-out source would have made is not fitted.
+        lacking = [v for v in model.inputs.values() if v and v not in products]
+        if lacking and gone and all(v.split(".", 1)[0] in gone for v in lacking):
+            tell("model", f"{entry['use']} not fitted: nothing made {', '.join(lacking)}", model=entry["use"])
+            continue
+        tell("model", f"fitting {entry['use']}", n=n, of=len(recipe.models), model=entry["use"])
         used |= {v for v in model.inputs.values() if v}
         layers, record = model.run(recipe.grid, take)
         for layer in layers:
@@ -134,14 +156,21 @@ def build(recipe: Recipe, into: pathlib.Path, cache: pathlib.Path | None = None,
     `tell(step, say, **detail)` hears each stage as it starts."""
     into = pathlib.Path(into).expanduser()
     into.mkdir(parents=True, exist_ok=True)
-    products = products_of(recipe, cache, tell)
-    models, used = run_models(recipe, products, tell)
+    left_out: list[dict] = []
+    products = products_of(recipe, cache, tell, left_out)
+    gone = {one["as"] for one in left_out}
+    models, used = run_models(recipe, products, tell, gone)
     named = recipe.scene.get("depth")
     if named:
         missing = [n for n in named if n not in products]
-        if missing:
+        if [n for n in missing if n.split(".", 1)[0] not in gone and not any(
+                (m.get("as") or m["use"]) == n.split(".", 1)[0] for m in recipe.models)]:
             raise ValueError(f"the scene names {', '.join(missing)}, which nothing made")
-        chosen = [products[n] for n in named]
+        chosen = [products[n] for n in named if n in products]
+        if not chosen and gone:
+            # Every layer the scene named came from what was left out: the
+            # depth layers that were made (the global grid) are the seabed.
+            chosen = [p for p in products.values() if isinstance(p, Layer) and p.quantity == "depth"]
     else:
         chosen = [p for n, p in products.items() if isinstance(p, Layer) and p.quantity == "depth" and n not in used]
     if not chosen:
@@ -212,7 +241,8 @@ def build(recipe: Recipe, into: pathlib.Path, cache: pathlib.Path | None = None,
     site = {
         "name": recipe.name,
         "from": {"centre": centre, "acrossMetres": recipe.grid.across, "sampleMetres": round(recipe.grid.cell, 3),
-                 "surveyed": note["surveyed"], "depth": depth_said, "models": models},
+                 "surveyed": note["surveyed"], "depth": depth_said, "models": models,
+                 **({"leftOut": [one["said"] for one in left_out]} if left_out else {})},
         "datum": "mean sea level; z = 0 is the surface and depth is negative z",
         "deepestM": round(float(-height.min()), 2),
         "shallowestM": round(float(-height.max()), 2),

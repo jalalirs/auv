@@ -102,3 +102,35 @@ def test_soundings_are_interpolated_between_not_made_tiles():
     gx, gy = grid.xy()
     inside = (np.abs(gx) < 19) & (np.abs(gy) < 19)
     assert np.nanmax(np.abs(layer.value[inside] - (-10.0 - 0.1 * gx[inside]))) < 1e-6
+
+
+def test_a_satellite_that_sees_no_bottom_is_left_out_not_the_build():
+    import numpy as np
+    import importlib
+    b = importlib.import_module("iocean_places.build")
+    from iocean_places.grid import Grid
+    from iocean_places.layer import Layer, Provenance
+
+    class Blind:
+        def layers(self, grid, cache=None):
+            raise ValueError("almost no bottom visible here; is this open water?")
+
+    class Deep:
+        def layers(self, grid, cache=None):
+            return [Layer.of(grid, "depth", np.full((grid.cells, grid.cells), -600.0),
+                             np.full((grid.cells, grid.cells), 50.0), Provenance("gebco", "derived", "test"))]
+
+    class R:
+        grid = Grid(22.3, 38.95, 600.0, 11)
+        sources = [{"use": "sentinel2-stumpf", "as": "stumpf"}, {"use": "gebco"}]
+
+    made = {"sentinel2-stumpf": Blind(), "gebco": Deep()}
+    original = b.source_from
+    b.source_from = lambda entry: made[entry["use"]]
+    try:
+        left = []
+        out = b.products_of(R, None, left_out=left)
+    finally:
+        b.source_from = original
+    assert "gebco.depth" in out and "stumpf.depth" not in out
+    assert left and left[0]["as"] == "stumpf" and "open water" in left[0]["said"]
