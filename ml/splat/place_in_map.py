@@ -165,7 +165,11 @@ def Xform "Reef"
         wp = (world @ np.c_[pts, np.ones(len(pts))].T)[:3].T
         # A vertex anywhere near the strip, within a cell of the mesh, goes under it.
         spacing = float(np.median(np.abs(np.diff(np.unique(np.round(wp[:, 0], 2)))))) if len(wp) > 2 else 5.0
-        d, j = tree.query(wp[:, :2], distance_upper_bound=max(spacing, 2.0) + 1.0)
+        # Under a core (--keep-edge) only the vertices over it, half a mesh
+        # cell either way; otherwise the reach carried the lowering back out
+        # to the edge it was kept off.
+        reach = 0.5 * spacing if a.keep_edge > 0 else max(spacing, 2.0) + 1.0
+        d, j = tree.query(wp[:, :2], distance_upper_bound=reach)
         hit = np.isfinite(d)
         if not hit.any():
             continue
@@ -173,7 +177,7 @@ def Xform "Reef"
         floor[hit] = under_z[j[hit]] - a.sink
         # The lowest of the strip near each vertex, not the one cell nearest it.
         for k in np.where(hit)[0]:
-            near = tree.query_ball_point(wp[k, :2], max(spacing, 2.0))
+            near = tree.query_ball_point(wp[k, :2], reach if a.keep_edge > 0 else max(spacing, 2.0))
             if near:
                 floor[k] = min(floor[k], float(under_z[near].min()) - a.sink)
         new = np.minimum(wp[:, 2], floor)
