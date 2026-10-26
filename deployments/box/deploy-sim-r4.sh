@@ -16,9 +16,9 @@ if docker ps --format '{{.Image}}' | grep -q 'sim-runtime'; then
   echo "a dive is running; run this again when it has finished"; exit 1
 fi
 
-echo "2. r3 in the registry"
+echo "2. r4 in the registry"
 docker push -q 127.0.0.1:18081/sim-runtime:r4 >/dev/null
-[ -f ~/iocean/backups/env-before-sim-r4 ] || cp "$ENV" ~/iocean/backups/env-before-sim-r3
+[ -f ~/iocean/backups/env-before-sim-r4 ] || cp "$ENV" ~/iocean/backups/env-before-sim-r4
 sed -i "s|^IOCEAN_SIM_IMAGE=.*|IOCEAN_SIM_IMAGE=127.0.0.1:18081/sim-runtime:r4|" "$ENV"
 
 echo "3. the worker"
