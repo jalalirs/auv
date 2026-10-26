@@ -185,7 +185,9 @@ def lay_one(asset: dict, rec: pathlib.Path, place: pathlib.Path, work: pathlib.P
                       # Joined to its flag: a shift west of the middle starts
                       # with a minus, which argparse otherwise reads as a flag.
                       "--translate=" + ",".join(f"{v:g}" for v in T),
-                      "--sink", sink, "--clear", clear, "--video", json.dumps(video)))
+                      "--sink", sink, "--clear", clear, "--video", json.dumps(video),
+                      # Its edge fades, so its ground is lowered under the core only.
+                      *(["--keep-edge", f"{EDGE_M:g}"] if soften else [])))
     for f in parts:
         f.unlink(missing_ok=True)
     blend_ground(place, name, rec, P, [rec / piece["checkpoint"] for piece in manifest["pieces"]], n=n, of=of)

@@ -51,6 +51,9 @@ def main() -> int:
     ap.add_argument("parts", nargs="+", type=pathlib.Path)
     ap.add_argument("--pieces", required=True)
     ap.add_argument("--sink", type=float, default=1.0)
+    ap.add_argument("--keep-edge", type=float, default=0.0,
+                    help="metres: the ground is lowered only under the strip this far in from its edge "
+                         "(a strip whose edge fades shows a lowered rim through it)")
     ap.add_argument("--clear", type=float, default=1.5)
     ap.add_argument("--video", default="{}")
     ap.add_argument("--translate", default="",
@@ -138,11 +141,21 @@ def Xform "Reef"
         "light": "carried: the splats hold the video's own water; the place's water is on top of it",
     }]
 
-    # The drawn ground lowered under the strip.
+    # The drawn ground lowered under the strip: under its solid core only, when
+    # its edge fades (--keep-edge), or the lowered ground shows through the
+    # fade as a dark rim along both sides.
     stage = Usd.Stage.Open(str(a.place / layers.get("terrain", "seabed.usda")))
     lowered = 0
     from scipy.spatial import cKDTree
-    tree = cKDTree(xy)
+    under, under_z = xy, zt
+    if a.keep_edge > 0:
+        from scipy import ndimage
+        whole = ndimage.binary_fill_holes(np.isfinite(grid))
+        inside_m = ndimage.distance_transform_edt(np.pad(whole, 1))[1:-1, 1:-1] * cell
+        core = inside_m[rr, cc] >= a.keep_edge
+        if core.any():
+            under, under_z = xy[core], zt[core]
+    tree = cKDTree(under)
     for prim in stage.Traverse():
         if prim.GetTypeName() != "Mesh":
             continue
@@ -157,12 +170,12 @@ def Xform "Reef"
         if not hit.any():
             continue
         floor = np.full(len(wp), np.inf)
-        floor[hit] = zt[j[hit]] - a.sink
+        floor[hit] = under_z[j[hit]] - a.sink
         # The lowest of the strip near each vertex, not the one cell nearest it.
         for k in np.where(hit)[0]:
             near = tree.query_ball_point(wp[k, :2], max(spacing, 2.0))
             if near:
-                floor[k] = min(floor[k], float(zt[near].min()) - a.sink)
+                floor[k] = min(floor[k], float(under_z[near].min()) - a.sink)
         new = np.minimum(wp[:, 2], floor)
         changed = new < wp[:, 2] - 1e-6
         if changed.any():
