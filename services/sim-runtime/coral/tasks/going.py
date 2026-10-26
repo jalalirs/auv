@@ -87,18 +87,43 @@ class Waypoints(Task):
             self.points.append(np.array([
                 self.began_at[0] + dx * ahead[0] + dy * right[0],
                 self.began_at[1] + dx * ahead[1] + dy * right[1], z]))
+        # `at` is the next point the judge is waiting for; `reached` counts the
+        # points truly come within radius of. A vehicle flies by where it
+        # believes it is: a point it tried for but missed (its navigation
+        # drifted; SubPipe's came within 3 m of a 2.5 m mark) is passed over
+        # once it truly reaches a later one, recorded as missed with how close
+        # it came, rather than holding the judge on it for the rest of the dive
+        # while every later point is reached and not counted.
+        self.at = 0
         self.reached = 0
         self.reached_at: list[float] = []
+        self.missed: list[dict] = []
+        self.closest = [math.inf] * len(self.points)
         self.distance = 0.0
 
     def judge(self, elapsed, position, heading, floor) -> None:
-        if self.reached < len(self.points):
-            target = self.points[self.reached]
-            self.distance = float(np.linalg.norm(position - target))
-            if self.distance <= self.radius:
+        for k in range(self.at, len(self.points)):
+            self.closest[k] = min(self.closest[k], float(np.linalg.norm(position - self.points[k])))
+        if self.at < len(self.points):
+            self.distance = float(np.linalg.norm(position - self.points[self.at]))
+            # A later point counts only when every point before it was at
+            # least tried: come within `tried` of. Going straight to the second
+            # point without going near the first is not the mission.
+            tried = max(3.0 * self.radius, self.radius + 3.0)
+            hit = None
+            for k in range(self.at, len(self.points)):
+                if float(np.linalg.norm(position - self.points[k])) <= self.radius:
+                    hit = k
+                    break
+                if self.closest[k] > tried:
+                    break
+            if hit is not None:
+                for k in range(self.at, hit):
+                    self.missed.append({"point": k + 1, "closestM": round(self.closest[k], 2)})
                 self.reached += 1
                 self.reached_at.append(round(elapsed, 1))
-        if self.reached >= len(self.points) or elapsed >= self.limit:
+                self.at = hit + 1
+        if self.at >= len(self.points) or elapsed >= self.limit:
             self.done = True
 
     def score(self) -> float:
@@ -111,15 +136,20 @@ class Waypoints(Task):
     def says(self) -> str:
         if self.reached >= len(self.points):
             return f"all {len(self.points)} reached in {self.elapsed():.0f} s"
-        return f"{self.reached} of {len(self.points)} reached, next {self.distance:.1f} m away"
+        missed = ", ".join(f"{m['point']} (came within {m['closestM']:.1f} m)" for m in self.missed)
+        tail = f"; missed {missed}" if missed else ""
+        if self.at >= len(self.points):
+            return f"{self.reached} of {len(self.points)} reached{tail}"
+        return f"{self.reached} of {len(self.points)} reached, next {self.distance:.1f} m away{tail}"
 
     def detail(self) -> dict:
         return {"reached": self.reached, "of": len(self.points), "reachedAtS": self.reached_at,
-                "radiusM": self.radius, "timeLimitS": self.limit, "nextM": round(self.distance, 2)}
+                "missed": self.missed, "radiusM": self.radius, "timeLimitS": self.limit,
+                "nextM": round(self.distance, 2)}
 
     def geometry(self) -> dict:
         return {"points": [{"x": float(p[0]), "y": float(p[1]), "depthM": float(-p[2])} for p in self.points],
-                "reached": self.reached}
+                "reached": self.at, "missed": [m["point"] for m in self.missed]}
 
     def goal(self) -> dict:
         return {"kind": "visit", "points": [[float(v) for v in p] for p in self.points],

@@ -337,3 +337,16 @@ def test_a_dock_that_missed_does_end_it():
     from tasks.covering import Survey
     assert Dock.stops_a_mission is True
     assert Survey.stops_a_mission is False
+
+
+def test_a_point_tried_for_and_missed_does_not_stop_the_rest_counting():
+    # Its navigation drifted: the vehicle believed it reached the first point
+    # and was truly 3 m off; it went on and truly reached the second.
+    task = task_for({"kind": "waypoints", "radiusM": 2.5, "timeLimitS": 100,
+                     "points": [{"dx": 40, "dy": 0}, {"dx": 0, "dy": 0}]}, START, 0.0)
+    walk(task, 5, lambda t: START + np.array([40, 3, 0]))
+    assert task.reached == 0
+    walk(task, 5, lambda t: START + np.array([0, 0, 0]))
+    assert task.reached == 1 and task.done
+    assert task.missed == [{"point": 1, "closestM": 3.0}]
+    assert "missed 1 (came within 3.0 m)" in task.says()
