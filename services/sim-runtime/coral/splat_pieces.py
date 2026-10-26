@@ -64,3 +64,36 @@ def all_pieces(site: dict) -> list[Pieces]:
 
 def prim_path(name: str) -> str:
     return name if name.startswith("/") else f"/World/Coral/Splats/{name}"
+
+
+# How much water a video's splats already carry: they were filmed a few metres
+# off the ground, so that much haze is in their colours already and is not
+# put on again.
+CARRIED_M = 3.0
+
+
+def haze_rows(distance: float, lengths, veil, carried: float = CARRIED_M) -> tuple:
+    """The splats' colour matrix for a camera `distance` metres away, as NuRec's
+    omni:nurec:ccmR/G/B rows (r, g, b, offset): each channel kept by the water's
+    transmittance over the distance past what the footage carried, and the
+    water's veil colour laid in for the rest.
+
+    The renderer's water is a volume the splats do not take part in, so a strip
+    rebuilt from a video stayed bright from forty metres off while the seabed
+    round it had gone to murk."""
+    import math
+
+    d = max(0.0, float(distance) - float(carried))
+    rows = []
+    for c in range(3):
+        kept = math.exp(-d / max(float(lengths[c]), 1e-3))
+        row = [0.0, 0.0, 0.0, float(veil[c]) * (1.0 - kept)]
+        row[c] = kept
+        rows.append(tuple(round(v, 5) for v in row))
+    return tuple(rows)
+
+
+def distance_to_box(eye, low, high) -> float:
+    """How far `eye` is from an axis-aligned box (0 inside it)."""
+    e, lo, hi = (np.asarray(v, dtype=float) for v in (eye, low, high))
+    return float(np.linalg.norm(np.maximum(0.0, np.maximum(lo - e, e - hi))))

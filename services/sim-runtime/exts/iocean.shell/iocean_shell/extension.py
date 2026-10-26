@@ -771,6 +771,7 @@ class CoralCityShell(omni.ext.IExt):
         self._expose_for_the_view()
         self._meter_the_frame()
         self._draw_the_nearest_piece()
+        self._haze_the_splats()
 
         if self.tour is not None:
             self._fly_the_tour(dive)
@@ -1291,6 +1292,70 @@ class CoralCityShell(omni.ext.IExt):
             if not getattr(self, "_pieces_complained", False):
                 self._pieces_complained = True
                 carb.log_warn(f"iocean could not choose a splat piece: {exc}")
+
+    def _haze_the_splats(self) -> None:
+        """Splats rebuilt from a video, dimmed into the water by how far the
+        camera is from them (coral/splat_pieces.py haze_rows), through each
+        volume's own colour matrix. The renderer's water is a volume the splats
+        take no part in: a strip stayed bright from forty metres off while the
+        seabed round it had gone to murk. Not in a place that carries its own
+        light (IOCEAN_CLEAR), whose splats are the water."""
+        if os.environ.get("IOCEAN_CLEAR") == "1":
+            return
+        try:
+            from omni.kit.viewport.utility import get_active_viewport
+            from pxr import Gf, Usd, UsdGeom
+
+            stage = omni.usd.get_context().get_stage()
+            found = getattr(self, "_hazed", None)
+            # Looked for until some are drawn, a few times a second at most:
+            # the reconstructions are referenced in after the first frames.
+            if not found:
+                tries = getattr(self, "_haze_tries", 0)
+                self._haze_tries = tries + 1
+                if tries % 30:
+                    return
+                found = []
+                for prim in stage.Traverse():
+                    flag = prim.GetAttribute("omni:nurec:isNuRecVolume")
+                    if not (flag and flag.Get()):
+                        continue
+                    targets = prim.GetRelationship("field:emissiveColor").GetTargets()
+                    field = stage.GetPrimAtPath(targets[0]) if targets else None
+                    if field:
+                        found.append({"volume": prim, "field": field, "last": None})
+                self._hazed = found
+                if not found:
+                    return
+                import water as water_module
+                lengths = water_module.water_of(getattr(self.dive, "water_type", None))
+                self._haze_water = (lengths, water_module.veiling_colour(lengths))
+                self._say("splats_hazed", volumes=len(found), lengths=list(lengths),
+                          veil=list(self._haze_water[1]))
+            viewport = get_active_viewport()
+            camera = stage.GetPrimAtPath(str(viewport.camera_path)) if viewport is not None else None
+            if not camera:
+                return
+            from splat_pieces import distance_to_box, haze_rows
+            eye = UsdGeom.Xformable(camera).ComputeLocalToWorldTransform(Usd.TimeCode.Default()).ExtractTranslation()
+            lengths, veil = self._haze_water
+            for one in found:
+                box = UsdGeom.Imageable(one["volume"]).ComputeWorldBound(
+                    Usd.TimeCode.Default(), UsdGeom.Tokens.default_).ComputeAlignedRange()
+                d = distance_to_box([eye[0], eye[1], eye[2]], box.GetMin(), box.GetMax())
+                # A quarter of a metre is not a change anybody sees.
+                if one["last"] is not None and abs(d - one["last"]) < 0.25:
+                    continue
+                one["last"] = d
+                for name, row in zip(("omni:nurec:ccmR", "omni:nurec:ccmG", "omni:nurec:ccmB"),
+                                     haze_rows(d, lengths, veil)):
+                    attribute = one["field"].GetAttribute(name)
+                    if attribute:
+                        attribute.Set(Gf.Vec4f(*row))
+        except Exception as exc:
+            if not getattr(self, "_haze_complained", False):
+                self._haze_complained = True
+                carb.log_warn(f"iocean could not haze the splats: {exc}")
 
     def _expose_for_the_view(self) -> None:
         dive = self.dive

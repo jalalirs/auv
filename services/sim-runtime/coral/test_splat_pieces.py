@@ -46,3 +46,20 @@ def test_a_reconstruction_laid_into_a_place_brings_its_own():
     assert prim_path("Part1") == "/World/Coral/Splats/Part1"
     assert prim_path("/World/Reconstructions/video/Part1") == "/World/Reconstructions/video/Part1"
     assert all_pieces({}) == []
+
+
+def test_splats_fade_into_the_water_with_distance():
+    from splat_pieces import CARRIED_M, haze_rows
+    lengths, veil = (2.0, 8.0, 12.0), (0.1, 0.3, 0.35)
+    near = haze_rows(CARRIED_M, lengths, veil)
+    assert near == ((1.0, 0.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0), (0.0, 0.0, 1.0, 0.0))
+    far = haze_rows(40.0, lengths, veil)
+    # Red goes first, blue last, and what goes is replaced by the veil.
+    assert far[0][0] < far[1][1] < far[2][2] < 0.1
+    assert abs(far[0][3] - 0.1) < 1e-3 and abs(far[2][3] - 0.35 * (1 - far[2][2])) < 1e-4
+
+
+def test_distance_to_a_box():
+    from splat_pieces import distance_to_box
+    assert distance_to_box([0, 0, 0], [-1, -1, -1], [1, 1, 1]) == 0.0
+    assert abs(distance_to_box([4, 0, 5], [-1, -1, -1], [1, 1, 1]) - 5.0) < 1e-9
