@@ -2386,6 +2386,13 @@ Fahal with the Red Sea reef resolved onto it, and another from a public
 square with a pipeline asset laid along a route, both from the screen,
 published and dived.
 
+**Status 2026-10-26:** both composed, published and dived, through MCP (the
+same platform calls the New place screen makes) under Coral City: "Al Fahal
+with the Red Sea reef" (map store base, reef resolved to the 10.9 m spot) and
+"Thuwal export line (open water)" (public square, 400 m pipeline route). An
+open-water square failed until places r6 left out the satellite that saw no
+bottom. Not done as worded: a new organisation, from the screen.
+
 # The order to build it in
 
 **What this is, stated once.** There are two products latent in this list and
