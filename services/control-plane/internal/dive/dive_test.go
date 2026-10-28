@@ -221,3 +221,30 @@ func TestANewDiveInARetiredPlaceIsRefusedAndAReplayIsNot(t *testing.T) {
 		t.Fatalf("a place in use takes new dives: %v", err)
 	}
 }
+
+func TestCheckObjective(t *testing.T) {
+	good := []string{
+		``, `null`, `{}`, `{"kind": "hold-station", "seconds": 120}`,
+		`{"kind": "waypoints", "points": [{"x": 40, "y": 0, "depthM": 14.5}, {"dx": 8}]}`,
+		`{"kind": "mission", "stages": [{"kind": "waypoints", "points": [{"x": 1, "y": 2}]}]}`,
+		`{"camera": {"lens": "gopro-wide"}}`,
+	}
+	for _, o := range good {
+		if err := CheckObjective(json.RawMessage(o)); err != nil {
+			t.Errorf("%s refused: %v", o, err)
+		}
+	}
+	bad := []string{
+		`{"kind": "waypoints", "points": [[40, 0, -14.5]]}`,
+		`{"kind": "mission", "stages": [{"kind": "waypoints", "points": [[1, 2, 3]]}]}`,
+		`{"kind": "waypoint"}`,
+		`{"kind": "waypoints", "points": {"x": 1}}`,
+		`[1, 2]`,
+	}
+	for _, o := range bad {
+		err := CheckObjective(json.RawMessage(o))
+		if !errors.Is(err, domain.ErrInvalid) {
+			t.Errorf("%s not refused: %v", o, err)
+		}
+	}
+}

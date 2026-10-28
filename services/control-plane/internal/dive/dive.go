@@ -253,6 +253,67 @@ func (d DiveSpec) Validate() error {
 	return nil
 }
 
+// Kinds are the objectives the runtime has a judge for (coral/tasks: KINDS).
+var Kinds = map[string]bool{
+	"hold-station": true, "waypoints": true, "transect": true, "reach": true,
+	"return": true, "dock": true, "wait": true, "descend": true,
+	"survey": true, "search": true, "profile": true, "section": true,
+	"treat": true, "outplant": true, "monitor": true, "inspect": true,
+	"revisit": true, "follow": true, "mission": true,
+}
+
+// CheckObjective refuses an objective the runtime would fly with nothing to
+// judge it by: a kind it has no judge for, or a point that is not
+// {"x", "y", "depthM"} (or "dx"/"dy"/"over"). Before this, a waypoint given
+// as [x, y, z] was queued, flown for an hour on a GPU, and came back
+// "succeeded" with no score.
+func CheckObjective(objective json.RawMessage) error {
+	if len(objective) == 0 || string(objective) == "null" {
+		return nil
+	}
+	var said map[string]json.RawMessage
+	if err := json.Unmarshal(objective, &said); err != nil {
+		return fmt.Errorf("%w: an objective is an object", domain.ErrInvalid)
+	}
+	return checkStage(said, "the objective")
+}
+
+func checkStage(said map[string]json.RawMessage, where string) error {
+	var kind string
+	if raw, ok := said["kind"]; ok {
+		if err := json.Unmarshal(raw, &kind); err != nil {
+			return fmt.Errorf("%w: %s's kind is a word", domain.ErrInvalid, where)
+		}
+		if !Kinds[kind] {
+			return fmt.Errorf("%w: %s's kind %q has no judge; it is one of hold-station, waypoints, transect, reach, return, dock, wait, descend, survey, search, profile, section, treat, outplant, monitor, inspect, revisit, follow, mission", domain.ErrInvalid, where, kind)
+		}
+	}
+	if raw, ok := said["points"]; ok {
+		var points []json.RawMessage
+		if err := json.Unmarshal(raw, &points); err != nil {
+			return fmt.Errorf("%w: %s's points are a list", domain.ErrInvalid, where)
+		}
+		for i, point := range points {
+			var p map[string]json.RawMessage
+			if err := json.Unmarshal(point, &p); err != nil {
+				return fmt.Errorf(`%w: %s's point %d is {"x": .., "y": .., "depthM": ..} (or "dx"/"dy" from the start, or "over" a thing), not %s`, domain.ErrInvalid, where, i+1, string(point))
+			}
+		}
+	}
+	if raw, ok := said["stages"]; ok {
+		var stages []map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &stages); err != nil {
+			return fmt.Errorf("%w: %s's stages are a list of objectives", domain.ErrInvalid, where)
+		}
+		for i, stage := range stages {
+			if err := checkStage(stage, fmt.Sprintf("stage %d", i+1)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // ── The run ──────────────────────────────────────────────────────────────────
 
 // Mode says whether a human is watching.
@@ -680,6 +741,9 @@ func (s *Store) CreateDive(ctx context.Context, conn db.Conn, spec DiveSpec) (Di
 			return Dive{}, err
 		}
 		spec.Objective = laid
+	}
+	if err := CheckObjective(spec.Objective); err != nil {
+		return Dive{}, err
 	}
 	{
 		var place string
