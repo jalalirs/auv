@@ -13,7 +13,7 @@ water of their own, so only the reef is kept:
            metres under it; not the water's (larger than --big metres and
            bluer than red by --blue, or reaching past --above)
   faded    opacity taken down over the strip's outer --edge metres, so its
-           edge is not a wall
+           edge is not a wall, and colour taken to the strip's median ground
   gain     colour times R,G,B, base and view-dependent terms alike, so the
            reef's sand can be brought to the place's sand at that depth
 
@@ -86,8 +86,16 @@ def main() -> int:
     # any whose top reaches past --above.
     water = ((size > a.big) & (colour[:, 2] - colour[:, 0] > a.blue)) | (over + 2 * size > a.above)
     keep = inside & np.isfinite(ground) & (over <= a.above) & (over >= -a.below) & ~water
+    # Measured to the splat's own reach rather than its centre: a 1 m splat
+    # half a metre in pokes out past the edge as a lobe.
     fade = np.zeros(len(pos))
-    fade[inside] = np.clip(edge_m[v[inside], u[inside]] / max(a.edge, 1e-6), 0.0, 1.0)
+    fade[inside] = np.clip((edge_m[v[inside], u[inside]] - size[inside]) / max(a.edge, 1e-6), 0.0, 1.0)
+    # Toward the strip's own ground as well as toward clear: the footage is
+    # darkest at its frame corners, which is where the strip's edge was seen
+    # from, so its edge splats are dark, and a dark splat faded is still a dark
+    # band against the sand (SubPipe, 2026-10-28).
+    core = keep & (fade >= 1.0)
+    ground_colour = np.median(colour[core], axis=0) if core.any() else None
 
     idx = torch.from_numpy(np.flatnonzero(keep))
     with torch.no_grad():
@@ -96,6 +104,11 @@ def main() -> int:
                 ck[key] = ck[key].detach()[idx]
         alpha = torch.sigmoid(ck["density"].double()) * torch.from_numpy(fade[keep])[:, None]
         ck["density"] = torch.logit(alpha.clamp(1e-6, 1 - 1e-6)).to(ck["positions"].dtype)
+        if ground_colour is not None:
+            f = torch.from_numpy(fade[keep])[:, None]
+            seen = 0.5 + SH_C0 * ck["features_albedo"].double()
+            evened = f * seen + (1 - f) * torch.from_numpy(ground_colour)
+            ck["features_albedo"] = ((evened - 0.5) / SH_C0).to(ck["positions"].dtype)
         if not np.allclose(gain, 1.0):
             g = torch.from_numpy(gain)
             albedo = ck["features_albedo"].double()
@@ -107,14 +120,16 @@ def main() -> int:
         for key in ("positions", "rotation", "scale", "density", "features_albedo", "features_specular"):
             if ck.get(key) is not None:
                 ck[key] = torch.nn.Parameter(ck[key].contiguous(), requires_grad=True)
-    ck["trimmed"] = {"above": a.above, "below": a.below, "edge": a.edge, "gain": gain.tolist()}
+    ck["trimmed"] = {"above": a.above, "below": a.below, "edge": a.edge, "gain": gain.tolist(),
+                    "edgeColour": None if ground_colour is None else ground_colour.round(4).tolist()}
     torch.save(ck, a.out)
     print(json.dumps({"splats": int(len(pos)), "kept": int(keep.sum()),
                       "droppedOutside": int((~inside | ~np.isfinite(ground)).sum()),
                       "droppedAbove": int((inside & np.isfinite(ground) & (over > a.above)).sum()),
                       "droppedBelow": int((inside & np.isfinite(ground) & (over < -a.below)).sum()),
                       "droppedWater": int((inside & np.isfinite(ground) & water).sum()),
-                      "faded": int((keep & (fade < 1.0)).sum()), "gain": gain.tolist()}))
+                      "faded": int((keep & (fade < 1.0)).sum()), "gain": gain.tolist(),
+                      "edgeColour": None if ground_colour is None else ground_colour.round(4).tolist()}))
     return 0
 
 
