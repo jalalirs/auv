@@ -105,14 +105,15 @@ func (b *Broker) Targets(ctx context.Context) ([]Target, error) {
 // SetQuota states what one organisation may consume at once.
 func (b *Broker) SetQuota(ctx context.Context, conn db.Conn, quota Quota) (Quota, error) {
 	if quota.MaxConcurrentJobs < 0 || quota.MaxCPU < 0 || quota.MaxMemoryBytes < 0 || quota.MaxGPU < 0 ||
-		quota.MaxConcurrentDives < 0 || quota.MaxGPUHoursDaily < 0 {
+		quota.MaxConcurrentDives < 0 || quota.MaxGPUHoursDaily < 0 ||
+		(quota.MaxDivesMonthly != nil && *quota.MaxDivesMonthly < 0) {
 		return Quota{}, fmt.Errorf("%w: a quota is not negative", domain.ErrInvalid)
 	}
 	var stored Quota
 	err := conn.QueryRow(ctx, `
 		INSERT INTO exec.quota (org_id, max_concurrent_jobs, max_cpu, max_memory_bytes, max_gpu,
-		                        max_concurrent_dives, max_gpu_hours_daily)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		                        max_concurrent_dives, max_gpu_hours_daily, max_dives_monthly)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (org_id) DO UPDATE SET
 		    max_concurrent_jobs = EXCLUDED.max_concurrent_jobs,
 		    max_cpu = EXCLUDED.max_cpu,
@@ -120,14 +121,15 @@ func (b *Broker) SetQuota(ctx context.Context, conn db.Conn, quota Quota) (Quota
 		    max_gpu = EXCLUDED.max_gpu,
 		    max_concurrent_dives = EXCLUDED.max_concurrent_dives,
 		    max_gpu_hours_daily = EXCLUDED.max_gpu_hours_daily,
+		    max_dives_monthly = EXCLUDED.max_dives_monthly,
 		    updated_at = now()
 		RETURNING org_id, max_concurrent_jobs, max_cpu, max_memory_bytes, max_gpu,
-		          max_concurrent_dives, max_gpu_hours_daily, updated_at`,
+		          max_concurrent_dives, max_gpu_hours_daily, max_dives_monthly, updated_at`,
 		quota.OrgID, quota.MaxConcurrentJobs, quota.MaxCPU, quota.MaxMemoryBytes, quota.MaxGPU,
-		quota.MaxConcurrentDives, quota.MaxGPUHoursDaily).
+		quota.MaxConcurrentDives, quota.MaxGPUHoursDaily, quota.MaxDivesMonthly).
 		Scan(&stored.OrgID, &stored.MaxConcurrentJobs, &stored.MaxCPU,
 			&stored.MaxMemoryBytes, &stored.MaxGPU, &stored.MaxConcurrentDives,
-			&stored.MaxGPUHoursDaily, &stored.UpdatedAt)
+			&stored.MaxGPUHoursDaily, &stored.MaxDivesMonthly, &stored.UpdatedAt)
 	if err != nil {
 		return Quota{}, fmt.Errorf("setting a quota: %w", err)
 	}
@@ -139,11 +141,11 @@ func (b *Broker) Quota(ctx context.Context, orgID string) (Quota, map[string]any
 	var quota Quota
 	err := b.pool.QueryRow(ctx, `
 		SELECT org_id, max_concurrent_jobs, max_cpu, max_memory_bytes, max_gpu,
-		       max_concurrent_dives, max_gpu_hours_daily, updated_at
+		       max_concurrent_dives, max_gpu_hours_daily, max_dives_monthly, updated_at
 		FROM exec.quota WHERE org_id = $1`, orgID).
 		Scan(&quota.OrgID, &quota.MaxConcurrentJobs, &quota.MaxCPU,
 			&quota.MaxMemoryBytes, &quota.MaxGPU, &quota.MaxConcurrentDives,
-			&quota.MaxGPUHoursDaily, &quota.UpdatedAt)
+			&quota.MaxGPUHoursDaily, &quota.MaxDivesMonthly, &quota.UpdatedAt)
 	if err != nil {
 		return Quota{}, nil, db.Translate(err)
 	}

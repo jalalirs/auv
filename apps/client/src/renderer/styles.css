@@ -651,6 +651,8 @@ canvas.minimap.carries { cursor: crosshair; }
   border: 1px solid var(--edge); border-radius: var(--r-surface);
   backdrop-filter: blur(10px);
 }
+.boot .panel .google { width: 100%; height: var(--h-large); }
+.boot .panel .or { color: var(--faint); font-size: var(--t-meta); margin: var(--s2) 0 var(--s4); }
 .badge-big { display: flex; align-items: center; gap: 14px; }
 .badge-big img { width: 54px; height: 54px; border-radius: var(--r-surface); }
 .badge-big strong { font-size: var(--t-title); font-weight: 600; letter-spacing: 0.04em; }
@@ -1917,3 +1919,9 @@ ol.steps { margin: 0; padding-left: var(--s5); display: flex; flex-direction: co
 /* One controller's page: its picture beside what it has done. */
 .controller-facts { display: flex; gap: var(--s4); align-items: flex-start; margin-bottom: var(--s4); }
 .controller-facts .asset-facts { margin: 0; }
+
+/* ── the organisation you work in (Profile) ───────────────────────────────── */
+
+section > .facts { display: flex; gap: var(--s5); flex-wrap: wrap; align-items: end; margin-bottom: var(--s5); }
+label.switch { display: grid; gap: var(--s1); font-size: var(--t-meta); color: var(--faint); }
+label.switch select { min-width: 240px; }

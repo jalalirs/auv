@@ -133,6 +133,7 @@ const platform = {
 const baseHeld = {
   you: { id: "p1", displayName: "Demo", email: "demo@example.test" },
   institution: { id: "org_1", name: "iocean" },
+  organisations: [{ id: "org_1", name: "iocean" }],
   places: places.map((p) => ({ id: p.id, slug: p.slug, name: p.name, summary: p.summary })),
   vehicles: vehicleList,
   queues: [{ id: "queue_1", name: "GPU hosts, Jeddah", free: 2, devices: 2, runtimes: ["isaac-6.0.1+oceansim"] }],

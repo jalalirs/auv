@@ -276,7 +276,8 @@ export function Deck({ platform, onDiving }: {
           <Replay platform={platform} dive={where.dive} run={where.run}
                   onBack={() => back({ page: "runs" })} />
         ) : (
-          <Profile platform={platform} held={held} free={free} devices={devices} />
+          <Profile platform={platform} held={held} free={free} devices={devices}
+                   onSwitch={() => { setHeld(undefined); void read(); }} />
         )}
       </main>
     </div>

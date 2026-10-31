@@ -162,6 +162,76 @@ paths:
           description: Done.
         '401':
           $ref: '#/components/responses/Unauthenticated'
+  /api/v1/sessions/exchange:
+    post:
+      tags: [sessions]
+      summary: Trade a desktop hand-off code for a session
+      description: >
+        The desktop app signs in through the system browser and is handed back
+        a code through iocean://signed-in. The code is single use and lasts a
+        minute; it is traded here so no session token ever sits in a URL.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        '201':
+          description: A session, as signing in returns one.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  expiresAt: { type: string, format: date-time }
+                  principal:
+                    $ref: '#/components/schemas/Principal'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /api/v1/auth/google/start:
+    get:
+      tags: [sessions]
+      summary: Sign in with Google
+      description: >
+        Sends the browser to Google. A first sign-in makes the person and their
+        own organisation; every sign-in brings their memberships into line with
+        what institutions approve.
+      security: []
+      parameters:
+        - name: client
+          in: query
+          description: desktop to be handed back to the app through iocean://, otherwise web.
+          schema: { type: string, enum: [web, desktop] }
+      responses:
+        '302':
+          description: Off to Google.
+        '503':
+          description: This platform has no Google client.
+  /api/v1/auth/google/callback:
+    get:
+      tags: [sessions]
+      summary: Back from Google
+      description: >
+        Signs the browser in and sends it on (web), or shows a page that opens
+        iocean://signed-in with a hand-off code (desktop). Answers with a page,
+        not JSON: a person is looking at it.
+      security: []
+      parameters:
+        - { name: code, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: error, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: A page saying what happened.
+        '303':
+          description: Signed in; on to where the web lands.
   /api/v1/me:
     get:
       tags: [sessions]
@@ -502,6 +572,114 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v1/organisations/{orgId}/approvals:
+    get:
+      tags: [institutions]
+      summary: What an institution approves
+      description: The addresses its administrator approved and the Workspace domains the platform gave it.
+      parameters:
+        - { name: orgId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Addresses, then domains.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approvals:
+                    type: array
+                    items: { $ref: '#/components/schemas/Approval' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/organisations/{orgId}/approved-emails:
+    post:
+      tags: [institutions]
+      summary: Approve an address
+      description: >
+        Whoever signs in with Google as this address becomes a member and works
+        on the institution's quota. A personal organisation takes no approvals.
+      parameters:
+        - { name: orgId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '201':
+          description: Approved, and anyone already registered with it is now a member.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Approval' }
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/organisations/{orgId}/approved-emails/{email}:
+    delete:
+      tags: [institutions]
+      summary: Withdraw an address
+      description: The membership the approval made goes with it.
+      parameters:
+        - { name: orgId, in: path, required: true, schema: { type: string } }
+        - { name: email, in: path, required: true, schema: { type: string } }
+      responses:
+        '204':
+          description: Done.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/organisations/{orgId}/approved-domains:
+    post:
+      tags: [institutions]
+      summary: Give an institution a Workspace domain
+      description: >
+        Platform administrators only, so nobody claims a public domain. A person
+        matches when their Google account belongs to that Workspace and their
+        address is in it.
+      parameters:
+        - { name: orgId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [domain]
+              properties:
+                domain: { type: string }
+      responses:
+        '201':
+          description: Given.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Approval' }
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/organisations/{orgId}/approved-domains/{domain}:
+    delete:
+      tags: [institutions]
+      summary: Take a domain back
+      parameters:
+        - { name: orgId, in: path, required: true, schema: { type: string } }
+        - { name: domain, in: path, required: true, schema: { type: string } }
+      responses:
+        '204':
+          description: Done.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/organisations/{orgId}/service-principals:
     post:
       tags: [institutions]
@@ -565,6 +743,7 @@ paths:
                 maxGpu: { type: integer, minimum: 0 }
                 maxConcurrentDives: { type: integer, minimum: 0 }
                 maxGpuHoursDaily: { type: number, minimum: 0 }
+                maxDivesMonthly: { type: [integer, 'null'], minimum: 0, description: Dives started in a calendar month (UTC); absent or null is no limit. }
       responses:
         '200':
           description: The quota.
@@ -4582,6 +4761,19 @@ components:
         id: { type: string }
         slug: { type: string }
         name: { type: string }
+        personalOf:
+          type: string
+          description: The person a personal organisation belongs to; absent for an institution.
+        createdAt: { type: string, format: date-time }
+
+    Approval:
+      type: object
+      required: [orgId, addedBy, createdAt]
+      properties:
+        orgId: { type: string }
+        email: { type: string, description: An approved address. }
+        domain: { type: string, description: An approved Workspace domain. }
+        addedBy: { type: string }
         createdAt: { type: string, format: date-time }
 
     ManifestFile:
@@ -6699,6 +6891,7 @@ components:
         maxGpu: { type: integer }
         maxConcurrentDives: { type: integer, description: How many dives at once. }
         maxGpuHoursDaily: { type: number, description: GPU-hours in a day, over every card a dive held. }
+        maxDivesMonthly: { type: [integer, 'null'], description: Dives started in a calendar month (UTC); null is no limit. }
         updatedAt: { type: string, format: date-time }
 
     APIToken:

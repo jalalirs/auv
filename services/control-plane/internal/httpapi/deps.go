@@ -66,6 +66,12 @@ type Dependencies struct {
 	// SecureCookies marks session cookies as requiring a secure transport,
 	// which is correct everywhere the service is reached over TLS.
 	SecureCookies bool
+
+	// Google is how people sign in; its zero value is a platform that has no
+	// Google client, which says so when asked.
+	Google GoogleSignIn
+	// Personal is what a person's own organisation is given on first sign-in.
+	Personal PersonalStart
 }
 
 // authorize consults the decision point for a question a handler must ask

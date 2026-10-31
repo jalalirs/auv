@@ -10,12 +10,50 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { CHANNELS } from "../shared/bridge.js";
 import { answerTheWindow } from "./ipc.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // The icon lives with the sources and is copied beside the built main process,
 // so that the same path works from the checkout and from inside a package.
 const icon = nativeImage.createFromPath(path.join(here, "../../assets/icon.png"));
+
+// Signing in with Google comes back through iocean://signed-in?code=…, a
+// one-minute single-use code the window trades for a session. One running copy
+// receives it: a second launch (how Windows and Linux deliver the link) hands
+// its argument to the first and leaves.
+const SCHEME = "iocean";
+if (process.defaultApp && process.argv.length >= 2) {
+  app.setAsDefaultProtocolClient(SCHEME, process.execPath, [path.resolve(process.argv[1]!)]);
+} else {
+  app.setAsDefaultProtocolClient(SCHEME);
+}
+if (!app.requestSingleInstanceLock()) app.quit();
+
+let waiting: string | undefined;
+
+function handOff(link: string | undefined): void {
+  if (link === undefined || !link.startsWith(`${SCHEME}://`)) return;
+  let code: string | null = null;
+  try {
+    const url = new URL(link);
+    if (url.hostname === "signed-in") code = url.searchParams.get("code");
+  } catch {
+    return;
+  }
+  if (!code) return;
+  const window = BrowserWindow.getAllWindows()[0];
+  if (window === undefined || window.webContents.isLoading()) {
+    waiting = code;
+    return;
+  }
+  window.webContents.send(CHANNELS.handoff, code);
+  if (window.isMinimized()) window.restore();
+  window.focus();
+}
+
+app.on("open-url", (event, link) => { event.preventDefault(); handOff(link); });
+app.on("second-instance", (_event, argv) => handOff(argv.find((a) => a.startsWith(`${SCHEME}://`))));
 
 function open(): void {
   const window = new BrowserWindow({
@@ -42,6 +80,12 @@ function open(): void {
   // Shown when it has something to show. A window that appears empty and then
   // fills in reads as a slow application even when it is not.
   window.once("ready-to-show", () => window.show());
+  // A link that arrived before the page could hear it.
+  window.webContents.on("did-finish-load", () => {
+    if (waiting === undefined) return;
+    window.webContents.send(CHANNELS.handoff, waiting);
+    waiting = undefined;
+  });
 
   // Links go to the browser, not into this window. A dive should not be
   // navigable away from by anything the platform sends us.
@@ -101,6 +145,7 @@ void app.whenReady().then(() => {
   if (process.platform === "darwin" && !icon.isEmpty()) app.dock?.setIcon(icon);
   answerTheWindow();
   open();
+  handOff(process.argv.find((a) => a.startsWith(`${SCHEME}://`)));
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) open();
   });

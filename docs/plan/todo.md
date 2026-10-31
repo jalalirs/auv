@@ -2605,3 +2605,72 @@ sixty metres is a real task rather than a straight line.
 Batch across many conditions. It is the same objective machinery from item 4,
 evaluated many times with nobody watching, and building it before the objectives
 exist would mean two definitions of what a good dive is.
+
+## 72. Sign in with Google: everyone has their own space, organisations add people by email
+
+Proposed 2026-10-31 (production session), replacing the email sign-up
+draft. The user: no sign-up form; individuals and organisations are both
+customers; a person whose email an organisation approved draws on that
+organisation's quota.
+
+1. **Google is the only way in for customers.** The first Google sign-in
+   creates the person and their **personal organisation** (their name,
+   10 dives a month). No form, no password, no email sent. Email and secret
+   stay only for the admin and service accounts.
+2. **Organisations are created by the platform admin** for a customer
+   (KAUST, NCW, ...), with a monthly dive quota and one or more org admins.
+   Self-serve organisations wait for billing.
+3. **Approved emails.** An org admin lists exact emails
+   (`ali@kaust.edu.sa`). The platform admin can also give an organisation a
+   whole domain (`kaust.edu.sa`); an org admin cannot, so nobody can claim
+   gmail.com. Matching uses Google's verified email, and for a domain also
+   Google's `hd` claim (the Workspace the account belongs to).
+4. **Joining.** At every sign-in, a matching person becomes a member of that
+   organisation (and stops being one when their email is removed). They keep
+   their personal organisation. The app already works inside one
+   organisation at a time; a dive uses the quota of the organisation it is
+   run in, and that organisation owns its results.
+5. **Quota.** A new `dives_per_month` on the organisation's quota, checked
+   when a dive is admitted; the refusal says what is left and when it resets.
+   Existing organisations get none set, meaning no limit.
+6. **Abuse guard.** Personal organisations are free GPU time for any Google
+   account, so new ones are capped per day (in .env), and the admin sees new
+   people in the console's People list.
+7. **Screens.** The desktop sign-in screen gets "Continue with Google" (the
+   system browser, back through `iocean://signed-in?code=...`, a single-use
+   60 s code traded at `POST /api/v1/sessions/exchange`); the website gets
+   the same button; the app gets an organisation switcher if it has none,
+   and an org admin's page for the approved emails and the quota used.
+
+**Done when:** on the local stack, a new Google account lands in its own
+space and runs a dive; an email an organisation approved also lands in that
+organisation and its dives count against it; removing the email removes the
+membership; the 11th personal dive in a month is refused with the reset
+date; existing people and organisations are unchanged; the control plane's
+tests pass. Deploying restarts the control plane, so the auv session is told
+first.
+
+**Open:** organisations whose staff use Microsoft 365 rather than Google
+Workspace can still sign in with a Google account made on their work email
+(exact-email approval works; domain approval needs `hd`, so it does not).
+"Sign in with Microsoft" is the fix if a customer needs it.
+
+**Built 2026-10-31, not deployed.** Control plane: migration 0042, routes under
+/api/v1/auth/google/{start,callback}, POST /api/v1/sessions/exchange, approvals
+under /api/v1/organisations/{orgId}/approvals, a monthly dive limit on the
+quota. App: Continue with Google through the system browser and
+iocean://signed-in, an organisation switcher, dives this month, approved
+addresses for admins. Site: the same button, shown when built with
+IOCEAN_PLATFORM_URL.
+
+**Needs from the user:**
+1. Google Cloud console, APIs & Services: OAuth consent screen (External, app
+   name iOcean, scopes openid email profile), then Credentials, Create OAuth
+   client ID, type Web application.
+2. Authorised redirect URI: `<public URL>/api/v1/auth/google/callback`, and for
+   local testing `http://localhost:18080/api/v1/auth/google/callback`.
+3. In the box .env: IOCEAN_GOOGLE_CLIENT_ID, IOCEAN_GOOGLE_CLIENT_SECRET,
+   IOCEAN_PUBLIC_URL, and IOCEAN_STARTER_QUEUE / IOCEAN_STARTER_VEHICLES for
+   what a new space may use. IOCEAN_GOOGLE_WEB_RETURN is the site's
+   `/#signed-in` once the site is hosted.
+4. A control plane restart (the auv session is told first).

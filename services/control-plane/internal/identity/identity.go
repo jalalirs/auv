@@ -40,10 +40,13 @@ const (
 // Organisation is an institution. It holds members, quota, and its own work.
 // It never holds a city; it is granted access to one.
 type Organisation struct {
-	ID        string    `json:"id"`
-	Slug      string    `json:"slug"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID   string `json:"id"`
+	Slug string `json:"slug"`
+	Name string `json:"name"`
+	// PersonalOf is the person a personal organisation belongs to; empty for
+	// an institution.
+	PersonalOf string    `json:"personalOf,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 // Principal is anything that can act.
@@ -108,8 +111,8 @@ func (s *Store) CreateOrganisation(ctx context.Context, conn db.Conn, slug, name
 func (s *Store) Organisation(ctx context.Context, id string) (Organisation, error) {
 	var org Organisation
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, slug, name, created_at FROM identity.organisation WHERE id = $1`, id).
-		Scan(&org.ID, &org.Slug, &org.Name, &org.CreatedAt)
+		`SELECT id, slug, name, coalesce(personal_of, ''), created_at FROM identity.organisation WHERE id = $1`, id).
+		Scan(&org.ID, &org.Slug, &org.Name, &org.PersonalOf, &org.CreatedAt)
 	return org, db.Translate(err)
 }
 
@@ -117,8 +120,8 @@ func (s *Store) Organisation(ctx context.Context, id string) (Organisation, erro
 func (s *Store) OrganisationBySlug(ctx context.Context, slug string) (Organisation, error) {
 	var org Organisation
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, slug, name, created_at FROM identity.organisation WHERE slug = $1`, slug).
-		Scan(&org.ID, &org.Slug, &org.Name, &org.CreatedAt)
+		`SELECT id, slug, name, coalesce(personal_of, ''), created_at FROM identity.organisation WHERE slug = $1`, slug).
+		Scan(&org.ID, &org.Slug, &org.Name, &org.PersonalOf, &org.CreatedAt)
 	return org, db.Translate(err)
 }
 
@@ -353,7 +356,7 @@ func (s *Store) Members(ctx context.Context, orgID string) ([]Principal, error) 
 // administrator who may found an institution may see the ones that exist.
 func (s *Store) Organisations(ctx context.Context) ([]Organisation, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, slug, name, created_at FROM identity.organisation ORDER BY name`)
+		`SELECT id, slug, name, coalesce(personal_of, ''), created_at FROM identity.organisation ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("listing institutions: %w", err)
 	}
@@ -362,7 +365,7 @@ func (s *Store) Organisations(ctx context.Context) ([]Organisation, error) {
 	organisations := []Organisation{}
 	for rows.Next() {
 		var org Organisation
-		if err := rows.Scan(&org.ID, &org.Slug, &org.Name, &org.CreatedAt); err != nil {
+		if err := rows.Scan(&org.ID, &org.Slug, &org.Name, &org.PersonalOf, &org.CreatedAt); err != nil {
 			return nil, err
 		}
 		organisations = append(organisations, org)

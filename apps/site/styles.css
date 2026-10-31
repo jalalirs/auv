@@ -118,6 +118,10 @@ nav a[aria-current="page"] {
 
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 
+.btn[hidden] {
+  display: none;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;

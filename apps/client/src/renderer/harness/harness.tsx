@@ -344,6 +344,7 @@ Object.assign(window, { said, store });
 const held = {
   you: { id: "p1", displayName: "Harness", email: "harness@example.test" },
   institution: { id: "org_1", name: "Harness" },
+  organisations: [{ id: "org_1", name: "Harness" }],
   // The tank is the institution's own, so Places offers to retire it.
   places: places.map((p) => ({ id: p.id, slug: p.slug, name: p.name, ...(p.id === "city_tank" ? { ownedByOrg: "org_1" } : {}) })),
   vehicles: [{ id: "veh_mini", slug: "mini-hoot", name: "mini-hoot" }, { id: "veh_luna", slug: "boxfish-luna", name: "Boxfish Luna" }],

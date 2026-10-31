@@ -132,6 +132,14 @@ func run(logger *slog.Logger) error {
 		LeaseDuration:   settings.LeaseDuration,
 		SessionLifetime: settings.SessionLifetime,
 		SecureCookies:   settings.SecureCookies,
+		Google: httpapi.GoogleSignIn{
+			ClientID: settings.GoogleClientID, ClientSecret: settings.GoogleClientSecret,
+			PublicURL: settings.PublicURL, WebReturn: settings.GoogleWebReturn,
+		},
+		Personal: httpapi.PersonalStart{
+			DivesMonthly: settings.PersonalDivesMonthly, DailyCap: settings.PersonalDailyCap,
+			Queue: settings.StarterQueue, Vehicles: settings.StarterVehicles,
+		},
 	}
 
 	router := httpapi.NewRouter(deps)

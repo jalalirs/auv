@@ -271,6 +271,8 @@ type quotaRequest struct {
 	// Dives: how many at once, and how many GPU-hours in a day.
 	MaxConcurrentDives int     `json:"maxConcurrentDives"`
 	MaxGPUHoursDaily   float64 `json:"maxGpuHoursDaily"`
+	// MaxDivesMonthly: dives started in a calendar month; absent is no limit.
+	MaxDivesMonthly *int `json:"maxDivesMonthly"`
 }
 
 // setQuota states what one institution may consume at once.
@@ -294,6 +296,7 @@ func (d *Dependencies) setQuota(w http.ResponseWriter, r *http.Request) {
 			MaxGPU:             request.MaxGPU,
 			MaxConcurrentDives: request.MaxConcurrentDives,
 			MaxGPUHoursDaily:   request.MaxGPUHoursDaily,
+			MaxDivesMonthly:    request.MaxDivesMonthly,
 		})
 		if err != nil {
 			return err
@@ -305,6 +308,7 @@ func (d *Dependencies) setQuota(w http.ResponseWriter, r *http.Request) {
 				"maxConcurrentJobs": stored.MaxConcurrentJobs, "maxCpu": stored.MaxCPU,
 				"maxMemoryBytes": stored.MaxMemoryBytes, "maxGpu": stored.MaxGPU,
 				"maxConcurrentDives": stored.MaxConcurrentDives, "maxGpuHoursDaily": stored.MaxGPUHoursDaily,
+				"maxDivesMonthly": stored.MaxDivesMonthly,
 			},
 		})
 	})

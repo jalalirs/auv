@@ -83,6 +83,38 @@ export function SignIn({ onSignedIn }: {
     })();
   }, [waiting, known, kept, onSignedIn]);
 
+  // Signing in with Google happens in the system browser and comes back
+  // through iocean://signed-in with a one-minute code, traded here for a
+  // session. Only the desktop application can hear that link.
+  const auth = typeof window === "undefined" ? undefined : window.coralCity?.auth;
+  useEffect(() => {
+    if (auth === undefined) return;
+    return auth.onHandoff((code) => {
+      void (async () => {
+        setTrying(true);
+        setRefusal("");
+        try {
+          const platform = await Platform.exchange(address, code);
+          localStorage.setItem(REMEMBERED, platform.address);
+          onSignedIn(platform);
+        } catch (problem) {
+          setRefusal(problem instanceof Refused
+            ? "That sign-in had expired. Continue with Google again."
+            : whyNothingAnswered(address, typeof location === "undefined" ? null : location.href));
+        } finally {
+          setTrying(false);
+        }
+      })();
+    });
+  }, [auth, address, onSignedIn]);
+
+  function google(): void {
+    if (auth === undefined) return;
+    setRefusal("");
+    auth.openGoogle(Platform.googleSignIn(address, "desktop"))
+      .catch(() => setRefusal("That platform address does not look right."));
+  }
+
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     setTrying(true);
@@ -118,6 +150,14 @@ export function SignIn({ onSignedIn }: {
           <input value={address} onChange={(e) => setAddress(e.target.value)}
                  placeholder="http://100.76.65.1:18080" spellCheck={false} />
         </label>
+        {auth !== undefined && (
+          <>
+            <button type="button" className="google" onClick={google} disabled={trying || !address}>
+              Continue with Google
+            </button>
+            <p className="or">Your browser opens; you come back here signed in. An administrator can sign in with an email and secret below.</p>
+          </>
+        )}
         <label>
           who you are
           <input value={email} onChange={(e) => setEmail(e.target.value)}

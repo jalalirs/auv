@@ -19,6 +19,16 @@ const bridge: Bridge = {
   app: {
     version: () => ipcRenderer.invoke(CHANNELS.version),
   },
+  auth: {
+    openGoogle: (url: string) => ipcRenderer.invoke(CHANNELS.openGoogle, url),
+    onHandoff: (listener: (code: string) => void) => {
+      const heard = (_event: unknown, code: unknown): void => {
+        if (typeof code === "string") listener(code);
+      };
+      ipcRenderer.on(CHANNELS.handoff, heard);
+      return () => { ipcRenderer.removeListener(CHANNELS.handoff, heard); };
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld("coralCity", bridge);

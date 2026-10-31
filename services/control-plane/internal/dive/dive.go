@@ -1053,9 +1053,10 @@ func (s *Store) consider(ctx context.Context, conn db.Conn, spec RunSpec, orgID 
 	// the last one allowed.
 	var maxDives int
 	var maxHours float64
+	var maxMonthly *int
 	err = conn.QueryRow(ctx, `
-		SELECT max_concurrent_dives, max_gpu_hours_daily
-		  FROM exec.quota WHERE org_id = $1 FOR UPDATE`, orgID).Scan(&maxDives, &maxHours)
+		SELECT max_concurrent_dives, max_gpu_hours_daily, max_dives_monthly
+		  FROM exec.quota WHERE org_id = $1 FOR UPDATE`, orgID).Scan(&maxDives, &maxHours, &maxMonthly)
 	if err != nil {
 		if db.Translate(err) == db.ErrNotFound {
 			return &exec.Refusal{Reason: exec.OrganisationHasNoQuota}, nil
@@ -1088,6 +1089,25 @@ func (s *Store) consider(ctx context.Context, conn db.Conn, spec RunSpec, orgID 
 	if inFlight+1 > maxDives {
 		return &exec.Refusal{Reason: exec.QuotaDivesExhausted, Detail: map[string]any{
 			"inFlight": inFlight, "limit": maxDives}}, nil
+	}
+	if maxMonthly != nil {
+		// Every run asked for this calendar month, UTC. A refused one was never
+		// written, so it does not count.
+		var started int
+		var resetsOn time.Time
+		err = conn.QueryRow(ctx, `
+			SELECT count(*), (date_trunc('month', now() AT TIME ZONE 'UTC') + interval '1 month')::date
+			  FROM dive.run r JOIN dive.dive d ON d.id = r.dive_id
+			 WHERE d.org_id = $1
+			   AND r.requested_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`,
+			orgID).Scan(&started, &resetsOn)
+		if err != nil {
+			return nil, fmt.Errorf("counting this month's dives: %w", err)
+		}
+		if started >= *maxMonthly {
+			return &exec.Refusal{Reason: exec.QuotaMonthlyDivesExhausted, Detail: map[string]any{
+				"started": started, "limit": *maxMonthly, "resetsOn": resetsOn.Format("2 January 2006")}}, nil
+		}
 	}
 	if hoursToday >= maxHours {
 		return &exec.Refusal{Reason: exec.QuotaGPUHoursExhausted, Detail: map[string]any{

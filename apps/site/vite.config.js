@@ -9,10 +9,14 @@ import { defineConfig } from "vite";
 // IOCEAN_DOWNLOAD_BASE is where the installers and their manifest.json live.
 // The desktop app's update feed must name the same host, or an install updates
 // from somewhere the site never sent anyone.
+//
+// IOCEAN_PLATFORM_URL is the control plane the Google button signs in to; left
+// unset, the site shows no sign-in at all.
 export default defineConfig({
   base: process.env.IOCEAN_SITE_BASE ?? "/",
   define: {
     __IOCEAN_DOWNLOAD_BASE__: JSON.stringify(process.env.IOCEAN_DOWNLOAD_BASE ?? "/downloads"),
+    __IOCEAN_PLATFORM_URL__: JSON.stringify((process.env.IOCEAN_PLATFORM_URL ?? "").replace(/\/$/, "")),
   },
   publicDir: "public",
   build: {

@@ -17,6 +17,11 @@ var PublicRoutes = []string{
 	"GET /health/ready",
 	"GET /api/v1/platform",
 	"POST /api/v1/sessions",
+	// Signing in with Google, and the desktop app trading the code it was
+	// handed back for a session.
+	"GET /api/v1/auth/google/start",
+	"GET /api/v1/auth/google/callback",
+	"POST /api/v1/sessions/exchange",
 }
 
 // registerAll declares the platform's routes.
@@ -36,6 +41,12 @@ func (rt *Router) registerAll() {
 		Summary: "the build serving this request", Handle: d.platformInfo})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/sessions", Public: true,
 		Summary: "sign in", Handle: d.signIn})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/auth/google/start", Public: true,
+		Summary: "sign in with Google: off to Google", Handle: d.googleStart})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/auth/google/callback", Public: true,
+		Summary: "sign in with Google: back from Google", Handle: d.googleCallback})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/sessions/exchange", Public: true,
+		Summary: "trade a desktop hand-off code for a session", Handle: d.exchangeHandoff})
 
 	// Oneself.
 	rt.register(Route{Method: "DELETE", Pattern: "/api/v1/sessions",
@@ -82,6 +93,21 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "DELETE", Pattern: "/api/v1/organisations/{orgId}/members/{principalId}",
 		Summary: "remove a member", Action: policy.OrgAdminister,
 		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.removeMember})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/organisations/{orgId}/approvals",
+		Summary: "the addresses and domains an institution approves", Action: policy.OrgAdminister,
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.readApprovals})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/approved-emails",
+		Summary: "approve an address", Action: policy.OrgAdminister,
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.approveEmail})
+	rt.register(Route{Method: "DELETE", Pattern: "/api/v1/organisations/{orgId}/approved-emails/{email}",
+		Summary: "withdraw an address", Action: policy.OrgAdminister,
+		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.withdrawEmail})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/approved-domains",
+		Summary: "give an institution a Workspace domain", Action: policy.PlatformAdminister,
+		Resource: atPlatform(), Handle: d.approveDomain})
+	rt.register(Route{Method: "DELETE", Pattern: "/api/v1/organisations/{orgId}/approved-domains/{domain}",
+		Summary: "take a domain back", Action: policy.PlatformAdminister,
+		Resource: atPlatform(), Handle: d.withdrawDomain})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/service-principals",
 		Summary: "add a worker, edge station, or vehicle", Action: policy.OrgAdminister,
 		Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.createServicePrincipal})

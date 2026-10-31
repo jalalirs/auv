@@ -4,7 +4,7 @@
 // given before acting on it, because the renderer shows content the platform
 // sent and is treated as if it could be wrong.
 
-import { app, ipcMain } from "electron";
+import { app, ipcMain, shell } from "electron";
 import path from "node:path";
 
 import { CHANNELS, type LatLon } from "../shared/bridge.js";
@@ -33,4 +33,15 @@ export function answerTheWindow(): void {
   });
 
   ipcMain.handle(CHANNELS.version, () => app.getVersion());
+
+  // Signing in with Google happens in the system browser, where the person's
+  // Google session already is, never in this window.
+  ipcMain.handle(CHANNELS.openGoogle, async (_event, address: unknown) => {
+    const url = new URL(String(address));
+    if ((url.protocol !== "https:" && url.protocol !== "http:")
+        || url.pathname !== "/api/v1/auth/google/start") {
+      throw new Error("not a Google sign-in address");
+    }
+    await shell.openExternal(url.toString());
+  });
 }

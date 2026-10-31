@@ -15,7 +15,10 @@ import { placePackage, vehiclePackage, type PlacePackage, type VehiclePackage } 
 
 export interface Held {
   you: Principal;
+  /** The organisation the application is working in: its dives, its quota. */
   institution: Organisation | undefined;
+  /** Every organisation the person belongs to, their own space among them. */
+  organisations: Organisation[];
   places: City[];
   vehicles: Vehicle[];
   queues: Queue[];
@@ -74,7 +77,10 @@ export async function readHeld(platform: Platform, keep?: Held): Promise<Held> {
   const [me, places, vehicles, queues] = await Promise.all([
     platform.me(), platform.places(), platform.vehicles(), platform.queues(),
   ]);
-  const institution = me.organisations[0];
+  const organisations = me.organisations;
+  const institution = chooseOrganisation(organisations);
+  // What was kept belongs to the organisation it was read for.
+  if (keep !== undefined && keep.institution?.id !== institution?.id) keep = undefined;
 
   // Every dive this institution has defined, and what became of each. The
   // platform keeps runs under the dive that defined them, so gathering them
@@ -94,7 +100,7 @@ export async function readHeld(platform: Platform, keep?: Held): Promise<Held> {
     // In batches, because two hundred and seventy-five at once is a thing to
     // do to a machine rather than ask of it.
     if (keep !== undefined) {
-      return { ...keep, you: me.principal, institution, places, vehicles, queues };
+      return { ...keep, you: me.principal, institution, organisations, places, vehicles, queues };
     }
     const dives = await platform.dives(institution.id);
     const named = (dive: { id: string; name: string; autonomyStackId?: string | null }) =>
@@ -111,7 +117,28 @@ export async function readHeld(platform: Platform, keep?: Held): Promise<Held> {
     }
     runs = gathered.sort((a, b) => (a.run.requestedAt < b.run.requestedAt ? 1 : -1));
   }
-  return { you: me.principal, institution, places, vehicles, queues, runs, stacks, controllers: controllersOf(stacks) };
+  return { you: me.principal, institution, organisations, places, vehicles, queues, runs, stacks,
+           controllers: controllersOf(stacks) };
+}
+
+const CHOSEN = "iocean.organisation";
+
+/**
+ * The organisation to work in: the one chosen last, while the person still
+ * belongs to it; otherwise an institution before their own space, because
+ * somebody an institution approved is usually here to work for it.
+ */
+export function chooseOrganisation(organisations: Organisation[]): Organisation | undefined {
+  let chosen: string | null = null;
+  try { chosen = localStorage.getItem(CHOSEN); } catch { /* no storage: the default */ }
+  return organisations.find((o) => o.id === chosen)
+    ?? organisations.find((o) => !o.personalOf)
+    ?? organisations[0];
+}
+
+/** Remembers which organisation to work in. The caller reads everything again. */
+export function rememberOrganisation(id: string): void {
+  try { localStorage.setItem(CHOSEN, id); } catch { /* kept for this session only */ }
 }
 
 /**

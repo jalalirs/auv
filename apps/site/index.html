@@ -165,10 +165,13 @@
     <div class="wrap">
       <h2>Start with one dive</h2>
       <p>
-        Download the app, sign in, pick a reef and a vehicle, and fly. Sign-up from this site is
-        coming soon.
+        Sign in with Google and you have a space of your own with ten dives a month. If your
+        institution has approved your address, you work on its quota too. Then download the app,
+        pick a reef and a vehicle, and fly.
       </p>
+      <p class="hero-note" data-signed-in hidden>You are signed in. Download the app and sign in there with the same account.</p>
       <div class="hero-actions">
+        <a class="btn btn-secondary" data-google hidden>Continue with Google</a>
         <a class="btn btn-primary" data-download href="#download">Download for Mac</a>
         <a class="btn btn-secondary" href="#places">How places are built</a>
       </div>
@@ -225,6 +228,20 @@
       }
       note.textContent = "Apple Silicon. The signed build is being prepared.";
     });
+
+  /*
+   * Google sign-in, on the platform rather than here: the platform makes the
+   * person and their space, then sends them back to #signed-in (its
+   * IOCEAN_GOOGLE_WEB_RETURN). Without a platform address the button stays hidden.
+   */
+  const platform = __IOCEAN_PLATFORM_URL__;
+  if (platform) {
+    for (const button of document.querySelectorAll("[data-google]")) {
+      button.href = `${platform}/api/v1/auth/google/start?client=web`;
+      button.hidden = false;
+    }
+  }
+  if (location.hash === "#signed-in") document.querySelector("[data-signed-in]").hidden = false;
 </script>
 </body>
 </html>

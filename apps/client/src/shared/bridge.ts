@@ -104,6 +104,15 @@ export interface Bridge {
     /** The application's version, from its own package. */
     version(): Promise<string>;
   };
+  auth: {
+    /** Opens signing in with Google in the system browser. Only http(s) addresses. */
+    openGoogle(url: string): Promise<void>;
+    /**
+     * Calls back with the code iocean://signed-in carried, each time one
+     * arrives, and returns how to stop listening.
+     */
+    onHandoff(listener: (code: string) => void): () => void;
+  };
 }
 
 /** The channel names, one per call, so both sides spell them the same way. */
@@ -111,6 +120,8 @@ export const CHANNELS = {
   nearestSite: "ocean:nearest-site",
   record: "ocean:record",
   version: "app:version",
+  openGoogle: "auth:open-google",
+  handoff: "auth:handoff",
 } as const;
 
 declare global {

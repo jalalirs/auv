@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -91,6 +92,23 @@ type Config struct {
 
 	SessionLifetime time.Duration
 	SecureCookies   bool
+
+	// Google sign-in. Both empty on a platform that has not been given a
+	// client, and signing in with Google then says so. PublicURL is this
+	// service as a browser reaches it, which Google redirects back to;
+	// GoogleWebReturn is where a browser lands once signed in.
+	GoogleClientID     string
+	GoogleClientSecret string
+	PublicURL          string
+	GoogleWebReturn    string
+
+	// What a person's own organisation gets when they first sign in: dives a
+	// month, the queue they may dive on and the vehicles they may fly. At most
+	// PersonalDailyCap are made in a day, because each is free GPU time.
+	PersonalDivesMonthly int
+	PersonalDailyCap     int
+	StarterQueue         string
+	StarterVehicles      []string
 
 	LeaseDuration  time.Duration
 	ReaperInterval time.Duration
@@ -210,6 +228,29 @@ func Load() (Config, error) {
 	config.StorageUseTLS = boolean("IOCEAN_STORAGE_USE_TLS", false)
 	config.StoragePublicUseTLS = boolean("IOCEAN_STORAGE_PUBLIC_USE_TLS", config.StorageUseTLS)
 	config.SecureCookies = boolean("IOCEAN_SECURE_COOKIES", false)
+
+	config.GoogleClientID = os.Getenv("IOCEAN_GOOGLE_CLIENT_ID")
+	config.GoogleClientSecret = os.Getenv("IOCEAN_GOOGLE_CLIENT_SECRET")
+	config.PublicURL = strings.TrimRight(os.Getenv("IOCEAN_PUBLIC_URL"), "/")
+	config.GoogleWebReturn = valueOrDefault("IOCEAN_GOOGLE_WEB_RETURN", "/")
+	if (config.GoogleClientID == "") != (config.GoogleClientSecret == "") {
+		return Config{}, fmt.Errorf("IOCEAN_GOOGLE_CLIENT_ID and IOCEAN_GOOGLE_CLIENT_SECRET are set together")
+	}
+	if config.GoogleClientID != "" && config.PublicURL == "" {
+		return Config{}, fmt.Errorf("IOCEAN_PUBLIC_URL must be set for Google sign-in: Google redirects back to it")
+	}
+	if config.PersonalDivesMonthly, err = number("IOCEAN_PERSONAL_DIVES_MONTHLY", 10); err != nil {
+		return Config{}, err
+	}
+	if config.PersonalDailyCap, err = number("IOCEAN_PERSONAL_DAILY_CAP", 50); err != nil {
+		return Config{}, err
+	}
+	config.StarterQueue = os.Getenv("IOCEAN_STARTER_QUEUE")
+	for _, vehicle := range strings.Split(os.Getenv("IOCEAN_STARTER_VEHICLES"), ",") {
+		if vehicle = strings.TrimSpace(vehicle); vehicle != "" {
+			config.StarterVehicles = append(config.StarterVehicles, vehicle)
+		}
+	}
 
 	return config, nil
 }

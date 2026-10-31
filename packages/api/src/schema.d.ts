@@ -220,6 +220,155 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trade a desktop hand-off code for a session
+         * @description The desktop app signs in through the system browser and is handed back a code through iocean://signed-in. The code is single use and lasts a minute; it is traded here so no session token ever sits in a URL.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        code: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description A session, as signing in returns one. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            token?: string;
+                            /** Format: date-time */
+                            expiresAt?: string;
+                            principal?: components["schemas"]["Principal"];
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthenticated"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/google/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sign in with Google
+         * @description Sends the browser to Google. A first sign-in makes the person and their own organisation; every sign-in brings their memberships into line with what institutions approve.
+         *
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description desktop to be handed back to the app through iocean://, otherwise web. */
+                    client?: "web" | "desktop";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Off to Google. */
+                302: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description This platform has no Google client. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/google/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Back from Google
+         * @description Signs the browser in and sends it on (web), or shows a page that opens iocean://signed-in with a hand-off code (desktop). Answers with a page, not JSON: a person is looking at it.
+         *
+         */
+        get: {
+            parameters: {
+                query?: {
+                    code?: string;
+                    state?: string;
+                    error?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description A page saying what happened. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Signed in; on to where the web lands. */
+                303: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -769,6 +918,232 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organisations/{orgId}/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What an institution approves
+         * @description The addresses its administrator approved and the Workspace domains the platform gave it.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    orgId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Addresses, then domains. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            approvals?: components["schemas"]["Approval"][];
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/{orgId}/approved-emails": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve an address
+         * @description Whoever signs in with Google as this address becomes a member and works on the institution's quota. A personal organisation takes no approvals.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    orgId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: email */
+                        email: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Approved, and anyone already registered with it is now a member. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Approval"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/{orgId}/approved-emails/{email}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Withdraw an address
+         * @description The membership the approval made goes with it.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    orgId: string;
+                    email: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Done. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/{orgId}/approved-domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Give an institution a Workspace domain
+         * @description Platform administrators only, so nobody claims a public domain. A person matches when their Google account belongs to that Workspace and their address is in it.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    orgId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        domain: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Given. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Approval"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/{orgId}/approved-domains/{domain}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Take a domain back */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    orgId: string;
+                    domain: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Done. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organisations/{orgId}/service-principals": {
         parameters: {
             query?: never;
@@ -887,6 +1262,8 @@ export interface paths {
                         maxGpu?: number;
                         maxConcurrentDives?: number;
                         maxGpuHoursDaily?: number;
+                        /** @description Dives started in a calendar month (UTC); absent or null is no limit. */
+                        maxDivesMonthly?: number | null;
                     };
                 };
             };
@@ -6523,6 +6900,18 @@ export interface components {
             id: string;
             slug: string;
             name: string;
+            /** @description The person a personal organisation belongs to; absent for an institution. */
+            personalOf?: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        Approval: {
+            orgId: string;
+            /** @description An approved address. */
+            email?: string;
+            /** @description An approved Workspace domain. */
+            domain?: string;
+            addedBy: string;
             /** Format: date-time */
             createdAt: string;
         };
@@ -8071,6 +8460,8 @@ export interface components {
             maxConcurrentDives: number;
             /** @description GPU-hours in a day */
             maxGpuHoursDaily: number;
+            /** @description Dives started in a calendar month (UTC); null is no limit. */
+            maxDivesMonthly?: number | null;
             /** Format: date-time */
             updatedAt: string;
         };

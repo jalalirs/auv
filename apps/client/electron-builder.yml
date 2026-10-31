@@ -34,3 +34,8 @@ dmg:
   contents:
     - { x: 150, y: 190, type: file }
     - { x: 420, y: 190, type: link, path: /Applications }
+
+# iocean://signed-in is how signing in with Google comes back to the app.
+protocols:
+  - name: iocean
+    schemes: [iocean]

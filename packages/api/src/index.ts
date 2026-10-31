@@ -16,6 +16,8 @@ export type Problem = Schemas["Problem"]["error"];
 export type Principal = Schemas["Principal"];
 export type Organisation = Schemas["Organisation"];
 export type APIToken = Schemas["APIToken"];
+export type Approval = Schemas["Approval"];
+export type Quota = Schemas["Quota"];
 export type City = Schemas["City"];
 export type Vehicle = Schemas["Vehicle"];
 export type AssetVersion = Schemas["AssetVersion"];
@@ -191,7 +193,50 @@ export class Platform {
     return new Platform(base, session.token);
   }
 
-  me(): Promise<{ principal: Principal; organisations: Organisation[] }> {
+  /**
+   * Where a browser goes to sign in with Google. The desktop application opens
+   * it in the system browser and is handed back a code through iocean://.
+   */
+  static googleSignIn(base: string, client: "desktop" | "web"): string {
+    return `${base.replace(/\/+$/, "")}/api/v1/auth/google/start?client=${client}`;
+  }
+
+  /** Trades the code iocean://signed-in carried for a session, once. */
+  static async exchange(base: string, code: string): Promise<Platform> {
+    const open = new Platform(base);
+    const session = await open.#request<{ token: string }>(
+      "POST", "/api/v1/sessions/exchange", { code });
+    return new Platform(base, session.token);
+  }
+
+  // ── who an institution approves ────────────────────────────────────────────
+  //
+  // Whoever signs in with Google as an approved address, or from an approved
+  // Workspace domain, is a member and works on the institution's quota.
+
+  /** What an organisation may consume: dives at once, GPU-hours a day, dives a month. */
+  async quota(organisation: string): Promise<Quota> {
+    const { quota } = await this.#request<{ quota: Quota }>(
+      "GET", `/api/v1/organisations/${organisation}/quota`);
+    return quota;
+  }
+
+  async approvals(organisation: string): Promise<Approval[]> {
+    const { approvals } = await this.#request<{ approvals: Approval[] }>(
+      "GET", `/api/v1/organisations/${organisation}/approvals`);
+    return approvals;
+  }
+
+  approveEmail(organisation: string, email: string): Promise<Approval> {
+    return this.#request("POST", `/api/v1/organisations/${organisation}/approved-emails`, { email });
+  }
+
+  withdrawEmail(organisation: string, email: string): Promise<void> {
+    return this.#request("DELETE",
+      `/api/v1/organisations/${organisation}/approved-emails/${encodeURIComponent(email)}`);
+  }
+
+  me():Promise<{ principal: Principal; organisations: Organisation[] }> {
     return this.#request("GET", "/api/v1/me");
   }
 

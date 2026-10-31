@@ -45,6 +45,9 @@ const (
 	RuntimeUnavailable     ReasonCode = "runtime_unavailable"
 	QuotaDivesExhausted    ReasonCode = "quota_dives_exhausted"
 	QuotaGPUHoursExhausted ReasonCode = "quota_gpu_hours_exhausted"
+	// QuotaMonthlyDivesExhausted is an organisation that has started all the
+	// dives its month allows.
+	QuotaMonthlyDivesExhausted ReasonCode = "quota_monthly_dives_exhausted"
 )
 
 // Explain renders a reason as a sentence a person can act on.
@@ -80,6 +83,9 @@ func (c ReasonCode) Explain(detail map[string]any) string {
 	case QuotaDivesExhausted:
 		return fmt.Sprintf("your institution already has %v dives in flight, which is its limit of %v",
 			detail["inFlight"], detail["limit"])
+	case QuotaMonthlyDivesExhausted:
+		return fmt.Sprintf("your organisation has started %v dives this month, which is its limit of %v; it resets on %v",
+			detail["started"], detail["limit"], detail["resetsOn"])
 	case QuotaGPUHoursExhausted:
 		return fmt.Sprintf("your institution has used %v GPU-hours in the last day, which is its limit of %v",
 			detail["usedHours"], detail["limit"])

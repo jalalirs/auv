@@ -49,9 +49,12 @@ type Quota struct {
 	MaxGPU            int     `json:"maxGpu"`
 	// Dives, as distinct from jobs: how many at once, and how many GPU-hours
 	// in a day, counted over every card a dive held.
-	MaxConcurrentDives int       `json:"maxConcurrentDives"`
-	MaxGPUHoursDaily   float64   `json:"maxGpuHoursDaily"`
-	UpdatedAt          time.Time `json:"updatedAt"`
+	MaxConcurrentDives int     `json:"maxConcurrentDives"`
+	MaxGPUHoursDaily   float64 `json:"maxGpuHoursDaily"`
+	// MaxDivesMonthly bounds how many dives are started in a calendar month
+	// (UTC). Nil is no limit.
+	MaxDivesMonthly *int      `json:"maxDivesMonthly"`
+	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
 // JobState is where a job sits in its life.

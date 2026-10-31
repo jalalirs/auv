@@ -81,3 +81,6 @@ docs/summit*
 # The forum deck: films and pictures, and a pitch that is not for a public repo.
 forum-deck/
 data/rebuilt/
+
+# Google OAuth client files, downloaded from the Cloud console
+client_secret_*.json

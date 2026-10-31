@@ -250,6 +250,17 @@ services:
       # secure attribute would make the cookie unusable rather than safer. It
       # goes back on the moment there is a certificate.
       IOCEAN_SECURE_COOKIES: ${IOCEAN_SECURE_COOKIES:-false}
+      # Google sign-in, off while the client is unset. PUBLIC_URL is where
+      # Google sends people back; with no domain yet it is the tunnel's
+      # http://localhost:18080, the one http address Google accepts.
+      IOCEAN_GOOGLE_CLIENT_ID: ${IOCEAN_GOOGLE_CLIENT_ID:-}
+      IOCEAN_GOOGLE_CLIENT_SECRET: ${IOCEAN_GOOGLE_CLIENT_SECRET:-}
+      IOCEAN_PUBLIC_URL: ${IOCEAN_PUBLIC_URL:-}
+      IOCEAN_GOOGLE_WEB_RETURN: ${IOCEAN_GOOGLE_WEB_RETURN:-}
+      IOCEAN_PERSONAL_DIVES_MONTHLY: ${IOCEAN_PERSONAL_DIVES_MONTHLY:-}
+      IOCEAN_PERSONAL_DAILY_CAP: ${IOCEAN_PERSONAL_DAILY_CAP:-}
+      IOCEAN_STARTER_QUEUE: ${IOCEAN_STARTER_QUEUE:-}
+      IOCEAN_STARTER_VEHICLES: ${IOCEAN_STARTER_VEHICLES:-}
     ports:
       - "${IOCEAN_BIND_ADDRESS:-127.0.0.1}:${IOCEAN_API_PORT:-18080}:8080"
     depends_on:

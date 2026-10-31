@@ -6,15 +6,17 @@ import type { Device, Platform } from "@coral-city/api";
 
 import type { Held } from "./Deck.js";
 import { Empty, Fact, PageHead, Pill } from "./parts.js";
+import { Organisation } from "./Organisation.js";
 import { Tokens } from "./Tokens.js";
 
 const LIVE = new Set(["queued", "preparing", "running"]);
 
-export function Profile({ platform, held, free, devices }: {
+export function Profile({ platform, held, free, devices, onSwitch }: {
   platform: Platform;
   held: Held;
   free: number;
   devices: number;
+  onSwitch: () => void;
 }): React.JSX.Element {
   // The cards behind each queue, asked for once the page is open. What the
   // box is doing is its own business to report, and this is the one page
@@ -47,6 +49,8 @@ export function Profile({ platform, held, free, devices }: {
           </div>
         </div>
       </section>
+
+      <Organisation platform={platform} held={held} onSwitch={onSwitch} />
 
       <section>
         <h2>Queues you may run on</h2>
