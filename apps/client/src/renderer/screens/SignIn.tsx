@@ -22,6 +22,13 @@ const REMEMBERED = "coral-city.platform";
  * and answering, which sends a person to check the wrong thing. The desktop
  * application is not a page on an origin and never meets this.
  */
+/**
+ * The platform an installed copy signs in to, fixed when it is built
+ * (VITE_IOCEAN_PLATFORM, set by tools/release-mac); a copy run from source
+ * looks for one on this machine.
+ */
+const PLATFORM = (import.meta.env.VITE_IOCEAN_PLATFORM as string | undefined) ?? "http://127.0.0.1:18080";
+
 export function whyNothingAnswered(address: string, here: string | null): string {
   const unreached = `Nothing answered at ${address}. Is the box awake, and are you on its network?`;
   if (here === null || here.startsWith("file:")) return unreached;
@@ -56,7 +63,7 @@ export function SignIn({ onSignedIn }: {
   const kept = (import.meta.env.VITE_IOCEAN_SECRET ?? import.meta.env.VITE_CORAL_CITY_SECRET) as string | undefined;
 
   useEffect(() => {
-    setAddress(waiting ?? localStorage.getItem(REMEMBERED) ?? "http://127.0.0.1:18080");
+    setAddress(waiting ?? localStorage.getItem(REMEMBERED) ?? PLATFORM);
     if (known !== undefined) setEmail(known);
     if (kept !== undefined) setSecret(kept);
   }, [waiting, known, kept]);

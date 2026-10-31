@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# Build the Mac app, sign it, have Apple notarise it, and put it where the
+# site's Download button finds it.
+#
+#   tools/release-mac              build, sign, notarise, publish to the box
+#   tools/release-mac --dry-run    build, sign, notarise; publish nothing
+#   tools/release-mac --unsigned   build only, to try the packaging
+#
+# Signed as Developer ID Application: WASLAT ALTIQNIAH COMPANY (B35AK98DRA).
+# Notarised through a notarytool keychain profile, made once on this Mac by
+# whoever holds the team's Apple login:
+#
+#   xcrun notarytool store-credentials iocean-waslat --apple-id <apple id> --team-id B35AK98DRA
+#
+# As in petro's release-desktop.sh, the app is notarised and stapled before
+# its DMG is made, then the DMG is notarised too, so the app a person drags out
+# carries its own ticket.
+#
+# Packaged from a folder holding only the built app and a package.json without
+# dependencies: everything is bundled by Vite, and electron-builder otherwise
+# walks the pnpm workspace looking for node_modules to copy and fails.
+set -euo pipefail
+MODE="${1:-}"
+case "${MODE}" in ""|--dry-run|--unsigned) ;; *) echo "unknown option ${MODE}" >&2; exit 2 ;; esac
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CLIENT="${ROOT}/apps/client"
+IDENTITY="${APPLE_SIGNING_IDENTITY:-Developer ID Application: WASLAT ALTIQNIAH COMPANY (B35AK98DRA)}"
+PROFILE="${APPLE_NOTARY_PROFILE:-iocean-waslat}"
+PLATFORM="${IOCEAN_PLATFORM_URL:-https://jalalirs.tailedf721.ts.net/iocean}"
+BOX="${IOCEAN_BOX:-jalalirs@100.76.65.1}"
+DOWNLOADS="${IOCEAN_DOWNLOADS_DIR:-iocean/downloads}"
+BUILDER="electron-builder@26.0.12"
+MISE="$(command -v mise || echo "$HOME/.local/bin/mise")"
+VERSION="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "${CLIENT}/package.json")"
+FILE="iocean-mac-arm64.dmg"
+ELECTRON="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "${CLIENT}/node_modules/electron/package.json")"
+
+say() { echo "-> $(date -u +%H:%M:%S) $*"; }
+die() { echo "error: $*" >&2; exit 1; }
+notarise() {
+    local log="$1.notary.log"
+    xcrun notarytool submit "$1" --keychain-profile "${PROFILE}" --wait >"${log}" 2>&1 || true
+    grep -q "status: Accepted" "${log}" || die "Apple did not accept $(basename "$1"); see ${log}"
+}
+
+if [ "${MODE}" != --unsigned ]; then
+    say "checking what signing needs"
+    security find-identity -v -p codesigning | grep -qF "${IDENTITY}" \
+        || die "no signing identity '${IDENTITY}' in the keychain"
+    # Read the output, not the exit code: notarytool prints an error and exits 0.
+    case "$(xcrun notarytool history --keychain-profile "${PROFILE}" 2>&1 || true)" in
+        *rror*) die "no usable notarytool profile '${PROFILE}'; make it with the store-credentials line at the top of this script" ;;
+    esac
+fi
+
+say "building iOcean ${VERSION} against ${PLATFORM}"
+(cd "${CLIENT}" && VITE_IOCEAN_PLATFORM="${PLATFORM}" "${MISE}" exec -- pnpm build >/dev/null)
+grep -qlF "${PLATFORM}" "${CLIENT}"/dist/renderer/assets/*.js || die "the build does not name ${PLATFORM}"
+
+WORK="${CLIENT}/release"
+rm -rf "${WORK:?}/stage" "${WORK:?}/out"
+mkdir -p "${WORK}/stage"
+cp -R "${CLIENT}/dist" "${CLIENT}/assets" "${CLIENT}/electron-builder.yml" "${WORK}/stage/"
+cat >"${WORK}/stage/package.json" <<EOF
+{
+  "name": "iocean",
+  "version": "${VERSION}",
+  "description": "Dive a vehicle you brought, in water we keep",
+  "author": "iOcean",
+  "main": "dist/main/main.js",
+  "type": "module"
+}
+EOF
+
+SIGN=(-c.mac.identity=null)
+[ "${MODE}" = --unsigned ] || SIGN=(-c.mac.identity="${IDENTITY#Developer ID Application: }")
+builder() {
+    (cd "${WORK}/stage" && CSC_IDENTITY_AUTO_DISCOVERY=false npx -y "${BUILDER}" --mac "$@" \
+        -c.electronDist="${CLIENT}/node_modules/electron/dist" -c.electronVersion="${ELECTRON}" -c.npmRebuild=false \
+        -c.directories.output="${WORK}/out" -c.mac.notarize=false "${SIGN[@]}" 2>&1 \
+        | grep -v '^npm warn') || die "electron-builder failed"
+}
+
+say "packaging and signing the app"
+builder dir
+APP="$(find "${WORK}/out" -maxdepth 2 -name '*.app' -type d | head -1)"
+[ -d "${APP}" ] || die "no app in ${WORK}/out"
+
+if [ "${MODE}" != --unsigned ]; then
+    codesign --verify --deep --strict "${APP}" || die "the app's signature does not verify"
+    say "notarising the app (Apple usually takes a few minutes)"
+    ditto -c -k --keepParent "${APP}" "${WORK}/out/app.zip"
+    notarise "${WORK}/out/app.zip"
+    xcrun stapler staple "${APP}" >/dev/null
+    xcrun stapler validate "${APP}" >/dev/null || die "the app has no stapled ticket"
+fi
+
+say "making the installer from the stapled app"
+builder dmg --prepackaged "${APP}"
+DMG="$(find "${WORK}/out" -maxdepth 1 -name '*.dmg' | head -1)"
+[ -f "${DMG}" ] || die "no installer in ${WORK}/out"
+mv "${DMG}" "${WORK}/out/${FILE}"
+DMG="${WORK}/out/${FILE}"
+
+if [ "${MODE}" != --unsigned ]; then
+    codesign --sign "${IDENTITY}" --timestamp "${DMG}"
+    say "notarising the installer"
+    notarise "${DMG}"
+    xcrun stapler staple "${DMG}" >/dev/null
+    xcrun stapler validate "${DMG}" >/dev/null || die "the installer has no stapled ticket"
+    spctl --assess --type open --context context:primary-signature "${DMG}" \
+        || die "Gatekeeper refuses the installer"
+fi
+
+SHA="$(shasum -a 256 "${DMG}" | cut -d' ' -f1)"
+cat >"${WORK}/out/manifest.json" <<EOF
+{
+  "version": "${VERSION}",
+  "files": ["${FILE}"],
+  "sha256": {"${FILE}": "${SHA}"},
+  "builtAt": "$(date -u +%FT%TZ)",
+  "commit": "$(git -C "${ROOT}" rev-parse --short=12 HEAD)"
+}
+EOF
+say "built ${DMG} ($(du -h "${DMG}" | cut -f1), sha256 ${SHA:0:12})"
+
+[ -z "${MODE}" ] || { say "not publishing (${MODE})"; exit 0; }
+
+# The installer goes first and the manifest last, so the site never lists a
+# file that is still arriving.
+say "publishing to ${BOX}:${DOWNLOADS}"
+ssh "${BOX}" "mkdir -p ${DOWNLOADS}"
+scp -q "${DMG}" "${BOX}:${DOWNLOADS}/${FILE}.part"
+ssh "${BOX}" "mv ${DOWNLOADS}/${FILE}.part ${DOWNLOADS}/${FILE}"
+scp -q "${WORK}/out/manifest.json" "${BOX}:${DOWNLOADS}/manifest.json"
+say "published iOcean ${VERSION}"

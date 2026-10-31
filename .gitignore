@@ -84,3 +84,6 @@ data/rebuilt/
 
 # Google OAuth client files, downloaded from the Cloud console
 client_secret_*.json
+
+# The Mac release, built by tools/release-mac
+apps/client/release/

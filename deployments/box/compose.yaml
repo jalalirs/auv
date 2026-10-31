@@ -145,6 +145,10 @@ services:
     volumes:
       - ./edge/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./edge/proxied.conf:/etc/nginx/proxied.conf:ro
+      # The site and the installer, published outside this checkout so a deploy
+      # never replaces a release. tools/release-mac and tools/publish-site write them.
+      - ${HOME}/iocean/site:/srv/site:ro
+      - ${HOME}/iocean/downloads:/srv/downloads:ro
     ports:
       - "${IOCEAN_BIND_ADDRESS:-127.0.0.1}:${IOCEAN_EDGE_PORT:-18084}:8080"
     depends_on:

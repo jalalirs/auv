@@ -54,3 +54,15 @@ func TestAGoogleIDTokenIsReadOnlyWhenItIsForUsFromGoogleAndCurrent(t *testing.T)
 		t.Errorf("a malformed token gave %v", err)
 	}
 }
+
+func TestCookiesFollowThePathThePublicAddressCarries(t *testing.T) {
+	for _, c := range []struct{ public, want string }{
+		{"https://host.example/iocean", "/iocean/api/v1/auth/google"},
+		{"https://host.example/iocean/", "/iocean/api/v1/auth/google"},
+		{"http://localhost:18080", "/api/v1/auth/google"},
+	} {
+		if got := (GoogleSignIn{PublicURL: c.public}).cookiePath("/api/v1/auth/google"); got != c.want {
+			t.Errorf("behind %s the cookie path is %s, want %s", c.public, got, c.want)
+		}
+	}
+}

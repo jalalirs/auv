@@ -39,6 +39,17 @@ func (g GoogleSignIn) configured() bool { return g.ClientID != "" && g.ClientSec
 
 func (g GoogleSignIn) redirectURI() string { return g.PublicURL + googleCallbackPath }
 
+// cookiePath is rest under the path the public address carries. Behind a
+// shared host the browser sees /iocean/api/..., and a cookie scoped to
+// /api/... would never be sent back.
+func (g GoogleSignIn) cookiePath(rest string) string {
+	u, err := url.Parse(g.PublicURL)
+	if err != nil {
+		return rest
+	}
+	return strings.TrimRight(u.Path, "/") + rest
+}
+
 // PersonalStart is what a person's own organisation is given when they first
 // sign in.
 type PersonalStart struct {
@@ -73,7 +84,7 @@ func (d *Dependencies) googleStart(w http.ResponseWriter, r *http.Request) {
 
 	http.SetCookie(w, &http.Cookie{
 		Name: googleCookie, Value: state + "." + verifier + "." + client,
-		Path: "/api/v1/auth/google", MaxAge: 600,
+		Path: d.Google.cookiePath("/api/v1/auth/google"), MaxAge: 600,
 		HttpOnly: true, Secure: d.SecureCookies, SameSite: http.SameSiteLaxMode,
 	})
 	query := url.Values{
@@ -99,7 +110,7 @@ func (d *Dependencies) googleCallback(w http.ResponseWriter, r *http.Request) {
 			"This iOcean platform has no Google client yet.", "")
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: googleCookie, Value: "", Path: "/api/v1/auth/google",
+	http.SetCookie(w, &http.Cookie{Name: googleCookie, Value: "", Path: d.Google.cookiePath("/api/v1/auth/google"),
 		MaxAge: -1, HttpOnly: true, Secure: d.SecureCookies, SameSite: http.SameSiteLaxMode})
 
 	cookie, err := r.Cookie(googleCookie)
@@ -378,7 +389,7 @@ func (d *Dependencies) exchangeHandoff(w http.ResponseWriter, r *http.Request) {
 
 func (d *Dependencies) setSessionCookie(w http.ResponseWriter, token string, expires time.Time) {
 	http.SetCookie(w, &http.Cookie{
-		Name: SessionCookie, Value: token, Path: "/", Expires: expires,
+		Name: SessionCookie, Value: token, Path: d.Google.cookiePath("/"), Expires: expires,
 		HttpOnly: true, Secure: d.SecureCookies, SameSite: http.SameSiteLaxMode,
 	})
 }

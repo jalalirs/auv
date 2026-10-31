@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Build the product site for the box and put it where the edge serves it,
+# https://jalalirs.tailedf721.ts.net/iocean/.
+#
+#   tools/publish-site
+#
+# Built with the box's addresses: the Download button reads
+# /iocean/downloads/manifest.json (written by tools/release-mac) and the Google
+# button signs in to the platform on the same host.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PUBLIC="${IOCEAN_PUBLIC_URL:-https://jalalirs.tailedf721.ts.net/iocean}"
+PREFIX="/${PUBLIC#https://*/}"
+BOX="${IOCEAN_BOX:-jalalirs@100.76.65.1}"
+SITE="${IOCEAN_SITE_DIR:-iocean/site}"
+
+cd "${ROOT}/apps/site"
+IOCEAN_SITE_BASE="${PREFIX}/" IOCEAN_DOWNLOAD_BASE="${PREFIX}/downloads" IOCEAN_PLATFORM_URL="${PUBLIC}" \
+    ./node_modules/.bin/vite build >/dev/null
+grep -qF "${PREFIX}/downloads" dist/assets/*.js || { echo "the build does not name ${PREFIX}/downloads" >&2; exit 1; }
+ssh "${BOX}" "mkdir -p ${SITE:?}"
+rsync -a --delete-after dist/ "${BOX}:${SITE:?}/"
+echo "published the site to ${BOX}:${SITE} for ${PUBLIC}/"
