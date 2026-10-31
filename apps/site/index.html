@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iOcean: rehearse ocean work on real reefs</title>
+<meta name="description" content="iOcean builds real reefs from measured data, couples water, life and machines so they act on each other, and flies your vehicle and your code through them.">
+<link rel="icon" href="assets/iocean.svg">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="rise-edge"></div>
+
+<header>
+  <div class="wrap header-row">
+    <a class="lockup" href="./">
+      <img src="assets/iocean.svg" alt="">
+      <span>iOcean</span>
+    </a>
+    <nav>
+      <a href="#places">Real places</a>
+      <a href="#coupled">Coupled ocean</a>
+      <a href="#dives">Dives</a>
+      <a href="#download">Download</a>
+    </nav>
+    <a class="btn btn-primary btn-sm" href="#download">Download</a>
+  </div>
+</header>
+
+<main>
+
+  <section class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Introducing iOcean</p>
+      <h1>Rehearse the dive before you go to sea</h1>
+      <p class="lede">
+        iOcean builds real reefs from what was measured there, lets water, life and machines act
+        on each other, and flies your vehicle and your code through them. Every place says where
+        its data came from.
+      </p>
+      <div class="hero-actions" id="download">
+        <a class="btn btn-primary" data-download href="#download">Download for Mac</a>
+        <a class="btn btn-secondary" href="#places">See the reefs</a>
+      </div>
+      <p class="hero-note" data-download-note>Apple Silicon. Sign in with your iOcean account.</p>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <div class="shot">
+      <img src="assets/app.webp" width="1400" height="735"
+           alt="The iOcean app's opening screen: a vehicle surveying a reef.">
+    </div>
+  </div>
+
+  <section class="cloud-section">
+    <div class="cloud-stage" id="cloud" aria-hidden="true"></div>
+    <div class="wrap cloud-copy">
+      <h2>Every reef is somewhere real</h2>
+      <p>
+        Al Fahal and Shushah in the Red Sea, Looe Key in Florida, Kāneʻohe Bay in Hawaiʻi. Each is
+        built from satellite, lidar and survey data, down to the coral colonies on the bottom.
+      </p>
+    </div>
+  </section>
+
+  <section id="places" class="band">
+    <div class="wrap">
+      <p class="kicker">Built from measured data</p>
+      <h2 class="feature-title">Real places, checked against the sea</h2>
+      <p class="feature-lede">A place starts from public data: satellite imagery, lidar soundings and habitat maps. iOcean turns it into depth, cover and colonies, and keeps the source of every cell.</p>
+      <div class="feature-grid">
+        <figure class="feature-visual tint-shallow">
+          <img src="assets/panel-places.webp" alt="Al Fahal reef from satellite, beside the habitat map built from it." loading="lazy" decoding="async">
+          <figcaption>Al Fahal reef, Red Sea: the satellite picture and the habitat map built from it.</figcaption>
+        </figure>
+        <div class="points">
+          <details class="point" open>
+            <summary>Depth from satellite, fitted to lidar</summary>
+            <p>Seabed depth comes from satellite colour, then is fitted to ICESat-2 lidar soundings over the same reef. Shushah fits to 1.28 m and Al Fahal to 2.00 m, and the fit is published with the place.</p>
+          </details>
+          <details class="point">
+            <summary>Coral cover from imagery</summary>
+            <p>A classifier reads coral, sand, rubble and algae from imagery. In the Red Sea it agrees with surveyed cover to within 2.3 points.</p>
+          </details>
+          <details class="point">
+            <summary>Colonies on the bottom, by species</summary>
+            <p>Brain, table, branching and massive corals are placed by the cover map and sit on the seabed they grow from, so a camera at two metres sees what a diver would.</p>
+          </details>
+          <details class="point">
+            <summary>Video turned into reef</summary>
+            <p>A survey video becomes a 3D patch of reef, placed into the map where it was filmed.</p>
+          </details>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="coupled">
+    <div class="wrap">
+      <p class="kicker">Systems that act on each other</p>
+      <h2 class="feature-title">The sea pushes back</h2>
+      <p class="feature-lede">Water, light, fish, sediment, tether and vehicle share one world. What one system does, the others feel.</p>
+      <div class="feature-grid">
+        <figure class="feature-visual tint-sand">
+          <img src="assets/panel-coupled.webp" alt="A tethered vehicle low over a sandy reef." loading="lazy" decoding="async">
+          <figcaption>A tethered vehicle over the reef, the tether hanging under its own weight.</figcaption>
+        </figure>
+        <div class="points">
+          <details class="point" open>
+            <summary>Thrusters stir the water</summary>
+            <p>The wash from each thruster moves the water around the vehicle and lifts sediment off the bottom.</p>
+          </details>
+          <details class="point">
+            <summary>Fish that notice you</summary>
+            <p>Fish school, and scatter when the vehicle comes close.</p>
+          </details>
+          <details class="point">
+            <summary>A tether with weight and drag</summary>
+            <p>The tether is simulated along its length, so it sags and pulls on the vehicle.</p>
+          </details>
+          <details class="point">
+            <summary>Light that changes with depth and time</summary>
+            <p>Colour fades with depth, caustics move on the sand, and a night dive is lit only by what the vehicle carries.</p>
+          </details>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="dives" class="band">
+    <div class="wrap">
+      <p class="kicker">Your vehicle, your code</p>
+      <h2 class="feature-title">Fly your controller through a real reef</h2>
+      <p class="feature-lede">Bring a vehicle and the code that drives it. iOcean flies it through the place you choose and keeps everything the dive saw.</p>
+      <div class="feature-grid">
+        <figure class="feature-visual tint-deep">
+          <img src="assets/panel-dives.webp" alt="A vehicle crossing a reef of brain and table corals." loading="lazy" decoding="async">
+          <figcaption>A dive across a built reef, seen from the vehicle's own camera.</figcaption>
+        </figure>
+        <div class="points">
+          <details class="point" open>
+            <summary>Controllers you write</summary>
+            <p>Each vehicle has an SDK. Write a controller, deploy it, tune it and train it against the same dive until it holds.</p>
+          </details>
+          <details class="point">
+            <summary>From a tank to a reef</summary>
+            <p>Start in a test tank, then fly the same controller over a reef.</p>
+          </details>
+          <details class="point">
+            <summary>A camera like the one you carry</summary>
+            <p>Lens, port, filter, sensor noise and compression are modelled, so a frame from a dive looks like a frame from a real camera.</p>
+          </details>
+          <details class="point">
+            <summary>Every dive is kept</summary>
+            <p>The camera frames, the vehicle's track and what it measured are recorded with the place and vehicle versions they came from.</p>
+          </details>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta">
+    <div class="wrap">
+      <h2>Start with one dive</h2>
+      <p>
+        Download the app, sign in, pick a reef and a vehicle, and fly. Sign-up from this site is
+        coming soon.
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" data-download href="#download">Download for Mac</a>
+        <a class="btn btn-secondary" href="#places">How places are built</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap footer-row">
+    <span>&copy; <span id="year">2026</span> iOcean</span>
+    <span class="footer-links">
+      <a href="#places">Real places</a>
+      <a href="#coupled">Coupled ocean</a>
+      <a href="#dives">Dives</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="terms.html">Terms</a>
+    </span>
+  </div>
+</footer>
+
+<script type="module">
+  import { mountCloud } from "./cloud.js";
+
+  document.getElementById("year").textContent = new Date().getFullYear();
+  mountCloud(document.getElementById("cloud"));
+
+  /*
+   * The Mac download, asked for rather than assumed.
+   *
+   * manifest.json is written beside the installer by whatever publishes it.
+   * Until it lists the file, the buttons say the download is coming instead of
+   * linking to a 404.
+   */
+  const base = __IOCEAN_DOWNLOAD_BASE__;
+  const file = "iocean-mac-arm64.dmg";
+  const buttons = document.querySelectorAll("[data-download]");
+  const note = document.querySelector("[data-download-note]");
+
+  fetch(`${base}/manifest.json`, { cache: "no-store" })
+    .then((response) => (response.ok ? response.json() : Promise.reject(response.status)))
+    .then((manifest) => {
+      if (!Array.isArray(manifest?.files) || !manifest.files.includes(file)) throw new Error("not listed");
+      for (const button of buttons) {
+        button.href = `${base}/${file}`;
+        button.setAttribute("download", "");
+      }
+    })
+    .catch(() => {
+      for (const button of buttons) {
+        button.textContent = "Mac download coming soon";
+        button.setAttribute("aria-disabled", "true");
+        button.removeAttribute("href");
+      }
+      note.textContent = "Apple Silicon. The signed build is being prepared.";
+    });
+</script>
+</body>
+</html>
