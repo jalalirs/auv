@@ -72,9 +72,15 @@ def prim_path(name: str) -> str:
 CARRIED_M = 3.0
 
 
+# What a laid strip's ground typically measures, each channel 0 to 1 averaged
+# (SubPipe's median edge colour was 0.19, 0.53, 0.53): the brightness at which
+# the matrix's veil comes out as the water's veil.
+BRIGHT = 0.4
+
+
 def haze_rows(distance: float, lengths, veil, carried: float = CARRIED_M) -> tuple:
     """The splats' colour matrix for a camera `distance` metres away, as NuRec's
-    omni:nurec:ccmR/G/B rows (r, g, b, offset): each channel kept by the water's
+    omni:nurec:ccmR/G/B rows (r, g, b, offset; the offset left at 0): each channel kept by the water's
     transmittance over the distance past what the footage carried, and the
     water's veil colour laid in for the rest.
 
@@ -87,8 +93,14 @@ def haze_rows(distance: float, lengths, veil, carried: float = CARRIED_M) -> tup
     rows = []
     for c in range(3):
         kept = math.exp(-d / max(float(lengths[c]), 1e-3))
-        row = [0.0, 0.0, 0.0, float(veil[c]) * (1.0 - kept)]
-        row[c] = kept
+        # The veil through the matrix, in proportion to the splat's own
+        # brightness, rather than as the row's offset: NuRec adds the offset
+        # to every splat whatever its opacity, and a strip's faded edge drew
+        # as a dark purple band (SubPipe, 2026-10-31). A splat of `BRIGHT`
+        # takes exactly the veil; a faint one takes as little as it shows.
+        share = float(veil[c]) * (1.0 - kept) / (3.0 * BRIGHT)
+        row = [share, share, share, 0.0]
+        row[c] += kept
         rows.append(tuple(round(v, 5) for v in row))
     return tuple(rows)
 

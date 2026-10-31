@@ -55,8 +55,14 @@ def test_splats_fade_into_the_water_with_distance():
     assert near == ((1.0, 0.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0), (0.0, 0.0, 1.0, 0.0))
     far = haze_rows(40.0, lengths, veil)
     # Red goes first, blue last, and what goes is replaced by the veil.
-    assert far[0][0] < far[1][1] < far[2][2] < 0.1
-    assert abs(far[0][3] - 0.1) < 1e-3 and abs(far[2][3] - 0.35 * (1 - far[2][2])) < 1e-4
+    kept = [far[c][c] - far[c][(c + 1) % 3] for c in range(3)]
+    assert kept[0] < kept[1] < kept[2] < 0.1
+    # No offset: a grey splat as bright as BRIGHT comes out as itself kept
+    # plus the veil for what went, and a black (or faint) one stays black.
+    from splat_pieces import BRIGHT
+    assert all(row[3] == 0.0 for row in far)
+    for c in range(3):
+        assert abs(sum(far[c][:3]) * BRIGHT - (kept[c] * BRIGHT + veil[c] * (1 - kept[c]))) < 1e-3
 
 
 def test_distance_to_a_box():
