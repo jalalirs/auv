@@ -12,6 +12,7 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,6 +34,10 @@ type GoogleSignIn struct {
 	PublicURL string
 	// WebReturn is where a browser lands once signed in.
 	WebReturn string
+	// Admins are the addresses (lower case) made platform administrators when
+	// they sign in. Taking an address off the list does not take the role
+	// away: that is done on the platform, where it is audited.
+	Admins []string
 }
 
 func (g GoogleSignIn) configured() bool { return g.ClientID != "" && g.ClientSecret != "" }
@@ -296,9 +301,42 @@ func (d *Dependencies) signInGoogle(ctx context.Context, account identity.Google
 		if err := d.ensurePersonal(ctx, conn, id); err != nil {
 			return err
 		}
+		if err := d.ensureAdmin(ctx, conn, id, account.Email); err != nil {
+			return err
+		}
 		return d.Identity.SyncApprovals(ctx, conn, "", id)
 	})
 	return principalID, err
+}
+
+// ensureAdmin makes a person whose verified Google address is on the
+// platform's admin list a platform administrator, if they are not already.
+func (d *Dependencies) ensureAdmin(ctx context.Context, conn db.Conn, principalID, email string) error {
+	if !slices.Contains(d.Google.Admins, strings.ToLower(email)) {
+		return nil
+	}
+	var already bool
+	if err := conn.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM policy.binding
+		 WHERE subject_kind = 'principal' AND subject_id = $1
+		   AND scope_kind = 'platform' AND role = 'admin' AND revoked_at IS NULL)`,
+		principalID).Scan(&already); err != nil {
+		return fmt.Errorf("looking for an administrator's binding: %w", err)
+	}
+	if already {
+		return nil
+	}
+	if _, err := d.Authorizer.Grant(ctx, conn, policy.GrantSpec{
+		SubjectKind: policy.SubjectPrincipal, SubjectID: principalID,
+		ScopeKind: policy.ScopePlatform, Role: policy.RoleAdmin, CreatedBy: principalID,
+	}); err != nil {
+		return err
+	}
+	return d.Audit.Record(ctx, conn, audit.Event{
+		ActorID: principalID, Action: string(policy.PlatformAdminister),
+		SubjectKind: "principal", SubjectID: principalID, Outcome: audit.Succeeded,
+		Detail: map[string]any{"granted": "platform admin", "by": "IOCEAN_ADMIN_EMAILS"},
+	})
 }
 
 // ensurePersonal founds a person's own organisation if they have none: its

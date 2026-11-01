@@ -130,6 +130,9 @@ type PersonSpec struct {
 	DisplayName string
 	Email       string
 	Secret      string
+	// GoogleOnly makes a person with no secret, who signs in with Google
+	// under Email.
+	GoogleOnly bool
 }
 
 // Validate reports whether the person can be created.
@@ -140,6 +143,12 @@ func (p PersonSpec) Validate() error {
 	at := strings.Index(p.Email, "@")
 	if at <= 0 || at == len(p.Email)-1 || strings.Contains(p.Email, " ") {
 		return fmt.Errorf("%w: %q is not an email address", domain.ErrInvalid, p.Email)
+	}
+	if p.GoogleOnly {
+		if p.Secret != "" {
+			return fmt.Errorf("%w: a person who signs in with Google has no secret", domain.ErrInvalid)
+		}
+		return nil
 	}
 	if len(p.Secret) < 12 {
 		return fmt.Errorf("%w: a sign-in secret is at least 12 characters", domain.ErrInvalid)
@@ -152,10 +161,6 @@ func (s *Store) CreatePerson(ctx context.Context, conn db.Conn, spec PersonSpec)
 	if err := spec.Validate(); err != nil {
 		return Principal{}, err
 	}
-	verifier, err := hashSecret(spec.Secret)
-	if err != nil {
-		return Principal{}, err
-	}
 
 	principal := Principal{
 		ID:          ids.New(ids.KindPrincipal),
@@ -163,7 +168,7 @@ func (s *Store) CreatePerson(ctx context.Context, conn db.Conn, spec PersonSpec)
 		DisplayName: spec.DisplayName,
 		Email:       spec.Email,
 	}
-	err = conn.QueryRow(ctx, `
+	err := conn.QueryRow(ctx, `
 		INSERT INTO identity.principal (id, kind, display_name, email)
 		VALUES ($1, 'person', $2, $3)
 		RETURNING created_at`,
@@ -176,6 +181,13 @@ func (s *Store) CreatePerson(ctx context.Context, conn db.Conn, spec PersonSpec)
 		return Principal{}, fmt.Errorf("creating a person: %w", err)
 	}
 
+	if spec.GoogleOnly {
+		return principal, nil
+	}
+	verifier, err := hashSecret(spec.Secret)
+	if err != nil {
+		return Principal{}, err
+	}
 	if _, err := conn.Exec(ctx,
 		`INSERT INTO identity.credential (id, principal_id, verifier) VALUES ($1, $2, $3)`,
 		ids.New(ids.KindCredential), principal.ID, verifier); err != nil {

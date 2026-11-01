@@ -18,7 +18,11 @@ export default defineConfig({
   // src/renderer, which is exactly where the file is not. The first attempt at
   // this looked as though it had worked, because the address it was supposed to
   // fill in was already there from a previous sign-in.
-  envDir: here,
+  //
+  // Never in a release (IOCEAN_RELEASE, set by tools/release-mac): .env.local
+  // holds a developer's sign-in, and 0.1.1 and 0.1.2 went out signing everybody
+  // in as that developer. A release names its platform in the environment.
+  envDir: process.env.IOCEAN_RELEASE ? false : here,
   // Relative, because the packaged application loads the page from a file and
   // absolute paths resolve against the filesystem root there rather than the
   // application.

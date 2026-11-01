@@ -101,6 +101,10 @@ type Config struct {
 	GoogleClientSecret string
 	PublicURL          string
 	GoogleWebReturn    string
+	// AdminEmails are the addresses that are platform administrators when they
+	// sign in with Google. People sign in only with Google; there is no
+	// administrator's secret and no other door.
+	AdminEmails []string
 
 	// What a person's own organisation gets when they first sign in: dives a
 	// month, the queue they may dive on and the vehicles they may fly. At most
@@ -235,6 +239,11 @@ func Load() (Config, error) {
 	config.GoogleWebReturn = valueOrDefault("IOCEAN_GOOGLE_WEB_RETURN", "/")
 	if (config.GoogleClientID == "") != (config.GoogleClientSecret == "") {
 		return Config{}, fmt.Errorf("IOCEAN_GOOGLE_CLIENT_ID and IOCEAN_GOOGLE_CLIENT_SECRET are set together")
+	}
+	for _, email := range strings.Split(os.Getenv("IOCEAN_ADMIN_EMAILS"), ",") {
+		if email = strings.ToLower(strings.TrimSpace(email)); email != "" {
+			config.AdminEmails = append(config.AdminEmails, email)
+		}
 	}
 	if config.GoogleClientID != "" && config.PublicURL == "" {
 		return Config{}, fmt.Errorf("IOCEAN_PUBLIC_URL must be set for Google sign-in: Google redirects back to it")

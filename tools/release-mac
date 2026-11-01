@@ -61,8 +61,15 @@ if [ -z "${MODE}" ]; then
 fi
 
 say "building iOcean ${VERSION} against ${PLATFORM}"
-(cd "${CLIENT}" && VITE_IOCEAN_PLATFORM="${PLATFORM}" "${MISE}" exec -- pnpm build >/dev/null)
+(cd "${CLIENT}" && IOCEAN_RELEASE=1 VITE_IOCEAN_PLATFORM="${PLATFORM}" "${MISE}" exec -- pnpm build >/dev/null)
 grep -qlF "${PLATFORM}" "${CLIENT}"/dist/renderer/assets/*.js || die "the build does not name ${PLATFORM}"
+# No developer's sign-in in what goes out: any email or secret in the local env
+# files must be absent from the build (checked without printing them).
+for env in "${CLIENT}"/.env*; do
+    sed -nE 's/^VITE_[A-Z_]*(EMAIL|SECRET)=(.+)$/\2/p' "${env}" 2>/dev/null
+done | while read -r value; do
+    ! grep -qrF -- "${value}" "${CLIENT}/dist" || die "the build carries a sign-in from apps/client/.env*"
+done
 
 # A Finder window open on the old output writes .DS_Store while it is being
 # removed, so try twice.

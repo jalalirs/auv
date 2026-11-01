@@ -38,7 +38,7 @@ func main() {
 }
 
 func usage() error {
-	return errors.New("usage: migrate up | migrate bootstrap -email … -secret … -name … -organisation … | migrate agent -organisation … -name … -credential-file …")
+	return errors.New("usage: migrate up | migrate bootstrap -email … -name … [-secret …] -organisation … | migrate agent -organisation … -name … -credential-file …")
 }
 
 func run(logger *slog.Logger, args []string) error {
@@ -200,7 +200,8 @@ func up(ctx context.Context, logger *slog.Logger, pool *db.Pool, settings config
 func bootstrap(ctx context.Context, logger *slog.Logger, pool *db.Pool, settings config.Config, args []string) error {
 	flags := flag.NewFlagSet("bootstrap", flag.ContinueOnError)
 	email := flags.String("email", "", "the first administrator's email address")
-	secret := flags.String("secret", "", "the first administrator's sign-in secret")
+	secret := flags.String("secret", "",
+		"a sign-in secret for the first administrator; without one, which is usual, they sign in with Google under -email")
 	name := flags.String("name", "", "the first administrator's display name")
 	orgSlug := flags.String("organisation", "", "the first institution's short name")
 	orgName := flags.String("organisation-name", "", "the first institution's full name")
@@ -210,9 +211,9 @@ func bootstrap(ctx context.Context, logger *slog.Logger, pool *db.Pool, settings
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if *email == "" || *secret == "" || *name == "" || *orgSlug == "" {
+	if *email == "" || *name == "" || *orgSlug == "" {
 		flags.Usage()
-		return errors.New("bootstrap needs -email, -secret, -name, and -organisation")
+		return errors.New("bootstrap needs -email, -name, and -organisation")
 	}
 	if *orgName == "" {
 		*orgName = *orgSlug
@@ -237,7 +238,7 @@ func bootstrap(ctx context.Context, logger *slog.Logger, pool *db.Pool, settings
 
 	err := pool.InTransaction(ctx, func(conn db.Conn) error {
 		person, err := identities.CreatePerson(ctx, conn, identity.PersonSpec{
-			DisplayName: *name, Email: *email, Secret: *secret,
+			DisplayName: *name, Email: *email, Secret: *secret, GoogleOnly: *secret == "",
 		})
 		if err != nil {
 			return err

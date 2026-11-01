@@ -197,3 +197,57 @@ func lower(s string) string {
 	}
 	return string(out)
 }
+
+func TestAnAdminEmailMakesAPlatformAdministratorOnce(t *testing.T) {
+	url := os.Getenv("IOCEAN_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("IOCEAN_TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	run := ids.New(ids.KindRun)[4:14]
+	boss := identity.GoogleAccount{Subject: "g-boss-" + run, Email: "Boss-" + run + "@inst.test",
+		EmailVerified: true, Name: "boss"}
+	other := identity.GoogleAccount{Subject: "g-other-" + run, Email: "other-" + run + "@inst.test",
+		EmailVerified: true, Name: "other"}
+	d := &Dependencies{
+		Pool: pool, Identity: identity.NewStore(pool, time.Hour), Authorizer: policy.NewAuthorizer(pool),
+		Audit: audit.NewRecorder(), Broker: exec.NewBroker(pool),
+		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Personal: PersonalStart{DivesMonthly: 10, DailyCap: 100},
+		// Listed in lower case, as config.Load leaves it; Google may say it otherwise.
+		Google: GoogleSignIn{Admins: []string{"boss-" + lower(run) + "@inst.test"}},
+	}
+	admins := func(principalID string) int {
+		var n int
+		if err := pool.QueryRow(ctx, `
+			SELECT count(*) FROM policy.binding
+			 WHERE subject_kind = 'principal' AND subject_id = $1
+			   AND scope_kind = 'platform' AND role = 'admin' AND revoked_at IS NULL`, principalID).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	bossID, err := d.signInGoogle(ctx, boss)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again, err := d.signInGoogle(ctx, boss); err != nil || again != bossID {
+		t.Fatalf("second sign-in gave %s, %v", again, err)
+	}
+	if n := admins(bossID); n != 1 {
+		t.Errorf("a listed address has %d platform admin bindings after two sign-ins, want 1", n)
+	}
+	otherID, err := d.signInGoogle(ctx, other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := admins(otherID); n != 0 {
+		t.Errorf("an address not on the list was made an administrator")
+	}
+}

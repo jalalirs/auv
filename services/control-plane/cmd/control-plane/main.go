@@ -135,6 +135,7 @@ func run(logger *slog.Logger) error {
 		Google: httpapi.GoogleSignIn{
 			ClientID: settings.GoogleClientID, ClientSecret: settings.GoogleClientSecret,
 			PublicURL: settings.PublicURL, WebReturn: settings.GoogleWebReturn,
+			Admins: settings.AdminEmails,
 		},
 		Personal: httpapi.PersonalStart{
 			DivesMonthly: settings.PersonalDivesMonthly, DailyCap: settings.PersonalDailyCap,
