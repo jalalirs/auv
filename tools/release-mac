@@ -7,10 +7,11 @@
 #   tools/release-mac --unsigned   build only, to try the packaging
 #
 # Signed as Developer ID Application: WASLAT ALTIQNIAH COMPANY (B35AK98DRA).
-# Notarised through a notarytool keychain profile, made once on this Mac by
-# whoever holds the team's Apple login:
+# Notarised through a notarytool keychain profile, made once on this Mac from
+# WASLAT's App Store Connect API key (kept outside the repo, never printed):
 #
-#   xcrun notarytool store-credentials iocean-waslat --apple-id <apple id> --team-id B35AK98DRA
+#   xcrun notarytool store-credentials iocean-waslat --key ~/.iocean/AuthKey_<key id>.p8 \
+#     --key-id <key id> --issuer <issuer id>
 #
 # As in petro's release-desktop.sh, the app is notarised and stapled before
 # its DMG is made, then the DMG is notarised too, so the app a person drags out
