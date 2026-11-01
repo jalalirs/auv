@@ -1,6 +1,10 @@
-# Packaging iocean for macOS.
+# Packaging iocean for macOS, Windows and Linux.
 #
-# Signed and notarised with the team's own Developer ID. Nothing about that
+# The Macs are built on a Mac by tools/release-mac, Windows and Linux on the
+# box by tools/release-box. Windows is unsigned for now: it installs, behind
+# Windows' "unknown publisher" warning.
+#
+# The Macs are signed and notarised with the team's own Developer ID. Nothing about that
 # identity is written here: the certificate lives in a keychain and the
 # credentials in the environment, because a certificate in a repository is a
 # certificate that has to be revoked. Without them this still produces a working
@@ -22,7 +26,7 @@ mac:
   icon: assets/icon.icns
   target:
     - target: dmg
-      arch: [arm64]
+      arch: [arm64, x64]
   # Hardened, because notarisation requires it.
   hardenedRuntime: true
   gatekeeperAssess: false
@@ -34,6 +38,29 @@ dmg:
   contents:
     - { x: 150, y: 190, type: file }
     - { x: 420, y: 190, type: link, path: /Applications }
+
+win:
+  icon: assets/icon.png
+  executableName: iOcean
+  # The architecture comes from the command (--x64 or --arm64), one installer
+  # each: naming both here makes every installer carry both.
+  target: [nsis]
+
+# One click, into the user's own folder: no administrator needed.
+nsis:
+  oneClick: true
+  perMachine: false
+  shortcutName: iOcean
+
+linux:
+  icon: assets/icon.png
+  executableName: iocean
+  category: Development
+  maintainer: iOcean <noreply@areen.ai>
+  synopsis: Dive a vehicle you brought, in water we keep
+  target:
+    - target: deb
+      arch: [x64]
 
 # iocean://signed-in is how signing in with Google comes back to the app.
 protocols:

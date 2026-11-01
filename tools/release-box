@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Build the Windows (x64, arm64) and Linux (.deb, x64) installers on the box,
+# where they are served, and list them for the site. The Macs are
+# tools/release-mac.
+#
+#   tools/release-box             send the app and start the build; returns at once
+#   tools/release-box --collect   how it went (and tidy its log once it is over)
+#
+# Tailscale can only be on for a moment here (it fights Zscaler), so the build
+# runs detached on the box (tools/lib/release-box-build.sh) and this returns as
+# soon as it has started. The app is built and staged here (a couple of MB),
+# then packaged on the box in electron-builder's own image, which carries Wine
+# for the Windows installer. Windows is unsigned for now: it installs, behind
+# Windows' "unknown publisher" warning.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CLIENT="${ROOT}/apps/client"
+BOX="${IOCEAN_BOX:-jalalirs@100.76.65.1}"
+VERSION="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "${CLIENT}/package.json")"
+ELECTRON="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "${CLIENT}/node_modules/electron/package.json")"
+# The box may not reach GitHub, where Electron is downloaded from by default.
+MIRROR="${ELECTRON_MIRROR:-}"
+WORK="iocean/scratch/release-${VERSION}"
+LOG="iocean/scratch/release-${VERSION}.log"
+
+say() { echo "-> $(date -u +%H:%M:%S) $*"; }
+
+if [ "${1:-}" = --collect ]; then
+    ssh -o ConnectTimeout=10 "${BOX}" "set -e; [ -f ${LOG} ] || { echo 'no build log for ${VERSION}'; exit 1; }
+        tail -25 ${LOG}
+        # Read the log, not pgrep: pgrep -f matches this very command.
+        if ! grep -q -e '^-> .* DONE:' -e '^FAILED' ${LOG}; then
+            echo '(still building)'
+        else
+            rm -f ${LOG}; [ -d ${WORK:?} ] && rm -rf ~/${WORK:?} || true
+        fi"
+    exit
+fi
+
+"${ROOT}/tools/release-mac" --stage
+cp "${ROOT}/tools/lib/release-box-build.sh" "${CLIENT}/release/build.sh"
+cp "${ROOT}/tools/lib/downloads-manifest.sh" "${CLIENT}/release/downloads-manifest.sh"
+say "sending the app to the box and starting the build"
+COPYFILE_DISABLE=1 tar --no-xattrs -C "${CLIENT}/release" -czf - stage build.sh downloads-manifest.sh \
+    | ssh -o ConnectTimeout=10 "${BOX}" "set -e; rm -rf ~/${WORK:?}; mkdir -p ${WORK}
+        tar -C ${WORK} -xzf -; mv ${WORK}/stage ${WORK}/project
+        nohup setsid bash ${WORK}/build.sh ${VERSION} ${ELECTRON} $(git -C "${ROOT}" rev-parse --short=12 HEAD) '${MIRROR}' \
+            >${LOG} 2>&1 </dev/null &
+        sleep 2; head -5 ${LOG}"
+rm -f "${CLIENT}/release/build.sh" "${CLIENT}/release/downloads-manifest.sh"
+say "started on the box; Tailscale can go off. Later: tools/release-box --collect"

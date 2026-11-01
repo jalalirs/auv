@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Put the Mac installers that tools/release-mac built onto the box, from Drive,
+# and list everything the box holds for the site.
+#
+#   tools/publish-downloads <arm64 drive link> <x64 drive link>
+#   tools/publish-downloads                  only rewrite the manifest
+#
+# The hotspot uploads at a few KB/s, so the installers go to Drive (replace
+# each file under its link) and the box downloads them from there. Each must
+# match the sha256 release-mac wrote, or it is not published.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUT="${ROOT}/apps/client/release/out"
+BOX="${IOCEAN_BOX:-jalalirs@100.76.65.1}"
+VERSION="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "${ROOT}/apps/client/package.json")"
+
+die() { echo "error: $*" >&2; exit 1; }
+drive_id() { echo "$1" | sed -nE 's#.*/d/([A-Za-z0-9_-]+).*#\1#p; s#.*[?&]id=([A-Za-z0-9_-]+).*#\1#p' | head -1; }
+
+publish() {
+    local arch="$1" link="$2" file="iocean-mac-$1.dmg" id want
+    id="$(drive_id "${link}")"
+    [ -n "${id}" ] || die "no Drive file id in ${link}"
+    want="$(awk -v f="${file}" '$2 == f {print $1}' "${OUT}/SHA256SUMS" 2>/dev/null)"
+    [ -n "${want}" ] || die "no sha256 for ${file} in ${OUT}/SHA256SUMS; run tools/release-mac first"
+    echo "-> ${file} from Drive"
+    ssh "${BOX}" "set -e; cd ~/iocean/downloads; rm -f ${file}.part
+        curl -sL -m 900 -o ${file}.part 'https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=t'
+        got=\$(sha256sum ${file}.part | cut -d' ' -f1)
+        if [ \"\$got\" = ${want} ]; then mv ${file}.part ${file}; echo '   matches the build, published'
+        else rm -f ${file}.part; echo '   Drive holds a different file (not this build); left the old one' >&2; exit 3; fi"
+}
+
+[ $# -eq 0 ] || [ $# -eq 2 ] || die "usage: $0 [<arm64 drive link> <x64 drive link>]"
+[ $# -eq 0 ] || { publish arm64 "$1"; publish x64 "$2"; }
+ssh "${BOX}" "bash -s -- ${VERSION} $(git -C "${ROOT}" rev-parse --short=12 HEAD)" <"${ROOT}/tools/lib/downloads-manifest.sh"

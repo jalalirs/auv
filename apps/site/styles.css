@@ -218,6 +218,12 @@ h1 {
   margin: 16px 0 0;
 }
 
+.hero-note a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* ── Product shot ───────────────────────────────────────────────────────── */
 
 /* Cropped at the bottom on purpose: the app runs under the next section, so it

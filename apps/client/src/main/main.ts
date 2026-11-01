@@ -64,7 +64,10 @@ function open(): void {
     // The title lives in the page, over the water, rather than in a bar above
     // it. An application you dive in should not have a strip of grey chrome at
     // the top of the sea.
-    titleBarStyle: "hiddenInset",
+    // Windows and Linux have no traffic lights to inset, so their own window
+    // buttons are drawn over the same strip.
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
+    ...(process.platform === "darwin" ? {} : { titleBarOverlay: { color: "#04080F", symbolColor: "#E6EEF5", height: 28 } }),
     backgroundColor: "#04080F",
     show: false,
     icon,

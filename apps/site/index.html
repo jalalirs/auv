@@ -40,10 +40,10 @@
         its data came from.
       </p>
       <div class="hero-actions" id="download">
-        <a class="btn btn-primary" data-download href="#download">Download for Mac</a>
+        <a class="btn btn-primary" data-download href="#download">Download</a>
         <a class="btn btn-secondary" href="#places">See the reefs</a>
       </div>
-      <p class="hero-note" data-download-note>Apple Silicon. Sign in with your iOcean account.</p>
+      <p class="hero-note" data-download-note>Sign in with your iOcean account.</p>
     </div>
   </section>
 
@@ -172,7 +172,7 @@
       <p class="hero-note" data-signed-in hidden>You are signed in. Download the app and sign in there with the same account.</p>
       <div class="hero-actions">
         <a class="btn btn-secondary" data-google hidden>Continue with Google</a>
-        <a class="btn btn-primary" data-download href="#download">Download for Mac</a>
+        <a class="btn btn-primary" data-download href="#download">Download</a>
         <a class="btn btn-secondary" href="#places">How places are built</a>
       </div>
     </div>
@@ -200,33 +200,70 @@
   mountCloud(document.getElementById("cloud"));
 
   /*
-   * The Mac download, asked for rather than assumed.
+   * The downloads, asked for rather than assumed.
    *
-   * manifest.json is written beside the installer by whatever publishes it.
-   * Until it lists the file, the buttons say the download is coming instead of
-   * linking to a 404.
+   * manifest.json is written beside the installers by whatever publishes them,
+   * and lists the ones that are there. The buttons offer the one for this
+   * computer and the note under the first names the rest. Browsers say little
+   * about the processor (Safari calls every Mac Intel), so a Mac gets Apple
+   * Silicon and a PC gets x64 unless Chromium says otherwise.
    */
   const base = __IOCEAN_DOWNLOAD_BASE__;
-  const file = "iocean-mac-arm64.dmg";
+  const builds = [
+    { file: "iocean-mac-arm64.dmg", system: "mac", arch: "arm", name: "Apple Silicon Mac" },
+    { file: "iocean-mac-x64.dmg", system: "mac", arch: "x86", name: "Intel Mac" },
+    { file: "iocean-windows-x64.exe", system: "windows", arch: "x86", name: "Windows" },
+    { file: "iocean-windows-arm64.exe", system: "windows", arch: "arm", name: "Windows on Arm" },
+    { file: "iocean-linux-amd64.deb", system: "linux", arch: "x86", name: "Linux (.deb)" },
+  ];
+  const systemName = { mac: "Mac", windows: "Windows", linux: "Linux" };
   const buttons = document.querySelectorAll("[data-download]");
   const note = document.querySelector("[data-download-note]");
 
-  fetch(`${base}/manifest.json`, { cache: "no-store" })
-    .then((response) => (response.ok ? response.json() : Promise.reject(response.status)))
-    .then((manifest) => {
-      if (!Array.isArray(manifest?.files) || !manifest.files.includes(file)) throw new Error("not listed");
+  async function thisComputer() {
+    const agent = navigator.userAgent;
+    const system = /Mac/.test(agent) ? "mac" : /Windows/.test(agent) ? "windows" : /Linux|X11/.test(agent) ? "linux" : "mac";
+    let arch = system === "mac" ? "arm" : "x86";
+    try {
+      const hints = await navigator.userAgentData?.getHighEntropyValues(["architecture"]);
+      if (hints?.architecture === "arm" || hints?.architecture === "x86") arch = hints.architecture;
+    } catch {}
+    return { system, arch };
+  }
+
+  Promise.all([
+    fetch(`${base}/manifest.json`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : Promise.reject(r.status))),
+    thisComputer(),
+  ])
+    .then(([manifest, here]) => {
+      const listed = builds.filter((b) => Array.isArray(manifest?.files) && manifest.files.includes(b.file));
+      if (listed.length === 0) throw new Error("nothing listed");
+      const pick = listed.find((b) => b.system === here.system && b.arch === here.arch)
+        ?? listed.find((b) => b.system === here.system)
+        ?? listed[0];
       for (const button of buttons) {
-        button.href = `${base}/${file}`;
+        button.href = `${base}/${pick.file}`;
         button.setAttribute("download", "");
+        button.textContent = `Download for ${systemName[pick.system]}`;
       }
+      const others = listed.filter((b) => b !== pick);
+      note.textContent = `${pick.name}, version ${manifest.version}.${others.length ? " Also for " : ""}`;
+      others.forEach((b, i, rest) => {
+        const link = document.createElement("a");
+        link.href = `${base}/${b.file}`;
+        link.setAttribute("download", "");
+        link.textContent = b.name;
+        note.append(link, i < rest.length - 1 ? ", " : ".");
+      });
+      note.append(" Sign in with your iOcean account.");
     })
     .catch(() => {
       for (const button of buttons) {
-        button.textContent = "Mac download coming soon";
+        button.textContent = "Download coming soon";
         button.setAttribute("aria-disabled", "true");
         button.removeAttribute("href");
       }
-      note.textContent = "Apple Silicon. The signed build is being prepared.";
+      note.textContent = "The signed builds are being prepared.";
     });
 
   /*
