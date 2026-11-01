@@ -138,7 +138,8 @@ services:
     restart: "no"
 
   # The part that faces the internet: the API and the MCP server, behind
-  # Tailscale Funnel at https://jalalirs.tailedf721.ts.net/iocean. Sign-in is
+  # Tailscale Funnel at https://jalalirs.tailedf721.ts.net/iocean, which people
+  # reach as https://iocean.areen.ai (deployments/gcp/router). Sign-in is
   # throttled per address and nothing else — not the console — is reachable.
   edge:
     image: nginx:1.27-alpine

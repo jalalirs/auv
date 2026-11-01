@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# Build the product site for the box and put it where the edge serves it,
-# https://jalalirs.tailedf721.ts.net/iocean/.
+# Build the product site and put it where the box's edge serves it. People
+# reach it at https://iocean.areen.ai (deployments/gcp/router).
 #
 #   tools/publish-site
 #
-# Built with the box's addresses: the Download button reads
-# /iocean/downloads/manifest.json (written by tools/release-mac) and the Google
-# button signs in to the platform on the same host.
+# Built for the public address: the Download button reads
+# downloads/manifest.json under it (written by tools/release-mac) and the
+# Google button signs in to the platform on the same host.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PUBLIC="${IOCEAN_PUBLIC_URL:-https://jalalirs.tailedf721.ts.net/iocean}"
-PREFIX="/${PUBLIC#https://*/}"
+PUBLIC="${IOCEAN_PUBLIC_URL:-https://iocean.areen.ai}"
+HOSTPATH="${PUBLIC#https://}"
+case "${HOSTPATH}" in */*) PREFIX="/${HOSTPATH#*/}" ;; *) PREFIX="" ;; esac
 BOX="${IOCEAN_BOX:-jalalirs@100.76.65.1}"
 SITE="${IOCEAN_SITE_DIR:-iocean/site}"
 
