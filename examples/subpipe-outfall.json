@@ -1,5 +1,5 @@
 {
-  "_": "SubPipe's outfall pipeline (Oceanscan-MST's LAUV, run 3, CC BY 4.0, Zenodo 12666132), as it was found in the video. The route is where the camera's centre met the ground in each frame (the vehicle was tracking the pipe), from the vehicle's own navigation, a nine-frame running median, a point every 5 m. The pipe is in view from the first frame to frame 207 (89 m) and not after: buried, or left by the vehicle; taken as buried along the vehicle's line. Blocks and objects were read by eye from the frames, about 1.5 m either way. The pipe's width (0.6 m with its coating) is assumed from the frames. The chart error is chosen: the mission says the chart is 3 m off, which only the judge knows.",
+  "_": "SubPipe's outfall pipeline (Oceanscan-MST's LAUV, run 3, CC BY 4.0, Zenodo 12666132), as it was found in the video. The route is where the camera's centre met the ground in each frame (the vehicle was tracking the pipe), from the vehicle's own navigation, a nine-frame running median, a point every 5 m. The pipe is in view from the first frame to frame 207 (89 m) and not after: buried, or left by the vehicle; taken as buried along the vehicle's line. Blocks and objects were read by eye from the frames, about 1.5 m either way. It rests in the sand, so it follows the ground (bendRadiusM 1) rather than bridging the hollow the place's ground has under the strip. The pipe's width (0.6 m with its coating) is assumed from the frames. The chart error is chosen: the mission says the chart is 3 m off, which only the judge knows.",
   "place": "subpipe-outfall-pipeline-4",
   "layout": {
     "slug": "subpipe-outfall-as-found",
@@ -12,7 +12,7 @@
         "x": 4.4,
         "y": 1.3,
         "radiusM": 0.3,
-        "bendRadiusM": 150,
+        "bendRadiusM": 1,
         "shownBy": "reconstruction",
         "route": [
           {
@@ -226,7 +226,7 @@
   "mission": {
     "slug": "inspect-the-subpipe-outfall",
     "name": "Inspect the SubPipe outfall",
-    "summary": "Track the outfall from its exposed end to where the sand takes it, on a chart that is 3 m off as old charts are: sweep across it until the camera has the pipe, move onto it, log every block and object on it, report where it goes under, and hold its line over the buried stretch.",
+    "summary": "Launched at the outfall's exposed end, track it to where the sand takes it, on a chart that is 3 m off as old charts are: sweep across it until the camera has the pipe, move onto it, log every block and object on it, report where it goes under, and hold its line over the buried stretch.",
     "stages": [
       {
         "kind": "follow",
@@ -238,12 +238,13 @@
           3.0
         ],
         "searchM": 5.0,
-        "timeLimitS": 1200
+        "timeLimitS": 1500,
+        "tetherOutM": 200
       }
     ],
     "launch": {
-      "x": 4.4,
-      "y": 7.3
+      "x": 87.4,
+      "y": 6.5
     }
   },
   "dives": [

@@ -142,7 +142,7 @@ def test_a_chart_three_metres_off_is_found_by_sweeping_and_corrected():
                     np.array([-5.0, 3.0, -14.5]), 0.0, world=a_found_pipe())
     fly(task, [-5.0, 3.0, -14.5])
     said = task.detail()
-    assert said["acquired"] is not None and said["acquired"]["alongM"] < 45.0
+    assert said["acquired"] is not None and said["acquired"]["alongM"] < 20.0
     # It moved its line onto the pipe: within half a metre of where it is.
     assert abs(said["chartOffM"]["value"][1] + 3.0) < 0.5
     assert said["replanned"] >= 1
@@ -165,3 +165,14 @@ def test_flying_the_wrong_chart_without_sweeping_sees_nothing():
 def test_a_pipe_shown_by_its_reconstruction_is_not_drawn_again():
     pipe = a_found_pipe().by_id("pipe-1")
     assert pipe.shown_by == "reconstruction"
+
+
+def test_a_line_that_starts_buried_is_swept_until_it_comes_out():
+    world = a_found_pipe(exposed=[{"fromM": 60, "toM": 150}])
+    task = task_for({"kind": "follow", "over": "pipe-1", "altitudeM": 2.5, "altitudeBandM": 1.0,
+                     "swathM": 3.0, "chartErrorM": [0.0, 3.0], "searchM": 5.0, "timeLimitS": 3000},
+                    np.array([-5.0, 3.0, -14.5]), 0.0, world=world)
+    fly(task, [-5.0, 3.0, -14.5])
+    said = task.detail()
+    assert said["acquired"] is not None and 55.0 <= said["acquired"]["alongM"] <= 75.0
+    assert abs(said["chartOffM"]["value"][1] + 3.0) < 0.5

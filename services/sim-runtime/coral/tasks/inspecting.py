@@ -263,15 +263,21 @@ class FollowLine(Task):
             k = int(np.argmin(np.hypot(points[:, 0] - here[0], points[:, 1] - here[1])))
             points, side = points[min(k + 1, len(points) - 1):], side[min(k + 1, len(points) - 1):]
         elif self.search > 0.0 and len(points) >= 2:
-            # Across the line and back, eight metres along each sweep, for the
-            # first forty metres or until the pipe is in view.
-            first, ahead = points[0], points[1] - points[0]
-            ahead = ahead / max(float(np.linalg.norm(ahead[:2])), 1e-9)
-            across = np.array([ahead[1], -ahead[0], 0.0])
-            sweep = [first + ahead * (8.0 * n) + across * (self.search if n % 2 else -self.search)
-                     for n in range(1, 6)]
-            beyond = [p for p in points if float(np.dot(p[:2] - first[:2], ahead[:2])) > 44.0]
-            points = np.array([first] + sweep + beyond)
+            # Across the line and back, eight metres along each sweep, the
+            # whole way until the pipe is in view: a line that starts buried
+            # is found where it comes out, not given up on after one sweep.
+            line = self.believed_line()[::-1] if self.backwards else self.believed_line()
+            at = self.at[-1] - self.at[::-1] if self.backwards else self.at
+            sweep = [points[0]]
+            for n, here_m in enumerate(np.arange(8.0, at[-1], 8.0)):
+                k = int(np.searchsorted(at, here_m))
+                ahead = line[min(k + 1, len(line) - 1)] - line[max(k - 1, 0)]
+                ahead = ahead / max(float(np.linalg.norm(ahead)), 1e-9)
+                across = np.array([ahead[1], -ahead[0]]) * (self.search if n % 2 else -self.search)
+                z = self.line[::-1][k, 2] if self.backwards else self.line[k, 2]
+                sweep.append(np.array([line[k, 0] + across[0], line[k, 1] + across[1], z]))
+            sweep.append(points[-1])
+            points = np.array(sweep)
         self.flown_shift = self.shift.copy()
         self.planned_at = self.elapsed()
         # At the height asked for above the line itself, as a pipe tracker

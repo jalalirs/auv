@@ -12,7 +12,7 @@
 # ...sim-runtime:r5 and run step 3.
 set -euo pipefail
 ENV=~/code/auv/deployments/box/.env
-D=~/iocean/scratch/deploy-cf271665ee6f/deployments/box
+D=~/iocean/scratch/deploy-08a360748125/deployments/box
 
 echo "1. no dive running"
 if docker ps --format '{{.Image}}' | grep -q 'sim-runtime'; then
@@ -20,8 +20,7 @@ if docker ps --format '{{.Image}}' | grep -q 'sim-runtime'; then
 fi
 
 echo "2. r6 in the registry"
-docker image inspect 127.0.0.1:18081/sim-runtime:r6 >/dev/null 2>&1 \
-  || docker tag 127.0.0.1:18081/sim-runtime:r6-candidate 127.0.0.1:18081/sim-runtime:r6
+docker tag 127.0.0.1:18081/sim-runtime:r6-candidate 127.0.0.1:18081/sim-runtime:r6
 docker push -q 127.0.0.1:18081/sim-runtime:r6 >/dev/null
 [ -f ~/iocean/backups/env-before-sim-r6 ] || cp "$ENV" ~/iocean/backups/env-before-sim-r6
 sed -i "s|^IOCEAN_SIM_IMAGE=.*|IOCEAN_SIM_IMAGE=127.0.0.1:18081/sim-runtime:r6|" "$ENV"
