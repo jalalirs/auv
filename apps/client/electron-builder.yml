@@ -33,7 +33,9 @@ mac:
   entitlementsInherit: assets/entitlements.plist
 
 dmg:
-  title: iOcean
+  # Not "iOcean": macOS refuses to write iOcean.app into a volume of that
+  # name while an iOcean is installed, and the installer fails to build.
+  title: iOcean Installer
   # Nothing but the application and the place to put it.
   contents:
     - { x: 150, y: 190, type: file }
