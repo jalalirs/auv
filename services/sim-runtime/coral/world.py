@@ -375,7 +375,7 @@ class Laid(Spanning):
     then erode it by the same. What is left above the seabed is a span.
     """
 
-    __slots__ = ("route", "bend_m", "spans", "step")
+    __slots__ = ("route", "bend_m", "spans", "step", "exposed", "features", "shown_by")
 
     def __init__(self, said: dict) -> None:
         route = said.get("route") or said.get("ends") or []
@@ -389,6 +389,19 @@ class Laid(Spanning):
         self.bend_m = float(said.get("bendRadiusM", 150.0))
         self.step = float(said.get("stepM", 1.0))
         self.spans: list[dict] = []
+        # Where along it the pipe is out of the sand, metres from the first
+        # point of its route. A line laid in a trench and backfilled, or one the
+        # sand has moved over, is there for a magnetometer and not for a camera;
+        # nothing said means all of it is out.
+        self.exposed = [(float(one.get("fromM", 0.0)), float(one.get("toM", 0.0)))
+                        for one in (said.get("exposed") or [])] or None
+        # What is on it or against it, by how far along: the concrete blocks
+        # that hold it down, debris, a valve. An inspection is a list of these.
+        self.features = [dict(one) for one in (said.get("features") or [])]
+        # Whether something else already draws it. A pipe rebuilt from the
+        # video of its own inspection is in the place's splats, sand on it and
+        # all; a tube drawn over that would be a second pipe.
+        self.shown_by = str(said.get("shownBy") or "")
         if len(self.route) >= 2:
             self.curve = [np.array([p[0], p[1], self.a[2] + self.radius]) for p in self.route]
 
@@ -442,6 +455,9 @@ class Laid(Spanning):
                                "x": round(float(flat[(first + k - 1) // 2][0]), 1),
                                "y": round(float(flat[(first + k - 1) // 2][1]), 1)})
 
+    def is_exposed(self, at_m: float) -> bool:
+        return self.exposed is None or any(a <= at_m <= b for a, b in self.exposed)
+
     def lean(self, current, passes: int = 2500, nodes: int = 24) -> None:
         # A pipe is not moved by the water the way a line is: it weighs down.
         self.leaned_by = 0.0
@@ -454,6 +470,10 @@ class Laid(Spanning):
         said.update({"lengthM": round(self.length(), 1), "bendRadiusM": self.bend_m,
                      "freeSpans": len(self.spans),
                      "longestSpanM": max((one["lengthM"] for one in self.spans), default=0.0)})
+        if self.exposed is not None:
+            said["exposedM"] = round(sum(b - a for a, b in self.exposed), 1)
+        if self.features:
+            said["features"] = len(self.features)
         return said
 
 

@@ -75,6 +75,8 @@ def put_in(stage, world, units_per_metre: float = 1.0, root: str = "/World/Laid"
     for k, thing in enumerate(world.things):
         colour = COLOURS.get(thing.kind, PLAIN)
         path = f"{root}/T{k}"
+        if getattr(thing, "shown_by", ""):
+            continue
         if isinstance(thing, Spanning) and len(thing.curve) >= 2:
             points, quads = tube(thing.curve, max(0.01, float(thing.radius)))
             mesh = UsdGeom.Mesh.Define(stage, path)
