@@ -374,6 +374,16 @@ class Seabed:
         return np.array([0.0, 0.0, 1.0]) if length < 1e-9 else normal / length
 
 
+def _most(objective, key: str):
+    """The largest a mission or any stage of it asks for: cable is paid out
+    once, at the start, for the stage that reaches furthest."""
+    if not isinstance(objective, dict):
+        return None
+    said = [objective.get(key)] + [_most(stage, key) for stage in objective.get("stages", [])]
+    said = [float(one) for one in said if isinstance(one, (int, float))]
+    return max(said) if said else None
+
+
 def _mentions(objective, kind: str) -> bool:
     """Whether an objective, or any stage of it, is of this kind."""
     if not isinstance(objective, dict):
@@ -2067,7 +2077,10 @@ class Dive:
                              float(np.arctan2(self.rotation[1, 0], self.rotation[0, 0])),
                              camera=self.camera(),
                              colonies=self.colonies_here() if wants_coral else None,
-                             world=self.world)
+                             world=self.world,
+                             # The colonies as the ocean holds them, with what
+                             # each is and how wide: what a transect lies over.
+                             coral=getattr(self.ocean, "coral", None))
         # Pointed at something that is not in the water. Refused rather than
         # flown: a survey over "cell-b7" in a place where nobody drew cell-b7
         # would otherwise fall back to a box ahead of the vehicle and come back
@@ -2747,7 +2760,7 @@ class Dive:
         # cable is out is a decision somebody makes on the day.
         asked = (self.brief.get("initialState") or {}).get("tetherOutM")
         if asked is None:
-            asked = (self.objective or {}).get("tetherOutM") if isinstance(self.objective, dict) else None
+            asked = _most(self.objective, "tetherOutM")
         # A place that is a room says where its cable comes over the rim and
         # how much of it is paid out: a tank does not have a ship.
         rim = None

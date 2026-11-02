@@ -305,14 +305,22 @@ def _inside(radius: float, share: float, floor: float) -> float:
 
 
 def _line(goal: dict) -> list[dict]:
-    """A straight run, flown at an altitude rather than a depth."""
+    """A straight run, flown at an altitude or a depth, from its start.
+
+    From its start: a line drawn on the chart is flown along, not cut across.
+    Planned as its end alone, a vehicle sent to a transect sixty metres away
+    flew straight at the far end and met the line nowhere."""
     to = goal["to"]
     leg = {"x": float(to[0]), "y": float(to[1])}
-    if goal.get("altitudeM") is not None:
-        leg["altitudeM"] = float(goal["altitudeM"])
-    elif goal.get("depthM") is not None:
+    if goal.get("depthM") is not None:
         leg["depthM"] = float(goal["depthM"])
-    return [leg]
+    elif goal.get("altitudeM") is not None:
+        leg["altitudeM"] = float(goal["altitudeM"])
+    start = goal.get("from")
+    if start is None:
+        return [leg]
+    begin = {**leg, "x": float(start[0]), "y": float(start[1]), "arriveM": 1.0}
+    return [begin, leg]
 
 
 def _go(goal: dict) -> list[dict]:

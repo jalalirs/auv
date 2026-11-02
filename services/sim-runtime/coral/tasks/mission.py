@@ -110,7 +110,11 @@ class Mission(Task):
         return {} if stage is None else stage.goal()
 
     def goal_id(self) -> str:
-        return f"mission:{self.at}"
+        # The stage's own as well: a stage that changes its mind mid-way (a
+        # pipe tracker that has found the pipe) is asked again, as it would be
+        # flown alone. Without it a tracker in a mission swept the whole line.
+        stage = self.stage
+        return f"mission:{self.at}" + ("" if stage is None else f":{stage.goal_id()}")
 
     def describe(self) -> dict:
         said = super().describe()

@@ -1,0 +1,142 @@
+{
+  "_": "Looe Key shallow monitoring station, flown as four line-intercept transects. Where: along the 7 m contour, traced from the place's own colonies (heading 12.0 deg, across spurs and grooves), x 95 to 207; derived. Four lines of 25 m with 5 m between: chosen. 7 m because FWC CREMP's Looe Key Shallow station is at 7 m and measured 3.4% stony coral in 2024 (mean of 4 stations); the deep station at 12.5 m is deeper than any colony the USGS survey drew here (they stop near 9 m), so it is not flown. What a transect reports is the share of the line over each kind of colony the place holds, and those kinds are the place builder's guess from shape and colour (tools/benthos). Stakes: CREMP marks its stations with stakes; these four are placed, not surveyed. Each line is flown at a depth a metre above the shallowest framework top the place charts along it (2.2, 5.4, 3.7 and 2.9 m; derived), because the framework stands up to 3 m off the bottom: held at an altitude, the vehicle met each spur side on, and the wary planner could not thread it either. The altitude band (0.5 to 5.5 m) only says the camera still had the bottom.",
+  "place": "looe-key",
+  "layout": {
+    "slug": "looe-key-shallow-station",
+    "name": "Looe Key shallow station",
+    "summary": "Four transect stakes on the 7 m contour across the spur-and-groove.",
+    "things": [
+      {
+        "id": "stake-t1",
+        "kind": "marker-post",
+        "x": 94.9,
+        "y": -29.0,
+        "radiusM": 0.02,
+        "heightM": 0.6,
+        "what": "the stake at the start of transect 1"
+      },
+      {
+        "id": "stake-t2",
+        "kind": "marker-post",
+        "x": 124.2,
+        "y": -22.7,
+        "radiusM": 0.02,
+        "heightM": 0.6,
+        "what": "the stake at the start of transect 2"
+      },
+      {
+        "id": "stake-t3",
+        "kind": "marker-post",
+        "x": 153.6,
+        "y": -16.5,
+        "radiusM": 0.02,
+        "heightM": 0.6,
+        "what": "the stake at the start of transect 3"
+      },
+      {
+        "id": "stake-t4",
+        "kind": "marker-post",
+        "x": 182.9,
+        "y": -10.3,
+        "radiusM": 0.02,
+        "heightM": 0.6,
+        "what": "the stake at the start of transect 4"
+      }
+    ]
+  },
+  "mission": {
+    "slug": "looe-key-shallow-transects",
+    "name": "Cover on the Looe Key shallow station",
+    "summary": "Four 25 m line-intercept transects along the 7 m contour; cover per transect against CREMP's measured 3.4% stony coral.",
+    "stages": [
+      {
+        "kind": "transect",
+        "name": "Transect 1",
+        "from": {
+          "x": 94.9,
+          "y": -29.0
+        },
+        "to": {
+          "x": 119.3,
+          "y": -23.8
+        },
+        "altitudeM": 3.0,
+        "altitudeBandM": 2.5,
+        "headingToleranceDeg": 15,
+        "timeLimitS": 600,
+        "depthM": 1.2
+      },
+      {
+        "kind": "transect",
+        "name": "Transect 2",
+        "from": {
+          "x": 124.2,
+          "y": -22.7
+        },
+        "to": {
+          "x": 148.7,
+          "y": -17.5
+        },
+        "altitudeM": 3.0,
+        "altitudeBandM": 2.5,
+        "headingToleranceDeg": 15,
+        "timeLimitS": 600,
+        "depthM": 4.4
+      },
+      {
+        "kind": "transect",
+        "name": "Transect 3",
+        "from": {
+          "x": 153.6,
+          "y": -16.5
+        },
+        "to": {
+          "x": 178.0,
+          "y": -11.3
+        },
+        "altitudeM": 3.0,
+        "altitudeBandM": 2.5,
+        "headingToleranceDeg": 15,
+        "timeLimitS": 600,
+        "depthM": 2.7
+      },
+      {
+        "kind": "transect",
+        "name": "Transect 4",
+        "from": {
+          "x": 182.9,
+          "y": -10.3
+        },
+        "to": {
+          "x": 207.4,
+          "y": -5.1
+        },
+        "altitudeM": 3.0,
+        "altitudeBandM": 2.5,
+        "headingToleranceDeg": 15,
+        "timeLimitS": 600,
+        "depthM": 1.9
+      }
+    ],
+    "launch": {
+      "x": 150.0,
+      "y": -38.0
+    }
+  },
+  "dives": [
+    {
+      "name": "Looe Key shallow station: BlueROV2 flies four transects",
+      "vehicle": "bluerov2",
+      "waterName": "a set along the reef, USBL from the boat",
+      "water": {
+        "currentMetresPerSecond": 0.15,
+        "currentHeadingDeg": 60,
+        "positioning": {
+          "kind": "usbl",
+          "accuracyM": 1.0,
+          "everyS": 2.0
+        }
+      }
+    }
+  ]
+}

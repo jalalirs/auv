@@ -176,6 +176,11 @@ def test_a_reef_drawn_as_a_layer_is_read_back_as_its_colonies(tmp_path):
     assert np.allclose(c.radius, [0.3, 0.25, 1.1]) and np.allclose(c.height, [0.2, 0.9, 0.4])
     assert list(c.kind) == ["massive", "fan", "massive"]
     assert list(c.solid()) == [True, False, True], "a fan bends"
+    assert c.called is None, "nothing said what each one is"
+    described["reef"]["prototypeKinds"] = ["low", "stony", "fan"]
+    c = colonies_of(described, lambda x, y: -5.0, tmp_path)
+    assert list(c.kind) == ["massive", "fan", "massive"], "how they stand is unchanged"
+    assert list(c.called) == ["low", "fan", "stony"]
 
 
 def test_near_finds_what_is_near_and_not_the_rest():

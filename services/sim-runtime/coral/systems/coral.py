@@ -103,6 +103,7 @@ class Colonies:
         self.size = np.zeros(0)             # how big, metres: its height, or its width if wider
         self.wide = None                    # how wide each stands, where the place says
         self.kind = np.array([], dtype=object)
+        self.called = None                  # what the survey took each for, where it says
         self.prim = []                      # the drawn colony, when the place names it
         self.height = np.zeros(0)           # what stands now: a stump is half
         self.broken = np.zeros(0, dtype=bool)
@@ -266,6 +267,13 @@ def colonies_in_the_layer(path, described: dict) -> Colonies:
     c.height = scales[:, 2].copy()
     c.size = np.maximum(2.0 * c.wide, c.height)
     c.kind = np.array([kind_of.get(int(i), "massive") for i in which], dtype=object)
+    # What the survey took each one for (stony, head, low...), its own guess
+    # from shape and colour: what a transect over the reef reports, while
+    # `kind` stays what decides how a colony stands and bends.
+    called = [str(one) for one in (described.get("reef") or {}).get("prototypeKinds") or []]
+    if called:
+        c.called = np.array([called[i] if 0 <= i < len(called) else k for i, k in zip(which, c.kind)],
+                            dtype=object)
     c.prim = []
     _fresh(c, n)
     c.from_ = (f"the reef layer {pathlib.Path(path).name}: {n} colonies as the survey drew them"

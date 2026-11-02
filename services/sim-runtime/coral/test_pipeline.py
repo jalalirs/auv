@@ -154,6 +154,22 @@ def test_a_chart_three_metres_off_is_found_by_sweeping_and_corrected():
     assert task.score() > 0.5
 
 
+def test_a_tracker_in_a_mission_is_asked_again_when_it_finds_the_pipe():
+    """A mission's goal changes when its stage's does; otherwise the tracker
+    goes on sweeping the whole line after it has the pipe."""
+    task = task_for({"kind": "mission", "stages": [
+        {"kind": "follow", "over": "pipe-1", "altitudeM": 2.5, "altitudeBandM": 1.0, "swathM": 3.0,
+         "chartErrorM": [0.0, 3.0], "searchM": 5.0, "timeLimitS": 3000}]},
+        np.array([-5.0, 3.0, -14.5]), 0.0, world=a_found_pipe())
+    asked = set()
+    first = task.goal_id
+    task.goal_id = lambda: (asked.add(first()), first())[1]
+    fly(task, [-5.0, 3.0, -14.5])
+    assert len(asked) >= 2, asked
+    said = task.stage.detail() if task.stage is not None else task.finished[-1]["achieved"]
+    assert said["acquired"] is not None
+
+
 def test_flying_the_wrong_chart_without_sweeping_sees_nothing():
     task = task_for({"kind": "follow", "over": "pipe-1", "altitudeM": 2.5, "altitudeBandM": 1.0,
                      "swathM": 3.0, "chartErrorM": [0.0, 3.0], "timeLimitS": 3000},

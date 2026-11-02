@@ -305,3 +305,13 @@ def test_a_leg_is_never_reached_before_the_task_counts_it():
     assert _inside(0.08, 0.6, 0.25) <= 0.08
     assert _inside(1.0, 0.6, 0.25) == 0.6
     assert _inside(10.0, 0.5, 0.5) == 5.0
+
+
+def test_a_line_is_flown_from_its_start():
+    """A transect drawn on the chart is reached at its start and flown to its
+    end, not cut across from wherever the vehicle happens to be."""
+    from controllers.plan import route_for
+    route = route_for({"kind": "line", "from": [10.0, 0.0], "to": [35.0, 0.0], "depthM": 4.0})
+    assert [(p["x"], p["y"]) for p in route] == [(10.0, 0.0), (35.0, 0.0)]
+    assert all(p["depthM"] == 4.0 for p in route)
+    assert route_for({"kind": "line", "to": [35.0, 0.0], "altitudeM": 2.0}) == [{"x": 35.0, "y": 0.0, "altitudeM": 2.0}]

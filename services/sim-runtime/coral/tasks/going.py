@@ -160,12 +160,23 @@ class Waypoints(Task):
 
 
 class Transect(Task):
+    """A line flown at a height and a heading, and what it lies over.
+
+    Over a reef the line is a line-intercept transect, the oldest way of
+    measuring cover: of the length flown in band, how much was over each kind
+    of thing standing on the bottom, read from the colonies the place holds
+    under the vehicle. The kinds are the place's, which are its own guess from
+    shape and colour (tools/benthos), so the shares are derived and say so."""
+
     kind = "transect"
     flies_through = True
     name = "Transect"
+    wants = ("coral",)
 
-    def __init__(self, objective, began_at, heading, **extra) -> None:
+    def __init__(self, objective, began_at, heading, coral=None, **extra) -> None:
         super().__init__(objective, began_at, heading, **extra)
+        self.coral = coral if coral is not None and len(coral) else None
+        self.lies_over: dict[str, float] = {}
         self.length = float(objective.get("lengthM", 20.0))
         self.altitude = float(objective.get("altitudeM", 2.0))
         self.band = float(objective.get("altitudeBandM", 0.5))
@@ -202,6 +213,12 @@ class Transect(Task):
                 self.line_heading = math.atan2(self.ahead_xy[1], self.ahead_xy[0])
                 self.stated_heading = True
                 self.from_at = drawn[0][:2].copy()
+        # How far either side of the line still counts as on it. A vehicle
+        # crossing its extension on the way to its start, or passing beside it
+        # to the next, is not flying it: counted by its shadow on the line, a
+        # mission's first two transects were done before the vehicle reached
+        # either of them.
+        self.off_line = float(objective.get("offLineM", 1.5))
         self.along = 0.0
         self.good = 0.0
         self.last_along: float | None = None
@@ -213,29 +230,75 @@ class Transect(Task):
             if not self.stated_heading:
                 self.line_heading = float(heading)
                 self.ahead_xy = np.array([math.cos(heading), math.sin(heading)])
-        along = float(np.dot(position[:2] - self.from_at, self.ahead_xy))
-        along = max(0.0, min(self.length, along))
+        rel = position[:2] - self.from_at
+        along = float(np.dot(rel, self.ahead_xy))
+        across = abs(float(rel[0] * self.ahead_xy[1] - rel[1] * self.ahead_xy[0]))
         self.altitude_now = None if floor is None else float(position[2] - floor)
+        if across > self.off_line or along < -self.off_line or along > self.length + self.off_line:
+            self.last_along = None
+            if elapsed >= float(self.objective.get("timeLimitS", 1e9)):
+                self.done = True
+            return
+        along = max(0.0, min(self.length, along))
         in_band = self.altitude_now is not None and abs(self.altitude_now - self.altitude) <= self.band
         on_heading = abs(wrap(heading - self.line_heading)) <= self.tolerance
         if self.last_along is not None and along > self.last_along and in_band and on_heading:
             self.good += along - self.last_along
+            if self.coral is not None:
+                # Under the middle of the step, not its end: a colony is
+                # counted from where the vehicle crossed into it.
+                under = self.under(position[:2] - self.ahead_xy * 0.5 * (along - self.last_along))
+                self.lies_over[under] = self.lies_over.get(under, 0.0) + along - self.last_along
         self.last_along = along
         self.along = max(self.along, along)
-        if self.along >= self.length - 0.05 or elapsed >= float(self.objective.get("timeLimitS", 1e9)):
+        # The end is reached within a metre, the radius a route's last point
+        # is arrived at: held to five centimetres, a vehicle parked 0.7 m short
+        # of the end of a line waited there for the rest of its time.
+        if self.along >= self.length - min(1.0, 0.05 * self.length) \
+                or elapsed >= float(self.objective.get("timeLimitS", 1e9)):
             self.done = True
+
+    def under(self, position) -> str:
+        """What the camera is looking straight down at: the kind of the
+        colony the vehicle is over, the nearest if it is over two, or bare."""
+        near = self.coral.near(position[:2], 0.0)
+        if not len(near):
+            return "bare"
+        away = np.hypot(*(self.coral.at[near, :2] - position[:2]).T)
+        inside = away <= self.coral.radius[near]
+        if not inside.any():
+            return "bare"
+        called = self.coral.called if getattr(self.coral, "called", None) is not None else self.coral.kind
+        return str(called[near[inside][np.argmin(away[inside])]])
+
+    def intercept(self) -> dict | None:
+        if self.coral is None:
+            return None
+        flown = sum(self.lies_over.values())
+        return {"value": {kind: round(100.0 * m / flown, 1) for kind, m in sorted(self.lies_over.items())}
+                if flown > 0 else {},
+                "unit": "% of the line", "lengthM": round(flown, 2), "kind": "derived",
+                "from": "line intercept under the vehicle, over the colonies the place holds; "
+                        "what each colony is, the place's guess from its shape and colour"}
 
     def score(self) -> float:
         return min(1.0, self.good / self.length) if self.length > 0 else 0.0
 
     def says(self) -> str:
         alt = "—" if self.altitude_now is None else f"{self.altitude_now:.2f} m"
-        return f"{self.along:.1f} of {self.length:.0f} m along, {self.good:.1f} m within band, altitude {alt}"
+        said = f"{self.along:.1f} of {self.length:.0f} m along, {self.good:.1f} m within band, altitude {alt}"
+        shares = (self.intercept() or {}).get("value") or {}
+        if shares:
+            said += "; over " + ", ".join(f"{kind} {share:g}%" for kind, share in shares.items())
+        return said
 
     def detail(self) -> dict:
-        return {"alongM": round(self.along, 2), "goodM": round(self.good, 2), "lengthM": self.length,
+        said = {"alongM": round(self.along, 2), "goodM": round(self.good, 2), "lengthM": self.length,
                 "altitudeM": self.altitude, "altitudeBandM": self.band,
                 "headingToleranceDeg": round(math.degrees(self.tolerance), 1)}
+        if self.coral is not None:
+            said["intercept"] = self.intercept()
+        return said
 
     def starts_at(self) -> np.ndarray:
         """Where the line begins: where this leg did, once it has."""
@@ -258,8 +321,16 @@ class Transect(Task):
     def goal(self) -> dict:
         start = self.starts_at()
         end = start + self.ahead_xy * self.length
-        return {"kind": "line", "from": [float(v) for v in start],
-                "to": [float(end[0]), float(end[1])], "altitudeM": self.altitude}
+        said = {"kind": "line", "from": [float(v) for v in start], "to": [float(end[0]), float(end[1])]}
+        # A depth when one is asked for: over spur-and-groove whose framework
+        # stands three metres, a line held at an altitude meets each spur side
+        # on, and one held at a depth clear of the charted tops does not. The
+        # altitude band then only says the camera still had the bottom.
+        if self.objective.get("depthM") is not None:
+            said["depthM"] = float(self.objective["depthM"])
+        else:
+            said["altitudeM"] = self.altitude
+        return said
 
 
 class Reach(Task):

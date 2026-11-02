@@ -75,6 +75,38 @@ def test_transect_counts_length_flown_in_band_on_heading():
     assert 0.45 <= task.score() <= 0.55, task.progress()
 
 
+def test_transect_measures_what_it_lies_over():
+    from systems.coral import Colonies
+    reef = Colonies()
+    # Two stony colonies a metre across and a fan half a metre across on the
+    # line, one stony colony off it: 2.5 m of 20 over something.
+    reef.at = np.array([[104.0, -20.0, -7.0], [110.0, -20.0, -7.0], [115.0, -20.0, -7.0], [108.0, -25.0, -7.0]])
+    reef.size = np.ones(4)
+    reef.wide = np.array([0.5, 0.5, 0.25, 0.5])
+    reef.kind = np.array(["stony", "stony", "fan", "stony"], dtype=object)
+    task = task_for({"kind": "transect", "lengthM": 20, "altitudeM": 2.0, "headingDeg": 0}, START, 0.0, coral=reef)
+    walk(task, 10, lambda t: START + np.array([t * 2.0, 0, 0]), heading=0.0, floor=-7.0)
+    said = task.detail()["intercept"]
+    metres = {kind: share * said["lengthM"] / 100.0 for kind, share in said["value"].items()}
+    assert abs(metres["stony"] - 2.0) < 0.15, said
+    assert abs(metres["fan"] - 0.5) < 0.15, said
+    assert "stony" in task.says()
+
+
+def test_a_transect_is_not_flown_by_passing_beside_it():
+    task = task_for({"kind": "transect", "from": {"x": 100.0, "y": -20.0}, "to": {"x": 120.0, "y": -20.0},
+                     "altitudeM": 2.0}, START, 0.0)
+    # Five metres off the line, all the way along it and past its end.
+    walk(task, 15, lambda t: START + np.array([t * 2.0, 5.0, 0]), heading=0.0, floor=-7.0)
+    assert not task.done and task.detail()["alongM"] == 0.0, task.progress()
+
+
+def test_transect_without_a_reef_says_nothing_of_one():
+    task = task_for({"kind": "transect", "lengthM": 20, "altitudeM": 2.0}, START, 0.0)
+    walk(task, 10, lambda t: START + np.array([t * 2.0, 0, 0]), heading=0.0, floor=-7.0)
+    assert "intercept" not in task.detail()
+
+
 def test_survey_scores_the_fraction_seen():
     task = task_for({"kind": "survey", "widthM": 10, "heightM": 6, "altitudeM": 2.0, "swathM": 3.0}, START, 0.0)
     # Two passes three metres apart cover a six-metre-tall rectangle.

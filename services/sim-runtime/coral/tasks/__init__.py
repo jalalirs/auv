@@ -42,10 +42,10 @@ __all__ = ["KINDS", "TASKS", "Task", "footprint_half_angle", "task_for", "wrap",
 
 
 def task_for(objective, began_at, heading: float, camera: dict | None = None,
-             colonies=None, world=None) -> Task | None:
+             colonies=None, world=None, coral=None) -> Task | None:
     """The task an objective asks for, or None when the dive is only flown.
 
-    `camera` and `colonies` are handed to the tasks that say they want them —
+    `camera`, `colonies` and `coral` are handed to the tasks that say they want them —
     said by each class rather than tested for here, because a chain of `if made
     is Survey` is a chain somebody adding the eighteenth task has to find and
     add to.
@@ -61,11 +61,11 @@ def task_for(objective, began_at, heading: float, camera: dict | None = None,
     if kind == "mission":
         def stage(said, began, heading_):
             return task_for(said, began, heading_, camera=camera,
-                            colonies=colonies, world=world)
+                            colonies=colonies, world=world, coral=coral)
         return Mission(objective, began_at, heading, stage)
     made = TASKS.get(kind)
     if made is None:
         return None
-    spare = {"camera": camera, "colonies": colonies}
+    spare = {"camera": camera, "colonies": colonies, "coral": coral}
     return made(objective, began_at, heading, world=world,
                 **{name: spare[name] for name in made.wants})
