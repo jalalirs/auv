@@ -156,6 +156,11 @@ export class Platform {
     return this.#token !== undefined;
   }
 
+  /** The session's token, for an application that keeps it between launches. */
+  get token(): string | undefined {
+    return this.#token;
+  }
+
   async #request<T>(method: string, path: Path | string, body?: unknown): Promise<T> {
     let response: Response;
     try {

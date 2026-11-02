@@ -18,6 +18,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { City, Platform, StorePlace } from "@coral-city/api";
 import { Button, Dialog, Menu, Page, Status, SkeletonCards } from "../ui/components.js";
 import { PLACES_TABS } from "./placesTabs.js";
+import { usePlacePicture } from "../parts/Relief.js";
+import type { PlacePackage } from "../platform/packages.js";
 
 export function Places({ platform, held, packages, tab = "places", onTab, onOpen, onBuild, onFromVideo, onBuildOn, onChanged }: {
   platform?: Platform;
@@ -60,9 +62,7 @@ export function Places({ platform, held, packages, tab = "places", onTab, onOpen
 
   // Yours: what the organisation owns or holds; a store place only once it
   // has been taken (Use it).
-  const storeIds = new Set((store ?? []).map((s) => s.id));
-  const adopted = new Set((store ?? []).filter((s) => s.adopted).map((s) => s.id));
-  const yours = held.places.filter((p) => !storeIds.has(p.id) || adopted.has(p.id));
+  const yours = held.yourPlaces;
   const slugs = new Set(held.places.map((p) => p.slug));
 
   const adopt = async (one: StorePlace, take: boolean) => {
@@ -72,6 +72,7 @@ export function Places({ platform, held, packages, tab = "places", onTab, onOpen
       if (take) await platform.adoptStorePlace(institution.id, one.id);
       else await platform.unadoptStorePlace(institution.id, one.id);
       readStore();
+      await onChanged?.();
     } catch (problem) {
       setTrouble(problem instanceof Error ? problem.message : "it could not be changed");
     }
@@ -113,24 +114,14 @@ export function Places({ platform, held, packages, tab = "places", onTab, onOpen
           ) : (
             <div className="cards">
               {store.map((one) => (
-                <div key={one.id} className="store-card">
-                  <Card name={one.name} detail={one.summary || "an iOcean place"}
-                        picture={pictures[one.id]}
-                        art={<PlacePlan standing={one.surveyed ? "surveyed" : "derived"} deepestM={one.deepestM} size={64} />}
-                        specs={[
-                          one.deepestM !== undefined ? `to ${one.deepestM.toFixed(0)} m` : "",
-                          one.surveyedFraction !== undefined ? `${Math.round(one.surveyedFraction * 100)}% measured` : one.surveyed ? "surveyed" : "derived depths",
-                          one.colonies ? `${one.colonies.toLocaleString()} colonies` : "",
-                        ].filter(Boolean)}
-                        corner={one.adopted ? <Status tone="good">yours</Status> : undefined}
-                        onOpen={() => onOpen(one.id)} />
-                  <div className="store-actions">
-                    {one.adopted
-                      ? <Button kind="ghost" onClick={() => void adopt(one, false)}>Remove from yours</Button>
-                      : <Button onClick={() => void adopt(one, true)} disabled={!institution}>Use it</Button>}
-                    <Button kind="secondary" onClick={() => onBuildOn?.(one.id)}>Build on it</Button>
-                  </div>
-                </div>
+                <StoreCard key={one.id} one={one} photo={pictures[one.id]} pkg={packages.places.get(one.id)}
+                           onOpen={() => onOpen(one.id)}
+                           actions={<>
+                             {one.adopted
+                               ? <Button kind="ghost" onClick={() => void adopt(one, false)}>Remove from yours</Button>
+                               : <Button onClick={() => void adopt(one, true)} disabled={!institution}>Use it</Button>}
+                             <Button kind="secondary" onClick={() => onBuildOn?.(one.id)}>Build on it</Button>
+                           </>} />
               ))}
             </div>
           )}
@@ -151,15 +142,14 @@ export function Places({ platform, held, packages, tab = "places", onTab, onOpen
       ) : (
         <div className="cards">
           {yours.map((one) => (
-            <div key={one.id} className="store-card">
-              <PlaceCard place={one} packages={packages} onOpen={() => onOpen(one.id)} />
-              {mayRetire(one) ? (
-                <div className="store-actions">
-                  <Menu label={`More for ${one.name}`}
-                        items={[{ label: "Retire", danger: true, onSelect: () => setRetiring(one) }]} />
-                </div>
-              ) : null}
-            </div>
+            <PlaceCard key={one.id} place={one} packages={packages} onOpen={() => onOpen(one.id)}
+                       actions={<>
+                         <Button onClick={() => onOpen(one.id)}>Open</Button>
+                         {mayRetire(one) ? (
+                           <Menu label={`More for ${one.name}`}
+                                 items={[{ label: "Retire", danger: true, onSelect: () => setRetiring(one) }]} />
+                         ) : null}
+                       </>} />
           ))}
         </div>
       )}
@@ -183,4 +173,28 @@ function depthOf(one: { purpose?: string; takes?: string; summary?: string }): n
   const said = `${one.purpose ?? ""} ${one.takes ?? ""} ${one.summary ?? ""}`;
   const found = said.match(/(\d{1,3})\s*(?:m\b|metres)/);
   return found ? Number(found[1]) : undefined;
+}
+
+/** A place in the store: its own photograph when it ships one, else its relief. */
+function StoreCard({ one, photo, pkg, onOpen, actions }: {
+  one: StorePlace;
+  photo: string | undefined;
+  pkg: PlacePackage | null | undefined;
+  onOpen: () => void;
+  actions: React.ReactNode;
+}): React.JSX.Element {
+  const drawn = usePlacePicture(photo !== undefined ? null : pkg);
+  const picture = photo ?? drawn ?? undefined;
+  return (
+    <Card name={one.name} detail={one.summary || "an iOcean place"}
+          picture={picture} reading={photo === undefined && drawn === undefined}
+          art={<PlacePlan standing={one.surveyed ? "surveyed" : "derived"} deepestM={one.deepestM} size={64} />}
+          specs={[
+            one.deepestM !== undefined ? `to ${one.deepestM.toFixed(0)} m` : "",
+            one.surveyedFraction !== undefined ? `${Math.round(one.surveyedFraction * 100)}% measured` : one.surveyed ? "surveyed" : "derived depths",
+            one.colonies ? `${one.colonies.toLocaleString()} colonies` : "",
+          ].filter(Boolean)}
+          corner={one.adopted ? <Status tone="good">yours</Status> : undefined}
+          onOpen={onOpen} actions={actions} />
+  );
 }

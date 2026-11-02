@@ -276,7 +276,18 @@ button.quiet:hover:not(:disabled) { background: var(--shelf); border-color: var(
 }
 .card .picture img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-.card .said { padding: 12px 14px 14px; }
+/* Every card in a row the same height: the words take what is left and the
+   numbers and the actions sit along the bottom, whatever the text above. */
+.cards > .card { height: 100%; }
+.card .said { padding: 12px 14px 14px; flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.card .said > span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.card .said .specs { margin-top: auto !important; padding-top: 9px; flex-wrap: wrap; row-gap: 4px; }
+.card .said .specs span { white-space: nowrap; margin-top: 0; }
+.card .foot {
+  display: flex; align-items: center; gap: var(--s2);
+  padding: var(--s3) 14px; border-top: 1px solid var(--edge);
+}
+.card .foot .menu { margin-left: auto; }
 .card .said strong { display: block; font-size: var(--t-strong); font-weight: 600; line-height: var(--tall); }
 .card .said span { display: block; margin-top: 3px; color: var(--faint); font-size: var(--t-meta); }
 .card .said .specs {
@@ -1950,3 +1961,18 @@ ol.steps { margin: 0; padding-left: var(--s5); display: flex; flex-direction: co
 section > .facts { display: flex; gap: var(--s5); flex-wrap: wrap; align-items: end; margin-bottom: var(--s5); }
 label.switch { display: grid; gap: var(--s1); font-size: var(--t-meta); color: var(--faint); }
 label.switch select { min-width: 240px; }
+
+/* ── assets: cards, with what is being made and what failed apart ─────────── */
+
+.asset-tools { display: flex; align-items: center; gap: var(--s3); margin-bottom: var(--s4); }
+.segmented { display: inline-flex; padding: 3px; gap: 2px; background: var(--water); border: 1px solid var(--edge); border-radius: var(--r-control); }
+.segmented button {
+  min-height: 0; height: 28px; padding: 0 var(--s3); border: 0; border-radius: 4px;
+  background: none; color: var(--faint); font: 500 var(--t-body) var(--font); cursor: pointer;
+  display: inline-flex; align-items: center; gap: var(--s2);
+}
+.segmented button[aria-selected="true"] { background: var(--raised); color: var(--plain); }
+.segmented button small { color: var(--dim); font-size: var(--t-meta); font-variant-numeric: tabular-nums; }
+.card .picture .asset-state { padding: 0 var(--s4); text-align: center; color: var(--faint); text-transform: none; letter-spacing: normal; }
+.new-asset { display: flex; flex-direction: column; gap: var(--s3); width: min(560px, 80vw); }
+.new-asset .asset-making { display: flex; align-items: center; gap: var(--s3); }

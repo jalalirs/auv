@@ -4,10 +4,11 @@
 // given before acting on it, because the renderer shows content the platform
 // sent and is treated as if it could be wrong.
 
-import { app, ipcMain, shell } from "electron";
+import { app, ipcMain, safeStorage, shell } from "electron";
+import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import { CHANNELS, type LatLon } from "../shared/bridge.js";
+import { CHANNELS, type KeptSession, type LatLon } from "../shared/bridge.js";
 import { aqualink } from "./ocean/aqualink.js";
 
 function asPoint(value: unknown): LatLon {
@@ -44,4 +45,26 @@ export function answerTheWindow(): void {
     }
     await shell.openExternal(url.toString());
   });
+
+  // The sign-in, kept between launches so a restart or a reload does not ask
+  // again. Encrypted by the system's keychain (Keychain, DPAPI, libsecret);
+  // where there is none, nothing is kept and the person signs in each time.
+  // The platform decides how long the session itself lasts.
+  const sessionFile = path.join(app.getPath("userData"), "session.bin");
+  ipcMain.handle(CHANNELS.keep, async (_event, session: unknown) => {
+    const one = session as Partial<KeptSession> | undefined;
+    if (typeof one?.base !== "string" || typeof one.token !== "string") throw new Error("not a session");
+    if (!safeStorage.isEncryptionAvailable()) return;
+    await fs.writeFile(sessionFile, safeStorage.encryptString(JSON.stringify({ base: one.base, token: one.token })), { mode: 0o600 });
+  });
+  ipcMain.handle(CHANNELS.kept, async (): Promise<KeptSession | undefined> => {
+    try {
+      if (!safeStorage.isEncryptionAvailable()) return undefined;
+      const one = JSON.parse(safeStorage.decryptString(await fs.readFile(sessionFile))) as Partial<KeptSession>;
+      return typeof one.base === "string" && typeof one.token === "string" ? { base: one.base, token: one.token } : undefined;
+    } catch {
+      return undefined;
+    }
+  });
+  ipcMain.handle(CHANNELS.forget, async () => { await fs.rm(sessionFile, { force: true }); });
 }

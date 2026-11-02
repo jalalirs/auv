@@ -6,6 +6,8 @@
 // similar — but a thing that has no package yet can still be drawn from what is
 // actually known about it, its thrusters or its depth, and `art` is that.
 
+import { Skeleton } from "../ui/components.js";
+
 export interface CardProps {
   picture?: string;
   /** Drawn from the thing's own numbers, for one that has no package yet. */
@@ -21,9 +23,13 @@ export interface CardProps {
   onOpen?: () => void;
   /** Not built, not granted, not flyable: shown, and unmistakably not usable. */
   later?: string;
+  /** The picture is still being read or drawn: a placeholder holds its place. */
+  reading?: boolean;
+  /** What can be done with it, along the card's foot: buttons, a menu. */
+  actions?: React.ReactNode;
 }
 
-export function Card({ picture, art, name, detail, specs, corner, chosen, onChoose, onOpen, later }: CardProps): React.JSX.Element {
+export function Card({ picture, art, name, detail, specs, corner, chosen, onChoose, onOpen, later, reading, actions }: CardProps): React.JSX.Element {
   const usable = later === undefined;
   return (
     <div className={`card${chosen ? " chosen" : ""}${usable ? "" : " later"}`}
@@ -33,7 +39,9 @@ export function Card({ picture, art, name, detail, specs, corner, chosen, onChoo
          onClick={usable ? onChoose : undefined}
          onKeyDown={(e) => { if (usable && onChoose && (e.key === "Enter" || e.key === " ")) onChoose(); }}>
       <div className="picture">
-        {picture !== undefined
+        {reading
+          ? <Skeleton className="cover" />
+          : picture !== undefined
           ? <img src={picture} alt="" loading="lazy" />
           : art !== undefined
             ? <div className="drawn">{art}{usable ? null : <span>{later}</span>}</div>
@@ -53,6 +61,9 @@ export function Card({ picture, art, name, detail, specs, corner, chosen, onChoo
           <div className="specs">{specs.map((s) => <span key={s}>{s}</span>)}</div>
         )}
       </div>
+      {actions === undefined ? null : (
+        <div className="foot" onClick={(e) => e.stopPropagation()}>{actions}</div>
+      )}
     </div>
   );
 }

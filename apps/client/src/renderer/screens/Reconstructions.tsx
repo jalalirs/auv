@@ -7,12 +7,12 @@
 // second step, on its own page, because where it goes is a choice (a map of
 // its own, or a fit to a place's seabed somebody checks before it is laid).
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Asset, Platform, Reconstruction, StructureType } from "@coral-city/api";
 import { kindSaid } from "./AssetDetail.js";
 import type { Held } from "./Deck.js";
-import { Empty, Pill, ago } from "./parts.js";
-import { Page, SkeletonLines } from "../ui/components.js";
+import { Card, Empty, Pill, ago } from "./parts.js";
+import { Button, Dialog, Page, SkeletonCards } from "../ui/components.js";
 import { PLACES_TABS } from "./placesTabs.js";
 
 const VIDEO = /\.(mp4|mov|mkv)$/i;
@@ -79,6 +79,15 @@ export function Reconstructions({ platform, held, onOpen, onOpenAsset, onBack, o
   const [start, setStart] = useState("");
   const [sent, setSent] = useState<{ stage: string; done: number } | undefined>();
   const [trouble, setTrouble] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [showing, setShowing] = useState<"all" | "making" | "failed">("all");
+
+  // Done uploading without a complaint: the dialog has done its job.
+  const wasSending = useRef(false);
+  useEffect(() => {
+    if (wasSending.current && !sent && !trouble) setAdding(false);
+    wasSending.current = !!sent;
+  }, [sent, trouble]);
 
   const read = useMemo(() => async () => {
     if (!institution) return;
@@ -103,13 +112,40 @@ export function Reconstructions({ platform, held, onOpen, onOpenAsset, onBack, o
   // The picture from above, for each one that has it.
   useEffect(() => {
     for (const one of list ?? []) {
-      if (one.state !== "ready" || pictures[one.id]) continue;
+      if (one.state !== "ready" || pictures[one.id] !== undefined) continue;
+      // "" once looked for and not there, so its card stops waiting for one.
       void platform.reconstructionObjects(one.id).then((objects) => {
         const url = objects.find((o) => o.path === "preview.jpg")?.url;
-        if (url) setPictures((was) => ({ ...was, [one.id]: url }));
-      }).catch(() => undefined);
+        setPictures((was) => ({ ...was, [one.id]: url ?? "" }));
+      }).catch(() => setPictures((was) => ({ ...was, [one.id]: "" })));
     }
   }, [platform, list, pictures]);
+
+  // Reefs rebuilt from video and every other asset, as one list of cards.
+  const everything = useMemo(() => [
+    ...assets.map((one) => {
+      const state = stateOf(one as unknown as Reconstruction);
+      return { id: one.id, name: one.name, createdAt: one.createdAt, state,
+               picture: one.preview && one.state === "ready" ? one.preview : undefined, reading: false, kind: kindSaid(one),
+               detail: `${kindSaid(one)} · ${ago(one.createdAt)}`, specs: [] as string[],
+               open: () => onOpenAsset?.(one.id) };
+    }),
+    ...(list ?? []).map((one) => {
+      const state = stateOf(one);
+      const m = one.manifest as { extentM?: number[] } | undefined;
+      return { id: one.id, name: one.name, createdAt: one.createdAt, state,
+               picture: pictures[one.id] || undefined, reading: one.state === "ready" && pictures[one.id] === undefined,
+               kind: "a reef from a dive video",
+               detail: `a reef from a dive video · ${ago(one.createdAt)}`,
+               specs: m?.extentM ? [`${m.extentM[0]!.toFixed(0)} by ${m.extentM[1]!.toFixed(0)} m`] : [],
+               open: () => onOpen(one.id) };
+    }),
+  ].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)), [assets, list, pictures, onOpen, onOpenAsset]);
+  const which = (one: { state: { kind?: string } }): "all" | "making" | "failed" =>
+    one.state.kind === "bad" ? "failed" : one.state.kind === "good" ? "all" : "making";
+  const counts = { all: 0, making: 0, failed: 0 };
+  for (const one of everything) counts[which(one)]++;
+  const shown = everything.filter((one) => which(one) === showing);
 
   const startAt = useMemo(() => {
     const found = start.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
@@ -187,10 +223,37 @@ export function Reconstructions({ platform, held, onOpen, onOpenAsset, onBack, o
   return (
     <Page title="Places" subtitle="Assets: reefs and structures made on their own, ready to compose into a place."
           info="Upload a swim over a reef and the platform rebuilds the reef in 3D: where the camera was in every frame, the reef as splats, the survey tape painted out. It is your institution's, in its own frame; putting it on a map is the next step, on its page."
-          tabs={PLACES_TABS} tab="assets" onTab={(key) => onTab?.(key)}>
-      <div className="two">
-        <section>
-          <h2>New asset</h2>
+          tabs={PLACES_TABS} tab="assets" onTab={(key) => onTab?.(key)}
+          actions={institution ? <Button kind="primary" onClick={() => setAdding(true)}>New asset</Button> : undefined}>
+      <div className="asset-tools">
+        <div className="segmented" role="tablist">
+          {(["all", "making", "failed"] as const).map((key) => (
+            <button key={key} type="button" role="tab" aria-selected={showing === key} onClick={() => setShowing(key)}>
+              {key === "all" ? "Ready" : key === "making" ? "Being made" : "Failed"}
+              <small>{counts[key]}</small>
+            </button>
+          ))}
+        </div>
+      </div>
+      {list === undefined ? <SkeletonCards /> : shown.length === 0 ? (
+        showing === "all"
+          ? <Empty title="No assets yet">Make one with New asset: a reef from a dive video, a survey, a model or a pipeline route.</Empty>
+          : <Empty title={showing === "making" ? "Nothing being made" : "Nothing failed"}>{showing === "making" ? "Every asset has finished." : "Every asset that was started was made."}</Empty>
+      ) : (
+        <div className="cards">
+          {shown.map((one) => (
+            <Card key={one.id} name={one.name} detail={one.detail} picture={one.picture}
+                  reading={one.reading}
+                  art={one.picture === undefined
+                    ? <span className="asset-state">{one.state.kind === "good" ? one.kind : one.state.doing ?? one.state.said}</span> : undefined}
+                  specs={one.specs} corner={<Pill kind={one.state.kind}>{one.state.said}</Pill>}
+                  onOpen={one.open} actions={<Button onClick={one.open}>Open</Button>} />
+          ))}
+        </div>
+      )}
+      {adding ? (
+        <Dialog title="New asset" onClose={() => { if (!sent) setAdding(false); }}>
+          <div className="new-asset">
           <label className="asset-making">Made from
             <select value={making} onChange={(e) => { setMaking(e.target.value as Making); setFile(undefined); setTrouble(""); }}>
               {MAKING.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
@@ -266,49 +329,9 @@ export function Reconstructions({ platform, held, onOpen, onOpenAsset, onBack, o
               <p className="note">A six-minute swim takes the platform's GPU about an hour. The video goes up in 32 MB parts and resumes if the connection drops.</p>
             </div>
           )}
-        </section>
-
-        <section>
-          <h2>Assets</h2>
-          {assets.length ? (
-            <div className="rows">
-              {assets.map((one) => {
-                const state = stateOf(one as unknown as Reconstruction);
-                return (
-                  <button key={one.id} type="button" className="row open recon-row" onClick={() => onOpenAsset?.(one.id)}>
-                    {one.preview && one.state === "ready" ? <img className="recon-thumb" src={one.preview} alt="" /> : <span className="recon-thumb" />}
-                    <span className="what">{one.name}</span>
-                    <span className="quiet">{kindSaid(one)} · {state.doing ?? ago(one.createdAt)}</span>
-                    <Pill kind={state.kind}>{state.said}</Pill>
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-          {list === undefined ? <SkeletonLines lines={4} />
-            : list.length === 0 && assets.length === 0 ? (
-              <Empty title="None yet">A reconstruction appears here as soon as its video is uploaded.</Empty>
-            ) : (
-              <div className="rows">
-                {list.map((one) => {
-                  const state = stateOf(one);
-                  const m = one.manifest as { extentM?: number[]; pieces?: unknown[] } | undefined;
-                  return (
-                    <button key={one.id} type="button" className="row open recon-row" onClick={() => onOpen(one.id)}>
-                      {pictures[one.id] ? <img className="recon-thumb" src={pictures[one.id]} alt="" /> : <span className="recon-thumb" />}
-                      <span className="what">{one.name}</span>
-                      <span className="quiet">
-                        {m?.extentM ? `${m.extentM[0]!.toFixed(0)} by ${m.extentM[1]!.toFixed(0)} m · ` : ""}
-                        {state.doing ?? ago(one.createdAt)}
-                      </span>
-                      <Pill kind={state.kind}>{state.said}</Pill>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-        </section>
-      </div>
+          </div>
+        </Dialog>
+      ) : null}
     </Page>
   );
 }

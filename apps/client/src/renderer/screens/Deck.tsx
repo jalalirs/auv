@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { Platform } from "@coral-city/api";
+import { Refused, type Platform } from "@coral-city/api";
 
 import boot from "../../../assets/boot.jpg";
 import mark from "../../../assets/iocean.svg";
@@ -86,7 +86,7 @@ const PAGES: { key: Rail; name: string; count?: (held: Held) => number | undefin
   { key: "fly", name: "Fly", is: (w) => w.page === "fly" || w.page === "dive" },
   { key: "missions", name: "Missions",
     is: (w) => w.page === "missions" || w.page === "mission" },
-  { key: "places", name: "Places", count: (h) => h.places.length,
+  { key: "places", name: "Places", count: (h) => h.yourPlaces.length,
     is: (w) => w.page === "places" || w.page === "place" || w.page === "layout" || w.page === "build"
       || w.page === "reconstructions" || w.page === "reconstruction" || w.page === "asset" },
   { key: "runs", name: "Runs", count: (h) => (h.runsRead ? h.runs.length : undefined),
@@ -100,8 +100,10 @@ const PAGES: { key: Rail; name: string; count?: (held: Held) => number | undefin
 // it, which is where anybody looks. **Sweeps** came off by being built.
 const LATER: { key: string; name: string; will: string }[] = [];
 
-export function Deck({ platform, onDiving }: {
+export function Deck({ platform, onDiving, onSignOut }: {
   platform: Platform;
+  /** Forgets the session and goes back to signing in. */
+  onSignOut: () => void;
   onDiving: (dive: string, run: string) => void;
 }): React.JSX.Element {
   // Every page has an address and a history entry: Back works everywhere.
@@ -131,13 +133,15 @@ export function Deck({ platform, onDiving }: {
         const quick = await readHeld(platform, undefined, { runs: false });
         if (!stale) setHeld((was) => was ?? quick);
       } catch (problem) {
+        // A session that ran out while the application was open.
+        if (problem instanceof Refused && problem.status === 401) { onSignOut(); return; }
         if (!stale) setTrouble(problem instanceof Error ? problem.message : "could not read the platform");
         return;
       }
       if (!stale) await read();
     })();
     return () => { stale = true; };
-  }, [platform, read]);
+  }, [platform, read, onSignOut]);
 
   // Kept fresh while somebody is looking at it. A queue that says one GPU is
   // free is only useful if it was true recently — but the dives are not that,
@@ -294,7 +298,7 @@ export function Deck({ platform, onDiving }: {
           <Replay platform={platform} dive={where.dive} run={where.run}
                   onBack={() => back({ page: "runs" })} />
         ) : (
-          <Profile platform={platform} held={held} free={free} devices={devices}
+          <Profile platform={platform} held={held} free={free} devices={devices} onSignOut={onSignOut}
                    onSwitch={() => { setHeld(undefined); void read(); }} />
         )}
       </main>

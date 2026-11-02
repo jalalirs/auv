@@ -8,11 +8,13 @@ import type { Held } from "./Deck.js";
 import { Empty, Fact, PageHead, Pill } from "./parts.js";
 import { Organisation } from "./Organisation.js";
 import { Tokens } from "./Tokens.js";
+import { Button } from "../ui/components.js";
 
 const LIVE = new Set(["queued", "preparing", "running"]);
 
-export function Profile({ platform, held, free, devices, onSwitch }: {
+export function Profile({ platform, held, free, devices, onSwitch, onSignOut }: {
   platform: Platform;
+  onSignOut: () => void;
   held: Held;
   free: number;
   devices: number;
@@ -46,6 +48,7 @@ export function Profile({ platform, held, free, devices, onSwitch }: {
               <Fact of="queues" is={String(held.queues.length)} />
               <Fact of="machines" is={`${free} free of ${devices}`} />
             </div>
+            <Button kind="ghost" onClick={onSignOut}>Sign out</Button>
           </div>
         </div>
       </section>

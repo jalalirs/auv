@@ -121,6 +121,13 @@ function holdTheZoom(window: BrowserWindow): void {
   const contents = window.webContents;
   contents.on("did-finish-load", () => { void contents.setVisualZoomLevelLimits(1, 1); });
   contents.on("before-input-event", (event, input) => {
+    // A released application does not reload: a reload is a page's idea, and
+    // here it only threw away where the person was.
+    if (app.isPackaged && input.type === "keyDown"
+        && (input.key === "F5" || ((input.meta || input.control) && input.key.toLowerCase() === "r"))) {
+      event.preventDefault();
+      return;
+    }
     if (input.type !== "keyDown" || !(input.meta || input.control)) return;
     const now = contents.getZoomFactor();
     let next: number | undefined;

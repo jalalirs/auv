@@ -32,6 +32,7 @@ import { newestOf, whereIs } from "../platform/packages.js";
 import type { Held, Packages, Where } from "./Deck.js";
 import { ago } from "../parts/common.js";
 import { Card, Credit, Fact, Pill, SeaPill, useLoadedPicture } from "./parts.js";
+import { usePlacePicture } from "../parts/Relief.js";
 
 const WHERE = "coral-city.place";
 const WHAT = "coral-city.vehicle";
@@ -655,14 +656,16 @@ function thrustersIn(dynamics: unknown): { position?: number[]; direction?: numb
   return [];
 }
 
-export function PlaceCard({ place, packages, chosen, onChoose, onOpen }: {
+export function PlaceCard({ place, packages, chosen, onChoose, onOpen, actions }: {
   place: Held["places"][number];
   packages: Packages;
   chosen?: boolean;
   onChoose?: () => void;
   onOpen?: () => void;
+  actions?: React.ReactNode;
 }): React.JSX.Element {
   const pkg = packages.places.get(place.id);
+  const picture = usePlacePicture(pkg);
   const sea = useSea(whereIs(place.extent, pkg?.site));
   const site = pkg?.site;
   // Surveyed, derived, or composed — three things, and the package only says
@@ -687,7 +690,8 @@ export function PlaceCard({ place, packages, chosen, onChoose, onOpen }: {
     site?.reef?.colonies ? `${site.reef.colonies.toLocaleString()} colonies` : "",
   ].filter(Boolean);
   return (
-    <Card name={place.name} detail={place.summary || "a place"} picture={pkg?.pictureUrl}
+    <Card name={place.name} detail={place.summary || "a place"} picture={picture ?? undefined}
+          reading={picture === undefined} actions={actions}
           // A place with no photograph is drawn from its own section: how deep
           // it goes, and dashed when the ground is not a survey. PlacePlan has
           // existed for this since it was written; it was only ever wired to

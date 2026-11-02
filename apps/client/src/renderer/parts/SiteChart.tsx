@@ -34,7 +34,15 @@ export async function groundOf(pkg: PlacePackage | undefined): Promise<Ground | 
   // Heights are metres above the surface, so depth is the other way round.
   const depth = new Float32Array(heights.length);
   for (let i = 0; i < heights.length; i++) depth[i] = -heights[i]!;
-  return { rows: field.rows, columns: field.columns, acrossM: across, depth };
+  // A file of another size than its record says (an older build beside a
+  // newer record) is read at the size it is, when that is a square.
+  let { rows, columns } = field;
+  if (rows * columns !== depth.length) {
+    const side = Math.round(Math.sqrt(depth.length));
+    if (side * side !== depth.length) return undefined;
+    rows = side; columns = side;
+  }
+  return { rows, columns, acrossM: across, depth };
 }
 
 /** How deep the ground is at a point. */

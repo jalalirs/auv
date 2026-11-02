@@ -112,7 +112,19 @@ export interface Bridge {
      * arrives, and returns how to stop listening.
      */
     onHandoff(listener: (code: string) => void): () => void;
+    /** Keeps the session between launches, encrypted by the system's keychain. */
+    keep(session: KeptSession): Promise<void>;
+    /** The session kept from before, if there is one and it can be read. */
+    kept(): Promise<KeptSession | undefined>;
+    /** Forgets the kept session: signing out. */
+    forget(): Promise<void>;
   };
+}
+
+/** A sign-in kept between launches: which platform, and the session's token. */
+export interface KeptSession {
+  base: string;
+  token: string;
 }
 
 /** The channel names, one per call, so both sides spell them the same way. */
@@ -122,6 +134,9 @@ export const CHANNELS = {
   version: "app:version",
   openGoogle: "auth:open-google",
   handoff: "auth:handoff",
+  keep: "auth:keep",
+  kept: "auth:kept",
+  forget: "auth:forget",
 } as const;
 
 declare global {

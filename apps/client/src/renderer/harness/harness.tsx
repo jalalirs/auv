@@ -349,6 +349,7 @@ const held = {
   organisations: [{ id: "org_1", name: "Harness" }],
   // The tank is the institution's own, so Places offers to retire it.
   places: places.map((p) => ({ id: p.id, slug: p.slug, name: p.name, ...(p.id === "city_tank" ? { ownedByOrg: "org_1" } : {}) })),
+  yourPlaces: places.map((p) => ({ id: p.id, slug: p.slug, name: p.name, ...(p.id === "city_tank" ? { ownedByOrg: "org_1" } : {}) })),
   vehicles: [{ id: "veh_mini", slug: "mini-hoot", name: "mini-hoot" }, { id: "veh_luna", slug: "boxfish-luna", name: "Boxfish Luna" }],
   queues: [{ id: "queue_1", free: 1, devices: 1, runtimes: ["isaac-6.0.1+oceansim"] }],
   runsRead: new URLSearchParams(location.search).get("runs") !== "reading",

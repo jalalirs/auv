@@ -265,6 +265,9 @@ services:
       # Who is a platform administrator on signing in with Google. People
       # never sign in with a secret.
       IOCEAN_ADMIN_EMAILS: ${IOCEAN_ADMIN_EMAILS:-jalalirs@gmail.com}
+      # How long one sign-in lasts. The app keeps it between launches, so a
+      # week is how often somebody signs in again.
+      IOCEAN_SESSION_LIFETIME: ${IOCEAN_SESSION_LIFETIME:-168h}
       IOCEAN_PERSONAL_DIVES_MONTHLY: ${IOCEAN_PERSONAL_DIVES_MONTHLY:-}
       IOCEAN_PERSONAL_DAILY_CAP: ${IOCEAN_PERSONAL_DAILY_CAP:-}
       IOCEAN_STARTER_QUEUE: ${IOCEAN_STARTER_QUEUE:-}

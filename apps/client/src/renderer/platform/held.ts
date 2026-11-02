@@ -20,6 +20,9 @@ export interface Held {
   /** Every organisation the person belongs to, their own space among them. */
   organisations: Organisation[];
   places: City[];
+  /** The places that are the institution's: its own, and store places it took.
+   *  Every place it can see is in `places`, the store's among them. */
+  yourPlaces: City[];
   vehicles: Vehicle[];
   queues: Queue[];
   runs: HeldRun[];
@@ -77,9 +80,16 @@ export interface Packages {
  * and the dives are read afresh only when the application asks for them.
  */
 export async function readHeld(platform: Platform, keep?: Held, { runs: withRuns = true }: { runs?: boolean } = {}): Promise<Held> {
-  const [me, places, vehicles, queues] = await Promise.all([
+  const [me, places, vehicles, queues, store] = await Promise.all([
     platform.me(), platform.places(), platform.vehicles(), platform.queues(),
+    platform.storePlaces().catch(() => undefined),
   ]);
+  // A store place is yours once it was taken (Use it). If the store did not
+  // answer, what was known before stands rather than every place counting.
+  const inStore = new Set((store ?? []).map((s) => s.id));
+  const taken = new Set((store ?? []).filter((s) => s.adopted).map((s) => s.id));
+  const yourPlaces = store === undefined && keep !== undefined ? keep.yourPlaces
+    : places.filter((p) => !inStore.has(p.id) || taken.has(p.id));
   const organisations = me.organisations;
   const institution = chooseOrganisation(organisations);
   // What was kept belongs to the organisation it was read for.
@@ -103,10 +113,10 @@ export async function readHeld(platform: Platform, keep?: Held, { runs: withRuns
     // In batches, because two hundred and seventy-five at once is a thing to
     // do to a machine rather than ask of it.
     if (keep !== undefined) {
-      return { ...keep, you: me.principal, institution, organisations, places, vehicles, queues };
+      return { ...keep, you: me.principal, institution, organisations, places, yourPlaces, vehicles, queues };
     }
     if (!withRuns) {
-      return { you: me.principal, institution, organisations, places, vehicles, queues, runs: [], runsRead: false,
+      return { you: me.principal, institution, organisations, places, yourPlaces, vehicles, queues, runs: [], runsRead: false,
                stacks, controllers: controllersOf(stacks) };
     }
     const dives = await platform.dives(institution.id);
@@ -124,7 +134,7 @@ export async function readHeld(platform: Platform, keep?: Held, { runs: withRuns
     }
     runs = gathered.sort((a, b) => (a.run.requestedAt < b.run.requestedAt ? 1 : -1));
   }
-  return { you: me.principal, institution, organisations, places, vehicles, queues, runs, runsRead: true, stacks,
+  return { you: me.principal, institution, organisations, places, yourPlaces, vehicles, queues, runs, runsRead: true, stacks,
            controllers: controllersOf(stacks) };
 }
 

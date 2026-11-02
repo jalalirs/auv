@@ -7,7 +7,7 @@
 
 import { contextBridge, ipcRenderer } from "electron";
 
-import { CHANNELS, type Bridge, type LatLon } from "../shared/bridge.js";
+import { CHANNELS, type Bridge, type KeptSession, type LatLon } from "../shared/bridge.js";
 
 const bridge: Bridge = {
   ocean: {
@@ -28,6 +28,9 @@ const bridge: Bridge = {
       ipcRenderer.on(CHANNELS.handoff, heard);
       return () => { ipcRenderer.removeListener(CHANNELS.handoff, heard); };
     },
+    keep: (session: KeptSession) => ipcRenderer.invoke(CHANNELS.keep, session),
+    kept: () => ipcRenderer.invoke(CHANNELS.kept),
+    forget: () => ipcRenderer.invoke(CHANNELS.forget),
   },
 };
 
