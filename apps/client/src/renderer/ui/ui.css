@@ -187,3 +187,26 @@ main:has(> .page) { overflow: hidden; padding: 0; display: flex; flex-direction:
   .page-top { padding-left: var(--s5); padding-right: var(--s5); }
   .page-body { padding-left: var(--s5); padding-right: var(--s5); }
 }
+
+/* ── placeholders: where something will be, while it comes ──────────────── */
+
+.skeleton {
+  display: block;
+  height: 12px;
+  border-radius: var(--r-control);
+  background: linear-gradient(90deg, var(--shelf) 0%, var(--raised) 40%, var(--shelf) 80%) 0 0 / 300% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+.skeleton.round { border-radius: var(--r-round); }
+/* Covers whatever it sits in, a chart or a picture, until that is drawn. */
+.skeleton.cover { position: absolute; inset: 0; height: auto; border-radius: 0; z-index: 1; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+.skeleton-lines { display: grid; gap: var(--s2); }
+.skeleton-card {
+  display: grid; gap: var(--s3); padding: var(--s4);
+  background: var(--water); border: 1px solid var(--edge); border-radius: var(--r-surface);
+}
+.dt tr.dt-skeleton:hover { background: none; }
+.dt tr.dt-skeleton td { padding-top: 18px; padding-bottom: 18px; }
+.dt tr.dt-skeleton .right .skeleton { margin-left: auto; }

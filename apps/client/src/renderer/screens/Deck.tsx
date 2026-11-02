@@ -35,6 +35,7 @@ import { VehicleDetail } from "./VehicleDetail.js";
 import { ControllerDetail } from "./ControllerDetail.js";
 import { AssetDetail } from "./AssetDetail.js";
 import { useAddress, type Address } from "../ui/router.js";
+import { Skeleton } from "../ui/components.js";
 
 export type { Held, Packages };
 
@@ -81,14 +82,14 @@ const knownPage = (where: Address): boolean => PAGES_KNOWN.has(where.page);
 const scroller = (): HTMLElement | null =>
   document.querySelector<HTMLElement>("main .page-body") ?? document.querySelector<HTMLElement>("main");
 
-const PAGES: { key: Rail; name: string; count?: (held: Held) => number; is: (where: Where) => boolean }[] = [
+const PAGES: { key: Rail; name: string; count?: (held: Held) => number | undefined; is: (where: Where) => boolean }[] = [
   { key: "fly", name: "Fly", is: (w) => w.page === "fly" || w.page === "dive" },
   { key: "missions", name: "Missions",
     is: (w) => w.page === "missions" || w.page === "mission" },
   { key: "places", name: "Places", count: (h) => h.places.length,
     is: (w) => w.page === "places" || w.page === "place" || w.page === "layout" || w.page === "build"
       || w.page === "reconstructions" || w.page === "reconstruction" || w.page === "asset" },
-  { key: "runs", name: "Runs", count: (h) => h.runs.length,
+  { key: "runs", name: "Runs", count: (h) => (h.runsRead ? h.runs.length : undefined),
     is: (w) => w.page === "runs" || w.page === "sweep" || w.page === "replay" },
   { key: "fleet", name: "Fleet", count: (h) => h.vehicles.length, is: (w) => w.page === "fleet" || w.page === "vehicle" },
   { key: "autonomy", name: "Controllers", is: (w) => w.page === "autonomy" || w.page === "controller" },
@@ -121,7 +122,22 @@ export function Deck({ platform, onDiving }: {
     }
   }, [platform]);
 
-  useEffect(() => { void read(); }, [read]);
+  // Opens on the catalogue, which is a few requests; the runs, one request per
+  // dive, follow behind placeholders.
+  useEffect(() => {
+    let stale = false;
+    void (async () => {
+      try {
+        const quick = await readHeld(platform, undefined, { runs: false });
+        if (!stale) setHeld((was) => was ?? quick);
+      } catch (problem) {
+        if (!stale) setTrouble(problem instanceof Error ? problem.message : "could not read the platform");
+        return;
+      }
+      if (!stale) await read();
+    })();
+    return () => { stale = true; };
+  }, [platform, read]);
 
   // Kept fresh while somebody is looking at it. A queue that says one GPU is
   // free is only useful if it was true recently — but the dives are not that,
@@ -131,7 +147,9 @@ export function Deck({ platform, onDiving }: {
     const again = setInterval(() => {
       void (async () => {
         try {
-          setHeld(await readHeld(platform, held_.current));
+          const next = await readHeld(platform, held_.current);
+          // A tick that began before the runs arrived must not take them away.
+          setHeld((was) => next.runsRead || !was?.runsRead ? next : { ...next, runs: was.runs, runsRead: true });
         } catch {
           // A tick that fails keeps what it had; the next one will do.
         }
@@ -176,7 +194,8 @@ export function Deck({ platform, onDiving }: {
           <a key={one.key} aria-current={one.is(where) ? "page" : undefined}
              onClick={() => setWhere({ page: one.key } as Where)}>
             {one.name}
-            {one.count === undefined ? null : <small>{one.count(held)}</small>}
+            {one.count === undefined ? null : one.count(held) === undefined
+              ? <Skeleton width={18} height={10} className="count" /> : <small>{one.count(held)}</small>}
           </a>
         ))}
 

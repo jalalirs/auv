@@ -66,7 +66,7 @@ export function Runs({ platform, held, onChanged, onReplay, onSweep, by, view }:
   return (
     <Page title="Runs" subtitle="Every dive and sweep flown, with what each scored."
           info="Every run pins its place, its vehicle, its water, its seed and the runtime that produced it, which is what makes running the same thing twice mean something. A sweep is one plan flown every way the day could go; its runs are under it."
-          tabs={[{ key: "dives", label: "Dives", count: dives.length }, { key: "sweeps", label: "Sweeps", count: sweeps.length },
+          tabs={[{ key: "dives", label: "Dives", count: held.runsRead ? dives.length : undefined }, { key: "sweeps", label: "Sweeps", count: sweeps?.length },
                  { key: "compare", label: "Compare" }]}
           tab={tab} onTab={setTab}>
       {tab === "dives" && outstanding.length > 0 ? (
@@ -82,7 +82,7 @@ export function Runs({ platform, held, onChanged, onReplay, onSweep, by, view }:
       ) : null}
 
       {tab === "dives" ? (
-        <Table rows={dives} rowKey={(r) => r.run.id} initialPicked={by ? { by: [by] } : undefined}
+        <Table rows={dives} loading={!held.runsRead} rowKey={(r) => r.run.id} initialPicked={by ? { by: [by] } : undefined}
                onRow={(r) => { if (recorded(r.run)) onReplay(r.dive, r.run.id); }}
                search={(r) => `${r.name} ${r.flownBy} ${taskOf(r)} ${r.run.state}`} searchLabel="Search dives"
                facets={[
@@ -106,7 +106,7 @@ export function Runs({ platform, held, onChanged, onReplay, onSweep, by, view }:
                ]}
                actions={(r) => recorded(r.run) ? <Button onClick={() => onReplay(r.dive, r.run.id)}>Replay</Button> : null} />
       ) : tab === "sweeps" ? (
-        <Table rows={sweeps} rowKey={(w) => w.id} onRow={(w) => onSweep(w.id)}
+        <Table rows={sweeps ?? []} loading={sweeps === undefined} rowKey={(w) => w.id} onRow={(w) => onSweep(w.id)}
                search={(w) => w.name} searchLabel="Search sweeps"
                facets={[{ key: "state", label: "State", value: (w) => sweepState(w) }, { key: "when", label: "When", value: (w) => whenOf(w.createdAt) }]}
                initialSort={{ key: "when", down: true }}
@@ -119,7 +119,7 @@ export function Runs({ platform, held, onChanged, onReplay, onSweep, by, view }:
                ]}
                actions={(w) => <Button onClick={() => onSweep(w.id)}>Read it</Button>} />
       ) : (
-        <Trials runs={held.runs} onReplay={onReplay} />
+        <Trials runs={held.runs} loading={!held.runsRead} onReplay={onReplay} />
       )}
     </Page>
   );
@@ -273,14 +273,14 @@ function ScoreRange({ trial }: { trial: Trial }): React.JSX.Element {
   );
 }
 
-function Trials({ runs, onReplay }: { runs: Held["runs"]; onReplay: (dive: string, run: string) => void }): React.JSX.Element {
+function Trials({ runs, loading, onReplay }: { runs: Held["runs"]; loading: boolean; onReplay: (dive: string, run: string) => void }): React.JSX.Element {
   const trials = trialsOf(runs);
   const [open, setOpen] = useState<Trial | undefined>();
   const physics = spans(runs);
   return (
     <>
       <p className="note">The same dive flown more than once by the same controller. Each row is a mean with its spread; the bar runs from the worst run to the best on 0 to 100%, the dot is the mean, and each tick is one run.{physics.length > 1 ? " Runs from different simulator versions are never put in one row." : ""}</p>
-      <Table rows={trials} rowKey={(t) => t.key} onRow={setOpen}
+      <Table rows={trials} loading={loading} rowKey={(t) => t.key} onRow={setOpen}
              search={(t) => `${t.dive} ${t.conditions} ${t.flownBy}`} searchLabel="Search trials"
              facets={[{ key: "dive", label: "Dive", value: (t) => t.dive }, { key: "by", label: "Flown by", value: (t) => t.flownBy },
                       ...(physics.length > 1 ? [{ key: "physics", label: "Simulator", value: (t: Trial) => t.physics ? `physics ${t.physics}` : "not said" }] : [])]}

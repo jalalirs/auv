@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from "react";
 import type { Asset, Platform } from "@coral-city/api";
-import { Button, Page, Status } from "../ui/components.js";
+import { Button, Page, Status, SkeletonLines } from "../ui/components.js";
 import { ago } from "./parts.js";
 
 /** What an asset is, said in a few words. */
@@ -47,7 +47,7 @@ export function AssetDetail({ platform, id, onBack, onCompose }: {
   }, [platform, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!one) {
-    return <Page title="An asset" crumb="Assets" onCrumb={onBack}><p className="note">{trouble || "Reading…"}</p></Page>;
+    return <Page title="An asset" crumb="Assets" onCrumb={onBack}>{trouble ? <p className="note">{trouble}</p> : <SkeletonLines lines={6} />}</Page>;
   }
   const last = one.steps[one.steps.length - 1];
   const facts = { ...(one.stats ?? {}), ...(one.footprint ?? {}) };

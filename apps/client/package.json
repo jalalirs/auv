@@ -1,6 +1,6 @@
 {
   "name": "@coral-city/client",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "Dive a vehicle you brought, in water we keep",
   "main": "dist/main/main.js",

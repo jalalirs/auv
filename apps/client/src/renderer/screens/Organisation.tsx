@@ -11,6 +11,7 @@ import type { Approval, Platform, Quota } from "@coral-city/api";
 
 import { rememberOrganisation, type Held } from "../platform/held.js";
 import { Empty, Fact } from "./parts.js";
+import { SkeletonLines } from "../ui/components.js";
 
 /** Runs asked for since the first of this month, UTC: what the monthly limit counts. */
 export function startedThisMonth(held: Held, now = new Date()): number {
@@ -104,7 +105,7 @@ function Approvals({ platform, organisation, onChange }: {
         <button type="submit" disabled={!adding.trim()}>Approve</button>
       </form>
       {trouble ? <p className="refusal">{trouble}</p> : null}
-      {approvals === undefined ? null : approvals.length === 0 ? (
+      {approvals === undefined ? <SkeletonLines lines={3} /> : approvals.length === 0 ? (
         <Empty title="Nobody yet">Approve an address and its owner joins when they next sign in.</Empty>
       ) : (
         <div className="ledger">

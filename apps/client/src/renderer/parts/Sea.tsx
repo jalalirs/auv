@@ -8,6 +8,7 @@ import type { SeaRecord } from "../../shared/bridge.js";
 import { alertKind, alertName, compassName, leadTemperature, type SeaState } from "../ocean/sea.js";
 import { Pill, Row, ago, fixed } from "./common.js";
 import { Chart } from "./Chart.js";
+import { SkeletonLines } from "../ui/components.js";
 
 export function SeaPill({ sea }: { sea: SeaState }): React.JSX.Element | null {
   if (sea.at === "asking") return <Pill>reading the sea…</Pill>;
@@ -33,7 +34,7 @@ export function SeaPanel({ sea }: { sea: SeaState }): React.JSX.Element {
   if (sea.at === "nowhere") {
     return <p className="note">This place does not say where it is on the globe, so nothing can be said about its sea.</p>;
   }
-  if (sea.at === "asking") return <p className="note">Reading the sea…</p>;
+  if (sea.at === "asking") return <SkeletonLines lines={3} />;
   if (sea.at === "none") return <p className="note">Nobody monitors the sea within {sea.withinKm} km of here.</p>;
   if (sea.at === "unreachable") return <p className="note">Aqualink could not be reached: {sea.why}</p>;
   const { record } = sea;

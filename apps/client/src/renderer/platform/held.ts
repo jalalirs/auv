@@ -23,6 +23,9 @@ export interface Held {
   vehicles: Vehicle[];
   queues: Queue[];
   runs: HeldRun[];
+  /** False while the runs are still being read: they are one request per
+   *  dive, so the application opens without them and they follow. */
+  runsRead: boolean;
   /** The autonomy this institution has deployed, newest first, every build. */
   stacks: AutonomyStack[];
   /** The same as controllers: one per slug, its newest build first. */
@@ -73,7 +76,7 @@ export interface Packages {
  * flying. So a tick reads the catalogue and keeps the dives it already had,
  * and the dives are read afresh only when the application asks for them.
  */
-export async function readHeld(platform: Platform, keep?: Held): Promise<Held> {
+export async function readHeld(platform: Platform, keep?: Held, { runs: withRuns = true }: { runs?: boolean } = {}): Promise<Held> {
   const [me, places, vehicles, queues] = await Promise.all([
     platform.me(), platform.places(), platform.vehicles(), platform.queues(),
   ]);
@@ -102,6 +105,10 @@ export async function readHeld(platform: Platform, keep?: Held): Promise<Held> {
     if (keep !== undefined) {
       return { ...keep, you: me.principal, institution, organisations, places, vehicles, queues };
     }
+    if (!withRuns) {
+      return { you: me.principal, institution, organisations, places, vehicles, queues, runs: [], runsRead: false,
+               stacks, controllers: controllersOf(stacks) };
+    }
     const dives = await platform.dives(institution.id);
     const named = (dive: { id: string; name: string; autonomyStackId?: string | null }) =>
       dive.autonomyStackId
@@ -117,7 +124,7 @@ export async function readHeld(platform: Platform, keep?: Held): Promise<Held> {
     }
     runs = gathered.sort((a, b) => (a.run.requestedAt < b.run.requestedAt ? 1 : -1));
   }
-  return { you: me.principal, institution, organisations, places, vehicles, queues, runs, stacks,
+  return { you: me.principal, institution, organisations, places, vehicles, queues, runs, runsRead: true, stacks,
            controllers: controllersOf(stacks) };
 }
 

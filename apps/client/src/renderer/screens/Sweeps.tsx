@@ -15,15 +15,17 @@ import type { Cost, Findings, Platform, Sweep } from "@coral-city/api";
 
 import type { Held } from "./Deck.js";
 import { Empty, PageHead, Pill, Row } from "./parts.js";
+import { SkeletonLines } from "../ui/components.js";
 
 /** Every sweep, newest first, kept fresh while somebody is looking. */
 /** Every sweep the institution has asked for, newest first, kept fresh while
  *  somebody is looking — they fly for hours and the counts move. */
-export function useSweeps(platform: Platform, held: Held): Sweep[] {
-  const [sweeps, setSweeps] = useState<Sweep[]>([]);
+/** The institution's sweeps; undefined until the first answer. */
+export function useSweeps(platform: Platform, held: Held): Sweep[] | undefined {
+  const [sweeps, setSweeps] = useState<Sweep[] | undefined>();
   const read = useCallback(() => {
-    if (held.institution === undefined) return;
-    void platform.sweepsOf(held.institution.id).then(setSweeps).catch(() => undefined);
+    if (held.institution === undefined) { setSweeps([]); return; }
+    void platform.sweepsOf(held.institution.id).then(setSweeps).catch(() => setSweeps((was) => was ?? []));
   }, [platform, held.institution]);
   useEffect(read, [read]);
   useEffect(() => {
@@ -72,7 +74,7 @@ export function Swept({ platform, sweep, onBack }: {
                   {flying > 0 ? "flying" : "done"}
                 </Pill>} />
 
-      {found === undefined || found.flown === 0 ? (
+      {found === undefined ? <SkeletonLines lines={5} /> : found.flown === 0 ? (
         <section>
           <p className="quiet">
             {flying > 0 ? "Nothing has come back yet. The answer appears as the scenarios land."

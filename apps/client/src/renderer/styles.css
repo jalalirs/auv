@@ -657,8 +657,27 @@ canvas.minimap.carries { cursor: crosshair; }
   border: 1px solid var(--edge); border-radius: var(--r-surface);
   backdrop-filter: blur(10px);
 }
-.boot .panel .google { width: 100%; height: var(--h-large); }
-.boot .panel .or { color: var(--faint); font-size: var(--t-meta); margin: var(--s2) 0 var(--s4); }
+.boot .panel .or { color: var(--faint); font-size: var(--t-meta); margin: var(--s3) 0 0; line-height: 1.5; }
+
+/* Signing in: the panel sits low over the reef, clear of the picture's own
+   name at the top left. */
+.sign-in { justify-content: flex-end; padding-bottom: 12vh; }
+.sign-in .panel { width: min(400px, 100%); padding: var(--s6) var(--s6) var(--s5); }
+.sign-in h1 { font-size: var(--t-section); font-weight: 600; margin: 0; }
+.sign-in .lead { color: var(--faint); font-size: var(--t-body); margin: var(--s2) 0 var(--s5); }
+.sign-in .refusal:empty { display: none; }
+/* Google's light button, as its guidelines ask: white, its own G, its grey edge. */
+.sign-in .google {
+  display: flex; align-items: center; justify-content: center; gap: var(--s3);
+  width: 100%; height: var(--h-large); padding: 0 var(--s3);
+  background: #ffffff; color: #1f1f1f; border: 1px solid #747775; border-radius: var(--r-round);
+  font: 500 var(--t-body) var(--font); cursor: pointer;
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+.sign-in .google:hover:not(:disabled) { background: #f2f2f2; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); }
+.sign-in .google:focus-visible { outline: none; box-shadow: var(--focus); }
+.sign-in .google:disabled { opacity: 0.7; cursor: progress; }
+.sign-in .google .mark { flex: none; }
 .badge-big { display: flex; align-items: center; gap: 14px; }
 .badge-big img { width: 54px; height: 54px; border-radius: var(--r-surface); }
 .badge-big strong { font-size: var(--t-title); font-weight: 600; letter-spacing: 0.04em; }
@@ -1754,7 +1773,7 @@ button.small { min-height: 28px; padding: 0 var(--s2); font-size: var(--t-meta);
   color: var(--plain); border-radius: var(--r-surface); padding: 8px 10px; font: inherit; font-size: var(--t-body);
 }
 .fly .preview {
-  aspect-ratio: 1; border: 1px solid var(--edge); border-radius: var(--r-surface); overflow: hidden; background: var(--deep);
+  position: relative; aspect-ratio: 1; border: 1px solid var(--edge); border-radius: var(--r-surface); overflow: hidden; background: var(--deep);
 }
 .fly .preview canvas { display: block; width: 100%; height: 100%; }
 .fly .what .quiet { font-size: var(--t-meta); margin: 0; }

@@ -16,7 +16,7 @@ import { PlacePlan } from "../parts/PlanArt.js";
 import { Card, Empty } from "./parts.js";
 import { useCallback, useEffect, useState } from "react";
 import type { City, Platform, StorePlace } from "@coral-city/api";
-import { Button, Dialog, Menu, Page, Status } from "../ui/components.js";
+import { Button, Dialog, Menu, Page, Status, SkeletonCards } from "../ui/components.js";
 import { PLACES_TABS } from "./placesTabs.js";
 
 export function Places({ platform, held, packages, tab = "places", onTab, onOpen, onBuild, onFromVideo, onBuildOn, onChanged }: {
@@ -108,7 +108,7 @@ export function Places({ platform, held, packages, tab = "places", onTab, onOpen
       {trouble ? <p className="trouble">{trouble}</p> : null}
       {tab === "store" ? (
         <>
-          {store === undefined ? <p className="note">Reading the store…</p> : store.length === 0 ? (
+          {store === undefined ? <SkeletonCards /> : store.length === 0 ? (
             <Empty title="The store is empty">iOcean publishes the places it builds from public data here, open to everybody.</Empty>
           ) : (
             <div className="cards">

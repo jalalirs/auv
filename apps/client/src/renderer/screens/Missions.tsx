@@ -106,8 +106,8 @@ export function Missions({ platform, held, onOpen, onFly }: {
           info="A mission is drawn on its place's chart, flown by anybody, and compared across both. Archived, never deleted: a run that flew a version of it still says what it flew."
           actions={<Button kind="primary" onClick={() => setPlanning(true)} disabled={held.places.length === 0}>New plan</Button>}>
       {trouble ? <p className="trouble">{trouble}</p> : null}
-      {rows === undefined ? <p className="note">Reading the plans…</p> : (
-        <Table rows={rows} rowKey={(r) => r.mission.id} onRow={(r) => onOpen(r.mission.id, r.place)}
+      {(
+        <Table rows={rows ?? []} loading={rows === undefined} rowKey={(r) => r.mission.id} onRow={(r) => onOpen(r.mission.id, r.place)}
                search={(r) => `${r.mission.name} ${r.mission.summary ?? ""} ${placeName(r.place)}`} searchLabel="Search plans"
                facets={[{ key: "place", label: "Place", value: (r) => placeName(r.place) }]}
                initialSort={{ key: "saved", down: true }}

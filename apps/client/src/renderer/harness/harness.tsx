@@ -111,7 +111,9 @@ const runOf = (id: string, name: string, h: number, extra: Doc = {}, vehicle = "
                    offLine: { thresholdM: 1, secondsOnTheLine: 48, secondsOff: 3.5, worstM: 1.4, meanM: 0.3 } } } },
          ...extra },
 });
-const delay = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(v), 30));
+// ?slow=3000 holds every answer that long, to look at what a page shows while it waits.
+const SLOW = Number(new URLSearchParams(location.search).get("slow") ?? 30);
+const delay = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(v), SLOW));
 const said: string[] = [];
 
 const platform = {
@@ -349,6 +351,7 @@ const held = {
   places: places.map((p) => ({ id: p.id, slug: p.slug, name: p.name, ...(p.id === "city_tank" ? { ownedByOrg: "org_1" } : {}) })),
   vehicles: [{ id: "veh_mini", slug: "mini-hoot", name: "mini-hoot" }, { id: "veh_luna", slug: "boxfish-luna", name: "Boxfish Luna" }],
   queues: [{ id: "queue_1", free: 1, devices: 1, runtimes: ["isaac-6.0.1+oceansim"] }],
+  runsRead: new URLSearchParams(location.search).get("runs") !== "reading",
   runs: [
     runOf("run_1", "Round the tank · mini-hoot", 1, { mode: "interactive" }),
     runOf("run_2", "Round the tank ~ October 4 · still", 1.5, { sweepId: "sweep_a" }),

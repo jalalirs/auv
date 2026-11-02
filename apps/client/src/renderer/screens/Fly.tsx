@@ -24,7 +24,7 @@ import { drawStages } from "../parts/StagesLayer.js";
 import { newestOf } from "../platform/packages.js";
 import type { Held, Packages } from "./Deck.js";
 import { BUILT_IN, MANUAL } from "./Dive.js";
-import { Button, Page } from "../ui/components.js";
+import { Button, Page, Skeleton } from "../ui/components.js";
 import { FLY_TABS } from "./flyTabs.js";
 
 interface Flyable { mission: Mission; version: AssetVersion; place: string }
@@ -91,13 +91,14 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
   useEffect(() => {
     let stale = false;
     void (async () => {
-      const found: Flyable[] = [];
-      for (const where of held.places) {
-        for (const one of await platform.missionsOf(where.id).catch((): Mission[] => [])) {
-          const saved = await platform.versionsOfMission(one.id).catch((): AssetVersion[] => []);
-          if (saved[0] !== undefined) found.push({ mission: one, version: saved[0], place: where.id });
-        }
-      }
+      // All at once: one after another was two dozen round trips before the
+      // page showed anything.
+      const missions = (await Promise.all(held.places.map(async (where) =>
+        (await platform.missionsOf(where.id).catch((): Mission[] => [])).map((one) => ({ one, place: where.id }))))).flat();
+      const found: Flyable[] = (await Promise.all(missions.map(async ({ one, place }) => {
+        const saved = await platform.versionsOfMission(one.id).catch((): AssetVersion[] => []);
+        return saved[0] === undefined ? undefined : { mission: one, version: saved[0], place };
+      }))).filter((f): f is Flyable => f !== undefined);
       if (stale) return;
       setFlyable(found);
       setMission((was) => was || found[0]?.mission.id || "");
@@ -108,7 +109,16 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
   const chosen = flyable?.find((one) => one.mission.id === mission);
   const plan = chosen?.version.document as { stages?: Stage[]; layoutVersionId?: string; launch?: { x?: number; y?: number } } | undefined;
   const pkg = chosen ? packages.places.get(chosen.place) ?? undefined : undefined;
-  useEffect(() => { void groundOf(pkg).then(setGround); }, [pkg]);
+  // Which package the ground on show was read from: until it is this one,
+  // the chart is still coming.
+  const [groundOfPkg, setGroundOfPkg] = useState<unknown>(null);
+  useEffect(() => {
+    let stale = false;
+    void groundOf(pkg).then((one) => { if (!stale) { setGround(one); setGroundOfPkg(pkg); } });
+    return () => { stale = true; };
+  }, [pkg]);
+  const charting = flyable === undefined
+    || (chosen !== undefined && (!packages.places.has(chosen.place) || groundOfPkg !== pkg));
 
   // The arrangement the plan pinned, to draw what it is over.
   useEffect(() => {
@@ -232,13 +242,16 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
         <section className="fly">
           <div className="what">
             <label><span>The plan</span>
+              {flyable === undefined ? <Skeleton height="var(--h-large)" /> : (
               <select value={mission} onChange={(e) => setMission(e.target.value)}>
                 {(flyable ?? []).map(({ mission: one, place, version }) => (
                   <option key={one.id} value={one.id}>{one.name} · {held.places.find((p) => p.id === place)?.name} · v{version.ordinal}</option>
                 ))}
               </select>
+              )}
             </label>
             <div className="preview">
+              {charting ? <Skeleton className="cover" /> : null}
               <SiteChart ground={ground} things={things} faintThings overlay={overlay} redraw={stages} cursor="default"
                          key={chosen?.mission.id} fit={extentOf(stages, things as unknown as Drawn[], legs)} />
             </div>

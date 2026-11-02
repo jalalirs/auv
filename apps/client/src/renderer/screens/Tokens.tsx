@@ -15,6 +15,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { APIToken, Platform } from "@coral-city/api";
 
 import { Empty } from "./parts.js";
+import { SkeletonLines } from "../ui/components.js";
 
 /**
  * Where the MCP server is, from where the platform is.
@@ -136,7 +137,7 @@ export function Tokens({ platform }: { platform: Platform }): React.JSX.Element 
       </form>
       {trouble ? <p className="refusal">{trouble}</p> : null}
 
-      {tokens === undefined ? null : live.length === 0 && gone.length === 0 ? (
+      {tokens === undefined ? <SkeletonLines lines={3} /> : live.length === 0 && gone.length === 0 ? (
         <Empty title="No tokens yet">
           Make one above, paste the MCP config it gives you into your assistant,
           and it can read places, plan dives and fly them as you.

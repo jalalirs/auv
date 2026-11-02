@@ -12,6 +12,7 @@ import { whereIs } from "../platform/packages.js";
 import type { Held, Packages } from "./Deck.js";
 import { PlacePlan } from "../parts/PlanArt.js";
 import { Credit, Empty, PageHead, Pill, Row, SeaPanel, ago, fixed, useLoadedPicture } from "./parts.js";
+import { SkeletonLines } from "../ui/components.js";
 
 export function PlaceDetail({ held, packages, id, platform, onLayOut, onBack }: {
   held: Held;
@@ -73,7 +74,7 @@ export function PlaceDetail({ held, packages, id, platform, onLayOut, onBack }: 
       <div className="two">
         <section>
           <h2>The ground</h2>
-          {pkg === undefined ? <p className="note">Reading the package…</p>
+          {pkg === undefined ? <SkeletonLines lines={5} />
             : pkg === null ? <p className="note">This place has no published package.</p> : (
             <div className="kvs">
               <Row of="where" is={at ? `${at.latitude.toFixed(5)}, ${at.longitude.toFixed(5)}` : "not stated"}

@@ -21,6 +21,7 @@ import type { Held, Packages } from "./Deck.js";
 import { stateOf } from "./Reconstructions.js";
 import { FitMap, type Spot } from "../parts/FitMap.js";
 import { Empty, PageHead, Pill, Row } from "./parts.js";
+import { Skeleton, SkeletonLines } from "../ui/components.js";
 
 type Manifest = {
   frames?: number; registered?: number; extentM?: [number, number]; pathLengthM?: number; headingDeg?: number;
@@ -60,7 +61,7 @@ export function ReconstructionPage({ platform, held, packages, id, onBack, onOpe
     platform.reconstructionObjects(id).then(setObjects).catch(() => undefined);
   }, [platform, id, one?.state]);
 
-  if (!one) return trouble ? <Empty title="Not found">{trouble}</Empty> : <p className="note">Reading…</p>;
+  if (!one) return trouble ? <Empty title="Not found">{trouble}</Empty> : <SkeletonLines lines={6} />;
   const m = (one.manifest ?? {}) as Manifest;
   const url = (path: string) => objects.find((o) => o.path === path)?.url;
   const state = stateOf(one);
@@ -281,7 +282,7 @@ function PutOnAMap({ platform, held, packages, rebuilt, manifest, onOpenPlace }:
                       acrossM={pkg.site.from.acrossMetres} extentM={manifest.extentM ?? [50, 10]} spots={spots}
                       chosen={chosen} start={mapping.start as [number, number] | null | undefined}
                       onChoose={(i) => { setChosen(i); setNudge({ dx: 0, dy: 0, turn: 0 }); }} />
-            ) : <p className="note">Reading the place's seabed…</p>}
+            ) : <Skeleton height={320} />}
           </div>
           <div className="builder-side">
             <h3>Where it fits</h3>

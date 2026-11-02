@@ -12,7 +12,7 @@ import type { Asset, Platform, Reconstruction, StructureType } from "@coral-city
 import { kindSaid } from "./AssetDetail.js";
 import type { Held } from "./Deck.js";
 import { Empty, Pill, ago } from "./parts.js";
-import { Page } from "../ui/components.js";
+import { Page, SkeletonLines } from "../ui/components.js";
 import { PLACES_TABS } from "./placesTabs.js";
 
 const VIDEO = /\.(mp4|mov|mkv)$/i;
@@ -285,7 +285,7 @@ export function Reconstructions({ platform, held, onOpen, onOpenAsset, onBack, o
               })}
             </div>
           ) : null}
-          {list === undefined ? <p className="note">Reading…</p>
+          {list === undefined ? <SkeletonLines lines={4} />
             : list.length === 0 && assets.length === 0 ? (
               <Empty title="None yet">A reconstruction appears here as soon as its video is uploaded.</Empty>
             ) : (

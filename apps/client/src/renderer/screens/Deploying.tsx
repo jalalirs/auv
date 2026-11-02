@@ -226,7 +226,8 @@ export function Builds({ platform, held, onRefresh }: {
              facets={[{ key: "state", label: "State", value: (b) => b.state },
                       { key: "from", label: "From", value: (b) => (b.brief.source as { kind: string }).kind === "git" ? "GitHub" : "zip" }]}
              initialSort={{ key: "when", down: true }}
-             empty={builds === undefined ? "Reading…" : "No builds yet. Deploy one from GitHub or a zip."}
+             loading={builds === undefined}
+             empty="No builds yet. Deploy one from GitHub or a zip."
              columns={[
                { key: "controller", label: "Controller", grow: true, sort: (a, b) => a.slug.localeCompare(b.slug),
                  render: (b) => {

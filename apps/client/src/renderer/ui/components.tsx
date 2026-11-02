@@ -153,6 +153,41 @@ export function Status({ tone = "quiet", children }: { tone?: Tone; children: Re
   return <span className={`status status-${tone}`}>{children}</span>;
 }
 
+// ── what is coming, while it comes ──────────────────────────────────────────
+
+/** A grey shape where something will be, with a light passing over it. Sized
+ *  like what replaces it, so the page does not jump when it arrives. */
+export function Skeleton({ width, height, round, className }: {
+  width?: number | string; height?: number | string; round?: boolean; className?: string;
+}): React.JSX.Element {
+  return <span className={`skeleton${round ? " round" : ""}${className ? ` ${className}` : ""}`}
+               style={{ width, height }} aria-hidden="true" />;
+}
+
+/** Lines of text still on their way: the last one shorter, as text is. */
+export function SkeletonLines({ lines = 3 }: { lines?: number }): React.JSX.Element {
+  return (
+    <div className="skeleton-lines" aria-busy="true">
+      {Array.from({ length: lines }, (_, i) => <Skeleton key={i} width={i === lines - 1 ? "60%" : "100%"} />)}
+    </div>
+  );
+}
+
+/** Cards still on their way, in the grid the real ones will fill. */
+export function SkeletonCards({ count = 6, className = "cards" }: { count?: number; className?: string }): React.JSX.Element {
+  return (
+    <div className={className} aria-busy="true">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="skeleton-card">
+          <Skeleton height={120} />
+          <Skeleton width="70%" height={16} />
+          <Skeleton width="45%" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── a list longer than a screen ─────────────────────────────────────────────
 
 export type Column<T> = {
@@ -173,7 +208,7 @@ export type Column<T> = {
 export type Facet<T> = { key: string; label: string; value: (row: T) => string | undefined };
 
 export function Table<T>({ rows, columns, rowKey, onRow, search, searchLabel = "Search", facets = [], actions,
-                           pageSize = 25, empty, initialSort, chosen, initialPicked }: {
+                           pageSize = 25, empty, initialSort, chosen, initialPicked, loading }: {
   rows: T[];
   columns: Column<T>[];
   rowKey: (row: T) => string;
@@ -190,6 +225,8 @@ export function Table<T>({ rows, columns, rowKey, onRow, search, searchLabel = "
   chosen?: string;
   /** Filters set on arrival, by facet key: "Its dives" from Controllers. */
   initialPicked?: Record<string, string[]>;
+  /** Still being read: rows of placeholders under the real column heads. */
+  loading?: boolean;
 }): React.JSX.Element {
   const [words, setWords] = useState("");
   const [picked, setPicked] = useState<Record<string, Set<string>>>(() =>
@@ -253,7 +290,28 @@ export function Table<T>({ rows, columns, rowKey, onRow, search, searchLabel = "
           <span className="dt-count">{filtering ? `${shown.length.toLocaleString()} of ${rows.length.toLocaleString()}` : rows.length.toLocaleString()}</span>
         </div>
       ) : null}
-      {shown.length === 0 ? (
+      {loading && rows.length === 0 ? (
+        <table aria-busy="true">
+          <thead>
+            <tr>
+              {columns.map((c) => <th key={c.key} className={cls(c)} style={c.width ? { width: c.width } : undefined}>{c.label}</th>)}
+              {actions ? <th className="dt-actions" /> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: 6 }, (_, i) => (
+              <tr key={i} className="dt-skeleton">
+                {columns.map((c, j) => (
+                  <td key={c.key} className={cls(c)}>
+                    <Skeleton width={j === 0 ? `${70 - (i % 3) * 12}%` : c.align === "right" ? 40 : "60%"} />
+                  </td>
+                ))}
+                {actions ? <td className="dt-actions"><Skeleton width={48} height={28} /></td> : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : shown.length === 0 ? (
         <div className="dt-empty">{filtering ? "Nothing matches." : (empty ?? "Nothing yet.")}</div>
       ) : (
         <table>

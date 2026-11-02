@@ -18,6 +18,7 @@ import { AXES, derive, thrustersOf, withNumber, withThrust } from "../physics/dy
 import { VehiclePlan } from "../parts/PlanArt.js";
 import type { Held, Packages } from "./Deck.js";
 import { Credit, Empty, PageHead, Pill, Row, ThrusterDiagram, fixed, useLoadedPicture } from "./parts.js";
+import { SkeletonLines } from "../ui/components.js";
 
 const UNITS: Record<(typeof AXES)[number], string> = {
   surge: "m/s", sway: "m/s", heave: "m/s", roll: "rad/s", pitch: "rad/s", yaw: "rad/s",
@@ -42,7 +43,7 @@ export function VehicleDetail({ held, packages, id, slug, onBack }: {
       <>
         <PageHead title={name} says={summary} back="Fleet" onBack={onBack} />
         {pkg === undefined && vehicle !== undefined
-          ? <p className="note">Reading the package…</p>
+          ? <SkeletonLines lines={5} />
           : <Empty title="No dynamics">This vehicle's package states no dynamics, so it cannot be flown and there is nothing to explain.</Empty>}
       </>
     );

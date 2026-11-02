@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import type { MappingChoice, Platform } from "@coral-city/api";
 
 import { FitMap, type Spot } from "./FitMap.js";
-import { Button } from "../ui/components.js";
+import { Button, Skeleton } from "../ui/components.js";
 
 export type Candidate = { at: [number, number]; headingDeg: number; dz: number; startAt?: number[];
                           fit?: { rmsM?: number; placeGroundM?: number } };
@@ -67,7 +67,7 @@ export function ResolveChoice({ candidates, start, ground, extentM, busy, onAcce
         {ground ? (
           <FitMap heightsUrl={ground.heightsUrl} rows={ground.rows} columns={ground.columns} acrossM={ground.acrossM}
                   extentM={extentM} spots={spots} chosen={chosen} start={start} onChoose={choose} />
-        ) : <p className="note">Reading the place&rsquo;s seabed…</p>}
+        ) : <Skeleton height={320} />}
       </div>
       <div className="resolve-side">
         <div className="rows">
