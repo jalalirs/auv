@@ -2674,3 +2674,186 @@ IOCEAN_PLATFORM_URL.
    what a new space may use. IOCEAN_GOOGLE_WEB_RETURN is the site's
    `/#signed-in` once the site is hosted.
 4. A control plane restart (the auv session is told first).
+
+## 73. UI issues, to fix together
+
+Found by the user in the released app. Registered only: each is fixed with the
+user, one at a time.
+
+1. **Use it in the Map store gives no sign it was pressed.** Clicking Use it on
+   a store place does nothing visible, then a moment later the place is added
+   and the buttons change to Remove from yours. Nothing says it is working in
+   between. (0.1.6, Places, Map store tab.)
+2. **The back link on a detail page is ugly.** "‹ Places" above the title of a
+   place's page is a bare chevron and a word in grey, floating over the
+   heading with nothing to say it is a control. It should look like a way back.
+   (0.1.6, a place's page, e.g. Jeddah airport tank; the same crumb is on other
+   detail pages.)
+3. **Assets should be their own place in the side bar, not a tab of Places.**
+   Item 70 put the asset library under Places ("Places, Assets") because a
+   place is composed from assets. But an asset is made and owned on its own
+   and used in many places, so hiding it as a second tab of Places makes it
+   hard to find and makes the Places page title say "Places" over a page of
+   pipelines and reefs. Decided: Assets moves out of Places into its own
+   side bar entry. (0.1.6, Places, Assets tab.)
+4. **The New asset dialog is broken: the form spills out of it.** My 0.1.6
+   change. The dialog is at most 520 px wide, but the form inside was given
+   560 px, so the file picker, the fields and Upload and rebuild run past the
+   dialog's right edge over the page behind. "Made from" also sits centred on
+   its own line above its menu instead of beside it like a label. It also
+   reads like the old side panel squeezed into a box: a long explanation in
+   large text, and the action as a full-width bar in the middle rather than
+   in the dialog's foot. (0.1.6, Places, Assets, New asset.)
+5. **The whole Assets section needs a full revision, not patches.** Your
+   words: "the whole assets is a crap as is". Known parts of it: the New
+   asset form (item 4); the "Made from" menu, which mixes what the thing is
+   (reef, seabed, structure, pipe) with what it is made from (video, survey
+   file, model file, typed points), has no icons, and names one option "A
+   pipeline from its route", which does not say what it makes; the pipeline
+   route typed as raw "lat, lon" lines with no map; the white chart previews
+   on dark cards; long names wrapping; "open ›" and Open on the same card.
+   You will say how it should be shaped before anything is built.
+   (0.1.6, Places, Assets.)
+6. **The Assets step of a new place is an unreadable checklist.** (Compose,
+   step 3.) Every asset the organisation has, as a long list of tick boxes
+   with no picture, no grouping and no search. The same name appears four
+   times: "SubPipe outfall pipeline, run 3" is in the list twice as a reef
+   rebuilt from video and twice as a pipeline, told apart only by the small
+   grey line underneath. Names carry the source and licence ("(Oceanscan-MST,
+   CC BY 4.0)") so they wrap onto two lines. The grey lines say little
+   ("stands on the seabed"). Test leftovers ("Red Sea reef (MCP test)",
+   "Test export line (short)", "Test jacket platform") sit among the real
+   ones. Fixed with the Assets revision (item 5). (0.1.6, New place.)
+7. **New place should be a real modelling tool, not a form beside a map.**
+   Today New place is a long side panel of numbered steps (1 Where,
+   2 Ground, 3 Assets, ...) made of radio cards with paragraphs under each,
+   tick-box lists and a "choose one" drop-down, with a plain map in the
+   middle that only shows the square. Pressing New place does not tell you
+   what happens next. The map has no level of detail (you cannot zoom from
+   the region down to the seabed and see more as you go) and is not a canvas:
+   nothing can be put on it, moved, drawn or picked from it. You want it to
+   feel like a real editor, the way a seat chart is designed in seats.io or a
+   level is built in a game's map editor: the place is the canvas in the
+   middle, the ground and every asset are things on it you can see, place,
+   drag, rotate and select, with a palette of what can be added and the
+   chosen thing's properties beside it. The ground choice (every public
+   source, flat, a store place), surveys and own data become layers on the
+   canvas, not radio cards. Design it with you before building; it absorbs
+   items 5 and 6 for where assets are placed. (0.1.6, New place.)
+8. **A store place is imported as your own copy, then edited; "Build on it"
+   goes.** Today a store card has "Use it" / "Remove from yours" and "Build
+   on it", which do not say what you get. Your model: importing a place from
+   the map store copies it into your library, like copying a file into your
+   own folder. The copy is yours to edit or build on; the store original is
+   never changed. You can import the same place as many times as you like
+   (ten copies is fine), each its own place. "Remove from yours" removes your
+   copy, not the original. Fits the editor of item 7: open your copy and edit
+   it there. (0.1.6, Places, Map store.)
+9. **Assets split into kinds, each its own tab; an Objects store.** Your
+   direction: one "assets" bucket with a "Made from" menu is wrong. Split it:
+   Objects (single 3D things you place: corals, rocks, a chair, any 3D
+   model), with an Objects store where iOcean keeps all our corals and the
+   rest; Structures; Seabed; Reefs from video. Each kind deserves its own tab
+   and its own way of being made. To be thought through together; proposal
+   in the conversation of 2026-11-02. (0.1.6, Assets.)
+   Decided 2026-11-02:
+   - Objects have no location. Anything modelled on its own and then placed
+     on a map is an Object: corals, rocks, a chair, a wreck.
+   - One Store, its own side bar entry, holds everything iOcean offers:
+     places, objects and every other kind. The Map store leaves Places and
+     goes there. Importing from it copies into your library (item 8).
+   - Store items may be paid later; leave room for a price, build none now.
+   - Still open: what stays a Structure (a pipeline or cable drawn at its
+     place?) and whether a platform is an Object like a wreck.
+10. **The place designer: terrain first, objects on it, physics settles
+    them.** Your direction, 2026-11-02, rephrased:
+    - Everything people put in the sea is an Object: a chair, a wreck, a
+      platform, a pipeline. An Object may carry metadata, a real location
+      among it, but it can still be placed on any map.
+    - Corals are Objects too, kept in the Store with the rest.
+    - A new place starts from a terrain, not from a point picked anywhere
+      in the world. You buy or import one from the Store, import your own
+      survey, or design one. The designer always shows that terrain.
+    - Then you add Objects onto the terrain on the canvas (item 7).
+    - The resolver stops being a step that runs after the build. It
+      becomes an engine that runs live while you design, fitting each
+      Object to the terrain as you place it.
+    - A real physics engine sits under the designer: drop a chair into the
+      sea and it sinks, falls through the water and comes to rest on the
+      seabed where the terrain catches it.
+    Supersedes the asset kinds in item 9: Objects, terrains and reefs from
+    video, with one Store for all of them.
+11. **Fly's "Flown by" menu lists every build, not every controller.** Fly
+    fills the menu from held.stacks, which is every build ever uploaded, so
+    one controller appears once per build: "Learned hold (linear policy, CEM
+    in the tank)" three times, "Station hold (SDK example)" twice, "Go around
+    things (SDK example)" twice, with nothing to tell them apart. The
+    Controllers page groups builds by controller (held.controllers, newest
+    build first), so it shows fewer. The menu should list controllers once
+    each (newest build, with the build chosen only if you ask), say which
+    fit the chosen vehicle, and keep the three built-in ones ("The
+    platform's planner", "The planner, with its eyes open", "The one that
+    thinks") apart from yours, with plainer names. Dive.tsx reads
+    held.stacks the same way. (0.1.6, Fly, Flown by.)
+12. **Fly needs a full redesign, and it should not be the home page.** Your
+    words: "the whole fly requires redesign", "it shouldn't be the home
+    page", "fly planner should be something else", and "we are very bad in
+    the UI/UX overall so far". What the page is today: the app opens on it;
+    two tabs (A plan of work, A single task); a plan drop-down, a small chart
+    with no terrain (a grey-to-sand gradient) and the vehicle and controller
+    drop-downs on the left; on the right "What could go differently?", a wall
+    of cards (the current, positioning, visibility, failures, mooring drift,
+    launch point, heading, length of day), each a paragraph of explanation
+    over a row of pill choices with "decided" or "as the plan has it"
+    underneath. Planning a mission, choosing what could vary and starting a
+    run are all one screen. To be redesigned with you: what the home page
+    is, and where planning sits apart from flying. (0.1.6, Fly.)
+13. **Controllers has a Builds tab nobody can read; builds belong inside each
+    controller.** A build is the platform turning your controller code (here
+    the GitHub repo jalalirs/iocean-controllers at c3f8af4) into something a
+    vehicle can run. One push of that repo built 4 controllers at once, so
+    the Builds tab shows one row, "iocean-controllers: 4 of 4 controllers",
+    while the Controllers tab says 7. Two words for one thing (build,
+    version), a tab per word, and the user has to join them in their head.
+    A build should be a version on its controller's own page, and a failed
+    build should show on the controller it failed for. (0.1.6, Controllers.)
+
+14. **Fleet's Catalogued tab is our bookkeeping shown to the user.**
+    "Catalogued" means vehicles the app knows from its own built-in catalogue
+    but that have not been published to the platform yet. It is a check for
+    us that the two agree, and it says so: "Everything catalogued is
+    published. The catalogue and the platform agree." Nobody flying a
+    vehicle cares, and "Flyable 7" beside it implies some vehicles are not.
+    Decided: the catalogue goes to the Store. The vehicles iOcean offers are
+    Store items like places and objects; you import one into your fleet
+    (a copy, item 8). Fleet is then only your vehicles, one view, no tabs.
+    (0.1.6, Fleet.)
+
+15. **Runs, Fly and jobs become one thing, and it is the home page.**
+    Your direction, 2026-11-02: iOcean is simulation and modelling software
+    for ocean vehicles, and running a vehicle is the core of the app. Today
+    that core is split across Fly (start it), Runs with three tabs (Dives
+    248, Sweeps 10, Compare) and the queue's jobs. There should be no
+    difference between a dive, a sweep and a job: a sweep is one run flown
+    under several conditions, a dive is one run flown under one. Merge them
+    into one view, the dashboard the app opens on, where you start a run and
+    see every run and its result. What is wrong today:
+    - Runs list: rows say "by hand · batch" on everything, results are a
+      truncated run-on line ("Waypoints: 100% · ~0.6 m out (0.3% of the way
+      run) · 2% thrust · tilted ..."), the same mission name repeats with
+      nothing to tell rows apart, and some rows have no score or Replay with
+      no reason given.
+    - Sweep result page: a mess of type sizes and capitals; long sentences
+      doing a chart's job ("The mission turns on which way it faces. At east
+      it fails 3 times out of 3..."); bars with no scale or values; a
+      tooltip over the heading; "where it goes in:20 m north" missing
+      spaces; a costs table of prose labels ("at the ninetieth percentile").
+    (0.1.6, Runs, Sweeps, Fly.)
+
+**The plan for all of 73 is docs/plan/app-shape-2026-11.md (2026-11-02).**
+
+**Across all of 73, your rule (2026-11-02): stop adding a tab per concept.
+Merge the concepts into one cohesive environment.** Items 3, 5, 9, 11, 12
+and 13 are the same mistake: a new tab or page for each thing the platform
+has inside (assets, store, builds, stacks, doubts) instead of one place
+where the thing you are working on carries its parts.

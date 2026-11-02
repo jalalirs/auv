@@ -22,7 +22,7 @@ import { ago } from "./parts.js";
 import { useState } from "react";
 import type { Platform } from "@coral-city/api";
 import { Button, Menu, Page, Status, Table } from "../ui/components.js";
-import { Builds, DeployDialog } from "./Deploying.js";
+import { DeployDialog, DeploysNow } from "./Deploying.js";
 
 export function Autonomy({ platform, held, onFly, onRuns, onOpen, onCompare, onChanged }: {
   platform?: Platform;
@@ -38,12 +38,12 @@ export function Autonomy({ platform, held, onFly, onRuns, onOpen, onCompare, onC
   onCompare?: () => void;
 }): React.JSX.Element {
   const [deploying, setDeploying] = useState(false);
-  const [tab, setTab] = useState("controllers");
+  const [nudge, setNudge] = useState(0);
   const pullLatest = async (slug: string) => {
     if (!platform || !held.institution) return;
     const builds = await platform.controllerBuildsOf(held.institution.id);
     const last = builds.find((b) => (b.report as { slug?: string } | undefined)?.slug === slug || b.slug === slug);
-    if (last) { await platform.controllerBuildAgain(last.id); setTab("builds"); }
+    if (last) { await platform.controllerBuildAgain(last.id); setNudge((n) => n + 1); }
   };
   type Row = Held["controllers"][number] & { flew: ReturnType<typeof recordOf>; against: string[] };
   const rows: Row[] = held.controllers.map((one) => ({
@@ -57,12 +57,10 @@ export function Autonomy({ platform, held, onFly, onRuns, onOpen, onCompare, onC
       ? (needs.gpuMemoryBytes ? `${(needs.gpuMemoryBytes / 2 ** 30).toFixed(0)} GiB of a card` : "a card") : "no card";
   };
   return (
-    <Page title="Controllers" subtitle="What flies the vehicle other than you: each one's dives, scores, and builds."
+    <Page title="Controllers" subtitle="What flies the vehicle other than you, and how each has done."
           info="Your controllers, in containers, pinned by digest. Each talks ROS 2 to the vehicle exactly as it would to a real one and imports nothing of ours: the same binary should run in a tank and in the sea. A dive pins a build; a person thinks in controllers, so every build folds under one row."
-          tabs={platform ? [{ key: "controllers", label: "Controllers", count: rows.length }, { key: "builds", label: "Builds" }] : undefined}
-          tab={tab} onTab={setTab}
           actions={<Button kind="primary" onClick={() => setDeploying(true)}>Deploy one</Button>}>
-      {tab === "builds" && platform ? <Builds platform={platform} held={held} onRefresh={onChanged} /> : (
+      {platform ? <DeploysNow platform={platform} held={held} onRefresh={onChanged} nudge={nudge} /> : null}
       <Table rows={rows} rowKey={(r) => r.slug} onRow={(r) => onOpen?.(r.slug)}
              search={(r) => `${r.name} ${r.slug}`} searchLabel="Search controllers"
              facets={[{ key: "flown", label: "Flown", value: (r) => r.flew.dives === 0 ? "never flown" : "flown" },
@@ -76,11 +74,11 @@ export function Autonomy({ platform, held, onFly, onRuns, onOpen, onCompare, onC
                      <ControllerArt digest={r.newest.imageDigest} size={28} />
                      <div title={r.against.length ? r.against.join(" · ") : undefined}>
                        <span className="cell-main">{r.name}</span>
-                       <span className="cell-sub">{r.slug} · {r.newest.imageDigest.slice(7, 19)}{r.builds.length > 1 ? ` · ${r.builds.length} builds` : ""}</span>
+                       <span className="cell-sub">{r.slug}{r.builds.length > 1 ? ` · version ${r.builds.length}` : ""}</span>
                      </div>
                    </div>
                  ) },
-               { key: "dives", label: "Dives", align: "right", sort: (a, b) => a.flew.dives - b.flew.dives,
+               { key: "dives", label: "Runs", align: "right", sort: (a, b) => a.flew.dives - b.flew.dives,
                  render: (r) => r.flew.dives || <span className="cell-meta">never</span> },
                { key: "score", label: "Scored", align: "right", sort: (a, b) => (a.flew.score ?? -1) - (b.flew.score ?? -1),
                  render: (r) => r.flew.score === undefined ? <span className="cell-meta">—</span> : <b>{(r.flew.score * 100).toFixed(0)}%</b> },
@@ -96,17 +94,16 @@ export function Autonomy({ platform, held, onFly, onRuns, onOpen, onCompare, onC
                <>
                  <Button onClick={() => onFly?.(r.newest.id)}>Fly with it</Button>
                  <Menu items={[
-                   { label: "Its dives", disabled: r.flew.dives === 0, onSelect: () => onRuns?.(r.name) },
+                   { label: "Its runs", disabled: r.flew.dives === 0, onSelect: () => onRuns?.(r.name) },
                    { label: "Compare controllers", onSelect: () => onCompare?.() },
                    ...((r.newest as { source?: { kind?: string } }).source?.kind === "git"
                      ? [{ label: "Pull latest from GitHub", onSelect: () => void pullLatest(r.slug) }] : []),
                  ]} />
                </>
              )} />
-      )}
       {deploying ? (platform ? (
         <DeployDialog platform={platform} held={held} onClose={() => setDeploying(false)}
-                      onStarted={() => { setDeploying(false); setTab("builds"); }} />
+                      onStarted={() => { setDeploying(false); setNudge((n) => n + 1); }} />
       ) : null) : null}
     </Page>
   );

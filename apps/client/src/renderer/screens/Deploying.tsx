@@ -12,7 +12,7 @@ import type { ControllerBuild, ControllerBuildBrief, Platform } from "@coral-cit
 
 import type { Held } from "./Deck.js";
 import { ago } from "./parts.js";
-import { Button, Dialog, Status, Table, type Tone } from "../ui/components.js";
+import { Button, Dialog, Status, type Tone } from "../ui/components.js";
 
 type One = {
   ok?: boolean; controller?: string; vehicle?: string; slug?: string; name?: string; failure?: string; stackId?: string;
@@ -188,16 +188,21 @@ export function DeployDialog({ platform, held, onClose, onStarted }: {
   );
 }
 
-/** Every build, newest first, each with its steps and what its checks said. */
-export function Builds({ platform, held, onRefresh }: {
+/**
+ * Deploys still going, and the ones that failed this week, above the list of
+ * controllers: what a deploy made is a controller in the list, so only what
+ * did not make one yet needs saying.
+ */
+export function DeploysNow({ platform, held, onRefresh, nudge }: {
   platform: Platform;
   held: Held;
   onRefresh?: () => void;
-}): React.JSX.Element {
+  /** Changes when a deploy has just been started, to read again at once. */
+  nudge?: number;
+}): React.JSX.Element | null {
   const [builds, setBuilds] = useState<ControllerBuild[] | undefined>();
   const [open, setOpen] = useState<ControllerBuild | undefined>();
   const institution = held.institution;
-
   useEffect(() => {
     if (!institution) return;
     let stale = false;
@@ -212,42 +217,27 @@ export function Builds({ platform, held, onRefresh }: {
     void read();
     const again = setInterval(() => void read(), 5000);
     return () => { stale = true; clearInterval(again); };
-  }, [platform, institution, onRefresh]);
-
-  const again = async (b: ControllerBuild) => {
-    const made = await platform.controllerBuildAgain(b.id);
-    setBuilds((was) => [made, ...(was ?? [])]);
-  };
-
+  }, [platform, institution, onRefresh, nudge]);
+  const week = Date.now() - 7 * 86_400_000;
+  const shown = (builds ?? []).filter((b) => b.state === "queued" || b.state === "running"
+    || (b.state === "failed" && new Date(b.createdAt).getTime() > week));
+  if (shown.length === 0) return null;
   return (
-    <>
-      <Table rows={builds ?? []} rowKey={(b) => b.id} onRow={setOpen}
-             search={(b) => `${b.slug} ${sourceSaid(b)}`} searchLabel="Search builds"
-             facets={[{ key: "state", label: "State", value: (b) => b.state },
-                      { key: "from", label: "From", value: (b) => (b.brief.source as { kind: string }).kind === "git" ? "GitHub" : "zip" }]}
-             initialSort={{ key: "when", down: true }}
-             loading={builds === undefined}
-             empty="No builds yet. Deploy one from GitHub or a zip."
-             columns={[
-               { key: "controller", label: "Controller", grow: true, sort: (a, b) => a.slug.localeCompare(b.slug),
-                 render: (b) => {
-                   const r = b.report as Report | undefined;
-                   const many = r?.controllers;
-                   const title = many && many.length > 1
-                     ? `${b.slug}: ${many.filter((c) => c.ok).length} of ${many.length} controllers`
-                     : many?.[0]?.name ?? r?.name ?? b.slug;
-                   return <><span className="cell-main">{title}</span><span className="cell-sub">{sourceSaid(b)}</span></>;
-                 } },
-               { key: "doing", label: "What it said", priority: 2, grow: true,
-                 render: (b) => <span className="cell-sub">{b.state === "failed" ? (b.failure ?? (b.report as Report | undefined)?.failure) : b.steps[b.steps.length - 1]?.say ?? "waiting for a machine"}</span> },
-               { key: "when", label: "When", priority: 3, sort: (a, b) => a.createdAt.localeCompare(b.createdAt),
-                 render: (b) => <span className="cell-meta">{ago(b.createdAt)}</span> },
-               { key: "state", label: "State", render: (b) => <Status tone={stateTone(b)}>{b.state}</Status> },
-             ]}
-             actions={(b) => (b.brief.source as { kind: string }).kind === "git" && b.state !== "running" && b.state !== "queued"
-               ? <Button onClick={() => void again(b)}>Pull latest</Button> : null} />
+    <section className="running-now">
+      <h2>Deploys</h2>
+      <div className="running-list">
+        {shown.map((b) => (
+          <div key={b.id} className="running" role="button" tabIndex={0} style={{ cursor: "pointer" }} onClick={() => setOpen(b)}>
+            <Status tone={stateTone(b)}>{b.state === "failed" ? "failed" : "deploying"}</Status>
+            <div className="running-what">
+              <span className="cell-main">{sourceSaid(b)}</span>
+              <span className="cell-sub">{b.state === "failed" ? (b.failure ?? (b.report as Report | undefined)?.failure ?? "it did not build") : b.steps[b.steps.length - 1]?.say ?? "waiting for a machine"} · {ago(b.createdAt)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
       {open ? <BuildDialog build={open} onClose={() => setOpen(undefined)} /> : null}
-    </>
+    </section>
   );
 }
 

@@ -11,7 +11,7 @@ import type { Platform, Sweep } from "@coral-city/api";
 import type { Held } from "./Deck.js";
 import { useSweeps } from "./Sweeps.js";
 import { ago } from "./parts.js";
-import { Button, Dialog, Page, Status, Table, type Tone } from "../ui/components.js";
+import { Button, Dialog, Page, Segmented, Status, Table, type Tone } from "../ui/components.js";
 
 const LIVE = new Set(["queued", "preparing", "running"]);
 
@@ -36,15 +36,22 @@ function spans(runs: Held["runs"]): number[] {
 }
 
 
-export function Runs({ platform, held, onChanged, onReplay, onSweep, by, view }: {
+/** One row of the list: a run flown once, or a sweep flown under several conditions. */
+type Row =
+  | { kind: "run"; key: string; name: string; flownBy: string; when: string; state: string; one: Held["runs"][number] }
+  | { kind: "sweep"; key: string; name: string; flownBy: string; when: string; state: string; sweep: Sweep };
+
+export function Runs({ platform, held, onChanged, onReplay, onSweep, onNew, by, view }: {
   platform: Platform;
   held: Held;
   onChanged: () => void;
   onReplay: (dive: string, run: string) => void;
   onSweep: (sweep: string) => void;
-  /** Arrive filtered to one controller's dives. */
+  /** Start a run. */
+  onNew?: () => void;
+  /** Arrive filtered to one controller's runs. */
   by?: string;
-  /** Arrive on a tab: dives, sweeps or compare. */
+  /** Arrive on the repeats view. */
   view?: string;
 }): React.JSX.Element {
   const [ending, setEnding] = useState<string | undefined>();
@@ -59,70 +66,114 @@ export function Runs({ platform, held, onChanged, onReplay, onSweep, by, view }:
     }
   }
 
+  const [showing, setShowing] = useState<"all" | "repeats">(view === "compare" ? "repeats" : "all");
   const outstanding = held.runs.filter((r) => LIVE.has(r.run.state));
-  const [tab, setTab] = useState(view ?? "dives");
-  const dives = held.runs.filter(({ run }) => !run.sweepId);
+  const rows: Row[] = [
+    ...held.runs.filter(({ run }) => !run.sweepId).map((one): Row => ({
+      kind: "run", key: one.run.id, name: one.name, flownBy: one.flownBy, when: one.run.requestedAt,
+      state: one.run.state === "succeeded" && one.run.outcome?.["surfaced"] === true ? "surfaced" : one.run.state, one })),
+    ...(sweeps ?? []).map((w): Row => ({
+      kind: "sweep", key: w.id, name: w.name.split(" ~ ")[0]!, flownBy: "the plan's own", when: w.createdAt,
+      state: w.flying ? "running" : (w.flown ?? 0) >= (w.runs ?? 0) ? "succeeded" : "queued", sweep: w })),
+  ];
+  const open = (r: Row) => {
+    if (r.kind === "sweep") onSweep(r.sweep.id);
+    else onReplay(r.one.dive, r.one.run.id);
+  };
 
   return (
-    <Page title="Runs" subtitle="Every dive and sweep flown, with what each scored."
-          info="Every run pins its place, its vehicle, its water, its seed and the runtime that produced it, which is what makes running the same thing twice mean something. A sweep is one plan flown every way the day could go; its runs are under it."
-          tabs={[{ key: "dives", label: "Dives", count: held.runsRead ? dives.length : undefined }, { key: "sweeps", label: "Sweeps", count: sweeps?.length },
-                 { key: "compare", label: "Compare" }]}
-          tab={tab} onTab={setTab}>
-      {tab === "dives" && outstanding.length > 0 ? (
-        <section className="holding">
-          <h2>Holding a machine</h2>
-          <Table rows={outstanding} rowKey={(r) => r.run.id} pageSize={10}
-                 columns={[
-                   { key: "run", label: "Run", render: (r) => <><span className="cell-main">{r.name}</span><span className="cell-sub">{meta(r.name, r.flownBy, r.run)}</span></> },
-                   { key: "state", label: "State", render: (r) => <Status tone="busy">{r.run.state}</Status> },
-                 ]}
-                 actions={(r) => <Button kind="danger" disabled={ending === r.run.id} onClick={() => void end(r.dive, r.run.id)}>{ending === r.run.id ? "Ending…" : "End it"}</Button>} />
+    <Page title="Runs" subtitle="Every run, under one condition or many."
+          info="A run flies a mission or a task in a vehicle, under the conditions you chose. Choose one setting for each condition and it is one run; choose several and it is flown once for each, so you see which condition breaks the plan. Every run pins its place, vehicle, water, seed and simulator, so running it again means something."
+          actions={onNew ? <Button kind="primary" onClick={onNew}>New run</Button> : undefined}
+          toolbar={<Segmented label="View" value={showing} onChange={setShowing}
+                              options={[{ key: "all", label: "Every run" }, { key: "repeats", label: "Repeated runs" }]} />}>
+      {outstanding.length > 0 ? (
+        <section className="running-now">
+          <h2>Running now</h2>
+          <div className="running-list">
+            {outstanding.map((r) => (
+              <div key={r.run.id} className="running">
+                <Status tone="busy">{r.run.state}</Status>
+                <div className="running-what">
+                  <span className="cell-main">{r.name}</span>
+                  <span className="cell-sub">{r.flownBy} · {ago(r.run.requestedAt)}</span>
+                </div>
+                <Button kind="ghost" disabled={ending === r.run.id} onClick={() => void end(r.dive, r.run.id)}>{ending === r.run.id ? "Ending…" : "End"}</Button>
+              </div>
+            ))}
+          </div>
         </section>
       ) : null}
 
-      {tab === "dives" ? (
-        <Table rows={dives} loading={!held.runsRead} rowKey={(r) => r.run.id} initialPicked={by ? { by: [by] } : undefined}
-               onRow={(r) => { if (recorded(r.run)) onReplay(r.dive, r.run.id); }}
-               search={(r) => `${r.name} ${r.flownBy} ${taskOf(r)} ${r.run.state}`} searchLabel="Search dives"
+      {showing === "all" ? (
+        <Table rows={rows} loading={!held.runsRead || sweeps === undefined} rowKey={(r) => r.key} initialPicked={by ? { by: [by] } : undefined}
+               onRow={open}
+               search={(r) => `${r.name} ${r.flownBy} ${r.kind === "run" ? taskOf(r.one) : ""} ${r.state}`} searchLabel="Search runs"
                facets={[
-                 { key: "task", label: "Task", value: (r) => taskOf(r) || "no task" },
+                 { key: "conditions", label: "Conditions", value: (r) => r.kind === "sweep" ? "several" : "one" },
                  { key: "by", label: "Flown by", value: (r) => r.flownBy },
-                 { key: "state", label: "State", value: (r) => r.run.state },
-                 { key: "how", label: "How", value: (r) => r.run.mode === "interactive" ? "watched" : "batch" },
-                 { key: "when", label: "When", value: (r) => whenOf(r.run.requestedAt) },
+                 { key: "state", label: "State", value: (r) => r.state },
+                 { key: "when", label: "When", value: (r) => whenOf(r.when) },
                ]}
                initialSort={{ key: "when", down: true }}
-               empty={<>Nothing has been run yet. Dives appear here as soon as you ask for one.</>}
+               empty={<>Nothing has been run yet. <a onClick={onNew}>Start a run</a>.</>}
                columns={[
-                 { key: "run", label: "Dive", sort: (a, b) => a.name.localeCompare(b.name),
-                   render: (r) => <><span className="cell-main">{r.name}</span><span className="cell-sub">{meta(r.name, r.flownBy, r.run)}</span></> },
-                 { key: "score", label: "Score", align: "right", sort: (a, b) => scoreOf(a) - scoreOf(b),
-                   render: (r) => scoreOf(r) >= 0 ? <span title={taskOf(r)}><b>{(scoreOf(r) * 100).toFixed(0)}%</b></span> : <span className="cell-meta">—</span> },
-                 { key: "result", label: "How it went", priority: 3, render: (r) => <span className="cell-sub run-detail"><Result outcome={r.run.outcome} /></span> },
-                 { key: "when", label: "When", priority: 2, sort: (a, b) => a.run.requestedAt.localeCompare(b.run.requestedAt),
-                   render: (r) => <span className="cell-meta">{ago(r.run.requestedAt)}</span> },
-                 { key: "state", label: "State", render: (r) => <Status tone={toneOf(r.run.state)}>{r.run.state === "succeeded" && r.run.outcome?.["surfaced"] === true ? "surfaced" : r.run.state}</Status> },
+                 { key: "run", label: "Run", grow: true, sort: (a, b) => a.name.localeCompare(b.name),
+                   render: (r) => <><span className="cell-main">{r.name}</span><span className="cell-sub">{r.kind === "sweep" ? sweepSaid(r.sweep) : r.flownBy}</span></> },
+                 { key: "score", label: "Result", align: "right", sort: (a, b) => resultOf(a) - resultOf(b),
+                   render: (r) => <ResultCell row={r} /> },
+                 { key: "off", label: "Off at the end", align: "right", priority: 3,
+                   render: (r) => <span className="cell-meta">{r.kind === "run" ? closingOf(r.one) : ""}</span> },
+                 { key: "when", label: "When", priority: 2, sort: (a, b) => a.when.localeCompare(b.when),
+                   render: (r) => <span className="cell-meta">{ago(r.when)}</span> },
+                 { key: "state", label: "State", render: (r) => <Status tone={toneOf(r.state)}>{r.state === "succeeded" ? "done" : r.state}</Status> },
                ]}
-               actions={(r) => recorded(r.run) ? <Button onClick={() => onReplay(r.dive, r.run.id)}>Replay</Button> : null} />
-      ) : tab === "sweeps" ? (
-        <Table rows={sweeps ?? []} loading={sweeps === undefined} rowKey={(w) => w.id} onRow={(w) => onSweep(w.id)}
-               search={(w) => w.name} searchLabel="Search sweeps"
-               facets={[{ key: "state", label: "State", value: (w) => sweepState(w) }, { key: "when", label: "When", value: (w) => whenOf(w.createdAt) }]}
-               initialSort={{ key: "when", down: true }}
-               empty={<>No sweeps yet. A sweep flies one plan every way the day could go; start one from Fly.</>}
-               columns={[
-                 { key: "name", label: "Sweep", sort: (a, b) => a.name.localeCompare(b.name), render: (w) => <span className="cell-main">{w.name}</span> },
-                 { key: "flown", label: "Flown", align: "right", render: (w) => <span className="cell-meta">{w.flown ?? 0} of {w.runs ?? 0}{w.flying ? ` · ${w.flying} flying` : ""}</span> },
-                 { key: "when", label: "When", priority: 2, sort: (a, b) => a.createdAt.localeCompare(b.createdAt), render: (w) => <span className="cell-meta">{ago(w.createdAt)}</span> },
-                 { key: "state", label: "State", render: (w) => <Status tone={w.flying ? "busy" : sweepState(w) === "swept" ? "good" : "quiet"}>{sweepState(w)}</Status> },
-               ]}
-               actions={(w) => <Button onClick={() => onSweep(w.id)}>Read it</Button>} />
+               actions={(r) => r.kind === "sweep" ? <Button kind="ghost" onClick={() => onSweep(r.sweep.id)}>Open</Button>
+                 : <Button kind="ghost" onClick={() => onReplay(r.one.dive, r.one.run.id)}>Open</Button>} />
       ) : (
         <Trials runs={held.runs} loading={!held.runsRead} onReplay={onReplay} />
       )}
     </Page>
   );
+}
+
+/** A sweep's second line: how many conditions, and how far it has got. */
+function sweepSaid(w: Sweep): string {
+  const runs = w.runs ?? 0;
+  const ways = w.scenarios || Math.round(runs / Math.max(1, w.repeats ?? 1));
+  const flown = w.flown ?? 0;
+  return `${ways} ${ways === 1 ? "condition" : "conditions"}${(w.repeats ?? 1) > 1 ? ` × ${w.repeats}` : ""}`
+    + (flown < runs ? ` · ${flown} of ${runs} flown` : ` · ${runs} runs`);
+}
+
+/** What a row sorts by in the Result column. */
+function resultOf(r: Row): number {
+  if (r.kind === "run") return scoreOf(r.one);
+  const runs = r.sweep.runs ?? 0;
+  return runs ? (r.sweep.flown ?? 0) / runs - 2 : -3;
+}
+
+/** A score as a number and a short bar; a sweep as how much of it has flown. */
+function ResultCell({ row }: { row: Row }): React.JSX.Element {
+  if (row.kind === "sweep") {
+    const runs = row.sweep.runs ?? 0;
+    const flown = row.sweep.flown ?? 0;
+    return flown >= runs ? <span className="cell-meta">open to read</span> : <span className="cell-meta">{flown} of {runs}</span>;
+  }
+  const score = scoreOf(row.one);
+  if (score < 0) return <span className="cell-meta">—</span>;
+  return (
+    <span className="score-bar" title={taskOf(row.one)}>
+      <span className="score-track"><span style={{ width: `${(score * 100).toFixed(0)}%` }} /></span>
+      <b>{(score * 100).toFixed(0)}%</b>
+    </span>
+  );
+}
+
+/** How far out it was when it came up, the one number beside the score. */
+export function closingOf(one: Held["runs"][number]): string {
+  const fix = one.run.outcome?.["closingFix"] as { errorM?: number } | undefined;
+  return typeof fix?.errorM === "number" ? `${fix.errorM.toFixed(1)} m` : "";
 }
 
 export function taskOf(one: Held["runs"][number]): string {
@@ -138,21 +189,10 @@ export function toneOf(state: string): Tone {
   return state === "succeeded" ? "good" : LIVE.has(state) ? "busy" : state === "failed" ? "bad" : "quiet";
 }
 
-function sweepState(w: Sweep): string {
-  return w.flying ? "sweeping" : (w.flown ?? 0) >= (w.runs ?? 0) ? "swept" : "waiting";
-}
-
 /** When, as the buckets a person filters by. */
 function whenOf(iso: string): string {
   const days = (Date.now() - new Date(iso).getTime()) / 86_400_000;
   return days < 1 ? "today" : days < 7 ? "this week" : days < 31 ? "this month" : "older";
-}
-
-/** The second line under a run's name: who flew it, unless the name already
- *  says, how, and when. */
-function meta(name: string, flownBy: string, run: { mode: string; requestedAt: string }): string {
-  const who = name.includes(flownBy) ? "" : `${flownBy} · `;
-  return `${who}${run.mode === "interactive" ? "flown" : "batch"} · ${ago(run.requestedAt)}`;
 }
 
 /** Whether the run left a recording behind. */
@@ -161,68 +201,6 @@ export function recorded(run: { artefacts?: number; outcome?: Record<string, unk
   const recording = run.outcome?.["recording"] as { files?: number } | undefined;
   return typeof recording?.files === "number" && recording.files > 0;
 }
-
-/** What the dive achieved, when it was for something. */
-function Result({ outcome }: { outcome: Record<string, unknown> | undefined }): React.JSX.Element {
-  const task = outcome?.["task"] as { name?: string; score?: number; seconds?: number; done?: boolean } | undefined;
-  // How far out the vehicle was when it came up. The task's score says whether
-  // it did the job; this says whether it knew where it was doing it, and the
-  // two are different dives going wrong.
-  const fix = outcome?.["closingFix"] as
-    { errorM?: number; atSurface?: boolean; shareOfDistance?: number | null } | undefined;
-  if (task === undefined || typeof task.score !== "number") return <span className="result" />;
-  return (
-    <span className="result" title={task.done ? "the task ran to its end" : "the dive ended before the task did"}>
-      {task.name}: <b>{(task.score * 100).toFixed(0)}%</b>
-      {typeof fix?.errorM === "number" ? (
-        <span className="quiet" title={fix.atSurface
-          ? "where it thought it was against where it was, at the surface — the fix a real dive closes on"
-          : "it did not surface, so this is the error at the end rather than a closing fix"}>
-          {" · "}{fix.atSurface ? "" : "~"}{fix.errorM.toFixed(1)} m out
-          {typeof fix.shareOfDistance === "number"
-            ? ` (${(fix.shareOfDistance * 100).toFixed(1)}% of the way run)` : ""}
-        </span>
-      ) : null}
-      <Ride ride={(outcome?.["task"] as { ride?: RideSaid } | undefined)?.ride} />
-    </span>
-  );
-}
-
-/** How the run was flown, as the runtime's ride card says (tasks/ride.py). */
-interface RideSaid {
-  effort?: { meanShare?: number; peakShare?: number; flatOutShare?: number };
-  rollDeg?: { typical?: number; worst?: number };
-  pitchDeg?: { typical?: number; worst?: number };
-  offLine?: { secondsOff?: number; secondsOnTheLine?: number; worstM?: number; thresholdM?: number };
-}
-
-/** Effort, roll and pitch, and time off the line, beside the score: two runs
- *  that both scored 100% can be one flown on a quarter of its thrust, level
- *  and on the line, and one flat out, rolling and wandering. */
-function Ride({ ride }: { ride: RideSaid | undefined }): React.JSX.Element | null {
-  if (ride === undefined) return null;
-  const parts: string[] = [];
-  if (typeof ride.effort?.meanShare === "number") {
-    parts.push(`${(ride.effort.meanShare * 100).toFixed(0)}% thrust`
-      + (ride.effort.flatOutShare ? `, flat out ${(ride.effort.flatOutShare * 100).toFixed(0)}% of the time` : ""));
-  }
-  const worst = Math.max(ride.rollDeg?.worst ?? 0, ride.pitchDeg?.worst ?? 0);
-  if (ride.rollDeg !== undefined) parts.push(`tilted up to ${worst.toFixed(0)}°`);
-  if (ride.offLine !== undefined && typeof ride.offLine.secondsOff === "number") {
-    parts.push(ride.offLine.secondsOff > 0
-      ? `${ride.offLine.secondsOff.toFixed(0)} s off the line, ${(ride.offLine.worstM ?? 0).toFixed(1)} m at worst`
-      : "on the line throughout");
-  }
-  if (parts.length === 0) return null;
-  return (
-    <span className="quiet" title={"How it was flown, from the simulator's own state: the thrusters' mean command"
-      + " as a share of full, the worst roll or pitch, and for a task flown along a line, the time spent more than"
-      + ` ${ride.offLine?.thresholdM ?? 1} m off it once it had come onto it`}>
-      {" · "}{parts.join(" · ")}
-    </span>
-  );
-}
-
 
 /** The same dive and controller flown several times: a mean and a spread.
  *

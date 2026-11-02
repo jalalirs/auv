@@ -24,8 +24,8 @@ import { drawStages } from "../parts/StagesLayer.js";
 import { newestOf } from "../platform/packages.js";
 import type { Held, Packages } from "./Deck.js";
 import { BUILT_IN, MANUAL } from "./Dive.js";
-import { Button, Page, Skeleton } from "../ui/components.js";
-import { FLY_TABS } from "./flyTabs.js";
+import { Button, Page, Segmented, Skeleton } from "../ui/components.js";
+import { RUN_FROM } from "./flyTabs.js";
 
 interface Flyable { mission: Mission; version: AssetVersion; place: string }
 
@@ -62,7 +62,7 @@ export function split(picked: Record<string, string[]>): {
   return { water, decided, doubts, scenarios: Object.keys(doubts).length ? scenarios : 0 };
 }
 
-export function Fly({ platform, held, packages, mission: asked, onDiving, onSwept, onSingleTask, onDesign, onChanged }: {
+export function Fly({ platform, held, packages, mission: asked, onDiving, onSwept, onSingleTask, onDesign, onChanged, onBack }: {
   platform: Platform;
   held: Held;
   packages: Packages;
@@ -72,6 +72,7 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
   onSingleTask: () => void;
   onDesign: (mission: string, place: string) => void;
   onChanged: () => void;
+  onBack?: () => void;
 }): React.JSX.Element {
   const [flyable, setFlyable] = useState<Flyable[] | undefined>();
   const [mission, setMission] = useState(asked ?? "");
@@ -221,14 +222,14 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
   const hours = cost?.hours && !cost.notEnough ? cost.hours : undefined;
   const machines = Math.max(1, held.queues[0]?.devices ?? 1);
 
-  const action = asking ? "Asking for water…" : once ? (live ? "Fly it, watching" : "Fly it") : scenarios > 0 ? `Sweep it · ${runs} runs` : "Fly it";
+  const action = asking ? "Starting…" : once ? (live ? "Start and watch" : "Start") : `Start ${runs} runs`;
   // Beside the button only when it says something the button does not.
   const summary = once
     ? (hours ? `about ${Math.round(hours * 60)} min` : "")
     : `${scenarios > 0 ? `${scenarios} ways × ${repeats}` : ""}${hours ? `${scenarios > 0 ? " · " : ""}about ${((hours * runs) / machines).toFixed(1)} h on ${machines} machine${machines === 1 ? "" : "s"}` : ""}`;
   return (
-    <Page title="Fly" subtitle="A plan of work, flown once or under everything that could go differently on the day."
-          tabs={FLY_TABS} tab="plan" onTab={(key) => { if (key === "task") onSingleTask(); }} wide
+    <Page title="New run" subtitle="A mission in a vehicle, under the conditions you choose." crumb="Runs" onCrumb={onBack}
+          toolbar={<Segmented label="What it flies" value="plan" options={RUN_FROM} onChange={(key) => { if (key === "task") onSingleTask(); }} />} wide
           actions={flyable && flyable.length > 0 ? (
             <>
               {summary ? <span className="action-summary">{summary}</span> : null}
@@ -241,7 +242,7 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
       ) : (
         <section className="fly">
           <div className="what">
-            <label><span>The plan</span>
+            <label><span>Mission</span>
               {flyable === undefined ? <Skeleton height="var(--h-large)" /> : (
               <select value={mission} onChange={(e) => setMission(e.target.value)}>
                 {(flyable ?? []).map(({ mission: one, place, version }) => (
@@ -271,7 +272,7 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
                 <a onClick={() => onDesign(chosen.mission.id, chosen.place)}>open on its chart</a>
               </p>
             ) : null}
-            <label><span>Flown in</span>
+            <label><span>Vehicle</span>
               <select value={vehicle} onChange={(e) => setVehicle(e.target.value)}>
                 {held.vehicles.map((one) => <option key={one.id} value={one.id}>{one.name}</option>)}
               </select>
@@ -279,9 +280,15 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
             {once ? (
               <label><span>Flown by</span>
                 <select value={flownBy} onChange={(e) => setFlownBy(e.target.value)}>
-                  <option value={MANUAL}>you, at the keys</option>
-                  {BUILT_IN.map((one) => <option key={one.key} value={one.key}>{one.name}</option>)}
-                  {held.stacks.map((one) => <option key={one.id} value={one.id}>{one.name}</option>)}
+                  <option value={MANUAL}>By hand</option>
+                  <optgroup label="iOcean's planners">
+                    {BUILT_IN.map((one) => <option key={one.key} value={one.key}>{one.name}</option>)}
+                  </optgroup>
+                  {held.controllers.length > 0 ? (
+                    <optgroup label="Your controllers">
+                      {held.controllers.map((one) => <option key={one.slug} value={one.newest.id}>{one.name}</option>)}
+                    </optgroup>
+                  ) : null}
                 </select>
               </label>
             ) : <p className="quiet">A sweep is flown by the plan&rsquo;s own controller, the same in every run.</p>}
@@ -301,15 +308,17 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
           </div>
 
           <div className="day">
-            <h2>What could go differently?</h2>
-            <p className="quiet">One setting on a card is a decision, and every run is flown that way. Two or more is a doubt: one run for each, and the runs multiply.</p>
-            <div className="doubts">
+            <h2>Conditions</h2>
+            <p className="quiet">Pick one setting to fix it. Pick several and the run is flown once for each.</p>
+            <div className="conditions">
               {DOUBTS.map((doubt) => {
                 const on = picked[doubt.key] ?? [];
                 return (
-                  <div key={doubt.key} className={on.length > 1 ? "doubt on" : on.length === 1 ? "doubt set" : "doubt"}>
-                    <strong>{doubt.name}</strong>
-                    <small>{doubt.says}</small>
+                  <div key={doubt.key} className={on.length > 1 ? "condition on" : "condition"}>
+                    <div className="condition-name" title={doubt.says}>
+                      <strong>{doubt.name}</strong>
+                      <small>{on.length === 0 ? "as the mission has it" : on.length === 1 ? "fixed" : `${on.length} ways`}</small>
+                    </div>
                     <div className="settings">
                       {doubt.settings.map((one) => (
                         <button key={one.key} type="button" aria-pressed={on.includes(one.key)}
@@ -322,7 +331,6 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
                         </button>
                       ))}
                     </div>
-                    <small className="state">{on.length === 0 ? "as the plan has it" : on.length === 1 ? "decided" : `in doubt · ${on.length} ways`}</small>
                   </div>
                 );
               })}

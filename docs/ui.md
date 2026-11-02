@@ -61,7 +61,15 @@ not move. Only the page body scrolls. A list's toolbar stays above it.
 
 Any list that can pass about twenty rows is a `Table`: search, filters with
 counts per value, sortable columns, pages of 25. Grouped things (a sweep's
-runs, a controller's builds) fold under one row or get their own tab.
+runs, a controller's versions) fold under one row or into a section on the
+thing's own page, never a tab of their own.
+
+## 7a. No tab per concept (2026-11-02)
+
+A different kind of thing never gets a tab. A thing's parts live on the
+thing: a controller's versions on its page, a sweep as a run under several
+conditions, a store place as a copy in Places. A switch (`Segmented`) is only
+for two views of the same list, such as every run against repeated runs.
 
 ## 8. Words
 

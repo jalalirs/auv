@@ -16,7 +16,11 @@ import { Minimap, type Fix, type Geometry, type Site } from "../parts/Minimap.js
 import { Plan, type Flying } from "../parts/Plan.js";
 import type { Looking } from "../parts/project.js";
 import { TASKS } from "../catalog/tasks.js";
-import { Empty, PageHead } from "./parts.js";
+import type { HeldRun } from "../platform/held.js";
+import { Page } from "../ui/components.js";
+import { closingOf, scoreOf, taskOf } from "./Runs.js";
+import { RunFacts } from "./Run.js";
+import { Empty } from "./parts.js";
 
 interface Pose {
   t: number;
@@ -65,10 +69,12 @@ interface Series { name: string; unit: string; t: number[]; v: number[]; ink: st
 
 const PACES = [1, 2, 5, 10, 30];
 
-export function Replay({ platform, dive, run, onBack }: {
+export function Replay({ platform, dive, run, one, onBack }: {
   platform: Platform;
   dive: string;
   run: string;
+  /** The run as the runs list knows it: its name, who flew it, how it went. */
+  one?: HeldRun;
   onBack: () => void;
 }): React.JSX.Element {
   const [files, setFiles] = useState<Artefact[] | undefined>();
@@ -457,30 +463,36 @@ export function Replay({ platform, dive, run, onBack }: {
     return out;
   }, [poses, task, effort]);
 
-  if (trouble !== undefined) {
-    return (<><PageHead title="Replay" says={trouble} /><button className="quiet" onClick={onBack}>Back</button></>);
-  }
-  if (files === undefined) {
-    return <PageHead title="Replay" says="Fetching the recording…" />;
-  }
+  // The same head as a run under many conditions: its name, then its facts.
+  const score = one && scoreOf(one) >= 0 ? scoreOf(one) : manifest?.task?.score;
+  const closing = one ? closingOf(one) : "";
+  const head = (body: React.ReactNode) => (
+    <Page title={one?.name ?? "A run"} crumb="Runs" onCrumb={onBack}
+          subtitle={(one ? taskOf(one) : "") || manifest?.task?.name || "one condition"}>
+      <RunFacts facts={[
+        { label: "flown by", value: one?.flownBy || "—" },
+        { label: "score", value: typeof score === "number" ? `${(score * 100).toFixed(0)}%` : "—" },
+        { label: "off at the end", value: closing || "—", note: "how far out its own fix was when it came up" },
+        { label: "length", value: manifest?.seconds ? `${(manifest.seconds / 60).toFixed(1)} min` : "—" },
+        { label: "state", value: one?.run.state === "succeeded" ? "done" : one?.run.state ?? "—" },
+      ]} />
+      {body}
+    </Page>
+  );
+
+  if (trouble !== undefined) return head(<p className="trouble">{trouble}</p>);
+  if (files === undefined) return head(<p className="run-note">Fetching the recording…</p>);
   if (files.length === 0) {
-    return (
-      <>
-        <PageHead title="Replay" says="This run left no recording." />
-        <Empty title="Nothing to play back">
-          A dive records when it is for something. A piloted dive with no task leaves only what it said.
-        </Empty>
-        <button className="quiet" onClick={onBack}>Back</button>
-      </>
+    return head(
+      <Empty title="Nothing to play back">
+        A run records when it is for something. A piloted run with no task leaves only what it said.
+      </Empty>,
     );
   }
 
   const end = poses[poses.length - 1]?.t ?? 0;
-  return (
+  return head(
     <>
-      <PageHead title="Replay" back="Dives" onBack={onBack}
-                says={`${poses.length} poses, ${manifest?.video?.frames ?? frames.size} frames, ${manifest?.seconds?.toFixed(0) ?? "?"} s`
-                  + (manifest?.task?.name ? ` · ${manifest.task.name} ${((manifest.task.score ?? 0) * 100).toFixed(0)}%` : "")} />
       {flying === undefined ? null : (
         <details className="flew">
           <summary>the plan it flew — {flying.manoeuvres.length} manoeuvres{flying.by ? `, ${flying.by}` : ""}</summary>
@@ -572,8 +584,7 @@ export function Replay({ platform, dive, run, onBack }: {
           <li><em>{frames.size} frames under frames/</em></li>
         </ul>
       </details>
-      <button className="quiet" onClick={onBack}>Back to dives</button>
-    </>
+    </>,
   );
 }
 

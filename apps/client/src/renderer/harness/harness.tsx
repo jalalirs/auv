@@ -19,10 +19,12 @@ import { Missions } from "../screens/Missions.js";
 import { Runs } from "../screens/Runs.js";
 import { LayoutEditor } from "../screens/Layout.js";
 import { Compose } from "../screens/Compose.js";
-import { Swept } from "../screens/Sweeps.js";
+import { ManyRun } from "../screens/Run.js";
+import { Replay } from "../screens/Replay.js";
 import { Reconstructions } from "../screens/Reconstructions.js";
 import { ReconstructionPage } from "../screens/Reconstruction.js";
 import { Places } from "../screens/Places.js";
+import { Store } from "../screens/Store.js";
 import { Fleet } from "../screens/Fleet.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -155,7 +157,15 @@ const platform = {
                        repeats: 1, good: 0.8, doubts: {} }),
   findings: () => delay({
     scenarios: 6, flown: 6, flownRuns: 6, flying: 0, survived: 5, marginal: 0, repeats: 1, good: 0.8,
-    matters: [], madeNoDifference: ["which way it faces"], physics: [3],
+    matters: [{ name: "where it goes in", changes: 0.5, rates: [
+      { value: "as planned", survived: 2, of: 2, failedShare: 0 },
+      { value: "20 m north", survived: 1, of: 2, failedShare: 0.5 },
+      { value: "20 m east", survived: 2, of: 2, failedShare: 0 }] }],
+    madeNoDifference: ["which way it faces"], physics: [3],
+    turnsOn: "where it goes in", at: "20 m north", failsOf: [1, 2], noRescue: true,
+    cost: { runs: 6, survived: 5, energyWh: 6.1, hours: 0.21, diveEnergyWh: 9.8, diveHours: 0.36, workingShare: 0.62,
+            worstEnergyWh: 11.9, worstHours: 0.44, capacityWh: 120, reserveFraction: 0.2, usableWh: 96,
+            perCharge: 9.8, workingDayHours: 8, perDay: 22.2, heldBackBy: "the battery" },
     cheapest: [
       { dimension: "where it goes in", best: "20 m east", bestWh: 31.4, savesWh: 6.2, settings: [
         { value: "as planned", meanWh: 35.9, survived: 2, of: 2 },
@@ -166,7 +176,30 @@ const platform = {
         { value: "west", meanWh: 34.9, survived: 2, of: 3 }] }],
     cheapestScenario: { label: "where it goes in:20 m east · which way it faces:west", meanWh: 8.3, survived: 1, of: 1,
                         savesWh: 10.2, candidates: 3, chosen: {} },
-    scenariosFlown: [], runs: [] }),
+    scenariosFlown: [
+      ["as planned", "east", 0.94, 1], ["as planned", "west", 0.91, 1], ["20 m north", "east", 0.86, 1],
+      ["20 m north", "west", 0.41, 0], ["20 m east", "east", 0.97, 1], ["20 m east", "west", 0.95, 1],
+    ].map(([inAt, faces, score, ok]) => ({
+      label: `where it goes in:${inAt} · which way it faces:${faces}`,
+      chosen: { "where it goes in": inAt, "which way it faces": faces },
+      runs: 1, survivedRuns: ok, survived: ok === 1, marginal: false, score, worst: score, best: score })),
+    runs: [] }),
+  // A recording of a minute: a lap of the tank, as data so nothing is fetched.
+  artefacts: () => {
+    const poses = Array.from({ length: 300 }, (_, i) => {
+      const t = i / 5, a = t / 60 * Math.PI * 2;
+      return JSON.stringify({ t, position: [0.6 * Math.cos(a), 0.3 * Math.sin(a), -0.5], headingDeg: (a * 180 / Math.PI + 90) % 360,
+                              depthM: 0.5 + 0.05 * Math.sin(a * 3), altitudeM: 0.45, velocity: [0.06, 0.03, 0] });
+    }).join("\n");
+    const task = Array.from({ length: 60 }, (_, t) => JSON.stringify({ t, name: "Waypoints", kind: "waypoints", score: Math.min(0.92, t / 55), done: t >= 55 })).join("\n");
+    const manifest = { poses: 300, frames: 0, seconds: 59.7, beganAt: [0.6, 0, -0.5], task: { name: "Waypoints", kind: "waypoints", score: 0.92, done: true } };
+    const data = (type: string, body: string) => `data:${type},${encodeURIComponent(body)}`;
+    return delay([
+      { path: "manifest.json", url: data("application/json", JSON.stringify(manifest)), sizeBytes: 300 },
+      { path: "poses.jsonl", url: data("text/plain", poses), sizeBytes: poses.length },
+      { path: "task.jsonl", url: data("text/plain", task), sizeBytes: task.length },
+    ]);
+  },
 };
 // A build that walks through what a real one said, a step every second.
 const builtSteps = [
@@ -396,7 +429,7 @@ function Harness({ packages }: { packages: Packages }) {
     <div className="deck">
       <nav>
         <div className="here"><strong>harness</strong></div>
-        {["fly", "missions", "places", "results", "fleet", "controllers", "designer", "sweep", "layout", "build", "video", "recon"].map((page) => (
+        {["results", "fly", "missions", "places", "video", "fleet", "controllers", "store", "designer", "sweep", "layout", "build", "recon"].map((page) => (
           <a key={page} aria-current={where.page === page ? "page" : undefined} onClick={() => setWhere((w) => ({ ...w, page }))}>{page}</a>
         ))}
       </nav>
@@ -415,12 +448,15 @@ function Harness({ packages }: { packages: Packages }) {
         ) : where.page === "build" ? (
           <Compose platform={p} held={held} chosen={where.mission} onBack={() => said.push("back")} onOpen={(c) => said.push(`open ${c}`)} />
         ) : where.page === "places" ? (
-          <Places platform={p} held={held} packages={packages} tab={where.place === "store" ? "store" : "places"}
-                  onTab={(tab) => setWhere((w) => ({ ...w, place: tab }))}
+          <Places platform={p} held={held} packages={packages}
                   onOpen={(c) => said.push(`open ${c}`)} onBuild={() => setWhere((w) => ({ ...w, page: "build" }))}
-                  onBuildOn={(c) => { said.push(`build on ${c}`); setWhere((w) => ({ ...w, page: "build" })); }}
-                  onChanged={() => { said.push("places read again"); }}
-                  onFromVideo={() => setWhere((w) => ({ ...w, page: "video" }))} />
+                  onStore={() => setWhere((w) => ({ ...w, page: "store" }))}
+                  onChanged={() => { said.push("places read again"); }} />
+        ) : where.page === "store" ? (
+          <Store platform={p} held={held} packages={packages}
+                 onOpenPlace={(c) => said.push(`open ${c}`)} onOpenVehicle={(v) => said.push(`vehicle ${v}`)}
+                 onBuildOn={(c) => { said.push(`build on ${c}`); setWhere((w) => ({ ...w, page: "build" })); }}
+                 onChanged={() => { said.push("places read again"); }} />
         ) : where.page === "fleet" ? (
           <Fleet held={held} packages={packages} onOpen={(v) => said.push(`vehicle ${JSON.stringify(v)}`)} />
         ) : where.page === "controllers" ? (
@@ -433,17 +469,22 @@ function Harness({ packages }: { packages: Packages }) {
           <AssetDetail platform={p} id={where.mission ?? ""} onBack={() => setWhere((w) => ({ ...w, page: "video" }))}
                        onCompose={(a) => { said.push(`compose with ${a}`); setWhere((w) => ({ ...w, page: "build", mission: a })); }} />
         ) : where.page === "video" ? (
-          <Reconstructions platform={p} held={held} onBack={() => setWhere((w) => ({ ...w, page: "places" }))}
+          <Reconstructions platform={p} held={held}
                            onOpen={(r) => setWhere((w) => ({ ...w, page: "recon", mission: r }))}
                            onOpenAsset={(a) => setWhere((w) => ({ ...w, page: "asset", mission: a }))} />
         ) : where.page === "recon" ? (
           <ReconstructionPage platform={p} held={held} packages={packages} id={where.mission === "recon_2" ? "recon_2" : "recon_1"}
                               onBack={() => setWhere((w) => ({ ...w, page: "video" }))} onOpenPlace={(c) => said.push(`open ${c}`)} />
         ) : where.page === "sweep" ? (
-          <Swept platform={p} sweep="sweep_a" onBack={() => said.push("back")} />
+          <ManyRun platform={p} sweep="sweep_a" onBack={() => setWhere((w) => ({ ...w, page: "results" }))} />
         ) : where.page === "results" ? (
-          <Runs platform={p} held={held} onChanged={() => undefined}
-                onReplay={(d, r) => said.push(`replay ${d} ${r}`)} onSweep={(s) => said.push(`read sweep ${s}`)} />
+          <Runs platform={p} held={held} onNew={() => setWhere((w) => ({ ...w, page: "fly" }))} onChanged={() => undefined}
+                onReplay={(d, r) => setWhere((w) => ({ ...w, page: "replay", place: d, mission: r }))}
+                onSweep={() => setWhere((w) => ({ ...w, page: "sweep" }))} />
+        ) : where.page === "replay" ? (
+          <Replay platform={p} dive={where.place ?? "dive_run_1"} run={where.mission ?? "run_1"}
+                  one={held.runs.find((r) => r.run.id === where.mission)}
+                  onBack={() => setWhere((w) => ({ ...w, page: "results" }))} />
         ) : (
           <Fly platform={p} held={held} packages={packages} mission={where.mission}
                onDiving={(d, r) => said.push(`diving ${d} ${r}`)} onSwept={(s) => said.push(`swept ${s}`)}

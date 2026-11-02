@@ -11,7 +11,7 @@ import { Button, Page, Status, Table } from "../ui/components.js";
 import type { Held } from "./Deck.js";
 import { headToHead, recordOf, saidAs } from "./flown.js";
 import { ago } from "./parts.js";
-import { recorded, scoreOf, taskOf, toneOf } from "./Runs.js";
+import { scoreOf, taskOf, toneOf } from "./Runs.js";
 import { useState } from "react";
 
 type Source = { kind?: string; repository?: string; ref?: string; commit?: string; path?: string; name?: string };
@@ -37,7 +37,6 @@ export function ControllerDetail({ platform, held, slug, onBack, onFly, onReplay
   /** A pull from its repository has started; its build is in Controllers, Builds. */
   onPulled?: () => void;
 }): React.JSX.Element {
-  const [tab, setTab] = useState("dives");
   const [pulling, setPulling] = useState(false);
   const one = held.controllers.find((c) => c.slug === slug);
   if (!one) {
@@ -64,9 +63,7 @@ export function ControllerDetail({ platform, held, slug, onBack, onFly, onReplay
   };
   return (
     <Page title={one.name} crumb="Controllers" onCrumb={onBack}
-          subtitle={`${one.slug} · ${sourceSaid(source)} · ${one.builds.length} build${one.builds.length === 1 ? "" : "s"}`}
-          tabs={[{ key: "dives", label: "Dives", count: dives.length }, { key: "builds", label: "Builds", count: one.builds.length }]}
-          tab={tab} onTab={setTab}
+          subtitle={`${one.slug} · ${sourceSaid(source)} · ${one.builds.length} version${one.builds.length === 1 ? "" : "s"}`}
           actions={<>
             {source?.kind === "git" ? <Button disabled={pulling || !platform} onClick={() => void pull()}>{pulling ? "Pulling…" : "Pull latest"}</Button> : null}
             <Button kind="primary" onClick={() => onFly?.(one.newest.id)}>Fly with it</Button>
@@ -74,23 +71,24 @@ export function ControllerDetail({ platform, held, slug, onBack, onFly, onReplay
       <div className="controller-facts">
         <ControllerArt digest={one.newest.imageDigest} size={48} />
         <dl className="asset-facts">
-          <div><dt>dives</dt><dd>{flew.dives || "never flown"}{flew.neverFlew ? ` (and ${flew.neverFlew} the platform could not start)` : ""}</dd></div>
+          <div><dt>runs</dt><dd>{flew.dives || "never flown"}{flew.neverFlew ? ` (and ${flew.neverFlew} the platform could not start)` : ""}</dd></div>
           <div><dt>scored</dt><dd>{flew.score === undefined ? "—" : `${(flew.score * 100).toFixed(0)}% on average`}</dd></div>
           <div><dt>drift</dt><dd>{flew.driftM === undefined ? "—" : `${flew.driftM.toFixed(1)} m on average`}</dd></div>
           <div><dt>last flown</dt><dd>{flew.lastAt ? ago(flew.lastAt) : "never"}</dd></div>
           {against.length ? <div><dt>against others</dt><dd>{against.join(" · ")}</dd></div> : null}
         </dl>
       </div>
-      {tab === "dives" ? (
+      <section className="controller-section">
+        <h2>Runs</h2>
         <Table rows={dives} rowKey={(r) => r.run.id}
-               onRow={(r) => { if (recorded(r.run)) onReplay?.(r.dive, r.run.id); }}
-               search={(r) => `${r.name} ${taskOf(r)} ${r.run.state}`} searchLabel="Search its dives"
+               onRow={(r) => onReplay?.(r.dive, r.run.id)}
+               search={(r) => `${r.name} ${taskOf(r)} ${r.run.state}`} searchLabel="Search its runs"
                facets={[{ key: "task", label: "Task", value: (r) => taskOf(r) || "no task" },
                         { key: "state", label: "State", value: (r) => r.run.state }]}
                initialSort={{ key: "when", down: true }}
                empty={<>It has not flown yet. <a onClick={() => onFly?.(one.newest.id)}>Fly with it</a>.</>}
                columns={[
-                 { key: "dive", label: "Dive", grow: true, sort: (a, b) => a.name.localeCompare(b.name),
+                 { key: "dive", label: "Run", grow: true, sort: (a, b) => a.name.localeCompare(b.name),
                    render: (r) => <><span className="cell-main">{r.name}</span><span className="cell-sub">{taskOf(r) || "no task"}</span></> },
                  { key: "score", label: "Score", align: "right", sort: (a, b) => scoreOf(a) - scoreOf(b),
                    render: (r) => scoreOf(r) >= 0 ? <b>{(scoreOf(r) * 100).toFixed(0)}%</b> : <span className="cell-meta">—</span> },
@@ -98,18 +96,20 @@ export function ControllerDetail({ platform, held, slug, onBack, onFly, onReplay
                    render: (r) => <span className="cell-meta">{ago(r.run.requestedAt)}</span> },
                  { key: "state", label: "State", render: (r) => <Status tone={toneOf(r.run.state)}>{r.run.state}</Status> },
                ]}
-               actions={(r) => recorded(r.run) ? <Button onClick={() => onReplay?.(r.dive, r.run.id)}>Replay</Button> : null} />
-      ) : (
+               actions={(r) => <Button kind="ghost" onClick={() => onReplay?.(r.dive, r.run.id)}>Open</Button>} />
+      </section>
+      <section className="controller-section">
+        <h2>Versions</h2>
         <Table rows={one.builds} rowKey={(b) => b.id}
                initialSort={{ key: "when", down: true }}
                columns={[
-                 { key: "digest", label: "Build", grow: true,
-                   render: (b) => <><span className="cell-main">{b.imageDigest.slice(7, 19)}</span><span className="cell-sub">{sourceSaid(b.source as Source | undefined)}</span></> },
-                 { key: "when", label: "Built", sort: (a, b) => a.createdAt.localeCompare(b.createdAt),
-                   render: (b) => <span className="cell-meta">{ago(b.createdAt)}</span> },
+                 { key: "digest", label: "Version", grow: true,
+                   render: (b) => <><span className="cell-main">{`version ${one.builds.length - one.builds.indexOf(b)}`}{b.id === one.newest.id ? " · newest" : ""}</span><span className="cell-sub">{sourceSaid(b.source as Source | undefined)}</span></> },
+                 { key: "when", label: "Built", sort: (a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""),
+                   render: (b) => <span className="cell-meta">{b.createdAt ? ago(b.createdAt) : "—"}</span> },
                ]}
-               actions={(b) => <Button onClick={() => onFly?.(b.id)}>Fly this build</Button>} />
-      )}
+               actions={(b) => <Button kind="ghost" onClick={() => onFly?.(b.id)}>Fly this version</Button>} />
+      </section>
     </Page>
   );
 }

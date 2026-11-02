@@ -53,13 +53,18 @@ main:has(> .page) { overflow: hidden; padding: 0; display: flex; flex-direction:
   background: linear-gradient(180deg, rgba(7, 18, 32, 0.0), rgba(7, 18, 32, 0.6));
 }
 .page-top:not(:has(.tabs)) { padding-bottom: var(--s4); }
-.crumb {
-  min-height: 0; display: inline-flex; align-items: center; gap: var(--s1); margin: 0 0 var(--s2) calc(-1 * var(--s2));
-  height: 24px; padding: 0 var(--s2); border: 0; border-radius: var(--r-control);
-  background: transparent; color: var(--faint); font: var(--t-meta) var(--font); cursor: pointer;
+.back {
+  flex: none; align-self: flex-end; display: inline-grid; place-items: center; min-height: 0;
+  width: 32px; height: 32px; margin-bottom: 2px; padding: 0; border: 1px solid var(--edge); border-radius: var(--r-control);
+  background: transparent; color: var(--faint); cursor: pointer;
 }
-.crumb:hover { background: var(--shelf); color: var(--plain); }
-.page-title-row { display: flex; align-items: center; gap: var(--s4); min-height: var(--h-large); }
+.back:hover { background: var(--shelf); border-color: var(--edge-lit); color: var(--plain); }
+.crumb {
+  display: block; min-height: 0; height: auto; margin: 0 0 2px; padding: 0; border: 0;
+  background: transparent; color: var(--faint); font: 500 var(--t-meta)/1.4 var(--font); cursor: pointer;
+}
+.crumb:hover { color: var(--plain); }
+.page-title-row { display: flex; align-items: center; gap: var(--s3); min-height: var(--h-large); }
 .page-titles { flex: 1; min-width: 0; }
 .page-titles h1 {
   display: flex; align-items: center; gap: var(--s2); margin: 0;

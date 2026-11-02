@@ -85,9 +85,14 @@ export function Page({ title, subtitle, info, crumb, onCrumb, actions, tabs, tab
   return (
     <div className="page">
       <header className="page-top">
-        {crumb ? <button type="button" className="crumb" onClick={onCrumb}>‹ {crumb}</button> : null}
         <div className="page-title-row">
+          {crumb ? (
+            <button type="button" className="back" onClick={onCrumb} aria-label={`Back to ${crumb}`} title={`Back to ${crumb}`}>
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
+          ) : null}
           <div className="page-titles">
+            {crumb ? <button type="button" className="crumb" onClick={onCrumb}>{crumb}</button> : null}
             <h1>{title}{info ? <Info>{info}</Info> : null}</h1>
             {subtitle ? <p className="page-subtitle">{subtitle}</p> : null}
           </div>
@@ -106,6 +111,24 @@ export function Page({ title, subtitle, info, crumb, onCrumb, actions, tabs, tab
         {toolbar ? <div className="toolbar">{toolbar}</div> : null}
       </header>
       <div className={`page-body${wide ? " wide" : ""}`}>{children}</div>
+    </div>
+  );
+}
+
+/** One of a few views of the same thing, side by side. Not for different kinds of thing. */
+export function Segmented<K extends string>({ options, value, onChange, label }: {
+  options: { key: K; label: React.ReactNode; count?: number }[];
+  value: K;
+  onChange: (key: K) => void;
+  label?: string;
+}): React.JSX.Element {
+  return (
+    <div className="segmented" role="group" aria-label={label}>
+      {options.map((o) => (
+        <button key={o.key} type="button" aria-pressed={o.key === value} onClick={() => onChange(o.key)}>
+          {o.label}{o.count !== undefined ? <small>{o.count.toLocaleString()}</small> : null}
+        </button>
+      ))}
     </div>
   );
 }

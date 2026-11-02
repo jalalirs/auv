@@ -70,7 +70,7 @@ export function ReconstructionPage({ platform, held, packages, id, onBack, onOpe
 
   return (
     <>
-      <PageHead title={one.name} back="From a dive video" onBack={onBack}
+      <PageHead title={one.name} back="Objects" onBack={onBack}
                 says={one.brief.video.name ? `Rebuilt from ${one.brief.video.name}.` : undefined}
                 aside={<Pill kind={state.kind}>{state.said}</Pill>} />
       {state.doing && one.state !== "failed" ? <p className="note">{state.doing}</p> : null}

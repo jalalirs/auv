@@ -13,7 +13,6 @@ import { kindSaid } from "./AssetDetail.js";
 import type { Held } from "./Deck.js";
 import { Card, Empty, Pill, ago } from "./parts.js";
 import { Button, Dialog, Page, SkeletonCards } from "../ui/components.js";
-import { PLACES_TABS } from "./placesTabs.js";
 
 const VIDEO = /\.(mp4|mov|mkv)$/i;
 const MODEL = /\.(glb|gltf|obj)$/i;
@@ -50,15 +49,12 @@ export function stateOf(one: Reconstruction): { kind?: "good" | "bad" | "busy"; 
   }
 }
 
-export function Reconstructions({ platform, held, onOpen, onOpenAsset, onBack, onTab }: {
+export function Reconstructions({ platform, held, onOpen, onOpenAsset }: {
   platform: Platform;
   held: Held;
   onOpen: (id: string) => void;
   /** A structure's or a survey's own page. */
   onOpenAsset?: (id: string) => void;
-  onBack: () => void;
-  /** To Places' other tabs. */
-  onTab?: (tab: string) => void;
 }): React.JSX.Element {
   const institution = held.institution;
   const [list, setList] = useState<Reconstruction[] | undefined>();
@@ -221,10 +217,9 @@ export function Reconstructions({ platform, held, onOpen, onOpenAsset, onBack, o
   };
 
   return (
-    <Page title="Places" subtitle="Assets: reefs and structures made on their own, ready to compose into a place."
+    <Page title="Objects" subtitle="What goes into a place: reefs from video, structures, models."
           info="Upload a swim over a reef and the platform rebuilds the reef in 3D: where the camera was in every frame, the reef as splats, the survey tape painted out. It is your institution's, in its own frame; putting it on a map is the next step, on its page."
-          tabs={PLACES_TABS} tab="assets" onTab={(key) => onTab?.(key)}
-          actions={institution ? <Button kind="primary" onClick={() => setAdding(true)}>New asset</Button> : undefined}>
+          actions={institution ? <Button kind="primary" onClick={() => setAdding(true)}>New object</Button> : undefined}>
       <div className="asset-tools">
         <div className="segmented" role="tablist">
           {(["all", "making", "failed"] as const).map((key) => (
@@ -237,7 +232,7 @@ export function Reconstructions({ platform, held, onOpen, onOpenAsset, onBack, o
       </div>
       {list === undefined ? <SkeletonCards /> : shown.length === 0 ? (
         showing === "all"
-          ? <Empty title="No assets yet">Make one with New asset: a reef from a dive video, a survey, a model or a pipeline route.</Empty>
+          ? <Empty title="No objects yet">Make one with New object: a reef from a dive video, a survey, a model or a pipeline route.</Empty>
           : <Empty title={showing === "making" ? "Nothing being made" : "Nothing failed"}>{showing === "making" ? "Every asset has finished." : "Every asset that was started was made."}</Empty>
       ) : (
         <div className="cards">
@@ -252,7 +247,7 @@ export function Reconstructions({ platform, held, onOpen, onOpenAsset, onBack, o
         </div>
       )}
       {adding ? (
-        <Dialog title="New asset" onClose={() => { if (!sent) setAdding(false); }}>
+        <Dialog title="New object" onClose={() => { if (!sent) setAdding(false); }}>
           <div className="new-asset">
           <label className="asset-making">Made from
             <select value={making} onChange={(e) => { setMaking(e.target.value as Making); setFile(undefined); setTrouble(""); }}>

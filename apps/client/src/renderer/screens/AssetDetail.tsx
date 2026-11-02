@@ -47,12 +47,12 @@ export function AssetDetail({ platform, id, onBack, onCompose }: {
   }, [platform, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!one) {
-    return <Page title="An asset" crumb="Assets" onCrumb={onBack}>{trouble ? <p className="note">{trouble}</p> : <SkeletonLines lines={6} />}</Page>;
+    return <Page title="An asset" crumb="Objects" onCrumb={onBack}>{trouble ? <p className="note">{trouble}</p> : <SkeletonLines lines={6} />}</Page>;
   }
   const last = one.steps[one.steps.length - 1];
   const facts = { ...(one.stats ?? {}), ...(one.footprint ?? {}) };
   return (
-    <Page title={one.name} crumb="Assets" onCrumb={onBack}
+    <Page title={one.name} crumb="Objects" onCrumb={onBack}
           subtitle={`${kindSaid(one)} · made ${ago(one.createdAt)}`}
           actions={one.state === "ready"
             ? <Button kind="primary" onClick={() => onCompose(one.id)}>{one.kind === "bathymetry" ? "Build a place on it" : "Put it in a new place"}</Button>

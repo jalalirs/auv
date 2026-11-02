@@ -41,7 +41,7 @@ export function VehicleDetail({ held, packages, id, slug, onBack }: {
   if (dynamics === undefined) {
     return (
       <>
-        <PageHead title={name} says={summary} back="Fleet" onBack={onBack} />
+        <PageHead title={name} says={summary} back="Vehicles" onBack={onBack} />
         {pkg === undefined && vehicle !== undefined
           ? <SkeletonLines lines={5} />
           : <Empty title="No dynamics">This vehicle's package states no dynamics, so it cannot be flown and there is nothing to explain.</Empty>}
@@ -88,7 +88,7 @@ function Explained({ name, summary, dynamics, picture, credit, source, flyable, 
 
   return (
     <>
-      <PageHead title={name} says={summary} back="Fleet" onBack={onBack}
+      <PageHead title={name} says={summary} back="Vehicles" onBack={onBack}
                 aside={<Pill kind={flyable ? "good" : undefined}>{flyable ? "flyable" : notYet}</Pill>} />
 
       <div className="two">

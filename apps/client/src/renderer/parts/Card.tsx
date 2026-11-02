@@ -31,13 +31,17 @@ export interface CardProps {
 
 export function Card({ picture, art, name, detail, specs, corner, chosen, onChoose, onOpen, later, reading, actions }: CardProps): React.JSX.Element {
   const usable = later === undefined;
+  // A card with actions in its foot opens when it is clicked, and says so
+  // once: not an "open" link beside an Open button.
+  const opens = onChoose === undefined && actions !== undefined ? onOpen : undefined;
+  const press = onChoose ?? opens;
   return (
-    <div className={`card${chosen ? " chosen" : ""}${usable ? "" : " later"}`}
-         role={onChoose ? "button" : undefined}
+    <div className={`card${chosen ? " chosen" : ""}${usable ? "" : " later"}${opens ? " opens" : ""}`}
+         role={press ? "button" : undefined}
          aria-pressed={onChoose ? chosen : undefined}
-         tabIndex={onChoose ? 0 : undefined}
-         onClick={usable ? onChoose : undefined}
-         onKeyDown={(e) => { if (usable && onChoose && (e.key === "Enter" || e.key === " ")) onChoose(); }}>
+         tabIndex={press ? 0 : undefined}
+         onClick={usable || opens ? press : undefined}
+         onKeyDown={(e) => { if ((usable || opens) && press && (e.key === "Enter" || e.key === " ")) press(); }}>
       <div className="picture">
         {reading
           ? <Skeleton className="cover" />
@@ -52,7 +56,7 @@ export function Card({ picture, art, name, detail, specs, corner, chosen, onChoo
       <div className="said">
         <div className="title-row">
           <strong>{name}</strong>
-          {onOpen === undefined ? null : (
+          {onOpen === undefined || opens !== undefined ? null : (
             <a className="open" onClick={(e) => { e.stopPropagation(); onOpen(); }}>open ›</a>
           )}
         </div>

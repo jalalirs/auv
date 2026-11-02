@@ -8,8 +8,8 @@
 // there, or the only one if there is only one. Nothing else is on this page;
 // what became of earlier dives is the Dives page's business.
 
-import { Button, Page, Status } from "../ui/components.js";
-import { FLY_TABS } from "./flyTabs.js";
+import { Button, Page, Segmented, Status } from "../ui/components.js";
+import { RUN_FROM } from "./flyTabs.js";
 import { useEffect, useMemo, useState } from "react";
 
 import type { AssetVersion, Mission, Platform } from "@coral-city/api";
@@ -82,13 +82,13 @@ const ASKING_LOOKS_LIKE =
  * be made by hand as well: the same task, the same water, two controllers.
  */
 export const BUILT_IN: { key: string; name: string; says: string }[] = [
-  { key: "pursue", name: "The platform's planner",
+  { key: "pursue", name: "Route planner",
     says: "Works out a route for the task and flies it. The floor a written controller has to beat." },
-  { key: "wary", name: "The planner, with its eyes open",
+  { key: "wary", name: "Route planner with sonar",
     says: "The same route, flown with the sonar on: it steers round what it sees "
         + "and nothing told it about. The comparison that says whether a sonar earns its place." },
-  { key: "ponder", name: "The one that thinks",
-    says: "Given the goal rather than a route, it decides for itself — on a slow loop, "
+  { key: "ponder", name: "Goal planner",
+    says: "Given the goal rather than a route, it decides for itself, on a slow loop, "
         + "the way a controller with a model in it would." },
 ];
 
@@ -106,7 +106,7 @@ function remembered<T extends { id: string }>(key: string, all: T[]): string | u
   return all.length === 1 ? all[0]!.id : undefined;
 }
 
-export function Dive({ platform, held, packages, free, devices, onDiving, onChanged, onOpen, onPlan }: {
+export function Dive({ platform, held, packages, free, devices, onDiving, onChanged, onOpen, onPlan, onBack }: {
   platform: Platform;
   held: Held;
   packages: Packages;
@@ -115,8 +115,9 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
   onDiving: (dive: string, run: string) => void;
   onChanged: () => void;
   onOpen: (where: Where) => void;
-  /** To Fly's other tab, a plan of work. */
+  /** Fly a mission instead. */
   onPlan?: () => void;
+  onBack?: () => void;
 }): React.JSX.Element {
   const [place, setPlace] = useState(() => remembered(WHERE, held.places));
   const [vehicle, setVehicle] = useState(() => remembered(WHAT, held.vehicles));
@@ -430,7 +431,7 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
   // One row per controller, its newest build chosen; earlier builds stay on
   // the dives that pinned them and in the count.
   const controllers: Choice[] = [
-    { key: MANUAL, name: "You, at the keys",
+    { key: MANUAL, name: "By hand",
       says: "W A S D, Q E, space and C, or a gamepad; the hold has it whenever your hands are off",
       art: <ControllerArt manual /> },
     ...(task.key === "piloted" ? [] : BUILT_IN.map(({ key, name, says }) => ({
@@ -461,13 +462,13 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
   const alert = sea.at === "known" ? sea.record.now.alertLevel?.value : undefined;
 
   return (
-    <Page title="Fly" subtitle="A single task: a place, a vehicle, and what to do there."
-          tabs={FLY_TABS} tab="task" onTab={(key) => { if (key === "plan") onPlan?.(); }} wide
+    <Page title="New run" subtitle="A single task: a place, a vehicle, and what to do there." crumb="Runs" onCrumb={onBack}
+          toolbar={<Segmented label="What it flies" value="task" options={RUN_FROM} onChange={(key) => { if (key === "plan") onPlan?.(); }} />} wide
           actions={<>
             <Status tone={free > 0 ? "good" : "bad"}>{free > 0 ? `${free} of ${devices} machines free` : "every machine is busy"}</Status>
             <Button kind="primary" title={notYet ?? "Put a dive in the water"}
                     disabled={asking || !ready || task.unavailable !== undefined} onClick={() => void go()}>
-              {asking ? "Asking for water…" : "Dive"}
+              {asking ? "Starting…" : "Start"}
             </Button>
           </>}>
       <section>

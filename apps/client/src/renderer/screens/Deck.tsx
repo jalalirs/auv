@@ -22,9 +22,10 @@ import { LayingOut } from "./Layout.js";
 import { Designer } from "./Designer.js";
 import { Fly } from "./Fly.js";
 import { Missions } from "./Missions.js";
-import { Swept } from "./Sweeps.js";
+import { ManyRun } from "./Run.js";
 import { PlaceDetail } from "./PlaceDetail.js";
 import { Places } from "./Places.js";
+import { Store } from "./Store.js";
 import { Profile } from "./Profile.js";
 import { Runs } from "./Runs.js";
 import { Replay } from "./Replay.js";
@@ -44,7 +45,9 @@ export type Where =
   // Flying: a plan of work once or under doubts; a single task is "dive".
   | { page: "fly"; mission?: string }
   | { page: "dive" }
-  | { page: "places"; tab?: string }
+  | { page: "places" }
+  // What iOcean offers: its places and vehicles.
+  | { page: "store" }
   | { page: "place"; id: string }
   // A new place, built from its data on the platform's machines.
   | { page: "build"; base?: string; with?: string }
@@ -74,8 +77,9 @@ export type Where =
 
 type Rail = Where["page"];
 
-const HOME: Where = { page: "fly" };
-const PAGES_KNOWN = new Set<string>(["fly", "dive", "places", "place", "build", "reconstructions", "reconstruction", "asset",
+// The app opens on its runs: running a vehicle is what it is for.
+const HOME: Where = { page: "runs" };
+const PAGES_KNOWN = new Set<string>(["fly", "dive", "places", "store", "place", "build", "reconstructions", "reconstruction", "asset",
   "layout", "missions", "mission", "sweep", "fleet", "vehicle", "autonomy", "controller", "runs", "replay", "profile"]);
 const knownPage = (where: Address): boolean => PAGES_KNOWN.has(where.page);
 /** What scrolls on a page: its body, or the main area on a page not yet rebuilt. */
@@ -83,16 +87,17 @@ const scroller = (): HTMLElement | null =>
   document.querySelector<HTMLElement>("main .page-body") ?? document.querySelector<HTMLElement>("main");
 
 const PAGES: { key: Rail; name: string; count?: (held: Held) => number | undefined; is: (where: Where) => boolean }[] = [
-  { key: "fly", name: "Fly", is: (w) => w.page === "fly" || w.page === "dive" },
+  { key: "runs", name: "Runs", count: (h) => (h.runsRead ? h.runs.length : undefined),
+    is: (w) => w.page === "runs" || w.page === "sweep" || w.page === "replay" || w.page === "fly" || w.page === "dive" },
   { key: "missions", name: "Missions",
     is: (w) => w.page === "missions" || w.page === "mission" },
   { key: "places", name: "Places", count: (h) => h.yourPlaces.length,
-    is: (w) => w.page === "places" || w.page === "place" || w.page === "layout" || w.page === "build"
-      || w.page === "reconstructions" || w.page === "reconstruction" || w.page === "asset" },
-  { key: "runs", name: "Runs", count: (h) => (h.runsRead ? h.runs.length : undefined),
-    is: (w) => w.page === "runs" || w.page === "sweep" || w.page === "replay" },
-  { key: "fleet", name: "Fleet", count: (h) => h.vehicles.length, is: (w) => w.page === "fleet" || w.page === "vehicle" },
-  { key: "autonomy", name: "Controllers", is: (w) => w.page === "autonomy" || w.page === "controller" },
+    is: (w) => w.page === "places" || w.page === "place" || w.page === "layout" || w.page === "build" },
+  { key: "reconstructions", name: "Objects",
+    is: (w) => w.page === "reconstructions" || w.page === "reconstruction" || w.page === "asset" },
+  { key: "fleet", name: "Vehicles", count: (h) => h.vehicles.length, is: (w) => w.page === "fleet" || w.page === "vehicle" },
+  { key: "autonomy", name: "Controllers", count: (h) => h.controllers.length, is: (w) => w.page === "autonomy" || w.page === "controller" },
+  { key: "store", name: "Store", is: (w) => w.page === "store" },
 ];
 
 // wants a curated list of currents somebody made once. **Recordings** was a
@@ -224,22 +229,27 @@ export function Deck({ platform, onDiving, onSignOut }: {
                onDiving={onDiving} onChanged={read}
                onSwept={(id) => setWhere({ page: "sweep", id })}
                onSingleTask={() => setWhere({ page: "dive" }, { replace: true })}
+               onBack={() => back({ page: "runs" })}
                onDesign={(id, place) => setWhere({ page: "mission", id, place })} />
         ) : where.page === "dive" ? (
           <Dive platform={platform} held={held} packages={packages} free={free} devices={devices}
                 onDiving={onDiving} onChanged={read} onOpen={setWhere}
-                onPlan={() => setWhere({ page: "fly" }, { replace: true })} />
+                onPlan={() => setWhere({ page: "fly" }, { replace: true })}
+                onBack={() => back({ page: "runs" })} />
         ) : where.page === "places" ? (
-          <Places platform={platform} held={held} packages={packages} tab={where.tab ?? "places"}
-                  onTab={(tab) => setWhere({ page: "places", tab: tab === "places" ? undefined : tab }, { replace: true })}
+          <Places platform={platform} held={held} packages={packages}
                   onOpen={(id) => setWhere({ page: "place", id })}
                   onBuild={() => setWhere({ page: "build" })}
-                  onBuildOn={(id) => setWhere({ page: "build", base: id })}
-                  onChanged={read}
-                  onFromVideo={() => setWhere({ page: "reconstructions" }, { replace: true })} />
+                  onStore={() => setWhere({ page: "store" })}
+                  onChanged={read} />
+        ) : where.page === "store" ? (
+          <Store platform={platform} held={held} packages={packages}
+                 onOpenPlace={(id) => setWhere({ page: "place", id })}
+                 onOpenVehicle={(slug) => setWhere({ page: "vehicle", slug })}
+                 onBuildOn={(id) => setWhere({ page: "build", base: id })}
+                 onChanged={read} />
         ) : where.page === "reconstructions" ? (
-          <Reconstructions platform={platform} held={held} onBack={() => setWhere({ page: "places" }, { replace: true })}
-                           onTab={(tab) => setWhere({ page: "places", tab: tab === "places" ? undefined : tab }, { replace: true })}
+          <Reconstructions platform={platform} held={held}
                            onOpen={(id) => setWhere({ page: "reconstruction", id })}
                            onOpenAsset={(id) => setWhere({ page: "asset", id })} />
         ) : where.page === "asset" ? (
@@ -270,13 +280,14 @@ export function Deck({ platform, onDiving, onSignOut }: {
                     onBack={() => back({ page: "missions" })}
                     onFly={(id) => setWhere({ page: "fly", mission: id })} />
         ) : where.page === "sweep" ? (
-          <Swept platform={platform} sweep={where.id} onBack={() => back({ page: "runs" })} />
+          <ManyRun platform={platform} sweep={where.id} onBack={() => back({ page: "runs" })} />
         ) : where.page === "fleet" ? (
           <Fleet held={held} packages={packages}
-                 onOpen={(of) => setWhere({ page: "vehicle", ...of })} />
+                 onOpen={(of) => setWhere({ page: "vehicle", ...of })}
+                 onStore={() => setWhere({ page: "store" })} />
         ) : where.page === "vehicle" ? (
           <VehicleDetail held={held} packages={packages} id={where.id} slug={where.slug}
-                         onBack={() => back({ page: "fleet" })} />
+                         onBack={() => back(where.slug ? { page: "store" } : { page: "fleet" })} />
         ) : where.page === "autonomy" ? (
           <Autonomy platform={platform} held={held} onChanged={read}
                     onFly={(stack) => { try { localStorage.setItem("coral-city.controller", stack); } catch { /* remembered or not */ } setWhere({ page: "dive" }); }}
@@ -293,9 +304,11 @@ export function Deck({ platform, onDiving, onSignOut }: {
           <Runs key={`${where.by ?? ""}|${where.view ?? ""}`} platform={platform} held={held} onChanged={read}
                 by={where.by} view={where.view}
                 onReplay={(dive, run) => setWhere({ page: "replay", dive, run })}
-                onSweep={(id) => setWhere({ page: "sweep", id })} />
+                onSweep={(id) => setWhere({ page: "sweep", id })}
+                onNew={() => setWhere({ page: "fly" })} />
         ) : where.page === "replay" ? (
           <Replay platform={platform} dive={where.dive} run={where.run}
+                  one={held.runs.find((r) => r.run.id === where.run)}
                   onBack={() => back({ page: "runs" })} />
         ) : (
           <Profile platform={platform} held={held} free={free} devices={devices} onSignOut={onSignOut}

@@ -88,11 +88,14 @@ export function PageHead({ title, says, back, onBack, aside }: {
   const first = long ? `${says!.split(/(?<=[.;:])\s/)[0]!.replace(/[.;:]$/, "")}` : says;
   return (
     <div className="page-head">
-      {back === undefined ? null : (
-        <button type="button" className="crumb" onClick={onBack}>‹ {back}</button>
-      )}
       <div className="page-head-row">
+        {back === undefined ? null : (
+          <button type="button" className="back" onClick={onBack} aria-label={`Back to ${back}`} title={`Back to ${back}`}>
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
+        )}
         <div className="page-titles">
+          {back === undefined ? null : <button type="button" className="crumb" onClick={onBack}>{back}</button>}
           <h1>{title}{long ? <Info>{says}</Info> : null}</h1>
           {first === undefined ? null : <p className="page-subtitle">{first}</p>}
         </div>
