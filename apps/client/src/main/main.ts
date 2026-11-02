@@ -72,7 +72,7 @@ function open(): void {
     show: false,
     icon,
     webPreferences: {
-      preload: path.join(here, "preload.js"),
+      preload: path.join(here, "preload.cjs"),
       // Nothing the renderer shows is authored by us alone — a place's name and
       // a vehicle's description come from the platform — so it gets no Node.
       nodeIntegration: false,

@@ -1,13 +1,13 @@
 {
   "name": "@coral-city/client",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Dive a vehicle you brought, in water we keep",
   "main": "dist/main/main.js",
   "type": "module",
   "scripts": {
     "build:renderer": "vite build --config vite.renderer.config.mts",
-    "build:main": "vite build --config vite.main.config.mts",
+    "build:main": "vite build --config vite.main.config.mts && vite build --config vite.preload.config.mts",
     "build": "pnpm build:renderer && pnpm build:main",
     "start": "pnpm build && electron .",
     "dmg": "pnpm build && pnpm dlx electron-builder@26.0.12 --mac dmg",
