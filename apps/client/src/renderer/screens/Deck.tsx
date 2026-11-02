@@ -143,10 +143,9 @@ export function Deck({ platform, onDiving }: {
   if (held === undefined) {
     return (
       <div className="middle boot">
-        {/* Shown whole rather than cropped to fill: the picture has its own
-            wordmark down the left, and anything that crops to the window eats
-            it on the first narrow screen. The blur behind fills what is left
-            over, so there are no bars and nothing is lost. */}
+        {/* Fills the window, cropped from the right, because the picture has
+            its own wordmark down the left. A window narrower than 3:2 shows it
+            whole instead, with the blur behind filling what is left over. */}
         <img className="boot-art" src={boot} alt="" />
         <div className="badge-big">
           <img src={mark} alt="" />

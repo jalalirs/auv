@@ -626,7 +626,9 @@ canvas.minimap.carries { cursor: crosshair; }
 
 /* ── the boot: the image the application opens on ─────────────────────────── */
 
-.boot { position: relative; background: var(--abyss); overflow: hidden; }
+/* Runs up under the drag strip, so the picture reaches the window's top edge
+   instead of starting below a band of plain sea. */
+.boot { position: relative; background: var(--abyss); overflow: hidden; margin-top: -28px; }
 /* The same picture, blown up and blurred, filling whatever the whole one
    does not cover. It is the picture's own colours rather than a flat panel,
    so a window of any shape looks deliberate. */
@@ -637,8 +639,12 @@ canvas.minimap.carries { cursor: crosshair; }
 }
 .boot .boot-art {
   position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: contain; object-position: center;
+  /* Fills the window, cropped from the right: the wordmark is down the left. */
+  object-fit: cover; object-position: 15% center;
 }
+/* Narrower than 3:2 the crop would reach the wordmark, so it is shown whole
+   and the blur behind fills the rest. */
+@media (max-aspect-ratio: 3/2) { .boot .boot-art { object-fit: contain; object-position: center; } }
 .boot::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background:
