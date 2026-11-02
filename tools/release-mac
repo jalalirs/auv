@@ -73,8 +73,8 @@ done
 
 # A Finder window open on the old output writes .DS_Store while it is being
 # removed, so try twice.
-rm -rf "${WORK:?}/stage" "${WORK:?}/out" 2>/dev/null || { sleep 1; rm -rf "${WORK:?}/stage" "${WORK:?}/out"; }
-mkdir -p "${WORK}/stage" "${WORK}/out"
+rm -rf "${WORK:?}/stage" 2>/dev/null || { sleep 1; rm -rf "${WORK:?}/stage"; }
+mkdir -p "${WORK}/stage"
 cp -R "${CLIENT}/dist" "${CLIENT}/assets" "${CLIENT}/electron-builder.yml" "${WORK}/stage/"
 cat >"${WORK}/stage/package.json" <<EOF
 {
@@ -88,6 +88,9 @@ cat >"${WORK}/stage/package.json" <<EOF
 }
 EOF
 [ "${MODE}" != --stage ] || { say "staged ${WORK}/stage"; exit 0; }
+# Only a Mac build clears the installers: release-box stages without touching them.
+rm -rf "${WORK:?}/out" 2>/dev/null || { sleep 1; rm -rf "${WORK:?}/out"; }
+mkdir -p "${WORK}/out"
 
 SIGN=(-c.mac.identity=null)
 [ "${MODE}" = --unsigned ] || SIGN=(-c.mac.identity="${IDENTITY#Developer ID Application: }")

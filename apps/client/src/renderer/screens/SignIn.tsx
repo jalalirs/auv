@@ -1,16 +1,15 @@
-// Signing in to a platform.
+// Signing in, with Google and nothing else.
 //
-// The address is asked for rather than assumed, because the platform is
-// somebody's own box and there is no such thing as the one true iocean. It
-// is remembered between launches; the password never is.
+// Signing in and signing up are the same button: the platform makes a person
+// and their own space the first time it sees a Google account. Nobody signs in
+// with a secret (those are for programs, not people), and the platform is fixed
+// when the app is built rather than typed in.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { Platform, Refused, Unreachable } from "@coral-city/api";
+import { Platform, Refused } from "@coral-city/api";
 
 import { Badge } from "./parts.js";
-
-const REMEMBERED = "coral-city.platform";
 
 /**
  * Why nothing answered, when it can be told.
@@ -25,7 +24,7 @@ const REMEMBERED = "coral-city.platform";
 /**
  * The platform an installed copy signs in to, fixed when it is built
  * (VITE_IOCEAN_PLATFORM, set by tools/release-mac); a copy run from source
- * looks for one on this machine.
+ * looks for one on this machine unless .env.local names another.
  */
 const PLATFORM = (import.meta.env.VITE_IOCEAN_PLATFORM as string | undefined) ?? "http://127.0.0.1:18080";
 
@@ -48,51 +47,12 @@ export function whyNothingAnswered(address: string, here: string | null): string
 export function SignIn({ onSignedIn }: {
   onSignedIn: (platform: Platform) => void;
 }): React.JSX.Element {
-  const [address, setAddress] = useState("");
-  const [email, setEmail] = useState("");
-  const [secret, setSecret] = useState("");
   const [trying, setTrying] = useState(false);
   const [refusal, setRefusal] = useState("");
 
-  // Filled from a local file while this is being built, so that trying the
-  // application does not begin with typing a forty-eight character secret.
-  // The file is not in the repository and never should be; without it these are
-  // empty and the form behaves as it will for everybody else.
-  const waiting = (import.meta.env.VITE_IOCEAN_PLATFORM ?? import.meta.env.VITE_CORAL_CITY_PLATFORM) as string | undefined;
-  const known = (import.meta.env.VITE_IOCEAN_EMAIL ?? import.meta.env.VITE_CORAL_CITY_EMAIL) as string | undefined;
-  const kept = (import.meta.env.VITE_IOCEAN_SECRET ?? import.meta.env.VITE_CORAL_CITY_SECRET) as string | undefined;
-
-  useEffect(() => {
-    setAddress(waiting ?? localStorage.getItem(REMEMBERED) ?? PLATFORM);
-    if (known !== undefined) setEmail(known);
-    if (kept !== undefined) setSecret(kept);
-  }, [waiting, known, kept]);
-
-  // And straight in, when all three are there. Signing in is not the part being
-  // worked on, and having to do it by hand forty times an afternoon is how a
-  // person stops trying the thing they are building.
-  const went = useRef(false);
-  useEffect(() => {
-    if (went.current) return;
-    if (waiting === undefined || known === undefined || kept === undefined) return;
-    went.current = true;
-    void (async () => {
-      setTrying(true);
-      try {
-        onSignedIn(await Platform.signIn(waiting, known, kept));
-      } catch (problem) {
-        setRefusal(problem instanceof Unreachable
-          ? whyNothingAnswered(waiting, typeof location === "undefined" ? null : location.href)
-          : problem instanceof Refused ? problem.message : "That did not work.");
-      } finally {
-        setTrying(false);
-      }
-    })();
-  }, [waiting, known, kept, onSignedIn]);
-
-  // Signing in with Google happens in the system browser and comes back
-  // through iocean://signed-in with a one-minute code, traded here for a
-  // session. Only the desktop application can hear that link.
+  // Google happens in the system browser and comes back through
+  // iocean://signed-in with a one-minute code, traded here for a session. Only
+  // the desktop application can hear that link.
   const auth = typeof window === "undefined" ? undefined : window.coralCity?.auth;
   useEffect(() => {
     if (auth === undefined) return;
@@ -101,48 +61,23 @@ export function SignIn({ onSignedIn }: {
         setTrying(true);
         setRefusal("");
         try {
-          const platform = await Platform.exchange(address, code);
-          localStorage.setItem(REMEMBERED, platform.address);
-          onSignedIn(platform);
+          onSignedIn(await Platform.exchange(PLATFORM, code));
         } catch (problem) {
           setRefusal(problem instanceof Refused
             ? "That sign-in had expired. Continue with Google again."
-            : whyNothingAnswered(address, typeof location === "undefined" ? null : location.href));
+            : whyNothingAnswered(PLATFORM, typeof location === "undefined" ? null : location.href));
         } finally {
           setTrying(false);
         }
       })();
     });
-  }, [auth, address, onSignedIn]);
+  }, [auth, onSignedIn]);
 
   function google(): void {
     if (auth === undefined) return;
     setRefusal("");
-    auth.openGoogle(Platform.googleSignIn(address, "desktop"))
-      .catch(() => setRefusal("That platform address does not look right."));
-  }
-
-  async function submit(event: React.FormEvent): Promise<void> {
-    event.preventDefault();
-    setTrying(true);
-    setRefusal("");
-    try {
-      const platform = await Platform.signIn(address, email, secret);
-      localStorage.setItem(REMEMBERED, platform.address);
-      onSignedIn(platform);
-    } catch (problem) {
-      // A platform that is not there and a platform that said no are different
-      // problems with different remedies, and telling somebody to check their
-      // password when their laptop is offline wastes their afternoon.
-      setRefusal(
-        problem instanceof Unreachable
-          ? whyNothingAnswered(address, typeof location === "undefined" ? null : location.href)
-          : problem instanceof Refused
-            ? problem.message
-            : "That did not work.");
-    } finally {
-      setTrying(false);
-    }
+    auth.openGoogle(Platform.googleSignIn(PLATFORM, "desktop"))
+      .catch(() => setRefusal("The browser did not open. Try again."));
   }
 
   // Opened on the image of the thing itself: a vehicle over a reef, buoys in
@@ -151,35 +86,19 @@ export function SignIn({ onSignedIn }: {
   return (
     <div className="middle boot">
       <Badge under="Dive a vehicle you brought, in water we keep" />
-      <form className="panel" onSubmit={submit}>
-        <label>
-          platform
-          <input value={address} onChange={(e) => setAddress(e.target.value)}
-                 placeholder="http://100.76.65.1:18080" spellCheck={false} />
-        </label>
-        {auth !== undefined && (
+      <div className="panel">
+        {auth !== undefined ? (
           <>
-            <button type="button" className="google" onClick={google} disabled={trying || !address}>
-              Continue with Google
+            <button type="button" className="google" onClick={google} disabled={trying}>
+              {trying ? "Signing in…" : "Continue with Google"}
             </button>
-            <p className="or">Your browser opens; you come back here signed in. An administrator can sign in with an email and secret below.</p>
+            <p className="or">Your browser opens to sign in or sign up, and you come back here.</p>
           </>
+        ) : (
+          <p className="or">Sign in from the iOcean app.</p>
         )}
-        <label>
-          who you are
-          <input value={email} onChange={(e) => setEmail(e.target.value)}
-                 type="email" autoComplete="username" spellCheck={false} />
-        </label>
-        <label>
-          secret
-          <input value={secret} onChange={(e) => setSecret(e.target.value)}
-                 type="password" autoComplete="current-password" />
-        </label>
-        <button disabled={trying || !address || !email || !secret}>
-          {trying ? "Signing in…" : "Sign in"}
-        </button>
         <p className="refusal">{refusal}</p>
-      </form>
+      </div>
     </div>
   );
 }
