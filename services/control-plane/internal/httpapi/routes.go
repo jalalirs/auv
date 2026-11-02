@@ -208,6 +208,15 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/store/places",
 		Summary: "the map store: places iOcean built and published, open to all; near an area, those overlapping it",
 		Action:  policy.PlatformReadCatalogue, Resource: atPlatform(), Handle: d.storePlaces})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/store/{cityId}/copies",
+		Summary: "copy a place from the map store into the organisation's own places",
+		Action:  policy.CityAdopt, Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.copyStorePlace})
+	rt.register(Route{Method: "GET", Pattern: "/api/v1/store/objects",
+		Summary: "the objects iOcean offers in the store, open to all",
+		Action:  policy.PlatformReadCatalogue, Resource: atPlatform(), Handle: d.storeObjects})
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/store/objects/{assetId}/copies",
+		Summary: "copy an object from the store into the organisation's own objects",
+		Action:  policy.CityFound, Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.copyStoreObject})
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/store/{cityId}/adopt",
 		Summary: "add a place from the map store to the organisation's places",
 		Action:  policy.CityAdopt, Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.adoptStorePlace})

@@ -17,7 +17,7 @@ import { Designer } from "../screens/Designer.js";
 import { Fly } from "../screens/Fly.js";
 import { Missions } from "../screens/Missions.js";
 import { Runs } from "../screens/Runs.js";
-import { LayoutEditor } from "../screens/Layout.js";
+import { PlaceDesigner } from "../screens/PlaceDesigner.js";
 import { Compose } from "../screens/Compose.js";
 import { ManyRun } from "../screens/Run.js";
 import { Replay } from "../screens/Replay.js";
@@ -290,6 +290,9 @@ Object.assign(platform, {
   reconstructionsOf: () => delay([recon(true), { ...recon(false), id: "recon_2", name: "North wall swim" }]),
   listAssets: () => delay(ASSETS),
   getAsset: (id: string) => delay(ASSETS.find((a) => a.id === id) ?? ASSETS[0]!),
+  storeObjects: () => delay([{ ...ASSETS.find((a) => a.id === "recon_v1"), id: "store_obj_1" }]),
+  copyStoreObject: (_org: string, from: string) => { said.push(`copied object ${from}`); return delay({ ...ASSETS[0], id: id("recon") }); },
+  copyStorePlace: (_org: string, city: string) => { said.push(`copied place ${city}`); return delay({ id: id("city"), name: "copy" }); },
   archiveAsset: (id: string) => {
     const at = ASSETS.findIndex((a) => a.id === id);
     const gone = at >= 0 ? ASSETS.splice(at, 1)[0] : undefined;
@@ -314,6 +317,13 @@ Object.assign(platform, {
           start: null, steps: [{ at: now(), step: "done", say: "5 places it fits; the best 0.41 m rms at (998, -1457), -11.5 m deep", phase: "resolve" }] }
       : { id: "map_1", reconstructionId: rid, cityId: "city_new", mode: "own", state: "laying",
           steps: [{ at: now(), step: "plan", say: "a flat seabed at 8 m", phase: "base" }] };
+    mappingAt = Date.now();
+    return delay(mapping);
+  },
+  startPlaceMapping: (city: string, body: Doc) => {
+    said.push(`lay into ${city}: ${JSON.stringify(body)}`);
+    mapping = { id: "map_2", cityId: city, mode: "onto", state: "laying",
+                steps: [{ at: now(), step: "bake", say: "laying the objects into the place", phase: "lay" }] };
     mappingAt = Date.now();
     return delay(mapping);
   },
@@ -454,11 +464,13 @@ function Harness({ packages }: { packages: Packages }) {
                     onBack={() => setWhere((w) => ({ ...w, page: "missions" }))}
                     onFly={(mission) => setWhere((w) => ({ ...w, page: "fly", mission }))} />
         ) : where.page === "layout" ? (
-          <LayoutEditor platform={p} pkg={packages.places.get(where.place ?? "city_tank") as never}
-                        layout={[...store.layouts.values()].find((l) => l.place === (where.place ?? "city_tank"))!.layout as never}
-                        onBack={() => setWhere((w) => ({ ...w, page: "missions" }))} />
+          <PlaceDesigner platform={p} held={held} packages={packages} place={where.place ?? "city_looe"}
+                         layout={[...store.layouts.values()].find((l) => l.place === (where.place ?? "city_looe"))?.layout.id as string | undefined}
+                         onChanged={() => said.push("places read again")} onOpenLayout={(l) => said.push(`layout ${l}`)}
+                         onBack={() => setWhere((w) => ({ ...w, page: "missions" }))} />
         ) : where.page === "build" ? (
-          <Compose platform={p} held={held} chosen={where.mission} onBack={() => said.push("back")} onOpen={(c) => said.push(`open ${c}`)} />
+          <Compose platform={p} held={held} chosen={where.mission} onBack={() => said.push("back")} onOpen={(c) => said.push(`open ${c}`)}
+                   onDesign={(c) => { said.push(`design ${c}`); setWhere((w) => ({ ...w, page: "layout" })); }} />
         ) : where.page === "places" ? (
           <Places platform={p} held={held} packages={packages}
                   onOpen={(c) => said.push(`open ${c}`)} onBuild={() => setWhere((w) => ({ ...w, page: "build" }))}

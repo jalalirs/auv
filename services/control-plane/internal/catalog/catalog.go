@@ -979,3 +979,35 @@ func (s *Store) Files(ctx context.Context, versionID string) ([]File, error) {
 	}
 	return files, rows.Err()
 }
+
+// MarkCopy records that a place was copied from a store place.
+func (s *Store) MarkCopy(ctx context.Context, conn db.Conn, id, from string) error {
+	_, err := conn.Exec(ctx, `UPDATE catalog.city SET copied_from = $2 WHERE id = $1`, id, from)
+	return err
+}
+
+// CopiesByOrgs counts, for each store place, the copies these organisations
+// hold that are not retired.
+func (s *Store) CopiesByOrgs(ctx context.Context, orgIDs []string) (map[string]int, error) {
+	copies := map[string]int{}
+	if len(orgIDs) == 0 {
+		return copies, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT copied_from, count(*) FROM catalog.city
+		WHERE copied_from IS NOT NULL AND owned_by_org = ANY($1) AND retired_at IS NULL
+		GROUP BY copied_from`, orgIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var from string
+		var n int
+		if err := rows.Scan(&from, &n); err != nil {
+			return nil, err
+		}
+		copies[from] = n
+	}
+	return copies, rows.Err()
+}

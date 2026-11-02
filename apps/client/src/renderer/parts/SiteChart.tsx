@@ -238,7 +238,7 @@ export function drawThings(g: CanvasRenderingContext2D, frame: Frame, things: Th
  * `onPick` and `onHover` are given points in the site's frame.
  */
 export function SiteChart({ ground, things, chosen, faintThings, overlay, onPick, onHover, onDoublePick,
-                            cursor = "crosshair", redraw, fit }: {
+                            cursor = "crosshair", redraw, fit, grabAt, onDrag, shade = true }: {
   ground: Ground | undefined;
   things: Thing[];
   chosen?: string;
@@ -252,13 +252,19 @@ export function SiteChart({ ground, things, chosen, faintThings, overlay, onPick
   redraw?: unknown;
   /** Points the chart opens showing — the work, on a site far wider than it. */
   fit?: { x: number; y: number }[];
+  /** Whether a press here takes hold of something, so moving drags it rather than the chart. */
+  grabAt?: (at: { x: number; y: number }) => boolean;
+  /** Where the thing taken hold of is now; `done` when it is let go. */
+  onDrag?: (at: { x: number; y: number }, done: boolean) => void;
+  /** The seabed coloured by depth; plain when false. */
+  shade?: boolean;
 }): React.JSX.Element {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const image = useRef<{ key: string; canvas: HTMLCanvasElement } | undefined>(undefined);
   const [view, setView] = useState<View | undefined>(undefined);
   // A press that moves is a pan, not a pick.
-  const press = useRef<{ x: number; y: number; view: View; moved: boolean } | undefined>(undefined);
+  const press = useRef<{ x: number; y: number; view: View; moved: boolean; grabbed?: boolean } | undefined>(undefined);
   const panned = useRef(false);
 
   const siteM = ground?.acrossM ?? 1;
@@ -299,10 +305,15 @@ export function SiteChart({ ground, things, chosen, faintThings, overlay, onPick
     const frame = frameOf(size.w, size.h, ground.acrossM, view);
     const shown = frame.view;
     const key = `${ground.rows}x${ground.columns}:${Math.round(frame.side * ratio)}:${shown.x},${shown.y},${shown.acrossM}`;
-    if (image.current?.key !== key) {
-      image.current = { key, canvas: seabedImage(ground, frame.side * ratio, shown) };
+    if (!shade) {
+      g.fillStyle = "#c9d3d6";
+      g.fillRect(frame.padX, frame.padY, frame.side, frame.side);
+    } else {
+      if (image.current?.key !== key) {
+        image.current = { key, canvas: seabedImage(ground, frame.side * ratio, shown) };
+      }
+      g.drawImage(image.current.canvas, frame.padX, frame.padY, frame.side, frame.side);
     }
-    g.drawImage(image.current.canvas, frame.padX, frame.padY, frame.side, frame.side);
     g.save();
     g.beginPath();
     g.rect(frame.padX, frame.padY, frame.side, frame.side);
@@ -311,7 +322,7 @@ export function SiteChart({ ground, things, chosen, faintThings, overlay, onPick
     overlay?.(g, frame);
     g.restore();
     drawScale(g, frame);
-  }, [ground, size, view, things, chosen, faintThings, overlay, redraw]);
+  }, [ground, size, view, things, chosen, faintThings, overlay, redraw, shade]);
 
   const frameNow = useCallback(() => {
     const box = canvas.current?.getBoundingClientRect();
@@ -352,10 +363,16 @@ export function SiteChart({ ground, things, chosen, faintThings, overlay, onPick
     <div className="site-chart">
       <canvas ref={canvas} style={{ cursor: press.current?.moved ? "grabbing" : cursor }}
               onMouseDown={(event) => {
-                if (view) press.current = { x: event.clientX, y: event.clientY, view, moved: false };
+                const at = pointAt(event);
+                const grabbed = !!at && !!grabAt?.(at);
+                if (view) press.current = { x: event.clientX, y: event.clientY, view, moved: false, grabbed };
                 settled.current = true;
               }}
-              onMouseUp={() => { panned.current = press.current?.moved ?? false; press.current = undefined; }}
+              onMouseUp={(event) => {
+                const held = press.current;
+                if (held?.grabbed && held.moved) { const at = pointAt(event); if (at) onDrag?.(at, true); }
+                panned.current = held?.moved ?? false; press.current = undefined;
+              }}
               onClick={(event) => {
                 settled.current = true;
                 if (panned.current) { panned.current = false; return; }
@@ -366,6 +383,11 @@ export function SiteChart({ ground, things, chosen, faintThings, overlay, onPick
                 const held = press.current, now = frameNow();
                 if (held && now && (held.moved || Math.hypot(event.clientX - held.x, event.clientY - held.y) > 4)) {
                   held.moved = true;
+                  if (held.grabbed) {
+                    const at = pointAt(event);
+                    if (at) onDrag?.(at, false);
+                    return;
+                  }
                   const perPx = now.frame.acrossM / now.frame.side;
                   setView(clampView({ acrossM: held.view.acrossM,
                                       x: held.view.x - (event.clientX - held.x) * perPx,

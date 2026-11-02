@@ -18,9 +18,14 @@ import type { Looking } from "../parts/project.js";
 import { TASKS } from "../catalog/tasks.js";
 import type { HeldRun } from "../platform/held.js";
 import { Page } from "../ui/components.js";
-import { closingOf, scoreOf, taskOf } from "./Runs.js";
+import { averageOf, closingOf, scoreOf, taskOf } from "./Runs.js";
 import { RunFacts } from "./Run.js";
-import { Empty } from "./parts.js";
+import { Empty, ago } from "./parts.js";
+
+function averageSaid(times: HeldRun[]): string {
+  const v = averageOf(times);
+  return v < 0 ? "—" : `${(v * 100).toFixed(0)}% over ${times.length}`;
+}
 
 interface Pose {
   t: number;
@@ -69,12 +74,15 @@ interface Series { name: string; unit: string; t: number[]; v: number[]; ink: st
 
 const PACES = [1, 2, 5, 10, 30];
 
-export function Replay({ platform, dive, run, one, onBack }: {
+export function Replay({ platform, dive, run, one, times = [], onOpenRun, onBack }: {
   platform: Platform;
   dive: string;
   run: string;
   /** The run as the runs list knows it: its name, who flew it, how it went. */
   one?: HeldRun;
+  /** Every time this dive was flown by the same controller, newest first. */
+  times?: HeldRun[];
+  onOpenRun?: (dive: string, run: string) => void;
   onBack: () => void;
 }): React.JSX.Element {
   const [files, setFiles] = useState<Artefact[] | undefined>();
@@ -475,7 +483,28 @@ export function Replay({ platform, dive, run, one, onBack }: {
         { label: "off at the end", value: closing || "—", note: "how far out its own fix was when it came up" },
         { label: "length", value: manifest?.seconds ? `${(manifest.seconds / 60).toFixed(1)} min` : "—" },
         { label: "state", value: one?.run.state === "succeeded" ? "done" : one?.run.state ?? "—" },
+        ...(times.length > 1 ? [{ label: "average of all", value: averageSaid(times) }] : []),
       ]} />
+      {times.length > 1 ? (
+        <section className="run-section each-time">
+          <h2>Each time</h2>
+          <table className="numbers">
+            <thead><tr><th>Flown</th><th className="num">Score</th><th className="num">Off at the end</th><th>State</th><th /></tr></thead>
+            <tbody>
+              {times.map((t) => (
+                <tr key={t.run.id} className={t.run.id === run ? "here" : undefined}>
+                  <td>{ago(t.run.requestedAt)}</td>
+                  <td className="num">{scoreOf(t) >= 0 ? `${(scoreOf(t) * 100).toFixed(0)}%` : "—"}</td>
+                  <td className="num">{closingOf(t) || "—"}</td>
+                  <td>{t.run.state === "succeeded" ? "done" : t.run.state}</td>
+                  <td>{t.run.id === run ? <span className="run-note">showing</span>
+                    : <button className="link" onClick={() => onOpenRun?.(t.dive, t.run.id)}>Show</button>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ) : null}
       {body}
     </Page>
   );

@@ -8,8 +8,10 @@ import (
 	"strings"
 
 	"github.com/jalalirs/auv/services/control-plane/internal/audit"
+	"github.com/jalalirs/auv/services/control-plane/internal/catalog"
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
 	"github.com/jalalirs/auv/services/control-plane/internal/domain"
+	"github.com/jalalirs/auv/services/control-plane/internal/ids"
 	"github.com/jalalirs/auv/services/control-plane/internal/mapstore"
 	"github.com/jalalirs/auv/services/control-plane/internal/policy"
 )
@@ -121,4 +123,85 @@ func (d *Dependencies) inStore(w http.ResponseWriter, r *http.Request, cityID st
 		return false
 	}
 	return true
+}
+
+// copyStorePlace copies a place from the map store into an organisation: a
+// new place it owns, whose first version holds the store place's newest
+// published files. The store's place never changes, and taking it again
+// makes another copy.
+func (d *Dependencies) copyStorePlace(w http.ResponseWriter, r *http.Request) {
+	orgID, cityID := r.PathValue("orgId"), r.PathValue("cityId")
+	if !d.inStore(w, r, cityID) {
+		return
+	}
+	principal, _ := principalOf(r.Context())
+	source, err := d.Catalog.City(r.Context(), cityID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	versions, err := d.Catalog.Versions(r.Context(), catalog.KindCity, cityID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	var newest *catalog.Version
+	for i := range versions {
+		if versions[i].Published() && len(versions[i].Manifest) > 0 {
+			newest = &versions[i]
+			break
+		}
+	}
+	if newest == nil {
+		writeError(w, r, fmt.Errorf("%w: %s has no published version to copy", domain.ErrInvalid, source.Name))
+		return
+	}
+	var made catalog.City
+	err = d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		extent := source.Extent
+		var err error
+		made, err = d.Catalog.CreateCity(r.Context(), conn, catalog.CitySpec{
+			Slug: copySlug(source.Slug), Name: source.Name, Summary: source.Summary, Extent: &extent,
+			HorizontalCRS: source.HorizontalCRS, VerticalDatum: source.VerticalDatum,
+			CreatedBy: principal.ID, OwnedByOrg: orgID,
+		})
+		if err != nil {
+			return err
+		}
+		if err := d.Catalog.MarkCopy(r.Context(), conn, made.ID, cityID); err != nil {
+			return err
+		}
+		version, err := d.Catalog.CreateVersion(r.Context(), conn, catalog.VersionSpec{
+			AssetKind: catalog.KindCity, AssetID: made.ID, Manifest: newest.Manifest,
+			Label: "copied from the store", Notes: "from " + newest.ID, RuntimeMin: newest.RuntimeMin,
+			CreatedBy: principal.ID,
+		})
+		if err != nil {
+			return err
+		}
+		if _, err := d.Catalog.Publish(r.Context(), conn, version.ID); err != nil {
+			return err
+		}
+		return d.Audit.Record(r.Context(), conn, audit.Event{
+			ActorID: principal.ID, Action: string(policy.CityAdopt),
+			SubjectKind: "city", SubjectID: made.ID, Outcome: audit.Succeeded,
+			Detail: map[string]any{"orgId": orgID, "copiedFrom": cityID, "version": newest.ID},
+		})
+	})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusCreated, made)
+}
+
+// copySlug is a store place's slug with a short tail of its own: copies of
+// one place sit side by side, each under its own name in a URL.
+func copySlug(of string) string {
+	tail := strings.ToLower(ids.New(ids.KindCity))
+	tail = tail[len(tail)-6:]
+	if len(of) > 63-7 {
+		of = strings.TrimRight(of[:63-7], "-")
+	}
+	return of + "-" + tail
 }

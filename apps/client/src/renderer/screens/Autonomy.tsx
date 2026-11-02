@@ -24,7 +24,7 @@ import type { Platform } from "@coral-city/api";
 import { Button, Menu, Page, Status, Table } from "../ui/components.js";
 import { DeployDialog, DeploysNow } from "./Deploying.js";
 
-export function Autonomy({ platform, held, onFly, onRuns, onOpen, onCompare, onChanged }: {
+export function Autonomy({ platform, held, onFly, onRuns, onOpen, onChanged }: {
   platform?: Platform;
   held: Held;
   /** Read the controllers again, when a build has registered one. */
@@ -35,7 +35,6 @@ export function Autonomy({ platform, held, onFly, onRuns, onOpen, onCompare, onC
   onRuns?: (flownBy: string) => void;
   /** Its own page: builds, dives, scores. */
   onOpen?: (slug: string) => void;
-  onCompare?: () => void;
 }): React.JSX.Element {
   const [deploying, setDeploying] = useState(false);
   const [nudge, setNudge] = useState(0);
@@ -95,7 +94,6 @@ export function Autonomy({ platform, held, onFly, onRuns, onOpen, onCompare, onC
                  <Button onClick={() => onFly?.(r.newest.id)}>Fly with it</Button>
                  <Menu items={[
                    { label: "Its runs", disabled: r.flew.dives === 0, onSelect: () => onRuns?.(r.name) },
-                   { label: "Compare controllers", onSelect: () => onCompare?.() },
                    ...((r.newest as { source?: { kind?: string } }).source?.kind === "git"
                      ? [{ label: "Pull latest from GitHub", onSelect: () => void pullLatest(r.slug) }] : []),
                  ]} />

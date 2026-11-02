@@ -41,8 +41,11 @@ type Place struct {
 	PublishedAt *time.Time `json:"publishedAt,omitempty"`
 	FilesHref   string     `json:"filesHref,omitempty"`
 	Look
-	// Adopted says one of the caller's organisations already has it.
+	// Adopted says one of the caller's organisations took it the old way, as
+	// a share of the store's own place.
 	Adopted bool `json:"adopted"`
+	// Copies is how many copies of it the caller's organisations hold.
+	Copies int `json:"copies"`
 	// DistanceM is how far its middle is from the middle of the area asked
 	// about, when one was.
 	DistanceM *float64 `json:"distanceM,omitempty"`
@@ -96,10 +99,14 @@ func (s *Store) Places(ctx context.Context, orgIDs []string, near *Square) ([]Pl
 	if err != nil {
 		return nil, err
 	}
+	copies, err := s.catalog.CopiesByOrgs(ctx, orgIDs)
+	if err != nil {
+		return nil, err
+	}
 	places := []Place{}
 	for _, city := range cities {
 		place := Place{ID: city.ID, Slug: city.Slug, Name: city.Name, Summary: city.Summary,
-			Extent: city.Extent, Adopted: held[city.ID]}
+			Extent: city.Extent, Adopted: held[city.ID], Copies: copies[city.ID]}
 		if near != nil {
 			if !overlaps(city.Extent, *near) {
 				continue

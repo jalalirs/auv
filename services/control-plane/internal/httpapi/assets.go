@@ -113,3 +113,50 @@ func (d *Dependencies) watchAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, r, http.StatusOK, view)
 }
+
+// storeObjects lists the objects iOcean offers in the store, as assets.
+func (d *Dependencies) storeObjects(w http.ResponseWriter, r *http.Request) {
+	made, err := d.Reconstructor.InStore(r.Context())
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	views := make([]reconstructing.AssetView, 0, len(made))
+	for _, one := range made {
+		view, err := d.Reconstructor.WatchAsset(r.Context(), one.ID)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		views = append(views, view)
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{"assets": views})
+}
+
+// copyStoreObject copies an object from the store into an organisation's
+// objects and says what the copy is.
+func (d *Dependencies) copyStoreObject(w http.ResponseWriter, r *http.Request) {
+	principal, _ := principalOf(r.Context())
+	orgID, from := r.PathValue("orgId"), r.PathValue("assetId")
+	made, err := d.Reconstructor.Copy(r.Context(), principal.ID, orgID, from)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	if err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		return d.Audit.Record(r.Context(), conn, audit.Event{
+			ActorID: principal.ID, Action: string(policy.CityFound),
+			SubjectKind: "asset", SubjectID: made, Outcome: audit.Succeeded,
+			Detail: map[string]any{"orgId": orgID, "copiedFrom": from},
+		})
+	}); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	view, err := d.Reconstructor.WatchAsset(r.Context(), made)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusCreated, view)
+}

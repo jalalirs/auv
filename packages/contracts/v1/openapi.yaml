@@ -2951,6 +2951,61 @@ paths:
                     items: { $ref: '#/components/schemas/StorePlace' }
         '400':
           $ref: '#/components/responses/Invalid'
+  /api/v1/organisations/{orgId}/store/{cityId}/copies:
+    post:
+      tags: [places]
+      summary: Copy a place from the map store into the organisation's places
+      description: >
+        A new place the organisation owns, whose first version holds the store
+        place's newest published files, bound to the same bytes. The store's
+        place never changes; copying it again makes another copy.
+      parameters:
+        - { name: orgId, in: path, required: true, schema: { type: string } }
+        - { name: cityId, in: path, required: true, schema: { type: string } }
+      responses:
+        '201':
+          description: The copy.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/City' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/store/objects:
+    get:
+      tags: [places]
+      summary: The objects iOcean offers in the store
+      responses:
+        '200':
+          description: Each object, as an asset.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [assets]
+                properties:
+                  assets: { type: array, items: { $ref: '#/components/schemas/Asset' } }
+  /api/v1/organisations/{orgId}/store/objects/{assetId}/copies:
+    post:
+      tags: [places]
+      summary: Copy an object from the store into the organisation's objects
+      description: >
+        A new object of the organisation's own that shares the original's
+        finished job and files. Copying it again makes another.
+      parameters:
+        - { name: orgId, in: path, required: true, schema: { type: string } }
+        - { name: assetId, in: path, required: true, schema: { type: string } }
+      responses:
+        '201':
+          description: The copy.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Asset' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/organisations/{orgId}/store/{cityId}/adopt:
     post:
       tags: [places]
@@ -6632,7 +6687,8 @@ components:
           properties:
             path: { type: string }
             objectId: { type: string }
-        adopted: { type: boolean, description: One of the caller's organisations already has it. }
+        adopted: { type: boolean, description: "One of the caller's organisations took it the old way, as a share of the store's own place." }
+        copies: { type: integer, description: How many copies of it the caller's organisations hold. }
         distanceM: { type: number, description: How far its middle is from the area's, when an area was asked about. }
 
     ControllerBuildBrief:

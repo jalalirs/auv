@@ -1,7 +1,9 @@
 // What an object is, as a small line drawing: for a card with no picture yet,
 // and for the tiles that choose what to add.
 
-export type ObjectKind = "reef" | "pipeline" | "platform" | "wind-foundation" | "structure" | "survey" | "model" | "video";
+export type ObjectKind = "reef" | "pipeline" | "platform" | "wind-foundation" | "structure" | "survey" | "model" | "video"
+  // Where a new place's ground comes from.
+  | "store" | "earth" | "flat";
 
 export function ObjectArt({ kind, size = 56 }: { kind: ObjectKind; size?: number }): React.JSX.Element {
   return (
@@ -58,5 +60,21 @@ const DRAWN: Record<ObjectKind, React.ReactNode> = {
     <rect x="6" y="16" width="26" height="18" rx="3" />
     <path d="M32 22l10-5v16l-10-5" />
     <circle cx="19" cy="25" r="4" />
+  </>,
+  // A shop's box with a seabed in it: a place from the Store.
+  store: <>
+    <path d="M8 18h32v22H8zM8 18l4-8h24l4 8" />
+    <path d="M12 34c4-2 7 0 11-1s8-2 13-1" opacity={0.6} />
+  </>,
+  // The globe: every public source that reaches the spot.
+  earth: <>
+    <circle cx="24" cy="24" r="16" />
+    <path d="M8 24h32M24 8c-6 5-6 27 0 32M24 8c6 5 6 27 0 32" />
+  </>,
+  // A level seabed under level water: a designed one.
+  flat: <>
+    <path d="M6 14c3-2 6 2 9 0s6-2 9 0 6 2 9 0 6-2 9 0" opacity={0.6} />
+    <path d="M6 36h36M6 40h36" />
+    <path d="M24 18v14M20 28l4 4 4-4" opacity={0.6} />
   </>,
 };

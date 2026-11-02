@@ -18,7 +18,7 @@ import { Missions } from "../screens/Missions.js";
 import { Places } from "../screens/Places.js";
 import { Fleet } from "../screens/Fleet.js";
 import { Runs } from "../screens/Runs.js";
-import { LayoutEditor } from "../screens/Layout.js";
+import { PlaceDesigner } from "../screens/PlaceDesigner.js";
 
 const now = () => new Date().toISOString();
 let counter = 0;
@@ -208,9 +208,10 @@ function Promo({ packages }: { packages: Packages }) {
                     onBack={() => setWhere((w) => ({ ...w, page: "missions" }))}
                     onFly={(mission) => setWhere((w) => ({ ...w, page: "fly", mission }))} />
         ) : where.page === "layout" ? (
-          <LayoutEditor platform={p} pkg={packages.places.get("city_red") as never}
-                        layout={store.layouts.get(layoutId)!.layout as never}
-                        onBack={() => setWhere((w) => ({ ...w, page: "missions" }))} />
+          <PlaceDesigner platform={p} held={h} packages={packages} place="city_red"
+                         layout={(store.layouts.get(layoutId)!.layout as { id: string }).id}
+                         onChanged={() => undefined} onOpenLayout={() => undefined}
+                         onBack={() => setWhere((w) => ({ ...w, page: "missions" }))} />
         ) : where.page === "results" ? (
           <Runs platform={p} held={h} onChanged={() => undefined}
                 onReplay={(d, r) => said.push(`replay ${d} ${r}`)} onSweep={(s) => said.push(`read sweep ${s}`)} />

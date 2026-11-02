@@ -360,6 +360,22 @@ export class Platform {
   }
 
   /** Use a place from the map store: it joins the organisation's places. */
+  /** A copy of a store place, the organisation's own; the store's never changes. */
+  copyStorePlace(organisation: string, city: string): Promise<City> {
+    return this.#request("POST", `/api/v1/organisations/${organisation}/store/${city}/copies`);
+  }
+
+  /** The objects iOcean offers in the store. */
+  async storeObjects(): Promise<Asset[]> {
+    const { assets } = await this.#request<{ assets: Asset[] }>("GET", "/api/v1/store/objects");
+    return assets;
+  }
+
+  /** A copy of a store object, the organisation's own. */
+  copyStoreObject(organisation: string, asset: string): Promise<Asset> {
+    return this.#request("POST", `/api/v1/organisations/${organisation}/store/objects/${asset}/copies`);
+  }
+
   adoptStorePlace(organisation: string, city: string): Promise<Binding> {
     return this.#request("POST", `/api/v1/organisations/${organisation}/store/${city}/adopt`);
   }

@@ -1,36 +1,45 @@
-// What iOcean offers: its places and its vehicles, in one store.
+// What iOcean offers: its places, objects and vehicles, in one store.
 //
-// A place or a vehicle iOcean has built is not yours until you take it, and
-// what you have taken is in Places or Vehicles. The kinds share one grid with
-// a filter, not a tab each: they are all the same act, taking something.
+// Taking a place or an object copies it into yours: a place of your own to
+// change as you like, while the store's never changes, and taking it again
+// makes another copy. The kinds share one grid with a filter, not a tab each:
+// they are all the same act, taking something.
 
 import { useCallback, useEffect, useState } from "react";
 
-import type { Platform, StorePlace } from "@coral-city/api";
+import type { Asset, Platform, StorePlace } from "@coral-city/api";
 
 import { CATALOGUE } from "../catalog/vehicles.js";
 import { ENVIRONMENTS } from "../catalog/environments.js";
+import { ObjectArt } from "../parts/ObjectArt.js";
 import { PlacePlan, VehiclePlan } from "../parts/PlanArt.js";
 import { usePlacePicture } from "../parts/Relief.js";
 import type { PlacePackage } from "../platform/packages.js";
+import { kindSaid, nameAndSource } from "./AssetDetail.js";
 import type { Held, Packages } from "./Deck.js";
+import { artOf } from "./Reconstructions.js";
 import { Card, Empty } from "./parts.js";
 import { Button, Menu, Page, Segmented, SkeletonCards, Status } from "../ui/components.js";
 
-type Kind = "all" | "places" | "vehicles";
+type Kind = "all" | "places" | "objects" | "vehicles";
 
-export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, onBuildOn, onChanged }: {
+export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, onOpenObject, onBuildOn, onChanged }: {
   platform?: Platform;
   held: Held;
   packages: Packages;
   onOpenPlace: (id: string) => void;
   onOpenVehicle: (slug: string) => void;
+  /** One of your objects, just copied from the store. */
+  onOpenObject?: (id: string) => void;
   /** Compose a new place on a store place's ground. */
   onBuildOn?: (cityId: string) => void;
   onChanged?: () => void | Promise<void>;
 }): React.JSX.Element {
   const [kind, setKind] = useState<Kind>("all");
   const [store, setStore] = useState<StorePlace[] | undefined>();
+  const [objects, setObjects] = useState<Asset[] | undefined>();
+  // What was just copied, so its card can say where it went.
+  const [copied, setCopied] = useState<Record<string, string>>({});
   const [pictures, setPictures] = useState<Record<string, string>>({});
   // The place being taken or let go of, so its card says so while it works.
   const [working, setWorking] = useState<string | undefined>();
@@ -40,6 +49,7 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
   const readStore = useCallback(async () => {
     if (!platform) return;
     setStore(await platform.storePlaces().catch(() => []));
+    setObjects(await platform.storeObjects().catch(() => []));
   }, [platform]);
   useEffect(() => { void readStore(); }, [readStore]);
   useEffect(() => {
@@ -53,33 +63,43 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
     }
   }, [platform, store, pictures]);
 
-  const take = async (one: StorePlace, yes: boolean) => {
+  const busy = async (id: string, work: () => Promise<void>) => {
     if (!platform || !institution) return;
     setTrouble("");
-    setWorking(one.id);
+    setWorking(id);
     try {
-      if (yes) await platform.adoptStorePlace(institution.id, one.id);
-      else await platform.unadoptStorePlace(institution.id, one.id);
+      await work();
       await readStore();
       await onChanged?.();
     } catch (problem) {
-      setTrouble(problem instanceof Error ? problem.message : "it could not be changed");
+      setTrouble(problem instanceof Error ? problem.message : "it could not be done");
     } finally {
       setWorking(undefined);
     }
   };
+  const copyPlace = (one: StorePlace) => busy(one.id, async () => {
+    const made = await platform!.copyStorePlace(institution!.id, one.id);
+    setCopied((was) => ({ ...was, [one.id]: made.id }));
+  });
+  const letGo = (one: StorePlace) => busy(one.id, () => platform!.unadoptStorePlace(institution!.id, one.id));
+  const copyObject = (one: Asset) => busy(one.id, async () => {
+    const made = await platform!.copyStoreObject(institution!.id, one.id);
+    setCopied((was) => ({ ...was, [one.id]: made.id }));
+  });
 
   const published = new Set(held.vehicles.map((v) => v.slug));
   const vehicles = CATALOGUE.filter((v) => !published.has(v.slug));
-  const showPlaces = kind !== "vehicles";
-  const showVehicles = kind !== "places";
+  const showPlaces = kind === "all" || kind === "places";
+  const showObjects = kind === "all" || kind === "objects";
+  const showVehicles = kind === "all" || kind === "vehicles";
 
   return (
-    <Page title="Store" subtitle="Places and vehicles from iOcean. Take one and it is in yours."
-          info="iOcean builds places from public data and checks them before publishing them here. Taking a place puts it in your Places; the store's own copy never changes."
+    <Page title="Store" subtitle="Places, objects and vehicles from iOcean. Copy one and it is yours."
+          info="iOcean builds places from public data and checks them before publishing them here. Copying a place makes a place of your own to change; the store's never changes, and you can copy it as many times as you like."
           toolbar={<Segmented label="Kind" value={kind} onChange={setKind}
                               options={[{ key: "all", label: "Everything" },
                                         { key: "places", label: "Places", count: store?.length },
+                                        { key: "objects", label: "Objects", count: objects?.length },
                                         { key: "vehicles", label: "Vehicles", count: vehicles.length }]} />}>
       {trouble ? <p className="trouble">{trouble}</p> : null}
       {showPlaces ? (
@@ -93,20 +113,16 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
                 <StoreCard key={one.id} one={one} photo={pictures[one.id]} pkg={packages.places.get(one.id)}
                            onOpen={() => onOpenPlace(one.id)}
                            actions={working === one.id ? (
-                             <Button disabled>{one.adopted ? "Removing…" : "Adding to your places…"}</Button>
-                           ) : one.adopted ? (
-                             <>
-                               <Button onClick={() => onOpenPlace(one.id)}>Open</Button>
-                               <Menu label={`More for ${one.name}`} items={[
-                                 { label: "Compose a new place on it", onSelect: () => onBuildOn?.(one.id) },
-                                 { label: "Remove from your places", danger: true, onSelect: () => void take(one, false) },
-                               ]} />
-                             </>
+                             <Button disabled>Copying…</Button>
                            ) : (
                              <>
-                               <Button kind="secondary" disabled={!institution || working !== undefined} onClick={() => void take(one, true)}>Add to your places</Button>
+                               {copied[one.id]
+                                 ? <Button onClick={() => onOpenPlace(copied[one.id]!)}>Open your copy</Button>
+                                 : <Button kind="secondary" disabled={!institution || working !== undefined} onClick={() => void copyPlace(one)}>Copy to your places</Button>}
                                <Menu label={`More for ${one.name}`} items={[
-                                 { label: "Compose a new place on it", onSelect: () => onBuildOn?.(one.id) },
+                                 ...(copied[one.id] ? [{ label: "Copy it again", onSelect: () => void copyPlace(one) }] : []),
+                                 { label: "Build a new place on its ground", onSelect: () => onBuildOn?.(one.id) },
+                                 ...(one.adopted ? [{ label: "Stop sharing the store's own", danger: true, onSelect: () => void letGo(one) }] : []),
                                ]} />
                              </>
                            )} />
@@ -116,6 +132,28 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
                       art={<PlacePlan standing={one.standing} deepestM={depthOf(one)} size={64} />}
                       specs={[one.standing]} later="coming" />
               )) : null}
+            </div>
+          )}
+        </section>
+      ) : null}
+      {showObjects ? (
+        <section className="store-kind">
+          {kind === "all" ? <h2>Objects</h2> : null}
+          {objects === undefined ? <SkeletonCards count={3} /> : objects.length === 0 ? (
+            <Empty title="No objects in the store yet">Reefs, structures and models iOcean offers will appear here.</Empty>
+          ) : (
+            <div className="cards">
+              {objects.map((one) => {
+                const { name, source } = nameAndSource(one.name);
+                return (
+                  <Card key={one.id} name={name} detail={source ? `${kindSaid(one)} · ${source}` : kindSaid(one)}
+                        picture={one.preview || undefined} art={<ObjectArt kind={artOf(one)} />}
+                        onOpen={() => copied[one.id] ? onOpenObject?.(copied[one.id]!) : undefined}
+                        actions={working === one.id ? <Button disabled>Copying…</Button>
+                          : copied[one.id] ? <Button onClick={() => onOpenObject?.(copied[one.id]!)}>Open your copy</Button>
+                          : <Button kind="secondary" disabled={!institution || working !== undefined} onClick={() => void copyObject(one)}>Copy to your objects</Button>} />
+                );
+              })}
             </div>
           )}
         </section>
@@ -161,7 +199,8 @@ function StoreCard({ one, photo, pkg, onOpen, actions }: {
             one.surveyedFraction !== undefined ? `${Math.round(one.surveyedFraction * 100)}% measured` : one.surveyed ? "surveyed" : "derived depths",
             one.colonies ? `${one.colonies.toLocaleString()} colonies` : "",
           ].filter(Boolean)}
-          corner={one.adopted ? <Status tone="good">in your places</Status> : undefined}
+          corner={one.copies ? <Status tone="good">{one.copies === 1 ? "1 copy in your places" : `${one.copies} copies in your places`}</Status>
+            : one.adopted ? <Status tone="good">in your places</Status> : undefined}
           onOpen={onOpen} actions={actions} />
   );
 }

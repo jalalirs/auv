@@ -47,6 +47,28 @@ list, never for different kinds of thing.
   archiving test leftovers needs an archive call the platform does not have
   for objects (missions and layouts have one).
 
+- 2026-11-02: objects can be archived (POST /assets/{id}/archive, migration
+  0043); the six test leftovers archived. Control plane deployed.
+- 2026-11-03: Repeated runs folded into Runs: one row per dive and
+  controller, "× N", the average as its result, and an "Each time" table on
+  the run page. Store items are copies now (migration 0044): a store place
+  is copied into your places as a new place of yours with the store's
+  published package; store objects are copied into your objects. Neither
+  changes the original, and either can be copied again.
+- 2026-11-03: steps 8 to 10 built. New place starts from one of four
+  terrains (from the Store, your survey, public data, designed flat); a copy
+  opens the designer at once, a build opens it when the ground is published.
+  The place designer: palette of your objects and equipment, the seabed with
+  zoom from the whole place to a metre, the chosen thing's properties beside
+  it, layers (depth, steep ground, equipment, objects). Things are placed,
+  dragged and turned. The fit runs as you place: depth, lean and the gap
+  under a rigid base; a pipe's free spans, drawn red. Drop sinks a thing
+  from the surface against drag in a steady current and settles it where it
+  lands. Honest limit: fit and drop are worked out in the client from the
+  heightfield, not on the coupled engine (which a dive runs). Objects are
+  laid into the place with Lay in (a mapping, then a published version).
+  Released as 0.3.0.
+
 ## Steps, in order
 
 1. **Shell.** Side bar as above, Home first and the app opens on it. Rule

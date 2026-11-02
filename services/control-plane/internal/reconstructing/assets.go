@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/jalalirs/auv/services/control-plane/internal/db"
 	"math"
 	"path"
 	"strings"
@@ -589,4 +590,39 @@ func (r *Reconstructor) Survey(ctx context.Context, orgID, id string) (Survey, e
 			ErrorM: brief.ErrorM, Citation: citation}, nil
 	}
 	return Survey{}, fmt.Errorf("the survey %s holds no file %q", id, file)
+}
+
+// InStore lists the objects iOcean offers in the store, newest first.
+func (r *Reconstructor) InStore(ctx context.Context) ([]Reconstruction, error) {
+	return r.list(ctx, `WHERE in_store AND archived_at IS NULL`)
+}
+
+// Copy makes an object in the store into an object of the organisation's
+// own: a new record that shares the original's finished job and files, so
+// nothing is made or stored again. Copying it again makes another.
+func (r *Reconstructor) Copy(ctx context.Context, principalID, orgID, id string) (string, error) {
+	made := ids.New(ids.KindReconstruction)
+	err := r.pool.InTransaction(ctx, func(conn db.Conn) error {
+		tag, err := conn.Exec(ctx, `
+			INSERT INTO catalog.reconstruction
+			    (id, org_id, job_id, brief, name, manifest, failure, created_by, recorded_at,
+			     kind, made_from, structure, copied_from)
+			SELECT $1, $2, job_id, brief, name, manifest, failure, $3, recorded_at,
+			       kind, made_from, structure, id
+			  FROM catalog.reconstruction
+			 WHERE id = $4 AND in_store AND archived_at IS NULL AND manifest IS NOT NULL`,
+			made, orgID, principalID, id)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return db.ErrNotFound
+		}
+		_, err = conn.Exec(ctx, `
+			INSERT INTO catalog.reconstruction_object (reconstruction_id, path, object_id, size_bytes, media_type)
+			SELECT $1, path, object_id, size_bytes, media_type
+			  FROM catalog.reconstruction_object WHERE reconstruction_id = $2`, made, id)
+		return err
+	})
+	return made, err
 }

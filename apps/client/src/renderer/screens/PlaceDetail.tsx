@@ -12,14 +12,15 @@ import { whereIs } from "../platform/packages.js";
 import type { Held, Packages } from "./Deck.js";
 import { PlacePlan } from "../parts/PlanArt.js";
 import { Credit, Empty, PageHead, Pill, Row, SeaPanel, ago, fixed, useLoadedPicture } from "./parts.js";
-import { SkeletonLines } from "../ui/components.js";
+import { Button, SkeletonLines } from "../ui/components.js";
 
-export function PlaceDetail({ held, packages, id, platform, onLayOut, onBack }: {
+export function PlaceDetail({ held, packages, id, platform, onLayOut, onDesign, onBack }: {
   held: Held;
   packages: Packages;
   id: string;
   platform: Platform;
   onLayOut: (layout: string) => void;
+  onDesign: () => void;
   onBack: () => void;
 }): React.JSX.Element {
   // How this place has been arranged. Listed here rather than under a tab of
@@ -49,7 +50,10 @@ export function PlaceDetail({ held, packages, id, platform, onLayOut, onBack }: 
   return (
     <>
       <PageHead title={place.name} says={place.summary} back="Places" onBack={onBack}
-                aside={<Pill kind={place.discoverable ? "good" : undefined}>{place.discoverable ? "listed" : "unlisted"}</Pill>} />
+                aside={<>
+                  <Pill kind={place.discoverable ? "good" : undefined}>{place.discoverable ? "listed" : "unlisted"}</Pill>
+                  {pkg ? <Button kind="primary" onClick={onDesign}>Design</Button> : null}
+                </>} />
 
       <section>
         <div className={`hero tall${picture ? " pictured" : ""}`}
@@ -102,12 +106,11 @@ export function PlaceDetail({ held, packages, id, platform, onLayOut, onBack }: 
         </section>
 
         <section>
-          <h2>Laid out</h2>
+          <h2>Arrangements</h2>
           <p className="quiet">
-            How this place has been arranged: where an array was laid, where a
-            ship holds, where the nursery frames are. A dive pins an
-            arrangement the way it pins the reef, so a layout from March can be
-            flown again in September.
+            Equipment and objects put on this place in the designer. A dive
+            pins an arrangement the way it pins the reef, so one from March can
+            be flown again in September.
           </p>
           {layouts.length === 0
             ? <p className="quiet">Nobody has arranged this place yet.</p>
@@ -136,7 +139,7 @@ export function PlaceDetail({ held, packages, id, platform, onLayOut, onBack }: 
           }}>
             <input value={naming} onChange={(e) => setNaming(e.target.value)}
                    placeholder="name a new arrangement" />
-            <button type="submit" disabled={!naming.trim()}>Lay one out</button>
+            <button type="submit" disabled={!naming.trim()}>New arrangement</button>
           </form>
         </section>
 
