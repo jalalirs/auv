@@ -18,10 +18,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Mapping, Platform, Reconstruction as Rebuilt, ReconstructionObject } from "@coral-city/api";
 import type { Held, Packages } from "./Deck.js";
+import { nameAndSource } from "./AssetDetail.js";
 import { stateOf } from "./Reconstructions.js";
 import { FitMap, type Spot } from "../parts/FitMap.js";
 import { Empty, PageHead, Pill, Row } from "./parts.js";
-import { Skeleton, SkeletonLines } from "../ui/components.js";
+import { Menu, Skeleton, SkeletonLines } from "../ui/components.js";
 
 type Manifest = {
   frames?: number; registered?: number; extentM?: [number, number]; pathLengthM?: number; headingDeg?: number;
@@ -70,10 +71,17 @@ export function ReconstructionPage({ platform, held, packages, id, onBack, onOpe
 
   return (
     <>
-      <PageHead title={one.name} back="Objects" onBack={onBack}
-                says={one.brief.video.name ? `Rebuilt from ${one.brief.video.name}.` : undefined}
-                aside={<Pill kind={state.kind}>{state.said}</Pill>} />
+      <PageHead title={nameAndSource(one.name).name} back="Objects" onBack={onBack}
+                says={[one.brief.video.name ? `Rebuilt from ${one.brief.video.name}.` : "",
+                       nameAndSource(one.name).source ? `Source and licence: ${nameAndSource(one.name).source}.` : ""].filter(Boolean).join(" ") || undefined}
+                aside={<>
+                  <Pill kind={state.kind}>{state.said}</Pill>
+                  <Menu label="More for this reef" items={[{ label: "Archive", danger: true, onSelect: () => {
+                    void platform.archiveAsset(one.id).then(onBack, (e: unknown) => setTrouble(e instanceof Error ? e.message : "it could not be archived"));
+                  } }]} />
+                </>} />
       {state.doing && one.state !== "failed" ? <p className="note">{state.doing}</p> : null}
+      {trouble ? <p className="trouble">{trouble}</p> : null}
       {one.state !== "ready" ? (
         <section>
           <ol className="builder-steps">

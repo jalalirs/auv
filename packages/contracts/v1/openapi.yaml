@@ -2602,6 +2602,31 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v1/assets/{assetId}/archive:
+    post:
+      tags: [places]
+      summary: Archive this asset
+      description: >
+        Any kind. Takes it out of the organisation's listings without erasing
+        it: a place it was laid into still has it, and reading it by its
+        identifier still works. The same authority as making one. Archiving
+        what is already archived is no error.
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          description: The asset.
+          schema: { type: string }
+      responses:
+        '200':
+          description: It is archived; the asset.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Asset' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/reconstructions/{reconstructionId}:
     get:
       tags: [places]

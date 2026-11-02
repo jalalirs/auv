@@ -146,10 +146,12 @@ export function Info({ children }: { children: React.ReactNode }): React.JSX.Ele
 
 // ── a dialog ───────────────────────────────────────────────────────────────
 
-export function Dialog({ title, onClose, actions, children }: {
+export function Dialog({ title, onClose, actions, wide, children }: {
   title: string;
   onClose: () => void;
   actions?: React.ReactNode;
+  /** Room for a map or a picture, not only fields. */
+  wide?: boolean;
   children: React.ReactNode;
 }): React.JSX.Element {
   useEffect(() => {
@@ -159,7 +161,7 @@ export function Dialog({ title, onClose, actions, children }: {
   }, [onClose]);
   return (
     <div className="dialog-shade" onMouseDown={onClose}>
-      <div className="dialog" role="dialog" aria-label={title} onMouseDown={(e) => e.stopPropagation()}>
+      <div className={`dialog${wide ? " wide" : ""}`} role="dialog" aria-label={title} onMouseDown={(e) => e.stopPropagation()}>
         <h2>{title}</h2>
         <div className="dialog-body">{children}</div>
         {actions ? <div className="dialog-actions">{actions}</div> : null}

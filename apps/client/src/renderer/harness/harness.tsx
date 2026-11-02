@@ -36,6 +36,12 @@ const ASSETS: any[] = [
       footprint: { bbox: [22.281, 38.951, 22.284, 38.958] }, stats: { lengthM: 742.3, diameterM: 0.5 }, brief: {}, steps: [], createdBy: "p", createdAt: new Date(Date.now() - 7_200_000).toISOString() },
     { id: "recon_m1", orgId: "org_1", jobId: "job_m1", name: "Monopile WTG-04", kind: "structure", type: "wind-foundation", meets: "stands", madeFrom: "model", state: "running", jobState: "running",
       brief: {}, steps: [{ at: "", step: "usd", say: "writing the model as USD" }], createdBy: "p", createdAt: new Date().toISOString() },
+    { id: "recon_v1", orgId: "org_1", jobId: "job_v1", name: "SubPipe outfall pipeline, run 3 (Oceanscan-MST, CC BY 4.0)", kind: "structure", type: "pipeline", meets: "drapes", madeFrom: "video", state: "ready", jobState: "succeeded",
+      brief: {}, steps: [], createdBy: "p", createdAt: new Date(Date.now() - 9_000_000).toISOString() },
+    { id: "recon_j1", orgId: "org_1", jobId: "job_j1", name: "Jacket platform", kind: "structure", type: "platform", meets: "stands", madeFrom: "model", state: "ready", jobState: "succeeded",
+      footprint: { sizeM: [14, 14, 15] }, stats: { sizeM: [14, 14, 15], triangles: 60 }, brief: {}, steps: [], createdBy: "p", createdAt: new Date(Date.now() - 12_000_000).toISOString() },
+    { id: "recon_f1", orgId: "org_1", jobId: "job_f1", name: "Test export line", kind: "structure", type: "pipeline", meets: "drapes", madeFrom: "route", state: "failed", jobState: "failed",
+      failure: "the route leaves the place's seabed", brief: {}, steps: [], createdBy: "p", createdAt: new Date(Date.now() - 20_000_000).toISOString() },
   ];
 import { Autonomy } from "../screens/Autonomy.js";
 import { ControllerDetail } from "../screens/ControllerDetail.js";
@@ -284,6 +290,12 @@ Object.assign(platform, {
   reconstructionsOf: () => delay([recon(true), { ...recon(false), id: "recon_2", name: "North wall swim" }]),
   listAssets: () => delay(ASSETS),
   getAsset: (id: string) => delay(ASSETS.find((a) => a.id === id) ?? ASSETS[0]!),
+  archiveAsset: (id: string) => {
+    const at = ASSETS.findIndex((a) => a.id === id);
+    const gone = at >= 0 ? ASSETS.splice(at, 1)[0] : undefined;
+    said.push(`archived ${id}`);
+    return delay(gone);
+  },
   createAsset: (_org: string, brief: { label?: string; kind: string; type?: string; meets?: string }) => delay({
     id: "recon_new", orgId: "org_1", jobId: "job_new", name: brief.label ?? "new asset", kind: brief.kind, type: brief.type, meets: brief.meets,
     madeFrom: brief.kind === "bathymetry" ? "survey" : brief.type === "pipeline" ? "route" : "model", state: "queued", jobState: "queued",

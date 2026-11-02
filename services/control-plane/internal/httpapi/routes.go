@@ -241,6 +241,10 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/assets/{assetId}",
 		Summary: "how an asset is going, and what it is", Action: policy.OrgRead,
 		Resource: d.ofReconstruction("assetId"), Handle: d.watchAsset})
+	// Out of the listings, kept: archiving is the same authority as making one.
+	rt.register(Route{Method: "POST", Pattern: "/api/v1/assets/{assetId}/archive",
+		Summary: "take an asset of any kind out of the organisation's listings, keeping it",
+		Action:  policy.CityFound, Resource: d.ofReconstruction("assetId"), Handle: d.archiveAsset})
 	// A reef put onto a place: an existing one (the caller must be able to
 	// make versions of it), or one of its own.
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/reconstructions/{reconstructionId}/mappings",

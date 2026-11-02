@@ -376,9 +376,9 @@ func (r *Reconstructor) StartAsset(ctx context.Context, principalID, orgID strin
 // first.
 func (r *Reconstructor) ListAssets(ctx context.Context, orgID, kind string) ([]Reconstruction, error) {
 	if kind != "" {
-		return r.list(ctx, `WHERE org_id = $1 AND kind = $2`, orgID, kind)
+		return r.list(ctx, `WHERE org_id = $1 AND kind = $2 AND archived_at IS NULL`, orgID, kind)
 	}
-	return r.list(ctx, `WHERE org_id = $1`, orgID)
+	return r.list(ctx, `WHERE org_id = $1 AND archived_at IS NULL`, orgID)
 }
 
 // checkAsset refuses an import's manifest that is not the asset that was

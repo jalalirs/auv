@@ -2030,3 +2030,38 @@ table.numbers td { padding: var(--s1) var(--s3) var(--s1) 0; border-top: 1px sol
 table.numbers.grouped tr:not(.first) td { border-top-color: transparent; }
 table.numbers .num { text-align: right; font-variant-numeric: tabular-nums; }
 .setting-dim { display: block; font-size: var(--t-meta); color: var(--faint); margin-top: var(--s1); }
+
+/* ── Objects (Reconstructions.tsx) ────────────────────────────────────────── */
+
+.object-art { color: var(--dim); }
+.card .drawn .object-art { color: var(--faint); }
+.object-kinds { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+.object-kind {
+  display: grid; gap: var(--s1); justify-items: start; text-align: left; padding: var(--s4);
+  background: var(--water); border: 1px solid var(--edge); border-radius: var(--r-surface);
+  color: var(--plain); font: var(--t-body)/1.4 var(--font); cursor: pointer;
+}
+.object-kind:hover, .object-kind:focus-visible { border-color: var(--coral-deep); outline: none; }
+.object-kind .object-art { color: var(--coral); margin-bottom: var(--s1); }
+.object-kind strong { font-size: var(--t-strong); font-weight: 600; }
+.object-kind span { color: var(--faint); font-size: var(--t-meta); }
+.object-file {
+  display: flex; align-items: center; gap: var(--s3); padding: var(--s4);
+  border: 1px dashed var(--edge-lit); border-radius: var(--r-surface); cursor: pointer; color: var(--plain);
+}
+.object-file:hover { border-color: var(--coral-deep); }
+.object-file input { display: none; }
+.object-file .object-art { color: var(--coral); flex: none; }
+.object-more summary { cursor: pointer; color: var(--faint); font-size: var(--t-body); }
+.object-more[open] { display: flex; flex-direction: column; gap: var(--s3); }
+.object-map { height: 360px; border-radius: var(--r-surface); overflow: hidden; }
+.object-map .world-map { height: 100%; }
+.object-route { display: flex; align-items: center; gap: var(--s2); color: var(--faint); font-size: var(--t-body); }
+.object-route span { flex: 1; }
+.dialog.wide { width: min(820px, calc(100vw - 64px)); }
+.world-line { position: absolute; inset: 0; pointer-events: none; filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.9)); }
+.world-line polyline { fill: none; stroke: var(--vehicle); stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; }
+.world-line circle { fill: var(--vehicle); stroke: #000; stroke-width: 1; }
+.asset-page > section { margin-top: var(--s5); }
+.asset-page section h2 { margin: 0 0 var(--s2); font: 600 var(--t-section)/1.3 var(--font); color: var(--plain); text-transform: none; letter-spacing: normal; }
+.asset-page > .asset-facts { margin-top: var(--s3); }

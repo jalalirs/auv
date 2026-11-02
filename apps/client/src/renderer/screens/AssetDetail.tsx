@@ -5,14 +5,25 @@
 
 import { useEffect, useState } from "react";
 import type { Asset, Platform } from "@coral-city/api";
-import { Button, Page, Status, SkeletonLines } from "../ui/components.js";
+import { Button, Menu, Page, Status, SkeletonLines } from "../ui/components.js";
 import { ago } from "./parts.js";
 
-/** What an asset is, said in a few words. */
-export function kindSaid(one: Pick<Asset, "kind" | "type" | "madeFrom">): string {
-  if (one.kind === "reef") return one.type ? `${one.type.replace("-", " ")} from a video` : "reef from a video";
+/** What an object is, in a word or two. How it was made is on its page. */
+export function kindSaid(one: Pick<Asset, "kind" | "type">): string {
+  if (one.kind === "reef") return "reef from a video";
   if (one.kind === "bathymetry") return "seabed survey";
-  return `${(one.type ?? "structure").replace("-", " ")} ${one.madeFrom === "route" ? "from its route" : "from a model"}`;
+  return one.type === "other" || !one.type ? "structure" : one.type.replace("-", " ");
+}
+
+const MADE_FROM: Record<string, string> = {
+  video: "a dive video", survey: "a survey file", model: "a 3D model", route: "a line drawn on the map",
+};
+
+/** A name as people gave it, "SubPipe outfall (Oceanscan-MST, CC BY 4.0)",
+ *  as the short name a card shows and the source its page shows. */
+export function nameAndSource(full: string): { name: string; source?: string } {
+  const found = full.match(/^(.*\S)\s*\(([^()]*)\)\s*$/);
+  return found ? { name: found[1]!, source: found[2]! } : { name: full };
 }
 
 /** A fact's key as words: shallowestM is "shallowest, m". */
@@ -47,16 +58,23 @@ export function AssetDetail({ platform, id, onBack, onCompose }: {
   }, [platform, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!one) {
-    return <Page title="An asset" crumb="Objects" onCrumb={onBack}>{trouble ? <p className="note">{trouble}</p> : <SkeletonLines lines={6} />}</Page>;
+    return <Page title="An object" crumb="Objects" onCrumb={onBack}>{trouble ? <p className="note">{trouble}</p> : <SkeletonLines lines={6} />}</Page>;
   }
   const last = one.steps[one.steps.length - 1];
   const facts = { ...(one.stats ?? {}), ...(one.footprint ?? {}) };
+  const { name, source } = nameAndSource(one.name);
   return (
-    <Page title={one.name} crumb="Objects" onCrumb={onBack}
+    <Page title={name} crumb="Objects" onCrumb={onBack}
           subtitle={`${kindSaid(one)} · made ${ago(one.createdAt)}`}
-          actions={one.state === "ready"
-            ? <Button kind="primary" onClick={() => onCompose(one.id)}>{one.kind === "bathymetry" ? "Build a place on it" : "Put it in a new place"}</Button>
-            : undefined}>
+          actions={<>
+            {one.state === "ready"
+              ? <Button kind="primary" onClick={() => onCompose(one.id)}>{one.kind === "bathymetry" ? "Build a place on it" : "Put it in a new place"}</Button>
+              : null}
+            <Menu label={`More for ${name}`} items={[{ label: "Archive", danger: true, onSelect: () => {
+              void platform.archiveAsset(one.id).then(onBack, (e: unknown) => setTrouble(e instanceof Error ? e.message : "it could not be archived"));
+            } }]} />
+          </>}>
+        {trouble ? <p className="trouble">{trouble}</p> : null}
       <div className="asset-page">
         <div className="asset-state">
           <Status tone={one.state === "ready" ? "good" : one.state === "failed" ? "bad" : "busy"}>{one.state}</Status>
@@ -64,6 +82,10 @@ export function AssetDetail({ platform, id, onBack, onCompose }: {
         </div>
         {one.failure ? <p className="trouble">{one.failure}</p> : null}
         {one.preview && one.state === "ready" ? <img className="asset-preview" src={one.preview} alt={`${one.name}, as the import drew it`} /> : null}
+        <dl className="asset-facts">
+          <div><dt>made from</dt><dd>{MADE_FROM[one.madeFrom] ?? one.madeFrom}</dd></div>
+          {source ? <div><dt>source and licence</dt><dd>{source}</dd></div> : null}
+        </dl>
         {Object.keys(facts).length ? (
           <section>
             <h2>What the import measured</h2>

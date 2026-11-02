@@ -674,6 +674,11 @@ export class Platform {
     return this.#request<Mission>("POST", `/api/v1/missions/${id}/archive`);
   }
 
+  /** Out of the listings, kept: a place it was laid into still has it. */
+  async archiveAsset(id: string): Promise<Asset> {
+    return this.#request<Asset>("POST", `/api/v1/assets/${id}/archive`);
+  }
+
   async archiveLayout(id: string): Promise<Layout> {
     return this.#request<Layout>("POST", `/api/v1/layouts/${id}/archive`);
   }

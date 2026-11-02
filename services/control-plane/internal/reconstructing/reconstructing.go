@@ -433,7 +433,24 @@ func (r *Reconstructor) OrgOf(ctx context.Context, id string) (string, error) {
 // List lists an organisation's reconstructions, newest first: its reefs made
 // from videos, which is what the reconstruction routes have always listed.
 func (r *Reconstructor) List(ctx context.Context, orgID string) ([]Reconstruction, error) {
-	return r.list(ctx, `WHERE org_id = $1 AND made_from = 'video'`, orgID)
+	return r.list(ctx, `WHERE org_id = $1 AND made_from = 'video' AND archived_at IS NULL`, orgID)
+}
+
+// Archive takes one out of its organisation's listings, keeping it: a place
+// it was laid into, and a run flown there, still read it by its identifier.
+// Archiving what is already archived is no error.
+func (r *Reconstructor) Archive(ctx context.Context, principalID, id string) error {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE catalog.reconstruction SET archived_at = now(), archived_by = $2
+		WHERE id = $1 AND archived_at IS NULL`, id, principalID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		_, err := r.OrgOf(ctx, id)
+		return err
+	}
+	return nil
 }
 
 func (r *Reconstructor) list(ctx context.Context, where string, args ...any) ([]Reconstruction, error) {

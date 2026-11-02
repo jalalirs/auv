@@ -44,12 +44,14 @@ export function metresPerPixel(lat: number, zoom: number): number {
   return 156543.03392 * Math.cos(lat * Math.PI / 180) / 2 ** zoom;
 }
 
-export function WorldMap({ view, onView, chosen, onChoose, acrossM }: {
+export function WorldMap({ view, onView, chosen, onChoose, acrossM, line }: {
   view: { centre: LatLon; zoom: number };
   onView: (view: { centre: LatLon; zoom: number }) => void;
   chosen: LatLon | undefined;
   onChoose: (at: LatLon) => void;
   acrossM: number;
+  /** A line being drawn on the map, a point a click: a pipeline's route. */
+  line?: LatLon[];
 }): React.JSX.Element {
   const box = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 520 });
@@ -90,6 +92,17 @@ export function WorldMap({ view, onView, chosen, onChoose, acrossM }: {
     square = (
       <div className="world-square" style={{ left: at.x - left - side / 2, top: at.y - top - side / 2,
                                              width: side, height: side }} />
+    );
+  }
+
+  let drawn: React.JSX.Element | null = null;
+  if (line && line.length) {
+    const points = line.map((p) => { const at = worldPx(p, zoom); return { x: at.x - left, y: at.y - top }; });
+    drawn = (
+      <svg className="world-line" width={size.w} height={size.h}>
+        <polyline points={points.map((p) => `${p.x},${p.y}`).join(" ")} />
+        {points.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={i === points.length - 1 ? 5 : 3.5} />)}
+      </svg>
     );
   }
 
@@ -144,6 +157,7 @@ export function WorldMap({ view, onView, chosen, onChoose, acrossM }: {
          }}>
       {tiles}
       {square}
+      {drawn}
       <span className="world-credit">{CREDIT}</span>
       <div className="world-zoom">
         <button className="quiet" onClick={(e) => { e.stopPropagation(); onView({ ...view, zoom: Math.min(18, zoom + 1) }); }}

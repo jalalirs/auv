@@ -36,6 +36,16 @@ list, never for different kinds of thing.
   condition with a score scale and the done mark, each setting's success and
   energy, and the cost as numbers. Any run opens now, recorded or not.
   Steps 1 to 4 are ready to ship as 0.2.0.
+- 2026-11-02: 0.2.0 released (Mac, Windows, Linux).
+- 2026-11-02: step 6 built in the client, not released. Objects is one grid
+  with a kind filter (only kinds you have) and search; cards show the short
+  name and a drawing of the kind where there is no picture; the source and
+  licence in a name's brackets move to the object's page. New object opens on
+  four picture tiles (3D model, reef from video, pipeline, seabed survey),
+  each with a short form and its rarely needed fields under "more". A
+  pipeline is drawn on the satellite map, not typed as coordinates. Not done:
+  archiving test leftovers needs an archive call the platform does not have
+  for objects (missions and layouts have one).
 
 ## Steps, in order
 

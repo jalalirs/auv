@@ -78,6 +78,33 @@ func (d *Dependencies) listAssets(w http.ResponseWriter, r *http.Request) {
 }
 
 // watchAsset says how an asset is going, and when it is ready, what it is.
+// archiveAsset takes an asset out of its organisation's listings and says
+// what it is now. Already archived is no error.
+func (d *Dependencies) archiveAsset(w http.ResponseWriter, r *http.Request) {
+	principal, _ := principalOf(r.Context())
+	id := r.PathValue("assetId")
+	err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+		if err := d.Reconstructor.Archive(r.Context(), principal.ID, id); err != nil {
+			return err
+		}
+		return d.Audit.Record(r.Context(), conn, audit.Event{
+			ActorID: principal.ID, Action: string(policy.CityFound),
+			SubjectKind: "asset", SubjectID: id, Outcome: audit.Succeeded,
+			Detail: map[string]any{"archived": true},
+		})
+	})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	view, err := d.Reconstructor.WatchAsset(r.Context(), id)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, view)
+}
+
 func (d *Dependencies) watchAsset(w http.ResponseWriter, r *http.Request) {
 	view, err := d.Reconstructor.WatchAsset(r.Context(), r.PathValue("assetId"))
 	if err != nil {
