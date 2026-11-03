@@ -185,7 +185,7 @@ export function Reconstructions({ platform, held, onOpen, onOpenAsset }: {
                     reading={one.reading} art={<ObjectArt kind={one.art} />}
                     specs={one.state.kind === "good" ? one.specs : [one.state.doing ?? one.state.said]}
                     corner={one.state.kind === "good" ? undefined : <Status tone={tone}>{one.state.said}</Status>}
-                    onOpen={one.open} actions={<Button onClick={one.open}>Open</Button>} />
+                    onOpen={one.open} />
             );
           })}
         </div>

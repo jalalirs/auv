@@ -15,6 +15,7 @@ import "../styles.css";
 import type { Held, Packages } from "../screens/Deck.js";
 import { Designer } from "../screens/Designer.js";
 import { Fly } from "../screens/Fly.js";
+import { Dive } from "../screens/Dive.js";
 import { Missions } from "../screens/Missions.js";
 import { Runs } from "../screens/Runs.js";
 import { PlaceDesigner } from "../screens/PlaceDesigner.js";
@@ -451,7 +452,7 @@ function Harness({ packages }: { packages: Packages }) {
     <div className="deck">
       <nav>
         <div className="here"><strong>harness</strong></div>
-        {["results", "fly", "missions", "places", "video", "fleet", "controllers", "store", "designer", "sweep", "layout", "build", "recon"].map((page) => (
+        {["results", "fly", "missions", "places", "video", "fleet", "controllers", "store", "designer", "sweep", "layout", "build", "recon", "run"].map((page) => (
           <a key={page} aria-current={where.page === page ? "page" : undefined} onClick={() => setWhere((w) => ({ ...w, page }))}>{page}</a>
         ))}
       </nav>
@@ -468,6 +469,10 @@ function Harness({ packages }: { packages: Packages }) {
                          layout={[...store.layouts.values()].find((l) => l.place === (where.place ?? "city_looe"))?.layout.id as string | undefined}
                          onChanged={() => said.push("places read again")} onOpenLayout={(l) => said.push(`layout ${l}`)}
                          onBack={() => setWhere((w) => ({ ...w, page: "missions" }))} />
+        ) : where.page === "run" ? (
+          <Dive platform={p} held={held} packages={packages} free={1} devices={1}
+                onDiving={(d, r) => said.push(`diving ${d} ${r}`)} onChanged={() => undefined}
+                onOpen={(w) => said.push(`open ${JSON.stringify(w)}`)} />
         ) : where.page === "build" ? (
           <Compose platform={p} held={held} chosen={where.mission} onBack={() => said.push("back")} onOpen={(c) => said.push(`open ${c}`)}
                    onDesign={(c) => { said.push(`design ${c}`); setWhere((w) => ({ ...w, page: "layout" })); }} />
@@ -490,7 +495,8 @@ function Harness({ packages }: { packages: Packages }) {
           <ControllerDetail platform={p} held={held} slug={where.mission ?? ""} onBack={() => setWhere((w) => ({ ...w, page: "controllers" }))}
                             onFly={(s) => said.push(`fly with ${s}`)} onReplay={(d, r) => said.push(`replay ${d} ${r}`)} />
         ) : where.page === "asset" ? (
-          <AssetDetail platform={p} id={where.mission ?? ""} onBack={() => setWhere((w) => ({ ...w, page: "video" }))}
+          <AssetDetail platform={p} id={where.mission ?? ""} places={held.places} onBack={() => setWhere((w) => ({ ...w, page: "video" }))}
+                       onPlace={(a, place) => { said.push(`place ${a} in ${place}`); setWhere((w) => ({ ...w, page: "layout", place })); }}
                        onCompose={(a) => { said.push(`compose with ${a}`); setWhere((w) => ({ ...w, page: "build", mission: a })); }} />
         ) : where.page === "video" ? (
           <Reconstructions platform={p} held={held}

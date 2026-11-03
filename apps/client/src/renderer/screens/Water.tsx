@@ -81,6 +81,7 @@ export function Water({ platform, stream, onSurface }: {
   const [frames, setFrames] = useState(0);
   const [hello, setHello] = useState<Hello | undefined>();
   const [pad, setPad] = useState<string | undefined>();
+  const laid = useLaid(platform, stream.diveId);
   const [panes, setPanes] = useState<Pane[]>(["water", "map", "profile", "plot"]);
   const [plotted, setPlotted] = useState<string | undefined>();
   const [tick, setTick] = useState(0);
@@ -410,7 +411,7 @@ export function Water({ platform, stream, onSurface }: {
         return <Minimap site={site} track={track.current} position={reading.position}
                         headingDeg={reading.headingDeg} beganAt={hello?.beganAt}
                         geometry={geometry} current={hello?.conditions?.current}
-                        marks={geometry?.marks} onCarry={large ? carry : undefined}
+                        marks={geometry?.marks} laid={laid} onCarry={large ? carry : undefined}
                         believed={reading.navigation?.believed}
                         positioning={hello?.positioning} large={large} />;
       case "profile":
@@ -449,4 +450,38 @@ export function Water({ platform, stream, onSurface }: {
       </div>
     </Instruments>
   );
+}
+
+type Laid = { kind: string; x: number; y: number; route?: { x: number; y: number }[] };
+
+/**
+ * What the dive's arrangement put in the water, to draw on its chart. The
+ * dive pins a version of an arrangement and nothing says whose, so it is found
+ * the long way: the place that owns the dive's place version, then the
+ * arrangement of that place that owns the pinned version. A handful of small
+ * reads, once.
+ */
+function useLaid(platform: Platform, diveId: string): Laid[] {
+  const [laid, setLaid] = useState<Laid[]>([]);
+  useEffect(() => {
+    let stale = false;
+    void (async () => {
+      const dive = await platform.dive(diveId);
+      if (!dive.layoutVersionId) return;
+      for (const place of await platform.places()) {
+        const versions = await platform.versionsOfPlace(place.id).catch(() => []);
+        if (!versions.some((v) => v.id === dive.cityVersionId)) continue;
+        for (const layout of await platform.layoutsOf(place.id)) {
+          const pinned = (await platform.versionsOfLayout(layout.id)).find((v) => v.id === dive.layoutVersionId);
+          if (pinned) {
+            if (!stale) setLaid(((pinned.document as { things?: Laid[] } | undefined)?.things) ?? []);
+            return;
+          }
+        }
+        return;
+      }
+    })().catch(() => undefined);
+    return () => { stale = true; };
+  }, [platform, diveId]);
+  return laid;
 }

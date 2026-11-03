@@ -31,9 +31,9 @@ export interface CardProps {
 
 export function Card({ picture, art, name, detail, specs, corner, chosen, onChoose, onOpen, later, reading, actions }: CardProps): React.JSX.Element {
   const usable = later === undefined;
-  // A card with actions in its foot opens when it is clicked, and says so
-  // once: not an "open" link beside an Open button.
-  const opens = onChoose === undefined && actions !== undefined ? onOpen : undefined;
+  // A card opens when it is clicked. One that is chosen when clicked, in a
+  // picker, still opens from a small mark over its picture's corner.
+  const opens = onChoose === undefined ? onOpen : undefined;
   const press = onChoose ?? opens;
   return (
     <div className={`card${chosen ? " chosen" : ""}${usable ? "" : " later"}${opens ? " opens" : ""}`}
@@ -52,14 +52,15 @@ export function Card({ picture, art, name, detail, specs, corner, chosen, onChoo
             : <span>{usable ? "no picture yet" : later}</span>}
         {corner === undefined ? null : <div className="corner">{corner}</div>}
         {chosen ? <div className="tick" aria-hidden="true">✓</div> : null}
+        {onOpen !== undefined && onChoose !== undefined ? (
+          <button type="button" className="open-mark" aria-label={`Open ${name}`} title={`Open ${name}`}
+                  onClick={(e) => { e.stopPropagation(); onOpen(); }}>
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h7v7M13 3 4 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
+        ) : null}
       </div>
       <div className="said">
-        <div className="title-row">
-          <strong>{name}</strong>
-          {onOpen === undefined || opens !== undefined ? null : (
-            <a className="open" onClick={(e) => { e.stopPropagation(); onOpen(); }}>open ›</a>
-          )}
-        </div>
+        <strong>{name}</strong>
         <span>{detail}</span>
         {specs === undefined || specs.length === 0 ? null : (
           <div className="specs">{specs.map((s) => <span key={s}>{s}</span>)}</div>

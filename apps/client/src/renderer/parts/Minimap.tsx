@@ -35,7 +35,7 @@ export interface Geometry {
 }
 
 export function Minimap({ site, track, position, headingDeg, beganAt, geometry, current, marks,
-                         onCarry, believed, positioning, large }: {
+                         laid, onCarry, believed, positioning, large }: {
   site: Site | undefined;
   track: Fix[];
   position: number[] | undefined;
@@ -46,6 +46,8 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
   current?: number[];
   /** Things a task cares about: colonies to treat, and whether each is done. */
   marks?: { x: number; y: number; done?: boolean }[];
+  /** What the dive's arrangement put in the water: equipment, ships, pipe. */
+  laid?: { kind: string; x: number; y: number; route?: { x: number; y: number }[] }[];
   /** Click the chart to put the vehicle there. */
   onCarry?: (x: number, y: number) => void;
   /** Where the vehicle believes it is, which is not where it is. */
@@ -166,6 +168,28 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
         const [x, y] = toScreen(mark.x, mark.y);
         ink.fillStyle = mark.done ? "rgba(124, 224, 160, 0.9)" : "rgba(244, 197, 66, 0.85)";
         ink.beginPath(); ink.arc(x, y, r, 0, Math.PI * 2); ink.fill();
+      }
+    }
+
+    // What somebody laid out for this dive, where they laid it: a line along
+    // its route, anything else a square, named on the large chart.
+    for (const one of laid ?? []) {
+      ink.strokeStyle = ink.fillStyle = one.kind === "ship" || one.kind === "buoy"
+        ? "rgba(235, 240, 245, 0.95)" : "rgba(240, 150, 70, 0.95)";
+      if (one.route && one.route.length >= 2) {
+        ink.lineWidth = 2.5 * devicePixelRatio;
+        ink.beginPath();
+        one.route.forEach((p, i) => { const [x, y] = toScreen(p.x, p.y); if (i === 0) ink.moveTo(x, y); else ink.lineTo(x, y); });
+        ink.stroke();
+        continue;
+      }
+      const [x, y] = toScreen(one.x, one.y);
+      const r = 4 * devicePixelRatio;
+      ink.fillRect(x - r, y - r, 2 * r, 2 * r);
+      if (large) {
+        ink.font = `${11 * devicePixelRatio}px system-ui, sans-serif`;
+        ink.textBaseline = "middle";
+        ink.fillText(one.kind.replace(/-/g, " "), x + r + 4 * devicePixelRatio, y);
       }
     }
 
@@ -351,7 +375,7 @@ export function Minimap({ site, track, position, headingDeg, beganAt, geometry, 
     ink.fillStyle = "#c9d6e6";
     ink.textBaseline = "bottom";
     ink.fillText(label, bx, by - 4 * devicePixelRatio);
-  }, [site, track, position, headingDeg, beganAt, geometry, current, marks, believed,
+  }, [site, track, position, headingDeg, beganAt, geometry, current, marks, laid, believed,
       positioning, large, track.length]);
 
   // Clicking the chart puts the vehicle there. The maths is the drawing's,

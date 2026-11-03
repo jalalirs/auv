@@ -65,38 +65,44 @@ export function Menu({ items, label = "More" }: { items: MenuItem[]; label?: str
 
 export type Tab = { key: string; label: string; count?: number };
 
-export function Page({ title, subtitle, info, crumb, onCrumb, actions, tabs, tab, onTab, toolbar, wide, children }: {
+export function Page({ title, subtitle, info, crumb, onCrumb, actions, tabs, tab, onTab, toolbar, wide, fill, status, children }: {
   title: React.ReactNode;
-  /** One line. Anything longer goes in `info`. */
+  /** One line about the page, read from the info mark beside the title. */
   subtitle?: React.ReactNode;
   info?: React.ReactNode;
-  /** Where Back goes, by name. */
+  /** Where Back goes, by name: the step before the title in the path. */
   crumb?: string;
   onCrumb?: () => void;
   actions?: React.ReactNode;
   tabs?: Tab[];
   tab?: string;
   onTab?: (key: string) => void;
+  /** Controls for what the body shows: its first row, not part of the bar. */
   toolbar?: React.ReactNode;
   /** Full width; otherwise the body is held to a readable measure. */
   wide?: boolean;
+  /** The body is one workspace edge to edge: no padding, no scroll of its own. */
+  fill?: boolean;
+  /** Quiet words at the bar's end, before the actions: saved, running. */
+  status?: React.ReactNode;
   children: React.ReactNode;
 }): React.JSX.Element {
+  // One thin bar: where you are as a path, then what you can do. The page's
+  // own explanation is behind the mark beside its name, never a paragraph
+  // across the top of the work.
+  const about = subtitle || info ? <>{subtitle ? <p>{subtitle}</p> : null}{info ? <p>{info}</p> : null}</> : null;
   return (
     <div className="page">
-      <header className="page-top">
-        <div className="page-title-row">
-          {crumb ? (
-            <button type="button" className="back" onClick={onCrumb} aria-label={`Back to ${crumb}`} title={`Back to ${crumb}`}>
-              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </button>
-          ) : null}
-          <div className="page-titles">
-            {crumb ? <button type="button" className="crumb" onClick={onCrumb}>{crumb}</button> : null}
-            <h1>{title}{info ? <Info>{info}</Info> : null}</h1>
-            {subtitle ? <p className="page-subtitle">{subtitle}</p> : null}
-          </div>
-          {actions ? <div className="page-actions">{actions}</div> : null}
+      <header className="bar">
+        {crumb ? (
+          <button type="button" className="back" onClick={onCrumb} aria-label={`Back to ${crumb}`} title={`Back to ${crumb}`}>
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
+        ) : null}
+        <div className="path" role="navigation" aria-label="Where you are">
+          {crumb ? <><button type="button" className="crumb" onClick={onCrumb}>{crumb}</button><span className="sep">/</span></> : null}
+          <h1>{title}</h1>
+          {about ? <Info>{about}</Info> : null}
         </div>
         {tabs ? (
           <div className="tabs" role="tablist">
@@ -108,9 +114,14 @@ export function Page({ title, subtitle, info, crumb, onCrumb, actions, tabs, tab
             ))}
           </div>
         ) : null}
-        {toolbar ? <div className="toolbar">{toolbar}</div> : null}
+        <span className="bar-gap" />
+        {status ? <span className="bar-status">{status}</span> : null}
+        {actions ? <div className="page-actions">{actions}</div> : null}
       </header>
-      <div className={`page-body${wide ? " wide" : ""}`}>{children}</div>
+      <div className={`page-body${wide ? " wide" : ""}${fill ? " whole" : ""}`}>
+        {toolbar ? <div className="toolbar">{toolbar}</div> : null}
+        {children}
+      </div>
     </div>
   );
 }

@@ -47,43 +47,47 @@
 /* The page fills the main area; its head stays, its body scrolls. */
 main:has(> .page) { overflow: hidden; padding: 0; display: flex; flex-direction: column; }
 .page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.page-top {
-  flex: none; padding: var(--s5) var(--s6) 0;
-  border-bottom: 1px solid var(--edge);
-  background: linear-gradient(180deg, rgba(7, 18, 32, 0.0), rgba(7, 18, 32, 0.6));
+.bar {
+  flex: none; display: flex; align-items: center; gap: var(--s3);
+  height: 48px; padding: 0 var(--s5) 0 var(--s4);
+  border-bottom: 1px solid var(--edge); background: rgba(7, 18, 32, 0.55);
 }
-.page-top:not(:has(.tabs)) { padding-bottom: var(--s4); }
 .back {
-  flex: none; align-self: flex-end; display: inline-grid; place-items: center; min-height: 0;
-  width: 32px; height: 32px; margin-bottom: 2px; padding: 0; border: 1px solid var(--edge); border-radius: var(--r-control);
+  flex: none; display: inline-grid; place-items: center; min-height: 0;
+  width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--r-control);
   background: transparent; color: var(--faint); cursor: pointer;
 }
-.back:hover { background: var(--shelf); border-color: var(--edge-lit); color: var(--plain); }
+.back:hover { background: var(--shelf); color: var(--plain); }
+.path { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
 .crumb {
-  display: block; min-height: 0; height: auto; margin: 0 0 2px; padding: 0; border: 0;
-  background: transparent; color: var(--faint); font: 500 var(--t-meta)/1.4 var(--font); cursor: pointer;
+  min-height: 0; height: auto; padding: 0; border: 0; flex: none;
+  background: transparent; color: var(--faint); font: 500 var(--t-body)/1 var(--font); cursor: pointer;
+  max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .crumb:hover { color: var(--plain); }
-.page-title-row { display: flex; align-items: center; gap: var(--s3); min-height: var(--h-large); }
-.page-titles { flex: 1; min-width: 0; }
-.page-titles h1 {
-  display: flex; align-items: center; gap: var(--s2); margin: 0;
-  font: 600 var(--t-title)/1.2 var(--font); letter-spacing: -0.01em;
-}
-.page-subtitle {
-  margin: var(--s1) 0 0; color: var(--faint); font-size: var(--t-body);
+.path .sep { color: var(--dim); }
+.path h1 {
+  display: flex; align-items: center; gap: var(--s2); margin: 0; min-width: 0;
+  font: 600 var(--t-strong)/1 var(--font); letter-spacing: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.bar-gap { flex: 1; }
+.bar-status { color: var(--dim); font-size: var(--t-meta); white-space: nowrap; }
 .page-actions { display: flex; gap: var(--s2); align-items: center; flex: none; }
-.tabs { display: flex; gap: var(--s1); margin-top: var(--s4); }
+.page-actions button { min-height: 0; height: 32px; }
+.tabs { display: flex; gap: var(--s1); align-self: stretch; margin-left: var(--s3); }
 .tabs button {
-  min-height: 0; border-radius: 0; height: 36px; padding: 0 var(--s3); border: 0; border-bottom: 2px solid transparent;
+  min-height: 0; border-radius: 0; height: 100%; padding: 0 var(--s3); border: 0; border-bottom: 2px solid transparent;
   background: transparent; color: var(--faint); font: 500 var(--t-body) var(--font); cursor: pointer;
 }
 .tabs button:hover { color: var(--plain); }
 .tabs button[aria-selected="true"] { color: var(--plain); border-bottom-color: var(--coral); }
 .tab-count { margin-left: var(--s2); color: var(--dim); font-size: var(--t-meta); font-variant-numeric: tabular-nums; }
-.toolbar { display: flex; align-items: center; gap: var(--s2); padding: var(--s3) 0; flex-wrap: wrap; }
+.toolbar { display: flex; align-items: center; gap: var(--s2); margin-bottom: var(--s4); flex-wrap: wrap; }
+.page-body.whole { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.page-body.whole > * { max-width: none; }
+.info-pop p { margin: 0 0 var(--s2); }
+.info-pop p:last-child { margin: 0; }
 .page-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--s5) var(--s6) var(--s7); }
 .page-body > * { max-width: 1400px; }
 .page-body.wide > * { max-width: none; }
@@ -189,7 +193,6 @@ main:has(> .page) { overflow: hidden; padding: 0; display: flex; flex-direction:
 /* ── the window below the width the layouts are designed for ──────────────── */
 
 @media (max-width: 1100px) {
-  .page-top { padding-left: var(--s5); padding-right: var(--s5); }
   .page-body { padding-left: var(--s5); padding-right: var(--s5); }
 }
 
@@ -215,3 +218,4 @@ main:has(> .page) { overflow: hidden; padding: 0; display: flex; flex-direction:
 .dt tr.dt-skeleton:hover { background: none; }
 .dt tr.dt-skeleton td { padding-top: 18px; padding-bottom: 18px; }
 .dt tr.dt-skeleton .right .skeleton { margin-left: auto; }
+.path h1:has(.switcher) { overflow: visible; }

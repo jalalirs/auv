@@ -138,9 +138,7 @@ export function Runs({ platform, held, onChanged, onReplay, onSweep, onNew, by }
                  { key: "when", label: "When", priority: 2, sort: (a, b) => a.when.localeCompare(b.when),
                    render: (r) => <span className="cell-meta">{ago(r.when)}</span> },
                  { key: "state", label: "State", render: (r) => <Status tone={toneOf(r.state)}>{r.state === "succeeded" ? "done" : r.state}</Status> },
-               ]}
-               actions={(r) => r.kind === "sweep" ? <Button kind="ghost" onClick={() => onSweep(r.sweep.id)}>Open</Button>
-                 : <Button kind="ghost" onClick={() => onReplay(r.one.dive, r.one.run.id)}>Open</Button>} />
+               ]} />
     </Page>
   );
 }

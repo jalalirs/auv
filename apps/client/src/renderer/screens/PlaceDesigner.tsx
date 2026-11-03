@@ -17,7 +17,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { Asset, Layout as LayoutRecord, LayoutDocument, Mapping, Platform } from "@coral-city/api";
+import type { Asset, AssetVersion, Layout as LayoutRecord, LayoutDocument, Mapping, Platform } from "@coral-city/api";
 import type { Held, Packages } from "./Deck.js";
 import { centreOf, groundAt, groundOf, SiteChart, type Frame, type Ground, type Thing as Charted } from "../parts/SiteChart.js";
 import { drape, fall, restOn, type Body, type Draped, type Fall, type Rest } from "../parts/landing.js";
@@ -118,12 +118,16 @@ function rateOf(fell: Fall): number {
   return end / Math.min(8, Math.max(2.5, end));
 }
 
-export function PlaceDesigner({ platform, held, packages, place, layout: layoutId, onBack, onChanged, onOpenLayout }: {
+export function PlaceDesigner({ platform, held, packages, place, layout: layoutId, holding, onBack, onChanged, onOpenLayout, onDive }: {
   platform: Platform;
   held: Held;
   packages: Packages;
   place: string;
   layout?: string;
+  /** An object to start with in hand, from its own page: Place it. */
+  holding?: string;
+  /** New run, over this place in this arrangement. */
+  onDive?: (layout: string) => void;
   onBack: () => void;
   onChanged: () => void;
   onOpenLayout: (id: string) => void;
@@ -140,7 +144,10 @@ export function PlaceDesigner({ platform, held, packages, place, layout: layoutI
   const [things, setThings] = useState<Thing[]>([]);
   const [objects, setObjects] = useState<Placed[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
-  const [tool, setTool] = useState<string | undefined>();
+  const [tool, setTool] = useState<string | undefined>(holding ? `object:${holding}` : undefined);
+  const [search, setSearch] = useState("");
+  const [switching, setSwitching] = useState(false);
+  const [showLayers, setShowLayers] = useState(false);
   const [chosen, setChosen] = useState<string | undefined>();
   const [first, setFirst] = useState<{ x: number; y: number } | undefined>();
   const [route, setRoute] = useState<{ x: number; y: number }[]>([]);
@@ -164,14 +171,19 @@ export function PlaceDesigner({ platform, held, packages, place, layout: layoutI
   }, [platform, org]);
 
   // The arrangements of this place, and the one being designed: the one asked
-  // for, or the newest, or none until the first save makes one.
+  // for, or the one saved most recently, or none until the first save makes
+  // one. The platform lists them by name, which is no order to reopen by.
   useEffect(() => {
     let stale = false;
-    void platform.layoutsOf(place).then((found) => {
+    void (async () => {
+      const found = await platform.layoutsOf(place);
+      const saved = await Promise.all(found.map(async (one) =>
+        (await platform.versionsOfLayout(one.id).catch((): AssetVersion[] => []))[0]?.createdAt ?? one.createdAt));
       if (stale) return;
+      const newest = found.map((one, at) => ({ one, at: saved[at]! })).sort((a, b) => b.at.localeCompare(a.at))[0]?.one;
       setLayouts(found);
-      setLayout(found.find((l) => l.id === layoutId) ?? (layoutId ? undefined : found[found.length - 1]));
-    }).catch(() => undefined);
+      setLayout(found.find((l) => l.id === layoutId) ?? (layoutId ? undefined : newest));
+    })().catch(() => undefined);
     return () => { stale = true; };
   }, [platform, place, layoutId]);
   useEffect(() => {
@@ -481,6 +493,9 @@ export function PlaceDesigner({ platform, held, packages, place, layout: layoutI
       const version = await platform.saveLayout(into.id, document, `${things.length} equipment, ${objects.length} objects`);
       setSaid(`Saved, version ${version.ordinal}.`);
       setChanged(false);
+      // Your objects go into the seabed itself, which is a new version of the
+      // place: one Save does both, or a dive flies over equipment and no pipe.
+      if (unlaid.length > 0 && earth) await layIn();
     } catch (problem) {
       setTrouble(problem instanceof Error ? problem.message : "it would not save");
     } finally {
@@ -539,77 +554,107 @@ export function PlaceDesigner({ platform, held, packages, place, layout: layoutI
   const reefsAndStructures = assets.filter((a) => a.kind === "reef" || a.kind === "structure");
   const lastStep = mapping?.steps?.[mapping.steps.length - 1]?.say;
 
+  const pick = (key: string) => { setFirst(undefined); setRoute([]); setChosen(undefined); setTool(tool === key ? undefined : key); };
+  const pickObject = (a: Asset) => {
+    const key = `object:${a.id}`;
+    setFirst(undefined); setRoute([]);
+    // One that drapes goes along its own route: no click on the chart to wait for.
+    const along = (a.brief as { route?: { points?: number[][] } } | undefined)?.route?.points;
+    if (a.meets === "drapes" && earth && along?.length) {
+      const points = along.map((p) => earth.toSite(p[0]!, p[1]!));
+      const middle = points[Math.floor(points.length / 2)]!;
+      const one: Placed = { id: named("object"), assetId: a.id, name: a.name, meets: "drapes", ...middle,
+                            headingDeg: 0, sizeM: sizeOf(a), route: points };
+      edit(() => setObjects((was) => [...was, one]));
+      setChosen(one.id); setTool(undefined);
+      return;
+    }
+    setTool(tool === key ? undefined : key);
+  };
+  const query = search.trim().toLowerCase();
+  const matches = (name: string) => query === "" || name.toLowerCase().includes(query);
+  const hoverAt = hover && earth ? earth.toLatLon(hover.x, hover.y) : undefined;
+  const fresh = () => { setLayout(undefined); setThings([]); setObjects([]); setChosen(undefined); setChanged(true); setSaid(""); setSwitching(false); };
+  const stateSaid = mapping ? `laying objects in: ${mapping.state}` : changed ? "not saved" : said || (layout ? "saved" : "nothing saved yet");
+
   return (
-    <Page title={city.name} crumb="the place" onCrumb={onBack} wide
-          subtitle="Put equipment and your objects on the seabed; each is fitted to the ground as you place it."
-          info="Equipment is saved as this place's arrangement, which a dive pins. Your objects are laid into the place itself: Lay in makes a new version with them in the seabed and publishes it. The fit, the pipe spans and the drop are worked out here from the place's own depths; a dive runs the coupled engine."
-          actions={<>
-            {unlaid.length > 0 ? (
-              <Button disabled={busy || !!mapping || !earth} onClick={() => void layIn()}>
-                {mapping ? "Laying in…" : `Lay ${unlaid.length} object${unlaid.length === 1 ? "" : "s"} in`}
-              </Button>
-            ) : null}
-            <Button kind="primary" disabled={busy || (!changed && !!layout)} onClick={() => void save()}>{busy ? "Saving…" : "Save"}</Button>
-          </>}
-          toolbar={(
-            <div className="designer-bar">
-              <div className="layer-chips" role="group" aria-label="Layers">
-                {LAYERS.map((one) => (
-                  <button key={one.key} type="button" className={layers[one.key] ? "chip on" : "chip"} aria-pressed={layers[one.key]}
-                          onClick={() => setLayers((was) => ({ ...was, [one.key]: !was[one.key] }))}>{one.name}</button>
-                ))}
-              </div>
-              {layouts.length > 1 ? (
-                <select value={layout?.id ?? ""} onChange={(e) => onOpenLayout(e.target.value)} aria-label="Arrangement">
-                  {layouts.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-                </select>
-              ) : null}
-              <span className="note">{[said, changed ? "not saved" : !said ? (layout ? `Arrangement: ${layout.name}` : "Nothing saved yet") : ""].filter(Boolean).join(" · ")}</span>
-            </div>
-          )}>
-      <section className="designer">
-        <div className="palette">
-          <h3>Your objects</h3>
-          {reefsAndStructures.length === 0 ? <p className="note">None yet. Make one under Objects, or copy one from the Store.</p> : null}
-          {reefsAndStructures.map((a) => {
-            const key = `object:${a.id}`;
-            return (
-              <button key={a.id} type="button" className={tool === key ? "tool on" : "tool"} aria-pressed={tool === key}
-                      title={a.name}
-                      onClick={() => {
-                        setFirst(undefined); setRoute([]);
-                        // One that drapes goes along its own route: no click on the chart to wait for.
-                        const route = (a.brief as { route?: { points?: number[][] } } | undefined)?.route?.points;
-                        if (a.meets === "drapes" && earth && route?.length) {
-                          const points = route.map((p) => earth.toSite(p[0]!, p[1]!));
-                          const middle = points[Math.floor(points.length / 2)]!;
-                          const one: Placed = { id: named("object"), assetId: a.id, name: a.name, meets: "drapes", ...middle,
-                                                headingDeg: 0, sizeM: sizeOf(a), route: points };
-                          edit(() => setObjects((was) => [...was, one]));
-                          setChosen(one.id); setTool(undefined);
-                          return;
-                        }
-                        setTool(tool === key ? undefined : key);
-                      }}>
-                <ObjectArt kind={artOf(a)} size={22} />
-                <span>{a.name.replace(/\s*\([^()]*\)\s*$/, "")}</span>
+    <Page fill crumb={city.name} onCrumb={onBack}
+          title={(
+            <span className="switcher">
+              <button type="button" className="switcher-button" aria-haspopup="menu" aria-expanded={switching}
+                      onClick={() => setSwitching((was) => !was)}>
+                {layout?.name ?? "New arrangement"}
+                <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
-            );
-          })}
-          {GROUPS.map((group) => (
-            <React.Fragment key={group.lands}>
-              <h3>{group.title}</h3>
-              {Object.entries(TOOLS).filter(([, what]) => what.lands === group.lands).map(([key, what]) => (
-                <button key={key} type="button" className={tool === key ? "tool on" : "tool"} aria-pressed={tool === key}
-                        onClick={() => { setFirst(undefined); setRoute([]); setTool(tool === key ? undefined : key); }}>
-                  <span>{what.name}</span>
-                </button>
-              ))}
-            </React.Fragment>
-          ))}
+              {switching ? (
+                <span className="switcher-list" role="menu" onMouseLeave={() => setSwitching(false)}>
+                  <span className="switcher-head">Arrangements of this place</span>
+                  {layouts.map((l) => (
+                    <button key={l.id} type="button" role="menuitemradio" aria-checked={l.id === layout?.id}
+                            onClick={() => { setSwitching(false); if (l.id !== layout?.id) onOpenLayout(l.id); }}>
+                      {l.name}
+                    </button>
+                  ))}
+                  <button type="button" role="menuitem" className="new" onClick={fresh}>+ New arrangement</button>
+                </span>
+              ) : null}
+            </span>
+          )}
+          info="A place has any number of arrangements; each is what you put on it. Equipment and ships are saved in the arrangement, which a dive pins. Your objects also go into the seabed itself when you save, as a new version of the place. The fit, the pipe spans and the drop are worked out here from the place's own depths; a dive runs the coupled engine."
+          status={stateSaid}
+          actions={<>
+            {onDive ? <Button disabled={changed || !layout} onClick={() => layout && onDive(layout.id)}>Dive it</Button> : null}
+            <Button kind="primary" disabled={busy || !!mapping || (!changed && !!layout && unlaid.length === 0)}
+                    onClick={() => void (changed || !layout ? save() : layIn())}>
+              {mapping ? "Laying in…" : busy ? "Saving…" : "Save"}
+            </Button>
+          </>}>
+      <div className="studio">
+        <div className="studio-rail" role="toolbar" aria-label="Tools">
+          <button type="button" className={tool === undefined ? "on" : undefined} title="Select and move (Escape)" aria-label="Select"
+                  onClick={() => { setTool(undefined); setFirst(undefined); setRoute([]); }}>
+            <Glyph kind="select" />
+          </button>
+          <button type="button" className={showLayers ? "on" : undefined} title="Layers" aria-label="Layers" aria-pressed={showLayers}
+                  onClick={() => setShowLayers((was) => !was)}>
+            <Glyph kind="layers" />
+          </button>
         </div>
 
-        <div className="canvas">
+        <div className="studio-library">
+          <input type="search" placeholder="Find" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Find in the library" />
+          {reefsAndStructures.some((a) => matches(a.name)) || query === "" ? <h3>Your objects</h3> : null}
+          {query === "" && reefsAndStructures.length === 0 ? <p className="note">None yet. Make one under Objects, or copy one from the Store.</p> : null}
+          <div className="tiles">
+            {reefsAndStructures.filter((a) => matches(a.name)).map((a) => (
+              <button key={a.id} type="button" className={tool === `object:${a.id}` ? "tile on" : "tile"} aria-pressed={tool === `object:${a.id}`}
+                      title={a.name} onClick={() => pickObject(a)}>
+                <ObjectArt kind={artOf(a)} size={26} />
+                <span>{a.name.replace(/\s*\([^()]*\)\s*$/, "")}</span>
+              </button>
+            ))}
+          </div>
+          {GROUPS.map((group) => {
+            const here = Object.entries(TOOLS).filter(([, what]) => what.lands === group.lands && matches(what.name));
+            if (here.length === 0) return null;
+            return (
+              <React.Fragment key={group.lands}>
+                <h3>{group.title}</h3>
+                <div className="tiles">
+                  {here.map(([key, what]) => (
+                    <button key={key} type="button" className={tool === key ? "tile on" : "tile"} aria-pressed={tool === key}
+                            title={what.name} onClick={() => pick(key)}>
+                      <Glyph kind={key} />
+                      <span>{what.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </React.Fragment>
+            );
+          })}
+        </div>
+
+        <div className="studio-canvas">
           <SiteChart ground={ground} things={(layers.equipment ? things : []) as Charted[]} chosen={chosen} shade={layers.shade}
                      fit={[...(things as Charted[]).flatMap((t) => t.corners ?? t.ends ?? t.route ?? [centreOf(t)]),
                            ...objects.flatMap((o) => o.route ?? [{ x: o.x, y: o.y }])]}
@@ -619,46 +664,57 @@ export function PlaceDesigner({ platform, held, packages, place, layout: layoutI
                      onHover={(at) => setHover(at)}
                      grabAt={(at) => { if (tool) return false; const hit = near(at); if (hit) setChosen(hit); return !!hit; }}
                      onDrag={(at) => drag(at)} />
-          <div className={`readout${hoverSays.worry ? " worry" : ""}`}>
-            {hover && ground ? <span>{groundAt(ground, hover.x, hover.y).toFixed(1)} m</span> : null}
-            <span className="resolves">{hoverSays.says}</span>
-          </div>
+          {showLayers ? (
+            <div className="studio-layers" role="group" aria-label="Layers">
+              {LAYERS.map((one) => (
+                <label key={one.key}>
+                  <input type="checkbox" checked={layers[one.key]} onChange={() => setLayers((was) => ({ ...was, [one.key]: !was[one.key] }))} />
+                  {one.name}
+                </label>
+              ))}
+            </div>
+          ) : null}
+          {tool ? <div className={`studio-hint${hoverSays.worry ? " worry" : ""}`}>{hoverSays.says}</div> : null}
         </div>
 
-        <div className="properties">
+        <div className="studio-side">
+          <h3>On this arrangement</h3>
+          {things.length + objects.length === 0 ? <p className="note">Nothing yet. Choose something from the library and click the seabed.</p> : null}
+          <div className="outline">
+            {objects.map((o) => (
+              <button key={o.id} type="button" className={o.id === chosen ? "one on" : "one"} onClick={() => setChosen(o.id)}>
+                <ObjectArt kind={o.meets === "drapes" ? "pipeline" : o.meets === "reef" ? "reef" : "structure"} size={16} />
+                <span className="name">{o.name.replace(/\s*\([^()]*\)\s*$/, "")}</span>
+                <span className="depth">{o.laidBy ? "in the seabed" : "not laid in"}</span>
+              </button>
+            ))}
+            {things.map((t) => (
+              <button key={t.id} type="button" className={t.id === chosen ? "one on" : "one"} onClick={() => setChosen(t.id)}>
+                <Glyph kind={t.kind} small />
+                <span className="name">{TOOLS[t.kind]?.name ?? t.kind}</span>
+                <span className="depth">{saysOf(t)}</span>
+              </button>
+            ))}
+          </div>
           {selectedObject || selectedThing ? (
-            <Properties object={selectedObject} thing={selectedThing} fit={chosenFit} laid={chosenDrape} earth={earth}
-                        current={current} onCurrent={setCurrent} dropping={dropping} ground={ground}
-                        onTurn={(deg) => edit(() => setObjects((was) => was.map((o) => o.id === chosen ? { ...o, headingDeg: deg, laidBy: undefined } : o)))}
-                        onMass={(kg) => edit(() => setObjects((was) => was.map((o) => o.id === chosen ? { ...o, massKg: kg } : o)))}
-                        onDrop={drop}
-                        onDuplicate={() => {
-                          if (selectedThing) {
-                            const copy = shifted(selectedThing, 25, -25, ground);
-                            edit(() => setThings((was) => [...was, copy])); setChosen(copy.id);
-                          } else if (selectedObject && !selectedObject.route) {
-                            const copy = { ...selectedObject, id: named("object"), x: selectedObject.x + 10, y: selectedObject.y - 10, laidBy: undefined };
-                            edit(() => setObjects((was) => [...was, copy])); setChosen(copy.id);
-                          }
-                        }}
-                        onRemove={remove} />
-          ) : (
-            <div className="nothing-chosen">
-              <h3>On this place</h3>
-              {things.length + objects.length === 0 ? <p className="note">Nothing yet. Choose something on the left and click the seabed.</p> : null}
-              {objects.map((o) => (
-                <button key={o.id} type="button" className="one" onClick={() => setChosen(o.id)}>
-                  <span>{o.name.replace(/\s*\([^()]*\)\s*$/, "")}</span><span className="depth">{o.laidBy ? "laid in" : "not laid in"}</span>
-                </button>
-              ))}
-              {things.map((t) => (
-                <button key={t.id} type="button" className="one" onClick={() => setChosen(t.id)}>
-                  <span>{TOOLS[t.kind]?.name ?? t.kind}</span><span className="depth">{saysOf(t)}</span>
-                </button>
-              ))}
-              <p className="note keys">Drag a thing to move it. R turns it, Delete removes it, Escape puts the tool down.</p>
+            <div className="inspector">
+              <Properties object={selectedObject} thing={selectedThing} fit={chosenFit} laid={chosenDrape} earth={earth}
+                          current={current} onCurrent={setCurrent} dropping={dropping} ground={ground}
+                          onTurn={(deg) => edit(() => setObjects((was) => was.map((o) => o.id === chosen ? { ...o, headingDeg: deg, laidBy: undefined } : o)))}
+                          onMass={(kg) => edit(() => setObjects((was) => was.map((o) => o.id === chosen ? { ...o, massKg: kg } : o)))}
+                          onDrop={drop}
+                          onDuplicate={() => {
+                            if (selectedThing) {
+                              const copy = shifted(selectedThing, 25, -25, ground);
+                              edit(() => setThings((was) => [...was, copy])); setChosen(copy.id);
+                            } else if (selectedObject && !selectedObject.route) {
+                              const copy = { ...selectedObject, id: named("object"), x: selectedObject.x + 10, y: selectedObject.y - 10, laidBy: undefined };
+                              edit(() => setObjects((was) => [...was, copy])); setChosen(copy.id);
+                            }
+                          }}
+                          onRemove={remove} />
             </div>
-          )}
+          ) : null}
           {mapping ? (
             <div className="laying">
               <Status tone={mapping.state === "failed" ? "bad" : "busy"}>laying in: {mapping.state}</Status>
@@ -668,7 +724,18 @@ export function PlaceDesigner({ platform, held, packages, place, layout: layoutI
           ) : null}
           {trouble ? <p className="trouble">{trouble}</p> : null}
         </div>
-      </section>
+      </div>
+
+      <div className="studio-status">
+        {hoverAt && hover && ground ? (
+          <>
+            <span>{Math.abs(hoverAt.lat).toFixed(5)}° {hoverAt.lat >= 0 ? "N" : "S"} {Math.abs(hoverAt.lon).toFixed(5)}° {hoverAt.lon >= 0 ? "E" : "W"}</span>
+            <span>depth {groundAt(ground, hover.x, hover.y).toFixed(1)} m</span>
+          </>
+        ) : <span>move over the seabed to read it</span>}
+        <span className="gap" />
+        <span>{tool ? "click the seabed to put it down · Escape puts it away" : "drag to move · R turns · Delete removes"}</span>
+      </div>
 
       {choosing && mapping ? (
         <Dialog title={`Where ${choosing.name ?? "the reef"} fits`} wide onClose={() => undefined}>
@@ -684,6 +751,31 @@ export function PlaceDesigner({ platform, held, packages, place, layout: layoutI
         </Dialog>
       ) : null}
     </Page>
+  );
+}
+
+/** A small drawing of a tool or a kind of equipment, for the library and the outline. */
+function Glyph({ kind, small }: { kind: string; small?: boolean }): React.JSX.Element {
+  const d: Record<string, React.ReactNode> = {
+    select: <path d="M6 4v15l4-4 3 6 2-1-3-6h5z" />,
+    layers: <><path d="m12 4 8 4-8 4-8-4z" /><path d="m4 12 8 4 8-4" /><path d="m4 16 8 4 8-4" /></>,
+    transponder: <><path d="M12 20V10" /><circle cx="12" cy="8" r="2" /><path d="M8 5a6 6 0 0 1 8 0M6 3a9 9 0 0 1 12 0" /><path d="M8 20h8" /></>,
+    "mooring-block": <><rect x="5" y="12" width="14" height="8" rx="1" /><path d="M12 12V6" /><circle cx="12" cy="5" r="1.5" /></>,
+    "nursery-frame": <><rect x="4" y="7" width="16" height="11" /><path d="M4 12.5h16M9 7v11M15 7v11" /></>,
+    "marker-post": <><path d="M12 21V5" /><path d="M12 5h6l-2 3 2 3h-6" /><path d="M8 21h8" /></>,
+    ship: <><path d="M3 15h18l-3 5H6z" /><path d="M7 15V9h8l2 6" /><path d="M10 9V5" /></>,
+    buoy: <><circle cx="12" cy="13" r="5" /><path d="M12 8V3M3 18c3 2 6 2 9 0s6-2 9 0" /></>,
+    dredger: <><path d="M3 15h14l-2 4H5z" /><path d="M6 15V10h6v5" /><path d="M12 10l7-5M19 5v9" /></>,
+    "mooring-line": <><path d="M5 4c4 6 2 10 7 16" /><circle cx="5" cy="4" r="1.5" /><rect x="10" y="19" width="5" height="2.5" /></>,
+    pipeline: <><path d="M3 16c4-1 6-6 9-6s5 5 9 4" /><path d="M3 19c4-1 6-6 9-6s5 5 9 4" opacity=".5" /></>,
+    "restoration-cell": <><path d="M5 6h14v12H5z" strokeDasharray="2.5 2" /><path d="M9 14c1-3 2-4 3-4s2 2 3 4" /></>,
+  };
+  const size = small ? 16 : 26;
+  return (
+    <svg className="glyph" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"
+         fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      {d[kind] ?? <circle cx="12" cy="12" r="6" />}
+    </svg>
   );
 }
 

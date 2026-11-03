@@ -44,6 +44,7 @@ const PLAN = "coral-city.mission";
 
 /** Standing for "no plan", so the row has something chosen rather than nothing. */
 const NO_PLAN = "none";
+const BARE = "bare";
 
 /** How long a plan of work asks for, which is how long the dive will get. */
 function minutesOf(stages: { timeLimitS?: number; seconds?: number }[]): string {
@@ -106,8 +107,11 @@ function remembered<T extends { id: string }>(key: string, all: T[]): string | u
   return all.length === 1 ? all[0]!.id : undefined;
 }
 
-export function Dive({ platform, held, packages, free, devices, onDiving, onChanged, onOpen, onPlan, onBack }: {
+export function Dive({ platform, held, packages, free, devices, over, arrangedAs, onDiving, onChanged, onOpen, onPlan, onBack }: {
   platform: Platform;
+  /** Come from a place's designer: dive there, arranged as it was. */
+  over?: string;
+  arrangedAs?: string;
   held: Held;
   packages: Packages;
   free: number;
@@ -119,7 +123,7 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
   onPlan?: () => void;
   onBack?: () => void;
 }): React.JSX.Element {
-  const [place, setPlace] = useState(() => remembered(WHERE, held.places));
+  const [place, setPlace] = useState(() => over ?? remembered(WHERE, held.places));
   const [vehicle, setVehicle] = useState(() => remembered(WHAT, held.vehicles));
   const [task, setTask] = useState<Task>(() =>
     TASKS.find((t) => t.key === localStorage.getItem(WHY)) ?? PILOTED);
@@ -178,7 +182,7 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
   // points at — comes from the plan, which is the whole reason for keeping
   // one: two people who chose different places did not fly the same mission.
   const [plans, setPlans] = useState<Flyable[]>([]);
-  const [plan, setPlan] = useState<string | undefined>(() => localStorage.getItem(PLAN) ?? undefined);
+  const [plan, setPlan] = useState<string | undefined>(() => over ? undefined : localStorage.getItem(PLAN) ?? undefined);
   useEffect(() => {
     let stale = false;
     void (async () => {
@@ -202,6 +206,31 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
   }, [chosenPlan, place]);
 
   const chosenPlace = held.places.find((p) => p.id === place);
+
+  // How the place is arranged for this dive: its arrangements, each at its
+  // newest saved version, the most recently saved first. A plan pins its own;
+  // without one the dive pins whichever is chosen here, and the newest is what
+  // somebody who just designed the place expects to dive into.
+  const [arrangements, setArrangements] = useState<{ key: string; name: string; version: AssetVersion }[]>([]);
+  const [arranged, setArranged] = useState<string | undefined>();
+  useEffect(() => {
+    setArrangements([]); setArranged(undefined);
+    if (!place) return;
+    let stale = false;
+    void (async () => {
+      const layouts = await platform.layoutsOf(place).catch(() => []);
+      const found = (await Promise.all(layouts.map(async (one) => {
+        const versions = await platform.versionsOfLayout(one.id).catch((): AssetVersion[] => []);
+        return versions[0] === undefined ? undefined : { key: one.id, name: one.name, version: versions[0] };
+      }))).filter((f): f is { key: string; name: string; version: AssetVersion } => f !== undefined)
+        .sort((a, b) => b.version.createdAt.localeCompare(a.version.createdAt));
+      if (stale) return;
+      setArrangements(found);
+      setArranged(found.find((one) => one.key === arrangedAs)?.key ?? found[0]?.key ?? BARE);
+    })();
+    return () => { stale = true; };
+  }, [platform, place, arrangedAs]);
+  const arrangement = arrangements.find((one) => one.key === arranged);
   const chosenVehicle = held.vehicles.find((v) => v.id === vehicle);
   const placePackage = chosenPlace === undefined ? undefined : packages.places.get(chosenPlace.id);
   const vehiclePackage = chosenVehicle === undefined ? undefined : packages.vehicles.get(chosenVehicle.id);
@@ -288,6 +317,7 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
         : await platform.defineDive(held.institution.id, {
         name: `${task.key === "piloted" ? "" : task.name + ": "}${chosenVehicle.name} in ${chosenPlace.name}`,
         cityVersionId: onePlace.id,
+        ...(arrangement === undefined ? {} : { layoutVersionId: arrangement.version.id }),
         vehicleVersionId: oneVehicle.id,
         conditionsId: conditions.id,
         // A built-in controller is asked for by name, inside the objective it
@@ -571,6 +601,15 @@ export function Dive({ platform, held, packages, free, devices, onDiving, onChan
             <Line label="Where" choices={places} chosen={place}
                   onChoose={(key) => { setPlace(key); localStorage.setItem(WHERE, key); }}
                   onOpen={(key) => onOpen({ page: "place", id: key })} />
+          )}
+          {chosenPlan !== undefined || arrangements.length === 0 ? null : (
+            <Line label="Arranged as" chosen={arranged ?? BARE}
+                  choices={[...arrangements.map((one) => ({ key: one.key, name: one.name,
+                                                             says: `saved ${ago(one.version.createdAt)}` })),
+                            { key: BARE, name: "Nothing laid out", says: "the seabed as it is" }]}
+                  onChoose={setArranged}
+                  onOpen={(key) => { if (key !== BARE && place) onOpen({ page: "design", place, layout: key }); }}
+                  hint={<>What you put on the place in the designer: equipment, ships, pipelines.</>} />
           )}
           <Line label="In" choices={vehicles} chosen={vehicle}
                 onChoose={(key) => { setVehicle(key); localStorage.setItem(WHAT, key); }}

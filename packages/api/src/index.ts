@@ -820,6 +820,10 @@ export class Platform {
     return events;
   }
 
+  async dive(id: string): Promise<Dive> {
+    return this.#request("GET", `/api/v1/dives/${id}`);
+  }
+
   async dives(organisation: string): Promise<Dive[]> {
     const { dives } = await this.#request<{ dives: Dive[] }>(
       "GET", `/api/v1/organisations/${organisation}/dives`);

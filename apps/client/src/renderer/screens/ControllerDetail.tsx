@@ -95,8 +95,7 @@ export function ControllerDetail({ platform, held, slug, onBack, onFly, onReplay
                  { key: "when", label: "When", sort: (a, b) => a.run.requestedAt.localeCompare(b.run.requestedAt),
                    render: (r) => <span className="cell-meta">{ago(r.run.requestedAt)}</span> },
                  { key: "state", label: "State", render: (r) => <Status tone={toneOf(r.run.state)}>{r.run.state}</Status> },
-               ]}
-               actions={(r) => <Button kind="ghost" onClick={() => onReplay?.(r.dive, r.run.id)}>Open</Button>} />
+               ]} />
       </section>
       <section className="controller-section">
         <h2>Versions</h2>

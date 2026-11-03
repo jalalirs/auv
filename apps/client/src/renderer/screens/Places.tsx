@@ -66,13 +66,10 @@ export function Places({ platform, held, packages, onOpen, onBuild, onStore, onC
         <div className="cards">
           {yours.map((one) => (
             <PlaceCard key={one.id} place={one} packages={packages} onOpen={() => onOpen(one.id)}
-                       actions={<>
-                         <Button onClick={() => onOpen(one.id)}>Open</Button>
-                         {mayRetire(one) ? (
-                           <Menu label={`More for ${one.name}`}
-                                 items={[{ label: "Retire", danger: true, onSelect: () => setRetiring(one) }]} />
-                         ) : null}
-                       </>} />
+                       actions={mayRetire(one) ? (
+                         <Menu label={`More for ${one.name}`}
+                               items={[{ label: "Retire", danger: true, onSelect: () => setRetiring(one) }]} />
+                       ) : undefined} />
           ))}
         </div>
       )}

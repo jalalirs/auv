@@ -4,8 +4,8 @@
 // pieces and its search for where it fits.
 
 import { useEffect, useState } from "react";
-import type { Asset, Platform } from "@coral-city/api";
-import { Button, Menu, Page, Status, SkeletonLines } from "../ui/components.js";
+import type { Asset, City, Platform } from "@coral-city/api";
+import { Button, Dialog, Menu, Page, Status, SkeletonLines } from "../ui/components.js";
 import { ago } from "./parts.js";
 
 /** What an object is, in a word or two. How it was made is on its page. */
@@ -39,14 +39,19 @@ function valueSaid(v: unknown): string {
   return String(v);
 }
 
-export function AssetDetail({ platform, id, onBack, onCompose }: {
+export function AssetDetail({ platform, id, places, onBack, onCompose, onPlace }: {
   platform: Platform;
   id: string;
+  /** Where it could go. */
+  places: City[];
   onBack: () => void;
-  /** The New place screen, with this asset already chosen. */
+  /** The New place screen, with this survey as its ground. */
   onCompose: (id: string) => void;
+  /** The designer of a place, with this object in hand. */
+  onPlace: (id: string, place: string) => void;
 }): React.JSX.Element {
   const [one, setOne] = useState<Asset | undefined>();
+  const [placing, setPlacing] = useState(false);
   const [trouble, setTrouble] = useState("");
   useEffect(() => {
     let live = true;
@@ -68,7 +73,9 @@ export function AssetDetail({ platform, id, onBack, onCompose }: {
           subtitle={`${kindSaid(one)} · made ${ago(one.createdAt)}`}
           actions={<>
             {one.state === "ready"
-              ? <Button kind="primary" onClick={() => onCompose(one.id)}>{one.kind === "bathymetry" ? "Build a place on it" : "Put it in a new place"}</Button>
+              ? one.kind === "bathymetry"
+                ? <Button kind="primary" onClick={() => onCompose(one.id)}>Build a place on it</Button>
+                : <Button kind="primary" onClick={() => setPlacing(true)}>Place it</Button>
               : null}
             <Menu label={`More for ${name}`} items={[{ label: "Archive", danger: true, onSelect: () => {
               void platform.archiveAsset(one.id).then(onBack, (e: unknown) => setTrouble(e instanceof Error ? e.message : "it could not be archived"));
@@ -103,6 +110,16 @@ export function AssetDetail({ platform, id, onBack, onCompose }: {
             : "It stands on the seabed where you say: a latitude, a longitude and a heading, when you put it in a place."}</p>
         </section>
       </div>
+      {placing ? (
+        <Dialog title={`Place ${name} in`} onClose={() => setPlacing(false)}>
+          <div className="place-choice">
+            {places.length === 0 ? <p className="note">You have no places yet. Make one under Places first.</p> : null}
+            {places.map((p) => (
+              <button key={p.id} type="button" onClick={() => onPlace(one.id, p.id)}>{p.name}</button>
+            ))}
+          </div>
+        </Dialog>
+      ) : null}
     </Page>
   );
 }

@@ -83,25 +83,23 @@ export function PageHead({ title, says, back, onBack, aside }: {
   onBack?: () => void;
   aside?: React.ReactNode;
 }): React.JSX.Element {
-  // One line under the title (docs/ui.md 8); the whole of it behind the (i).
-  const long = says !== undefined && says.length > 110;
-  const first = long ? `${says!.split(/(?<=[.;:])\s/)[0]!.replace(/[.;:]$/, "")}` : says;
+  // The same thin bar as every page (ui/components Page): a path, then what
+  // you can do; what the page says is behind the (i).
   return (
-    <div className="page-head">
-      <div className="page-head-row">
-        {back === undefined ? null : (
-          <button type="button" className="back" onClick={onBack} aria-label={`Back to ${back}`} title={`Back to ${back}`}>
-            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          </button>
-        )}
-        <div className="page-titles">
-          {back === undefined ? null : <button type="button" className="crumb" onClick={onBack}>{back}</button>}
-          <h1>{title}{long ? <Info>{says}</Info> : null}</h1>
-          {first === undefined ? null : <p className="page-subtitle">{first}</p>}
-        </div>
-        {aside === undefined ? null : <div className="page-actions">{aside}</div>}
+    <header className="bar page-head">
+      {back === undefined ? null : (
+        <button type="button" className="back" onClick={onBack} aria-label={`Back to ${back}`} title={`Back to ${back}`}>
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </button>
+      )}
+      <div className="path" role="navigation" aria-label="Where you are">
+        {back === undefined ? null : <><button type="button" className="crumb" onClick={onBack}>{back}</button><span className="sep">/</span></>}
+        <h1>{title}</h1>
+        {says ? <Info>{says}</Info> : null}
       </div>
-    </div>
+      <span className="bar-gap" />
+      {aside === undefined ? null : <div className="page-actions">{aside}</div>}
+    </header>
   );
 }
 

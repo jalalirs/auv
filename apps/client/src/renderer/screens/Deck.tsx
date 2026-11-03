@@ -44,7 +44,7 @@ export type { Held, Packages };
 export type Where =
   // Flying: a plan of work once or under doubts; a single task is "dive".
   | { page: "fly"; mission?: string }
-  | { page: "dive" }
+  | { page: "dive"; place?: string; layout?: string }
   | { page: "places" }
   // What iOcean offers: its places and vehicles.
   | { page: "store" }
@@ -60,7 +60,7 @@ export type Where =
   // detached from the ground it was drawn on means nothing.
   | { page: "layout"; place: string; layout: string }
   // The place designer: its seabed, equipment and objects, on one arrangement.
-  | { page: "design"; place: string; layout?: string }
+  | { page: "design"; place: string; layout?: string; holding?: string }
   // A plan of work. Unlike a layout this is a top-level noun: an arrangement
   // is *of* somewhere and means nothing away from it, while a plan of work is
   // the unit of work itself — the thing somebody comes in to write and comes
@@ -243,6 +243,7 @@ export function Deck({ platform, onDiving, onSignOut }: {
                onDesign={(id, place) => setWhere({ page: "mission", id, place })} />
         ) : where.page === "dive" ? (
           <Dive platform={platform} held={held} packages={packages} free={free} devices={devices}
+                over={where.place} arrangedAs={where.layout}
                 onDiving={onDiving} onChanged={read} onOpen={setWhere}
                 onPlan={() => setWhere({ page: "fly" }, { replace: true })}
                 onBack={() => back({ page: "runs" })} />
@@ -264,8 +265,9 @@ export function Deck({ platform, onDiving, onSignOut }: {
                            onOpen={(id) => setWhere({ page: "reconstruction", id })}
                            onOpenAsset={(id) => setWhere({ page: "asset", id })} />
         ) : where.page === "asset" ? (
-          <AssetDetail platform={platform} id={where.id} onBack={() => back({ page: "reconstructions" })}
-                       onCompose={(id) => setWhere({ page: "build", with: id })} />
+          <AssetDetail platform={platform} id={where.id} places={held.places} onBack={() => back({ page: "reconstructions" })}
+                       onCompose={(id) => setWhere({ page: "build", with: id })}
+                       onPlace={(id, place) => setWhere({ page: "design", place, holding: id })} />
         ) : where.page === "reconstruction" ? (
           <ReconstructionPage platform={platform} held={held} packages={packages} id={where.id}
                               onBack={() => back({ page: "reconstructions" })}
@@ -283,6 +285,8 @@ export function Deck({ platform, onDiving, onSignOut }: {
         ) : where.page === "layout" || where.page === "design" ? (
           <PlaceDesigner platform={platform} held={held} packages={packages}
                          place={where.place} layout={where.layout}
+                         holding={where.page === "design" ? where.holding : undefined}
+                         onDive={(layout) => setWhere({ page: "dive", place: where.place, layout })}
                          onChanged={read}
                          onOpenLayout={(layout) => setWhere({ page: "design", place: where.place, layout }, { replace: true })}
                          onBack={() => back({ page: "place", id: where.place })} />
