@@ -1,5 +1,6 @@
-// A world in three dimensions: its terrain, the water over it, and what is in
-// it, to orbit round, choose things in and drag them over the seabed.
+// A world in three dimensions, as a modelling tool's viewport: its terrain,
+// the water over it and everything in it, to orbit, choose in (one, several,
+// a box of them), and move, turn and grow with a gizmo or by dragging.
 //
 // Drawn here, in the application, and not by the simulator: it is instant,
 // works offline and costs the shared machines nothing. What a camera on a
@@ -10,33 +11,52 @@
 // where lift stretches the depths: a reef three kilometres across and forty
 // metres deep is a flat plate at its true shape.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useImperativeHandle, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
+import { ViewHelper } from "three/examples/jsm/helpers/ViewHelper.js";
 
 import { groundAt, type Ground } from "./SiteChart.js";
 
-/** Something drawn in the world. */
+/** Something drawn in the world: an item of its reef or its structures. */
 export interface Shown {
   id: string;
-  /** A piece of equipment's kind, "object" for a model, "reef" for a reef. */
+  /** A piece of equipment's kind, "coral", "object" for a model, "reef" for a reef. */
   kind: string;
   x: number;
   y: number;
   /** Metres up, when it is not on the ground or the surface. */
   z?: number;
   headingDeg?: number;
-  /** Across, along and up, metres: a model's or a reef's. */
-  sizeM?: [number, number, number];
+  /** A coral's size, or across, along and up for a model or a reef. */
+  sizeM?: number | [number, number, number];
+  form?: string;
   route?: { x: number; y: number }[];
   ends?: { x: number; y: number; z?: number }[];
   corners?: { x: number; y: number }[];
   radiusM?: number;
   heightM?: number;
   name?: string;
+  locked?: boolean;
 }
 
 export interface Showing { terrain: boolean; water: boolean; structures: boolean; reef: boolean }
+
+/** What a press in the view does. */
+export type Mode = "select" | "move" | "rotate" | "scale" | "place" | "scatter" | "measure";
+
+/** How far the selection has gone since the gizmo or a drag took hold of it. */
+export interface Delta { dx: number; dy: number; turnDeg: number; scale: number }
+
+export type ViewName = "top" | "front" | "right" | "persp";
+
+/** What the editor can ask of the view. */
+export interface View3D {
+  view: (which: ViewName) => void;
+  /** Frame these items, or the whole world when none. */
+  frame: (ids: string[]) => void;
+}
 
 /** A tank's inside, as its site record says: the water is kept within glass,
  *  round or a box. Metres, z up, z = 0 at the surface. */
@@ -128,34 +148,82 @@ const COLOURS: Record<string, number> = {
   ship: 0xeeeeee, buoy: 0xf26b1d, dredger: 0xb5651d, pipeline: 0x3b5f8a, "mooring-line": 0x222222,
   "restoration-cell": 0x2e9e6e, object: 0x5d7fa8, reef: 0xe0735c,
 };
+const CHOSEN = 0xff8a3d;
+const SURFACE = new Set(["ship", "buoy", "dredger"]);
 
-/** A coral colony as a place's record lists it: its kind, its size, where. */
-export interface Colony { kind: string; sizeM: number; at: [number, number] }
-
-export function World3D({ ground, glass, colonies, items, showing, chosen, placing, onPick, onChoose, onMove, onHover }: {
+export function World3D({ ground, glass, items, showing, selected, mode, snap, grid, ghost, brush, measure, api,
+                          onPick, onSelect, onTransformStart, onTransform, onTransformEnd, onHover, onDrop }: {
   ground: Ground;
   /** A tank: drawn as its glass and the water in it, the ground cut to it. */
   glass?: Glass;
-  /** The colonies a place was built with, drawn as simple shapes by kind. */
-  colonies?: Colony[];
   items: Shown[];
   showing: Showing;
-  chosen?: string;
-  /** Something is in hand: a click on the seabed puts it down. */
-  placing?: boolean;
-  onPick: (at: { x: number; y: number }) => void;
-  onChoose: (id: string | undefined) => void;
-  onMove: (id: string, at: { x: number; y: number }) => void;
+  selected: string[];
+  mode: Mode;
+  /** Moves by whole metres, turns by fifteen degrees, grows by tenths. */
+  snap: boolean;
+  grid: boolean;
+  /** What is in hand, drawn faintly where it would go. */
+  ghost?: Shown;
+  /** The scatter brush, a ring on the ground. */
+  brush?: { x: number; y: number; radiusM: number };
+  /** A tape between two points on the ground. */
+  measure?: { x: number; y: number }[];
+  api?: React.Ref<View3D>;
+  /** A click on the ground with something in hand, a brush or a tape. */
+  onPick: (at: { x: number; y: number }, how: { shift: boolean }) => void;
+  onSelect: (ids: string[], how: "replace" | "add" | "toggle") => void;
+  onTransformStart: () => void;
+  onTransform: (delta: Delta) => void;
+  onTransformEnd: () => void;
   onHover?: (at: { x: number; y: number } | undefined) => void;
+  /** Something dragged in from the asset browser and let go over the ground. */
+  onDrop?: (key: string, at: { x: number; y: number }) => void;
 }): React.JSX.Element {
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<{
     renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera;
-    controls: OrbitControls; terrain: THREE.Mesh; water: THREE.Object3D; things: THREE.Group; corals: THREE.Group;
-    lift: number;
+    controls: OrbitControls; gizmo: TransformControls; proxy: THREE.Object3D;
+    terrain: THREE.Mesh; water: THREE.Object3D; things: THREE.Group; corals: THREE.Group; marks: THREE.Group;
+    overlay: THREE.Group; grid: THREE.Object3D; lift: number;
+    /** Where each item is in the scene, and how big, for framing and boxes. */
+    where: Map<string, { at: THREE.Vector3; r: number }>;
+    dragging: boolean;
   } | undefined>(undefined);
-  const said = useRef({ onPick, onChoose, onMove, onHover, chosen, placing });
-  said.current = { onPick, onChoose, onMove, onHover, chosen, placing };
+  const said = useRef({ onPick, onSelect, onTransformStart, onTransform, onTransformEnd, onHover, onDrop, selected, mode, items });
+  said.current = { onPick, onSelect, onTransformStart, onTransform, onTransformEnd, onHover, onDrop, selected, mode, items };
+
+  useImperativeHandle(api, () => ({
+    view: (which) => {
+      const s = scene.current;
+      if (!s) return;
+      const r = s.camera.position.distanceTo(s.controls.target);
+      const t = s.controls.target;
+      const dir = which === "top" ? new THREE.Vector3(0, 1, 0.002)
+        : which === "front" ? new THREE.Vector3(0, 0.03, 1)
+        : which === "right" ? new THREE.Vector3(1, 0.03, 0)
+        : new THREE.Vector3(0.45, 0.55, 0.75);
+      s.camera.position.copy(t).addScaledVector(dir.normalize(), r);
+      s.controls.update();
+    },
+    frame: (ids) => {
+      const s = scene.current;
+      if (!s) return;
+      const box = new THREE.Box3();
+      for (const id of ids) {
+        const w = s.where.get(id);
+        if (w) box.expandByPoint(w.at.clone().addScalar(w.r)).expandByPoint(w.at.clone().addScalar(-w.r));
+      }
+      if (box.isEmpty()) box.setFromObject(s.terrain);
+      const centre = box.getCenter(new THREE.Vector3());
+      const size = Math.max(box.getSize(new THREE.Vector3()).length() / 2, ground.acrossM / 400);
+      const far = size / Math.sin((s.camera.fov * Math.PI) / 360) * 2;
+      const dir = s.camera.position.clone().sub(s.controls.target).normalize();
+      s.controls.target.copy(centre);
+      s.camera.position.copy(centre).addScaledVector(dir, far);
+      s.controls.update();
+    },
+  }), [ground]);
 
   // The scene, once per ground.
   useEffect(() => {
@@ -166,6 +234,7 @@ export function World3D({ ground, glass, colonies, items, showing, chosen, placi
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.autoClear = false;
     el.appendChild(renderer.domElement);
     const world = new THREE.Scene();
     world.background = new THREE.Color(0x0d2236);
@@ -175,17 +244,20 @@ export function World3D({ ground, glass, colonies, items, showing, chosen, placi
     const controls = new OrbitControls(camera, renderer.domElement);
     // Look at the middle of the seabed, wherever it is: 10 m down off a reef,
     // half a metre in a tank.
-    const depths = Array.from(ground.depth).filter(Number.isFinite);
-    const middle = depths.length ? depths.reduce((t, d) => t + Math.max(0, d), 0) / depths.length : 0;
+    let total = 0, n = 0;
+    for (const d of ground.depth) if (Number.isFinite(d)) { total += Math.max(0, d); n++; }
+    const middle = n ? total / n : 0;
     controls.target.set(0, -middle * lift, 0);
     controls.maxPolarAngle = Math.PI * 0.495;
     controls.enableDamping = true;
+    controls.dampingFactor = 0.12;
     controls.update();
 
     world.add(new THREE.HemisphereLight(0xdfefff, 0x1b2a38, 1.1));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(-across, across * 1.5, -across * 0.6);
     world.add(sun);
+    let gridAt = -middle * lift, gridSize = across, gridStep = niceStep(across / 20);
     if (glass) {
       // A tank stands in a hall: look at the whole of it, from a little above.
       const tall = glass.max[2] - glass.min[2];
@@ -199,6 +271,9 @@ export function World3D({ ground, glass, colonies, items, showing, chosen, placi
       controls.target.set(0, glass.min[2] + tall * 0.45, 0);
       controls.maxPolarAngle = Math.PI * 0.62;
       controls.update();
+      gridAt = glass.min[2] - 1 + 0.01;
+      gridSize = Math.ceil(wide * 3.2);
+      gridStep = 1;
     }
 
     // A tank's column is walls: finer, or its faces zig-zag into streaks.
@@ -223,11 +298,55 @@ export function World3D({ ground, glass, colonies, items, showing, chosen, placi
       new THREE.MeshStandardMaterial({ color: 0x3f8fc4, transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide }));
     world.add(water);
 
+    const lines = Math.max(2, Math.round(gridSize / gridStep));
+    const gridLines = new THREE.GridHelper(lines * gridStep, lines, 0x7fa6c4, 0x4a6a84);
+    (gridLines.material as THREE.Material).transparent = true;
+    (gridLines.material as THREE.Material).opacity = 0.35;
+    (gridLines.material as THREE.Material).depthWrite = false;
+    gridLines.position.y = gridAt;
+    world.add(gridLines);
+
     const things = new THREE.Group();
-    world.add(things);
-    const corals = coralsOf(colonies ?? [], ground, lift);
-    world.add(corals);
-    scene.current = { renderer, scene: world, camera, controls, terrain, water, things, corals, lift };
+    const corals = new THREE.Group();
+    const marks = new THREE.Group();
+    const overlay = new THREE.Group();
+    world.add(things, corals, marks, overlay);
+
+    // The gizmo holds a stand-in at the middle of the selection; what it does
+    // to the stand-in is said to the editor as a change from where it began.
+    const proxy = new THREE.Object3D();
+    world.add(proxy);
+    const gizmo = new TransformControls(camera, renderer.domElement);
+    gizmo.setSize(0.85);
+    gizmo.setSpace("world");
+    world.add(gizmo.getHelper());
+    const began = new THREE.Vector3();
+    const turnOf = (q: THREE.Quaternion) => -2 * Math.atan2(q.y, q.w) * 180 / Math.PI;
+    const growthOf = (v: THREE.Vector3) => [v.x, v.y, v.z].reduce((best, s) => Math.abs(s - 1) > Math.abs(best - 1) ? s : best, 1);
+    gizmo.addEventListener("dragging-changed", (e) => { controls.enabled = !(e as unknown as { value: boolean }).value; });
+    gizmo.addEventListener("mouseDown", () => {
+      if (scene.current) scene.current.dragging = true;
+      began.copy(proxy.position);
+      said.current.onTransformStart();
+    });
+    gizmo.addEventListener("objectChange", () => {
+      if (!scene.current?.dragging) return;
+      const dx = proxy.position.x - began.x, dy = -(proxy.position.z - began.z);
+      said.current.onTransform({ dx, dy, turnDeg: turnOf(proxy.quaternion), scale: growthOf(proxy.scale) });
+    });
+    gizmo.addEventListener("mouseUp", () => {
+      if (scene.current) scene.current.dragging = false;
+      proxy.quaternion.identity();
+      proxy.scale.set(1, 1, 1);
+      said.current.onTransformEnd();
+    });
+
+    const helper = new ViewHelper(camera, renderer.domElement);
+    helper.setLabels("E", "Up", "S");
+    helper.center = controls.target;
+
+    scene.current = { renderer, scene: world, camera, controls, gizmo, proxy, terrain, water, things, corals, marks, overlay,
+                      grid: gridLines, lift, where: new Map(), dragging: false };
 
     const fit = () => {
       const w = el.clientWidth || 1, h = el.clientHeight || 1;
@@ -239,10 +358,10 @@ export function World3D({ ground, glass, colonies, items, showing, chosen, placi
     const watching = new ResizeObserver(fit);
     watching.observe(el);
 
-    // Choosing, putting down and dragging.
+    // Choosing, boxing, dragging and putting down.
     const ray = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
-    const cast = (event: PointerEvent) => {
+    const cast = (event: { clientX: number; clientY: number }) => {
       const box = renderer.domElement.getBoundingClientRect();
       pointer.set(((event.clientX - box.left) / box.width) * 2 - 1, -((event.clientY - box.top) / box.height) * 2 + 1);
       ray.setFromCamera(pointer, camera);
@@ -251,63 +370,147 @@ export function World3D({ ground, glass, colonies, items, showing, chosen, placi
       const hit = ray.intersectObject(terrain)[0];
       return hit ? { x: hit.point.x, y: -hit.point.z } : undefined;
     };
-    const thingHit = (): string | undefined => {
-      for (const hit of ray.intersectObjects(things.children, true)) {
+    const hitItem = (): string | undefined => {
+      const hits = ray.intersectObjects([...things.children, ...corals.children], true);
+      for (const hit of hits) {
+        if (!hit.object.visible || !hit.object.parent?.visible) continue;
+        const ids = hit.object.userData.ids as string[] | undefined;
+        if (ids && hit.instanceId !== undefined) return ids[hit.instanceId];
         let o: THREE.Object3D | null = hit.object;
         while (o && !o.userData.id) o = o.parent;
-        if (o?.userData.id && o.visible) return o.userData.id as string;
+        if (o?.userData.id) return o.userData.id as string;
       }
       return undefined;
     };
-    let dragging: string | undefined;
+    const marquee = document.createElement("div");
+    marquee.className = "world3d-box";
+    el.appendChild(marquee);
+    let boxing: { x: number; y: number } | undefined;
+    let grabbing: { x: number; y: number } | undefined;
     let downAt: { x: number; y: number } | undefined;
+    const transforms = () => ["select", "move", "rotate", "scale"].includes(said.current.mode);
     const down = (event: PointerEvent) => {
       if (event.button !== 0) return;
-      cast(event);
       downAt = { x: event.clientX, y: event.clientY };
-      const id = thingHit();
-      if (id && id === said.current.chosen && !said.current.placing) {
-        dragging = id;
+      if (gizmo.dragging || gizmo.axis) return;
+      cast(event);
+      if (!transforms()) return;
+      const id = hitItem();
+      if (event.shiftKey && !id) {
+        boxing = { x: event.clientX, y: event.clientY };
         controls.enabled = false;
         renderer.domElement.setPointerCapture(event.pointerId);
+        return;
+      }
+      const ground_ = onGround();
+      const locked = said.current.items.some((t) => t.id === id && t.locked);
+      if (id && ground_ && !locked && !event.shiftKey && said.current.selected.includes(id)
+          && (said.current.mode === "select" || said.current.mode === "move")) {
+        grabbing = ground_;
+        controls.enabled = false;
+        renderer.domElement.setPointerCapture(event.pointerId);
+        if (scene.current) scene.current.dragging = true;
+        said.current.onTransformStart();
       }
     };
     const move = (event: PointerEvent) => {
       cast(event);
       const at = onGround();
       said.current.onHover?.(at);
-      if (dragging && at) said.current.onMove(dragging, at);
+      if (boxing) {
+        const r = el.getBoundingClientRect();
+        const x0 = Math.min(boxing.x, event.clientX) - r.left, y0 = Math.min(boxing.y, event.clientY) - r.top;
+        Object.assign(marquee.style, { display: "block", left: `${x0}px`, top: `${y0}px`,
+          width: `${Math.abs(event.clientX - boxing.x)}px`, height: `${Math.abs(event.clientY - boxing.y)}px` });
+      }
+      if (grabbing && at) said.current.onTransform({ dx: at.x - grabbing.x, dy: at.y - grabbing.y, turnDeg: 0, scale: 1 });
     };
     const up = (event: PointerEvent) => {
-      if (dragging) {
-        dragging = undefined;
+      if (event.button !== 0) return;
+      const still = downAt && Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y) <= 4;
+      downAt = undefined;
+      if (boxing) {
+        const r = renderer.domElement.getBoundingClientRect();
+        const x0 = Math.min(boxing.x, event.clientX), x1 = Math.max(boxing.x, event.clientX);
+        const y0 = Math.min(boxing.y, event.clientY), y1 = Math.max(boxing.y, event.clientY);
+        boxing = undefined;
+        marquee.style.display = "none";
         controls.enabled = true;
+        const inside: string[] = [];
+        for (const [id, w] of scene.current?.where ?? []) {
+          const p = w.at.clone().project(camera);
+          if (p.z > 1) continue;
+          const sx = r.left + (p.x + 1) / 2 * r.width, sy = r.top + (1 - p.y) / 2 * r.height;
+          if (sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1) inside.push(id);
+        }
+        said.current.onSelect(inside, "add");
         return;
       }
-      if (!downAt || Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y) > 4) return;
+      if (grabbing) {
+        grabbing = undefined;
+        controls.enabled = true;
+        if (scene.current) scene.current.dragging = false;
+        said.current.onTransformEnd();
+        if (!still) return;
+      }
+      if (!still || gizmo.dragging) return;
+      if (helper.handleClick(event)) return;
       cast(event);
-      const id = said.current.placing ? undefined : thingHit();
-      if (id) { said.current.onChoose(id); return; }
-      const at = onGround();
-      if (at) said.current.onPick(at);
+      if (!transforms()) {
+        const at = onGround();
+        if (at) said.current.onPick(at, { shift: event.shiftKey });
+        return;
+      }
+      const id = hitItem();
+      if (id) said.current.onSelect([id], event.shiftKey || event.metaKey || event.ctrlKey ? "toggle" : "replace");
+      else if (!event.shiftKey) said.current.onSelect([], "replace");
     };
     const leave = () => said.current.onHover?.(undefined);
+    const over = (event: DragEvent) => {
+      if (!event.dataTransfer?.types.includes("application/x-iocean")) return;
+      event.preventDefault();
+      cast(event);
+      said.current.onHover?.(onGround());
+    };
+    const drop = (event: DragEvent) => {
+      const key = event.dataTransfer?.getData("application/x-iocean");
+      if (!key) return;
+      event.preventDefault();
+      cast(event);
+      const at = onGround();
+      if (at) said.current.onDrop?.(key, at);
+    };
+    // After the gizmo's own, so a press on a handle is the gizmo's; the orbit's
+    // is earlier, and stops at once when it is turned off here.
     renderer.domElement.addEventListener("pointerdown", down);
     renderer.domElement.addEventListener("pointermove", move);
     renderer.domElement.addEventListener("pointerup", up);
     renderer.domElement.addEventListener("pointerleave", leave);
+    el.addEventListener("dragover", over);
+    el.addEventListener("drop", drop);
 
     let raf = 0;
+    const clock = new THREE.Clock();
     const frame = () => {
-      controls.update();
+      const delta = clock.getDelta();
+      if (helper.animating) helper.update(delta);
+      else controls.update();
+      renderer.clear();
       renderer.render(world, camera);
+      helper.render(renderer);
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
     return () => {
       cancelAnimationFrame(raf);
       watching.disconnect();
+      el.removeEventListener("dragover", over);
+      el.removeEventListener("drop", drop);
+      gizmo.detach();
+      gizmo.dispose();
+      helper.dispose();
       controls.dispose();
+      marquee.remove();
       renderer.domElement.remove();
       world.traverse((o) => {
         const mesh = o as THREE.Mesh;
@@ -321,7 +524,7 @@ export function World3D({ ground, glass, colonies, items, showing, chosen, placi
       renderer.dispose();
       scene.current = undefined;
     };
-  }, [ground, glass, colonies]);
+  }, [ground, glass]);
 
   // What is in it, drawn again whenever it changes.
   useEffect(() => {
@@ -330,24 +533,123 @@ export function World3D({ ground, glass, colonies, items, showing, chosen, placi
     s.terrain.visible = showing.terrain;
     s.water.visible = showing.water;
     s.corals.visible = showing.reef;
-    for (const old of [...s.things.children]) {
-      s.things.remove(old);
-      old.traverse((o) => {
-        const mesh = o as THREE.Mesh;
-        mesh.geometry?.dispose();
-        (mesh.material as THREE.Material | undefined)?.dispose?.();
-      });
-    }
+    const chosen = new Set(selected);
+    for (const group of [s.things, s.corals, s.marks]) emptied(group);
+    s.where.clear();
+    const seen = ground.acrossM / 160;
     for (const item of items) {
-      const shape = shapeOf(item, ground, s.lift, item.id === chosen);
+      if (item.kind === "coral") continue;
+      const shape = shapeOf(item, ground, s.lift, chosen.has(item.id));
       if (!shape) continue;
       shape.userData.id = item.id;
       shape.visible = item.kind === "reef" ? showing.reef : showing.structures;
       s.things.add(shape);
+      const box = new THREE.Box3().setFromObject(shape);
+      s.where.set(item.id, { at: box.getCenter(new THREE.Vector3()), r: Math.max(box.getSize(new THREE.Vector3()).length() / 2, seen / 2) });
     }
-  }, [items, showing, chosen, ground]);
+    coralsInto(s.corals, items.filter((t) => t.kind === "coral"), ground, s.lift, chosen, s.where);
+    // A box round each chosen thing, as a modelling tool marks its selection.
+    for (const id of selected) {
+      const w = s.where.get(id);
+      if (!w) continue;
+      const box = new THREE.Box3Helper(new THREE.Box3(w.at.clone().addScalar(-w.r * 0.75), w.at.clone().addScalar(w.r * 0.75)), CHOSEN);
+      s.marks.add(box);
+    }
+  }, [items, showing, selected, ground]);
+
+  // The gizmo, on the selection, in the mode's own form.
+  useEffect(() => {
+    const s = scene.current;
+    if (!s || s.dragging) return;
+    const shape = mode === "move" ? "translate" : mode === "rotate" ? "rotate" : mode === "scale" ? "scale" : undefined;
+    const held = items.filter((t) => selected.includes(t.id));
+    const pts = held.map((t) => s.where.get(t.id)?.at).filter((p): p is THREE.Vector3 => !!p);
+    // Only corals grow; equipment and models are their true size.
+    const grows = held.length > 0 && held.every((t) => t.kind === "coral");
+    if (!shape || !pts.length || held.some((t) => t.locked) || (shape === "scale" && !grows)) {
+      s.gizmo.detach();
+      return;
+    }
+    const middle = pts.reduce((a, p) => a.add(p), new THREE.Vector3()).divideScalar(pts.length);
+    s.proxy.position.copy(middle);
+    s.proxy.quaternion.identity();
+    s.proxy.scale.set(1, 1, 1);
+    s.gizmo.setMode(shape);
+    s.gizmo.showX = shape !== "rotate";
+    s.gizmo.showZ = shape !== "rotate";
+    s.gizmo.showY = shape !== "translate";
+    s.gizmo.setTranslationSnap(snap ? 1 : null);
+    s.gizmo.setRotationSnap(snap ? Math.PI / 12 : null);
+    s.gizmo.setScaleSnap(snap ? 0.1 : null);
+    s.gizmo.attach(s.proxy);
+  }, [items, selected, mode, snap, ground]);
+
+  useEffect(() => { if (scene.current) scene.current.grid.visible = grid; }, [grid, ground, glass]);
+
+  // What is in hand, the brush and the tape.
+  useEffect(() => {
+    const s = scene.current;
+    if (!s) return;
+    emptied(s.overlay);
+    if (ghost) {
+      const shape = ghost.kind === "coral" ? coralModel(String(ghost.form ?? "massive")) : shapeOf(ghost, ground, s.lift, false);
+      if (shape) {
+        if (ghost.kind === "coral") {
+          const size = Math.max(0.15, Number(ghost.sizeM ?? 0.5));
+          shape.scale.setScalar(size);
+          shape.position.set(ghost.x, floor(ground, ghost.x, ghost.y, s.lift), -ghost.y);
+        }
+        shape.traverse((o) => {
+          const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+          if (m) { m.transparent = true; m.opacity = 0.5; m.depthWrite = false; }
+        });
+        s.overlay.add(shape);
+      }
+    }
+    if (brush) {
+      const ring: THREE.Vector3[] = [];
+      for (let k = 0; k <= 64; k++) {
+        const a = (k / 64) * Math.PI * 2;
+        const x = brush.x + Math.cos(a) * brush.radiusM, y = brush.y + Math.sin(a) * brush.radiusM;
+        ring.push(new THREE.Vector3(x, floor(ground, x, y, s.lift) + 0.05, -y));
+      }
+      s.overlay.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ring),
+        new THREE.LineBasicMaterial({ color: CHOSEN, depthTest: false })));
+    }
+    if (measure?.length) {
+      const pts = measure.map((p) => new THREE.Vector3(p.x, floor(ground, p.x, p.y, s.lift), -p.y));
+      const dot = ground.acrossM / 300;
+      for (const p of pts) {
+        const ball = new THREE.Mesh(new THREE.SphereGeometry(dot, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffe066, depthTest: false }));
+        ball.position.copy(p);
+        s.overlay.add(ball);
+      }
+      if (pts.length === 2) {
+        s.overlay.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+          new THREE.LineBasicMaterial({ color: 0xffe066, depthTest: false })));
+      }
+    }
+  }, [ghost, brush, measure, ground]);
 
   return <div className="world3d" ref={host} />;
+}
+
+function niceStep(v: number): number {
+  for (const s of [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000]) if (s >= v) return s;
+  return 2000;
+}
+
+/** A group with what was in it disposed of. */
+function emptied(group: THREE.Group): void {
+  for (const old of [...group.children]) {
+    group.remove(old);
+    old.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      mesh.geometry?.dispose();
+      const m = mesh.material as THREE.Material | THREE.Material[] | undefined;
+      (Array.isArray(m) ? m : m ? [m] : []).forEach((x) => x.dispose());
+    });
+  }
 }
 
 /** Inside the glass: the triangles outside it go, and the ground is coloured
@@ -386,44 +688,114 @@ function inTheTank(plane: THREE.BufferGeometry, glass: Glass): void {
   plane.setAttribute("color", new THREE.BufferAttribute(colours, 3));
 }
 
-/** Colonies by kind, each kind one instanced shape: plates spread flat, mounds
+
+/** Colonies by form, each form one instanced shape: plates spread flat, mounds
  *  sit round, branches and fans stand up. Coloured as reef coral is in water. */
-const CORAL_SHAPES: Record<string, { make: () => THREE.BufferGeometry; colour: number }> = {
+export const CORAL_SHAPES: Record<string, { make: () => THREE.BufferGeometry; colour: number }> = {
   // A plate spreads well past its foot: drawn twice its listed size across.
-  table: { make: () => new THREE.CylinderGeometry(1, 0.85, 0.08, 20), colour: 0x6cc39c },
-  massive: { make: () => new THREE.SphereGeometry(0.5, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), colour: 0xb08a5a },
-  brain: { make: () => new THREE.SphereGeometry(0.5, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), colour: 0xc2a46a },
-  branching: { make: () => new THREE.ConeGeometry(0.42, 0.9, 7), colour: 0x8f74b0 },
-  finger: { make: () => new THREE.ConeGeometry(0.3, 0.8, 6), colour: 0xd08f6a },
-  plume: { make: () => new THREE.ConeGeometry(0.22, 1.1, 6), colour: 0xc8607e },
-  fan: { make: () => new THREE.BoxGeometry(0.9, 0.9, 0.06), colour: 0xd9714f },
-  sponge: { make: () => new THREE.CylinderGeometry(0.25, 0.32, 0.7, 10), colour: 0xe09a3c },
-  encrusting: { make: () => new THREE.SphereGeometry(0.5, 12, 6, 0, Math.PI * 2, 0, Math.PI / 3), colour: 0xcf7a8e },
+  table: { make: () => tableGeometry(), colour: 0x6cc39c },
+  massive: { make: () => new THREE.SphereGeometry(0.5, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), colour: 0xb08a5a },
+  brain: { make: () => brainGeometry(), colour: 0xc2a46a },
+  branching: { make: () => branchGeometry(5, 0.07, 0.8), colour: 0x8f74b0 },
+  finger: { make: () => branchGeometry(7, 0.06, 0.55), colour: 0xd08f6a },
+  plume: { make: () => branchGeometry(4, 0.03, 1.1), colour: 0xc8607e },
+  fan: { make: () => new THREE.CircleGeometry(0.5, 20, 0, Math.PI).translate(0, 0.08, 0), colour: 0xd9714f },
+  sponge: { make: () => new THREE.CylinderGeometry(0.28, 0.22, 0.7, 14, 1, true), colour: 0xe09a3c },
+  encrusting: { make: () => new THREE.SphereGeometry(0.5, 14, 6, 0, Math.PI * 2, 0, Math.PI / 4), colour: 0xcf7a8e },
 };
 
-function coralsOf(colonies: Colony[], ground: Ground, lift: number): THREE.Group {
-  const group = new THREE.Group();
-  const byKind = new Map<string, Colony[]>();
-  for (const c of colonies) byKind.set(c.kind, [...(byKind.get(c.kind) ?? []), c]);
+function tableGeometry(): THREE.BufferGeometry {
+  // A plate on a short stalk.
+  const plate = new THREE.CylinderGeometry(1, 0.9, 0.08, 24).translate(0, 0.22, 0);
+  const stalk = new THREE.CylinderGeometry(0.08, 0.12, 0.2, 8).translate(0, 0.1, 0);
+  return merged([plate, stalk]);
+}
+
+function brainGeometry(): THREE.BufferGeometry {
+  const g = new THREE.SphereGeometry(0.5, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2);
+  const p = g.attributes.position as THREE.BufferAttribute;
+  for (let k = 0; k < p.count; k++) {
+    const x = p.getX(k), y = p.getY(k), z = p.getZ(k);
+    const groove = 1 + 0.05 * Math.sin(x * 22 + Math.sin(z * 9) * 3);
+    p.setXYZ(k, x * groove, y * groove, z * groove);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+/** Arms spread from a foot, each a tapered cylinder leaning out. */
+function branchGeometry(arms: number, thick: number, tall: number): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [new THREE.CylinderGeometry(thick * 1.4, thick * 1.8, tall * 0.25, 6).translate(0, tall * 0.125, 0)];
+  for (let i = 0; i < arms; i++) {
+    const lean = 0.35 + 0.25 * ((i * 7) % 3) / 2;
+    const a = (i / arms) * Math.PI * 2;
+    const arm = new THREE.CylinderGeometry(thick * 0.6, thick, tall * (0.75 + 0.1 * (i % 3)), 6).translate(0, tall * 0.4, 0);
+    arm.rotateZ(lean);
+    arm.rotateY(a);
+    arm.translate(0, tall * 0.18, 0);
+    parts.push(arm);
+  }
+  return merged(parts);
+}
+
+/** Several geometries as one, positions and normals only. */
+function merged(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const flat = parts.map((g) => g.index ? g.toNonIndexed() : g);
+  const count = flat.reduce((t, g) => t + g.attributes.position!.count, 0);
+  const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3);
+  let at = 0;
+  for (const g of flat) {
+    g.computeVertexNormals();
+    pos.set(g.attributes.position!.array as Float32Array, at * 3);
+    nor.set(g.attributes.normal!.array as Float32Array, at * 3);
+    at += g.attributes.position!.count;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  out.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+  parts.forEach((g) => g.dispose());
+  return out;
+}
+
+/** One coral of a form, standing on its foot at the origin, a metre in size. */
+export function coralGeometry(form: string): THREE.BufferGeometry {
+  const shape = CORAL_SHAPES[form] ?? CORAL_SHAPES.massive!;
+  const geometry = shape.make();
+  geometry.computeBoundingBox();
+  geometry.translate(0, -geometry.boundingBox!.min.y, 0);
+  return geometry;
+}
+
+export function coralModel(form: string): THREE.Mesh {
+  const shape = CORAL_SHAPES[form] ?? CORAL_SHAPES.massive!;
+  return new THREE.Mesh(coralGeometry(form), new THREE.MeshStandardMaterial({ color: shape.colour, roughness: 0.75, side: THREE.DoubleSide }));
+}
+
+function coralsInto(group: THREE.Group, corals: Shown[], ground: Ground, lift: number, chosen: Set<string>,
+                    where: Map<string, { at: THREE.Vector3; r: number }>): void {
+  const byForm = new Map<string, Shown[]>();
+  for (const c of corals) byForm.set(String(c.form ?? "massive"), [...(byForm.get(String(c.form ?? "massive")) ?? []), c]);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
-  for (const [kind, list] of byKind) {
-    const shape = CORAL_SHAPES[kind] ?? CORAL_SHAPES.massive!;
-    const geometry = shape.make();
-    // Standing on its foot; a plate held a little off the rock, as tables grow.
-    geometry.computeBoundingBox();
-    geometry.translate(0, -geometry.boundingBox!.min.y + (kind === "table" ? 0.2 : 0), 0);
-    const mesh = new THREE.InstancedMesh(geometry, new THREE.MeshStandardMaterial({ color: shape.colour, roughness: 0.75 }), list.length);
+  const colour = new THREE.Color(), picked = new THREE.Color(CHOSEN);
+  for (const [form, list] of byForm) {
+    const shape = CORAL_SHAPES[form] ?? CORAL_SHAPES.massive!;
+    // White, so each colony's own colour (its form's, or chosen) is what shows.
+    const mesh = new THREE.InstancedMesh(coralGeometry(form),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.75, side: THREE.DoubleSide }), list.length);
+    colour.setHex(shape.colour);
     list.forEach((c, i) => {
-      const [x, y] = c.at;
-      const turn = (Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1;
-      q.setFromAxisAngle(up, turn * Math.PI * 2);
-      const size = Math.max(0.15, c.sizeM);
-      m.compose(new THREE.Vector3(x, floor(ground, x, y, lift) - 0.02, -y), q, new THREE.Vector3(size, size, size));
+      q.setFromAxisAngle(up, -((c.headingDeg ?? 0) * Math.PI) / 180);
+      const size = Math.max(0.15, Number(c.sizeM ?? 0.5));
+      const at = new THREE.Vector3(c.x, floor(ground, c.x, c.y, lift) - 0.02, -c.y);
+      m.compose(at, q, new THREE.Vector3(size, size, size));
       mesh.setMatrixAt(i, m);
+      mesh.setColorAt(i, chosen.has(c.id) ? picked : colour);
+      where.set(c.id, { at: at.clone().setY(at.y + size * 0.3), r: size * (form === "table" ? 1 : 0.6) });
     });
+    mesh.userData.ids = list.map((c) => c.id);
+    mesh.computeBoundingSphere();
     group.add(mesh);
   }
-  return group;
 }
 
 /** A tank's glass and the water in it, and the floor of the hall it stands on. */
@@ -479,20 +851,83 @@ function tank(world: THREE.Scene, glass: Glass): THREE.Object3D {
   return water;
 }
 
+
 /** The ground's height in the scene at a world point. */
 function floor(ground: Ground, x: number, y: number, lift: number): number {
   return -groundAt(ground, x, y) * lift;
 }
 
-function material(kind: string, chosen: boolean, see?: number): THREE.MeshStandardMaterial {
+function material(kind: string, chosen: boolean, see?: number, colour?: number): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
-    color: COLOURS[kind] ?? 0x9aa6b2, roughness: 0.6, metalness: 0.1,
-    emissive: chosen ? 0xff7a1a : 0x000000, emissiveIntensity: chosen ? 0.55 : 0,
+    color: colour ?? COLOURS[kind] ?? 0x9aa6b2, roughness: 0.6, metalness: 0.1,
+    emissive: chosen ? CHOSEN : 0x000000, emissiveIntensity: chosen ? 0.45 : 0,
     transparent: see !== undefined, opacity: see ?? 1,
   });
 }
 
-/** A thing's shape. Sizes are true; only depths are stretched by lift. */
+/** A piece of equipment at its true size in metres, standing on the origin
+ *  (a vessel floating on it), facing north. */
+export function equipmentModel(kind: string, chosen = false): THREE.Group {
+  const g = new THREE.Group();
+  const add = (geometry: THREE.BufferGeometry, x: number, y: number, z: number, colour?: number) => {
+    const mesh = new THREE.Mesh(geometry, material(kind, chosen, undefined, colour));
+    mesh.position.set(x, y, z);
+    g.add(mesh);
+    return mesh;
+  };
+  switch (kind) {
+    case "transponder":
+      add(new THREE.CylinderGeometry(0.3, 0.34, 0.08, 16), 0, 0.04, 0, 0x5b6168);
+      add(new THREE.CylinderGeometry(0.09, 0.09, 0.7, 12), 0, 0.43, 0);
+      add(new THREE.SphereGeometry(0.2, 16, 12), 0, 0.92, 0, 0xf26b1d);
+      break;
+    case "mooring-block":
+      add(new THREE.BoxGeometry(1.2, 0.6, 1.2), 0, 0.3, 0);
+      add(new THREE.TorusGeometry(0.16, 0.035, 8, 20), 0, 0.72, 0, 0x5b6168);
+      break;
+    case "nursery-frame": {
+      const leg = () => new THREE.CylinderGeometry(0.025, 0.025, 1, 6);
+      for (const [x, z] of [[-1, -0.5], [1, -0.5], [-1, 0.5], [1, 0.5]] as const) add(leg(), x, 0.5, z);
+      for (const z of [-0.5, 0.5]) add(new THREE.CylinderGeometry(0.025, 0.025, 2, 6).rotateZ(Math.PI / 2), 0, 1, z);
+      for (const y of [0.45, 0.75]) add(new THREE.CylinderGeometry(0.008, 0.008, 2, 4).rotateZ(Math.PI / 2), 0, y, 0, 0xe8e2d0);
+      for (const x of [-0.6, 0, 0.6]) add(new THREE.SphereGeometry(0.06, 8, 6), x, 0.75, 0, 0x8f74b0);
+      break;
+    }
+    case "marker-post":
+      add(new THREE.CylinderGeometry(0.05, 0.06, 3, 10), 0, 1.5, 0, 0xf2f2ee);
+      add(new THREE.CylinderGeometry(0.052, 0.052, 0.4, 10), 0, 2.6, 0);
+      add(new THREE.PlaneGeometry(0.6, 0.4), 0.32, 2.75, 0);
+      break;
+    case "buoy":
+      add(new THREE.SphereGeometry(0.8, 20, 14), 0, 0.2, 0);
+      add(new THREE.CylinderGeometry(0.05, 0.05, 1.6, 8), 0, 1.6, 0, 0x30353a);
+      add(new THREE.SphereGeometry(0.12, 10, 8), 0, 2.45, 0, 0xffe066);
+      break;
+    case "ship":
+    case "dredger": {
+      const hull = new THREE.Shape();
+      hull.moveTo(-4, -15); hull.lineTo(4, -15); hull.lineTo(4, 10); hull.quadraticCurveTo(4, 15, 0, 15.5);
+      hull.quadraticCurveTo(-4, 15, -4, 10); hull.closePath();
+      const body = new THREE.ExtrudeGeometry(hull, { depth: 3.2, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, 2, 0);
+      add(body, 0, -1.2, 0, kind === "ship" ? 0x2b3a4a : 0x9a5a22);
+      add(new THREE.BoxGeometry(7.6, 0.2, 29), 0, 0.85, 0, 0xc9c6bd);
+      add(new THREE.BoxGeometry(6, 4, 6), 0, 3, -9, 0xf2f2ee);
+      add(new THREE.CylinderGeometry(0.15, 0.15, 6, 8), 0, 8, -9, 0x30353a);
+      if (kind === "dredger") {
+        const arm = add(new THREE.BoxGeometry(0.6, 0.6, 18), 2.5, 2, 4, 0xf2c230);
+        arm.rotation.x = -0.35;
+      }
+      break;
+    }
+    default:
+      add(new THREE.CylinderGeometry(0.3, 0.3, 0.6, 16), 0, 0.3, 0);
+  }
+  return g;
+}
+
+/** A thing's shape where it is. Sizes are true; only depths are stretched by
+ *  lift. Point things are drawn no smaller than a mark you can find from
+ *  across the world. */
 function shapeOf(item: Shown, ground: Ground, lift: number, chosen: boolean): THREE.Object3D | undefined {
   const tube = (points: THREE.Vector3[], radius: number) => {
     if (points.length < 2) return undefined;
@@ -519,61 +954,42 @@ function shapeOf(item: Shown, ground: Ground, lift: number, chosen: boolean): TH
     const [a, b] = item.ends as [{ x: number; y: number; z?: number }, { x: number; y: number; z?: number }];
     const zOf = (p: { x: number; y: number; z?: number }) => p.z === undefined || p.z < 0 && Math.abs(p.z + groundAt(ground, p.x, p.y)) < 0.5
       ? (p.z === 0 ? 0 : floor(ground, p.x, p.y, lift)) : p.z * lift;
-    return tube([new THREE.Vector3(a.x, zOf(a), -a.y), new THREE.Vector3(b.x, zOf(b), -b.y)], least * 0.6);
+    const pa = new THREE.Vector3(a.x, zOf(a), -a.y), pb = new THREE.Vector3(b.x, zOf(b), -b.y);
+    // A line hangs: a little sag at its middle.
+    const mid = pa.clone().lerp(pb, 0.5);
+    mid.x += (pb.x - pa.x) * 0.08;
+    return tube([pa, mid, pb], least * 0.6);
   }
   if (item.corners && item.corners.length >= 3) {
     const points = [...item.corners, item.corners[0]!].map((p) => new THREE.Vector3(p.x, floor(ground, p.x, p.y, lift) + least, -p.y));
-    const loop = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),
-      new THREE.LineBasicMaterial({ color: chosen ? 0xff7a1a : COLOURS[item.kind] ?? 0x2e9e6e }));
-    // A thin flat strip so a click on the edge finds it.
     const holder = new THREE.Group();
-    holder.add(loop);
-    const centre = item.corners.reduce((s, p) => ({ x: s.x + p.x / item.corners!.length, y: s.y + p.y / item.corners!.length }), { x: 0, y: 0 });
-    const pad = new THREE.Mesh(new THREE.SphereGeometry(least * 2), material(item.kind, chosen));
-    pad.position.set(centre.x, floor(ground, centre.x, centre.y, lift) + least * 2, -centre.y);
-    holder.add(pad);
+    holder.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),
+      new THREE.LineBasicMaterial({ color: chosen ? CHOSEN : COLOURS[item.kind] ?? 0x2e9e6e })));
+    // Posts at the corners, so a click finds it and it reads as a plot.
+    for (const p of points.slice(0, -1)) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(least * 0.5, least * 0.5, least * 4, 8), material(item.kind, chosen));
+      post.position.copy(p).setY(p.y + least * 2);
+      holder.add(post);
+    }
     return holder;
   }
   const holder = new THREE.Group();
   const base = floor(ground, item.x, item.y, lift);
-  const surface = item.kind === "ship" || item.kind === "buoy" || item.kind === "dredger";
-  holder.position.set(item.x, surface ? 0 : item.z !== undefined && item.z > -groundAt(ground, item.x, item.y) + 0.5 ? item.z * lift : base, -item.y);
+  holder.position.set(item.x, SURFACE.has(item.kind) ? 0 : item.z !== undefined && item.z > -groundAt(ground, item.x, item.y) + 0.5 ? item.z * lift : base, -item.y);
   holder.rotation.y = -((item.headingDeg ?? 0) * Math.PI) / 180;
-  // A thing on its own is a mark to find from across the world: no smaller
-  // than a hundred-and-sixtieth of it.
   const seen = ground.acrossM / 160;
-  const grow = (true_: number) => Math.max(true_, seen);
-  switch (item.kind) {
-    case "ship":
-    case "dredger": {
-      const hull = new THREE.Mesh(new THREE.BoxGeometry(grow(8), grow(3), grow(30)), material(item.kind, chosen));
-      hull.position.y = -grow(3) / 2 + grow(1);
-      holder.add(hull);
-      break;
-    }
-    case "buoy": {
-      const ball = new THREE.Mesh(new THREE.SphereGeometry(grow(0.8)), material(item.kind, chosen));
-      holder.add(ball);
-      break;
-    }
-    case "object":
-    case "reef": {
-      const [w, l, h] = item.sizeM ?? [3, 3, 1];
-      const box = new THREE.Mesh(new THREE.BoxGeometry(grow(w), Math.max(h * lift, seen), grow(l)),
-        material(item.kind, chosen, item.kind === "reef" ? 0.55 : undefined));
-      box.position.y = Math.max(h * lift, seen) / 2;
-      holder.add(box);
-      break;
-    }
-    default: {
-      const radius = grow(item.radiusM ?? (item.kind === "mooring-block" ? 0.6 : item.kind === "nursery-frame" ? 1 : 0.3));
-      const height = Math.max((item.heightM ?? (item.kind === "marker-post" ? 3 : item.kind === "nursery-frame" ? 1 : 0.6)) * lift, seen * 2);
-      const body = new THREE.Mesh(item.kind === "mooring-block" || item.kind === "nursery-frame"
-        ? new THREE.BoxGeometry(radius * 2, height, radius * 2) : new THREE.CylinderGeometry(radius, radius, height, 16),
-        material(item.kind, chosen));
-      body.position.y = height / 2;
-      holder.add(body);
-    }
+  if (item.kind === "object" || item.kind === "reef") {
+    const [w, l, h] = Array.isArray(item.sizeM) ? item.sizeM : [3, 3, 1];
+    const tall = Math.max(h * lift, seen);
+    const box = new THREE.Mesh(new THREE.BoxGeometry(Math.max(w, seen), tall, Math.max(l, seen)),
+      material(item.kind, chosen, item.kind === "reef" ? 0.55 : undefined));
+    box.position.y = tall / 2;
+    holder.add(box);
+    return holder;
   }
+  const model = equipmentModel(item.kind, chosen);
+  const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
+  model.scale.setScalar(Math.max(1, seen / Math.max(size.x, size.y, size.z, 0.01)));
+  holder.add(model);
   return holder;
 }
